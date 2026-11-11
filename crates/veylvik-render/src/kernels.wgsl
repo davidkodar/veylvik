@@ -44,6 +44,9 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
             color = total / f32((radius*2+1)*(radius*2+1));
         }
         case 5u: { let foreground = second[index]; color = foreground + source[index] * (1.0-foreground.a); }
+        case 6u: {
+            if gid.x < u32(p.extra.x) && gid.y < u32(p.extra.y) { color = source[gid.y * u32(p.extra.x) + gid.x]; }
+        }
         default: {}
     }
     result[index] = color;

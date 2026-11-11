@@ -2,10 +2,11 @@
 use serde_json::{Value, json};
 use std::io::{BufRead, Write};
 use veylvik_document::{Command, Composition, Document, Time};
-use veylvik_render::{Plan, Renderer};
+use veylvik_render::{Plan, Region, RenderRequest, Renderer};
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 struct Session {
     document: Document,
+    asset_base: std::path::PathBuf,
     renderer: Option<Renderer>,
     initialized: bool,
     ready: bool,
@@ -19,14 +20,14 @@ fn tools() -> Value {
         tool("inspect","Read the composition and current revision.",json!({}),&[]),
         tool("nodes","List supported node operations, ports and example payloads.",json!({}),&[]),
         tool("apply","Validate or commit an atomic batch. dry_run returns the candidate without changing history. Use nodes for payload examples. A put command inserts or replaces the complete node.",json!({"revision":revision,"dry_run":{"type":"boolean"},"commands":{"type":"array","minItems":1,"maxItems":4096,"items":{"oneOf":[
-            {"type":"object","properties":{"command":{"const":"put"},"node":{"type":"object","properties":{"id":{"type":"string","format":"uuid"},"version":{"const":1},"label":{"type":"string"},"operation":{"type":"object"},"inputs":{"type":"object","additionalProperties":{"type":"string","format":"uuid"}}},"required":["id","version","label","operation","inputs"],"additionalProperties":false}},"required":["command","node"],"additionalProperties":false},
+            {"type":"object","properties":{"command":{"const":"put"},"node":{"type":"object","properties":{"id":{"type":"string","format":"uuid"},"version":{"const":1},"label":{"type":"string"},"operation":veylvik_document::registry::operation_schema(),"inputs":{"type":"object","additionalProperties":{"type":"string","format":"uuid"}}},"required":["id","version","label","operation","inputs"],"additionalProperties":false}},"required":["command","node"],"additionalProperties":false},
             {"type":"object","properties":{"command":{"enum":["remove","output"]},"id":{"type":"string","format":"uuid"}},"required":["command","id"],"additionalProperties":false},
             {"type":"object","properties":{"command":{"const":"resize"},"width":{"type":"integer","minimum":1,"maximum":8192},"height":{"type":"integer","minimum":1,"maximum":8192}},"required":["command","width","height"],"additionalProperties":false}
         ]}}}),&["revision","commands"]),
         tool("undo","Undo one transaction, with a revision precondition.",json!({"revision":revision}),&["revision"]),
         tool("redo","Redo one transaction, with a revision precondition.",json!({"revision":revision}),&["revision"]),
         tool("save","Atomically save the current composition to an explicit path.",json!({"path":{"type":"string"},"revision":revision}),&["path","revision"]),
-        tool("render","Render the current revision to an SDR PNG using Vulkan. Time is exact ticks/rate seconds.",json!({"path":{"type":"string"},"revision":revision,"ticks":{"type":"integer"},"rate":{"type":"integer","minimum":1}}),&["path","revision","ticks","rate"])
+        tool("render","Render the current revision to an SDR PNG using Vulkan. Time is exact ticks/rate seconds.",json!({"path":{"type":"string"},"revision":revision,"ticks":{"type":"integer"},"rate":{"type":"integer","minimum":1,"maximum":u32::MAX},"node":{"type":"string","format":"uuid"},"region":{"type":"object","properties":{"x":{"type":"integer","minimum":0},"y":{"type":"integer","minimum":0},"width":{"type":"integer","minimum":1},"height":{"type":"integer","minimum":1}},"required":["x","y","width","height"],"additionalProperties":false}}),&["path","revision","ticks","rate"])
     ]})
 }
 fn required_u64(args: &Value, name: &str) -> Result<u64> {
@@ -68,13 +69,7 @@ impl Session {
             "inspect" => Ok(
                 json!({"revision":self.document.revision(),"composition":self.document.snapshot()}),
             ),
-            "nodes" => {
-                let doc = veylvik_document::demo();
-                let examples: Vec<_> = doc.nodes.values().map(|n| json!({"operation":n.operation,"inputs":n.operation.inputs(),"version":n.version})).collect();
-                Ok(
-                    json!({"nodes":examples,"image_contract":"scene-linear Rec.709, premultiplied RGBA32F","scalar_contract":"constant or linear keyframes; time is ticks/rate seconds","limits":{"noise_scale":[1,8192],"exposure_stops":[-32,32],"blur_radius":[0,32],"translation_pixels":[-1000000,1000000]}}),
-                )
-            }
+            "nodes" => Ok(veylvik_document::registry::catalog()),
             "apply" => {
                 let commands: Vec<Command> = serde_json::from_value(args["commands"].clone())?;
                 let dry_run = match args.get("dry_run") {
@@ -93,7 +88,7 @@ impl Session {
             "undo" => Ok(json!({"revision":self.document.undo(self.document.revision())?})),
             "redo" => Ok(json!({"revision":self.document.redo(self.document.revision())?})),
             "save" => {
-                self.document.snapshot().save(path(args)?)?;
+                crate::assets::save(self.document.snapshot(), &self.asset_base, path(args)?)?;
                 Ok(json!({"saved":args["path"],"revision":self.document.revision()}))
             }
             "render" => {
@@ -101,18 +96,39 @@ impl Session {
                     args["ticks"].as_i64().ok_or("ticks must be an integer")?,
                     u32::try_from(required_u64(args, "rate")?)?,
                 )?;
+                let doc = self.document.snapshot();
+                let output = match args.get("node") {
+                    None => doc.output,
+                    Some(value) => value
+                        .as_str()
+                        .ok_or("node must be a UUID string")?
+                        .parse()?,
+                };
+                let region: Option<Region> = args
+                    .get("region")
+                    .map(|v| serde_json::from_value(v.clone()))
+                    .transpose()?;
+                if let Some(region) = region {
+                    region.validate(doc.width, doc.height)?;
+                }
+                let plan = Plan::compile_output(doc, output)?;
                 if self.renderer.is_none() {
                     self.renderer = Some(Renderer::new()?);
                 }
-                let doc = self.document.snapshot();
-                let pixels = self
-                    .renderer
-                    .as_ref()
-                    .unwrap()
-                    .render(&Plan::compile(doc)?, time)?;
-                crate::save_png(path(args)?, doc.width, doc.height, &pixels)?;
+                let renderer = self.renderer.as_ref().unwrap();
+                let inputs =
+                    crate::assets::load_inputs(&plan, &self.asset_base, renderer.budget_bytes)?;
+                crate::assets::protect_inputs(doc, &self.asset_base, path(args)?)?;
+                let frame =
+                    renderer.render_frame(&plan, RenderRequest { time, region }, &inputs)?;
+                crate::save_png(
+                    path(args)?,
+                    frame.region.width,
+                    frame.region.height,
+                    &frame.pixels,
+                )?;
                 Ok(
-                    json!({"output":args["path"],"revision":self.document.revision(),"width":doc.width,"height":doc.height}),
+                    json!({"output":args["path"],"revision":self.document.revision(),"region":frame.region}),
                 )
             }
             _ => Err("unknown tool".into()),
@@ -170,11 +186,13 @@ impl Session {
 }
 pub fn serve(
     composition: Composition,
+    asset_base: std::path::PathBuf,
     mut input: impl BufRead,
     mut output: impl Write,
 ) -> Result<()> {
     let mut session = Session {
         document: Document::new(composition)?,
+        asset_base,
         renderer: None,
         initialized: false,
         ready: false,
@@ -226,6 +244,7 @@ mod tests {
         let mut output = Vec::new();
         serve(
             veylvik_document::demo(),
+            std::env::temp_dir(),
             std::io::Cursor::new(input),
             &mut output,
         )
@@ -244,5 +263,54 @@ mod tests {
             100
         );
         assert_eq!(replies[5]["result"]["tools"].as_array().unwrap().len(), 7);
+    }
+}
+
+#[cfg(test)]
+mod image_tests {
+    use super::*;
+    #[test]
+    fn apply_schema_uses_the_registry_and_image_edits_remain_undoable() {
+        let catalog = tools();
+        let apply = catalog["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|tool| tool["name"] == "apply")
+            .unwrap();
+        assert_eq!(
+            apply["inputSchema"]["properties"]["commands"]["items"]["oneOf"][0]["properties"]["node"]
+                ["properties"]["operation"],
+            veylvik_document::registry::operation_schema()
+        );
+        let composition = veylvik_document::demo();
+        let output = composition.output;
+        let mut session = Session {
+            document: Document::new(composition).unwrap(),
+            asset_base: std::env::temp_dir(),
+            renderer: None,
+            initialized: true,
+            ready: true,
+        };
+        let command = json!({"command":"put","node":{"id":output,"version":1,"label":"Plate","operation":{"type":"image","asset":"plate.png"},"inputs":{}}});
+        session
+            .call(
+                "apply",
+                &json!({"revision":0,"dry_run":true,"commands":[command]}),
+            )
+            .unwrap();
+        assert_eq!(session.document.revision(), 0);
+        session
+            .call("apply", &json!({"revision":0,"commands":[command]}))
+            .unwrap();
+        assert_eq!(session.document.revision(), 1);
+        session.call("undo", &json!({"revision":1})).unwrap();
+        assert!(matches!(
+            session.document.snapshot().nodes[&output].operation,
+            veylvik_document::Operation::Merge
+        ));
+        let error=session.call("render",&json!({"revision":2,"path":"/tmp/unused.png","ticks":0,"rate":1,"region":{"x":0,"y":0,"width":0,"height":1}})).unwrap_err();
+        assert!(error.to_string().contains("region"));
+        assert!(session.renderer.is_none());
     }
 }

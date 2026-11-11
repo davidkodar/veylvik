@@ -18,6 +18,19 @@ Render time is exact `TICKS / RATE` seconds; `24 24` renders at one second.
 Commands return JSON on stdout, errors as JSON on stderr, and a nonzero exit
 status on failure. Rendering requires Vulkan; no silent CPU fallback occurs.
 
+Import a still image, inspect available nodes, or render a crop:
+
+```sh
+./target/release/veylvik import photo.png /tmp/photo.veylvik
+./target/release/veylvik nodes
+./target/release/veylvik render /tmp/photo.veylvik /tmp/crop.png --crop 0 0 64 64
+```
+
+`render --node UUID` previews any existing node without changing the saved output.
+`--crop X Y WIDTH HEIGHT` uses composition pixel coordinates and must lie inside
+the composition. Crops are extracted after full-frame evaluation, so blur and
+transform dependencies match a full render. This does not yet reduce GPU work.
+
 ## Composition and rendering
 
 Projects are versioned JSON containing nodes with stable UUIDs, named input
@@ -31,6 +44,7 @@ ports, and an output node. Supported operations:
 | Transform | image | X/Y translation in pixels, bilinear sampling |
 | Blur | image | Box radius, 0–32 pixels, rounded to an integer |
 | Merge | background, foreground | Premultiplied foreground-over-background |
+| Image | none | Asset key; native image size, top-left anchor, transparent padding |
 
 Scalar parameters accept constants or linearly interpolated keyframes. Outside
 the key range they hold the nearest endpoint. Input boundaries are transparent
@@ -44,7 +58,22 @@ The compiler validates the entire graph, prunes unreachable nodes, and assigns
 reusable image-buffer slots by last use. Intermediate pixels stay on the GPU;
 only the final image is read back. One device and queue own all resources.
 The default 512 MiB render budget covers declared GPU image buffers, readback,
-and uniforms; it does not measure driver overhead or bound total process RAM.
+uniforms, and each unique source image upload; it does not measure driver overhead
+or bound total process RAM. `check` reports graph working bytes before source
+uploads and also checks the reachable PNG inputs against the combined budget.
+
+The renderer receives immutable `ImageInputs` from its host and never opens files.
+The CLI/MCP adapter resolves image asset keys as PNG paths relative to the opened
+composition's directory (absolute paths also work). Save-as rebases relative paths
+without mutating the live session. Save/export refuse to replace an input image.
+
+PNG input supports 8/16-bit RGB, RGBA, grayscale, and expanded palettes. Untagged
+images are interpreted as sRGB; standard sRGB tags are accepted. Unsupported ICC,
+cICP, non-sRGB gamma/primaries, and animated PNG are rejected. Samples are converted
+to linear light before premultiplication, preserving 16-bit precision. Input files
+are limited to 64 MiB and each decoded float image to 128 MiB, also subject to the
+remaining render budget. Images are reloaded for each request; there is no stale
+image cache. Input orientation metadata is not applied.
 
 ## MCP
 
@@ -57,13 +86,19 @@ Launch a session against a saved composition:
 The server uses newline-delimited JSON-RPC on stdio and MCP protocol version
 2025-11-25. Initialize, then send `notifications/initialized` before using tools.
 The tools are `inspect`, `nodes`, `apply`, `undo`, `redo`, `save`, and `render`.
-`nodes` provides operation examples and limits. Every mutation, save, or render
+`nodes` provides defaults, parameter units/bounds, named ports, and operation JSON
+schemas from the document registry. The same registry validates scalar parameters
+and supplies input ports to the compiler. The `apply` tool embeds these schemas. Every mutation, save, or render
 requires the current revision from `inspect`. A batch is validated atomically
 and becomes one undo step. `apply` with `dry_run: true` changes nothing.
 
+The `render` tool optionally accepts `node` (a UUID) and `region` (an object with
+`x`, `y`, `width`, `height`). It returns the rendered region, path, and document
+revision. An invalid preview target or region is rejected before GPU creation.
+
 The session owns an in-memory document. Edits persist only through `save`;
 external file edits are not live-synchronized. Save and render can replace the
-explicit destination path. The MCP client should expose those actions for user
+explicit destination path, except for a referenced input image. The MCP client should expose those actions for user
 review. Output currently returns the PNG path, not inline image content.
 
 ## Development
@@ -72,7 +107,7 @@ review. Output currently returns the PNG path, not inline image content.
 cargo fmt --all --check
 cargo clippy --workspace --all-targets --locked -- -D warnings
 cargo test --workspace --locked
-cargo test -p veylvik-render --locked -- --ignored --nocapture
+cargo test --workspace --locked -- --ignored --nocapture
 ```
 
 The final command is the mandatory Vulkan check. It fails if no adapter is
@@ -91,5 +126,5 @@ The workspace has three boundaries:
 The current executor is synchronous and whole-frame. Plans and pipelines can
 be reused, but frame allocations are recreated and image results are not cached.
 Box blur is a correctness baseline, not an optimized production blur. There is
-no GUI, media decoder, text engine, plug-in loader, simulation, or Klipp adapter
+no GUI, video decoder, text engine, plug-in loader, simulation, or Klipp adapter
 in this version. No Klipp source is copied or linked.

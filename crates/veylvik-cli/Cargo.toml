@@ -11,5 +11,7 @@ veylvik-document.workspace = true
 veylvik-render.workspace = true
 serde_json.workspace = true
 image.workspace = true
+png = "0.18"
+pathdiff = "0.2"
 [lints]
 workspace = true

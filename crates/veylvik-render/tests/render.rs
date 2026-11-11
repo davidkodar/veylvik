@@ -179,3 +179,184 @@ fn long_chains_need_only_two_image_slots() {
     assert_eq!(plan.node_count(), 101);
     assert_eq!(plan.image_slots(), 2);
 }
+
+#[test]
+fn image_contract_and_regions_reject_invalid_data() {
+    assert!(Image::new(2, 1, vec![[0.0; 4]]).is_err());
+    assert!(Image::new(1, 1, vec![[f32::NAN, 0.0, 0.0, 1.0]]).is_err());
+    assert!(Image::new(1, 1, vec![[1.0, 0.0, 0.0, 0.0]]).is_err());
+    assert!(Image::new(1, 1, vec![[1.0, 0.0, 0.0, 1.1]]).is_err());
+    assert!(Image::new(1, 1, vec![[-0.2, 4.0, 0.0, 0.5]]).is_ok());
+    for region in [
+        Region {
+            x: u32::MAX,
+            y: 0,
+            width: 2,
+            height: 1,
+        },
+        Region {
+            x: 0,
+            y: 0,
+            width: 0,
+            height: 1,
+        },
+        Region {
+            x: 0,
+            y: 0,
+            width: 14,
+            height: 1,
+        },
+    ] {
+        assert!(region.validate(13, 7).is_err());
+    }
+}
+#[test]
+fn alternate_root_only_requires_its_own_sources() {
+    let first = Node::new(
+        "first",
+        Operation::Image {
+            asset: "first.png".into(),
+        },
+        &[],
+    );
+    let second = Node::new(
+        "second",
+        Operation::Image {
+            asset: "second.png".into(),
+        },
+        &[],
+    );
+    let preview = first.id;
+    let output = second.id;
+    let doc = composition(vec![first, second], output);
+    let plan = Plan::compile_output(&doc, preview).unwrap();
+    assert_eq!(
+        plan.required_assets().into_iter().collect::<Vec<_>>(),
+        ["first.png"]
+    );
+    assert_eq!(doc.output, output);
+}
+#[test]
+#[ignore = "requires Vulkan; run cargo test -p veylvik-render -- --ignored"]
+fn gpu_image_injection_preview_and_crop_match_full_frame() {
+    use std::sync::Arc;
+    let mut renderer = Renderer::new().expect("Vulkan required");
+    let first = Node::new(
+        "first",
+        Operation::Image {
+            asset: "plate".into(),
+        },
+        &[],
+    );
+    let second = Node::new(
+        "same asset",
+        Operation::Image {
+            asset: "plate".into(),
+        },
+        &[],
+    );
+    let merge = Node::new(
+        "merge",
+        Operation::Merge,
+        &[("background", first.id), ("foreground", second.id)],
+    );
+    let blur = Node::new(
+        "blur",
+        Operation::Blur { radius: 1.0.into() },
+        &[("image", merge.id)],
+    );
+    let preview = first.id;
+    let merged = merge.id;
+    let output = blur.id;
+    let doc = composition(vec![first, second, merge, blur], output);
+    let plan = Plan::compile(&doc).unwrap();
+    let time = Time::new(0, 1).unwrap();
+    let source = Arc::new(
+        Image::new(
+            2,
+            2,
+            vec![
+                [2.0, 0.0, 0.0, 0.5],
+                [0.0, 0.5, 0.0, 0.5],
+                [0.0, 0.0, 0.5, 0.5],
+                [0.0; 4],
+            ],
+        )
+        .unwrap(),
+    );
+    let mut inputs = ImageInputs::default();
+    inputs.insert("plate", source);
+    let frame = renderer
+        .render_frame(
+            &Plan::compile_output(&doc, preview).unwrap(),
+            RenderRequest::full(time),
+            &inputs,
+        )
+        .unwrap();
+    assert_eq!(frame.pixels[0], [2.0, 0.0, 0.0, 0.5]);
+    assert_eq!(frame.pixels[1], [0.0, 0.5, 0.0, 0.5]);
+    assert_eq!(frame.pixels[13], [0.0, 0.0, 0.5, 0.5]);
+    assert_eq!(frame.pixels[2], [0.0; 4]);
+    let merged_frame = renderer
+        .render_frame(
+            &Plan::compile_output(&doc, merged).unwrap(),
+            RenderRequest::full(time),
+            &inputs,
+        )
+        .unwrap();
+    assert_eq!(merged_frame.pixels[0], [3.0, 0.0, 0.0, 0.75]);
+    let full = renderer
+        .render_frame(&plan, RenderRequest::full(time), &inputs)
+        .unwrap();
+    let region = Region {
+        x: 1,
+        y: 0,
+        width: 3,
+        height: 2,
+    };
+    let cropped = renderer
+        .render_frame(
+            &plan,
+            RenderRequest {
+                time,
+                region: Some(region),
+            },
+            &inputs,
+        )
+        .unwrap();
+    assert_eq!(cropped.region, region);
+    assert_eq!(
+        cropped.pixels,
+        [&full.pixels[1..4], &full.pixels[14..17]].concat()
+    );
+    assert!((full.pixels[0][0] - 3.0 / 9.0).abs() < 1e-6);
+    assert!(
+        renderer
+            .render(&plan, time)
+            .unwrap_err()
+            .to_string()
+            .contains("missing image input")
+    );
+    inputs.insert(
+        "plate",
+        Arc::new(Image::new(1, 1, vec![[0.0, 0.0, 1.0, 1.0]]).unwrap()),
+    );
+    let changed = renderer
+        .render_frame(
+            &Plan::compile_output(&doc, preview).unwrap(),
+            RenderRequest::full(time),
+            &inputs,
+        )
+        .unwrap();
+    assert_eq!(changed.pixels[0], [0.0, 0.0, 1.0, 1.0]);
+    assert_eq!(changed.pixels[1], [0.0; 4]);
+    renderer.budget_bytes = plan.working_bytes();
+    assert!(
+        renderer
+            .render_frame(&plan, RenderRequest::full(time), &inputs)
+            .err()
+            .unwrap()
+            .to_string()
+            .contains("budget")
+    );
+}

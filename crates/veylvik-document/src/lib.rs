@@ -1,4 +1,5 @@
 //! Serializable compositions and transactional editing, independent of GPU and UI.
+pub mod registry;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
@@ -139,31 +140,60 @@ pub enum Operation {
     Transform { x: Scalar, y: Scalar },
     Blur { radius: Scalar },
     Merge,
+    Image { asset: String },
 }
 impl Operation {
-    pub fn inputs(&self) -> &'static [&'static str] {
+    pub fn descriptor(&self) -> &'static registry::NodeType {
         match self {
-            Self::Solid { .. } | Self::Noise { .. } => &[],
-            Self::Merge => &["background", "foreground"],
-            _ => &["image"],
+            Self::Solid { .. } => &registry::SOLID,
+            Self::Noise { .. } => &registry::NOISE,
+            Self::Exposure { .. } => &registry::EXPOSURE,
+            Self::Transform { .. } => &registry::TRANSFORM,
+            Self::Blur { .. } => &registry::BLUR,
+            Self::Merge => &registry::MERGE,
+            Self::Image { .. } => &registry::IMAGE,
+        }
+    }
+    pub fn inputs(&self) -> &'static [&'static str] {
+        self.descriptor().inputs
+    }
+    pub fn scalar(&self, name: &str) -> Option<&Scalar> {
+        match (self, name) {
+            (Self::Noise { scale, .. }, "scale") => Some(scale),
+            (Self::Exposure { stops }, "stops") => Some(stops),
+            (Self::Transform { x, .. }, "x") => Some(x),
+            (Self::Transform { y, .. }, "y") => Some(y),
+            (Self::Blur { radius }, "radius") => Some(radius),
+            _ => None,
         }
     }
     pub fn validate(&self) -> Result<()> {
+        for parameter in self.descriptor().parameters {
+            if let registry::ParameterKind::Scalar = parameter.kind {
+                let value = self
+                    .scalar(parameter.name)
+                    .ok_or_else(|| Error(format!("registry mismatch for {}", parameter.name)))?;
+                value.bounded(
+                    parameter.min.unwrap(),
+                    parameter.max.unwrap(),
+                    parameter.name,
+                )?;
+            }
+        }
         match self {
-            Self::Solid { color } => {
-                if color.iter().any(|v| !v.is_finite()) || !(0.0..=1.0).contains(&color[3]) {
-                    return fail("solid needs finite RGB and alpha in [0,1]");
-                }
-                Ok(())
+            Self::Solid { color }
+                if color.iter().any(|v| !v.is_finite()) || !(0.0..=1.0).contains(&color[3]) =>
+            {
+                fail("solid needs finite RGB and alpha in [0,1]")
             }
-            Self::Noise { scale, .. } => scale.bounded(1.0, 8192.0, "noise scale"),
-            Self::Exposure { stops } => stops.bounded(-32.0, 32.0, "exposure stops"),
-            Self::Transform { x, y } => {
-                x.bounded(-1_000_000.0, 1_000_000.0, "translation x")?;
-                y.bounded(-1_000_000.0, 1_000_000.0, "translation y")
+            Self::Image { asset }
+                if asset.trim().is_empty()
+                    || asset.chars().count() > registry::MAX_ASSET_NAME
+                    || asset.contains('\0') =>
+            {
+                fail("image needs a nonempty asset key without NUL, at most 4096 characters")
             }
-            Self::Blur { radius } => radius.bounded(0.0, 32.0, "blur radius"),
-            Self::Merge => Ok(()),
+            _ => Ok(()),
         }
     }
 }
@@ -218,7 +248,7 @@ impl Composition {
         let mut pending = BTreeMap::new();
         let mut consumers: BTreeMap<NodeId, Vec<NodeId>> = BTreeMap::new();
         for (id, node) in &self.nodes {
-            if *id != node.id || node.version != 1 {
+            if *id != node.id || node.version != node.operation.descriptor().version {
                 return fail(format!("invalid identity or version for {id}"));
             }
             node.operation.validate()?;

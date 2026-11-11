@@ -16,6 +16,6 @@ jobs:
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - run: cargo test --workspace --locked
       - name: Vulkan references (adapter required)
-        run: cargo test -p veylvik-render --locked -- --ignored --nocapture
+        run: cargo test --workspace --locked -- --ignored --nocapture
         env:
           XDG_RUNTIME_DIR: /tmp
