@@ -360,3 +360,125 @@ fn gpu_image_injection_preview_and_crop_match_full_frame() {
             .contains("budget")
     );
 }
+
+#[test]
+fn lowered_blur_preserves_fanout_and_never_aliases_inputs() {
+    let source = Node::new("source", Operation::Solid { color: [0.5; 4] }, &[]);
+    let blur = Node::new(
+        "blur",
+        Operation::Blur { radius: 3.0.into() },
+        &[("image", source.id)],
+    );
+    let merge = Node::new(
+        "merge",
+        Operation::Merge,
+        &[("background", source.id), ("foreground", blur.id)],
+    );
+    let id = merge.id;
+    let plan = Plan::compile(&composition(vec![source, blur, merge], id)).unwrap();
+    assert_eq!(plan.node_count(), 3);
+    assert_eq!(plan.pass_count(), 4);
+    let passes = plan.passes();
+    assert_eq!(
+        passes.iter().map(|p| p.kernel).collect::<Vec<_>>(),
+        [
+            Kernel::Solid,
+            Kernel::BlurHorizontal,
+            Kernel::BlurVertical,
+            Kernel::Merge
+        ]
+    );
+    for pass in &passes {
+        assert!(!pass.input_slots.contains(&pass.output_slot));
+    }
+    assert_eq!(passes[3].input_slots[0], passes[0].output_slot);
+    assert_eq!(passes[3].input_slots[1], passes[2].output_slot);
+    assert_eq!(plan.image_slots(), 3);
+}
+
+#[test]
+#[ignore = "requires Vulkan"]
+fn separable_blur_matches_direct_reference_and_pool_is_bounded() {
+    use std::sync::Arc;
+    let mut renderer = Renderer::new().unwrap();
+    let source = Node::new(
+        "image",
+        Operation::Image {
+            asset: "plate".into(),
+        },
+        &[],
+    );
+    let blur = Node::new(
+        "blur",
+        Operation::Blur { radius: 0.0.into() },
+        &[("image", source.id)],
+    );
+    let id = blur.id;
+    let mut doc = composition(vec![source, blur], id);
+    let pixels: Vec<[f32; 4]> = (0..91)
+        .map(|i| {
+            let alpha = (i % 5) as f32 / 4.0;
+            [i as f32 * 0.1 * alpha, -0.5 * alpha, 0.25 * alpha, alpha]
+        })
+        .collect();
+    let mut inputs = ImageInputs::default();
+    inputs.insert(
+        "plate",
+        Arc::new(Image::new(13, 7, pixels.clone()).unwrap()),
+    );
+    let request = RenderRequest::full(Time::new(0, 1).unwrap());
+    let mut created = None;
+    for radius in [0.0f32, 0.5, 1.0, 3.0, 32.0] {
+        doc.nodes.get_mut(&id).unwrap().operation = Operation::Blur {
+            radius: radius.into(),
+        };
+        let plan = Plan::compile(&doc).unwrap();
+        renderer.budget_bytes = plan.working_bytes() + 91 * 16;
+        let actual = renderer.render_frame(&plan, request, &inputs).unwrap();
+        let radius = radius.round_ties_even() as i32;
+        for y in 0..7i32 {
+            for x in 0..13i32 {
+                let mut expected = [0.0f64; 4];
+                for dy in -radius..=radius {
+                    for dx in -radius..=radius {
+                        let (sx, sy) = (x + dx, y + dy);
+                        if (0..13).contains(&sx) && (0..7).contains(&sy) {
+                            for (out, value) in
+                                expected.iter_mut().zip(pixels[(sy * 13 + sx) as usize])
+                            {
+                                *out += value as f64 / (2 * radius + 1).pow(2) as f64;
+                            }
+                        }
+                    }
+                }
+                for (value, expected) in actual.pixels[(y * 13 + x) as usize].iter().zip(expected) {
+                    assert!(
+                        (*value as f64 - expected).abs() < 2e-6,
+                        "radius={radius}: {value} != {expected}"
+                    );
+                }
+            }
+        }
+        let stats = renderer.resource_stats().unwrap();
+        assert_eq!(stats.resident_bytes, stats.idle_bytes);
+        assert!(stats.resident_bytes <= renderer.budget_bytes);
+        if let Some(count) = created {
+            assert_eq!(stats.buffers_created, count);
+        }
+        created = Some(stats.buffers_created);
+    }
+    assert!(renderer.resource_stats().unwrap().buffers_reused > 0);
+    renderer.trim_resources().unwrap();
+    assert_eq!(renderer.resource_stats().unwrap().resident_bytes, 0);
+    renderer.pool_limit_bytes = 0;
+    let plan = Plan::compile(&doc).unwrap();
+    renderer.render_frame(&plan, request, &inputs).unwrap();
+    assert_eq!(renderer.resource_stats().unwrap().resident_bytes, 0);
+    renderer.pool_limit_bytes = 128 * 1024 * 1024;
+    renderer.render_frame(&plan, request, &inputs).unwrap();
+    renderer.budget_bytes = 1;
+    assert!(renderer.render_frame(&plan, request, &inputs).is_err());
+    assert_eq!(renderer.resource_stats().unwrap().resident_bytes, 0);
+    renderer.budget_bytes = 512 * 1024 * 1024;
+    renderer.render_frame(&plan, request, &inputs).unwrap();
+}

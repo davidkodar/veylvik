@@ -1,9 +1,13 @@
 //! Whole-frame GPU execution. No window, document mutation, or timeline dependency.
 mod frame;
 pub use frame::{Image, ImageInputs, Region, RenderRequest, RenderedFrame};
-use std::collections::{BTreeMap, BTreeSet};
-use veylvik_document::{Composition, Node, NodeId, Operation, Time};
-use wgpu::util::DeviceExt;
+mod plan;
+mod pool;
+pub use plan::{Kernel, PassInfo, Plan};
+pub use pool::ResourceStats;
+use std::collections::BTreeMap;
+use std::sync::Mutex;
+use veylvik_document::{Node, Operation, Time};
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("{0}")]
@@ -14,95 +18,6 @@ pub enum Error {
 pub type Result<T> = std::result::Result<T, Error>;
 fn error(message: impl ToString) -> Error {
     Error::Message(message.to_string())
-}
-/// Immutable plan. Only reachable nodes execute; all document nodes are validated.
-pub struct Plan {
-    width: u32,
-    height: u32,
-    nodes: Vec<Node>,
-    output: NodeId,
-    slots: BTreeMap<NodeId, usize>,
-    slot_count: usize,
-}
-impl Plan {
-    pub fn compile(composition: &Composition) -> Result<Self> {
-        Self::compile_output(composition, composition.output)
-    }
-    /// Compile an intermediate node for inspection without mutating the saved output.
-    pub fn compile_output(composition: &Composition, output: NodeId) -> Result<Self> {
-        let order = composition.validate()?;
-        if !composition.nodes.contains_key(&output) {
-            return Err(error("requested output node is missing"));
-        }
-        let mut reachable = BTreeSet::new();
-        let mut todo = vec![output];
-        while let Some(id) = todo.pop() {
-            if reachable.insert(id) {
-                todo.extend(composition.nodes[&id].inputs.values().copied());
-            }
-        }
-        let nodes: Vec<Node> = order
-            .into_iter()
-            .filter(|id| reachable.contains(id))
-            .map(|id| composition.nodes[&id].clone())
-            .collect();
-        let mut uses: BTreeMap<NodeId, usize> = BTreeMap::new();
-        for node in &nodes {
-            for source in node.inputs.values() {
-                *uses.entry(*source).or_default() += 1;
-            }
-        }
-        *uses.entry(output).or_default() += 1;
-        let mut slots = BTreeMap::new();
-        let mut free = Vec::new();
-        let mut slot_count = 0;
-        for node in &nodes {
-            let slot = free.pop().unwrap_or_else(|| {
-                let slot = slot_count;
-                slot_count += 1;
-                slot
-            });
-            slots.insert(node.id, slot);
-            // Release after assigning the output, so a pass never aliases its inputs.
-            for source in node.inputs.values() {
-                let remaining = uses.get_mut(source).unwrap();
-                *remaining -= 1;
-                if *remaining == 0 {
-                    free.push(slots[source]);
-                }
-            }
-        }
-        Ok(Self {
-            width: composition.width,
-            height: composition.height,
-            output,
-            nodes,
-            slots,
-            slot_count,
-        })
-    }
-    pub fn required_assets(&self) -> BTreeSet<&str> {
-        self.nodes
-            .iter()
-            .filter_map(|node| match &node.operation {
-                Operation::Image { asset } => Some(asset.as_str()),
-                _ => None,
-            })
-            .collect()
-    }
-    pub fn image_slots(&self) -> usize {
-        self.slot_count
-    }
-
-    pub fn node_count(&self) -> usize {
-        self.nodes.len()
-    }
-    /// Conservative upper bound including readback and uniforms, excluding driver overhead.
-    pub fn working_bytes(&self) -> u64 {
-        self.width as u64 * self.height as u64 * 16 * (self.slot_count as u64 + 1)
-            + self.nodes.len() as u64 * 48
-            + 16
-    }
 }
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
@@ -122,26 +37,21 @@ fn params(node: &Node, width: u32, height: u32, time: Time) -> Result<Params> {
             p.values = *color;
         }
         Operation::Noise { seed, scale } => {
-            p.size_op[2] = 1;
             p.size_op[3] = *seed;
             p.values[0] = scale.at(time)?;
         }
         Operation::Exposure { stops } => {
-            p.size_op[2] = 2;
             let stops = stops.at(time)?;
             p.values[0] = stops.exp2();
         }
         Operation::Transform { x, y } => {
-            p.size_op[2] = 3;
             p.values[0] = x.at(time)?;
             p.values[1] = y.at(time)?;
         }
         Operation::Blur { radius } => {
-            p.size_op[2] = 4;
             p.values[0] = radius.at(time)?;
         }
-        Operation::Merge => p.size_op[2] = 5,
-        Operation::Image { .. } => p.size_op[2] = 6,
+        Operation::Merge | Operation::Image { .. } => {}
     }
     Ok(p)
 }
@@ -149,7 +59,10 @@ fn params(node: &Node, width: u32, height: u32, time: Time) -> Result<Params> {
 pub struct Renderer {
     device: wgpu::Device,
     queue: wgpu::Queue,
-    pipeline: wgpu::ComputePipeline,
+    pipelines: BTreeMap<Kernel, wgpu::ComputePipeline>,
+    layout: wgpu::BindGroupLayout,
+    pool: Mutex<pool::Pool>,
+    pub pool_limit_bytes: u64,
     pub adapter: wgpu::AdapterInfo,
     pub budget_bytes: u64,
 }
@@ -182,24 +95,100 @@ impl Renderer {
             label: Some("composition kernels"),
             source: wgpu::ShaderSource::Wgsl(include_str!("kernels.wgsl").into()),
         });
-        let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-            label: Some("composition"),
-            layout: None,
-            module: &shader,
-            entry_point: Some("main"),
-            compilation_options: Default::default(),
-            cache: None,
+        let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("composition buffers"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: std::num::NonZeroU64::new(48),
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: std::num::NonZeroU64::new(16),
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: std::num::NonZeroU64::new(16),
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 3,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: false },
+                        has_dynamic_offset: false,
+                        min_binding_size: std::num::NonZeroU64::new(16),
+                    },
+                    count: None,
+                },
+            ],
         });
+        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("composition"),
+            bind_group_layouts: &[Some(&layout)],
+            immediate_size: 0,
+        });
+        let pipelines = Kernel::ALL
+            .into_iter()
+            .map(|kernel| {
+                (
+                    kernel,
+                    device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                        label: Some(kernel.entry()),
+                        layout: Some(&pipeline_layout),
+                        module: &shader,
+                        entry_point: Some(kernel.entry()),
+                        compilation_options: Default::default(),
+                        cache: None,
+                    }),
+                )
+            })
+            .collect();
         if let Some(e) = scope.pop().await {
             return Err(error(e));
         }
         Ok(Self {
             device,
             queue,
-            pipeline,
+            pipelines,
+            layout,
+            pool: Mutex::new(pool::Pool::default()),
+            pool_limit_bytes: 128 * 1024 * 1024,
             adapter: info,
             budget_bytes: 512 * 1024 * 1024,
         })
+    }
+    pub fn resource_stats(&self) -> Result<ResourceStats> {
+        Ok(self
+            .pool
+            .lock()
+            .map_err(|_| error("renderer resource pool poisoned"))?
+            .stats())
+    }
+    /// Release idle allocations. Rendering and pool inspection are serialized per device.
+    pub fn trim_resources(&self) -> Result<()> {
+        self.pool
+            .lock()
+            .map_err(|_| error("renderer resource pool poisoned"))?
+            .trim(0);
+        Ok(())
     }
     /// The returned pixels remain scene-linear and premultiplied, including values above one.
     pub fn render(&self, plan: &Plan, time: Time) -> Result<Vec<[f32; 4]>> {
@@ -213,6 +202,16 @@ impl Renderer {
         request: RenderRequest,
         inputs: &ImageInputs,
     ) -> Result<RenderedFrame> {
+        let mut pool = self
+            .pool
+            .lock()
+            .map_err(|_| error("renderer resource pool poisoned"))?;
+        pool.trim(self.pool_limit_bytes.min(self.budget_bytes));
+        if pool.failed {
+            return Err(error(
+                "renderer unavailable after a GPU failure; create a new renderer",
+            ));
+        }
         let region = request.region.unwrap_or(Region {
             x: 0,
             y: 0,
@@ -264,12 +263,15 @@ impl Renderer {
         }
         let validation = self.device.push_error_scope(wgpu::ErrorFilter::Validation);
         let allocation = self.device.push_error_scope(wgpu::ErrorFilter::OutOfMemory);
-        let result = self.encode_and_read(plan, &evaluated, byte_size, inputs);
+        let result = self.encode_and_read(plan, &evaluated, byte_size, inputs, &mut pool);
         let allocation_error = pollster::block_on(allocation.pop());
         let validation_error = pollster::block_on(validation.pop());
         if let Some(e) = allocation_error.or(validation_error) {
+            pool.trim(0);
+            pool.failed = true;
             return Err(error(e));
         }
+        pool.trim(self.pool_limit_bytes.min(self.budget_bytes));
         let full = result?;
         if region.x == 0
             && region.y == 0
@@ -294,72 +296,65 @@ impl Renderer {
         evaluated: &[Params],
         byte_size: u64,
         inputs: &ImageInputs,
+        pool: &mut pool::Pool,
     ) -> Result<Vec<[f32; 4]>> {
-        let dummy = self
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("empty source"),
-                contents: &[0; 16],
-                usage: wgpu::BufferUsages::STORAGE,
-            });
-        // Upload each asset once, even when several Image nodes reference it.
-        let sources: BTreeMap<_, _> = plan
-            .required_assets()
-            .into_iter()
-            .map(|key| {
-                let image = inputs.get(key).unwrap();
-                (
-                    key,
-                    self.device
-                        .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                            label: Some(key),
-                            contents: bytemuck::cast_slice(image.pixels()),
-                            usage: wgpu::BufferUsages::STORAGE,
-                        }),
+        let mut resources = pool.frame(self.budget_bytes);
+        let dummy = resources.take(
+            &self.device,
+            16,
+            wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            "empty source",
+        )?;
+        self.queue.write_buffer(&dummy, 0, &[0; 16]);
+        let mut sources = BTreeMap::new();
+        for key in plan.required_assets() {
+            let image = inputs.get(key).unwrap();
+            let buffer = resources.take(
+                &self.device,
+                image.byte_size(),
+                wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+                key,
+            )?;
+            self.queue
+                .write_buffer(&buffer, 0, bytemuck::cast_slice(image.pixels()));
+            sources.insert(key, buffer);
+        }
+        let buffers = (0..plan.slot_count)
+            .map(|_| {
+                resources.take(
+                    &self.device,
+                    byte_size,
+                    wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
+                    "frame slot",
                 )
             })
-            .collect();
-        let buffers: Vec<_> = (0..plan.slot_count)
-            .map(|_| {
-                self.device.create_buffer(&wgpu::BufferDescriptor {
-                    label: Some("frame slot"),
-                    size: byte_size,
-                    usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
-                    mapped_at_creation: false,
-                })
-            })
-            .collect();
+            .collect::<Result<Vec<_>>>()?;
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("frame"),
             });
-        let layout = self.pipeline.get_bind_group_layout(0);
-        for (node, p) in plan.nodes.iter().zip(evaluated) {
-            let uniform = self
-                .device
-                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: Some("parameters"),
-                    contents: bytemuck::bytes_of(p),
-                    usage: wgpu::BufferUsages::UNIFORM,
-                });
-            let output = &buffers[plan.slots[&node.id]];
-            let ports = node.operation.inputs();
+        for scheduled in &plan.passes {
+            let node = &plan.nodes[scheduled.node];
+            let p = &evaluated[scheduled.node];
+            let uniform = resources.take(
+                &self.device,
+                48,
+                wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+                "parameters",
+            )?;
+            self.queue.write_buffer(&uniform, 0, bytemuck::bytes_of(p));
+            let output = &buffers[scheduled.output];
             let input = |index: usize| -> &wgpu::Buffer {
-                if index == 0
-                    && let Operation::Image { asset } = &node.operation
-                {
-                    return &sources[asset.as_str()];
+                match &scheduled.inputs[index] {
+                    plan::Input::Empty => &dummy,
+                    plan::Input::Value(slot) => &buffers[*slot],
+                    plan::Input::Asset(key) => &sources[key.as_str()],
                 }
-                ports
-                    .get(index)
-                    .and_then(|port| node.inputs.get(*port))
-                    .map(|id| &buffers[plan.slots[id]])
-                    .unwrap_or(&dummy)
             };
             let bind = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: Some(&node.label),
-                layout: &layout,
+                layout: &self.layout,
                 entries: &[
                     wgpu::BindGroupEntry {
                         binding: 0,
@@ -384,24 +379,19 @@ impl Renderer {
                     label: Some(&node.label),
                     ..Default::default()
                 });
-                pass.set_pipeline(&self.pipeline);
+                pass.set_pipeline(&self.pipelines[&scheduled.kernel]);
                 pass.set_bind_group(0, &bind, &[]);
                 pass.dispatch_workgroups(plan.width.div_ceil(8), plan.height.div_ceil(8), 1);
             }
         }
-        let readback = self.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("readback"),
-            size: byte_size,
-            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
-            mapped_at_creation: false,
-        });
-        encoder.copy_buffer_to_buffer(
-            &buffers[plan.slots[&plan.output]],
-            0,
-            &readback,
-            0,
+        let readback = resources.take(
+            &self.device,
             byte_size,
-        );
+            wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+            "readback",
+        )?;
+        encoder.copy_buffer_to_buffer(&buffers[plan.output_slot], 0, &readback, 0, byte_size);
+        resources.submitted();
         let submission = self.queue.submit([encoder.finish()]);
         let (tx, rx) = std::sync::mpsc::channel();
         readback.slice(..).map_async(wgpu::MapMode::Read, move |r| {
@@ -420,6 +410,7 @@ impl Renderer {
         let pixels: Vec<[f32; 4]> = bytemuck::cast_slice(&mapped).to_vec();
         drop(mapped);
         readback.unmap();
+        resources.completed();
         if pixels.iter().flatten().any(|v| !v.is_finite()) {
             return Err(error("render produced non-finite pixels"));
         }

@@ -69,7 +69,7 @@ fn run() -> Result<()> {
             )?;
             println!(
                 "{}",
-                serde_json::json!({"valid":true,"nodes":doc.nodes.len(),"reachable_nodes":plan.node_count(),"working_bytes":plan.working_bytes(),"assets":plan.required_assets()})
+                serde_json::json!({"valid":true,"nodes":doc.nodes.len(),"reachable_nodes":plan.node_count(),"passes":plan.passes(),"image_slots":plan.image_slots(),"working_bytes":plan.working_bytes(),"assets":plan.required_assets()})
             );
         }
         Some("render") if args.len() >= 4 => {

@@ -55,7 +55,8 @@ one are preserved. PNG export unpremultiplies, clips to SDR, and applies sRGB
 encoding; it is not an HDR delivery format or a tone mapper.
 
 The compiler validates the entire graph, prunes unreachable nodes, and assigns
-reusable image-buffer slots by last use. Intermediate pixels stay on the GPU;
+explicit compute passes and reusable image-buffer slots by last use. Box blur
+lowers to horizontal and vertical passes, with transparent boundaries. Intermediate pixels stay on the GPU;
 only the final image is read back. One device and queue own all resources.
 The default 512 MiB render budget covers declared GPU image buffers, readback,
 uniforms, and each unique source image upload; it does not measure driver overhead
@@ -123,8 +124,11 @@ The workspace has three boundaries:
   headless rendering, and the SDR output transform. No UI dependencies.
 - `veylvik-cli`: command-line and MCP adapters using those public APIs.
 
-The current executor is synchronous and whole-frame. Plans and pipelines can
-be reused, but frame allocations are recreated and image results are not cached.
-Box blur is a correctness baseline, not an optimized production blur. There is
+The current executor is synchronous and whole-frame. Plans, pipelines, and GPU
+buffers can be reused. A bounded pool retains up to 128 MiB of idle buffers by
+default, within the render budget. Buffers return to the pool only after GPU
+completion and readback unmapping. `Renderer::resource_stats` reports allocations,
+reuse, evictions, and declared resident bytes; `trim_resources` releases idle
+buffers. Image results are not cached. There is
 no GUI, video decoder, text engine, plug-in loader, simulation, or Klipp adapter
 in this version. No Klipp source is copied or linked.
