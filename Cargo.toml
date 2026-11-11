@@ -1,0 +1,29 @@
+[workspace]
+members = ["crates/veylvik-document", "crates/veylvik-render", "crates/veylvik-cli"]
+resolver = "3"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["float_roundtrip"] }
+thiserror = "2"
+uuid = { version = "1", features = ["v4", "serde"] }
+wgpu = { version = "=29.0.4", default-features = false, features = ["std", "vulkan", "wgsl"] }
+bytemuck = { version = "1", features = ["derive"] }
+pollster = "0.4"
+image = { version = "0.25", default-features = false, features = ["png"] }
+veylvik-document = { path = "crates/veylvik-document" }
+veylvik-render = { path = "crates/veylvik-render" }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[profile.dev]
+opt-level = 1
+
+[profile.release]
+lto = "thin"

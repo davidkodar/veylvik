@@ -1,0 +1,248 @@
+//! MCP stdio adapter. Editing uses the same document transactions as other clients.
+use serde_json::{Value, json};
+use std::io::{BufRead, Write};
+use veylvik_document::{Command, Composition, Document, Time};
+use veylvik_render::{Plan, Renderer};
+type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
+struct Session {
+    document: Document,
+    renderer: Option<Renderer>,
+    initialized: bool,
+    ready: bool,
+}
+fn tool(name: &str, description: &str, properties: Value, required: &[&str]) -> Value {
+    json!({"name":name,"description":description,"inputSchema":{"type":"object","properties":properties,"required":required,"additionalProperties":false}})
+}
+fn tools() -> Value {
+    let revision = json!({"type":"integer","minimum":0});
+    json!({"tools":[
+        tool("inspect","Read the composition and current revision.",json!({}),&[]),
+        tool("nodes","List supported node operations, ports and example payloads.",json!({}),&[]),
+        tool("apply","Validate or commit an atomic batch. dry_run returns the candidate without changing history. Use nodes for payload examples. A put command inserts or replaces the complete node.",json!({"revision":revision,"dry_run":{"type":"boolean"},"commands":{"type":"array","minItems":1,"maxItems":4096,"items":{"oneOf":[
+            {"type":"object","properties":{"command":{"const":"put"},"node":{"type":"object","properties":{"id":{"type":"string","format":"uuid"},"version":{"const":1},"label":{"type":"string"},"operation":{"type":"object"},"inputs":{"type":"object","additionalProperties":{"type":"string","format":"uuid"}}},"required":["id","version","label","operation","inputs"],"additionalProperties":false}},"required":["command","node"],"additionalProperties":false},
+            {"type":"object","properties":{"command":{"enum":["remove","output"]},"id":{"type":"string","format":"uuid"}},"required":["command","id"],"additionalProperties":false},
+            {"type":"object","properties":{"command":{"const":"resize"},"width":{"type":"integer","minimum":1,"maximum":8192},"height":{"type":"integer","minimum":1,"maximum":8192}},"required":["command","width","height"],"additionalProperties":false}
+        ]}}}),&["revision","commands"]),
+        tool("undo","Undo one transaction, with a revision precondition.",json!({"revision":revision}),&["revision"]),
+        tool("redo","Redo one transaction, with a revision precondition.",json!({"revision":revision}),&["revision"]),
+        tool("save","Atomically save the current composition to an explicit path.",json!({"path":{"type":"string"},"revision":revision}),&["path","revision"]),
+        tool("render","Render the current revision to an SDR PNG using Vulkan. Time is exact ticks/rate seconds.",json!({"path":{"type":"string"},"revision":revision,"ticks":{"type":"integer"},"rate":{"type":"integer","minimum":1}}),&["path","revision","ticks","rate"])
+    ]})
+}
+fn required_u64(args: &Value, name: &str) -> Result<u64> {
+    args[name]
+        .as_u64()
+        .ok_or_else(|| format!("{name} must be an unsigned integer").into())
+}
+fn path(args: &Value) -> Result<&std::path::Path> {
+    Ok(std::path::Path::new(
+        args["path"].as_str().ok_or("path must be a string")?,
+    ))
+}
+impl Session {
+    fn call(&mut self, name: &str, args: &Value) -> Result<Value> {
+        let catalog = tools();
+        let descriptor = catalog["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|t| t["name"] == name)
+            .ok_or("unknown tool")?;
+        let object = args.as_object().ok_or("arguments must be an object")?;
+        for key in object.keys() {
+            if descriptor["inputSchema"]["properties"].get(key).is_none() {
+                return Err(format!("unknown argument {key}").into());
+            }
+        }
+        for key in descriptor["inputSchema"]["required"].as_array().unwrap() {
+            if !object.contains_key(key.as_str().unwrap()) {
+                return Err(format!("missing argument {key}").into());
+            }
+        }
+        if !matches!(name, "inspect" | "nodes")
+            && required_u64(args, "revision")? != self.document.revision()
+        {
+            return Err(format!("revision conflict: current {}", self.document.revision()).into());
+        }
+        match name {
+            "inspect" => Ok(
+                json!({"revision":self.document.revision(),"composition":self.document.snapshot()}),
+            ),
+            "nodes" => {
+                let doc = veylvik_document::demo();
+                let examples: Vec<_> = doc.nodes.values().map(|n| json!({"operation":n.operation,"inputs":n.operation.inputs(),"version":n.version})).collect();
+                Ok(
+                    json!({"nodes":examples,"image_contract":"scene-linear Rec.709, premultiplied RGBA32F","scalar_contract":"constant or linear keyframes; time is ticks/rate seconds","limits":{"noise_scale":[1,8192],"exposure_stops":[-32,32],"blur_radius":[0,32],"translation_pixels":[-1000000,1000000]}}),
+                )
+            }
+            "apply" => {
+                let commands: Vec<Command> = serde_json::from_value(args["commands"].clone())?;
+                let dry_run = match args.get("dry_run") {
+                    None => false,
+                    Some(v) => v.as_bool().ok_or("dry_run must be boolean")?,
+                };
+                if dry_run {
+                    let candidate = self.document.prepare(self.document.revision(), &commands)?;
+                    Ok(
+                        json!({"valid":true,"revision":self.document.revision(),"candidate":candidate}),
+                    )
+                } else {
+                    Ok(json!({"revision":self.document.apply(self.document.revision(),&commands)?}))
+                }
+            }
+            "undo" => Ok(json!({"revision":self.document.undo(self.document.revision())?})),
+            "redo" => Ok(json!({"revision":self.document.redo(self.document.revision())?})),
+            "save" => {
+                self.document.snapshot().save(path(args)?)?;
+                Ok(json!({"saved":args["path"],"revision":self.document.revision()}))
+            }
+            "render" => {
+                let time = Time::new(
+                    args["ticks"].as_i64().ok_or("ticks must be an integer")?,
+                    u32::try_from(required_u64(args, "rate")?)?,
+                )?;
+                if self.renderer.is_none() {
+                    self.renderer = Some(Renderer::new()?);
+                }
+                let doc = self.document.snapshot();
+                let pixels = self
+                    .renderer
+                    .as_ref()
+                    .unwrap()
+                    .render(&Plan::compile(doc)?, time)?;
+                crate::save_png(path(args)?, doc.width, doc.height, &pixels)?;
+                Ok(
+                    json!({"output":args["path"],"revision":self.document.revision(),"width":doc.width,"height":doc.height}),
+                )
+            }
+            _ => Err("unknown tool".into()),
+        }
+    }
+    fn handle(&mut self, message: Value) -> Option<Value> {
+        let id = message.get("id").cloned();
+        let method = message["method"].as_str().unwrap_or("");
+        if message["jsonrpc"] != "2.0"
+            || method.is_empty()
+            || id
+                .as_ref()
+                .is_some_and(|id| !(id.is_string() || id.is_number()))
+        {
+            return Some(
+                json!({"jsonrpc":"2.0","id":id.unwrap_or(Value::Null),"error":{"code":-32600,"message":"invalid request"}}),
+            );
+        }
+        if id.is_none() {
+            if method == "notifications/initialized" && self.initialized {
+                self.ready = true;
+            }
+            return None;
+        }
+        let response = match method {
+            "initialize" if !self.initialized => {
+                self.initialized = true;
+                json!({"result":{"protocolVersion":"2025-11-25","capabilities":{"tools":{}},"serverInfo":{"name":"veylvik","version":env!("CARGO_PKG_VERSION")}}})
+            }
+            "ping" => json!({"result":{}}),
+            _ if !self.ready => {
+                json!({"error":{"code":-32002,"message":"initialize and send notifications/initialized first"}})
+            }
+            "tools/list" => json!({"result":tools()}),
+            "tools/call" => {
+                let params = &message["params"];
+                let name = params["name"].as_str().unwrap_or("");
+                let args = params.get("arguments").cloned().unwrap_or(json!({}));
+                match self.call(name, &args) {
+                    Ok(value) => {
+                        json!({"result":{"content":[{"type":"text","text":value.to_string()}],"structuredContent":value,"isError":false}})
+                    }
+                    Err(e) => {
+                        json!({"result":{"content":[{"type":"text","text":e.to_string()}],"isError":true}})
+                    }
+                }
+            }
+            _ => json!({"error":{"code":-32601,"message":"method not found"}}),
+        };
+        let mut response = response;
+        response["jsonrpc"] = json!("2.0");
+        response["id"] = id.unwrap();
+        Some(response)
+    }
+}
+pub fn serve(
+    composition: Composition,
+    mut input: impl BufRead,
+    mut output: impl Write,
+) -> Result<()> {
+    let mut session = Session {
+        document: Document::new(composition)?,
+        renderer: None,
+        initialized: false,
+        ready: false,
+    };
+    loop {
+        let mut bytes = Vec::new();
+        // Bound framing memory even when a client omits its newline.
+        let count =
+            std::io::Read::take(&mut input, 4 * 1024 * 1024 + 1).read_until(b'\n', &mut bytes)?;
+        if count == 0 {
+            break;
+        }
+        if count > 4 * 1024 * 1024 {
+            return Err("MCP message exceeds 4 MiB".into());
+        }
+        let response = match serde_json::from_slice(&bytes) {
+            Ok(value) => session.handle(value),
+            Err(_) => Some(
+                json!({"jsonrpc":"2.0","id":null,"error":{"code":-32700,"message":"invalid JSON"}}),
+            ),
+        };
+        if let Some(response) = response {
+            serde_json::to_writer(&mut output, &response)?;
+            writeln!(output)?;
+            output.flush()?;
+        }
+    }
+    Ok(())
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn protocol_enforces_lifecycle_and_transaction_revision() {
+        let messages = [
+            json!({"jsonrpc":"2.0","id":0,"method":"tools/list"}),
+            json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"test","version":"1"}}}),
+            json!({"jsonrpc":"2.0","method":"notifications/initialized"}),
+            json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"apply","arguments":{"revision":0,"commands":[{"command":"resize","width":100,"height":50}]}}}),
+            json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"undo","arguments":{"revision":0}}}),
+            json!({"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"inspect"}}),
+            json!({"jsonrpc":"2.0","id":5,"method":"tools/list"}),
+        ];
+        let input = messages
+            .iter()
+            .map(Value::to_string)
+            .collect::<Vec<_>>()
+            .join("\n");
+        let mut output = Vec::new();
+        serve(
+            veylvik_document::demo(),
+            std::io::Cursor::new(input),
+            &mut output,
+        )
+        .unwrap();
+        let replies: Vec<Value> = String::from_utf8(output)
+            .unwrap()
+            .lines()
+            .map(|line| serde_json::from_str(line).unwrap())
+            .collect();
+        assert_eq!(replies.len(), 6);
+        assert_eq!(replies[0]["error"]["code"], -32002);
+        assert_eq!(replies[2]["result"]["structuredContent"]["revision"], 1);
+        assert_eq!(replies[3]["result"]["isError"], true);
+        assert_eq!(
+            replies[4]["result"]["structuredContent"]["composition"]["width"],
+            100
+        );
+        assert_eq!(replies[5]["result"]["tools"].as_array().unwrap().len(), 7);
+    }
+}

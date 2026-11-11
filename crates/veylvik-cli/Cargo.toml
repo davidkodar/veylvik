@@ -1,0 +1,15 @@
+[package]
+name = "veylvik-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+[[bin]]
+name = "veylvik"
+path = "src/main.rs"
+[dependencies]
+veylvik-document.workspace = true
+veylvik-render.workspace = true
+serde_json.workspace = true
+image.workspace = true
+[lints]
+workspace = true
