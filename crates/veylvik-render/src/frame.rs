@@ -49,7 +49,7 @@ impl Image {
     }
 }
 /// The host supplies immutable images; a later render can supply new content under the same key.
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct ImageInputs(BTreeMap<String, Arc<Image>>);
 impl ImageInputs {
     pub fn insert(&mut self, key: impl Into<String>, image: Arc<Image>) {

@@ -482,3 +482,52 @@ fn separable_blur_matches_direct_reference_and_pool_is_bounded() {
     renderer.budget_bytes = 512 * 1024 * 1024;
     renderer.render_frame(&plan, request, &inputs).unwrap();
 }
+
+#[test]
+#[ignore = "requires Vulkan"]
+fn preview_scheduler_recovers_from_invalid_input_and_preserves_request_identity() {
+    use std::{
+        sync::{Arc, mpsc},
+        time::Duration,
+    };
+    let (tx, rx) = mpsc::channel();
+    let scheduler = PreviewScheduler::with_wake(move || {
+        tx.send(()).unwrap();
+    })
+    .unwrap();
+    let node = Node::new(
+        "image",
+        Operation::Image {
+            asset: "plate".into(),
+        },
+        &[],
+    );
+    let id = node.id;
+    let plan = Arc::new(Plan::compile(&composition(vec![node], id)).unwrap());
+    let request = RenderRequest::full(Time::new(7, 24).unwrap());
+    let first = scheduler
+        .submit(42, plan.clone(), request, ImageInputs::default())
+        .unwrap();
+    rx.recv_timeout(Duration::from_secs(30)).unwrap();
+    let result = scheduler.try_take().unwrap().unwrap();
+    assert_eq!(result.ticket, first);
+    assert!(
+        result
+            .frame
+            .err()
+            .unwrap()
+            .to_string()
+            .contains("missing image input")
+    );
+    let mut inputs = ImageInputs::default();
+    inputs.insert("plate", Arc::new(Image::new(1, 1, vec![[0.5; 4]]).unwrap()));
+    let second = scheduler.submit(42, plan, request, inputs).unwrap();
+    assert!(second.generation > first.generation);
+    rx.recv_timeout(Duration::from_secs(30)).unwrap();
+    let result = scheduler.try_take().unwrap().unwrap();
+    assert_eq!(result.ticket, second);
+    assert_eq!(result.request.time.ticks, request.time.ticks);
+    assert_eq!(result.request.time.rate, request.time.rate);
+    assert_eq!(result.frame.unwrap().pixels[0], [0.5; 4]);
+    assert!(result.resources.unwrap().buffers_created > 0);
+}

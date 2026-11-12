@@ -124,7 +124,12 @@ The workspace has three boundaries:
   headless rendering, and the SDR output transform. No UI dependencies.
 - `veylvik-cli`: command-line and MCP adapters using those public APIs.
 
-The current executor is synchronous and whole-frame. Plans, pipelines, and GPU
+The executor is whole-frame. `PreviewScheduler` runs it on a dedicated worker,
+keeps at most one active and one pending request, and replaces obsolete pending
+work. Generation and document revision accompany every completion. Cancellation
+suppresses old results; it does not interrupt submitted GPU work. A wake callback
+can notify a UI without polling. Dropping the scheduler joins the worker.
+Direct `Renderer` calls remain synchronous. Plans, pipelines, and GPU
 buffers can be reused. A bounded pool retains up to 128 MiB of idle buffers by
 default, within the render budget. Buffers return to the pool only after GPU
 completion and readback unmapping. `Renderer::resource_stats` reports allocations,
