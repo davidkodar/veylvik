@@ -74,9 +74,24 @@ fn blur_axis(gid:vec3<u32>,axis:vec2<i32>)->vec4<f32> {
     }
     return total/f32(radius*2+1);
 }
-@compute @workgroup_size(8,8)
-fn blur_horizontal(@builtin(global_invocation_id) gid:vec3<u32>) {
-    if !inside(gid) {return;} result[index(gid)]=blur_axis(gid,vec2<i32>(1,0));
+// A 64-pixel row plus a maximum 32-pixel halo at either end (2 KiB).
+var<workgroup> blur_row:array<vec4<f32>,128>;
+@compute @workgroup_size(64,1)
+fn blur_horizontal(@builtin(global_invocation_id) gid:vec3<u32>,@builtin(local_invocation_id) lid:vec3<u32>) {
+    let radius=u32(round(p.values.x));
+    if radius<=2u {
+        if inside(gid) {result[index(gid)]=blur_axis(gid,vec2<i32>(1,0));}
+        return;
+    }
+    let origin=i32(gid.x-lid.x)-i32(radius);
+    for(var item=lid.x;item<64u+2u*radius;item+=64u) {
+        blur_row[item]=sample_source(origin+i32(item),i32(gid.y));
+    }
+    workgroupBarrier();
+    if !inside(gid) {return;}
+    var total=vec4<f32>(0.0);
+    for(var tap=0u;tap<=2u*radius;tap++) {total+=blur_row[lid.x+tap];}
+    result[index(gid)]=total/f32(radius*2u+1u);
 }
 @compute @workgroup_size(8,8)
 fn blur_vertical(@builtin(global_invocation_id) gid:vec3<u32>) {

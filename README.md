@@ -244,7 +244,10 @@ explicit compute passes and reusable image-buffer slots by last use. It visits
 input branches in depth-first port order, keeping independent layers close to
 their consumers instead of scheduling by UUID. Traversal is iterative for deep
 graphs; this is a deterministic heuristic, not a minimum-memory optimizer. Box blur
-lowers to horizontal and vertical passes, with transparent boundaries. Intermediate pixels stay on the GPU;
+lowers to horizontal and vertical passes, with transparent boundaries. The
+horizontal pass shares 64-pixel rows and their halo in 2 KiB of workgroup memory;
+radii up to two pixels use direct sampling. Summation order stays unchanged.
+Intermediate pixels stay on the GPU;
 export reads back only the final image. `render_gpu` instead returns an immutable
 GPU frame, reading only a four-byte finite-value status flag. Held frames count
 against subsequent render budgets and are never recycled as intermediates.

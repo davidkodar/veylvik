@@ -644,7 +644,14 @@ impl Renderer {
                 });
                 pass.set_pipeline(&self.pipelines[&scheduled.kernel]);
                 pass.set_bind_group(0, &bind, &[]);
-                pass.dispatch_workgroups(plan.width.div_ceil(8), plan.height.div_ceil(8), 1);
+                match scheduled.kernel {
+                    Kernel::BlurHorizontal => {
+                        pass.dispatch_workgroups(plan.width.div_ceil(64), plan.height, 1)
+                    }
+                    _ => {
+                        pass.dispatch_workgroups(plan.width.div_ceil(8), plan.height.div_ceil(8), 1)
+                    }
+                }
             }
         }
         let readback = if download {
