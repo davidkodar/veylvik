@@ -101,9 +101,59 @@ impl Navigation {
         }
     }
 }
+/// Paint feedback inside the viewport without taking space from the image.
+pub fn paint_status(ui: &egui::Ui, canvas: Rect, text: &str) {
+    let painter = ui.painter().with_clip_rect(canvas);
+    let galley = painter.layout_no_wrap(
+        text.into(),
+        egui::TextStyle::Body.resolve(ui.style()),
+        ui.visuals().weak_text_color(),
+    );
+    let position = canvas.min + egui::vec2(8.0, 8.0);
+    painter.rect_filled(
+        Rect::from_min_size(position, galley.size()).expand(4.0),
+        3.0,
+        ui.visuals().panel_fill,
+    );
+    painter.galley(position, galley, ui.visuals().weak_text_color());
+}
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn pending_preview_feedback_keeps_canvas_and_image_geometry_stable() {
+        let ctx = egui::Context::default();
+        let mut geometries = Vec::new();
+        for status in [
+            None,
+            Some("Showing previous frame · rendering"),
+            None,
+            Some("Showing previous frame · preview failed"),
+        ] {
+            let _ = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(Pos2::ZERO, egui::vec2(960.0, 600.0))),
+                    ..Default::default()
+                },
+                |ui| {
+                    egui::CentralPanel::default().show_inside(ui, |ui| {
+                        ui.label("Viewer");
+                        let (canvas, _) =
+                            ui.allocate_exact_size(ui.available_size(), egui::Sense::hover());
+                        let cursor = ui.cursor();
+                        if let Some(text) = status {
+                            paint_status(ui, canvas, text);
+                        }
+                        assert_eq!(ui.cursor(), cursor);
+                        let transform =
+                            Navigation::default().transform(canvas, egui::vec2(960.0, 540.0), 1.0);
+                        geometries.push((canvas, transform));
+                    });
+                },
+            );
+        }
+        assert!(geometries.windows(2).all(|pair| pair[0] == pair[1]));
+    }
     #[test]
     fn fit_actual_size_and_cursor_zoom_respect_pixel_density() {
         let mut nav = Navigation::default();

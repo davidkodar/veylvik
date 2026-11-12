@@ -1546,13 +1546,6 @@ impl eframe::App for Studio {
                             self.view = ViewSettings::default();
                         }
                     });
-                    if self.displayed.is_some() && self.displayed_ticket != self.wanted {
-                        ui.weak(if self.error {
-                            "Showing previous frame · preview failed"
-                        } else {
-                            "Showing previous frame · rendering"
-                        });
-                    }
                     if let Some(frame) = self.displayed.clone() {
                         let image = egui::vec2(
                             frame.frame.region().width as f32,
@@ -1584,6 +1577,19 @@ impl eframe::App for Studio {
                                 Paint(self.displayed.as_ref().unwrap().clone()),
                             ),
                         );
+                        // A pending frame must never change the canvas geometry.
+                        // During playback, retaining the previous frame is normal.
+                        if self.displayed_ticket != self.wanted && (!self.playing || self.error) {
+                            viewer::paint_status(
+                                ui,
+                                canvas,
+                                if self.error {
+                                    "Showing previous frame · preview failed"
+                                } else {
+                                    "Showing previous frame · rendering"
+                                },
+                            );
+                        }
                         let root = self
                             .project
                             .preview
