@@ -621,7 +621,11 @@ viewer, with live GPU preview, Apply/Revert and shared undo. Precision coordinat
 fill rules, segments and contours remain available in the inspector. The viewer pen draws corners with clicks and curves with drags. Close at the first
 point to commit one undoable replacement or additional contour; Escape cancels and
 Backspace/Ctrl+Z removes the latest unfinished point. The original mask remains
-intact until the contour is closed. Animate the result with an Affine node;
+intact until the contour is closed. Right-click a viewer anchor to insert a point
+after it, make it smooth or a corner, or delete it. Insertion splits the next
+segment at its midpoint without changing the curve; deletion keeps at least three
+anchors. These edits use live GPU draft preview and Apply/Revert with shared undo.
+Animate the result with an Affine node;
 path-point keyframes are not yet implemented. Vello scratch memory is separate from the
 compositor buffer budget; image atlases cannot grow and intermediate layers are
 disabled. `release_vector_resources` frees its persistent pipelines and scratch

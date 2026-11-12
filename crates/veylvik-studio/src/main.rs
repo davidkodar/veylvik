@@ -19,6 +19,7 @@ mod menus;
 mod node_clipboard;
 mod node_finder;
 mod node_palette;
+mod path_edit;
 mod path_handles;
 mod path_pen;
 mod preset_library;

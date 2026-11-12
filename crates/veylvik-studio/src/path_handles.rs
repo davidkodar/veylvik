@@ -112,12 +112,24 @@ pub fn show(
         }
     }
     let mut changed = false;
+    let mut action = None;
+    let path_snapshot = path.clone();
+    let anchor_positions: Vec<_> = path
+        .commands
+        .iter()
+        .filter_map(endpoint)
+        .map(screen)
+        .collect();
     for (index, command) in path.commands.iter_mut().enumerate() {
         let mut controls = points(command);
         let last = controls.len().saturating_sub(1);
         for (handle, point) in controls.iter_mut().enumerate() {
             let position = screen(**point);
             let anchor = handle == last;
+            // Collapsed tangents must not steal the anchor's pointer target.
+            if !anchor && anchor_positions.iter().any(|p| p.distance(position) < 8.0) {
+                continue;
+            }
             if anchor && aliases.iter().any(|(end, _)| *end == index) {
                 continue;
             }
@@ -125,14 +137,34 @@ pub fn show(
             if !hit.is_positive() {
                 continue;
             }
-            let response =
-                crate::handles::interact(ui, hit, ui.id().with(("path-handle", index, handle)))
+            let id = ui.id().with(("path-handle", index, handle));
+            crate::handles::interact(ui, hit, id);
+            let response = ui.interact(hit, id, egui::Sense::click_and_drag())
                     .on_hover_cursor(egui::CursorIcon::Grab)
                     .on_hover_text(if anchor {
-                        "Drag mask point. Apply commits; Revert discards."
+                        "Drag point; right-click to insert, delete, smooth or sharpen. Apply commits; Revert discards."
                     } else {
                         "Drag curve handle. Apply commits; Revert discards."
                     });
+            if anchor {
+                response.context_menu(|ui| {
+                    ui.strong("Mask point");
+                    ui.separator();
+                    for (label, edit) in [
+                        ("Insert point after", crate::path_edit::Action::Insert),
+                        ("Make smooth", crate::path_edit::Action::Smooth),
+                        ("Make corner", crate::path_edit::Action::Corner),
+                        ("Delete point", crate::path_edit::Action::Delete),
+                    ] {
+                        let mut candidate = path_snapshot.clone();
+                        let enabled = crate::path_edit::edit(&mut candidate, index, edit);
+                        if ui.add_enabled(enabled, egui::Button::new(label)).clicked() {
+                            action = Some(candidate);
+                            ui.close();
+                        }
+                    }
+                });
+            }
             painter.circle_filled(
                 position,
                 if anchor { 5.0 } else { 3.5 },
@@ -151,6 +183,10 @@ pub fn show(
         {
             **point = position;
         }
+    }
+    if let Some(candidate) = action {
+        *path = candidate;
+        changed = true;
     }
     changed
 }
