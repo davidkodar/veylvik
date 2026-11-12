@@ -33,21 +33,28 @@ fn outline_conversion_matches_mcp_and_protects_existing_files() {
                 output,
                 "--canvas",
                 "640",
-                "128",
+                "360",
                 "--origin",
-                "12",
+                "320",
                 "80",
+                "--align",
+                "center",
+                "--line-height",
+                "90",
             ])
             .current_dir(&root.0)
             .output()
             .unwrap()
     };
-    let result = cli("title.veylvik", "Veylvik ffi Å");
+    let result = cli("title.veylvik", "Veylvik ffi Å\n\nCreate in motion");
     assert!(
         result.status.success(),
         "{}",
         String::from_utf8_lossy(&result.stderr)
     );
+    let summary: Value = serde_json::from_slice(&result.stdout).unwrap();
+    assert_eq!(summary["line_count"], 3);
+    assert_eq!(summary["advance"][1], 180.0);
     let original = fs::read(root.0.join("title.veylvik")).unwrap();
     let document = veylvik_document::Composition::load(&root.0.join("title.veylvik")).unwrap();
     assert!(
@@ -80,7 +87,7 @@ fn outline_conversion_matches_mcp_and_protects_existing_files() {
     for message in [
         json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"test","version":"1"}}}),
         json!({"jsonrpc":"2.0","method":"notifications/initialized"}),
-        json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"outline_text","arguments":{"revision":0,"font":"font.ttf","text":"Veylvik ffi Å","origin":[12,80]}}}),
+        json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"outline_text","arguments":{"revision":0,"font":"font.ttf","text":"Veylvik ffi Å\n\nCreate in motion","origin":[320,80],"alignment":"center","line_height":90}}}),
         json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"inspect","arguments":{}}}),
         json!({"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"outline_text","arguments":{"revision":1,"font":"font.ttf","text":"stale"}}}),
     ] {
@@ -100,6 +107,7 @@ fn outline_conversion_matches_mcp_and_protects_existing_files() {
         replies[1]["result"]["structuredContent"]["operation"],
         expected
     );
+    assert_eq!(replies[1]["result"]["structuredContent"]["line_count"], 3);
     assert_eq!(replies[2]["result"]["structuredContent"]["revision"], 0);
     assert_eq!(replies[3]["result"]["isError"], true);
     // The saved composition needs neither the original text nor font to render.

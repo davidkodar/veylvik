@@ -3,7 +3,7 @@ use std::{collections::BTreeSet, path::Path};
 use veylvik_document::{Composition, Node, Operation, Time};
 pub fn run(args: &[String]) -> Result<()> {
     if args.len() < 3 {
-        return Err("outline-text FONT TEXT NEW_FILE [--size N] [--origin X Y] [--canvas W H] [--rtl] [--font-index N] [--language TAG]".into());
+        return Err("outline-text FONT TEXT NEW_FILE [--size N] [--origin X Y] [--canvas W H] [--rtl] [--font-index N] [--language TAG] [--align left|center|right] [--line-height N]".into());
     }
     let mut request: assets::text::OutlineRequest =
         serde_json::from_value(serde_json::json!({"font":args[0],"text":args[1]}))?;
@@ -16,6 +16,14 @@ pub fn run(args: &[String]) -> Result<()> {
             return Err(format!("repeated option {flag}").into());
         }
         match flag {
+            "--align" if index + 1 < args.len() => {
+                request.alignment = serde_json::from_value(serde_json::json!(args[index + 1]))?;
+                index += 2;
+            }
+            "--line-height" if index + 1 < args.len() => {
+                request.line_height = Some(args[index + 1].parse()?);
+                index += 2;
+            }
             "--size" if index + 1 < args.len() => {
                 request.font_size = args[index + 1].parse()?;
                 index += 2;
@@ -53,7 +61,7 @@ pub fn run(args: &[String]) -> Result<()> {
     }
     let outlined = assets::text::outline(Path::new("."), &request)?;
     let node = Node::new(
-        &request.text,
+        &request.label(),
         Operation::Path {
             geometry: outlined.geometry,
         },
@@ -73,7 +81,7 @@ pub fn run(args: &[String]) -> Result<()> {
     veylvik_document::atomic_create(Path::new(&args[2]), &serde_json::to_vec_pretty(&document)?)?;
     println!(
         "{}",
-        serde_json::json!({"saved":args[2],"glyph_count":outlined.glyph_count,"advance":outlined.advance,"width":width,"height":height})
+        serde_json::json!({"saved":args[2],"glyph_count":outlined.glyph_count,"advance":outlined.advance,"line_count":outlined.line_count,"width":width,"height":height})
     );
     Ok(())
 }

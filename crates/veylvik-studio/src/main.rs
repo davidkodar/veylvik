@@ -345,7 +345,7 @@ impl Studio {
             let outlined =
                 veylvik_io::text::outline(&folder, &request).map_err(|e| e.to_string())?;
             let mut node = Node::new(
-                &request.text,
+                &request.label(),
                 Operation::Path {
                     geometry: outlined.geometry,
                 },

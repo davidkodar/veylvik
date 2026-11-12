@@ -3,13 +3,21 @@ use crate::Result;
 use serde::{Deserialize, Serialize};
 use std::{fs::File, io::Read, path::Path, sync::Arc};
 use veylvik_document::vector::PathMask;
-use veylvik_text::{Font, MAX_FONT_BYTES, RunOptions};
+use veylvik_text::{Font, MAX_FONT_BYTES, RunOptions, TextOptions};
 #[derive(Clone, Copy, Debug, Default, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Direction {
     #[default]
     LeftToRight,
     RightToLeft,
+}
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Alignment {
+    #[default]
+    Left,
+    Center,
+    Right,
 }
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -26,6 +34,21 @@ pub struct OutlineRequest {
     pub direction: Direction,
     #[serde(default)]
     pub language: Option<String>,
+    #[serde(default)]
+    pub alignment: Alignment,
+    #[serde(default)]
+    pub line_height: Option<f32>,
+}
+impl OutlineRequest {
+    pub fn label(&self) -> String {
+        self.text
+            .lines()
+            .find(|line| !line.trim().is_empty())
+            .unwrap_or("Text")
+            .chars()
+            .take(80)
+            .collect()
+    }
 }
 fn default_size() -> f32 {
     64.0
@@ -38,6 +61,7 @@ pub struct OutlinedText {
     pub geometry: PathMask,
     pub glyph_count: usize,
     pub advance: [f32; 2],
+    pub line_count: usize,
 }
 pub fn outline(base: &Path, request: &OutlineRequest) -> Result<OutlinedText> {
     let path = base.join(&request.font);
@@ -53,16 +77,24 @@ pub fn outline(base: &Path, request: &OutlineRequest) -> Result<OutlinedText> {
     file.take(MAX_FONT_BYTES as u64 + 1)
         .read_to_end(&mut bytes)?;
     let font = Font::from_bytes(Arc::from(bytes), request.font_index)?;
-    let run = font.shape_run(
+    let run = font.shape_lines(
         &request.text,
-        &RunOptions {
-            font_size: request.font_size,
-            origin: request.origin,
-            language: request.language.clone(),
-            direction: match request.direction {
-                Direction::LeftToRight => veylvik_text::Direction::LeftToRight,
-                Direction::RightToLeft => veylvik_text::Direction::RightToLeft,
+        &TextOptions {
+            run: RunOptions {
+                font_size: request.font_size,
+                origin: request.origin,
+                language: request.language.clone(),
+                direction: match request.direction {
+                    Direction::LeftToRight => veylvik_text::Direction::LeftToRight,
+                    Direction::RightToLeft => veylvik_text::Direction::RightToLeft,
+                },
             },
+            alignment: match request.alignment {
+                Alignment::Left => veylvik_text::Alignment::Left,
+                Alignment::Center => veylvik_text::Alignment::Center,
+                Alignment::Right => veylvik_text::Alignment::Right,
+            },
+            line_height: request.line_height,
         },
     )?;
     if let Some(glyph) = run.glyphs.iter().find(|glyph| glyph.missing) {
@@ -78,5 +110,6 @@ pub fn outline(base: &Path, request: &OutlineRequest) -> Result<OutlinedText> {
             .ok_or("text has no supported visible vector outlines")?,
         glyph_count: run.glyphs.len(),
         advance: run.advance,
+        line_count: run.line_count,
     })
 }

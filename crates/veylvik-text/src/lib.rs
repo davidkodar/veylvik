@@ -2,6 +2,8 @@
 //! `shape_run` accepts one horizontal directional/script run, not a paragraph.
 //! Paragraph bidi resolution, script itemization, font fallback and line wrapping
 //! belong to a higher layout layer. Font variation axes currently use defaults.
+mod layout;
+pub use layout::{Alignment, MAX_LINES, ShapedText, TextOptions};
 use std::{collections::BTreeMap, sync::Arc};
 use veylvik_document::vector::{FillRule, MAX_PATH_COMMANDS, PathCommand, PathMask};
 

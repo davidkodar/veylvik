@@ -246,7 +246,14 @@ and combined outlines at the path limit. It performs no font discovery, fallback
 paragraph bidi layout, wrapping or bitmap/color-glyph rendering. This library
 boundary does not yet provide a live editable Text node.
 
-In Studio, choose **Add node → Outline text…**, enter a single text run, and
+`shape_lines` adds explicit LF/CRLF line breaks, up to 64 lines, with left,
+center or right alignment around the requested baseline x coordinate. Blank lines
+retain their spacing. Each line must still be one directional/script run; this
+is not automatic mixed-direction paragraph layout. The 4096-byte, 512-glyph and
+4096-command limits apply to the entire block. Returned `advance` contains the
+maximum line advance and the first-to-last baseline distance, not ink bounds.
+
+In Studio, choose **Add node → Outline text…**, enter text with line breaks, and
 choose a TTF/OTF/TTC font through the desktop picker. Conversion runs in the
 background and inserts one undoable Path mask at the graph's insertion position.
 Cancellation or an invalid font leaves the document unchanged and reopens the
@@ -257,6 +264,10 @@ Convert one text run into a portable composition with an explicit font:
 ```sh
 cargo run -p veylvik-cli -- outline-text /path/to/font.ttf "Veylvik ffi Å" title.veylvik --size 64 --origin 40 100 --canvas 960 240
 ```
+
+Use `--align left|center|right` and `--line-height N` for explicit line layout.
+The default baseline spacing is 1.25 times font size; the native dialog provides
+an editable pixel spacing. Newlines are actual characters in the text argument.
 
 The output file must be new. `--rtl`, `--language TAG` and `--font-index N`
 select run direction, language and a face within a font collection. Missing glyphs

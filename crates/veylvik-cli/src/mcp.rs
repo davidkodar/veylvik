@@ -17,7 +17,7 @@ fn tools() -> Value {
     json!({"tools":[
         tool("inspect","Read the composition and current revision.",json!({}),&[]),
         tool("nodes","List supported node operations, ports and example payloads.",json!({}),&[]),
-        tool("outline_text","Read an explicit font and convert one directional/script text run into portable Path mask geometry. Does not modify the document. Apply the returned operation with a put command. No fallback, wrapping or paragraph layout.",json!({"revision":revision,"font":{"type":"string"},"text":{"type":"string","maxLength":4096},"font_index":{"type":"integer","minimum":0,"maximum":u32::MAX},"font_size":{"type":"number","minimum":1,"maximum":1024},"origin":{"type":"array","minItems":2,"maxItems":2,"items":{"type":"number","minimum":-32768,"maximum":32768}},"direction":{"enum":["left_to_right","right_to_left"]},"language":{"type":"string","minLength":1,"maxLength":64}}),&["revision","font","text"]),
+        tool("outline_text","Read an explicit font and convert explicitly separated directional/script text lines into portable Path mask geometry. Does not modify the document. Apply the returned operation with a put command. No fallback, automatic wrapping or mixed-direction paragraph layout.",json!({"revision":revision,"font":{"type":"string"},"text":{"type":"string","maxLength":4096},"alignment":{"enum":["left","center","right"]},"line_height":{"type":"number","minimum":1,"maximum":4096},"font_index":{"type":"integer","minimum":0,"maximum":u32::MAX},"font_size":{"type":"number","minimum":1,"maximum":1024},"origin":{"type":"array","minItems":2,"maxItems":2,"items":{"type":"number","minimum":-32768,"maximum":32768}},"direction":{"enum":["left_to_right","right_to_left"]},"language":{"type":"string","minLength":1,"maxLength":64}}),&["revision","font","text"]),
         tool("apply","Validate or commit an atomic batch. dry_run returns the candidate without changing history. Use nodes for payload examples. A put command inserts or replaces the complete node.",json!({"revision":revision,"dry_run":{"type":"boolean"},"commands":{"type":"array","minItems":1,"maxItems":4096,"items":veylvik_document::schema::command()}}),&["revision","commands"]),
         tool("undo","Undo one transaction, with a revision precondition.",json!({"revision":revision}),&["revision"]),
         tool("redo","Redo one transaction, with a revision precondition.",json!({"revision":revision}),&["revision"]),
@@ -72,7 +72,7 @@ impl Session {
                 let request: crate::assets::text::OutlineRequest = serde_json::from_value(payload)?;
                 let outlined = crate::assets::text::outline(&self.asset_base, &request)?;
                 Ok(
-                    json!({"revision":self.document.revision(),"operation":{"type":"path","geometry":outlined.geometry},"glyph_count":outlined.glyph_count,"advance":outlined.advance}),
+                    json!({"revision":self.document.revision(),"operation":{"type":"path","geometry":outlined.geometry},"glyph_count":outlined.glyph_count,"advance":outlined.advance,"line_count":outlined.line_count}),
                 )
             }
             "apply" => {
