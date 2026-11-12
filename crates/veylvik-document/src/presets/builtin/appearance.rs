@@ -1,0 +1,126 @@
+//! Surface and atmosphere starters with host-sized, editable controls.
+use super::*;
+use crate::{AtmosphereKind, MaterialKind};
+pub fn build(id: &str, b: &mut Builder, source: NodeId) -> Result<NodeId> {
+    let material = match id {
+        "gold_text" => Some(MaterialKind::Gold),
+        "silver_text" => Some(MaterialKind::Silver),
+        "aluminium_text" => Some(MaterialKind::Aluminium),
+        "bronze_text" => Some(MaterialKind::Bronze),
+        "phosphor_text" => Some(MaterialKind::Phosphor),
+        "wood_text" => Some(MaterialKind::Wood),
+        _ => None,
+    };
+    if let Some(kind) = material {
+        let node = b.add(
+            "Surface grain, bevel and reflection",
+            Operation::Material {
+                kind,
+                scale: 180.0.into(),
+                bevel: 5.0.into(),
+                roughness: (if kind == MaterialKind::Aluminium {
+                    0.65
+                } else if kind == MaterialKind::Wood {
+                    0.7
+                } else {
+                    0.15
+                })
+                .into(),
+                lighting: Scalar::Smooth {
+                    keys: [(0, 0.0), (2, 0.12), (4, 0.0)]
+                        .into_iter()
+                        .map(|(ticks, value)| Key {
+                            time: Time { ticks, rate: 1 },
+                            value,
+                            segment: None,
+                        })
+                        .collect(),
+                },
+                grain: 0.65.into(),
+                emission: 1.0.into(),
+            },
+            &[("image", source)],
+        );
+        for (p, l) in [
+            ("scale", "Texture scale"),
+            ("bevel", "Bevel width"),
+            ("roughness", "Roughness"),
+            ("lighting", "Reflection motion"),
+            ("grain", "Grain strength"),
+        ] {
+            if p != "roughness" || kind != MaterialKind::Phosphor {
+                b.expose(node, p, l)?;
+            }
+        }
+        if kind == MaterialKind::Phosphor {
+            b.expose(node, "emission", "Phosphor emission")?;
+            let halo = b.add(
+                "Phosphor bloom",
+                Operation::Blur { radius: 8.0.into() },
+                &[("image", node)],
+            );
+            let out = b.add(
+                "Emissive glow",
+                Operation::Blend {
+                    mode: BlendMode::Add,
+                    opacity: 0.5.into(),
+                },
+                &[("background", node), ("foreground", halo)],
+            );
+            b.expose(halo, "radius", "Glow spread")?;
+            b.expose(out, "opacity", "Glow strength")?;
+            return Ok(out);
+        }
+        return Ok(node);
+    }
+    let (kind, width, height, y, density) = match id {
+        "light_smoke" => (AtmosphereKind::Smoke, 650.0, 470.0, 510.0, 1.7),
+        "dense_smoke" => (AtmosphereKind::Soot, 700.0, 470.0, 510.0, 7.0),
+        "fog_layer" => (AtmosphereKind::Fog, 1500.0, 300.0, 560.0, 0.7),
+        "drifting_fog" => (AtmosphereKind::DriftingFog, 1000.0, 360.0, 540.0, 1.5),
+        "clouds" => (AtmosphereKind::Clouds, 760.0, 330.0, 400.0, 4.0),
+        _ => return Err(crate::Error("unknown appearance preset".into())),
+    };
+    let volume = b.add(
+        "Turbulent atmospheric volume",
+        Operation::Atmosphere {
+            kind,
+            seed: 397,
+            x: 480.0.into(),
+            y: y.into(),
+            width: width.into(),
+            height: height.into(),
+            evolution: Scalar::Linear {
+                keys: [(0, 0.0), (4, 4.0)]
+                    .into_iter()
+                    .map(|(ticks, value)| Key {
+                        time: Time { ticks, rate: 1 },
+                        value,
+                        segment: None,
+                    })
+                    .collect(),
+            },
+            density: density.into(),
+            detail: 1.0.into(),
+            lighting: 1.0.into(),
+        },
+        &[],
+    );
+    for (p, l) in [
+        ("x", "Center X"),
+        ("y", "Base Y"),
+        ("width", "Volume width"),
+        ("height", "Volume height"),
+        ("density", "Density"),
+        ("evolution", "Flow motion"),
+        ("detail", "Turbulence detail"),
+        ("lighting", "Illumination"),
+    ] {
+        b.expose(volume, p, l)?;
+    }
+    Ok(b.add(
+        "Atmosphere over image",
+        Operation::Merge {},
+        &[("background", source), ("foreground", volume)],
+    ))
+}

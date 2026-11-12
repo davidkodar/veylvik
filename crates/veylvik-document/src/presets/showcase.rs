@@ -16,6 +16,7 @@ pub fn title(id: &str) -> &'static str {
         "prismatic_glow" => "Prism / identity",
         "liquid_shimmer" => "Pink melt",
         "embers" => "Gilded inferno",
+        "metallic_shine" => "Polished gold",
         "fireflies" => "Toxic nectar",
         "dust_motes" => "Sands of time",
         "snowfall" => "Deep freeze",
@@ -36,6 +37,9 @@ pub fn description(id: &str) -> &'static str {
         }
         "liquid_shimmer" => {
             "Glossy pink lettering stretches into hanging drips, falling droplets and a liquid pool."
+        }
+        "metallic_shine" => {
+            "A narrow warm-white specular reflection travels across gold lettering. Edit its position keys, angle, width and brightness; alpha remains untouched."
         }
         "embers" => {
             "Reflective gold lettering burns above a smoky reflection. Layered turbulent fire rises behind the title while embers rise."
@@ -268,10 +272,18 @@ fn lettering(word: &str) -> PathMask {
     }
 }
 pub fn build(id: &str) -> Result<Scene> {
-    if matches!(
-        id,
-        "embers" | "fireflies" | "liquid_shimmer" | "dust_motes" | "snowfall" | "starfield"
-    ) {
+    if matches!(super::builtin::category(id), "Materials" | "Atmosphere")
+        || matches!(
+            id,
+            "metallic_shine"
+                | "embers"
+                | "fireflies"
+                | "liquid_shimmer"
+                | "dust_motes"
+                | "snowfall"
+                | "starfield"
+        )
+    {
         let mut scene = art_direction::build(id)?;
         super::resolution::map_graph(
             &mut scene.composition.nodes,
@@ -427,20 +439,33 @@ mod tests {
                     .values()
                     .all(|n| !matches!(n.operation, Operation::Image { .. }))
             );
-            let group = doc.groups.values().next().unwrap();
+            let group = doc
+                .groups
+                .values()
+                .find(|g| g.label == entry.label)
+                .unwrap();
             assert_eq!(group.label, entry.label);
-            assert_eq!(group.output, doc.output);
+            if entry.id == "metallic_shine"
+                || super::super::builtin::category(entry.id) == "Materials"
+            {
+                assert_eq!(doc.nodes[&doc.output].inputs["foreground"], group.output);
+            } else {
+                assert_eq!(group.output, doc.output);
+            }
             assert_eq!(
                 group.members.len(),
                 super::super::builtin::build(entry.id).unwrap().nodes.len()
             );
-            assert!(
-                group
-                    .inputs
-                    .values()
-                    .flat_map(|i| &i.targets)
-                    .all(|p| doc.nodes[&p.node].inputs[&p.port] == scene.before)
-            );
+            assert!(group.inputs.values().flat_map(|i| &i.targets).all(
+                |p| doc.nodes[&p.node].inputs[&p.port]
+                    == if entry.id == "metallic_shine"
+                        || super::super::builtin::category(entry.id) == "Materials"
+                    {
+                        doc.nodes[&scene.before].inputs["foreground"]
+                    } else {
+                        scene.before
+                    }
+            ));
         }
         assert!(build("missing").is_err());
     }

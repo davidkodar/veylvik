@@ -10,6 +10,9 @@ pub enum Kernel {
     Noise,
     FractalNoise,
     Fire,
+    Atmosphere,
+    Material,
+    MetallicShine,
     Exposure,
     Transform,
     Displace,
@@ -29,11 +32,14 @@ pub enum Kernel {
     Gradient,
 }
 impl Kernel {
-    pub(crate) const ALL: [Self; 21] = [
+    pub(crate) const ALL: [Self; 24] = [
         Self::Solid,
         Self::Noise,
         Self::FractalNoise,
         Self::Fire,
+        Self::Atmosphere,
+        Self::Material,
+        Self::MetallicShine,
         Self::Exposure,
         Self::Transform,
         Self::Displace,
@@ -56,6 +62,9 @@ impl Kernel {
         match self {
             Self::Solid => "solid",
             Self::Fire => "fire",
+            Self::Atmosphere => "atmosphere",
+            Self::Material => "material",
+            Self::MetallicShine => "metallic_shine",
             Self::FractalNoise => "fractal_noise",
             Self::Noise => "noise",
             Self::Exposure => "exposure",
@@ -174,6 +183,9 @@ impl Plan {
             let kernel = match &node.operation {
                 Operation::Solid { .. } => Kernel::Solid,
                 Operation::Fire { .. } => Kernel::Fire,
+                Operation::Atmosphere { .. } => Kernel::Atmosphere,
+                Operation::Material { .. } => Kernel::Material,
+                Operation::MetallicShine { .. } => Kernel::MetallicShine,
                 Operation::FractalNoise { .. } => Kernel::FractalNoise,
                 Operation::Noise { .. } => Kernel::Noise,
                 Operation::Exposure { .. } => Kernel::Exposure,
@@ -400,6 +412,9 @@ fn shareable(operation: &Operation) -> bool {
         operation,
         Operation::Solid { .. }
             | Operation::Fire { .. }
+            | Operation::Atmosphere { .. }
+            | Operation::Material { .. }
+            | Operation::MetallicShine { .. }
             | Operation::FractalNoise { .. }
             | Operation::Noise { .. }
             | Operation::Exposure { .. }

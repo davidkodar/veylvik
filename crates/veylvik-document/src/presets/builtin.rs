@@ -1,5 +1,6 @@
 //! Editable starter effects; the library and automation use the same factories.
 use super::Preset;
+mod appearance;
 mod extended;
 use crate::{
     BlendMode, Composition, Key, MaskChannel, Node, NodeId, Operation, Result, Scalar, Time,
@@ -11,7 +12,67 @@ pub struct Builtin {
     pub label: &'static str,
     pub description: &'static str,
 }
-pub const ALL: [Builtin; 28] = [
+pub const ALL: [Builtin; 40] = [
+    Builtin {
+        id: "gold_text",
+        label: "Polished Gold",
+        description: "Rich gold with studio reflections, fine surface grain and beveled edges.",
+    },
+    Builtin {
+        id: "silver_text",
+        label: "Polished Silver",
+        description: "Cool silver with bright reflections and polished bevels.",
+    },
+    Builtin {
+        id: "aluminium_text",
+        label: "Brushed Aluminium",
+        description: "Satin aluminium with directional brushed grain and broad reflections.",
+    },
+    Builtin {
+        id: "bronze_text",
+        label: "Aged Bronze",
+        description: "Warm bronze reflections with subtle mottled oxidation.",
+    },
+    Builtin {
+        id: "phosphor_text",
+        label: "Phosphor",
+        description: "Emissive green phosphor granules with a soft luminous halo.",
+    },
+    Builtin {
+        id: "wood_text",
+        label: "Carved Wood",
+        description: "Warm wood with flowing growth rings, pores and carved edges.",
+    },
+    Builtin {
+        id: "light_smoke",
+        label: "Light Smoke",
+        description: "Pale turbulent rising smoke with translucent wisps and directional shading.",
+    },
+    Builtin {
+        id: "dense_smoke",
+        label: "Dense Dark Smoke",
+        description: "Thick soot-dark billows inspired by oil or rubber smoke.",
+    },
+    Builtin {
+        id: "fog_layer",
+        label: "Fog Layer",
+        description: "A translucent low fog layer with evolving density.",
+    },
+    Builtin {
+        id: "drifting_fog",
+        label: "Drifting Fog",
+        description: "A floating fog bank with flowing turbulence and lateral drift.",
+    },
+    Builtin {
+        id: "clouds",
+        label: "Clouds",
+        description: "Soft billowing cloud volume with sunlit edges and shaded interior.",
+    },
+    Builtin {
+        id: "metallic_shine",
+        label: "Metallic Shine",
+        description: "A crisp diagonal light reflection sweeps across isolated text or logos. Apply before the background; keeps transparency intact. Four-second pass with editable motion, width, angle and brightness.",
+    },
     Builtin {
         id: "prismatic_glow",
         label: "Prismatic Glow",
@@ -187,6 +248,23 @@ pub fn build(id: &str) -> Result<Preset> {
         controls: Vec::new(),
     };
     let output = match id {
+        "metallic_shine" => {
+            let node = b.add(
+                "Travelling specular reflection",
+                metallic_shine(),
+                &[("image", source)],
+            );
+            for (parameter, label) in [
+                ("x", "Sweep position"),
+                ("y", "Vertical center"),
+                ("width", "Shine width"),
+                ("angle", "Shine angle"),
+                ("intensity", "Brightness"),
+            ] {
+                b.expose(node, parameter, label)?;
+            }
+            node
+        }
         "prismatic_glow" => {
             let blur = b.add(
                 "Light spread",
@@ -385,6 +463,10 @@ pub fn build(id: &str) -> Result<Preset> {
             b.expose(flow, "evolution", "Flow animation")?;
             output
         }
+        "gold_text" | "silver_text" | "aluminium_text" | "bronze_text" | "phosphor_text"
+        | "wood_text" | "light_smoke" | "dense_smoke" | "fog_layer" | "drifting_fog" | "clouds" => {
+            appearance::build(id, &mut b, source)?
+        }
         _ => extended::build(id, &mut b, source)?,
     };
     let mut group = Group::capture(&b.doc, b.members, output, builtin.label)?;
@@ -397,18 +479,20 @@ pub fn build(id: &str) -> Result<Preset> {
     Preset::capture(&b.doc, group_id)
 }
 
-pub const CATEGORIES: [&str; 6] = [
+pub const CATEGORIES: [&str; 8] = [
     "Light",
     "Surface",
     "Distortion",
     "Motion",
     "Particles",
+    "Materials",
+    "Atmosphere",
     "All",
 ];
 pub fn category(id: &str) -> &'static str {
     match id {
-        "soft_bloom" | "anamorphic_streaks" | "dream_focus" | "light_sweep" | "soft_vignette"
-        | "spotlight" | "prismatic_glow" | "neon_outline" => "Light",
+        "metallic_shine" | "soft_bloom" | "anamorphic_streaks" | "dream_focus" | "light_sweep"
+        | "soft_vignette" | "spotlight" | "prismatic_glow" | "neon_outline" => "Light",
         "edge_engrave" | "duotone_print" | "silver_relief" | "ink_bleed" | "film_grain"
         | "scanlines" | "hologram" => "Surface",
         "frosted_glass" | "heat_haze" | "underwater" | "glitch_slices" | "liquid_shimmer" => {
@@ -416,6 +500,29 @@ pub fn category(id: &str) -> &'static str {
         }
         "chromatic_echo" | "radial_echo" | "orbit_echo" => "Motion",
         "dust_motes" | "fireflies" | "embers" | "snowfall" | "starfield" => "Particles",
+        "gold_text" | "silver_text" | "aluminium_text" | "bronze_text" | "phosphor_text"
+        | "wood_text" => "Materials",
+        "light_smoke" | "dense_smoke" | "fog_layer" | "drifting_fog" | "clouds" => "Atmosphere",
         _ => "All",
+    }
+}
+
+/// Authored one-way pass: both endpoints are outside the canvas for a clean loop.
+pub(crate) fn metallic_shine() -> Operation {
+    Operation::MetallicShine {
+        x: Scalar::Linear {
+            keys: [(0, -480.0), (4, 1440.0)]
+                .into_iter()
+                .map(|(ticks, value)| Key {
+                    time: Time { ticks, rate: 1 },
+                    value,
+                    segment: None,
+                })
+                .collect(),
+        },
+        y: 270.0.into(),
+        width: 90.0.into(),
+        angle: 20.0.into(),
+        intensity: 1.8.into(),
     }
 }

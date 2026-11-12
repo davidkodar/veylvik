@@ -64,7 +64,16 @@ impl Project {
     pub fn example(id: &str) -> Result<Self> {
         let scene = veylvik_document::presets::showcase::build(id)?;
         let mut project = Self::blank(960, 540, Time::new(24, 1)?, 96)?;
-        project.selected = scene.composition.output;
+        let label = veylvik_document::presets::builtin::ALL
+            .iter()
+            .find(|entry| entry.id == id)
+            .map(|entry| entry.label);
+        project.selected = scene
+            .composition
+            .groups
+            .values()
+            .find(|group| Some(group.label.as_str()) == label)
+            .map_or(scene.composition.output, |group| group.output);
         project.frame = 48;
         project.document = Document::new(scene.composition)?;
         // Like the startup demo, viewing or playing a bundled example is clean.

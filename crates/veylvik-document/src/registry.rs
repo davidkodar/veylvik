@@ -15,6 +15,8 @@ pub enum ParameterKind {
     MaskChannel,
     GradientMode,
     MaskMode,
+    AtmosphereKind,
+    MaterialKind,
 }
 #[derive(Debug, Clone, Copy, Serialize)]
 pub struct Parameter {
@@ -30,6 +32,8 @@ impl Parameter {
     fn default_value(&self) -> Value {
         match self.kind {
             ParameterKind::Scalar => json!({"kind":"constant","value":self.default}),
+            ParameterKind::MaterialKind => json!(crate::MaterialKind::Gold),
+            ParameterKind::AtmosphereKind => json!(crate::AtmosphereKind::Smoke),
             ParameterKind::Seed => json!(self.default as u32),
             ParameterKind::BlendMode => json!(crate::BlendMode::Normal),
             ParameterKind::MaskChannel => json!(crate::MaskChannel::Luminance),
@@ -55,6 +59,10 @@ impl Parameter {
             ParameterKind::MaskChannel => json!({"type":"string","enum":crate::MaskChannel::ALL}),
             ParameterKind::GradientMode => json!({"type":"string","enum":crate::GradientMode::ALL}),
             ParameterKind::MaskMode => json!({"type":"string","enum":crate::MaskMode::ALL}),
+            ParameterKind::MaterialKind => json!({"type":"string","enum":crate::MaterialKind::ALL}),
+            ParameterKind::AtmosphereKind => {
+                json!({"type":"string","enum":crate::AtmosphereKind::ALL})
+            }
             ParameterKind::Seed => json!({"type":"integer","minimum":0,"maximum":u32::MAX}),
             ParameterKind::Color => {
                 json!({"type":"array","minItems":4,"maxItems":4,"prefixItems":[{"type":"number"},{"type":"number"},{"type":"number"},{"type":"number","minimum":0,"maximum":1}]})
@@ -136,6 +144,55 @@ pub static NOISE: NodeType = NodeType {
     parameters: &[
         other("seed", ParameterKind::Seed, "integer"),
         scalar("scale", "pixels", 1.0, 8192.0, 18.0),
+    ],
+};
+pub static MATERIAL: NodeType = NodeType {
+    type_id: "material",
+    version: 1,
+    label: "Text surface",
+    description: "Procedural gold, silver, brushed aluminium, bronze, phosphor or wood shading from image alpha. Surface grain, edge bevel and studio reflections; source RGB is replaced and alpha preserved. Not a 3D mesh or spectral renderer.",
+    inputs: &["image"],
+    parameters: &[
+        other("kind", ParameterKind::MaterialKind, "material"),
+        scalar("scale", "pixels", 1.0, 8192.0, 180.0),
+        scalar("bevel", "pixels", 0.0, 256.0, 4.0),
+        scalar("roughness", "factor", 0.0, 1.0, 0.15),
+        scalar("lighting", "cycles", -10000.0, 10000.0, 0.0),
+        scalar("grain", "factor", 0.0, 2.0, 0.4),
+        scalar("emission", "factor", 0.0, 16.0, 1.0),
+    ],
+};
+pub static ATMOSPHERE: NodeType = NodeType {
+    type_id: "atmosphere",
+    version: 1,
+    label: "Smoke, fog and clouds",
+    description: "Layered procedural density with turbulent advection, absorption and directional shading. Transparent smoke plumes, soot, fog layers, drifting banks and clouds. Evolution repeats every four units; deterministic approximation, not fluid simulation.",
+    inputs: &[],
+    parameters: &[
+        other("kind", ParameterKind::AtmosphereKind, "atmosphere"),
+        other("seed", ParameterKind::Seed, "integer"),
+        scalar("x", "pixels", -32768.0, 32768.0, 480.0),
+        scalar("y", "pixels", -32768.0, 32768.0, 500.0),
+        scalar("width", "pixels", 1.0, 8192.0, 700.0),
+        scalar("height", "pixels", 1.0, 8192.0, 450.0),
+        scalar("evolution", "cycles", -10000.0, 10000.0, 0.0),
+        scalar("density", "factor", 0.0, 16.0, 1.0),
+        scalar("detail", "factor", 0.1, 4.0, 1.0),
+        scalar("lighting", "factor", 0.0, 4.0, 1.0),
+    ],
+};
+pub static METALLIC_SHINE: NodeType = NodeType {
+    type_id: "metallic_shine",
+    version: 1,
+    label: "Metallic shine",
+    description: "A warm-white specular streak with a sharp core and soft shoulder. Preserves source alpha exactly. Apply to isolated text or a logo before compositing the background; animate X/Y to sweep. Angle is the streak normal in degrees (zero makes a vertical streak).",
+    inputs: &["image"],
+    parameters: &[
+        scalar("x", "pixels", -32768.0, 32768.0, 480.0),
+        scalar("y", "pixels", -32768.0, 32768.0, 270.0),
+        scalar("width", "pixels", 1.0, 8192.0, 90.0),
+        scalar("angle", "degrees", -3600.0, 3600.0, 20.0),
+        scalar("intensity", "factor", 0.0, 16.0, 1.5),
     ],
 };
 pub static FIRE: NodeType = NodeType {
@@ -354,6 +411,9 @@ pub static TYPES: &[&NodeType] = &[
     &DISPLACE,
     &FRACTAL_NOISE,
     &FIRE,
+    &MATERIAL,
+    &ATMOSPHERE,
+    &METALLIC_SHINE,
     &CHANNEL_MASK,
     &COLORIZE,
     &GRADIENT,

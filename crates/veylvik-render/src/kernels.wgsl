@@ -306,3 +306,138 @@ fn fire(@builtin(global_invocation_id) gid:vec3<u32>) {
     }
     result[index(gid)]=vec4<f32>(rgb,1.0-transmittance);
 }
+
+// Add reflected radiance without changing coverage, even on antialiased edges.
+@compute @workgroup_size(8,8)
+fn metallic_shine(@builtin(global_invocation_id) gid:vec3<u32>) {
+    if !inside(gid) {return;}
+    let i=index(gid); let original=source[i];
+    let normal=vec2<f32>(cos(p.values.w),sin(p.values.w));
+    let distance=abs(dot(vec2<f32>(gid.xy)-p.values.xy,normal))/p.values.z;
+    let shoulder=pow(max(1.0-distance,0.0),3.0);
+    let core=pow(max(1.0-distance/0.16,0.0),2.0);
+    let light=(0.32*shoulder+0.68*core)*p.extra.x*original.a;
+    result[i]=vec4<f32>(original.rgb+vec3<f32>(1.0,0.94,0.82)*light,original.a);
+}
+
+// Alpha-derived bevel normals and a procedural studio environment. Metal tint
+// is reflected radiance; wood has diffuse grain, phosphor has emissive granules.
+@compute @workgroup_size(8,8)
+fn material(@builtin(global_invocation_id) gid:vec3<u32>) {
+    if !inside(gid) {return;}
+    let i=index(gid); let coverage=source[i].a;
+    if coverage==0.0 {result[i]=vec4<f32>(0.0);return;}
+    let uv=vec2<f32>(gid.xy)/p.values.x;
+    let r=i32(round(p.values.y)); let xy=vec2<i32>(gid.xy);
+    var slope=vec2<f32>(0.0);
+    if r>0 {
+        for(var ring=1;ring<=8;ring++) {
+            let offset=max(1,i32(round(f32(r)*f32(ring)/8.0)));
+            let weight=(1.0-f32(ring)/9.0)*0.5;
+            slope+=weight*vec2<f32>(sample_source(xy.x-offset,xy.y).a-sample_source(xy.x+offset,xy.y).a,
+                                    sample_source(xy.x,xy.y-offset).a-sample_source(xy.x,xy.y+offset).a);
+        }
+    }
+    let fine=fire_noise(vec3<f32>(uv*130.0,0.3),191u)-0.5;
+    let brushed=fire_noise(vec3<f32>(uv.x*0.6,uv.y*240.0,1.1),71u)-0.5;
+    let micro=select(fine*0.025,brushed*0.55,p.size_op.w==2u)*p.extra.x;
+    let n=normalize(vec3<f32>(slope*1.6,1.0));
+    let phase=uv.y*0.7+n.y*0.26+n.x*0.13+p.values.w;
+    let band=fract(phase);
+    let rough=p.values.z;
+    let horizon=0.025+1.1*pow(abs(2.0*band-1.0),2.0+rough*2.0);
+    let softbox=exp(-pow((band-0.26)/(0.025+rough*0.14),2.0))*2.0;
+    let rim=pow(max(dot(n,normalize(vec3<f32>(-0.6,-0.8,0.6))),0.0),8.0)*2.4;
+    var tint=vec3<f32>(1.0,0.57,0.14);
+    if p.size_op.w==1u {tint=vec3<f32>(0.95,0.97,1.0);}
+    if p.size_op.w==2u {tint=vec3<f32>(0.72,0.79,0.86);}
+    if p.size_op.w==3u {tint=vec3<f32>(0.72,0.32,0.12);}
+    var color=tint*max(0.015,horizon+softbox+rim+micro);
+    if p.size_op.w==2u {color=tint*max(0.06,0.26+horizon*0.55+softbox*0.4+rim*0.7+micro);}
+    if p.size_op.w==3u {
+        let patina=fire_fbm(vec3<f32>(uv*4.0,0.5),257u);
+        color*=max(0.15,1.0-p.extra.x*smoothstep(0.56,0.8,patina)*0.65);
+    }
+    if p.size_op.w==4u {
+        let phosphor=0.8+p.extra.x*0.45*(fire_noise(vec3<f32>(uv*150.0,0.0),431u)-0.5);
+        let pulse=0.92+0.08*cos(p.values.w*6.2831853);
+        color=vec3<f32>(0.12,1.9,0.38)*phosphor*p.extra.y*pulse+vec3<f32>(rim*0.08);
+    }
+    if p.size_op.w==5u {
+        let warp=fire_fbm(vec3<f32>(uv.x*0.7,uv.y*2.0,0.5),617u);
+        let knot=length((uv-vec2<f32>(2.7,1.5))*vec2<f32>(0.7,2.3));
+        let rings=0.5+0.5*sin(uv.y*80.0+warp*50.0+exp(-knot*1.4)*25.0);
+        let pores=fire_noise(vec3<f32>(uv.x*7.0,uv.y*220.0,0.0),313u);
+        let grain=clamp(mix(0.5,0.75-0.55*pow(rings,6.0)+0.12*pores,p.extra.x),0.0,1.0);
+        color=mix(vec3<f32>(0.065,0.017,0.004),vec3<f32>(0.5,0.22,0.065),grain);
+        let fibers=fire_noise(vec3<f32>(uv.x*5.0,uv.y*180.0+warp*15.0,0.0),733u);
+        let pores_dark=pow(max(0.0,1.0-fibers*2.0),3.0);
+        color*=max(0.1,1.0+p.extra.x*((fibers-0.5)*0.45-pores_dark*0.6));
+        color*=0.6+0.4*max(dot(n,normalize(vec3<f32>(-0.5,-0.7,0.8+0.5*cos(p.values.w*6.2831853)))),0.0);
+        color+=vec3<f32>(1.0,0.78,0.45)*rim*0.1*(1.0-rough);
+    }
+    result[i]=vec4<f32>(color*coverage,coverage);
+}
+fn atmosphere_field(q:vec3<f32>,kind:u32)->f32 {
+    let time=p.extra.x*2.0; let detail=p.extra.z;
+    var coord=vec3<f32>(q.x*6.0,q.y*5.0,q.z*3.2);
+    if kind>=2u {coord=vec3<f32>(q.y*3.0,q.x*4.0,q.z*2.3);}
+    coord*=detail; coord.y-=time;
+    let warp=fire_noise(vec3<f32>(coord.x*0.5,coord.y,coord.z*0.5),p.size_op.z+11u)-0.5;
+    let field=fire_fbm(coord+vec3<f32>(warp*1.5,0.0,warp),p.size_op.z);
+    return field;
+}
+// Coherent density rather than a blurred image: lobes are eroded by advected
+// turbulence. Samples toward the light estimate interior extinction.
+fn atmosphere_density(q:vec3<f32>,kind:u32)->f32 {
+    let uv=q.xy;let z=q.z;
+    let n=atmosphere_field(q,kind);
+    let bounds=(1.0-smoothstep(0.48,0.65,abs(uv.x)))*smoothstep(0.0,0.06,uv.y)*(1.0-smoothstep(0.88,1.0,uv.y));
+    if kind==4u {
+        var shape=-10.0;
+        for(var blob=0u;blob<5u;blob++) {
+            let f=f32(blob);
+            let center=vec3<f32>(-0.35+f*0.175,0.43+0.19*sin(f*1.3),0.14*cos(f*2.0));
+            let radius=0.21+0.055*sin(f*1.9);
+            shape=max(shape,radius-length((q-center)*vec3<f32>(1.0,1.0,0.44)));
+        }
+        let erosion=atmosphere_field(q*2.7,kind)*0.12;
+        return smoothstep(-0.025,0.07,shape-erosion+0.015)*bounds*p.extra.y;
+    }
+    if kind<2u {
+        let drift=(fire_noise(vec3<f32>(uv.y*3.0,-p.extra.x*2.0,z),p.size_op.z+61u)-0.5)*0.5*uv.y;
+        let radius=0.055+0.39*uv.y;
+        let shape=exp(-pow((uv.x+drift)/radius,2.0)*2.0)*max(0.0,1.0-z*z);
+        let threshold=0.48+(1.0-shape)*0.13;
+        return max(n-threshold,0.0)*shape*bounds*(1.0-smoothstep(0.6,1.0,uv.y))*p.extra.y*9.0;
+    }
+    let shift=select(0.0,0.2*sin(p.extra.x*1.5707963),kind==3u);
+    let shape=exp(-pow((uv.x-shift)/select(0.48,0.32,kind==3u),4.0))*pow(max(sin(uv.y*3.14159265),0.0),2.0)*max(0.0,1.0-z*z);
+    return max(n-0.34,0.0)*shape*bounds*p.extra.y;
+}
+@compute @workgroup_size(8,8)
+fn atmosphere(@builtin(global_invocation_id) gid:vec3<u32>) {
+    if !inside(gid) {return;}
+    let uv=vec2<f32>((f32(gid.x)-p.values.x)/p.values.z,(p.values.y-f32(gid.y))/p.values.w);
+    let kind=p.size_op.w;
+    if abs(uv.x)>0.65 || uv.y<0.0 || uv.y>1.0 || p.extra.y==0.0 {result[index(gid)]=vec4<f32>(0.0);return;}
+    var rgb=vec3<f32>(0.0);var transmittance=1.0;
+    for(var slice=0u;slice<12u;slice++) {
+        let z=(f32(slice)+0.5)/12.0*2.0-1.0;
+        let q=vec3<f32>(uv,z);
+        let density=atmosphere_density(q,kind);
+        let alpha=1.0-exp(-density*0.65);
+        if alpha<0.0001 {continue;}
+        var extinction=0.0;
+        for(var step=1u;step<=3u;step++) {
+            extinction+=atmosphere_density(q+vec3<f32>(-0.07,0.10,-0.10)*f32(step),kind);
+        }
+        let shadow=exp(-extinction*0.85);
+        var color=vec3<f32>(0.55,0.59,0.65)*(0.15+shadow*1.2*p.extra.w);
+        if kind==1u {color=vec3<f32>(0.055,0.047,0.04)*(0.15+shadow*1.7*p.extra.w);}
+        if kind==4u {color=vec3<f32>(0.12,0.17,0.24)+vec3<f32>(0.65,0.60,0.51)*shadow*p.extra.w;}
+        rgb+=transmittance*alpha*color;
+        transmittance*=1.0-alpha;
+    }
+    result[index(gid)]=vec4<f32>(rgb,1.0-transmittance);
+}

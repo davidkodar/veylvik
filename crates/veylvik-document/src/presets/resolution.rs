@@ -44,8 +44,26 @@ fn offset(op: &Operation, parameter: &str, m: Mapping) -> f32 {
     let axis = match parameter {
         "pivot_x" | "start_x" | "end_x" => Some(0),
         "pivot_y" | "start_y" | "end_y" => Some(1),
-        "x" if matches!(op, Operation::Ellipse { .. } | Operation::Fire { .. }) => Some(0),
-        "y" if matches!(op, Operation::Ellipse { .. } | Operation::Fire { .. }) => Some(1),
+        "x" if matches!(
+            op,
+            Operation::Ellipse { .. }
+                | Operation::Fire { .. }
+                | Operation::MetallicShine { .. }
+                | Operation::Atmosphere { .. }
+        ) =>
+        {
+            Some(0)
+        }
+        "y" if matches!(
+            op,
+            Operation::Ellipse { .. }
+                | Operation::Fire { .. }
+                | Operation::MetallicShine { .. }
+                | Operation::Atmosphere { .. }
+        ) =>
+        {
+            Some(1)
+        }
         _ => None,
     };
     axis.map_or(0.0, |i| m.offset[i])

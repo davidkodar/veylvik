@@ -1113,6 +1113,31 @@ impl Studio {
             Operation::Mask {} => {
                 ui.label("Image multiplied by mask alpha");
             }
+            Operation::Material { kind, .. } => {
+                egui::ComboBox::from_id_salt("Material-kind")
+                    .selected_text(kind.label())
+                    .show_ui(ui, |ui| {
+                        for choice in veylvik_document::MaterialKind::ALL {
+                            self.draft_dirty |=
+                                ui.selectable_value(kind, choice, choice.label()).changed();
+                        }
+                    });
+            }
+            Operation::Atmosphere { kind, seed, .. } => {
+                self.draft_dirty |= ui.add(egui::DragValue::new(seed).prefix("Seed ")).changed();
+                egui::ComboBox::from_id_salt("Atmosphere-kind")
+                    .selected_text(kind.label())
+                    .show_ui(ui, |ui| {
+                        for choice in veylvik_document::AtmosphereKind::ALL {
+                            self.draft_dirty |=
+                                ui.selectable_value(kind, choice, choice.label()).changed();
+                        }
+                    });
+            }
+            Operation::MetallicShine { .. } => {
+                ui.label("Apply to isolated text or a logo before adding a background.");
+                ui.label("Animate X/Y to sweep; alpha stays unchanged.");
+            }
             Operation::Morphology { .. } => {
                 ui.label("Positive radius grows alpha; negative shrinks it.");
                 ui.label("Square neighborhood, transparent borders, white mask output.");

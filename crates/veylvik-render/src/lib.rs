@@ -76,6 +76,41 @@ fn params(
             p.size_op[3] = *seed;
             p.values[0] = sample("scale")?;
         }
+        Operation::MetallicShine { .. } => {
+            p.values = [
+                sample("x")?,
+                sample("y")?,
+                sample("width")?,
+                sample("angle")?.to_radians(),
+            ];
+            p.extra[0] = sample("intensity")?;
+        }
+        Operation::Material { kind, .. } => {
+            p.size_op[3] = *kind as u32;
+            p.values = [
+                sample("scale")?,
+                sample("bevel")?,
+                sample("roughness")?,
+                sample("lighting")?.rem_euclid(1.0),
+            ];
+            p.extra = [sample("grain")?, sample("emission")?, 0.0, 0.0];
+        }
+        Operation::Atmosphere { kind, seed, .. } => {
+            p.size_op[2] = *seed;
+            p.size_op[3] = *kind as u32;
+            p.values = [
+                sample("x")?,
+                sample("y")?,
+                sample("width")?,
+                sample("height")?,
+            ];
+            p.extra = [
+                sample("evolution")?.rem_euclid(4.0),
+                sample("density")?,
+                sample("detail")?,
+                sample("lighting")?,
+            ];
+        }
         Operation::Fire { seed, .. } => {
             p.size_op[3] = *seed;
             p.values = [

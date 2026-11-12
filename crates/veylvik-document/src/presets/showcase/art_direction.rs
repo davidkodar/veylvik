@@ -224,7 +224,7 @@ fn outline(a: &mut Art, mask: NodeId, dx: f32, dy: f32, color: [f32; 4]) -> Node
     let ink = a.solid("Bevel light", color);
     a.mask("Polished edge", ink, diff)
 }
-fn gold_fire(a: &mut Art, bg: NodeId) -> NodeId {
+fn gold_fire(a: &mut Art, bg: NodeId, with_fire: bool) -> Result<NodeId> {
     let mask = a.text("GOLD");
     let bg = a.atmosphere(bg, [0.12, 0.012, 0.001, 1.0], 480.0, 300.0, 320.0, 130.0);
     // Two gradients meet at a sharp polished-metal reflection band.
@@ -265,6 +265,20 @@ fn gold_fire(a: &mut Art, bg: NodeId) -> NodeId {
         );
         extrusion = a.over("Layered depth", extrusion, shifted);
     }
+    let rim = outline(a, mask, 2.0, 3.0, [3.0, 1.9, 0.55, 1.0]);
+    let face = a.plus("Gold bevel highlights", face, rim, 0.8);
+    let face = a.over("Isolated metallic lettering", extrusion, face);
+    if !with_fire {
+        return Ok(face);
+    }
+    a.doc.output = face;
+    let shine = super::super::builtin::build("metallic_shine")?.instantiate(
+        &a.doc,
+        &[("input_1".into(), face)].into(),
+        Some(NodePosition { x: 0.0, y: 1200.0 }),
+    )?;
+    a.doc = Document::new(a.doc.clone())?.prepare(0, &shine.commands)?;
+    let face = shine.output;
     let fire = a.node(
         "Fire · rising turbulent volume",
         Operation::Fire {
@@ -295,10 +309,7 @@ fn gold_fire(a: &mut Art, bg: NodeId) -> NodeId {
     let halo = a.blur(fire, 6.0);
     let fire = a.plus("Subtle fire scattering", fire, halo, 0.12);
     let bg = a.plus("Fire behind gold", bg, fire, 0.9);
-    let depth = a.over("Gold depth over flame", bg, extrusion);
-    let face = a.over("Gold face", depth, face);
-    let rim = outline(a, mask, 2.0, 3.0, [3.0, 1.9, 0.55, 1.0]);
-    let face = a.plus("Gold bevel highlights", face, rim, 0.8);
+    let face = a.over("Shining gold over flame", bg, face);
     // Ground reflection is deliberately dim and blurred, giving the title weight.
     let reflection = a.move_art(
         "Inverted reflection",
@@ -309,7 +320,7 @@ fn gold_fire(a: &mut Art, bg: NodeId) -> NodeId {
         [480.0, 340.0],
     );
     let reflection = a.blur(reflection, 2.0);
-    a.plus("Smoky reflected light", face, reflection, 0.10)
+    Ok(a.plus("Smoky reflected light", face, reflection, 0.10))
 }
 fn dripping(a: &mut Art, bg: NodeId, pink: bool) -> NodeId {
     let letters = a.text("DRIP");
@@ -533,6 +544,58 @@ fn nova(a: &mut Art, bg: NodeId) -> NodeId {
     );
     a.over("Nova title", bg, text)
 }
+fn atmosphere_plate(a: &mut Art, id: &str) -> NodeId {
+    let sky = a.palette(
+        "Sky gradient",
+        0.0,
+        540.0,
+        if id == "light_smoke" {
+            [0.008, 0.016, 0.03, 1.0]
+        } else {
+            [0.08, 0.18, 0.32, 1.0]
+        },
+        if id == "light_smoke" {
+            [0.04, 0.06, 0.09, 1.0]
+        } else {
+            [0.5, 0.58, 0.63, 1.0]
+        },
+    );
+    let mut commands = vec![];
+    polygon(
+        &mut commands,
+        &[
+            [0.0, 470.0],
+            [130.0, 420.0],
+            [260.0, 455.0],
+            [450.0, 390.0],
+            [650.0, 450.0],
+            [800.0, 400.0],
+            [960.0, 450.0],
+            [960.0, 540.0],
+            [0.0, 540.0],
+        ],
+    );
+    let ground = a.path("Distant terrain", commands);
+    let ink = a.solid("Terrain silhouette", [0.025, 0.045, 0.052, 1.0]);
+    let ground = a.mask("Distant landscape", ink, ground);
+    let mut plate = a.over("Sky and horizon", sky, ground);
+    if matches!(id, "fog_layer" | "drifting_fog") {
+        let mut trees = vec![];
+        for i in 0..12 {
+            let x = i as f32 * 86.0;
+            let h = 60.0 + (i % 3) as f32 * 22.0;
+            polygon(
+                &mut trees,
+                &[[x, 470.0 - h], [x - 24.0, 485.0], [x + 24.0, 485.0]],
+            );
+        }
+        let trees = a.path("Trees behind fog", trees);
+        let ink = a.solid("Tree silhouettes", [0.008, 0.025, 0.027, 1.0]);
+        let trees = a.mask("Forest depth", ink, trees);
+        plate = a.over("Forest before atmosphere", plate, trees);
+    }
+    plate
+}
 pub(super) fn build(id: &str) -> Result<Scene> {
     let mut doc = crate::blank(960, 540, Time::new(24, 1)?)?;
     doc.frame_count = 96;
@@ -540,7 +603,18 @@ pub(super) fn build(id: &str) -> Result<Scene> {
     let mut a = Art { doc };
     let bg = a.solid("Deep cinematic background", [0.001, 0.002, 0.006, 1.0]);
     let before = match id {
-        "embers" => gold_fire(&mut a, bg),
+        id if super::super::builtin::category(id) == "Materials" => {
+            let word = match id {
+                "gold_text" => "GOLD",
+                "wood_text" => "WOOD",
+                "phosphor_text" => "GLOW",
+                _ => "NOVA",
+            };
+            a.text(word)
+        }
+        id if super::super::builtin::category(id) == "Atmosphere" => atmosphere_plate(&mut a, id),
+        "embers" => gold_fire(&mut a, bg, true)?,
+        "metallic_shine" => gold_fire(&mut a, bg, false)?,
         "fireflies" => dripping(&mut a, bg, false),
         "liquid_shimmer" => dripping(&mut a, bg, true),
         "dust_motes" => sand(&mut a, bg),
@@ -558,6 +632,15 @@ pub(super) fn build(id: &str) -> Result<Scene> {
     let document = Document::new(a.doc)?;
     let mut composition = document.prepare(0, &instance.commands)?;
     composition.output = instance.output;
+    let before = if id == "metallic_shine" || super::super::builtin::category(id) == "Materials" {
+        let mut a = Art { doc: composition };
+        let before = a.over("Original lettering over background", bg, before);
+        a.doc.output = a.over("Finished lettering over background", bg, instance.output);
+        composition = a.doc;
+        before
+    } else {
+        before
+    };
     composition.validate()?;
     Ok(Scene {
         composition,

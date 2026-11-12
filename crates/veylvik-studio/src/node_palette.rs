@@ -54,18 +54,20 @@ fn entries(query: &str) -> Vec<Entry> {
     let words: Vec<_> = query.split_whitespace().collect();
     let rank = |entry: &Entry| {
         let title = format!("{} {}", entry.label, entry.id.replace('_', " ")).to_lowercase();
-        if words.iter().all(|word| title.contains(word)) {
+        if entry.id == query.trim() || entry.label.to_lowercase() == query.trim() {
             0
+        } else if words.iter().all(|word| title.contains(word)) {
+            1
         } else if words
             .iter()
             .all(|word| format!("{title} {}", entry.description.to_lowercase()).contains(word))
         {
-            1
-        } else {
             2
+        } else {
+            3
         }
     };
-    entries.retain(|entry| rank(entry) < 2);
+    entries.retain(|entry| rank(entry) < 3);
     entries.sort_by_key(rank);
     entries
 }
@@ -177,6 +179,27 @@ pub fn operation(kind: &NodeType, width: u32, height: u32) -> Operation {
     let mut operation: Operation =
         serde_json::from_value(kind.default_operation()).expect("validated registry defaults");
     match &mut operation {
+        Operation::MetallicShine { x, y, width: w, .. } => {
+            *x = (width as f32 * 0.5).into();
+            *y = (height as f32 * 0.5).into();
+            *w = (width as f32 * 0.094).max(1.0).into();
+        }
+        Operation::Atmosphere {
+            x,
+            y,
+            width: w,
+            height: h,
+            ..
+        } => {
+            *x = (width as f32 * 0.5).into();
+            *y = (height as f32 * 0.93).into();
+            *w = (width as f32 * 0.73).max(1.0).into();
+            *h = (height as f32 * 0.83).max(1.0).into();
+        }
+        Operation::Material { scale, bevel, .. } => {
+            *scale = (width as f32 * 0.1875).max(1.0).into();
+            *bevel = (width as f32 / 240.0).min(256.0).into();
+        }
         Operation::Fire {
             x,
             y,

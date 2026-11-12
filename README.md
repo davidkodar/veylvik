@@ -210,18 +210,45 @@ input names, defaults and controls save with the composition. Nested groups are 
 **Add → Effect library…** opens searchable starter and saved effects. The bundled
 **Prismatic Glow** adds cyan/rose light spill; **Neon Outline** adds luminous
 contours; **Liquid Shimmer** adds a smooth four-second flow loop with protected
-frame edges. The library contains **28 starter effects**, searchable by name,
+frame edges. The library contains **40 starter effects**, searchable by name,
 description or category. Every starter remains an editable group with public controls.
 
 The expanded set includes:
 
 - **Light:** Soft Bloom, Anamorphic Streaks, Dream Focus, Light Sweep, Soft Vignette,
-  Spotlight (plus Prismatic Glow and Neon Outline).
+  Spotlight and Metallic Shine (plus Prismatic Glow and Neon Outline).
 - **Surface:** Edge Engrave, Duotone Print, Silver Relief, Ink Bleed, Film Grain,
   Scanlines and Hologram.
 - **Distortion:** Frosted Glass, Heat Haze, Underwater and Glitch Slices (plus Liquid Shimmer).
 - **Motion:** Chromatic Echo, Radial Echo and Orbit Echo.
 - **Particles:** Dust Motes, Fireflies, Embers, Snowfall and Starfield.
+- **Materials:** Polished Gold, Polished Silver, Brushed Aluminium, Aged Bronze,
+  Phosphor and Carved Wood.
+- **Atmosphere:** Light Smoke, Dense Dark Smoke, Fog Layer, Drifting Fog and Clouds.
+
+Apply a material to an isolated text/logo image or a white shape mask. **Text surface**
+replaces RGB using the source alpha: polished metals use studio reflection bands and
+alpha-derived bevel normals, aluminium adds directional brushing, bronze adds
+mottling, wood combines warped growth rings and fine fibers, and phosphor emits
+textured green light. Texture scale, bevel, roughness, grain and reflection motion
+are editable; the Phosphor preset adds adjustable bloom.
+
+Place **Metallic Shine** after the material and before the background merge. It adds
+a narrow warm-white reflection core with a softer shoulder and preserves alpha
+exactly, including antialiased edges. Edit **Sweep position** keys to change direction
+or speed; **Shine width**, **Shine angle** and **Brightness** adjust its appearance.
+The default pass travels left to right over four seconds, resetting off-canvas.
+**Polished gold** is its dedicated example; **Gilded inferno** also includes a separate
+editable Metallic Shine group on the lettering.
+
+Atmosphere presets composite over their selected input; select a transparent source
+for a standalone overlay. Their **Smoke, fog and clouds** generator has editable
+position, size, density, flow, detail, illumination and seed. Pale smoke and dense
+soot use rising plumes; fog offers a low layer and a drifting bank; clouds use
+billowing density with directional interior shading. These are deterministic
+procedural volume approximations, not combustion/weather simulations or scanned
+materials. All twelve new presets include native-HD editable examples and work
+with the existing host-resolution sizing policies.
 
 Particle starters are deterministic overlays made from editable ellipse, animation,
 color and blend nodes. Each has 18 particles with staggered four-second lifetimes;
@@ -249,7 +276,8 @@ reflection; **Toxic nectar** pairs Fireflies with glossy green dripping letters;
 combines Snowfall with crystalline lettering and mountains; **Nova ignition**
 places Starfield over a turbulent plasma corona. **Pink melt** demonstrates Liquid
 Shimmer on viscous pink lettering with falling droplets and a liquid pool.
-These six detailed examples render at 1920 × 1080; gallery thumbnails remain
+These detailed examples and all material/atmosphere/shine examples render at
+1920 × 1080; gallery thumbnails remain
 320 × 180. The viewer renders the full composition and displays dimensions and
 zoom. Use **100%** to inspect pixels without Fit enlargement; integer zoom aligns
 the image to physical pixels. Fire uses deterministic turbulent emission and
@@ -416,6 +444,9 @@ includes retained history statistics. Supported operations:
 | Solid | none | Straight linear RGB plus alpha; converted to premultiplied pixels |
 | Noise | none | Seed and cell size, 1–8192 pixels |
 | Gradient | none | Animated start/end coordinates, linear or radial grayscale ramp |
+| Metallic shine | image | Alpha-preserving specular streak; animated position, width, angle and brightness |
+| Text surface | image | Six procedural materials; bevel, grain, texture scale, roughness and lighting |
+| Smoke, fog and clouds | none | Five transparent atmospheric volume styles with editable density and motion |
 | Procedural fire | none | Layered turbulent flame emission; seed, position, size, evolution, intensity and turbulence |
 | Fractal noise | none | Smooth grayscale noise; seed, scale, octaves, roughness, evolution |
 | Exposure | image | −32 to +32 stops |

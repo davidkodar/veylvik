@@ -15,6 +15,8 @@ pub mod channels;
 pub use channels::MaskChannel;
 mod masks;
 pub use masks::MaskMode;
+mod appearance;
+pub use appearance::{AtmosphereKind, MaterialKind};
 mod gradient;
 pub use gradient::GradientMode;
 pub mod schema;
@@ -58,6 +60,34 @@ pub enum Operation {
     Noise {
         seed: u32,
         scale: Scalar,
+    },
+    Material {
+        kind: MaterialKind,
+        scale: Scalar,
+        bevel: Scalar,
+        roughness: Scalar,
+        lighting: Scalar,
+        grain: Scalar,
+        emission: Scalar,
+    },
+    Atmosphere {
+        kind: AtmosphereKind,
+        seed: u32,
+        x: Scalar,
+        y: Scalar,
+        width: Scalar,
+        height: Scalar,
+        evolution: Scalar,
+        density: Scalar,
+        detail: Scalar,
+        lighting: Scalar,
+    },
+    MetallicShine {
+        x: Scalar,
+        y: Scalar,
+        width: Scalar,
+        angle: Scalar,
+        intensity: Scalar,
     },
     Fire {
         seed: u32,
@@ -131,6 +161,9 @@ pub enum Operation {
 impl Operation {
     pub fn descriptor(&self) -> &'static registry::NodeType {
         match self {
+            Self::MetallicShine { .. } => &registry::METALLIC_SHINE,
+            Self::Material { .. } => &registry::MATERIAL,
+            Self::Atmosphere { .. } => &registry::ATMOSPHERE,
             Self::Fire { .. } => &registry::FIRE,
             Self::Solid { .. } => &registry::SOLID,
             Self::Colorize { .. } => &registry::COLORIZE,
@@ -159,6 +192,25 @@ impl Operation {
     pub fn scalar(&self, name: &str) -> Option<&Scalar> {
         match (self, name) {
             (Self::Noise { scale, .. } | Self::FractalNoise { scale, .. }, "scale") => Some(scale),
+            (Self::MetallicShine { x, .. }, "x") => Some(x),
+            (Self::MetallicShine { y, .. }, "y") => Some(y),
+            (Self::MetallicShine { width, .. }, "width") => Some(width),
+            (Self::MetallicShine { angle, .. }, "angle") => Some(angle),
+            (Self::MetallicShine { intensity, .. }, "intensity") => Some(intensity),
+            (Self::Material { scale, .. }, "scale") => Some(scale),
+            (Self::Material { bevel, .. }, "bevel") => Some(bevel),
+            (Self::Material { roughness, .. }, "roughness") => Some(roughness),
+            (Self::Material { lighting, .. }, "lighting") => Some(lighting),
+            (Self::Material { grain, .. }, "grain") => Some(grain),
+            (Self::Material { emission, .. }, "emission") => Some(emission),
+            (Self::Atmosphere { x, .. }, "x") => Some(x),
+            (Self::Atmosphere { y, .. }, "y") => Some(y),
+            (Self::Atmosphere { width, .. }, "width") => Some(width),
+            (Self::Atmosphere { height, .. }, "height") => Some(height),
+            (Self::Atmosphere { evolution, .. }, "evolution") => Some(evolution),
+            (Self::Atmosphere { density, .. }, "density") => Some(density),
+            (Self::Atmosphere { detail, .. }, "detail") => Some(detail),
+            (Self::Atmosphere { lighting, .. }, "lighting") => Some(lighting),
             (Self::Fire { x, .. }, "x") => Some(x),
             (Self::Fire { y, .. }, "y") => Some(y),
             (Self::Fire { width, .. }, "width") => Some(width),
@@ -194,6 +246,25 @@ impl Operation {
     pub fn scalar_mut(&mut self, name: &str) -> Option<&mut Scalar> {
         match (self, name) {
             (Self::Noise { scale, .. } | Self::FractalNoise { scale, .. }, "scale") => Some(scale),
+            (Self::MetallicShine { x, .. }, "x") => Some(x),
+            (Self::MetallicShine { y, .. }, "y") => Some(y),
+            (Self::MetallicShine { width, .. }, "width") => Some(width),
+            (Self::MetallicShine { angle, .. }, "angle") => Some(angle),
+            (Self::MetallicShine { intensity, .. }, "intensity") => Some(intensity),
+            (Self::Material { scale, .. }, "scale") => Some(scale),
+            (Self::Material { bevel, .. }, "bevel") => Some(bevel),
+            (Self::Material { roughness, .. }, "roughness") => Some(roughness),
+            (Self::Material { lighting, .. }, "lighting") => Some(lighting),
+            (Self::Material { grain, .. }, "grain") => Some(grain),
+            (Self::Material { emission, .. }, "emission") => Some(emission),
+            (Self::Atmosphere { x, .. }, "x") => Some(x),
+            (Self::Atmosphere { y, .. }, "y") => Some(y),
+            (Self::Atmosphere { width, .. }, "width") => Some(width),
+            (Self::Atmosphere { height, .. }, "height") => Some(height),
+            (Self::Atmosphere { evolution, .. }, "evolution") => Some(evolution),
+            (Self::Atmosphere { density, .. }, "density") => Some(density),
+            (Self::Atmosphere { detail, .. }, "detail") => Some(detail),
+            (Self::Atmosphere { lighting, .. }, "lighting") => Some(lighting),
             (Self::Fire { x, .. }, "x") => Some(x),
             (Self::Fire { y, .. }, "y") => Some(y),
             (Self::Fire { width, .. }, "width") => Some(width),
