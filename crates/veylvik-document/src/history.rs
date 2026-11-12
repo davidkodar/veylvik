@@ -89,6 +89,7 @@ impl Document {
                     }
                 }
                 Command::FrameRate { frame_rate } => next.frame_rate = *frame_rate,
+                Command::FrameCount { frame_count } => next.frame_count = *frame_count,
                 Command::Output { id } => next.output = *id,
                 Command::Place { id, position } => {
                     next.nodes

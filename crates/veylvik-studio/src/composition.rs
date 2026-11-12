@@ -6,6 +6,7 @@ pub struct Settings {
     pub width: u32,
     pub height: u32,
     pub frame_rate: Time,
+    pub frame_count: u32,
     pub new: bool,
 }
 #[derive(Default)]
@@ -21,6 +22,7 @@ impl Controls {
                 width: 1920,
                 height: 1080,
                 frame_rate: Time { ticks: 24, rate: 1 },
+                frame_count: veylvik_document::DEFAULT_FRAME_COUNT,
                 new: true,
             }
         } else {
@@ -28,6 +30,7 @@ impl Controls {
                 width: document.width,
                 height: document.height,
                 frame_rate: document.frame_rate,
+                frame_count: document.frame_count,
                 new: false,
             }
         });
@@ -62,6 +65,12 @@ impl Controls {
                     egui::DragValue::new(&mut settings.height)
                         .range(1..=8192)
                         .suffix(" px"),
+                );
+                ui.end_row();
+                ui.label("Frame count");
+                ui.add(
+                    egui::DragValue::new(&mut settings.frame_count)
+                        .range(1..=veylvik_document::MAX_FRAME_COUNT),
                 );
                 ui.end_row();
                 ui.label("Frame rate numerator");

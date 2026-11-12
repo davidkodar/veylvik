@@ -25,6 +25,7 @@ fn branches() -> (Composition, NodeId, NodeId) {
     (
         Composition {
             schema: 1,
+            frame_count: 240,
             width: 13,
             height: 7,
             frame_rate: Time::new(24, 1).unwrap(),

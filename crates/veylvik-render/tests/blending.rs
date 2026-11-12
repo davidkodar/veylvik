@@ -74,6 +74,7 @@ fn blend_modes_match_straight_colour_reference_with_animated_opacity() {
         }
         let composition = Composition {
             schema: 1,
+            frame_count: 240,
             width: 100,
             height: 1,
             frame_rate: Time::new(24, 1).unwrap(),

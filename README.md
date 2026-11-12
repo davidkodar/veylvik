@@ -578,15 +578,23 @@ re-enable background recovery.
 ### New compositions and format settings
 
 **New…** (`Ctrl+N`) creates a composition with one transparent Background node.
-Choose canvas width/height and an exact frame-rate numerator/denominator before
-creating it. Unsaved work is protected by the same Save/Discard/Keep editing
-flow as opening another project. **Settings…** changes the current canvas and
+Choose canvas width/height, frame count, and an exact frame-rate numerator/denominator
+before creating it. Unsaved work is protected by the same Save/Discard/Keep editing
+flow as opening another project. **Settings…** changes canvas, frame count, and
 frame rate together as one undo step. Resizing changes the canvas bounds; it does
 not scale node coordinates. Animation keys retain their times in seconds, while
 frame indices use the new frame rate. Format dialogs isolate their drafts and
 block live MCP mutations until applied or closed.
 
 MCP `apply` accepts `{"command":"frame_rate","frame_rate":{"ticks":30000,"rate":1001}}`
-alongside the existing `resize` command. Both can be placed in a single atomic
-batch. Numerator and denominator must be positive; invalid batches leave the
+and `{"command":"frame_count","frame_count":144}` alongside `resize`. These
+commands can be placed in a single atomic batch. Numerator and denominator must be positive; invalid batches leave the
 composition and history unchanged.
+
+Saved `frame_count` is in 1–1000000 and defines playback frames 0 through count−1.
+Older documents without the field default to 240 frames. Changing length preserves
+keys outside that interval; explicit headless renders and live previews can still
+request them. The first sequence-export dialog uses the composition range, then
+retains any custom range for that editor session. The 10000-frame limit per export
+still applies, so longer compositions require a smaller export range. The motion
+example is 96 frames and the procedural example is 144 frames, both at 24 fps.

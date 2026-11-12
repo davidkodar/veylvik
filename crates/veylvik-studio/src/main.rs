@@ -116,7 +116,6 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 playing: false,
                 playback: Instant::now(),
                 playback_frame: 0,
-                end_frame: 240,
                 files: Tasks::new(cc.egui_ctx.clone()),
                 export_controls: sequence::Controls::default(),
                 outline_controls: text_outline::Controls::default(),
@@ -164,7 +163,6 @@ struct Studio {
     playing: bool,
     playback: Instant,
     playback_frame: i64,
-    end_frame: i64,
     files: Tasks,
     export_controls: sequence::Controls,
     outline_controls: text_outline::Controls,
@@ -189,7 +187,6 @@ impl Studio {
         self.composition_controls = composition::Controls::default();
         self.export_controls = sequence::Controls::default();
         self.project = project;
-        self.end_frame = 240;
         self.graph = graph::Graph::default();
         self.navigation.fit();
         self.displayed = None;
@@ -200,7 +197,12 @@ impl Studio {
     }
     fn apply_composition_settings(&mut self, settings: composition::Settings, ctx: &egui::Context) {
         if settings.new {
-            match Project::blank(settings.width, settings.height, settings.frame_rate) {
+            match Project::blank(
+                settings.width,
+                settings.height,
+                settings.frame_rate,
+                settings.frame_count,
+            ) {
                 Ok(project) => self.open_project(project, ctx),
                 Err(error) => {
                     self.composition_controls.open = true;
@@ -213,6 +215,7 @@ impl Studio {
                 && doc.height == settings.height
                 && doc.frame_rate.ticks == settings.frame_rate.ticks
                 && doc.frame_rate.rate == settings.frame_rate.rate
+                && doc.frame_count == settings.frame_count
             {
                 return;
             }
@@ -223,6 +226,9 @@ impl Studio {
                 },
                 Command::FrameRate {
                     frame_rate: settings.frame_rate,
+                },
+                Command::FrameCount {
+                    frame_count: settings.frame_count,
                 },
             ]) {
                 Ok(()) => {
@@ -1005,6 +1011,8 @@ impl Studio {
         ui.weak("Parameter changes become one undo step when applied.");
     }
     fn timeline(&mut self, ui: &mut egui::Ui) {
+        let count = self.project.document.snapshot().frame_count;
+        let end_frame = (i64::from(count) - 1).max(self.project.frame);
         ui.horizontal(|ui| {
             if ui
                 .button(if self.playing { "Pause" } else { "Play" })
@@ -1013,14 +1021,13 @@ impl Studio {
                 self.toggle_play();
             }
             let changed = ui
-                .add(egui::Slider::new(&mut self.project.frame, 0..=self.end_frame).text("Frame"))
+                .add(egui::Slider::new(&mut self.project.frame, 0..=end_frame).text("Frame"))
                 .changed();
             if changed {
                 self.playing = false;
                 self.request_preview();
             }
-            ui.label("End");
-            ui.add(egui::DragValue::new(&mut self.end_frame).range(1..=100000));
+            ui.label(format!("of {count} frames"));
             let fps = self.project.document.snapshot().frame_rate;
             ui.weak(format!("{} / {} fps", fps.ticks, fps.rate));
         });
@@ -1198,7 +1205,8 @@ impl eframe::App for Studio {
             let fps = self.project.document.snapshot().frame_rate;
             let elapsed =
                 (self.playback.elapsed().as_secs_f64() * fps.ticks as f64 / fps.rate as f64) as i64;
-            let frame = (self.playback_frame + elapsed) % (self.end_frame + 1);
+            let count = i64::from(self.project.document.snapshot().frame_count);
+            let frame = (self.playback_frame.rem_euclid(count) + elapsed.rem_euclid(count)) % count;
             // Playback must let an active frame finish before submitting again.
             // Explicit edits and scrubbing still replace obsolete work immediately.
             if frame != self.project.frame && !self.preview_pending {
@@ -1406,6 +1414,7 @@ impl eframe::App for Studio {
         if let Some(settings) = self.export_controls.show(
             &ctx,
             self.project.document.snapshot().frame_rate,
+            self.project.document.snapshot().frame_count,
             !self.files.busy() && !self.authoring_dialog_open() && self.confirm.is_none(),
         ) {
             self.export_sequence(settings, &ctx);

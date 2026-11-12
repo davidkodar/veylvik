@@ -58,8 +58,9 @@ impl Project {
         project.reload_inputs()?;
         Ok(project)
     }
-    pub fn blank(width: u32, height: u32, frame_rate: Time) -> Result<Self> {
-        let composition = veylvik_document::blank(width, height, frame_rate)?;
+    pub fn blank(width: u32, height: u32, frame_rate: Time, frame_count: u32) -> Result<Self> {
+        let mut composition = veylvik_document::blank(width, height, frame_rate)?;
+        composition.frame_count = frame_count;
         let selected = composition.output;
         Ok(Self {
             session: NodeId::new_v4(),

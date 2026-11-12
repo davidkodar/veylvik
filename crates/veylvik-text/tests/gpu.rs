@@ -26,6 +26,7 @@ fn shaped_outlines_feed_document_nodes_and_gpu_rasterization() {
     let node = Node::new("Outlined title", Operation::Path { geometry: path }, &[]);
     let document = Composition {
         schema: 1,
+        frame_count: 240,
         width: 640,
         height: 128,
         frame_rate: Time::new(24, 1).unwrap(),

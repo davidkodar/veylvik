@@ -246,6 +246,7 @@ pub fn procedural_demo() -> Composition {
     );
     Composition {
         schema: 1,
+        frame_count: 144,
         width: 960,
         height: 540,
         frame_rate: Time { ticks: 24, rate: 1 },

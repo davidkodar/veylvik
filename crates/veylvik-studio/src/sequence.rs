@@ -19,6 +19,7 @@ pub struct Settings {
 pub struct Controls {
     pub open: bool,
     format: veylvik_io::FrameFormat,
+    initialized: bool,
     start: i64,
     end: i64,
     name: String,
@@ -29,6 +30,7 @@ impl Default for Controls {
         Self {
             open: false,
             format: veylvik_io::FrameFormat::Png,
+            initialized: false,
             start: 0,
             end: 95,
             name: "frames".into(),
@@ -37,10 +39,20 @@ impl Default for Controls {
     }
 }
 impl Controls {
-    pub fn show(&mut self, ctx: &egui::Context, rate: Time, enabled: bool) -> Option<Settings> {
+    pub fn show(
+        &mut self,
+        ctx: &egui::Context,
+        rate: Time,
+        frame_count: u32,
+        enabled: bool,
+    ) -> Option<Settings> {
         let mut settings = None;
         let mut open = self.open;
         if open {
+            if !self.initialized {
+                self.end = i64::from(frame_count) - 1;
+                self.initialized = true;
+            }
             egui::Window::new("Export image sequence").open(&mut open).collapsible(false).show(ctx, |ui| {
                 ui.add_enabled_ui(enabled, |ui| {
                     ui.label("Export the current preview node at the composition frame rate.");

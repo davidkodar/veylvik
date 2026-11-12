@@ -3,6 +3,7 @@ use veylvik_render::*;
 fn composition(nodes: Vec<Node>, output: NodeId) -> Composition {
     Composition {
         schema: 1,
+        frame_count: 240,
         width: 13,
         height: 7,
         frame_rate: Time::new(24, 1).unwrap(),

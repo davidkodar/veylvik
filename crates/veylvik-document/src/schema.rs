@@ -11,6 +11,7 @@ pub fn command() -> Value {
         {"type":"object","properties":{"command":{"const":"put"},"node":node()},"required":["command","node"],"additionalProperties":false},
         {"type":"object","properties":{"command":{"enum":["remove","output"]},"id":{"type":"string","format":"uuid"}},"required":["command","id"],"additionalProperties":false},
         {"type":"object","properties":{"command":{"const":"resize"},"width":{"type":"integer","minimum":1,"maximum":8192},"height":{"type":"integer","minimum":1,"maximum":8192}},"required":["command","width","height"],"additionalProperties":false},
+        {"type":"object","properties":{"command":{"const":"frame_count"},"frame_count":{"type":"integer","minimum":1,"maximum":crate::MAX_FRAME_COUNT}},"required":["command","frame_count"],"additionalProperties":false},
         {"type":"object","properties":{"command":{"const":"frame_rate"},"frame_rate":{"type":"object","properties":{"ticks":{"type":"integer","minimum":1,"maximum":i64::MAX},"rate":{"type":"integer","minimum":1,"maximum":u32::MAX}},"required":["ticks","rate"],"additionalProperties":false}},"required":["command","frame_rate"],"additionalProperties":false},
         {"type":"object","properties":{"command":{"const":"place"},"id":{"type":"string","format":"uuid"},"position":position()},"required":["command","id","position"],"additionalProperties":false}
     ]})

@@ -328,3 +328,57 @@ fn blank_compositions_and_frame_rate_edits_are_validated_and_atomic() {
     assert_eq!(document.snapshot().height, 1920);
     assert_eq!(document.snapshot().frame_rate.rate, 1001);
 }
+
+#[test]
+fn frame_count_defaults_for_old_documents_and_edits_are_atomic() {
+    let original = motion_demo();
+    let mut wire = serde_json::to_value(&original).unwrap();
+    wire.as_object_mut().unwrap().remove("frame_count");
+    let old: Composition = serde_json::from_value(wire).unwrap();
+    assert_eq!(old.frame_count, DEFAULT_FRAME_COUNT);
+    old.validate().unwrap();
+    let mut document = Document::new(original).unwrap();
+    let before = serde_json::to_value(document.snapshot()).unwrap();
+    for count in [0, MAX_FRAME_COUNT + 1] {
+        assert!(
+            document
+                .apply(
+                    0,
+                    &[
+                        Command::Resize {
+                            width: 17,
+                            height: 19
+                        },
+                        Command::FrameCount { frame_count: count }
+                    ]
+                )
+                .is_err()
+        );
+        assert_eq!(document.revision(), 0);
+        assert_eq!(serde_json::to_value(document.snapshot()).unwrap(), before);
+    }
+    let command: Command =
+        serde_json::from_value(serde_json::json!({"command":"frame_count","frame_count":1}))
+            .unwrap();
+    document.apply(0, &[command]).unwrap();
+    assert_eq!(document.snapshot().frame_count, 1);
+    assert_eq!(
+        serde_json::to_value(&document.snapshot().nodes).unwrap(),
+        before["nodes"]
+    );
+    document.undo(1).unwrap();
+    assert_eq!(document.snapshot().frame_count, 96);
+    document.redo(2).unwrap();
+    assert_eq!(document.snapshot().frame_count, 1);
+    document
+        .apply(
+            3,
+            &[Command::FrameCount {
+                frame_count: MAX_FRAME_COUNT,
+            }],
+        )
+        .unwrap();
+    let decoded: Composition =
+        serde_json::from_slice(&serde_json::to_vec(document.snapshot()).unwrap()).unwrap();
+    assert_eq!(decoded.frame_count, MAX_FRAME_COUNT);
+}

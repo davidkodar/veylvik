@@ -71,6 +71,7 @@ fn run() -> Result<()> {
             );
             let doc = Composition {
                 schema: 1,
+                frame_count: 240,
                 width: image.width(),
                 height: image.height(),
                 frame_rate: Time::new(24, 1)?,

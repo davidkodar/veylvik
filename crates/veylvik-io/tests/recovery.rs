@@ -24,6 +24,7 @@ fn recovery_copies_preserve_assets_and_leave_originals_and_other_sessions_untouc
     );
     let mut doc = Composition {
         schema: 1,
+        frame_count: 240,
         width: 13,
         height: 9,
         frame_rate: Time::new(24, 1).unwrap(),

@@ -69,6 +69,7 @@ pub fn run(args: &[String]) -> Result<()> {
     );
     let document = Composition {
         schema: 1,
+        frame_count: 240,
         width,
         height,
         frame_rate: Time::new(24, 1)?,

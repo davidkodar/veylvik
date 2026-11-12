@@ -66,6 +66,7 @@ fn fractal_noise_matches_lattice_reference_and_animated_cache_identity() {
             );
             let doc = Composition {
                 schema: 1,
+                frame_count: 240,
                 width: 13,
                 height: 9,
                 frame_rate: Time::new(24, 1).unwrap(),

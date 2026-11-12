@@ -29,6 +29,7 @@ fn plan_reuse_tracks_reachable_definitions_and_validates_disconnected_edits() {
     );
     let mut doc = Composition {
         schema: 1,
+        frame_count: 240,
         width: 13,
         height: 9,
         frame_rate: Time::new(24, 1).unwrap(),
@@ -42,6 +43,7 @@ fn plan_reuse_tracks_reachable_definitions_and_validates_disconnected_edits() {
     doc.nodes.get_mut(&image.id).unwrap().label = "renamed".into();
     doc.nodes.get_mut(&output.id).unwrap().position = Some(NodePosition { x: 200.0, y: -40.0 });
     doc.frame_rate = Time::new(30000, 1001).unwrap();
+    doc.frame_count = 800;
     let other = Node::new(
         "disconnected",
         Operation::Noise {
@@ -99,6 +101,7 @@ fn plan_reuse_preserves_signed_zero_in_authored_parameters() {
     );
     let mut doc = Composition {
         schema: 1,
+        frame_count: 240,
         width: 1,
         height: 1,
         frame_rate: Time::new(24, 1).unwrap(),

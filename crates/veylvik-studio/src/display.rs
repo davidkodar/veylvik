@@ -152,6 +152,7 @@ mod tests {
         );
         let doc = Composition {
             schema: 1,
+            frame_count: 240,
             width: 2,
             height: 2,
             frame_rate: Time::new(24, 1).unwrap(),
@@ -187,6 +188,7 @@ mod tests {
         );
         let doc = Composition {
             schema: 1,
+            frame_count: 240,
             width: 4,
             height: 2,
             frame_rate: Time::new(24, 1).unwrap(),
@@ -261,6 +263,7 @@ mod tests {
         );
         let doc = Composition {
             schema: 1,
+            frame_count: 240,
             width: 1,
             height: 1,
             frame_rate: Time::new(24, 1).unwrap(),
@@ -337,6 +340,7 @@ mod tests {
         );
         let doc = Composition {
             schema: 1,
+            frame_count: 240,
             width: 2,
             height: 1,
             frame_rate: Time::new(24, 1).unwrap(),

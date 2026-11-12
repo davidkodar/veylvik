@@ -40,6 +40,7 @@ fn channel_masks_preserve_coverage_and_convert_hdr_without_alpha_division() {
         );
         let doc = Composition {
             schema: 1,
+            frame_count: 240,
             width,
             height: 1,
             frame_rate: Time::new(24, 1).unwrap(),

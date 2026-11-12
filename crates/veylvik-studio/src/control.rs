@@ -119,7 +119,6 @@ pub fn call(studio: &mut Studio, name: &str, args: &Value) -> Result<Value> {
             }
             veylvik_document::Time::at_frame(frame, studio.project.document.snapshot().frame_rate)?;
             studio.project.frame = frame;
-            studio.end_frame = studio.end_frame.max(frame);
             studio.project.preview = node;
         }
         _ => return Err("unknown live tool".into()),

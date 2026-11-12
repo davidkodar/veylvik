@@ -246,6 +246,11 @@ impl Node {
         }
     }
 }
+pub const DEFAULT_FRAME_COUNT: u32 = 240;
+pub const MAX_FRAME_COUNT: u32 = 1_000_000;
+fn default_frame_count() -> u32 {
+    DEFAULT_FRAME_COUNT
+}
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Composition {
@@ -253,6 +258,8 @@ pub struct Composition {
     pub width: u32,
     pub height: u32,
     pub frame_rate: Time,
+    #[serde(default = "default_frame_count")]
+    pub frame_count: u32,
     pub nodes: BTreeMap<NodeId, Node>,
     pub output: NodeId,
 }
@@ -269,6 +276,9 @@ impl Composition {
         }
         if self.width == 0 || self.height == 0 || self.width > 8192 || self.height > 8192 {
             return fail("dimensions must be in 1..=8192");
+        }
+        if !(1..=MAX_FRAME_COUNT).contains(&self.frame_count) {
+            return fail("frame count must be in 1..=1000000");
         }
         if self.frame_rate.seconds()? <= 0.0 {
             return fail("frame rate must be positive");
@@ -426,6 +436,9 @@ pub enum Command {
     FrameRate {
         frame_rate: Time,
     },
+    FrameCount {
+        frame_count: u32,
+    },
 }
 
 /// A transparent composition with one editable background generator.
@@ -433,6 +446,7 @@ pub fn blank(width: u32, height: u32, frame_rate: Time) -> Result<Composition> {
     let node = Node::new("Background", Operation::Solid { color: [0.0; 4] }, &[]);
     let composition = Composition {
         schema: 1,
+        frame_count: DEFAULT_FRAME_COUNT,
         width,
         height,
         frame_rate,
@@ -497,6 +511,7 @@ pub fn demo() -> Composition {
     );
     Composition {
         schema: 1,
+        frame_count: DEFAULT_FRAME_COUNT,
         width: 640,
         height: 360,
         frame_rate: Time { ticks: 24, rate: 1 },
@@ -626,6 +641,7 @@ pub fn motion_demo() -> Composition {
     );
     Composition {
         schema: 1,
+        frame_count: 96,
         width: 960,
         height: 540,
         frame_rate: Time { ticks: 24, rate: 1 },
