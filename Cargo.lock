@@ -3002,9 +3002,17 @@ dependencies = [
  "pathdiff",
  "png",
  "serde_json",
+ "veylvik-control",
  "veylvik-document",
  "veylvik-io",
  "veylvik-render",
+]
+
+[[package]]
+name = "veylvik-control"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
 ]
 
 [[package]]
@@ -3050,6 +3058,7 @@ dependencies = [
  "eframe",
  "pollster",
  "serde_json",
+ "veylvik-control",
  "veylvik-document",
  "veylvik-io",
  "veylvik-render",

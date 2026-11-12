@@ -210,10 +210,37 @@ The `render` tool optionally accepts `node` (a UUID) and `region` (an object wit
 `x`, `y`, `width`, `height`). It returns the rendered region, path, and document
 revision. An invalid preview target or region is rejected before GPU creation.
 
-The session owns an in-memory document. Edits persist only through `save`;
+The headless session owns an independent in-memory document. Edits persist only through `save`;
 external file edits are not live-synchronized. Save and render can replace the
 explicit destination path, except for a referenced input image. The MCP client should expose those actions for user
 review. Output currently returns the PNG path, not inline image content.
+
+To control the open native editor instead, start it with a new private endpoint
+directory, then point an MCP client's stdio command at the proxy:
+
+```sh
+./target/release/veylvik open example.veylvik --control-dir /tmp/veylvik-live
+# MCP client command, while that editor remains open:
+./target/release/veylvik mcp --studio /tmp/veylvik-live
+```
+
+Live control is opt-in and uses a local Unix socket, with directory permissions
+0700 and socket permissions 0600. Existing endpoint directories are refused.
+Normal editor shutdown removes its endpoint; after an abnormal exit, use a new
+directory or remove the stale endpoint yourself. One client connects at a time.
+The toolbar shows **MCP** when live control is enabled.
+
+Live tools are `inspect`, `nodes`, `apply`, `undo`, `redo`, and `preview`.
+`inspect` returns a project `session` UUID and `revision`; both are required for
+edits, undo/redo, and preview. Opening a project creates a new session identity,
+so an old command cannot target a newly opened project with the same revision.
+Edits run on the UI thread, appear in the editor, and share its undo history.
+`apply` supports dry runs and uses the same command schema as headless editing.
+Unapplied inspector drafts, active node drags, and file jobs block remote changes.
+Image assets must already be loaded through the editor. `preview` accepts an
+absolute `frame` in 0–1000000 and optional `node`, pauses playback, and requests
+an asynchronous GPU preview. Live tools do not save or export files; normal UI
+file actions remain available. Both transports bound incoming messages to 4 MiB.
 
 ## Development
 
@@ -236,6 +263,7 @@ The workspace has five boundaries:
 - `veylvik-render`: immutable compiled plans, buffer lifetimes, compute kernels,
   headless rendering, and the SDR output transform. No UI dependencies.
 - `veylvik-io`: PNG decoding, source protection, and path-aware persistence.
+- `veylvik-control`: shared MCP lifecycle/framing and bounded local transport.
 - `veylvik-cli`: command-line and MCP adapters using those public APIs.
 - `veylvik-studio`: native Rust UI, shared-device display, and document controls.
 

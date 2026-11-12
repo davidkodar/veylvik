@@ -1,4 +1,5 @@
 mod animation;
+mod control;
 mod sequence;
 use animation::scalar;
 mod display;
@@ -25,10 +26,20 @@ fn main() {
 }
 fn run() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<_> = std::env::args_os().skip(1).collect();
-    if args.len() > 1 {
-        return Err("usage: veylvik-studio [FILE]".into());
+    let mut path = None;
+    let mut control_directory = None;
+    let mut index = 0;
+    while index < args.len() {
+        if args[index] == "--control-dir" && control_directory.is_none() && index + 1 < args.len() {
+            control_directory = Some(PathBuf::from(&args[index + 1]));
+            index += 2;
+        } else if path.is_none() && !args[index].to_string_lossy().starts_with("--") {
+            path = Some(PathBuf::from(&args[index]));
+            index += 1;
+        } else {
+            return Err("usage: veylvik-studio [FILE] [--control-dir NEW_DIRECTORY]".into());
+        }
     }
-    let path = args.first().map(PathBuf::from);
     let project = Project::open(path.as_deref())?;
     let mut setup = egui_wgpu::WgpuSetupCreateNew::without_display_handle();
     setup.instance_descriptor.backends = wgpu::Backends::VULKAN;
@@ -64,7 +75,18 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             })?;
             let display = Display::new(renderer.device(), state.target_format);
             let draft = project.document.snapshot().nodes[&project.selected].clone();
+            let control = if let Some(directory) = control_directory {
+                let context = cc.egui_ctx.clone();
+                Some(veylvik_control::ipc::Server::bind(
+                    &directory,
+                    control::catalog(),
+                    move || context.request_repaint(),
+                )?)
+            } else {
+                None
+            };
             let mut app = Studio {
+                control,
                 project,
                 renderer,
                 scheduler: Some(scheduler),
@@ -102,6 +124,7 @@ enum Leave {
     Close,
 }
 struct Studio {
+    control: Option<veylvik_control::ipc::Server>,
     project: Project,
     renderer: Arc<Renderer>,
     scheduler: Option<GpuPreviewScheduler>,
@@ -504,6 +527,10 @@ impl Studio {
     fn toolbar(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
             ui.heading(egui::RichText::new("VEYLVIK").color(self.accent));
+            if self.control.is_some() {
+                ui.weak("MCP")
+                    .on_hover_text("Local live control is enabled for this editor session.");
+            }
             ui.separator();
             ui.label(
                 self.project
@@ -847,6 +874,14 @@ impl eframe::App for Studio {
         let ctx = ui.ctx().clone();
         self.theme(&ctx);
         self.poll_files(&ctx);
+        for _ in 0..8 {
+            let Some(request) = self.control.as_ref().and_then(|server| server.try_recv()) else {
+                break;
+            };
+            let result =
+                control::call(self, &request.name, &request.arguments).map_err(|e| e.to_string());
+            request.respond(result);
+        }
         ctx.request_repaint_after(Duration::from_secs(2));
         if let Some(scheduler) = &self.scheduler {
             match scheduler.try_take() {
@@ -1013,6 +1048,7 @@ impl eframe::App for Studio {
         }
     }
     fn on_exit(&mut self) {
+        self.control.take();
         self.scheduler.take();
         self.displayed.take();
         let _ = self.renderer.device().poll(wgpu::PollType::Wait {

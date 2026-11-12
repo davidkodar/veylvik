@@ -7,6 +7,7 @@ rust-version.workspace = true
 name = "veylvik"
 path = "src/main.rs"
 [dependencies]
+veylvik-control.workspace = true
 veylvik-document.workspace = true
 veylvik-render.workspace = true
 serde_json.workspace = true

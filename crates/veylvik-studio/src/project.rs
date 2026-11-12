@@ -8,6 +8,7 @@ type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
 /// GUI state owns the same transactional document used by headless clients.
 pub struct Project {
+    pub session: NodeId,
     pub document: Document,
     pub path: Option<PathBuf>,
     pub base: PathBuf,
@@ -40,6 +41,7 @@ impl Project {
         };
         let selected = composition.output;
         let mut project = Self {
+            session: NodeId::new_v4(),
             document: Document::new(composition)?,
             saved_revision: path.as_ref().map(|_| 0),
             compiled: None,

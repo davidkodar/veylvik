@@ -4,11 +4,11 @@ use std::path::Path;
 use veylvik_document::{Composition, Node, Operation, Time};
 use veylvik_render::{Plan, Region, RenderRequest, Renderer};
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
-const USAGE: &str = "usage: veylvik open [FILE] | demo FILE [--motion] | import IMAGE.png FILE | nodes | check FILE | render FILE OUTPUT.png [TICKS RATE] [--node UUID] [--crop X Y WIDTH HEIGHT] | render-sequence FILE DIRECTORY START END [--node UUID] [--crop X Y WIDTH HEIGHT] | mcp FILE";
+const USAGE: &str = "usage: veylvik open [FILE] [--control-dir NEW_DIRECTORY] | demo FILE [--motion] | import IMAGE.png FILE | nodes | check FILE | render FILE OUTPUT.png [TICKS RATE] [--node UUID] [--crop X Y WIDTH HEIGHT] | render-sequence FILE DIRECTORY START END [--node UUID] [--crop X Y WIDTH HEIGHT] | mcp FILE | mcp --studio DIRECTORY";
 fn run() -> Result<()> {
     let args: Vec<String> = std::env::args().collect();
     match args.get(1).map(String::as_str) {
-        Some("open") if args.len() == 2 || args.len() == 3 => {
+        Some("open") => {
             let studio = std::env::current_exe()?.with_file_name("veylvik-studio");
             let status = std::process::Command::new(studio)
                 .args(&args[2..])
@@ -19,6 +19,17 @@ fn run() -> Result<()> {
             if !status.success() {
                 return Err("studio exited with an error".into());
             }
+        }
+        Some("mcp") if args.len() == 4 && args[2] == "--studio" => {
+            use std::os::unix::net::UnixStream;
+            let mut stream =
+                UnixStream::connect(Path::new(&args[3]).join(veylvik_control::ipc::SOCKET_NAME))?;
+            let mut writer = stream.try_clone()?;
+            std::thread::spawn(move || {
+                let _ = relay(&mut std::io::stdin().lock(), &mut writer);
+                let _ = writer.shutdown(std::net::Shutdown::Write);
+            });
+            relay(&mut stream, &mut std::io::stdout().lock())?;
         }
         Some("mcp") if args.len() == 3 => mcp::serve(
             Composition::load(Path::new(&args[2]))?,
@@ -188,6 +199,21 @@ fn render_options(
         region.validate(doc.width, doc.height)?;
     }
     Ok((output.unwrap_or(doc.output), request))
+}
+// RPC must flush each received chunk even when the next read waits indefinitely.
+fn relay(input: &mut impl std::io::Read, output: &mut impl std::io::Write) -> std::io::Result<()> {
+    let mut buffer = [0; 8192];
+    loop {
+        match input.read(&mut buffer) {
+            Ok(0) => return Ok(()),
+            Ok(count) => {
+                output.write_all(&buffer[..count])?;
+                output.flush()?;
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => {}
+            Err(error) => return Err(error),
+        }
+    }
 }
 fn main() {
     if let Err(e) = run() {
