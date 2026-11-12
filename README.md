@@ -156,6 +156,11 @@ GPU frame, reading only a four-byte finite-value status flag. Held frames count
 against subsequent render budgets and are never recycled as intermediates.
 `read_frame` explicitly downloads one, including its requested crop. A GPU
 consumer must retain the frame until its submission finishes. One device and queue own all resources.
+Completed source buffers retain immutable image identities while idle in the
+existing pool, avoiding repeated uploads during animation. Aliased asset names
+sharing one image also share one upload and budget allocation. Ordinary buffer
+reuse clears source identity; trimming or memory pressure may evict it. Resource
+statistics report source uploads, bytes uploaded, and source-content reuse.
 The default 512 MiB render budget covers declared GPU image buffers, readback,
 uniforms, and each unique source image upload; it does not measure driver overhead
 or bound total process RAM. `check` reports graph working bytes before source

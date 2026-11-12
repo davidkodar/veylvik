@@ -10,6 +10,9 @@ use std::{
 #[derive(Debug, Clone, Copy, Default, serde::Serialize)]
 pub struct ResourceStats {
     pub buffers_created: u64,
+    pub source_uploads: u64,
+    pub source_upload_bytes: u64,
+    pub source_reuses: u64,
     pub buffers_reused: u64,
     pub buffers_evicted: u64,
     pub resident_bytes: u64,
@@ -21,6 +24,7 @@ struct Entry {
     buffer: wgpu::Buffer,
     size: u64,
     usage: wgpu::BufferUsages,
+    source: Option<u64>,
 }
 #[derive(Default)]
 pub(crate) struct Pool {
@@ -88,6 +92,41 @@ impl FrameBuffers<'_> {
         }
     }
 
+    /// Immutable sources may reuse their contents only while the completed
+    /// allocation remains idle. Ordinary buffer reuse clears this identity.
+    pub fn source(
+        &mut self,
+        device: &wgpu::Device,
+        identity: u64,
+        size: u64,
+        label: &str,
+    ) -> Result<(wgpu::Buffer, bool)> {
+        if let Some(index) = self
+            .pool
+            .idle
+            .iter()
+            .position(|entry| entry.source == Some(identity))
+        {
+            let entry = self.pool.idle.remove(index).unwrap();
+            self.pool.stats.idle_bytes -= entry.size;
+            self.pool.stats.buffers_reused += 1;
+            self.pool.stats.source_reuses += 1;
+            let buffer = entry.buffer.clone();
+            self.entries.push(entry);
+            return Ok((buffer, false));
+        }
+        let buffer = self.take(
+            device,
+            size,
+            wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            label,
+        )?;
+        self.entries.last_mut().unwrap().source = Some(identity);
+        self.pool.stats.source_uploads += 1;
+        self.pool.stats.source_upload_bytes += size;
+        Ok((buffer, true))
+    }
+
     pub fn take(
         &mut self,
         device: &wgpu::Device,
@@ -99,9 +138,15 @@ impl FrameBuffers<'_> {
             .pool
             .idle
             .iter()
-            .position(|e| e.size == size && e.usage == usage)
-        {
-            let entry = self.pool.idle.remove(index).unwrap();
+            .position(|e| e.size == size && e.usage == usage && e.source.is_none())
+            .or_else(|| {
+                self.pool
+                    .idle
+                    .iter()
+                    .position(|e| e.size == size && e.usage == usage)
+            }) {
+            let mut entry = self.pool.idle.remove(index).unwrap();
+            entry.source = None;
             self.pool.stats.idle_bytes -= size;
             self.pool.stats.buffers_reused += 1;
             entry
@@ -128,6 +173,7 @@ impl FrameBuffers<'_> {
                 buffer,
                 size,
                 usage,
+                source: None,
             }
         };
         let handle = entry.buffer.clone();

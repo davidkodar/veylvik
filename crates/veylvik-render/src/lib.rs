@@ -307,6 +307,7 @@ impl Renderer {
             return Err(error("frame exceeds adapter buffer limits"));
         }
         let mut source_bytes = 0;
+        let mut source_ids = std::collections::BTreeSet::new();
         for asset in plan.required_assets() {
             let source = inputs
                 .get(asset)
@@ -318,7 +319,9 @@ impl Renderer {
                     "image input {asset} exceeds adapter buffer limits"
                 )));
             }
-            source_bytes += source.byte_size();
+            if source_ids.insert(source.identity()) {
+                source_bytes += source.byte_size();
+            }
         }
         let working_bytes = if download {
             plan.working_bytes()
@@ -423,10 +426,13 @@ impl Renderer {
         if let Some(frame) = cache.lookup(&key) {
             return Ok(frame);
         }
+        let mut source_ids = std::collections::BTreeSet::new();
         let source_bytes: u64 = plan
             .required_assets()
             .into_iter()
-            .map(|asset| inputs.get(asset).unwrap().byte_size())
+            .map(|asset| inputs.get(asset).unwrap())
+            .filter(|image| source_ids.insert(image.identity()))
+            .map(|image| image.byte_size())
             .sum();
         let needed = plan.gpu_working_bytes() + source_bytes;
         while self.resource_stats()?.held_bytes + needed > self.budget_bytes && cache.evict() {}
@@ -476,16 +482,21 @@ impl Renderer {
         )?;
         self.queue.write_buffer(&dummy, 0, &[0; 16]);
         let mut sources = BTreeMap::new();
+        let mut source_buffers = BTreeMap::<u64, wgpu::Buffer>::new();
         for key in plan.required_assets() {
             let image = inputs.get(key).unwrap();
-            let buffer = resources.take(
-                &self.device,
-                image.byte_size(),
-                wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
-                key,
-            )?;
-            self.queue
-                .write_buffer(&buffer, 0, bytemuck::cast_slice(image.pixels()));
+            let buffer = if let Some(buffer) = source_buffers.get(&image.identity()) {
+                buffer.clone()
+            } else {
+                let (buffer, upload) =
+                    resources.source(&self.device, image.identity(), image.byte_size(), key)?;
+                if upload {
+                    self.queue
+                        .write_buffer(&buffer, 0, bytemuck::cast_slice(image.pixels()));
+                }
+                source_buffers.insert(image.identity(), buffer.clone());
+                buffer
+            };
             sources.insert(key, buffer);
         }
         let buffers = (0..plan.slot_count)

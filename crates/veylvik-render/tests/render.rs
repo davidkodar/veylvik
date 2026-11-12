@@ -887,3 +887,90 @@ fn curve_modes_reach_gpu_and_cache_keys_follow_evaluated_values() {
         }
     }
 }
+
+#[test]
+#[ignore = "requires Vulkan"]
+fn immutable_source_uploads_reuse_contents_and_aliases_share_budget() {
+    use std::sync::Arc;
+    let mut renderer = Renderer::new().unwrap();
+    let a = Node::new("a", Operation::Image { asset: "a".into() }, &[]);
+    let b = Node::new("alias", Operation::Image { asset: "b".into() }, &[]);
+    let merge = Node::new(
+        "over",
+        Operation::Merge,
+        &[("background", a.id), ("foreground", b.id)],
+    );
+    let exposure = Node::new(
+        "animated",
+        Operation::Exposure {
+            stops: Scalar::Linear {
+                keys: vec![
+                    Key {
+                        time: Time::new(0, 1).unwrap(),
+                        value: 0.0,
+                    },
+                    Key {
+                        time: Time::new(1, 1).unwrap(),
+                        value: 1.0,
+                    },
+                ],
+            },
+        },
+        &[("image", merge.id)],
+    );
+    let output = exposure.id;
+    let plan = Plan::compile(&composition(vec![a, b, merge, exposure], output)).unwrap();
+    renderer.budget_bytes = plan.working_bytes() + 16; // One unique 1×1 source, despite two names.
+    let source = Arc::new(Image::new(1, 1, vec![[0.25, 0.0, 0.0, 0.5]]).unwrap());
+    let mut inputs = ImageInputs::default();
+    inputs.insert("a", source.clone());
+    inputs.insert("b", source);
+    let first = renderer
+        .render_frame(
+            &plan,
+            RenderRequest::full(Time::new(0, 1).unwrap()),
+            &inputs,
+        )
+        .unwrap();
+    assert_eq!(first.pixels[0], [0.375, 0.0, 0.0, 0.75]);
+    let first_stats = renderer.resource_stats().unwrap();
+    assert_eq!(first_stats.source_uploads, 1);
+    assert_eq!(first_stats.source_upload_bytes, 16);
+    let second = renderer
+        .render_frame(
+            &plan,
+            RenderRequest::full(Time::new(1, 1).unwrap()),
+            &inputs,
+        )
+        .unwrap();
+    assert_eq!(second.pixels[0], [0.75, 0.0, 0.0, 0.75]);
+    let second_stats = renderer.resource_stats().unwrap();
+    assert_eq!(second_stats.source_uploads, 1);
+    assert_eq!(second_stats.source_reuses, 1);
+    assert_eq!(second_stats.buffers_created, first_stats.buffers_created);
+    let replacement = Arc::new(Image::new(1, 1, vec![[0.0, 0.5, 0.0, 1.0]]).unwrap());
+    inputs.insert("a", replacement.clone());
+    inputs.insert("b", replacement);
+    let third = renderer
+        .render_frame(
+            &plan,
+            RenderRequest::full(Time::new(0, 1).unwrap()),
+            &inputs,
+        )
+        .unwrap();
+    assert_eq!(third.pixels[0], [0.0, 0.5, 0.0, 1.0]);
+    assert_eq!(renderer.resource_stats().unwrap().source_uploads, 2);
+    renderer.trim_resources().unwrap();
+    assert_eq!(renderer.resource_stats().unwrap().resident_bytes, 0);
+    renderer
+        .render_frame(
+            &plan,
+            RenderRequest::full(Time::new(0, 1).unwrap()),
+            &inputs,
+        )
+        .unwrap();
+    let stats = renderer.resource_stats().unwrap();
+    assert_eq!(stats.source_uploads, 3);
+    assert_eq!(stats.source_upload_bytes, 48);
+    assert!(stats.resident_bytes <= renderer.budget_bytes);
+}
