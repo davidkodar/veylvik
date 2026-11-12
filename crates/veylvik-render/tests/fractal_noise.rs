@@ -52,10 +52,12 @@ fn fractal_noise_matches_lattice_reference_and_animated_cache_identity() {
                     evolution: Scalar::Linear {
                         keys: vec![
                             Key {
+                                segment: None,
                                 time: Time::new(0, 1).unwrap(),
                                 value: -1.25,
                             },
                             Key {
+                                segment: None,
                                 time: Time::new(2, 1).unwrap(),
                                 value: 0.75,
                             },

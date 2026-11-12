@@ -55,10 +55,12 @@ fn animated(start: f32, end: f32) -> Scalar {
     Scalar::Linear {
         keys: vec![
             Key {
+                segment: None,
                 time: Time { ticks: 0, rate: 1 },
                 value: start,
             },
             Key {
+                segment: None,
                 time: Time { ticks: 6, rate: 1 },
                 value: end,
             },

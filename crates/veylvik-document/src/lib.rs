@@ -34,7 +34,7 @@ fn fail<T>(message: impl Into<String>) -> Result<T> {
 
 pub mod animation;
 pub mod key_edit;
-pub use animation::{CompiledScalar, Interpolation, Key, Scalar, Time};
+pub use animation::{CompiledScalar, Handle, Interpolation, Key, Scalar, Segment, Time};
 /// All image ports carry scene-linear Rec.709, premultiplied RGBA float pixels.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
@@ -527,10 +527,12 @@ pub fn demo() -> Composition {
             stops: Scalar::Linear {
                 keys: vec![
                     Key {
+                        segment: None,
                         time: Time { ticks: 0, rate: 1 },
                         value: -2.0,
                     },
                     Key {
+                        segment: None,
                         time: Time { ticks: 2, rate: 1 },
                         value: 2.0,
                     },
@@ -656,14 +658,17 @@ pub fn motion_demo() -> Composition {
                 rotation: Scalar::Smooth {
                     keys: vec![
                         Key {
+                            segment: None,
                             time: Time { ticks: 0, rate: 1 },
                             value: angle,
                         },
                         Key {
+                            segment: None,
                             time: Time { ticks: 2, rate: 1 },
                             value: -angle,
                         },
                         Key {
+                            segment: None,
                             time: Time { ticks: 4, rate: 1 },
                             value: angle,
                         },

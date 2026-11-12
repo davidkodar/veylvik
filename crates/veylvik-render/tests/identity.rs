@@ -51,10 +51,12 @@ fn constant_identity_effects_alias_sources_before_slot_assignment() {
         radius: Scalar::Linear {
             keys: vec![
                 Key {
+                    segment: None,
                     time: Time::new(0, 1).unwrap(),
                     value: 0.0,
                 },
                 Key {
+                    segment: None,
                     time: Time::new(1, 1).unwrap(),
                     value: 4.0,
                 },

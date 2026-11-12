@@ -106,10 +106,12 @@ fn morphology_matches_square_reference_and_animated_cache_and_crop() {
         *radius = Scalar::Linear {
             keys: vec![
                 Key {
+                    segment: None,
                     time: Time::new(0, 1).unwrap(),
                     value: -2.0,
                 },
                 Key {
+                    segment: None,
                     time: Time::new(1, 1).unwrap(),
                     value: 2.0,
                 },

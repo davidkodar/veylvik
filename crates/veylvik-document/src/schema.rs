@@ -19,3 +19,12 @@ pub fn command() -> Value {
         {"type":"object","properties":{"command":{"const":"place"},"id":{"type":"string","format":"uuid"},"position":position()},"required":["command","id","position"],"additionalProperties":false}
     ]})
 }
+
+/// Outgoing per-key interpolation; null inherits the scalar mode.
+pub fn segment() -> Value {
+    let handle = json!({"type":"object","properties":{"time":{"type":"number","minimum":0,"maximum":1},"value":{"type":"number"}},"required":["time","value"],"additionalProperties":false});
+    json!({"oneOf":[{"type":"null"},
+        {"type":"object","properties":{"mode":{"enum":["linear","hold","smooth","auto"]}},"required":["mode"],"additionalProperties":false},
+        {"type":"object","properties":{"mode":{"const":"bezier"},"outgoing":handle,"incoming":handle},"required":["mode","outgoing","incoming"],"additionalProperties":false,"description":"Times are nonnegative fractions of the key interval and must sum to at most one. Values are endpoint-relative offsets; control values must remain within the parameter bounds."}
+    ]})
+}

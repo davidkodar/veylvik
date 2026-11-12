@@ -12,10 +12,12 @@ fn time_compares_rates_exactly_and_keys_interpolate() {
     let value = Scalar::Linear {
         keys: vec![
             Key {
+                segment: None,
                 time: Time::new(0, 24).unwrap(),
                 value: 0.0,
             },
             Key {
+                segment: None,
                 time: Time::new(48, 24).unwrap(),
                 value: 4.0,
             },
@@ -114,10 +116,12 @@ fn equal_key_times_at_different_rates_are_rejected() {
     let value = Scalar::Linear {
         keys: vec![
             Key {
+                segment: None,
                 time: Time::new(1, 2).unwrap(),
                 value: 0.0,
             },
             Key {
+                segment: None,
                 time: Time::new(12, 24).unwrap(),
                 value: 1.0,
             },
@@ -132,10 +136,12 @@ fn large_adjacent_key_times_do_not_collapse_to_nan() {
     let value = Scalar::Linear {
         keys: vec![
             Key {
+                segment: None,
                 time: Time::new(base, 1).unwrap(),
                 value: 0.0,
             },
             Key {
+                segment: None,
                 time: Time::new(base + 2, 1).unwrap(),
                 value: 4.0,
             },
@@ -152,10 +158,12 @@ fn out_of_range_animated_values_fail_before_commit() {
             radius: Scalar::Linear {
                 keys: vec![
                     Key {
+                        segment: None,
                         time: Time::new(0, 1).unwrap(),
                         value: 0.0,
                     },
                     Key {
+                        segment: None,
                         time: Time::new(5, 1).unwrap(),
                         value: 100.0,
                     },

@@ -3,14 +3,17 @@ fn curve(mode: Interpolation) -> Scalar {
     let mut value = Scalar::Linear {
         keys: vec![
             Key {
+                segment: None,
                 time: Time::new(0, 24).unwrap(),
                 value: 0.0,
             },
             Key {
+                segment: None,
                 time: Time::new(48, 24).unwrap(),
                 value: 8.0,
             },
             Key {
+                segment: None,
                 time: Time::new(120, 30).unwrap(),
                 value: -8.0,
             },
@@ -74,10 +77,12 @@ fn curves_remain_bounded_even_for_large_times_and_extreme_values() {
         let mut value = Scalar::Linear {
             keys: vec![
                 Key {
+                    segment: None,
                     time: Time::new(i64::MAX - 4, u32::MAX).unwrap(),
                     value: -f32::MAX,
                 },
                 Key {
+                    segment: None,
                     time: Time::new(i64::MAX, u32::MAX).unwrap(),
                     value: f32::MAX,
                 },
@@ -118,6 +123,7 @@ fn every_mode_rejects_invalid_keys_and_enforces_resource_limit() {
         assert!(value.validate().is_err());
         *value.keys_mut().unwrap() = (0..=veylvik_document::animation::MAX_KEYS)
             .map(|i| Key {
+                segment: None,
                 time: Time::new(i as i64, 1).unwrap(),
                 value: 0.0,
             })
@@ -208,6 +214,7 @@ fn playhead_key_edits_preserve_exact_times_modes_and_fail_atomically() {
     let mut full = Scalar::Step {
         keys: (0..veylvik_document::animation::MAX_KEYS)
             .map(|index| Key {
+                segment: None,
                 time: Time::new(index as i64, 1).unwrap(),
                 value: 0.0,
             })
@@ -225,14 +232,17 @@ fn monotone_curves_share_slopes_without_overshoot_on_uneven_intervals() {
     let scalar = Scalar::Monotone {
         keys: vec![
             Key {
+                segment: None,
                 time: Time::new(0, 1).unwrap(),
                 value: 0.0,
             },
             Key {
+                segment: None,
                 time: Time::new(1, 1).unwrap(),
                 value: 1.0,
             },
             Key {
+                segment: None,
                 time: Time::new(3, 1).unwrap(),
                 value: 2.0,
             },
@@ -289,18 +299,22 @@ fn monotone_segments_handle_extreme_uneven_rational_spacing() {
     let scalar = Scalar::Monotone {
         keys: vec![
             Key {
+                segment: None,
                 time: Time::new(i64::MIN, 1).unwrap(),
                 value: -f32::MAX,
             },
             Key {
+                segment: None,
                 time: Time::new(2147483646, 2147483647).unwrap(),
                 value: 0.0,
             },
             Key {
+                segment: None,
                 time: Time::new(2147483647, 2147483648).unwrap(),
                 value: 1.0,
             },
             Key {
+                segment: None,
                 time: Time::new(i64::MAX, 1).unwrap(),
                 value: f32::MAX,
             },
@@ -350,10 +364,12 @@ fn compiled_curves_are_validated_immutable_snapshots_with_exact_samples() {
     let extreme = Scalar::Monotone {
         keys: vec![
             Key {
+                segment: None,
                 time: Time::new(i64::MAX - 2, u32::MAX).unwrap(),
                 value: -1.0,
             },
             Key {
+                segment: None,
                 time: Time::new(i64::MAX, u32::MAX).unwrap(),
                 value: 1.0,
             },

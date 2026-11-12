@@ -21,7 +21,7 @@ pub fn scalar(
                     for choice in [Interpolation::Linear, Interpolation::Step, Interpolation::Smooth, Interpolation::Monotone] {
                         ui.selectable_value(&mut mode, choice, mode_label(choice));
                     }
-                });
+                }).response.on_hover_text("Set interpolation for the entire parameter; replaces per-segment easing when applied.");
             if mode != before {
                 scalar.set_interpolation(mode);
                 changed = true;

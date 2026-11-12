@@ -25,6 +25,7 @@ fn targeted_inspection_pages_large_graphs_without_copying_animation_payloads() {
         scale: Scalar::Smooth {
             keys: (0..4096)
                 .map(|index| Key {
+                    segment: None,
                     time: Time::new(index, 24).unwrap(),
                     value: 1.0 + (index % 7) as f32,
                 })

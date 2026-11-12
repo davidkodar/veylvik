@@ -1,12 +1,19 @@
 //! Applied animation workspace. Gestures keep a local preview and submit one
 //! revision-checked SetParameter transaction on release, never per pointer event.
 mod canvas;
+mod groups;
+use groups::{ClipboardTrack, Edits, Marquee, Selection};
+mod tangents;
 
 use eframe::egui::{self, Pos2, Rect, Vec2};
 use std::collections::BTreeSet;
 use veylvik_document::{Composition, Interpolation, Key, NodeId, Scalar, Time, key_edit};
 
 pub enum Action {
+    Batch {
+        revision: u64,
+        edits: Edits,
+    },
     Select(NodeId),
     Seek(i64),
     Commit {
@@ -33,9 +40,14 @@ struct Track<'a> {
 #[serde(deny_unknown_fields)]
 struct Clipboard {
     veylvik_keys: Vec<Key>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    tracks: Vec<ClipboardTrack>,
 }
 struct Drag {
     original: Scalar,
+    handle: Option<(usize, bool)>,
+    companions: Selection,
+    group_preview: Option<Edits>,
     selection: BTreeSet<usize>,
     origin: Pos2,
     revision: u64,
@@ -51,6 +63,12 @@ pub struct Editor {
     curve: bool,
     active: Option<(NodeId, String)>,
     selection: BTreeSet<usize>,
+    linked: Selection,
+    marquee: Option<Marquee>,
+    hit_keys: Vec<(NodeId, String, usize, Pos2)>,
+    clipboard_tracks: Vec<ClipboardTrack>,
+    pending_selection: Option<BTreeSet<usize>>,
+    pending_group: Option<Selection>,
     revision: Option<u64>,
     selected_node: Option<NodeId>,
     nodes: Vec<NodeId>,
@@ -65,7 +83,7 @@ impl Editor {
     }
 
     pub fn dragging(&self) -> bool {
-        self.drag.is_some()
+        self.drag.is_some() || self.marquee.is_some()
     }
     fn commit(
         &mut self,
@@ -97,6 +115,7 @@ impl Editor {
         current: i64,
     ) -> Vec<Action> {
         let mut actions = Vec::new();
+        self.hit_keys.clear();
         let selection_changed = self.selected_node != Some(selected);
         if self.revision != Some(revision) || selection_changed {
             self.nodes = doc
@@ -116,8 +135,13 @@ impl Editor {
                 .sort_by(|a, b| doc.nodes[a].label.cmp(&doc.nodes[b].label).then(a.cmp(b)));
         }
         if self.revision != Some(revision) {
-            self.selection.clear();
+            self.selection = self.pending_selection.take().unwrap_or_default();
             self.drag = None;
+            self.linked.clear();
+            if let Some(selected) = self.pending_group.take() {
+                self.install_selection(selected);
+            }
+            self.marquee = None;
             self.revision = Some(revision);
         }
         if selection_changed
@@ -145,6 +169,8 @@ impl Editor {
                     .map(|p| (selected, p.name.into()))
             });
             self.selection.clear();
+            self.linked.clear();
+            self.marquee = None;
         }
         self.selected_node = Some(selected);
         let active = self
@@ -152,6 +178,12 @@ impl Editor {
             .as_ref()
             .and_then(|(id, p)| doc.nodes.get(id)?.operation.scalar(p))
             .cloned();
+        self.selection.retain(|index| {
+            active
+                .as_ref()
+                .and_then(|s| s.keys())
+                .is_some_and(|keys| *index < keys.len())
+        });
         let now = Time::at_frame(current, doc.frame_rate).expect("validated frame rate");
         let focus = ui.id().with("animation_keyboard");
         self.focus = Some(focus);
@@ -184,15 +216,19 @@ impl Editor {
         let paste_requested = paste_event.is_some();
         let mut valid_paste = true;
         if let Some(text) = paste_event {
-            match (text.len() <= 512 * 1024)
+            match (text.len() <= 2 * 1024 * 1024)
                 .then(|| serde_json::from_str::<Clipboard>(&text).ok())
                 .flatten()
             {
                 Some(clip)
-                    if !clip.veylvik_keys.is_empty()
-                        && clip.veylvik_keys.len() <= veylvik_document::animation::MAX_KEYS =>
+                    if (clip.veylvik_keys.is_empty() != clip.tracks.is_empty())
+                        && clip.tracks.len() <= 64
+                        && clip.veylvik_keys.len()
+                            + clip.tracks.iter().map(|t| t.keys.len()).sum::<usize>()
+                            <= veylvik_document::animation::MAX_KEYS =>
                 {
-                    self.clipboard = clip.veylvik_keys
+                    self.clipboard = clip.veylvik_keys;
+                    self.clipboard_tracks = clip.tracks;
                 }
                 _ => {
                     valid_paste = false;
@@ -205,6 +241,9 @@ impl Editor {
             && ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape));
         if escape {
             self.drag = None;
+            if let Some(marquee) = self.marquee.take() {
+                self.install_selection(marquee.base);
+            }
             self.error = None;
         }
         ui.horizontal_wrapped(|ui| {
@@ -227,7 +266,7 @@ impl Editor {
                 }
             }
             let ready = active.is_some() && !self.dragging();
-            let keys = ready && !self.selection.is_empty();
+            let keys = ready && !self.selections().is_empty();
             let copy = ui
                 .add_enabled(keys, egui::Button::new("Copy keys"))
                 .clicked()
@@ -235,32 +274,31 @@ impl Editor {
                     && keys
                     && ui.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, egui::Key::C)));
             if copy || (keys && copy_event) {
-                match key_edit::copied(active.as_ref().unwrap(), &self.selection) {
-                    Ok(clip) => {
-                        ui.ctx().copy_text(serde_json::to_string(&Clipboard { veylvik_keys: clip.clone() }).expect("validated keys"));
-                        self.clipboard = clip;
-                        self.error = None;
+                ui.memory_mut(|m|m.request_focus(focus));
+                match self.copy_selection(doc) {
+                    Ok(()) => {
+                        ui.ctx().copy_text(serde_json::to_string(&Clipboard{veylvik_keys:self.clipboard.clone(),tracks:self.clipboard_tracks.clone()}).expect("validated keys"));self.error=None;
                     }
-                    Err(error) => self.error = Some(error.to_string()),
+                    Err(e)=>self.error=Some(e.to_string()),
                 }
             }
+
             let paste = ui
                 .add_enabled(
-                    ready && !self.clipboard.is_empty(),
+                    ready && (!self.clipboard.is_empty() || !self.clipboard_tracks.is_empty()),
                     egui::Button::new("Paste at playhead"),
                 )
                 .clicked()
                 || (focused
                     && ready
-                    && !self.clipboard.is_empty()
+                    && (!self.clipboard.is_empty() || !self.clipboard_tracks.is_empty())
                     && ui.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, egui::Key::V)));
             if paste || (ready && paste_requested && valid_paste) {
-                self.commit(
-                    key_edit::pasted(active.as_ref().unwrap(), &self.clipboard, now),
-                    revision,
-                    &mut actions,
-                );
+                if self.clipboard_tracks.is_empty() {
+                    self.commit(key_edit::pasted(active.as_ref().unwrap(),&self.clipboard,now),revision,&mut actions);
+                } else { self.batch(self.paste_group(doc,now),doc,revision,&mut actions); }
             }
+
             let delete = ui
                 .add_enabled(keys, egui::Button::new("Delete keys"))
                 .clicked()
@@ -268,12 +306,10 @@ impl Editor {
                     && keys
                     && ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Delete)));
             if delete {
-                self.commit(
-                    key_edit::deleted(active.as_ref().unwrap(), &self.selection, now),
-                    revision,
-                    &mut actions,
-                );
+                let edits=self.selections().iter().map(|((id,p),indices)| Ok((*id,p.clone(),key_edit::deleted(doc.nodes[id].operation.scalar(p).unwrap(),indices,now)?))).collect();
+                self.batch(edits,doc,revision,&mut actions);
             }
+
             if ui
                 .add_enabled(ready, egui::Button::new("Add key"))
                 .clicked()
@@ -305,7 +341,7 @@ impl Editor {
                                     crate::animation::mode_label(choice),
                                 );
                             }
-                        });
+                        }).response.on_hover_text("Set interpolation for the entire active parameter; replaces per-segment easing.");
                 });
                 if mode != before {
                     let mut edited = scalar.clone();
@@ -314,7 +350,15 @@ impl Editor {
                 }
             }
         });
-        let hint = self.error.as_deref().unwrap_or("Click keys · Shift-click selects several · drag edits · Escape cancels · scroll zooms · Shift-scroll pans");
+        ui.horizontal(|ui| {
+            ui.set_min_height(20.0);
+            ui.add_enabled_ui(!self.dragging(), |ui| {
+                if active.is_some() {
+                    self.segment_controls(ui, doc, revision, &mut actions);
+                }
+            });
+        });
+        let hint = self.error.as_deref().unwrap_or("Drag empty space to box-select · Shift adds keys/tracks · drag keys or yellow handles · Escape cancels · scroll zooms");
         let color = if self.error.is_some() {
             egui::Color32::LIGHT_RED
         } else {
@@ -367,9 +411,11 @@ impl Editor {
                                                 )
                                                 .clicked()
                                             {
-                                                self.active =
-                                                    Some((node.id, parameter.name.into()));
-                                                self.selection.clear();
+                                                self.activate(
+                                                    node.id,
+                                                    parameter.name,
+                                                    ui.input(|i| i.modifiers.shift),
+                                                );
                                                 self.error = None;
                                                 self.selected_node = Some(node.id);
                                                 actions.push(Action::Select(node.id));
@@ -434,6 +480,10 @@ impl Editor {
                 }
             });
         });
+        self.finish_marquee(ui);
+        if !actions.is_empty() {
+            ui.memory_mut(|m| m.request_focus(focus));
+        }
         actions
     }
 }

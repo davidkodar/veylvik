@@ -60,10 +60,12 @@ fn gpu_matches_analytic_references_and_enforces_budget() {
             stops: Scalar::Linear {
                 keys: vec![
                     Key {
+                        segment: None,
                         time: Time::new(0, 1).unwrap(),
                         value: 0.0,
                     },
                     Key {
+                        segment: None,
                         time: Time::new(1, 1).unwrap(),
                         value: 1.0,
                     },
@@ -726,10 +728,12 @@ fn output_cache_keys_evaluated_dependencies_and_evicts_within_budget() {
             stops: Scalar::Linear {
                 keys: vec![
                     Key {
+                        segment: None,
                         time: Time::new(0, 1).unwrap(),
                         value: 0.0,
                     },
                     Key {
+                        segment: None,
                         time: Time::new(1, 1).unwrap(),
                         value: 1.0,
                     },
@@ -836,10 +840,12 @@ fn curve_modes_reach_gpu_and_cache_keys_follow_evaluated_values() {
     let mut stops = Scalar::Linear {
         keys: vec![
             Key {
+                segment: None,
                 time: Time::new(0, 1).unwrap(),
                 value: 0.0,
             },
             Key {
+                segment: None,
                 time: Time::new(1, 1).unwrap(),
                 value: 8.0,
             },
@@ -918,10 +924,12 @@ fn immutable_source_uploads_reuse_contents_and_aliases_share_budget() {
             stops: Scalar::Linear {
                 keys: vec![
                     Key {
+                        segment: None,
                         time: Time::new(0, 1).unwrap(),
                         value: 0.0,
                     },
                     Key {
+                        segment: None,
                         time: Time::new(1, 1).unwrap(),
                         value: 1.0,
                     },

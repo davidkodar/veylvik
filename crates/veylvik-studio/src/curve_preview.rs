@@ -1,6 +1,6 @@
 //! Read-only curve plots use exact rational differences for the horizontal axis.
 use eframe::egui;
-use veylvik_document::{Interpolation, Scalar, Time};
+use veylvik_document::{Scalar, Segment, Time};
 pub(super) struct Plot {
     pub(super) points: Vec<[f32; 2]>,
     pub(super) keys: Vec<[f32; 2]>,
@@ -19,13 +19,8 @@ fn relative(time: Time, first: Time, last: Time) -> Option<f64> {
 pub(super) fn plot(scalar: &Scalar, time: Time, width: f32) -> Option<Plot> {
     scalar.validate().ok()?;
     time.seconds().ok()?;
-    let (keys, mode) = match scalar {
-        Scalar::Linear { keys } => (keys, Interpolation::Linear),
-        Scalar::Step { keys } => (keys, Interpolation::Step),
-        Scalar::Smooth { keys } => (keys, Interpolation::Smooth),
-        Scalar::Monotone { keys } => (keys, Interpolation::Monotone),
-        _ => return None,
-    };
+    let keys = scalar.keys()?;
+    let compiled = scalar.compile().ok()?;
     let first = keys.first()?.time;
     let last = keys.last()?.time;
     let mut min = keys
@@ -36,6 +31,17 @@ pub(super) fn plot(scalar: &Scalar, time: Time, width: f32) -> Option<Plot> {
         .iter()
         .map(|k| k.value as f64)
         .fold(f64::NEG_INFINITY, f64::max);
+    for pair in keys.windows(2) {
+        if let Some(Segment::Bezier { outgoing, incoming }) = pair[0].segment {
+            for value in [
+                f64::from(pair[0].value) + f64::from(outgoing.value),
+                f64::from(pair[1].value) + f64::from(incoming.value),
+            ] {
+                min = min.min(value);
+                max = max.max(value);
+            }
+        }
+    }
     let padding = if min == max {
         (min.abs() * 0.05).max(0.5)
     } else {
@@ -53,30 +59,24 @@ pub(super) fn plot(scalar: &Scalar, time: Time, width: f32) -> Option<Plot> {
             ]
         })
         .collect();
-    let segments = scalar.monotone_segments().ok()?;
     let mut points = vec![key_points[0]];
-    for (index, pair) in keys.windows(2).enumerate() {
+    for index in 0..keys.len() - 1 {
         let a = key_points[index];
         let b = key_points[index + 1];
-        match mode {
-            Interpolation::Step => {
+        match scalar.segment_mode(index)? {
+            Segment::Hold => {
                 points.push([b[0], a[1]]);
                 points.push(b);
             }
-            Interpolation::Linear => points.push(b),
-            Interpolation::Smooth | Interpolation::Monotone => {
+            Segment::Linear => points.push(b),
+            Segment::Smooth | Segment::Auto | Segment::Bezier { .. } => {
                 // At most 32 samples per segment; total scales with canvas width
                 // plus key count, not width multiplied by key count.
                 let samples =
                     (((b[0] - a[0]) * width.clamp(1.0, 2048.0) / 4.0).ceil() as usize).clamp(1, 32);
                 for step in 1..=samples {
                     let t = step as f64 / samples as f64;
-                    let eased = t * t * (3.0 - 2.0 * t);
-                    let value = if let Some(segments) = &segments {
-                        segments[index].sample(t).ok()? as f64
-                    } else {
-                        pair[0].value as f64 * (1.0 - eased) + pair[1].value as f64 * eased
-                    };
+                    let value = f64::from(compiled.sample_segment(index, t).ok()?);
                     points.push([a[0] + (b[0] - a[0]) * t as f32, y(value)]);
                 }
             }
@@ -164,14 +164,17 @@ mod tests {
         let scalar = Scalar::Monotone {
             keys: vec![
                 Key {
+                    segment: None,
                     time: Time::new(0, 1).unwrap(),
                     value: 0.0,
                 },
                 Key {
+                    segment: None,
                     time: Time::new(1, 1).unwrap(),
                     value: 1.0,
                 },
                 Key {
+                    segment: None,
                     time: Time::new(3, 1).unwrap(),
                     value: 2.0,
                 },
@@ -188,10 +191,12 @@ mod tests {
         let last = Time::new(i64::MAX, 1).unwrap();
         let keys = vec![
             Key {
+                segment: None,
                 time: first,
                 value: -10.0,
             },
             Key {
+                segment: None,
                 time: last,
                 value: 10.0,
             },
@@ -233,6 +238,7 @@ mod tests {
         let single = plot(
             &Scalar::Smooth {
                 keys: vec![Key {
+                    segment: None,
                     time: first,
                     value: f32::MAX,
                 }],

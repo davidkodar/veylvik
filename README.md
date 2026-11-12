@@ -962,8 +962,13 @@ Choose **Animation** beside **Nodes** to open the animation workspace. Expand a
 node to select a scalar parameter. **Keyframes** shows parameter lanes for that
 node; **Curves** plots the selected parameter with the same interpolation used by
 the renderer. Click a key to select it, Shift-click to select several keys within
-one parameter, and drag to move them. Curve dragging changes time and value;
-keyframe dragging changes time only. Horizontal movement snaps the *offset* to
+one or more parameters, and drag to move them. Drag empty space across lanes to
+box-select keys; hold Shift to add to the selection. Shift-click a parameter in
+the tree to retain a selection while switching tracks. Curve dragging changes
+time and value;
+keyframe dragging changes time only. Multi-parameter selections always change
+time only, preserving values with different units. Horizontal movement snaps the
+*offset* to
 whole frames, preserving any existing subframe spacing. Escape cancels a drag.
 
 **Copy keys** / Ctrl+C copies the selection; **Paste at playhead** / Ctrl+V anchors
@@ -978,8 +983,28 @@ Use **Add key**, the interpolation selector, **Fit composition**, and **Fit keys
 for common operations. Scroll over the plot to zoom; Shift-scroll pans time.
 Scroll bars navigate parameter lanes. Fit keys includes keys outside the rendered
 composition; the playhead itself stays within the composition. Resize the lower
-workspace by dragging its top divider for a larger curve view. Free Bézier tangent
-handles and selections spanning multiple parameters are not implemented yet.
+workspace by dragging its top divider for a larger curve view.
+
+Select keys and choose **Bézier** under **Selected outgoing segments** to reveal
+yellow tangent handles. Drag these to adjust acceleration and overshoot. Each key
+can use Auto, Smooth, Linear, Hold, or Bézier for the segment following it;
+**Use curve default** removes selected overrides. The main interpolation selector
+resets all segment overrides in the active parameter. Converting Linear, Smooth,
+or Auto to Bézier preserves the curve to handle precision; Hold starts with flat
+handles. Handle times cannot cross, and control values must remain inside the
+parameter's allowed range. Group easing changes, retiming, paste, and delete are
+atomic undoable transactions across up to 64 parameters. Group copy preserves
+relative timing across tracks; group paste targets those original parameters in
+the current composition. The clipboard accepts up to 4096 keys total.
+
+Keys may include an optional outgoing `segment` object, for example
+`{"mode":"bezier","outgoing":{"time":0.25,"value":1},"incoming":{"time":0.25,"value":0}}`.
+Handle times are nonnegative fractions of the adjacent key interval and sum to at
+most one. Values are offsets from the respective left/right endpoint. Omitted
+segments inherit the scalar interpolation, so existing compositions retain their
+original timing and pixels. Plots, GPU parameter evaluation, CLI exports, and MCP
+all use the same bounded normalized-time evaluator.
+
 Edits use revision-checked `set_parameter` transactions, also available through
 MCP; no separate animation format or renderer is involved.
 

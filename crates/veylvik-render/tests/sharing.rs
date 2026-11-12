@@ -65,10 +65,12 @@ fn equivalent_branches_share_passes_without_merging_distinct_inputs_or_curves() 
         radius: Scalar::Linear {
             keys: vec![
                 Key {
+                    segment: None,
                     time: Time::new(0, 1).unwrap(),
                     value: 2.0,
                 },
                 Key {
+                    segment: None,
                     time: Time::new(1, 1).unwrap(),
                     value: 3.0,
                 },

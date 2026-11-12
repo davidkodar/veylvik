@@ -74,6 +74,10 @@ impl Time {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Key {
+    /// Optional interpolation for the segment starting at this key. Omitted keys
+    /// inherit the scalar's interpolation, preserving existing documents.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub segment: Option<Segment>,
     pub time: Time,
     pub value: f32,
 }
@@ -89,6 +93,42 @@ pub enum Scalar {
 impl From<f32> for Scalar {
     fn from(value: f32) -> Self {
         Self::Constant { value }
+    }
+}
+/// A handle's horizontal reach is a fraction of the adjacent key interval;
+/// value is an offset from its endpoint. Handles travel with their endpoints.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Handle {
+    pub time: f32,
+    pub value: f32,
+}
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "mode", rename_all = "snake_case", deny_unknown_fields)]
+pub enum Segment {
+    Linear,
+    Hold,
+    Smooth,
+    Auto,
+    Bezier { outgoing: Handle, incoming: Handle },
+}
+impl Segment {
+    pub fn validate(self) -> Result<()> {
+        if let Self::Bezier {
+            outgoing: a,
+            incoming: b,
+        } = self
+            && (!a.time.is_finite()
+                || !b.time.is_finite()
+                || !a.value.is_finite()
+                || !b.value.is_finite()
+                || a.time < 0.0
+                || b.time < 0.0
+                || f64::from(a.time) + f64::from(b.time) > 1.0)
+        {
+            return fail("Bezier handles must be finite, nonnegative in time, and not cross");
+        }
+        Ok(())
     }
 }
 pub const MAX_KEYS: usize = 4096;
@@ -127,21 +167,35 @@ impl Scalar {
         if !value.is_finite() {
             return fail("non-finite key");
         }
-        if let Some(keys) = self.keys_mut() {
+        let mut candidate = self.clone();
+        if let Some(keys) = candidate.keys_mut() {
             match keys.binary_search_by(|key| key.time.compare(time).expect("validated times")) {
                 Ok(index) => keys[index].value = value,
                 Err(index) => {
                     if keys.len() == MAX_KEYS {
                         return fail(format!("animation exceeds {MAX_KEYS} keys"));
                     }
-                    keys.insert(index, Key { time, value });
+                    keys.insert(
+                        index,
+                        Key {
+                            segment: None,
+                            time,
+                            value,
+                        },
+                    );
                 }
             }
         } else {
-            *self = Self::Linear {
-                keys: vec![Key { time, value }],
+            candidate = Self::Linear {
+                keys: vec![Key {
+                    segment: None,
+                    time,
+                    value,
+                }],
             };
         }
+        candidate.validate()?;
+        *self = candidate;
         Ok(())
     }
     /// Remove an exact-time key. Removing the final key preserves its value as
@@ -149,7 +203,8 @@ impl Scalar {
     pub fn remove_key_at(&mut self, time: Time) -> Result<()> {
         self.validate()?;
         time.seconds()?;
-        let Some(keys) = self.keys_mut() else {
+        let mut candidate = self.clone();
+        let Some(keys) = candidate.keys_mut() else {
             return fail("scalar has no keyframes");
         };
         let Ok(index) =
@@ -159,10 +214,12 @@ impl Scalar {
         };
         let removed = keys.remove(index);
         if keys.is_empty() {
-            *self = Self::Constant {
+            candidate = Self::Constant {
                 value: removed.value,
             };
         }
+        candidate.validate()?;
+        *self = candidate;
         Ok(())
     }
     pub fn keys_mut(&mut self) -> Option<&mut Vec<Key>> {
@@ -179,7 +236,10 @@ impl Scalar {
         let Some(keys) = self.keys_mut() else {
             return;
         };
-        let keys = std::mem::take(keys);
+        let mut keys = std::mem::take(keys);
+        for key in &mut keys {
+            key.segment = None;
+        }
         *self = match mode {
             Interpolation::Linear => Self::Linear { keys },
             Interpolation::Step => Self::Step { keys },
@@ -200,11 +260,24 @@ impl Scalar {
                 }
                 for key in keys {
                     key.time.seconds()?;
+                    if let Some(segment) = key.segment {
+                        segment.validate()?;
+                    }
                     if !key.value.is_finite() {
                         return fail("non-finite key");
                     }
                 }
                 for pair in keys.windows(2) {
+                    if let Some(Segment::Bezier { outgoing, incoming }) = pair[0].segment {
+                        for value in [
+                            f64::from(pair[0].value) + f64::from(outgoing.value),
+                            f64::from(pair[1].value) + f64::from(incoming.value),
+                        ] {
+                            if value.abs() > f64::from(f32::MAX) {
+                                return fail("Bezier control exceeds value range");
+                            }
+                        }
+                    }
                     if !pair[0].time.compare(pair[1].time)?.is_lt() {
                         return fail("keys must have strictly increasing times");
                     }
@@ -232,17 +305,36 @@ impl Scalar {
                 for key in keys {
                     check(key.value)?;
                 }
+                for pair in keys.windows(2) {
+                    if let Some(Segment::Bezier { outgoing, incoming }) = pair[0].segment {
+                        for value in [
+                            f64::from(pair[0].value) + f64::from(outgoing.value),
+                            f64::from(pair[1].value) + f64::from(incoming.value),
+                        ] {
+                            if value < f64::from(min) || value > f64::from(max) {
+                                return fail(format!(
+                                    "{name} Bezier controls must be in {min}..={max}"
+                                ));
+                            }
+                        }
+                    }
+                }
                 Ok(())
             }
         }
     }
     /// Compile monotone segments once for bounded normalized sampling in plots.
-    /// Other interpolation modes return no segments.
+    /// Returns segments when either the curve or an individual interval uses Auto.
     pub fn monotone_segments(&self) -> Result<Option<Vec<MonotoneSegment>>> {
         self.validate()?;
-        let Self::Monotone { keys } = self else {
+        let Some(keys) = self.keys() else {
             return Ok(None);
         };
+        if !matches!(self, Self::Monotone { .. })
+            && !keys.iter().any(|k| k.segment == Some(Segment::Auto))
+        {
+            return Ok(None);
+        }
         Ok(Some(
             (0..keys.len() - 1)
                 .map(|index| monotone_segment(keys, index))
@@ -282,9 +374,6 @@ impl Scalar {
         }
         let a = &keys[upper - 1];
         let b = &keys[upper];
-        if matches!(self, Self::Step { .. }) {
-            return Ok(a.value);
-        }
         // Subtract exactly before converting; large adjacent ticks can collapse
         // to the same f64 seconds value.
         let elapsed =
@@ -293,19 +382,121 @@ impl Scalar {
             b.time.ticks as i128 * a.time.rate as i128 - a.time.ticks as i128 * b.time.rate as i128;
         let factor =
             (elapsed as f64 / span as f64 * b.time.rate as f64 / time.rate as f64).clamp(0.0, 1.0);
-        if matches!(self, Self::Monotone { .. }) {
-            let segment = segments.map_or_else(
-                || monotone_segment(keys, upper - 1),
-                |segments| segments[upper - 1],
-            );
-            return segment.sample(factor);
+        self.sample_interval(upper - 1, factor, segments)
+    }
+    /// Resolve an outgoing segment without changing inherited interpolation.
+    pub fn segment_mode(&self, index: usize) -> Option<Segment> {
+        let keys = self.keys()?;
+        let key = keys.get(index)?;
+        keys.get(index + 1)?;
+        Some(key.segment.unwrap_or(match self.interpolation()? {
+            Interpolation::Linear => Segment::Linear,
+            Interpolation::Step => Segment::Hold,
+            Interpolation::Smooth => Segment::Smooth,
+            Interpolation::Monotone => Segment::Auto,
+        }))
+    }
+    /// Convert a segment to editable handles. Linear, Smooth and Auto preserve
+    /// their shape (to f32 handle precision); Hold starts with flat handles.
+    pub fn bezier_segment(&self, index: usize) -> Result<Segment> {
+        self.validate()?;
+        let mode = self
+            .segment_mode(index)
+            .ok_or_else(|| crate::Error("missing curve segment".into()))?;
+        if let Segment::Bezier { .. } = mode {
+            return Ok(mode);
         }
-        let factor = if matches!(self, Self::Smooth { .. }) {
-            factor * factor * (3.0 - 2.0 * factor)
-        } else {
-            factor
+        let keys = self.keys().unwrap();
+        let (out, incoming) = match mode {
+            Segment::Linear => {
+                let delta = f64::from(keys[index + 1].value) - f64::from(keys[index].value);
+                (delta / 3.0, -delta / 3.0)
+            }
+            Segment::Auto => {
+                let segment = monotone_segment(keys, index);
+                (segment.tangents[0] / 3.0, -segment.tangents[1] / 3.0)
+            }
+            _ => (0.0, 0.0),
         };
-        Ok((a.value as f64 * (1.0 - factor) + b.value as f64 * factor) as f32)
+        let segment = Segment::Bezier {
+            outgoing: Handle {
+                time: 1.0 / 3.0,
+                value: out as f32,
+            },
+            incoming: Handle {
+                time: 1.0 / 3.0,
+                value: incoming as f32,
+            },
+        };
+        segment.validate()?;
+        Ok(segment)
+    }
+    fn sample_interval(
+        &self,
+        index: usize,
+        fraction: f64,
+        segments: Option<&[MonotoneSegment]>,
+    ) -> Result<f32> {
+        if !fraction.is_finite() {
+            return fail("non-finite curve fraction");
+        }
+        let mode = self
+            .segment_mode(index)
+            .ok_or_else(|| crate::Error("missing curve segment".into()))?;
+        let keys = self.keys().unwrap();
+        let a = f64::from(keys[index].value);
+        let b = f64::from(keys[index + 1].value);
+        let t = fraction.clamp(0.0, 1.0);
+        if t == 0.0 {
+            return Ok(a as f32);
+        }
+        if t == 1.0 {
+            return Ok(b as f32);
+        }
+        let value = match mode {
+            Segment::Hold => a,
+            Segment::Linear => a * (1.0 - t) + b * t,
+            Segment::Smooth => {
+                let t = t * t * (3.0 - 2.0 * t);
+                a * (1.0 - t) + b * t
+            }
+            Segment::Auto => {
+                return segments
+                    .map_or_else(|| monotone_segment(keys, index), |s| s[index])
+                    .sample(t);
+            }
+            Segment::Bezier { outgoing, incoming } => {
+                // Monotone time coordinates permit bounded bisection, including
+                // flat endpoint derivatives. Fixed iterations make it deterministic.
+                let (mut lo, mut hi) = (0.0, 1.0);
+                for _ in 0..48 {
+                    let u = (lo + hi) * 0.5;
+                    if cubic(
+                        0.0,
+                        f64::from(outgoing.time),
+                        1.0 - f64::from(incoming.time),
+                        1.0,
+                        u,
+                    ) < t
+                    {
+                        lo = u;
+                    } else {
+                        hi = u;
+                    }
+                }
+                cubic(
+                    a,
+                    a + f64::from(outgoing.value),
+                    b + f64::from(incoming.value),
+                    b,
+                    (lo + hi) * 0.5,
+                )
+            }
+        };
+        if !(value as f32).is_finite() {
+            return fail("non-finite curve sample");
+        }
+        Ok(value as f32)
     }
 }
 
@@ -316,7 +507,16 @@ pub struct CompiledScalar {
     scalar: Scalar,
     segments: Option<Vec<MonotoneSegment>>,
 }
+fn cubic(a: f64, b: f64, c: f64, d: f64, t: f64) -> f64 {
+    let s = 1.0 - t;
+    s * s * s * a + 3.0 * s * s * t * b + 3.0 * s * t * t * c + t * t * t * d
+}
 impl CompiledScalar {
+    /// Sample a segment at normalized time using the same evaluator as rendering.
+    pub fn sample_segment(&self, index: usize, fraction: f64) -> Result<f32> {
+        self.scalar
+            .sample_interval(index, fraction, self.segments.as_deref())
+    }
     pub fn at(&self, time: Time) -> Result<f32> {
         self.scalar.sample_validated(time, self.segments.as_deref())
     }

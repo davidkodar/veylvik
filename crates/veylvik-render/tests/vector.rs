@@ -210,10 +210,12 @@ fn vector_coverage_cache_survives_animation_and_yields_to_memory_pressure() {
             stops: Scalar::Linear {
                 keys: vec![
                     Key {
+                        segment: None,
                         time: Time::new(0, 1).unwrap(),
                         value: 0.0,
                     },
                     Key {
+                        segment: None,
                         time: Time::new(1, 1).unwrap(),
                         value: 1.0,
                     },

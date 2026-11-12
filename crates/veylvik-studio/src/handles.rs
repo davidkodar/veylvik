@@ -242,6 +242,7 @@ mod tests {
             x: 10.0.into(),
             y: Scalar::Smooth {
                 keys: vec![Key {
+                    segment: None,
                     time: Time { ticks: 0, rate: 24 },
                     value: 20.0,
                 }],

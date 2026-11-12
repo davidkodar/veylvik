@@ -191,6 +191,7 @@ mod tests {
         let curve = Scalar::Linear {
             keys: [0, 12, 24]
                 .map(|ticks| Key {
+                    segment: None,
                     time: Time { ticks, rate: 24 },
                     value: ticks as f32,
                 })

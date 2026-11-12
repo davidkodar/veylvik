@@ -54,10 +54,12 @@ fn displacement_matches_reference_for_alpha_hdr_borders_animation_and_cache() {
             x: Scalar::Linear {
                 keys: vec![
                     Key {
+                        segment: None,
                         time: Time::new(0, 1).unwrap(),
                         value: -3.5,
                     },
                     Key {
+                        segment: None,
                         time: Time::new(2, 1).unwrap(),
                         value: 3.5,
                     },

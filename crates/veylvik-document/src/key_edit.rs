@@ -44,6 +44,7 @@ pub fn copied(scalar: &Scalar, indices: &BTreeSet<usize>) -> Result<Vec<Key>> {
         .iter()
         .map(|i| {
             Ok(Key {
+                segment: keys[*i].segment.or_else(|| scalar.segment_mode(*i)),
                 time: keys[*i].time.checked_sub(first)?,
                 value: keys[*i].value,
             })
@@ -68,6 +69,7 @@ pub fn pasted(scalar: &Scalar, clipboard: &[Key], at: Time) -> Result<Scalar> {
     }
     for key in clipboard {
         keys.push(Key {
+            segment: key.segment,
             time: at.checked_add(key.time)?,
             value: key.value,
         });
@@ -98,6 +100,7 @@ mod tests {
         Scalar::Smooth {
             keys: [0, 1, 2]
                 .map(|ticks| Key {
+                    segment: None,
                     time: Time::new(ticks, 3).unwrap(),
                     value: ticks as f32,
                 })

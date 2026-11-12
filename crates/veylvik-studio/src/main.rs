@@ -1234,6 +1234,27 @@ impl Studio {
         });
         for action in actions {
             match action {
+                animation_editor::Action::Batch { revision, edits } => {
+                    if revision != self.project.document.revision() {
+                        self.fail("Animation changed during the edit; please try again.");
+                        continue;
+                    }
+                    let commands: Vec<_> = edits
+                        .into_iter()
+                        .map(|(id, parameter, scalar)| Command::SetParameter {
+                            id,
+                            parameter,
+                            value: serde_json::to_value(scalar).expect("validated scalar"),
+                        })
+                        .collect();
+                    match self.project.apply(&commands) {
+                        Ok(()) => {
+                            self.refresh_draft();
+                            self.request_preview();
+                        }
+                        Err(e) => self.fail(e),
+                    }
+                }
                 animation_editor::Action::Select(id) => {
                     self.project.selected = id;
                     self.refresh_draft();

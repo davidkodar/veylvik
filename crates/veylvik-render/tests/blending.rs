@@ -55,10 +55,12 @@ fn blend_modes_match_straight_colour_reference_with_animated_opacity() {
             opacity: Scalar::Linear {
                 keys: vec![
                     Key {
+                        segment: None,
                         time: Time::new(0, 1).unwrap(),
                         value: 0.0,
                     },
                     Key {
+                        segment: None,
                         time: Time::new(2, 1).unwrap(),
                         value: 1.0,
                     },

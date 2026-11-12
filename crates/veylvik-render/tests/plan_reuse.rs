@@ -15,10 +15,12 @@ fn plan_reuse_tracks_reachable_definitions_and_validates_disconnected_edits() {
             stops: Scalar::Linear {
                 keys: vec![
                     Key {
+                        segment: None,
                         time: Time::new(0, 1).unwrap(),
                         value: 0.0,
                     },
                     Key {
+                        segment: None,
                         time: Time::new(1, 1).unwrap(),
                         value: 2.0,
                     },
