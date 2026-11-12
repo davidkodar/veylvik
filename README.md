@@ -96,6 +96,13 @@ RGB clamping, so HDR and negative values remain available downstream. Screen
 can produce negative values for HDR inputs. Existing **Merge** nodes retain their
 foreground-over-background behavior.
 
+**Colorize** maps input luminance to **Shadows** and **Highlights** colors.
+The colors are straight scene-linear RGBA, including HDR or negative RGB. The
+node interpolates their premultiplied values and multiplies by source coverage.
+Input luminance is clamped to black–white before mapping; fully transparent input
+stays transparent. Endpoint alpha can turn a noise field into colored coverage.
+Colors are static parameters; place animated nodes before or after the mapping.
+
 ## Native editor
 
 ```sh

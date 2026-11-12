@@ -851,16 +851,18 @@ impl Studio {
             }
             Operation::Solid { color } => {
                 ui.label("Linear RGB and alpha");
-                for (i, label) in ["Red", "Green", "Blue", "Alpha"].iter().enumerate() {
-                    ui.horizontal(|ui| {
-                        ui.label(*label);
-                        let mut value = egui::DragValue::new(&mut color[i]).speed(0.01);
-                        if i == 3 {
-                            value = value.range(0.0..=1.0);
-                        }
-                        self.draft_dirty |= ui.add(value).changed();
-                    });
-                }
+                self.draft_dirty |= animation::color(ui, color);
+            }
+            Operation::Colorize { low, high } => {
+                ui.label("Map luminance to linear RGBA colors.");
+                ui.push_id("low", |ui| {
+                    ui.label("Shadows");
+                    self.draft_dirty |= animation::color(ui, low);
+                });
+                ui.push_id("high", |ui| {
+                    ui.label("Highlights");
+                    self.draft_dirty |= animation::color(ui, high);
+                });
             }
             Operation::Noise { seed, .. } | Operation::FractalNoise { seed, .. } => {
                 ui.horizontal(|ui| {

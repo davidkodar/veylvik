@@ -31,7 +31,7 @@ impl Parameter {
             ParameterKind::Seed => json!(self.default as u32),
             ParameterKind::BlendMode => json!(crate::BlendMode::Normal),
             ParameterKind::MaskChannel => json!(crate::MaskChannel::Luminance),
-            ParameterKind::Color => json!([0.0, 0.0, 0.0, 1.0]),
+            ParameterKind::Color => json!([self.default, self.default, self.default, 1.0]),
             ParameterKind::Asset => json!("image.png"),
             ParameterKind::Path => {
                 serde_json::to_value(crate::vector::PathMask::default()).unwrap()
@@ -255,6 +255,20 @@ pub static MASK: NodeType = NodeType {
     inputs: &["image", "mask"],
     parameters: &[],
 };
+pub static COLORIZE: NodeType = NodeType {
+    type_id: "colorize",
+    version: 1,
+    label: "Colorize",
+    description: "Map clamped straight Rec.709 luminance to two scene-linear RGBA colors. Interpolate premultiplied endpoints, then multiply by input coverage. Transparent input stays transparent; HDR and negative endpoint colors are preserved.",
+    inputs: &["image"],
+    parameters: &[
+        other("low", ParameterKind::Color, "linear RGBA"),
+        Parameter {
+            default: 1.0,
+            ..other("high", ParameterKind::Color, "linear RGBA")
+        },
+    ],
+};
 pub static CHANNEL_MASK: NodeType = NodeType {
     type_id: "channel_mask",
     version: 1,
@@ -287,6 +301,7 @@ pub static TYPES: &[&NodeType] = &[
     &DISPLACE,
     &FRACTAL_NOISE,
     &CHANNEL_MASK,
+    &COLORIZE,
 ];
 pub fn operation_schema() -> Value {
     json!({"oneOf":TYPES.iter().map(|node|node.schema()).collect::<Vec<_>>()})

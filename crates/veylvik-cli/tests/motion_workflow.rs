@@ -90,6 +90,16 @@ fn animated_mask_composition_matches_cli_and_mcp() {
     document.nodes.insert(mask.id, mask);
     document.output = masked.id;
     document.nodes.insert(masked.id, masked);
+    let colorized = veylvik_document::Node::new(
+        "Color mapping",
+        veylvik_document::Operation::Colorize {
+            low: [0.01, 0.02, 0.1, 0.2],
+            high: [1.5, 0.3, 0.02, 0.9],
+        },
+        &[("image", document.output)],
+    );
+    document.output = colorized.id;
+    document.nodes.insert(colorized.id, colorized);
     document.save(&root.0.join("motion.veylvik")).unwrap();
     let messages = [
         json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"test","version":"1"}}}),

@@ -46,6 +46,10 @@ fn params(node: &Node, width: u32, height: u32, time: Time) -> Result<Params> {
         Operation::Solid { color } => {
             p.values = *color;
         }
+        Operation::Colorize { low, high } => {
+            p.values = *low;
+            p.extra = *high;
+        }
         Operation::Noise { seed, scale } => {
             p.size_op[3] = *seed;
             p.values[0] = scale.at(time)?;

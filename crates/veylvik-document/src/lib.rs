@@ -34,6 +34,10 @@ pub enum Operation {
     Solid {
         color: [f32; 4],
     },
+    Colorize {
+        low: [f32; 4],
+        high: [f32; 4],
+    },
     Noise {
         seed: u32,
         scale: Scalar,
@@ -95,6 +99,7 @@ impl Operation {
     pub fn descriptor(&self) -> &'static registry::NodeType {
         match self {
             Self::Solid { .. } => &registry::SOLID,
+            Self::Colorize { .. } => &registry::COLORIZE,
             Self::FractalNoise { .. } => &registry::FRACTAL_NOISE,
             Self::Noise { .. } => &registry::NOISE,
             Self::Exposure { .. } => &registry::EXPOSURE,
@@ -181,6 +186,13 @@ impl Operation {
                 if color.iter().any(|v| !v.is_finite()) || !(0.0..=1.0).contains(&color[3]) =>
             {
                 fail("solid needs finite RGB and alpha in [0,1]")
+            }
+            Self::Colorize { low, high }
+                if [low, high].iter().any(|color| {
+                    color.iter().any(|v| !v.is_finite()) || !(0.0..=1.0).contains(&color[3])
+                }) =>
+            {
+                fail("colorize needs finite RGB and alpha in [0,1] for both endpoints")
             }
             Self::Image { asset }
                 if asset.trim().is_empty()

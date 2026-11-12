@@ -103,3 +103,19 @@ fn mode_label(mode: Interpolation) -> &'static str {
         Interpolation::Smooth => "Ease in/out",
     }
 }
+
+/// Scene-linear HDR color controls shared by solids and color mapping.
+pub fn color(ui: &mut egui::Ui, color: &mut [f32; 4]) -> bool {
+    let mut changed = false;
+    for (index, label) in ["Red", "Green", "Blue", "Alpha"].iter().enumerate() {
+        ui.horizontal(|ui| {
+            ui.label(*label);
+            let mut value = egui::DragValue::new(&mut color[index]).speed(0.01);
+            if index == 3 {
+                value = value.range(0.0..=1.0);
+            }
+            changed |= ui.add(value).changed();
+        });
+    }
+    changed
+}

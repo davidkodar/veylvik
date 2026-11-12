@@ -171,3 +171,19 @@ fn channel_mask(@builtin(global_invocation_id) gid:vec3<u32>) {
     }
     result[index(gid)]=vec4<f32>(clamp(coverage,0.0,color.a));
 }
+
+@compute @workgroup_size(8,8)
+fn colorize(@builtin(global_invocation_id) gid:vec3<u32>) {
+    if !inside(gid) {return;}
+    let color=source[index(gid)];
+    if color.a<=0.0 {
+        result[index(gid)]=vec4<f32>(0.0);
+        return;
+    }
+    // Clamp before dividing: HDR RGB / tiny alpha must never overflow.
+    let luminance=dot(color.rgb,vec3<f32>(0.2126,0.7152,0.0722));
+    let t=clamp(luminance,0.0,color.a)/color.a;
+    let low=vec4<f32>(p.values.rgb*p.values.a,p.values.a);
+    let high=vec4<f32>(p.extra.rgb*p.extra.a,p.extra.a);
+    result[index(gid)]=(low*(1.0-t)+high*t)*color.a;
+}
