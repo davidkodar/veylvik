@@ -386,3 +386,59 @@ fn parameter_commands_preserve_character_ranges_when_replacing_words() {
         assert_eq!(typography.spans[0].start, 5);
     }
 }
+
+#[test]
+fn repeated_gradient_application_reuses_its_nodes_and_preserves_effects() {
+    let mut doc = blank(320, 180, Time::new(24, 1).unwrap()).unwrap();
+    let node = Node::new(
+        "Title",
+        serde_json::from_value(registry::TEXT.default_operation()).unwrap(),
+        &[],
+    );
+    let id = node.id;
+    doc.nodes.insert(id, node);
+    doc.output = id;
+    let mut owner = Document::new(doc).unwrap();
+    owner
+        .apply(
+            0,
+            &presets::text_style::gradient(owner.snapshot(), id).unwrap(),
+        )
+        .unwrap();
+    let source = presets::text_style::fill_source(owner.snapshot(), id).unwrap();
+    assert!(
+        presets::text_style::gradient(owner.snapshot(), id)
+            .unwrap()
+            .is_empty()
+    );
+    owner
+        .apply(
+            1,
+            &presets::text_style::apply(owner.snapshot(), id, Some("gold_text"), None).unwrap(),
+        )
+        .unwrap();
+    owner
+        .apply(
+            2,
+            &presets::text_style::shadow(
+                owner.snapshot(),
+                presets::text_style::output(owner.snapshot(), id).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+    let count = owner.snapshot().nodes.len();
+    let output = owner.snapshot().output;
+    owner
+        .apply(
+            3,
+            &presets::text_style::gradient(owner.snapshot(), id).unwrap(),
+        )
+        .unwrap();
+    assert_eq!(count, owner.snapshot().nodes.len());
+    assert_eq!(output, owner.snapshot().output);
+    assert_eq!(
+        source,
+        presets::text_style::fill_source(owner.snapshot(), id).unwrap()
+    );
+}

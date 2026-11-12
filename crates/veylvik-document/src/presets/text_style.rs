@@ -331,6 +331,20 @@ pub fn plain(doc: &Composition, text: NodeId) -> Result<Vec<Command>> {
     Ok(commands)
 }
 pub fn gradient(doc: &Composition, text: NodeId) -> Result<Vec<Command>> {
+    // Reuse the connected gradient, including its authored colours and animation.
+    if let Some(image) = fill_source(doc, text)?
+        && matches!(doc.nodes[&image].operation, Operation::Colorize { .. })
+        && doc.nodes[&image]
+            .inputs
+            .get("image")
+            .is_some_and(|id| matches!(doc.nodes[id].operation, Operation::Gradient { .. }))
+    {
+        return if current(doc, text)?.is_none() {
+            Ok(vec![])
+        } else {
+            Ok(fill(doc, text, image)?.1)
+        };
+    }
     let gradient = Node::new(
         "Text gradient",
         Operation::Gradient {

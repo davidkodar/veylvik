@@ -19,6 +19,7 @@ mod display;
 mod effects;
 mod files;
 mod graph;
+mod graph_layout;
 mod handles;
 mod key_timeline;
 mod menus;

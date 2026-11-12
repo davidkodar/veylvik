@@ -35,12 +35,37 @@ impl Socket {
         matches!((self, other), (Self::Output(a), Self::Input(b, _)) | (Self::Input(b, _), Self::Output(a)) if a != b)
     }
 }
-struct VisualNode {
-    id: NodeId,
-    label: String,
-    subtitle: String,
-    group: Option<NodeId>,
-    inputs: Vec<(String, NodeId)>,
+pub(super) struct VisualNode {
+    pub(super) id: NodeId,
+    pub(super) label: String,
+    pub(super) subtitle: String,
+    pub(super) group: Option<NodeId>,
+    pub(super) inputs: Vec<(String, NodeId)>,
+}
+impl VisualNode {
+    fn role_colour(&self, doc: &Composition) -> Color32 {
+        use veylvik_document::Operation;
+        if self.group.is_some()
+            && !matches!(doc.nodes[&self.id].operation, Operation::Material { .. })
+        {
+            Color32::from_rgb(175, 130, 205)
+        } else {
+            match doc.nodes[&self.id].operation {
+                Operation::Text { .. } | Operation::Path { .. } | Operation::Ellipse { .. } => {
+                    Color32::from_rgb(105, 170, 230)
+                }
+                Operation::Material { .. } | Operation::Glass { .. } | Operation::Patina { .. } => {
+                    Color32::from_rgb(210, 170, 85)
+                }
+                Operation::Merge { .. }
+                | Operation::Blend { .. }
+                | Operation::Mask { .. }
+                | Operation::CombineMask { .. } => Color32::from_rgb(110, 180, 195),
+                ref op if op.inputs().is_empty() => Color32::from_rgb(95, 175, 150),
+                _ => Color32::from_rgb(175, 130, 205),
+            }
+        }
+    }
 }
 struct Drag {
     id: NodeId,
@@ -57,6 +82,10 @@ pub struct Graph {
     canvas: Option<Rect>,
     drag: Option<Drag>,
     wire: Option<Socket>,
+    pinned: std::collections::BTreeSet<NodeId>,
+    role_colours: bool,
+    wire_colours: bool,
+    fit_pending: bool,
 }
 impl Default for Graph {
     fn default() -> Self {
@@ -70,15 +99,21 @@ impl Default for Graph {
             canvas: None,
             drag: None,
             wire: None,
+            pinned: Default::default(),
+            role_colours: true,
+            wire_colours: true,
+            fit_pending: false,
         }
     }
 }
 impl Graph {
     pub fn expand(&mut self, id: NodeId) {
         self.expanded.insert(id);
+        self.revision = None;
     }
     pub fn collapse(&mut self, id: NodeId) {
         self.expanded.remove(&id);
+        self.revision = None;
     }
     pub fn selected_group<'a>(
         &self,
@@ -90,6 +125,7 @@ impl Graph {
             .find(|g| g.output == selected && !self.expanded.contains(&g.id))
     }
     fn visual_nodes(&self, doc: &Composition) -> Vec<VisualNode> {
+        let reachable = veylvik_document::presets::background::reachable(doc);
         let owners: BTreeMap<_, _> = doc
             .groups
             .values()
@@ -107,7 +143,15 @@ impl Graph {
                     Some(VisualNode {
                         id: n.id,
                         label: g.label.clone(),
-                        subtitle: format!("Effect · {} nodes", g.members.len()),
+                        subtitle: format!(
+                            "{}Effect · {} nodes",
+                            if reachable.contains(&g.output) {
+                                ""
+                            } else {
+                                "Unused · "
+                            },
+                            g.members.len()
+                        ),
                         group: Some(g.id),
                         inputs: g
                             .inputs
@@ -119,7 +163,9 @@ impl Graph {
                     Some(VisualNode {
                         id: n.id,
                         label: n.label.clone(),
-                        subtitle: if n.id == doc.output {
+                        subtitle: if !reachable.contains(&n.id) {
+                            format!("Unused · {}", n.operation.descriptor().label)
+                        } else if n.id == doc.output {
                             "Composition output".into()
                         } else {
                             n.operation.descriptor().label.into()
@@ -373,28 +419,127 @@ impl Graph {
         self.revision = Some(revision);
         self.automatic.clear();
         self.positions.clear();
-        let mut depths = BTreeMap::new();
-        let mut rows = BTreeMap::<usize, usize>::new();
-        for id in doc.validate().unwrap_or_default() {
-            let node = &doc.nodes[&id];
-            let depth = node
-                .inputs
+        let nodes = self.visual_nodes(doc);
+        self.automatic = crate::graph_layout::arrange(&nodes, doc.output);
+        // Keep collapsed members near their public output without counting them as visible columns.
+        let mut expanded = Graph::default();
+        expanded.expanded.extend(doc.groups.keys().copied());
+        let raw = crate::graph_layout::arrange(&expanded.visual_nodes(doc), doc.output);
+        for (id, p) in &raw {
+            if self.automatic.contains_key(id) {
+                continue;
+            }
+            let position = doc
+                .groups
                 .values()
-                .map(|id| depths[id] + 1)
-                .max()
-                .unwrap_or(0);
-            depths.insert(id, depth);
-            let row = rows.entry(depth).or_default();
-            let automatic = egui::pos2(25.0 + depth as f32 * 195.0, 20.0 + *row as f32 * 90.0);
-            *row += 1;
-            self.automatic.insert(id, automatic);
+                .find(|g| g.members.contains(id))
+                .and_then(|g| {
+                    self.automatic
+                        .get(&g.output)
+                        .map(|anchor| *p + (*anchor - raw[&g.output]))
+                })
+                .unwrap_or(*p);
+            self.automatic.insert(*id, position);
+        }
+        for (id, node) in &doc.nodes {
+            let automatic = self
+                .automatic
+                .get(id)
+                .copied()
+                .unwrap_or(egui::pos2(25.0, 20.0));
             self.positions.insert(
-                id,
+                *id,
                 node.position
                     .map(|p| egui::pos2(p.x, p.y))
                     .unwrap_or(automatic),
             );
         }
+    }
+
+    fn arrangement(
+        &self,
+        doc: &Composition,
+        selected: Option<NodeId>,
+    ) -> Vec<(NodeId, NodePosition)> {
+        let visible = self.visual_nodes(doc);
+        let mut scope: std::collections::BTreeSet<_> = self.automatic.keys().copied().collect();
+        if let Some(root) = selected {
+            scope.clear();
+            let by_id: BTreeMap<_, _> = visible.iter().map(|n| (n.id, n)).collect();
+            let mut pending = vec![root];
+            while let Some(id) = pending.pop() {
+                if scope.insert(id)
+                    && let Some(n) = by_id.get(&id)
+                {
+                    pending.extend(n.inputs.iter().map(|(_, id)| *id));
+                }
+            }
+            for group in doc.groups.values() {
+                if scope.contains(&group.output) {
+                    scope.extend(group.members.iter().copied());
+                }
+            }
+        }
+        let mut pinned = self.pinned.clone();
+        for group in doc.groups.values() {
+            if pinned.contains(&group.output) {
+                pinned.extend(group.members.iter().copied());
+            }
+        }
+        scope.retain(|id| !pinned.contains(id));
+        let offset = selected.map_or(Vec2::ZERO, |id| self.positions[&id] - self.automatic[&id]);
+        let visible_ids: std::collections::BTreeSet<_> = visible.iter().map(|n| n.id).collect();
+        let mut occupied: Vec<_> = visible_ids
+            .iter()
+            .filter(|id| !scope.contains(id))
+            .map(|id| Rect::from_min_size(self.positions[id], NODE_SIZE).expand(12.0))
+            .collect();
+        let mut placed = BTreeMap::new();
+        let mut order: Vec<_> = scope
+            .iter()
+            .filter(|id| visible_ids.contains(id))
+            .copied()
+            .collect();
+        order.sort_by(|a, b| {
+            self.automatic[a]
+                .y
+                .total_cmp(&self.automatic[b].y)
+                .then(self.automatic[a].x.total_cmp(&self.automatic[b].x))
+        });
+        for id in order {
+            let mut p = self.automatic[&id] + offset;
+            while occupied
+                .iter()
+                .any(|rect| rect.intersects(Rect::from_min_size(p, NODE_SIZE)))
+            {
+                p.y += 100.0;
+            }
+            p.x = p.x.clamp(-1_000_000.0, 1_000_000.0);
+            p.y = p.y.clamp(-1_000_000.0, 1_000_000.0);
+            occupied.push(Rect::from_min_size(p, NODE_SIZE).expand(12.0));
+            placed.insert(id, p);
+        }
+        for id in &scope {
+            if placed.contains_key(id) {
+                continue;
+            }
+            let p = doc
+                .groups
+                .values()
+                .find(|g| g.members.contains(id))
+                .and_then(|g| {
+                    placed
+                        .get(&g.output)
+                        .map(|anchor| self.automatic[id] + (*anchor - self.automatic[&g.output]))
+                })
+                .unwrap_or(self.automatic[id] + offset);
+            placed.insert(*id, p);
+        }
+        placed
+            .into_iter()
+            .filter(|(id, p)| self.positions[id] != *p)
+            .map(|(id, p)| (id, NodePosition { x: p.x, y: p.y }))
+            .collect()
     }
     fn zoom_at(&mut self, zoom: f32, point: Pos2, canvas: Rect) {
         let zoom = zoom.clamp(0.15, 2.5);
@@ -431,7 +576,7 @@ impl Graph {
         self.sync(doc, revision);
         let nodes = self.visual_nodes(doc);
         let mut actions = Vec::new();
-        let mut fit = false;
+        let mut fit = std::mem::take(&mut self.fit_pending);
         let mut zoom_factor = 1.0;
         ui.horizontal(|ui| {
             ui.heading("Nodes");
@@ -476,14 +621,57 @@ impl Graph {
             if ui.button("+").clicked() {
                 zoom_factor = 1.25;
             }
-            if ui.button("Arrange").clicked() {
-                actions.push(Action::Arrange(
-                    self.automatic
-                        .iter()
-                        .map(|(id, p)| (*id, NodePosition { x: p.x, y: p.y }))
-                        .collect(),
-                ));
+            if ui
+                .button("Arrange")
+                .on_hover_text(
+                    "Arrange all nodes by connected branches; keep pinned nodes in place",
+                )
+                .clicked()
+            {
+                let positions = self.arrangement(doc, None);
+                if !positions.is_empty() {
+                    actions.push(Action::Arrange(positions));
+                    self.fit_pending = true;
+                } else {
+                    fit = true;
+                }
             }
+            ui.menu_button("Layout ▾", |ui| {
+                if ui.button("Arrange selected branch").clicked() {
+                    let positions = self.arrangement(doc, Some(selected));
+                    if !positions.is_empty() {
+                        actions.push(Action::Arrange(positions));
+                    }
+                    ui.close();
+                }
+                let mut pinned = self.pinned.contains(&selected);
+                if ui
+                    .checkbox(&mut pinned, "Pin selected placement")
+                    .on_hover_text(
+                        "Keep this node in place during Arrange for this editing session",
+                    )
+                    .changed()
+                {
+                    if pinned {
+                        self.pinned.insert(selected);
+                    } else {
+                        self.pinned.remove(&selected);
+                    }
+                }
+                ui.separator();
+                ui.checkbox(&mut self.role_colours, "Node role colours");
+                ui.checkbox(&mut self.wire_colours, "Wire role colours")
+                    .on_hover_text("Wires use their source node’s role colour; selected connections are brighter");
+                for (label, colour) in [
+                    ("Text / shapes", Color32::from_rgb(105, 170, 230)),
+                    ("Images / generators", Color32::from_rgb(95, 175, 150)),
+                    ("Materials", Color32::from_rgb(210, 170, 85)),
+                    ("Effects", Color32::from_rgb(175, 130, 205)),
+                    ("Compositing", Color32::from_rgb(110, 180, 195)),
+                ] {
+                    ui.colored_label(colour, label);
+                }
+            });
             ui.weak("Drag background to pan · Ctrl+scroll to zoom · double-click to preview");
         });
         let (canvas, response) = ui.allocate_exact_size(
@@ -548,6 +736,10 @@ impl Graph {
                 ));
             }
         }
+        let colours: BTreeMap<_, _> = nodes
+            .iter()
+            .map(|node| (node.id, node.role_colour(doc)))
+            .collect();
         for node in &nodes {
             for (index, (_, source)) in node.inputs.iter().enumerate() {
                 let from = canvas.min
@@ -561,12 +753,23 @@ impl Graph {
                             60.0 * (index + 1) as f32 / (node.inputs.len() + 1) as f32,
                         ))
                         * self.zoom;
+                let highlighted = node.id == selected || *source == selected;
+                let colour = if self.wire_colours {
+                    colours[source]
+                } else {
+                    Color32::from_gray(150)
+                };
+                let colour = if highlighted {
+                    colour
+                } else {
+                    colour.gamma_multiply(0.65)
+                };
                 let bend = egui::vec2(45.0 * self.zoom, 0.0);
                 painter.add(egui::epaint::CubicBezierShape::from_points_stroke(
                     [from, from + bend, to - bend, to],
                     false,
                     Color32::TRANSPARENT,
-                    egui::Stroke::new(1.5_f32, Color32::from_gray(100)),
+                    egui::Stroke::new(if highlighted { 2.2_f32 } else { 1.5_f32 }, colour),
                 ));
             }
         }
@@ -644,6 +847,21 @@ impl Graph {
             }
             let selected = node.id == selected;
             painter.rect_filled(rect, 0.0, Color32::from_rgb(36, 41, 50));
+            if self.role_colours {
+                let colour = node.role_colour(doc);
+                painter.rect_filled(
+                    Rect::from_min_size(rect.min, egui::vec2(rect.width(), 3.0 * self.zoom)),
+                    0.0,
+                    colour,
+                );
+            }
+            if self.pinned.contains(&node.id) {
+                painter.circle_filled(
+                    rect.right_top() + egui::vec2(-8.0, 9.0) * self.zoom,
+                    3.0 * self.zoom,
+                    Color32::WHITE,
+                );
+            }
             painter.rect_stroke(
                 rect,
                 0.0,
@@ -956,5 +1174,43 @@ mod tests {
         let pan = graph.pan;
         graph.reveal(id, canvas);
         assert_eq!(graph.pan, pan);
+    }
+}
+
+#[cfg(test)]
+mod arrangement_tests {
+    use super::*;
+    #[test]
+    fn collapsed_effects_take_one_column_and_pins_are_not_moved() {
+        use veylvik_document::{Document, Time, recipes::Recipe};
+        let doc = veylvik_document::blank(320, 180, Time::new(24, 1).unwrap()).unwrap();
+        let source = doc.output;
+        let effect = Recipe::Glow.build(&doc, source).unwrap();
+        let output = effect.root;
+        let commands = veylvik_document::presets::connect_after(
+            &doc,
+            source,
+            output,
+            effect.into_grouped_commands(&doc).unwrap(),
+        )
+        .unwrap();
+        let owner = Document::new(doc).unwrap();
+        let mut doc = owner.prepare(0, &commands).unwrap();
+        let group = *doc.groups.keys().next().unwrap();
+        let mut graph = Graph::default();
+        graph.sync(&doc, 0);
+        assert_eq!(
+            graph.automatic[&output].x - graph.automatic[&source].x,
+            220.0
+        );
+        graph.expand(group);
+        graph.sync(&doc, 0);
+        assert!(graph.automatic[&output].x - graph.automatic[&source].x > 220.0);
+        doc.nodes.get_mut(&source).unwrap().position = Some(NodePosition { x: 900.0, y: 700.0 });
+        graph.sync(&doc, 1);
+        graph.pinned.insert(source);
+        let arrangement = graph.arrangement(&doc, None);
+        assert!(arrangement.iter().all(|(id, _)| *id != source));
+        assert_eq!(graph.positions[&source], egui::pos2(900.0, 700.0));
     }
 }

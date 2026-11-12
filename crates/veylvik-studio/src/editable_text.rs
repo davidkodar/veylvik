@@ -668,6 +668,41 @@ pub fn controls(
     (changed, import)
 }
 
+/// Browsing a fill category is UI state only. Replacing a fill needs an explicit action.
+fn fill_navigation(ui: &mut egui::Ui, mode: &mut u8, active: u8) -> Option<bool> {
+    const LABELS: [&str; 4] = ["Colour", "Gradient", "Material", "Image / animation"];
+    ui.weak(format!("Applied fill: {}", LABELS[active as usize]));
+    ui.horizontal_wrapped(|ui| {
+        for (value, label) in LABELS.into_iter().enumerate() {
+            let response = ui.selectable_value(mode, value as u8, label);
+            #[cfg(test)]
+            ui.ctx().data_mut(|d| {
+                d.insert_temp(egui::Id::new(("fill-tab-test", value)), response.rect)
+            });
+            let _ = response;
+        }
+    });
+    if *mode != active && matches!(*mode, 0 | 1) {
+        ui.weak("Browsing controls leaves the current fill and effects unchanged.");
+        let response = ui
+            .button(if *mode == 0 {
+                "Use colour fill"
+            } else {
+                "Use gradient fill"
+            })
+            .on_hover_text(
+                "Replace the current fill; keep attached effects. Undo restores the previous fill.",
+            );
+        #[cfg(test)]
+        ui.ctx()
+            .data_mut(|d| d.insert_temp(egui::Id::new("fill-action-test"), response.rect));
+        if response.clicked() {
+            return Some(*mode == 1);
+        }
+    }
+    None
+}
+
 impl crate::Studio {
     pub(super) fn apply_text_style(&mut self, style: Option<&str>, ctx: &egui::Context) {
         if !self.apply_draft() {
@@ -721,23 +756,7 @@ impl crate::Studio {
         let mut mode = ui
             .ctx()
             .data_mut(|d| d.get_temp::<u8>(key).unwrap_or(default));
-        let mut fill_action = None;
-        ui.horizontal_wrapped(|ui| {
-            for (value, label) in [
-                (0, "Colour"),
-                (1, "Gradient"),
-                (2, "Material"),
-                (3, "Image / animation"),
-            ] {
-                if ui.selectable_value(&mut mode, value, label).changed() {
-                    if value == 0 {
-                        fill_action = Some(false);
-                    } else if value == 1 && !is_gradient {
-                        fill_action = Some(true);
-                    }
-                }
-            }
-        });
+        let fill_action = fill_navigation(ui, &mut mode, default);
         ui.ctx().data_mut(|d| d.insert_temp(key, mode));
         if let Some(gradient) = fill_action
             && self.apply_draft()
@@ -761,6 +780,7 @@ impl crate::Studio {
             }
         }
         if mode == 1
+            && default == 1
             && let Ok(Some(id)) = veylvik_document::presets::text_style::fill_source(
                 self.project.document.snapshot(),
                 self.draft.id,
@@ -837,7 +857,7 @@ impl crate::Studio {
                 .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
                 .width(220.0)
                 .height(300.0)
-                .selected_text(active.map_or("Plain colour", |n| n.label.as_str()))
+                .selected_text(active.map_or("Choose a material…", |n| n.label.as_str()))
                 .show_ui(ui, |ui| {
                     ui.horizontal(|ui| {
                         ui.add(
@@ -850,7 +870,7 @@ impl crate::Studio {
                         }
                     });
                     if ui
-                        .selectable_label(active.is_none(), "Plain colour")
+                        .add_enabled(active.is_some(), egui::Button::new("Remove material"))
                         .clicked()
                     {
                         style = Some(None);
@@ -904,6 +924,7 @@ impl crate::Studio {
         }
         ui.separator();
         if mode == 0
+            && default == 0
             && let Operation::Text { color, .. } = &mut self.draft.operation
         {
             let mut changed = false;
@@ -1105,5 +1126,79 @@ mod tests {
         doc.output = transform.id;
         doc.nodes.insert(transform.id, transform);
         assert!(!handles_in_scene(&doc, text));
+    }
+}
+
+#[cfg(test)]
+mod fill_navigation_tests {
+    use super::*;
+    #[test]
+    fn browsing_every_fill_tab_never_requests_a_document_edit() {
+        let ctx = egui::Context::default();
+        let mut mode = 2;
+        let mut run = |events| {
+            let mut action = None;
+            let _ = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(600.0, 300.0),
+                    )),
+                    events,
+                    ..Default::default()
+                },
+                |ui| {
+                    egui::CentralPanel::default()
+                        .show_inside(ui, |ui| action = fill_navigation(ui, &mut mode, 2));
+                },
+            );
+            action
+        };
+        assert_eq!(run(vec![]), None);
+        for value in [0usize, 1, 3, 2, 0] {
+            let rect = ctx.data_mut(|d| {
+                d.get_temp::<egui::Rect>(egui::Id::new(("fill-tab-test", value)))
+                    .unwrap()
+            });
+            for pressed in [true, false] {
+                assert_eq!(
+                    run(vec![
+                        egui::Event::PointerMoved(rect.center()),
+                        egui::Event::PointerButton {
+                            pos: rect.center(),
+                            button: egui::PointerButton::Primary,
+                            pressed,
+                            modifiers: egui::Modifiers::NONE
+                        }
+                    ]),
+                    None
+                );
+            }
+        }
+        let rect = ctx.data_mut(|d| {
+            d.get_temp::<egui::Rect>(egui::Id::new("fill-action-test"))
+                .unwrap()
+        });
+        assert_eq!(
+            run(vec![
+                egui::Event::PointerMoved(rect.center()),
+                egui::Event::PointerButton {
+                    pos: rect.center(),
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: egui::Modifiers::NONE
+                }
+            ]),
+            None
+        );
+        assert_eq!(
+            run(vec![egui::Event::PointerButton {
+                pos: rect.center(),
+                button: egui::PointerButton::Primary,
+                pressed: false,
+                modifiers: egui::Modifiers::NONE
+            }]),
+            Some(false)
+        );
     }
 }

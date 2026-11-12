@@ -436,7 +436,12 @@ Copying is rejected atomically if document size, node count, or graph coordinate
 limits would be exceeded.
 
 Drag the graph background to pan, Ctrl+scroll to zoom, and use **Fit** to see
-the whole graph. **Arrange** restores an automatic layout as one undoable edit. Source images load when the
+the whole graph. **Arrange** lays out connected branches as one undoable edit, treating
+collapsed effects as a single stage and placing unused branches separately. It never
+deletes nodes. **Layout** offers arrangement of the selected upstream branch and
+session-only placement pins. Optional node strips and wires share a role-colour
+legend; wires follow their source node, and selected connections appear brighter.
+Unused nodes are also labelled in text. Source images load when the
 project opens or an image is imported, within a 256 MiB host image budget.
 **Reload images** (Ctrl+R) reads all current sources in the background and refreshes
 preview after every file succeeds. A failed reload retains all previous inputs;
@@ -635,7 +640,9 @@ it is not a perspective-deformed caret on the final processed image.
 shrink-to-fit. **Layout box** in the viewer enables a resizable box; the inspector
 reports overflow. **Transform** includes a nine-point anchor, linked scales and
 centre-in-frame. Viewer safe-area guides and centre snapping are optional.
-**Style** separates Colour, Gradient, Material and Image/animation fills. Material
+**Style** separates Colour, Gradient, Material and Image/animation fills. Browsing
+these tabs preserves the applied fill; explicit **Use colour fill** / **Use gradient fill**
+actions replace it. Material
 parameters stay in the text inspector. Attached single-source effects, including
 compound groups, can be disabled, reordered, removed and adjusted inline. Shared
 branches remain explicit in the node graph. Outline, shadow, glow, shine and bevel
