@@ -8,6 +8,7 @@ mod display;
 mod files;
 mod graph;
 mod project;
+mod viewer;
 use display::{Display, DisplayFrame, Paint, ViewSettings};
 use eframe::{egui, egui_wgpu};
 use files::{Choice, Completed, Tasks};
@@ -94,6 +95,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 scheduler: Some(scheduler),
                 display,
                 view: ViewSettings::default(),
+                navigation: viewer::Navigation::default(),
                 displayed: None,
                 displayed_ticket: None,
                 wanted: None,
@@ -134,6 +136,7 @@ struct Studio {
     scheduler: Option<GpuPreviewScheduler>,
     display: Display,
     view: ViewSettings,
+    navigation: viewer::Navigation,
     displayed: Option<Arc<DisplayFrame>>,
     displayed_ticket: Option<PreviewTicket>,
     wanted: Option<PreviewTicket>,
@@ -514,6 +517,7 @@ impl Studio {
                 self.export_controls = sequence::Controls::default();
                 self.project = *project;
                 self.graph = graph::Graph::default();
+                self.navigation.fit();
                 self.displayed = None;
                 self.displayed_ticket = None;
                 self.refresh_draft();
@@ -1013,7 +1017,12 @@ impl eframe::App for Studio {
             match scheduler.try_take() {
                 Ok(Some(result)) if self.wanted == Some(result.ticket) => match result.frame {
                     Ok(frame) => {
-                        self.displayed = Some(self.display.frame(&self.renderer, frame, self.view));
+                        self.displayed = Some(self.display.frame(
+                            &self.renderer,
+                            frame,
+                            self.view,
+                            viewer::ViewTransform::default(),
+                        ));
                         self.displayed_ticket = Some(result.ticket);
                         if !self.error && !self.files.busy() {
                             self.status = format!(
@@ -1131,7 +1140,6 @@ impl eframe::App for Studio {
                         egui::ScrollArea::vertical().show(ui, |ui| self.inspector(ui));
                     });
                 egui::CentralPanel::default().show_inside(ui, |ui| {
-                    let previous_view = self.view;
                     ui.horizontal(|ui| {
                         ui.heading("Viewer");
                         ui.weak(if self.project.preview.is_some() {
@@ -1151,19 +1159,20 @@ impl eframe::App for Studio {
                                     .suffix(" stops"),
                             );
                         });
+                        if ui.button("Fit").clicked() {
+                            self.navigation.fit();
+                        }
+                        if ui
+                            .button("100%")
+                            .on_hover_text("One image pixel per physical display pixel")
+                            .clicked()
+                        {
+                            self.navigation.actual_size();
+                        }
                         if ui.button("Reset view").clicked() {
                             self.view = ViewSettings::default();
                         }
                     });
-                    if self.view != previous_view
-                        && let Some(frame) = &self.displayed
-                    {
-                        self.displayed = Some(self.display.frame(
-                            &self.renderer,
-                            frame.frame.clone(),
-                            self.view,
-                        ));
-                    }
                     if self.displayed.is_some() && self.displayed_ticket != self.wanted {
                         ui.weak(if self.error {
                             "Showing previous frame · preview failed"
@@ -1171,20 +1180,37 @@ impl eframe::App for Studio {
                             "Showing previous frame · rendering"
                         });
                     }
-                    if let Some(frame) = &self.displayed {
-                        let available = ui.available_size();
-                        let aspect =
-                            frame.frame.region().width as f32 / frame.frame.region().height as f32;
-                        let width = available.x.min(available.y * aspect).max(1.0);
-                        let size = egui::vec2(width, width / aspect);
-                        let rect = egui::Rect::from_center_size(
-                            ui.available_rect_before_wrap().center(),
-                            size,
+                    if let Some(frame) = self.displayed.clone() {
+                        let image = egui::vec2(
+                            frame.frame.region().width as f32,
+                            frame.frame.region().height as f32,
                         );
-                        ui.painter().add(egui_wgpu::Callback::new_paint_callback(
-                            rect,
-                            Paint(frame.clone()),
+                        let (canvas, response) = ui.allocate_exact_size(
+                            ui.available_size().max(egui::vec2(1.0, 1.0)),
+                            egui::Sense::click_and_drag(),
+                        );
+                        self.navigation.interact(ui, &response, canvas, image);
+                        let transform =
+                            self.navigation
+                                .transform(canvas, image, ctx.pixels_per_point());
+                        response.on_hover_text(format!(
+                            "{:.0}% · scroll to zoom · drag to pan · double-click to fit",
+                            self.navigation.scale(canvas, image, ctx.pixels_per_point()) * 100.0
                         ));
+                        if frame.settings != self.view || frame.transform != transform {
+                            self.displayed = Some(self.display.frame(
+                                &self.renderer,
+                                frame.frame.clone(),
+                                self.view,
+                                transform,
+                            ));
+                        }
+                        ui.painter().with_clip_rect(canvas).add(
+                            egui_wgpu::Callback::new_paint_callback(
+                                canvas,
+                                Paint(self.displayed.as_ref().unwrap().clone()),
+                            ),
+                        );
                     } else {
                         ui.centered_and_justified(|ui| {
                             ui.label(if self.error {

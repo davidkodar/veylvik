@@ -110,7 +110,12 @@ The viewer consumes GPU-resident frames on the same Vulkan device as the UI.
 **View exposure** adjusts only the display by −16 to +16 stops. **Alpha** shows
 coverage as grayscale, independent of exposure; **Reset view** restores normal
 color viewing. These controls do not change the document, history or exports.
-Live MCP inspection reports these viewer settings separately from the composition.
+Scroll over the viewer to zoom around the pointer and drag to pan. **Fit** or
+a double-click centers the whole frame; **100%** maps one image pixel to one
+physical display pixel, including on scaled displays. Navigation changes only
+the view; exports still use the complete requested frame. Live MCP inspection
+reports viewer settings separately from the composition (`scale: null` means
+fit mode; pan coordinates are logical UI points).
 Select and arrange nodes, drag between output and input sockets to connect them,
 add procedural nodes, and preview any node without changing composition output.
 Socket drags work in either direction; Escape or dropping on empty space cancels.

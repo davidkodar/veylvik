@@ -1,4 +1,4 @@
-struct Parameters { size: vec4<u32>, region: vec4<u32> }
+struct Parameters { size: vec4<u32>, region: vec4<u32>, view: vec4<f32> }
 @group(0) @binding(0) var<storage, read> pixels: array<vec4<f32>>;
 @group(0) @binding(1) var<uniform> params: Parameters;
 struct Vertex { @builtin(position) position: vec4<f32>, @location(0) uv: vec2<f32> }
@@ -17,7 +17,13 @@ fn sample_pixel(position: vec2<i32>) -> vec4<f32> {
 @fragment fn fragment(v: Vertex) -> @location(0) vec4<f32> {
     // Filter scene-linear premultiplied samples before applying the display
     // transform. Clamp to the crop, so neighboring storage pixels never bleed.
-    let position = v.uv * vec2<f32>(params.region.zw) - vec2<f32>(0.5);
+    let uv = (v.uv - params.view.xy) / params.view.zw;
+    if any(uv < vec2<f32>(0.0)) || any(uv > vec2<f32>(1.0)) {
+        var background = vec3<f32>(24.0,27.0,33.0) / 255.0;
+        if (params.size.z & 1u) != 0u { background = pow((background + vec3<f32>(0.055)) / 1.055, vec3<f32>(2.4)); }
+        return vec4<f32>(background,1.0);
+    }
+    let position = uv * vec2<f32>(params.region.zw) - vec2<f32>(0.5);
     let base = vec2<i32>(floor(position));
     let weight = fract(position);
     let top = mix(sample_pixel(base), sample_pixel(base + vec2<i32>(1,0)), weight.x);
