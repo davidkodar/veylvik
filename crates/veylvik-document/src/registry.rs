@@ -129,6 +129,20 @@ pub static NOISE: NodeType = NodeType {
         scalar("scale", "pixels", 1.0, 8192.0, 18.0),
     ],
 };
+pub static FRACTAL_NOISE: NodeType = NodeType {
+    type_id: "fractal_noise",
+    version: 1,
+    label: "Fractal noise",
+    description: "Opaque grayscale fractal value noise with quintic interpolation. Scale sets the first octave cell size; octaves round to an integer, roughness controls successive amplitude, evolution moves through a continuous third dimension. Deterministic for a seed and parameter values.",
+    inputs: &[],
+    parameters: &[
+        other("seed", ParameterKind::Seed, "integer"),
+        scalar("scale", "pixels", 1.0, 8192.0, 128.0),
+        scalar("octaves", "count", 1.0, 8.0, 4.0),
+        scalar("roughness", "factor", 0.0, 1.0, 0.5),
+        scalar("evolution", "units", -8192.0, 8192.0, 0.0),
+    ],
+};
 pub static EXPOSURE: NodeType = NodeType {
     type_id: "exposure",
     version: 1,
@@ -247,8 +261,20 @@ pub static PATH: NodeType = NodeType {
     parameters: &[other("geometry", ParameterKind::Path, "pixels")],
 };
 pub static TYPES: &[&NodeType] = &[
-    &SOLID, &NOISE, &EXPOSURE, &TRANSFORM, &BLUR, &MERGE, &IMAGE, &AFFINE, &ELLIPSE, &MASK, &PATH,
-    &BLEND, &DISPLACE,
+    &SOLID,
+    &NOISE,
+    &EXPOSURE,
+    &TRANSFORM,
+    &BLUR,
+    &MERGE,
+    &IMAGE,
+    &AFFINE,
+    &ELLIPSE,
+    &MASK,
+    &PATH,
+    &BLEND,
+    &DISPLACE,
+    &FRACTAL_NOISE,
 ];
 pub fn operation_schema() -> Value {
     json!({"oneOf":TYPES.iter().map(|node|node.schema()).collect::<Vec<_>>()})

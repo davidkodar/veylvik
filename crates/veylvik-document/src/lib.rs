@@ -34,6 +34,13 @@ pub enum Operation {
         seed: u32,
         scale: Scalar,
     },
+    FractalNoise {
+        seed: u32,
+        scale: Scalar,
+        octaves: Scalar,
+        roughness: Scalar,
+        evolution: Scalar,
+    },
     Exposure {
         stops: Scalar,
     },
@@ -81,6 +88,7 @@ impl Operation {
     pub fn descriptor(&self) -> &'static registry::NodeType {
         match self {
             Self::Solid { .. } => &registry::SOLID,
+            Self::FractalNoise { .. } => &registry::FRACTAL_NOISE,
             Self::Noise { .. } => &registry::NOISE,
             Self::Exposure { .. } => &registry::EXPOSURE,
             Self::Transform { .. } => &registry::TRANSFORM,
@@ -100,7 +108,10 @@ impl Operation {
     }
     pub fn scalar(&self, name: &str) -> Option<&Scalar> {
         match (self, name) {
-            (Self::Noise { scale, .. }, "scale") => Some(scale),
+            (Self::Noise { scale, .. } | Self::FractalNoise { scale, .. }, "scale") => Some(scale),
+            (Self::FractalNoise { octaves, .. }, "octaves") => Some(octaves),
+            (Self::FractalNoise { roughness, .. }, "roughness") => Some(roughness),
+            (Self::FractalNoise { evolution, .. }, "evolution") => Some(evolution),
             (Self::Exposure { stops }, "stops") => Some(stops),
             (Self::Transform { x, .. } | Self::Displace { x, .. }, "x") => Some(x),
             (Self::Transform { y, .. } | Self::Displace { y, .. }, "y") => Some(y),
@@ -121,7 +132,10 @@ impl Operation {
     }
     pub fn scalar_mut(&mut self, name: &str) -> Option<&mut Scalar> {
         match (self, name) {
-            (Self::Noise { scale, .. }, "scale") => Some(scale),
+            (Self::Noise { scale, .. } | Self::FractalNoise { scale, .. }, "scale") => Some(scale),
+            (Self::FractalNoise { octaves, .. }, "octaves") => Some(octaves),
+            (Self::FractalNoise { roughness, .. }, "roughness") => Some(roughness),
+            (Self::FractalNoise { evolution, .. }, "evolution") => Some(evolution),
             (Self::Exposure { stops }, "stops") => Some(stops),
             (Self::Transform { x, .. } | Self::Displace { x, .. }, "x") => Some(x),
             (Self::Transform { y, .. } | Self::Displace { y, .. }, "y") => Some(y),

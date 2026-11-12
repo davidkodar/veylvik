@@ -747,7 +747,7 @@ impl Studio {
                     });
                 }
             }
-            Operation::Noise { seed, .. } => {
+            Operation::Noise { seed, .. } | Operation::FractalNoise { seed, .. } => {
                 ui.horizontal(|ui| {
                     ui.label("Seed");
                     self.draft_dirty |= ui.add(egui::DragValue::new(seed)).changed();

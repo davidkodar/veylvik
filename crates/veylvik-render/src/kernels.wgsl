@@ -126,3 +126,33 @@ fn displace(@builtin(global_invocation_id) gid:vec3<u32>) {
     let delta=(2.0*clamp(map.rg,vec2<f32>(0.0),vec2<f32>(map.a))-vec2<f32>(map.a))*p.values.xy;
     result[index(gid)]=bilinear(vec2<f32>(gid.xy)-delta);
 }
+
+fn lattice_noise(pos:vec3<i32>,seed:u32)->f32 {
+    let bits=bitcast<vec3<u32>>(pos);
+    let hash=noise_hash(bits.x ^ noise_hash(bits.y ^ noise_hash(bits.z ^ seed)));
+    return f32(hash & 0x00ffffffu)/16777215.0;
+}
+fn value_noise(pos:vec3<f32>,seed:u32)->f32 {
+    let base=vec3<i32>(floor(pos));
+    let f=fract(pos);
+    let t=f*f*f*(f*(f*6.0-15.0)+10.0);
+    let a=mix(lattice_noise(base,seed),lattice_noise(base+vec3<i32>(1,0,0),seed),t.x);
+    let b=mix(lattice_noise(base+vec3<i32>(0,1,0),seed),lattice_noise(base+vec3<i32>(1,1,0),seed),t.x);
+    let c=mix(lattice_noise(base+vec3<i32>(0,0,1),seed),lattice_noise(base+vec3<i32>(1,0,1),seed),t.x);
+    let d=mix(lattice_noise(base+vec3<i32>(0,1,1),seed),lattice_noise(base+vec3<i32>(1,1,1),seed),t.x);
+    return mix(mix(a,b,t.y),mix(c,d,t.y),t.z);
+}
+@compute @workgroup_size(8,8)
+fn fractal_noise(@builtin(global_invocation_id) gid:vec3<u32>) {
+    if !inside(gid) {return;}
+    var pos=vec3<f32>(vec2<f32>(gid.xy)/p.values.x,p.values.w);
+    var total=0.0; var weight=0.0; var amplitude=1.0;
+    for (var octave=0u;octave<u32(p.values.y);octave++) {
+        total+=amplitude*value_noise(pos,noise_hash(p.size_op.w+octave));
+        weight+=amplitude;
+        amplitude*=p.values.z;
+        pos*=2.0;
+    }
+    let n=clamp(total/weight,0.0,1.0);
+    result[index(gid)]=vec4<f32>(n,n,n,1.0);
+}

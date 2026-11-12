@@ -48,6 +48,21 @@ fn params(node: &Node, width: u32, height: u32, time: Time) -> Result<Params> {
             p.size_op[3] = *seed;
             p.values[0] = scale.at(time)?;
         }
+        Operation::FractalNoise {
+            seed,
+            scale,
+            octaves,
+            roughness,
+            evolution,
+        } => {
+            p.size_op[3] = *seed;
+            p.values = [
+                scale.at(time)?,
+                octaves.at(time)?.round(),
+                roughness.at(time)?,
+                evolution.at(time)?,
+            ];
+        }
         Operation::Exposure { stops } => {
             let stops = stops.at(time)?;
             p.values[0] = stops.exp2();

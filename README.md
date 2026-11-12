@@ -186,6 +186,7 @@ includes retained history statistics. Supported operations:
 |---|---|---|
 | Solid | none | Straight linear RGB plus alpha; converted to premultiplied pixels |
 | Noise | none | Seed and cell size, 1–8192 pixels |
+| Fractal noise | none | Smooth grayscale noise; seed, scale, octaves, roughness, evolution |
 | Exposure | image | −32 to +32 stops |
 | Transform | image | X/Y translation in pixels, bilinear sampling |
 | Displace | image, map | Animated X/Y strength in pixels; red/green map channels, alpha-weighted |
@@ -445,3 +446,20 @@ within ±8192 pixels. Image sampling is bilinear in linear premultiplied RGBA,
 with transparent borders; image HDR and negative values are preserved. Map
 values are interpreted in scene-linear space, including imported PNGs after
 sRGB decoding. Blur a Noise output for a smooth procedural distortion map.
+
+### Animated fractal noise
+
+Fractal noise produces opaque grayscale values in [0,1] from deterministic
+three-dimensional value noise. Quintic interpolation joins lattice cells
+smoothly. `scale` sets the first octave cell size in pixels (1–8192), `octaves`
+rounds to 1–8 layers, and `roughness` (0–1) multiplies each successive layer's
+amplitude. Each octave doubles frequency and the weighted sum is normalized.
+`evolution` (−8192 to +8192) travels through the third dimension; keyframe it for
+continuous texture animation. Evolution is not a looping phase. All controls
+except the integer seed accept animation curves. High frequencies can alias;
+this generator does not yet apply footprint-aware filtering. The original
+colored cell Noise retains its existing output for saved compositions.
+
+Connect Fractal noise to Displace's map port for smooth diagonal distortion,
+or transform and combine maps upstream for other patterns. Its RGB is grayscale
+and alpha is one; it is a color texture, not an alpha mask.

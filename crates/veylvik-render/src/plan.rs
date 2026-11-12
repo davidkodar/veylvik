@@ -8,6 +8,7 @@ use veylvik_document::{Composition, Node, NodeId, Operation, Scalar};
 pub enum Kernel {
     Solid,
     Noise,
+    FractalNoise,
     Exposure,
     Transform,
     Displace,
@@ -21,9 +22,10 @@ pub enum Kernel {
     Mask,
 }
 impl Kernel {
-    pub(crate) const ALL: [Self; 13] = [
+    pub(crate) const ALL: [Self; 14] = [
         Self::Solid,
         Self::Noise,
+        Self::FractalNoise,
         Self::Exposure,
         Self::Transform,
         Self::Displace,
@@ -39,6 +41,7 @@ impl Kernel {
     pub(crate) fn entry(self) -> &'static str {
         match self {
             Self::Solid => "solid",
+            Self::FractalNoise => "fractal_noise",
             Self::Noise => "noise",
             Self::Exposure => "exposure",
             Self::Displace => "displace",
@@ -142,6 +145,7 @@ impl Plan {
             }
             let kernel = match &node.operation {
                 Operation::Solid { .. } => Kernel::Solid,
+                Operation::FractalNoise { .. } => Kernel::FractalNoise,
                 Operation::Noise { .. } => Kernel::Noise,
                 Operation::Exposure { .. } => Kernel::Exposure,
                 Operation::Displace { .. } => Kernel::Displace,
@@ -305,6 +309,7 @@ fn shareable(operation: &Operation) -> bool {
     matches!(
         operation,
         Operation::Solid { .. }
+            | Operation::FractalNoise { .. }
             | Operation::Noise { .. }
             | Operation::Exposure { .. }
             | Operation::Displace { .. }

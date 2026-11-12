@@ -42,9 +42,12 @@ fn animated_mask_composition_matches_cli_and_mcp() {
     document.nodes.insert(output.id, output);
     let map = veylvik_document::Node::new(
         "distortion map",
-        veylvik_document::Operation::Noise {
+        veylvik_document::Operation::FractalNoise {
             seed: 42,
             scale: 32.0.into(),
+            octaves: 3.0.into(),
+            roughness: 0.5.into(),
+            evolution: 0.25.into(),
         },
         &[],
     );
@@ -103,7 +106,14 @@ fn animated_mask_composition_matches_cli_and_mcp() {
     let catalog = replies[1]["result"]["structuredContent"]["nodes"]
         .as_array()
         .unwrap();
-    for kind in ["affine", "ellipse", "mask", "path", "displace"] {
+    for kind in [
+        "affine",
+        "ellipse",
+        "mask",
+        "path",
+        "displace",
+        "fractal_noise",
+    ] {
         assert!(
             catalog
                 .iter()
