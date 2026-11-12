@@ -5,7 +5,7 @@ use std::path::Path;
 use veylvik_document::{Composition, Node, Operation, Time};
 use veylvik_render::{Plan, Region, RenderRequest, Renderer};
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
-const USAGE: &str = "usage: veylvik open [FILE] [--control-dir NEW_DIRECTORY] | demo FILE [--motion] | import IMAGE.png FILE | outline-text FONT TEXT NEW_FILE [OPTIONS] | nodes | check FILE | render FILE OUTPUT.png|OUTPUT.exr [TICKS RATE] [--node UUID] [--crop X Y WIDTH HEIGHT] | render-sequence FILE DIRECTORY START END [--format png|exr] [--node UUID] [--crop X Y WIDTH HEIGHT] | mcp FILE | mcp --studio DIRECTORY";
+const USAGE: &str = "usage: veylvik open [FILE] [--control-dir NEW_DIRECTORY] | demo FILE [--motion] | import IMAGE.png|IMAGE.exr FILE | outline-text FONT TEXT NEW_FILE [OPTIONS] | nodes | check FILE | render FILE OUTPUT.png|OUTPUT.exr [TICKS RATE] [--node UUID] [--crop X Y WIDTH HEIGHT] | render-sequence FILE DIRECTORY START END [--format png|exr] [--node UUID] [--crop X Y WIDTH HEIGHT] | mcp FILE | mcp --studio DIRECTORY";
 fn run() -> Result<()> {
     let args: Vec<String> = std::env::args().collect();
     match args.get(1).map(String::as_str) {
@@ -51,7 +51,7 @@ fn run() -> Result<()> {
         }
         Some("import") if args.len() == 4 => {
             let source = Path::new(&args[2]).canonicalize()?;
-            let image = assets::load_png(&source, 128 * 1024 * 1024)?;
+            let image = assets::load_image(&source, 128 * 1024 * 1024)?;
             let parent = Path::new(&args[3])
                 .parent()
                 .filter(|p| !p.as_os_str().is_empty())

@@ -89,8 +89,10 @@ impl Project {
             if let Operation::Image { asset } = &node.operation
                 && !inputs.contains_key(asset)
             {
-                let image =
-                    veylvik_io::load_png(&self.base.join(asset), remaining.min(128 * 1024 * 1024))?;
+                let image = veylvik_io::load_image(
+                    &self.base.join(asset),
+                    remaining.min(128 * 1024 * 1024),
+                )?;
                 remaining -= image.byte_size();
                 inputs.insert(asset, Arc::new(image));
             }

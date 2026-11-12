@@ -379,7 +379,7 @@ impl Studio {
                 return Ok(Completed::Cancelled);
             };
             let path = path.canonicalize().map_err(|e| e.to_string())?;
-            let image = veylvik_io::load_png(&path, budget).map_err(|e| e.to_string())?;
+            let image = veylvik_io::load_image(&path, budget).map_err(|e| e.to_string())?;
             Ok(Completed::Imported {
                 path,
                 image: Arc::new(image),
@@ -996,7 +996,7 @@ impl Studio {
                     for (key, action) in [
                         ("Space", "Play / pause"),
                         ("Ctrl+O", "Open composition"),
-                        ("Ctrl+I", "Import PNG image"),
+                        ("Ctrl+I", "Import PNG or OpenEXR image"),
                         ("Ctrl+E", "Export current preview"),
                         ("Ctrl+Shift+E", "Export image sequence"),
                         ("Ctrl+S", "Save"),

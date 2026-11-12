@@ -132,7 +132,7 @@ and undo work as for other inspector edits.
 Saving uses the same atomic persistence and source-image protection as MCP.
 Open, import, save-as, and export use the desktop file portal. File selection and
 image loading run on a bounded background worker. Save-as preserves the original
-asset resolution; PNG export uses the preview root and time captured when invoked.
+asset resolution; frame export uses the preview root and time captured when invoked.
 Saving an opened project detects changed or deleted external content before
 replacement and requires reopening or saving elsewhere. This check is not an
 atomic filesystem transaction against unrelated simultaneous writers.
@@ -149,9 +149,9 @@ finishes.
 | Shortcut | Action |
 |---|---|
 | Space | Play / pause |
-| Ctrl+O / Ctrl+I | Open composition / import PNG |
-| Ctrl+E | Export current preview to PNG |
-| Ctrl+Shift+E | Export PNG sequence |
+| Ctrl+O / Ctrl+I | Open composition / import PNG or OpenEXR |
+| Ctrl+E | Export current preview to PNG or OpenEXR |
+| Ctrl+Shift+E | Export PNG or OpenEXR sequence |
 | Ctrl+S | Save |
 | Ctrl+Shift+S | Save as |
 | Ctrl+Z / Ctrl+Shift+Z | Undo / redo |
@@ -234,7 +234,7 @@ statistics report source uploads, bytes uploaded, and source-content reuse.
 The default 512 MiB render budget covers declared GPU image buffers, readback,
 uniforms, and each unique source image upload; it does not measure driver overhead
 or bound total process RAM. `check` reports graph working bytes before source
-uploads and also checks the reachable PNG inputs against the combined budget.
+uploads and also checks the reachable image inputs against the combined budget.
 
 The renderer receives immutable `ImageInputs` from its host and never opens files.
 Hosts can also insert a completed `GpuFrame` with `insert_gpu`. The image node
@@ -321,7 +321,7 @@ precondition; it returns a Path operation for an explicit `apply` transaction an
 does not change the document itself. Font paths resolve against the opened
 composition directory.
 
-The CLI/MCP adapter resolves image asset keys as PNG paths relative to the opened
+The CLI/MCP adapter resolves image asset keys as PNG or OpenEXR paths relative to the opened
 composition's directory (absolute paths also work). Save-as rebases relative paths
 without mutating the live session. Save/export refuse to replace an input image.
 
@@ -358,7 +358,7 @@ revision. An invalid preview target or region is rejected before GPU creation.
 The headless session owns an independent in-memory document. Edits persist only through `save`;
 external file edits are not live-synchronized. Save and render can replace the
 explicit destination path, except for a referenced input image. The MCP client should expose those actions for user
-review. Output currently returns the PNG path, not inline image content.
+review. Output currently returns the image path, not inline image content.
 
 To control the open native editor instead, start it with a new private endpoint
 directory, then point an MCP client's stdio command at the proxy:
@@ -407,7 +407,7 @@ The workspace has five boundaries:
   transactional editing, undo/redo, and atomic persistence. No GPU dependencies.
 - `veylvik-render`: immutable compiled plans, buffer lifetimes, compute kernels,
   headless rendering, and the SDR output transform. No UI dependencies.
-- `veylvik-io`: PNG decoding, source protection, and path-aware persistence.
+- `veylvik-io`: PNG/OpenEXR decoding, source protection, and path-aware persistence.
 - `veylvik-control`: shared MCP lifecycle/framing and bounded local transport.
 - `veylvik-cli`: command-line and MCP adapters using those public APIs.
 - `veylvik-studio`: native Rust UI, shared-device display, and document controls.
@@ -485,3 +485,23 @@ recompile; animation continues to evaluate at the current exact time. Key
 comparison retains timestamp representation to preserve identical floating-point
 evaluation. This complements the GPU frame cache, which compares evaluated render
 inputs and therefore also reuses equal pixels across different times.
+
+### OpenEXR image inputs
+
+CLI import, native import, saved image nodes, and MCP rendering accept `.exr`
+assets. The initial supported subset is single-part version-2 scanline EXR with
+exactly R/G/B/A half- or full-float channels, no subsampling, matching origin-zero
+data/display windows, and square pixels. Raw, RLE, ZIP1, and ZIP16 compression
+are supported. Chromaticities must be Rec.709/D65, or absent (the EXR default).
+Pixels are interpreted as scene-linear premultiplied RGBA and preserved without
+SDR clipping. Nonfinite values, alpha outside [0,1], and nonzero RGB at zero
+alpha are rejected by the image-input contract. Tiled, deep, multipart, other
+color spaces, extra channels, and cropped data windows are not yet imported.
+
+Files are bounded to 64 MiB, headers to 1 MiB/256 attributes, dimensions to
+8192 per axis, and decoded RGBA32F to the smaller of the caller's budget and
+128 MiB. Header checks precede pixel allocation; serial decoding uses the same
+immutable file bytes that were checked. Original input files remain protected
+from save/export overwrites, including EXR inputs. EXR export supports a wider
+pixel contract, including emission at zero alpha, so not every exported frame
+is currently accepted as an image input.

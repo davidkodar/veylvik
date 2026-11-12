@@ -28,7 +28,13 @@ fn run(root: &Path, args: &[&str]) -> Value {
 #[test]
 #[ignore = "requires Vulkan; run cargo test --workspace -- --ignored"]
 fn image_mcp_save_as_and_cli_crop_agree() {
-    let root = Temp(std::env::temp_dir().join(format!("veylvik-workflow-{}", std::process::id())));
+    for exr in [false, true] {
+        image_workflow(exr);
+    }
+}
+fn image_workflow(exr: bool) {
+    let root =
+        Temp(std::env::temp_dir().join(format!("veylvik-workflow-{}-{exr}", std::process::id())));
     fs::create_dir(&root.0).unwrap();
     fs::create_dir(root.0.join("project")).unwrap();
     fs::create_dir(root.0.join("moved")).unwrap();
@@ -44,12 +50,32 @@ fn image_mcp_save_as_and_cli_crop_agree() {
         .unwrap()
         .write_image_data(&pixels)
         .unwrap();
+    let source_name = if exr { "source.exr" } else { "source.png" };
+    if exr {
+        let image = veylvik_io::load_png(&source, 128 * 1024 * 1024).unwrap();
+        let pixels: Vec<_> = image
+            .pixels()
+            .iter()
+            .map(|p| [p[0] * 8.0, -p[1], p[2], p[3]])
+            .collect();
+        veylvik_io::save_frame(
+            &root.0.join(source_name),
+            image.width(),
+            image.height(),
+            &pixels,
+        )
+        .unwrap();
+    }
+    let source = root.0.join(source_name);
     let original = fs::read(&source).unwrap();
-    run(&root.0, &["import", "source.png", "project/image.veylvik"]);
+    run(&root.0, &["import", source_name, "project/image.veylvik"]);
     let doc: Value =
         serde_json::from_slice(&fs::read(root.0.join("project/image.veylvik")).unwrap()).unwrap();
     let image = doc["output"].as_str().unwrap();
-    assert_eq!(doc["nodes"][image]["operation"]["asset"], "../source.png");
+    assert_eq!(
+        doc["nodes"][image]["operation"]["asset"],
+        format!("../{source_name}")
+    );
     let blur = "39ea450e-4aad-42a3-9138-05934aa9035e";
     let commands = json!([
         {"command":"put","node":{"id":blur,"version":1,"label":"Blur","operation":{"type":"blur","radius":{"kind":"constant","value":2}},"inputs":{"image":image}}},
@@ -150,7 +176,7 @@ fn image_mcp_save_as_and_cli_crop_agree() {
     assert_eq!(&exr[..4], &20000630_u32.to_le_bytes());
     assert_eq!(exr, fs::read(root.0.join("mcp.exr")).unwrap());
     let refused = Command::new(env!("CARGO_BIN_EXE_veylvik"))
-        .args(["render", "moved/effect.veylvik", "source.png"])
+        .args(["render", "moved/effect.veylvik", source_name])
         .current_dir(&root.0)
         .output()
         .unwrap();

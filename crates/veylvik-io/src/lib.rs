@@ -1,6 +1,8 @@
-//! Filesystem, PNG and font adapters; rendering and shaping stay independent of paths.
+//! Filesystem, PNG, OpenEXR and font adapters; rendering and shaping stay independent of paths.
 pub mod export;
+pub mod import;
 pub use export::{FrameFormat, save_frame};
+pub use import::{load_exr, load_image};
 pub mod sequence;
 pub mod text;
 use std::{
@@ -114,7 +116,7 @@ pub fn load_inputs(plan: &Plan, base: &Path, budget: u64) -> Result<ImageInputs>
     let mut inputs = ImageInputs::default();
     for key in plan.required_assets() {
         let image =
-            load_png(&base.join(key), remaining).map_err(|e| format!("image {key}: {e}"))?;
+            load_image(&base.join(key), remaining).map_err(|e| format!("image {key}: {e}"))?;
         remaining -= image.byte_size();
         inputs.insert(key, Arc::new(image));
     }

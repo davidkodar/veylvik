@@ -81,7 +81,7 @@ pub fn select(choice: Choice, folder: &Path, name: &str) -> Result<Option<PathBu
         Choice::Open => ("Open composition", "Veylvik composition", "*.veylvik"),
         Choice::Save => ("Save composition", "Veylvik composition", "*.veylvik"),
         Choice::Font => ("Choose font for text outlines", "Font", "*.ttf"),
-        Choice::Import => ("Import image", "PNG image", "*.png"),
+        Choice::Import => ("Import image", "PNG or OpenEXR image", "*.png"),
         Choice::Export => (
             "Export frame (.png or .exr)",
             "PNG or OpenEXR image",
@@ -94,7 +94,7 @@ pub fn select(choice: Choice, folder: &Path, name: &str) -> Result<Option<PathBu
             .glob("*.ttf")
             .glob("*.otf")
             .glob("*.ttc")
-    } else if matches!(choice, Choice::Export) {
+    } else if matches!(choice, Choice::Export | Choice::Import) {
         FileFilter::new(label).glob("*.png").glob("*.exr")
     } else {
         FileFilter::new(label).glob(pattern)
