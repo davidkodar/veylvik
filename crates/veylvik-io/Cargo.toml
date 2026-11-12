@@ -1,0 +1,12 @@
+[package]
+name = "veylvik-io"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+[dependencies]
+veylvik-document.workspace = true
+veylvik-render.workspace = true
+png = "0.18"
+pathdiff = "0.2"
+[lints]
+workspace = true

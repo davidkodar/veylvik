@@ -1,14 +1,15 @@
 # Veylvik
 
-A Rust composition engine with headless Vulkan rendering and an MCP interface.
-This is an early foundation, not yet a desktop editor.
+A Rust composition engine and native node editor, with Vulkan rendering and an
+MCP interface. This is an early compositing foundation.
 
 ## Build and run
 
-Requires Rust 1.95 or newer and a Vulkan driver. No display server is needed.
+Requires Rust 1.95 or newer and a Vulkan driver. Headless commands need no
+display server; the native editor supports Wayland and X11.
 
 ```sh
-cargo build --release --locked
+cargo build --workspace --release --locked
 ./target/release/veylvik demo /tmp/example.veylvik
 ./target/release/veylvik check /tmp/example.veylvik
 ./target/release/veylvik render /tmp/example.veylvik /tmp/frame.png 24 24
@@ -30,6 +31,44 @@ Import a still image, inspect available nodes, or render a crop:
 `--crop X Y WIDTH HEIGHT` uses composition pixel coordinates and must lie inside
 the composition. Crops are extracted after full-frame evaluation, so blur and
 transform dependencies match a full render. This does not yet reduce GPU work.
+
+## Native editor
+
+```sh
+./target/release/veylvik open /tmp/example.veylvik
+# Or start an unsaved demo:
+./target/release/veylvik open
+```
+
+The viewer consumes GPU-resident frames on the same Vulkan device as the UI.
+Select and arrange nodes, connect named inputs in the inspector, add procedural
+nodes, and preview any node without changing composition output. Inspector
+changes are drafts until **Apply**; one apply creates one undo step. Invalid
+connections fail atomically. **Revert** discards the draft. Apply or revert before
+selecting another node or using undo/redo.
+
+Scrub the timeline or play it to evaluate animation. Scalar controls can add a
+key at the playhead; expanded key lists edit exact rational times and values.
+Saving uses the same atomic persistence and source-image protection as MCP.
+Save-as accepts a destination path and preserves the original asset resolution.
+Closing asks about unsaved document or inspector changes.
+
+| Shortcut | Action |
+|---|---|
+| Space | Play / pause |
+| Ctrl+S | Save |
+| Ctrl+Shift+S | Save as |
+| Ctrl+Z / Ctrl+Shift+Z | Undo / redo |
+| Q | Close |
+| ? | Show shortcuts |
+
+The editor follows the current Omarchy accent, with a fallback when Omarchy is
+absent. Node positions are currently session-only. Source images load when the
+project opens; use `import` to create an image composition. The initial UI uses
+English labels and a path entry for save-as; PNG export remains a headless command.
+The viewer composites transparency over a checkerboard and applies an SDR display
+transform. A previous preview stays visible while rendering, explicitly marked
+when it no longer matches the requested frame.
 
 ## Composition and rendering
 
@@ -120,13 +159,15 @@ available. Default tests leave it explicitly ignored so document/control tests
 can run on machines without graphics. CI runs it with Mesa's software Vulkan;
 hardware validation remains a separate check.
 
-The workspace has three boundaries:
+The workspace has five boundaries:
 
 - `veylvik-document`: serialization, exact time, curves, graph validation,
   transactional editing, undo/redo, and atomic persistence. No GPU dependencies.
 - `veylvik-render`: immutable compiled plans, buffer lifetimes, compute kernels,
   headless rendering, and the SDR output transform. No UI dependencies.
+- `veylvik-io`: PNG decoding, source protection, and path-aware persistence.
 - `veylvik-cli`: command-line and MCP adapters using those public APIs.
+- `veylvik-studio`: native Rust UI, shared-device display, and document controls.
 
 The executor is whole-frame. `PreviewScheduler` runs it on a dedicated worker,
 keeps at most one active and one pending request, and replaces obsolete pending
@@ -141,5 +182,5 @@ default, within the render budget. Buffers return to the pool only after GPU
 completion and readback unmapping. `Renderer::resource_stats` reports allocations,
 reuse, evictions, and declared resident bytes; `trim_resources` releases idle
 buffers. Image results are not cached. There is
-no GUI, video decoder, text engine, plug-in loader, simulation, or Klipp adapter
+no video decoder, text engine, plug-in loader, simulation, or Klipp adapter
 in this version. No Klipp source is copied or linked.

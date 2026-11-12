@@ -1,0 +1,15 @@
+[package]
+name = "veylvik-studio"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+[dependencies]
+veylvik-document.workspace = true
+veylvik-render.workspace = true
+veylvik-io.workspace = true
+wgpu.workspace = true
+bytemuck.workspace = true
+pollster.workspace = true
+eframe = { version = "=0.34.1", default-features = false, features = ["default_fonts", "wgpu_no_default_features", "wayland", "x11"] }
+[lints]
+workspace = true

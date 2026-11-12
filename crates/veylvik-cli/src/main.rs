@@ -1,13 +1,25 @@
-mod assets;
+use veylvik_io as assets;
 mod mcp;
 use std::path::Path;
 use veylvik_document::{Composition, Node, Operation, Time};
 use veylvik_render::{Plan, Region, RenderRequest, Renderer};
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
-const USAGE: &str = "usage: veylvik demo FILE | import IMAGE.png FILE | nodes | check FILE | render FILE OUTPUT.png [TICKS RATE] [--node UUID] [--crop X Y WIDTH HEIGHT] | mcp FILE";
+const USAGE: &str = "usage: veylvik open [FILE] | demo FILE | import IMAGE.png FILE | nodes | check FILE | render FILE OUTPUT.png [TICKS RATE] [--node UUID] [--crop X Y WIDTH HEIGHT] | mcp FILE";
 fn run() -> Result<()> {
     let args: Vec<String> = std::env::args().collect();
     match args.get(1).map(String::as_str) {
+        Some("open") if args.len() == 2 || args.len() == 3 => {
+            let studio = std::env::current_exe()?.with_file_name("veylvik-studio");
+            let status = std::process::Command::new(studio)
+                .args(&args[2..])
+                .status()
+                .map_err(|e| {
+                    format!("cannot start studio; build with cargo build --workspace: {e}")
+                })?;
+            if !status.success() {
+                return Err("studio exited with an error".into());
+            }
+        }
         Some("mcp") if args.len() == 3 => mcp::serve(
             Composition::load(Path::new(&args[2]))?,
             assets::document_base(Path::new(&args[2]))?,
