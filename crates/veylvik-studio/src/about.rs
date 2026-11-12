@@ -69,6 +69,8 @@ pub struct Controls {
     process: String,
     sampled: Option<Instant>,
     copied: bool,
+    /// Input time when the dialog opened; the wordmark reflection is timed from it.
+    opened: Option<f64>,
 }
 impl Controls {
     pub fn begin(&mut self) {
@@ -128,6 +130,7 @@ impl Controls {
     }
     pub fn show(&mut self, ctx: &egui::Context, renderer: &Renderer) {
         if !self.open {
+            self.opened = None;
             return;
         }
         if ctx.input_mut(|input| input.consume_key(egui::Modifiers::NONE, egui::Key::Escape)) {
@@ -144,6 +147,19 @@ impl Controls {
             self.process = memory(kib(&read("/proc/self/status"), "VmRSS"));
             self.sampled = Some(Instant::now());
         }
+        // A reflection crosses the wordmark shortly after opening, then every 5 seconds.
+        // Between sweeps the dialog sleeps until the next one instead of repainting.
+        let (delay, period, sweep) = (0.8, 5.0, 2.0);
+        let now = ctx.input(|input| input.time);
+        let phase = (now - *self.opened.get_or_insert(now) - delay).rem_euclid(period);
+        let sheen = if phase < sweep {
+            ctx.request_repaint();
+            let t = (phase / sweep) as f32;
+            Some(t * t * (3.0 - 2.0 * t))
+        } else {
+            ctx.request_repaint_after_secs((period - phase) as f32);
+            None
+        };
         let rows = self.rows(renderer);
         let mut open = self.open;
         let mut close = false;
@@ -163,12 +179,11 @@ impl Controls {
                         egui::Sense::hover(),
                     );
                     let ink = ui.visuals().strong_text_color();
-                    crate::icons::paint_wordmark(
-                        ui.painter(),
-                        word.left_top() + egui::vec2(0.0, cap * 0.02),
-                        cap,
-                        ink,
-                    );
+                    let origin = word.left_top() + egui::vec2(0.0, cap * 0.02);
+                    crate::icons::paint_wordmark(ui.painter(), origin, cap, ink);
+                    if let Some(progress) = sheen {
+                        crate::icons::paint_wordmark_sheen(ui.painter(), origin, cap, ink, progress);
+                    }
                     ui.add_space(4.0);
                     ui.label("Compositing, effects and animation");
                     ui.add_space(12.0);

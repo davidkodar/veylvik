@@ -305,6 +305,48 @@ pub fn paint_wordmark(painter: &egui::Painter, left_top: egui::Pos2, cap: f32, i
     bar(468.0, 0.0, 488.0, 100.0);
     stroke([(524.54, 4.5), (488.0, 52.0), (526.06, 95.5)]);
 }
+/// A discreet reflection crossing the wordmark; `progress` runs 0..1 from before the V
+/// to past the K. The band leans like light across a bevel, fades in steps towards its
+/// core, and carries the icon's violet-to-teal gradient from its top to its bottom. Drawing is clipped to one physical pixel row at a time, so the slant
+/// follows the letter shapes exactly. Colours are opaque blends with the ink, so letter
+/// pieces that overlap (the E's corners, the Y and K joints) never double in brightness.
+pub fn paint_wordmark_sheen(
+    painter: &egui::Painter,
+    left_top: egui::Pos2,
+    cap: f32,
+    ink: egui::Color32,
+    progress: f32,
+) {
+    let slant = 0.45 * cap;
+    let (from, to) = (-0.8 * cap, WORDMARK_WIDTH * cap + 0.8 * cap + slant);
+    let centre = left_top.x + from + (to - from) * progress.clamp(0.0, 1.0) - slant;
+    let ppp = painter.ctx().pixels_per_point();
+    let (top, bottom) = (left_top.y - 0.03 * cap, left_top.y + 1.03 * cap);
+    let rows = (top * ppp).floor() as i32..(bottom * ppp).ceil() as i32;
+    for (half, strength) in [
+        (0.75, 0.15),
+        (0.55, 0.3),
+        (0.4, 0.5),
+        (0.26, 0.7),
+        (0.14, 0.9),
+    ] {
+        for row in rows.clone() {
+            let (y0, y1) = (row as f32 / ppp, (row + 1) as f32 / ppp);
+            let down = (((y0 + y1) / 2.0 - top) / (bottom - top)).clamp(0.0, 1.0);
+            let colour = ink.lerp_to_gamma(VIOLET.lerp_to_gamma(TEAL, down), strength);
+            // Higher rows lean further right, like light raking across the letters.
+            let x = centre + slant * (1.0 - ((y0 + y1) / 2.0 - left_top.y) / cap);
+            let clip = egui::Rect::from_min_max(
+                egui::pos2(x - half * cap, y0),
+                egui::pos2(x + half * cap, y1),
+            )
+            .intersect(painter.clip_rect());
+            if clip.is_positive() {
+                paint_wordmark(&painter.with_clip_rect(clip), left_top, cap, colour);
+            }
+        }
+    }
+}
 #[cfg(test)]
 mod tests {
     #[test]
