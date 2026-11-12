@@ -564,8 +564,8 @@ cargo test --workspace --locked -- --ignored --nocapture --test-threads=1
 
 The final command is the mandatory Vulkan check. It fails if no adapter is
 available. Default tests leave it explicitly ignored so document/control tests
-can run on machines without graphics. CI runs it with Mesa's software Vulkan;
-hardware validation remains a separate check.
+can run on machines without graphics. Run these checks locally; the repository
+does not run GitHub Actions CI. Vulkan tests support software and hardware adapters.
 
 The workspace has seven crates:
 
