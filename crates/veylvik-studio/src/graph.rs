@@ -48,9 +48,105 @@ impl Graph {
             .filter(|p| canvas.contains(*p))
             .unwrap_or(canvas.center());
         let world = (screen - canvas.min - self.pan) / self.zoom - NODE_SIZE * 0.5;
+        let desired = egui::pos2(
+            world.x.clamp(-1_000_000.0, 1_000_000.0),
+            world.y.clamp(-1_000_000.0, 1_000_000.0),
+        );
+        let position = self.vacant_position(desired);
         NodePosition {
-            x: world.x.clamp(-1_000_000.0, 1_000_000.0),
-            y: world.y.clamp(-1_000_000.0, 1_000_000.0),
+            x: position.x,
+            y: position.y,
+        }
+    }
+    fn vacant_position(&self, desired: Pos2) -> Pos2 {
+        let collisions = |candidate: Pos2| {
+            self.positions.values().any(|p| {
+                Rect::from_min_size(*p, NODE_SIZE)
+                    .expand(12.0)
+                    .intersects(Rect::from_min_size(candidate, NODE_SIZE))
+            })
+        };
+        if !collisions(desired) {
+            return desired;
+        }
+        let mut candidates = Vec::new();
+        for axis in 0..2 {
+            let other = 1 - axis;
+            let mut intervals: Vec<_> = self
+                .positions
+                .values()
+                .filter(|p| {
+                    desired[other] + NODE_SIZE[other] + 12.0 >= p[other]
+                        && desired[other] <= p[other] + NODE_SIZE[other] + 12.0
+                })
+                .map(|p| {
+                    (
+                        p[axis] - NODE_SIZE[axis] - 12.0,
+                        p[axis] + NODE_SIZE[axis] + 12.0,
+                    )
+                })
+                .collect();
+            intervals.sort_by(|a, b| a.0.total_cmp(&b.0));
+            let mut merged: Vec<(f32, f32)> = Vec::new();
+            for (low, high) in intervals {
+                if let Some(last) = merged.last_mut()
+                    && low <= last.1
+                {
+                    last.1 = last.1.max(high);
+                } else {
+                    merged.push((low, high));
+                }
+            }
+            if let Some((low, high)) = merged
+                .into_iter()
+                .find(|(low, high)| *low <= desired[axis] && desired[axis] <= *high)
+            {
+                for value in [low - 1.0, high + 1.0] {
+                    if (-1_000_000.0..=1_000_000.0).contains(&value) {
+                        let mut candidate = desired;
+                        candidate[axis] = value;
+                        candidates.push(candidate);
+                    }
+                }
+            }
+        }
+        let visible = |p: Pos2| {
+            self.canvas.is_some_and(|canvas| {
+                canvas.contains_rect(Rect::from_min_size(
+                    canvas.min + self.pan + p.to_vec2() * self.zoom,
+                    NODE_SIZE * self.zoom,
+                ))
+            })
+        };
+        candidates
+            .into_iter()
+            .filter(|p| !collisions(*p))
+            .min_by(|a, b| {
+                visible(*b)
+                    .cmp(&visible(*a))
+                    .then_with(|| a.distance_sq(desired).total_cmp(&b.distance_sq(desired)))
+            })
+            .unwrap_or(desired)
+    }
+    fn reveal(&mut self, id: NodeId, canvas: Rect) {
+        let Some(position) = self.positions.get(&id) else {
+            return;
+        };
+        let rect = Rect::from_min_size(
+            canvas.min + self.pan + position.to_vec2() * self.zoom,
+            NODE_SIZE * self.zoom,
+        );
+        let visible = canvas.shrink(8.0);
+        for axis in 0..2 {
+            self.pan[axis] += if rect.size()[axis] > visible.size()[axis] {
+                visible.center()[axis] - rect.center()[axis]
+            } else if rect.min[axis] < visible.min[axis] {
+                visible.min[axis] - rect.min[axis]
+            } else if rect.max[axis] > visible.max[axis] {
+                visible.max[axis] - rect.max[axis]
+            } else {
+                0.0
+            };
         }
     }
     fn sync(&mut self, doc: &Composition, revision: u64) {
@@ -111,6 +207,7 @@ impl Graph {
         selected: NodeId,
         accent: Color32,
     ) -> Vec<Action> {
+        let newly_inserted = self.revision.is_some() && !self.positions.contains_key(&selected);
         self.sync(doc, revision);
         let mut actions = Vec::new();
         let mut fit = false;
@@ -142,6 +239,9 @@ impl Graph {
             egui::Sense::click_and_drag(),
         );
         self.canvas = Some(canvas);
+        if newly_inserted {
+            self.reveal(selected, canvas);
+        }
         if fit {
             self.fit(canvas);
         }
@@ -288,5 +388,65 @@ impl Graph {
             self.pan += response.drag_delta();
         }
         actions
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    fn node_id() -> NodeId {
+        veylvik_document::Node::new(
+            "test",
+            veylvik_document::Operation::Solid { color: [0.0; 4] },
+            &[],
+        )
+        .id
+    }
+    #[test]
+    fn insertion_avoids_dense_nodes_and_preserves_free_positions() {
+        let mut graph = Graph::default();
+        let desired = egui::pos2(200.0, 100.0);
+        assert_eq!(graph.vacant_position(desired), desired);
+        for y in 0..12 {
+            for x in 0..12 {
+                graph
+                    .positions
+                    .insert(node_id(), egui::pos2(x as f32 * 175.0, y as f32 * 75.0));
+            }
+        }
+        let selected = graph.vacant_position(desired);
+        assert!(graph.positions.values().all(|p| {
+            !Rect::from_min_size(*p, NODE_SIZE)
+                .expand(12.0)
+                .intersects(Rect::from_min_size(selected, NODE_SIZE))
+        }));
+        let unchanged = graph.positions.clone();
+        assert_eq!(graph.vacant_position(selected), selected);
+        assert_eq!(graph.positions, unchanged);
+        graph.positions.clear();
+        graph
+            .positions
+            .insert(node_id(), egui::pos2(1_000_000.0, 1_000_000.0));
+        let position = graph.vacant_position(egui::pos2(1_000_000.0, 1_000_000.0));
+        assert!(position.x <= 1_000_000.0 && position.y <= 1_000_000.0);
+        assert_ne!(position, egui::pos2(1_000_000.0, 1_000_000.0));
+    }
+    #[test]
+    fn reveal_moves_only_viewport_and_keeps_inserted_node_visible() {
+        let mut graph = Graph::default();
+        let id = node_id();
+        graph.positions.insert(id, egui::pos2(3000.0, -2000.0));
+        graph.zoom = 1.5;
+        let canvas = Rect::from_min_size(egui::pos2(20.0, 600.0), egui::vec2(900.0, 200.0));
+        graph.reveal(id, canvas);
+        let rect = Rect::from_min_size(
+            canvas.min + graph.pan + graph.positions[&id].to_vec2() * graph.zoom,
+            NODE_SIZE * graph.zoom,
+        );
+        assert!(canvas.contains_rect(rect));
+        assert_eq!(graph.positions[&id], egui::pos2(3000.0, -2000.0));
+        let pan = graph.pan;
+        graph.reveal(id, canvas);
+        assert_eq!(graph.pan, pan);
     }
 }
