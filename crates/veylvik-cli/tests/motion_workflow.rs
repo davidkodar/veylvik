@@ -15,16 +15,12 @@ impl Drop for Scratch {
 #[test]
 #[ignore = "requires Vulkan"]
 fn animated_mask_composition_matches_cli_and_mcp() {
-    let root = Scratch(
-        std::env::temp_dir().join(format!(
-            "veylvik-motion-{}-{}",
-            std::process::id(),
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        )),
-    );
+    let unique = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let name = format!("veylvik-motion-{}-{unique}", std::process::id());
+    let root = Scratch(std::env::temp_dir().join(name));
     fs::create_dir(&root.0).unwrap();
     veylvik_document::motion_demo()
         .save(&root.0.join("motion.veylvik"))

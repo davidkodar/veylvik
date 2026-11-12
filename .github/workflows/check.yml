@@ -9,6 +9,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
+          toolchain: 1.98.1
           components: rustfmt, clippy
       - name: Install software Vulkan
         run: sudo apt-get update && sudo apt-get install -y mesa-vulkan-drivers libvulkan1
@@ -16,6 +17,6 @@ jobs:
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - run: cargo test --workspace --locked
       - name: Vulkan references (adapter required)
-        run: cargo test --workspace --locked -- --ignored --nocapture
+        run: cargo test --workspace --locked -- --ignored --nocapture --test-threads=1
         env:
           XDG_RUNTIME_DIR: /tmp
