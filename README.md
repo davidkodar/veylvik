@@ -455,7 +455,7 @@ Launch a session against a saved composition:
 The server uses newline-delimited JSON-RPC on stdio and MCP protocol version
 2025-11-25. Initialize, then send `notifications/initialized` before using tools.
 The tools are `inspect`, `graph`, `get_node`, `nodes`, `diagnostics`, `outline_text`,
-`apply`, `duplicate_branch`, `undo`, `redo`, `save`, `render`, `render_sequence`,
+`apply`, `duplicate_branch`, `add_effect`, `undo`, `redo`, `save`, `render`, `render_sequence`,
 and `preview_image`.
 `nodes` provides defaults, parameter units/bounds, named ports, and operation JSON
 schemas from the document registry. The same registry validates scalar parameters
@@ -534,7 +534,7 @@ directory or remove the stale endpoint yourself. One client connects at a time.
 The toolbar shows **MCP** when live control is enabled.
 
 Live tools are `inspect`, `graph`, `get_node`, `nodes`, `diagnostics`, `apply`,
-`duplicate_branch`, `undo`, `redo`, `preview`, and `preview_image`.
+`duplicate_branch`, `add_effect`, `undo`, `redo`, `preview`, and `preview_image`.
 `inspect` returns a project `session` UUID and `revision`; both are required for
 edits, undo/redo, and preview. Opening a project creates a new session identity,
 so an old command cannot target a newly opened project with the same revision.
@@ -885,3 +885,28 @@ without initializing Vulkan or applying a GPU budget. Its JSON reports
 `working_bytes` for the compiled plan and `source_bytes` for decoded inputs.
 A valid check confirms document and asset validity; rendering still enforces the
 configured budget, held-frame accounting, and device limits.
+
+
+## Editable glow and outline recipes
+
+Search **Glow effect** or **Outline effect** in Add node. Each recipe expands
+around the selected image into ordinary, editable nodes and one undo step. The
+new composite becomes the preview; the composition output stays unchanged.
+Nodes are placed together without overlapping the existing graph.
+
+- **Glow:** an 8-pixel Blur, +1-stop Exposure, and additive Blend with the original.
+  Edit radius and exposure to control spread and brightness. This blurs the full
+  image rather than selecting only highlights; scene-linear RGB can exceed one.
+- **Outline:** a 4-pixel Grow/shrink mask, Subtract of the original alpha,
+  white Colorize, and Merge over the original. Edit width and the Colorize
+  highlights color to customize it. It follows alpha coverage and uses a square
+  neighborhood; a fully opaque canvas has no outside space for an outline.
+
+MCP `nodes` includes a `recipes` catalog. Both servers expose `add_effect` with
+`revision`, `input` UUID, and `recipe` (`glow` or `outline`); live calls also need
+`session`. Optional `dry_run` validates without changing the document or editor.
+The returned `root`, `added_nodes`, and `roles` identify the new graph. Glow roles
+are `blur`, `brightness`, and `composite`; outline roles are `grow`, `outline`,
+`color`, and `composite`. Use those IDs with `get_node` and `set_parameter` to
+edit controls. Dry-run IDs are provisional; use committed IDs for later edits.
+Headless recipe nodes use automatic layout; live nodes receive explicit positions.

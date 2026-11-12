@@ -265,6 +265,13 @@ impl Project {
         self.preview = Some(id);
         Ok(id)
     }
+    pub fn insert_effect(&mut self, effect: veylvik_document::recipes::Effect) -> Result<NodeId> {
+        let id = effect.root;
+        self.apply(&effect.into_commands())?;
+        self.selected = id;
+        self.preview = Some(id);
+        Ok(id)
+    }
     pub fn save_snapshot(&self) -> SaveSnapshot {
         SaveSnapshot {
             composition: self.document.snapshot().clone(),

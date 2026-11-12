@@ -9,6 +9,7 @@ pub enum Choice {
     Node(&'static NodeType),
     Image,
     Text,
+    Effect(veylvik_document::recipes::Recipe),
 }
 struct Entry {
     choice: Choice,
@@ -43,6 +44,12 @@ fn entries(query: &str) -> Vec<Entry> {
         description: "Shape text using an explicit font into a portable vector mask.",
         id: "text",
     });
+    entries.extend(veylvik_document::recipes::Recipe::ALL.map(|recipe| Entry {
+        choice: Choice::Effect(recipe),
+        label: recipe.label(),
+        description: recipe.description(),
+        id: recipe.id(),
+    }));
     let query = query.to_lowercase();
     let words: Vec<_> = query.split_whitespace().collect();
     let rank = |entry: &Entry| {
@@ -219,7 +226,14 @@ mod tests {
             ["noise", "fractal_noise"]
         );
         assert!(entries("not-a-node-xyz").is_empty());
-        assert_eq!(entries("").len(), registry::TYPES.len() + 1);
+        assert_eq!(
+            entries("").len(),
+            registry::TYPES.len() + 1 + veylvik_document::recipes::Recipe::ALL.len()
+        );
+        assert!(matches!(
+            entries("glow")[0].choice,
+            Choice::Effect(veylvik_document::recipes::Recipe::Glow)
+        ));
     }
     #[test]
     fn contextual_defaults_span_the_composition_and_validate() {

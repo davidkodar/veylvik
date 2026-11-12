@@ -2,6 +2,7 @@
 pub mod editing;
 mod history;
 mod procedural;
+pub mod recipes;
 pub use procedural::procedural_demo;
 pub mod inspection;
 pub mod limits;

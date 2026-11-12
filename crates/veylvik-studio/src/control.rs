@@ -23,6 +23,7 @@ fn build_catalog() -> Value {
         tool("diagnostics","Read GPU buffer and cache counters without waiting for an active render. Snapshot is null while the renderer is busy. Declared buffers exclude driver and rasterizer scratch allocations.",json!({}),&[]),
         tool("nodes","Read built-in operations, ports, defaults and parameter schemas.",json!({}),&[]),
         tool("apply","Validate or atomically apply commands to the open editor. Requires the session and revision from inspect. set_parameter and set_key preserve node identity and wiring. Image references must already be known to the editor; new paths require import. Unapplied inspector changes or file jobs block mutation.",json!({"session":session,"revision":revision,"dry_run":{"type":"boolean"},"commands":{"type":"array","minItems":1,"maxItems":4096,"items":veylvik_document::schema::command()}}),&["session","revision","commands"]),
+        tool("add_effect","Expand an editable effect recipe into ordinary nodes as one undoable transaction. Places the effect without overlapping existing nodes, selects/previews its root, and preserves composition output. Returns named role IDs for editing controls. Discover recipes with nodes; dry-run IDs are provisional.",json!({"session":session,"revision":revision,"input":{"type":"string","format":"uuid"},"recipe":{"type":"string","enum":veylvik_document::recipes::Recipe::ALL},"dry_run":{"type":"boolean"}}),&["session","revision","input","recipe"]),
         tool("duplicate_branch","Copy a node and all upstream dependencies as one undoable transaction, preserving shared ancestors and asset references. Places the copy outside existing graph bounds, selects/previews its root, and leaves composition output unchanged. Returns root and old-to-new ID mapping. Dry-run IDs are provisional and are not reused on commit.",json!({"session":session,"revision":revision,"node":{"type":"string","format":"uuid"},"dry_run":{"type":"boolean"}}),&["session","revision","node"]),
         tool("undo","Undo one editor transaction.",json!({"session":session,"revision":revision}),&["session","revision"]),
         tool("redo","Redo one editor transaction.",json!({"session":session,"revision":revision}),&["session","revision"]),
@@ -98,8 +99,35 @@ pub fn call(studio: &mut Studio, name: &str, args: &Value) -> Result<Value> {
     if studio.draft_dirty && !dry_run {
         return Err("Apply or revert the inspector draft before live edits".into());
     }
-    let mut copied = None;
+    let mut response = None;
     match name {
+        "add_effect" => {
+            let input = args["input"]
+                .as_str()
+                .ok_or("input must be a UUID")?
+                .parse()?;
+            let recipe: veylvik_document::recipes::Recipe =
+                serde_json::from_value(args["recipe"].clone())?;
+            let mut effect = recipe.build(studio.project.document.snapshot(), input)?;
+            studio.graph.place_effect(
+                studio.project.document.snapshot(),
+                revision,
+                input,
+                &mut effect,
+                None,
+            )?;
+            let mut result = json!({"session":session,"revision":revision,"root":effect.root,"roles":effect.roles,"added_nodes":effect.nodes.len(),"recipe":recipe,"dry_run":dry_run,"valid":true});
+            if dry_run {
+                studio
+                    .project
+                    .document
+                    .prepare(revision, &effect.into_commands())?;
+                return Ok(result);
+            }
+            studio.project.insert_effect(effect)?;
+            result["revision"] = json!(studio.project.document.revision());
+            response = Some(result);
+        }
         "duplicate_branch" => {
             let root = args["node"]
                 .as_str()
@@ -122,7 +150,7 @@ pub fn call(studio: &mut Studio, name: &str, args: &Value) -> Result<Value> {
             }
             studio.project.insert_branch(copy)?;
             result["revision"] = json!(studio.project.document.revision());
-            copied = Some(result);
+            response = Some(result);
         }
         "apply" => {
             let commands: Vec<Command> = serde_json::from_value(args["commands"].clone())?;
@@ -181,7 +209,7 @@ pub fn call(studio: &mut Studio, name: &str, args: &Value) -> Result<Value> {
     studio.playing = false;
     studio.refresh_draft();
     studio.request_preview();
-    let mut result = copied.unwrap_or_else(
+    let mut result = response.unwrap_or_else(
         || json!({"session":session,"revision":studio.project.document.revision()}),
     );
     result["frame"] = json!(studio.project.frame);

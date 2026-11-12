@@ -291,6 +291,28 @@ impl Studio {
         match choice {
             node_palette::Choice::Image => self.import_image(),
             node_palette::Choice::Text => self.outline_controls.open = true,
+            node_palette::Choice::Effect(recipe) => {
+                let result = (|| -> Result<(), Box<dyn std::error::Error>> {
+                    let input = self.project.selected;
+                    let mut effect = recipe.build(self.project.document.snapshot(), input)?;
+                    self.graph.place_effect(
+                        self.project.document.snapshot(),
+                        self.project.document.revision(),
+                        input,
+                        &mut effect,
+                        Some(position),
+                    )?;
+                    self.project.insert_effect(effect)?;
+                    Ok(())
+                })();
+                match result {
+                    Ok(()) => {
+                        self.refresh_draft();
+                        self.request_preview();
+                    }
+                    Err(error) => self.fail(error),
+                }
+            }
             node_palette::Choice::Node(kind) => {
                 let doc = self.project.document.snapshot();
                 let operation = node_palette::operation(kind, doc.width, doc.height);

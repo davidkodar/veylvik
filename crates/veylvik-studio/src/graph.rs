@@ -136,6 +136,68 @@ impl Graph {
         }
         Ok(())
     }
+    pub fn place_effect(
+        &mut self,
+        doc: &Composition,
+        revision: u64,
+        input: NodeId,
+        effect: &mut veylvik_document::recipes::Effect,
+        anchor: Option<NodePosition>,
+    ) -> veylvik_document::Result<()> {
+        self.sync(doc, revision);
+        let count = effect.nodes.len();
+        let anchor = anchor
+            .map(|p| egui::pos2(p.x, p.y))
+            .unwrap_or(self.positions[&input] + egui::vec2(195.0 * count as f32, 0.0));
+        let anchor = egui::pos2(
+            anchor.x.clamp(
+                -1_000_000.0 + 195.0 * count.saturating_sub(1) as f32,
+                1_000_000.0,
+            ),
+            anchor.y.clamp(-1_000_000.0, 1_000_000.0),
+        );
+        let base: Vec<_> = (0..count)
+            .map(|index| anchor - egui::vec2(195.0 * (count - index - 1) as f32, 0.0))
+            .collect();
+        let bounds = base.iter().fold(Rect::NOTHING, |rect, p| {
+            rect.union(Rect::from_min_size(*p, NODE_SIZE))
+        });
+        let all = self.positions.values().fold(Rect::NOTHING, |rect, p| {
+            rect.union(Rect::from_min_size(*p, NODE_SIZE))
+        });
+        let candidates = [
+            Vec2::ZERO,
+            egui::vec2(0.0, all.max.y + 60.0 - bounds.min.y),
+            egui::vec2(all.max.x + 60.0 - bounds.min.x, 0.0),
+            egui::vec2(0.0, all.min.y - 60.0 - bounds.max.y),
+            egui::vec2(all.min.x - 60.0 - bounds.max.x, 0.0),
+        ];
+        let offset = candidates
+            .into_iter()
+            .find(|offset| {
+                base.iter().all(|p| {
+                    let p = *p + *offset;
+                    p.x.is_finite()
+                        && p.y.is_finite()
+                        && p.x.abs() <= 1_000_000.0
+                        && p.y.abs() <= 1_000_000.0
+                }) && self.positions.values().all(|p| {
+                    !Rect::from_min_size(*p, NODE_SIZE)
+                        .expand(12.0)
+                        .intersects(bounds.translate(*offset))
+                })
+            })
+            .ok_or_else(|| {
+                veylvik_document::Error(
+                    "No room to place the effect within graph coordinate limits".into(),
+                )
+            })?;
+        for (node, p) in effect.nodes.iter_mut().zip(base) {
+            let p = p + offset;
+            node.position = Some(NodePosition { x: p.x, y: p.y });
+        }
+        Ok(())
+    }
     fn vacant_position(&self, desired: Pos2) -> Pos2 {
         let collisions = |candidate: Pos2| {
             self.positions.values().any(|p| {
@@ -571,6 +633,30 @@ mod tests {
             &[],
         )
         .id
+    }
+    #[test]
+    fn effect_layout_stays_inside_coordinate_limits_and_does_not_overlap() {
+        let mut doc =
+            veylvik_document::blank(8, 8, veylvik_document::Time::new(24, 1).unwrap()).unwrap();
+        doc.nodes.get_mut(&doc.output).unwrap().position = Some(NodePosition {
+            x: 1_000_000.0,
+            y: 999_950.0,
+        });
+        let mut graph = Graph::default();
+        let mut effect = veylvik_document::recipes::Recipe::Outline
+            .build(&doc, doc.output)
+            .unwrap();
+        graph
+            .place_effect(&doc, 0, doc.output, &mut effect, None)
+            .unwrap();
+        let mut rectangles = vec![Rect::from_min_size(graph.positions[&doc.output], NODE_SIZE)];
+        for node in &effect.nodes {
+            let p = node.position.unwrap();
+            p.validate().unwrap();
+            let rect = Rect::from_min_size(egui::pos2(p.x, p.y), NODE_SIZE);
+            assert!(rectangles.iter().all(|old| !old.intersects(rect)));
+            rectangles.push(rect);
+        }
     }
     #[test]
     fn branch_copy_layout_preserves_offsets_and_avoids_existing_nodes() {
