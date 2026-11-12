@@ -276,6 +276,7 @@ pub fn build(id: &str) -> Result<Scene> {
         || matches!(
             id,
             "metallic_shine"
+                | "sun_glints"
                 | "embers"
                 | "fireflies"
                 | "liquid_shimmer"
@@ -446,6 +447,7 @@ mod tests {
                 .unwrap();
             assert_eq!(group.label, entry.label);
             if entry.id == "metallic_shine"
+                || entry.id == "sun_glints"
                 || super::super::builtin::category(entry.id) == "Materials"
             {
                 assert_eq!(doc.nodes[&doc.output].inputs["foreground"], group.output);
@@ -456,9 +458,25 @@ mod tests {
                 group.members.len(),
                 super::super::builtin::build(entry.id).unwrap().nodes.len()
             );
+            if matches!(
+                entry.id,
+                "surface_reflection" | "clear_glass" | "frosted_glass_material"
+            ) {
+                for input in group.inputs.values() {
+                    let sources: std::collections::BTreeSet<_> = input
+                        .targets
+                        .iter()
+                        .map(|p| doc.nodes[&p.node].inputs[&p.port])
+                        .collect();
+                    assert_eq!(sources.len(), 1);
+                    assert!(sources.iter().all(|n| !group.members.contains(n)));
+                }
+                continue;
+            }
             assert!(group.inputs.values().flat_map(|i| &i.targets).all(
                 |p| doc.nodes[&p.node].inputs[&p.port]
                     == if entry.id == "metallic_shine"
+                        || entry.id == "sun_glints"
                         || super::super::builtin::category(entry.id) == "Materials"
                     {
                         doc.nodes[&scene.before].inputs["foreground"]

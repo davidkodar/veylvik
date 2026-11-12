@@ -26,6 +26,51 @@ impl Default for Gallery {
 }
 fn bytes(id: &str, before: bool) -> &'static [u8] {
     match (id, before) {
+        ("oak_light", false) => include_bytes!("../assets/showcase/oak_light-after.png"),
+        ("oak_light", true) => include_bytes!("../assets/showcase/oak_light-before.png"),
+        ("oak_dark", false) => include_bytes!("../assets/showcase/oak_dark-after.png"),
+        ("oak_dark", true) => include_bytes!("../assets/showcase/oak_dark-before.png"),
+        ("marble", false) => include_bytes!("../assets/showcase/marble-after.png"),
+        ("marble", true) => include_bytes!("../assets/showcase/marble-before.png"),
+        ("brick_light", false) => include_bytes!("../assets/showcase/brick_light-after.png"),
+        ("brick_light", true) => include_bytes!("../assets/showcase/brick_light-before.png"),
+        ("brick_red", false) => include_bytes!("../assets/showcase/brick_red-after.png"),
+        ("brick_red", true) => include_bytes!("../assets/showcase/brick_red-before.png"),
+        ("concrete", false) => include_bytes!("../assets/showcase/concrete-after.png"),
+        ("concrete", true) => include_bytes!("../assets/showcase/concrete-before.png"),
+        ("paper_clean", false) => include_bytes!("../assets/showcase/paper_clean-after.png"),
+        ("paper_clean", true) => include_bytes!("../assets/showcase/paper_clean-before.png"),
+        ("paper_aged", false) => include_bytes!("../assets/showcase/paper_aged-after.png"),
+        ("paper_aged", true) => include_bytes!("../assets/showcase/paper_aged-before.png"),
+        ("leather_red", false) => include_bytes!("../assets/showcase/leather_red-after.png"),
+        ("leather_red", true) => include_bytes!("../assets/showcase/leather_red-before.png"),
+        ("leather_brown", false) => include_bytes!("../assets/showcase/leather_brown-after.png"),
+        ("leather_brown", true) => include_bytes!("../assets/showcase/leather_brown-before.png"),
+        ("leather_tan", false) => include_bytes!("../assets/showcase/leather_tan-after.png"),
+        ("leather_tan", true) => include_bytes!("../assets/showcase/leather_tan-before.png"),
+        ("leather_dark", false) => include_bytes!("../assets/showcase/leather_dark-after.png"),
+        ("leather_dark", true) => include_bytes!("../assets/showcase/leather_dark-before.png"),
+        ("leather_black", false) => include_bytes!("../assets/showcase/leather_black-after.png"),
+        ("leather_black", true) => include_bytes!("../assets/showcase/leather_black-before.png"),
+        ("surface_reflection", false) => {
+            include_bytes!("../assets/showcase/surface_reflection-after.png")
+        }
+        ("surface_reflection", true) => {
+            include_bytes!("../assets/showcase/surface_reflection-before.png")
+        }
+        ("clear_glass", false) => include_bytes!("../assets/showcase/clear_glass-after.png"),
+        ("clear_glass", true) => include_bytes!("../assets/showcase/clear_glass-before.png"),
+        ("frosted_glass_material", false) => {
+            include_bytes!("../assets/showcase/frosted_glass_material-after.png")
+        }
+        ("frosted_glass_material", true) => {
+            include_bytes!("../assets/showcase/frosted_glass_material-before.png")
+        }
+        ("sun_glints", false) => include_bytes!("../assets/showcase/sun_glints-after.png"),
+        ("sun_glints", true) => include_bytes!("../assets/showcase/sun_glints-before.png"),
+        ("metal_patina", false) => include_bytes!("../assets/showcase/metal_patina-after.png"),
+        ("metal_patina", true) => include_bytes!("../assets/showcase/metal_patina-before.png"),
+
         ("metallic_shine", false) => include_bytes!("../assets/showcase/metallic_shine-after.png"),
         ("metallic_shine", true) => include_bytes!("../assets/showcase/metallic_shine-before.png"),
         ("gold_text", false) => include_bytes!("../assets/showcase/gold_text-after.png"),

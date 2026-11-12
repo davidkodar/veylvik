@@ -1,16 +1,32 @@
 //! Surface and atmosphere starters with host-sized, editable controls.
 use super::*;
 use crate::{AtmosphereKind, MaterialKind};
-pub fn build(id: &str, b: &mut Builder, source: NodeId) -> Result<NodeId> {
-    let material = match id {
+pub fn material_kind(id: &str) -> Option<MaterialKind> {
+    match id {
         "gold_text" => Some(MaterialKind::Gold),
         "silver_text" => Some(MaterialKind::Silver),
         "aluminium_text" => Some(MaterialKind::Aluminium),
         "bronze_text" => Some(MaterialKind::Bronze),
         "phosphor_text" => Some(MaterialKind::Phosphor),
         "wood_text" => Some(MaterialKind::Wood),
+        "oak_light" => Some(MaterialKind::OakLight),
+        "oak_dark" => Some(MaterialKind::OakDark),
+        "marble" => Some(MaterialKind::Marble),
+        "brick_light" => Some(MaterialKind::BrickLight),
+        "brick_red" => Some(MaterialKind::BrickRed),
+        "concrete" => Some(MaterialKind::Concrete),
+        "paper_clean" => Some(MaterialKind::Paper),
+        "paper_aged" => Some(MaterialKind::AgedPaper),
+        "leather_red" => Some(MaterialKind::LeatherRed),
+        "leather_brown" => Some(MaterialKind::LeatherBrown),
+        "leather_tan" => Some(MaterialKind::LeatherTan),
+        "leather_dark" => Some(MaterialKind::LeatherDark),
+        "leather_black" => Some(MaterialKind::LeatherBlack),
         _ => None,
-    };
+    }
+}
+pub fn build(id: &str, b: &mut Builder, source: NodeId) -> Result<NodeId> {
+    let material = material_kind(id);
     if let Some(kind) = material {
         let node = b.add(
             "Surface grain, bevel and reflection",
@@ -20,7 +36,7 @@ pub fn build(id: &str, b: &mut Builder, source: NodeId) -> Result<NodeId> {
                 bevel: 5.0.into(),
                 roughness: (if kind == MaterialKind::Aluminium {
                     0.65
-                } else if kind == MaterialKind::Wood {
+                } else if kind as u32 >= 5 && kind != MaterialKind::Marble {
                     0.7
                 } else {
                     0.15

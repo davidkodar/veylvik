@@ -116,7 +116,7 @@ impl Studio {
         let mut open = true;
         let mut action = None;
         egui::Window::new("Effect library").id(egui::Id::new("effect-library")).open(&mut open).collapsible(false)
-            .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO).default_width(560.0).default_height(560.0).show(ctx, |ui| {
+            .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO).default_width(740.0).default_height(560.0).show(ctx, |ui| {
                 egui::ScrollArea::vertical().max_height((ctx.content_rect().height()-100.0).max(220.0)).show(ui, |ui| {
                 ui.add_enabled_ui(!self.files.busy(), |ui| {
                     if let Some(preset) = &self.library.ready {
@@ -157,24 +157,30 @@ impl Studio {
                         self.library.gallery.detail(ui,id);
                         ui.weak(format!("{} · 4 seconds · editable scene",entry.label));
                     } else {
-                        ui.add(egui::TextEdit::singleline(&mut self.library.query).hint_text("Search effects…").desired_width(f32::INFINITY));
-                        ui.horizontal_wrapped(|ui| {
-                            egui::ComboBox::from_id_salt("effect-category")
-                                .selected_text(if self.library.category.is_empty() {"All categories"} else {&self.library.category})
-                                .show_ui(ui,|ui| {
-                                    ui.selectable_value(&mut self.library.category,String::new(),"All categories");
-                                    for category in builtin::CATEGORIES.iter().filter(|c| **c!="All") {
-                                        ui.selectable_value(&mut self.library.category,category.to_string(),*category);
-                                    }
-                                });
-                            ui.weak(format!("{} starter effects",builtin::ALL.len()));
+                        ui.horizontal_top(|ui| {
+                        ui.set_max_height((ctx.content_rect().height()-190.0).clamp(240.0,445.0));
+                        ui.vertical(|ui| {
+                            ui.set_width(118.0);
+                            ui.strong("Categories");
+                            ui.separator();
+                            ui.selectable_value(&mut self.library.category,String::new(),format!("All effects ({})",builtin::ALL.len()));
+                            for category in builtin::CATEGORIES.iter().filter(|c| **c!="All") {
+                                let count=builtin::ALL.iter().filter(|e| builtin::category(e.id)==*category).count();
+                                ui.selectable_value(&mut self.library.category,category.to_string(),format!("{category} ({count})"));
+                            }
                         });
+                        ui.separator();
+                        ui.vertical(|ui| {
+                        ui.set_min_width(280.0);
+                        ui.add(egui::TextEdit::singleline(&mut self.library.query).hint_text("Search effects…").desired_width(f32::INFINITY));
                         let words: Vec<_> = self.library.query.to_lowercase().split_whitespace().map(str::to_owned).collect();
                         let matches = |text: &str| words.iter().all(|w| text.to_lowercase().contains(w));
-                        egui::ScrollArea::vertical().max_height(400.0).show(ui, |ui| {
+                        egui::ScrollArea::vertical().max_height((ctx.content_rect().height()-240.0).clamp(190.0,400.0)).show(ui, |ui| {
                             ui.strong("Starter effects");
+                            let mut result_count = 0;
                             for entry in builtin::ALL {
                                 if (self.library.category.is_empty() || self.library.category==builtin::category(entry.id)) && matches(&format!("{} {} {} {} {}", entry.label, entry.description,builtin::category(entry.id),veylvik_document::presets::showcase::title(entry.id),veylvik_document::presets::showcase::description(entry.id))) {
+                                    result_count += 1;
                                     ui.group(|ui| { ui.horizontal(|ui| {
                                         if self.library.gallery.card(ui,entry.id).clicked() { self.library.detail=Some(entry.id); }
                                         ui.vertical(|ui| {
@@ -185,6 +191,7 @@ impl Studio {
                                     }); });
                                 }
                             }
+                            if result_count == 0 { ui.weak("No starter effects match. Try another category or search."); }
                             ui.separator(); ui.strong("Your effects");
                             if self.library.listing.entries.is_empty() { ui.weak("Select a group and choose Save to library, or import a .veyfx preset."); }
                             for entry in &self.library.listing.entries {
@@ -195,6 +202,8 @@ impl Studio {
                                     }); });
                                 }
                             }
+                        });
+                        });
                         });
                         ui.horizontal(|ui| {
                             if ui.button("Import preset…").clicked() { action = Some(Action::Import); }

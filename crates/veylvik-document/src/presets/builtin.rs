@@ -2,6 +2,7 @@
 use super::Preset;
 mod appearance;
 mod extended;
+mod optics;
 use crate::{
     BlendMode, Composition, Key, MaskChannel, Node, NodeId, Operation, Result, Scalar, Time,
     groups::{Control, Group},
@@ -12,7 +13,97 @@ pub struct Builtin {
     pub label: &'static str,
     pub description: &'static str,
 }
-pub const ALL: [Builtin; 40] = [
+pub const ALL: [Builtin; 58] = [
+    Builtin {
+        id: "oak_light",
+        label: "Light Oak",
+        description: "Pale oak with flowing growth rings, open pores and fine longitudinal fibres.",
+    },
+    Builtin {
+        id: "oak_dark",
+        label: "Dark Oak",
+        description: "Deep stained oak with warm growth rings and open grain.",
+    },
+    Builtin {
+        id: "marble",
+        label: "White Marble",
+        description: "Polished ivory stone with branching grey mineral veins.",
+    },
+    Builtin {
+        id: "brick_light",
+        label: "Light Brick",
+        description: "Cream masonry with recessed mortar, porous faces and individual brick variation.",
+    },
+    Builtin {
+        id: "brick_red",
+        label: "Red Brick",
+        description: "Warm red and brown fired brick with recessed mortar and rough faces.",
+    },
+    Builtin {
+        id: "concrete",
+        label: "Rough Concrete",
+        description: "Uneven concrete with aggregate, pits and directional relief shading.",
+    },
+    Builtin {
+        id: "paper_clean",
+        label: "Clean Paper",
+        description: "Soft white paper with fine fibres and a matte surface.",
+    },
+    Builtin {
+        id: "paper_aged",
+        label: "Weathered Paper",
+        description: "Warm aged paper with mottled stains, fibres and worn creases.",
+    },
+    Builtin {
+        id: "leather_red",
+        label: "Red Leather",
+        description: "Deep red leather with irregular pebbled grain and soft highlights.",
+    },
+    Builtin {
+        id: "leather_brown",
+        label: "Brown Leather",
+        description: "Warm brown leather with pebbled grain and fine creases.",
+    },
+    Builtin {
+        id: "leather_tan",
+        label: "Tan Leather",
+        description: "Light saddle leather with tactile grain and soft highlights.",
+    },
+    Builtin {
+        id: "leather_dark",
+        label: "Dark Leather",
+        description: "Dark chocolate leather with irregular pores and creases.",
+    },
+    Builtin {
+        id: "leather_black",
+        label: "Black Leather",
+        description: "Black leather with subtly raised grain and satin highlights.",
+    },
+    Builtin {
+        id: "surface_reflection",
+        label: "Surface Reflection",
+        description: "Reflect animated clouds, another object or an image in a metallic surface. Bind the surface and reflection scene separately.",
+    },
+    Builtin {
+        id: "clear_glass",
+        label: "Clear Glass Material",
+        description: "Clear beveled glass with background refraction, colour dispersion and an independently connected reflection scene.",
+    },
+    Builtin {
+        id: "frosted_glass_material",
+        label: "Frosted Glass Material",
+        description: "Diffused glass with softened background details, refraction and reflected light.",
+    },
+    Builtin {
+        id: "sun_glints",
+        label: "Sun Glints",
+        description: "Tiny animated sun-mirror flashes on bright polished details. Adjust density, size and highlight threshold.",
+    },
+    Builtin {
+        id: "metal_patina",
+        label: "Metal Patina",
+        description: "Optional uneven tarnish, dirt and scratches with cleaner worn edges. Open the node for verdigris or rust variants.",
+    },
     Builtin {
         id: "gold_text",
         label: "Polished Gold",
@@ -248,6 +339,12 @@ pub fn build(id: &str) -> Result<Preset> {
         controls: Vec::new(),
     };
     let output = match id {
+        id if appearance::material_kind(id).is_some() => appearance::build(id, &mut b, source)?,
+        "surface_reflection"
+        | "clear_glass"
+        | "frosted_glass_material"
+        | "sun_glints"
+        | "metal_patina" => optics::build(id, &mut b, source)?,
         "metallic_shine" => {
             let node = b.add(
                 "Travelling specular reflection",
@@ -472,7 +569,17 @@ pub fn build(id: &str) -> Result<Preset> {
     let mut group = Group::capture(&b.doc, b.members, output, builtin.label)?;
     group.controls = b.controls.into_iter().collect();
     for input in group.inputs.values_mut() {
-        input.label = "Image".into();
+        input.label = match input.targets.first().map(|target| target.port.as_str()) {
+            Some("reflection") => "Reflection scene",
+            Some("background") if matches!(id, "clear_glass" | "frosted_glass_material") => {
+                "Background to refract"
+            }
+            Some("image") if matches!(id, "clear_glass" | "frosted_glass_material") => {
+                "Shape / text"
+            }
+            _ => "Image",
+        }
+        .into();
     }
     let group_id = group.id;
     b.doc.groups.insert(group_id, group);
@@ -491,8 +598,11 @@ pub const CATEGORIES: [&str; 8] = [
 ];
 pub fn category(id: &str) -> &'static str {
     match id {
-        "metallic_shine" | "soft_bloom" | "anamorphic_streaks" | "dream_focus" | "light_sweep"
-        | "soft_vignette" | "spotlight" | "prismatic_glow" | "neon_outline" => "Light",
+        id if appearance::material_kind(id).is_some() => "Materials",
+        "sun_glints" | "metallic_shine" | "soft_bloom" | "anamorphic_streaks" | "dream_focus"
+        | "light_sweep" | "soft_vignette" | "spotlight" | "prismatic_glow" | "neon_outline" => {
+            "Light"
+        }
         "edge_engrave" | "duotone_print" | "silver_relief" | "ink_bleed" | "film_grain"
         | "scanlines" | "hologram" => "Surface",
         "frosted_glass" | "heat_haze" | "underwater" | "glitch_slices" | "liquid_shimmer" => {
@@ -503,6 +613,9 @@ pub fn category(id: &str) -> &'static str {
         "gold_text" | "silver_text" | "aluminium_text" | "bronze_text" | "phosphor_text"
         | "wood_text" => "Materials",
         "light_smoke" | "dense_smoke" | "fog_layer" | "drifting_fog" | "clouds" => "Atmosphere",
+        "surface_reflection" | "clear_glass" | "frosted_glass_material" | "metal_patina" => {
+            "Materials"
+        }
         _ => "All",
     }
 }
@@ -524,5 +637,26 @@ pub(crate) fn metallic_shine() -> Operation {
         width: 90.0.into(),
         angle: 20.0.into(),
         intensity: 1.8.into(),
+    }
+}
+
+pub(crate) fn sun_glints() -> Operation {
+    Operation::SunGlints {
+        seed: 193,
+        size: 18.0.into(),
+        intensity: 3.0.into(),
+        threshold: 0.55.into(),
+        evolution: Scalar::Linear {
+            keys: [(0, 0.0), (4, 4.0)]
+                .into_iter()
+                .map(|(ticks, value)| Key {
+                    time: Time { ticks, rate: 1 },
+                    value,
+                    segment: None,
+                })
+                .collect(),
+        },
+        density: 0.75.into(),
+        angle: 15.0.into(),
     }
 }

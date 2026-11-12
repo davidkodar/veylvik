@@ -1113,6 +1113,34 @@ impl Studio {
             Operation::Mask {} => {
                 ui.label("Image multiplied by mask alpha");
             }
+            Operation::SurfaceReflection { kind, .. } => {
+                egui::ComboBox::from_id_salt("reflection-kind")
+                    .selected_text(kind.label())
+                    .show_ui(ui, |ui| {
+                        for choice in veylvik_document::ReflectionKind::ALL {
+                            self.draft_dirty |=
+                                ui.selectable_value(kind, choice, choice.label()).changed();
+                        }
+                    });
+                ui.label("Connect any image or animated branch to Reflection.");
+            }
+            Operation::Glass { .. } => {
+                ui.label("Use isolated shape alpha and the scene behind it. Roughness makes frosted glass.");
+            }
+            Operation::SunGlints { seed, .. } => {
+                self.draft_dirty |= ui.add(egui::DragValue::new(seed).prefix("Seed ")).changed();
+            }
+            Operation::Patina { kind, seed, .. } => {
+                egui::ComboBox::from_id_salt("patina-kind")
+                    .selected_text(kind.label())
+                    .show_ui(ui, |ui| {
+                        for choice in veylvik_document::PatinaKind::ALL {
+                            self.draft_dirty |=
+                                ui.selectable_value(kind, choice, choice.label()).changed();
+                        }
+                    });
+                self.draft_dirty |= ui.add(egui::DragValue::new(seed).prefix("Seed ")).changed();
+            }
             Operation::Material { kind, .. } => {
                 egui::ComboBox::from_id_salt("Material-kind")
                     .selected_text(kind.label())

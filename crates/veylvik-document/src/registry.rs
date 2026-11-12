@@ -17,6 +17,8 @@ pub enum ParameterKind {
     MaskMode,
     AtmosphereKind,
     MaterialKind,
+    PatinaKind,
+    ReflectionKind,
 }
 #[derive(Debug, Clone, Copy, Serialize)]
 pub struct Parameter {
@@ -34,6 +36,8 @@ impl Parameter {
             ParameterKind::Scalar => json!({"kind":"constant","value":self.default}),
             ParameterKind::MaterialKind => json!(crate::MaterialKind::Gold),
             ParameterKind::AtmosphereKind => json!(crate::AtmosphereKind::Smoke),
+            ParameterKind::ReflectionKind => json!(crate::ReflectionKind::Metal),
+            ParameterKind::PatinaKind => json!(crate::PatinaKind::Tarnish),
             ParameterKind::Seed => json!(self.default as u32),
             ParameterKind::BlendMode => json!(crate::BlendMode::Normal),
             ParameterKind::MaskChannel => json!(crate::MaskChannel::Luminance),
@@ -63,6 +67,10 @@ impl Parameter {
             ParameterKind::AtmosphereKind => {
                 json!({"type":"string","enum":crate::AtmosphereKind::ALL})
             }
+            ParameterKind::ReflectionKind => {
+                json!({"type":"string","enum":crate::ReflectionKind::ALL})
+            }
+            ParameterKind::PatinaKind => json!({"type":"string","enum":crate::PatinaKind::ALL}),
             ParameterKind::Seed => json!({"type":"integer","minimum":0,"maximum":u32::MAX}),
             ParameterKind::Color => {
                 json!({"type":"array","minItems":4,"maxItems":4,"prefixItems":[{"type":"number"},{"type":"number"},{"type":"number"},{"type":"number","minimum":0,"maximum":1}]})
@@ -146,11 +154,77 @@ pub static NOISE: NodeType = NodeType {
         scalar("scale", "pixels", 1.0, 8192.0, 18.0),
     ],
 };
+pub static SURFACE_REFLECTION: NodeType = NodeType {
+    type_id: "surface_reflection",
+    version: 1,
+    label: "Surface reflection",
+    description: "Reflect a second image or animated branch in a metal/glass surface. Alpha-derived bevel normals warp the reflection; roughness softens it. Metal uses the surface tint, glass uses Fresnel weighting. Image-based 2.5D mapping, not scene ray tracing.",
+    inputs: &["image", "reflection"],
+    parameters: &[
+        other("kind", ParameterKind::ReflectionKind, "surface"),
+        scalar("bevel", "pixels", 0.0, 256.0, 5.0),
+        scalar("curvature", "factor", -2.0, 2.0, 0.35),
+        scalar("roughness", "pixels", 0.0, 256.0, 1.0),
+        scalar("strength", "factor", 0.0, 1.0, 0.7),
+        scalar("rotation", "degrees", -3600.0, 3600.0, 0.0),
+        scalar("scale", "factor", 0.01, 100.0, 1.0),
+        scalar("offset_x", "pixels", -32768.0, 32768.0, 0.0),
+        scalar("offset_y", "pixels", -32768.0, 32768.0, 0.0),
+    ],
+};
+pub static GLASS: NodeType = NodeType {
+    type_id: "glass",
+    version: 1,
+    label: "Glass surface",
+    description: "Clear or frosted glass from image alpha and an explicit background image. Bevel normals refract the background; roughness diffuses it, tint absorbs light and dispersion separates wavelengths. Composite this cutout over the same background; add Surface reflection for an independent reflected scene.",
+    inputs: &["image", "background"],
+    parameters: &[
+        scalar("bevel", "pixels", 0.0, 256.0, 6.0),
+        scalar("refraction", "pixels", 0.0, 256.0, 18.0),
+        scalar("roughness", "pixels", 0.0, 256.0, 0.0),
+        scalar("ior", "factor", 1.0, 3.0, 1.5),
+        scalar("transmission", "factor", 0.0, 1.0, 0.96),
+        scalar("tint", "factor", 0.0, 2.0, 0.12),
+        scalar("dispersion", "factor", 0.0, 1.0, 0.06),
+    ],
+};
+pub static SUN_GLINTS: NodeType = NodeType {
+    type_id: "sun_glints",
+    version: 1,
+    label: "Sun glints",
+    description: "Small animated star-like specular flashes anchored to bright source pixels. Deterministic seed and four-unit evolution loop; glints can extend beyond source coverage. Threshold and density select highlights.",
+    inputs: &["image"],
+    parameters: &[
+        other("seed", ParameterKind::Seed, "integer"),
+        scalar("size", "pixels", 1.0, 512.0, 18.0),
+        scalar("intensity", "factor", 0.0, 16.0, 3.0),
+        scalar("threshold", "linear luminance", 0.0, 16.0, 0.65),
+        scalar("evolution", "cycles", -10000.0, 10000.0, 0.0),
+        scalar("density", "factor", 0.0, 1.0, 0.55),
+        scalar("angle", "degrees", -3600.0, 3600.0, 15.0),
+    ],
+};
+pub static PATINA: NodeType = NodeType {
+    type_id: "patina",
+    version: 1,
+    label: "Tarnish and dirt",
+    description: "Optional patchy tarnish, copper/bronze verdigris or iron-like rust with separate dirt and scratches. Preserves source alpha. Apply after reflections to dull dirty areas, then add glints if desired.",
+    inputs: &["image"],
+    parameters: &[
+        other("kind", ParameterKind::PatinaKind, "weathering"),
+        other("seed", ParameterKind::Seed, "integer"),
+        scalar("amount", "factor", 0.0, 1.0, 0.4),
+        scalar("dirt", "factor", 0.0, 1.0, 0.2),
+        scalar("scale", "pixels", 1.0, 8192.0, 110.0),
+        scalar("wear", "factor", 0.0, 1.0, 0.3),
+        scalar("scratches", "factor", 0.0, 1.0, 0.15),
+    ],
+};
 pub static MATERIAL: NodeType = NodeType {
     type_id: "material",
     version: 1,
     label: "Text surface",
-    description: "Procedural gold, silver, brushed aluminium, bronze, phosphor or wood shading from image alpha. Surface grain, edge bevel and studio reflections; source RGB is replaced and alpha preserved. Not a 3D mesh or spectral renderer.",
+    description: "Procedural gold, silver, brushed aluminium, bronze, phosphor, wood, light/dark oak, marble, light/red brick, rough concrete, clean/weathered paper and five leather colours from image alpha. Surface grain, edge bevel and studio reflections; source RGB is replaced and alpha preserved. Not a 3D mesh or spectral renderer.",
     inputs: &["image"],
     parameters: &[
         other("kind", ParameterKind::MaterialKind, "material"),
@@ -412,6 +486,10 @@ pub static TYPES: &[&NodeType] = &[
     &FRACTAL_NOISE,
     &FIRE,
     &MATERIAL,
+    &PATINA,
+    &SUN_GLINTS,
+    &GLASS,
+    &SURFACE_REFLECTION,
     &ATMOSPHERE,
     &METALLIC_SHINE,
     &CHANNEL_MASK,

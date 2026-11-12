@@ -320,6 +320,93 @@ fn metallic_shine(@builtin(global_invocation_id) gid:vec3<u32>) {
     result[i]=vec4<f32>(original.rgb+vec3<f32>(1.0,0.94,0.82)*light,original.a);
 }
 
+// RGB albedo and a height channel in authored texture coordinates. The same
+// height field drives shading, so pores and mortar remain attached to the grain.
+fn surface_sample(uv:vec2<f32>, kind:u32)->vec4<f32> {
+    let coarse=fire_fbm(vec3<f32>(uv*3.0,0.7),719u);
+    let fine=fire_noise(vec3<f32>(uv*110.0,1.2),311u);
+    var color=vec3<f32>(0.5); var height=0.0;
+    if kind==6u || kind==7u {
+        let warp=fire_fbm(vec3<f32>(uv.x*1.2,uv.y*0.28,0.2),173u);
+        let rings=0.5+0.5*sin(length(vec2<f32>(uv.x*0.7-1.9,uv.y*0.24+0.4))*65.0+warp*9.0);
+        let fiber=fire_noise(vec3<f32>(uv.x*180.0,uv.y*18.0,0.1),137u);
+        let pores=pow(max(0.0,1.0-fiber*1.8),3.0);
+        let latewood=pow(rings,9.0);
+        let tone=clamp(0.78-0.32*latewood-0.25*pores+(coarse-0.5)*0.5,0.0,1.0);
+        color=mix(vec3<f32>(0.16,0.065,0.018),vec3<f32>(0.69,0.46,0.23),tone);
+        if kind==7u {color*=vec3<f32>(0.32,0.23,0.16);}
+        height=0.12*latewood-0.25*pores+fiber*0.03;
+    } else if kind==8u {
+        let warp=vec2<f32>(coarse,fire_fbm(vec3<f32>(uv*2.2,5.1),193u));
+        let veins=abs(sin((uv.x+uv.y*0.6+warp.x*1.7)*8.0+warp.y*7.0));
+        let vein=1.0-smoothstep(0.015,0.14,veins);
+        let branches=1.0-smoothstep(0.015,0.05,abs(sin((uv.y-uv.x+warp.y)*21.0)));
+        color=mix(vec3<f32>(0.78,0.77,0.71),vec3<f32>(0.15,0.18,0.19),vein*0.72+branches*0.09);
+        color*=0.88+coarse*0.18; height=fine*0.005;
+    } else if kind==9u || kind==10u {
+        let row=floor(uv.y*3.0); let q=vec2<f32>(uv.x*1.5+fract(row*0.5),uv.y*3.0);
+        let cell=floor(q); let f=fract(q);
+        let edge=min(min(f.x,1.0-f.x)*2.0,min(f.y,1.0-f.y));
+        let brick=smoothstep(0.035,0.075,edge+(fine-0.5)*0.012);
+        let variation=fire_noise(vec3<f32>(cell*7.0,0.5),173u);
+        var base=mix(vec3<f32>(0.22,0.035,0.012),vec3<f32>(0.55,0.17,0.055),variation);
+        if kind==9u {base=mix(vec3<f32>(0.42,0.36,0.24),vec3<f32>(0.75,0.67,0.49),variation);}
+        base*=0.72+0.5*coarse+0.16*(fine-0.5);
+        color=mix(vec3<f32>(0.28,0.26,0.22)*(0.85+fine*0.25),base,brick);
+        height=brick*0.5+brick*(coarse*0.12+fine*0.04);
+    } else if kind==11u {
+        let aggregate=fire_noise(vec3<f32>(uv*38.0,0.3),937u);
+        let pits=1.0-smoothstep(0.19,0.30,aggregate);
+        color=vec3<f32>(0.37,0.36,0.33)*(0.7+coarse*0.5+fine*0.12-pits*0.38);
+        height=coarse*0.45+aggregate*0.09-pits*0.18;
+    } else if kind==12u || kind==13u {
+        let fibers=fire_noise(vec3<f32>(uv.x*160.0,uv.y*35.0,0.3),811u);
+        color=vec3<f32>(0.88,0.865,0.82)*(0.96+fibers*0.06);
+        height=fibers*0.018+fine*0.009;
+        if kind==13u {
+            let stain=smoothstep(0.43,0.72,coarse);
+            let crease=exp(-pow(sin(uv.x*4.2+sin(uv.y*1.8)*0.45)*45.0,2.0));
+            color=mix(vec3<f32>(0.64,0.49,0.28),vec3<f32>(0.26,0.13,0.045),stain*0.65);
+            color*=0.94+fibers*0.1-crease*0.22;
+            height+=coarse*0.12-crease*0.055;
+        }
+    } else {
+        // Jittered Voronoi cells produce irregular leather pebbles rather than a grid.
+        let q=uv*78.0;let cell=floor(q);let f=fract(q);
+        var first=10.0; var second=10.0;
+        for(var y=-1;y<=1;y++) {for(var x=-1;x<=1;x++) {
+            let offset=vec2<f32>(f32(x),f32(y));let c=cell+offset;
+            let jitter=vec2<f32>(fire_noise(vec3<f32>(c*17.0,0.4),19u),fire_noise(vec3<f32>(c*17.0,5.2),83u));
+            let distance=length(offset+jitter-f);
+            if distance<first {second=first;first=distance;} else {second=min(second,distance);}
+        }}
+        let groove=1.0-smoothstep(0.015,0.13,second-first);
+        var base=vec3<f32>(0.25,0.012,0.018);
+        if kind==15u {base=vec3<f32>(0.19,0.064,0.022);}
+        if kind==16u {base=vec3<f32>(0.52,0.29,0.12);}
+        if kind==17u {base=vec3<f32>(0.055,0.018,0.008);}
+        if kind==18u {base=vec3<f32>(0.008,0.009,0.012);}
+        color=base*(0.8+coarse*0.36-groove*0.22+fine*0.08);
+        height=(1.0-groove)*0.018+coarse*0.035+fine*0.004;
+    }
+    return vec4<f32>(color,height);
+}
+fn detailed_surface(uv:vec2<f32>, n:vec3<f32>, kind:u32)->vec3<f32> {
+    let sample=surface_sample(uv,kind);
+    // Finite differences in pixel space avoid resolution-dependent bump strength.
+    let e=max(0.0005,1.0/p.values.x);
+    let dx=surface_sample(uv+vec2<f32>(e,0.0),kind).a-surface_sample(uv-vec2<f32>(e,0.0),kind).a;
+    let dy=surface_sample(uv+vec2<f32>(0.0,e),kind).a-surface_sample(uv-vec2<f32>(0.0,e),kind).a;
+    let normal=normalize(n+vec3<f32>(-dx,-dy,0.0)*p.extra.x/e*select(0.18,0.035,kind==6u || kind==7u));
+    let angle=p.values.w*6.2831853;
+    let light=normalize(vec3<f32>(-0.65+sin(angle)*0.7,-0.7,0.9));
+    let diffuse=0.32+0.75*max(dot(normal,light),0.0);
+    let half_vector=normalize(light+vec3<f32>(0.0,0.0,1.0));
+    let specular=pow(max(dot(normal,half_vector),0.0),mix(90.0,12.0,p.values.z));
+    let gloss=select(0.08,0.28,kind==8u || kind>=14u)*(1.0-p.values.z*0.75);
+    return sample.rgb*diffuse+vec3<f32>(specular*gloss);
+}
+
 // Alpha-derived bevel normals and a procedural studio environment. Metal tint
 // is reflected radiance; wood has diffuse grain, phosphor has emissive granules.
 @compute @workgroup_size(8,8)
@@ -376,6 +463,7 @@ fn material(@builtin(global_invocation_id) gid:vec3<u32>) {
         color*=0.6+0.4*max(dot(n,normalize(vec3<f32>(-0.5,-0.7,0.8+0.5*cos(p.values.w*6.2831853)))),0.0);
         color+=vec3<f32>(1.0,0.78,0.45)*rim*0.1*(1.0-rough);
     }
+    if p.size_op.w>=6u {color=detailed_surface(uv,n,p.size_op.w);}
     result[i]=vec4<f32>(color*coverage,coverage);
 }
 fn atmosphere_field(q:vec3<f32>,kind:u32)->f32 {
@@ -440,4 +528,131 @@ fn atmosphere(@builtin(global_invocation_id) gid:vec3<u32>) {
         transmittance*=1.0-alpha;
     }
     result[index(gid)]=vec4<f32>(rgb,1.0-transmittance);
+}
+
+fn bevel_normal(pos:vec2<i32>,radius:f32)->vec3<f32> {
+    var slope=vec2<f32>(0.0);
+    if radius>0.0 {
+        for(var ring=1;ring<=8;ring++) {
+            let r=max(1,i32(round(radius*f32(ring)/8.0)));
+            let weight=(1.0-f32(ring)/9.0)*0.5;
+            slope+=weight*vec2<f32>(sample_source(pos.x-r,pos.y).a-sample_source(pos.x+r,pos.y).a,
+                                    sample_source(pos.x,pos.y-r).a-sample_source(pos.x,pos.y+r).a);
+        }
+    }
+    return normalize(vec3<f32>(slope*1.6,1.0));
+}
+fn sample_second(pos:vec2<i32>)->vec4<f32> {
+    let q=clamp(pos,vec2<i32>(0),vec2<i32>(p.size_op.xy)-vec2<i32>(1));
+    return second[u32(q.y)*p.size_op.x+u32(q.x)];
+}
+fn second_bilinear(pos:vec2<f32>)->vec4<f32> {
+    let base=vec2<i32>(floor(pos));let f=fract(pos);
+    return mix(mix(sample_second(base),sample_second(base+vec2<i32>(1,0)),f.x),
+               mix(sample_second(base+vec2<i32>(0,1)),sample_second(base+vec2<i32>(1,1)),f.x),f.y);
+}
+fn reflected_sample(pos:vec2<f32>,roughness:f32)->vec4<f32> {
+    if roughness<0.01 {return second_bilinear(pos);}
+    var total=vec4<f32>(0.0);
+    for(var i=0u;i<16u;i++) {
+        let angle=f32(i)*2.39996323;
+        let radius=sqrt((f32(i)+0.5)/16.0)*roughness;
+        total+=second_bilinear(pos+vec2<f32>(cos(angle),sin(angle))*radius);
+    }
+    return total/16.0;
+}
+@compute @workgroup_size(8,8)
+fn surface_reflection(@builtin(global_invocation_id) gid:vec3<u32>) {
+    if !inside(gid) {return;}
+    let i=index(gid);let original=source[i];
+    if original.a==0.0 || p.values.w==0.0 {result[i]=original;return;}
+    let n=bevel_normal(vec2<i32>(gid.xy),p.values.x);
+    let center=(vec2<f32>(p.size_op.xy)-vec2<f32>(1.0))*0.5;
+    let q=(vec2<f32>(gid.xy)-center)/p.extra.y;
+    let c=cos(p.extra.x);let s=sin(p.extra.x);
+    let rotated=vec2<f32>(c*q.x-s*q.y,s*q.x+c*q.y);
+    let mapping=center+vec2<f32>(-rotated.x,rotated.y)+p.extra.zw+n.xy*p.values.y*min(f32(p.size_op.x),f32(p.size_op.y))*0.2;
+    let reflected=reflected_sample(mapping,p.values.z);
+    var weight=p.values.w;var tint=vec3<f32>(1.0);
+    if p.size_op.w==0u {
+        let straight=max(original.rgb/original.a,vec3<f32>(0.0));
+        tint=mix(vec3<f32>(1.0),straight/max(max(straight.r,straight.g),max(straight.b,0.001)),0.85);
+    } else {
+        weight*=0.08+0.92*pow(1.0-n.z,5.0);
+    }
+    result[i]=vec4<f32>(original.rgb*(1.0-weight*reflected.a)+reflected.rgb*tint*weight*original.a,original.a);
+}
+@compute @workgroup_size(8,8)
+fn glass(@builtin(global_invocation_id) gid:vec3<u32>) {
+    if !inside(gid) {return;}
+    let i=index(gid);let coverage=source[i].a;
+    if coverage==0.0 {result[i]=vec4<f32>(0.0);return;}
+    let n=bevel_normal(vec2<i32>(gid.xy),p.values.x);
+    let pos=vec2<f32>(gid.xy);
+    let displacement=-n.xy*p.values.y*(1.0-1.0/p.values.w);
+    let center=reflected_sample(pos+displacement,p.values.z);
+    var color=center.rgb;
+    if p.extra.z>0.0 {
+        color.r=reflected_sample(pos+displacement*(1.0+p.extra.z),p.values.z).r;
+        color.b=reflected_sample(pos+displacement*(1.0-p.extra.z),p.values.z).b;
+    }
+    let f0=pow((p.values.w-1.0)/(p.values.w+1.0),2.0);
+    let fresnel=f0+(1.0-f0)*pow(1.0-n.z,5.0);
+    let spec=pow(max(dot(n,normalize(vec3<f32>(-0.6,-0.7,0.7))),0.0),18.0)*fresnel*3.0;
+    let absorption=exp(-p.extra.y*vec3<f32>(0.55,0.14,0.05));
+    let rim=spec+fresnel*(1.0-n.z)*0.25;
+    let alpha=coverage*(center.a+(1.0-center.a)*clamp(rim,0.0,1.0));
+    result[i]=vec4<f32>((color*absorption*p.extra.x*(1.0-fresnel)+vec3<f32>(rim))*coverage,alpha);
+}
+fn glint_random(cell:vec2<i32>,salt:u32)->f32 {
+    return f32(noise_hash(bitcast<u32>(cell.x)*747796405u+bitcast<u32>(cell.y)*2891336453u+p.size_op.w+salt)&65535u)/65535.0;
+}
+@compute @workgroup_size(8,8)
+fn sun_glints(@builtin(global_invocation_id) gid:vec3<u32>) {
+    if !inside(gid) {return;}
+    let i=index(gid);let original=source[i];
+    if p.values.y==0.0 || p.extra.x==0.0 {result[i]=original;return;}
+    let cell_size=max(8.0,p.values.x*2.0);
+    let cell=vec2<i32>(floor(vec2<f32>(gid.xy)/cell_size));
+    var light=0.0;
+    for(var y=-1;y<=1;y++) { for(var x=-1;x<=1;x++) {
+        let candidate=cell+vec2<i32>(x,y);
+        if glint_random(candidate,31u)>=p.extra.x {continue;}
+        let point=(vec2<f32>(candidate)+vec2<f32>(glint_random(candidate,79u),glint_random(candidate,149u)))*cell_size;
+        let hit=sample_source(i32(round(point.x)),i32(round(point.y)));
+        let luminance=dot(hit.rgb,vec3<f32>(0.2126,0.7152,0.0722));
+        if hit.a<0.1 || luminance<p.values.z {continue;}
+        let pulse=pow(max(0.0,sin(p.values.w*1.570796327+glint_random(candidate,257u)*6.2831853)),8.0);
+        let delta=(vec2<f32>(gid.xy)-point)/p.values.x;
+        let c=cos(p.extra.y);let s=sin(p.extra.y);
+        let q=abs(vec2<f32>(c*delta.x-s*delta.y,s*delta.x+c*delta.y));
+        let taper=pow(max(0.0,1.0-length(q)),2.0);
+        let spikes=(exp(-q.x*80.0)+exp(-q.y*80.0))*taper;
+        let core=exp(-dot(q,q)*220.0);
+        light+=(spikes+core)*pulse*hit.a*p.values.y;
+    }}
+    let alpha=1.0-(1.0-original.a)*exp(-light*0.35);
+    result[i]=vec4<f32>(original.rgb+vec3<f32>(1.0,0.96,0.85)*light,alpha);
+}
+@compute @workgroup_size(8,8)
+fn patina(@builtin(global_invocation_id) gid:vec3<u32>) {
+    if !inside(gid) {return;}
+    let i=index(gid);let original=source[i];
+    if original.a==0.0 {result[i]=original;return;}
+    let uv=vec2<f32>(gid.xy)/p.values.z;
+    let oxidation_field=fire_fbm(vec3<f32>(uv*2.0,0.7),p.size_op.z);
+    let fine=fire_noise(vec3<f32>(uv*85.0,0.1),p.size_op.z+41u);
+    let dirty=fire_fbm(vec3<f32>(uv*4.0,1.3),p.size_op.z+137u);
+    let edge=1.0-bevel_normal(vec2<i32>(gid.xy),p.values.z*0.035).z;
+    let wear=1.0-clamp(edge*p.values.w*2.0,0.0,1.0);
+    let tarnish=smoothstep(0.25,0.75,oxidation_field)*p.values.x*wear;
+    let dirt=smoothstep(0.35,0.7,dirty)*p.values.y*wear;
+    var stain=original.rgb*(0.16+fine*0.12);
+    if p.size_op.w==1u {stain=vec3<f32>(0.025,0.16,0.105)*(0.45+fine*0.55)*original.a;}
+    if p.size_op.w==2u {stain=vec3<f32>(0.3,0.065,0.014)*(0.45+fine*0.55)*original.a;}
+    var color=mix(original.rgb,stain,tarnish);
+    color=mix(color,vec3<f32>(0.012,0.009,0.006)*original.a,dirt);
+    let scratches=smoothstep(0.78,0.92,fire_noise(vec3<f32>(uv.x*0.8,uv.y*210.0,0.3),p.size_op.z+331u))*p.extra.x;
+    color=mix(color,original.rgb*0.35,scratches);
+    result[i]=vec4<f32>(color,original.a);
 }

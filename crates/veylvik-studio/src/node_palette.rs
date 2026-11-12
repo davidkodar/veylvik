@@ -200,6 +200,24 @@ pub fn operation(kind: &NodeType, width: u32, height: u32) -> Operation {
             *scale = (width as f32 * 0.1875).max(1.0).into();
             *bevel = (width as f32 / 240.0).min(256.0).into();
         }
+        Operation::SurfaceReflection {
+            bevel, roughness, ..
+        } => {
+            *bevel = (width as f32 / 192.0).min(256.0).into();
+            *roughness = (width as f32 / 960.0).min(256.0).into();
+        }
+        Operation::Glass {
+            bevel, refraction, ..
+        } => {
+            *bevel = (width as f32 / 160.0).min(256.0).into();
+            *refraction = (width as f32 * 0.01875).min(256.0).into();
+        }
+        Operation::SunGlints { size, .. } => {
+            *size = (width as f32 * 0.01875).clamp(1.0, 512.0).into();
+        }
+        Operation::Patina { scale, .. } => {
+            *scale = (width as f32 * 110.0 / 960.0).clamp(1.0, 8192.0).into();
+        }
         Operation::Fire {
             x,
             y,

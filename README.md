@@ -210,8 +210,8 @@ input names, defaults and controls save with the composition. Nested groups are 
 **Add → Effect library…** opens searchable starter and saved effects. The bundled
 **Prismatic Glow** adds cyan/rose light spill; **Neon Outline** adds luminous
 contours; **Liquid Shimmer** adds a smooth four-second flow loop with protected
-frame edges. The library contains **40 starter effects**, searchable by name,
-description or category. Every starter remains an editable group with public controls.
+frame edges. The library contains **58 starter effects**, searchable by name,
+description or category, with category counts in the left sidebar and a search field above the results. Every starter remains an editable group with public controls.
 
 The expanded set includes:
 
@@ -223,7 +223,10 @@ The expanded set includes:
 - **Motion:** Chromatic Echo, Radial Echo and Orbit Echo.
 - **Particles:** Dust Motes, Fireflies, Embers, Snowfall and Starfield.
 - **Materials:** Polished Gold, Polished Silver, Brushed Aluminium, Aged Bronze,
-  Phosphor and Carved Wood.
+  Phosphor, Carved Wood, Light/Dark Oak, White Marble, Light/Red Brick,
+  Rough Concrete, Clean/Weathered Paper, and Red/Brown/Tan/Dark/Black Leather.
+  Surface Reflection, Clear Glass, Frosted Glass Material and Metal Patina add
+  connected reflections, refraction and optional weathering.
 - **Atmosphere:** Light Smoke, Dense Dark Smoke, Fog Layer, Drifting Fog and Clouds.
 
 Apply a material to an isolated text/logo image or a white shape mask. **Text surface**
@@ -232,6 +235,24 @@ alpha-derived bevel normals, aluminium adds directional brushing, bronze adds
 mottling, wood combines warped growth rings and fine fibers, and phosphor emits
 textured green light. Texture scale, bevel, roughness, grain and reflection motion
 are editable; the Phosphor preset adds adjustable bloom.
+
+Oak has elongated pores and growth rings; marble has warped mineral veins;
+bricks have staggered joints and recessed mortar; concrete has pits and aggregate;
+paper has fibres (plus stains and creases in its weathered variant); leather has
+irregular pebbled grain. Their height fields drive directional surface shading.
+These procedural materials are available through the node registry and MCP without
+loading an example or preset. User-imported material definitions are not yet supported.
+
+**Surface Reflection** accepts the material image and a separate reflection scene,
+including animated clouds or any other image branch. Curvature, mapping, rotation,
+roughness and strength are editable. This is image-based 2.5D reflection, not scene
+ray tracing. **Clear Glass** and **Frosted Glass Material** expose separate shape,
+background-to-refract and reflection inputs. Composite the glass result over that
+same background; frosting diffuses its details. **Sun Glints** adds deterministic,
+animated star-like highlights at bright surface points; threshold, density, size,
+angle and intensity control them. **Metal Patina** independently adds tarnish,
+verdigris or rust, dirt, edge wear and scratches; set amounts to zero for clean metal.
+All these operations remain usable independently through the node registry and MCP.
 
 Place **Metallic Shine** after the material and before the background merge. It adds
 a narrow warm-white reflection core with a softer shoulder and preserves alpha
@@ -247,7 +268,7 @@ position, size, density, flow, detail, illumination and seed. Pale smoke and den
 soot use rising plumes; fog offers a low layer and a drifting bank; clouds use
 billowing density with directional interior shading. These are deterministic
 procedural volume approximations, not combustion/weather simulations or scanned
-materials. All twelve new presets include native-HD editable examples and work
+materials. Surface and atmosphere presets include native-HD editable examples and work
 with the existing host-resolution sizing policies.
 
 Particle starters are deterministic overlays made from editable ellipse, animation,
@@ -445,7 +466,7 @@ includes retained history statistics. Supported operations:
 | Noise | none | Seed and cell size, 1–8192 pixels |
 | Gradient | none | Animated start/end coordinates, linear or radial grayscale ramp |
 | Metallic shine | image | Alpha-preserving specular streak; animated position, width, angle and brightness |
-| Text surface | image | Six procedural materials; bevel, grain, texture scale, roughness and lighting |
+| Text surface | image | Nineteen procedural materials; bevel, grain, texture scale, roughness and lighting |
 | Smoke, fog and clouds | none | Five transparent atmospheric volume styles with editable density and motion |
 | Procedural fire | none | Layered turbulent flame emission; seed, position, size, evolution, intensity and turbulence |
 | Fractal noise | none | Smooth grayscale noise; seed, scale, octaves, roughness, evolution |

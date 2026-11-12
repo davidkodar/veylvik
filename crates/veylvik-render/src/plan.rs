@@ -12,6 +12,10 @@ pub enum Kernel {
     Fire,
     Atmosphere,
     Material,
+    Patina,
+    SunGlints,
+    Glass,
+    SurfaceReflection,
     MetallicShine,
     Exposure,
     Transform,
@@ -32,13 +36,17 @@ pub enum Kernel {
     Gradient,
 }
 impl Kernel {
-    pub(crate) const ALL: [Self; 24] = [
+    pub(crate) const ALL: [Self; 28] = [
         Self::Solid,
         Self::Noise,
         Self::FractalNoise,
         Self::Fire,
         Self::Atmosphere,
         Self::Material,
+        Self::Patina,
+        Self::SunGlints,
+        Self::Glass,
+        Self::SurfaceReflection,
         Self::MetallicShine,
         Self::Exposure,
         Self::Transform,
@@ -64,6 +72,10 @@ impl Kernel {
             Self::Fire => "fire",
             Self::Atmosphere => "atmosphere",
             Self::Material => "material",
+            Self::Patina => "patina",
+            Self::SunGlints => "sun_glints",
+            Self::Glass => "glass",
+            Self::SurfaceReflection => "surface_reflection",
             Self::MetallicShine => "metallic_shine",
             Self::FractalNoise => "fractal_noise",
             Self::Noise => "noise",
@@ -185,6 +197,10 @@ impl Plan {
                 Operation::Fire { .. } => Kernel::Fire,
                 Operation::Atmosphere { .. } => Kernel::Atmosphere,
                 Operation::Material { .. } => Kernel::Material,
+                Operation::Patina { .. } => Kernel::Patina,
+                Operation::SunGlints { .. } => Kernel::SunGlints,
+                Operation::Glass { .. } => Kernel::Glass,
+                Operation::SurfaceReflection { .. } => Kernel::SurfaceReflection,
                 Operation::MetallicShine { .. } => Kernel::MetallicShine,
                 Operation::FractalNoise { .. } => Kernel::FractalNoise,
                 Operation::Noise { .. } => Kernel::Noise,
@@ -414,6 +430,10 @@ fn shareable(operation: &Operation) -> bool {
             | Operation::Fire { .. }
             | Operation::Atmosphere { .. }
             | Operation::Material { .. }
+            | Operation::Patina { .. }
+            | Operation::SunGlints { .. }
+            | Operation::Glass { .. }
+            | Operation::SurfaceReflection { .. }
             | Operation::MetallicShine { .. }
             | Operation::FractalNoise { .. }
             | Operation::Noise { .. }

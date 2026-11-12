@@ -601,12 +601,79 @@ pub(super) fn build(id: &str) -> Result<Scene> {
     doc.frame_count = 96;
     doc.nodes.clear();
     let mut a = Art { doc };
-    let bg = a.solid("Deep cinematic background", [0.001, 0.002, 0.006, 1.0]);
+    let mut bg = a.solid("Deep cinematic background", [0.001, 0.002, 0.006, 1.0]);
+    let optics = matches!(
+        id,
+        "surface_reflection"
+            | "clear_glass"
+            | "frosted_glass_material"
+            | "sun_glints"
+            | "metal_patina"
+    );
+    let environment = if optics {
+        let sky = atmosphere_plate(&mut a, "clouds");
+        let clouds = a.node(
+            "Animated reflection clouds",
+            Operation::Atmosphere {
+                kind: crate::AtmosphereKind::Clouds,
+                seed: 397,
+                x: 480.0.into(),
+                y: 420.0.into(),
+                width: 1000.0.into(),
+                height: 450.0.into(),
+                evolution: Scalar::Linear {
+                    keys: vec![
+                        Key {
+                            time: Time::new(0, 1)?,
+                            value: 0.0,
+                            segment: None,
+                        },
+                        Key {
+                            time: Time::new(4, 1)?,
+                            value: 4.0,
+                            segment: None,
+                        },
+                    ],
+                },
+                density: 4.0.into(),
+                detail: 1.0.into(),
+                lighting: 1.0.into(),
+            },
+            &[],
+        );
+        a.over("Cloud reflection environment", sky, clouds)
+    } else {
+        bg
+    };
     let before = match id {
+        "surface_reflection" | "sun_glints" | "metal_patina" => {
+            let mask = a.text("GOLD");
+            a.node(
+                "Polished base material",
+                Operation::Material {
+                    kind: if id == "metal_patina" {
+                        crate::MaterialKind::Bronze
+                    } else {
+                        crate::MaterialKind::Gold
+                    },
+                    scale: 180.0.into(),
+                    bevel: 5.0.into(),
+                    roughness: 0.15.into(),
+                    lighting: cycle(0.0, 0.12),
+                    grain: 0.35.into(),
+                    emission: 1.0.into(),
+                },
+                &[("image", mask)],
+            )
+        }
+        "clear_glass" | "frosted_glass_material" => {
+            bg = environment;
+            a.text("NOVA")
+        }
         id if super::super::builtin::category(id) == "Materials" => {
             let word = match id {
                 "gold_text" => "GOLD",
-                "wood_text" => "WOOD",
+                "wood_text" | "oak_light" | "oak_dark" => "WOOD",
                 "phosphor_text" => "GLOW",
                 _ => "NOVA",
             };
@@ -626,13 +693,28 @@ pub(super) fn build(id: &str) -> Result<Scene> {
     let preset = super::super::builtin::build(id)?;
     let instance = preset.instantiate(
         &a.doc,
-        &[("input_1".into(), before)].into(),
+        &preset
+            .group
+            .inputs
+            .iter()
+            .map(|(key, input)| {
+                let node = match input.label.as_str() {
+                    "Reflection scene" => environment,
+                    "Background to refract" => bg,
+                    _ => before,
+                };
+                (key.clone(), node)
+            })
+            .collect(),
         Some(NodePosition { x: 0.0, y: 1500.0 }),
     )?;
     let document = Document::new(a.doc)?;
     let mut composition = document.prepare(0, &instance.commands)?;
     composition.output = instance.output;
-    let before = if id == "metallic_shine" || super::super::builtin::category(id) == "Materials" {
+    let before = if id == "metallic_shine"
+        || id == "sun_glints"
+        || super::super::builtin::category(id) == "Materials"
+    {
         let mut a = Art { doc: composition };
         let before = a.over("Original lettering over background", bg, before);
         a.doc.output = a.over("Finished lettering over background", bg, instance.output);

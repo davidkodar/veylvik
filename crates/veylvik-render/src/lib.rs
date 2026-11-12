@@ -85,6 +85,56 @@ fn params(
             ];
             p.extra[0] = sample("intensity")?;
         }
+        Operation::SurfaceReflection { kind, .. } => {
+            p.size_op[3] = *kind as u32;
+            p.values = [
+                sample("bevel")?,
+                sample("curvature")?,
+                sample("roughness")?,
+                sample("strength")?,
+            ];
+            p.extra = [
+                sample("rotation")?.to_radians(),
+                sample("scale")?,
+                sample("offset_x")?,
+                sample("offset_y")?,
+            ];
+        }
+        Operation::Glass { .. } => {
+            p.values = [
+                sample("bevel")?,
+                sample("refraction")?,
+                sample("roughness")?,
+                sample("ior")?,
+            ];
+            p.extra = [
+                sample("transmission")?,
+                sample("tint")?,
+                sample("dispersion")?,
+                0.0,
+            ];
+        }
+        Operation::SunGlints { seed, .. } => {
+            p.size_op[3] = *seed;
+            p.values = [
+                sample("size")?,
+                sample("intensity")?,
+                sample("threshold")?,
+                sample("evolution")?.rem_euclid(4.0),
+            ];
+            p.extra = [sample("density")?, sample("angle")?.to_radians(), 0.0, 0.0];
+        }
+        Operation::Patina { kind, seed, .. } => {
+            p.size_op[2] = *seed;
+            p.size_op[3] = *kind as u32;
+            p.values = [
+                sample("amount")?,
+                sample("dirt")?,
+                sample("scale")?,
+                sample("wear")?,
+            ];
+            p.extra[0] = sample("scratches")?;
+        }
         Operation::Material { kind, .. } => {
             p.size_op[3] = *kind as u32;
             p.values = [

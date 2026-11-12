@@ -190,13 +190,26 @@ fn atmospheres_loop_without_state_preserve_clear_space_and_have_distinct_density
 #[ignore = "requires Vulkan"]
 fn surface_shine_and_atmosphere_presets_render_on_native_uhd_canvas() {
     let renderer = Renderer::new().unwrap();
-    for id in ["gold_text", "metallic_shine", "light_smoke"] {
+    for id in [
+        "gold_text",
+        "metallic_shine",
+        "light_smoke",
+        "surface_reflection",
+        "frosted_glass_material",
+        "leather_tan",
+        "concrete",
+    ] {
         let base = blank(3840, 2160, Time::new(30, 1).unwrap()).unwrap();
-        let instance = presets::builtin::build(id)
-            .unwrap()
+        let preset = presets::builtin::build(id).unwrap();
+        let instance = preset
             .instantiate_sized(
                 &base,
-                &[("input_1".into(), base.output)].into(),
+                &preset
+                    .group
+                    .inputs
+                    .keys()
+                    .map(|key| (key.clone(), base.output))
+                    .collect(),
                 None,
                 presets::resolution::Sizing::Fit,
             )
