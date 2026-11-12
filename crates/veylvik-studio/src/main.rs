@@ -1,3 +1,5 @@
+mod animation;
+use animation::scalar;
 mod display;
 mod files;
 mod graph;
@@ -11,7 +13,7 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
-use veylvik_document::{Command, Node, Operation, Scalar};
+use veylvik_document::{Command, Node, Operation};
 use veylvik_render::{GpuPreviewScheduler, PreviewTicket, RenderRequest, Renderer};
 
 fn main() {
@@ -770,76 +772,6 @@ impl Studio {
                 });
         }
     }
-}
-fn scalar(
-    ui: &mut egui::Ui,
-    label: &str,
-    scalar: &mut Scalar,
-    range: std::ops::RangeInclusive<f32>,
-    time: veylvik_document::Time,
-) -> bool {
-    ui.label(label);
-    let mut changed = match scalar {
-        Scalar::Constant { value } => ui
-            .add(egui::DragValue::new(value).speed(0.1).range(range))
-            .changed(),
-        Scalar::Linear { keys } => {
-            let mut changed = false;
-            ui.weak(format!(
-                "{} keyframes · {:.3} now",
-                keys.len(),
-                Scalar::Linear { keys: keys.clone() }
-                    .at(time)
-                    .unwrap_or(0.0)
-            ));
-            egui::CollapsingHeader::new(format!("Edit {label} keys")).show(ui, |ui| {
-                for (index, key) in keys.iter_mut().enumerate() {
-                    ui.push_id(index, |ui| {
-                        ui.horizontal(|ui| {
-                            changed |= ui.add(egui::DragValue::new(&mut key.time.ticks)).changed();
-                            ui.label("/");
-                            changed |= ui
-                                .add(egui::DragValue::new(&mut key.time.rate).range(1..=u32::MAX))
-                                .changed();
-                            ui.label("s");
-                            changed |= ui
-                                .add(
-                                    egui::DragValue::new(&mut key.value)
-                                        .speed(0.1)
-                                        .range(range.clone()),
-                                )
-                                .changed();
-                        });
-                    });
-                }
-            });
-            changed
-        }
-    };
-    if ui.small_button("Add key at playhead").clicked() {
-        let value = scalar.at(time).unwrap_or(0.0);
-        match scalar {
-            Scalar::Constant { .. } => {
-                *scalar = Scalar::Linear {
-                    keys: vec![veylvik_document::Key { time, value }],
-                };
-                changed = true;
-            }
-            Scalar::Linear { keys } => {
-                if !keys
-                    .iter()
-                    .any(|key| key.time.compare(time).is_ok_and(|order| order.is_eq()))
-                {
-                    keys.push(veylvik_document::Key { time, value });
-                    keys.sort_by(|a, b| {
-                        a.time.compare(b.time).unwrap_or(std::cmp::Ordering::Equal)
-                    });
-                    changed = true;
-                }
-            }
-        }
-    }
-    changed
 }
 impl eframe::App for Studio {
     fn ui(&mut self, ui: &mut egui::Ui, _: &mut eframe::Frame) {

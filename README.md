@@ -51,7 +51,10 @@ connections fail atomically. **Revert** discards the draft. Apply or revert befo
 selecting another node or using undo/redo.
 
 Scrub the timeline or play it to evaluate animation. Scalar controls can add a
-key at the playhead; expanded key lists edit exact rational times and values.
+key at the playhead; expanded key lists edit exact rational times and values or
+remove keys. Choose Linear, Hold, or Ease in/out for each animated parameter.
+**Make constant here** replaces a curve with its evaluated playhead value; Apply
+and undo work as for other inspector edits.
 Saving uses the same atomic persistence and source-image protection as MCP.
 Open, import, save-as, and export use the desktop file portal. File selection and
 image loading run on a bounded background worker. Save-as preserves the original
@@ -102,7 +105,10 @@ ports, and an output node. Supported operations:
 | Ellipse | none | Center, X/Y radii, and radial feather in pixels |
 | Mask | image, mask | Multiply premultiplied image by mask alpha; ignore mask RGB |
 
-Scalar parameters accept constants or linearly interpolated keyframes. Outside
+Scalar parameters accept constants or `linear`, `step`, and `smooth` keyframes.
+Step holds each value until the next exact key time. Smooth applies cubic
+smoothstep (`3t² − 2t³`) within each interval, easing in and out without
+overshooting the endpoint values. Curves contain 1–4096 keys. Outside
 the key range they hold the nearest endpoint. Input boundaries are transparent
 black. Image dimensions are 1–8192 per axis, subject to GPU limits and budget.
 Affine transforms scale around the pivot, rotate clockwise, then translate;

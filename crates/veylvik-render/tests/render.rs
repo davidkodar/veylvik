@@ -815,3 +815,75 @@ fn output_cache_keys_evaluated_dependencies_and_evicts_within_budget() {
     renderer.trim_resources().unwrap();
     assert_eq!(renderer.resource_stats().unwrap().resident_bytes, 0);
 }
+
+#[test]
+#[ignore = "requires Vulkan"]
+fn curve_modes_reach_gpu_and_cache_keys_follow_evaluated_values() {
+    use std::sync::Arc;
+    let renderer = Renderer::new().unwrap();
+    let source = Node::new("white", Operation::Solid { color: [1.0; 4] }, &[]);
+    let mut stops = Scalar::Linear {
+        keys: vec![
+            Key {
+                time: Time::new(0, 1).unwrap(),
+                value: 0.0,
+            },
+            Key {
+                time: Time::new(1, 1).unwrap(),
+                value: 8.0,
+            },
+        ],
+    };
+    let exposure = Node::new(
+        "gain",
+        Operation::Exposure {
+            stops: stops.clone(),
+        },
+        &[("image", source.id)],
+    );
+    let id = exposure.id;
+    let mut doc = composition(vec![source, exposure], id);
+    let inputs = ImageInputs::default();
+    for (mode, quarter_stops) in [
+        (Interpolation::Linear, 2.0_f32),
+        (Interpolation::Step, 0.0),
+        (Interpolation::Smooth, 1.25),
+    ] {
+        stops.set_interpolation(mode);
+        doc.nodes.get_mut(&id).unwrap().operation = Operation::Exposure {
+            stops: stops.clone(),
+        };
+        let plan = Plan::compile(&doc).unwrap();
+        let frame = renderer
+            .render_gpu_cached(
+                &plan,
+                RenderRequest::full(Time::new(1, 4).unwrap()),
+                &inputs,
+            )
+            .unwrap();
+        let pixels = renderer.read_frame(&frame).unwrap();
+        for pixel in pixels.pixels {
+            assert!((pixel[0] - quarter_stops.exp2()).abs() < 0.00001);
+            assert_eq!(pixel[3], 1.0);
+        }
+        if mode == Interpolation::Step {
+            let held = renderer
+                .render_gpu_cached(
+                    &plan,
+                    RenderRequest::full(Time::new(3, 4).unwrap()),
+                    &inputs,
+                )
+                .unwrap();
+            assert!(Arc::ptr_eq(&frame, &held));
+            let next = renderer
+                .render_gpu_cached(
+                    &plan,
+                    RenderRequest::full(Time::new(1, 1).unwrap()),
+                    &inputs,
+                )
+                .unwrap();
+            assert!(!Arc::ptr_eq(&frame, &next));
+            assert_eq!(renderer.read_frame(&next).unwrap().pixels[0][0], 256.0);
+        }
+    }
+}

@@ -36,7 +36,7 @@ impl Parameter {
                 let number = json!({"type":"number","minimum":self.min,"maximum":self.max});
                 json!({"oneOf":[
                     {"type":"object","properties":{"kind":{"const":"constant"},"value":number},"required":["kind","value"],"additionalProperties":false},
-                    {"type":"object","properties":{"kind":{"const":"linear"},"keys":{"type":"array","minItems":1,"items":{"type":"object","properties":{"time":{"type":"object","properties":{"ticks":{"type":"integer","minimum":i64::MIN,"maximum":i64::MAX},"rate":{"type":"integer","minimum":1,"maximum":u32::MAX}},"required":["ticks","rate"],"additionalProperties":false},"value":number},"required":["time","value"],"additionalProperties":false}}},"required":["kind","keys"],"additionalProperties":false}
+                    {"type":"object","properties":{"kind":{"enum":["linear","step","smooth"]},"keys":{"type":"array","minItems":1,"maxItems":crate::animation::MAX_KEYS,"items":{"type":"object","properties":{"time":{"type":"object","properties":{"ticks":{"type":"integer","minimum":i64::MIN,"maximum":i64::MAX},"rate":{"type":"integer","minimum":1,"maximum":u32::MAX}},"required":["ticks","rate"],"additionalProperties":false},"value":number},"required":["time","value"],"additionalProperties":false}}},"required":["kind","keys"],"additionalProperties":false}
                 ]})
             }
             ParameterKind::Seed => json!({"type":"integer","minimum":0,"maximum":u32::MAX}),
@@ -215,5 +215,5 @@ pub fn operation_schema() -> Value {
     json!({"oneOf":TYPES.iter().map(|node|node.schema()).collect::<Vec<_>>()})
 }
 pub fn catalog() -> Value {
-    json!({"nodes":TYPES.iter().map(|node|json!({"descriptor":node,"default_operation":node.default_operation(),"operation_schema":node.schema()})).collect::<Vec<_>>(),"image_contract":"scene-linear Rec.709, premultiplied RGBA32F","scalar_contract":"constant or linear keyframes; time is ticks/rate seconds; keys strictly increase"})
+    json!({"nodes":TYPES.iter().map(|node|json!({"descriptor":node,"default_operation":node.default_operation(),"operation_schema":node.schema()})).collect::<Vec<_>>(),"image_contract":"scene-linear Rec.709, premultiplied RGBA32F","scalar_contract":"constant, linear, step or smooth keyframes; smooth uses cubic smoothstep per interval; time is ticks/rate seconds; 1..4096 strictly increasing keys"})
 }

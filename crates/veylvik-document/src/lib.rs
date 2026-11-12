@@ -14,123 +14,8 @@ fn fail<T>(message: impl Into<String>) -> Result<T> {
     Err(Error(message.into()))
 }
 
-/// Exact seconds. Structural equality is deliberately not exposed; compare rational values.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Time {
-    pub ticks: i64,
-    pub rate: u32,
-}
-impl Time {
-    pub fn new(ticks: i64, rate: u32) -> Result<Self> {
-        if rate == 0 {
-            return fail("time rate must be positive");
-        }
-        Ok(Self { ticks, rate })
-    }
-    pub fn seconds(self) -> Result<f64> {
-        Self::new(self.ticks, self.rate)?;
-        Ok(self.ticks as f64 / self.rate as f64)
-    }
-    pub fn compare(self, other: Self) -> Result<std::cmp::Ordering> {
-        Self::new(self.ticks, self.rate)?;
-        Self::new(other.ticks, other.rate)?;
-        Ok((self.ticks as i128 * other.rate as i128)
-            .cmp(&(other.ticks as i128 * self.rate as i128)))
-    }
-}
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Key {
-    pub time: Time,
-    pub value: f32,
-}
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
-pub enum Scalar {
-    Constant { value: f32 },
-    Linear { keys: Vec<Key> },
-}
-impl From<f32> for Scalar {
-    fn from(value: f32) -> Self {
-        Self::Constant { value }
-    }
-}
-impl Scalar {
-    pub fn validate(&self) -> Result<()> {
-        match self {
-            Self::Constant { value } if !value.is_finite() => fail("non-finite scalar"),
-            Self::Linear { keys } => {
-                if keys.is_empty() {
-                    return fail("animation needs at least one key");
-                }
-                for key in keys {
-                    key.time.seconds()?;
-                    if !key.value.is_finite() {
-                        return fail("non-finite key");
-                    }
-                }
-                for pair in keys.windows(2) {
-                    if !pair[0].time.compare(pair[1].time)?.is_lt() {
-                        return fail("keys must have strictly increasing times");
-                    }
-                }
-                Ok(())
-            }
-            _ => Ok(()),
-        }
-    }
-    fn bounded(&self, min: f32, max: f32, name: &str) -> Result<()> {
-        self.validate()?;
-        let check = |value: f32| {
-            if (min..=max).contains(&value) {
-                Ok(())
-            } else {
-                fail(format!("{name} must be in {min}..={max}"))
-            }
-        };
-        match self {
-            Self::Constant { value } => check(*value),
-            Self::Linear { keys } => {
-                for key in keys {
-                    check(key.value)?;
-                }
-                Ok(())
-            }
-        }
-    }
-    pub fn at(&self, time: Time) -> Result<f32> {
-        self.validate()?;
-        time.seconds()?;
-        match self {
-            Self::Constant { value } => Ok(*value),
-            Self::Linear { keys } => {
-                let first = &keys[0];
-                if !time.compare(first.time)?.is_gt() {
-                    return Ok(first.value);
-                }
-                for pair in keys.windows(2) {
-                    if !time.compare(pair[1].time)?.is_gt() {
-                        let a = pair[0].time;
-                        let b = pair[1].time;
-                        // Subtract exactly before converting; large adjacent ticks can
-                        // collapse to the same f64 seconds value.
-                        let elapsed = time.ticks as i128 * a.rate as i128
-                            - a.ticks as i128 * time.rate as i128;
-                        let span =
-                            b.ticks as i128 * a.rate as i128 - a.ticks as i128 * b.rate as i128;
-                        let factor =
-                            elapsed as f64 / span as f64 * b.rate as f64 / time.rate as f64;
-                        return Ok((pair[0].value as f64 * (1.0 - factor)
-                            + pair[1].value as f64 * factor)
-                            as f32);
-                    }
-                }
-                Ok(keys.last().unwrap().value)
-            }
-        }
-    }
-}
+pub mod animation;
+pub use animation::{Interpolation, Key, Scalar, Time};
 /// All image ports carry scene-linear Rec.709, premultiplied RGBA float pixels.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
@@ -685,7 +570,7 @@ pub fn motion_demo() -> Composition {
                 y: 0.0.into(),
                 scale_x: 1.0.into(),
                 scale_y: 1.0.into(),
-                rotation: Scalar::Linear {
+                rotation: Scalar::Smooth {
                     keys: vec![
                         Key {
                             time: Time { ticks: 0, rate: 1 },
