@@ -33,6 +33,24 @@ Import a still image, inspect available nodes, or render a crop:
 the composition. Crops are extracted after full-frame evaluation, so blur and
 transform dependencies match a full render. This does not yet reduce GPU work.
 
+## HDR frame export
+
+Use an `.exr` output filename with CLI/MCP `render` or Studio's **Export…** picker
+for lossless OpenEXR. Files contain 32-bit float R/G/B/A channels, linear Rec.709
+primaries with D65 white, premultiplied alpha, and ZIP16 scanline compression.
+RGB values retain HDR highlights, negatives, and emission at zero alpha. No
+unpremultiplication, display transform, or RGB clamping is applied. Cropped output
+is a standalone image with its origin at zero, as for PNG.
+
+```sh
+./target/release/veylvik render animation.veylvik /tmp/frame.exr 24 24
+```
+
+Encoding streams through a same-directory temporary file; failures before
+publication preserve the existing destination. `.png` still exports SDR sRGB
+with straight alpha. Other frame extensions are rejected. OpenEXR import and
+OpenEXR sequences are not currently exposed.
+
 ## Animation sequences
 
 ```sh

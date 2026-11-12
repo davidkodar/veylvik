@@ -5,7 +5,7 @@ use std::path::Path;
 use veylvik_document::{Composition, Node, Operation, Time};
 use veylvik_render::{Plan, Region, RenderRequest, Renderer};
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
-const USAGE: &str = "usage: veylvik open [FILE] [--control-dir NEW_DIRECTORY] | demo FILE [--motion] | import IMAGE.png FILE | outline-text FONT TEXT NEW_FILE [OPTIONS] | nodes | check FILE | render FILE OUTPUT.png [TICKS RATE] [--node UUID] [--crop X Y WIDTH HEIGHT] | render-sequence FILE DIRECTORY START END [--node UUID] [--crop X Y WIDTH HEIGHT] | mcp FILE | mcp --studio DIRECTORY";
+const USAGE: &str = "usage: veylvik open [FILE] [--control-dir NEW_DIRECTORY] | demo FILE [--motion] | import IMAGE.png FILE | outline-text FONT TEXT NEW_FILE [OPTIONS] | nodes | check FILE | render FILE OUTPUT.png|OUTPUT.exr [TICKS RATE] [--node UUID] [--crop X Y WIDTH HEIGHT] | render-sequence FILE DIRECTORY START END [--node UUID] [--crop X Y WIDTH HEIGHT] | mcp FILE | mcp --studio DIRECTORY";
 fn run() -> Result<()> {
     let args: Vec<String> = std::env::args().collect();
     match args.get(1).map(String::as_str) {
@@ -135,6 +135,7 @@ fn run() -> Result<()> {
             println!("{result}");
         }
         Some("render") if args.len() >= 4 => {
+            assets::FrameFormat::from_path(Path::new(&args[3]))?;
             let doc = Composition::load(Path::new(&args[2]))?;
             let (output, request) = render_options(&doc, &args[4..])?;
             let plan = Plan::compile_output(&doc, output)?;
@@ -150,7 +151,7 @@ fn run() -> Result<()> {
                 Path::new(&args[3]),
             )?;
             let frame = renderer.render_frame(&plan, request, &inputs)?;
-            save_png(
+            save_frame(
                 Path::new(&args[3]),
                 frame.region.width,
                 frame.region.height,
@@ -223,4 +224,4 @@ fn main() {
         std::process::exit(1);
     }
 }
-use veylvik_io::save_png;
+use veylvik_io::save_frame;

@@ -63,6 +63,7 @@ fn image_mcp_save_as_and_cli_crop_agree() {
         ("apply",json!({"revision":0,"commands":commands})),
         ("save",json!({"revision":1,"path":"moved/effect.veylvik"})),
         ("render",json!({"revision":1,"path":"mcp.png","ticks":0,"rate":1,"region":{"x":1,"y":1,"width":8,"height":6}})),
+        ("render",json!({"revision":1,"path":"mcp.exr","ticks":0,"rate":1,"region":{"x":1,"y":1,"width":8,"height":6}})),
     ].into_iter().enumerate() { messages.push(json!({"jsonrpc":"2.0","id":i+2,"method":"tools/call","params":{"name":name,"arguments":args}})); }
     let mut child = Command::new(env!("CARGO_BIN_EXE_veylvik"))
         .args(["mcp", "project/image.veylvik"])
@@ -88,7 +89,7 @@ fn image_mcp_save_as_and_cli_crop_agree() {
         .lines()
         .map(|line| serde_json::from_str(line).unwrap())
         .collect();
-    assert_eq!(replies.len(), 4);
+    assert_eq!(replies.len(), 5);
     for reply in &replies {
         assert!(
             reply.get("error").is_none() && reply["result"]["isError"] != true,
@@ -132,6 +133,22 @@ fn image_mcp_save_as_and_cli_crop_agree() {
         fs::read(root.0.join("preview.png")).unwrap(),
         fs::read(root.0.join("cli.png")).unwrap()
     );
+    run(
+        &root.0,
+        &[
+            "render",
+            "moved/effect.veylvik",
+            "cli.exr",
+            "--crop",
+            "1",
+            "1",
+            "8",
+            "6",
+        ],
+    );
+    let exr = fs::read(root.0.join("cli.exr")).unwrap();
+    assert_eq!(&exr[..4], &20000630_u32.to_le_bytes());
+    assert_eq!(exr, fs::read(root.0.join("mcp.exr")).unwrap());
     let refused = Command::new(env!("CARGO_BIN_EXE_veylvik"))
         .args(["render", "moved/effect.veylvik", "source.png"])
         .current_dir(&root.0)

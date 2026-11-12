@@ -310,14 +310,27 @@ impl Composition {
 }
 /// Same-directory replacement keeps readers from observing partial saves.
 pub fn atomic_write(path: &Path, data: &[u8]) -> Result<()> {
-    atomic_publish(path, data, true)
+    use std::io::Write;
+    atomic_write_with(path, |file| file.write_all(data))
 }
 /// Publish a complete new file without replacing an existing file or symlink.
 pub fn atomic_create(path: &Path, data: &[u8]) -> Result<()> {
-    atomic_publish(path, data, false)
-}
-fn atomic_publish(path: &Path, data: &[u8], replace: bool) -> Result<()> {
     use std::io::Write;
+    atomic_publish_with(path, false, |file| file.write_all(data))
+}
+/// Stream a complete replacement through a same-directory temporary file.
+/// The callback must finish and flush its buffers before returning success.
+pub fn atomic_write_with(
+    path: &Path,
+    write: impl FnOnce(&mut std::fs::File) -> std::io::Result<()>,
+) -> Result<()> {
+    atomic_publish_with(path, true, write)
+}
+fn atomic_publish_with(
+    path: &Path,
+    replace: bool,
+    write: impl FnOnce(&mut std::fs::File) -> std::io::Result<()>,
+) -> Result<()> {
     let parent = path
         .parent()
         .filter(|p| !p.as_os_str().is_empty())
@@ -328,7 +341,7 @@ fn atomic_publish(path: &Path, data: &[u8], replace: bool) -> Result<()> {
             .write(true)
             .create_new(true)
             .open(&temp)?;
-        file.write_all(data)?;
+        write(&mut file)?;
         file.sync_all()?;
         if replace {
             std::fs::rename(&temp, path)?;

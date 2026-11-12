@@ -82,7 +82,11 @@ pub fn select(choice: Choice, folder: &Path, name: &str) -> Result<Option<PathBu
         Choice::Save => ("Save composition", "Veylvik composition", "*.veylvik"),
         Choice::Font => ("Choose font for text outlines", "Font", "*.ttf"),
         Choice::Import => ("Import image", "PNG image", "*.png"),
-        Choice::Export => ("Export frame", "PNG image", "*.png"),
+        Choice::Export => (
+            "Export frame (.png or .exr)",
+            "PNG or OpenEXR image",
+            "*.png",
+        ),
         Choice::Folder => ("Choose parent folder for PNG sequence", "Folders", "*"),
     };
     let filter = if matches!(choice, Choice::Font) {
@@ -90,6 +94,8 @@ pub fn select(choice: Choice, folder: &Path, name: &str) -> Result<Option<PathBu
             .glob("*.ttf")
             .glob("*.otf")
             .glob("*.ttc")
+    } else if matches!(choice, Choice::Export) {
+        FileFilter::new(label).glob("*.png").glob("*.exr")
     } else {
         FileFilter::new(label).glob(pattern)
     };

@@ -410,12 +410,13 @@ impl Studio {
             let Some(path) = files::select(Choice::Export, &base, &name)? else {
                 return Ok(Completed::Cancelled);
             };
+            veylvik_io::FrameFormat::from_path(&path).map_err(|e| e.to_string())?;
             veylvik_io::protect_inputs(&document, &base, &path).map_err(|e| e.to_string())?;
             let gpu_frame = renderer
                 .render_gpu_cached(&plan, RenderRequest::full(time), &inputs)
                 .map_err(|e| e.to_string())?;
             let frame = renderer.read_frame(&gpu_frame).map_err(|e| e.to_string())?;
-            veylvik_io::save_png(
+            veylvik_io::save_frame(
                 &path,
                 frame.region.width,
                 frame.region.height,
@@ -618,7 +619,13 @@ impl Studio {
             if ui.button("Import…").clicked() {
                 self.import_image();
             }
-            if ui.button("Export…").clicked() {
+            if ui
+                .button("Export…")
+                .on_hover_text(
+                    "Export PNG (SDR) or OpenEXR (linear HDR), chosen by filename extension",
+                )
+                .clicked()
+            {
                 self.export_frame();
             }
             if ui.button("Sequence…").clicked() {

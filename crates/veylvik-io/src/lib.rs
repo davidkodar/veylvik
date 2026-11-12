@@ -1,4 +1,6 @@
 //! Filesystem, PNG and font adapters; rendering and shaping stay independent of paths.
+pub mod export;
+pub use export::{FrameFormat, save_frame};
 pub mod sequence;
 pub mod text;
 use std::{

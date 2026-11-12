@@ -23,7 +23,7 @@ fn tools() -> Value {
         tool("redo","Redo one transaction, with a revision precondition.",json!({"revision":revision}),&["revision"]),
         tool("save","Atomically save the current composition to an explicit path.",json!({"path":{"type":"string"},"revision":revision}),&["path","revision"]),
         tool("render_sequence","Render an inclusive frame range at the composition frame rate into a new directory. PNGs use zero-based frame-%06d.png names; sequence.json records timing and completion. Existing directories are rejected; at most 10000 frames.",json!({"path":{"type":"string"},"revision":revision,"start":{"type":"integer"},"end":{"type":"integer"},"node":{"type":"string","format":"uuid"},"region":{"type":"object","properties":{"x":{"type":"integer","minimum":0},"y":{"type":"integer","minimum":0},"width":{"type":"integer","minimum":1},"height":{"type":"integer","minimum":1}},"required":["x","y","width","height"],"additionalProperties":false}}),&["path","revision","start","end"]),
-        tool("render","Render the current revision to an SDR PNG using Vulkan. Time is exact ticks/rate seconds.",json!({"path":{"type":"string"},"revision":revision,"ticks":{"type":"integer"},"rate":{"type":"integer","minimum":1,"maximum":u32::MAX},"node":{"type":"string","format":"uuid"},"region":{"type":"object","properties":{"x":{"type":"integer","minimum":0},"y":{"type":"integer","minimum":0},"width":{"type":"integer","minimum":1},"height":{"type":"integer","minimum":1}},"required":["x","y","width","height"],"additionalProperties":false}}),&["path","revision","ticks","rate"])
+        tool("render","Render the current revision using Vulkan. Choose .png for SDR or .exr for lossless linear premultiplied RGBA32F. Time is exact ticks/rate seconds.",json!({"path":{"type":"string"},"revision":revision,"ticks":{"type":"integer"},"rate":{"type":"integer","minimum":1,"maximum":u32::MAX},"node":{"type":"string","format":"uuid"},"region":{"type":"object","properties":{"x":{"type":"integer","minimum":0},"y":{"type":"integer","minimum":0},"width":{"type":"integer","minimum":1},"height":{"type":"integer","minimum":1}},"required":["x","y","width","height"],"additionalProperties":false}}),&["path","revision","ticks","rate"])
     ]})
 }
 fn required_u64(args: &Value, name: &str) -> Result<u64> {
@@ -133,6 +133,7 @@ impl Session {
                 Ok(result)
             }
             "render" => {
+                crate::assets::FrameFormat::from_path(path(args)?)?;
                 let time = Time::new(
                     args["ticks"].as_i64().ok_or("ticks must be an integer")?,
                     u32::try_from(required_u64(args, "rate")?)?,
@@ -162,7 +163,7 @@ impl Session {
                 crate::assets::protect_inputs(doc, &self.asset_base, path(args)?)?;
                 let frame =
                     renderer.render_frame(&plan, RenderRequest { time, region }, &inputs)?;
-                crate::save_png(
+                crate::save_frame(
                     path(args)?,
                     frame.region.width,
                     frame.region.height,
