@@ -217,6 +217,16 @@ compositor buffer budget; image atlases cannot grow and intermediate layers are
 disabled. `release_vector_resources` frees its persistent pipelines and scratch
 resources without invalidating retained output frames.
 
+`veylvik-text` shapes a single horizontal directional/script run from immutable
+host-supplied font bytes, using HarfRust and vector font outlines. It returns
+visual-order glyph IDs, UTF-8 clusters, advances, positions, missing-glyph flags,
+and an optional `PathMask`. Ligatures, kerning and combining marks remain the
+shaper's responsibility. Empty and whitespace-only runs have no outline. Font
+files are capped at 32 MiB, text at 4096 UTF-8 bytes, positioned runs at 512 glyphs,
+and combined outlines at the path limit. It performs no font discovery, fallback,
+paragraph bidi layout, wrapping or bitmap/color-glyph rendering. This library
+boundary does not yet provide a live editable Text node.
+
 The CLI/MCP adapter resolves image asset keys as PNG paths relative to the opened
 composition's directory (absolute paths also work). Save-as rebases relative paths
 without mutating the live session. Save/export refuse to replace an input image.

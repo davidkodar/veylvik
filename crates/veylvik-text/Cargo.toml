@@ -1,0 +1,15 @@
+[package]
+name = "veylvik-text"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+[dependencies]
+veylvik-document.workspace = true
+harfrust = "=0.13.3"
+ttf-parser = "=0.25.1"
+thiserror.workspace = true
+[dev-dependencies]
+veylvik-render.workspace = true
+epaint_default_fonts = "=0.34.3"
+[lints]
+workspace = true
