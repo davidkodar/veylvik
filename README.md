@@ -152,6 +152,11 @@ reports viewer settings separately from the composition (`scale: null` means
 fit mode; pan coordinates are logical UI points).
 Select and arrange nodes, drag between output and input sockets to connect them,
 add procedural nodes, and preview any node without changing composition output.
+**Add node** or **Tab** opens searchable node choices. Type part of a name or
+description, use Up/Down to choose, and Enter to add; Escape cancels. New effects
+connect to the selected node, and procedural nodes appear at the graph position
+where the picker opened. Gradient endpoints and shape defaults follow the
+composition size. Image and outlined-text choices open their import dialogs.
 Socket drags work in either direction; Escape or dropping on empty space cancels.
 Each accepted rewire is one undo step. Named inputs are also editable in the inspector. Inspector
 changes are drafts until **Apply**; one apply creates one undo step. Invalid
@@ -194,6 +199,7 @@ finishes.
 | Shortcut | Action |
 |---|---|
 | Space | Play / pause |
+| Tab | Search and add a node |
 | Ctrl+O / Ctrl+I | Open composition / import PNG or OpenEXR |
 | Ctrl+E | Export current preview to PNG or OpenEXR |
 | Ctrl+Shift+E | Export PNG or OpenEXR sequence |

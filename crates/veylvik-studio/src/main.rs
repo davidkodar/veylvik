@@ -12,6 +12,7 @@ mod display;
 mod files;
 mod graph;
 mod handles;
+mod node_palette;
 mod preview_images;
 mod project;
 mod viewer;
@@ -114,6 +115,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 draft,
                 draft_dirty: false,
                 graph: graph::Graph::default(),
+                node_palette: node_palette::Controls::default(),
                 status: String::new(),
                 error: false,
                 playing: false,
@@ -162,6 +164,7 @@ struct Studio {
     draft: Node,
     draft_dirty: bool,
     graph: graph::Graph,
+    node_palette: node_palette::Controls,
     status: String,
     error: bool,
     playing: bool,
@@ -181,13 +184,14 @@ struct Studio {
 }
 impl Studio {
     fn authoring_dialog_open(&self) -> bool {
-        self.outline_controls.open || self.composition_controls.open
+        self.outline_controls.open || self.composition_controls.open || self.node_palette.open
     }
     fn open_project(&mut self, project: Project, ctx: &egui::Context) {
         let recovery = recovery::Recovery::new(self.recovery.store.clone(), &project, ctx.clone());
         self.recovery.finish(true);
         self.recovery = recovery;
         self.outline_controls = text_outline::Controls::default();
+        self.node_palette = node_palette::Controls::default();
         self.composition_controls = composition::Controls::default();
         self.export_controls = sequence::Controls::default();
         self.project = project;
@@ -261,6 +265,39 @@ impl Studio {
             false
         } else {
             true
+        }
+    }
+    fn open_node_palette(&mut self, ctx: &egui::Context) {
+        if self.files.busy()
+            || self.authoring_dialog_open()
+            || !self.can_change_selection()
+            || self.graph.dragging()
+        {
+            return;
+        }
+        self.playing = false;
+        self.node_palette
+            .open_at(self.graph.insertion_position(ctx));
+    }
+    fn add_from_palette(
+        &mut self,
+        choice: node_palette::Choice,
+        position: veylvik_document::NodePosition,
+    ) {
+        match choice {
+            node_palette::Choice::Image => self.import_image(),
+            node_palette::Choice::Text => self.outline_controls.open = true,
+            node_palette::Choice::Node(kind) => {
+                let doc = self.project.document.snapshot();
+                let operation = node_palette::operation(kind, doc.width, doc.height);
+                match self.project.add_at(operation, Some(position)) {
+                    Ok(_) => {
+                        self.refresh_draft();
+                        self.request_preview();
+                    }
+                    Err(error) => self.fail(error),
+                }
+            }
         }
     }
     fn duplicate_selected(&mut self, ctx: &egui::Context) {
@@ -891,58 +928,9 @@ impl Studio {
             {
                 self.history(true);
             }
-            ui.menu_button("Add node", |ui| {
-                if ui.button("Outline text…").clicked() && self.can_change_selection() {
-                    self.playing = false;
-                    self.outline_controls.open = true;
-                    ui.close();
-                }
-                ui.separator();
-                for kind in veylvik_document::registry::TYPES {
-                    if kind.type_id == "image" {
-                        continue;
-                    }
-                    let label = kind.label;
-                    let mut operation: Operation = serde_json::from_value(kind.default_operation())
-                        .expect("validated registry defaults");
-                    let doc = self.project.document.snapshot();
-                    match &mut operation {
-                        Operation::Ellipse {
-                            x,
-                            y,
-                            radius_x,
-                            radius_y,
-                            ..
-                        } => {
-                            *x = (doc.width as f32 * 0.5).into();
-                            *y = (doc.height as f32 * 0.5).into();
-                            let radius = doc.width.min(doc.height) as f32 * 0.25;
-                            *radius_x = radius.into();
-                            *radius_y = radius.into();
-                        }
-                        Operation::Affine {
-                            pivot_x, pivot_y, ..
-                        } => {
-                            *pivot_x = (doc.width as f32 * 0.5).into();
-                            *pivot_y = (doc.height as f32 * 0.5).into();
-                        }
-                        _ => {}
-                    }
-                    if ui.button(label).clicked() && self.can_change_selection() {
-                        match self
-                            .project
-                            .add_at(operation, Some(self.graph.insertion_position(ui.ctx())))
-                        {
-                            Ok(_) => {
-                                self.refresh_draft();
-                                self.request_preview();
-                            }
-                            Err(e) => self.fail(e),
-                        }
-                        ui.close();
-                    }
-                }
-            });
+            if ui.button("Add node").on_hover_text("Search nodes (Tab)").clicked() {
+                self.open_node_palette(ui.ctx());
+            }
             if ui.button("Recover").clicked() {
                 self.recovery.refresh();
                 self.recovery.open = true;
@@ -1259,6 +1247,7 @@ impl Studio {
                 .show(ctx, |ui| {
                     for (key, action) in [
                         ("Space", "Play / pause"),
+                        ("Tab", "Search and add a node"),
                         ("Ctrl+D", "Duplicate selected node"),
                         ("Ctrl+N", "New composition"),
                         ("Ctrl+O", "Open composition"),
@@ -1364,6 +1353,9 @@ impl eframe::App for Studio {
                 i.consume_key(egui::Modifiers::CTRL | egui::Modifiers::SHIFT, egui::Key::Z)
             }) {
                 self.history(true);
+            }
+            if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Tab)) {
+                self.open_node_palette(&ctx);
             }
             if ctx.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, egui::Key::D)) {
                 self.duplicate_selected(&ctx);
@@ -1551,6 +1543,9 @@ impl eframe::App for Studio {
                 });
             },
         );
+        if let Some((choice, position)) = self.node_palette.show(&ctx) {
+            self.add_from_palette(choice, position);
+        }
         self.dialogs(&ctx);
         if let Some(settings) = self.composition_controls.show(&ctx) {
             self.apply_composition_settings(settings, &ctx);
