@@ -455,6 +455,9 @@ pub struct Node {
     pub label: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub position: Option<NodePosition>,
+    /// Authored scene backdrop, replaceable without flattening the subject.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub scene_background: bool,
     pub operation: Operation,
     pub inputs: BTreeMap<String, NodeId>,
 }
@@ -465,6 +468,7 @@ impl Node {
             version: 1,
             label: label.into(),
             position: None,
+            scene_background: false,
             operation,
             inputs: inputs.iter().map(|(k, v)| ((*k).into(), *v)).collect(),
         }

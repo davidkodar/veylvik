@@ -310,6 +310,7 @@ pub fn build(id: &str) -> Result<Scene> {
         },
         &[],
     );
+    doc.nodes.get_mut(&background).unwrap().scene_background = true;
     let emblem = matches!(
         id,
         "prismatic_glow" | "radial_echo" | "orbit_echo" | "anamorphic_streaks" | "spotlight"

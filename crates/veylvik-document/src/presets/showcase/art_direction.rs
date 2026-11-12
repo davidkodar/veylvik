@@ -689,6 +689,12 @@ pub(super) fn build(id: &str) -> Result<Scene> {
         "starfield" => nova(&mut a, bg),
         _ => unreachable!(),
     };
+    let backdrop = if super::super::builtin::category(id) == "Atmosphere" {
+        before
+    } else {
+        bg
+    };
+    a.doc.nodes.get_mut(&backdrop).unwrap().scene_background = true;
     a.doc.output = before;
     let preset = super::super::builtin::build(id)?;
     let instance = preset.instantiate(

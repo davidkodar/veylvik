@@ -1,5 +1,6 @@
 //! Portable, versioned effect graphs. Boundary sources are supplied by the host;
 //! files contain no filesystem dependencies or application/session state.
+pub mod background;
 pub mod builtin;
 pub mod resolution;
 pub mod showcase;

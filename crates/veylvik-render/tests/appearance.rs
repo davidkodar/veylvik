@@ -228,3 +228,41 @@ fn surface_shine_and_atmosphere_presets_render_on_native_uhd_canvas() {
         assert_eq!((frame.region().width, frame.region().height), (3840, 2160));
     }
 }
+
+#[test]
+#[ignore = "requires Vulkan"]
+fn replacing_backdrop_reveals_bricks_and_preserves_opaque_animated_text() {
+    use presets::background::{self, Placement};
+    let scene = presets::showcase::build("gold_text").unwrap();
+    let original = &scene.composition;
+    let text = original.nodes[&original.output].inputs["foreground"];
+    let instance = background::insert("brick_red", original, Placement::Automatic, None).unwrap();
+    let doc = Document::new(original.clone())
+        .unwrap()
+        .prepare(0, &instance.commands)
+        .unwrap();
+    let renderer = Renderer::new().unwrap();
+    let time = Time::new(2, 1).unwrap();
+    let result = renderer
+        .render(&Plan::compile(&doc).unwrap(), time)
+        .unwrap();
+    let old = renderer
+        .render(&Plan::compile(original).unwrap(), time)
+        .unwrap();
+    let subject = renderer
+        .render(&Plan::compile_output(original, text).unwrap(), time)
+        .unwrap();
+    let mut exposed = 0;
+    let mut preserved = 0;
+    for ((new, old), subject) in result.iter().zip(old).zip(subject) {
+        if subject[3] == 0.0 && (new[0] - old[0]).abs() > 0.02 {
+            exposed += 1;
+        }
+        if subject[3] == 1.0 {
+            assert_eq!(*new, subject);
+            preserved += 1;
+        }
+    }
+    assert!(exposed > 500000, "brick background must be visible");
+    assert!(preserved > 10000, "gold letters must remain above bricks");
+}

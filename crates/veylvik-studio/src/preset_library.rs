@@ -17,6 +17,7 @@ pub struct Library {
     query: String,
     category: String,
     sizing: veylvik_document::presets::resolution::Sizing,
+    background_placement: veylvik_document::presets::background::Placement,
     gallery: crate::showcase_gallery::Gallery,
     detail: Option<&'static str>,
     inputs: BTreeMap<String, NodeId>,
@@ -153,11 +154,32 @@ impl Studio {
                             if ui.button("Try example").clicked() { action=Some(Action::Example(id)); }
                             if ui.button("Apply to my composition").clicked() { action=Some(Action::Load(Source::Builtin(id))); }
                             if builtin::is_material(id) {
-                                if ui.button("Use as background").on_hover_text("Fill the canvas behind the composition. Visible through transparent areas.").clicked() { action=Some(Action::MaterialLayer(id,false)); }
+                                if ui.button("Use as background").on_hover_text("Replace the scene backdrop, preserving the subject and animation. Advanced placement can keep the existing backdrop.").clicked() { action=Some(Action::MaterialLayer(id,false)); }
                                 if ui.button("Use as foreground").on_hover_text("Fill the canvas over the composition. Adjust opacity on Material layer composite to reveal layers below.").clicked() { action=Some(Action::MaterialLayer(id,true)); }
                             }
                             if ui.button("Back to library").clicked() { self.library.detail=None; }
                         });
+                        if builtin::is_material(id) {
+                            use veylvik_document::presets::background::{self,Placement};
+                            let doc=self.project.document.snapshot();
+                            let target=background::automatic(doc);
+                            ui.weak(match self.library.background_placement {
+                                Placement::Behind=>"Background: behind the finished composition; opaque areas will hide it.".into(),
+                                Placement::Replace(node)=>format!("Background: replaces {}.",doc.nodes.get(&node).map_or("selected backdrop",|n|n.label.as_str())),
+                                Placement::Automatic=>match target {Some(node)=>format!("Background: replaces {} while keeping the effects above it.",doc.nodes[&node].label),None=>"No single backdrop identified. Choose one under Background placement.".into()},
+                            });
+                            egui::CollapsingHeader::new("Background placement · advanced").show(ui,|ui| {
+                                ui.selectable_value(&mut self.library.background_placement,Placement::Automatic,"Automatic — replace scene backdrop");
+                                ui.selectable_value(&mut self.library.background_placement,Placement::Behind,"Behind finished composition — keep existing backdrop");
+                                ui.weak("Behind mode only shows through transparent areas. Replacing keeps the old nodes available for reconnection and Undo.");
+                                egui::ComboBox::from_id_salt("background-target").selected_text(match self.library.background_placement {Placement::Replace(node)=>doc.nodes.get(&node).map_or("Choose backdrop to replace",|n|n.label.as_str()),_=>"Choose backdrop to replace"}).show_ui(ui,|ui| {
+                                    for node in background::candidates(doc) {
+                                        let label=doc.groups.values().find(|g|g.output==node).map_or(doc.nodes[&node].label.as_str(),|g|g.label.as_str());
+                                        ui.selectable_value(&mut self.library.background_placement,Placement::Replace(node),label);
+                                    }
+                                });
+                            });
+                        }
                         ui.separator();
                         self.library.gallery.detail(ui,id);
                         ui.weak(format!("{} · 4 seconds · editable scene",entry.label));
@@ -237,12 +259,22 @@ impl Studio {
                     self.fail("Composition changed; reopen the library.");
                     return;
                 }
-                match builtin::material_layer(
-                    id,
-                    self.project.document.snapshot(),
-                    foreground,
-                    self.library.position,
-                ) {
+                let result = if foreground {
+                    builtin::material_layer(
+                        id,
+                        self.project.document.snapshot(),
+                        true,
+                        self.library.position,
+                    )
+                } else {
+                    veylvik_document::presets::background::insert(
+                        id,
+                        self.project.document.snapshot(),
+                        self.library.background_placement,
+                        self.library.position,
+                    )
+                };
+                match result {
                     Ok(instance) => match self.project.apply(&instance.commands) {
                         Ok(()) => {
                             self.library.open = false;

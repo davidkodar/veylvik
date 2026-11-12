@@ -674,6 +674,40 @@ pub fn material_layer(
     foreground: bool,
     position: Option<crate::NodePosition>,
 ) -> Result<super::Instance> {
+    let mut instance = material_surface(id, doc, foreground, position)?;
+    let (back, front) = if foreground {
+        (doc.output, instance.output)
+    } else {
+        (instance.output, doc.output)
+    };
+    let mut merge = Node::new(
+        "Material layer composite",
+        Operation::Blend {
+            mode: BlendMode::Normal,
+            opacity: 1.0.into(),
+        },
+        &[("background", back), ("foreground", front)],
+    );
+    merge.position = position.map(|p| crate::NodePosition {
+        x: p.x + 240.0,
+        y: p.y,
+    });
+    let output = merge.id;
+    instance.commands.push(crate::Command::Put {
+        node: Box::new(merge),
+    });
+    instance
+        .commands
+        .push(crate::Command::Output { id: output });
+    Ok(instance)
+}
+
+pub(super) fn material_surface(
+    id: &str,
+    doc: &crate::Composition,
+    foreground: bool,
+    position: Option<crate::NodePosition>,
+) -> Result<super::Instance> {
     if !is_material(id) {
         return Err(crate::Error(
             "This effect is not a full-frame material".into(),
@@ -707,35 +741,10 @@ pub fn material_layer(
             "background"
         }
     );
-    let mut instance = preset.instantiate_sized(
+    preset.instantiate_sized(
         doc,
         &Default::default(),
         position,
         super::resolution::Sizing::Fit,
-    )?;
-    let (back, front) = if foreground {
-        (doc.output, instance.output)
-    } else {
-        (instance.output, doc.output)
-    };
-    let mut merge = Node::new(
-        "Material layer composite",
-        Operation::Blend {
-            mode: BlendMode::Normal,
-            opacity: 1.0.into(),
-        },
-        &[("background", back), ("foreground", front)],
-    );
-    merge.position = position.map(|p| crate::NodePosition {
-        x: p.x + 240.0,
-        y: p.y,
-    });
-    let output = merge.id;
-    instance.commands.push(crate::Command::Put {
-        node: Box::new(merge),
-    });
-    instance
-        .commands
-        .push(crate::Command::Output { id: output });
-    Ok(instance)
+    )
 }

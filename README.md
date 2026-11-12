@@ -230,10 +230,18 @@ The expanded set includes:
 - **Atmosphere:** Light Smoke, Dense Dark Smoke, Fog Layer, Drifting Fog and Clouds.
 
 Material details also offer **Use as background** and **Use as foreground**.
-These create a full-frame surface at the composition's resolution and composite it
-behind or over the existing output, in one undoable action. Backgrounds show through
-transparent areas; an opaque foreground covers the image until its **Material layer
-composite** opacity is reduced. Surface controls remain editable inside the group.
+**Use as background** replaces the scene backdrop by default, keeping the text,
+animation and effects above it. Starter scenes identify their backdrop explicitly;
+older graphs can use an unambiguous background chain. **Background placement ·
+advanced** lets you choose a node/group output to replace, or place the material
+behind the finished composition (visible only through transparent areas). Ambiguous
+or flattened scenes require an explicit choice instead of silently hiding a layer.
+Old backdrop nodes remain available, and the change undoes in one step.
+**Use as foreground** composites a full-frame surface over the existing output;
+reduce **Material layer composite** opacity to reveal the image below. Both modes
+use the composition resolution and leave surface controls editable inside the group.
+The optional node field `scene_background` records backdrop intent in saved scenes
+and is also available through MCP's node schema.
 
 Apply a material to an isolated text/logo image or a white shape mask. **Text surface**
 replaces RGB using the source alpha: polished metals use studio reflection bands and
