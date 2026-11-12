@@ -31,6 +31,7 @@ fn animated_mask_composition_matches_cli_and_mcp() {
         json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"nodes","arguments":{}}}),
         json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"render","arguments":{"revision":0,"path":"first.png","ticks":0,"rate":1}}}),
         json!({"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"render","arguments":{"revision":0,"path":"second.png","ticks":1,"rate":1}}}),
+        json!({"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"render_sequence","arguments":{"revision":0,"path":"mcp-sequence","start":0,"end":2}}}),
     ];
     let mut child = Command::new(env!("CARGO_BIN_EXE_veylvik"))
         .args(["mcp", "motion.veylvik"])
@@ -56,7 +57,7 @@ fn animated_mask_composition_matches_cli_and_mcp() {
         .lines()
         .map(|s| serde_json::from_str(s).unwrap())
         .collect();
-    assert_eq!(replies.len(), 4);
+    assert_eq!(replies.len(), 5);
     for reply in &replies {
         assert!(
             reply.get("error").is_none() && reply["result"]["isError"] != true,
@@ -90,5 +91,34 @@ fn animated_mask_composition_matches_cli_and_mcp() {
     assert_ne!(
         fs::read(root.0.join("first.png")).unwrap(),
         fs::read(root.0.join("second.png")).unwrap()
+    );
+    let result = Command::new(env!("CARGO_BIN_EXE_veylvik"))
+        .args([
+            "render-sequence",
+            "motion.veylvik",
+            "cli-sequence",
+            "0",
+            "2",
+        ])
+        .current_dir(&root.0)
+        .output()
+        .unwrap();
+    assert!(
+        result.status.success(),
+        "{}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    let report: Value = serde_json::from_slice(&result.stdout).unwrap();
+    assert_eq!(report["manifest"]["status"], "complete");
+    for index in 0..3 {
+        let name = format!("frame-{index:06}.png");
+        assert_eq!(
+            fs::read(root.0.join("cli-sequence").join(&name)).unwrap(),
+            fs::read(root.0.join("mcp-sequence").join(&name)).unwrap()
+        );
+    }
+    assert_eq!(
+        fs::read(root.0.join("first.png")).unwrap(),
+        fs::read(root.0.join("cli-sequence/frame-000000.png")).unwrap()
     );
 }

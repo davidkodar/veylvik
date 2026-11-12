@@ -1,4 +1,5 @@
 //! Filesystem and PNG adapter; the compositor only sees immutable linear images.
+pub mod sequence;
 use std::{
     fs::File,
     io::BufReader,
@@ -361,6 +362,10 @@ impl FileStamp {
 }
 /// PNG output uses the renderer's explicit scene-linear to SDR boundary.
 pub fn save_png(path: &Path, width: u32, height: u32, pixels: &[[f32; 4]]) -> Result<()> {
+    veylvik_document::atomic_write(path, &encode_png(width, height, pixels)?)?;
+    Ok(())
+}
+fn encode_png(width: u32, height: u32, pixels: &[[f32; 4]]) -> Result<Vec<u8>> {
     use image::ImageEncoder;
     if pixels.len() as u64 != width as u64 * height as u64 {
         return Err("PNG pixel count does not match dimensions".into());
@@ -373,8 +378,7 @@ pub fn save_png(path: &Path, width: u32, height: u32, pixels: &[[f32; 4]]) -> Re
         height,
         image::ExtendedColorType::Rgba8,
     )?;
-    veylvik_document::atomic_write(path, &png)?;
-    Ok(())
+    Ok(png)
 }
 
 #[cfg(test)]

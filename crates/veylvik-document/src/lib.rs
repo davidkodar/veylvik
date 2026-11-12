@@ -1,6 +1,7 @@
 //! Serializable compositions and transactional editing, independent of GPU and UI.
 pub mod registry;
 pub mod schema;
+pub mod sequence;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
@@ -285,6 +286,13 @@ impl Composition {
 }
 /// Same-directory replacement keeps readers from observing partial saves.
 pub fn atomic_write(path: &Path, data: &[u8]) -> Result<()> {
+    atomic_publish(path, data, true)
+}
+/// Publish a complete new file without replacing an existing file or symlink.
+pub fn atomic_create(path: &Path, data: &[u8]) -> Result<()> {
+    atomic_publish(path, data, false)
+}
+fn atomic_publish(path: &Path, data: &[u8], replace: bool) -> Result<()> {
     use std::io::Write;
     let parent = path
         .parent()
@@ -298,7 +306,12 @@ pub fn atomic_write(path: &Path, data: &[u8]) -> Result<()> {
             .open(&temp)?;
         file.write_all(data)?;
         file.sync_all()?;
-        std::fs::rename(&temp, path)?;
+        if replace {
+            std::fs::rename(&temp, path)?;
+        } else {
+            std::fs::hard_link(&temp, path)?;
+            std::fs::remove_file(&temp)?;
+        }
         std::fs::File::open(parent)?.sync_all()?;
         Ok(())
     })();

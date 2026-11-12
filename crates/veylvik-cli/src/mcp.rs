@@ -23,6 +23,7 @@ fn tools() -> Value {
         tool("undo","Undo one transaction, with a revision precondition.",json!({"revision":revision}),&["revision"]),
         tool("redo","Redo one transaction, with a revision precondition.",json!({"revision":revision}),&["revision"]),
         tool("save","Atomically save the current composition to an explicit path.",json!({"path":{"type":"string"},"revision":revision}),&["path","revision"]),
+        tool("render_sequence","Render an inclusive frame range at the composition frame rate into a new directory. PNGs use zero-based frame-%06d.png names; sequence.json records timing and completion. Existing directories are rejected; at most 10000 frames.",json!({"path":{"type":"string"},"revision":revision,"start":{"type":"integer"},"end":{"type":"integer"},"node":{"type":"string","format":"uuid"},"region":{"type":"object","properties":{"x":{"type":"integer","minimum":0},"y":{"type":"integer","minimum":0},"width":{"type":"integer","minimum":1},"height":{"type":"integer","minimum":1}},"required":["x","y","width","height"],"additionalProperties":false}}),&["path","revision","start","end"]),
         tool("render","Render the current revision to an SDR PNG using Vulkan. Time is exact ticks/rate seconds.",json!({"path":{"type":"string"},"revision":revision,"ticks":{"type":"integer"},"rate":{"type":"integer","minimum":1,"maximum":u32::MAX},"node":{"type":"string","format":"uuid"},"region":{"type":"object","properties":{"x":{"type":"integer","minimum":0},"y":{"type":"integer","minimum":0},"width":{"type":"integer","minimum":1},"height":{"type":"integer","minimum":1}},"required":["x","y","width","height"],"additionalProperties":false}}),&["path","revision","ticks","rate"])
     ]})
 }
@@ -86,6 +87,42 @@ impl Session {
             "save" => {
                 crate::assets::save(self.document.snapshot(), &self.asset_base, path(args)?)?;
                 Ok(json!({"saved":args["path"],"revision":self.document.revision()}))
+            }
+            "render_sequence" => {
+                let doc = self.document.snapshot();
+                let frames = veylvik_document::sequence::FrameRange::new(
+                    args["start"].as_i64().ok_or("start must be an integer")?,
+                    args["end"].as_i64().ok_or("end must be an integer")?,
+                    doc.frame_rate,
+                )?;
+                let output = args
+                    .get("node")
+                    .map(|value| value.as_str().ok_or("node must be a UUID string"))
+                    .transpose()?
+                    .map(str::parse)
+                    .transpose()?
+                    .unwrap_or(doc.output);
+                let region: Option<Region> = args
+                    .get("region")
+                    .map(|value| serde_json::from_value(value.clone()))
+                    .transpose()?;
+                if self.renderer.is_none() {
+                    self.renderer = Some(Renderer::new()?);
+                }
+                let mut result = crate::assets::sequence::render_sequence(
+                    self.renderer.as_ref().unwrap(),
+                    doc,
+                    &self.asset_base,
+                    path(args)?,
+                    crate::assets::sequence::SequenceRequest {
+                        frames,
+                        output,
+                        region,
+                    },
+                    |_, _| true,
+                )?;
+                result["revision"] = json!(self.document.revision());
+                Ok(result)
             }
             "render" => {
                 let time = Time::new(
@@ -258,7 +295,7 @@ mod tests {
             replies[4]["result"]["structuredContent"]["composition"]["width"],
             100
         );
-        assert_eq!(replies[5]["result"]["tools"].as_array().unwrap().len(), 7);
+        assert_eq!(replies[5]["result"]["tools"].as_array().unwrap().len(), 8);
     }
 }
 

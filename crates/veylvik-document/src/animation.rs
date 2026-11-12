@@ -9,6 +9,25 @@ pub struct Time {
     pub rate: u32,
 }
 impl Time {
+    /// Convert an absolute frame index at a rational frames-per-second rate.
+    /// Reduce in i128 before narrowing to avoid avoidable intermediate overflow.
+    pub fn at_frame(frame: i64, frame_rate: Time) -> Result<Self> {
+        if frame_rate.ticks <= 0 || frame_rate.rate == 0 {
+            return fail("frame rate must be positive");
+        }
+        let numerator = frame as i128 * frame_rate.rate as i128;
+        let denominator = frame_rate.ticks as i128;
+        let (mut a, mut b) = (numerator.abs(), denominator);
+        while b != 0 {
+            (a, b) = (b, a % b);
+        }
+        let ticks = i64::try_from(numerator / a)
+            .map_err(|_| crate::Error("frame time exceeds timestamp range".into()))?;
+        let rate = u32::try_from(denominator / a)
+            .map_err(|_| crate::Error("frame time denominator exceeds timestamp range".into()))?;
+        Self::new(ticks, rate)
+    }
+
     pub fn new(ticks: i64, rate: u32) -> Result<Self> {
         if rate == 0 {
             return fail("time rate must be positive");

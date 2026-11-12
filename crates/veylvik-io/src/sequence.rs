@@ -1,0 +1,79 @@
+//! Bounded sequence export. Only a completed manifest denotes a complete sequence.
+use crate::Result;
+use serde_json::{Value, json};
+use std::path::Path;
+use veylvik_document::{
+    Composition, NodeId, Time, atomic_create, atomic_write, sequence::FrameRange,
+};
+use veylvik_render::{Plan, Region, RenderRequest, Renderer};
+#[derive(Clone, Copy)]
+pub struct SequenceRequest {
+    pub frames: FrameRange,
+    pub output: NodeId,
+    pub region: Option<Region>,
+}
+/// Compile and load sources once, then render one frame at a time into a new directory.
+/// `progress(completed, total)` may return false to cancel between frames. Completed
+/// frames remain usable on cancellation/failure. Existing directories are rejected.
+pub fn render_sequence(
+    renderer: &Renderer,
+    document: &Composition,
+    base: &Path,
+    directory: &Path,
+    request: SequenceRequest,
+    mut progress: impl FnMut(u32, u32) -> bool,
+) -> Result<Value> {
+    let total = request.frames.count()?;
+    document.validate()?;
+    let region = request.region.unwrap_or(Region {
+        x: 0,
+        y: 0,
+        width: document.width,
+        height: document.height,
+    });
+    region.validate(document.width, document.height)?;
+    let plan = Plan::compile_output(document, request.output)?;
+    let inputs = crate::load_inputs(&plan, base, renderer.budget_bytes)?;
+    // Reserving a new directory ensures neither originals nor earlier renders
+    // become export targets. Per-file publication also refuses collisions.
+    std::fs::create_dir(directory)?;
+    let manifest_path = directory.join("sequence.json");
+    let mut manifest = json!({
+        "schema":1, "status":"rendering", "format":"png", "color_space":"srgb",
+        "alpha":"straight", "frames":request.frames, "count":total, "completed":0,
+        "file_pattern":"frame-%06d.png", "file_start":0,
+        "output_node":request.output, "region":region
+    });
+    atomic_create(&manifest_path, &serde_json::to_vec_pretty(&manifest)?)?;
+    let mut completed = 0;
+    while completed < total && progress(completed, total) {
+        let frame_index = i64::try_from(request.frames.start as i128 + completed as i128)?;
+        let time = Time::at_frame(frame_index, request.frames.frame_rate)?;
+        let frame = renderer.render_gpu_cached(
+            &plan,
+            RenderRequest {
+                time,
+                region: Some(region),
+            },
+            &inputs,
+        )?;
+        let frame = renderer.read_frame(&frame)?;
+        let path = directory.join(format!("frame-{completed:06}.png"));
+        atomic_create(
+            &path,
+            &crate::encode_png(region.width, region.height, &frame.pixels)?,
+        )?;
+        completed += 1;
+    }
+    manifest["completed"] = json!(completed);
+    manifest["status"] = json!(if completed == total {
+        "complete"
+    } else {
+        "cancelled"
+    });
+    atomic_write(&manifest_path, &serde_json::to_vec_pretty(&manifest)?)?;
+    if completed == total {
+        progress(completed, total);
+    }
+    Ok(json!({"directory":directory,"manifest":manifest}))
+}

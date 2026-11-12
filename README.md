@@ -33,6 +33,31 @@ Import a still image, inspect available nodes, or render a crop:
 the composition. Crops are extracted after full-frame evaluation, so blur and
 transform dependencies match a full render. This does not yet reduce GPU work.
 
+## Animation sequences
+
+```sh
+./target/release/veylvik render-sequence animation.veylvik /tmp/frames 0 95
+```
+
+Start and end are inclusive absolute frame indices at the composition's rational
+frame rate. Negative frame indices are supported. Each request allows 1–10000
+frames and validates every timestamp before writing. Optional `--node` and
+`--crop` work as for a single frame. The output directory must not exist; its
+parent must already exist. Outputs never replace earlier renders.
+
+Files are `frame-000000.png` onward, with timing, region, source frame range, and
+completion recorded in `sequence.json`. Only `status: "complete"` denotes a
+finished sequence. Interrupted or failed jobs can leave a `rendering` manifest
+and usable completed frames. The library supports cancellation between frames,
+recorded as `cancelled`. CLI progress is newline-delimited JSON on stderr; the
+final result is JSON on stdout. One plan and source set serve the entire render,
+and frames are written one at a time. PNG sequences retain the same SDR colour
+and alpha rules as single-frame export; no video encoding or audio is included.
+
+MCP `render_sequence` takes `revision`, `path`, `start`, `end`, and optional `node`
+and `region`. It runs synchronously and returns the sequence manifest. The stdio
+adapter does not yet expose mid-request cancellation or progress notifications.
+
 ## Native editor
 
 ```sh
@@ -159,7 +184,8 @@ Launch a session against a saved composition:
 
 The server uses newline-delimited JSON-RPC on stdio and MCP protocol version
 2025-11-25. Initialize, then send `notifications/initialized` before using tools.
-The tools are `inspect`, `nodes`, `apply`, `undo`, `redo`, `save`, and `render`.
+The tools are `inspect`, `nodes`, `apply`, `undo`, `redo`, `save`, `render`, and
+`render_sequence`.
 `nodes` provides defaults, parameter units/bounds, named ports, and operation JSON
 schemas from the document registry. The same registry validates scalar parameters
 and supplies input ports to the compiler. The `apply` tool embeds these schemas. Every mutation, save, or render

@@ -58,14 +58,12 @@ impl Project {
         self.saved_revision != Some(self.document.revision())
     }
     pub fn time(&self) -> Result<Time> {
-        let fps = self.document.snapshot().frame_rate;
-        Ok(Time::new(
-            self.frame
-                .checked_mul(i64::from(fps.rate))
-                .ok_or("frame time overflow")?,
-            u32::try_from(fps.ticks).map_err(|_| "frame rate exceeds timeline range")?,
+        Ok(Time::at_frame(
+            self.frame,
+            self.document.snapshot().frame_rate,
         )?)
     }
+
     pub fn plan(&mut self) -> Result<Arc<Plan>> {
         let revision = self.document.revision();
         let output = self.preview.unwrap_or(self.document.snapshot().output);

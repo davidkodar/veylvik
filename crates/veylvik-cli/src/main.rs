@@ -4,7 +4,7 @@ use std::path::Path;
 use veylvik_document::{Composition, Node, Operation, Time};
 use veylvik_render::{Plan, Region, RenderRequest, Renderer};
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
-const USAGE: &str = "usage: veylvik open [FILE] | demo FILE [--motion] | import IMAGE.png FILE | nodes | check FILE | render FILE OUTPUT.png [TICKS RATE] [--node UUID] [--crop X Y WIDTH HEIGHT] | mcp FILE";
+const USAGE: &str = "usage: veylvik open [FILE] | demo FILE [--motion] | import IMAGE.png FILE | nodes | check FILE | render FILE OUTPUT.png [TICKS RATE] [--node UUID] [--crop X Y WIDTH HEIGHT] | render-sequence FILE DIRECTORY START END [--node UUID] [--crop X Y WIDTH HEIGHT] | mcp FILE";
 fn run() -> Result<()> {
     let args: Vec<String> = std::env::args().collect();
     match args.get(1).map(String::as_str) {
@@ -89,9 +89,42 @@ fn run() -> Result<()> {
                 serde_json::json!({"valid":true,"nodes":doc.nodes.len(),"reachable_nodes":plan.node_count(),"passes":plan.passes(),"image_slots":plan.image_slots(),"working_bytes":plan.working_bytes(),"assets":plan.required_assets()})
             );
         }
+        Some("render-sequence") if args.len() >= 6 => {
+            let doc = Composition::load(Path::new(&args[2]))?;
+            let frames = veylvik_document::sequence::FrameRange::new(
+                args[4].parse()?,
+                args[5].parse()?,
+                doc.frame_rate,
+            )?;
+            if args.get(6).is_some_and(|arg| !arg.starts_with("--")) {
+                return Err("sequence options must be --node or --crop".into());
+            }
+            let (output, request) = render_options(&doc, &args[6..])?;
+            let renderer = Renderer::new()?;
+            let result = assets::sequence::render_sequence(
+                &renderer,
+                &doc,
+                &assets::document_base(Path::new(&args[2]))?,
+                Path::new(&args[3]),
+                assets::sequence::SequenceRequest {
+                    frames,
+                    output,
+                    region: request.region,
+                },
+                |completed, total| {
+                    eprintln!(
+                        "{}",
+                        serde_json::json!({"progress":{"completed":completed,"total":total}})
+                    );
+                    true
+                },
+            )?;
+            println!("{result}");
+        }
         Some("render") if args.len() >= 4 => {
             let doc = Composition::load(Path::new(&args[2]))?;
-            let (plan, request) = render_options(&doc, &args[4..])?;
+            let (output, request) = render_options(&doc, &args[4..])?;
+            let plan = Plan::compile_output(&doc, output)?;
             let renderer = Renderer::new()?;
             let inputs = assets::load_inputs(
                 &plan,
@@ -119,7 +152,10 @@ fn run() -> Result<()> {
     }
     Ok(())
 }
-fn render_options(doc: &Composition, args: &[String]) -> Result<(Plan, RenderRequest)> {
+fn render_options(
+    doc: &Composition,
+    args: &[String],
+) -> Result<(veylvik_document::NodeId, RenderRequest)> {
     let mut i = 0;
     let mut request = RenderRequest::full(Time::new(0, 1)?);
     let mut output = None;
@@ -151,10 +187,7 @@ fn render_options(doc: &Composition, args: &[String]) -> Result<(Plan, RenderReq
     if let Some(region) = request.region {
         region.validate(doc.width, doc.height)?;
     }
-    Ok((
-        Plan::compile_output(doc, output.unwrap_or(doc.output))?,
-        request,
-    ))
+    Ok((output.unwrap_or(doc.output), request))
 }
 fn main() {
     if let Err(e) = run() {

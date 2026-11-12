@@ -125,3 +125,34 @@ fn every_mode_rejects_invalid_keys_and_enforces_resource_limit() {
     assert_eq!(constant.interpolation(), None);
     assert_eq!(constant.at(Time::new(1, 1).unwrap()).unwrap(), 3.0);
 }
+
+#[test]
+fn frame_times_are_exact_reduced_and_preflighted() {
+    use veylvik_document::sequence::FrameRange;
+    let fps = Time::new(30000, 1001).unwrap();
+    let time = Time::at_frame(30, fps).unwrap();
+    assert_eq!((time.ticks, time.rate), (1001, 1000));
+    assert!(
+        Time::at_frame(-30, fps)
+            .unwrap()
+            .compare(Time::new(-1001, 1000).unwrap())
+            .unwrap()
+            .is_eq()
+    );
+    // Reduction makes this representable despite multiplication exceeding i64.
+    assert_eq!(
+        Time::at_frame(i64::MAX, Time::new(2, 2).unwrap())
+            .unwrap()
+            .ticks,
+        i64::MAX
+    );
+    assert!(Time::at_frame(i64::MAX, Time::new(1, 2).unwrap()).is_err());
+    assert_eq!(FrameRange::new(-1, 1, fps).unwrap().count().unwrap(), 3);
+    assert!(FrameRange::new(2, 1, fps).is_err());
+    assert!(FrameRange::new(i64::MIN, i64::MAX, fps).is_err());
+    assert!(FrameRange::new(0, 10000, fps).is_err());
+    assert!(FrameRange::new(0, 0, Time::new(-1, 1).unwrap()).is_err());
+    // Both endpoints fit after reduction, but the interior denominator cannot fit.
+    let huge = Time::new(i64::from(u32::MAX) + 1, 1).unwrap();
+    assert!(FrameRange::new(0, 2, huge).is_err());
+}

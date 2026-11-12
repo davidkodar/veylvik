@@ -233,3 +233,28 @@ fn layout_is_optional_persistent_and_transactional() {
         .unwrap();
     assert_eq!(document.snapshot().nodes[&id].position, None);
 }
+
+#[test]
+fn atomic_create_publishes_complete_data_without_replacing_collisions() {
+    let directory = std::env::temp_dir().join(format!("veylvik-publish-{}", NodeId::new_v4()));
+    std::fs::create_dir(&directory).unwrap();
+    let path = directory.join("frame.png");
+    atomic_create(&path, b"complete frame").unwrap();
+    assert!(atomic_create(&path, b"replacement").is_err());
+    assert_eq!(std::fs::read(&path).unwrap(), b"complete frame");
+    #[cfg(unix)]
+    {
+        let link = directory.join("link.png");
+        std::os::unix::fs::symlink(&path, &link).unwrap();
+        assert!(atomic_create(&link, b"overwrite via symlink").is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), b"complete frame");
+    }
+    assert!(!std::fs::read_dir(&directory).unwrap().any(|entry| {
+        entry
+            .unwrap()
+            .file_name()
+            .to_string_lossy()
+            .ends_with(".tmp")
+    }));
+    std::fs::remove_dir_all(directory).unwrap();
+}
