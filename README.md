@@ -910,3 +910,11 @@ are `blur`, `brightness`, and `composite`; outline roles are `grow`, `outline`,
 `color`, and `composite`. Use those IDs with `get_node` and `set_parameter` to
 edit controls. Dry-run IDs are provisional; use committed IDs for later edits.
 Headless recipe nodes use automatic layout; live nodes receive explicit positions.
+
+
+Solid and Colorize controls include **Pick color** beside the numeric RGB/alpha
+fields. The picker chooses standard colors in the 0–1 range and leaves alpha
+unchanged, including zero alpha. Numeric RGB still supports HDR and negative
+values. Merely opening the picker does not clamp or rewrite those authored
+values; choosing a color replaces RGB in the inspector draft. Apply/Ctrl+Enter,
+Revert, and undo behave as for numeric edits.

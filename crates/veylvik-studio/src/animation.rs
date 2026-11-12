@@ -115,6 +115,25 @@ fn mode_label(mode: Interpolation) -> &'static str {
 /// Scene-linear HDR color controls shared by solids and color mapping.
 pub fn color(ui: &mut egui::Ui, color: &mut [f32; 4]) -> bool {
     let mut changed = false;
+    // The widget performs a color-space round trip even without interaction.
+    // Keep it isolated from authored HDR, negative and zero-alpha RGB values.
+    let mut picker = [color[0], color[1], color[2]];
+    for value in &mut picker {
+        *value = if value.is_finite() {
+            value.clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
+    }
+    ui.horizontal(|ui| {
+        ui.label("Pick color");
+        if ui.color_edit_button_rgb(&mut picker)
+            .on_hover_text("Pick standard colors in the 0–1 range. Alpha stays unchanged. Use numeric controls for HDR or negative RGB.")
+            .changed() {
+            color[..3].copy_from_slice(&picker);
+            changed = true;
+        }
+    });
     for (index, label) in ["Red", "Green", "Blue", "Alpha"].iter().enumerate() {
         ui.horizontal(|ui| {
             ui.label(*label);
