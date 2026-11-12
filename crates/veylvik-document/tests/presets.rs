@@ -206,3 +206,66 @@ fn presets_adapt_to_uhd_without_retiming_animation() {
         );
     }
 }
+
+#[test]
+fn material_layers_fill_canvas_preserve_graph_and_undo_atomically() {
+    use veylvik_document::*;
+    for foreground in [false, true] {
+        let original = blank(3840, 2160, Time::new(24, 1).unwrap()).unwrap();
+        let instance = builtin::material_layer("oak_light", &original, foreground, None).unwrap();
+        let mut owner = Document::new(original.clone()).unwrap();
+        owner.apply(0, &instance.commands).unwrap();
+        let doc = owner.snapshot();
+        let group = &doc.groups[&instance.group];
+        assert!(group.inputs.is_empty());
+        assert!(group.members.iter().any(
+            |id| matches!(doc.nodes[id].operation,Operation::Solid {color} if color==[1.0;4])
+        ));
+        assert_eq!(
+            doc.nodes[&doc.output].inputs[if foreground {
+                "foreground"
+            } else {
+                "background"
+            }],
+            instance.output
+        );
+        assert_eq!(
+            doc.nodes[&doc.output].inputs[if foreground {
+                "background"
+            } else {
+                "foreground"
+            }],
+            original.output
+        );
+        for (id, node) in &original.nodes {
+            assert_eq!(
+                serde_json::to_value(&doc.nodes[id]).unwrap(),
+                serde_json::to_value(node).unwrap()
+            );
+        }
+        let surface = group
+            .members
+            .iter()
+            .find_map(|id| match &doc.nodes[id].operation {
+                Operation::Material { scale, .. } => Some(scale),
+                _ => None,
+            })
+            .unwrap();
+        assert_eq!(surface.at(Time::new(0, 1).unwrap()).unwrap(), 720.0);
+        owner.undo(owner.revision()).unwrap();
+        assert_eq!(
+            serde_json::to_value(&owner.snapshot().nodes).unwrap(),
+            serde_json::to_value(&original.nodes).unwrap()
+        );
+        assert_eq!(owner.snapshot().output, original.output);
+    }
+    assert!(
+        builtin::material_layer(
+            "clear_glass",
+            &blank(32, 32, Time::new(24, 1).unwrap()).unwrap(),
+            false,
+            None
+        )
+        .is_err()
+    );
+}

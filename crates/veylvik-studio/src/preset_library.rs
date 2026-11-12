@@ -39,6 +39,7 @@ impl Source {
 enum Action {
     Refresh,
     Example(&'static str),
+    MaterialLayer(&'static str, bool),
     Import,
     Load(Source),
     Export,
@@ -151,6 +152,10 @@ impl Studio {
                         ui.horizontal_wrapped(|ui| {
                             if ui.button("Try example").clicked() { action=Some(Action::Example(id)); }
                             if ui.button("Apply to my composition").clicked() { action=Some(Action::Load(Source::Builtin(id))); }
+                            if builtin::is_material(id) {
+                                if ui.button("Use as background").on_hover_text("Fill the canvas behind the composition. Visible through transparent areas.").clicked() { action=Some(Action::MaterialLayer(id,false)); }
+                                if ui.button("Use as foreground").on_hover_text("Fill the canvas over the composition. Adjust opacity on Material layer composite to reveal layers below.").clicked() { action=Some(Action::MaterialLayer(id,true)); }
+                            }
                             if ui.button("Back to library").clicked() { self.library.detail=None; }
                         });
                         ui.separator();
@@ -225,6 +230,33 @@ impl Studio {
         }
         self.library.open &= open;
         match action {
+            Some(Action::MaterialLayer(id, foreground)) => {
+                if self.library.identity
+                    != Some((self.project.session, self.project.document.revision()))
+                {
+                    self.fail("Composition changed; reopen the library.");
+                    return;
+                }
+                match builtin::material_layer(
+                    id,
+                    self.project.document.snapshot(),
+                    foreground,
+                    self.library.position,
+                ) {
+                    Ok(instance) => match self.project.apply(&instance.commands) {
+                        Ok(()) => {
+                            self.library.open = false;
+                            self.project.selected = instance.output;
+                            self.project.preview = None;
+                            self.graph.collapse(instance.group);
+                            self.refresh_draft();
+                            self.request_preview();
+                        }
+                        Err(e) => self.fail(e),
+                    },
+                    Err(e) => self.fail(e),
+                }
+            }
             Some(Action::Example(id)) => {
                 self.library.open = false;
                 self.leave(crate::Leave::Example(id), ctx);

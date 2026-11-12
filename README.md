@@ -229,6 +229,12 @@ The expanded set includes:
   connected reflections, refraction and optional weathering.
 - **Atmosphere:** Light Smoke, Dense Dark Smoke, Fog Layer, Drifting Fog and Clouds.
 
+Material details also offer **Use as background** and **Use as foreground**.
+These create a full-frame surface at the composition's resolution and composite it
+behind or over the existing output, in one undoable action. Backgrounds show through
+transparent areas; an opaque foreground covers the image until its **Material layer
+composite** opacity is reduced. Surface controls remain editable inside the group.
+
 Apply a material to an isolated text/logo image or a white shape mask. **Text surface**
 replaces RGB using the source alpha: polished metals use studio reflection bands and
 alpha-derived bevel normals, aluminium adds directional brushing, bronze adds

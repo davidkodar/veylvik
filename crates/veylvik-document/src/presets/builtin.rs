@@ -660,3 +660,82 @@ pub(crate) fn sun_glints() -> Operation {
         angle: 15.0.into(),
     }
 }
+
+/// True for reusable surface presets that can shade an opaque full-frame source.
+pub fn is_material(id: &str) -> bool {
+    appearance::material_kind(id).is_some()
+}
+
+/// Insert a self-contained material and composite it around the current output.
+/// All commands form one transaction; the previous graph remains editable.
+pub fn material_layer(
+    id: &str,
+    doc: &crate::Composition,
+    foreground: bool,
+    position: Option<crate::NodePosition>,
+) -> Result<super::Instance> {
+    if !is_material(id) {
+        return Err(crate::Error(
+            "This effect is not a full-frame material".into(),
+        ));
+    }
+    let mut preset = build(id)?;
+    let source = Node::new(
+        "Full-frame surface",
+        Operation::Solid { color: [1.0; 4] },
+        &[],
+    );
+    for input in preset.group.inputs.values() {
+        for target in &input.targets {
+            preset
+                .nodes
+                .get_mut(&target.node)
+                .unwrap()
+                .inputs
+                .insert(target.port.clone(), source.id);
+        }
+    }
+    preset.group.inputs.clear();
+    preset.group.members.insert(source.id);
+    preset.nodes.insert(source.id, source);
+    preset.group.label = format!(
+        "{} {}",
+        preset.group.label,
+        if foreground {
+            "foreground"
+        } else {
+            "background"
+        }
+    );
+    let mut instance = preset.instantiate_sized(
+        doc,
+        &Default::default(),
+        position,
+        super::resolution::Sizing::Fit,
+    )?;
+    let (back, front) = if foreground {
+        (doc.output, instance.output)
+    } else {
+        (instance.output, doc.output)
+    };
+    let mut merge = Node::new(
+        "Material layer composite",
+        Operation::Blend {
+            mode: BlendMode::Normal,
+            opacity: 1.0.into(),
+        },
+        &[("background", back), ("foreground", front)],
+    );
+    merge.position = position.map(|p| crate::NodePosition {
+        x: p.x + 240.0,
+        y: p.y,
+    });
+    let output = merge.id;
+    instance.commands.push(crate::Command::Put {
+        node: Box::new(merge),
+    });
+    instance
+        .commands
+        .push(crate::Command::Output { id: output });
+    Ok(instance)
+}
