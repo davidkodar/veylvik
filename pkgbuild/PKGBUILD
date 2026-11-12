@@ -30,6 +30,11 @@ package() {
     install -Dm755 "$CARGO_TARGET_DIR/release/veylvik-studio" "$pkgdir/usr/bin/veylvik-studio"
     install -Dm644 "$source_root/pkgbuild/veylvik.desktop" "$pkgdir/usr/share/applications/veylvik.desktop"
     install -Dm644 "$source_root/pkgbuild/veylvik.svg" "$pkgdir/usr/share/icons/hicolor/scalable/apps/veylvik.svg"
+    # Panels and title bars pick the simplified mark; the node detail blurs below 32 px.
+    local size
+    for size in 16 24; do
+        install -Dm644 "$source_root/pkgbuild/veylvik-small.svg" "$pkgdir/usr/share/icons/hicolor/${size}x${size}/apps/veylvik.svg"
+    done
     install -Dm644 "$source_root/pkgbuild/veylvik.xml" "$pkgdir/usr/share/mime/packages/veylvik.xml"
     install -Dm644 "$source_root/README.md" "$pkgdir/usr/share/doc/veylvik/README.md"
 }

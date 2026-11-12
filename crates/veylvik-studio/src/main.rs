@@ -86,6 +86,11 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         viewport: egui::ViewportBuilder::default()
             .with_title("Veylvik")
             .with_app_id("veylvik")
+            // Wayland compositors resolve the icon from the app ID; X11 takes it from here.
+            .with_icon(Arc::new(
+                eframe::icon_data::from_png_bytes(include_bytes!("../assets/veylvik-256.png"))
+                    .expect("bundled icon is a valid PNG"),
+            ))
             .with_inner_size([1280.0, 850.0])
             .with_min_inner_size([800.0, 600.0]),
         renderer: eframe::Renderer::Wgpu,

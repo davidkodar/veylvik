@@ -154,6 +154,9 @@ impl Controls {
                 ui.set_width(520.0_f32.min(ctx.content_rect().width() - 40.0));
                 ui.vertical_centered(|ui| {
                     ui.add_space(8.0);
+                    let (mark, _) = ui.allocate_exact_size(egui::Vec2::splat(72.0), egui::Sense::hover());
+                    crate::icons::paint_mark(ui.painter(), mark, true);
+                    ui.add_space(6.0);
                     ui.label(egui::RichText::new("VEYLVIK").size(30.0).strong().color(accent));
                     ui.label("Compositing, effects and animation");
                     ui.add_space(12.0);

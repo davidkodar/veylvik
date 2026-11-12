@@ -92,6 +92,108 @@ impl Widget for Button {
         response.on_hover_text(self.label)
     }
 }
+
+const TILE: egui::Color32 = egui::Color32::from_rgb(0x17, 0x1b, 0x24);
+const VIOLET: egui::Color32 = egui::Color32::from_rgb(0x9c, 0x8c, 0xff);
+const TEAL: egui::Color32 = egui::Color32::from_rgb(0x5e, 0xea, 0xd4);
+
+/// The Veylvik mark, drawn from the same 128-unit geometry as `pkgbuild/veylvik.svg`.
+/// Below 32 physical pixels it switches to the simplified `veylvik-small.svg` form,
+/// whose bolder V and single square stay legible where the node detail would blur.
+pub fn paint_mark(painter: &egui::Painter, rect: egui::Rect, tile: bool) {
+    let unit = rect.width().min(rect.height()) / 128.0;
+    let origin = rect.center() - egui::vec2(64.0, 64.0) * unit;
+    let at = |x: f32, y: f32| origin + egui::vec2(x, y) * unit;
+    let detailed = rect.width() * painter.ctx().pixels_per_point() >= 32.0;
+    if tile {
+        painter.rect_filled(
+            egui::Rect::from_min_size(at(0.0, 0.0), egui::Vec2::splat(128.0 * unit)),
+            28.0 * unit,
+            TILE,
+        );
+    }
+    let (arm, width, gradient) = if detailed {
+        (
+            [(27.0, 30.0), (64.0, 98.0), (101.0, 30.0)],
+            12.0,
+            [(25.0, 29.0), (99.0, 94.0)],
+        )
+    } else {
+        (
+            [(26.0, 30.0), (64.0, 102.0), (102.0, 30.0)],
+            22.0,
+            [(20.0, 24.0), (104.0, 100.0)],
+        )
+    };
+    painter.add(gradient_v(
+        arm.map(|(x, y)| egui::vec2(x, y)),
+        width,
+        gradient.map(|(x, y)| egui::vec2(x, y)),
+        |p| at(p.x, p.y),
+    ));
+    if detailed {
+        painter.add(egui::Shape::line(
+            vec![at(27.0, 30.0), at(56.0, 30.0), at(75.0, 65.0)],
+            egui::Stroke::new(3.0 * unit, VIOLET),
+        ));
+        for x in [20.0, 49.0] {
+            let square = egui::Rect::from_min_size(at(x, 23.0), egui::Vec2::splat(14.0 * unit));
+            painter.rect(
+                square,
+                0.0,
+                TILE,
+                egui::Stroke::new(4.0 * unit, VIOLET),
+                egui::StrokeKind::Middle,
+            );
+        }
+        painter.rect_filled(
+            egui::Rect::from_min_size(at(94.0, 23.0), egui::Vec2::splat(14.0 * unit)),
+            0.0,
+            TEAL,
+        );
+    } else {
+        painter.rect_filled(
+            egui::Rect::from_min_size(at(86.0, 16.0), egui::Vec2::splat(26.0 * unit)),
+            0.0,
+            TEAL,
+        );
+    }
+}
+
+/// A mitred two-segment stroke, coloured by a linear violet-to-teal gradient. Vertex
+/// colours interpolate linearly, which is exact for a linear gradient.
+fn gradient_v(
+    [p0, p1, p2]: [egui::Vec2; 3],
+    width: f32,
+    [from, to]: [egui::Vec2; 2],
+    place: impl Fn(egui::Vec2) -> egui::Pos2,
+) -> egui::Shape {
+    let normal = |a: egui::Vec2, b: egui::Vec2| {
+        let d = (b - a).normalized();
+        egui::vec2(-d.y, d.x)
+    };
+    let (n1, n2) = (normal(p0, p1), normal(p1, p2));
+    let miter = (n1 + n2) / (1.0 + n1.dot(n2));
+    let half = width / 2.0;
+    let points = [
+        p0 + n1 * half,
+        p0 - n1 * half,
+        p1 + miter * half,
+        p1 - miter * half,
+        p2 + n2 * half,
+        p2 - n2 * half,
+    ];
+    let axis = to - from;
+    let mut mesh = egui::Mesh::default();
+    for p in points {
+        let t = ((p - from).dot(axis) / axis.length_sq()).clamp(0.0, 1.0);
+        mesh.colored_vertex(place(p), VIOLET.lerp_to_gamma(TEAL, t));
+    }
+    for [a, b, c] in [[0, 1, 3], [0, 3, 2], [2, 3, 5], [2, 5, 4]] {
+        mesh.add_triangle(a, b, c);
+    }
+    egui::Shape::mesh(mesh)
+}
 #[cfg(test)]
 mod tests {
     #[test]

@@ -16,6 +16,9 @@ fn item(ui: &mut egui::Ui, label: &str, shortcut: &str, enabled: bool) -> bool {
 impl Studio {
     pub(super) fn menu_bar(&mut self, ui: &mut egui::Ui) {
         egui::MenuBar::new().ui(ui, |ui| {
+            let side = ui.spacing().interact_size.y;
+            let (mark, _) = ui.allocate_exact_size(egui::Vec2::splat(side), egui::Sense::hover());
+            crate::icons::paint_mark(ui.painter(), mark, true);
             ui.label(egui::RichText::new("VEYLVIK").color(self.accent).strong());
             ui.separator();
             ui.menu_button("File", |ui| {
