@@ -162,16 +162,4 @@ fn main() {
         std::process::exit(1);
     }
 }
-fn save_png(path: &Path, width: u32, height: u32, pixels: &[[f32; 4]]) -> Result<()> {
-    use image::ImageEncoder;
-    let rgba = veylvik_render::to_srgba8(pixels);
-    let mut png = Vec::new();
-    image::codecs::png::PngEncoder::new(&mut png).write_image(
-        &rgba,
-        width,
-        height,
-        image::ExtendedColorType::Rgba8,
-    )?;
-    veylvik_document::atomic_write(path, &png)?;
-    Ok(())
-}
+use veylvik_io::save_png;

@@ -5,7 +5,8 @@ MCP interface. This is an early compositing foundation.
 
 ## Build and run
 
-Requires Rust 1.95 or newer and a Vulkan driver. Headless commands need no
+The workspace pins Rust 1.98.1 for reproducible builds (declared minimum 1.95)
+and requires a Vulkan driver. Headless commands need no
 display server; the native editor supports Wayland and X11.
 
 ```sh
@@ -52,12 +53,19 @@ selecting another node or using undo/redo.
 Scrub the timeline or play it to evaluate animation. Scalar controls can add a
 key at the playhead; expanded key lists edit exact rational times and values.
 Saving uses the same atomic persistence and source-image protection as MCP.
-Save-as accepts a destination path and preserves the original asset resolution.
+Open, import, save-as, and export use the desktop file portal. File selection and
+image loading run on a bounded background worker. Save-as preserves the original
+asset resolution; PNG export uses the preview root and time captured when invoked.
+Saving an opened project detects changed or deleted external content before
+replacement and requires reopening or saving elsewhere. This check is not an
+atomic filesystem transaction against unrelated simultaneous writers.
 Closing asks about unsaved document or inspector changes.
 
 | Shortcut | Action |
 |---|---|
 | Space | Play / pause |
+| Ctrl+O / Ctrl+I | Open composition / import PNG |
+| Ctrl+E | Export current preview to PNG |
 | Ctrl+S | Save |
 | Ctrl+Shift+S | Save as |
 | Ctrl+Z / Ctrl+Shift+Z | Undo / redo |
@@ -66,8 +74,10 @@ Closing asks about unsaved document or inspector changes.
 
 The editor follows the current Omarchy accent, with a fallback when Omarchy is
 absent. Node positions are currently session-only. Source images load when the
-project opens; use `import` to create an image composition. The initial UI uses
-English labels and a path entry for save-as; PNG export remains a headless command.
+project opens or an image is imported, within a 256 MiB host image budget. The
+initial UI uses English labels. A working `org.freedesktop.portal.FileChooser`
+service is required for interactive file selection; failures are shown in the
+window. Headless file commands remain available without a desktop service.
 The viewer composites transparency over a checkerboard and applies an SDR display
 transform. A previous preview stays visible while rendering, explicitly marked
 when it no longer matches the requested frame.
@@ -163,7 +173,7 @@ review. Output currently returns the PNG path, not inline image content.
 cargo fmt --all --check
 cargo clippy --workspace --all-targets --locked -- -D warnings
 cargo test --workspace --locked
-cargo test --workspace --locked -- --ignored --nocapture
+cargo test --workspace --locked -- --ignored --nocapture --test-threads=1
 ```
 
 The final command is the mandatory Vulkan check. It fails if no adapter is

@@ -118,6 +118,16 @@ pub fn load_inputs(plan: &Plan, base: &Path, budget: u64) -> Result<ImageInputs>
 }
 /// Save-as rebases relative assets without changing the live document or its origin.
 pub fn save(composition: &Composition, base: &Path, destination: &Path) -> Result<()> {
+    save_tracked(composition, base, destination, None).map(|_| ())
+}
+/// Save a snapshot and return exactly the bytes written, checking a known file
+/// stamp immediately before replacement when provided.
+pub fn save_tracked(
+    composition: &Composition,
+    base: &Path,
+    destination: &Path,
+    previous: Option<&FileStamp>,
+) -> Result<FileStamp> {
     protect_inputs(composition, base, destination)?;
     let parent = destination
         .parent()
@@ -137,8 +147,23 @@ pub fn save(composition: &Composition, base: &Path, destination: &Path) -> Resul
                 .to_owned();
         }
     }
-    saved.save(destination)?;
-    Ok(())
+    saved.validate()?;
+    let bytes = serde_json::to_vec_pretty(&saved)?;
+    if bytes.len() > 16 * 1024 * 1024 {
+        return Err("composition exceeds 16 MiB".into());
+    }
+    if let Some(previous) = previous {
+        previous.verify_destination(destination)?;
+    }
+    veylvik_document::atomic_write(destination, &bytes)?;
+    Ok(FileStamp {
+        path: parent.join(
+            destination
+                .file_name()
+                .ok_or("destination needs a filename")?,
+        ),
+        bytes: bytes.into(),
+    })
 }
 
 /// Export and save must not replace an image used by the composition.
@@ -276,5 +301,126 @@ mod tests {
         let before = std::fs::read(&image_path).unwrap();
         assert!(save(&doc, &temp.0, &image_path).is_err());
         assert_eq!(std::fs::read(image_path).unwrap(), before);
+    }
+}
+
+/// Exact bounded bytes from the last load/save, used to detect external edits.
+#[derive(Clone)]
+pub struct FileStamp {
+    path: PathBuf,
+    bytes: Arc<[u8]>,
+}
+impl FileStamp {
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+    fn read(path: &Path) -> Result<Vec<u8>> {
+        use std::io::Read;
+        let mut bytes = Vec::new();
+        std::fs::File::open(path)?
+            .take(16 * 1024 * 1024 + 1)
+            .read_to_end(&mut bytes)?;
+        if bytes.len() > 16 * 1024 * 1024 {
+            return Err("composition exceeds 16 MiB".into());
+        }
+        Ok(bytes)
+    }
+    pub fn load(path: &Path) -> Result<(Composition, Self)> {
+        let path = path.canonicalize()?;
+        let bytes = Self::read(&path)?;
+        let composition: Composition = serde_json::from_slice(&bytes)?;
+        composition.validate()?;
+        Ok((
+            composition,
+            Self {
+                path,
+                bytes: bytes.into(),
+            },
+        ))
+    }
+    /// Check immediately before saving. This detects changed or deleted files,
+    /// but is not a filesystem transaction against unrelated concurrent writers.
+    pub fn verify_destination(&self, destination: &Path) -> Result<()> {
+        let parent = destination
+            .parent()
+            .filter(|p| !p.as_os_str().is_empty())
+            .unwrap_or(Path::new("."))
+            .canonicalize()?;
+        let normalized = parent.join(
+            destination
+                .file_name()
+                .ok_or("destination needs a filename")?,
+        );
+        let same =
+            normalized == self.path || destination.canonicalize().ok().as_ref() == Some(&self.path);
+        if same && Self::read(&self.path).ok().as_deref() != Some(self.bytes.as_ref()) {
+            return Err("composition changed or was removed outside Veylvik; reopen it or save to a different path".into());
+        }
+        Ok(())
+    }
+}
+/// PNG output uses the renderer's explicit scene-linear to SDR boundary.
+pub fn save_png(path: &Path, width: u32, height: u32, pixels: &[[f32; 4]]) -> Result<()> {
+    use image::ImageEncoder;
+    if pixels.len() as u64 != width as u64 * height as u64 {
+        return Err("PNG pixel count does not match dimensions".into());
+    }
+    let rgba = veylvik_render::to_srgba8(pixels);
+    let mut png = Vec::new();
+    image::codecs::png::PngEncoder::new(&mut png).write_image(
+        &rgba,
+        width,
+        height,
+        image::ExtendedColorType::Rgba8,
+    )?;
+    veylvik_document::atomic_write(path, &png)?;
+    Ok(())
+}
+
+#[cfg(test)]
+mod stamp_tests {
+    use super::*;
+    struct Scratch(PathBuf);
+    impl Scratch {
+        fn new() -> Self {
+            let path = std::env::temp_dir().join(format!(
+                "veylvik-stamp-{}-{}",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos()
+            ));
+            std::fs::create_dir(&path).unwrap();
+            Self(path)
+        }
+    }
+    impl Drop for Scratch {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+    #[test]
+    fn tracked_saves_detect_external_changes_and_allow_save_as() {
+        let root = Scratch::new();
+        let path = root.0.join("scene.veylvik");
+        let doc = veylvik_document::demo();
+        let stamp = save_tracked(&doc, &root.0, &path, None).unwrap();
+        stamp.verify_destination(&path).unwrap();
+        let (_, loaded) = FileStamp::load(&path).unwrap();
+        std::fs::write(&path, b"external edit").unwrap();
+        assert!(save_tracked(&doc, &root.0, &path, Some(&loaded)).is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), b"external edit");
+        let other = root.0.join("copy.veylvik");
+        save_tracked(&doc, &root.0, &other, Some(&loaded)).unwrap();
+        Composition::load(&other).unwrap();
+        std::fs::remove_file(&path).unwrap();
+        assert!(loaded.verify_destination(&path).is_err());
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(&other, &path).unwrap();
+            std::fs::write(&other, b"different target").unwrap();
+            assert!(loaded.verify_destination(&path).is_err());
+        }
     }
 }

@@ -1,7 +1,9 @@
 mod display;
+mod files;
 mod project;
 use display::{Display, DisplayFrame, Paint};
 use eframe::{egui, egui_wgpu};
+use files::{Choice, Completed, Tasks};
 use project::Project;
 use std::{
     collections::BTreeMap,
@@ -76,9 +78,9 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 playback: Instant::now(),
                 playback_frame: 0,
                 end_frame: 240,
-                save_dialog: false,
-                save_path: String::new(),
-                confirm_close: false,
+                files: Tasks::new(cc.egui_ctx.clone()),
+                confirm: None,
+                after_save: None,
                 allow_close: false,
                 help: false,
                 theme_checked: Instant::now() - Duration::from_secs(10),
@@ -89,6 +91,11 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         }),
     )?;
     Ok(())
+}
+#[derive(Clone, Copy)]
+enum Leave {
+    Open,
+    Close,
 }
 struct Studio {
     project: Project,
@@ -107,9 +114,9 @@ struct Studio {
     playback: Instant,
     playback_frame: i64,
     end_frame: i64,
-    save_dialog: bool,
-    save_path: String,
-    confirm_close: bool,
+    files: Tasks,
+    confirm: Option<Leave>,
+    after_save: Option<Leave>,
     allow_close: bool,
     help: bool,
     theme_checked: Instant,
@@ -187,36 +194,198 @@ impl Studio {
         }
     }
     fn save_project(&mut self, save_as: bool) {
-        if !self.apply_draft() {
+        if self.files.busy() || !self.apply_draft() {
+            self.after_save = None;
             return;
         }
-        if save_as || self.project.path.is_none() {
-            self.save_path = self
-                .project
-                .path
-                .as_ref()
-                .map(|p| p.display().to_string())
-                .unwrap_or_else(|| {
-                    self.project
-                        .base
-                        .join("untitled.veylvik")
-                        .display()
-                        .to_string()
-                });
-            self.save_dialog = true;
+        self.playing = false;
+        let snapshot = self.project.save_snapshot();
+        let existing = if save_as {
+            None
         } else {
-            let path = self.project.path.clone().unwrap();
-            self.save_to(path);
+            self.project.path.clone()
+        };
+        let folder = self
+            .project
+            .path
+            .as_ref()
+            .and_then(|p| p.parent())
+            .unwrap_or(&self.project.base)
+            .to_path_buf();
+        let name = self
+            .project
+            .path
+            .as_ref()
+            .and_then(|p| p.file_name())
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or("untitled.veylvik".into());
+        let result = self.files.start(move || {
+            let path = if let Some(path) = existing {
+                path
+            } else {
+                let Some(path) = files::select(Choice::Save, &folder, &name)? else {
+                    return Ok(Completed::Cancelled);
+                };
+                path
+            };
+            snapshot
+                .save(&path)
+                .map(Completed::Saved)
+                .map_err(|e| e.to_string())
+        });
+        self.file_started(result);
+    }
+    fn file_started(&mut self, result: Result<(), String>) {
+        match result {
+            Ok(()) => {
+                self.status = "File operation in progress…".into();
+                self.error = false;
+            }
+            Err(e) => {
+                self.after_save = None;
+                self.fail(e);
+            }
         }
     }
-    fn save_to(&mut self, path: PathBuf) {
-        match self.project.save(&path) {
-            Ok(()) => {
-                self.status = format!("Saved {}", path.display());
-                self.error = false;
-                self.save_dialog = false;
+    fn leave(&mut self, action: Leave, ctx: &egui::Context) {
+        if self.files.busy() {
+            self.fail("Finish or cancel the current file operation first.");
+            return;
+        }
+        if self.project.dirty() || self.draft_dirty {
+            self.confirm = Some(action);
+        } else {
+            self.leave_now(action, ctx);
+        }
+    }
+    fn leave_now(&mut self, action: Leave, ctx: &egui::Context) {
+        self.playing = false;
+        match action {
+            Leave::Close => {
+                self.allow_close = true;
+                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }
-            Err(e) => self.fail(e),
+            Leave::Open => {
+                let folder = self.project.base.clone();
+                let result = self.files.start(move || {
+                    let Some(path) = files::select(Choice::Open, &folder, "")? else {
+                        return Ok(Completed::Cancelled);
+                    };
+                    Project::open(Some(&path))
+                        .map(|project| Completed::Opened(Box::new(project)))
+                        .map_err(|e| e.to_string())
+                });
+                self.file_started(result);
+            }
+        }
+    }
+    fn import_image(&mut self) {
+        if self.files.busy() || !self.apply_draft() {
+            return;
+        }
+        self.playing = false;
+        let folder = self.project.base.clone();
+        let budget = (256u64 * 1024 * 1024)
+            .saturating_sub(self.project.inputs.byte_size())
+            .min(128 * 1024 * 1024);
+        let result = self.files.start(move || {
+            let Some(path) = files::select(Choice::Import, &folder, "")? else {
+                return Ok(Completed::Cancelled);
+            };
+            let path = path.canonicalize().map_err(|e| e.to_string())?;
+            let image = veylvik_io::load_png(&path, budget).map_err(|e| e.to_string())?;
+            Ok(Completed::Imported {
+                path,
+                image: Arc::new(image),
+            })
+        });
+        self.file_started(result);
+    }
+    fn export_frame(&mut self) {
+        if self.files.busy() || !self.apply_draft() {
+            return;
+        }
+        self.playing = false;
+        let plan = match self.project.plan() {
+            Ok(plan) => plan,
+            Err(e) => {
+                self.fail(e);
+                return;
+            }
+        };
+        let time = match self.project.time() {
+            Ok(time) => time,
+            Err(e) => {
+                self.fail(e);
+                return;
+            }
+        };
+        let document = self.project.document.snapshot().clone();
+        let base = self.project.base.clone();
+        let inputs = self.project.inputs.clone();
+        let renderer = self.renderer.clone();
+        let name = format!("frame-{:06}.png", self.project.frame);
+        let result = self.files.start(move || {
+            let Some(path) = files::select(Choice::Export, &base, &name)? else {
+                return Ok(Completed::Cancelled);
+            };
+            veylvik_io::protect_inputs(&document, &base, &path).map_err(|e| e.to_string())?;
+            let gpu_frame = renderer
+                .render_gpu_cached(&plan, RenderRequest::full(time), &inputs)
+                .map_err(|e| e.to_string())?;
+            let frame = renderer.read_frame(&gpu_frame).map_err(|e| e.to_string())?;
+            veylvik_io::save_png(
+                &path,
+                frame.region.width,
+                frame.region.height,
+                &frame.pixels,
+            )
+            .map_err(|e| e.to_string())?;
+            Ok(Completed::Exported(path))
+        });
+        self.file_started(result);
+    }
+    fn poll_files(&mut self, ctx: &egui::Context) {
+        let Some(result) = self.files.poll() else {
+            return;
+        };
+        match result {
+            Ok(Completed::Cancelled) => {
+                self.after_save = None;
+                self.status = "Cancelled".into();
+                self.error = false;
+            }
+            Ok(Completed::Opened(project)) => {
+                self.project = *project;
+                self.positions.clear();
+                self.displayed = None;
+                self.displayed_ticket = None;
+                self.refresh_draft();
+                self.request_preview();
+            }
+            Ok(Completed::Imported { path, image }) => match self.project.import(&path, image) {
+                Ok(()) => {
+                    self.refresh_draft();
+                    self.request_preview();
+                }
+                Err(e) => self.fail(e),
+            },
+            Ok(Completed::Saved(saved)) => {
+                self.status = format!("Saved {}", saved.stamp.path().display());
+                self.error = false;
+                self.project.mark_saved(saved);
+                if let Some(action) = self.after_save.take() {
+                    self.leave_now(action, ctx);
+                }
+            }
+            Ok(Completed::Exported(path)) => {
+                self.status = format!("Exported {}", path.display());
+                self.error = false;
+            }
+            Err(e) => {
+                self.after_save = None;
+                self.fail(e);
+            }
         }
     }
     fn theme(&mut self, ctx: &egui::Context) {
@@ -270,6 +439,15 @@ impl Studio {
             );
             if self.project.dirty() || self.draft_dirty {
                 ui.label("•");
+            }
+            if ui.button("Open…").clicked() {
+                self.leave(Leave::Open, ui.ctx());
+            }
+            if ui.button("Import…").clicked() {
+                self.import_image();
+            }
+            if ui.button("Export…").clicked() {
+                self.export_frame();
             }
             if ui.button("Save").clicked() {
                 self.save_project(false);
@@ -376,7 +554,7 @@ impl Studio {
             Operation::Image { asset } => {
                 ui.label("Source image");
                 ui.label(asset.as_str());
-                ui.label("Use the import command to create image compositions.");
+                ui.label("Images use native size and transparent padding.");
             }
         }
         let kind = self.draft.operation.descriptor();
@@ -603,40 +781,23 @@ impl Studio {
         });
     }
     fn dialogs(&mut self, ctx: &egui::Context) {
-        if self.save_dialog {
-            egui::Window::new("Save composition")
-                .collapsible(false)
-                .resizable(true)
-                .show(ctx, |ui| {
-                    ui.label("Destination path");
-                    ui.text_edit_singleline(&mut self.save_path);
-                    ui.weak("An existing composition at this path will be replaced.");
-                    ui.horizontal(|ui| {
-                        if ui.button("Save").clicked() {
-                            self.save_to(PathBuf::from(&self.save_path));
-                        }
-                        if ui.button("Cancel").clicked() {
-                            self.save_dialog = false;
-                        }
-                    });
-                });
-        }
-        if self.confirm_close {
+        if let Some(action) = self.confirm {
             egui::Window::new("Unsaved changes")
                 .collapsible(false)
                 .show(ctx, |ui| {
-                    ui.label("Save your work before closing, or discard it.");
+                    ui.label("Save your work before continuing, or discard it.");
                     ui.horizontal(|ui| {
                         if ui.button("Save").clicked() {
+                            self.confirm = None;
+                            self.after_save = Some(action);
                             self.save_project(false);
-                            self.confirm_close = false;
                         }
-                        if ui.button("Discard and close").clicked() {
-                            self.allow_close = true;
-                            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                        if ui.button("Discard changes").clicked() {
+                            self.confirm = None;
+                            self.leave_now(action, ctx);
                         }
                         if ui.button("Keep editing").clicked() {
-                            self.confirm_close = false;
+                            self.confirm = None;
                         }
                     });
                 });
@@ -647,6 +808,9 @@ impl Studio {
                 .show(ctx, |ui| {
                     for (key, action) in [
                         ("Space", "Play / pause"),
+                        ("Ctrl+O", "Open composition"),
+                        ("Ctrl+I", "Import PNG image"),
+                        ("Ctrl+E", "Export current preview"),
                         ("Ctrl+S", "Save"),
                         ("Ctrl+Shift+S", "Save as"),
                         ("Ctrl+Z", "Undo"),
@@ -737,6 +901,7 @@ impl eframe::App for Studio {
     fn ui(&mut self, ui: &mut egui::Ui, _: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
         self.theme(&ctx);
+        self.poll_files(&ctx);
         ctx.request_repaint_after(Duration::from_secs(2));
         if let Some(scheduler) = &self.scheduler {
             match scheduler.try_take() {
@@ -744,12 +909,13 @@ impl eframe::App for Studio {
                     Ok(frame) => {
                         self.displayed = Some(self.display.frame(&self.renderer, frame));
                         self.displayed_ticket = Some(result.ticket);
-                        self.status = format!(
-                            "{:.1} ms · {}",
-                            result.elapsed.as_secs_f64() * 1000.0,
-                            self.renderer.adapter.name
-                        );
-                        self.error = false;
+                        if !self.error && !self.files.busy() {
+                            self.status = format!(
+                                "{:.1} ms · {}",
+                                result.elapsed.as_secs_f64() * 1000.0,
+                                self.renderer.adapter.name
+                            );
+                        }
                     }
                     Err(e) => self.fail(e),
                 },
@@ -768,7 +934,7 @@ impl eframe::App for Studio {
             }
             ctx.request_repaint_after(Duration::from_millis(16));
         }
-        if !ctx.egui_wants_keyboard_input() {
+        if !self.files.busy() && self.confirm.is_none() && !ctx.egui_wants_keyboard_input() {
             if ctx.input_mut(|i| {
                 i.consume_key(egui::Modifiers::CTRL | egui::Modifiers::SHIFT, egui::Key::S)
             }) {
@@ -781,6 +947,15 @@ impl eframe::App for Studio {
                 i.consume_key(egui::Modifiers::CTRL | egui::Modifiers::SHIFT, egui::Key::Z)
             }) {
                 self.history(true);
+            }
+            if ctx.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, egui::Key::O)) {
+                self.leave(Leave::Open, &ctx);
+            }
+            if ctx.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, egui::Key::I)) {
+                self.import_image();
+            }
+            if ctx.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, egui::Key::E)) {
+                self.export_frame();
             }
             if ctx.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, egui::Key::Z)) {
                 self.history(false);
@@ -799,76 +974,83 @@ impl eframe::App for Studio {
                 self.help = !self.help;
             }
         }
-        if ctx.input(|i| i.viewport().close_requested())
-            && !self.allow_close
-            && (self.project.dirty() || self.draft_dirty)
-        {
+        if ctx.input(|i| i.viewport().close_requested()) && !self.allow_close {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
-            self.confirm_close = true;
+            self.leave(Leave::Close, &ctx);
         }
-        egui::Panel::top("toolbar").show_inside(ui, |ui| self.toolbar(ui));
-        egui::Panel::bottom("status").show_inside(ui, |ui| {
-            ui.colored_label(
-                if self.error {
-                    egui::Color32::LIGHT_RED
-                } else {
-                    egui::Color32::from_gray(165)
-                },
-                &self.status,
-            );
-        });
-        egui::Panel::bottom("graph")
-            .default_size(245.0)
-            .min_size(130.0)
-            .resizable(true)
-            .show_inside(ui, |ui| {
-                self.timeline(ui);
-                ui.separator();
-                self.graph(ui);
-            });
-        egui::Panel::right("inspector")
-            .default_size(280.0)
-            .min_size(250.0)
-            .resizable(true)
-            .show_inside(ui, |ui| {
-                egui::ScrollArea::vertical().show(ui, |ui| self.inspector(ui));
-            });
-        egui::CentralPanel::default().show_inside(ui, |ui| {
-            ui.horizontal(|ui| {
-                ui.heading("Viewer");
-                ui.weak(if self.project.preview.is_some() {
-                    "Selected node preview"
-                } else {
-                    "Composition output"
-                });
-            });
-            if self.displayed.is_some() && self.displayed_ticket != self.wanted {
-                ui.weak(if self.error {
-                    "Showing previous frame · preview failed"
-                } else {
-                    "Showing previous frame · rendering"
-                });
-            }
-            if let Some(frame) = &self.displayed {
-                let available = ui.available_size();
-                let aspect = frame.frame.width() as f32 / frame.frame.height() as f32;
-                let width = available.x.min(available.y * aspect).max(1.0);
-                let size = egui::vec2(width, width / aspect);
-                let rect =
-                    egui::Rect::from_center_size(ui.available_rect_before_wrap().center(), size);
-                ui.painter().add(egui_wgpu::Callback::new_paint_callback(
-                    rect,
-                    Paint(frame.clone()),
-                ));
-            } else {
-                ui.centered_and_justified(|ui| {
-                    ui.label(if self.error {
-                        "Preview unavailable"
+        ui.add_enabled_ui(!self.files.busy() && self.confirm.is_none(), |ui| {
+            egui::Panel::top("toolbar").show_inside(ui, |ui| self.toolbar(ui));
+            egui::Panel::bottom("status").show_inside(ui, |ui| {
+                if self.files.busy() {
+                    ui.horizontal(|ui| {
+                        ui.spinner();
+                        ui.label("File operation in progress…");
+                    });
+                }
+                ui.colored_label(
+                    if self.error {
+                        egui::Color32::LIGHT_RED
                     } else {
-                        "Preparing preview…"
+                        egui::Color32::from_gray(165)
+                    },
+                    &self.status,
+                );
+            });
+            egui::Panel::bottom("graph")
+                .default_size(245.0)
+                .min_size(130.0)
+                .resizable(true)
+                .show_inside(ui, |ui| {
+                    self.timeline(ui);
+                    ui.separator();
+                    self.graph(ui);
+                });
+            egui::Panel::right("inspector")
+                .default_size(280.0)
+                .min_size(250.0)
+                .resizable(true)
+                .show_inside(ui, |ui| {
+                    egui::ScrollArea::vertical().show(ui, |ui| self.inspector(ui));
+                });
+            egui::CentralPanel::default().show_inside(ui, |ui| {
+                ui.horizontal(|ui| {
+                    ui.heading("Viewer");
+                    ui.weak(if self.project.preview.is_some() {
+                        "Selected node preview"
+                    } else {
+                        "Composition output"
                     });
                 });
-            }
+                if self.displayed.is_some() && self.displayed_ticket != self.wanted {
+                    ui.weak(if self.error {
+                        "Showing previous frame · preview failed"
+                    } else {
+                        "Showing previous frame · rendering"
+                    });
+                }
+                if let Some(frame) = &self.displayed {
+                    let available = ui.available_size();
+                    let aspect = frame.frame.width() as f32 / frame.frame.height() as f32;
+                    let width = available.x.min(available.y * aspect).max(1.0);
+                    let size = egui::vec2(width, width / aspect);
+                    let rect = egui::Rect::from_center_size(
+                        ui.available_rect_before_wrap().center(),
+                        size,
+                    );
+                    ui.painter().add(egui_wgpu::Callback::new_paint_callback(
+                        rect,
+                        Paint(frame.clone()),
+                    ));
+                } else {
+                    ui.centered_and_justified(|ui| {
+                        ui.label(if self.error {
+                            "Preview unavailable"
+                        } else {
+                            "Preparing preview…"
+                        });
+                    });
+                }
+            });
         });
         self.dialogs(&ctx);
     }

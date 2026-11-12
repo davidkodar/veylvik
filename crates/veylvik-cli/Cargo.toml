@@ -10,7 +10,6 @@ path = "src/main.rs"
 veylvik-document.workspace = true
 veylvik-render.workspace = true
 serde_json.workspace = true
-image.workspace = true
 veylvik-io.workspace = true
 pathdiff = "0.2"
 [lints]

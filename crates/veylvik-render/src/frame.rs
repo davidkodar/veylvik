@@ -69,6 +69,15 @@ impl Image {
 #[derive(Default, Clone)]
 pub struct ImageInputs(BTreeMap<String, Arc<Image>>);
 impl ImageInputs {
+    /// Declared CPU pixel bytes, counting shared images once.
+    pub fn byte_size(&self) -> u64 {
+        let mut seen = std::collections::BTreeSet::new();
+        self.0
+            .values()
+            .filter(|image| seen.insert(image.identity()))
+            .map(|image| image.byte_size())
+            .sum()
+    }
     pub fn insert(&mut self, key: impl Into<String>, image: Arc<Image>) {
         self.0.insert(key.into(), image);
     }

@@ -16,21 +16,25 @@ pub struct Project {
     pub inputs: ImageInputs,
     pub frame: i64,
     saved_revision: Option<u64>,
+    stamp: Option<veylvik_io::FileStamp>,
     compiled: Option<(u64, NodeId, Arc<Plan>)>,
 }
 impl Project {
     pub fn open(path: Option<&Path>) -> Result<Self> {
-        let (composition, base, path) = if let Some(path) = path {
-            let path = path.canonicalize()?;
+        let (composition, base, path, stamp) = if let Some(path) = path {
+            let (composition, stamp) = veylvik_io::FileStamp::load(path)?;
+            let path = stamp.path().to_path_buf();
             (
-                Composition::load(&path)?,
+                composition,
                 veylvik_io::document_base(&path)?,
                 Some(path),
+                Some(stamp),
             )
         } else {
             (
                 veylvik_document::motion_demo(),
                 std::env::current_dir()?,
+                None,
                 None,
             )
         };
@@ -39,6 +43,7 @@ impl Project {
             document: Document::new(composition)?,
             saved_revision: path.as_ref().map(|_| 0),
             compiled: None,
+            stamp,
             base,
             path,
             selected,
@@ -130,12 +135,25 @@ impl Project {
         self.preview = Some(id);
         Ok(id)
     }
-    pub fn save(&mut self, path: &Path) -> Result<()> {
-        veylvik_io::save(self.document.snapshot(), &self.base, path)?;
-        // Keep the original asset base for undo snapshots; each save rebases
-        // from it without mutating the document or its edit history.
-        self.path = Some(path.canonicalize()?);
-        self.saved_revision = Some(self.document.revision());
+    pub fn save_snapshot(&self) -> SaveSnapshot {
+        SaveSnapshot {
+            composition: self.document.snapshot().clone(),
+            base: self.base.clone(),
+            stamp: self.stamp.clone(),
+            revision: self.document.revision(),
+        }
+    }
+    pub fn mark_saved(&mut self, saved: Saved) {
+        self.path = Some(saved.stamp.path().to_path_buf());
+        self.stamp = Some(saved.stamp);
+        self.saved_revision = Some(saved.revision);
+    }
+    pub fn import(&mut self, path: &Path, image: Arc<veylvik_render::Image>) -> Result<()> {
+        let asset = path.to_str().ok_or("image path is not UTF-8")?.to_owned();
+        self.add(Operation::Image {
+            asset: asset.clone(),
+        })?;
+        self.inputs.insert(asset, image);
         Ok(())
     }
 }
@@ -187,5 +205,56 @@ mod plan_tests {
             }])
             .unwrap();
         assert!(!Arc::ptr_eq(&first, &project.plan().unwrap()));
+    }
+}
+
+pub struct SaveSnapshot {
+    composition: Composition,
+    base: PathBuf,
+    stamp: Option<veylvik_io::FileStamp>,
+    revision: u64,
+}
+pub struct Saved {
+    pub stamp: veylvik_io::FileStamp,
+    pub revision: u64,
+}
+impl SaveSnapshot {
+    pub fn save(self, path: &Path) -> Result<Saved> {
+        let stamp =
+            veylvik_io::save_tracked(&self.composition, &self.base, path, self.stamp.as_ref())?;
+        Ok(Saved {
+            stamp,
+            revision: self.revision,
+        })
+    }
+}
+
+#[cfg(test)]
+mod save_tests {
+    use super::*;
+    #[test]
+    fn completing_an_older_save_does_not_mark_newer_edits_clean() {
+        let mut project = Project::open(None).unwrap();
+        let snapshot = project.save_snapshot();
+        project
+            .apply(&[Command::Resize {
+                width: 120,
+                height: 80,
+            }])
+            .unwrap();
+        let path = std::env::temp_dir().join(format!(
+            "veylvik-save-snapshot-{}-{}.veylvik",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let saved = snapshot.save(&path).unwrap();
+        project.mark_saved(saved);
+        assert!(project.dirty());
+        assert_eq!(project.document.snapshot().width, 120);
+        assert_eq!(Composition::load(&path).unwrap().width, 960);
+        std::fs::remove_file(path).unwrap();
     }
 }
