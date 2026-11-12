@@ -10,6 +10,7 @@ pub enum Icon {
     NextFrame,
     Reset,
     Anchor,
+    More,
 }
 pub struct Button {
     icon: Icon,
@@ -41,6 +42,11 @@ impl Widget for Button {
         let colour = visuals.fg_stroke.color;
         painter.rect_filled(rect, 3.0, visuals.bg_fill);
         match self.icon {
+            Icon::More => {
+                for x in [-4.0, 0.0, 4.0] {
+                    painter.circle_filled(c + egui::vec2(x, 0.0), 1.2, colour);
+                }
+            }
             Icon::Anchor => {
                 painter.circle_filled(c, 3.5, colour);
             }

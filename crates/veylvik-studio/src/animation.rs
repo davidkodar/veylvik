@@ -133,8 +133,17 @@ pub fn scalar_with_default(
     ui.push_id(label, |ui| {
         ui.horizontal(|ui| {
             ui.add_sized(
-                [(ui.available_width() - 225.0).max(45.0), 22.0],
-                egui::Label::new(label),
+                [
+                    (ui.available_width()
+                        - 80.0
+                        - (if default.is_some() { 5.0 } else { 4.0 }) * 22.0
+                        - (if default.is_some() { 6.0 } else { 5.0 })
+                            * ui.spacing().item_spacing.x
+                        - 2.0)
+                        .max(0.0),
+                    22.0,
+                ],
+                egui::Label::new(label).truncate(),
             );
             if let Ok(mut value) = scalar.at(time) {
                 let old = value;
@@ -174,10 +183,10 @@ pub fn scalar_with_default(
                     changed = true;
                 }
             }
-            egui::Popup::menu(
-                &ui.small_button("...")
-                    .on_hover_text("Interpolation and keyframe details"),
-            )
+            egui::Popup::menu(&ui.add(crate::icons::Button::new(
+                crate::icons::Icon::More,
+                "Interpolation and keyframe details",
+            )))
             .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
             .show(|ui| {
                 changed |= details(ui, label, scalar, range.clone(), time);

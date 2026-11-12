@@ -40,8 +40,12 @@ fn parameter(
     ui.push_id(name, |ui| {
         ui.horizontal(|ui| {
             ui.add_sized(
-                [(ui.available_width() - 145.0).max(64.0), 22.0],
-                egui::Label::new(label),
+                [
+                    (ui.available_width() - 5.0 * (22.0 + ui.spacing().item_spacing.x) - 2.0)
+                        .max(0.0),
+                    22.0,
+                ],
+                egui::Label::new(label).truncate(),
             );
             if ui
                 .add(crate::icons::Button::new(
@@ -59,10 +63,10 @@ fn parameter(
                 }
             }
             changed |= crate::animation::key_controls(ui, value, time);
-            egui::Popup::menu(
-                &ui.small_button("...")
-                    .on_hover_text("Interpolation and keyframe details"),
-            )
+            egui::Popup::menu(&ui.add(crate::icons::Button::new(
+                crate::icons::Icon::More,
+                "Interpolation and keyframe details",
+            )))
             .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
             .show(|ui| {
                 changed |= crate::animation::details(
@@ -1135,6 +1139,58 @@ fn downstream(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn parameter_rows_do_not_grow_a_resizable_inspector_on_repaint() {
+        let ctx = egui::Context::default();
+        let mut op = Operation::Exposure { stops: 0.0.into() };
+        let mut widths = Vec::new();
+        for frame in 0..40 {
+            let _ = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(1280.0, 850.0),
+                    )),
+                    events: vec![egui::Event::PointerMoved(egui::pos2(
+                        1000.0,
+                        100.0 + frame as f32,
+                    ))],
+                    ..Default::default()
+                },
+                |ui| {
+                    let panel = egui::Panel::right("test-inspector")
+                        .default_size(340.0)
+                        .min_size(300.0)
+                        .resizable(true)
+                        .show_inside(ui, |ui| {
+                            egui::ScrollArea::vertical().show(ui, |ui| {
+                                parameter(
+                                    ui,
+                                    &mut op,
+                                    "stops",
+                                    "Exposure",
+                                    -5.0..=5.0,
+                                    Time::new(0, 1).unwrap(),
+                                );
+                                crate::animation::scalar_with_default(
+                                    ui,
+                                    "Exposure",
+                                    op.scalar_mut("stops").unwrap(),
+                                    -5.0..=5.0,
+                                    Time::new(0, 1).unwrap(),
+                                    Some(0.0),
+                                );
+                            });
+                        });
+                    widths.push(panel.response.rect.width());
+                },
+            );
+        }
+        assert!(
+            widths.iter().all(|width| *width <= 341.0),
+            "Inspector grew on hover: {widths:?}"
+        );
+    }
     #[test]
     fn resetting_at_playhead_preserves_other_keys_and_plain_values_stay_constant() {
         let mut scalar: Scalar = 42.0.into();
