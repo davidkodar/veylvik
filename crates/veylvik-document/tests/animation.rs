@@ -156,3 +156,59 @@ fn frame_times_are_exact_reduced_and_preflighted() {
     let huge = Time::new(i64::from(u32::MAX) + 1, 1).unwrap();
     assert!(FrameRange::new(0, 2, huge).is_err());
 }
+
+#[test]
+fn playhead_key_edits_preserve_exact_times_modes_and_fail_atomically() {
+    for mode in [
+        Interpolation::Linear,
+        Interpolation::Step,
+        Interpolation::Smooth,
+    ] {
+        let mut value = curve(mode);
+        value.set_key_at(Time::new(60, 30).unwrap(), 3.0).unwrap();
+        assert_eq!(value.keys().unwrap().len(), 3);
+        let existing = &value.keys().unwrap()[1];
+        assert_eq!((existing.time.ticks, existing.time.rate), (48, 24));
+        assert_eq!(existing.value, 3.0);
+        value.set_key_at(Time::new(1, 3).unwrap(), -0.0).unwrap();
+        value.set_key_at(Time::new(-1, 1).unwrap(), 7.0).unwrap();
+        value.set_key_at(Time::new(10, 1).unwrap(), -7.0).unwrap();
+        assert_eq!(value.interpolation(), Some(mode));
+        assert_eq!(value.keys().unwrap().len(), 6);
+        assert_eq!(
+            value.at(Time::new(2, 6).unwrap()).unwrap().to_bits(),
+            (-0.0f32).to_bits()
+        );
+        value.validate().unwrap();
+        let before = serde_json::to_vec(&value).unwrap();
+        for (time, sample) in [
+            (Time { ticks: 0, rate: 0 }, 1.0),
+            (Time::new(2, 1).unwrap(), f32::NAN),
+        ] {
+            assert!(value.set_key_at(time, sample).is_err());
+            assert_eq!(serde_json::to_vec(&value).unwrap(), before);
+        }
+    }
+    let mut constant = Scalar::from(2.0);
+    constant
+        .set_key_at(Time::new(i64::MAX - 1, u32::MAX).unwrap(), 4.0)
+        .unwrap();
+    constant
+        .set_key_at(Time::new(i64::MAX, u32::MAX).unwrap(), 5.0)
+        .unwrap();
+    assert_eq!(constant.keys().unwrap().len(), 2);
+    assert_eq!(constant.keys().unwrap()[0].value, 4.0);
+    let mut full = Scalar::Step {
+        keys: (0..veylvik_document::animation::MAX_KEYS)
+            .map(|index| Key {
+                time: Time::new(index as i64, 1).unwrap(),
+                value: 0.0,
+            })
+            .collect(),
+    };
+    full.set_key_at(Time::new(4, 2).unwrap(), 8.0).unwrap();
+    assert_eq!(full.keys().unwrap()[2].value, 8.0);
+    let before = serde_json::to_vec(&full).unwrap();
+    assert!(full.set_key_at(Time::new(1, 2).unwrap(), 1.0).is_err());
+    assert_eq!(serde_json::to_vec(&full).unwrap(), before);
+}

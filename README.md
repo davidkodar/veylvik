@@ -131,7 +131,10 @@ connections fail atomically. **Revert** discards the draft. Apply or revert befo
 selecting another node or using undo/redo.
 
 Scrub the timeline or play it to evaluate animation. Scalar controls can add a
-key at the playhead; expanded key lists edit exact rational times and values or
+key at the playhead. For animated parameters, **At playhead** edits an existing
+key or inserts one at the current frame while preserving interpolation. Equivalent
+rational times update the existing key without changing its stored timestamp.
+These edits pause playback and remain drafts until Apply. Expanded key lists edit exact rational times and values or
 remove keys. Choose Linear, Hold, or Ease in/out for each animated parameter.
 **Make constant here** replaces a curve with its evaluated playhead value; Apply
 and undo work as for other inspector edits.

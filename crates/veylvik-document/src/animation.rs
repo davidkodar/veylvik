@@ -80,6 +80,38 @@ impl Scalar {
             Self::Smooth { .. } => Some(Interpolation::Smooth),
         }
     }
+    pub fn keys(&self) -> Option<&[Key]> {
+        match self {
+            Self::Constant { .. } => None,
+            Self::Linear { keys } | Self::Step { keys } | Self::Smooth { keys } => Some(keys),
+        }
+    }
+    /// Insert or update a key at an exact rational time. Existing equivalent
+    /// timestamps retain their representation and curves retain interpolation.
+    /// Constants become a single-key linear curve. Failure leaves self unchanged.
+    pub fn set_key_at(&mut self, time: Time, value: f32) -> Result<()> {
+        self.validate()?;
+        time.seconds()?;
+        if !value.is_finite() {
+            return fail("non-finite key");
+        }
+        if let Some(keys) = self.keys_mut() {
+            match keys.binary_search_by(|key| key.time.compare(time).expect("validated times")) {
+                Ok(index) => keys[index].value = value,
+                Err(index) => {
+                    if keys.len() == MAX_KEYS {
+                        return fail(format!("animation exceeds {MAX_KEYS} keys"));
+                    }
+                    keys.insert(index, Key { time, value });
+                }
+            }
+        } else {
+            *self = Self::Linear {
+                keys: vec![Key { time, value }],
+            };
+        }
+        Ok(())
+    }
     pub fn keys_mut(&mut self) -> Option<&mut Vec<Key>> {
         match self {
             Self::Constant { .. } => None,

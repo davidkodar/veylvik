@@ -1,6 +1,6 @@
 //! Scalar authoring controls; edits remain in the inspector's transaction draft.
 use eframe::egui;
-use veylvik_document::{Interpolation, Key, Scalar, Time, animation::MAX_KEYS};
+use veylvik_document::{Interpolation, Scalar, Time, animation::MAX_KEYS};
 
 pub fn scalar(
     ui: &mut egui::Ui,
@@ -32,9 +32,23 @@ pub fn scalar(
                 changed |= ui.add(egui::DragValue::new(value).speed(0.1).range(range.clone())).changed();
             }
             _ => {
-                let key_count = scalar.keys_mut().unwrap().len();
+                let key_count = scalar.keys().unwrap().len();
                 match &value {
-                    Ok(value) => { ui.weak(format!("{key_count} keyframes · {value:.3} now")); }
+                    Ok(value) => {
+                        ui.weak(format!("{key_count} keyframes"));
+                        let mut edited = *value;
+                        let can_edit = key_count < MAX_KEYS || scalar.keys().unwrap().iter().any(|key| key.time.compare(time).is_ok_and(|order| order.is_eq()));
+                        ui.horizontal_wrapped(|ui| {
+                            ui.label("At playhead");
+                            if ui.add_enabled(can_edit, egui::DragValue::new(&mut edited).speed(0.1).range(range.clone()))
+                                .on_hover_text("Change or add a key at the current frame. Apply commits the edit.").changed() {
+                                match scalar.set_key_at(time, edited) {
+                                    Ok(()) => changed = true,
+                                    Err(error) => { ui.colored_label(egui::Color32::LIGHT_RED, error.to_string()); }
+                                }
+                            }
+                        });
+                    }
                     Err(error) => { ui.colored_label(egui::Color32::LIGHT_RED, error.to_string()); }
                 }
                 let mut remove = None;
@@ -66,15 +80,12 @@ pub fn scalar(
         }
         if let Ok(value) = scalar.at(time) {
             ui.horizontal_wrapped(|ui| {
-                let can_add = scalar.keys_mut().is_none_or(|keys| keys.len() < MAX_KEYS && !keys.iter().any(|key| key.time.compare(time).is_ok_and(|order| order.is_eq())));
+                let can_add = scalar.keys().is_none_or(|keys| keys.len() < MAX_KEYS && !keys.iter().any(|key| key.time.compare(time).is_ok_and(|order| order.is_eq())));
                 if ui.add_enabled(can_add, egui::Button::new("Add key at playhead").small()).clicked() {
-                    if let Some(keys) = scalar.keys_mut() {
-                        keys.push(Key { time, value });
-                        keys.sort_by(|a, b| a.time.compare(b.time).expect("validated key time"));
-                    } else {
-                        *scalar = Scalar::Linear { keys: vec![Key { time, value }] };
+                    match scalar.set_key_at(time, value) {
+                        Ok(()) => changed = true,
+                        Err(error) => { ui.colored_label(egui::Color32::LIGHT_RED, error.to_string()); }
                     }
-                    changed = true;
                 }
                 if scalar.interpolation().is_some() && ui.small_button("Make constant here").on_hover_text("Replace the animation with its value at the playhead. Apply commits the change; undo restores it.").clicked() {
                     *scalar = value.into();

@@ -924,6 +924,9 @@ impl Studio {
                 );
             }
         }
+        if self.draft_dirty {
+            self.playing = false;
+        }
         ui.separator();
         for port in self.draft.operation.inputs() {
             let selected = self.draft.inputs.get_mut(*port).unwrap();
