@@ -13,6 +13,7 @@ mod files;
 mod graph;
 mod handles;
 mod key_timeline;
+mod menus;
 mod node_finder;
 mod node_palette;
 mod preview_images;
@@ -921,103 +922,6 @@ impl Studio {
         }
         ctx.set_global_style(style);
     }
-    fn toolbar(&mut self, ui: &mut egui::Ui) {
-        ui.horizontal_wrapped(|ui| {
-            ui.heading(egui::RichText::new("VEYLVIK").color(self.accent));
-            if self.control.is_some() {
-                ui.weak("MCP")
-                    .on_hover_text("Local live control is enabled for this editor session.");
-            }
-            ui.separator();
-            ui.label(
-                self.project
-                    .path
-                    .as_ref()
-                    .and_then(|p| p.file_name())
-                    .map(|s| s.to_string_lossy().into_owned())
-                    .unwrap_or("Untitled".into()),
-            );
-            let unavailable = self.project.unavailable_assets().len();
-            if unavailable > 0 {
-                ui.colored_label(egui::Color32::LIGHT_RED, format!("{unavailable} unavailable"))
-                    .on_hover_text("Some image sources could not be loaded. Select an Image node to replace its source, or use Reload images after repairing the files.");
-            }
-            if self.project.dirty() || self.draft_dirty {
-                ui.label("•");
-            }
-            if ui.button("New…").clicked() {
-                self.leave(Leave::New, ui.ctx());
-            }
-            if ui.button("Settings…").clicked() && self.can_change_selection() {
-                self.playing = false;
-                self.composition_controls
-                    .begin(self.project.document.snapshot(), false);
-            }
-            if ui.button("Open…").clicked() {
-                self.leave(Leave::Open, ui.ctx());
-            }
-            if ui.button("Import…").clicked() {
-                self.import_image(self.graph.insertion_position(ui.ctx()));
-            }
-            if ui
-                .button("Reload images")
-                .on_hover_text("Reload all source images from disk (Ctrl+R)")
-                .clicked()
-            {
-                self.reload_images();
-            }
-            if ui
-                .button("Export…")
-                .on_hover_text(
-                    "Export PNG (SDR) or OpenEXR (linear HDR), chosen by filename extension",
-                )
-                .clicked()
-            {
-                self.export_frame();
-            }
-            if ui.button("Sequence…").clicked() {
-                self.export_controls.open = true;
-            }
-            if ui.button("Save").clicked() {
-                self.save_project(false);
-            }
-            if ui.button("Save as…").clicked() {
-                self.save_project(true);
-            }
-            ui.separator();
-            if ui
-                .add_enabled(
-                    self.project.document.history().undo_steps > 0,
-                    egui::Button::new("Undo"),
-                )
-                .clicked()
-            {
-                self.history(false);
-            }
-            if ui
-                .add_enabled(
-                    self.project.document.history().redo_steps > 0,
-                    egui::Button::new("Redo"),
-                )
-                .clicked()
-            {
-                self.history(true);
-            }
-            if ui.button("Add node").on_hover_text("Search nodes (Tab)").clicked() {
-                self.open_node_palette(ui.ctx());
-            }
-            if ui.button("Recover").clicked() {
-                self.recovery.refresh();
-                self.recovery.open = true;
-            }
-            if ui.button("Stats").clicked() {
-                self.statistics = !self.statistics;
-            }
-            if ui.button("?").clicked() {
-                self.help = !self.help;
-            }
-        });
-    }
     fn inspector_actions(&mut self, ui: &mut egui::Ui) {
         ui.heading("Inspector");
         ui.horizontal(|ui| {
@@ -1200,16 +1104,8 @@ impl Studio {
             self.project.preview = None;
             self.request_preview();
         }
-        if ui.button("Set as output").clicked() && self.apply_draft() {
-            match self.project.apply(&[Command::Output {
-                id: self.project.selected,
-            }]) {
-                Ok(()) => {
-                    self.project.preview = None;
-                    self.request_preview();
-                }
-                Err(e) => self.fail(e),
-            }
+        if ui.button("Set as output").clicked() {
+            self.set_selected_output();
         }
         if ui.button("Duplicate node").clicked() {
             self.duplicate_selected(ui.ctx());
@@ -1221,19 +1117,39 @@ impl Studio {
         {
             self.duplicate_branch();
         }
-        if ui.button("Delete node").clicked() && self.can_change_selection() {
-            match self.project.apply(&[Command::Remove {
-                id: self.project.selected,
-            }]) {
-                Ok(()) => {
-                    self.refresh_draft();
-                    self.request_preview();
-                }
-                Err(e) => self.fail(e),
-            }
+        if ui.button("Delete node").clicked() {
+            self.delete_selected();
         }
         ui.add_space(15.0);
         ui.weak("Parameter changes become one undo step when applied.");
+    }
+    fn set_selected_output(&mut self) {
+        if !self.apply_draft() {
+            return;
+        }
+        match self.project.apply(&[Command::Output {
+            id: self.project.selected,
+        }]) {
+            Ok(()) => {
+                self.project.preview = None;
+                self.request_preview();
+            }
+            Err(error) => self.fail(error),
+        }
+    }
+    fn delete_selected(&mut self) {
+        if !self.can_change_selection() {
+            return;
+        }
+        match self.project.apply(&[Command::Remove {
+            id: self.project.selected,
+        }]) {
+            Ok(()) => {
+                self.refresh_draft();
+                self.request_preview();
+            }
+            Err(error) => self.fail(error),
+        }
     }
     fn sync_key_timeline(&mut self) {
         self.key_timeline.sync(
@@ -1294,6 +1210,7 @@ impl Studio {
         for action in actions {
             match action {
                 graph::Action::Find => self.open_node_finder(),
+                graph::Action::Add => self.open_node_palette(ui.ctx()),
                 graph::Action::Select { id, preview } => {
                     if self.can_change_selection() {
                         self.project.selected = id;
@@ -1557,7 +1474,7 @@ impl eframe::App for Studio {
         ui.add_enabled_ui(
             !self.files.busy() && !self.authoring_dialog_open() && self.confirm.is_none(),
             |ui| {
-                egui::Panel::top("toolbar").show_inside(ui, |ui| self.toolbar(ui));
+                egui::Panel::top("menu_bar").show_inside(ui, |ui| self.menu_bar(ui));
                 egui::Panel::bottom("status").show_inside(ui, |ui| {
                     if self.files.busy() {
                         ui.horizontal(|ui| {

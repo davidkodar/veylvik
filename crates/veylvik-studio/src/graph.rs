@@ -5,6 +5,7 @@ use veylvik_document::{Composition, NodeId, NodePosition};
 const NODE_SIZE: Vec2 = egui::vec2(160.0, 60.0);
 pub enum Action {
     Find,
+    Add,
     Select {
         id: NodeId,
         preview: bool,
@@ -362,6 +363,13 @@ impl Graph {
         let mut zoom_factor = 1.0;
         ui.horizontal(|ui| {
             ui.heading("Nodes");
+            if ui
+                .button("Add node")
+                .on_hover_text("Search and add a node (Tab)")
+                .clicked()
+            {
+                actions.push(Action::Add);
+            }
             if ui
                 .button("Find")
                 .on_hover_text("Find and preview a node (Ctrl+F)")

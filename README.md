@@ -152,7 +152,16 @@ reports viewer settings separately from the composition (`scale: null` means
 fit mode; pan coordinates are logical UI points).
 Select and arrange nodes, drag between output and input sockets to connect them,
 add procedural nodes, and preview any node without changing composition output.
-**Add node** or **Tab** opens searchable node choices. Type part of a name or
+The menu bar groups application commands under **File**, **Edit**, **Add**,
+**View**, and **Help**, with shortcuts shown beside their commands. **Add** also
+provides categorized node submenus and editable effect recipes. The project name
+and unsaved indicator stay on the right; long names truncate without hiding menus.
+
+Contextual buttons remain beside their work: **Add node / Find / Fit / Arrange**
+in the graph, **Apply / Revert** and selected-node actions in the inspector,
+playback and key navigation on the timeline, and display controls in the viewer.
+
+**Add node** in the graph, **Add → Search nodes…**, or **Tab** opens searchable node choices. Type part of a name or
 description, use Up/Down to choose, and Enter to add; Escape cancels. New effects
 connect to the selected node, and procedural nodes appear at the graph position
 where the picker opened. Gradient endpoints and shape defaults follow the
@@ -199,7 +208,7 @@ replacement and requires reopening or saving elsewhere. This check is not an
 atomic filesystem transaction against unrelated simultaneous writers.
 Closing asks about unsaved document or inspector changes.
 
-**Sequence…** opens animation export settings. Choose inclusive first/last frames,
+**File → Export image sequence…** opens animation export settings. Choose inclusive first/last frames,
 a new folder name, and an existing parent folder through the desktop portal.
 Export captures the current preview root, composition, and loaded source pixels;
 it runs in the background with a progress bar and **Cancel export** between
@@ -256,7 +265,7 @@ undoable edit. Canceling or failing to decode the file leaves the node unchanged
 Selecting the same asset path refreshes its pixels without adding a document edit.
 Studio opens valid compositions even if image files are missing, unreadable or
 unsupported. Available images load normally; unavailable sources are marked in
-the toolbar and Image inspector, so their paths can be replaced or repaired and
+the menu bar and Image inspector, so their paths can be replaced or repaired and
 reloaded. Outputs depending on unavailable images report a render error; the graph
 and its saved structure remain editable. This also applies to recovery copies.
 Headless rendering continues to reject unavailable required inputs.
@@ -408,7 +417,7 @@ is not automatic mixed-direction paragraph layout. The 4096-byte, 512-glyph and
 4096-command limits apply to the entire block. Returned `advance` contains the
 maximum line advance and the first-to-last baseline distance, not ink bounds.
 
-In Studio, choose **Add node → Outline text…**, enter text with line breaks, and
+In Studio, choose **Add → Text outlines…**, enter text with line breaks, and
 choose a TTF/OTF/TTC font through the desktop picker. Conversion runs in the
 background and inserts one undoable Path mask at the graph's insertion position.
 Cancellation or an invalid font leaves the document unchanged and reopens the
@@ -533,7 +542,7 @@ Live control is opt-in and uses a local Unix socket, with directory permissions
 0700 and socket permissions 0600. Existing endpoint directories are refused.
 Normal editor shutdown removes its endpoint; after an abnormal exit, use a new
 directory or remove the stale endpoint yourself. One client connects at a time.
-The toolbar shows **MCP** when live control is enabled.
+The menu bar shows **MCP** when live control is enabled.
 
 Live tools are `inspect`, `graph`, `get_node`, `nodes`, `diagnostics`, `apply`,
 `duplicate_branch`, `add_effect`, `undo`, `redo`, `preview`, and `preview_image`.
@@ -688,7 +697,7 @@ plot, and Apply commits the complete inspector draft as one undo step.
 
 ### Renderer diagnostics
 
-The native **Stats** window and MCP `diagnostics` tool report declared GPU
+The native **View → Render statistics** window and MCP `diagnostics` tool report declared GPU
 buffer residency, held frames, idle buffers, allocation/upload reuse, and frame
 and vector cache hits, misses, sizes, and limits. Reading diagnostics never
 waits for an active render: `snapshot` is null while the required renderer locks
@@ -708,7 +717,7 @@ No recovery copy replaces a project or an original image. Image paths become
 absolute in the copy so recovery does not depend on the old project directory.
 
 After an interrupted session, the recovery dialog offers available copies;
-**Recover** reopens that list. Running editor sessions are excluded using OS
+**File → Recover unsaved work…** reopens that list. Running editor sessions are excluded using OS
 file locks, which release automatically on a crash. A restored composition is
 unsaved and uses Save As. Saving or explicitly discarding it removes its recovery
 copies. Failed restores leave the copy intact. Other sessions' copies are
@@ -723,10 +732,10 @@ re-enable background recovery.
 
 ### New compositions and format settings
 
-**New…** (`Ctrl+N`) creates a composition with one transparent Background node.
+**File → New composition…** (`Ctrl+N`) creates a composition with one transparent Background node.
 Choose canvas width/height, frame count, and an exact frame-rate numerator/denominator
 before creating it. Unsaved work is protected by the same Save/Discard/Keep editing
-flow as opening another project. **Settings…** changes canvas, frame count, and
+flow as opening another project. **File → Composition settings…** changes canvas, frame count, and
 frame rate together as one undo step. Resizing changes the canvas bounds; it does
 not scale node coordinates. Animation keys retain their times in seconds, while
 frame indices use the new frame rate. Format dialogs isolate their drafts and
