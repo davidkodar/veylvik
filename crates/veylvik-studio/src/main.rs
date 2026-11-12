@@ -237,6 +237,7 @@ impl Studio {
             || self.outline_controls.open
             || self.composition_controls.open
             || self.node_palette.open
+            || self.graph.renaming()
             || self.node_finder.open
     }
     fn open_project(&mut self, project: Project, ctx: &egui::Context) {
@@ -1738,6 +1739,77 @@ impl Studio {
         );
         for action in actions {
             match action {
+                graph::Action::AddAt(position) => {
+                    if !self.files.busy()
+                        && !self.authoring_dialog_open()
+                        && self.can_change_selection()
+                        && !self.graph.dragging()
+                    {
+                        self.playing = false;
+                        self.node_palette.open_at(position);
+                    }
+                }
+                graph::Action::Node { id, action } => {
+                    if !self.project.document.snapshot().nodes.contains_key(&id) {
+                        continue;
+                    }
+                    if !self.can_change_selection() {
+                        continue;
+                    }
+                    self.project.selected = id;
+                    self.refresh_draft();
+                    match action {
+                        graph::NodeAction::Preview => {
+                            self.project.preview = Some(id);
+                            self.request_preview();
+                        }
+                        graph::NodeAction::Composition => {
+                            self.project.preview = None;
+                            self.request_preview();
+                        }
+                        graph::NodeAction::Duplicate => self.duplicate_selected(ui.ctx()),
+                        graph::NodeAction::DuplicateBranch => self.duplicate_branch(),
+                        graph::NodeAction::Output => self.set_selected_output(),
+                        graph::NodeAction::Delete => self.delete_selected(),
+                        graph::NodeAction::CreateGroup => self.begin_group(false),
+                        graph::NodeAction::EditGroup => self.begin_group(true),
+                        graph::NodeAction::Rename(label) => {
+                            let command = if let Some(group) = self
+                                .graph
+                                .selected_group(self.project.document.snapshot(), id)
+                            {
+                                let mut group = group.clone();
+                                group.label = label;
+                                Command::PutGroup {
+                                    group: Box::new(group),
+                                }
+                            } else {
+                                let mut node = self.draft.clone();
+                                node.label = label;
+                                Command::Put {
+                                    node: Box::new(node),
+                                }
+                            };
+                            match self.project.apply(&[command]) {
+                                Ok(()) => self.refresh_draft(),
+                                Err(e) => self.fail(e),
+                            }
+                        }
+                        graph::NodeAction::Bypass => {
+                            let mut node = self.draft.clone();
+                            node.bypass = !node.bypass;
+                            match self.project.apply(&[Command::Put {
+                                node: Box::new(node),
+                            }]) {
+                                Ok(()) => {
+                                    self.refresh_draft();
+                                    self.request_preview();
+                                }
+                                Err(e) => self.fail(e),
+                            }
+                        }
+                    }
+                }
                 graph::Action::Group => self.begin_group(false),
                 graph::Action::CloseGroup(id) => {
                     if self.can_change_selection() {

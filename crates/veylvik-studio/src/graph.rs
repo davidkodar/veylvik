@@ -3,7 +3,24 @@ use eframe::egui::{self, Color32, Pos2, Rect, Vec2};
 use std::collections::BTreeMap;
 use veylvik_document::{Composition, NodeId, NodePosition};
 const NODE_SIZE: Vec2 = egui::vec2(160.0, 60.0);
+pub enum NodeAction {
+    Preview,
+    Composition,
+    Rename(String),
+    Bypass,
+    Duplicate,
+    DuplicateBranch,
+    Output,
+    Delete,
+    CreateGroup,
+    EditGroup,
+}
 pub enum Action {
+    AddAt(NodePosition),
+    Node {
+        id: NodeId,
+        action: NodeAction,
+    },
     Find,
     Group,
     OpenGroup(NodeId),
@@ -89,6 +106,10 @@ pub struct Graph {
     fit_pending: bool,
     auto_arrange: bool,
     auto_view: Option<(u64, Vec2)>,
+    menu_position: Option<NodePosition>,
+    rename: Option<(NodeId, String)>,
+    rename_open: bool,
+    rename_focus: bool,
 }
 impl Default for Graph {
     fn default() -> Self {
@@ -108,6 +129,10 @@ impl Default for Graph {
             fit_pending: false,
             auto_arrange: false,
             auto_view: None,
+            menu_position: None,
+            rename: None,
+            rename_open: false,
+            rename_focus: false,
         }
     }
 }
@@ -211,6 +236,9 @@ impl Graph {
             .pointer_hover_pos()
             .filter(|p| canvas.contains(*p))
             .unwrap_or(canvas.center());
+        self.insertion_at(screen, canvas)
+    }
+    fn insertion_at(&self, screen: Pos2, canvas: Rect) -> NodePosition {
         let world = (screen - canvas.min - self.pan) / self.zoom - NODE_SIZE * 0.5;
         let desired = egui::pos2(
             world.x.clamp(-1_000_000.0, 1_000_000.0),
@@ -834,6 +862,51 @@ impl Graph {
                 ));
             }
         }
+        let pointer_on_node = ui.input(|i| i.pointer.interact_pos()).is_some_and(|point| {
+            nodes.iter().any(|node| {
+                Rect::from_min_size(
+                    canvas.min + self.pan + self.positions[&node.id].to_vec2() * self.zoom,
+                    NODE_SIZE * self.zoom,
+                )
+                .contains(point)
+            })
+        });
+        if response.secondary_clicked() && !pointer_on_node {
+            self.menu_position = response
+                .interact_pointer_pos()
+                .map(|point| self.insertion_at(point, canvas));
+        }
+        if !pointer_on_node || response.context_menu_opened() {
+            response.context_menu(|ui| {
+                if ui.button("Add node...     Tab").clicked() {
+                    if let Some(position) = self.menu_position {
+                        actions.push(Action::AddAt(position));
+                    }
+                    ui.close();
+                }
+                ui.separator();
+                if ui.button("Arrange all").clicked() {
+                    self.adapt_automatic(doc, &nodes, canvas.size());
+                    let positions = self.arrangement(doc, None);
+                    if !positions.is_empty() {
+                        actions.push(Action::Arrange(positions));
+                    }
+                    self.fit_pending = true;
+                    ui.close();
+                }
+                if ui
+                    .checkbox(&mut self.auto_arrange, "Auto arrange")
+                    .changed()
+                {
+                    self.auto_view = None;
+                    self.revision = None;
+                }
+                if ui.button("Fit graph").clicked() {
+                    self.fit_pending = true;
+                    ui.close();
+                }
+            });
+        }
         let mut node_dragged = false;
         for node in &nodes {
             let rect = Rect::from_min_size(
@@ -852,6 +925,57 @@ impl Graph {
                     egui::Sense::click_and_drag(),
                 )
                 .on_hover_text(&node.label);
+            if response.secondary_clicked() {
+                self.rename = Some((node.id, node.label.clone()));
+                actions.push(Action::Select {
+                    id: node.id,
+                    preview: false,
+                });
+            }
+            response.context_menu(|ui| {
+                ui.strong(&node.label);
+                ui.separator();
+                for (label, action) in [("Preview node",NodeAction::Preview),("View composition",NodeAction::Composition)] {
+                    if ui.button(label).clicked() { actions.push(Action::Node { id:node.id,action }); ui.close(); }
+                }
+                if ui.button("Rename...").clicked() {
+                    self.rename=Some((node.id,node.label.clone()));
+                    self.rename_open=true;
+                    self.rename_focus=true;
+                    ui.close();
+                }
+                let bypass_allowed=doc.nodes[&node.id].operation.inputs().len()==1 && node.group.is_none_or(|id| doc.groups[&id].members.len()==1);
+                if ui.add_enabled(bypass_allowed,egui::Button::new(if doc.nodes[&node.id].bypass { "Enable node" } else { "Bypass node" })).on_hover_text("Bypass is available for single-input nodes. Open compound groups to edit their nodes.").clicked() {
+                    actions.push(Action::Node { id:node.id,action:NodeAction::Bypass }); ui.close();
+                }
+                ui.separator();
+                for (label,action) in [("Duplicate node / group     Ctrl+D",NodeAction::Duplicate),("Duplicate upstream branch     Ctrl+Shift+D",NodeAction::DuplicateBranch)] {
+                    if ui.button(label).clicked() { actions.push(Action::Node { id:node.id,action }); ui.close(); }
+                }
+                if let Some(group)=doc.groups.values().find(|g| g.members.contains(&node.id)) {
+                    if ui.button(if self.expanded.contains(&group.id) { "Close group" } else { "Open group" }).clicked() {
+                        actions.push(if self.expanded.contains(&group.id) { Action::CloseGroup(group.id) } else { Action::OpenGroup(group.id) }); ui.close();
+                    }
+                    if ui.button("Edit group...").clicked() { actions.push(Action::Node { id:node.id,action:NodeAction::EditGroup }); ui.close(); }
+                } else if ui.button("Create effect group...").clicked() { actions.push(Action::Node { id:node.id,action:NodeAction::CreateGroup }); ui.close(); }
+                ui.separator();
+                if ui.button("Arrange upstream branch").clicked() {
+                    let positions=self.arrangement(doc,Some(node.id));
+                    if !positions.is_empty() { actions.push(Action::Arrange(positions)); }
+                    ui.close();
+                }
+                let mut pinned=self.pinned.contains(&node.id);
+                if ui.checkbox(&mut pinned,"Pin position").on_hover_text("Keep this placement during arrangement for this session").changed() {
+                    if pinned { self.pinned.insert(node.id); } else { self.pinned.remove(&node.id); }
+                    self.auto_view=None;
+                }
+                if ui.add_enabled(node.id!=doc.output,egui::Button::new("Set as composition output")).clicked() { actions.push(Action::Node { id:node.id,action:NodeAction::Output }); ui.close(); }
+                ui.separator();
+                let can_delete=node.id!=doc.output && !doc.nodes.values().any(|n| n.inputs.values().any(|id| *id==node.id)) && !doc.groups.values().any(|g|g.members.contains(&node.id));
+                if ui.add_enabled(can_delete,egui::Button::new("Delete node")).on_hover_text("Disconnect consumers and remove group membership before deleting. The composition output cannot be deleted.").clicked() {
+                    actions.push(Action::Node { id:node.id,action:NodeAction::Delete }); ui.close();
+                }
+            });
             if response.drag_started() {
                 let preserve_layout = self.auto_arrange;
                 self.auto_arrange = false;
@@ -1064,7 +1188,50 @@ impl Graph {
         {
             self.pan += response.drag_delta();
         }
+        if self.rename_open {
+            let mut open = true;
+            let mut done = false;
+            if let Some((id, label)) = &mut self.rename {
+                egui::Window::new("Rename node")
+                    .id(egui::Id::new("rename-node"))
+                    .open(&mut open)
+                    .collapsible(false)
+                    .resizable(false)
+                    .show(ui.ctx(), |ui| {
+                        let response = ui.add(egui::TextEdit::singleline(label).char_limit(256));
+                        if self.rename_focus {
+                            response.request_focus();
+                            self.rename_focus = false;
+                        }
+                        let submit =
+                            response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+                        ui.horizontal(|ui| {
+                            if ui
+                                .add_enabled(!label.trim().is_empty(), egui::Button::new("Rename"))
+                                .clicked()
+                                || (submit && !label.trim().is_empty())
+                            {
+                                actions.push(Action::Node {
+                                    id: *id,
+                                    action: NodeAction::Rename(label.trim().into()),
+                                });
+                                done = true;
+                            }
+                            if ui.button("Cancel").clicked() {
+                                done = true;
+                            }
+                        });
+                    });
+            }
+            if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                done = true;
+            }
+            self.rename_open = open && !done;
+        }
         actions
+    }
+    pub fn renaming(&self) -> bool {
+        self.rename_open
     }
 }
 
@@ -1078,6 +1245,83 @@ mod tests {
             &[],
         )
         .id
+    }
+    #[test]
+    fn context_menu_targets_clicked_node_and_captures_empty_canvas_position() {
+        let doc = veylvik_document::demo();
+        let ctx = egui::Context::default();
+        let mut graph = Graph::default();
+        fn run(
+            ctx: &egui::Context,
+            graph: &mut Graph,
+            doc: &Composition,
+            events: Vec<egui::Event>,
+        ) -> Vec<Action> {
+            let mut actions = Vec::new();
+            let _ = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(Pos2::ZERO, egui::vec2(1200.0, 800.0))),
+                    events,
+                    ..Default::default()
+                },
+                |ui| {
+                    actions = graph.show(ui, doc, 0, doc.output, Color32::LIGHT_BLUE);
+                },
+            );
+            actions
+        }
+        run(&ctx, &mut graph, &doc, vec![]);
+        let id = *graph
+            .positions
+            .keys()
+            .find(|id| **id != doc.output)
+            .unwrap();
+        let point = graph.canvas.unwrap().min
+            + graph.pan
+            + graph.positions[&id].to_vec2() * graph.zoom
+            + NODE_SIZE * graph.zoom * 0.5;
+        let click = |point| {
+            vec![
+                egui::Event::PointerMoved(point),
+                egui::Event::PointerButton {
+                    pos: point,
+                    button: egui::PointerButton::Secondary,
+                    pressed: true,
+                    modifiers: egui::Modifiers::NONE,
+                },
+                egui::Event::PointerButton {
+                    pos: point,
+                    button: egui::PointerButton::Secondary,
+                    pressed: false,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ]
+        };
+        let actions = run(&ctx, &mut graph, &doc, click(point));
+        assert!(actions.iter().any(
+            |action| matches!(action,Action::Select {id:target,preview:false} if *target==id)
+        ));
+        assert!(graph.menu_position.is_none());
+        let ctx = egui::Context::default();
+        let mut graph = Graph {
+            pan: egui::vec2(-1000.0, -1000.0),
+            zoom: 0.5,
+            ..Default::default()
+        };
+        run(&ctx, &mut graph, &doc, vec![]);
+        let point = egui::pos2(1100.0, 700.0);
+        let expected = graph.insertion_at(point, graph.canvas.unwrap());
+        run(&ctx, &mut graph, &doc, click(point));
+        let saved = graph.menu_position.unwrap();
+        assert_eq!((saved.x, saved.y), (expected.x, expected.y));
+        run(
+            &ctx,
+            &mut graph,
+            &doc,
+            vec![egui::Event::PointerMoved(egui::pos2(100.0, 100.0))],
+        );
+        let saved = graph.menu_position.unwrap();
+        assert_eq!((saved.x, saved.y), (expected.x, expected.y));
     }
     #[test]
     fn fast_socket_drag_reconnects_group_without_panning() {

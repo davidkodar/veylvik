@@ -435,6 +435,15 @@ The copied root becomes the preview; the composition output stays unchanged.
 Copying is rejected atomically if document size, node count, or graph coordinate
 limits would be exceeded.
 
+Right-click a node for preview, rename, bypass (single-input nodes), duplication,
+group controls, upstream arrangement, placement pinning, output selection and
+safe deletion. Actions target the clicked node. Referenced nodes and the output
+cannot be deleted from this menu; disconnect consumers first. Right-click empty
+canvas for **Add node**, arrangement and fit controls. **Add node**, the toolbar
+button and **Tab** share the focused searchable picker; Up/Down selects, Enter
+adds and Escape cancels. The canvas menu captures its opening position before
+the pointer moves into the menu. Clipboard paste is not yet supported.
+
 Drag the graph background to pan, Ctrl+scroll to zoom, and use **Fit** to see
 the whole graph. **Arrange** lays out connected branches as one undoable edit, treating
 collapsed effects as a single stage and placing unused branches separately. It never
