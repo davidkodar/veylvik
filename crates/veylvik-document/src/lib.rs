@@ -20,6 +20,8 @@ pub use appearance::{AtmosphereKind, MaterialKind, PatinaKind, ReflectionKind};
 mod gradient;
 pub use gradient::GradientMode;
 pub mod schema;
+pub mod text;
+pub use text::{TextAlignment, TextFont};
 pub mod sequence;
 pub mod vector;
 pub use blending::BlendMode;
@@ -43,6 +45,25 @@ pub use animation::{CompiledScalar, Handle, Interpolation, Key, Scalar, Segment,
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Operation {
+    Text {
+        content: String,
+        font: TextFont,
+        alignment: TextAlignment,
+        rtl: bool,
+        language: String,
+        size: Scalar,
+        x: Scalar,
+        y: Scalar,
+        tracking: Scalar,
+        line_height: Scalar,
+        rotation: Scalar,
+        scale_x: Scalar,
+        scale_y: Scalar,
+        wrap_width: Scalar,
+        underline: bool,
+        features: String,
+        color: [f32; 4],
+    },
     Solid {
         color: [f32; 4],
     },
@@ -199,6 +220,7 @@ pub enum Operation {
 impl Operation {
     pub fn descriptor(&self) -> &'static registry::NodeType {
         match self {
+            Self::Text { .. } => &registry::TEXT,
             Self::MetallicShine { .. } => &registry::METALLIC_SHINE,
             Self::SurfaceReflection { .. } => &registry::SURFACE_REFLECTION,
             Self::Glass { .. } => &registry::GLASS,
@@ -265,6 +287,15 @@ impl Operation {
             (Self::Patina { scale, .. }, "scale") => Some(scale),
             (Self::Patina { wear, .. }, "wear") => Some(wear),
             (Self::Patina { scratches, .. }, "scratches") => Some(scratches),
+            (Self::Text { rotation, .. }, "rotation") => Some(rotation),
+            (Self::Text { scale_x, .. }, "scale_x") => Some(scale_x),
+            (Self::Text { scale_y, .. }, "scale_y") => Some(scale_y),
+            (Self::Text { wrap_width, .. }, "wrap_width") => Some(wrap_width),
+            (Self::Text { size, .. }, "size") => Some(size),
+            (Self::Text { x, .. }, "x") => Some(x),
+            (Self::Text { y, .. }, "y") => Some(y),
+            (Self::Text { tracking, .. }, "tracking") => Some(tracking),
+            (Self::Text { line_height, .. }, "line_height") => Some(line_height),
             (Self::Material { scale, .. }, "scale") => Some(scale),
             (Self::Material { bevel, .. }, "bevel") => Some(bevel),
             (Self::Material { roughness, .. }, "roughness") => Some(roughness),
@@ -345,6 +376,15 @@ impl Operation {
             (Self::Patina { scale, .. }, "scale") => Some(scale),
             (Self::Patina { wear, .. }, "wear") => Some(wear),
             (Self::Patina { scratches, .. }, "scratches") => Some(scratches),
+            (Self::Text { rotation, .. }, "rotation") => Some(rotation),
+            (Self::Text { scale_x, .. }, "scale_x") => Some(scale_x),
+            (Self::Text { scale_y, .. }, "scale_y") => Some(scale_y),
+            (Self::Text { wrap_width, .. }, "wrap_width") => Some(wrap_width),
+            (Self::Text { size, .. }, "size") => Some(size),
+            (Self::Text { x, .. }, "x") => Some(x),
+            (Self::Text { y, .. }, "y") => Some(y),
+            (Self::Text { tracking, .. }, "tracking") => Some(tracking),
+            (Self::Text { line_height, .. }, "line_height") => Some(line_height),
             (Self::Material { scale, .. }, "scale") => Some(scale),
             (Self::Material { bevel, .. }, "bevel") => Some(bevel),
             (Self::Material { roughness, .. }, "roughness") => Some(roughness),
@@ -405,6 +445,23 @@ impl Operation {
             }
         }
         match self {
+            Self::Text {
+                content,
+                font,
+                language,
+                features,
+                color,
+                ..
+            } => {
+                text::validate(content, font, language)?;
+                if features.len() > 256 || !features.is_ascii() {
+                    return fail("OpenType feature list must be ASCII, at most 256 bytes");
+                }
+                if color.iter().any(|v| !v.is_finite()) || !(0.0..=1.0).contains(&color[3]) {
+                    return fail("Text colour needs finite RGB and alpha in [0,1]");
+                }
+                Ok(())
+            }
             Self::Path { geometry } => geometry.validate(),
             Self::Solid { color }
                 if color.iter().any(|v| !v.is_finite()) || !(0.0..=1.0).contains(&color[3]) =>

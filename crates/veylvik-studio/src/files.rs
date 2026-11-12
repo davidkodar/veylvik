@@ -26,6 +26,11 @@ pub enum Completed {
     PresetLoaded(Box<veylvik_document::presets::Preset>),
     Cancelled,
     Outlined(Box<veylvik_document::Node>),
+    TextFont {
+        session: veylvik_document::NodeId,
+        revision: u64,
+        node: Box<veylvik_document::Node>,
+    },
     Opened(Box<Project>),
     Imported {
         position: veylvik_document::NodePosition,
@@ -102,7 +107,7 @@ pub fn select(choice: Choice, folder: &Path, name: &str) -> Result<Option<PathBu
         Choice::PresetSave => ("Export effect preset", "Veylvik effect", "*.veyfx"),
         Choice::Open => ("Open composition", "Veylvik composition", "*.veylvik"),
         Choice::Save => ("Save composition", "Veylvik composition", "*.veylvik"),
-        Choice::Font => ("Choose font for text outlines", "Font", "*.ttf"),
+        Choice::Font => ("Choose font", "Font", "*.ttf"),
         Choice::Import => ("Import image", "PNG or OpenEXR image", "*.png"),
         Choice::Export => (
             "Export frame (.png or .exr)",

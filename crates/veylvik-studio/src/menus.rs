@@ -70,6 +70,7 @@ impl Studio {
                 let mut chosen = None;
                 ui.add_enabled_ui(ready, |ui| {
                     if item(ui, "Image…", "Ctrl+I", true) { chosen = Some(node_palette::Choice::Image); }
+                    if item(ui, "Text", "", true) { chosen = Some(node_palette::Choice::Node(&registry::TEXT)); }
                     if item(ui, "Text outlines…", "", true) { chosen = Some(node_palette::Choice::Text); }
                     ui.separator();
                     for (label, kinds) in [

@@ -304,6 +304,14 @@ fn identity(project: &crate::project::Project, args: &Value) -> Result<(NodeId, 
 
 fn snapshot(studio: &Studio, args: &Value) -> Result<crate::preview_images::Snapshot> {
     validate_arguments("preview_image", args)?;
+    if studio.draft_dirty
+        && matches!(
+            studio.draft.operation,
+            veylvik_document::Operation::Text { .. }
+        )
+    {
+        return Err("Apply or revert the text preview before capturing applied pixels".into());
+    }
     let (session, revision) = identity(&studio.project, args)?;
     let max_edge = args
         .get("max_edge")

@@ -95,7 +95,7 @@ pub fn show(
 ) -> Result<bool> {
     if matches!(
         operation,
-        Operation::Affine { .. } | Operation::Transform { .. }
+        Operation::Text { .. } | Operation::Affine { .. } | Operation::Transform { .. }
     ) {
         return crate::transform_handles::show(ui, canvas, transform, image, operation, time);
     }

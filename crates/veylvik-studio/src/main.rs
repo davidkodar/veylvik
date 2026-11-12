@@ -5,6 +5,7 @@ mod composition;
 mod control;
 mod curve_preview;
 mod diagnostics;
+mod editable_text;
 mod recovery;
 mod sequence;
 mod text_outline;
@@ -131,6 +132,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 displayed_time: None,
                 draft,
                 draft_dirty: false,
+                text_preview_deadline: None,
                 graph: graph::Graph::default(),
                 effects: effects::Controls::default(),
                 library: preset_library::Library::default(),
@@ -187,6 +189,7 @@ struct Studio {
     displayed_time: Option<veylvik_document::Time>,
     draft: Node,
     draft_dirty: bool,
+    text_preview_deadline: Option<Instant>,
     graph: graph::Graph,
     effects: effects::Controls,
     library: preset_library::Library,
@@ -296,6 +299,7 @@ impl Studio {
         self.error = true;
     }
     fn refresh_draft(&mut self) {
+        self.text_preview_deadline = None;
         self.effects.edits.clear();
         self.effects.connections.clear();
         self.draft = self.project.document.snapshot().nodes[&self.project.selected].clone();
@@ -368,7 +372,39 @@ impl Studio {
             node_palette::Choice::Node(kind) => {
                 let doc = self.project.document.snapshot();
                 let operation = node_palette::operation(kind, doc.width, doc.height);
-                match self.project.add_at(operation, Some(position)) {
+                let added = if matches!(operation, Operation::Text { .. }) {
+                    let mut text = Node::new("Text", operation, &[]);
+                    text.position = Some(position);
+                    let id = text.id;
+                    let mut merge = Node::new(
+                        "Text over scene",
+                        Operation::Merge {},
+                        &[("background", doc.output), ("foreground", id)],
+                    );
+                    merge.position = Some(veylvik_document::NodePosition {
+                        x: position.x + 240.0,
+                        y: position.y,
+                    });
+                    let output = merge.id;
+                    self.project
+                        .apply(&[
+                            Command::Put {
+                                node: Box::new(text),
+                            },
+                            Command::Put {
+                                node: Box::new(merge),
+                            },
+                            Command::Output { id: output },
+                        ])
+                        .map(|()| {
+                            self.project.selected = id;
+                            self.project.preview = None;
+                            id
+                        })
+                } else {
+                    self.project.add_at(operation, Some(position))
+                };
+                match added {
                     Ok(_) => {
                         self.refresh_draft();
                         self.request_preview();
@@ -440,7 +476,20 @@ impl Studio {
             scheduler.cancel()?;
             Ok::<_, Box<dyn std::error::Error>>(scheduler.submit(
                 self.project.document.revision(),
-                self.project.plan()?,
+                if self.draft_dirty && matches!(self.draft.operation, Operation::Text { .. }) {
+                    let doc = self.project.document.prepare(
+                        self.project.document.revision(),
+                        &[Command::Put {
+                            node: Box::new(self.draft.clone()),
+                        }],
+                    )?;
+                    std::sync::Arc::new(veylvik_render::Plan::compile_output(
+                        &doc,
+                        self.project.preview.unwrap_or(doc.output),
+                    )?)
+                } else {
+                    self.project.plan()?
+                },
                 RenderRequest::full(self.project.time()?),
                 self.project.inputs.clone(),
             )?)
@@ -620,6 +669,49 @@ impl Studio {
                 self.file_started(result);
             }
         }
+    }
+    fn import_text_font(&mut self) {
+        if self.files.busy() || !self.apply_draft() {
+            return;
+        }
+        let mut node = self.draft.clone();
+        let session = self.project.session;
+        let revision = self.project.document.revision();
+        let folder = self.project.base.clone();
+        let time = self
+            .project
+            .time()
+            .unwrap_or(veylvik_document::Time { ticks: 0, rate: 1 });
+        let result = self.files.start(move || {
+            use std::io::Read;
+            let Some(path) = files::select(Choice::Font, &folder, "")? else {
+                return Ok(Completed::Cancelled);
+            };
+            let file = std::fs::File::open(&path).map_err(|e| e.to_string())?;
+            let mut bytes = Vec::new();
+            file.take(veylvik_document::text::MAX_FONT_BYTES as u64 + 1)
+                .read_to_end(&mut bytes)
+                .map_err(|e| e.to_string())?;
+            let font = veylvik_document::TextFont::embedded(
+                path.file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .into_owned(),
+                0,
+                &bytes,
+            )
+            .map_err(|e| e.to_string())?;
+            if let Operation::Text { font: target, .. } = &mut node.operation {
+                *target = font;
+            }
+            veylvik_text::outline(&node.operation, time).map_err(|e| e.to_string())?;
+            Ok(Completed::TextFont {
+                session,
+                revision,
+                node: Box::new(node),
+            })
+        });
+        self.file_started(result);
     }
     fn outline_text(&mut self, mut request: veylvik_io::text::OutlineRequest) {
         if self.files.busy() || !self.apply_draft() {
@@ -868,6 +960,23 @@ impl Studio {
                 self.status = "Cancelled".into();
                 self.error = false;
             }
+            Ok(Completed::TextFont {
+                session,
+                revision,
+                node,
+            }) => {
+                if session != self.project.session || revision != self.project.document.revision() {
+                    self.fail("Composition changed while choosing font");
+                } else {
+                    match self.project.apply(&[Command::Put { node }]) {
+                        Ok(()) => {
+                            self.refresh_draft();
+                            self.request_preview();
+                        }
+                        Err(e) => self.fail(e),
+                    }
+                }
+            }
             Ok(Completed::Outlined(node)) => {
                 let id = node.id;
                 match self.project.apply(&[Command::Put { node }]) {
@@ -1002,6 +1111,58 @@ impl Studio {
     }
     fn inspector_actions(&mut self, ui: &mut egui::Ui) {
         ui.heading("Inspector");
+        let texts: Vec<_> =
+            veylvik_document::presets::background::reachable(self.project.document.snapshot())
+                .into_iter()
+                .filter_map(|id| {
+                    let node = &self.project.document.snapshot().nodes[&id];
+                    if let Operation::Text { content, .. } = &node.operation {
+                        Some((id, content.chars().take(28).collect::<String>()))
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+        let mut select = None;
+        if !texts.is_empty() {
+            egui::ComboBox::from_id_salt("scene-text-selector")
+                .selected_text("Edit scene text…")
+                .show_ui(ui, |ui| {
+                    for (id, label) in texts {
+                        if ui
+                            .selectable_label(
+                                self.project.selected == id,
+                                if label.is_empty() {
+                                    "Empty text"
+                                } else {
+                                    &label
+                                },
+                            )
+                            .clicked()
+                        {
+                            select = Some(id);
+                        }
+                    }
+                });
+        }
+        if let Some(id) = select
+            && self.can_change_selection()
+        {
+            self.project.selected = id;
+            self.project.preview = None;
+            if let Some(group) = self
+                .project
+                .document
+                .snapshot()
+                .groups
+                .values()
+                .find(|g| g.members.contains(&id))
+            {
+                self.graph.expand(group.id);
+            }
+            self.refresh_draft();
+            self.request_preview();
+        }
         ui.horizontal(|ui| {
             if ui
                 .add_enabled(self.draft_dirty, egui::Button::new("Apply"))
@@ -1016,6 +1177,7 @@ impl Studio {
                 .clicked()
             {
                 self.refresh_draft();
+                self.request_preview();
             }
             if self.draft_dirty {
                 ui.weak("Unapplied changes");
@@ -1036,7 +1198,15 @@ impl Studio {
             .time()
             .unwrap_or(veylvik_document::Time { ticks: 0, rate: 1 });
         let mut replace_image = false;
+        let mut import_font = false;
+        let mut text_changed = false;
         match &mut self.draft.operation {
+            op @ Operation::Text { .. } => {
+                let (changed, import) = editable_text::controls(ui, op, time);
+                self.draft_dirty |= changed;
+                text_changed |= changed;
+                import_font = import;
+            }
             Operation::Path { geometry } => {
                 self.draft_dirty |= vector_editor::edit(ui, geometry);
             }
@@ -1194,19 +1364,38 @@ impl Studio {
         }
         let kind = self.draft.operation.descriptor();
         for parameter in kind.parameters {
+            if matches!(self.draft.operation, Operation::Text { .. }) {
+                break;
+            }
             if let Some(value) = self.draft.operation.scalar_mut(parameter.name) {
                 let label = format!("{} ({})", parameter.name.replace('_', " "), parameter.unit);
-                self.draft_dirty |= scalar(
+                let changed = scalar(
                     ui,
                     &label,
                     value,
                     parameter.min.unwrap()..=parameter.max.unwrap(),
                     time,
                 );
+                self.draft_dirty |= changed;
+                text_changed |= changed;
             }
+        }
+        if text_changed && matches!(self.draft.operation, Operation::Text { .. }) {
+            self.text_preview_deadline =
+                Some(Instant::now() + std::time::Duration::from_millis(150));
+        }
+        if import_font {
+            self.import_text_font();
         }
         if self.draft_dirty {
             self.playing = false;
+        }
+        self.text_connections(ui);
+        if matches!(self.draft.operation, Operation::Text { .. })
+            && self.project.preview.is_none()
+            && !editable_text::handles_in_scene(self.project.document.snapshot(), self.draft.id)
+        {
+            ui.weak("A downstream effect moves this text. Use Preview selected for source-position handles.");
         }
         ui.separator();
         for port in self.draft.operation.inputs() {
@@ -1567,6 +1756,16 @@ impl eframe::App for Studio {
         let ctx = ui.ctx().clone();
         self.theme(&ctx);
         self.poll_files(&ctx);
+        if let Some(deadline) = self.text_preview_deadline {
+            if Instant::now() >= deadline {
+                self.text_preview_deadline = None;
+                if self.draft_dirty && matches!(self.draft.operation, Operation::Text { .. }) {
+                    self.request_preview();
+                }
+            } else {
+                ctx.request_repaint_after(deadline.saturating_duration_since(Instant::now()));
+            }
+        }
         if let Some(error) = self.recovery.tick(&self.project) {
             self.fail(error);
         }
@@ -1859,8 +2058,15 @@ impl eframe::App for Studio {
                             .preview
                             .unwrap_or(self.project.document.snapshot().output);
                         if !self.playing
-                            && self.displayed_ticket == self.wanted
-                            && root == self.draft.id
+                            && (self.displayed_ticket == self.wanted
+                                || matches!(self.draft.operation, Operation::Text { .. }))
+                            && (root == self.draft.id
+                                || (matches!(self.draft.operation, Operation::Text { .. })
+                                    && self.project.preview.is_none()
+                                    && editable_text::handles_in_scene(
+                                        self.project.document.snapshot(),
+                                        self.draft.id,
+                                    )))
                             && let Ok(time) = self.project.time()
                         {
                             match handles::show(
@@ -1871,7 +2077,15 @@ impl eframe::App for Studio {
                                 &mut self.draft.operation,
                                 time,
                             ) {
-                                Ok(changed) => self.draft_dirty |= changed,
+                                Ok(changed) => {
+                                    self.draft_dirty |= changed;
+                                    if changed
+                                        && matches!(self.draft.operation, Operation::Text { .. })
+                                    {
+                                        self.text_preview_deadline =
+                                            Some(Instant::now() + Duration::from_millis(40));
+                                    }
+                                }
                                 Err(error) => self.fail(error),
                             }
                         }

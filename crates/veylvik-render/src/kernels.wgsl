@@ -656,3 +656,10 @@ fn patina(@builtin(global_invocation_id) gid:vec3<u32>) {
     color=mix(color,original.rgb*0.35,scratches);
     result[i]=vec4<f32>(color,original.a);
 }
+
+@compute @workgroup_size(8,8)
+fn text_image(@builtin(global_invocation_id) gid:vec3<u32>) {
+ if !inside(gid) {return;}
+ let a=source[index(gid)].a*p.values.a;
+ result[index(gid)]=vec4<f32>(p.values.rgb*a,a);
+}

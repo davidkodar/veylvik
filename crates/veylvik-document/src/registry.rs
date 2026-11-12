@@ -7,6 +7,12 @@ pub const MAX_ASSET_NAME: usize = 4096;
 #[serde(rename_all = "snake_case")]
 pub enum ParameterKind {
     Scalar,
+    TextFeatures,
+    TextContent,
+    TextFont,
+    TextAlignment,
+    TextLanguage,
+    Boolean,
     Seed,
     Color,
     Asset,
@@ -33,6 +39,12 @@ pub struct Parameter {
 impl Parameter {
     fn default_value(&self) -> Value {
         match self.kind {
+            ParameterKind::TextFeatures => json!(""),
+            ParameterKind::TextContent => json!("Your text"),
+            ParameterKind::TextFont => json!(crate::TextFont::default()),
+            ParameterKind::TextAlignment => json!(crate::TextAlignment::Center),
+            ParameterKind::TextLanguage => json!(""),
+            ParameterKind::Boolean => json!(false),
             ParameterKind::Scalar => json!({"kind":"constant","value":self.default}),
             ParameterKind::MaterialKind => json!(crate::MaterialKind::Gold),
             ParameterKind::AtmosphereKind => json!(crate::AtmosphereKind::Smoke),
@@ -52,6 +64,14 @@ impl Parameter {
     }
     fn schema(&self) -> Value {
         match self.kind {
+            ParameterKind::TextFeatures => json!({"type":"string","maxLength":256}),
+            ParameterKind::TextContent => json!({"type":"string","maxLength":4096}),
+            ParameterKind::TextFont => crate::text::font_schema(),
+            ParameterKind::TextAlignment => {
+                json!({"type":"string","enum":["left","center","right"]})
+            }
+            ParameterKind::TextLanguage => json!({"type":"string","maxLength":64}),
+            ParameterKind::Boolean => json!({"type":"boolean"}),
             ParameterKind::Scalar => {
                 let number = json!({"type":"number","minimum":self.min,"maximum":self.max});
                 json!({"oneOf":[
@@ -447,6 +467,35 @@ pub static CHANNEL_MASK: NodeType = NodeType {
     inputs: &["image"],
     parameters: &[other("channel", ParameterKind::MaskChannel, "channel")],
 };
+pub static TEXT: NodeType = NodeType {
+    type_id: "text",
+    version: 1,
+    label: "Text",
+    description: "Editable vector text with portable bundled or embedded fonts. Multiline alignment, tracking, line spacing and animated size/position. White alpha source for any material or colour. Explicit LTR/RTL per line; no automatic mixed-script bidi or fallback.",
+    inputs: &[],
+    parameters: &[
+        other("content", ParameterKind::TextContent, "text"),
+        other("font", ParameterKind::TextFont, "font"),
+        other("alignment", ParameterKind::TextAlignment, "alignment"),
+        other("rtl", ParameterKind::Boolean, "direction"),
+        other("language", ParameterKind::TextLanguage, "language"),
+        scalar("size", "pixels", 1.0, 1024.0, 160.0),
+        scalar("x", "pixels", -32768.0, 32768.0, 480.0),
+        scalar("y", "pixels", -32768.0, 32768.0, 320.0),
+        scalar("tracking", "pixels", -128.0, 512.0, 0.0),
+        scalar("line_height", "factor", 0.1, 4.0, 1.25),
+        scalar("rotation", "degrees", -36000.0, 36000.0, 0.0),
+        scalar("scale_x", "factor", -100.0, 100.0, 1.0),
+        scalar("scale_y", "factor", -100.0, 100.0, 1.0),
+        scalar("wrap_width", "pixels", 0.0, 8192.0, 0.0),
+        other("underline", ParameterKind::Boolean, "style"),
+        other("features", ParameterKind::TextFeatures, "OpenType"),
+        Parameter {
+            default: 1.0,
+            ..other("color", ParameterKind::Color, "linear RGBA")
+        },
+    ],
+};
 pub static PATH: NodeType = NodeType {
     type_id: "path",
     version: 1,
@@ -480,6 +529,7 @@ pub static TYPES: &[&NodeType] = &[
     &AFFINE,
     &ELLIPSE,
     &MASK,
+    &TEXT,
     &PATH,
     &BLEND,
     &DISPLACE,

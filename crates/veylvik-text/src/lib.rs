@@ -2,7 +2,9 @@
 //! `shape_run` accepts one horizontal directional/script run, not a paragraph.
 //! Paragraph bidi resolution, script itemization, font fallback and line wrapping
 //! belong to a higher layout layer. Font variation axes currently use defaults.
+mod editable;
 mod layout;
+pub use editable::outline;
 pub use layout::{Alignment, MAX_LINES, ShapedText, TextOptions};
 use std::{collections::BTreeMap, sync::Arc};
 use veylvik_document::vector::{FillRule, MAX_PATH_COMMANDS, PathCommand, PathMask};
@@ -37,6 +39,8 @@ pub struct RunOptions {
     pub origin: [f32; 2],
     pub direction: Direction,
     pub language: Option<String>,
+    pub tracking: f32,
+    pub features: Vec<harfrust::Feature>,
 }
 impl Default for RunOptions {
     fn default() -> Self {
@@ -45,6 +49,8 @@ impl Default for RunOptions {
             origin: [0.0, 64.0],
             direction: Direction::LeftToRight,
             language: None,
+            tracking: 0.0,
+            features: Vec::new(),
         }
     }
 }
@@ -93,6 +99,9 @@ impl Font {
                 "text run exceeds 4096 UTF-8 bytes or contains paragraph/control characters",
             ));
         }
+        if !options.tracking.is_finite() || !(-128.0..=512.0).contains(&options.tracking) {
+            return Err(error("Tracking must be within -128..512 pixels"));
+        }
         if !options.font_size.is_finite()
             || !(1.0..=1024.0).contains(&options.font_size)
             || options
@@ -125,7 +134,10 @@ impl Font {
             );
         }
         buffer.guess_segment_properties();
-        let shaped = shaper.shape(buffer, harfrust::ShapeOptions::default());
+        let shaped = shaper.shape(
+            buffer,
+            harfrust::ShapeOptions::default().features(&options.features),
+        );
         if shaped.len() > MAX_GLYPHS {
             return Err(error("text run exceeds 512 positioned glyphs"));
         }
@@ -134,7 +146,12 @@ impl Font {
         let mut commands = Vec::new();
         // Repeated glyphs share parsed font-unit contours within this run.
         let mut outlines = BTreeMap::<u16, Vec<PathCommand>>::new();
-        for (info, position) in shaped.glyph_infos().iter().zip(shaped.glyph_positions()) {
+        for (glyph_index, (info, position)) in shaped
+            .glyph_infos()
+            .iter()
+            .zip(shaped.glyph_positions())
+            .enumerate()
+        {
             let id = u16::try_from(info.glyph_id)
                 .map_err(|_| error("glyph id exceeds outline format"))?;
             if let std::collections::btree_map::Entry::Vacant(entry) = outlines.entry(id) {
@@ -158,8 +175,17 @@ impl Font {
                 pen[0] + position.x_offset as f32 * scale,
                 pen[1] - position.y_offset as f32 * scale,
             ];
+            let spacing = if shaped
+                .glyph_infos()
+                .get(glyph_index + 1)
+                .is_some_and(|next| next.cluster != info.cluster)
+            {
+                options.tracking
+            } else {
+                0.0
+            };
             let advance = [
-                position.x_advance as f32 * scale,
+                position.x_advance as f32 * scale + spacing,
                 -(position.y_advance as f32) * scale,
             ];
             let transform = |p: [f32; 2]| [origin[0] + p[0] * scale, origin[1] - p[1] * scale];

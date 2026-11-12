@@ -95,182 +95,28 @@ fn polygon(commands: &mut Vec<PathCommand>, points: &[[f32; 2]]) {
     commands.extend(points[1..].iter().map(|p| PathCommand::Line { to: *p }));
     commands.push(PathCommand::Close {});
 }
-// Original geometric lettering; no font files or external media are needed.
-fn lettering(word: &str) -> PathMask {
-    let mut commands = Vec::new();
-    for (i, c) in word.chars().enumerate() {
-        let x = 168.0 + i as f32 * 162.0;
-        let mut rect = |a: f32, b: f32, w: f32, h: f32| {
-            polygon(
-                &mut commands,
-                &[
-                    [x + a, 200.0 + b],
-                    [x + a + w, 200.0 + b],
-                    [x + a + w, 200.0 + b + h],
-                    [x + a, 200.0 + b + h],
-                ],
-            )
-        };
-        match c {
-            'N' => {
-                rect(0.0, 0.0, 24.0, 140.0);
-                rect(106.0, 0.0, 24.0, 140.0);
-                polygon(
-                    &mut commands,
-                    &[
-                        [x, 200.0],
-                        [x + 26.0, 200.0],
-                        [x + 130.0, 340.0],
-                        [x + 104.0, 340.0],
-                    ],
-                );
-            }
-            'E' | 'F' => {
-                rect(0.0, 0.0, 24.0, 140.0);
-                rect(24.0, 0.0, 106.0, 24.0);
-                rect(24.0, 58.0, 82.0, 24.0);
-                if c == 'E' {
-                    rect(24.0, 116.0, 106.0, 24.0);
-                }
-            }
-            'O' => {
-                rect(0.0, 0.0, 24.0, 140.0);
-                rect(106.0, 0.0, 24.0, 140.0);
-                rect(24.0, 0.0, 82.0, 24.0);
-                rect(24.0, 116.0, 82.0, 24.0);
-            }
-            'L' => {
-                rect(0.0, 0.0, 24.0, 140.0);
-                rect(24.0, 116.0, 106.0, 24.0);
-            }
-            'W' => {
-                polygon(
-                    &mut commands,
-                    &[
-                        [x, 200.0],
-                        [x + 25.0, 200.0],
-                        [x + 40.0, 306.0],
-                        [x + 55.0, 245.0],
-                        [x + 76.0, 245.0],
-                        [x + 91.0, 306.0],
-                        [x + 106.0, 200.0],
-                        [x + 130.0, 200.0],
-                        [x + 108.0, 340.0],
-                        [x + 83.0, 340.0],
-                        [x + 65.0, 285.0],
-                        [x + 48.0, 340.0],
-                        [x + 23.0, 340.0],
-                    ],
-                );
-            }
-            'D' => {
-                rect(0.0, 0.0, 24.0, 140.0);
-                rect(24.0, 0.0, 76.0, 24.0);
-                rect(24.0, 116.0, 76.0, 24.0);
-                polygon(
-                    &mut commands,
-                    &[
-                        [x + 100.0, 200.0],
-                        [x + 130.0, 230.0],
-                        [x + 130.0, 310.0],
-                        [x + 100.0, 340.0],
-                        [x + 100.0, 306.0],
-                        [x + 106.0, 296.0],
-                        [x + 106.0, 244.0],
-                        [x + 100.0, 234.0],
-                    ],
-                );
-            }
-            'G' => {
-                rect(0.0, 0.0, 24.0, 140.0);
-                rect(24.0, 0.0, 106.0, 24.0);
-                rect(24.0, 116.0, 106.0, 24.0);
-                rect(106.0, 65.0, 24.0, 51.0);
-                rect(70.0, 65.0, 36.0, 24.0);
-            }
-            'R' | 'P' => {
-                rect(0.0, 0.0, 24.0, 140.0);
-                rect(24.0, 0.0, 106.0, 24.0);
-                rect(106.0, 24.0, 24.0, 46.0);
-                rect(24.0, 70.0, 106.0, 24.0);
-                if c == 'R' {
-                    polygon(
-                        &mut commands,
-                        &[
-                            [x + 60.0, 294.0],
-                            [x + 88.0, 294.0],
-                            [x + 130.0, 340.0],
-                            [x + 98.0, 340.0],
-                        ],
-                    );
-                }
-            }
-            'I' => {
-                rect(0.0, 0.0, 130.0, 24.0);
-                rect(53.0, 24.0, 24.0, 92.0);
-                rect(0.0, 116.0, 130.0, 24.0);
-            }
-            'U' => {
-                rect(0.0, 0.0, 24.0, 140.0);
-                rect(106.0, 0.0, 24.0, 140.0);
-                rect(24.0, 116.0, 82.0, 24.0);
-            }
-            'S' => {
-                rect(0.0, 0.0, 130.0, 24.0);
-                rect(0.0, 24.0, 24.0, 46.0);
-                rect(0.0, 58.0, 130.0, 24.0);
-                rect(106.0, 82.0, 24.0, 34.0);
-                rect(0.0, 116.0, 130.0, 24.0);
-            }
-            'T' => {
-                rect(0.0, 0.0, 130.0, 24.0);
-                rect(53.0, 24.0, 24.0, 116.0);
-            }
-            'V' => {
-                polygon(
-                    &mut commands,
-                    &[
-                        [x, 200.0],
-                        [x + 27.0, 200.0],
-                        [x + 65.0, 307.0],
-                        [x + 103.0, 200.0],
-                        [x + 130.0, 200.0],
-                        [x + 79.0, 340.0],
-                        [x + 51.0, 340.0],
-                    ],
-                );
-            }
-            'A' => {
-                polygon(
-                    &mut commands,
-                    &[
-                        [x, 340.0],
-                        [x + 49.0, 200.0],
-                        [x + 81.0, 200.0],
-                        [x + 130.0, 340.0],
-                        [x + 104.0, 340.0],
-                        [x + 65.0, 229.0],
-                        [x + 26.0, 340.0],
-                    ],
-                );
-                polygon(
-                    &mut commands,
-                    &[
-                        [x + 35.0, 291.0],
-                        [x + 95.0, 291.0],
-                        [x + 104.0, 315.0],
-                        [x + 26.0, 315.0],
-                    ],
-                );
-            }
-            _ => unreachable!(),
-        }
+// Editable title source shared by the showcase scenes.
+fn title_text(word: &str) -> Operation {
+    let mut operation: Operation =
+        serde_json::from_value(crate::registry::TEXT.default_operation()).unwrap();
+    if let Operation::Text {
+        content,
+        size,
+        x,
+        y,
+        tracking,
+        ..
+    } = &mut operation
+    {
+        *content = word.into();
+        *size = 200.0.into();
+        *x = 480.0.into();
+        *y = 340.0.into();
+        *tracking = 12.0.into();
     }
-    PathMask {
-        fill_rule: FillRule::NonZero,
-        commands,
-    }
+    operation
 }
+
 pub fn build(id: &str) -> Result<Scene> {
     if matches!(super::builtin::category(id), "Materials" | "Atmosphere")
         || matches!(
@@ -315,7 +161,7 @@ pub fn build(id: &str) -> Result<Scene> {
         id,
         "prismatic_glow" | "radial_echo" | "orbit_echo" | "anamorphic_streaks" | "spotlight"
     ) || super::builtin::category(id) == "Particles";
-    let geometry = if emblem {
+    let artwork = if emblem {
         let mut commands = vec![];
         polygon(
             &mut commands,
@@ -332,19 +178,16 @@ pub fn build(id: &str) -> Result<Scene> {
             &mut commands,
             &[[480.0, 235.0], [565.0, 365.0], [395.0, 365.0]],
         );
-        PathMask {
-            fill_rule: FillRule::NonZero,
-            commands,
+        Operation::Path {
+            geometry: PathMask {
+                fill_rule: FillRule::NonZero,
+                commands,
+            },
         }
     } else {
-        lettering(if id == "neon_outline" { "NEON" } else { "FLOW" })
+        title_text(if id == "neon_outline" { "NEON" } else { "FLOW" })
     };
-    let shape = add(
-        &mut doc,
-        "Editable vector artwork",
-        Operation::Path { geometry },
-        &[],
-    );
+    let shape = add(&mut doc, "Editable vector artwork", artwork, &[]);
     let ramp = add(
         &mut doc,
         "Vertical palette ramp",

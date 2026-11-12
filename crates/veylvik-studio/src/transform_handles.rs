@@ -18,8 +18,11 @@ impl Geometry {
                 .expect("transform parameter")
                 .at(time)
         };
-        let affine = matches!(operation, Operation::Affine { .. });
-        let pivot = if affine {
+        let text = matches!(operation, Operation::Text { .. });
+        let affine = text || matches!(operation, Operation::Affine { .. });
+        let pivot = if text {
+            egui::vec2(sample("x")?, sample("y")?)
+        } else if affine {
             egui::vec2(sample("pivot_x")?, sample("pivot_y")?)
         } else {
             image * 0.5
@@ -31,7 +34,11 @@ impl Geometry {
         };
         let (sin, cos) = angle.sin_cos();
         Ok(Self {
-            center: pivot + egui::vec2(sample("x")?, sample("y")?),
+            center: if text {
+                pivot
+            } else {
+                pivot + egui::vec2(sample("x")?, sample("y")?)
+            },
             pivot,
             axes: [
                 egui::vec2(cos as f32, sin as f32),
@@ -140,10 +147,12 @@ pub fn show(
         egui::vec2(0.0, image.y),
         Vec2::ZERO,
     ];
-    painter.add(egui::Shape::line(
-        corners.map(|point| screen(geometry.map(point))).to_vec(),
-        stroke,
-    ));
+    if !matches!(operation, Operation::Text { .. }) {
+        painter.add(egui::Shape::line(
+            corners.map(|point| screen(geometry.map(point))).to_vec(),
+            stroke,
+        ));
+    }
     let mut points = vec![(center, "Drag to translate. Apply commits; Revert discards.")];
     if geometry.affine {
         for (axis, value, hint) in [

@@ -6,6 +6,7 @@ rust-version.workspace = true
 [dependencies]
 veylvik-control.workspace = true
 veylvik-document.workspace = true
+veylvik-text.workspace = true
 veylvik-render.workspace = true
 veylvik-io.workspace = true
 wgpu.workspace = true

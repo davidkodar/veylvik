@@ -245,3 +245,77 @@ pub fn read(
         _ => fail("supply exactly one of group or starter"),
     }
 }
+
+/// Insert a new processing branch after a public layer, retaining all existing
+/// consumers and animation. Validate the complete transaction before returning it.
+pub fn connect_after(
+    doc: &Composition,
+    source: NodeId,
+    output: NodeId,
+    mut commands: Vec<Command>,
+) -> Result<Vec<Command>> {
+    if !doc.nodes.contains_key(&source) {
+        return fail("selected layer does not exist");
+    }
+    let owner = doc.groups.values().find(|g| g.members.contains(&source));
+    if owner.is_some_and(|g| g.output != source) {
+        return fail("Select the group's output to connect an effect outside it");
+    }
+    for node in doc.nodes.values() {
+        if owner.is_some_and(|g| g.members.contains(&node.id)) {
+            continue;
+        }
+        let mut next = node.clone();
+        let mut changed = false;
+        for input in next.inputs.values_mut() {
+            if *input == source {
+                *input = output;
+                changed = true;
+            }
+        }
+        if changed {
+            commands.push(Command::Put {
+                node: Box::new(next),
+            });
+        }
+    }
+    if doc.output == source {
+        commands.push(Command::Output { id: output });
+    }
+    crate::Document::new(doc.clone())?.prepare(0, &commands)?;
+    Ok(commands)
+}
+
+/// Clip any independent image/effect branch to a layer's alpha and reconnect it.
+pub fn fill_layer(
+    doc: &Composition,
+    layer: NodeId,
+    image: NodeId,
+) -> Result<(NodeId, Vec<Command>)> {
+    if layer == image {
+        return fail("Choose another layer as the fill");
+    }
+    let mut mask = Node::new(
+        "Image inside text / shape",
+        Operation::Mask {},
+        &[("image", image), ("mask", layer)],
+    );
+    mask.position = doc
+        .nodes
+        .get(&layer)
+        .and_then(|n| n.position)
+        .map(|p| NodePosition {
+            x: p.x + 220.0,
+            y: p.y,
+        });
+    let output = mask.id;
+    let commands = connect_after(
+        doc,
+        layer,
+        output,
+        vec![Command::Put {
+            node: Box::new(mask),
+        }],
+    )?;
+    Ok((output, commands))
+}

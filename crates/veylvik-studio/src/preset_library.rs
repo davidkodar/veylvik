@@ -22,6 +22,8 @@ pub struct Library {
     detail: Option<&'static str>,
     inputs: BTreeMap<String, NodeId>,
     position: Option<NodePosition>,
+    connect: bool,
+    anchor: Option<NodeId>,
     identity: Option<(NodeId, u64)>,
 }
 #[derive(Clone)]
@@ -101,6 +103,8 @@ impl Studio {
             .values()
             .find(|g| g.members.contains(&self.project.selected))
             .map_or(self.project.selected, |g| g.output);
+        self.library.anchor = Some(source);
+        self.library.connect = !preset.group.inputs.is_empty();
         self.library.inputs = preset
             .group
             .inputs
@@ -141,6 +145,7 @@ impl Studio {
                                 }
                             });
                         }
+                        ui.checkbox(&mut self.library.connect, "Connect into selected layer").on_hover_text("Keep downstream effects and the scene output connected. Disable to add a separate branch.");
                         ui.horizontal_wrapped(|ui| {
                             if ui.button("Add effect").clicked() { action = Some(Action::Insert); }
                             if ui.button("Export preset…").clicked() { action = Some(Action::Export); }
@@ -336,17 +341,33 @@ impl Studio {
                     return;
                 }
                 let preset = self.library.ready.as_ref().unwrap();
-                match preset.instantiate_sized(
-                    self.project.document.snapshot(),
-                    &self.library.inputs,
-                    self.library.position,
-                    self.library.sizing,
-                ) {
+                match preset
+                    .instantiate_sized(
+                        self.project.document.snapshot(),
+                        &self.library.inputs,
+                        self.library.position,
+                        self.library.sizing,
+                    )
+                    .and_then(|mut instance| {
+                        if self.library.connect {
+                            instance.commands = veylvik_document::presets::connect_after(
+                                self.project.document.snapshot(),
+                                self.library.anchor.unwrap(),
+                                instance.output,
+                                instance.commands,
+                            )?;
+                        }
+                        Ok(instance)
+                    }) {
                     Ok(instance) => match self.project.apply(&instance.commands) {
                         Ok(()) => {
                             self.library.open = false;
                             self.project.selected = instance.output;
-                            self.project.preview = Some(instance.output);
+                            self.project.preview = if self.library.connect {
+                                None
+                            } else {
+                                Some(instance.output)
+                            };
                             self.graph.collapse(instance.group);
                             self.refresh_draft();
                             self.request_preview();

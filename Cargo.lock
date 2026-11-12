@@ -3622,9 +3622,11 @@ dependencies = [
 name = "veylvik-document"
 version = "0.1.0"
 dependencies = [
+ "base64",
  "serde",
  "serde_json",
  "thiserror 2.0.21",
+ "ttf-parser",
  "uuid",
 ]
 
@@ -3655,6 +3657,7 @@ dependencies = [
  "vello_common 0.2.0",
  "vello_hybrid",
  "veylvik-document",
+ "veylvik-text",
  "wgpu",
 ]
 
@@ -3673,6 +3676,7 @@ dependencies = [
  "veylvik-document",
  "veylvik-io",
  "veylvik-render",
+ "veylvik-text",
  "wgpu",
 ]
 

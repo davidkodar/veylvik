@@ -198,25 +198,24 @@ impl Renderer {
             plan.gpu_working_bytes()
         }) - plan.vector_bytes()
             + self.source_bytes(plan, inputs)?;
-        let keys: Vec<_> = plan
-            .nodes
-            .iter()
-            .enumerate()
-            .filter_map(|(index, node)| {
-                if let veylvik_document::Operation::Path { geometry } = &node.operation {
-                    Some((
-                        index,
-                        Key {
-                            geometry: geometry.clone(),
-                            width: plan.width,
-                            height: plan.height,
-                        },
-                    ))
-                } else {
-                    None
+        let mut keys = Vec::new();
+        for (index, node) in plan.nodes.iter().enumerate() {
+            let geometry = match &node.operation {
+                veylvik_document::Operation::Path { geometry } => geometry.clone(),
+                veylvik_document::Operation::Text { .. } => {
+                    veylvik_text::outline(&node.operation, request.time).map_err(error)?
                 }
-            })
-            .collect();
+                _ => continue,
+            };
+            keys.push((
+                index,
+                Key {
+                    geometry,
+                    width: plan.width,
+                    height: plan.height,
+                },
+            ));
+        }
         let frame_bytes = u64::from(plan.width) * u64::from(plan.height) * 16;
         let mut cache = self
             .vector_cache

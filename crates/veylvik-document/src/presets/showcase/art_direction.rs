@@ -157,9 +157,7 @@ impl Art {
     fn text(&mut self, word: &str) -> NodeId {
         self.node(
             &format!("{word} · editable lettering"),
-            Operation::Path {
-                geometry: lettering(word),
-            },
+            title_text(word),
             &[],
         )
     }

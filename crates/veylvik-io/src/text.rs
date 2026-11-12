@@ -81,6 +81,8 @@ pub fn outline(base: &Path, request: &OutlineRequest) -> Result<OutlinedText> {
         &request.text,
         &TextOptions {
             run: RunOptions {
+                tracking: 0.0,
+                features: Vec::new(),
                 font_size: request.font_size,
                 origin: request.origin,
                 language: request.language.clone(),

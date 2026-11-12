@@ -176,7 +176,7 @@ playback and key navigation on the timeline, and display controls in the viewer.
 description, use Up/Down to choose, and Enter to add; Escape cancels. New effects
 connect to the selected node, and procedural nodes appear at the graph position
 where the picker opened. Gradient endpoints and shape defaults follow the
-composition size. Image and outlined-text choices open their import dialogs.
+composition size. **Text** adds an editable title over the composition. Image and outlined-text choices open their import dialogs.
 Socket drags work in either direction; Escape or dropping on empty space cancels.
 Each accepted rewire is one undo step. Named inputs are also editable in the inspector. Inspector
 changes are drafts until **Apply**; one apply creates one undo step. Apply and
@@ -597,8 +597,8 @@ and an optional `PathMask`. Ligatures, kerning and combining marks remain the
 shaper's responsibility. Empty and whitespace-only runs have no outline. Font
 files are capped at 32 MiB, text at 4096 UTF-8 bytes, positioned runs at 512 glyphs,
 and combined outlines at the path limit. It performs no font discovery, fallback,
-paragraph bidi layout, wrapping or bitmap/color-glyph rendering. This library
-boundary does not yet provide a live editable Text node.
+paragraph bidi layout or bitmap/color-glyph rendering. The editable Text node
+adds bounded word wrapping on top of this shaping layer.
 
 `shape_lines` adds explicit LF/CRLF line breaks, up to 64 lines, with left,
 center or right alignment around the requested baseline x coordinate. Blank lines
@@ -606,6 +606,32 @@ retain their spacing. Each line must still be one directional/script run; this
 is not automatic mixed-direction paragraph layout. The 4096-byte, 512-glyph and
 4096-command limits apply to the entire block. Returned `advance` contains the
 maximum line advance and the first-to-last baseline distance, not ink bounds.
+
+Use **Add → Text** for editable titles. **Edit scene text…** in the inspector
+finds titles even underneath material/effect groups. Wording, font, alignment,
+colour, underline, wrapping, tracking and line spacing remain editable; size,
+position, rotation and horizontal/vertical scale support timeline keyframes.
+Mirror and flip buttons preserve animation keys. Viewer handles manipulate the
+text's source coordinates. Downstream transforms can change where that source
+appears; preview the text node itself for direct source placement in that case.
+Typing previews the draft; **Apply** commits one Undo step, **Revert** restores
+it. Changing text keeps connected materials, reflections and animation intact.
+
+Regular/bold/italic/bold-italic Liberation Sans and a monospace font are bundled.
+**Choose font file…** embeds a TTF/OTF/TTC font (up to 8 MiB) in the project;
+rendering does not depend on that file remaining installed. The bundled
+Liberation font license is in `crates/veylvik-text/assets/fonts/LICENSE`.
+OpenType feature tags, language and explicit right-to-left direction are under
+advanced controls. Mixed-direction paragraphs, automatic font fallback, variable
+font axes, rich-text spans and per-character animation are not implemented yet.
+Missing characters and excessive outline complexity produce explicit errors.
+
+The library's **Connect into selected layer** option preserves the existing
+consumers and composition output when inserting an effect; disable it to create
+a separate branch. **Fill text with an image or effect** clips another independent
+branch to the text alpha. That branch can be a still, animated procedural image,
+or material surface. Cyclic connections are excluded. Background and foreground
+placement uses the same ordinary graph, with no preset-specific text renderer.
 
 In Studio, choose **Add → Text outlines…**, enter text with line breaks, and
 choose a TTF/OTF/TTC font through the desktop picker. Conversion runs in the

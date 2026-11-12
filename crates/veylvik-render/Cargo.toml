@@ -5,6 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 [dependencies]
 veylvik-document.workspace = true
+veylvik-text.workspace = true
 wgpu.workspace = true
 bytemuck.workspace = true
 pollster.workspace = true

@@ -46,7 +46,8 @@ fn offset(op: &Operation, parameter: &str, m: Mapping) -> f32 {
         "pivot_y" | "start_y" | "end_y" => Some(1),
         "x" if matches!(
             op,
-            Operation::Ellipse { .. }
+            Operation::Text { .. }
+                | Operation::Ellipse { .. }
                 | Operation::Fire { .. }
                 | Operation::MetallicShine { .. }
                 | Operation::Atmosphere { .. }
@@ -56,7 +57,8 @@ fn offset(op: &Operation, parameter: &str, m: Mapping) -> f32 {
         }
         "y" if matches!(
             op,
-            Operation::Ellipse { .. }
+            Operation::Text { .. }
+                | Operation::Ellipse { .. }
                 | Operation::Fire { .. }
                 | Operation::MetallicShine { .. }
                 | Operation::Atmosphere { .. }

@@ -6,6 +6,7 @@ use veylvik_document::{CompiledScalar, Composition, Node, NodeId, Operation, Sca
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Kernel {
+    Text,
     Solid,
     Noise,
     FractalNoise,
@@ -36,7 +37,8 @@ pub enum Kernel {
     Gradient,
 }
 impl Kernel {
-    pub(crate) const ALL: [Self; 28] = [
+    pub(crate) const ALL: [Self; 29] = [
+        Self::Text,
         Self::Solid,
         Self::Noise,
         Self::FractalNoise,
@@ -68,6 +70,7 @@ impl Kernel {
     ];
     pub(crate) fn entry(self) -> &'static str {
         match self {
+            Self::Text => "text_image",
             Self::Solid => "solid",
             Self::Fire => "fire",
             Self::Atmosphere => "atmosphere",
@@ -216,14 +219,18 @@ impl Plan {
                 Operation::Gradient { .. } => Kernel::Gradient,
                 Operation::CombineMask { .. } => Kernel::CombineMask,
                 Operation::Mask {} => Kernel::Mask,
-                Operation::Path { .. } => {
+                Operation::Path { .. } | Operation::Text { .. } => {
                     if composition.width > crate::MAX_VECTOR_DIMENSION
                         || composition.height > crate::MAX_VECTOR_DIMENSION
                     {
                         return Err(error("vector mask dimensions exceed 4096"));
                     }
                     inputs[0] = Input::Vector(index);
-                    Kernel::Image
+                    if matches!(node.operation, Operation::Text { .. }) {
+                        Kernel::Text
+                    } else {
+                        Kernel::Image
+                    }
                 }
                 Operation::Image { asset } => {
                     inputs[0] = Input::Asset(asset.clone());
@@ -392,7 +399,7 @@ impl Plan {
     pub(crate) fn vector_bytes(&self) -> u64 {
         self.nodes
             .iter()
-            .filter(|n| matches!(n.operation, Operation::Path { .. }))
+            .filter(|n| matches!(n.operation, Operation::Path { .. } | Operation::Text { .. }))
             .count() as u64
             * u64::from(self.width)
             * u64::from(self.height)

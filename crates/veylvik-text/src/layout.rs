@@ -44,8 +44,10 @@ impl Font {
             return Err(error("text exceeds 64 lines"));
         }
         let line_height = options.line_height.unwrap_or(options.run.font_size * 1.25);
-        if !line_height.is_finite() || !(1.0..=4096.0).contains(&line_height) {
-            return Err(error("line height must be within 1..4096 pixels"));
+        if !line_height.is_finite() || !(f32::MIN_POSITIVE..=4096.0).contains(&line_height) {
+            return Err(error(
+                "line height must be positive and at most 4096 pixels",
+            ));
         }
         if options
             .run

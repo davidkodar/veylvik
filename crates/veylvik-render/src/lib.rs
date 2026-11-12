@@ -225,6 +225,9 @@ fn params(
             ];
             p.extra[0] = sample("feather")?.max(1.0);
         }
+        Operation::Text { color, .. } => {
+            p.values = *color;
+        }
         Operation::Path { .. } => {
             p.values = [width as f32, height as f32, 0.0, 0.0];
             p.extra[0] = width as f32;

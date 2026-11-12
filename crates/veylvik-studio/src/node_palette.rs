@@ -42,7 +42,7 @@ fn entries(query: &str) -> Vec<Entry> {
         choice: Choice::Text,
         label: "Outline text…",
         description: "Shape text using an explicit font into a portable vector mask.",
-        id: "text",
+        id: "outline_text",
     });
     entries.extend(veylvik_document::recipes::Recipe::ALL.map(|recipe| Entry {
         choice: Choice::Effect(recipe),
@@ -179,6 +179,11 @@ pub fn operation(kind: &NodeType, width: u32, height: u32) -> Operation {
     let mut operation: Operation =
         serde_json::from_value(kind.default_operation()).expect("validated registry defaults");
     match &mut operation {
+        Operation::Text { x, y, size, .. } => {
+            *x = (width as f32 * 0.5).into();
+            *y = (height as f32 * 0.6).into();
+            *size = (height as f32 * 0.28).clamp(1.0, 1024.0).into();
+        }
         Operation::MetallicShine { x, y, width: w, .. } => {
             *x = (width as f32 * 0.5).into();
             *y = (height as f32 * 0.5).into();
@@ -269,7 +274,8 @@ mod tests {
     #[test]
     fn search_prefers_names_supports_tokens_and_keeps_import_actions() {
         assert!(matches!(entries("image")[0].choice, Choice::Image));
-        assert!(matches!(entries("TEXT")[0].choice, Choice::Text));
+        assert!(matches!(entries("TEXT")[0].choice, Choice::Node(kind) if kind.type_id=="text"));
+        assert!(matches!(entries("outline text")[0].choice, Choice::Text));
         assert_eq!(entries("fractal NOI")[0].id, "fractal_noise");
         assert_eq!(
             entries("noise")

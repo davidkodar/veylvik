@@ -47,6 +47,24 @@ impl Key {
                     Input::Empty => words.extend([0, 0, 0]),
                     Input::Value(slot) => words.extend([1, *slot as u32, 0]),
                     Input::Vector(index) => {
+                        if let veylvik_document::Operation::Text { .. } =
+                            &plan.nodes[*index].operation
+                        {
+                            let op = &plan.nodes[*index].operation;
+                            let bytes = serde_json::to_vec(op).map_err(error)?;
+                            words.extend([4, bytes.len() as u32]);
+                            for chunk in bytes.chunks(4) {
+                                let mut word = [0u8; 4];
+                                word[..chunk.len()].copy_from_slice(chunk);
+                                words.push(u32::from_le_bytes(word));
+                            }
+                            for parameter in op.descriptor().parameters {
+                                if let Some(value) = op.scalar(parameter.name) {
+                                    words.push(value.at(request.time)?.to_bits());
+                                }
+                            }
+                            continue;
+                        }
                         use veylvik_document::vector::PathCommand::*;
                         let veylvik_document::Operation::Path { geometry } =
                             &plan.nodes[*index].operation
