@@ -73,7 +73,9 @@ Closing asks about unsaved document or inspector changes.
 | ? | Show shortcuts |
 
 The editor follows the current Omarchy accent, with a fallback when Omarchy is
-absent. Node positions are currently session-only. Source images load when the
+absent. Node positions are saved with the project; each drag is one undo step.
+Drag the graph background to pan, Ctrl+scroll to zoom, and use **Fit** to see
+the whole graph. **Arrange** restores an automatic layout as one undoable edit. Source images load when the
 project opens or an image is imported, within a 256 MiB host image budget. The
 initial UI uses English labels. A working `org.freedesktop.portal.FileChooser`
 service is required for interactive file selection; failures are shown in the

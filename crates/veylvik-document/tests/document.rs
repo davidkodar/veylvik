@@ -175,3 +175,61 @@ fn out_of_range_animated_values_fail_before_commit() {
     );
     assert_eq!(doc.revision(), 0);
 }
+
+#[test]
+fn layout_is_optional_persistent_and_transactional() {
+    let original = demo();
+    let id = original.output;
+    let json = serde_json::to_value(&original).unwrap();
+    assert!(json["nodes"][id.to_string()].get("position").is_none());
+    let restored: Composition = serde_json::from_value(json).unwrap();
+    let mut document = Document::new(restored).unwrap();
+    let position = Some(NodePosition { x: -120.0, y: 72.5 });
+    document
+        .apply(0, &[Command::Place { id, position }])
+        .unwrap();
+    let wire = serde_json::to_string(document.snapshot()).unwrap();
+    let restored: Composition = serde_json::from_str(&wire).unwrap();
+    assert_eq!(restored.nodes[&id].position, position);
+    document.undo(1).unwrap();
+    assert_eq!(document.snapshot().nodes[&id].position, None);
+    document.redo(2).unwrap();
+    assert_eq!(document.snapshot().nodes[&id].position, position);
+    for invalid in [f32::NAN, f32::INFINITY, 1_000_001.0] {
+        assert!(
+            document
+                .apply(
+                    3,
+                    &[
+                        Command::Resize {
+                            width: 32,
+                            height: 32
+                        },
+                        Command::Place {
+                            id,
+                            position: Some(NodePosition { x: invalid, y: 0.0 })
+                        }
+                    ]
+                )
+                .is_err()
+        );
+        assert_eq!(document.revision(), 3);
+        assert_eq!(document.snapshot().width, original.width);
+        assert_eq!(document.snapshot().nodes[&id].position, position);
+    }
+    assert!(
+        document
+            .apply(
+                3,
+                &[Command::Place {
+                    id: NodeId::new_v4(),
+                    position
+                }]
+            )
+            .is_err()
+    );
+    document
+        .apply(3, &[Command::Place { id, position: None }])
+        .unwrap();
+    assert_eq!(document.snapshot().nodes[&id].position, None);
+}

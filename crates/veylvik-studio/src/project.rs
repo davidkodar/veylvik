@@ -120,13 +120,22 @@ impl Project {
             self.preview = None;
         }
     }
+    #[cfg(test)]
     pub fn add(&mut self, operation: Operation) -> Result<NodeId> {
+        self.add_at(operation, None)
+    }
+    pub fn add_at(
+        &mut self,
+        operation: Operation,
+        position: Option<veylvik_document::NodePosition>,
+    ) -> Result<NodeId> {
         let ports: Vec<_> = operation
             .inputs()
             .iter()
             .map(|port| (*port, self.selected))
             .collect();
-        let node = Node::new(operation.descriptor().label, operation.clone(), &ports);
+        let mut node = Node::new(operation.descriptor().label, operation.clone(), &ports);
+        node.position = position;
         let id = node.id;
         self.apply(&[Command::Put {
             node: Box::new(node),
@@ -148,11 +157,19 @@ impl Project {
         self.stamp = Some(saved.stamp);
         self.saved_revision = Some(saved.revision);
     }
-    pub fn import(&mut self, path: &Path, image: Arc<veylvik_render::Image>) -> Result<()> {
+    pub fn import(
+        &mut self,
+        path: &Path,
+        image: Arc<veylvik_render::Image>,
+        position: veylvik_document::NodePosition,
+    ) -> Result<()> {
         let asset = path.to_str().ok_or("image path is not UTF-8")?.to_owned();
-        self.add(Operation::Image {
-            asset: asset.clone(),
-        })?;
+        self.add_at(
+            Operation::Image {
+                asset: asset.clone(),
+            },
+            Some(position),
+        )?;
         self.inputs.insert(asset, image);
         Ok(())
     }

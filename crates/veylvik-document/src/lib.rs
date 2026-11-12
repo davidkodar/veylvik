@@ -1,5 +1,6 @@
 //! Serializable compositions and transactional editing, independent of GPU and UI.
 pub mod registry;
+pub mod schema;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
@@ -261,12 +262,32 @@ impl Operation {
         }
     }
 }
+/// Authoring coordinates; never used by the render compiler's pixel semantics.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NodePosition {
+    pub x: f32,
+    pub y: f32,
+}
+impl NodePosition {
+    pub fn validate(self) -> Result<()> {
+        if [self.x, self.y]
+            .iter()
+            .any(|v| !v.is_finite() || v.abs() > 1_000_000.0)
+        {
+            return fail("node position must be finite and within ±1000000");
+        }
+        Ok(())
+    }
+}
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Node {
     pub id: NodeId,
     pub version: u32,
     pub label: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub position: Option<NodePosition>,
     pub operation: Operation,
     pub inputs: BTreeMap<String, NodeId>,
 }
@@ -276,6 +297,7 @@ impl Node {
             id: Uuid::new_v4(),
             version: 1,
             label: label.into(),
+            position: None,
             operation,
             inputs: inputs.iter().map(|(k, v)| ((*k).into(), *v)).collect(),
         }
@@ -316,6 +338,9 @@ impl Composition {
                 return fail(format!("invalid identity or version for {id}"));
             }
             node.operation.validate()?;
+            if let Some(position) = node.position {
+                position.validate()?;
+            }
             let expected: BTreeSet<_> = node.operation.inputs().iter().copied().collect();
             let actual: BTreeSet<_> = node.inputs.keys().map(String::as_str).collect();
             if expected != actual {
@@ -400,10 +425,23 @@ pub fn atomic_write(path: &Path, data: &[u8]) -> Result<()> {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "command", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Command {
-    Put { node: Box<Node> },
-    Remove { id: NodeId },
-    Output { id: NodeId },
-    Resize { width: u32, height: u32 },
+    Put {
+        node: Box<Node>,
+    },
+    Remove {
+        id: NodeId,
+    },
+    Output {
+        id: NodeId,
+    },
+    Resize {
+        width: u32,
+        height: u32,
+    },
+    Place {
+        id: NodeId,
+        position: Option<NodePosition>,
+    },
 }
 /// Only this owner publishes revisions. Renderers receive immutable snapshots.
 pub struct Document {
@@ -454,6 +492,12 @@ impl Document {
                     }
                 }
                 Command::Output { id } => next.output = *id,
+                Command::Place { id, position } => {
+                    next.nodes
+                        .get_mut(id)
+                        .ok_or_else(|| Error("cannot place missing node".into()))?
+                        .position = *position;
+                }
                 Command::Resize { width, height } => {
                     next.width = *width;
                     next.height = *height;

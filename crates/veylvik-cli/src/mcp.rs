@@ -19,11 +19,7 @@ fn tools() -> Value {
     json!({"tools":[
         tool("inspect","Read the composition and current revision.",json!({}),&[]),
         tool("nodes","List supported node operations, ports and example payloads.",json!({}),&[]),
-        tool("apply","Validate or commit an atomic batch. dry_run returns the candidate without changing history. Use nodes for payload examples. A put command inserts or replaces the complete node.",json!({"revision":revision,"dry_run":{"type":"boolean"},"commands":{"type":"array","minItems":1,"maxItems":4096,"items":{"oneOf":[
-            {"type":"object","properties":{"command":{"const":"put"},"node":{"type":"object","properties":{"id":{"type":"string","format":"uuid"},"version":{"const":1},"label":{"type":"string"},"operation":veylvik_document::registry::operation_schema(),"inputs":{"type":"object","additionalProperties":{"type":"string","format":"uuid"}}},"required":["id","version","label","operation","inputs"],"additionalProperties":false}},"required":["command","node"],"additionalProperties":false},
-            {"type":"object","properties":{"command":{"enum":["remove","output"]},"id":{"type":"string","format":"uuid"}},"required":["command","id"],"additionalProperties":false},
-            {"type":"object","properties":{"command":{"const":"resize"},"width":{"type":"integer","minimum":1,"maximum":8192},"height":{"type":"integer","minimum":1,"maximum":8192}},"required":["command","width","height"],"additionalProperties":false}
-        ]}}}),&["revision","commands"]),
+        tool("apply","Validate or commit an atomic batch. dry_run returns the candidate without changing history. Use nodes for payload examples. A put command inserts or replaces the complete node.",json!({"revision":revision,"dry_run":{"type":"boolean"},"commands":{"type":"array","minItems":1,"maxItems":4096,"items":veylvik_document::schema::command()}}),&["revision","commands"]),
         tool("undo","Undo one transaction, with a revision precondition.",json!({"revision":revision}),&["revision"]),
         tool("redo","Redo one transaction, with a revision precondition.",json!({"revision":revision}),&["revision"]),
         tool("save","Atomically save the current composition to an explicit path.",json!({"path":{"type":"string"},"revision":revision}),&["path","revision"]),

@@ -1,17 +1,17 @@
 mod display;
 mod files;
+mod graph;
 mod project;
 use display::{Display, DisplayFrame, Paint};
 use eframe::{egui, egui_wgpu};
 use files::{Choice, Completed, Tasks};
 use project::Project;
 use std::{
-    collections::BTreeMap,
     path::PathBuf,
     sync::Arc,
     time::{Duration, Instant},
 };
-use veylvik_document::{Command, Node, NodeId, Operation, Scalar};
+use veylvik_document::{Command, Node, Operation, Scalar};
 use veylvik_render::{GpuPreviewScheduler, PreviewTicket, RenderRequest, Renderer};
 
 fn main() {
@@ -71,7 +71,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 wanted: None,
                 draft,
                 draft_dirty: false,
-                positions: BTreeMap::new(),
+                graph: graph::Graph::default(),
                 status: String::new(),
                 error: false,
                 playing: false,
@@ -107,7 +107,7 @@ struct Studio {
     wanted: Option<PreviewTicket>,
     draft: Node,
     draft_dirty: bool,
-    positions: BTreeMap<NodeId, egui::Pos2>,
+    graph: graph::Graph,
     status: String,
     error: bool,
     playing: bool,
@@ -182,6 +182,10 @@ impl Studio {
         }
     }
     fn history(&mut self, redo: bool) {
+        if self.graph.dragging() {
+            self.fail("Finish moving the node first.");
+            return;
+        }
         if !self.can_change_selection() {
             return;
         }
@@ -357,19 +361,24 @@ impl Studio {
             }
             Ok(Completed::Opened(project)) => {
                 self.project = *project;
-                self.positions.clear();
+                self.graph = graph::Graph::default();
                 self.displayed = None;
                 self.displayed_ticket = None;
                 self.refresh_draft();
                 self.request_preview();
             }
-            Ok(Completed::Imported { path, image }) => match self.project.import(&path, image) {
-                Ok(()) => {
-                    self.refresh_draft();
-                    self.request_preview();
+            Ok(Completed::Imported { path, image }) => {
+                match self
+                    .project
+                    .import(&path, image, self.graph.insertion_position(ctx))
+                {
+                    Ok(()) => {
+                        self.refresh_draft();
+                        self.request_preview();
+                    }
+                    Err(e) => self.fail(e),
                 }
-                Err(e) => self.fail(e),
-            },
+            }
             Ok(Completed::Saved(saved)) => {
                 self.status = format!("Saved {}", saved.stamp.path().display());
                 self.error = false;
@@ -494,7 +503,10 @@ impl Studio {
                         _ => {}
                     }
                     if ui.button(label).clicked() && self.can_change_selection() {
-                        match self.project.add(operation) {
+                        match self
+                            .project
+                            .add_at(operation, Some(self.graph.insertion_position(ui.ctx())))
+                        {
                             Ok(_) => {
                                 self.refresh_draft();
                                 self.request_preview();
@@ -669,116 +681,48 @@ impl Studio {
         self.playback_frame = self.project.frame;
     }
     fn graph(&mut self, ui: &mut egui::Ui) {
-        ui.horizontal(|ui| {
-            ui.heading("Nodes");
-            ui.weak("Select a node to inspect it · drag to arrange · scroll to pan");
-        });
-        let doc = self.project.document.snapshot();
-        let nodes: Vec<_> = doc
-            .validate()
-            .unwrap_or_default()
-            .iter()
-            .map(|id| doc.nodes[id].clone())
-            .collect();
-        let output = doc.output;
-        let mut depths = BTreeMap::new();
-        let mut rows = BTreeMap::<usize, usize>::new();
-        for node in &nodes {
-            let depth = node
-                .inputs
-                .values()
-                .map(|id| depths[id] + 1)
-                .max()
-                .unwrap_or(0);
-            depths.insert(node.id, depth);
-            let row = rows.entry(depth).or_default();
-            self.positions.entry(node.id).or_insert(egui::pos2(
-                25.0 + depth as f32 * 195.0,
-                20.0 + *row as f32 * 90.0,
-            ));
-            *row += 1;
+        let actions = self.graph.show(
+            ui,
+            self.project.document.snapshot(),
+            self.project.document.revision(),
+            self.project.selected,
+            self.accent,
+        );
+        for action in actions {
+            match action {
+                graph::Action::Select { id, preview } => {
+                    if self.can_change_selection() {
+                        self.project.selected = id;
+                        self.refresh_draft();
+                        if preview {
+                            self.project.preview = Some(id);
+                            self.request_preview();
+                        }
+                    }
+                }
+                graph::Action::Place { id, position } => self.place(&[Command::Place {
+                    id,
+                    position: Some(position),
+                }]),
+                graph::Action::Arrange(positions) => self.place(
+                    &positions
+                        .into_iter()
+                        .map(|(id, position)| Command::Place {
+                            id,
+                            position: Some(position),
+                        })
+                        .collect::<Vec<_>>(),
+                ),
+            }
         }
-        egui::ScrollArea::both().show(ui, |ui| {
-            let size = self
-                .positions
-                .values()
-                .fold(egui::vec2(800.0, 170.0), |size, pos| {
-                    size.max(pos.to_vec2() + egui::vec2(210.0, 90.0))
-                });
-            let (canvas, _) = ui.allocate_exact_size(size, egui::Sense::hover());
-            let origin = canvas.min.to_vec2();
-            for node in &nodes {
-                for source in node.inputs.values() {
-                    let from = self.positions[source] + origin + egui::vec2(160.0, 30.0);
-                    let to = self.positions[&node.id] + origin + egui::vec2(0.0, 30.0);
-                    ui.painter()
-                        .add(egui::epaint::CubicBezierShape::from_points_stroke(
-                            [
-                                from,
-                                from + egui::vec2(45.0, 0.0),
-                                to - egui::vec2(45.0, 0.0),
-                                to,
-                            ],
-                            false,
-                            egui::Color32::TRANSPARENT,
-                            egui::Stroke::new(1.5_f32, egui::Color32::from_gray(90)),
-                        ));
-                }
-            }
-            for node in &nodes {
-                let rect = egui::Rect::from_min_size(
-                    self.positions[&node.id] + origin,
-                    egui::vec2(160.0, 60.0),
-                );
-                let response =
-                    ui.interact(rect, ui.id().with(node.id), egui::Sense::click_and_drag());
-                if response.dragged() {
-                    let pos = self.positions.get_mut(&node.id).unwrap();
-                    *pos += response.drag_delta();
-                    pos.x = pos.x.max(0.0);
-                    pos.y = pos.y.max(0.0);
-                }
-                if response.clicked() && self.can_change_selection() {
-                    self.project.selected = node.id;
-                    self.refresh_draft();
-                }
-                let selected = node.id == self.project.selected;
-                ui.painter()
-                    .rect_filled(rect, 0.0, egui::Color32::from_rgb(36, 41, 50));
-                ui.painter().rect_stroke(
-                    rect,
-                    0.0,
-                    egui::Stroke::new(
-                        if selected { 2.0_f32 } else { 1.0_f32 },
-                        if selected {
-                            self.accent
-                        } else {
-                            egui::Color32::from_gray(65)
-                        },
-                    ),
-                    egui::StrokeKind::Inside,
-                );
-                ui.painter().text(
-                    rect.min + egui::vec2(10.0, 15.0),
-                    egui::Align2::LEFT_CENTER,
-                    &node.label,
-                    egui::FontId::proportional(13.0),
-                    egui::Color32::WHITE,
-                );
-                let subtitle = if node.id == output {
-                    "Composition output"
-                } else {
-                    node.operation.descriptor().label
-                };
-                ui.painter().text(
-                    rect.min + egui::vec2(10.0, 41.0),
-                    egui::Align2::LEFT_CENTER,
-                    subtitle,
-                    egui::FontId::proportional(11.0),
-                    egui::Color32::from_gray(160),
-                );
-            }
-        });
+    }
+    fn place(&mut self, commands: &[Command]) {
+        if let Err(e) = self.project.apply(commands) {
+            self.fail(e);
+            return;
+        }
+        // Keep an unapplied parameter draft while accepting its new layout.
+        self.draft.position = self.project.document.snapshot().nodes[&self.draft.id].position;
     }
     fn dialogs(&mut self, ctx: &egui::Context) {
         if let Some(action) = self.confirm {

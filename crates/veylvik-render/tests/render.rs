@@ -740,6 +740,8 @@ fn output_cache_keys_evaluated_dependencies_and_evicts_within_budget() {
         .unwrap();
     let allocations = renderer.resource_stats().unwrap().buffers_created;
     doc.nodes.get_mut(&id).unwrap().label = "Label does not change pixels".into();
+    doc.nodes.get_mut(&id).unwrap().position =
+        Some(veylvik_document::NodePosition { x: -42.0, y: 123.0 });
     let unused = Node::new("unused", Operation::Solid { color: [1.0; 4] }, &[]);
     doc.nodes.insert(unused.id, unused);
     let held = renderer
