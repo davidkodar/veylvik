@@ -9,7 +9,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         std::path::PathBuf::from(std::env::args().nth(1).ok_or("output directory required")?);
     std::fs::create_dir_all(&output)?;
     let renderer = Renderer::new()?;
+    let filter = std::env::args().nth(2);
     for entry in builtin::ALL {
+        if filter.as_deref().is_some_and(|id| id != entry.id) {
+            continue;
+        }
         let scene = showcase::build(entry.id)?;
         for (label, node) in [
             ("before", scene.before),

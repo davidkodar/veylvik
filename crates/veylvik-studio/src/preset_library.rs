@@ -15,6 +15,7 @@ pub struct Library {
     pub listing: veylvik_io::presets::Listing,
     pub ready: Option<Preset>,
     query: String,
+    category: String,
     gallery: crate::showcase_gallery::Gallery,
     detail: Option<&'static str>,
     inputs: BTreeMap<String, NodeId>,
@@ -152,18 +153,29 @@ impl Studio {
                         ui.weak(format!("{} · 4 seconds · editable vector scene",entry.label));
                     } else {
                         ui.add(egui::TextEdit::singleline(&mut self.library.query).hint_text("Search effects…").desired_width(f32::INFINITY));
+                        ui.horizontal_wrapped(|ui| {
+                            egui::ComboBox::from_id_salt("effect-category")
+                                .selected_text(if self.library.category.is_empty() {"All categories"} else {&self.library.category})
+                                .show_ui(ui,|ui| {
+                                    ui.selectable_value(&mut self.library.category,String::new(),"All categories");
+                                    for category in builtin::CATEGORIES.iter().filter(|c| **c!="All") {
+                                        ui.selectable_value(&mut self.library.category,category.to_string(),*category);
+                                    }
+                                });
+                            ui.weak(format!("{} starter effects",builtin::ALL.len()));
+                        });
                         let words: Vec<_> = self.library.query.to_lowercase().split_whitespace().map(str::to_owned).collect();
                         let matches = |text: &str| words.iter().all(|w| text.to_lowercase().contains(w));
                         egui::ScrollArea::vertical().max_height(400.0).show(ui, |ui| {
                             ui.strong("Starter effects");
                             for entry in builtin::ALL {
-                                if matches(&format!("{} {}", entry.label, entry.description)) {
+                                if (self.library.category.is_empty() || self.library.category==builtin::category(entry.id)) && matches(&format!("{} {} {}", entry.label, entry.description,builtin::category(entry.id))) {
                                     ui.group(|ui| { ui.horizontal(|ui| {
                                         if self.library.gallery.card(ui,entry.id).clicked() { self.library.detail=Some(entry.id); }
                                         ui.vertical(|ui| {
                                             if ui.button(entry.label).clicked() { self.library.detail=Some(entry.id); }
                                             ui.add(egui::Label::new(entry.description).wrap());
-                                            ui.weak("Explore example");
+                                            ui.weak(builtin::category(entry.id));
                                         });
                                     }); });
                                 }

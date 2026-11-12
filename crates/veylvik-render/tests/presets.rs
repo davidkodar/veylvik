@@ -113,3 +113,38 @@ fn showcase_scenes_have_visible_effects_motion_and_seamless_endpoints() {
         assert!(middle.iter().flatten().all(|v| v.is_finite()));
     }
 }
+
+#[test]
+#[ignore = "requires Vulkan"]
+fn particles_emit_on_transparency_and_render_deterministically_after_seeking() {
+    let renderer = Renderer::new().unwrap();
+    for entry in builtin::ALL
+        .iter()
+        .filter(|e| builtin::category(e.id) == "Particles")
+    {
+        let base = blank(960, 540, Time::new(24, 1).unwrap()).unwrap();
+        let instance = builtin::build(entry.id)
+            .unwrap()
+            .instantiate(&base, &[("input_1".into(), base.output)].into(), None)
+            .unwrap();
+        let owner = Document::new(base).unwrap();
+        let composition = owner.prepare(0, &instance.commands).unwrap();
+        let plan = Plan::compile_output(&composition, instance.output).unwrap();
+        let a = renderer.render(&plan, Time::new(17, 24).unwrap()).unwrap();
+        let later = renderer.render(&plan, Time::new(73, 24).unwrap()).unwrap();
+        let revisited = renderer.render(&plan, Time::new(17, 24).unwrap()).unwrap();
+        assert_eq!(a, revisited, "{} changes with seek order", entry.id);
+        assert_ne!(a, later);
+        assert!(
+            a.iter().filter(|p| p[3] > 0.01).count() > 100,
+            "{} emits nothing",
+            entry.id
+        );
+        assert!(
+            a.iter().any(|p| p[3] == 0.0),
+            "{} destroys transparency",
+            entry.id
+        );
+        assert!(a.iter().all(|p| p[3] >= 0.0 && p[3] <= 1.0));
+    }
+}

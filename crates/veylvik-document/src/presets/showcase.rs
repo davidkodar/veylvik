@@ -14,7 +14,10 @@ pub fn title(id: &str) -> &'static str {
         "neon_outline" => "After hours",
         "prismatic_glow" => "Prism / identity",
         "liquid_shimmer" => "Fluid type",
-        _ => "Example",
+        _ => super::builtin::ALL
+            .iter()
+            .find(|e| e.id == id)
+            .map_or("Example", |e| e.label),
     }
 }
 pub fn description(id: &str) -> &'static str {
@@ -25,9 +28,13 @@ pub fn description(id: &str) -> &'static str {
         "prismatic_glow" => {
             "A floating geometric emblem catches cyan and rose light. Edit its motion and light spill."
         }
-        _ => {
+        "liquid_shimmer" => {
             "Bold lettering ripples like liquid. Edit the vector shapes, palette and flow animation."
         }
+        _ => super::builtin::ALL
+            .iter()
+            .find(|e| e.id == id)
+            .map_or("Editable example", |e| e.description),
     }
 }
 fn cycle(a: f32, b: f32) -> Scalar {
@@ -152,7 +159,11 @@ pub fn build(id: &str) -> Result<Scene> {
         },
         &[],
     );
-    let geometry = if id == "prismatic_glow" {
+    let emblem = matches!(
+        id,
+        "prismatic_glow" | "radial_echo" | "orbit_echo" | "anamorphic_streaks" | "spotlight"
+    ) || super::builtin::category(id) == "Particles";
+    let geometry = if emblem {
         let mut commands = vec![];
         polygon(
             &mut commands,
@@ -194,7 +205,9 @@ pub fn build(id: &str) -> Result<Scene> {
         },
         &[],
     );
-    let (low, high) = if id == "liquid_shimmer" {
+    let (low, high) = if super::builtin::category(id) == "Particles" {
+        ([0.01, 0.025, 0.05, 1.0], [0.04, 0.09, 0.14, 1.0])
+    } else if id == "liquid_shimmer" {
         ([0.04, 0.2, 0.65, 1.0], [0.7, 1.2, 1.3, 1.0])
     } else if id == "neon_outline" {
         ([0.015, 0.035, 0.07, 1.0], [0.06, 0.14, 0.22, 1.0])
@@ -221,11 +234,7 @@ pub fn build(id: &str) -> Result<Scene> {
             y: cycle(9.0, -9.0),
             scale_x: cycle(0.94, 1.04),
             scale_y: cycle(0.94, 1.04),
-            rotation: if id == "prismatic_glow" {
-                cycle(-6.0, 6.0)
-            } else {
-                0.0.into()
-            },
+            rotation: if emblem { cycle(-6.0, 6.0) } else { 0.0.into() },
             pivot_x: 480.0.into(),
             pivot_y: 270.0.into(),
         },

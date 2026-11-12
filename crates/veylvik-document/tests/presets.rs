@@ -132,3 +132,27 @@ fn animation_keeps_exact_seconds_and_defaults_across_frame_rates() {
         preset.group.controls["flow_animation"].default
     );
 }
+
+#[test]
+fn expanded_catalog_has_unique_discoverable_ids_and_editable_controls() {
+    let mut ids = std::collections::BTreeSet::new();
+    assert_eq!(builtin::ALL.len(), 28);
+    for entry in builtin::ALL {
+        assert!(ids.insert(entry.id));
+        assert!(builtin::CATEGORIES.contains(&builtin::category(entry.id)));
+        let preset = builtin::build(entry.id).unwrap();
+        assert!(
+            !preset.group.controls.is_empty(),
+            "{} has no public controls",
+            entry.id
+        );
+        assert_eq!(preset.group.inputs.len(), 1);
+    }
+    assert_eq!(
+        builtin::ALL
+            .iter()
+            .filter(|e| builtin::category(e.id) == "Particles")
+            .count(),
+        5
+    );
+}

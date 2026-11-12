@@ -210,11 +210,31 @@ input names, defaults and controls save with the composition. Nested groups are 
 **Add → Effect library…** opens searchable starter and saved effects. The bundled
 **Prismatic Glow** adds cyan/rose light spill; **Neon Outline** adds luminous
 contours; **Liquid Shimmer** adds a smooth four-second flow loop with protected
-frame edges. Every starter remains an editable group with public controls.
+frame edges. The library contains **28 starter effects**, searchable by name,
+description or category. Every starter remains an editable group with public controls.
+
+The expanded set includes:
+
+- **Light:** Soft Bloom, Anamorphic Streaks, Dream Focus, Light Sweep, Soft Vignette,
+  Spotlight (plus Prismatic Glow and Neon Outline).
+- **Surface:** Edge Engrave, Duotone Print, Silver Relief, Ink Bleed, Film Grain,
+  Scanlines and Hologram.
+- **Distortion:** Frosted Glass, Heat Haze, Underwater and Glitch Slices (plus Liquid Shimmer).
+- **Motion:** Chromatic Echo, Radial Echo and Orbit Echo.
+- **Particles:** Dust Motes, Fireflies, Embers, Snowfall and Starfield.
+
+Particle starters are deterministic overlays made from editable ellipse, animation,
+color and blend nodes. Each has 18 particles with staggered four-second lifetimes;
+public controls adjust color, glow and amount. Open the group to edit individual
+paths, sizes and fades or duplicate particles. They render on transparent inputs
+and seek reproducibly, without simulation state. These are authored particle
+compositions, not yet a general emitter with forces, collisions or a density control.
+All presets use authored 960 × 540 coordinates; inspect and adjust placement when
+applying them to other dimensions.
 
 Starter cards play short rendered examples. Select a card for **Before / After**,
 pause and frame scrubbing. **Try example** opens a complete editable four-second
-scene: **After hours** (neon title), **Prism / identity** (floating emblem), or
+scene for every starter, including: **After hours** (neon title), **Prism / identity** (floating emblem), or
 **Fluid type** (liquid lettering). Unsaved work uses the normal save/discard/cancel
 prompt. Playing an untouched example does not mark it modified; Save As creates
 your own project. The shapes, palette, motion and effect controls are editable,
@@ -1102,8 +1122,12 @@ decoded image, and 1 GiB of total encoded image data. No Vulkan device is needed
 
 Bundled library previews are generated from the editable showcase factories using
 the Vulkan renderer (48 frames at 12 fps, downsampled to 320 × 180). Regenerate
-them after changing a showcase or starter effect:
+them after changing a showcase or starter effect (an optional final starter ID
+regenerates just that entry):
 
 ```sh
 cargo run -p veylvik-io --example showcase_previews -- crates/veylvik-studio/assets/showcase
 ```
+
+Gallery textures load only for visible cards and use a six-atlas cache (about 64 MiB
+of pixel data), independent of the number of effects in the library.
