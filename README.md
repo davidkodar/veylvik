@@ -631,7 +631,20 @@ handle to rotate about the centre. Keep proportions controls corner scaling; Shi
 snaps rotation to 15 degrees. These geometry edits retain the same Apply/Revert
 workflow, and coordinate-limit violations leave the last valid shape intact.
 Animate the result with an Affine node;
-path-point keyframes are not yet implemented. Vello scratch memory is separate from the
+path-point keyframes are not yet implemented.
+
+For text already connected to the composition, **Place behind object** in its
+inspector guides foreground occlusion: choose a source layer without the selected
+text, outline the object over that source in the viewer, and close the contour.
+The action adds a path, grow/shrink, blur, masked foreground and final merge in one
+undoable transaction. Existing text, effects and scene nodes are preserved.
+The outline inspector exposes edge expansion and softness in composition pixels,
+View result, and Redraw over source. Redrawing reuses the setup; Escape cancels
+without adding nodes. The setup uses ordinary serialized graph nodes, so it stays
+editable after reopening and through MCP. The foreground overlays the whole
+composition; it does not perform automatic object detection or tracking.
+
+Vello scratch memory is separate from the
 compositor buffer budget; image atlases cannot grow and intermediate layers are
 disabled. `release_vector_resources` frees its persistent pipelines and scratch
 resources without invalidating retained output frames. Graph renders retain up

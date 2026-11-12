@@ -15,6 +15,10 @@ pub struct Pen {
     pressed: bool,
 }
 impl Pen {
+    pub fn begin(&mut self) {
+        self.cancel();
+        self.active = true;
+    }
     pub fn cancel(&mut self) {
         *self = Self::default();
     }

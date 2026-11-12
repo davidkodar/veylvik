@@ -19,6 +19,7 @@ mod menus;
 mod node_clipboard;
 mod node_finder;
 mod node_palette;
+mod occlusion;
 mod path_edit;
 mod path_handles;
 mod path_pen;
@@ -148,6 +149,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 fonts: font_browser::Browser::new(&cc.egui_ctx),
                 text_viewer: Default::default(),
                 path_pen: Default::default(),
+                occlusion: Default::default(),
                 path_transform: Default::default(),
                 title_styles: Default::default(),
                 graph: graph::Graph::default(),
@@ -212,6 +214,7 @@ struct Studio {
     fonts: font_browser::Browser,
     text_viewer: text_viewer::Editor,
     path_pen: path_pen::Pen,
+    occlusion: occlusion::Controls,
     path_transform: path_transform::Editor,
     title_styles: title_styles::Library,
     graph: graph::Graph,
@@ -242,6 +245,7 @@ struct Studio {
 impl Studio {
     fn authoring_dialog_open(&self) -> bool {
         self.library.open
+            || self.occlusion.open
             || self.effects.open
             || self.outline_controls.open
             || self.composition_controls.open
@@ -260,6 +264,7 @@ impl Studio {
         self.animation_editor = animation_editor::Editor::default();
         self.composition_controls = composition::Controls::default();
         self.export_controls = sequence::Controls::default();
+        self.occlusion = Default::default();
         self.project = project;
         self.graph = graph::Graph::default();
         self.effects = effects::Controls::default();
@@ -1240,6 +1245,7 @@ impl Studio {
         if self.effect_inspector(ui) {
             return;
         }
+        self.occlusion_controls(ui);
         ui.label(if matches!(self.draft.operation, Operation::Text { .. }) {
             "Layer name"
         } else {
@@ -1974,6 +1980,7 @@ impl eframe::App for Studio {
         let ctx = ui.ctx().clone();
         self.theme(&ctx);
         self.path_pen.shortcuts(&ctx);
+        self.occlusion_tick();
         self.poll_files(&ctx);
         self.fonts.poll(&ctx);
         if self.draft_dirty
@@ -2280,7 +2287,12 @@ impl eframe::App for Studio {
                             self.view = ViewSettings::default();
                         }
                     });
-                    if matches!(self.draft.operation, Operation::Path { .. }) {
+                    if self.occlusion_pending() {
+                        ui.horizontal_wrapped(|ui| {
+                            ui.strong("Outline foreground object");
+                            self.path_pen.toolbar(ui);
+                        });
+                    } else if matches!(self.draft.operation, Operation::Path { .. }) {
                         ui.horizontal_wrapped(|ui| {
                             if matches!(self.draft.operation, Operation::Path { .. })
                                 && !self.playing
@@ -2295,7 +2307,17 @@ impl eframe::App for Studio {
                                 && !self.path_pen.active
                                 && self.path_transform.toolbar(ui)
                             {
-                                self.project.preview = Some(self.draft.id);
+                                self.project.preview = if veylvik_document::occlusion::find(
+                                    self.project.document.snapshot(),
+                                    self.draft.id,
+                                )
+                                .is_some_and(|s| {
+                                    s.output == self.project.document.snapshot().output
+                                }) {
+                                    None
+                                } else {
+                                    Some(self.draft.id)
+                                };
                                 self.request_preview();
                             }
                         });
@@ -2395,7 +2417,9 @@ impl eframe::App for Studio {
                                 },
                             );
                         }
-                        if let Operation::Path { geometry } = &self.draft.operation
+                        self.occlusion_canvas(ui, canvas, transform, image);
+                        if !self.occlusion_pending()
+                            && let Operation::Path { geometry } = &self.draft.operation
                             && let Some(geometry) =
                                 self.path_pen.show(ui, canvas, transform, image, geometry)
                         {
@@ -2414,6 +2438,11 @@ impl eframe::App for Studio {
                                     Operation::Text { .. } | Operation::Path { .. }
                                 ))
                             && (root == self.draft.id
+                                || veylvik_document::occlusion::find(
+                                    self.project.document.snapshot(),
+                                    self.draft.id,
+                                )
+                                .is_some_and(|setup| setup.output == root)
                                 || (matches!(self.draft.operation, Operation::Text { .. })
                                     && self.project.preview.is_none()
                                     && editable_text::handles_in_scene(
@@ -2574,6 +2603,7 @@ impl eframe::App for Studio {
         if let Some((choice, position)) = self.node_palette.show(&ctx) {
             self.add_from_palette(choice, position);
         }
+        self.occlusion_dialog(&ctx);
         self.dialogs(&ctx);
         if let Some(settings) = self.composition_controls.show(&ctx) {
             self.apply_composition_settings(settings, &ctx);

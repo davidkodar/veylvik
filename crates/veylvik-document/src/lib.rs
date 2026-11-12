@@ -3,6 +3,7 @@ pub mod clipboard;
 pub mod editing;
 pub mod groups;
 mod history;
+pub mod occlusion;
 pub mod presets;
 mod procedural;
 pub mod recipes;
