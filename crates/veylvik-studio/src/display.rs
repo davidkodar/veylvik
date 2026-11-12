@@ -50,6 +50,10 @@ impl Display {
                     frame.height(),
                     u32::from(self.format.is_srgb()),
                     0,
+                    frame.region().x,
+                    frame.region().y,
+                    frame.region().width,
+                    frame.region().height,
                 ]),
                 usage: wgpu::BufferUsages::UNIFORM,
             });
@@ -136,27 +140,117 @@ mod tests {
                 &ImageInputs::default(),
             )
             .unwrap();
+        let pixels = paint(
+            &renderer,
+            Arc::new(frame),
+            2,
+            2,
+            wgpu::TextureFormat::Rgba8Unorm,
+        );
+        assert!(pixels.iter().all(|pixel| pixel == &[137, 0, 0, 255]));
+    }
+    #[test]
+    #[ignore = "requires Vulkan"]
+    fn viewer_filters_linear_premultiplied_pixels_and_respects_crop_edges() {
+        let renderer = Renderer::new().unwrap();
+        let node = Node::new(
+            "source",
+            Operation::Image {
+                asset: "source".into(),
+            },
+            &[],
+        );
+        let doc = Composition {
+            schema: 1,
+            width: 4,
+            height: 2,
+            frame_rate: Time::new(24, 1).unwrap(),
+            output: node.id,
+            nodes: [(node.id, node)].into(),
+        };
+        let mut inputs = ImageInputs::default();
+        inputs.insert(
+            "source",
+            veylvik_render::Image::new(
+                4,
+                2,
+                vec![
+                    [1.0, 0.0, 1.0, 1.0],
+                    [1.0, 0.0, 0.0, 1.0],
+                    [0.0; 4],
+                    [1.0, 0.0, 1.0, 1.0],
+                    [0.0, 1.0, 0.0, 1.0],
+                    [0.0, 1.0, 0.0, 1.0],
+                    [0.0, 1.0, 0.0, 1.0],
+                    [0.0, 1.0, 0.0, 1.0],
+                ],
+            )
+            .unwrap()
+            .into(),
+        );
+        let frame = Arc::new(
+            renderer
+                .render_gpu(
+                    &Plan::compile(&doc).unwrap(),
+                    RenderRequest {
+                        time: Time::new(0, 1).unwrap(),
+                        region: Some(veylvik_render::Region {
+                            x: 1,
+                            y: 0,
+                            width: 2,
+                            height: 1,
+                        }),
+                    },
+                    &inputs,
+                )
+                .unwrap(),
+        );
+        let expected = veylvik_render::to_srgba8(&[
+            [1.0, 0.0, 0.0, 1.0],
+            [0.5375, 0.0375, 0.0375, 1.0],
+            [0.075, 0.075, 0.075, 1.0],
+        ]);
+        for format in [
+            wgpu::TextureFormat::Rgba8Unorm,
+            wgpu::TextureFormat::Rgba8UnormSrgb,
+        ] {
+            let result = paint(&renderer, frame.clone(), 3, 1, format);
+            for (actual, expected) in result.iter().flatten().zip(&expected) {
+                assert!(
+                    actual.abs_diff(*expected) <= 1,
+                    "{format:?}: {actual} != {expected}"
+                );
+            }
+        }
+    }
+    fn paint(
+        renderer: &Renderer,
+        frame: Arc<GpuFrame>,
+        width: u32,
+        height: u32,
+        format: wgpu::TextureFormat,
+    ) -> Vec<[u8; 4]> {
         let device = renderer.device();
         let scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
-        let display = Display::new(device, wgpu::TextureFormat::Rgba8Unorm);
-        let frame = display.frame(&renderer, Arc::new(frame));
+        let display = Display::new(device, format);
+        let frame = display.frame(renderer, frame);
         let target = device.create_texture(&wgpu::TextureDescriptor {
             label: None,
             size: wgpu::Extent3d {
-                width: 2,
-                height: 2,
+                width,
+                height,
                 depth_or_array_layers: 1,
             },
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Rgba8Unorm,
+            format,
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
             view_formats: &[],
         });
         let readback = device.create_buffer(&wgpu::BufferDescriptor {
             label: None,
-            size: 512,
+            size: u64::from(height) * 256,
             usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
             mapped_at_creation: false,
         });
@@ -186,7 +280,7 @@ mod tests {
                 layout: wgpu::TexelCopyBufferLayout {
                     offset: 0,
                     bytes_per_row: Some(256),
-                    rows_per_image: Some(2),
+                    rows_per_image: Some(height),
                 },
             },
             target.size(),
@@ -206,10 +300,17 @@ mod tests {
             .unwrap();
         rx.recv().unwrap().unwrap();
         let bytes = readback.slice(..).get_mapped_range();
-        assert_eq!(&bytes[..4], &[137, 0, 0, 255]);
-        assert_eq!(&bytes[256..260], &[137, 0, 0, 255]);
+        let mut pixels = Vec::new();
+        for row in 0..height as usize {
+            pixels.extend_from_slice(
+                bytes[row * 256..row * 256 + width as usize * 4]
+                    .as_chunks::<4>()
+                    .0,
+            );
+        }
         drop(bytes);
         readback.unmap();
         assert!(pollster::block_on(scope.pop()).is_none());
+        pixels
     }
 }

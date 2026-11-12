@@ -1112,7 +1112,8 @@ impl eframe::App for Studio {
                     }
                     if let Some(frame) = &self.displayed {
                         let available = ui.available_size();
-                        let aspect = frame.frame.width() as f32 / frame.frame.height() as f32;
+                        let aspect =
+                            frame.frame.region().width as f32 / frame.frame.region().height as f32;
                         let width = available.x.min(available.y * aspect).max(1.0);
                         let size = egui::vec2(width, width / aspect);
                         let rect = egui::Rect::from_center_size(

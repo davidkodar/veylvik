@@ -117,8 +117,9 @@ project opens or an image is imported, within a 256 MiB host image budget. The
 initial UI uses English labels. A working `org.freedesktop.portal.FileChooser`
 service is required for interactive file selection; failures are shown in the
 window. Headless file commands remain available without a desktop service.
-The viewer composites transparency over a checkerboard and applies an SDR display
-transform. A previous preview stays visible while rendering, explicitly marked
+The viewer filters scaled images bilinearly in linear premultiplied color,
+clamps sampling to the requested crop, composites transparency over a checkerboard,
+and applies an SDR display transform. A previous preview stays visible while rendering, explicitly marked
 when it no longer matches the requested frame.
 
 ## Composition and rendering
