@@ -121,6 +121,19 @@ impl Document {
                         .ok_or_else(|| Error("parameter is not an animated scalar".into()))?
                         .set_key_at(*time, *value)?;
                 }
+                Command::RemoveKey {
+                    id,
+                    parameter,
+                    time,
+                } => {
+                    next.nodes
+                        .get_mut(id)
+                        .ok_or_else(|| Error("cannot edit missing node".into()))?
+                        .operation
+                        .scalar_mut(parameter)
+                        .ok_or_else(|| Error("parameter is not an animated scalar".into()))?
+                        .remove_key_at(*time)?;
+                }
                 Command::Remove { id } => {
                     if next.nodes.remove(id).is_none() {
                         return fail("cannot remove missing node");

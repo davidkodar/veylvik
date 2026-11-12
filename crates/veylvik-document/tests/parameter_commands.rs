@@ -131,3 +131,72 @@ fn invalid_parameter_and_key_batches_leave_the_whole_document_unchanged() {
         Some(Interpolation::Linear)
     );
 }
+
+#[test]
+fn removing_keys_uses_exact_times_preserves_modes_and_is_atomic() {
+    for kind in ["linear", "step", "smooth"] {
+        let mut document = Document::new(motion_demo()).unwrap();
+        let id = document.snapshot().output;
+        document
+            .apply(
+                0,
+                &[parameter(
+                    id,
+                    "stops",
+                    json!({"kind":kind,"keys":[
+                        {"time":{"ticks":0,"rate":24},"value":-1},
+                        {"time":{"ticks":24,"rate":24},"value":2}
+                    ]}),
+                )],
+            )
+            .unwrap();
+        let remove = |ticks, rate| Command::RemoveKey {
+            id,
+            parameter: "stops".into(),
+            time: Time { ticks, rate },
+        };
+        let before = serde_json::to_vec(document.snapshot()).unwrap();
+        for invalid in [remove(1, 0), remove(1, 2)] {
+            assert!(document.apply(1, &[remove(0, 1), invalid]).is_err());
+            assert_eq!(document.revision(), 1);
+            assert_eq!(serde_json::to_vec(document.snapshot()).unwrap(), before);
+        }
+        let encoded = serde_json::to_value(remove(1, 1)).unwrap();
+        assert_eq!(encoded["command"], "remove_key");
+        document
+            .apply(1, &[serde_json::from_value(encoded).unwrap()])
+            .unwrap();
+        let scalar = document.snapshot().nodes[&id]
+            .operation
+            .scalar("stops")
+            .unwrap();
+        assert_eq!(serde_json::to_value(scalar).unwrap()["kind"], kind);
+        assert_eq!(scalar.keys().unwrap()[0].time.rate, 24);
+        document.apply(2, &[remove(0, 1)]).unwrap();
+        assert_eq!(
+            serde_json::to_value(
+                document.snapshot().nodes[&id]
+                    .operation
+                    .scalar("stops")
+                    .unwrap()
+            )
+            .unwrap(),
+            json!({"kind":"constant","value":-1.0})
+        );
+        assert!(document.apply(3, &[remove(0, 1)]).is_err());
+        document.undo(3).unwrap();
+        document.undo(4).unwrap();
+        assert_eq!(serde_json::to_vec(document.snapshot()).unwrap(), before);
+        document.redo(5).unwrap();
+        assert_eq!(
+            document.snapshot().nodes[&id]
+                .operation
+                .scalar("stops")
+                .unwrap()
+                .keys()
+                .unwrap()
+                .len(),
+            1
+        );
+    }
+}

@@ -112,6 +112,27 @@ impl Scalar {
         }
         Ok(())
     }
+    /// Remove an exact-time key. Removing the final key preserves its value as
+    /// a constant. Missing keys and invalid input leave the scalar unchanged.
+    pub fn remove_key_at(&mut self, time: Time) -> Result<()> {
+        self.validate()?;
+        time.seconds()?;
+        let Some(keys) = self.keys_mut() else {
+            return fail("scalar has no keyframes");
+        };
+        let Ok(index) =
+            keys.binary_search_by(|key| key.time.compare(time).expect("validated times"))
+        else {
+            return fail("no keyframe at requested time");
+        };
+        let removed = keys.remove(index);
+        if keys.is_empty() {
+            *self = Self::Constant {
+                value: removed.value,
+            };
+        }
+        Ok(())
+    }
     pub fn keys_mut(&mut self) -> Option<&mut Vec<Key>> {
         match self {
             Self::Constant { .. } => None,

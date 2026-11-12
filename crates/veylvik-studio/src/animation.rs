@@ -87,6 +87,13 @@ pub fn scalar(
                         Err(error) => { ui.colored_label(egui::Color32::LIGHT_RED, error.to_string()); }
                     }
                 }
+                let at_key = scalar.keys().is_some_and(|keys| keys.iter().any(|key| key.time.compare(time).is_ok_and(|order| order.is_eq())));
+                if ui.add_enabled(at_key, egui::Button::new("Remove key at playhead").small()).clicked() {
+                    match scalar.remove_key_at(time) {
+                        Ok(()) => changed = true,
+                        Err(error) => { ui.colored_label(egui::Color32::LIGHT_RED, error.to_string()); }
+                    }
+                }
                 if scalar.interpolation().is_some() && ui.small_button("Make constant here").on_hover_text("Replace the animation with its value at the playhead. Apply commits the change; undo restores it.").clicked() {
                     *scalar = value.into();
                     changed = true;

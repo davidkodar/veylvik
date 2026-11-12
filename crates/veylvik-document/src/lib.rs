@@ -431,6 +431,11 @@ pub enum Command {
         time: Time,
         value: f32,
     },
+    RemoveKey {
+        id: NodeId,
+        parameter: String,
+        time: Time,
+    },
     Remove {
         id: NodeId,
     },

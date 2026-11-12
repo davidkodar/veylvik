@@ -142,7 +142,8 @@ key at the playhead. For animated parameters, **At playhead** edits an existing
 key or inserts one at the current frame while preserving interpolation. Equivalent
 rational times update the existing key without changing its stored timestamp.
 These edits pause playback and remain drafts until Apply. Expanded key lists edit exact rational times and values or
-remove keys. Choose Linear, Hold, or Ease in/out for each animated parameter.
+remove keys. **Remove key at playhead** deletes an exact-time key; removing the
+last key keeps its value as a constant. Choose Linear, Hold, or Ease in/out for each animated parameter.
 **Make constant here** replaces a curve with its evaluated playhead value; Apply
 and undo work as for other inspector edits.
 Saving uses the same atomic persistence and source-image protection as MCP.
@@ -412,10 +413,18 @@ one registered parameter with the value shape shown in the `nodes` catalog:
 Key edits preserve existing interpolation and other keys; equivalent timestamps
 update the existing key without rewriting its time. A constant becomes a
 single-key linear curve. Static parameters such as color and seed use
-`set_parameter`. Both commands preserve node identity, label, position and wiring,
+`set_parameter`. These commands preserve node identity, label, position and wiring,
 validate the resulting graph, and participate in the same atomic batch and undo
 step. Unknown parameters, wrong value shapes and out-of-range values reject the
 batch. Changing a scalar with `set_parameter` replaces its complete curve.
+
+`remove_key` deletes the key at an exact rational time, preserving interpolation
+and the remaining timestamps. Removing the last key makes the scalar constant
+with that key's value. A missing key rejects the entire transaction.
+
+```json
+{"command":"remove_key","id":"UUID","parameter":"stops","time":{"ticks":1,"rate":1}}
+```
 
 For larger projects, `inspect` with `{"summary":true}` returns `summary` instead
 of `composition`: format, output UUID, node count and operation counts. Both
