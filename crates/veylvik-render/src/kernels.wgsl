@@ -74,8 +74,8 @@ fn blur_axis(gid:vec3<u32>,axis:vec2<i32>)->vec4<f32> {
     }
     return total/f32(radius*2+1);
 }
-// A 64-pixel row plus a maximum 32-pixel halo at either end (2 KiB).
-var<workgroup> blur_row:array<vec4<f32>,128>;
+// A 64-pixel row plus a 256-pixel halo at either end (9 KiB).
+var<workgroup> blur_row:array<vec4<f32>,576>;
 @compute @workgroup_size(64,1)
 fn blur_horizontal(@builtin(global_invocation_id) gid:vec3<u32>,@builtin(local_invocation_id) lid:vec3<u32>) {
     let radius=u32(round(p.values.x));
@@ -258,4 +258,51 @@ fn combine_mask(@builtin(global_invocation_id) gid:vec3<u32>) {
         default: {}
     }
     result[i]=vec4<f32>(clamp(coverage,0.0,1.0));
+}
+
+// Periodic on the rising axis. Evolution can advance indefinitely without
+// simulation history; four units move exactly one lattice period upwards.
+fn fire_lattice(pos:vec3<i32>,seed:u32)->f32 {
+    return lattice_noise(vec3<i32>(pos.x,((pos.y%8)+8)%8,pos.z),seed);
+}
+fn fire_noise(pos:vec3<f32>,seed:u32)->f32 {
+    let b=vec3<i32>(floor(pos)); let f=fract(pos); let t=f*f*(3.0-2.0*f);
+    let a=mix(fire_lattice(b,seed),fire_lattice(b+vec3<i32>(1,0,0),seed),t.x);
+    let c=mix(fire_lattice(b+vec3<i32>(0,1,0),seed),fire_lattice(b+vec3<i32>(1,1,0),seed),t.x);
+    let d=mix(fire_lattice(b+vec3<i32>(0,0,1),seed),fire_lattice(b+vec3<i32>(1,0,1),seed),t.x);
+    let e=mix(fire_lattice(b+vec3<i32>(0,1,1),seed),fire_lattice(b+vec3<i32>(1,1,1),seed),t.x);
+    return mix(mix(a,c,t.y),mix(d,e,t.y),t.z);
+}
+fn fire_fbm(pos:vec3<f32>,seed:u32)->f32 {
+    return fire_noise(pos,seed)*0.48 + fire_noise(pos*2.0,seed+17u)*0.28
+        + fire_noise(pos*4.0,seed+37u)*0.16 + fire_noise(pos*8.0,seed+53u)*0.08;
+}
+@compute @workgroup_size(8,8)
+fn fire(@builtin(global_invocation_id) gid:vec3<u32>) {
+    if !inside(gid) {return;}
+    let uv=vec2<f32>((f32(gid.x)-p.values.x)/p.values.z+0.5,(p.values.y-f32(gid.y))/p.values.w);
+    if uv.x<=0.0 || uv.x>=1.0 || uv.y<0.0 || uv.y>=1.15 || p.extra.y==0.0 {
+        result[index(gid)]=vec4<f32>(0.0);return;
+    }
+    let edge=smoothstep(0.0,0.08,uv.x)*(1.0-smoothstep(0.92,1.0,uv.x));
+    let base=smoothstep(0.0,0.055,uv.y);
+    var rgb=vec3<f32>(0.0);var transmittance=1.0;
+    // Emission/absorption through eight turbulent depth slices. Each slice
+    // contributes a different thin sheet, avoiding a solid silhouette fill.
+    for(var slice=0u;slice<8u;slice++) {
+        let z=(f32(slice)+0.5)/8.0*2.0-1.0;
+        let depth=1.0-z*z;
+        let warp=fire_noise(vec3<f32>(uv.x*7.0,uv.y*2.5-p.extra.x*2.0,z*1.7),p.size_op.w+83u)-0.5;
+        let pos=vec3<f32>(uv.x*18.0+warp*p.extra.z*4.0*uv.y,uv.y*5.5-p.extra.x*2.0,z*2.0);
+        let n=fire_fbm(pos,p.size_op.w);
+        let fuel=0.74-uv.y*0.63;
+        let density=max(fuel-n,0.0)*edge*base*depth;
+        let alpha=1.0-exp(-density*4.5);
+        let heat=clamp(density*3.0+(1.0-uv.y)*0.27,0.0,1.0);
+        let warm=mix(vec3<f32>(0.9,0.018,0.0008),vec3<f32>(1.2,0.23,0.009),smoothstep(0.05,0.5,heat));
+        let color=mix(warm,vec3<f32>(1.9,1.1,0.3),smoothstep(0.5,0.95,heat));
+        rgb+=transmittance*alpha*color*p.extra.y;
+        transmittance*=1.0-alpha;
+    }
+    result[index(gid)]=vec4<f32>(rgb,1.0-transmittance);
 }

@@ -165,7 +165,7 @@ fn out_of_range_animated_values_fail_before_commit() {
                     Key {
                         segment: None,
                         time: Time::new(5, 1).unwrap(),
-                        value: 100.0,
+                        value: 300.0,
                     },
                 ],
             },

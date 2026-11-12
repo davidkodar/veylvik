@@ -25,8 +25,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let pixels = renderer.render(&plan, Time::new(2, 1)?)?;
                 veylvik_io::save_png(
                     &output.join(format!("{}-{label}.png", entry.id)),
-                    960,
-                    540,
+                    scene.composition.width,
+                    scene.composition.height,
                     &pixels,
                 )?;
                 continue;
@@ -34,8 +34,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let mut atlas = image::RgbaImage::new(2560, 1080);
             for frame in 0..48 {
                 let pixels = renderer.render(&plan, Time::new(frame, 12)?)?;
-                let full = image::RgbaImage::from_raw(960, 540, to_srgba8(&pixels))
-                    .ok_or("invalid image")?;
+                let full = image::RgbaImage::from_raw(
+                    scene.composition.width,
+                    scene.composition.height,
+                    to_srgba8(&pixels),
+                )
+                .ok_or("invalid image")?;
                 let thumb =
                     image::imageops::resize(&full, 320, 180, image::imageops::FilterType::Lanczos3);
                 image::imageops::replace(&mut atlas, &thumb, (frame % 8) * 320, (frame / 8) * 180);

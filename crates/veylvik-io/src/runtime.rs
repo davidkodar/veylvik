@@ -15,7 +15,7 @@ impl RenderLimits {
     }
     fn parse(value: Option<&OsStr>) -> Result<Self> {
         let mib = match value {
-            None => 512,
+            None => 2048,
             Some(value) => {
                 let value = value
                     .to_str()
@@ -58,7 +58,7 @@ mod tests {
     use super::*;
     #[test]
     fn budget_configuration_is_bounded_strict_and_defaults_without_environment_mutation() {
-        assert_eq!(RenderLimits::parse(None).unwrap().budget_bytes, 512 * MIB);
+        assert_eq!(RenderLimits::parse(None).unwrap().budget_bytes, 2048 * MIB);
         for mib in [64, 512, 1024, 16384] {
             assert_eq!(
                 RenderLimits::parse(Some(OsStr::new(&mib.to_string())))

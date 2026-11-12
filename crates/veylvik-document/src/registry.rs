@@ -138,6 +138,23 @@ pub static NOISE: NodeType = NodeType {
         scalar("scale", "pixels", 1.0, 8192.0, 18.0),
     ],
 };
+pub static FIRE: NodeType = NodeType {
+    type_id: "fire",
+    version: 1,
+    label: "Procedural fire",
+    description: "Layered emitting fire volume with rising periodic turbulence and temperature variation. Transparent background; evolution advances upward and repeats every four units. Stateless, not a fluid simulation.",
+    inputs: &[],
+    parameters: &[
+        other("seed", ParameterKind::Seed, "seed"),
+        scalar("x", "pixels", -32768.0, 32768.0, 480.0),
+        scalar("y", "pixels", -32768.0, 32768.0, 350.0),
+        scalar("width", "pixels", 1.0, 8192.0, 600.0),
+        scalar("height", "pixels", 1.0, 8192.0, 240.0),
+        scalar("evolution", "cycles", -10000.0, 10000.0, 0.0),
+        scalar("intensity", "factor", 0.0, 16.0, 1.0),
+        scalar("turbulence", "factor", 0.0, 3.0, 1.0),
+    ],
+};
 pub static FRACTAL_NOISE: NodeType = NodeType {
     type_id: "fractal_noise",
     version: 1,
@@ -196,7 +213,7 @@ pub static MORPHOLOGY: NodeType = NodeType {
     label: "Grow/shrink mask",
     description: "Expand alpha with a positive radius (dilation), contract with a negative radius (erosion). Uses a square neighborhood and transparent borders. Radius rounds to the nearest integer, half away from zero. Outputs a white premultiplied mask, including at radius zero; source RGB is ignored.",
     inputs: &["image"],
-    parameters: &[scalar("radius", "pixels", -32.0, 32.0, 2.0)],
+    parameters: &[scalar("radius", "pixels", -256.0, 256.0, 2.0)],
 };
 pub static BLUR: NodeType = NodeType {
     type_id: "blur",
@@ -204,7 +221,7 @@ pub static BLUR: NodeType = NodeType {
     label: "Blur",
     description: "Box blur, radius rounded to an integer; transparent borders.",
     inputs: &["image"],
-    parameters: &[scalar("radius", "pixels", 0.0, 32.0, 4.0)],
+    parameters: &[scalar("radius", "pixels", 0.0, 256.0, 4.0)],
 };
 pub static MERGE: NodeType = NodeType {
     type_id: "merge",
@@ -336,6 +353,7 @@ pub static TYPES: &[&NodeType] = &[
     &BLEND,
     &DISPLACE,
     &FRACTAL_NOISE,
+    &FIRE,
     &CHANNEL_MASK,
     &COLORIZE,
     &GRADIENT,

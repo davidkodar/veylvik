@@ -229,8 +229,10 @@ public controls adjust color, glow and amount. Open the group to edit individual
 paths, sizes and fades or duplicate particles. They render on transparent inputs
 and seek reproducibly, without simulation state. These are authored particle
 compositions, not yet a general emitter with forces, collisions or a density control.
-All presets use authored 960 × 540 coordinates; inspect and adjust placement when
-applying them to other dimensions.
+Starter presets are authored at 960 × 540. Insertion defaults to **Fit composition**:
+geometry, animated positions, blur and displacement scale to the target canvas,
+including native 3840 × 2160 UHD. **Fill composition** preserves proportions and
+crops to cover a different aspect ratio; **Authored pixels** retains absolute units.
 
 Starter cards play short rendered examples. Select a card for **Before / After**,
 pause and frame scrubbing. **Try example** opens a complete editable four-second
@@ -241,12 +243,17 @@ your own project. The shapes, palette, motion and effect controls are editable,
 with no external fonts or media required.
 
 The particle showcases now have distinct compositions: **Gilded inferno** pairs
-Embers with extruded reflective gold type, animated curved flames and a floor
+Embers with extruded reflective gold type, layered procedural GPU fire and a floor
 reflection; **Toxic nectar** pairs Fireflies with glossy green dripping letters;
 **Sands of time** places Dust Motes over sandstone type and a dune; **Deep freeze**
 combines Snowfall with crystalline lettering and mountains; **Nova ignition**
 places Starfield over a turbulent plasma corona. **Pink melt** demonstrates Liquid
 Shimmer on viscous pink lettering with falling droplets and a liquid pool.
+These six detailed examples render at 1920 × 1080; gallery thumbnails remain
+320 × 180. The viewer renders the full composition and displays dimensions and
+zoom. Use **100%** to inspect pixels without Fit enlargement; integer zoom aligns
+the image to physical pixels. Fire uses deterministic turbulent emission and
+absorption layers, not fluid simulation.
 Search also matches scene titles and descriptions (for example, “gold” or “drip”).
 Use **Try example** for these complete compositions. **Before / After** compares
 only the selected library effect; **Apply to my composition** inserts that effect,
@@ -256,8 +263,10 @@ Choose **Apply to my composition**, select the image for each named input, then
 **Add effect**. Saved custom effects open directly at input selection.
 Insertion creates independent nodes and one undo step, selects its preview, and
 leaves the composition output unchanged. Use **Set as output** when ready.
-Presets retain their authored pixel values and exact animation times; they do not
-automatically scale to a different resolution or stretch to the composition length.
+Sizing preserves exact animation times and does not stretch to the composition length.
+Live and headless MCP `insert_preset` accept `sizing: "fit" | "fill" | "original"`.
+The Klipp adapter must supply its project dimensions and frame rate; this does not
+yet implement that adapter.
 Shimmer has matching endpoints at zero and four seconds; loop a four-second
 composition to repeat it, or edit its keys for another duration.
 
@@ -407,12 +416,13 @@ includes retained history statistics. Supported operations:
 | Solid | none | Straight linear RGB plus alpha; converted to premultiplied pixels |
 | Noise | none | Seed and cell size, 1–8192 pixels |
 | Gradient | none | Animated start/end coordinates, linear or radial grayscale ramp |
+| Procedural fire | none | Layered turbulent flame emission; seed, position, size, evolution, intensity and turbulence |
 | Fractal noise | none | Smooth grayscale noise; seed, scale, octaves, roughness, evolution |
 | Exposure | image | −32 to +32 stops |
 | Transform | image | X/Y translation in pixels, bilinear sampling |
 | Displace | image, map | Animated X/Y strength in pixels; red/green map channels, alpha-weighted |
-| Blur | image | Box radius, 0–32 pixels, rounded to an integer |
-| Grow/shrink mask | image | Signed alpha radius, −32 to +32 pixels; square neighborhood |
+| Blur | image | Box radius, 0–256 pixels, rounded to an integer |
+| Grow/shrink mask | image | Signed alpha radius, −256 to +256 pixels; square neighborhood |
 | Combine masks | mask, other | Union, intersect, subtract, or exclude soft alpha coverage |
 | Colorize | image | Straight HDR low/high colors mapped through luminance and source alpha |
 | Merge | background, foreground | Premultiplied foreground-over-background |
@@ -467,7 +477,7 @@ existing pool, avoiding repeated uploads during animation. Aliased asset names
 sharing one image also share one upload and budget allocation. Ordinary buffer
 reuse clears source identity; trimming or memory pressure may evict it. Resource
 statistics report source uploads, bytes uploaded, and source-content reuse.
-The default 512 MiB render budget covers declared GPU image buffers, readback,
+The default 2048 MiB render budget covers declared GPU image buffers, readback,
 uniforms, and each unique source image upload; it does not measure driver overhead
 or bound total process RAM. `check` reports graph working bytes before source
 uploads and also checks the reachable image inputs against the combined budget.
@@ -930,7 +940,7 @@ selection, playhead, document history, or viewer settings.
 **Grow/shrink mask** (`morphology`) reads input alpha and produces a white
 premultiplied mask. Positive radius expands coverage using the maximum alpha in
 a square neighborhood; negative radius contracts it using the minimum. Radius
-animates from −32 to +32 pixels and rounds to the nearest integer, with half
+animates from −256 to +256 pixels and rounds to the nearest integer, with half
 values rounded away from zero. Samples outside the canvas are transparent, so
 erosion also contracts shapes touching the canvas boundary.
 
@@ -983,7 +993,7 @@ inspector drafts; dry runs inspect the applied document.
 ## GPU working-memory budget
 
 CLI renders, headless MCP rendering, and Studio share the optional
-`VEYLVIK_GPU_BUDGET_MIB` environment setting. The default is 512 MiB; accepted
+`VEYLVIK_GPU_BUDGET_MIB` environment setting. The default is 2048 MiB; accepted
 values are decimal integers from 64 to 16384. For example:
 
 ```sh

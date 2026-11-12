@@ -23,7 +23,7 @@ fn build_catalog() -> Value {
         tool("diagnostics","Read GPU buffer and cache counters without waiting for an active render. Snapshot is null while the renderer is busy. Declared buffers exclude driver and rasterizer scratch allocations.",json!({}),&[]),
         tool("nodes","Read built-in operations, ports, defaults and parameter schemas.",json!({}),&[]),
         tool("get_preset","Read a bundled starter, or capture a group with its current values and animation. Supply exactly one of starter or group. No filesystem access.",json!({"group":{"type":"string","format":"uuid"},"starter":{"type":"string","enum":veylvik_document::presets::builtin::ALL.map(|p|p.id)}}),&[]),
-        tool("insert_preset","Insert an independent instance with explicitly bound inputs. One undo step; output remains unchanged. Dry-run IDs are provisional.",json!({"session":session,"revision":revision,"preset":veylvik_document::schema::preset(),"inputs":{"type":"object","additionalProperties":{"type":"string","format":"uuid"}},"position":veylvik_document::schema::position(),"dry_run":{"type":"boolean"}}),&["session","revision","preset","inputs"]),
+        tool("insert_preset","Insert an independent instance with explicitly bound inputs. One undo step; output remains unchanged. Dry-run IDs are provisional.",json!({"session":session,"revision":revision,"preset":veylvik_document::schema::preset(),"inputs":{"type":"object","additionalProperties":{"type":"string","format":"uuid"}},"sizing":{"type":"string","enum":["fit","fill","original"],"default":"fit"},"position":veylvik_document::schema::position(),"dry_run":{"type":"boolean"}}),&["session","revision","preset","inputs"]),
         tool("apply","Validate or atomically apply commands to the open editor. Requires the session and revision from inspect. set_parameter and set_key preserve node identity and wiring. Image references must already be known to the editor; new paths require import. Unapplied inspector changes or file jobs block mutation.",json!({"session":session,"revision":revision,"dry_run":{"type":"boolean"},"commands":{"type":"array","minItems":1,"maxItems":4096,"items":veylvik_document::schema::command()}}),&["session","revision","commands"]),
         tool("add_effect","Create an editable effect group with exposed controls and ordinary internal nodes as one undoable transaction. Places the effect without overlapping existing nodes, selects/previews its root, and preserves composition output. Returns named role IDs for editing controls. Discover recipes with nodes; dry-run IDs are provisional.",json!({"session":session,"revision":revision,"input":{"type":"string","format":"uuid"},"recipe":{"type":"string","enum":veylvik_document::recipes::Recipe::ALL},"dry_run":{"type":"boolean"}}),&["session","revision","input","recipe"]),
         tool("duplicate_branch","Copy a node and all upstream dependencies as one undoable transaction, preserving shared ancestors and asset references. Places the copy outside existing graph bounds, selects/previews its root, and leaves composition output unchanged. Returns root and old-to-new ID mapping. Dry-run IDs are provisional and are not reused on commit.",json!({"session":session,"revision":revision,"node":{"type":"string","format":"uuid"},"dry_run":{"type":"boolean"}}),&["session","revision","node"]),
@@ -122,8 +122,15 @@ pub fn call(studio: &mut Studio, name: &str, args: &Value) -> Result<Value> {
                 .map(|v| serde_json::from_value(v.clone()))
                 .transpose()?
                 .flatten();
-            let instance =
-                preset.instantiate(studio.project.document.snapshot(), &inputs, position)?;
+            let instance = preset.instantiate_sized(
+                studio.project.document.snapshot(),
+                &inputs,
+                position,
+                args.get("sizing")
+                    .map(|v| serde_json::from_value(v.clone()))
+                    .transpose()?
+                    .unwrap_or_default(),
+            )?;
             let mut result = json!({"session":session,"revision":revision,"group":instance.group,"root":instance.output,"dry_run":dry_run,"valid":true});
             if dry_run {
                 return Ok(result);

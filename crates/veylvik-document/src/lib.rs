@@ -59,6 +59,16 @@ pub enum Operation {
         seed: u32,
         scale: Scalar,
     },
+    Fire {
+        seed: u32,
+        x: Scalar,
+        y: Scalar,
+        width: Scalar,
+        height: Scalar,
+        evolution: Scalar,
+        intensity: Scalar,
+        turbulence: Scalar,
+    },
     FractalNoise {
         seed: u32,
         scale: Scalar,
@@ -121,6 +131,7 @@ pub enum Operation {
 impl Operation {
     pub fn descriptor(&self) -> &'static registry::NodeType {
         match self {
+            Self::Fire { .. } => &registry::FIRE,
             Self::Solid { .. } => &registry::SOLID,
             Self::Colorize { .. } => &registry::COLORIZE,
             Self::FractalNoise { .. } => &registry::FRACTAL_NOISE,
@@ -148,6 +159,13 @@ impl Operation {
     pub fn scalar(&self, name: &str) -> Option<&Scalar> {
         match (self, name) {
             (Self::Noise { scale, .. } | Self::FractalNoise { scale, .. }, "scale") => Some(scale),
+            (Self::Fire { x, .. }, "x") => Some(x),
+            (Self::Fire { y, .. }, "y") => Some(y),
+            (Self::Fire { width, .. }, "width") => Some(width),
+            (Self::Fire { height, .. }, "height") => Some(height),
+            (Self::Fire { evolution, .. }, "evolution") => Some(evolution),
+            (Self::Fire { intensity, .. }, "intensity") => Some(intensity),
+            (Self::Fire { turbulence, .. }, "turbulence") => Some(turbulence),
             (Self::FractalNoise { octaves, .. }, "octaves") => Some(octaves),
             (Self::FractalNoise { roughness, .. }, "roughness") => Some(roughness),
             (Self::FractalNoise { evolution, .. }, "evolution") => Some(evolution),
@@ -176,6 +194,13 @@ impl Operation {
     pub fn scalar_mut(&mut self, name: &str) -> Option<&mut Scalar> {
         match (self, name) {
             (Self::Noise { scale, .. } | Self::FractalNoise { scale, .. }, "scale") => Some(scale),
+            (Self::Fire { x, .. }, "x") => Some(x),
+            (Self::Fire { y, .. }, "y") => Some(y),
+            (Self::Fire { width, .. }, "width") => Some(width),
+            (Self::Fire { height, .. }, "height") => Some(height),
+            (Self::Fire { evolution, .. }, "evolution") => Some(evolution),
+            (Self::Fire { intensity, .. }, "intensity") => Some(intensity),
+            (Self::Fire { turbulence, .. }, "turbulence") => Some(turbulence),
             (Self::FractalNoise { octaves, .. }, "octaves") => Some(octaves),
             (Self::FractalNoise { roughness, .. }, "roughness") => Some(roughness),
             (Self::FractalNoise { evolution, .. }, "evolution") => Some(evolution),

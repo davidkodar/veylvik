@@ -38,7 +38,7 @@ pub fn description(id: &str) -> &'static str {
             "Glossy pink lettering stretches into hanging drips, falling droplets and a liquid pool."
         }
         "embers" => {
-            "Reflective gold lettering burns above a smoky reflection. Curved flames breathe behind the title while embers rise."
+            "Reflective gold lettering burns above a smoky reflection. Layered turbulent fire rises behind the title while embers rise."
         }
         "fireflies" => {
             "Glossy green lettering drips into luminous nectar, surrounded by drifting fireflies."
@@ -272,7 +272,18 @@ pub fn build(id: &str) -> Result<Scene> {
         id,
         "embers" | "fireflies" | "liquid_shimmer" | "dust_motes" | "snowfall" | "starfield"
     ) {
-        return art_direction::build(id);
+        let mut scene = art_direction::build(id)?;
+        super::resolution::map_graph(
+            &mut scene.composition.nodes,
+            &mut scene.composition.groups,
+            [960, 540],
+            [1920, 1080],
+            super::resolution::Sizing::Fit,
+        )?;
+        scene.composition.width = 1920;
+        scene.composition.height = 1080;
+        scene.composition.validate()?;
+        return Ok(scene);
     }
     let preset = super::builtin::build(id)?;
     let mut doc = crate::blank(960, 540, Time::new(24, 1)?)?;

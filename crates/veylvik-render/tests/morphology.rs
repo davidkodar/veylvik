@@ -36,10 +36,10 @@ fn reference(pixels: &[[f32; 4]], width: u32, height: u32, radius: f32) -> Vec<[
 }
 #[test]
 fn morphology_validates_bounds_and_never_aliases_colored_zero_radius_input() {
-    for radius in [-32.0, -0.5, 0.0, 32.0] {
+    for radius in [-256.0, -0.5, 0.0, 256.0] {
         operation(radius).validate().unwrap();
     }
-    for radius in [-32.01, 32.01, f32::NAN, f32::INFINITY] {
+    for radius in [-256.01, 256.01, f32::NAN, f32::INFINITY] {
         assert!(operation(radius).validate().is_err());
     }
     let mut doc = blank(17, 9, Time::new(24, 1).unwrap()).unwrap();
@@ -80,7 +80,7 @@ fn morphology_matches_square_reference_and_animated_cache_and_crop() {
             Arc::new(Image::new(width, height, source.clone()).unwrap()),
         );
         for radius in [
-            -32.0, -3.0, -1.5, -0.5, -0.49, 0.0, 0.49, 0.5, 1.5, 3.0, 32.0,
+            -256.0, -32.0, -3.0, -1.5, -0.5, -0.49, 0.0, 0.49, 0.5, 1.5, 3.0, 32.0, 256.0,
         ] {
             doc.nodes.get_mut(&doc.output).unwrap().operation = operation(radius);
             let plan = Plan::compile(&doc).unwrap();

@@ -9,6 +9,7 @@ pub enum Kernel {
     Solid,
     Noise,
     FractalNoise,
+    Fire,
     Exposure,
     Transform,
     Displace,
@@ -28,10 +29,11 @@ pub enum Kernel {
     Gradient,
 }
 impl Kernel {
-    pub(crate) const ALL: [Self; 20] = [
+    pub(crate) const ALL: [Self; 21] = [
         Self::Solid,
         Self::Noise,
         Self::FractalNoise,
+        Self::Fire,
         Self::Exposure,
         Self::Transform,
         Self::Displace,
@@ -53,6 +55,7 @@ impl Kernel {
     pub(crate) fn entry(self) -> &'static str {
         match self {
             Self::Solid => "solid",
+            Self::Fire => "fire",
             Self::FractalNoise => "fractal_noise",
             Self::Noise => "noise",
             Self::Exposure => "exposure",
@@ -170,6 +173,7 @@ impl Plan {
             }
             let kernel = match &node.operation {
                 Operation::Solid { .. } => Kernel::Solid,
+                Operation::Fire { .. } => Kernel::Fire,
                 Operation::FractalNoise { .. } => Kernel::FractalNoise,
                 Operation::Noise { .. } => Kernel::Noise,
                 Operation::Exposure { .. } => Kernel::Exposure,
@@ -395,6 +399,7 @@ fn shareable(operation: &Operation) -> bool {
     matches!(
         operation,
         Operation::Solid { .. }
+            | Operation::Fire { .. }
             | Operation::FractalNoise { .. }
             | Operation::Noise { .. }
             | Operation::Exposure { .. }

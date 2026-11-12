@@ -1,6 +1,7 @@
 //! Portable, versioned effect graphs. Boundary sources are supplied by the host;
 //! files contain no filesystem dependencies or application/session state.
 pub mod builtin;
+pub mod resolution;
 pub mod showcase;
 use crate::{
     Command, Composition, Error, Node, NodeId, NodePosition, Operation, Result, Time, fail,
@@ -103,6 +104,34 @@ impl Preset {
         }
         .validate()?;
         Ok(())
+    }
+    /// Map spatial values to the host canvas while keeping animation times intact.
+    pub fn adapted(&self, width: u32, height: u32, sizing: resolution::Sizing) -> Result<Self> {
+        self.validate()?;
+        let mut preset = self.clone();
+        let mut groups = [(preset.group.id, preset.group.clone())].into();
+        resolution::map_graph(
+            &mut preset.nodes,
+            &mut groups,
+            [self.width, self.height],
+            [width, height],
+            sizing,
+        )?;
+        preset.group = groups.remove(&preset.group.id).unwrap();
+        preset.width = width;
+        preset.height = height;
+        preset.validate()?;
+        Ok(preset)
+    }
+    pub fn instantiate_sized(
+        &self,
+        doc: &Composition,
+        inputs: &BTreeMap<String, NodeId>,
+        position: Option<NodePosition>,
+        sizing: resolution::Sizing,
+    ) -> Result<Instance> {
+        self.adapted(doc.width, doc.height, sizing)?
+            .instantiate(doc, inputs, position)
     }
     /// Keep authored pixel units and exact animation times. Hosts explicitly bind
     /// every public input; insertion never silently changes the composition output.

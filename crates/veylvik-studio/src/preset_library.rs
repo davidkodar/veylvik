@@ -16,6 +16,7 @@ pub struct Library {
     pub ready: Option<Preset>,
     query: String,
     category: String,
+    sizing: veylvik_document::presets::resolution::Sizing,
     gallery: crate::showcase_gallery::Gallery,
     detail: Option<&'static str>,
     inputs: BTreeMap<String, NodeId>,
@@ -121,7 +122,11 @@ impl Studio {
                     if let Some(preset) = &self.library.ready {
                         ui.heading(&preset.group.label);
                         ui.weak(format!("{} nodes · authored at {} × {}", preset.nodes.len(), preset.width, preset.height));
-                        ui.add(egui::Label::new("Choose the image for each input. Saved values and animation timing are preserved.").wrap());
+                        ui.add(egui::Label::new("Choose the image for each input. Spatial values adapt to the composition. Animation timing is preserved.").wrap());
+                        egui::ComboBox::from_id_salt("preset-sizing").selected_text(self.library.sizing.label()).show_ui(ui,|ui| {
+                            use veylvik_document::presets::resolution::Sizing;
+                            for mode in [Sizing::Fit,Sizing::Fill,Sizing::Original] {ui.selectable_value(&mut self.library.sizing,mode,mode.label());}
+                        });
                         let doc = self.project.document.snapshot();
                         for (key, input) in &preset.group.inputs {
                             ui.label(&input.label);
@@ -150,7 +155,7 @@ impl Studio {
                         });
                         ui.separator();
                         self.library.gallery.detail(ui,id);
-                        ui.weak(format!("{} · 4 seconds · editable vector scene",entry.label));
+                        ui.weak(format!("{} · 4 seconds · editable scene",entry.label));
                     } else {
                         ui.add(egui::TextEdit::singleline(&mut self.library.query).hint_text("Search effects…").desired_width(f32::INFINITY));
                         ui.horizontal_wrapped(|ui| {
@@ -258,10 +263,11 @@ impl Studio {
                     return;
                 }
                 let preset = self.library.ready.as_ref().unwrap();
-                match preset.instantiate(
+                match preset.instantiate_sized(
                     self.project.document.snapshot(),
                     &self.library.inputs,
                     self.library.position,
+                    self.library.sizing,
                 ) {
                     Ok(instance) => match self.project.apply(&instance.commands) {
                         Ok(()) => {

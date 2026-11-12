@@ -226,7 +226,7 @@ fn outline(a: &mut Art, mask: NodeId, dx: f32, dy: f32, color: [f32; 4]) -> Node
 }
 fn gold_fire(a: &mut Art, bg: NodeId) -> NodeId {
     let mask = a.text("GOLD");
-    let bg = a.atmosphere(bg, [0.45, 0.035, 0.002, 1.0], 480.0, 300.0, 320.0, 130.0);
+    let bg = a.atmosphere(bg, [0.12, 0.012, 0.001, 1.0], 480.0, 300.0, 320.0, 130.0);
     // Two gradients meet at a sharp polished-metal reflection band.
     let top = a.palette(
         "Gold upper reflection",
@@ -265,60 +265,35 @@ fn gold_fire(a: &mut Art, bg: NodeId) -> NodeId {
         );
         extrusion = a.over("Layered depth", extrusion, shifted);
     }
-    let noise = a.noise(45.0, 297);
-    let mut flame_paths = Vec::new();
-    // One mask keeps the 26 editable curved tongues in one rasterization pass.
-    // The animated spatial turbulence makes different parts of the bed move independently.
-    for i in 0..26 {
-        let x = 175.0 + i as f32 * 23.0;
-        let h = 55.0 + (i * 47 % 100) as f32;
-        let base = 255.0 + (i % 3) as f32 * 13.0;
-        let width = 12.0 + (i % 4) as f32 * 3.0;
-        let commands = vec![
-            PathCommand::Move {
-                to: [x - width, base],
-            },
-            PathCommand::Cubic {
-                control1: [x - width * 1.8, base - h * 0.3],
-                control2: [x + width, base - h * 0.65],
-                to: [x - width * 0.3, base - h],
-            },
-            PathCommand::Cubic {
-                control1: [x + width * 2.0, base - h * 0.55],
-                control2: [x + width * 1.8, base - h * 0.2],
-                to: [x + width, base],
-            },
-            PathCommand::Close {},
-        ];
-        flame_paths.extend(commands);
-    }
-    let flames = a.path("26 editable flame tongues", flame_paths);
-    let flames = a.move_art(
-        "Flame breathing",
-        flames,
-        [wave(-3.0, 3.0, 0), 0.0.into()],
-        [1.0.into(), wave(0.9, 1.1, 0)],
-        0.0.into(),
-        [480.0, 280.0],
-    );
-    let flames = a.displace("Turbulent flame edges", flames, noise, 14.0, 22.0);
-    let fire = a.palette(
-        "Fire temperature",
-        90.0,
-        285.0,
-        [0.8, 0.008, 0.0, 1.0],
-        [2.8, 0.65, 0.025, 1.0],
-    );
     let fire = a.node(
-        "Fire turbulent temperature",
-        Operation::Blend {
-            mode: BlendMode::Multiply,
-            opacity: 0.72.into(),
+        "Fire · rising turbulent volume",
+        Operation::Fire {
+            seed: 297,
+            x: 480.0.into(),
+            y: 285.0.into(),
+            width: 660.0.into(),
+            height: 245.0.into(),
+            evolution: Scalar::Linear {
+                keys: vec![
+                    Key {
+                        time: Time { ticks: 0, rate: 1 },
+                        value: 0.0,
+                        segment: None,
+                    },
+                    Key {
+                        time: Time { ticks: 4, rate: 1 },
+                        value: 4.0,
+                        segment: None,
+                    },
+                ],
+            },
+            intensity: 1.1.into(),
+            turbulence: 1.4.into(),
         },
-        &[("background", fire), ("foreground", noise)],
+        &[],
     );
-    let fire = a.mask("Hot flame color", fire, flames);
-    let fire = a.glow(fire, 12.0);
+    let halo = a.blur(fire, 6.0);
+    let fire = a.plus("Subtle fire scattering", fire, halo, 0.12);
     let bg = a.plus("Fire behind gold", bg, fire, 0.9);
     let depth = a.over("Gold depth over flame", bg, extrusion);
     let face = a.over("Gold face", depth, face);
@@ -333,8 +308,8 @@ fn gold_fire(a: &mut Art, bg: NodeId) -> NodeId {
         0.0.into(),
         [480.0, 340.0],
     );
-    let reflection = a.blur(reflection, 7.0);
-    a.plus("Smoky reflected light", face, reflection, 0.16)
+    let reflection = a.blur(reflection, 2.0);
+    a.plus("Smoky reflected light", face, reflection, 0.10)
 }
 fn dripping(a: &mut Art, bg: NodeId, pink: bool) -> NodeId {
     let letters = a.text("DRIP");

@@ -76,6 +76,21 @@ fn params(
             p.size_op[3] = *seed;
             p.values[0] = sample("scale")?;
         }
+        Operation::Fire { seed, .. } => {
+            p.size_op[3] = *seed;
+            p.values = [
+                sample("x")?,
+                sample("y")?,
+                sample("width")?,
+                sample("height")?,
+            ];
+            p.extra = [
+                sample("evolution")?.rem_euclid(4.0),
+                sample("intensity")?,
+                sample("turbulence")?,
+                0.0,
+            ];
+        }
         Operation::FractalNoise { seed, .. } => {
             p.size_op[3] = *seed;
             p.values = [
@@ -162,6 +177,19 @@ pub struct Renderer {
     pub adapter: wgpu::AdapterInfo,
     pub budget_bytes: u64,
 }
+/// Request native frame buffers beyond WebGPU's conservative 128 MiB default.
+/// UHD fits that default narrowly; DCI 4K requires larger bindings. Cap requests
+/// to the adapter's advertised support, retaining explicit render-time checks.
+pub fn device_limits(adapter: &wgpu::Adapter) -> wgpu::Limits {
+    let available = adapter.limits();
+    wgpu::Limits {
+        max_storage_buffer_binding_size: available
+            .max_storage_buffer_binding_size
+            .min(512 * 1024 * 1024),
+        max_buffer_size: available.max_buffer_size.min(512 * 1024 * 1024),
+        ..Default::default()
+    }
+}
 impl Renderer {
     pub fn new() -> Result<Self> {
         pollster::block_on(Self::create())
@@ -182,6 +210,7 @@ impl Renderer {
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
                 label: Some("Veylvik"),
+                required_limits: device_limits(&adapter),
                 ..Default::default()
             })
             .await
@@ -302,7 +331,7 @@ impl Renderer {
             owner: Arc::new(frame::DeviceIdentity),
             pool_limit_bytes: 128 * 1024 * 1024,
             adapter: info,
-            budget_bytes: 512 * 1024 * 1024,
+            budget_bytes: 2048 * 1024 * 1024,
         })
     }
     pub fn resource_stats(&self) -> Result<ResourceStats> {

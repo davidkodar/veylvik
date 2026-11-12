@@ -38,7 +38,15 @@ impl Navigation {
     }
     pub fn transform(&self, canvas: Rect, image: Vec2, ppp: f32) -> ViewTransform {
         let size = self.image_size(canvas, image, ppp);
-        let origin = canvas.center() + self.pan - size * 0.5 - canvas.min;
+        let mut origin = canvas.center() + self.pan - size * 0.5;
+        let scale = self.scale(canvas, image, ppp);
+        if scale >= 1.0 && (scale - scale.round()).abs() < 0.00001 {
+            origin = egui::pos2(
+                (origin.x * ppp).round() / ppp,
+                (origin.y * ppp).round() / ppp,
+            );
+        }
+        let origin = origin - canvas.min;
         ViewTransform([
             origin.x / canvas.width(),
             origin.y / canvas.height(),
@@ -120,6 +128,22 @@ pub fn paint_status(ui: &egui::Ui, canvas: Rect, text: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn actual_size_aligns_to_physical_pixels_on_odd_canvases() {
+        for ppp in [1.0, 1.5, 2.0] {
+            let canvas = Rect::from_min_size(egui::pos2(13.25, 21.5), egui::vec2(801.0, 403.0));
+            let mut nav = Navigation::default();
+            nav.actual_size();
+            let t = nav.transform(canvas, egui::vec2(400.0, 200.0), ppp).0;
+            for origin in [
+                (canvas.min.x + t[0] * canvas.width()) * ppp,
+                (canvas.min.y + t[1] * canvas.height()) * ppp,
+            ] {
+                assert!((origin - origin.round()).abs() < 0.0001);
+            }
+            assert!((t[2] * canvas.width() * ppp - 400.0).abs() < 0.0001);
+        }
+    }
     #[test]
     fn pending_preview_feedback_keeps_canvas_and_image_geometry_stable() {
         let ctx = egui::Context::default();

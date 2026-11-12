@@ -156,3 +156,46 @@ fn expanded_catalog_has_unique_discoverable_ids_and_editable_controls() {
         5
     );
 }
+
+#[test]
+fn presets_adapt_to_uhd_without_retiming_animation() {
+    use veylvik_document::presets::{builtin, resolution::Sizing};
+    for entry in builtin::ALL {
+        let original = builtin::build(entry.id).unwrap();
+        for (w, h) in [(480, 270), (1920, 1080), (1080, 1920), (4096, 2160)] {
+            original.adapted(w, h, Sizing::Fit).unwrap();
+            original.adapted(w, h, Sizing::Fill).unwrap();
+        }
+        let scaled = original.adapted(3840, 2160, Sizing::Fit).unwrap();
+        assert_eq!((scaled.width, scaled.height), (3840, 2160));
+        assert_eq!(
+            serde_json::to_value(scaled.frame_rate).unwrap(),
+            serde_json::to_value(original.frame_rate).unwrap()
+        );
+        assert_eq!(scaled.frame_count, original.frame_count);
+        for (id, node) in &original.nodes {
+            let mapped = &scaled.nodes[id].operation;
+            for p in node.operation.descriptor().parameters {
+                if let Some(scalar) = node.operation.scalar(p.name) {
+                    let other = mapped.scalar(p.name).unwrap();
+                    for tick in [0, 17, 48, 95, 96] {
+                        let time = Time::new(tick, 24).unwrap();
+                        let factor = if p.unit == "pixels" { 4.0 } else { 1.0 };
+                        assert!(
+                            (other.at(time).unwrap() - scalar.at(time).unwrap() * factor).abs()
+                                < 0.001,
+                            "{} {}",
+                            entry.id,
+                            p.name
+                        );
+                    }
+                }
+            }
+        }
+        let unchanged = original.adapted(3840, 2160, Sizing::Original).unwrap();
+        assert_eq!(
+            serde_json::to_value(&unchanged.nodes).unwrap(),
+            serde_json::to_value(&original.nodes).unwrap()
+        );
+    }
+}

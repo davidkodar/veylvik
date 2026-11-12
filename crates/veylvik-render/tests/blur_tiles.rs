@@ -35,7 +35,7 @@ fn blur_matches_reference_across_row_tiles_partial_edges_and_radius_paths() {
             "plate",
             Arc::new(Image::new(width, height, pixels.clone()).unwrap()),
         );
-        for radius in [0.5f32, 1.0, 2.5, 3.0, 8.0, 31.5, 32.0] {
+        for radius in [0.5f32, 1.0, 2.5, 3.0, 8.0, 31.5, 32.0, 64.0, 128.0, 256.0] {
             doc.nodes.get_mut(&doc.output).unwrap().operation = Operation::Blur {
                 radius: radius.into(),
             };

@@ -177,6 +177,18 @@ pub fn operation(kind: &NodeType, width: u32, height: u32) -> Operation {
     let mut operation: Operation =
         serde_json::from_value(kind.default_operation()).expect("validated registry defaults");
     match &mut operation {
+        Operation::Fire {
+            x,
+            y,
+            width: w,
+            height: h,
+            ..
+        } => {
+            *x = (width as f32 * 0.5).into();
+            *y = (height as f32 * 0.7).into();
+            *w = (width as f32 * 0.65).into();
+            *h = (height as f32 * 0.5).into();
+        }
         Operation::Ellipse {
             x,
             y,

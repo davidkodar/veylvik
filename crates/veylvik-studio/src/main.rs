@@ -63,6 +63,11 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let project = Project::open(path.as_deref())?;
     let mut setup = egui_wgpu::WgpuSetupCreateNew::without_display_handle();
     setup.instance_descriptor.backends = wgpu::Backends::VULKAN;
+    setup.device_descriptor = Arc::new(|adapter| wgpu::DeviceDescriptor {
+        label: Some("Veylvik studio"),
+        required_limits: veylvik_render::device_limits(adapter),
+        ..Default::default()
+    });
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("Veylvik")
@@ -1050,7 +1055,9 @@ impl Studio {
                     self.draft_dirty |= animation::color(ui, high);
                 });
             }
-            Operation::Noise { seed, .. } | Operation::FractalNoise { seed, .. } => {
+            Operation::Noise { seed, .. }
+            | Operation::FractalNoise { seed, .. }
+            | Operation::Fire { seed, .. } => {
                 ui.horizontal(|ui| {
                     ui.label("Seed");
                     self.draft_dirty |= ui.add(egui::DragValue::new(seed)).changed();
@@ -1698,7 +1705,7 @@ impl eframe::App for Studio {
                         egui::ScrollArea::vertical().show(ui, |ui| self.inspector(ui));
                     });
                 egui::CentralPanel::default().show_inside(ui, |ui| {
-                    ui.horizontal(|ui| {
+                    ui.horizontal_wrapped(|ui| {
                         ui.heading("Viewer");
                         ui.weak(if self.project.preview.is_some() {
                             "Selected node preview"
@@ -1762,6 +1769,25 @@ impl eframe::App for Studio {
                                 Paint(self.displayed.as_ref().unwrap().clone()),
                             ),
                         );
+                        let label = format!(
+                            "{} × {} · {:.0}%",
+                            image.x as u32,
+                            image.y as u32,
+                            self.navigation.scale(canvas, image, ctx.pixels_per_point()) * 100.0
+                        );
+                        let painter = ui.painter().with_clip_rect(canvas);
+                        let galley = painter.layout_no_wrap(
+                            label,
+                            egui::FontId::monospace(12.0),
+                            egui::Color32::WHITE,
+                        );
+                        let position = canvas.right_bottom() - egui::vec2(8.0, 8.0) - galley.size();
+                        painter.rect_filled(
+                            egui::Rect::from_min_size(position, galley.size()).expand(3.0),
+                            2.0,
+                            egui::Color32::from_black_alpha(190),
+                        );
+                        painter.galley(position, galley, egui::Color32::WHITE);
                         // A pending frame must never change the canvas geometry.
                         // During playback, retaining the previous frame is normal.
                         if self.displayed_ticket != self.wanted && (!self.playing || self.error) {
