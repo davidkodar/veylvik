@@ -499,13 +499,49 @@ impl Studio {
         let base = self.project.base.clone();
         let session = self.project.session;
         let revision = self.project.document.revision();
+        let previous = self.project.inputs.clone();
         let result = self.files.start(move || {
-            let inputs =
-                project::load_inputs(&composition, &base).map_err(|error| error.to_string())?;
+            let inputs = project::load_inputs(&composition, &base, &previous)
+                .map_err(|error| error.to_string())?;
             Ok(Completed::Reloaded {
                 session,
                 revision,
                 inputs,
+            })
+        });
+        self.file_started(result);
+    }
+    fn replace_image(&mut self) {
+        if self.files.busy() || !self.can_change_selection() || self.graph.dragging() {
+            return;
+        }
+        if !matches!(self.draft.operation, Operation::Image { .. }) {
+            return;
+        }
+        self.playing = false;
+        let folder = self.project.base.clone();
+        let session = self.project.session;
+        let revision = self.project.document.revision();
+        let node = self.project.selected;
+        let inputs = self.project.inputs.clone();
+        let result = self.files.start(move || {
+            let Some(path) = files::select(Choice::Import, &folder, "")? else {
+                return Ok(Completed::Cancelled);
+            };
+            let path = path.canonicalize().map_err(|error| error.to_string())?;
+            let asset = path.to_str().ok_or("Image path is not UTF-8")?;
+            let replaced_bytes = inputs.get(asset).map_or(0, |image| image.byte_size());
+            let budget = (256u64 * 1024 * 1024)
+                .saturating_sub(inputs.byte_size() - replaced_bytes)
+                .min(128 * 1024 * 1024);
+            let image =
+                Arc::new(veylvik_io::load_image(&path, budget).map_err(|error| error.to_string())?);
+            Ok(Completed::Replaced {
+                session,
+                revision,
+                node,
+                path,
+                image,
             })
         });
         self.file_started(result);
@@ -682,6 +718,25 @@ impl Studio {
                     self.fail(
                         "Source reload became obsolete; reload again for the current project.",
                     );
+                }
+            }
+            Ok(Completed::Replaced {
+                session,
+                revision,
+                node,
+                path,
+                image,
+            }) => {
+                if self.project.session != session || self.project.document.revision() != revision {
+                    self.fail("Image replacement became obsolete; choose the source again.");
+                } else {
+                    match self.project.replace_image(node, &path, image) {
+                        Ok(()) => {
+                            self.refresh_draft();
+                            self.request_preview();
+                        }
+                        Err(error) => self.fail(error),
+                    }
                 }
             }
             Ok(Completed::Saved(saved)) => {
@@ -901,6 +956,7 @@ impl Studio {
             .project
             .time()
             .unwrap_or(veylvik_document::Time { ticks: 0, rate: 1 });
+        let mut replace_image = false;
         match &mut self.draft.operation {
             Operation::Path { geometry } => {
                 self.draft_dirty |= vector_editor::edit(ui, geometry);
@@ -967,7 +1023,11 @@ impl Studio {
                 ui.label("Source image");
                 ui.label(asset.as_str());
                 ui.label("Images use native size and transparent padding.");
+                replace_image = ui.button("Replace source…").clicked();
             }
+        }
+        if replace_image {
+            self.replace_image();
         }
         let kind = self.draft.operation.descriptor();
         for parameter in kind.parameters {

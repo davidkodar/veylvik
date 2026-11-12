@@ -123,7 +123,7 @@ impl Project {
         Ok(plan)
     }
     pub fn reload_inputs(&mut self) -> Result<()> {
-        self.inputs = load_inputs(self.document.snapshot(), &self.base)?;
+        self.inputs = load_inputs(self.document.snapshot(), &self.base, &self.inputs)?;
         Ok(())
     }
     pub fn apply(&mut self, commands: &[Command]) -> Result<()> {
@@ -222,6 +222,35 @@ impl Project {
         self.stamp = Some(saved.stamp);
         self.saved_revision = Some(saved.revision);
     }
+    pub fn replace_image(
+        &mut self,
+        id: NodeId,
+        path: &Path,
+        image: Arc<veylvik_render::Image>,
+    ) -> Result<()> {
+        let mut node = self
+            .document
+            .snapshot()
+            .nodes
+            .get(&id)
+            .ok_or("Image node no longer exists")?
+            .clone();
+        let Operation::Image { asset } = &node.operation else {
+            return Err("Selected node is not an image".into());
+        };
+        let next = path.to_str().ok_or("image path is not UTF-8")?.to_owned();
+        if asset != &next {
+            node.operation = Operation::Image {
+                asset: next.clone(),
+            };
+            self.apply(&[Command::Put {
+                node: Box::new(node),
+            }])?;
+        }
+        // Retain other loaded sources so undo can restore the previous image.
+        self.inputs.insert(next, image);
+        Ok(())
+    }
     pub fn import(
         &mut self,
         path: &Path,
@@ -240,18 +269,30 @@ impl Project {
     }
 }
 /// Build a complete replacement snapshot before publishing any changed sources.
-pub fn load_inputs(composition: &Composition, base: &Path) -> Result<ImageInputs> {
-    // Include disconnected sources so switching preview roots needs no disk access.
-    let mut inputs = ImageInputs::default();
-    let mut remaining = 256 * 1024 * 1024;
+pub fn load_inputs(
+    composition: &Composition,
+    base: &Path,
+    previous: &ImageInputs,
+) -> Result<ImageInputs> {
+    // Preserve sources retained for undo/redo; only current nodes read from disk.
+    let mut inputs = previous.clone();
+    let mut seen = std::collections::BTreeSet::new();
+    const BUDGET: u64 = 256 * 1024 * 1024;
     for node in composition.nodes.values() {
         if let Operation::Image { asset } = &node.operation
-            && !inputs.contains_key(asset)
+            && seen.insert(asset)
         {
+            let replaced = inputs.get(asset).map_or(0, |image| image.byte_size());
+            let remaining = BUDGET.saturating_sub(inputs.byte_size().saturating_sub(replaced));
             let image = veylvik_io::load_image(&base.join(asset), remaining.min(128 * 1024 * 1024))
                 .map_err(|error| format!("Image {asset}: {error}"))?;
-            remaining -= image.byte_size();
             inputs.insert(asset, Arc::new(image));
+            // Aliased keys may still retain the replaced allocation.
+            if inputs.byte_size() > BUDGET {
+                return Err(
+                    "Reloaded and retained images exceed the 256 MiB host image budget".into(),
+                );
+            }
         }
     }
     Ok(inputs)
@@ -259,6 +300,58 @@ pub fn load_inputs(composition: &Composition, base: &Path) -> Result<ImageInputs
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn image_replacement_preserves_node_wiring_and_retains_pixels_for_undo() {
+        let mut project = Project::blank(1, 1, Time::new(24, 1).unwrap(), 24).unwrap();
+        let old = Arc::new(veylvik_render::Image::new(1, 1, vec![[1.0, 0.0, 0.0, 1.0]]).unwrap());
+        let new = Arc::new(veylvik_render::Image::new(1, 1, vec![[0.0, 1.0, 0.0, 1.0]]).unwrap());
+        project
+            .import(
+                Path::new("old.png"),
+                old.clone(),
+                veylvik_document::NodePosition { x: 17.0, y: 23.0 },
+            )
+            .unwrap();
+        let image = project.selected;
+        let original = project.document.snapshot().nodes[&image].clone();
+        let effect = project
+            .add(Operation::Exposure { stops: 1.0.into() })
+            .unwrap();
+        project.apply(&[Command::Output { id: effect }]).unwrap();
+        let steps = project.document.history().undo_steps;
+        project
+            .replace_image(image, Path::new("new.png"), new.clone())
+            .unwrap();
+        let changed = &project.document.snapshot().nodes[&image];
+        assert_eq!(changed.position, original.position);
+        assert_eq!(changed.label, original.label);
+        assert_eq!(
+            project.document.snapshot().nodes[&effect].inputs["image"],
+            image
+        );
+        assert_eq!(project.document.snapshot().output, effect);
+        assert_eq!(project.document.history().undo_steps, steps + 1);
+        assert!(Arc::ptr_eq(project.inputs.get("old.png").unwrap(), &old));
+        assert!(Arc::ptr_eq(project.inputs.get("new.png").unwrap(), &new));
+        project.undo(false).unwrap();
+        assert_eq!(
+            serde_json::to_value(&project.document.snapshot().nodes[&image]).unwrap(),
+            serde_json::to_value(&original).unwrap()
+        );
+        project.undo(true).unwrap();
+        let revision = project.document.revision();
+        project
+            .replace_image(image, Path::new("new.png"), new.clone())
+            .unwrap();
+        assert_eq!(project.document.revision(), revision);
+        assert!(
+            project
+                .replace_image(effect, Path::new("bad.png"), new)
+                .is_err()
+        );
+        assert_eq!(project.document.revision(), revision);
+        assert!(!project.inputs.contains_key("bad.png"));
+    }
     #[test]
     fn source_reload_replaces_all_inputs_without_changing_history_and_failure_keeps_old_images() {
         let root = std::env::temp_dir().join(format!("veylvik-reload-{}", NodeId::new_v4()));
@@ -300,6 +393,7 @@ mod tests {
         let revision = project.document.revision();
         let old_a = project.inputs.get("a.png").unwrap().clone();
         let old_b = project.inputs.get("b.exr").unwrap().clone();
+        project.inputs.insert("historical.png", old_a.clone());
         veylvik_io::save_frame(&a, 1, 1, &[[0.0, 1.0, 0.0, 1.0]]).unwrap();
         std::fs::remove_file(&b).unwrap();
         assert!(
@@ -322,6 +416,10 @@ mod tests {
             project.inputs.get("b.exr").unwrap().pixels(),
             &[[0.0, 0.0, 4.0, 1.0]]
         );
+        assert!(Arc::ptr_eq(
+            project.inputs.get("historical.png").unwrap(),
+            &old_a
+        ));
         assert_eq!(project.document.revision(), revision);
         assert_eq!(project.document.history().undo_steps, 1);
         assert_eq!(

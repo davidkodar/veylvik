@@ -32,6 +32,13 @@ pub enum Completed {
         revision: u64,
         inputs: veylvik_render::ImageInputs,
     },
+    Replaced {
+        session: veylvik_document::NodeId,
+        revision: u64,
+        node: veylvik_document::NodeId,
+        path: PathBuf,
+        image: Arc<Image>,
+    },
     Saved(Saved),
     Exported(PathBuf),
     Sequence(serde_json::Value),

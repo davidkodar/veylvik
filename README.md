@@ -190,6 +190,12 @@ preview after every file succeeds. A failed reload retains all previous inputs;
 fix the source and retry. Reload pauses playback and requires a clean inspector
 draft, but does not edit the composition or history. Each replacement snapshot
 has the same 256 MiB bound; the old snapshot remains resident while it loads.
+Loaded sources retained for undo/redo also count toward that bound and survive
+reloads. Reopening the project releases sources from discarded editor history.
+An Image node's **Replace source…** button chooses a new PNG or OpenEXR file in
+the portal. It preserves the node's identity, connections and position as one
+undoable edit. Canceling or failing to decode the file leaves the node unchanged.
+Selecting the same asset path refreshes its pixels without adding a document edit.
 The initial UI uses English labels. A working `org.freedesktop.portal.FileChooser`
 service is required for interactive file selection; failures are shown in the
 window. Headless file commands remain available without a desktop service.
