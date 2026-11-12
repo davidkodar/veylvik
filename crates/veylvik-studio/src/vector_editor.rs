@@ -18,45 +18,49 @@ pub fn edit(ui: &mut egui::Ui, path: &mut PathMask) -> bool {
                 .selectable_value(&mut path.fill_rule, FillRule::EvenOdd, "Even-odd holes")
                 .changed();
         });
-    ui.label("Coordinates are composition pixels. Use Affine to animate the shape.");
-    egui::ScrollArea::vertical()
-        .id_salt("path_points")
-        .max_height(300.0)
-        .show(ui, |ui| {
-            for (index, command) in path.commands.iter_mut().enumerate() {
-                ui.push_id(index, |ui| {
-                    ui.separator();
-                    match command {
-                        PathCommand::Move { to } => {
-                            ui.label("Contour start");
-                            changed |= point(ui, "Position", to);
+    ui.label("Drag points and curve handles in the viewer.");
+    ui.weak("Preview selected to edit. Apply saves; Revert cancels.");
+    ui.add_space(6.0);
+    ui.collapsing("Precision coordinates", |ui| {
+        egui::ScrollArea::vertical()
+            .id_salt("path_points")
+            .max_height(300.0)
+            .show(ui, |ui| {
+                for (index, command) in path.commands.iter_mut().enumerate() {
+                    ui.push_id(index, |ui| {
+                        ui.separator();
+                        match command {
+                            PathCommand::Move { to } => {
+                                ui.label("Contour start");
+                                changed |= point(ui, "Position", to);
+                            }
+                            PathCommand::Line { to } => {
+                                ui.label("Line");
+                                changed |= point(ui, "End", to);
+                            }
+                            PathCommand::Quad { control, to } => {
+                                ui.label("Quadratic curve");
+                                changed |= point(ui, "Control", control);
+                                changed |= point(ui, "End", to);
+                            }
+                            PathCommand::Cubic {
+                                control1,
+                                control2,
+                                to,
+                            } => {
+                                ui.label("Cubic curve");
+                                changed |= point(ui, "Control 1", control1);
+                                changed |= point(ui, "Control 2", control2);
+                                changed |= point(ui, "End", to);
+                            }
+                            PathCommand::Close {} => {
+                                ui.weak("Close contour");
+                            }
                         }
-                        PathCommand::Line { to } => {
-                            ui.label("Line");
-                            changed |= point(ui, "End", to);
-                        }
-                        PathCommand::Quad { control, to } => {
-                            ui.label("Quadratic curve");
-                            changed |= point(ui, "Control", control);
-                            changed |= point(ui, "End", to);
-                        }
-                        PathCommand::Cubic {
-                            control1,
-                            control2,
-                            to,
-                        } => {
-                            ui.label("Cubic curve");
-                            changed |= point(ui, "Control 1", control1);
-                            changed |= point(ui, "Control 2", control2);
-                            changed |= point(ui, "End", to);
-                        }
-                        PathCommand::Close {} => {
-                            ui.weak("Close contour");
-                        }
-                    }
-                });
-            }
-        });
+                    });
+                }
+            });
+    });
     ui.horizontal(|ui| {
         let room = path.commands.len() < MAX_PATH_COMMANDS;
         if ui

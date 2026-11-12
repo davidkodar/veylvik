@@ -19,6 +19,7 @@ mod menus;
 mod node_clipboard;
 mod node_finder;
 mod node_palette;
+mod path_handles;
 mod preset_library;
 mod preview_images;
 mod project;
@@ -505,7 +506,12 @@ impl Studio {
             scheduler.cancel()?;
             Ok::<_, Box<dyn std::error::Error>>(scheduler.submit(
                 self.project.document.revision(),
-                if self.draft_dirty && matches!(self.draft.operation, Operation::Text { .. }) {
+                if self.draft_dirty
+                    && matches!(
+                        self.draft.operation,
+                        Operation::Text { .. } | Operation::Path { .. }
+                    )
+                {
                     let doc = self
                         .project
                         .document
@@ -1972,7 +1978,12 @@ impl eframe::App for Studio {
         if let Some(deadline) = self.text_preview_deadline {
             if Instant::now() >= deadline && !self.preview_pending {
                 self.text_preview_deadline = None;
-                if self.draft_dirty && matches!(self.draft.operation, Operation::Text { .. }) {
+                if self.draft_dirty
+                    && matches!(
+                        self.draft.operation,
+                        Operation::Text { .. } | Operation::Path { .. }
+                    )
+                {
                     self.request_preview();
                 }
             } else {
@@ -2355,7 +2366,10 @@ impl eframe::App for Studio {
                             .unwrap_or(self.project.document.snapshot().output);
                         if !self.playing
                             && (self.displayed_ticket == self.wanted
-                                || matches!(self.draft.operation, Operation::Text { .. }))
+                                || matches!(
+                                    self.draft.operation,
+                                    Operation::Text { .. } | Operation::Path { .. }
+                                ))
                             && (root == self.draft.id
                                 || (matches!(self.draft.operation, Operation::Text { .. })
                                     && self.project.preview.is_none()
@@ -2419,6 +2433,18 @@ impl eframe::App for Studio {
                                             }
                                         }
                                         self.draft_dirty |= changed;
+                                        if changed
+                                            && matches!(
+                                                self.draft.operation,
+                                                Operation::Path { .. }
+                                            )
+                                        {
+                                            self.text_preview_deadline.get_or_insert_with(|| {
+                                                Instant::now() + Duration::from_millis(32)
+                                            });
+                                            ui.ctx()
+                                                .request_repaint_after(Duration::from_millis(32));
+                                        }
                                         if changed
                                             && matches!(
                                                 self.draft.operation,
