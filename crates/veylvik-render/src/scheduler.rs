@@ -82,8 +82,8 @@ impl PreviewScheduler {
     }
 }
 /// Preview worker producing GPU-resident output on a host-owned renderer/device.
-pub type GpuPreviewScheduler = PreviewScheduler<GpuFrame>;
-impl PreviewScheduler<GpuFrame> {
+pub type GpuPreviewScheduler = PreviewScheduler<Arc<GpuFrame>>;
+impl PreviewScheduler<Arc<GpuFrame>> {
     pub fn with_renderer(
         renderer: Arc<Renderer>,
         wake: impl Fn() + Send + 'static,
@@ -91,7 +91,7 @@ impl PreviewScheduler<GpuFrame> {
         let worker = LatestWorker::new(
             move |generation, job: Job| {
                 let start = Instant::now();
-                let frame = renderer.render_gpu(&job.plan, job.request, &job.inputs);
+                let frame = renderer.render_gpu_cached(&job.plan, job.request, &job.inputs);
                 PreviewResult {
                     ticket: PreviewTicket {
                         generation,

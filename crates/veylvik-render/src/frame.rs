@@ -6,6 +6,7 @@ use veylvik_document::Time;
 /// Scene-linear Rec.709 premultiplied pixels. RGB may be negative or exceed one.
 #[derive(Debug)]
 pub struct Image {
+    identity: u64,
     width: u32,
     height: u32,
     pixels: Vec<[f32; 4]>,
@@ -29,11 +30,23 @@ impl Image {
                 "image pixels must be finite and premultiplied, with alpha in [0,1] and zero RGB at zero alpha",
             ));
         }
+        static NEXT_IMAGE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+        let identity = NEXT_IMAGE
+            .fetch_update(
+                std::sync::atomic::Ordering::Relaxed,
+                std::sync::atomic::Ordering::Relaxed,
+                |value| value.checked_add(1),
+            )
+            .map_err(|_| error("image identity exhausted"))?;
         Ok(Self {
+            identity,
             width,
             height,
             pixels,
         })
+    }
+    pub(crate) fn identity(&self) -> u64 {
+        self.identity
     }
     pub fn width(&self) -> u32 {
         self.width

@@ -181,6 +181,13 @@ buffers can be reused. A bounded pool retains up to 128 MiB of idle buffers by
 default, within the render budget. Buffers return to the pool only after GPU
 completion and readback unmapping. `Renderer::resource_stats` reports allocations,
 reuse, evictions, and declared resident bytes; `trim_resources` releases idle
-buffers. Image results are not cached. There is
+buffers. `render_gpu_cached` and the GPU preview scheduler additionally retain
+completed output in a 64 MiB, at-most-16-frame LRU cache. Exact keys include
+compiled dependencies, evaluated parameter bits, crop, and immutable source
+identities. Label edits, unreachable nodes, and times evaluating to the same
+values can reuse output. Changed sources and parameters invalidate it. Cache
+retention counts toward the render budget and yields to memory pressure.
+`cache_stats` reports hits/misses/evictions; `clear_frame_cache` releases cache
+ownership. Direct CPU renders and intermediate node results are not cached. There is
 no video decoder, text engine, plug-in loader, simulation, or Klipp adapter
 in this version. No Klipp source is copied or linked.

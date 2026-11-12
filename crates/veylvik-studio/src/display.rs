@@ -40,7 +40,7 @@ impl Display {
         });
         Self { pipeline, format }
     }
-    pub fn frame(&self, renderer: &Renderer, frame: GpuFrame) -> Arc<DisplayFrame> {
+    pub fn frame(&self, renderer: &Renderer, frame: Arc<GpuFrame>) -> Arc<DisplayFrame> {
         let uniform = renderer
             .device()
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -72,7 +72,7 @@ impl Display {
         Arc::new(DisplayFrame {
             pipeline: self.pipeline.clone(),
             bind,
-            frame: Arc::new(frame),
+            frame,
             queue: renderer.queue().clone(),
         })
     }
@@ -139,7 +139,7 @@ mod tests {
         let device = renderer.device();
         let scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
         let display = Display::new(device, wgpu::TextureFormat::Rgba8Unorm);
-        let frame = display.frame(&renderer, frame);
+        let frame = display.frame(&renderer, Arc::new(frame));
         let target = device.create_texture(&wgpu::TextureDescriptor {
             label: None,
             size: wgpu::Extent3d {

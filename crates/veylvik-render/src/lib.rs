@@ -1,5 +1,7 @@
 //! Whole-frame GPU execution. No window, document mutation, or timeline dependency.
+mod cache;
 mod frame;
+pub use cache::CacheStats;
 pub use frame::{GpuFrame, Image, ImageInputs, Region, RenderRequest, RenderedFrame};
 mod plan;
 mod pool;
@@ -65,6 +67,8 @@ pub struct Renderer {
     layout: wgpu::BindGroupLayout,
     validation_pipeline: wgpu::ComputePipeline,
     pool: Mutex<pool::Pool>,
+    cache: Mutex<cache::FrameCache>,
+    pub cache_limit_bytes: u64,
     owner: Arc<frame::DeviceIdentity>,
     pub pool_limit_bytes: u64,
     pub adapter: wgpu::AdapterInfo,
@@ -200,6 +204,8 @@ impl Renderer {
             layout,
             validation_pipeline,
             pool: Mutex::new(pool::Pool::default()),
+            cache: Mutex::new(cache::FrameCache::default()),
+            cache_limit_bytes: 64 * 1024 * 1024,
             owner: Arc::new(frame::DeviceIdentity),
             pool_limit_bytes: 128 * 1024 * 1024,
             adapter: info,
@@ -342,6 +348,69 @@ impl Renderer {
             width: plan.width,
             height: plan.height,
         })
+    }
+    /// Cache completed output by evaluated pass parameters, topology, crop, and
+    /// immutable source identities. Labels, unreachable nodes, and equivalent
+    /// animation times do not invalidate it. At most 16 frames are retained.
+    pub fn render_gpu_cached(
+        &self,
+        plan: &Plan,
+        request: RenderRequest,
+        inputs: &ImageInputs,
+    ) -> Result<Arc<GpuFrame>> {
+        let key = cache::Key::new(plan, request, inputs)?;
+        let mut cache = self
+            .cache
+            .lock()
+            .map_err(|_| error("frame cache poisoned"))?;
+        cache.trim(self.cache_limit_bytes.min(self.budget_bytes));
+        {
+            let mut pool = self
+                .pool
+                .lock()
+                .map_err(|_| error("renderer resource pool poisoned"))?;
+            if pool.failed {
+                return Err(error("renderer unavailable after a GPU failure"));
+            }
+            let available = self.budget_bytes.saturating_sub(pool.stats().held_bytes);
+            pool.trim(self.pool_limit_bytes.min(available));
+        }
+        // Budget reductions apply even when a previous request is a cache hit.
+        while self.resource_stats()?.held_bytes > self.budget_bytes && cache.evict() {}
+        if self.resource_stats()?.held_bytes > self.budget_bytes {
+            return Err(error("held GPU frames exceed budget"));
+        }
+        if let Some(frame) = cache.lookup(&key) {
+            return Ok(frame);
+        }
+        let source_bytes: u64 = plan
+            .required_assets()
+            .into_iter()
+            .map(|asset| inputs.get(asset).unwrap().byte_size())
+            .sum();
+        let needed = plan.gpu_working_bytes() + source_bytes;
+        while self.resource_stats()?.held_bytes + needed > self.budget_bytes && cache.evict() {}
+        let frame = Arc::new(self.render_gpu(plan, request, inputs)?);
+        cache.insert(
+            key,
+            frame.clone(),
+            self.cache_limit_bytes.min(self.budget_bytes),
+        );
+        Ok(frame)
+    }
+    pub fn cache_stats(&self) -> Result<CacheStats> {
+        Ok(self
+            .cache
+            .lock()
+            .map_err(|_| error("frame cache poisoned"))?
+            .stats())
+    }
+    pub fn clear_frame_cache(&self) -> Result<()> {
+        self.cache
+            .lock()
+            .map_err(|_| error("frame cache poisoned"))?
+            .trim(0);
+        Ok(())
     }
     pub fn device(&self) -> &wgpu::Device {
         &self.device

@@ -16,6 +16,7 @@ pub struct Project {
     pub inputs: ImageInputs,
     pub frame: i64,
     saved_revision: Option<u64>,
+    compiled: Option<(u64, NodeId, Arc<Plan>)>,
 }
 impl Project {
     pub fn open(path: Option<&Path>) -> Result<Self> {
@@ -33,6 +34,7 @@ impl Project {
         let mut project = Self {
             document: Document::new(composition)?,
             saved_revision: path.as_ref().map(|_| 0),
+            compiled: None,
             base,
             path,
             selected,
@@ -55,11 +57,18 @@ impl Project {
             u32::try_from(fps.ticks).map_err(|_| "frame rate exceeds timeline range")?,
         )?)
     }
-    pub fn plan(&self) -> Result<Arc<Plan>> {
-        Ok(Arc::new(Plan::compile_output(
-            self.document.snapshot(),
-            self.preview.unwrap_or(self.document.snapshot().output),
-        )?))
+    pub fn plan(&mut self) -> Result<Arc<Plan>> {
+        let revision = self.document.revision();
+        let output = self.preview.unwrap_or(self.document.snapshot().output);
+        if let Some((cached_revision, cached_output, plan)) = &self.compiled
+            && *cached_revision == revision
+            && *cached_output == output
+        {
+            return Ok(plan.clone());
+        }
+        let plan = Arc::new(Plan::compile_output(self.document.snapshot(), output)?);
+        self.compiled = Some((revision, output, plan.clone()));
+        Ok(plan)
     }
     pub fn reload_inputs(&mut self) -> Result<()> {
         // Load every image node so switching preview roots never reads files in a paint callback.
@@ -146,5 +155,21 @@ mod tests {
         assert_eq!(project.preview, None);
         project.undo(true).unwrap();
         assert!(project.document.snapshot().nodes.contains_key(&added));
+    }
+}
+
+#[cfg(test)]
+mod plan_tests {
+    use super::*;
+    #[test]
+    fn scrubbing_reuses_compiled_plan_but_edits_invalidate_it() {
+        let mut project = Project::open(None).unwrap();
+        let first = project.plan().unwrap();
+        project.frame = 20;
+        assert!(Arc::ptr_eq(&first, &project.plan().unwrap()));
+        let mut node = project.document.snapshot().nodes[&project.selected].clone();
+        node.label = "Changed".into();
+        project.apply(&[Command::Put { node }]).unwrap();
+        assert!(!Arc::ptr_eq(&first, &project.plan().unwrap()));
     }
 }

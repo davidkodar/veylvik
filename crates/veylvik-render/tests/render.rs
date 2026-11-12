@@ -692,5 +692,124 @@ fn gpu_preview_scheduler_shares_device_and_releases_cancelled_outputs() {
     rx.recv_timeout(Duration::from_secs(30)).unwrap();
     scheduler.cancel().unwrap();
     assert!(scheduler.try_take().unwrap().is_none());
+    renderer.clear_frame_cache().unwrap();
     assert_eq!(renderer.resource_stats().unwrap().held_bytes, 0);
+}
+
+#[test]
+#[ignore = "requires Vulkan"]
+fn output_cache_keys_evaluated_dependencies_and_evicts_within_budget() {
+    use std::sync::Arc;
+    let mut renderer = Renderer::new().unwrap();
+    let source = Node::new(
+        "source",
+        Operation::Image {
+            asset: "plate".into(),
+        },
+        &[],
+    );
+    let source_id = source.id;
+    let gain = Node::new(
+        "gain",
+        Operation::Exposure {
+            stops: Scalar::Linear {
+                keys: vec![
+                    Key {
+                        time: Time::new(0, 1).unwrap(),
+                        value: 0.0,
+                    },
+                    Key {
+                        time: Time::new(1, 1).unwrap(),
+                        value: 1.0,
+                    },
+                ],
+            },
+        },
+        &[("image", source_id)],
+    );
+    let id = gain.id;
+    let mut doc = composition(vec![source, gain], id);
+    let mut inputs = ImageInputs::default();
+    inputs.insert(
+        "plate",
+        Arc::new(Image::new(1, 1, vec![[0.25, 0.0, 0.0, 1.0]]).unwrap()),
+    );
+    let request = RenderRequest::full(Time::new(1, 1).unwrap());
+    let first = renderer
+        .render_gpu_cached(&Plan::compile(&doc).unwrap(), request, &inputs)
+        .unwrap();
+    let allocations = renderer.resource_stats().unwrap().buffers_created;
+    doc.nodes.get_mut(&id).unwrap().label = "Label does not change pixels".into();
+    let unused = Node::new("unused", Operation::Solid { color: [1.0; 4] }, &[]);
+    doc.nodes.insert(unused.id, unused);
+    let held = renderer
+        .render_gpu_cached(
+            &Plan::compile(&doc).unwrap(),
+            RenderRequest::full(Time::new(20, 1).unwrap()),
+            &inputs,
+        )
+        .unwrap();
+    assert!(Arc::ptr_eq(&first, &held));
+    assert_eq!(
+        renderer.resource_stats().unwrap().buffers_created,
+        allocations
+    );
+    assert_eq!(renderer.cache_stats().unwrap().hits, 1);
+    let animated = renderer
+        .render_gpu_cached(
+            &Plan::compile(&doc).unwrap(),
+            RenderRequest::full(Time::new(0, 1).unwrap()),
+            &inputs,
+        )
+        .unwrap();
+    assert!(!Arc::ptr_eq(&first, &animated));
+    assert_eq!(renderer.read_frame(&animated).unwrap().pixels[0][0], 0.25);
+    assert_eq!(renderer.read_frame(&first).unwrap().pixels[0][0], 0.5);
+    inputs.insert(
+        "plate",
+        Arc::new(Image::new(1, 1, vec![[0.0, 0.25, 0.0, 1.0]]).unwrap()),
+    );
+    let changed_source = renderer
+        .render_gpu_cached(&Plan::compile(&doc).unwrap(), request, &inputs)
+        .unwrap();
+    assert_eq!(
+        renderer.read_frame(&changed_source).unwrap().pixels[0],
+        [0.0, 0.5, 0.0, 1.0]
+    );
+    let crop = RenderRequest {
+        region: Some(Region {
+            x: 0,
+            y: 0,
+            width: 1,
+            height: 1,
+        }),
+        ..request
+    };
+    let cropped = renderer
+        .render_gpu_cached(&Plan::compile(&doc).unwrap(), crop, &inputs)
+        .unwrap();
+    assert_eq!(cropped.region().width, 1);
+    drop((first, held, animated, changed_source, cropped));
+    renderer.cache_limit_bytes = 91 * 16;
+    let plan = Plan::compile(&doc).unwrap();
+    renderer.budget_bytes = plan.gpu_working_bytes() + 16;
+    for ticks in [0, 1, 0, 1] {
+        let frame = renderer
+            .render_gpu_cached(
+                &plan,
+                RenderRequest::full(Time::new(ticks, 1).unwrap()),
+                &inputs,
+            )
+            .unwrap();
+        drop(frame);
+        assert_eq!(renderer.cache_stats().unwrap().entries, 1);
+        assert!(renderer.resource_stats().unwrap().resident_bytes <= renderer.budget_bytes);
+    }
+    assert!(renderer.cache_stats().unwrap().evictions >= 4);
+    renderer.cache_limit_bytes = 0;
+    drop(renderer.render_gpu_cached(&plan, request, &inputs).unwrap());
+    assert_eq!(renderer.cache_stats().unwrap().entries, 0);
+    assert_eq!(renderer.resource_stats().unwrap().held_bytes, 0);
+    renderer.trim_resources().unwrap();
+    assert_eq!(renderer.resource_stats().unwrap().resident_bytes, 0);
 }

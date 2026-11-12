@@ -356,17 +356,47 @@ impl Studio {
                     ui.label("Seed");
                     self.draft_dirty |= ui.add(egui::DragValue::new(seed)).changed();
                 });
-                self.draft_dirty |= scalar(ui, "Cell size", scale, 1.0..=8192.0, time);
+                self.draft_dirty |= scalar(
+                    ui,
+                    "Cell size",
+                    scale,
+                    bounds(&veylvik_document::registry::NOISE, "scale"),
+                    time,
+                );
             }
             Operation::Exposure { stops } => {
-                self.draft_dirty |= scalar(ui, "Exposure (stops)", stops, -32.0..=32.0, time)
+                self.draft_dirty |= scalar(
+                    ui,
+                    "Exposure (stops)",
+                    stops,
+                    bounds(&veylvik_document::registry::EXPOSURE, "stops"),
+                    time,
+                )
             }
             Operation::Transform { x, y } => {
-                self.draft_dirty |= scalar(ui, "X (pixels)", x, -32768.0..=32768.0, time);
-                self.draft_dirty |= scalar(ui, "Y (pixels)", y, -32768.0..=32768.0, time);
+                self.draft_dirty |= scalar(
+                    ui,
+                    "X (pixels)",
+                    x,
+                    bounds(&veylvik_document::registry::TRANSFORM, "x"),
+                    time,
+                );
+                self.draft_dirty |= scalar(
+                    ui,
+                    "Y (pixels)",
+                    y,
+                    bounds(&veylvik_document::registry::TRANSFORM, "y"),
+                    time,
+                );
             }
             Operation::Blur { radius } => {
-                self.draft_dirty |= scalar(ui, "Radius (pixels)", radius, 0.0..=32.0, time)
+                self.draft_dirty |= scalar(
+                    ui,
+                    "Radius (pixels)",
+                    radius,
+                    bounds(&veylvik_document::registry::BLUR, "radius"),
+                    time,
+                )
             }
             Operation::Merge => {
                 ui.label("Foreground over background");
@@ -647,6 +677,17 @@ impl Studio {
                 });
         }
     }
+}
+fn bounds(
+    kind: &veylvik_document::registry::NodeType,
+    name: &str,
+) -> std::ops::RangeInclusive<f32> {
+    let parameter = kind
+        .parameters
+        .iter()
+        .find(|parameter| parameter.name == name)
+        .unwrap();
+    parameter.min.unwrap()..=parameter.max.unwrap()
 }
 fn scalar(
     ui: &mut egui::Ui,
