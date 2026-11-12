@@ -3,6 +3,7 @@ use veylvik_io::text::{Alignment, Direction, OutlineRequest};
 pub struct Controls {
     pub open: bool,
     pub pending: bool,
+    pub position: Option<veylvik_document::NodePosition>,
     text: String,
     size: f32,
     origin: [f32; 2],
@@ -17,6 +18,7 @@ impl Default for Controls {
         Self {
             open: false,
             pending: false,
+            position: None,
             text: "Veylvik".into(),
             size: 64.0,
             origin: [40.0, 120.0],
@@ -29,6 +31,10 @@ impl Default for Controls {
     }
 }
 impl Controls {
+    pub fn open_at(&mut self, position: veylvik_document::NodePosition) {
+        self.position = Some(position);
+        self.open = true;
+    }
     pub fn show(&mut self, ctx: &egui::Context, enabled: bool) -> Option<OutlineRequest> {
         let mut request = None;
         let mut open = self.open;

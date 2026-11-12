@@ -24,6 +24,7 @@ pub enum Completed {
     Outlined(Box<veylvik_document::Node>),
     Opened(Box<Project>),
     Imported {
+        position: veylvik_document::NodePosition,
         path: PathBuf,
         image: Arc<Image>,
     },

@@ -308,8 +308,8 @@ impl Studio {
         position: veylvik_document::NodePosition,
     ) {
         match choice {
-            node_palette::Choice::Image => self.import_image(),
-            node_palette::Choice::Text => self.outline_controls.open = true,
+            node_palette::Choice::Image => self.import_image(position),
+            node_palette::Choice::Text => self.outline_controls.open_at(position),
             node_palette::Choice::Effect(recipe) => {
                 let result = (|| -> Result<(), Box<dyn std::error::Error>> {
                     let input = self.project.selected;
@@ -552,7 +552,7 @@ impl Studio {
             }
         }
     }
-    fn outline_text(&mut self, mut request: veylvik_io::text::OutlineRequest, ctx: &egui::Context) {
+    fn outline_text(&mut self, mut request: veylvik_io::text::OutlineRequest) {
         if self.files.busy() || !self.apply_draft() {
             self.outline_controls.open = true;
             return;
@@ -569,7 +569,7 @@ impl Studio {
         }
         self.playing = false;
         let folder = self.project.base.clone();
-        let position = self.graph.insertion_position(ctx);
+        let position = self.outline_controls.position;
         let result = self.files.start(move || {
             let Some(path) = files::select(Choice::Font, &folder, "")? else {
                 return Ok(Completed::Cancelled);
@@ -584,7 +584,7 @@ impl Studio {
                 },
                 &[],
             );
-            node.position = Some(position);
+            node.position = position;
             Ok(Completed::Outlined(Box::new(node)))
         });
         self.outline_controls.pending = result.is_ok();
@@ -658,7 +658,7 @@ impl Studio {
         });
         self.file_started(result);
     }
-    fn import_image(&mut self) {
+    fn import_image(&mut self, position: veylvik_document::NodePosition) {
         if self.files.busy() || !self.apply_draft() {
             return;
         }
@@ -674,6 +674,7 @@ impl Studio {
             let path = path.canonicalize().map_err(|e| e.to_string())?;
             let image = veylvik_io::load_image(&path, budget).map_err(|e| e.to_string())?;
             Ok(Completed::Imported {
+                position,
                 path,
                 image: Arc::new(image),
             })
@@ -806,18 +807,17 @@ impl Studio {
                 }
             }
             Ok(Completed::Opened(project)) => self.open_project(*project, ctx),
-            Ok(Completed::Imported { path, image }) => {
-                match self
-                    .project
-                    .import(&path, image, self.graph.insertion_position(ctx))
-                {
-                    Ok(()) => {
-                        self.refresh_draft();
-                        self.request_preview();
-                    }
-                    Err(e) => self.fail(e),
+            Ok(Completed::Imported {
+                path,
+                image,
+                position,
+            }) => match self.project.import(&path, image, position) {
+                Ok(()) => {
+                    self.refresh_draft();
+                    self.request_preview();
                 }
-            }
+                Err(e) => self.fail(e),
+            },
             Ok(Completed::Reloaded {
                 session,
                 revision,
@@ -953,7 +953,7 @@ impl Studio {
                 self.leave(Leave::Open, ui.ctx());
             }
             if ui.button("Import…").clicked() {
-                self.import_image();
+                self.import_image(self.graph.insertion_position(ui.ctx()));
             }
             if ui
                 .button("Reload images")
@@ -1488,7 +1488,7 @@ impl eframe::App for Studio {
                 self.reload_images();
             }
             if ctx.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, egui::Key::I)) {
-                self.import_image();
+                self.import_image(self.graph.insertion_position(&ctx));
             }
             if ctx.input_mut(|i| {
                 i.consume_key(egui::Modifiers::CTRL | egui::Modifiers::SHIFT, egui::Key::E)
@@ -1707,7 +1707,7 @@ impl eframe::App for Studio {
             .outline_controls
             .show(&ctx, !self.files.busy() && self.confirm.is_none())
         {
-            self.outline_text(request, &ctx);
+            self.outline_text(request);
         }
         if let Some(settings) = self.export_controls.show(
             &ctx,
