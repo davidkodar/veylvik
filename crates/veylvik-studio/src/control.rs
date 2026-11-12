@@ -49,7 +49,7 @@ pub fn call(studio: &mut Studio, name: &str, args: &Value) -> Result<Value> {
     let project = &studio.project;
     if name == "inspect" {
         return Ok(
-            json!({"session":project.session,"revision":project.document.revision(),"composition":project.document.snapshot(),"history":project.document.history(),"selected":project.selected,"preview":{"node":project.preview.unwrap_or(project.document.snapshot().output),"frame":project.frame,"displayed_time":studio.displayed_time,"rendering":studio.preview_pending},"viewer":{"exposure":studio.view.exposure,"alpha":studio.view.alpha,"scale":studio.navigation.manual_scale(),"pan":studio.navigation.pan()},"inspector_draft":studio.draft_dirty,"busy":studio.files.busy() || studio.authoring_dialog_open() || studio.graph.dragging(),"status":studio.status,"error":studio.error}),
+            json!({"session":project.session,"revision":project.document.revision(),"composition":project.document.snapshot(),"history":project.document.history(),"selected":project.selected,"preview":{"node":project.preview.unwrap_or(project.document.snapshot().output),"frame":project.frame,"displayed_time":studio.displayed_time,"rendering":studio.preview_pending},"viewer":{"exposure":studio.view.exposure,"alpha":studio.view.alpha,"scale":studio.navigation.manual_scale(),"pan":studio.navigation.pan()},"unavailable_assets":project.unavailable_assets(),"inspector_draft":studio.draft_dirty,"busy":studio.files.busy() || studio.authoring_dialog_open() || studio.graph.dragging(),"status":studio.status,"error":studio.error}),
         );
     }
     let session: NodeId = args["session"]
@@ -84,12 +84,24 @@ pub fn call(studio: &mut Studio, name: &str, args: &Value) -> Result<Value> {
         "apply" => {
             let commands: Vec<Command> = serde_json::from_value(args["commands"].clone())?;
             let candidate = studio.project.document.prepare(revision, &commands)?;
+            let known: std::collections::BTreeSet<_> = studio
+                .project
+                .document
+                .snapshot()
+                .nodes
+                .values()
+                .filter_map(|node| match &node.operation {
+                    Operation::Image { asset } => Some(asset.as_str()),
+                    _ => None,
+                })
+                .collect();
             for node in candidate.nodes.values() {
                 if let Operation::Image { asset } = &node.operation
                     && !studio.project.inputs.contains_key(asset)
+                    && !known.contains(asset.as_str())
                 {
                     return Err(format!(
-                        "image asset is not loaded in the editor: {asset}; import it first"
+                        "image asset is not known to the editor: {asset}; import it first"
                     )
                     .into());
                 }

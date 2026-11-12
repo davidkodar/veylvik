@@ -196,6 +196,12 @@ An Image node's **Replace source…** button chooses a new PNG or OpenEXR file i
 the portal. It preserves the node's identity, connections and position as one
 undoable edit. Canceling or failing to decode the file leaves the node unchanged.
 Selecting the same asset path refreshes its pixels without adding a document edit.
+Studio opens valid compositions even if image files are missing, unreadable or
+unsupported. Available images load normally; unavailable sources are marked in
+the toolbar and Image inspector, so their paths can be replaced or repaired and
+reloaded. Outputs depending on unavailable images report a render error; the graph
+and its saved structure remain editable. This also applies to recovery copies.
+Headless rendering continues to reject unavailable required inputs.
 The initial UI uses English labels. A working `org.freedesktop.portal.FileChooser`
 service is required for interactive file selection; failures are shown in the
 window. Headless file commands remain available without a desktop service.
@@ -421,7 +427,9 @@ so an old command cannot target a newly opened project with the same revision.
 Edits run on the UI thread, appear in the editor, and share its undo history.
 `apply` supports dry runs and uses the same command schema as headless editing.
 Unapplied inspector drafts, active node drags, and file jobs block remote changes.
-Image assets must already be loaded through the editor. `preview` accepts an
+New image paths must be imported through the editor. Existing asset references,
+including unavailable sources, can remain in live edits; `inspect.unavailable_assets`
+reports their load errors. `preview` accepts an
 absolute `frame` in 0–1000000 and optional `node`, pauses playback, and requests
 an asynchronous GPU preview. Live inspection reports `preview.displayed_time`
 for the last successfully displayed frame, separately from the requested frame;

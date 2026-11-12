@@ -190,7 +190,20 @@ pub fn protect_inputs(composition: &Composition, base: &Path, destination: &Path
     for node in composition.nodes.values() {
         if let Operation::Image { asset } = &node.operation {
             let input = base.join(asset);
-            if input.canonicalize().unwrap_or(input) == target {
+            let resolved = input
+                .canonicalize()
+                .ok()
+                .or_else(|| {
+                    // The leaf can be missing while its parent still resolves aliases.
+                    let name = input.file_name()?;
+                    let parent = input
+                        .parent()
+                        .filter(|p| !p.as_os_str().is_empty())
+                        .unwrap_or(Path::new("."));
+                    Some(parent.canonicalize().ok()?.join(name))
+                })
+                .unwrap_or(input);
+            if resolved == target {
                 return Err("destination would replace an input image".into());
             }
         }
@@ -232,6 +245,29 @@ mod tests {
             .unwrap()
             .write_image_data(bytes)
             .unwrap();
+    }
+    #[test]
+    fn missing_input_paths_stay_protected_through_parent_aliases() {
+        let temp = Temp::new();
+        std::fs::create_dir(temp.0.join("sub")).unwrap();
+        let target = temp.0.join("missing.png");
+        let mut doc = veylvik_document::blank(1, 1, Time::new(24, 1).unwrap()).unwrap();
+        doc.nodes.get_mut(&doc.output).unwrap().operation = Operation::Image {
+            asset: "sub/../missing.png".into(),
+        };
+        assert!(protect_inputs(&doc, &temp.0, &target).is_err());
+        assert!(save_tracked(&doc, &temp.0, &target, None).is_err());
+        assert!(!target.exists());
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(&temp.0, temp.0.join("alias")).unwrap();
+            doc.nodes.get_mut(&doc.output).unwrap().operation = Operation::Image {
+                asset: "alias/missing.png".into(),
+            };
+            assert!(protect_inputs(&doc, &temp.0, &target).is_err());
+        }
+        assert!(protect_inputs(&doc, &temp.0, &temp.0.join("project.veylvik")).is_ok());
+        save_tracked(&doc, &temp.0, &temp.0.join("project.veylvik"), None).unwrap();
     }
     #[test]
     fn png_decodes_linear_premultiplied_and_preserves_16bit_precision() {

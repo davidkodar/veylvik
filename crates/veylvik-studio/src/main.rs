@@ -821,6 +821,11 @@ impl Studio {
                     .map(|s| s.to_string_lossy().into_owned())
                     .unwrap_or("Untitled".into()),
             );
+            let unavailable = self.project.unavailable_assets().len();
+            if unavailable > 0 {
+                ui.colored_label(egui::Color32::LIGHT_RED, format!("{unavailable} unavailable"))
+                    .on_hover_text("Some image sources could not be loaded. Select an Image node to replace its source, or use Reload images after repairing the files.");
+            }
             if self.project.dirty() || self.draft_dirty {
                 ui.label("•");
             }
@@ -1023,6 +1028,9 @@ impl Studio {
                 ui.label("Source image");
                 ui.label(asset.as_str());
                 ui.label("Images use native size and transparent padding.");
+                if let Some(reason) = self.project.unavailable_assets().get(asset.as_str()) {
+                    ui.colored_label(egui::Color32::LIGHT_RED, *reason);
+                }
                 replace_image = ui.button("Replace source…").clicked();
             }
         }

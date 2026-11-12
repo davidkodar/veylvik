@@ -16,6 +16,7 @@ pub struct Project {
     pub selected: NodeId,
     pub preview: Option<NodeId>,
     pub inputs: ImageInputs,
+    asset_errors: std::collections::BTreeMap<String, String>,
     pub frame: i64,
     saved_revision: Option<u64>,
     stamp: Option<veylvik_io::FileStamp>,
@@ -53,9 +54,10 @@ impl Project {
             selected,
             preview: None,
             inputs: ImageInputs::default(),
+            asset_errors: Default::default(),
             frame: 0,
         };
-        project.reload_inputs()?;
+        project.load_available_inputs();
         Ok(project)
     }
     pub fn blank(width: u32, height: u32, frame_rate: Time, frame_count: u32) -> Result<Self> {
@@ -71,6 +73,7 @@ impl Project {
             selected,
             preview: None,
             inputs: ImageInputs::default(),
+            asset_errors: Default::default(),
             frame: 0,
             saved_revision: None,
             stamp: None,
@@ -89,12 +92,13 @@ impl Project {
             selected,
             preview: None,
             inputs: ImageInputs::default(),
+            asset_errors: Default::default(),
             frame: 0,
             saved_revision: None,
             stamp: None,
             compiled: None,
         };
-        project.reload_inputs()?;
+        project.load_available_inputs();
         Ok(project)
     }
     pub fn dirty(&self) -> bool {
@@ -122,6 +126,51 @@ impl Project {
         self.compiled = Some((revision, output, plan.clone()));
         Ok(plan)
     }
+    fn load_available_inputs(&mut self) {
+        let mut remaining = 256 * 1024 * 1024;
+        for node in self.document.snapshot().nodes.values() {
+            if let Operation::Image { asset } = &node.operation
+                && !self.inputs.contains_key(asset)
+                && !self.asset_errors.contains_key(asset)
+            {
+                match veylvik_io::load_image(
+                    &self.base.join(asset),
+                    remaining.min(128 * 1024 * 1024),
+                ) {
+                    Ok(image) => {
+                        remaining -= image.byte_size();
+                        self.inputs.insert(asset, Arc::new(image));
+                    }
+                    Err(error) => {
+                        self.asset_errors.insert(asset.clone(), error.to_string());
+                    }
+                }
+            }
+        }
+    }
+    pub fn unavailable_assets(&self) -> std::collections::BTreeMap<&str, &str> {
+        self.document
+            .snapshot()
+            .nodes
+            .values()
+            .filter_map(|node| {
+                if let Operation::Image { asset } = &node.operation
+                    && !self.inputs.contains_key(asset)
+                {
+                    Some((
+                        asset.as_str(),
+                        self.asset_errors
+                            .get(asset)
+                            .map(String::as_str)
+                            .unwrap_or("Source is not loaded; reload or replace it."),
+                    ))
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
+    #[cfg(test)]
     pub fn reload_inputs(&mut self) -> Result<()> {
         self.inputs = load_inputs(self.document.snapshot(), &self.base, &self.inputs)?;
         Ok(())
@@ -300,6 +349,58 @@ pub fn load_inputs(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn missing_sources_do_not_prevent_opening_or_recovering_a_valid_graph() {
+        let root = std::env::temp_dir().join(format!("veylvik-missing-{}", NodeId::new_v4()));
+        std::fs::create_dir(&root).unwrap();
+        veylvik_io::save_frame(&root.join("available.png"), 1, 1, &[[0.0, 1.0, 0.0, 1.0]]).unwrap();
+        let mut doc = veylvik_document::blank(1, 1, Time::new(24, 1).unwrap()).unwrap();
+        doc.nodes.get_mut(&doc.output).unwrap().operation = Operation::Image {
+            asset: "missing.png".into(),
+        };
+        let available = Node::new(
+            "Available",
+            Operation::Image {
+                asset: "available.png".into(),
+            },
+            &[],
+        );
+        doc.nodes.insert(available.id, available);
+        let path = root.join("project.veylvik");
+        doc.save(&path).unwrap();
+        let mut project = Project::open(Some(&path)).unwrap();
+        assert!(!project.dirty());
+        assert_eq!(project.document.revision(), 0);
+        assert!(project.inputs.contains_key("available.png"));
+        assert!(project.unavailable_assets().contains_key("missing.png"));
+        let store = veylvik_io::recovery::Store::new(root.join("recovery"));
+        let id = NodeId::new_v4();
+        store.write(id, &doc, &root).unwrap();
+        let recovered = Project::recover(&store, id).unwrap();
+        assert!(recovered.path.is_none() && recovered.dirty());
+        assert_eq!(recovered.unavailable_assets().len(), 1);
+        assert_eq!(recovered.document.snapshot().nodes.len(), 2);
+        let replacement =
+            Arc::new(veylvik_render::Image::new(1, 1, vec![[0.0, 0.0, 1.0, 1.0]]).unwrap());
+        project
+            .replace_image(doc.output, Path::new("replacement.png"), replacement)
+            .unwrap();
+        assert!(project.unavailable_assets().is_empty());
+        project.undo(false).unwrap();
+        assert_eq!(project.unavailable_assets().len(), 1);
+        veylvik_io::save_frame(&root.join("missing.png"), 1, 1, &[[1.0, 0.0, 0.0, 1.0]]).unwrap();
+        project.reload_inputs().unwrap();
+        assert!(project.unavailable_assets().is_empty());
+        assert_eq!(
+            project.inputs.get("missing.png").unwrap().pixels(),
+            &[[1.0, 0.0, 0.0, 1.0]]
+        );
+        assert_eq!(
+            serde_json::to_value(Composition::load(&path).unwrap()).unwrap(),
+            serde_json::to_value(doc).unwrap()
+        );
+        std::fs::remove_dir_all(root).unwrap();
+    }
     #[test]
     fn image_replacement_preserves_node_wiring_and_retains_pixels_for_undo() {
         let mut project = Project::blank(1, 1, Time::new(24, 1).unwrap(), 24).unwrap();
