@@ -124,7 +124,13 @@ when it no longer matches the requested frame.
 ## Composition and rendering
 
 Projects are versioned JSON containing nodes with stable UUIDs, named input
-ports, and an output node. Supported operations:
+ports, and an output node. Validation, editing, and saving share a 16 MiB limit
+measured as canonical pretty-printed JSON, preventing edits from exceeding the
+format’s load limit. Undo/redo retains at most 64 snapshots and 128 MiB of serialized
+snapshot data across both directions, dropping distant history first. Hosts may
+request a smaller history budget. This accounting excludes allocator overhead
+and the current document; it is not a whole-process RAM limit. MCP inspection
+includes retained history statistics. Supported operations:
 
 | Operation | Inputs | Parameters |
 |---|---|---|

@@ -62,7 +62,7 @@ impl Session {
         }
         match name {
             "inspect" => Ok(
-                json!({"revision":self.document.revision(),"composition":self.document.snapshot()}),
+                json!({"revision":self.document.revision(),"composition":self.document.snapshot(),"history":self.document.history()}),
             ),
             "nodes" => Ok(veylvik_document::registry::catalog()),
             "apply" => {

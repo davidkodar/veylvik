@@ -150,7 +150,7 @@ pub fn save_tracked(
     }
     saved.validate()?;
     let bytes = serde_json::to_vec_pretty(&saved)?;
-    if bytes.len() > 16 * 1024 * 1024 {
+    if bytes.len() > veylvik_document::limits::MAX_DOCUMENT_BYTES {
         return Err("composition exceeds 16 MiB".into());
     }
     if let Some(previous) = previous {
@@ -319,9 +319,9 @@ impl FileStamp {
         use std::io::Read;
         let mut bytes = Vec::new();
         std::fs::File::open(path)?
-            .take(16 * 1024 * 1024 + 1)
+            .take(veylvik_document::limits::MAX_DOCUMENT_BYTES as u64 + 1)
             .read_to_end(&mut bytes)?;
-        if bytes.len() > 16 * 1024 * 1024 {
+        if bytes.len() > veylvik_document::limits::MAX_DOCUMENT_BYTES {
             return Err("composition exceeds 16 MiB".into());
         }
         Ok(bytes)

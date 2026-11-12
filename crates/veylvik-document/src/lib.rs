@@ -1,5 +1,8 @@
 //! Serializable compositions and transactional editing, independent of GPU and UI.
+mod history;
+pub mod limits;
 pub mod registry;
+pub use history::{Document, HistoryStats};
 pub mod schema;
 pub mod sequence;
 use serde::{Deserialize, Serialize};
@@ -200,6 +203,11 @@ pub struct Composition {
     pub output: NodeId,
 }
 impl Composition {
+    /// Canonical pretty-printed JSON size, bounded without allocating the JSON.
+    pub fn encoded_size(&self) -> Result<usize> {
+        limits::encoded_size(self)
+    }
+
     /// Validates the entire document, including disconnected nodes, without recursion.
     pub fn validate(&self) -> Result<Vec<NodeId>> {
         if self.schema != 1 {
@@ -217,6 +225,7 @@ impl Composition {
         if !self.nodes.contains_key(&self.output) {
             return fail("output node is missing");
         }
+        self.encoded_size()?;
         let mut pending = BTreeMap::new();
         let mut consumers: BTreeMap<NodeId, Vec<NodeId>> = BTreeMap::new();
         for (id, node) in &self.nodes {
@@ -273,10 +282,10 @@ impl Composition {
         use std::io::Read;
         let file = std::fs::File::open(path).map_err(|e| Error(e.to_string()))?;
         let mut bytes = Vec::new();
-        file.take(16 * 1024 * 1024 + 1)
+        file.take(limits::MAX_DOCUMENT_BYTES as u64 + 1)
             .read_to_end(&mut bytes)
             .map_err(|e| Error(e.to_string()))?;
-        if bytes.len() > 16 * 1024 * 1024 {
+        if bytes.len() > limits::MAX_DOCUMENT_BYTES {
             return fail("document exceeds 16 MiB");
         }
         let doc: Self = serde_json::from_slice(&bytes).map_err(|e| Error(e.to_string()))?;
@@ -341,105 +350,7 @@ pub enum Command {
         position: Option<NodePosition>,
     },
 }
-/// Only this owner publishes revisions. Renderers receive immutable snapshots.
-pub struct Document {
-    composition: Composition,
-    revision: u64,
-    undo: Vec<Composition>,
-    redo: Vec<Composition>,
-}
-impl Document {
-    pub fn new(composition: Composition) -> Result<Self> {
-        composition.validate()?;
-        Ok(Self {
-            composition,
-            revision: 0,
-            undo: vec![],
-            redo: vec![],
-        })
-    }
-    pub fn snapshot(&self) -> &Composition {
-        &self.composition
-    }
-    pub fn revision(&self) -> u64 {
-        self.revision
-    }
-    fn check_revision(&self, expected: u64) -> Result<()> {
-        if self.revision != expected {
-            return fail(format!(
-                "revision conflict: expected {expected}, current {}",
-                self.revision
-            ));
-        }
-        Ok(())
-    }
-    pub fn prepare(&self, expected: u64, commands: &[Command]) -> Result<Composition> {
-        self.check_revision(expected)?;
-        if commands.is_empty() || commands.len() > 4096 {
-            return fail("transaction needs 1..=4096 commands");
-        }
-        let mut next = self.composition.clone();
-        for command in commands {
-            match command {
-                Command::Put { node } => {
-                    next.nodes.insert(node.id, node.as_ref().clone());
-                }
-                Command::Remove { id } => {
-                    if next.nodes.remove(id).is_none() {
-                        return fail("cannot remove missing node");
-                    }
-                }
-                Command::Output { id } => next.output = *id,
-                Command::Place { id, position } => {
-                    next.nodes
-                        .get_mut(id)
-                        .ok_or_else(|| Error("cannot place missing node".into()))?
-                        .position = *position;
-                }
-                Command::Resize { width, height } => {
-                    next.width = *width;
-                    next.height = *height;
-                }
-            }
-        }
-        next.validate()?;
-        Ok(next)
-    }
-    pub fn apply(&mut self, expected: u64, commands: &[Command]) -> Result<u64> {
-        let next = self.prepare(expected, commands)?;
-        self.undo
-            .push(std::mem::replace(&mut self.composition, next));
-        if self.undo.len() > 64 {
-            self.undo.remove(0);
-        }
-        self.redo.clear();
-        self.revision += 1;
-        Ok(self.revision)
-    }
-    pub fn undo(&mut self, expected: u64) -> Result<u64> {
-        self.check_revision(expected)?;
-        let prev = self
-            .undo
-            .pop()
-            .ok_or_else(|| Error("nothing to undo".into()))?;
-        self.redo
-            .push(std::mem::replace(&mut self.composition, prev));
-        self.revision += 1;
-        Ok(self.revision)
-    }
-    pub fn redo(&mut self, expected: u64) -> Result<u64> {
-        self.check_revision(expected)?;
-        let next = self
-            .redo
-            .pop()
-            .ok_or_else(|| Error("nothing to redo".into()))?;
-        self.undo
-            .push(std::mem::replace(&mut self.composition, next));
-        self.revision += 1;
-        Ok(self.revision)
-    }
-}
-/// A small composition exercising animation, alpha, branching and HDR.
+
 pub fn demo() -> Composition {
     let background = Node::new(
         "Background",

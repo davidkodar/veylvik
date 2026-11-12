@@ -562,10 +562,22 @@ impl Studio {
                 self.save_project(true);
             }
             ui.separator();
-            if ui.button("Undo").clicked() {
+            if ui
+                .add_enabled(
+                    self.project.document.history().undo_steps > 0,
+                    egui::Button::new("Undo"),
+                )
+                .clicked()
+            {
                 self.history(false);
             }
-            if ui.button("Redo").clicked() {
+            if ui
+                .add_enabled(
+                    self.project.document.history().redo_steps > 0,
+                    egui::Button::new("Redo"),
+                )
+                .clicked()
+            {
                 self.history(true);
             }
             ui.menu_button("Add node", |ui| {
