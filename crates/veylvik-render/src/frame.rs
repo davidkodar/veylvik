@@ -153,7 +153,7 @@ impl ImageInputs {
         let mut result = self.clone();
         let mut decoded_bytes = 0u64;
         for node in &plan.nodes {
-            if let veylvik_document::Operation::Footage { asset, timing } = &node.operation {
+            if let veylvik_document::Operation::Footage { asset, timing, .. } = &node.operation {
                 let key = crate::plan::footage_key(node.id);
                 if self.contains_key(&key) {
                     continue;

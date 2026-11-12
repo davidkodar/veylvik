@@ -332,6 +332,7 @@ impl Project {
                 node.operation = Operation::Footage {
                     asset: next.clone(),
                     timing: Default::default(),
+                    placement: Default::default(),
                 };
             } else {
                 *node.operation.asset_mut().unwrap() = next.clone();
@@ -344,28 +345,50 @@ impl Project {
         image.insert(&mut self.inputs, next);
         Ok(())
     }
+    pub fn is_empty(&self) -> bool {
+        let doc = self.document.snapshot();
+        doc.nodes.len() == 1
+            && doc.groups.is_empty()
+            && matches!(doc.nodes[&doc.output].operation, Operation::Solid { color } if color == [0.0; 4])
+    }
     pub fn import(
         &mut self,
         path: &Path,
         image: impl Into<veylvik_io::footage::Media>,
         position: veylvik_document::NodePosition,
+        settings: Option<crate::composition::Settings>,
     ) -> Result<()> {
         let image = image.into();
-        let temporal = !matches!(&image, veylvik_io::footage::Media::Still(_));
         let asset = path.to_str().ok_or("image path is not UTF-8")?.to_owned();
-        self.add_at(
-            if temporal {
-                Operation::Footage {
-                    asset: asset.clone(),
-                    timing: Default::default(),
-                }
-            } else {
-                Operation::Image {
-                    asset: asset.clone(),
-                }
+        let empty = self.is_empty();
+        let previous_output = self.document.snapshot().output;
+        let mut node = Node::new(
+            path.file_name().and_then(|s| s.to_str()).unwrap_or("Media"),
+            Operation::Footage {
+                asset: asset.clone(),
+                timing: Default::default(),
+                placement: veylvik_document::media::Placement::Fit,
             },
-            Some(position),
-        )?;
+            &[],
+        );
+        node.position = Some(position);
+        let id = node.id;
+        let mut commands = settings
+            .map(|s| s.commands(self.document.snapshot()))
+            .transpose()?
+            .unwrap_or_default();
+        commands.push(Command::Put {
+            node: Box::new(node),
+        });
+        if empty {
+            commands.push(Command::Output { id });
+            commands.push(Command::Remove {
+                id: previous_output,
+            });
+        }
+        self.apply(&commands)?;
+        self.selected = id;
+        self.preview = Some(id);
         image.insert(&mut self.inputs, asset);
         Ok(())
     }
@@ -403,6 +426,58 @@ pub fn load_inputs(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn matching_import_is_atomic_and_undo_restores_blank_canvas() {
+        let mut project = Project::blank(1920, 1080, Time::new(24, 1).unwrap(), 96).unwrap();
+        let before = serde_json::to_value(project.document.snapshot()).unwrap();
+        let image = Arc::new(veylvik_render::Image::new(8, 4, vec![[1.0; 4]; 32]).unwrap());
+        let mut settings = crate::composition::Settings::current(project.document.snapshot());
+        settings.width = 8;
+        settings.height = 4;
+        project
+            .import(
+                Path::new("plate.png"),
+                image.clone(),
+                veylvik_document::NodePosition { x: 0.0, y: 0.0 },
+                Some(settings),
+            )
+            .unwrap();
+        let id = project.selected;
+        assert_eq!(project.document.snapshot().width, 8);
+        assert_eq!(project.document.snapshot().output, id);
+        assert_eq!(project.document.history().undo_steps, 1);
+        assert!(matches!(
+            project.document.snapshot().nodes[&id].operation,
+            Operation::Footage {
+                placement: veylvik_document::media::Placement::Fit,
+                ..
+            }
+        ));
+        project.undo(false).unwrap();
+        assert_eq!(
+            serde_json::to_value(project.document.snapshot()).unwrap(),
+            before
+        );
+        project.undo(true).unwrap();
+        assert_eq!(project.document.snapshot().output, id);
+        let before = serde_json::to_value(project.document.snapshot()).unwrap();
+        settings.width = 0;
+        assert!(
+            project
+                .import(
+                    Path::new("bad.png"),
+                    image,
+                    veylvik_document::NodePosition { x: 0.0, y: 0.0 },
+                    Some(settings)
+                )
+                .is_err()
+        );
+        assert_eq!(
+            serde_json::to_value(project.document.snapshot()).unwrap(),
+            before
+        );
+        assert!(!project.inputs.contains_key("bad.png"));
+    }
     #[test]
     fn missing_sources_do_not_prevent_opening_or_recovering_a_valid_graph() {
         let root = std::env::temp_dir().join(format!("veylvik-missing-{}", NodeId::new_v4()));
@@ -465,6 +540,7 @@ mod tests {
                 Path::new("old.png"),
                 old.clone(),
                 veylvik_document::NodePosition { x: 17.0, y: 23.0 },
+                None,
             )
             .unwrap();
         let image = project.selected;

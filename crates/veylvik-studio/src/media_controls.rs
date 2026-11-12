@@ -45,7 +45,13 @@ fn field(ui: &mut egui::Ui, label: &str, time: &mut Time, rate: Time, default: T
     });
     changed
 }
-pub fn edit(ui: &mut egui::Ui, timing: &mut Timing, info: Option<SourceInfo>, rate: Time) -> bool {
+pub fn edit(
+    ui: &mut egui::Ui,
+    timing: &mut Timing,
+    placement: &mut veylvik_document::media::Placement,
+    info: Option<SourceInfo>,
+    rate: Time,
+) -> bool {
     if let Some(info) = &info {
         ui.strong(format!("{} × {}", info.width, info.height));
         if let Some(duration) = info.duration {
@@ -64,6 +70,25 @@ pub fn edit(ui: &mut egui::Ui, timing: &mut Timing, info: Option<SourceInfo>, ra
         ui.weak(&info.description);
     }
     ui.separator();
+    let old = *placement;
+    use veylvik_document::media::Placement;
+    egui::ComboBox::from_label("Placement")
+        .selected_text(placement.label())
+        .show_ui(ui, |ui| {
+            for value in [
+                Placement::Fit,
+                Placement::Fill,
+                Placement::Original,
+                Placement::Stretch,
+                Placement::Legacy,
+            ] {
+                ui.selectable_value(placement, value, value.label());
+            }
+        });
+    ui.weak("Fit shows the entire image; Fill crops edges. Original size keeps source pixels.");
+    if info.as_ref().is_some_and(|i| i.duration.is_none()) {
+        return old != *placement;
+    }
     ui.strong("Clip timing");
     ui.weak("Frame numbers use the composition frame rate. Source out is exclusive.");
     let mut next = timing.clone();
@@ -104,6 +129,6 @@ pub fn edit(ui: &mut egui::Ui, timing: &mut Timing, info: Option<SourceInfo>, ra
     if changed {
         *timing = next;
     }
-    ui.weak("Outside this clip is transparent. Scaling uses a separate transform.");
-    changed
+    ui.weak("Outside this clip is transparent.");
+    changed || old != *placement
 }

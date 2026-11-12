@@ -203,6 +203,8 @@ pub enum Operation {
     Footage {
         asset: String,
         timing: media::Timing,
+        #[serde(default)]
+        placement: media::Placement,
     },
     Affine {
         x: Scalar,
@@ -507,7 +509,7 @@ impl Operation {
                 }
                 Ok(())
             }
-            Self::Footage { asset, timing } => {
+            Self::Footage { asset, timing, .. } => {
                 if asset.trim().is_empty()
                     || asset.chars().count() > registry::MAX_ASSET_NAME
                     || asset.contains('\0')

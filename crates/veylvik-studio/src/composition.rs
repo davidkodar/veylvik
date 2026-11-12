@@ -8,6 +8,7 @@ pub struct Settings {
     pub frame_rate: Time,
     pub frame_count: u32,
     pub new: bool,
+    pub scale_scene: bool,
 }
 #[derive(Default)]
 pub struct Controls {
@@ -24,6 +25,7 @@ impl Controls {
                 frame_rate: Time { ticks: 24, rate: 1 },
                 frame_count: veylvik_document::DEFAULT_FRAME_COUNT,
                 new: true,
+                scale_scene: false,
             }
         } else {
             Settings {
@@ -32,6 +34,7 @@ impl Controls {
                 frame_rate: document.frame_rate,
                 frame_count: document.frame_count,
                 new: false,
+                scale_scene: false,
             }
         });
     }
@@ -84,10 +87,16 @@ impl Controls {
                 "{:.3} frames per second",
                 settings.frame_rate.ticks as f64 / settings.frame_rate.rate as f64
             ));
+            if !settings.new {
+                ui.checkbox(
+                    &mut settings.scale_scene,
+                    "Scale scene controls proportionally to fit new canvas",
+                );
+            }
             ui.weak(if settings.new {
                 "Starts with a transparent background."
             } else {
-                "Canvas changes do not scale nodes. Key times remain in seconds."
+                "Unchecked changes canvas bounds only. Media keeps its placement mode; key times remain in seconds."
             });
             ui.horizontal(|ui| {
                 if ui
@@ -104,5 +113,96 @@ impl Controls {
         });
         self.open = open && !close;
         result
+    }
+}
+
+impl Settings {
+    pub fn current(doc: &Composition) -> Self {
+        Self {
+            width: doc.width,
+            height: doc.height,
+            frame_rate: doc.frame_rate,
+            frame_count: doc.frame_count,
+            new: false,
+            scale_scene: false,
+        }
+    }
+    pub fn commands(
+        self,
+        doc: &Composition,
+    ) -> veylvik_document::Result<Vec<veylvik_document::Command>> {
+        use veylvik_document::{
+            Command,
+            presets::resolution::{Sizing, map_graph},
+        };
+        let mut commands = Vec::new();
+        if self.scale_scene && [doc.width, doc.height] != [self.width, self.height] {
+            let mut nodes = doc.nodes.clone();
+            let mut groups = doc.groups.clone();
+            map_graph(
+                &mut nodes,
+                &mut groups,
+                [doc.width, doc.height],
+                [self.width, self.height],
+                Sizing::Fit,
+            )?;
+            commands.extend(nodes.into_values().map(|node| Command::Put {
+                node: Box::new(node),
+            }));
+            commands.extend(groups.into_values().map(|group| Command::PutGroup {
+                group: Box::new(group),
+            }));
+        }
+        commands.extend([
+            Command::Resize {
+                width: self.width,
+                height: self.height,
+            },
+            Command::FrameRate {
+                frame_rate: self.frame_rate,
+            },
+            Command::FrameCount {
+                frame_count: self.frame_count,
+            },
+        ]);
+        Ok(commands)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn canvas_only_keeps_nodes_and_scaled_resize_is_one_reversible_edit() {
+        use veylvik_document::{Command, Document, Operation};
+        let doc = veylvik_document::motion_demo();
+        let mut settings = Settings::current(&doc);
+        settings.width = doc.width * 2;
+        settings.height = doc.height * 2;
+        let mut document = Document::new(doc.clone()).unwrap();
+        let commands = settings.commands(&doc).unwrap();
+        assert_eq!(commands.len(), 3);
+        assert!(matches!(commands[0], Command::Resize { .. }));
+        settings.scale_scene = true;
+        let commands = settings.commands(&doc).unwrap();
+        document.apply(document.revision(), &commands).unwrap();
+        assert_eq!(document.history().undo_steps, 1);
+        for (id, node) in &doc.nodes {
+            if let Operation::Blur { radius } = &node.operation {
+                let Operation::Blur { radius: changed } = &document.snapshot().nodes[id].operation
+                else {
+                    panic!()
+                };
+                assert_eq!(
+                    changed.at(Time::new(0, 1).unwrap()).unwrap(),
+                    radius.at(Time::new(0, 1).unwrap()).unwrap() * 2.0
+                );
+            }
+        }
+        document.undo(document.revision()).unwrap();
+        assert_eq!(
+            serde_json::to_value(document.snapshot()).unwrap(),
+            serde_json::to_value(doc).unwrap()
+        );
     }
 }

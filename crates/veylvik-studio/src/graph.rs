@@ -4,6 +4,7 @@ use std::collections::BTreeMap;
 use veylvik_document::{Composition, NodeId, NodePosition};
 const NODE_SIZE: Vec2 = egui::vec2(160.0, 60.0);
 pub enum NodeAction {
+    MatchMedia,
     Preview,
     Composition,
     Rename(String),
@@ -995,6 +996,9 @@ impl Graph {
                 ui.separator();
                 for (label, action) in [("Preview node",NodeAction::Preview),("View composition",NodeAction::Composition)] {
                     if ui.button(label).clicked() { actions.push(Action::Node { id:node.id,action }); ui.close(); }
+                }
+                if doc.nodes[&node.id].operation.asset().is_some() && ui.button("Match composition to this media…").clicked() {
+                    actions.push(Action::Node { id:node.id, action:NodeAction::MatchMedia }); ui.close();
                 }
                 if ui.button("Rename...").clicked() {
                     self.rename=Some((node.id,node.label.clone()));

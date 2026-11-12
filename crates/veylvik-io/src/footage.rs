@@ -21,6 +21,21 @@ impl From<Arc<Image>> for Media {
     }
 }
 impl Media {
+    pub fn info(&self) -> Option<veylvik_render::SourceInfo> {
+        match self {
+            Self::Still(i) => Some(veylvik_render::SourceInfo {
+                width: i.width(),
+                height: i.height(),
+                duration: None,
+                frame_rate: None,
+                frames: None,
+                description: "Still image".into(),
+            }),
+            Self::Sequence(s) => s.info(),
+            Self::Video(v) => v.info(),
+        }
+    }
+
     pub fn byte_size(&self) -> u64 {
         match self {
             Self::Still(i) => i.byte_size(),

@@ -16,6 +16,7 @@ mod handles;
 mod icons;
 mod key_timeline;
 mod media_controls;
+mod media_import;
 mod menus;
 mod node_clipboard;
 mod node_finder;
@@ -177,6 +178,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 tracking: tracking::Controls::default(),
                 outline_controls: text_outline::Controls::default(),
                 composition_controls: composition::Controls::default(),
+                media_import: None,
                 confirm: None,
                 after_save: None,
                 allow_close: false,
@@ -196,6 +198,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
 enum Leave {
     Open,
     New,
+    NewFromMedia,
     Recover(veylvik_document::NodeId),
     Example(&'static str),
     Close,
@@ -243,6 +246,7 @@ struct Studio {
     tracking: tracking::Controls,
     outline_controls: text_outline::Controls,
     composition_controls: composition::Controls,
+    media_import: Option<media_import::Pending>,
     confirm: Option<Leave>,
     after_save: Option<Leave>,
     allow_close: bool,
@@ -259,6 +263,7 @@ impl Studio {
             || self.effects.open
             || self.outline_controls.open
             || self.composition_controls.open
+            || self.media_import.is_some()
             || self.node_palette.open
             || self.graph.renaming()
             || self.node_finder.open
@@ -273,6 +278,7 @@ impl Studio {
         self.key_timeline = key_timeline::Keys::default();
         self.animation_editor = animation_editor::Editor::default();
         self.composition_controls = composition::Controls::default();
+        self.media_import = None;
         self.export_controls = sequence::Controls::default();
         if let Some(p) = &self.tracking.active {
             p.cancel.store(true, std::sync::atomic::Ordering::Relaxed);
@@ -314,18 +320,14 @@ impl Studio {
             {
                 return;
             }
-            match self.project.apply(&[
-                Command::Resize {
-                    width: settings.width,
-                    height: settings.height,
-                },
-                Command::FrameRate {
-                    frame_rate: settings.frame_rate,
-                },
-                Command::FrameCount {
-                    frame_count: settings.frame_count,
-                },
-            ]) {
+            let commands = match settings.commands(self.project.document.snapshot()) {
+                Ok(commands) => commands,
+                Err(error) => {
+                    self.fail(error);
+                    return;
+                }
+            };
+            match self.project.apply(&commands) {
                 Ok(()) => {
                     self.refresh_draft();
                     self.request_preview();
@@ -711,6 +713,7 @@ impl Studio {
                 Ok(project) => self.open_project(project, ctx),
                 Err(e) => self.fail(e),
             },
+            Leave::NewFromMedia => self.new_from_media(),
             Leave::New => self
                 .composition_controls
                 .begin(self.project.document.snapshot(), true),
@@ -905,6 +908,8 @@ impl Studio {
         }
         self.playing = false;
         let folder = self.project.base.clone();
+        let session = self.project.session;
+        let revision = self.project.document.revision();
         let rate = self.project.document.snapshot().frame_rate;
         let budget = (256u64 * 1024 * 1024)
             .saturating_sub(self.project.inputs.byte_size())
@@ -931,6 +936,8 @@ impl Studio {
                 (path, image)
             };
             Ok(Completed::Imported {
+                session,
+                revision,
                 position,
                 path,
                 image,
@@ -1093,18 +1100,50 @@ impl Studio {
                 self.error = false;
             }
             Ok(Completed::PresetLoaded(preset)) => self.loaded_preset(*preset),
+            Ok(Completed::NewFromMedia {
+                session,
+                revision,
+                project,
+            }) => {
+                if session == self.project.session && revision == self.project.document.revision() {
+                    self.open_project(*project, ctx);
+                } else {
+                    self.fail("Composition changed while opening media. Please try again.");
+                }
+            }
             Ok(Completed::Opened(project)) => self.open_project(*project, ctx),
             Ok(Completed::Imported {
                 path,
                 image,
                 position,
-            }) => match self.project.import(&path, image, position) {
-                Ok(()) => {
-                    self.refresh_draft();
-                    self.request_preview();
+                session,
+                revision,
+            }) => {
+                if session != self.project.session || revision != self.project.document.revision() {
+                    self.fail("Import became obsolete; import again for the current composition.");
+                } else if self.project.is_empty()
+                    && image.info().is_some_and(|i| {
+                        let doc = self.project.document.snapshot();
+                        i.width != doc.width
+                            || i.height != doc.height
+                            || i.frame_rate.is_some_and(|r| {
+                                r.compare(doc.frame_rate).is_ok_and(|o| !o.is_eq())
+                            })
+                    })
+                {
+                    self.status = "Choose whether to match the imported media".into();
+                    self.error = false;
+                    self.media_import = image.info().map(|info| {
+                        media_import::Pending::new(
+                            &self.project,
+                            info,
+                            Some((path, image, position)),
+                        )
+                    });
+                } else {
+                    self.finish_import(path, image, position, None);
                 }
-                Err(e) => self.fail(e),
-            },
+            }
             Ok(Completed::Reloaded {
                 session,
                 revision,
@@ -1470,11 +1509,16 @@ impl Studio {
             | Operation::Exposure { .. }
             | Operation::Transform { .. }
             | Operation::Blur { .. } => {}
-            Operation::Footage { asset, timing } => {
+            Operation::Footage {
+                asset,
+                timing,
+                placement,
+            } => {
                 ui.label(asset.as_str());
                 let changed = media_controls::edit(
                     ui,
                     timing,
+                    placement,
                     self.project.inputs.info(asset),
                     self.project.document.snapshot().frame_rate,
                 );
@@ -1493,6 +1537,23 @@ impl Studio {
                     ui.colored_label(egui::Color32::LIGHT_RED, *reason);
                 }
                 replace_image = ui.button("Replace source…").clicked();
+            }
+        }
+        if self.draft.operation.asset().is_some() {
+            if ui.button("Match composition to this media…").clicked() {
+                self.match_media(self.project.selected);
+            }
+            if matches!(self.draft.operation, Operation::Image { .. })
+                && ui.button("Enable placement controls").clicked()
+            {
+                let asset = self.draft.operation.asset().unwrap().to_owned();
+                self.draft.operation = Operation::Footage {
+                    asset,
+                    timing: Default::default(),
+                    placement: Default::default(),
+                };
+                self.draft_dirty = true;
+                text_changed = true;
             }
         }
         if replace_image {
@@ -1867,6 +1928,7 @@ impl Studio {
                     self.project.selected = id;
                     self.refresh_draft();
                     match action {
+                        graph::NodeAction::MatchMedia => self.match_media(id),
                         graph::NodeAction::Preview => {
                             self.project.preview = Some(id);
                             self.request_preview();
@@ -2700,6 +2762,7 @@ impl eframe::App for Studio {
         if let Some((choice, position)) = self.node_palette.show(&ctx) {
             self.add_from_palette(choice, position);
         }
+        self.media_import_dialog(&ctx);
         self.occlusion_dialog(&ctx);
         self.dialogs(&ctx);
         if let Some(settings) = self.composition_controls.show(&ctx) {

@@ -96,3 +96,27 @@ mod tests {
         );
     }
 }
+
+/// Source placement is evaluated before clipping, in the GPU input pass.
+/// Legacy preserves the top-left native-pixel behavior of older documents.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Placement {
+    #[default]
+    Legacy,
+    Fit,
+    Fill,
+    Original,
+    Stretch,
+}
+impl Placement {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Legacy => "Native pixels (top-left)",
+            Self::Fit => "Fit",
+            Self::Fill => "Fill",
+            Self::Original => "Original size",
+            Self::Stretch => "Stretch",
+        }
+    }
+}

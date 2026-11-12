@@ -31,6 +31,7 @@ impl Studio {
             ui.separator();
             ui.menu_button("File", |ui| {
                 if item(ui, "New composition…", "Ctrl+N", true) { self.leave(Leave::New, ui.ctx()); }
+                if item(ui, "New from media…", "", true) { self.leave(Leave::NewFromMedia, ui.ctx()); }
                 if item(ui, "Open…", "Ctrl+O", true) { self.leave(Leave::Open, ui.ctx()); }
                 ui.separator();
                 if item(ui, "Save", "Ctrl+S", true) { self.save_project(false); }

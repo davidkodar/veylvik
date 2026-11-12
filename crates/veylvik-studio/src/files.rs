@@ -35,7 +35,14 @@ pub enum Completed {
         node: Box<veylvik_document::Node>,
     },
     Opened(Box<Project>),
+    NewFromMedia {
+        session: veylvik_document::NodeId,
+        revision: u64,
+        project: Box<Project>,
+    },
     Imported {
+        session: veylvik_document::NodeId,
+        revision: u64,
         position: veylvik_document::NodePosition,
         path: PathBuf,
         image: Media,

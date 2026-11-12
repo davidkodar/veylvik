@@ -9,6 +9,7 @@ pub enum ParameterKind {
     Scalar,
     Typography,
     MediaTiming,
+    MediaPlacement,
     TextFeatures,
     TextContent,
     TextFont,
@@ -41,6 +42,7 @@ pub struct Parameter {
 impl Parameter {
     fn default_value(&self) -> Value {
         match self.kind {
+            ParameterKind::MediaPlacement => json!(crate::media::Placement::default()),
             ParameterKind::MediaTiming => json!(crate::media::Timing::default()),
             ParameterKind::Typography => json!(crate::text::Typography::default()),
             ParameterKind::TextFeatures => json!(""),
@@ -102,6 +104,9 @@ impl Parameter {
             }
             ParameterKind::Path => crate::vector::schema(),
             ParameterKind::MediaTiming => crate::media::schema(),
+            ParameterKind::MediaPlacement => {
+                json!({"type":"string","enum":["legacy","fit","fill","original","stretch"]})
+            }
             ParameterKind::Asset => {
                 json!({"type":"string","minLength":1,"maxLength":MAX_ASSET_NAME})
             }
@@ -408,6 +413,7 @@ pub static FOOTAGE: NodeType = NodeType {
     parameters: &[
         other("asset", ParameterKind::Asset, "asset key"),
         other("timing", ParameterKind::MediaTiming, "seconds"),
+        other("placement", ParameterKind::MediaPlacement, ""),
     ],
 };
 pub static IMAGE: NodeType = NodeType {

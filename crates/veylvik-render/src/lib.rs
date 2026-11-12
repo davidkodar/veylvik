@@ -544,6 +544,16 @@ impl Renderer {
                 };
                 let source = inputs.source(&key).unwrap();
                 let region = source.region();
+                if let Operation::Footage { placement, .. } = node.operation {
+                    use veylvik_document::media::Placement;
+                    p.size_op[3] = match placement {
+                        Placement::Legacy => 0,
+                        Placement::Fit => 1,
+                        Placement::Fill => 2,
+                        Placement::Original => 3,
+                        Placement::Stretch => 4,
+                    };
+                }
                 p.values[0] = region.width as f32;
                 p.values[1] = region.height as f32;
                 p.extra = [

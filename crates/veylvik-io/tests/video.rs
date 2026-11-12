@@ -150,6 +150,7 @@ fn footage_timing_shares_one_source_without_cross_contaminating_clips() {
     let first = Node::new(
         "First",
         Operation::Footage {
+            placement: Default::default(),
             asset: path.to_str().unwrap().into(),
             timing: Timing {
                 start: Time::new(1, 1).unwrap(),

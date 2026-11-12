@@ -102,11 +102,38 @@ fn merge(@builtin(global_invocation_id) gid:vec3<u32>) {
     if !inside(gid) {return;}
     let i=index(gid);let foreground=second[i];result[i]=foreground+source[i]*(1.0-foreground.a);
 }
+fn source_pixel(q:vec2<i32>) -> vec4<f32> {
+    let bounded=clamp(q,vec2<i32>(0),vec2<i32>(p.values.xy)-vec2<i32>(1));
+    return source[(u32(bounded.y)+u32(p.extra.w))*u32(p.extra.x)+u32(bounded.x)+u32(p.extra.z)];
+}
 @compute @workgroup_size(8,8)
 fn image(@builtin(global_invocation_id) gid:vec3<u32>) {
     if !inside(gid) {return;}
+    if p.size_op.w==0u {
+        var color=vec4<f32>(0.0);
+        if gid.x<u32(p.values.x) && gid.y<u32(p.values.y) {color=source[(gid.y+u32(p.extra.w))*u32(p.extra.x)+gid.x+u32(p.extra.z)];}
+        result[index(gid)]=color;
+        return;
+    }
+    let native=p.values.xy;
+    let canvas=vec2<f32>(p.size_op.xy);
+    var scale=vec2<f32>(1.0);
+    let ratio=canvas/native;
+    if p.size_op.w==1u {scale=vec2<f32>(min(ratio.x,ratio.y));}
+    if p.size_op.w==2u {scale=vec2<f32>(max(ratio.x,ratio.y));}
+    if p.size_op.w==4u {scale=ratio;}
+    var offset=vec2<f32>(0.0);
+    if p.size_op.w!=0u {offset=(canvas-native*scale)*0.5;}
+    let pos=(vec2<f32>(gid.xy)+vec2<f32>(0.5)-offset)/scale;
     var color=vec4<f32>(0.0);
-    if gid.x<u32(p.values.x) && gid.y<u32(p.values.y) {color=source[(gid.y+u32(p.extra.w))*u32(p.extra.x)+gid.x+u32(p.extra.z)];}
+    if all(pos>=vec2<f32>(0.0)) && all(pos<native) {
+        // Pixel-centre sampling in original source storage, before canvas clipping.
+        let q=pos-vec2<f32>(0.5);
+        let base=vec2<i32>(floor(q));
+        let f=fract(q);
+        color=mix(mix(source_pixel(base),source_pixel(base+vec2<i32>(1,0)),f.x),
+                  mix(source_pixel(base+vec2<i32>(0,1)),source_pixel(base+vec2<i32>(1,1)),f.x),f.y);
+    }
     result[index(gid)]=color;
 }
 
