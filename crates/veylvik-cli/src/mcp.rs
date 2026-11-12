@@ -30,6 +30,7 @@ fn build_tools() -> Value {
         tool("redo","Redo one transaction, with a revision precondition.",json!({"revision":revision}),&["revision"]),
         tool("save","Atomically save the current composition to an explicit path.",json!({"path":{"type":"string"},"revision":revision}),&["path","revision"]),
         tool("render_sequence","Render an inclusive frame range at the composition frame rate into a new directory. Choose png (default SDR) or exr (linear HDR); frames use zero-based names; sequence.json records timing and completion. Existing directories are rejected; at most 10000 frames.",json!({"path":{"type":"string"},"revision":revision,"start":{"type":"integer"},"end":{"type":"integer"},"format":{"enum":["png","exr"]},"node":{"type":"string","format":"uuid"},"region":{"type":"object","properties":{"x":{"type":"integer","minimum":0},"y":{"type":"integer","minimum":0},"width":{"type":"integer","minimum":1},"height":{"type":"integer","minimum":1}},"required":["x","y","width","height"],"additionalProperties":false}}),&["path","revision","start","end"]),
+        tool("preview_image","Render an inline PNG image for visual inspection without writing a file. max_edge defaults to 512 (1..1024); area filtering uses linear premultiplied color. This bounds the returned image, not GPU render resolution. HDR is clipped to SDR and PNG preserves alpha.",json!({"max_edge":{"type":"integer","minimum":1,"maximum":1024},"revision":revision,"ticks":{"type":"integer"},"rate":{"type":"integer","minimum":1,"maximum":u32::MAX},"node":{"type":"string","format":"uuid"},"region":{"type":"object","properties":{"x":{"type":"integer","minimum":0},"y":{"type":"integer","minimum":0},"width":{"type":"integer","minimum":1},"height":{"type":"integer","minimum":1}},"required":["x","y","width","height"],"additionalProperties":false}}),&["revision","ticks","rate"]),
         tool("render","Render the current revision using Vulkan. Choose .png for SDR or .exr for lossless linear premultiplied RGBA32F. Time is exact ticks/rate seconds.",json!({"path":{"type":"string"},"revision":revision,"ticks":{"type":"integer"},"rate":{"type":"integer","minimum":1,"maximum":u32::MAX},"node":{"type":"string","format":"uuid"},"region":{"type":"object","properties":{"x":{"type":"integer","minimum":0},"y":{"type":"integer","minimum":0},"width":{"type":"integer","minimum":1},"height":{"type":"integer","minimum":1}},"required":["x","y","width","height"],"additionalProperties":false}}),&["path","revision","ticks","rate"])
     ]})
 }
@@ -44,7 +45,7 @@ fn path(args: &Value) -> Result<&std::path::Path> {
     ))
 }
 impl Session {
-    fn call(&mut self, name: &str, args: &Value) -> Result<Value> {
+    fn validate_call(&self, name: &str, args: &Value) -> Result<()> {
         let catalog = tools();
         let descriptor = catalog["tools"]
             .as_array()
@@ -70,6 +71,69 @@ impl Session {
         {
             return Err(format!("revision conflict: current {}", self.document.revision()).into());
         }
+        Ok(())
+    }
+    fn call_output(&mut self, name: &str, args: &Value) -> Result<veylvik_control::ToolOutput> {
+        if name != "preview_image" {
+            return self.call(name, args).map(Into::into);
+        }
+        self.validate_call(name, args)?;
+        let max_edge = args
+            .get("max_edge")
+            .map(|value| value.as_u64().ok_or("max_edge must be an integer"))
+            .transpose()?
+            .unwrap_or(512);
+        if !(1..=veylvik_io::preview::MAX_PREVIEW_EDGE as u64).contains(&max_edge) {
+            return Err("max_edge must be within 1..1024".into());
+        }
+        let (node, time, frame) = self.frame(args)?;
+        let thumbnail = veylvik_io::preview::thumbnail(
+            frame.region.width,
+            frame.region.height,
+            &frame.pixels,
+            max_edge as u32,
+        )?;
+        let metadata = json!({"revision":self.document.revision(),"node":node,"time":time,"width":thumbnail.width,"height":thumbnail.height,"source_region":frame.region,"encoding":"sRGB straight-alpha PNG","filter":"linear-premultiplied area"});
+        Ok(veylvik_control::ToolOutput::png(metadata, &thumbnail.png))
+    }
+    fn frame(
+        &mut self,
+        args: &Value,
+    ) -> Result<(
+        veylvik_document::NodeId,
+        Time,
+        veylvik_render::RenderedFrame,
+    )> {
+        let time = Time::new(
+            args["ticks"].as_i64().ok_or("ticks must be an integer")?,
+            u32::try_from(required_u64(args, "rate")?)?,
+        )?;
+        let doc = self.document.snapshot();
+        let output = match args.get("node") {
+            None => doc.output,
+            Some(value) => value
+                .as_str()
+                .ok_or("node must be a UUID string")?
+                .parse()?,
+        };
+        let region: Option<Region> = args
+            .get("region")
+            .map(|value| serde_json::from_value(value.clone()))
+            .transpose()?;
+        if let Some(region) = region {
+            region.validate(doc.width, doc.height)?;
+        }
+        let plan = Plan::compile_output(doc, output)?;
+        if self.renderer.is_none() {
+            self.renderer = Some(Renderer::new()?);
+        }
+        let renderer = self.renderer.as_ref().unwrap();
+        let inputs = crate::assets::load_inputs(&plan, &self.asset_base, renderer.budget_bytes)?;
+        let frame = renderer.render_frame(&plan, RenderRequest { time, region }, &inputs)?;
+        Ok((output, time, frame))
+    }
+    fn call(&mut self, name: &str, args: &Value) -> Result<Value> {
+        self.validate_call(name, args)?;
         match name {
             "inspect" => {
                 let summary = args
@@ -171,35 +235,12 @@ impl Session {
             }
             "render" => {
                 crate::assets::FrameFormat::from_path(path(args)?)?;
-                let time = Time::new(
-                    args["ticks"].as_i64().ok_or("ticks must be an integer")?,
-                    u32::try_from(required_u64(args, "rate")?)?,
+                crate::assets::protect_inputs(
+                    self.document.snapshot(),
+                    &self.asset_base,
+                    path(args)?,
                 )?;
-                let doc = self.document.snapshot();
-                let output = match args.get("node") {
-                    None => doc.output,
-                    Some(value) => value
-                        .as_str()
-                        .ok_or("node must be a UUID string")?
-                        .parse()?,
-                };
-                let region: Option<Region> = args
-                    .get("region")
-                    .map(|v| serde_json::from_value(v.clone()))
-                    .transpose()?;
-                if let Some(region) = region {
-                    region.validate(doc.width, doc.height)?;
-                }
-                let plan = Plan::compile_output(doc, output)?;
-                if self.renderer.is_none() {
-                    self.renderer = Some(Renderer::new()?);
-                }
-                let renderer = self.renderer.as_ref().unwrap();
-                let inputs =
-                    crate::assets::load_inputs(&plan, &self.asset_base, renderer.budget_bytes)?;
-                crate::assets::protect_inputs(doc, &self.asset_base, path(args)?)?;
-                let frame =
-                    renderer.render_frame(&plan, RenderRequest { time, region }, &inputs)?;
+                let (_, _, frame) = self.frame(args)?;
                 crate::save_frame(
                     path(args)?,
                     frame.region.width,
@@ -226,8 +267,8 @@ pub fn serve(
         asset_base,
         renderer: None,
     };
-    veylvik_control::serve(input, output, tools(), |name, args| {
-        session.call(name, args).map_err(|e| e.to_string())
+    veylvik_control::serve_with_output(input, output, tools(), |name, args| {
+        session.call_output(name, args).map_err(|e| e.to_string())
     })
 }
 
@@ -325,6 +366,7 @@ mod tests {
                 "diagnostics",
                 "nodes",
                 "outline_text",
+                "preview_image",
                 "apply",
                 "undo",
                 "redo",

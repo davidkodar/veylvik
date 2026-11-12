@@ -1,6 +1,7 @@
 //! Filesystem, PNG, OpenEXR and font adapters; rendering and shaping stay independent of paths.
 pub mod export;
 pub mod import;
+pub mod preview;
 pub use export::{FrameFormat, save_frame};
 pub use import::{load_exr, load_image};
 pub mod recovery;

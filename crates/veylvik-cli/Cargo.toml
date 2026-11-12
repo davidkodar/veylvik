@@ -17,5 +17,6 @@ pathdiff = "0.2"
 workspace = true
 
 [dev-dependencies]
+base64.workspace = true
 epaint_default_fonts = "=0.34.3"
 png = "0.18"

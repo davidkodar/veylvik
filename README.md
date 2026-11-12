@@ -730,3 +730,25 @@ When directly previewing the selected gradient, drag its start/end handles in
 the viewer. Radial mode also draws the radius. As with ellipse handles, these
 are inspector drafts until Apply, preserve existing animation modes, and remain
 separate from pan/zoom and exported pixels.
+
+## Inline MCP preview images
+
+The headless MCP server exposes `preview_image` for visual feedback without a
+file export. Supply the current `revision` and exact `ticks`/`rate`; optional
+`node` and `region` select the same render root and crop as `render`.
+
+```json
+{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"preview_image","arguments":{"revision":0,"ticks":24,"rate":24,"max_edge":512}}}
+```
+
+The result includes a standard MCP PNG image content block and small structured
+metadata containing revision, node, time, image dimensions, and source region.
+Image data is excluded from the text/structured metadata. `max_edge` defaults to
+512 and accepts 1..1024; images are never enlarged. Area filtering happens in
+linear premultiplied color before conversion to straight-alpha sRGB PNG. HDR is
+clipped at the existing SDR export boundary, and transparency is preserved.
+
+This size limit applies to the returned image. The graph still renders at its
+composition resolution, with the renderer's existing memory limits. The tool
+creates no files and changes neither document revision nor undo history. The
+live editor's `preview` tool remains an asynchronous seek/display operation.

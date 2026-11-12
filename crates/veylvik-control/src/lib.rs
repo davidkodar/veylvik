@@ -4,6 +4,36 @@ pub mod ipc;
 use serde_json::{Value, json};
 use std::io::{BufRead, Write};
 pub const MAX_MESSAGE_BYTES: usize = 4 * 1024 * 1024;
+/// Server-owned multimodal output. Ordinary JSON never becomes content blocks.
+#[derive(Debug)]
+pub struct ToolOutput {
+    structured: Value,
+    extra_content: Vec<Value>,
+}
+impl From<Value> for ToolOutput {
+    fn from(structured: Value) -> Self {
+        Self {
+            structured,
+            extra_content: Vec::new(),
+        }
+    }
+}
+impl ToolOutput {
+    pub fn png(structured: Value, bytes: &[u8]) -> Self {
+        use base64::Engine;
+        Self {
+            structured,
+            extra_content: vec![
+                json!({"type":"image","mimeType":"image/png","data":base64::engine::general_purpose::STANDARD.encode(bytes)}),
+            ],
+        }
+    }
+    fn into_result(self) -> Value {
+        let mut content = vec![json!({"type":"text","text":self.structured.to_string()})];
+        content.extend(self.extra_content);
+        json!({"content":content,"structuredContent":self.structured,"isError":false})
+    }
+}
 #[derive(Default)]
 pub struct Protocol {
     initialized: bool,
@@ -15,6 +45,16 @@ impl Protocol {
         message: Value,
         catalog: &Value,
         mut call: impl FnMut(&str, &Value) -> std::result::Result<Value, String>,
+    ) -> Option<Value> {
+        self.handle_output(message, catalog, |name, args| {
+            call(name, args).map(ToolOutput::from)
+        })
+    }
+    pub fn handle_output(
+        &mut self,
+        message: Value,
+        catalog: &Value,
+        mut call: impl FnMut(&str, &Value) -> std::result::Result<ToolOutput, String>,
     ) -> Option<Value> {
         let id = message.get("id").cloned();
         let method = message["method"].as_str().unwrap_or("");
@@ -49,9 +89,7 @@ impl Protocol {
                 let name = params["name"].as_str().unwrap_or("");
                 let args = params.get("arguments").cloned().unwrap_or(json!({}));
                 match call(name, &args) {
-                    Ok(value) => {
-                        json!({"result":{"content":[{"type":"text","text":value.to_string()}],"structuredContent":value,"isError":false}})
-                    }
+                    Ok(value) => json!({"result":value.into_result()}),
                     Err(e) => {
                         json!({"result":{"content":[{"type":"text","text":e.to_string()}],"isError":true}})
                     }
@@ -66,10 +104,20 @@ impl Protocol {
     }
 }
 pub fn serve(
+    input: impl BufRead,
+    output: impl Write,
+    catalog: &Value,
+    mut call: impl FnMut(&str, &Value) -> std::result::Result<Value, String>,
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    serve_with_output(input, output, catalog, |name, args| {
+        call(name, args).map(ToolOutput::from)
+    })
+}
+pub fn serve_with_output(
     mut input: impl BufRead,
     mut output: impl Write,
     catalog: &Value,
-    mut call: impl FnMut(&str, &Value) -> std::result::Result<Value, String>,
+    mut call: impl FnMut(&str, &Value) -> std::result::Result<ToolOutput, String>,
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut protocol = Protocol::default();
     loop {
@@ -84,7 +132,7 @@ pub fn serve(
             return Err("MCP message exceeds 4 MiB".into());
         }
         let response = match serde_json::from_slice(&bytes) {
-            Ok(value) => protocol.handle(value, catalog, &mut call),
+            Ok(value) => protocol.handle_output(value, catalog, &mut call),
             Err(_) => Some(
                 json!({"jsonrpc":"2.0","id":null,"error":{"code":-32700,"message":"invalid JSON"}}),
             ),
@@ -96,4 +144,31 @@ pub fn serve(
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod image_tests {
+    use super::*;
+    #[test]
+    fn multimodal_output_keeps_binary_data_out_of_metadata_and_plain_json() {
+        let input = b"{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\"}\n{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}\n{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"preview_image\"}}\n";
+        let mut output = Vec::new();
+        serve_with_output(&input[..], &mut output, &json!({"tools":[]}), |_, _| {
+            Ok(ToolOutput::png(json!({"width":1}), b"PNG"))
+        })
+        .unwrap();
+        let text = String::from_utf8(output).unwrap();
+        let response: Value = serde_json::from_str(text.lines().last().unwrap()).unwrap();
+        assert_eq!(
+            response["result"]["content"][1],
+            json!({"type":"image","mimeType":"image/png","data":"UE5H"})
+        );
+        assert_eq!(response["result"]["structuredContent"], json!({"width":1}));
+        assert_eq!(response["result"]["content"][0]["text"], "{\"width\":1}");
+        let injected = json!({"content":[{"type":"image","data":"pretend"}]});
+        let plain = ToolOutput::from(injected.clone()).into_result();
+        assert_eq!(plain["content"].as_array().unwrap().len(), 1);
+        assert_eq!(plain["content"][0]["type"], "text");
+        assert_eq!(plain["structuredContent"], injected);
+    }
 }
