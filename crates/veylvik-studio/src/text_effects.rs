@@ -45,11 +45,20 @@ impl crate::Studio {
                         node.bypass = !enabled;
                         changed = true;
                     }
-                    if ui.add_enabled(index > 0, egui::Button::new("↑")).clicked() {
+                    if ui
+                        .add_enabled(
+                            index > 0,
+                            crate::icons::Button::new(crate::icons::Icon::Up, "Move effect up"),
+                        )
+                        .clicked()
+                    {
                         action = Some(("up".into(), index));
                     }
                     if ui
-                        .add_enabled(index + 1 < chain.len(), egui::Button::new("↓"))
+                        .add_enabled(
+                            index + 1 < chain.len(),
+                            crate::icons::Button::new(crate::icons::Icon::Down, "Move effect down"),
+                        )
                         .clicked()
                     {
                         action = Some(("down".into(), index));

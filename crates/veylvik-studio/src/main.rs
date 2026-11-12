@@ -13,6 +13,7 @@ mod font_browser;
 mod graph;
 mod graph_layout;
 mod handles;
+mod icons;
 mod key_timeline;
 mod menus;
 mod node_finder;
@@ -1609,14 +1610,20 @@ impl Studio {
                 self.toggle_play();
             }
             if ui
-                .small_button("◀|")
+                .add(crate::icons::Button::new(
+                    crate::icons::Icon::PreviousFrame,
+                    "Previous frame",
+                ))
                 .on_hover_text("Previous frame · Left arrow")
                 .clicked()
             {
                 self.step_frame(-1);
             }
             if ui
-                .small_button("|▶")
+                .add(crate::icons::Button::new(
+                    crate::icons::Icon::NextFrame,
+                    "Next frame",
+                ))
                 .on_hover_text("Next frame · Right arrow")
                 .clicked()
             {

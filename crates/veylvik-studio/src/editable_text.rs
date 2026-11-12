@@ -44,7 +44,10 @@ fn parameter(
                 egui::Label::new(label),
             );
             if ui
-                .small_button("↺")
+                .add(crate::icons::Button::new(
+                    crate::icons::Icon::Reset,
+                    "Reset to default",
+                ))
                 .on_hover_text("Restore the default at this frame; keep other animation keys.")
                 .clicked()
             {
@@ -334,7 +337,13 @@ pub fn controls(
                     ] {
                         changed |= ui.selectable_value(alignment, value, label).changed();
                     }
-                    if ui.small_button("↺").clicked() {
+                    if ui
+                        .add(crate::icons::Button::new(
+                            crate::icons::Icon::Reset,
+                            "Reset to default",
+                        ))
+                        .clicked()
+                    {
                         *alignment = TextAlignment::Center;
                         changed = true;
                     }
@@ -349,7 +358,13 @@ pub fn controls(
                                 .desired_width(80.0),
                         )
                         .changed();
-                    if ui.small_button("↺").clicked() {
+                    if ui
+                        .add(crate::icons::Button::new(
+                            crate::icons::Icon::Reset,
+                            "Reset to default",
+                        ))
+                        .clicked()
+                    {
                         language.clear();
                         *rtl = false;
                         changed = true;
@@ -400,7 +415,20 @@ pub fn controls(
                     for y in 0..3 {
                         for x in 0..3 {
                             let a = Some([x as f32 * 0.5, y as f32 * 0.5]);
-                            if ui.selectable_label(typography.anchor == a, "●").clicked() {
+                            if ui
+                                .add(
+                                    crate::icons::Button::new(
+                                        crate::icons::Icon::Anchor,
+                                        format!(
+                                            "Anchor: {} {}",
+                                            ["top", "middle", "bottom"][y],
+                                            ["left", "centre", "right"][x]
+                                        ),
+                                    )
+                                    .selected(typography.anchor == a),
+                                )
+                                .clicked()
+                            {
                                 typography.anchor = a;
                                 changed = true;
                             }
@@ -537,7 +565,13 @@ pub fn controls(
                         changed |= ui
                             .add(egui::DragValue::new(&mut *v).speed(0.01).range(range))
                             .changed();
-                        if ui.small_button("↺").clicked() {
+                        if ui
+                            .add(crate::icons::Button::new(
+                                crate::icons::Icon::Reset,
+                                "Reset to default",
+                            ))
+                            .clicked()
+                        {
                             *v = default;
                             changed = true;
                         }
@@ -954,7 +988,13 @@ impl crate::Studio {
                             input = input.range(0.0..=1.0);
                         }
                         changed |= ui.add(input).changed();
-                        if ui.small_button("↺").clicked() {
+                        if ui
+                            .add(crate::icons::Button::new(
+                                crate::icons::Icon::Reset,
+                                "Reset to default",
+                            ))
+                            .clicked()
+                        {
                             color[index] = 1.0;
                             changed = true;
                         }

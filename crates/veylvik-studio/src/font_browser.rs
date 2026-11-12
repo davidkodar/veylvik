@@ -152,11 +152,8 @@ impl Browser {
         ui.horizontal_wrapped(|ui| {
             let saved = self.favourites.iter().any(|s| s == font.label());
             if ui
-                .small_button(if saved {
-                    "★ Favourite"
-                } else {
-                    "☆ Favourite"
-                })
+                .add(egui::Button::new("Favourite").selected(saved))
+                .on_hover_text("Toggle this font in your favourites")
                 .clicked()
             {
                 if saved {

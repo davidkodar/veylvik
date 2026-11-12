@@ -657,7 +657,7 @@ impl Graph {
             if ui.button("Fit").clicked() {
                 fit = true;
             }
-            if ui.button("−").clicked() {
+            if ui.button("-").clicked() {
                 zoom_factor = 0.8;
             }
             ui.label(format!("{:.0}%", self.zoom * 100.0));
@@ -684,7 +684,7 @@ impl Graph {
                 self.auto_view = None;
                 self.revision = None;
             }
-            ui.menu_button("Layout ▾", |ui| {
+            ui.menu_button("Layout...", |ui| {
                 if ui.button("Arrange selected branch").clicked() {
                     let positions = self.arrangement(doc, Some(selected));
                     if !positions.is_empty() {

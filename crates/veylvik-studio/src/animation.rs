@@ -25,7 +25,10 @@ pub fn key_controls(ui: &mut egui::Ui, scalar: &mut Scalar, time: Time) -> bool 
         .map(|key| key.time);
     let mut changed = false;
     if ui
-        .add_enabled(previous.is_some(), egui::Button::new("◀").small())
+        .add_enabled(
+            previous.is_some(),
+            crate::icons::Button::new(crate::icons::Icon::Left, "Previous key"),
+        )
         .on_hover_text("Previous key for this parameter")
         .clicked()
     {
@@ -43,6 +46,17 @@ pub fn key_controls(ui: &mut egui::Ui, scalar: &mut Scalar, time: Time) -> bool 
     #[cfg(test)]
     ui.ctx()
         .data_mut(|d| d.insert_temp(egui::Id::new("key-toggle-test"), rect));
+    response.widget_info(|| {
+        egui::WidgetInfo::labeled(
+            egui::WidgetType::Button,
+            ui.is_enabled(),
+            if here {
+                "Remove key at current frame"
+            } else {
+                "Add key at current frame"
+            },
+        )
+    });
     let visuals = ui.style().interact(&response);
     ui.painter().rect_filled(rect, 3.0, visuals.bg_fill);
     let c = rect.center();
@@ -84,7 +98,10 @@ pub fn key_controls(ui: &mut egui::Ui, scalar: &mut Scalar, time: Time) -> bool 
         }
     }
     if ui
-        .add_enabled(next.is_some(), egui::Button::new("▶").small())
+        .add_enabled(
+            next.is_some(),
+            crate::icons::Button::new(crate::icons::Icon::Right, "Next key"),
+        )
         .on_hover_text("Next key for this parameter")
         .clicked()
     {
@@ -143,7 +160,10 @@ pub fn scalar_with_default(
             changed |= key_controls(ui, scalar, time);
             if let Some(default) = default
                 && ui
-                    .small_button("↺")
+                    .add(crate::icons::Button::new(
+                        crate::icons::Icon::Reset,
+                        "Reset to default",
+                    ))
                     .on_hover_text("Reset to default at this frame; preserve other keys")
                     .clicked()
             {
