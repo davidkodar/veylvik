@@ -202,3 +202,21 @@ fn colorize(@builtin(global_invocation_id) gid:vec3<u32>) {
     let high=vec4<f32>(p.extra.rgb*p.extra.a,p.extra.a);
     result[index(gid)]=(low*(1.0-t)+high*t)*color.a;
 }
+
+@compute @workgroup_size(8,8)
+fn gradient(@builtin(global_invocation_id) gid:vec3<u32>) {
+    if !inside(gid) {return;}
+    let axis=p.values.zw-p.values.xy;
+    let span=dot(axis,axis);
+    var level=0.0;
+    if span>=1e-12 {
+        let relative=vec2<f32>(gid.xy)-p.values.xy;
+        if p.size_op.w==0u {
+            level=dot(relative,axis)/span;
+        } else {
+            level=length(relative)/sqrt(span);
+        }
+    }
+    level=clamp(level,0.0,1.0);
+    result[index(gid)]=vec4<f32>(vec3<f32>(level),1.0);
+}

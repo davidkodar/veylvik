@@ -9,6 +9,8 @@ pub use history::{Document, HistoryStats};
 pub mod blending;
 pub mod channels;
 pub use channels::MaskChannel;
+mod gradient;
+pub use gradient::GradientMode;
 pub mod schema;
 pub mod sequence;
 pub mod vector;
@@ -38,6 +40,13 @@ pub enum Operation {
     Colorize {
         low: [f32; 4],
         high: [f32; 4],
+    },
+    Gradient {
+        mode: GradientMode,
+        start_x: Scalar,
+        start_y: Scalar,
+        end_x: Scalar,
+        end_y: Scalar,
     },
     Noise {
         seed: u32,
@@ -102,6 +111,7 @@ impl Operation {
             Self::Solid { .. } => &registry::SOLID,
             Self::Colorize { .. } => &registry::COLORIZE,
             Self::FractalNoise { .. } => &registry::FRACTAL_NOISE,
+            Self::Gradient { .. } => &registry::GRADIENT,
             Self::Noise { .. } => &registry::NOISE,
             Self::Exposure { .. } => &registry::EXPOSURE,
             Self::Transform { .. } => &registry::TRANSFORM,
@@ -126,6 +136,10 @@ impl Operation {
             (Self::FractalNoise { octaves, .. }, "octaves") => Some(octaves),
             (Self::FractalNoise { roughness, .. }, "roughness") => Some(roughness),
             (Self::FractalNoise { evolution, .. }, "evolution") => Some(evolution),
+            (Self::Gradient { start_x, .. }, "start_x") => Some(start_x),
+            (Self::Gradient { start_y, .. }, "start_y") => Some(start_y),
+            (Self::Gradient { end_x, .. }, "end_x") => Some(end_x),
+            (Self::Gradient { end_y, .. }, "end_y") => Some(end_y),
             (Self::Exposure { stops }, "stops") => Some(stops),
             (Self::Transform { x, .. } | Self::Displace { x, .. }, "x") => Some(x),
             (Self::Transform { y, .. } | Self::Displace { y, .. }, "y") => Some(y),
@@ -150,6 +164,10 @@ impl Operation {
             (Self::FractalNoise { octaves, .. }, "octaves") => Some(octaves),
             (Self::FractalNoise { roughness, .. }, "roughness") => Some(roughness),
             (Self::FractalNoise { evolution, .. }, "evolution") => Some(evolution),
+            (Self::Gradient { start_x, .. }, "start_x") => Some(start_x),
+            (Self::Gradient { start_y, .. }, "start_y") => Some(start_y),
+            (Self::Gradient { end_x, .. }, "end_x") => Some(end_x),
+            (Self::Gradient { end_y, .. }, "end_y") => Some(end_y),
             (Self::Exposure { stops }, "stops") => Some(stops),
             (Self::Transform { x, .. } | Self::Displace { x, .. }, "x") => Some(x),
             (Self::Transform { y, .. } | Self::Displace { y, .. }, "y") => Some(y),

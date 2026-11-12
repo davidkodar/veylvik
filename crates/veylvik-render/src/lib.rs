@@ -63,6 +63,15 @@ fn params(
             p.values = *low;
             p.extra = *high;
         }
+        Operation::Gradient { mode, .. } => {
+            p.size_op[3] = *mode as u32;
+            p.values = [
+                sample("start_x")?,
+                sample("start_y")?,
+                sample("end_x")?,
+                sample("end_y")?,
+            ];
+        }
         Operation::Noise { seed, .. } => {
             p.size_op[3] = *seed;
             p.values[0] = sample("scale")?;

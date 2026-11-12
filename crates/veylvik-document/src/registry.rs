@@ -13,6 +13,7 @@ pub enum ParameterKind {
     Path,
     BlendMode,
     MaskChannel,
+    GradientMode,
 }
 #[derive(Debug, Clone, Copy, Serialize)]
 pub struct Parameter {
@@ -31,6 +32,7 @@ impl Parameter {
             ParameterKind::Seed => json!(self.default as u32),
             ParameterKind::BlendMode => json!(crate::BlendMode::Normal),
             ParameterKind::MaskChannel => json!(crate::MaskChannel::Luminance),
+            ParameterKind::GradientMode => json!(crate::GradientMode::Linear),
             ParameterKind::Color => json!([self.default, self.default, self.default, 1.0]),
             ParameterKind::Asset => json!("image.png"),
             ParameterKind::Path => {
@@ -49,6 +51,7 @@ impl Parameter {
             }
             ParameterKind::BlendMode => json!({"type":"string","enum":crate::BlendMode::ALL}),
             ParameterKind::MaskChannel => json!({"type":"string","enum":crate::MaskChannel::ALL}),
+            ParameterKind::GradientMode => json!({"type":"string","enum":crate::GradientMode::ALL}),
             ParameterKind::Seed => json!({"type":"integer","minimum":0,"maximum":u32::MAX}),
             ParameterKind::Color => {
                 json!({"type":"array","minItems":4,"maxItems":4,"prefixItems":[{"type":"number"},{"type":"number"},{"type":"number"},{"type":"number","minimum":0,"maximum":1}]})
@@ -285,6 +288,20 @@ pub static PATH: NodeType = NodeType {
     inputs: &[],
     parameters: &[other("geometry", ParameterKind::Path, "pixels")],
 };
+pub static GRADIENT: NodeType = NodeType {
+    type_id: "gradient",
+    version: 1,
+    label: "Gradient",
+    description: "Opaque grayscale ramp clamped to [0,1]. Linear projects from start to end; radial uses start as center and the endpoint distance as radius. Distances below 0.000001 pixels produce black. Connect Colorize for colors or Channel mask for alpha coverage.",
+    inputs: &[],
+    parameters: &[
+        other("mode", ParameterKind::GradientMode, "gradient mode"),
+        scalar("start_x", "pixels", -1_000_000.0, 1_000_000.0, 0.0),
+        scalar("start_y", "pixels", -1_000_000.0, 1_000_000.0, 0.0),
+        scalar("end_x", "pixels", -1_000_000.0, 1_000_000.0, 640.0),
+        scalar("end_y", "pixels", -1_000_000.0, 1_000_000.0, 0.0),
+    ],
+};
 pub static TYPES: &[&NodeType] = &[
     &SOLID,
     &NOISE,
@@ -302,6 +319,7 @@ pub static TYPES: &[&NodeType] = &[
     &FRACTAL_NOISE,
     &CHANNEL_MASK,
     &COLORIZE,
+    &GRADIENT,
 ];
 pub fn operation_schema() -> Value {
     json!({"oneOf":TYPES.iter().map(|node|node.schema()).collect::<Vec<_>>()})

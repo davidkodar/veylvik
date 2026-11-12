@@ -998,6 +998,17 @@ impl Studio {
                         }
                     });
             }
+            Operation::Gradient { mode, .. } => {
+                egui::ComboBox::from_id_salt("gradient-mode")
+                    .selected_text(mode.label())
+                    .show_ui(ui, |ui| {
+                        for choice in veylvik_document::GradientMode::ALL {
+                            self.draft_dirty |=
+                                ui.selectable_value(mode, choice, choice.label()).changed();
+                        }
+                    });
+                ui.label("Use Colorize for colors or Channel mask for coverage.");
+            }
             Operation::ChannelMask { channel } => {
                 egui::ComboBox::from_id_salt("mask-channel")
                     .selected_text(channel.label())

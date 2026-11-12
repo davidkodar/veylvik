@@ -254,6 +254,7 @@ includes retained history statistics. Supported operations:
 |---|---|---|
 | Solid | none | Straight linear RGB plus alpha; converted to premultiplied pixels |
 | Noise | none | Seed and cell size, 1–8192 pixels |
+| Gradient | none | Animated start/end coordinates, linear or radial grayscale ramp |
 | Fractal noise | none | Smooth grayscale noise; seed, scale, octaves, roughness, evolution |
 | Exposure | image | −32 to +32 stops |
 | Transform | image | X/Y translation in pixels, bilinear sampling |
@@ -710,3 +711,22 @@ request them. The first sequence-export dialog uses the composition range, then
 retains any custom range for that editor session. The 10000-frame limit per export
 still applies, so longer compositions require a smaller export range. The motion
 example is 96 frames and the procedural example is 144 frames, both at 24 fps.
+
+## Gradients
+
+**Gradient** generates opaque grayscale values from black to white. Linear mode
+projects each pixel onto the line from `(start_x, start_y)` to `(end_x, end_y)`;
+radial mode uses the start as its center and the endpoint distance as its radius.
+Coordinates refer to integer pixel centers, matching transforms and ellipse masks.
+Values clamp to 0..1 outside the ramp. Coincident endpoints, or a span shorter
+than one millionth of a pixel, produce opaque black. All four coordinates animate.
+
+Connect **Colorize** to map the ramp to HDR or transparent colors. For a glow,
+use a bright low color and a dark or transparent high color. Connect **Channel
+mask** in Luminance mode to convert the ramp into white alpha coverage before
+using it as a mask; the generator's own alpha is always one.
+
+When directly previewing the selected gradient, drag its start/end handles in
+the viewer. Radial mode also draws the radius. As with ellipse handles, these
+are inspector drafts until Apply, preserve existing animation modes, and remain
+separate from pan/zoom and exported pixels.
