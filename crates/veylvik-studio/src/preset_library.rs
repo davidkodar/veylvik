@@ -169,13 +169,13 @@ impl Studio {
                         egui::ScrollArea::vertical().max_height(400.0).show(ui, |ui| {
                             ui.strong("Starter effects");
                             for entry in builtin::ALL {
-                                if (self.library.category.is_empty() || self.library.category==builtin::category(entry.id)) && matches(&format!("{} {} {}", entry.label, entry.description,builtin::category(entry.id))) {
+                                if (self.library.category.is_empty() || self.library.category==builtin::category(entry.id)) && matches(&format!("{} {} {} {} {}", entry.label, entry.description,builtin::category(entry.id),veylvik_document::presets::showcase::title(entry.id),veylvik_document::presets::showcase::description(entry.id))) {
                                     ui.group(|ui| { ui.horizontal(|ui| {
                                         if self.library.gallery.card(ui,entry.id).clicked() { self.library.detail=Some(entry.id); }
                                         ui.vertical(|ui| {
                                             if ui.button(entry.label).clicked() { self.library.detail=Some(entry.id); }
                                             ui.add(egui::Label::new(entry.description).wrap());
-                                            ui.weak(builtin::category(entry.id));
+                                            ui.weak(format!("{} · {}",builtin::category(entry.id),veylvik_document::presets::showcase::title(entry.id)));
                                         });
                                     }); });
                                 }

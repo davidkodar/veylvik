@@ -1,4 +1,5 @@
 //! Portable, editable scenes built around the same presets offered by the library.
+mod art_direction;
 use crate::{
     Composition, Document, Key, Node, NodeId, NodePosition, Operation, Result, Scalar, Time,
     vector::{FillRule, PathCommand, PathMask},
@@ -13,7 +14,12 @@ pub fn title(id: &str) -> &'static str {
     match id {
         "neon_outline" => "After hours",
         "prismatic_glow" => "Prism / identity",
-        "liquid_shimmer" => "Fluid type",
+        "liquid_shimmer" => "Pink melt",
+        "embers" => "Gilded inferno",
+        "fireflies" => "Toxic nectar",
+        "dust_motes" => "Sands of time",
+        "snowfall" => "Deep freeze",
+        "starfield" => "Nova ignition",
         _ => super::builtin::ALL
             .iter()
             .find(|e| e.id == id)
@@ -29,7 +35,22 @@ pub fn description(id: &str) -> &'static str {
             "A floating geometric emblem catches cyan and rose light. Edit its motion and light spill."
         }
         "liquid_shimmer" => {
-            "Bold lettering ripples like liquid. Edit the vector shapes, palette and flow animation."
+            "Glossy pink lettering stretches into hanging drips, falling droplets and a liquid pool."
+        }
+        "embers" => {
+            "Reflective gold lettering burns above a smoky reflection. Curved flames breathe behind the title while embers rise."
+        }
+        "fireflies" => {
+            "Glossy green lettering drips into luminous nectar, surrounded by drifting fireflies."
+        }
+        "dust_motes" => {
+            "Grainy sandstone lettering stands over a wind-carved dune with suspended golden dust."
+        }
+        "snowfall" => {
+            "Crystalline lettering over a mountain landscape, with snow moving across the foreground."
+        }
+        "starfield" => {
+            "A turbulent plasma corona surrounds an eclipsed nova, with a star flight across the title."
         }
         _ => super::builtin::ALL
             .iter()
@@ -138,6 +159,106 @@ fn lettering(word: &str) -> PathMask {
                     ],
                 );
             }
+            'D' => {
+                rect(0.0, 0.0, 24.0, 140.0);
+                rect(24.0, 0.0, 76.0, 24.0);
+                rect(24.0, 116.0, 76.0, 24.0);
+                polygon(
+                    &mut commands,
+                    &[
+                        [x + 100.0, 200.0],
+                        [x + 130.0, 230.0],
+                        [x + 130.0, 310.0],
+                        [x + 100.0, 340.0],
+                        [x + 100.0, 306.0],
+                        [x + 106.0, 296.0],
+                        [x + 106.0, 244.0],
+                        [x + 100.0, 234.0],
+                    ],
+                );
+            }
+            'G' => {
+                rect(0.0, 0.0, 24.0, 140.0);
+                rect(24.0, 0.0, 106.0, 24.0);
+                rect(24.0, 116.0, 106.0, 24.0);
+                rect(106.0, 65.0, 24.0, 51.0);
+                rect(70.0, 65.0, 36.0, 24.0);
+            }
+            'R' | 'P' => {
+                rect(0.0, 0.0, 24.0, 140.0);
+                rect(24.0, 0.0, 106.0, 24.0);
+                rect(106.0, 24.0, 24.0, 46.0);
+                rect(24.0, 70.0, 106.0, 24.0);
+                if c == 'R' {
+                    polygon(
+                        &mut commands,
+                        &[
+                            [x + 60.0, 294.0],
+                            [x + 88.0, 294.0],
+                            [x + 130.0, 340.0],
+                            [x + 98.0, 340.0],
+                        ],
+                    );
+                }
+            }
+            'I' => {
+                rect(0.0, 0.0, 130.0, 24.0);
+                rect(53.0, 24.0, 24.0, 92.0);
+                rect(0.0, 116.0, 130.0, 24.0);
+            }
+            'U' => {
+                rect(0.0, 0.0, 24.0, 140.0);
+                rect(106.0, 0.0, 24.0, 140.0);
+                rect(24.0, 116.0, 82.0, 24.0);
+            }
+            'S' => {
+                rect(0.0, 0.0, 130.0, 24.0);
+                rect(0.0, 24.0, 24.0, 46.0);
+                rect(0.0, 58.0, 130.0, 24.0);
+                rect(106.0, 82.0, 24.0, 34.0);
+                rect(0.0, 116.0, 130.0, 24.0);
+            }
+            'T' => {
+                rect(0.0, 0.0, 130.0, 24.0);
+                rect(53.0, 24.0, 24.0, 116.0);
+            }
+            'V' => {
+                polygon(
+                    &mut commands,
+                    &[
+                        [x, 200.0],
+                        [x + 27.0, 200.0],
+                        [x + 65.0, 307.0],
+                        [x + 103.0, 200.0],
+                        [x + 130.0, 200.0],
+                        [x + 79.0, 340.0],
+                        [x + 51.0, 340.0],
+                    ],
+                );
+            }
+            'A' => {
+                polygon(
+                    &mut commands,
+                    &[
+                        [x, 340.0],
+                        [x + 49.0, 200.0],
+                        [x + 81.0, 200.0],
+                        [x + 130.0, 340.0],
+                        [x + 104.0, 340.0],
+                        [x + 65.0, 229.0],
+                        [x + 26.0, 340.0],
+                    ],
+                );
+                polygon(
+                    &mut commands,
+                    &[
+                        [x + 35.0, 291.0],
+                        [x + 95.0, 291.0],
+                        [x + 104.0, 315.0],
+                        [x + 26.0, 315.0],
+                    ],
+                );
+            }
             _ => unreachable!(),
         }
     }
@@ -147,6 +268,12 @@ fn lettering(word: &str) -> PathMask {
     }
 }
 pub fn build(id: &str) -> Result<Scene> {
+    if matches!(
+        id,
+        "embers" | "fireflies" | "liquid_shimmer" | "dust_motes" | "snowfall" | "starfield"
+    ) {
+        return art_direction::build(id);
+    }
     let preset = super::builtin::build(id)?;
     let mut doc = crate::blank(960, 540, Time::new(24, 1)?)?;
     doc.frame_count = 96;

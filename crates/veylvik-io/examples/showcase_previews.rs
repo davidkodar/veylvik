@@ -10,6 +10,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     std::fs::create_dir_all(&output)?;
     let renderer = Renderer::new()?;
     let filter = std::env::args().nth(2);
+    let still = std::env::args().nth(3).as_deref() == Some("--still");
     for entry in builtin::ALL {
         if filter.as_deref().is_some_and(|id| id != entry.id) {
             continue;
@@ -20,6 +21,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ("after", scene.composition.output),
         ] {
             let plan = Plan::compile_output(&scene.composition, node)?;
+            if still {
+                let pixels = renderer.render(&plan, Time::new(2, 1)?)?;
+                veylvik_io::save_png(
+                    &output.join(format!("{}-{label}.png", entry.id)),
+                    960,
+                    540,
+                    &pixels,
+                )?;
+                continue;
+            }
             let mut atlas = image::RgbaImage::new(2560, 1080);
             for frame in 0..48 {
                 let pixels = renderer.render(&plan, Time::new(frame, 12)?)?;

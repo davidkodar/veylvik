@@ -235,10 +235,22 @@ applying them to other dimensions.
 Starter cards play short rendered examples. Select a card for **Before / After**,
 pause and frame scrubbing. **Try example** opens a complete editable four-second
 scene for every starter, including: **After hours** (neon title), **Prism / identity** (floating emblem), or
-**Fluid type** (liquid lettering). Unsaved work uses the normal save/discard/cancel
+**Pink melt** (dripping liquid lettering). Unsaved work uses the normal save/discard/cancel
 prompt. Playing an untouched example does not mark it modified; Save As creates
 your own project. The shapes, palette, motion and effect controls are editable,
 with no external fonts or media required.
+
+The particle showcases now have distinct compositions: **Gilded inferno** pairs
+Embers with extruded reflective gold type, animated curved flames and a floor
+reflection; **Toxic nectar** pairs Fireflies with glossy green dripping letters;
+**Sands of time** places Dust Motes over sandstone type and a dune; **Deep freeze**
+combines Snowfall with crystalline lettering and mountains; **Nova ignition**
+places Starfield over a turbulent plasma corona. **Pink melt** demonstrates Liquid
+Shimmer on viscous pink lettering with falling droplets and a liquid pool.
+Search also matches scene titles and descriptions (for example, “gold” or “drip”).
+Use **Try example** for these complete compositions. **Before / After** compares
+only the selected library effect; **Apply to my composition** inserts that effect,
+while the scene's additional flame, material, text and drip nodes stay in the example.
 
 Choose **Apply to my composition**, select the image for each named input, then
 **Add effect**. Saved custom effects open directly at input selection.
