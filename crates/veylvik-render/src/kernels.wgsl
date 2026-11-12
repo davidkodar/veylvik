@@ -94,3 +94,25 @@ fn image(@builtin(global_invocation_id) gid:vec3<u32>) {
     if gid.x<u32(p.values.x) && gid.y<u32(p.values.y) {color=source[(gid.y+u32(p.extra.w))*u32(p.extra.x)+gid.x+u32(p.extra.z)];}
     result[index(gid)]=color;
 }
+
+// Source-over blending, algebraically premultiplied to avoid division by alpha.
+@compute @workgroup_size(8,8)
+fn blend(@builtin(global_invocation_id) gid:vec3<u32>) {
+    if !inside(gid) {return;}
+    let i=index(gid);
+    let b=source[i]; let f=second[i]*p.values.x;
+    var rgb=f.rgb+b.rgb*(1.0-f.a);
+    if p.size_op.w != 0u {
+        var overlap=f.rgb*b.a+b.rgb*f.a;
+        switch p.size_op.w {
+            case 2u: { overlap=f.rgb*b.rgb; }
+            case 3u: { overlap-=f.rgb*b.rgb; }
+            case 4u: { overlap=min(f.rgb*b.a,b.rgb*f.a); }
+            case 5u: { overlap=max(f.rgb*b.a,b.rgb*f.a); }
+            case 6u: { overlap=abs(f.rgb*b.a-b.rgb*f.a); }
+            default: {}
+        }
+        rgb=f.rgb*(1.0-b.a)+b.rgb*(1.0-f.a)+overlap;
+    }
+    result[i]=vec4<f32>(rgb,f.a+b.a*(1.0-f.a));
+}

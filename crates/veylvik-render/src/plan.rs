@@ -13,13 +13,14 @@ pub enum Kernel {
     BlurHorizontal,
     BlurVertical,
     Merge,
+    Blend,
     Image,
     Affine,
     Ellipse,
     Mask,
 }
 impl Kernel {
-    pub(crate) const ALL: [Self; 11] = [
+    pub(crate) const ALL: [Self; 12] = [
         Self::Solid,
         Self::Noise,
         Self::Exposure,
@@ -27,6 +28,7 @@ impl Kernel {
         Self::BlurHorizontal,
         Self::BlurVertical,
         Self::Merge,
+        Self::Blend,
         Self::Image,
         Self::Affine,
         Self::Ellipse,
@@ -41,6 +43,7 @@ impl Kernel {
             Self::BlurHorizontal => "blur_horizontal",
             Self::BlurVertical => "blur_vertical",
             Self::Merge => "merge",
+            Self::Blend => "blend",
             Self::Image => "image",
             Self::Affine => "affine",
             Self::Ellipse => "ellipse",
@@ -111,6 +114,7 @@ impl Plan {
                 Operation::Exposure { .. } => Kernel::Exposure,
                 Operation::Transform { .. } => Kernel::Transform,
                 Operation::Merge {} => Kernel::Merge,
+                Operation::Blend { .. } => Kernel::Blend,
                 Operation::Affine { .. } => Kernel::Affine,
                 Operation::Ellipse { .. } => Kernel::Ellipse,
                 Operation::Mask {} => Kernel::Mask,

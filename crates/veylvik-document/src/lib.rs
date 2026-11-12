@@ -3,9 +3,11 @@ mod history;
 pub mod limits;
 pub mod registry;
 pub use history::{Document, HistoryStats};
+pub mod blending;
 pub mod schema;
 pub mod sequence;
 pub mod vector;
+pub use blending::BlendMode;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
@@ -43,6 +45,10 @@ pub enum Operation {
         radius: Scalar,
     },
     Merge {},
+    Blend {
+        mode: BlendMode,
+        opacity: Scalar,
+    },
     Image {
         asset: String,
     },
@@ -76,6 +82,7 @@ impl Operation {
             Self::Transform { .. } => &registry::TRANSFORM,
             Self::Blur { .. } => &registry::BLUR,
             Self::Merge {} => &registry::MERGE,
+            Self::Blend { .. } => &registry::BLEND,
             Self::Image { .. } => &registry::IMAGE,
             Self::Affine { .. } => &registry::AFFINE,
             Self::Ellipse { .. } => &registry::ELLIPSE,
@@ -93,6 +100,7 @@ impl Operation {
             (Self::Transform { x, .. }, "x") => Some(x),
             (Self::Transform { y, .. }, "y") => Some(y),
             (Self::Blur { radius }, "radius") => Some(radius),
+            (Self::Blend { opacity, .. }, "opacity") => Some(opacity),
             (Self::Affine { x, .. } | Self::Ellipse { x, .. }, "x") => Some(x),
             (Self::Affine { y, .. } | Self::Ellipse { y, .. }, "y") => Some(y),
             (Self::Affine { scale_x, .. }, "scale_x") => Some(scale_x),
@@ -113,6 +121,7 @@ impl Operation {
             (Self::Transform { x, .. }, "x") => Some(x),
             (Self::Transform { y, .. }, "y") => Some(y),
             (Self::Blur { radius }, "radius") => Some(radius),
+            (Self::Blend { opacity, .. }, "opacity") => Some(opacity),
             (Self::Affine { x, .. } | Self::Ellipse { x, .. }, "x") => Some(x),
             (Self::Affine { y, .. } | Self::Ellipse { y, .. }, "y") => Some(y),
             (Self::Affine { scale_x, .. }, "scale_x") => Some(scale_x),

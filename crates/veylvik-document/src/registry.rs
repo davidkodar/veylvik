@@ -11,6 +11,7 @@ pub enum ParameterKind {
     Color,
     Asset,
     Path,
+    BlendMode,
 }
 #[derive(Debug, Clone, Copy, Serialize)]
 pub struct Parameter {
@@ -27,6 +28,7 @@ impl Parameter {
         match self.kind {
             ParameterKind::Scalar => json!({"kind":"constant","value":self.default}),
             ParameterKind::Seed => json!(self.default as u32),
+            ParameterKind::BlendMode => json!(crate::BlendMode::Normal),
             ParameterKind::Color => json!([0.0, 0.0, 0.0, 1.0]),
             ParameterKind::Asset => json!("image.png"),
             ParameterKind::Path => {
@@ -43,6 +45,7 @@ impl Parameter {
                     {"type":"object","properties":{"kind":{"enum":["linear","step","smooth"]},"keys":{"type":"array","minItems":1,"maxItems":crate::animation::MAX_KEYS,"items":{"type":"object","properties":{"time":{"type":"object","properties":{"ticks":{"type":"integer","minimum":i64::MIN,"maximum":i64::MAX},"rate":{"type":"integer","minimum":1,"maximum":u32::MAX}},"required":["ticks","rate"],"additionalProperties":false},"value":number},"required":["time","value"],"additionalProperties":false}}},"required":["kind","keys"],"additionalProperties":false}
                 ]})
             }
+            ParameterKind::BlendMode => json!({"type":"string","enum":crate::BlendMode::ALL}),
             ParameterKind::Seed => json!({"type":"integer","minimum":0,"maximum":u32::MAX}),
             ParameterKind::Color => {
                 json!({"type":"array","minItems":4,"maxItems":4,"prefixItems":[{"type":"number"},{"type":"number"},{"type":"number"},{"type":"number","minimum":0,"maximum":1}]})
@@ -161,6 +164,17 @@ pub static MERGE: NodeType = NodeType {
     inputs: &["background", "foreground"],
     parameters: &[],
 };
+pub static BLEND: NodeType = NodeType {
+    type_id: "blend",
+    version: 1,
+    label: "Blend",
+    description: "Scene-linear blending with source-over alpha and animated foreground opacity. RGB is not clamped; Add sums premultiplied RGB with union alpha.",
+    inputs: &["background", "foreground"],
+    parameters: &[
+        other("mode", ParameterKind::BlendMode, "blend mode"),
+        scalar("opacity", "factor", 0.0, 1.0, 1.0),
+    ],
+};
 pub static IMAGE: NodeType = NodeType {
     type_id: "image",
     version: 1,
@@ -223,6 +237,7 @@ pub static PATH: NodeType = NodeType {
 };
 pub static TYPES: &[&NodeType] = &[
     &SOLID, &NOISE, &EXPOSURE, &TRANSFORM, &BLUR, &MERGE, &IMAGE, &AFFINE, &ELLIPSE, &MASK, &PATH,
+    &BLEND,
 ];
 pub fn operation_schema() -> Value {
     json!({"oneOf":TYPES.iter().map(|node|node.schema()).collect::<Vec<_>>()})

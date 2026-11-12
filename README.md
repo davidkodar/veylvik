@@ -58,6 +58,16 @@ MCP `render_sequence` takes `revision`, `path`, `start`, `end`, and optional `no
 and `region`. It runs synchronously and returns the sequence manifest. The stdio
 adapter does not yet expose mid-request cancellation or progress notifications.
 
+## Blend controls
+
+**Blend** combines foreground and background with Normal, Add, Multiply, Screen,
+Darken, Lighten or Difference. Its opacity scales foreground RGB and alpha and
+can be keyframed. All modes use source-over union alpha. Add sums premultiplied
+RGB; its alpha remains in [0,1]. Blending operates in scene-linear Rec.709 without
+RGB clamping, so HDR and negative values remain available downstream. Screen
+can produce negative values for HDR inputs. Existing **Merge** nodes retain their
+foreground-over-background behavior.
+
 ## Native editor
 
 ```sh

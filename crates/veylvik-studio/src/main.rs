@@ -739,6 +739,16 @@ impl Studio {
                     self.draft_dirty |= ui.add(egui::DragValue::new(seed)).changed();
                 });
             }
+            Operation::Blend { mode, .. } => {
+                egui::ComboBox::from_id_salt("blend-mode")
+                    .selected_text(mode.label())
+                    .show_ui(ui, |ui| {
+                        for choice in veylvik_document::BlendMode::ALL {
+                            self.draft_dirty |=
+                                ui.selectable_value(mode, choice, choice.label()).changed();
+                        }
+                    });
+            }
             Operation::Merge {} => {
                 ui.label("Foreground over background");
             }
