@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 [dependencies]
+ttf-parser = "=0.25.1"
 veylvik-control.workspace = true
 veylvik-document.workspace = true
 veylvik-text.workspace = true

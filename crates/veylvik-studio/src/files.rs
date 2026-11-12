@@ -25,6 +25,7 @@ pub enum Completed {
     PresetLibrary(veylvik_io::presets::Listing),
     PresetLoaded(Box<veylvik_document::presets::Preset>),
     Cancelled,
+    FontAdded(String),
     Outlined(Box<veylvik_document::Node>),
     TextFont {
         session: veylvik_document::NodeId,

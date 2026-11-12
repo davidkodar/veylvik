@@ -143,10 +143,11 @@ pub fn controls(
     op: &mut Operation,
     time: Time,
     canvas: [f32; 2],
-) -> (bool, bool) {
+    fonts: &mut crate::font_browser::Browser,
+) -> (bool, Option<crate::font_browser::Selection>) {
     let selected = tab(ui);
     let mut changed = false;
-    let mut import = false;
+    let mut import = None;
     match selected {
         Tab::Text => {
             if ui.button("Add material or effect…").clicked() {
@@ -161,25 +162,17 @@ pub fn controls(
             } = op
             {
                 ui.strong("Font");
-                egui::ComboBox::from_id_salt("editable-font")
-                    .selected_text(font.label())
-                    .show_ui(ui, |ui| {
-                        for value in [
-                            TextFont::Display,
-                            TextFont::Sans {},
-                            TextFont::Italic {},
-                            TextFont::BoldItalic {},
-                            TextFont::Mono {},
-                        ] {
-                            let label = value.label().to_owned();
-                            changed |= ui.selectable_value(font, value, label).changed();
-                        }
-                    });
+                let (edited, selection) = fonts.choose(ui, font);
+                changed |= edited;
+                import = selection;
                 ui.horizontal_wrapped(|ui| {
-                    import = ui
-                        .button("Choose font…")
-                        .on_hover_text("Embed a TTF/OTF/TTC font in this project.")
-                        .clicked();
+                    if ui
+                        .button("Add font…")
+                        .on_hover_text("Install a font into Veylvik's library for all projects.")
+                        .clicked()
+                    {
+                        import = Some(crate::font_browser::Selection::Add);
+                    }
                     if ui.small_button("Reset font").clicked() {
                         *font = TextFont::default();
                         changed = true;

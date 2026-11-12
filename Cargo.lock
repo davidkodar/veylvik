@@ -3672,6 +3672,7 @@ dependencies = [
  "pollster",
  "serde",
  "serde_json",
+ "ttf-parser",
  "veylvik-control",
  "veylvik-document",
  "veylvik-io",

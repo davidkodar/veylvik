@@ -6,6 +6,7 @@ mod control;
 mod curve_preview;
 mod diagnostics;
 mod editable_text;
+mod font_browser;
 mod recovery;
 mod sequence;
 mod text_outline;
@@ -133,6 +134,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 draft,
                 draft_dirty: false,
                 text_preview_deadline: None,
+                fonts: font_browser::Browser::new(&cc.egui_ctx),
                 graph: graph::Graph::default(),
                 effects: effects::Controls::default(),
                 library: preset_library::Library::default(),
@@ -190,6 +192,7 @@ struct Studio {
     draft: Node,
     draft_dirty: bool,
     text_preview_deadline: Option<Instant>,
+    fonts: font_browser::Browser,
     graph: graph::Graph,
     effects: effects::Controls,
     library: preset_library::Library,
@@ -676,8 +679,11 @@ impl Studio {
             }
         }
     }
-    fn import_text_font(&mut self) {
-        if self.files.busy() || !self.apply_draft() {
+    fn import_text_font(&mut self, selection: font_browser::Selection) {
+        if self.files.busy() {
+            return;
+        }
+        if !matches!(selection, font_browser::Selection::Add) && !self.apply_draft() {
             return;
         }
         let mut node = self.draft.clone();
@@ -689,24 +695,19 @@ impl Studio {
             .time()
             .unwrap_or(veylvik_document::Time { ticks: 0, rate: 1 });
         let result = self.files.start(move || {
-            use std::io::Read;
-            let Some(path) = files::select(Choice::Font, &folder, "")? else {
-                return Ok(Completed::Cancelled);
+            let face = match selection {
+                font_browser::Selection::Face(face) => face,
+                font_browser::Selection::File | font_browser::Selection::Add => {
+                    let Some(path) = files::select(Choice::Font, &folder, "")? else {
+                        return Ok(Completed::Cancelled);
+                    };
+                    if matches!(selection, font_browser::Selection::Add) {
+                        return Ok(Completed::FontAdded(font_browser::install(&path)?));
+                    }
+                    font_browser::from_file(path)
+                }
             };
-            let file = std::fs::File::open(&path).map_err(|e| e.to_string())?;
-            let mut bytes = Vec::new();
-            file.take(veylvik_document::text::MAX_FONT_BYTES as u64 + 1)
-                .read_to_end(&mut bytes)
-                .map_err(|e| e.to_string())?;
-            let font = veylvik_document::TextFont::embedded(
-                path.file_name()
-                    .unwrap_or_default()
-                    .to_string_lossy()
-                    .into_owned(),
-                0,
-                &bytes,
-            )
-            .map_err(|e| e.to_string())?;
+            let font = font_browser::load(&face)?;
             if let Operation::Text { font: target, .. } = &mut node.operation {
                 *target = font;
             }
@@ -966,6 +967,11 @@ impl Studio {
                 self.status = "Cancelled".into();
                 self.error = false;
             }
+            Ok(Completed::FontAdded(name)) => {
+                self.fonts.added(ctx);
+                self.status = format!("Added {name}. Choose it under Added fonts.");
+                self.error = false;
+            }
             Ok(Completed::TextFont {
                 session,
                 revision,
@@ -1208,7 +1214,7 @@ impl Studio {
             .time()
             .unwrap_or(veylvik_document::Time { ticks: 0, rate: 1 });
         let mut replace_image = false;
-        let mut import_font = false;
+        let mut import_font = None;
         let mut text_changed = false;
         let text_canvas = [
             self.project.document.snapshot().width as f32,
@@ -1216,7 +1222,8 @@ impl Studio {
         ];
         match &mut self.draft.operation {
             op @ Operation::Text { .. } => {
-                let (changed, import) = editable_text::controls(ui, op, time, text_canvas);
+                let (changed, import) =
+                    editable_text::controls(ui, op, time, text_canvas, &mut self.fonts);
                 self.draft_dirty |= changed;
                 text_changed |= changed;
                 import_font = import;
@@ -1397,8 +1404,8 @@ impl Studio {
         if text_changed && matches!(self.draft.operation, Operation::Text { .. }) {
             self.queue_text_preview(ui.ctx());
         }
-        if import_font {
-            self.import_text_font();
+        if let Some(selection) = import_font {
+            self.import_text_font(selection);
         }
 
         if self.draft_dirty {
@@ -1770,6 +1777,7 @@ impl eframe::App for Studio {
         let ctx = ui.ctx().clone();
         self.theme(&ctx);
         self.poll_files(&ctx);
+        self.fonts.poll(&ctx);
         if let Some(deadline) = self.text_preview_deadline {
             if Instant::now() >= deadline && !self.preview_pending {
                 self.text_preview_deadline = None;

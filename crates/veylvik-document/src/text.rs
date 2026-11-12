@@ -22,11 +22,11 @@ pub enum TextFont {
 impl TextFont {
     pub fn label(&self) -> &str {
         match self {
-            Self::Sans {} => "Regular",
-            Self::Italic {} => "Italic",
-            Self::BoldItalic {} => "Bold Italic",
-            Self::Display => "Display Bold",
-            Self::Mono {} => "Monospace",
+            Self::Sans {} => "Liberation Sans · Regular",
+            Self::Italic {} => "Liberation Sans · Italic",
+            Self::BoldItalic {} => "Liberation Sans · Bold Italic",
+            Self::Display => "Liberation Sans · Bold",
+            Self::Mono {} => "Hack · Regular",
             Self::Embedded { name, .. } => name,
         }
     }

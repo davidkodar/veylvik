@@ -626,10 +626,19 @@ reuses an existing fill node, keeping other effects connected.
 Typing previews the draft; **Apply** commits one Undo step, **Revert** restores
 it. Changing text keeps connected materials, reflections and animation intact.
 
-Regular/bold/italic/bold-italic Liberation Sans and a monospace font are bundled.
-**Choose font file…** embeds a TTF/OTF/TTC font (up to 8 MiB) in the project;
-rendering does not depend on that file remaining installed. The bundled
-Liberation font license is in `crates/veylvik-text/assets/fonts/LICENSE`.
+The searchable font picker lists **Bundled**, **System**, and **Added** fonts by
+family and style. Liberation Sans regular/bold/italic/bold-italic and Hack regular
+are bundled. System fonts are discovered through Fontconfig in the background;
+**Refresh fonts** picks up newly installed OS fonts without restarting Studio.
+**Add font…** validates and copies a TTF/OTF/TTC font into Veylvik's own library
+under `$XDG_DATA_HOME/veylvik/fonts` (normally `~/.local/share/veylvik/fonts`).
+It is available to all Veylvik projects, without changing system fonts. Added
+collections expose individual faces. **Use file once…** embeds a font only in the
+current project. Selecting a system or added font embeds its bytes (up to 8 MiB),
+so rendering does not depend on it staying installed. Font discovery and loading
+run off the UI thread. Bitmap-only fonts are rejected on selection; named variable-font instances
+are excluded from the list. The bundled Liberation font license is in
+`crates/veylvik-text/assets/fonts/LICENSE`.
 OpenType feature tags are in **Font options**; language and explicit
 right-to-left direction are in **Layout**. Mixed-direction paragraphs, automatic font fallback, variable
 font axes, rich-text spans and per-character animation are not implemented yet.
