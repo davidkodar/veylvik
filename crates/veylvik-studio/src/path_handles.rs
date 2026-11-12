@@ -95,6 +95,22 @@ pub fn show(
             }
         }
     }
+    // A curved closing segment ends at the first anchor. Present one handle,
+    // and keep that endpoint joined when the first anchor moves.
+    let mut aliases = Vec::new();
+    let mut first = None;
+    for (index, command) in path.commands.iter().enumerate() {
+        if let PathCommand::Move { to } = command {
+            first = Some((index, *to));
+        }
+        if matches!(path.commands.get(index + 1), Some(PathCommand::Close {}))
+            && let Some((start, position)) = first
+            && endpoint(command) == Some(position)
+            && index != start
+        {
+            aliases.push((index, start));
+        }
+    }
     let mut changed = false;
     for (index, command) in path.commands.iter_mut().enumerate() {
         let mut controls = points(command);
@@ -102,6 +118,9 @@ pub fn show(
         for (handle, point) in controls.iter_mut().enumerate() {
             let position = screen(**point);
             let anchor = handle == last;
+            if anchor && aliases.iter().any(|(end, _)| *end == index) {
+                continue;
+            }
             let hit = Rect::from_center_size(position, Vec2::splat(14.0)).intersect(canvas);
             if !hit.is_positive() {
                 continue;
@@ -126,7 +145,24 @@ pub fn show(
             }
         }
     }
+    for (end, start) in aliases {
+        if let Some(position) = endpoint(&path.commands[start])
+            && let Some(point) = points(&mut path.commands[end]).last_mut()
+        {
+            **point = position;
+        }
+    }
     changed
+}
+
+fn endpoint(command: &PathCommand) -> Option<[f32; 2]> {
+    match command {
+        PathCommand::Move { to }
+        | PathCommand::Line { to }
+        | PathCommand::Quad { to, .. }
+        | PathCommand::Cubic { to, .. } => Some(*to),
+        PathCommand::Close {} => None,
+    }
 }
 
 fn move_point(point: &mut [f32; 2], delta: Vec2) -> bool {

@@ -618,9 +618,11 @@ Paths are limited to 4096 commands, coordinates within ±32768, and dimensions u
 to 4096 per axis. The Path mask node persists this geometry in the composition and exposes its
 strict schema through MCP. Studio edits points and Bézier control handles directly in the selected-node
 viewer, with live GPU preview, Apply/Revert and shared undo. Precision coordinates,
-fill rules, segments and contours remain available in the inspector. Animate the result
-with an Affine node; path-point keyframes and drawing new contours with a viewer pen tool are not yet
-implemented. Vello scratch memory is separate from the
+fill rules, segments and contours remain available in the inspector. The viewer pen draws corners with clicks and curves with drags. Close at the first
+point to commit one undoable replacement or additional contour; Escape cancels and
+Backspace/Ctrl+Z removes the latest unfinished point. The original mask remains
+intact until the contour is closed. Animate the result with an Affine node;
+path-point keyframes are not yet implemented. Vello scratch memory is separate from the
 compositor buffer budget; image atlases cannot grow and intermediate layers are
 disabled. `release_vector_resources` frees its persistent pipelines and scratch
 resources without invalidating retained output frames. Graph renders retain up

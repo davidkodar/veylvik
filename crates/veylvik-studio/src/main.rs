@@ -20,6 +20,7 @@ mod node_clipboard;
 mod node_finder;
 mod node_palette;
 mod path_handles;
+mod path_pen;
 mod preset_library;
 mod preview_images;
 mod project;
@@ -144,6 +145,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 text_commit_deadline: None,
                 fonts: font_browser::Browser::new(&cc.egui_ctx),
                 text_viewer: Default::default(),
+                path_pen: Default::default(),
                 title_styles: Default::default(),
                 graph: graph::Graph::default(),
                 effects: effects::Controls::default(),
@@ -206,6 +208,7 @@ struct Studio {
     text_edits: std::collections::BTreeMap<veylvik_document::NodeId, Node>,
     fonts: font_browser::Browser,
     text_viewer: text_viewer::Editor,
+    path_pen: path_pen::Pen,
     title_styles: title_styles::Library,
     graph: graph::Graph,
     effects: effects::Controls,
@@ -317,6 +320,7 @@ impl Studio {
         self.error = true;
     }
     fn refresh_draft(&mut self) {
+        self.path_pen.cancel();
         self.text_preview_deadline = None;
         self.text_commit_deadline = None;
         self.text_edits.clear();
@@ -1732,6 +1736,7 @@ impl Studio {
         }
     }
     fn toggle_play(&mut self) {
+        self.path_pen.cancel();
         self.playing = !self.playing;
         self.playback = Instant::now();
         self.playback_frame = self.project.frame;
@@ -1963,6 +1968,7 @@ impl eframe::App for Studio {
     fn ui(&mut self, ui: &mut egui::Ui, _: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
         self.theme(&ctx);
+        self.path_pen.shortcuts(&ctx);
         self.poll_files(&ctx);
         self.fonts.poll(&ctx);
         if self.draft_dirty
@@ -2206,6 +2212,13 @@ impl eframe::App for Studio {
                 egui::CentralPanel::default().show_inside(ui, |ui| {
                     ui.horizontal_wrapped(|ui| {
                         ui.heading("Viewer");
+                        if matches!(self.draft.operation, Operation::Path { .. })
+                            && !self.playing
+                            && self.path_pen.toolbar(ui)
+                        {
+                            self.project.preview = Some(self.draft.id);
+                            self.request_preview();
+                        }
                         if matches!(self.draft.operation, Operation::Text { .. }) {
                             if ui
                                 .selectable_label(self.text_viewer.active, "Edit text")
@@ -2279,6 +2292,7 @@ impl eframe::App for Studio {
                             egui::Sense::click_and_drag(),
                         );
                         if !self.text_viewer.active
+                            && !self.path_pen.active
                             && !(response.double_clicked()
                                 && matches!(self.draft.operation, Operation::Text { .. }))
                         {
@@ -2360,6 +2374,14 @@ impl eframe::App for Studio {
                                 },
                             );
                         }
+                        if let Operation::Path { geometry } = &self.draft.operation
+                            && let Some(geometry) =
+                                self.path_pen.show(ui, canvas, transform, image, geometry)
+                        {
+                            self.draft.operation = Operation::Path { geometry };
+                            self.draft_dirty = true;
+                            self.apply_draft();
+                        }
                         let root = self
                             .project
                             .preview
@@ -2394,7 +2416,10 @@ impl eframe::App for Studio {
                                 self.draft_dirty = true;
                                 self.queue_text_preview(ui.ctx());
                             }
-                            if !is_text || (!self.text_viewer.active && !self.text_viewer.layout) {
+                            if !self.path_pen.active
+                                && (!is_text
+                                    || (!self.text_viewer.active && !self.text_viewer.layout))
+                            {
                                 match handles::show(
                                     ui,
                                     canvas,
