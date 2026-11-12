@@ -5,7 +5,7 @@ use std::path::Path;
 use veylvik_document::{Composition, Node, Operation, Time};
 use veylvik_render::{Plan, Region, RenderRequest};
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
-const USAGE: &str = "usage: veylvik open [FILE] [--control-dir NEW_DIRECTORY] | demo FILE [--motion|--procedural] | import IMAGE.png|IMAGE.exr FILE | outline-text FONT TEXT NEW_FILE [OPTIONS] | nodes | check FILE | render FILE OUTPUT.png|OUTPUT.exr [TICKS RATE] [--node UUID] [--crop X Y WIDTH HEIGHT] | render-sequence FILE DIRECTORY START END [--format png|exr] [--node UUID] [--crop X Y WIDTH HEIGHT] | mcp FILE | mcp --studio DIRECTORY";
+const USAGE: &str = "usage: veylvik open [FILE] [--control-dir NEW_DIRECTORY] | demo FILE [--motion|--procedural] | import IMAGE.png|IMAGE.exr FILE | outline-text FONT TEXT NEW_FILE [OPTIONS] | collect FILE NEW_DIRECTORY | nodes | check FILE | render FILE OUTPUT.png|OUTPUT.exr [TICKS RATE] [--node UUID] [--crop X Y WIDTH HEIGHT] | render-sequence FILE DIRECTORY START END [--format png|exr] [--node UUID] [--crop X Y WIDTH HEIGHT] | mcp FILE | mcp --studio DIRECTORY";
 fn run() -> Result<()> {
     let args: Vec<String> = std::env::args().collect();
     match args.get(1).map(String::as_str) {
@@ -92,6 +92,15 @@ fn run() -> Result<()> {
                 "{}",
                 serde_json::json!({"saved":args[3],"width":doc.width,"height":doc.height})
             );
+        }
+        Some("collect") if args.len() == 4 => {
+            let document = Composition::load(Path::new(&args[2]))?;
+            let result = assets::collect::collect(
+                &document,
+                &assets::document_base(Path::new(&args[2]))?,
+                Path::new(&args[3]),
+            )?;
+            println!("{}", serde_json::to_string(&result)?);
         }
         Some("check") if args.len() == 3 => {
             let doc = Composition::load(Path::new(&args[2]))?;

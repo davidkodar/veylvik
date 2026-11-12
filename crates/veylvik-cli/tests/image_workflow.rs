@@ -182,5 +182,32 @@ fn image_workflow(exr: bool) {
         .unwrap();
     assert!(!refused.status.success());
     assert!(String::from_utf8_lossy(&refused.stderr).contains("input image"));
-    assert_eq!(fs::read(source).unwrap(), original);
+    assert_eq!(fs::read(&source).unwrap(), original);
+    let collected = run(&root.0, &["collect", "moved/effect.veylvik", "collection"]);
+    assert_eq!(collected["assets"], 1);
+    assert_eq!(collected["bytes"], original.len());
+    let existing = Command::new(env!("CARGO_BIN_EXE_veylvik"))
+        .args(["collect", "moved/effect.veylvik", "collection"])
+        .current_dir(&root.0)
+        .output()
+        .unwrap();
+    assert!(!existing.status.success());
+    fs::rename(root.0.join("collection"), root.0.join("portable")).unwrap();
+    fs::remove_file(&source).unwrap();
+    fs::remove_dir_all(root.0.join("moved")).unwrap();
+    run(&root.0, &["check", "portable/project.veylvik"]);
+    run(
+        &root.0,
+        &[
+            "render",
+            "portable/project.veylvik",
+            "portable.exr",
+            "--crop",
+            "1",
+            "1",
+            "8",
+            "6",
+        ],
+    );
+    assert_eq!(fs::read(root.0.join("portable.exr")).unwrap(), exr);
 }

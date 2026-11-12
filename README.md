@@ -937,3 +937,24 @@ Keys shared across parameters appear once. Subframe keys seek the nearest output
 frame (half frames round up), while authored times remain unchanged. Keys before
 frame zero or after the composition’s final frame are hidden. Unapplied inspector
 changes appear in the strip after **Apply**.
+
+To move or archive an editable project with its images, collect it into a new
+folder:
+
+```sh
+veylvik collect scene.veylvik portable-scene
+veylvik open portable-scene/project.veylvik
+```
+
+Collection copies every image referenced by the document, including disconnected
+nodes, into `assets/` and writes relative references in `project.veylvik`. Node
+IDs, connections, settings and animation remain unchanged. Canonical file aliases
+share a copy; encoded PNG and EXR bytes are preserved and validated before the
+project is published. Text outlines already live inside the document and need no
+font files. The original project and assets are unchanged.
+
+The destination must not exist. Collection reads the files currently on disk,
+not an open editor’s cached images. Missing or invalid images fail collection;
+normal failures remove the files created by that attempt. An interrupted process
+may leave an incomplete folder. Limits are 64 MiB per encoded image, 128 MiB per
+decoded image, and 1 GiB of total encoded image data. No Vulkan device is needed.
