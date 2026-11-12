@@ -1000,6 +1000,17 @@ impl Studio {
                     });
                 ui.label("Use Colorize for colors or Channel mask for coverage.");
             }
+            Operation::CombineMask { mode } => {
+                egui::ComboBox::from_id_salt("mask-mode")
+                    .selected_text(mode.label())
+                    .show_ui(ui, |ui| {
+                        for choice in veylvik_document::MaskMode::ALL {
+                            self.draft_dirty |=
+                                ui.selectable_value(mode, choice, choice.label()).changed();
+                        }
+                    });
+                ui.label("Subtract removes other from mask; RGB is ignored.");
+            }
             Operation::ChannelMask { channel } => {
                 egui::ComboBox::from_id_salt("mask-channel")
                     .selected_text(channel.label())

@@ -132,6 +132,9 @@ fn params(
         Operation::ChannelMask { channel } => {
             p.size_op[3] = *channel as u32;
         }
+        Operation::CombineMask { mode } => {
+            p.size_op[3] = *mode as u32;
+        }
         Operation::Blend { mode, .. } => {
             p.size_op[3] = *mode as u32;
             p.values[0] = sample("opacity")?;

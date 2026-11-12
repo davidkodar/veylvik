@@ -22,12 +22,13 @@ pub enum Kernel {
     Affine,
     Ellipse,
     Mask,
+    CombineMask,
     ChannelMask,
     Colorize,
     Gradient,
 }
 impl Kernel {
-    pub(crate) const ALL: [Self; 19] = [
+    pub(crate) const ALL: [Self; 20] = [
         Self::Solid,
         Self::Noise,
         Self::FractalNoise,
@@ -44,6 +45,7 @@ impl Kernel {
         Self::Affine,
         Self::Ellipse,
         Self::Mask,
+        Self::CombineMask,
         Self::ChannelMask,
         Self::Colorize,
         Self::Gradient,
@@ -68,6 +70,7 @@ impl Kernel {
             Self::ChannelMask => "channel_mask",
             Self::Colorize => "colorize",
             Self::Gradient => "gradient",
+            Self::CombineMask => "combine_mask",
             Self::Mask => "mask",
         }
     }
@@ -179,6 +182,7 @@ impl Plan {
                 Operation::ChannelMask { .. } => Kernel::ChannelMask,
                 Operation::Colorize { .. } => Kernel::Colorize,
                 Operation::Gradient { .. } => Kernel::Gradient,
+                Operation::CombineMask { .. } => Kernel::CombineMask,
                 Operation::Mask {} => Kernel::Mask,
                 Operation::Path { .. } => {
                     if composition.width > crate::MAX_VECTOR_DIMENSION
@@ -405,6 +409,7 @@ fn shareable(operation: &Operation) -> bool {
             | Operation::ChannelMask { .. }
             | Operation::Colorize { .. }
             | Operation::Gradient { .. }
+            | Operation::CombineMask { .. }
             | Operation::Mask {}
     )
 }

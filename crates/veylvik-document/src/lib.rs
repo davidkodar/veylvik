@@ -9,6 +9,8 @@ pub use history::{Document, HistoryStats};
 pub mod blending;
 pub mod channels;
 pub use channels::MaskChannel;
+mod masks;
+pub use masks::MaskMode;
 mod gradient;
 pub use gradient::GradientMode;
 pub mod schema;
@@ -101,6 +103,9 @@ pub enum Operation {
         feather: Scalar,
     },
     Mask {},
+    CombineMask {
+        mode: MaskMode,
+    },
     ChannelMask {
         channel: MaskChannel,
     },
@@ -127,6 +132,7 @@ impl Operation {
             Self::Affine { .. } => &registry::AFFINE,
             Self::Ellipse { .. } => &registry::ELLIPSE,
             Self::ChannelMask { .. } => &registry::CHANNEL_MASK,
+            Self::CombineMask { .. } => &registry::COMBINE_MASK,
             Self::Mask {} => &registry::MASK,
             Self::Path { .. } => &registry::PATH,
         }

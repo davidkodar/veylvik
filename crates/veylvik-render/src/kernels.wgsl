@@ -244,3 +244,18 @@ fn morphology_vertical(@builtin(global_invocation_id) gid:vec3<u32>) {
     if !inside(gid) {return;}
     result[index(gid)]=morphology_axis(gid,vec2<i32>(0,1));
 }
+
+@compute @workgroup_size(8,8)
+fn combine_mask(@builtin(global_invocation_id) gid:vec3<u32>) {
+    if !inside(gid) {return;}
+    let i=index(gid);
+    let a=clamp(source[i].a,0.0,1.0);let b=clamp(second[i].a,0.0,1.0);
+    var coverage=a+b-a*b;
+    switch p.size_op.w {
+        case 1u: {coverage=a*b;}
+        case 2u: {coverage=a*(1.0-b);}
+        case 3u: {coverage=a*(1.0-b)+b*(1.0-a);}
+        default: {}
+    }
+    result[i]=vec4<f32>(clamp(coverage,0.0,1.0));
+}

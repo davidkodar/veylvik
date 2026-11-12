@@ -14,6 +14,7 @@ pub enum ParameterKind {
     BlendMode,
     MaskChannel,
     GradientMode,
+    MaskMode,
 }
 #[derive(Debug, Clone, Copy, Serialize)]
 pub struct Parameter {
@@ -33,6 +34,7 @@ impl Parameter {
             ParameterKind::BlendMode => json!(crate::BlendMode::Normal),
             ParameterKind::MaskChannel => json!(crate::MaskChannel::Luminance),
             ParameterKind::GradientMode => json!(crate::GradientMode::Linear),
+            ParameterKind::MaskMode => json!(crate::MaskMode::Union),
             ParameterKind::Color => json!([self.default, self.default, self.default, 1.0]),
             ParameterKind::Asset => json!("image.png"),
             ParameterKind::Path => {
@@ -52,6 +54,7 @@ impl Parameter {
             ParameterKind::BlendMode => json!({"type":"string","enum":crate::BlendMode::ALL}),
             ParameterKind::MaskChannel => json!({"type":"string","enum":crate::MaskChannel::ALL}),
             ParameterKind::GradientMode => json!({"type":"string","enum":crate::GradientMode::ALL}),
+            ParameterKind::MaskMode => json!({"type":"string","enum":crate::MaskMode::ALL}),
             ParameterKind::Seed => json!({"type":"integer","minimum":0,"maximum":u32::MAX}),
             ParameterKind::Color => {
                 json!({"type":"array","minItems":4,"maxItems":4,"prefixItems":[{"type":"number"},{"type":"number"},{"type":"number"},{"type":"number","minimum":0,"maximum":1}]})
@@ -178,6 +181,14 @@ pub static DISPLACE: NodeType = NodeType {
         scalar("x", "pixels", -8192.0, 8192.0, 20.0),
         scalar("y", "pixels", -8192.0, 8192.0, 20.0),
     ],
+};
+pub static COMBINE_MASK: NodeType = NodeType {
+    type_id: "combine_mask",
+    version: 1,
+    label: "Combine masks",
+    description: "Combine input alpha into a white premultiplied mask. For alpha a from mask and b from other: union a+b-a*b, intersect a*b, subtract a*(1-b), exclude a*(1-b)+b*(1-a). Input RGB is ignored; soft edges remain fractional.",
+    inputs: &["mask", "other"],
+    parameters: &[other("mode", ParameterKind::MaskMode, "coverage operation")],
 };
 pub static MORPHOLOGY: NodeType = NodeType {
     type_id: "morphology",
@@ -329,6 +340,7 @@ pub static TYPES: &[&NodeType] = &[
     &COLORIZE,
     &GRADIENT,
     &MORPHOLOGY,
+    &COMBINE_MASK,
 ];
 pub fn operation_schema() -> Value {
     json!({"oneOf":TYPES.iter().map(|node|node.schema()).collect::<Vec<_>>()})

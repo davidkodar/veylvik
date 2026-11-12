@@ -267,6 +267,7 @@ includes retained history statistics. Supported operations:
 | Displace | image, map | Animated X/Y strength in pixels; red/green map channels, alpha-weighted |
 | Blur | image | Box radius, 0–32 pixels, rounded to an integer |
 | Grow/shrink mask | image | Signed alpha radius, −32 to +32 pixels; square neighborhood |
+| Combine masks | mask, other | Union, intersect, subtract, or exclude soft alpha coverage |
 | Colorize | image | Straight HDR low/high colors mapped through luminance and source alpha |
 | Merge | background, foreground | Premultiplied foreground-over-background |
 | Image | none | Asset key; native image size, top-left anchor, transparent padding |
@@ -791,3 +792,25 @@ Use **Channel mask** first when coverage comes from image luminance or another
 color channel. Follow with **Blur** to soften the edge, **Colorize** to tint it,
 or connect it to **Mask** to limit another image. The square neighborhood is
 implemented as two separable GPU passes; corners are square rather than circular.
+
+
+## Combining masks
+
+**Combine masks** (`combine_mask`) combines alpha from `mask` and `other`,
+ignores their RGB, and outputs white premultiplied coverage. It supports soft
+edges rather than thresholding them. With input alpha `a` and `b`:
+
+| Mode | Coverage |
+|---|---|
+| Union | `a + b − a*b` |
+| Intersect | `a*b` |
+| Subtract | `a*(1−b)` |
+| Exclude overlap | `a*(1−b) + b*(1−a)` |
+
+Subtract is directional: it removes `other` from `mask`. These are soft-alpha
+operations; for example intersecting two half-covered pixels gives one-quarter
+coverage, and subtracting a soft mask from itself can retain fractional edges.
+For an outside outline, connect **Grow/shrink mask** with a positive radius to
+`mask` and the original shape to `other`, then choose Subtract. Follow with
+**Colorize** for a colored outline or **Blur** for a halo. Combine masks can also
+intersect moving shapes or cut holes in image-derived mattes.
