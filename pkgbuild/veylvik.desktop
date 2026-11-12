@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=Veylvik
+Comment=Node-based compositor and animation editor
+Comment[sv]=Nodbaserad kompositions- och animationsredigerare
+Exec=veylvik-studio %f
+TryExec=veylvik-studio
+Icon=veylvik
+Terminal=false
+Categories=Graphics;2DGraphics;
+MimeType=application/x-veylvik+json;
+Keywords=VFX;Compositing;Animation;Vulkan;Nodes;
+StartupWMClass=veylvik

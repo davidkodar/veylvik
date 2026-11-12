@@ -1,0 +1,35 @@
+# Local source package; bin/package supplies the archive and its checksum.
+pkgname=veylvik
+pkgver=0.1.0
+pkgrel=1
+pkgdesc='Vulkan compositor and animation editor with a headless CLI and MCP interface'
+arch=('x86_64' 'aarch64')
+url='https://github.com/davidkodar/veylvik'
+license=('LicenseRef-Proprietary')
+depends=('glibc' 'gcc-libs' 'vulkan-icd-loader' 'vulkan-driver' 'libx11' 'libxcursor' 'libxi' 'libxrandr' 'libxkbcommon' 'wayland' 'xdg-desktop-portal' 'desktop-file-utils' 'shared-mime-info' 'hicolor-icon-theme')
+makedepends=('rust' 'desktop-file-utils')
+optdepends=('xdg-desktop-portal-gtk: GTK file picker backend when no desktop backend is configured')
+options=('!debug' '!lto')
+source=("veylvik-$pkgver.tar.gz")
+sha256sums=('SKIP')
+
+build() {
+    cd "$srcdir/veylvik-$pkgver"
+    export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$srcdir/target}"
+    cargo build --release --locked -p veylvik-cli -p veylvik-studio
+}
+
+check() {
+    desktop-file-validate "$srcdir/veylvik-$pkgver/pkgbuild/veylvik.desktop"
+    "$CARGO_TARGET_DIR/release/veylvik" nodes > /dev/null
+}
+
+package() {
+    local source_root="$srcdir/veylvik-$pkgver"
+    install -Dm755 "$CARGO_TARGET_DIR/release/veylvik" "$pkgdir/usr/bin/veylvik"
+    install -Dm755 "$CARGO_TARGET_DIR/release/veylvik-studio" "$pkgdir/usr/bin/veylvik-studio"
+    install -Dm644 "$source_root/pkgbuild/veylvik.desktop" "$pkgdir/usr/share/applications/veylvik.desktop"
+    install -Dm644 "$source_root/pkgbuild/veylvik.svg" "$pkgdir/usr/share/icons/hicolor/scalable/apps/veylvik.svg"
+    install -Dm644 "$source_root/pkgbuild/veylvik.xml" "$pkgdir/usr/share/mime/packages/veylvik.xml"
+    install -Dm644 "$source_root/README.md" "$pkgdir/usr/share/doc/veylvik/README.md"
+}

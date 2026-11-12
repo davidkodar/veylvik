@@ -16,6 +16,27 @@ cargo build --workspace --release --locked
 ./target/release/veylvik render /tmp/example.veylvik /tmp/frame.png 24 24
 ```
 
+On Arch/Omarchy, build a local desktop package from the checkout:
+
+```sh
+./bin/package
+sudo pacman -U target/packages/veylvik-0.1.0-1-x86_64.pkg.tar.zst
+```
+
+`bin/package` creates a source archive with a verified SHA-256 checksum, builds
+locked release binaries through `makepkg`, and writes the package under
+`target/packages/`. It uses your configured Git name and email for package
+metadata. Set `CARGO_NET_OFFLINE=true` to build from an existing dependency cache.
+The recipe supports native x86_64 and aarch64 builds; the filename reflects the
+host architecture. Required build tools are Cargo/Rust, Arch `base-devel`, and
+`desktop-file-utils`.
+
+The package installs `veylvik` and `veylvik-studio`, a **Veylvik** launcher entry,
+and an SVG icon, and registers `.veylvik` compositions for **Open with Veylvik**.
+The launcher uses the same Wayland app ID as the editor. File dialogs require a
+working desktop portal backend. Remove the package with `sudo pacman -R veylvik`;
+project files and recovery data remain in their original locations.
+
 Render time is exact `TICKS / RATE` seconds; `24 24` renders at one second.
 Commands return JSON on stdout, errors as JSON on stderr, and a nonzero exit
 status on failure. Rendering requires Vulkan; no silent CPU fallback occurs.

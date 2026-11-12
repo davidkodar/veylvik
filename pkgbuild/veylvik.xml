@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+  <mime-type type="application/x-veylvik+json">
+    <comment>Veylvik composition</comment>
+    <comment xml:lang="sv">Veylvik-komposition</comment>
+    <sub-class-of type="application/json"/>
+    <glob pattern="*.veylvik"/>
+    <icon name="veylvik"/>
+  </mime-type>
+</mime-info>
