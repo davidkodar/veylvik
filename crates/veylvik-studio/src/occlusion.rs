@@ -38,7 +38,7 @@ impl super::Studio {
                     self.project.preview = None;
                     self.request_preview();
                 }
-                if ui.button("Redraw over source").clicked() && self.apply_draft() {
+                if ui.add_enabled(!matches!(&self.draft.operation,Operation::Path { geometry } if !geometry.keys.is_empty()),egui::Button::new("Redraw over source")).on_disabled_hover_text("Disable shape animation before redrawing the outline").clicked() && self.apply_draft() {
                     self.begin_occlusion(setup.source, true);
                 }
             });

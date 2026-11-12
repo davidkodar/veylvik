@@ -125,6 +125,7 @@ impl Builder {
             "Horizontal bands",
             Operation::Path {
                 geometry: PathMask {
+                    keys: vec![],
                     fill_rule: FillRule::NonZero,
                     commands,
                 },

@@ -94,6 +94,7 @@ pub fn outline(operation: &Operation, time: Time) -> Result<PathMask> {
         ));
     }
     let mut path = shaped.outline.unwrap_or_else(|| PathMask {
+        keys: vec![],
         fill_rule: FillRule::NonZero,
         commands: vec![
             PathCommand::Move { to: [0.0; 2] },

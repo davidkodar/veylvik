@@ -77,6 +77,7 @@ impl Key {
                         else {
                             unreachable!()
                         };
+                        let geometry = geometry.at(request.time)?;
                         words.extend([
                             3,
                             geometry.fill_rule as u32,

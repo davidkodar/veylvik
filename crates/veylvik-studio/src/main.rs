@@ -29,6 +29,7 @@ mod preview_images;
 mod project;
 mod recovery;
 mod sequence;
+mod shape_animation;
 mod showcase_gallery;
 mod text_effects;
 mod text_outline;
@@ -1273,9 +1274,16 @@ impl Studio {
                 text_changed |= changed;
                 import_font = import;
             }
-            Operation::Path { geometry } => {
-                self.draft_dirty |= vector_editor::edit(ui, geometry);
-            }
+            Operation::Path { geometry } => match shape_animation::edit(ui, geometry, time) {
+                Ok(true) => {
+                    self.draft_dirty = true;
+                    self.text_preview_deadline
+                        .get_or_insert_with(|| Instant::now() + Duration::from_millis(32));
+                    ui.ctx().request_repaint_after(Duration::from_millis(32));
+                }
+                Err(error) => self.fail(error),
+                _ => {}
+            },
             Operation::Solid { color } => {
                 ui.label("Linear RGB and alpha");
                 self.draft_dirty |= animation::color(ui, color);
@@ -1579,6 +1587,9 @@ impl Studio {
         );
     }
     fn seek_key(&mut self, forward: bool) {
+        if !self.apply_draft() {
+            return;
+        }
         self.sync_key_timeline();
         if let Some(frame) = self.key_timeline.adjacent(self.project.frame, forward) {
             self.project.frame = frame;
@@ -1652,10 +1663,12 @@ impl Studio {
             {
                 self.step_frame(1);
             }
+            let mut frame = self.project.frame;
             let changed = ui
-                .add(egui::Slider::new(&mut self.project.frame, 0..=end_frame).text("Frame"))
+                .add(egui::Slider::new(&mut frame, 0..=end_frame).text("Frame"))
                 .changed();
-            if changed {
+            if changed && self.apply_draft() {
+                self.project.frame = frame;
                 self.playing = false;
                 self.request_preview();
             }
@@ -1747,6 +1760,9 @@ impl Studio {
         }
     }
     fn toggle_play(&mut self) {
+        if !self.apply_draft() {
+            return;
+        }
         self.path_pen.cancel();
         self.playing = !self.playing;
         self.playback = Instant::now();
@@ -2296,7 +2312,7 @@ impl eframe::App for Studio {
                         ui.horizontal_wrapped(|ui| {
                             if matches!(self.draft.operation, Operation::Path { .. })
                                 && !self.playing
-                                && self.path_pen.toolbar(ui)
+                                && ui.add_enabled_ui(!matches!(&self.draft.operation,Operation::Path { geometry } if !geometry.keys.is_empty()), |ui| self.path_pen.toolbar(ui)).inner
                             {
                                 self.path_transform.active = false;
                                 self.project.preview = Some(self.draft.id);
@@ -2451,6 +2467,7 @@ impl eframe::App for Studio {
                                     )))
                             && let Ok(time) = self.project.time()
                         {
+                            if let Operation::Path { geometry } = &self.draft.operation { shape_animation::ghosts(ui,canvas,transform,image,geometry,time); }
                             let is_text = matches!(self.draft.operation, Operation::Text { .. });
                             if is_text
                                 && self.text_viewer.show(
@@ -2468,18 +2485,17 @@ impl eframe::App for Studio {
                             }
                             let transform_mask = self.path_transform.active
                                 && matches!(self.draft.operation, Operation::Path { .. });
-                            if transform_mask
-                                && !self.path_pen.active
-                                && let Operation::Path { geometry } = &mut self.draft.operation
-                                && self
-                                    .path_transform
-                                    .show(ui, canvas, transform, image, geometry)
-                            {
-                                self.draft_dirty = true;
-                                self.text_preview_deadline.get_or_insert_with(|| {
-                                    Instant::now() + Duration::from_millis(32)
-                                });
-                                ui.ctx().request_repaint_after(Duration::from_millis(32));
+                            if transform_mask && !self.path_pen.active
+                                && let Operation::Path { geometry } = &mut self.draft.operation {
+                                match self.path_transform.show_at(ui,canvas,transform,image,geometry,time) {
+                                    Ok(true) => {
+                                        self.draft_dirty = true;
+                                        self.text_preview_deadline.get_or_insert_with(|| Instant::now()+Duration::from_millis(32));
+                                        ui.ctx().request_repaint_after(Duration::from_millis(32));
+                                    },
+                                    Err(error) => self.fail(error),
+                                    _ => {}
+                                }
                             }
                             if !transform_mask
                                 && !self.path_pen.active

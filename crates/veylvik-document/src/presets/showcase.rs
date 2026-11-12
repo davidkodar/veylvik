@@ -180,6 +180,7 @@ pub fn build(id: &str) -> Result<Scene> {
         );
         Operation::Path {
             geometry: PathMask {
+                keys: vec![],
                 fill_rule: FillRule::NonZero,
                 commands,
             },

@@ -201,7 +201,7 @@ impl Renderer {
         let mut keys = Vec::new();
         for (index, node) in plan.nodes.iter().enumerate() {
             let geometry = match &node.operation {
-                veylvik_document::Operation::Path { geometry } => geometry.clone(),
+                veylvik_document::Operation::Path { geometry } => geometry.at(request.time)?,
                 veylvik_document::Operation::Text { .. } => {
                     veylvik_text::outline(&node.operation, request.time).map_err(error)?
                 }

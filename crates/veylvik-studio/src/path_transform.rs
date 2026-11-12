@@ -44,7 +44,23 @@ impl Editor {
         }
         self.active && !before
     }
-    pub fn show(
+    pub fn show_at(
+        &mut self,
+        ui: &egui::Ui,
+        canvas: Rect,
+        view: crate::viewer::ViewTransform,
+        image: Vec2,
+        path: &mut PathMask,
+        time: veylvik_document::Time,
+    ) -> veylvik_document::Result<bool> {
+        let mut sampled = path.at(time)?;
+        let changed = self.show(ui, canvas, view, image, &mut sampled);
+        if changed {
+            path.edit_at(time, sampled)?;
+        }
+        Ok(changed)
+    }
+    fn show(
         &mut self,
         ui: &egui::Ui,
         canvas: Rect,

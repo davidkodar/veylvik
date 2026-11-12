@@ -21,6 +21,7 @@ pub fn show(
     transform: crate::viewer::ViewTransform,
     image: Vec2,
     path: &mut PathMask,
+    topology_locked: bool,
 ) -> bool {
     let [ox, oy, sx, sy] = transform.0;
     let scale = egui::vec2(
@@ -157,7 +158,8 @@ pub fn show(
                         ("Delete point", crate::path_edit::Action::Delete),
                     ] {
                         let mut candidate = path_snapshot.clone();
-                        let enabled = crate::path_edit::edit(&mut candidate, index, edit);
+                        let enabled =
+                            !topology_locked && crate::path_edit::edit(&mut candidate, index, edit);
                         if ui.add_enabled(enabled, egui::Button::new(label)).clicked() {
                             action = Some(candidate);
                             ui.close();

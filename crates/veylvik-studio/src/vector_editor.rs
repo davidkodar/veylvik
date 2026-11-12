@@ -3,21 +3,23 @@ use veylvik_document::vector::{
     FillRule, MAX_PATH_COMMANDS, MAX_PATH_COORDINATE, PathCommand, PathMask,
 };
 
-pub fn edit(ui: &mut egui::Ui, path: &mut PathMask) -> bool {
+pub fn edit(ui: &mut egui::Ui, path: &mut PathMask, locked: bool) -> bool {
     let mut changed = false;
-    egui::ComboBox::from_id_salt("path_fill")
-        .selected_text(match path.fill_rule {
-            FillRule::NonZero => "Nonzero winding",
-            FillRule::EvenOdd => "Even-odd holes",
-        })
-        .show_ui(ui, |ui| {
-            changed |= ui
-                .selectable_value(&mut path.fill_rule, FillRule::NonZero, "Nonzero winding")
-                .changed();
-            changed |= ui
-                .selectable_value(&mut path.fill_rule, FillRule::EvenOdd, "Even-odd holes")
-                .changed();
-        });
+    ui.add_enabled_ui(!locked, |ui| {
+        egui::ComboBox::from_id_salt("path_fill")
+            .selected_text(match path.fill_rule {
+                FillRule::NonZero => "Nonzero winding",
+                FillRule::EvenOdd => "Even-odd holes",
+            })
+            .show_ui(ui, |ui| {
+                changed |= ui
+                    .selectable_value(&mut path.fill_rule, FillRule::NonZero, "Nonzero winding")
+                    .changed();
+                changed |= ui
+                    .selectable_value(&mut path.fill_rule, FillRule::EvenOdd, "Even-odd holes")
+                    .changed();
+            });
+    });
     ui.label("Use Draw mask or Add contour above the viewer.");
     ui.label("Click for corners; drag for curves. Close at the first point.");
     ui.weak("Right-click a point to insert, delete, smooth or sharpen.");
@@ -63,72 +65,74 @@ pub fn edit(ui: &mut egui::Ui, path: &mut PathMask) -> bool {
                     });
                 }
             });
-        ui.horizontal(|ui| {
-            let room = path.commands.len() < MAX_PATH_COMMANDS;
-            if ui
-                .add_enabled(room, egui::Button::new("Add line"))
-                .clicked()
-            {
-                let index = path.commands.len().saturating_sub(1);
-                path.commands
-                    .insert(index, PathCommand::Line { to: [250.0, 350.0] });
-                changed = true;
-            }
-            if ui
-                .add_enabled(room, egui::Button::new("Add curve"))
-                .clicked()
-            {
-                let index = path.commands.len().saturating_sub(1);
-                path.commands.insert(
-                    index,
-                    PathCommand::Cubic {
-                        control1: [200.0, 400.0],
-                        control2: [300.0, 400.0],
-                        to: [250.0, 350.0],
-                    },
-                );
-                changed = true;
-            }
-        });
-        if ui
-            .add_enabled(
-                path.commands.len() + 5 <= MAX_PATH_COMMANDS,
-                egui::Button::new("Add inner contour"),
-            )
-            .clicked()
-        {
-            path.commands.extend([
-                PathCommand::Move { to: [180.0, 150.0] },
-                PathCommand::Line { to: [320.0, 150.0] },
-                PathCommand::Line { to: [320.0, 250.0] },
-                PathCommand::Line { to: [180.0, 250.0] },
-                PathCommand::Close {},
-            ]);
-            changed = true;
-        }
-        let start = path
-            .commands
-            .iter()
-            .rposition(|c| matches!(c, PathCommand::Move { .. }))
-            .unwrap_or(0);
-        ui.horizontal(|ui| {
+        ui.add_enabled_ui(!locked, |ui| {
+            ui.horizontal(|ui| {
+                let room = path.commands.len() < MAX_PATH_COMMANDS;
+                if ui
+                    .add_enabled(room, egui::Button::new("Add line"))
+                    .clicked()
+                {
+                    let index = path.commands.len().saturating_sub(1);
+                    path.commands
+                        .insert(index, PathCommand::Line { to: [250.0, 350.0] });
+                    changed = true;
+                }
+                if ui
+                    .add_enabled(room, egui::Button::new("Add curve"))
+                    .clicked()
+                {
+                    let index = path.commands.len().saturating_sub(1);
+                    path.commands.insert(
+                        index,
+                        PathCommand::Cubic {
+                            control1: [200.0, 400.0],
+                            control2: [300.0, 400.0],
+                            to: [250.0, 350.0],
+                        },
+                    );
+                    changed = true;
+                }
+            });
             if ui
                 .add_enabled(
-                    path.commands.len().saturating_sub(start) > 3,
-                    egui::Button::new("Remove last segment"),
+                    path.commands.len() + 5 <= MAX_PATH_COMMANDS,
+                    egui::Button::new("Add inner contour"),
                 )
                 .clicked()
             {
-                path.commands.remove(path.commands.len() - 2);
+                path.commands.extend([
+                    PathCommand::Move { to: [180.0, 150.0] },
+                    PathCommand::Line { to: [320.0, 150.0] },
+                    PathCommand::Line { to: [320.0, 250.0] },
+                    PathCommand::Line { to: [180.0, 250.0] },
+                    PathCommand::Close {},
+                ]);
                 changed = true;
             }
-            if ui
-                .add_enabled(start > 0, egui::Button::new("Remove last contour"))
-                .clicked()
-            {
-                path.commands.truncate(start);
-                changed = true;
-            }
+            let start = path
+                .commands
+                .iter()
+                .rposition(|c| matches!(c, PathCommand::Move { .. }))
+                .unwrap_or(0);
+            ui.horizontal(|ui| {
+                if ui
+                    .add_enabled(
+                        path.commands.len().saturating_sub(start) > 3,
+                        egui::Button::new("Remove last segment"),
+                    )
+                    .clicked()
+                {
+                    path.commands.remove(path.commands.len() - 2);
+                    changed = true;
+                }
+                if ui
+                    .add_enabled(start > 0, egui::Button::new("Remove last contour"))
+                    .clicked()
+                {
+                    path.commands.truncate(start);
+                    changed = true;
+                }
+            });
         });
     });
     changed

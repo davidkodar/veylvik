@@ -169,6 +169,7 @@ pub fn procedural_demo() -> Composition {
             &format!("{name} outline"),
             Operation::Path {
                 geometry: PathMask {
+                    keys: vec![],
                     fill_rule: FillRule::EvenOdd,
                     commands,
                 },

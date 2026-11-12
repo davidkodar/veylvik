@@ -130,7 +130,12 @@ pub fn map_graph(
                 p[0] = p[0] * m.scale + m.offset[0];
                 p[1] = p[1] * m.scale + m.offset[1];
             };
-            for command in &mut geometry.commands {
+            for command in geometry.commands.iter_mut().chain(
+                geometry
+                    .keys
+                    .iter_mut()
+                    .flat_map(|key| key.commands.iter_mut()),
+            ) {
                 match command {
                     PathCommand::Move { to } | PathCommand::Line { to } => point(to),
                     PathCommand::Quad { control, to } => {

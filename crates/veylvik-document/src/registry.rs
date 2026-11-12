@@ -510,7 +510,7 @@ pub static PATH: NodeType = NodeType {
     type_id: "path",
     version: 1,
     label: "Path mask",
-    description: "Closed vector contours rasterized into an antialiased white alpha mask.",
+    description: "Closed vector contours rasterized into an antialiased white alpha mask. Optional geometry.keys animate matching points with linear interpolation; point counts and segment types must match at every key.",
     inputs: &[],
     parameters: &[other("geometry", ParameterKind::Path, "pixels")],
 };

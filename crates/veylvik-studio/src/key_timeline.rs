@@ -30,6 +30,14 @@ impl Keys {
         self.source = Some((revision, selected));
         self.frames.clear();
         if let Some(node) = doc.nodes.get(&selected) {
+            if let veylvik_document::Operation::Path { geometry } = &node.operation {
+                self.frames.extend(
+                    geometry
+                        .keys
+                        .iter()
+                        .filter_map(|key| frame(key.time, doc.frame_rate, doc.frame_count)),
+                );
+            }
             for parameter in node.operation.descriptor().parameters {
                 if let Some(keys) = node.operation.scalar(parameter.name).and_then(|s| s.keys()) {
                     self.frames.extend(
@@ -204,6 +212,22 @@ mod tests {
             None
         );
         assert_eq!(frame(Time { ticks: 1, rate: 0 }, fps, 10), None);
+    }
+    #[test]
+    fn shape_keys_share_the_timeline_and_navigation() {
+        let mut doc = veylvik_document::demo();
+        let mut geometry = veylvik_document::vector::PathMask::default();
+        let shape = geometry.clone();
+        geometry.set_key(Time::new(0, 1).unwrap(), &shape).unwrap();
+        geometry.set_key(Time::new(1, 1).unwrap(), &shape).unwrap();
+        let node = Node::new("Mask", Operation::Path { geometry }, &[]);
+        let id = node.id;
+        doc.nodes.insert(id, node);
+        let mut keys = Keys::default();
+        keys.sync(&doc, 0, id);
+        assert_eq!(keys.frames, [0, 24]);
+        assert_eq!(keys.adjacent(12, false), Some(0));
+        assert_eq!(keys.adjacent(12, true), Some(24));
     }
     #[test]
     fn shared_parameter_frames_and_revision_refresh() {

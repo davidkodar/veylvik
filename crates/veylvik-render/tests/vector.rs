@@ -2,6 +2,7 @@ use veylvik_document::vector::{FillRule, PathCommand::*, PathMask};
 use veylvik_render::*;
 fn rectangles(rule: FillRule) -> PathMask {
     PathMask {
+        keys: vec![],
         fill_rule: rule,
         commands: vec![
             Move { to: [2.0, 2.0] },
@@ -42,6 +43,7 @@ fn vector_masks_preserve_winding_curves_resize_and_gpu_compositing() {
         [1.0; 4]
     );
     let curve = PathMask {
+        keys: vec![],
         fill_rule: FillRule::NonZero,
         commands: vec![
             Move { to: [3.0, 28.0] },
@@ -121,6 +123,7 @@ fn vector_masks_preserve_winding_curves_resize_and_gpu_compositing() {
             .is_err()
     );
     let invalid = PathMask {
+        keys: vec![],
         fill_rule: FillRule::NonZero,
         commands: vec![Close {}],
     };
@@ -295,4 +298,90 @@ fn vector_coverage_cache_survives_animation_and_yields_to_memory_pressure() {
     assert_eq!(renderer.vector_cache_stats().unwrap().entries, 0);
     renderer.clear_frame_cache().unwrap();
     assert_eq!(renderer.resource_stats().unwrap().held_bytes, 0);
+}
+
+#[test]
+#[ignore = "requires Vulkan"]
+fn animated_path_pixels_and_caches_follow_sampled_shape() {
+    use veylvik_document::*;
+    let mut geometry = PathMask {
+        keys: vec![],
+        fill_rule: FillRule::NonZero,
+        commands: vec![
+            Move { to: [2.0, 2.0] },
+            Line { to: [10.0, 2.0] },
+            Line { to: [10.0, 10.0] },
+            Line { to: [2.0, 10.0] },
+            Close {},
+        ],
+    };
+    let first = geometry.clone();
+    let mut last = first.clone();
+    for c in &mut last.commands {
+        if let Move { to } | Line { to } = c {
+            to[0] += 16.0;
+        }
+    }
+    geometry.set_key(Time::new(0, 1).unwrap(), &first).unwrap();
+    geometry.set_key(Time::new(1, 1).unwrap(), &last).unwrap();
+    let node = Node::new("Animated mask", Operation::Path { geometry }, &[]);
+    let mut doc = blank(32, 32, Time::new(24, 1).unwrap()).unwrap();
+    doc.output = node.id;
+    doc.nodes = [(node.id, node)].into();
+    let plan = Plan::compile(&doc).unwrap();
+    let inputs = ImageInputs::default();
+    let renderer = Renderer::new().unwrap();
+    let a = renderer
+        .render_gpu_cached(
+            &plan,
+            RenderRequest::full(Time::new(0, 1).unwrap()),
+            &inputs,
+        )
+        .unwrap();
+    let middle = renderer
+        .render_gpu_cached(
+            &plan,
+            RenderRequest::full(Time::new(1, 2).unwrap()),
+            &inputs,
+        )
+        .unwrap();
+    let b = renderer
+        .render_gpu_cached(
+            &plan,
+            RenderRequest::full(Time::new(1, 1).unwrap()),
+            &inputs,
+        )
+        .unwrap();
+    assert_eq!(
+        renderer.read_frame(&a).unwrap().pixels[4 * 32 + 4],
+        [1.0; 4]
+    );
+    assert_eq!(
+        renderer.read_frame(&middle).unwrap().pixels[4 * 32 + 4],
+        [0.0; 4]
+    );
+    assert_eq!(
+        renderer.read_frame(&middle).unwrap().pixels[4 * 32 + 12],
+        [1.0; 4]
+    );
+    assert_eq!(
+        renderer.read_frame(&b).unwrap().pixels[4 * 32 + 20],
+        [1.0; 4]
+    );
+    let again = renderer
+        .render_gpu_cached(
+            &plan,
+            RenderRequest::full(Time::new(1, 2).unwrap()),
+            &inputs,
+        )
+        .unwrap();
+    assert!(std::sync::Arc::ptr_eq(&middle, &again));
+    let held = renderer
+        .render_gpu_cached(
+            &plan,
+            RenderRequest::full(Time::new(2, 1).unwrap()),
+            &inputs,
+        )
+        .unwrap();
+    assert!(std::sync::Arc::ptr_eq(&b, &held));
 }

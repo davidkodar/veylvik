@@ -17,6 +17,7 @@ impl Art {
             name,
             Operation::Path {
                 geometry: PathMask {
+                    keys: vec![],
                     fill_rule: FillRule::NonZero,
                     commands,
                 },

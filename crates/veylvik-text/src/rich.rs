@@ -87,6 +87,7 @@ pub(crate) fn shape(
             glyphs,
             advance: [advance, 0.0],
             outline: (!commands.is_empty()).then_some(PathMask {
+                keys: vec![],
                 fill_rule: FillRule::NonZero,
                 commands,
             }),

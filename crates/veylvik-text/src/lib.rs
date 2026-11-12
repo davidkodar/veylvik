@@ -235,6 +235,7 @@ impl Font {
             None
         } else {
             let path = PathMask {
+                keys: vec![],
                 fill_rule: FillRule::NonZero,
                 commands,
             };

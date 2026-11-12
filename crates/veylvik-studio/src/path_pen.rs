@@ -244,6 +244,7 @@ mod tests {
             },
         ];
         let path = PathMask {
+            keys: vec![],
             fill_rule: Default::default(),
             commands: contour(&k),
         };

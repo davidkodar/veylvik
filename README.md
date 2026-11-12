@@ -631,7 +631,16 @@ handle to rotate about the centre. Keep proportions controls corner scaling; Shi
 snaps rotation to 15 degrees. These geometry edits retain the same Apply/Revert
 workflow, and coordinate-limit violations leave the last valid shape intact.
 Animate the result with an Affine node;
-path-point keyframes are not yet implemented.
+enable **Animate shape** in the mask inspector to keyframe its points directly.
+Point and whole-mask edits author the current shape key. Matching point coordinates
+interpolate linearly between keys, holding the first/last shape outside the keyed
+range. The key diamond adds/removes a key, previous/next controls navigate keys,
+and the selected-node timeline shows their frames. Optional neighbouring key
+outlines show the previous shape in blue and next in violet. Disabling animation
+freezes the current shape; Undo restores the track. Point-count/segment-type
+changes and pen redraw are disabled while shape animation is enabled. Shape tracks
+persist in `geometry.keys` and are available through the existing MCP geometry
+schema. Tracks are bounded to 256 keys and 65,536 keyed path commands.
 
 For text already connected to the composition, **Place behind object** in its
 inspector guides foreground occlusion: choose a source layer without the selected

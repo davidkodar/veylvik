@@ -100,9 +100,19 @@ pub fn show(
         return crate::transform_handles::show(ui, canvas, transform, image, operation, time);
     }
     if let Operation::Path { geometry } = operation {
-        return Ok(crate::path_handles::show(
-            ui, canvas, transform, image, geometry,
-        ));
+        let mut shape = geometry.at(time)?;
+        let changed = crate::path_handles::show(
+            ui,
+            canvas,
+            transform,
+            image,
+            &mut shape,
+            !geometry.keys.is_empty(),
+        );
+        if changed {
+            geometry.edit_at(time, shape)?;
+        }
+        return Ok(changed);
     }
     let [ox, oy, sx, sy] = transform.0;
     let scale = egui::vec2(

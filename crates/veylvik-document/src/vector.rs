@@ -40,6 +40,8 @@ pub enum PathCommand {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PathMask {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub keys: Vec<ShapeKey>,
     pub fill_rule: FillRule,
     pub commands: Vec<PathCommand>,
 }
@@ -93,6 +95,7 @@ impl PathMask {
         if open {
             return fail("path contour must end with close");
         }
+        validate_keys(self)?;
         Ok(())
     }
 }
@@ -100,6 +103,7 @@ impl PathMask {
 impl Default for PathMask {
     fn default() -> Self {
         Self {
+            keys: vec![],
             fill_rule: FillRule::NonZero,
             commands: vec![
                 PathCommand::Move { to: [100.0, 100.0] },
@@ -121,5 +125,158 @@ pub fn schema() -> serde_json::Value {
         for field in fields { properties[field] = point.clone(); required.push(field); }
         json!({"type":"object","properties":properties,"required":required,"additionalProperties":false})
     }).collect();
-    json!({"type":"object","properties":{"fill_rule":{"enum":["non_zero","even_odd"]},"commands":{"type":"array","minItems":1,"maxItems":MAX_PATH_COMMANDS,"items":{"oneOf":commands}}},"required":["fill_rule","commands"],"additionalProperties":false})
+    let command_list = json!({"type":"array","minItems":1,"maxItems":MAX_PATH_COMMANDS,"items":{"oneOf":commands}});
+    json!({"type":"object","properties":{"fill_rule":{"enum":["non_zero","even_odd"]},"commands":command_list,"keys":{"type":"array","maxItems":MAX_SHAPE_KEYS,"items":{"type":"object","properties":{"time":{"type":"object","properties":{"ticks":{"type":"integer","minimum":0},"rate":{"type":"integer","minimum":1}},"required":["ticks","rate"],"additionalProperties":false},"commands":command_list},"required":["time","commands"],"additionalProperties":false}}},"required":["fill_rule","commands"],"additionalProperties":false})
+}
+
+pub const MAX_SHAPE_KEYS: usize = 256;
+const MAX_ANIMATED_COMMANDS: usize = 65_536;
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ShapeKey {
+    pub time: crate::Time,
+    pub commands: Vec<PathCommand>,
+}
+impl PartialEq for ShapeKey {
+    fn eq(&self, other: &Self) -> bool {
+        self.time.compare(other.time).is_ok_and(|o| o.is_eq()) && self.commands == other.commands
+    }
+}
+fn same_topology(a: &[PathCommand], b: &[PathCommand]) -> bool {
+    a.len() == b.len()
+        && a.iter()
+            .zip(b)
+            .all(|(a, b)| std::mem::discriminant(a) == std::mem::discriminant(b))
+}
+fn validate_keys(path: &PathMask) -> Result<()> {
+    if path.keys.len() > MAX_SHAPE_KEYS
+        || path.keys.iter().map(|k| k.commands.len()).sum::<usize>() > MAX_ANIMATED_COMMANDS
+    {
+        return fail("shape animation exceeds its key or geometry limit");
+    }
+    let mut previous = None;
+    for key in &path.keys {
+        key.time.seconds()?;
+        if key.time.ticks < 0
+            || previous.is_some_and(|p: crate::Time| !p.compare(key.time).is_ok_and(|o| o.is_lt()))
+        {
+            return fail("shape keys must have unique increasing nonnegative times");
+        }
+        if !same_topology(&path.commands, &key.commands) {
+            return fail("animated masks require the same points and segment types at every key");
+        }
+        PathMask {
+            keys: vec![],
+            fill_rule: path.fill_rule,
+            commands: key.commands.clone(),
+        }
+        .validate()?;
+        previous = Some(key.time);
+    }
+    Ok(())
+}
+fn coordinates(command: &mut PathCommand) -> Vec<&mut [f32; 2]> {
+    match command {
+        PathCommand::Move { to } | PathCommand::Line { to } => vec![to],
+        PathCommand::Quad { control, to } => vec![control, to],
+        PathCommand::Cubic {
+            control1,
+            control2,
+            to,
+        } => vec![control1, control2, to],
+        PathCommand::Close {} => vec![],
+    }
+}
+impl PathMask {
+    /// Sample linearly between matching shapes; hold the first/last key outside the track.
+    pub fn at(&self, time: crate::Time) -> Result<Self> {
+        time.seconds()?;
+        let mut result = Self {
+            keys: vec![],
+            fill_rule: self.fill_rule,
+            commands: self.commands.clone(),
+        };
+        if self.keys.is_empty() {
+            return Ok(result);
+        }
+        let right = self
+            .keys
+            .partition_point(|k| k.time.compare(time).is_ok_and(|o| o.is_lt()));
+        if right == 0 {
+            result.commands = self.keys[0].commands.clone();
+            return Ok(result);
+        }
+        if right == self.keys.len() {
+            result.commands = self.keys[right - 1].commands.clone();
+            return Ok(result);
+        }
+        let a = &self.keys[right - 1];
+        let b = &self.keys[right];
+        let difference = |x: crate::Time, y: crate::Time| {
+            (i128::from(x.ticks) * i128::from(y.rate) - i128::from(y.ticks) * i128::from(x.rate))
+                as f64
+                / (f64::from(x.rate) * f64::from(y.rate))
+        };
+        let t = (difference(time, a.time) / difference(b.time, a.time)).clamp(0.0, 1.0);
+        result.commands = a.commands.clone();
+        for (command, other) in result.commands.iter_mut().zip(&b.commands) {
+            let mut other = *other;
+            for (a, b) in coordinates(command)
+                .into_iter()
+                .zip(coordinates(&mut other))
+            {
+                for i in 0..2 {
+                    a[i] = ((1.0 - t) * f64::from(a[i]) + t * f64::from(b[i])) as f32;
+                }
+            }
+        }
+        Ok(result)
+    }
+    /// Add or replace a key atomically. Exact rational timestamps identify keys.
+    pub fn set_key(&mut self, time: crate::Time, shape: &Self) -> Result<()> {
+        self.validate()?;
+        shape.validate()?;
+        time.seconds()?;
+        if shape.fill_rule != self.fill_rule || !same_topology(&self.commands, &shape.commands) {
+            return fail(
+                "Disable shape animation before changing the mask's points or segment types",
+            );
+        }
+        let mut result = self.clone();
+        if let Some(key) = result
+            .keys
+            .iter_mut()
+            .find(|k| k.time.compare(time).is_ok_and(|o| o.is_eq()))
+        {
+            key.commands = shape.commands.clone();
+        } else {
+            result.keys.push(ShapeKey {
+                time,
+                commands: shape.commands.clone(),
+            });
+            result.keys.sort_by(|a, b| a.time.compare(b.time).unwrap());
+        }
+        result.validate()?;
+        *self = result;
+        Ok(())
+    }
+    /// Edits to an animated mask author the current key; static masks stay static.
+    pub fn edit_at(&mut self, time: crate::Time, shape: Self) -> Result<()> {
+        if self.keys.is_empty() {
+            shape.validate()?;
+            *self = shape;
+            Ok(())
+        } else {
+            self.set_key(time, &shape)
+        }
+    }
+    pub fn remove_key(&mut self, time: crate::Time) -> Result<()> {
+        let sampled = self.at(time)?;
+        self.keys
+            .retain(|k| !k.time.compare(time).is_ok_and(|o| o.is_eq()));
+        if self.keys.is_empty() {
+            *self = sampled;
+        }
+        Ok(())
+    }
 }

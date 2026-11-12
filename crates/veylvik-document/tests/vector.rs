@@ -1,6 +1,7 @@
 use veylvik_document::vector::*;
 fn triangle() -> PathMask {
     PathMask {
+        keys: vec![],
         fill_rule: FillRule::NonZero,
         commands: vec![
             PathCommand::Move { to: [0.0, 0.0] },
