@@ -19,6 +19,7 @@ mod key_timeline;
 mod menus;
 mod node_finder;
 mod node_palette;
+mod preset_library;
 mod preview_images;
 mod project;
 mod transform_handles;
@@ -126,6 +127,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 draft_dirty: false,
                 graph: graph::Graph::default(),
                 effects: effects::Controls::default(),
+                library: preset_library::Library::default(),
                 node_palette: node_palette::Controls::default(),
                 node_finder: node_finder::Controls::default(),
                 key_timeline: key_timeline::Keys::default(),
@@ -180,6 +182,7 @@ struct Studio {
     draft_dirty: bool,
     graph: graph::Graph,
     effects: effects::Controls,
+    library: preset_library::Library,
     node_palette: node_palette::Controls,
     node_finder: node_finder::Controls,
     key_timeline: key_timeline::Keys,
@@ -204,7 +207,8 @@ struct Studio {
 }
 impl Studio {
     fn authoring_dialog_open(&self) -> bool {
-        self.effects.open
+        self.library.open
+            || self.effects.open
             || self.outline_controls.open
             || self.composition_controls.open
             || self.node_palette.open
@@ -224,6 +228,7 @@ impl Studio {
         self.project = project;
         self.graph = graph::Graph::default();
         self.effects = effects::Controls::default();
+        self.library = preset_library::Library::default();
         self.navigation.fit();
         self.displayed = None;
         self.displayed_ticket = None;
@@ -867,6 +872,12 @@ impl Studio {
                     }
                 }
             }
+            Ok(Completed::PresetLibrary(listing)) => {
+                self.library.listing = listing;
+                self.status = "Effect library updated".into();
+                self.error = false;
+            }
+            Ok(Completed::PresetLoaded(preset)) => self.loaded_preset(*preset),
             Ok(Completed::Opened(project)) => self.open_project(*project, ctx),
             Ok(Completed::Imported {
                 path,
@@ -1424,6 +1435,7 @@ impl Studio {
     }
     fn dialogs(&mut self, ctx: &egui::Context) {
         self.effect_dialog(ctx);
+        self.preset_library(ctx);
         if let Some(action) = self.confirm {
             egui::Window::new("Unsaved changes")
                 .collapsible(false)

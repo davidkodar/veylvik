@@ -44,3 +44,7 @@ pub fn segment() -> Value {
         {"type":"object","properties":{"mode":{"const":"bezier"},"outgoing":handle,"incoming":handle},"required":["mode","outgoing","incoming"],"additionalProperties":false,"description":"Times are nonnegative fractions of the key interval and must sum to at most one. Values are endpoint-relative offsets; control values must remain within the parameter bounds."}
     ]})
 }
+
+pub fn preset() -> Value {
+    json!({"type":"object","properties":{"schema":{"const":1},"width":{"type":"integer","minimum":1,"maximum":8192},"height":{"type":"integer","minimum":1,"maximum":8192},"frame_rate":{"type":"object","properties":{"ticks":{"type":"integer","minimum":1},"rate":{"type":"integer","minimum":1}},"required":["ticks","rate"],"additionalProperties":false},"frame_count":{"type":"integer","minimum":1,"maximum":crate::MAX_FRAME_COUNT},"group":group(),"nodes":{"type":"object","maxProperties":4096,"additionalProperties":node()}},"required":["schema","width","height","frame_rate","frame_count","group","nodes"],"additionalProperties":false,"description":"Portable effect graph; public input edges are omitted from nodes and bound at insertion. Image nodes are not allowed; expose image sources as public inputs. Pixel values and exact animation times are preserved."})
+}

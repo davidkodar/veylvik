@@ -2,6 +2,7 @@
 pub mod collect;
 pub mod export;
 pub mod import;
+pub mod presets;
 pub mod preview;
 pub use export::{FrameFormat, save_frame};
 pub use import::{load_exr, load_image};

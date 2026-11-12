@@ -64,6 +64,7 @@ impl Studio {
             });
             ui.menu_button("Add", |ui| {
                 let ready = !self.draft_dirty && !self.graph.dragging() && !self.animation_editor.dragging();
+                if item(ui, "Effect library…", "", ready) { self.open_preset_library(ui.ctx()); }
                 if item(ui, "Search nodes…", "Tab", ready) { self.open_node_palette(ui.ctx()); }
                 ui.separator();
                 let mut chosen = None;

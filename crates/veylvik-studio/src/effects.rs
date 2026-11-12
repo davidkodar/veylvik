@@ -317,6 +317,9 @@ impl Studio {
                 if ui.button("Open group").clicked() {
                     self.graph.expand(group.id);
                 }
+                if ui.button("Save to library").clicked() {
+                    self.save_effect_preset(group.id);
+                }
                 if ui.button("Duplicate effect").clicked() {
                     self.duplicate_group(group.id);
                 }

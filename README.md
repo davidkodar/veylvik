@@ -205,8 +205,39 @@ project. A collapsed input socket reconnects all of its internal consumers toget
 **Duplicate effect** (or Ctrl+D on a collapsed group) copies its internal nodes,
 controls and animation while retaining external input connections. **Ungroup**
 removes only the boundary; pixels and node parameters remain unchanged. Groups,
-input names, defaults and controls save with the composition. A separate preset
-file library and nested groups are not implemented yet.
+input names, defaults and controls save with the composition. Nested groups are not implemented yet.
+
+**Add → Effect library…** opens searchable starter and saved effects. The bundled
+**Prismatic Glow** adds cyan/rose light spill; **Neon Outline** adds luminous
+contours; **Liquid Shimmer** adds a smooth four-second flow loop with protected
+frame edges. Every starter remains an editable group with public controls.
+
+Select an effect, choose the image for each named input, then **Add effect**.
+Insertion creates independent nodes and one undo step, selects its preview, and
+leaves the composition output unchanged. Use **Set as output** when ready.
+Presets retain their authored pixel values and exact animation times; they do not
+automatically scale to a different resolution or stretch to the composition length.
+Shimmer has matching endpoints at zero and four seconds; loop a four-second
+composition to repeat it, or edit its keys for another duration.
+
+**Save to library** in a group's inspector captures its current values, animation,
+control defaults and wiring as a new copy. The library lives in
+`$XDG_DATA_HOME/veylvik/effects` (normally `~/.local/share/veylvik/effects`).
+**Export preset…** writes a portable `.veyfx` file from the library's effect
+configuration view; **Import preset…** validates and copies one into your library.
+Existing export files are preserved; choose a new filename to export another copy.
+Preset files are limited to 16 MiB; library scans show up to 256 files within a
+64 MiB read budget and report invalid entries without hiding healthy effects.
+
+Portable presets include procedural nodes and vector text outlines. File-based
+Image nodes must be outside the group and connected as named inputs; presets do
+not bundle or silently depend on external image files. The versioned format and
+instantiation API live in `veylvik-document`, separate from the UI. Klipp needs a
+host adapter before it can use these presets; compatibility is not implemented yet.
+Headless and live MCP expose **get_preset** and **insert_preset**, with explicit
+input bindings, revision guards and dry-run support. `get_preset` accepts either
+a group UUID or a starter ID (`prismatic_glow`, `neon_outline`, `liquid_shimmer`).
+Neither tool accesses files.
 
 Groups add no rendering passes. Exposed controls directly reference registered
 node parameters; there is no second evaluator or duplicate value storage.

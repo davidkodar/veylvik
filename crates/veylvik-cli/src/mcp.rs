@@ -25,6 +25,8 @@ fn build_tools() -> Value {
         tool("diagnostics","Read existing renderer buffer and cache counters without initializing a GPU. Snapshot is null until rendering initializes the device. Declared buffer accounting excludes driver and rasterizer scratch memory.",json!({}),&[]),
         tool("nodes","List supported node operations, ports and example payloads.",json!({}),&[]),
         tool("outline_text","Read an explicit font and convert explicitly separated directional/script text lines into portable Path mask geometry. Does not modify the document. Apply the returned operation with a put command. No fallback, automatic wrapping or mixed-direction paragraph layout.",json!({"revision":revision,"font":{"type":"string"},"text":{"type":"string","maxLength":4096},"alignment":{"enum":["left","center","right"]},"line_height":{"type":"number","minimum":1,"maximum":4096},"font_index":{"type":"integer","minimum":0,"maximum":u32::MAX},"font_size":{"type":"number","minimum":1,"maximum":1024},"origin":{"type":"array","minItems":2,"maxItems":2,"items":{"type":"number","minimum":-32768,"maximum":32768}},"direction":{"enum":["left_to_right","right_to_left"]},"language":{"type":"string","minLength":1,"maxLength":64}}),&["revision","font","text"]),
+        tool("get_preset","Read a bundled starter, or capture a group with its current values and animation. Supply exactly one of starter or group. No filesystem access.",json!({"group":{"type":"string","format":"uuid"},"starter":{"type":"string","enum":veylvik_document::presets::builtin::ALL.map(|p|p.id)}}),&[]),
+        tool("insert_preset","Insert an independent instance with explicitly bound inputs. One undo step; output remains unchanged. Dry-run IDs are provisional.",json!({"revision":revision,"preset":veylvik_document::schema::preset(),"inputs":{"type":"object","additionalProperties":{"type":"string","format":"uuid"}},"position":veylvik_document::schema::position(),"dry_run":{"type":"boolean"}}),&["revision","preset","inputs"]),
         tool("apply","Validate or commit an atomic batch. dry_run returns the candidate without changing history. Use nodes for payload examples. A put command inserts or replaces a complete node; set_parameter changes one registered parameter, and set_key inserts or updates a scalar key.",json!({"revision":revision,"dry_run":{"type":"boolean"},"commands":{"type":"array","minItems":1,"maxItems":4096,"items":veylvik_document::schema::command()}}),&["revision","commands"]),
         tool("add_effect","Create an editable effect group with exposed controls and ordinary internal nodes as one transaction. Returns root and named role IDs; output is unchanged and layout is automatic. Discover recipes with nodes. Dry-run IDs are provisional.",json!({"revision":revision,"input":{"type":"string","format":"uuid"},"recipe":{"type":"string","enum":veylvik_document::recipes::Recipe::ALL},"dry_run":{"type":"boolean"}}),&["revision","input","recipe"]),
         tool("duplicate_branch","Copy a node and all upstream dependencies as one transaction. Shared ancestors are copied once; returns the copied root and old-to-new ID mapping. Output and assets stay unchanged. Stored layout positions are preserved. Dry-run IDs are provisional and are not reused on commit.",json!({"revision":revision,"node":{"type":"string","format":"uuid"},"dry_run":{"type":"boolean"}}),&["revision","node"]),
@@ -68,7 +70,7 @@ impl Session {
         }
         if !matches!(
             name,
-            "inspect" | "nodes" | "diagnostics" | "graph" | "get_node"
+            "inspect" | "nodes" | "diagnostics" | "graph" | "get_node" | "get_preset"
         ) && required_u64(args, "revision")? != self.document.revision()
         {
             return Err(format!("revision conflict: current {}", self.document.revision()).into());
@@ -137,6 +139,37 @@ impl Session {
     fn call(&mut self, name: &str, args: &Value) -> Result<Value> {
         self.validate_call(name, args)?;
         match name {
+            "get_preset" => {
+                let preset = veylvik_document::presets::read(
+                    self.document.snapshot(),
+                    args.get("group"),
+                    args.get("starter"),
+                )?;
+                Ok(json!({"revision":self.document.revision(),"preset":preset}))
+            }
+            "insert_preset" => {
+                let preset: veylvik_document::presets::Preset =
+                    serde_json::from_value(args["preset"].clone())?;
+                let inputs = serde_json::from_value(args["inputs"].clone())?;
+                let position = args
+                    .get("position")
+                    .map(|v| serde_json::from_value(v.clone()))
+                    .transpose()?
+                    .flatten();
+                let dry_run = args
+                    .get("dry_run")
+                    .map(|v| v.as_bool().ok_or("dry_run must be boolean"))
+                    .transpose()?
+                    .unwrap_or(false);
+                let instance = preset.instantiate(self.document.snapshot(), &inputs, position)?;
+                if !dry_run {
+                    self.document
+                        .apply(self.document.revision(), &instance.commands)?;
+                }
+                Ok(
+                    json!({"revision":self.document.revision(),"group":instance.group,"root":instance.output,"dry_run":dry_run,"valid":true}),
+                )
+            }
             "inspect" => {
                 let summary = args
                     .get("summary")
@@ -410,6 +443,8 @@ mod tests {
                 "inspect",
                 "graph",
                 "get_node",
+                "get_preset",
+                "insert_preset",
                 "diagnostics",
                 "nodes",
                 "outline_text",
@@ -629,5 +664,54 @@ mod effect_tests {
             session.call("redo", &json!({"revision":2})).unwrap();
             assert!(session.renderer.is_none());
         }
+    }
+}
+
+#[cfg(test)]
+mod preset_tests {
+    use super::*;
+    #[test]
+    fn portable_tools_guard_revision_validate_bindings_and_share_history_without_gpu() {
+        let composition = veylvik_document::demo();
+        let input = composition.output;
+        let mut session = Session {
+            document: Document::new(composition).unwrap(),
+            asset_base: std::env::temp_dir(),
+            renderer: None,
+        };
+        let loaded = session
+            .call("get_preset", &json!({"starter":"liquid_shimmer"}))
+            .unwrap();
+        assert!(
+            session
+                .call(
+                    "get_preset",
+                    &json!({"starter":"liquid_shimmer","group":input})
+                )
+                .is_err()
+        );
+        let preset = loaded["preset"].clone();
+        let args = json!({"revision":0,"preset":preset,"inputs":{"input_1":input},"dry_run":true});
+        let dry = session.call("insert_preset", &args).unwrap();
+        assert_eq!(session.document.revision(), 0);
+        let mut invalid = args.clone();
+        invalid["inputs"] = json!({});
+        assert!(session.call("insert_preset", &invalid).is_err());
+        invalid = args.clone();
+        invalid["revision"] = json!(9);
+        assert!(session.call("insert_preset", &invalid).is_err());
+        let mut args = args;
+        args["dry_run"] = json!(false);
+        let inserted = session.call("insert_preset", &args).unwrap();
+        assert_ne!(inserted["group"], dry["group"]);
+        let exported = session
+            .call("get_preset", &json!({"group":inserted["group"]}))
+            .unwrap();
+        assert_eq!(exported["preset"]["group"]["label"], "Liquid Shimmer");
+        assert_eq!(session.document.history().undo_steps, 1);
+        assert_eq!(session.document.snapshot().output, input);
+        session.call("undo", &json!({"revision":1})).unwrap();
+        assert!(session.document.snapshot().groups.is_empty());
+        assert!(session.renderer.is_none());
     }
 }

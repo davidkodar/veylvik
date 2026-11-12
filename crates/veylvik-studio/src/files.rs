@@ -13,6 +13,8 @@ use veylvik_render::Image;
 #[derive(Clone, Copy)]
 pub enum Choice {
     Open,
+    PresetOpen,
+    PresetSave,
     Import,
     Save,
     Export,
@@ -20,6 +22,8 @@ pub enum Choice {
     Font,
 }
 pub enum Completed {
+    PresetLibrary(veylvik_io::presets::Listing),
+    PresetLoaded(Box<veylvik_document::presets::Preset>),
     Cancelled,
     Outlined(Box<veylvik_document::Node>),
     Opened(Box<Project>),
@@ -94,6 +98,8 @@ impl Tasks {
 }
 pub fn select(choice: Choice, folder: &Path, name: &str) -> Result<Option<PathBuf>, String> {
     let (title, label, pattern) = match choice {
+        Choice::PresetOpen => ("Import effect preset", "Veylvik effect", "*.veyfx"),
+        Choice::PresetSave => ("Export effect preset", "Veylvik effect", "*.veyfx"),
         Choice::Open => ("Open composition", "Veylvik composition", "*.veylvik"),
         Choice::Save => ("Save composition", "Veylvik composition", "*.veylvik"),
         Choice::Font => ("Choose font for text outlines", "Font", "*.ttf"),
@@ -118,7 +124,7 @@ pub fn select(choice: Choice, folder: &Path, name: &str) -> Result<Option<PathBu
     let result: ashpd::Result<SelectedFiles> = pollster::block_on(async {
         if matches!(
             choice,
-            Choice::Open | Choice::Import | Choice::Folder | Choice::Font
+            Choice::Open | Choice::PresetOpen | Choice::Import | Choice::Folder | Choice::Font
         ) {
             SelectedFiles::open_file()
                 .title(title)
