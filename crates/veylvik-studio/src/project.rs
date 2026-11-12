@@ -58,6 +58,24 @@ impl Project {
         project.reload_inputs()?;
         Ok(project)
     }
+    pub fn blank(width: u32, height: u32, frame_rate: Time) -> Result<Self> {
+        let composition = veylvik_document::blank(width, height, frame_rate)?;
+        let selected = composition.output;
+        Ok(Self {
+            session: NodeId::new_v4(),
+            recovery_origin: None,
+            document: Document::new(composition)?,
+            path: None,
+            base: std::env::current_dir()?,
+            selected,
+            preview: None,
+            inputs: ImageInputs::default(),
+            frame: 0,
+            saved_revision: None,
+            stamp: None,
+            compiled: None,
+        })
+    }
     pub fn recover(store: &veylvik_io::recovery::Store, id: NodeId) -> Result<Self> {
         let composition = store.read(id)?;
         let selected = composition.output;

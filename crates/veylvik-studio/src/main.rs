@@ -1,4 +1,5 @@
 mod animation;
+mod composition;
 mod control;
 mod curve_preview;
 mod diagnostics;
@@ -117,6 +118,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 files: Tasks::new(cc.egui_ctx.clone()),
                 export_controls: sequence::Controls::default(),
                 outline_controls: text_outline::Controls::default(),
+                composition_controls: composition::Controls::default(),
                 confirm: None,
                 after_save: None,
                 allow_close: false,
@@ -134,6 +136,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
 #[derive(Clone, Copy)]
 enum Leave {
     Open,
+    New,
     Recover(veylvik_document::NodeId),
     Close,
 }
@@ -161,6 +164,7 @@ struct Studio {
     files: Tasks,
     export_controls: sequence::Controls,
     outline_controls: text_outline::Controls,
+    composition_controls: composition::Controls,
     confirm: Option<Leave>,
     after_save: Option<Leave>,
     allow_close: bool,
@@ -170,6 +174,64 @@ struct Studio {
     accent: egui::Color32,
 }
 impl Studio {
+    fn authoring_dialog_open(&self) -> bool {
+        self.outline_controls.open || self.composition_controls.open
+    }
+    fn open_project(&mut self, project: Project, ctx: &egui::Context) {
+        let recovery = recovery::Recovery::new(self.recovery.store.clone(), &project, ctx.clone());
+        self.recovery.finish(true);
+        self.recovery = recovery;
+        self.outline_controls = text_outline::Controls::default();
+        self.composition_controls = composition::Controls::default();
+        self.export_controls = sequence::Controls::default();
+        self.project = project;
+        self.end_frame = 240;
+        self.graph = graph::Graph::default();
+        self.navigation.fit();
+        self.displayed = None;
+        self.displayed_ticket = None;
+        self.refresh_draft();
+        self.request_preview();
+    }
+    fn apply_composition_settings(&mut self, settings: composition::Settings, ctx: &egui::Context) {
+        if settings.new {
+            match Project::blank(settings.width, settings.height, settings.frame_rate) {
+                Ok(project) => self.open_project(project, ctx),
+                Err(error) => {
+                    self.composition_controls.open = true;
+                    self.fail(error);
+                }
+            }
+        } else {
+            let doc = self.project.document.snapshot();
+            if doc.width == settings.width
+                && doc.height == settings.height
+                && doc.frame_rate.ticks == settings.frame_rate.ticks
+                && doc.frame_rate.rate == settings.frame_rate.rate
+            {
+                return;
+            }
+            match self.project.apply(&[
+                Command::Resize {
+                    width: settings.width,
+                    height: settings.height,
+                },
+                Command::FrameRate {
+                    frame_rate: settings.frame_rate,
+                },
+            ]) {
+                Ok(()) => {
+                    self.refresh_draft();
+                    self.request_preview();
+                }
+                Err(error) => {
+                    self.composition_controls.open = true;
+                    self.fail(error);
+                }
+            }
+        }
+    }
+
     fn fail(&mut self, error: impl ToString) {
         self.status = error.to_string();
         self.error = true;
@@ -299,8 +361,8 @@ impl Studio {
         }
     }
     fn leave(&mut self, action: Leave, ctx: &egui::Context) {
-        if self.outline_controls.open {
-            self.fail("Finish or close the text outline dialog first.");
+        if self.authoring_dialog_open() {
+            self.fail("Finish or close the current authoring dialog first.");
             return;
         }
         if self.files.busy() {
@@ -320,6 +382,9 @@ impl Studio {
                 self.allow_close = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }
+            Leave::New => self
+                .composition_controls
+                .begin(self.project.document.snapshot(), true),
             Leave::Recover(id) => {
                 let store = self.recovery.store.clone();
                 let result = self.files.start(move || {
@@ -531,21 +596,7 @@ impl Studio {
                     }
                 }
             }
-            Ok(Completed::Opened(project)) => {
-                let recovery =
-                    recovery::Recovery::new(self.recovery.store.clone(), &project, ctx.clone());
-                self.recovery.finish(true);
-                self.recovery = recovery;
-                self.outline_controls = text_outline::Controls::default();
-                self.export_controls = sequence::Controls::default();
-                self.project = *project;
-                self.graph = graph::Graph::default();
-                self.navigation.fit();
-                self.displayed = None;
-                self.displayed_ticket = None;
-                self.refresh_draft();
-                self.request_preview();
-            }
+            Ok(Completed::Opened(project)) => self.open_project(*project, ctx),
             Ok(Completed::Imported { path, image }) => {
                 match self
                     .project
@@ -625,7 +676,7 @@ impl Studio {
         ctx.set_global_style(style);
     }
     fn toolbar(&mut self, ui: &mut egui::Ui) {
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             ui.heading(egui::RichText::new("VEYLVIK").color(self.accent));
             if self.control.is_some() {
                 ui.weak("MCP")
@@ -642,6 +693,14 @@ impl Studio {
             );
             if self.project.dirty() || self.draft_dirty {
                 ui.label("•");
+            }
+            if ui.button("New…").clicked() {
+                self.leave(Leave::New, ui.ctx());
+            }
+            if ui.button("Settings…").clicked() && self.can_change_selection() {
+                self.playing = false;
+                self.composition_controls
+                    .begin(self.project.document.snapshot(), false);
             }
             if ui.button("Open…").clicked() {
                 self.leave(Leave::Open, ui.ctx());
@@ -1026,6 +1085,7 @@ impl Studio {
                 .show(ctx, |ui| {
                     for (key, action) in [
                         ("Space", "Play / pause"),
+                        ("Ctrl+N", "New composition"),
                         ("Ctrl+O", "Open composition"),
                         ("Ctrl+I", "Import PNG or OpenEXR image"),
                         ("Ctrl+E", "Export current preview"),
@@ -1100,7 +1160,7 @@ impl eframe::App for Studio {
             ctx.request_repaint_after(Duration::from_millis(16));
         }
         if !self.files.busy()
-            && !self.outline_controls.open
+            && !self.authoring_dialog_open()
             && self.confirm.is_none()
             && !ctx.egui_wants_keyboard_input()
         {
@@ -1116,6 +1176,9 @@ impl eframe::App for Studio {
                 i.consume_key(egui::Modifiers::CTRL | egui::Modifiers::SHIFT, egui::Key::Z)
             }) {
                 self.history(true);
+            }
+            if ctx.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, egui::Key::N)) {
+                self.leave(Leave::New, &ctx);
             }
             if ctx.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, egui::Key::O)) {
                 self.leave(Leave::Open, &ctx);
@@ -1154,7 +1217,7 @@ impl eframe::App for Studio {
         }
         self.export_controls.progress(ui);
         ui.add_enabled_ui(
-            !self.files.busy() && !self.outline_controls.open && self.confirm.is_none(),
+            !self.files.busy() && !self.authoring_dialog_open() && self.confirm.is_none(),
             |ui| {
                 egui::Panel::top("toolbar").show_inside(ui, |ui| self.toolbar(ui));
                 egui::Panel::bottom("status").show_inside(ui, |ui| {
@@ -1274,9 +1337,12 @@ impl eframe::App for Studio {
             },
         );
         self.dialogs(&ctx);
+        if let Some(settings) = self.composition_controls.show(&ctx) {
+            self.apply_composition_settings(settings, &ctx);
+        }
         if let Some(id) = self.recovery.show(
             &ctx,
-            !self.files.busy() && self.confirm.is_none() && !self.outline_controls.open,
+            !self.files.busy() && self.confirm.is_none() && !self.authoring_dialog_open(),
         ) {
             self.leave(Leave::Recover(id), &ctx);
         }
@@ -1289,7 +1355,7 @@ impl eframe::App for Studio {
         if let Some(settings) = self.export_controls.show(
             &ctx,
             self.project.document.snapshot().frame_rate,
-            !self.files.busy() && !self.outline_controls.open && self.confirm.is_none(),
+            !self.files.busy() && !self.authoring_dialog_open() && self.confirm.is_none(),
         ) {
             self.export_sequence(settings, &ctx);
         }

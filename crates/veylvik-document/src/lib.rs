@@ -409,6 +409,24 @@ pub enum Command {
         id: NodeId,
         position: Option<NodePosition>,
     },
+    FrameRate {
+        frame_rate: Time,
+    },
+}
+
+/// A transparent composition with one editable background generator.
+pub fn blank(width: u32, height: u32, frame_rate: Time) -> Result<Composition> {
+    let node = Node::new("Background", Operation::Solid { color: [0.0; 4] }, &[]);
+    let composition = Composition {
+        schema: 1,
+        width,
+        height,
+        frame_rate,
+        output: node.id,
+        nodes: [(node.id, node)].into(),
+    };
+    composition.validate()?;
+    Ok(composition)
 }
 
 pub fn demo() -> Composition {

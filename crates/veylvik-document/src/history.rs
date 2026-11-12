@@ -88,6 +88,7 @@ impl Document {
                         return fail("cannot remove missing node");
                     }
                 }
+                Command::FrameRate { frame_rate } => next.frame_rate = *frame_rate,
                 Command::Output { id } => next.output = *id,
                 Command::Place { id, position } => {
                     next.nodes

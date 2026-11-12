@@ -258,3 +258,73 @@ fn atomic_create_publishes_complete_data_without_replacing_collisions() {
     }));
     std::fs::remove_dir_all(directory).unwrap();
 }
+
+#[test]
+fn blank_compositions_and_frame_rate_edits_are_validated_and_atomic() {
+    let composition = blank(1920, 1080, Time::new(24, 1).unwrap()).unwrap();
+    assert_eq!(composition.nodes.len(), 1);
+    assert!(
+        matches!(composition.nodes[&composition.output].operation, Operation::Solid { color } if color == [0.0;4])
+    );
+    assert!(blank(0, 1080, Time::new(24, 1).unwrap()).is_err());
+    assert!(blank(1920, 1080, Time::new(0, 1).unwrap()).is_err());
+    let mut document = Document::new(composition).unwrap();
+    let nodes = serde_json::to_value(&document.snapshot().nodes).unwrap();
+    assert!(
+        document
+            .apply(
+                0,
+                &[
+                    Command::Resize {
+                        width: 1080,
+                        height: 1920
+                    },
+                    Command::FrameRate {
+                        frame_rate: Time {
+                            ticks: 30000,
+                            rate: 0
+                        }
+                    },
+                ]
+            )
+            .is_err()
+    );
+    assert_eq!(document.revision(), 0);
+    assert_eq!(document.snapshot().width, 1920);
+    let command = Command::FrameRate {
+        frame_rate: Time::new(30000, 1001).unwrap(),
+    };
+    let encoded = serde_json::to_value(&command).unwrap();
+    assert_eq!(encoded["command"], "frame_rate");
+    let command: Command = serde_json::from_value(encoded).unwrap();
+    document
+        .apply(
+            0,
+            &[
+                Command::Resize {
+                    width: 1080,
+                    height: 1920,
+                },
+                command,
+            ],
+        )
+        .unwrap();
+    assert_eq!(document.snapshot().width, 1080);
+    assert!(
+        Time::at_frame(30, document.snapshot().frame_rate)
+            .unwrap()
+            .compare(Time::new(1001, 1000).unwrap())
+            .unwrap()
+            .is_eq()
+    );
+    assert_eq!(
+        serde_json::to_value(&document.snapshot().nodes).unwrap(),
+        nodes
+    );
+    document.undo(1).unwrap();
+    assert_eq!(document.snapshot().width, 1920);
+    assert_eq!(document.snapshot().frame_rate.ticks, 24);
+    document.redo(2).unwrap();
+    assert_eq!(document.snapshot().height, 1920);
+    assert_eq!(document.snapshot().frame_rate.rate, 1001);
+}

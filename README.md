@@ -547,3 +547,19 @@ image bytes, or edits made since the last completed snapshot. It supplements
 normal saving. A recovery storage error is shown; normal project saving remains
 available. If storage is unavailable at startup, restart after fixing it to
 re-enable background recovery.
+
+### New compositions and format settings
+
+**New…** (`Ctrl+N`) creates a composition with one transparent Background node.
+Choose canvas width/height and an exact frame-rate numerator/denominator before
+creating it. Unsaved work is protected by the same Save/Discard/Keep editing
+flow as opening another project. **Settings…** changes the current canvas and
+frame rate together as one undo step. Resizing changes the canvas bounds; it does
+not scale node coordinates. Animation keys retain their times in seconds, while
+frame indices use the new frame rate. Format dialogs isolate their drafts and
+block live MCP mutations until applied or closed.
+
+MCP `apply` accepts `{"command":"frame_rate","frame_rate":{"ticks":30000,"rate":1001}}`
+alongside the existing `resize` command. Both can be placed in a single atomic
+batch. Numerator and denominator must be positive; invalid batches leave the
+composition and history unchanged.
