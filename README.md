@@ -441,7 +441,11 @@ collapsed effects as a single stage and placing unused branches separately. It n
 deletes nodes. **Layout** offers arrangement of the selected upstream branch and
 session-only placement pins. Optional node strips and wires share a role-colour
 legend; wires follow their source node, and selected connections appear brighter.
-Unused nodes are also labelled in text. Source images load when the
+Unused nodes are also labelled in text. **Auto arrange** adapts spacing and fits the
+view when nodes or pane dimensions change. It is a session-only view mode and
+resizing creates no document edits. Dragging a node turns it off and saves the
+visible arrangement together with that move as one undo step. Manual placements
+remain available while Auto arrange is off. Source images load when the
 project opens or an image is imported, within a 256 MiB host image budget.
 **Reload images** (Ctrl+R) reads all current sources in the background and refreshes
 preview after every file succeeds. A failed reload retains all previous inputs;
@@ -1206,8 +1210,22 @@ node brings its graph card into view without changing composition output,
 document revision, or undo history. Apply or revert any inspector draft first.
 The result list lays out only visible rows, keeping large graphs navigable.
 
+Inspector scalar controls show a value, previous-key arrow, keyframe diamond,
+next-key arrow and (where a default is available) reset icon. Red diamonds remove
+the current key when clicked; outlined diamonds add one. Amber outlines indicate
+an animated parameter between keys. The arrows navigate that parameter's keys;
+`...` opens interpolation and detailed key editing. Reset restores the default at
+the playhead while preserving other keys. Text inspector tabs keep these controls
+beside their parameters, with a compact overview in Animation.
+
+The playback strip's frame-step buttons and Left/Right arrows move one frame and
+pause playback. Keyboard stepping is suppressed while editing text. Frame stepping
+and parameter-key navigation commit valid inspector edits before seeking.
+
 The timeline’s **Prev key** / **Next key** buttons and marker strip navigate the
-selected node’s applied scalar keys. Click or drag on the strip to seek the
+selected node’s applied scalar keys in a dedicated full-width row. Gold diamonds
+mark keyed frames; a red diamond marks a key at the playhead, and the vertical
+playhead line remains visible between keys. Click or drag on the strip to seek the
 nearest keyed frame; navigation pauses playback and does not edit the document.
 Keys shared across parameters appear once. Subframe keys seek the nearest output
 frame (half frames round up), while authored times remain unchanged. Keys before

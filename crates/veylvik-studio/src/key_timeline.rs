@@ -10,7 +10,7 @@ pub struct Keys {
 
 // Round to the nearest output frame, with exact integer arithmetic. Keys outside
 // the composition remain authored but are excluded from this navigation strip.
-fn frame(time: Time, fps: Time, count: u32) -> Option<i64> {
+pub(super) fn frame(time: Time, fps: Time, count: u32) -> Option<i64> {
     if time.rate == 0 || fps.rate == 0 || fps.ticks <= 0 || time.ticks < 0 || count == 0 {
         return None;
     }
@@ -58,6 +58,10 @@ impl Keys {
 
     pub fn show(&self, ui: &mut egui::Ui, current: i64, count: u32) -> Option<i64> {
         let mut seek = None;
+        ui.weak(format!(
+            "Selected node · {} keyed frames",
+            self.frames.len()
+        ));
         for (forward, label, hint) in [
             (false, "Prev key", "Alt+Left"),
             (true, "Next key", "Alt+Right"),
@@ -72,37 +76,53 @@ impl Keys {
             }
         }
         let (rect, response) = ui.allocate_exact_size(
-            egui::vec2(ui.available_width().max(40.0), 18.0),
+            egui::vec2(ui.available_width().max(40.0), 24.0),
             egui::Sense::click_and_drag(),
         );
         let rect = rect.shrink2(egui::vec2(4.0, 2.0));
         let end = count.saturating_sub(1).max(1) as f32;
         let x = |frame: i64| rect.left() + frame as f32 / end * rect.width();
         let painter = ui.painter();
+        painter.rect_filled(rect, 2.0, egui::Color32::from_rgb(28, 32, 40));
+        for tick in 0..=10 {
+            let at = rect.left() + rect.width() * tick as f32 / 10.0;
+            painter.vline(
+                at,
+                rect.bottom() - 3.0..=rect.bottom(),
+                (1.0, egui::Color32::from_gray(75)),
+            );
+        }
         painter.hline(
             rect.x_range(),
             rect.center().y,
-            ui.visuals().widgets.inactive.bg_stroke,
+            (1.0, egui::Color32::from_gray(70)),
         );
-        // Dense keys share pixels; paint at most one marker per logical pixel.
+        if (0..i64::from(count)).contains(&current) {
+            painter.vline(x(current), rect.y_range(), (1.0, ui.visuals().text_color()));
+        }
+        // Bound marker density without losing the current-key highlight.
         let mut previous = None;
         for frame in &self.frames {
             let at = x(*frame).round();
-            if previous != Some(at) {
-                painter.vline(
-                    at,
-                    rect.top()..=rect.bottom(),
-                    (2.0, ui.visuals().selection.stroke.color),
-                );
+            if previous.is_none_or(|last: f32| at - last >= 6.0) || *frame == current {
+                let c = egui::pos2(at, rect.center().y);
+                let colour = if *frame == current {
+                    egui::Color32::from_rgb(239, 99, 109)
+                } else {
+                    egui::Color32::from_rgb(210, 165, 90)
+                };
+                painter.add(egui::Shape::convex_polygon(
+                    vec![
+                        c + egui::vec2(0.0, -4.5),
+                        c + egui::vec2(4.5, 0.0),
+                        c + egui::vec2(0.0, 4.5),
+                        c + egui::vec2(-4.5, 0.0),
+                    ],
+                    colour,
+                    egui::Stroke::NONE,
+                ));
                 previous = Some(at);
             }
-        }
-        if (0..i64::from(count)).contains(&current) {
-            painter.circle_filled(
-                egui::pos2(x(current), rect.center().y),
-                3.0,
-                ui.visuals().text_color(),
-            );
         }
         let nearest = response.hover_pos().and_then(|pointer| {
             let target = ((pointer.x - rect.left()) / rect.width() * end).round() as i64;

@@ -102,6 +102,38 @@ pub(super) fn arrange(nodes: &[VisualNode], output: NodeId) -> BTreeMap<NodeId, 
     }
     result
 }
+/// Spread the branch layout across the pane while retaining readable minimum gaps.
+pub(super) fn adapt(positions: &mut BTreeMap<NodeId, Pos2>, size: egui::Vec2) {
+    if positions.is_empty() || size.x <= 30.0 || size.y <= 30.0 {
+        return;
+    }
+    let max_x = positions
+        .values()
+        .map(|p| p.x - 25.0)
+        .fold(0.0_f32, f32::max);
+    let max_y = positions
+        .values()
+        .map(|p| p.y - 20.0)
+        .fold(0.0_f32, f32::max);
+    let ratio = (size.x - 30.0) / (size.y - 30.0);
+    let current = (max_x + 160.0) / (max_y + 60.0);
+    let (sx, sy) = if ratio > current {
+        (
+            ((ratio * (max_y * 0.8 + 60.0) - 160.0) / max_x.max(1.0)).clamp(1.0, 2.5),
+            0.8,
+        )
+    } else {
+        (
+            1.0,
+            (((max_x + 160.0) / ratio - 60.0) / max_y.max(1.0)).clamp(0.8, 2.5),
+        )
+    };
+    for p in positions.values_mut() {
+        p.x = 25.0 + (p.x - 25.0) * sx;
+        p.y = 20.0 + (p.y - 20.0) * sy;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -116,6 +148,27 @@ mod tests {
                 .enumerate()
                 .map(|(i, id)| (i.to_string(), *id))
                 .collect(),
+        }
+    }
+    #[test]
+    fn responsive_spacing_uses_both_axes_without_overlapping_nodes() {
+        let a = NodeId::new_v4();
+        let b = NodeId::new_v4();
+        let c = NodeId::new_v4();
+        let base = BTreeMap::from([
+            (a, egui::pos2(25.0, 20.0)),
+            (b, egui::pos2(245.0, 120.0)),
+            (c, egui::pos2(465.0, 220.0)),
+        ]);
+        let mut wide = base.clone();
+        let mut tall = base;
+        adapt(&mut wide, egui::vec2(1600.0, 300.0));
+        adapt(&mut tall, egui::vec2(400.0, 1000.0));
+        assert!(wide[&c].x > tall[&c].x);
+        assert!(tall[&c].y > wide[&c].y);
+        for layout in [wide, tall] {
+            assert!(layout[&b].x - layout[&a].x >= 220.0);
+            assert!(layout[&b].y - layout[&a].y >= 80.0);
         }
     }
     #[test]

@@ -2,7 +2,172 @@
 use eframe::egui;
 use veylvik_document::{Interpolation, Scalar, Time, animation::MAX_KEYS};
 
+/// Shared compact key controls. Navigation is consumed by Studio after committing drafts.
+pub fn key_controls(ui: &mut egui::Ui, scalar: &mut Scalar, time: Time) -> bool {
+    let here = scalar.keys().is_some_and(|keys| {
+        keys.iter()
+            .any(|key| key.time.compare(time).is_ok_and(|o| o.is_eq()))
+    });
+    let previous = scalar
+        .keys()
+        .and_then(|keys| {
+            keys.iter()
+                .rev()
+                .find(|key| key.time.compare(time).is_ok_and(|o| o.is_lt()))
+        })
+        .map(|key| key.time);
+    let next = scalar
+        .keys()
+        .and_then(|keys| {
+            keys.iter()
+                .find(|key| key.time.compare(time).is_ok_and(|o| o.is_gt()))
+        })
+        .map(|key| key.time);
+    let mut changed = false;
+    if ui
+        .add_enabled(previous.is_some(), egui::Button::new("◀").small())
+        .on_hover_text("Previous key for this parameter")
+        .clicked()
+    {
+        ui.ctx()
+            .data_mut(|d| d.insert_temp(egui::Id::new("parameter-key-seek"), previous.unwrap()));
+    }
+    let colour = if here {
+        egui::Color32::from_rgb(239, 99, 109)
+    } else if scalar.keys().is_some() {
+        egui::Color32::from_rgb(210, 165, 90)
+    } else {
+        ui.visuals().text_color()
+    };
+    let (rect, response) = ui.allocate_exact_size(egui::vec2(22.0, 20.0), egui::Sense::click());
+    #[cfg(test)]
+    ui.ctx()
+        .data_mut(|d| d.insert_temp(egui::Id::new("key-toggle-test"), rect));
+    let visuals = ui.style().interact(&response);
+    ui.painter().rect_filled(rect, 3.0, visuals.bg_fill);
+    let c = rect.center();
+    let points = vec![
+        c + egui::vec2(0.0, -5.0),
+        c + egui::vec2(5.0, 0.0),
+        c + egui::vec2(0.0, 5.0),
+        c + egui::vec2(-5.0, 0.0),
+    ];
+    ui.painter().add(egui::Shape::convex_polygon(
+        points,
+        if here {
+            colour
+        } else {
+            egui::Color32::TRANSPARENT
+        },
+        egui::Stroke::new(1.4_f32, colour),
+    ));
+    if response
+        .on_hover_text(if here {
+            "Remove key at this frame"
+        } else {
+            "Add key at this frame"
+        })
+        .clicked()
+    {
+        let result = if here {
+            scalar.remove_key_at(time)
+        } else {
+            scalar
+                .at(time)
+                .and_then(|value| scalar.set_key_at(time, value))
+        };
+        match result {
+            Ok(()) => changed = true,
+            Err(error) => {
+                ui.colored_label(egui::Color32::LIGHT_RED, error.to_string());
+            }
+        }
+    }
+    if ui
+        .add_enabled(next.is_some(), egui::Button::new("▶").small())
+        .on_hover_text("Next key for this parameter")
+        .clicked()
+    {
+        ui.ctx()
+            .data_mut(|d| d.insert_temp(egui::Id::new("parameter-key-seek"), next.unwrap()));
+    }
+    changed
+}
+
 pub fn scalar(
+    ui: &mut egui::Ui,
+    label: &str,
+    scalar: &mut Scalar,
+    range: std::ops::RangeInclusive<f32>,
+    time: Time,
+) -> bool {
+    scalar_with_default(ui, label, scalar, range, time, None)
+}
+
+pub fn scalar_with_default(
+    ui: &mut egui::Ui,
+    label: &str,
+    scalar: &mut Scalar,
+    range: std::ops::RangeInclusive<f32>,
+    time: Time,
+    default: Option<f32>,
+) -> bool {
+    let mut changed = false;
+    ui.push_id(label, |ui| {
+        ui.horizontal(|ui| {
+            ui.add_sized(
+                [(ui.available_width() - 225.0).max(45.0), 22.0],
+                egui::Label::new(label),
+            );
+            if let Ok(mut value) = scalar.at(time) {
+                let old = value;
+                if ui
+                    .add_sized(
+                        [56.0, 22.0],
+                        egui::DragValue::new(&mut value)
+                            .speed(0.1)
+                            .range(range.clone()),
+                    )
+                    .changed()
+                {
+                    changed |= crate::handles::edit(
+                        scalar,
+                        time,
+                        value - old,
+                        *range.start(),
+                        *range.end(),
+                    )
+                    .is_ok();
+                }
+            }
+            changed |= key_controls(ui, scalar, time);
+            if let Some(default) = default
+                && ui
+                    .small_button("↺")
+                    .on_hover_text("Reset to default at this frame; preserve other keys")
+                    .clicked()
+            {
+                if scalar.keys().is_some() {
+                    changed |= scalar.set_key_at(time, default).is_ok();
+                } else {
+                    *scalar = default.into();
+                    changed = true;
+                }
+            }
+            egui::Popup::menu(
+                &ui.small_button("...")
+                    .on_hover_text("Interpolation and keyframe details"),
+            )
+            .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
+            .show(|ui| {
+                changed |= details(ui, label, scalar, range.clone(), time);
+            });
+        });
+    });
+    changed
+}
+
+pub fn details(
     ui: &mut egui::Ui,
     label: &str,
     scalar: &mut Scalar,
@@ -145,4 +310,58 @@ pub fn color(ui: &mut egui::Ui, color: &mut [f32; 4]) -> bool {
         });
     }
     changed
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn diamond_adds_and_removes_only_the_current_key() {
+        let ctx = egui::Context::default();
+        let time = Time::new(1, 1).unwrap();
+        let mut scalar: Scalar = 12.0.into();
+        scalar.set_key_at(Time::new(0, 1).unwrap(), 4.0).unwrap();
+        let mut run = |events| {
+            let mut changed = false;
+            let _ = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(500.0, 200.0),
+                    )),
+                    events,
+                    ..Default::default()
+                },
+                |ui| {
+                    ui.horizontal(|ui| {
+                        changed = key_controls(ui, &mut scalar, time);
+                    });
+                },
+            );
+            (changed, scalar.clone())
+        };
+        run(vec![]);
+        let rect = ctx.data_mut(|d| {
+            d.get_temp::<egui::Rect>(egui::Id::new("key-toggle-test"))
+                .unwrap()
+        });
+        for expected in [2, 1] {
+            for pressed in [true, false] {
+                let (changed, value) = run(vec![
+                    egui::Event::PointerMoved(rect.center()),
+                    egui::Event::PointerButton {
+                        pos: rect.center(),
+                        button: egui::PointerButton::Primary,
+                        pressed,
+                        modifiers: egui::Modifiers::NONE,
+                    },
+                ]);
+                assert_eq!(changed, !pressed);
+                if !pressed {
+                    assert_eq!(value.keys().unwrap().len(), expected);
+                    assert_eq!(value.keys().unwrap()[0].value, 4.0);
+                }
+            }
+        }
+    }
 }

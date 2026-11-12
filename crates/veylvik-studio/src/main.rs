@@ -5,19 +5,11 @@ mod composition;
 mod control;
 mod curve_preview;
 mod diagnostics;
-mod editable_text;
-mod font_browser;
-mod recovery;
-mod sequence;
-mod text_effects;
-mod text_outline;
-mod text_viewer;
-mod title_styles;
-mod vector_editor;
-use animation::scalar;
 mod display;
+mod editable_text;
 mod effects;
 mod files;
+mod font_browser;
 mod graph;
 mod graph_layout;
 mod handles;
@@ -28,8 +20,15 @@ mod node_palette;
 mod preset_library;
 mod preview_images;
 mod project;
+mod recovery;
+mod sequence;
 mod showcase_gallery;
+mod text_effects;
+mod text_outline;
+mod text_viewer;
+mod title_styles;
 mod transform_handles;
+mod vector_editor;
 mod viewer;
 use display::{Display, DisplayFrame, Paint, ViewSettings};
 use eframe::{egui, egui_wgpu};
@@ -1412,12 +1411,17 @@ impl Studio {
             }
             if let Some(value) = self.draft.operation.scalar_mut(parameter.name) {
                 let label = format!("{} ({})", parameter.name.replace('_', " "), parameter.unit);
-                let changed = scalar(
+                let changed = animation::scalar_with_default(
                     ui,
                     &label,
                     value,
                     parameter.min.unwrap()..=parameter.max.unwrap(),
                     time,
+                    serde_json::from_value::<veylvik_document::Scalar>(
+                        kind.default_operation()[parameter.name].clone(),
+                    )
+                    .ok()
+                    .and_then(|value| value.at(time).ok()),
                 );
                 self.draft_dirty |= changed;
                 text_changed |= changed;
@@ -1464,30 +1468,54 @@ impl Studio {
                 });
         }
         ui.separator();
-        if ui.button("Preview selected").clicked() {
-            self.project.preview = Some(self.project.selected);
-            self.request_preview();
-        }
-        if ui.button("View composition output").clicked() {
-            self.project.preview = None;
-            self.request_preview();
-        }
-        if ui.button("Set as output").clicked() {
-            self.set_selected_output();
-        }
-        if ui.button("Duplicate node").clicked() {
-            self.duplicate_selected(ui.ctx());
-        }
-        if ui
-            .button("Duplicate branch")
-            .on_hover_text("Copy this node and all upstream dependencies (Ctrl+Shift+D)")
-            .clicked()
-        {
-            self.duplicate_branch();
-        }
-        if ui.button("Delete node").clicked() {
-            self.delete_selected();
-        }
+        ui.horizontal_wrapped(|ui| {
+            ui.label("Viewer");
+            if ui
+                .add(
+                    egui::Button::new("Selected node")
+                        .selected(self.project.preview == Some(self.project.selected))
+                        .min_size(egui::vec2(0.0, 26.0)),
+                )
+                .clicked()
+            {
+                self.project.preview = Some(self.project.selected);
+                self.request_preview();
+            }
+            if ui
+                .add(
+                    egui::Button::new("Composition")
+                        .selected(self.project.preview.is_none())
+                        .min_size(egui::vec2(0.0, 26.0)),
+                )
+                .clicked()
+            {
+                self.project.preview = None;
+                self.request_preview();
+            }
+        });
+        ui.menu_button("Node actions...", |ui| {
+            if ui.button("Set as output").clicked() {
+                self.set_selected_output();
+                ui.close();
+            }
+            if ui.button("Duplicate node").clicked() {
+                self.duplicate_selected(ui.ctx());
+                ui.close();
+            }
+            if ui
+                .button("Duplicate branch")
+                .on_hover_text("Copy this node and all upstream dependencies (Ctrl+Shift+D)")
+                .clicked()
+            {
+                self.duplicate_branch();
+                ui.close();
+            }
+            ui.separator();
+            if ui.button("Delete node").clicked() {
+                self.delete_selected();
+                ui.close();
+            }
+        });
         ui.add_space(15.0);
         ui.weak("Parameter changes become one undo step when applied.");
     }
@@ -1534,7 +1562,38 @@ impl Studio {
             self.request_preview();
         }
     }
+    fn step_frame(&mut self, direction: i64) {
+        if !self.apply_draft() {
+            return;
+        }
+        self.playing = false;
+        self.project.frame = (self.project.frame + direction).clamp(
+            0,
+            i64::from(
+                self.project
+                    .document
+                    .snapshot()
+                    .frame_count
+                    .saturating_sub(1),
+            ),
+        );
+        self.request_preview();
+    }
     fn timeline(&mut self, ui: &mut egui::Ui) {
+        if let Some(time) = ui.ctx().data_mut(|d| {
+            let id = egui::Id::new("parameter-key-seek");
+            let time = d.get_temp::<veylvik_document::Time>(id);
+            d.remove::<veylvik_document::Time>(id);
+            time
+        }) && self.apply_draft()
+        {
+            let doc = self.project.document.snapshot();
+            if let Some(frame) = key_timeline::frame(time, doc.frame_rate, doc.frame_count) {
+                self.project.frame = frame;
+                self.playing = false;
+                self.request_preview();
+            }
+        }
         self.sync_key_timeline();
         let count = self.project.document.snapshot().frame_count;
         let end_frame = (i64::from(count) - 1).max(self.project.frame);
@@ -1549,6 +1608,20 @@ impl Studio {
             {
                 self.toggle_play();
             }
+            if ui
+                .small_button("◀|")
+                .on_hover_text("Previous frame · Left arrow")
+                .clicked()
+            {
+                self.step_frame(-1);
+            }
+            if ui
+                .small_button("|▶")
+                .on_hover_text("Next frame · Right arrow")
+                .clicked()
+            {
+                self.step_frame(1);
+            }
             let changed = ui
                 .add(egui::Slider::new(&mut self.project.frame, 0..=end_frame).text("Frame"))
                 .changed();
@@ -1559,7 +1632,11 @@ impl Studio {
             ui.label(format!("of {count} frames"));
             let fps = self.project.document.snapshot().frame_rate;
             ui.weak(format!("{} / {} fps", fps.ticks, fps.rate));
-            if let Some(frame) = self.key_timeline.show(ui, self.project.frame, count) {
+        });
+        ui.horizontal(|ui| {
+            if let Some(frame) = self.key_timeline.show(ui, self.project.frame, count)
+                && self.apply_draft()
+            {
                 self.project.frame = frame;
                 self.playing = false;
                 self.request_preview();
@@ -1948,6 +2025,9 @@ impl eframe::App for Studio {
                 self.history(false);
             }
             for (key, forward) in [(egui::Key::ArrowLeft, false), (egui::Key::ArrowRight, true)] {
+                if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, key)) {
+                    self.step_frame(if forward { 1 } else { -1 });
+                }
                 if ctx.input_mut(|i| i.consume_key(egui::Modifiers::ALT, key)) {
                     self.seek_key(forward);
                 }

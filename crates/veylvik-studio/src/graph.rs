@@ -68,6 +68,7 @@ impl VisualNode {
     }
 }
 struct Drag {
+    preserve_layout: bool,
     id: NodeId,
     start: Pos2,
     current: Pos2,
@@ -86,6 +87,8 @@ pub struct Graph {
     role_colours: bool,
     wire_colours: bool,
     fit_pending: bool,
+    auto_arrange: bool,
+    auto_view: Option<(u64, Vec2)>,
 }
 impl Default for Graph {
     fn default() -> Self {
@@ -103,16 +106,20 @@ impl Default for Graph {
             role_colours: true,
             wire_colours: true,
             fit_pending: false,
+            auto_arrange: false,
+            auto_view: None,
         }
     }
 }
 impl Graph {
     pub fn expand(&mut self, id: NodeId) {
         self.expanded.insert(id);
+        self.auto_view = None;
         self.revision = None;
     }
     pub fn collapse(&mut self, id: NodeId) {
         self.expanded.remove(&id);
+        self.auto_view = None;
         self.revision = None;
     }
     pub fn selected_group<'a>(
@@ -416,7 +423,22 @@ impl Graph {
             return;
         }
         self.wire = None;
+        self.auto_view = None;
         self.revision = Some(revision);
+        let pinned_positions: Vec<_> = self
+            .positions
+            .iter()
+            .filter(|(id, _)| {
+                self.auto_arrange
+                    && doc.nodes.contains_key(id)
+                    && (self.pinned.contains(id)
+                        || doc
+                            .groups
+                            .values()
+                            .any(|g| self.pinned.contains(&g.output) && g.members.contains(id)))
+            })
+            .map(|(id, p)| (*id, *p))
+            .collect();
         self.automatic.clear();
         self.positions.clear();
         let nodes = self.visual_nodes(doc);
@@ -454,8 +476,29 @@ impl Graph {
                     .unwrap_or(automatic),
             );
         }
+        self.positions.extend(pinned_positions);
     }
 
+    fn adapt_automatic(&mut self, doc: &Composition, nodes: &[VisualNode], size: Vec2) {
+        let mut responsive = crate::graph_layout::arrange(nodes, doc.output);
+        crate::graph_layout::adapt(&mut responsive, size);
+        for group in doc.groups.values() {
+            if let (Some(new), Some(old)) = (
+                responsive.get(&group.output),
+                self.automatic.get(&group.output),
+            ) {
+                let offset = *new - *old;
+                for id in &group.members {
+                    if !responsive.contains_key(id)
+                        && let Some(position) = self.automatic.get_mut(id)
+                    {
+                        *position += offset;
+                    }
+                }
+            }
+        }
+        self.automatic.extend(responsive);
+    }
     fn arrangement(
         &self,
         doc: &Composition,
@@ -628,6 +671,7 @@ impl Graph {
                 )
                 .clicked()
             {
+                if let Some(canvas) = self.canvas { self.adapt_automatic(doc, &nodes, canvas.size()); }
                 let positions = self.arrangement(doc, None);
                 if !positions.is_empty() {
                     actions.push(Action::Arrange(positions));
@@ -635,6 +679,10 @@ impl Graph {
                 } else {
                     fit = true;
                 }
+            }
+            if ui.checkbox(&mut self.auto_arrange, "Auto arrange").on_hover_text("Adapt the graph view to node changes and pane size. Session-only; manual placements remain saved in the project.").changed() {
+                self.auto_view = None;
+                self.revision = None;
             }
             ui.menu_button("Layout ▾", |ui| {
                 if ui.button("Arrange selected branch").clicked() {
@@ -679,6 +727,19 @@ impl Graph {
             egui::Sense::click_and_drag(),
         );
         self.canvas = Some(canvas);
+        if self.auto_arrange
+            && !self.dragging()
+            && self.auto_view != Some((revision, canvas.size()))
+        {
+            self.auto_view = Some((revision, canvas.size()));
+            self.adapt_automatic(doc, &nodes, canvas.size());
+            let positions = self.arrangement(doc, None);
+            for (id, position) in positions {
+                self.positions
+                    .insert(id, egui::pos2(position.x, position.y));
+            }
+            fit = true;
+        }
         if newly_inserted {
             self.reveal(selected, canvas);
         }
@@ -792,7 +853,11 @@ impl Graph {
                 )
                 .on_hover_text(&node.label);
             if response.drag_started() {
+                let preserve_layout = self.auto_arrange;
+                self.auto_arrange = false;
+                self.auto_view = None;
                 self.drag = Some(Drag {
+                    preserve_layout,
                     id: node.id,
                     start: self.positions[&node.id],
                     current: self.positions[&node.id],
@@ -810,7 +875,23 @@ impl Graph {
                 && let Some(drag) = self.drag.take()
                 && drag.start.distance(drag.current) > 0.01
             {
-                if let Some(group) = self.selected_group(doc, drag.id) {
+                if drag.preserve_layout {
+                    let mut positions = self.positions.clone();
+                    positions.insert(drag.id, drag.current);
+                    if let Some(group) = self.selected_group(doc, drag.id) {
+                        for id in &group.members {
+                            if *id != drag.id {
+                                *positions.get_mut(id).unwrap() += drag.current - drag.start;
+                            }
+                        }
+                    }
+                    actions.push(Action::Arrange(
+                        positions
+                            .into_iter()
+                            .map(|(id, p)| (id, NodePosition { x: p.x, y: p.y }))
+                            .collect(),
+                    ));
+                } else if let Some(group) = self.selected_group(doc, drag.id) {
                     let delta = drag.current - drag.start;
                     actions.push(Action::Arrange(
                         group
@@ -1199,6 +1280,13 @@ mod arrangement_tests {
         let group = *doc.groups.keys().next().unwrap();
         let mut graph = Graph::default();
         graph.sync(&doc, 0);
+        graph.auto_view = Some((0, egui::vec2(1000.0, 400.0)));
+        graph.revision = None;
+        graph.sync(&doc, 0);
+        assert!(
+            graph.auto_view.is_none(),
+            "Resync must invalidate responsive view positions"
+        );
         assert_eq!(
             graph.automatic[&output].x - graph.automatic[&source].x,
             220.0

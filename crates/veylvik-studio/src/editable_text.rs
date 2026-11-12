@@ -39,9 +39,12 @@ fn parameter(
     let mut changed = false;
     ui.push_id(name, |ui| {
         ui.horizontal(|ui| {
-            ui.strong(label);
+            ui.add_sized(
+                [(ui.available_width() - 145.0).max(64.0), 22.0],
+                egui::Label::new(label),
+            );
             if ui
-                .small_button("Reset")
+                .small_button("↺")
                 .on_hover_text("Restore the default at this frame; keep other animation keys.")
                 .clicked()
             {
@@ -52,21 +55,14 @@ fn parameter(
                     }
                 }
             }
-            let keyed = value.keys().is_some();
-            let here = value.keys().is_some_and(|keys| {
-                keys.iter()
-                    .any(|k| k.time.compare(time).is_ok_and(|v| v.is_eq()))
-            });
-            egui::Popup::menu(&ui.button(if here {
-                "◆"
-            } else if keyed {
-                "◇"
-            } else {
-                "Keys"
-            }))
+            changed |= crate::animation::key_controls(ui, value, time);
+            egui::Popup::menu(
+                &ui.small_button("...")
+                    .on_hover_text("Interpolation and keyframe details"),
+            )
             .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
             .show(|ui| {
-                changed |= crate::animation::scalar(
+                changed |= crate::animation::details(
                     ui,
                     label,
                     value,
@@ -169,7 +165,14 @@ pub fn header(ui: &mut egui::Ui, op: &mut Operation) -> bool {
             (Tab::Style, "Style"),
             (Tab::Animation, "Animation"),
         ] {
-            ui.selectable_value(&mut selected, value, label);
+            let response = ui.add(
+                egui::Button::new(label)
+                    .selected(selected == value)
+                    .min_size(egui::vec2(0.0, 28.0)),
+            );
+            if response.clicked() {
+                selected = value;
+            }
         }
     });
     ui.ctx()
@@ -331,7 +334,7 @@ pub fn controls(
                     ] {
                         changed |= ui.selectable_value(alignment, value, label).changed();
                     }
-                    if ui.small_button("Reset").clicked() {
+                    if ui.small_button("↺").clicked() {
                         *alignment = TextAlignment::Center;
                         changed = true;
                     }
@@ -346,7 +349,7 @@ pub fn controls(
                                 .desired_width(80.0),
                         )
                         .changed();
-                    if ui.small_button("Reset").clicked() {
+                    if ui.small_button("↺").clicked() {
                         language.clear();
                         *rtl = false;
                         changed = true;
@@ -534,7 +537,7 @@ pub fn controls(
                         changed |= ui
                             .add(egui::DragValue::new(&mut *v).speed(0.01).range(range))
                             .changed();
-                        if ui.small_button("Reset").clicked() {
+                        if ui.small_button("↺").clicked() {
                             *v = default;
                             changed = true;
                         }
@@ -572,7 +575,8 @@ pub fn controls(
                 ui.weak("Timing is in composition seconds. Character animation preserves shaped clusters and ligatures.");
             }
             ui.separator();
-            ui.strong("Parameter keyframes");
+            ui.strong("Animated parameters");
+            ui.weak("Previous key · Toggle key · Next key");
             for name in [
                 "size", "x", "y", "rotation", "scale_x", "scale_y", "tracking",
             ] {
@@ -582,15 +586,17 @@ pub fn controls(
                     .iter()
                     .find(|p| p.name == name)
                     .unwrap();
-                ui.collapsing(name, |ui| {
-                    changed |= crate::animation::scalar(
-                        ui,
-                        name,
-                        op.scalar_mut(name).unwrap(),
-                        spec.min.unwrap()..=spec.max.unwrap(),
-                        time,
-                    );
-                });
+                let defaults = op.descriptor().default_operation();
+                let default: Scalar = serde_json::from_value(defaults[name].clone()).unwrap();
+                changed |= crate::animation::scalar_with_default(
+                    ui,
+                    &name.replace('_', " "),
+                    op.scalar_mut(name).unwrap(),
+                    spec.min.unwrap()..=spec.max.unwrap(),
+                    time,
+                    default.at(time).ok(),
+                );
+                ui.add_space(5.0);
             }
         }
         Tab::Style => {}
@@ -948,7 +954,7 @@ impl crate::Studio {
                             input = input.range(0.0..=1.0);
                         }
                         changed |= ui.add(input).changed();
-                        if ui.small_button("Reset").clicked() {
+                        if ui.small_button("↺").clicked() {
                             color[index] = 1.0;
                             changed = true;
                         }
