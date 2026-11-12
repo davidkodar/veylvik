@@ -4,7 +4,7 @@ Choose **File > Import media…** to open MP4, MOV, M4V, MKV, WebM, AVI or MPEG
 footage. FFmpeg must be installed; the Arch package declares it as a dependency.
 The first video stream is imported. Audio playback and export are not implemented.
 
-Temporal sources create a **Footage** node. The inspector shows resolution,
+New media imports, including still images, create a **Footage** node. The inspector shows resolution,
 duration, frame count, average frame rate and colour assumptions. **Timeline start**
 places the clip in the composition; **Source in** skips the beginning of the file.
 Uncheck **Use source end** to set an exclusive **Source out**. Frame fields use the
@@ -12,14 +12,35 @@ composition frame rate, while the document stores exact rational times. Each fie
 has a vector reset button. Edits use normal Apply/Revert and Undo behavior.
 
 Footage is transparent before its timeline start and after its trimmed end.
-Source pixels retain native dimensions; use a transform to resize or position the
-image. Multiple Footage nodes can share a source with independent timing. Existing
+Source pixels retain native dimensions. **Placement** fits them to the canvas on
+the GPU before clipping: **Fit** shows the whole image with transparent padding,
+**Fill** covers the canvas and crops edges, **Original size** centres native pixels,
+and **Stretch** fills both dimensions independently. **Native pixels (top-left)**
+preserves older documents. Use a downstream transform for further positioning. Multiple Footage nodes can share a source with independent timing. Existing
 Image nodes retain their earlier endpoint-holding behavior. Replacing a still
 image with video promotes it to a Footage node.
 
 The same source and timing code serves Studio previews, point tracking, CLI/MCP
 rendering and exports. Tracking works on the rendered source, including its trim
 and placement. Choose a tracking range within the visible clip.
+
+## Canvas size
+
+**File > New from media…** creates a composition with the source dimensions and,
+for video or sequences, its frame rate and duration. Still images use 24 fps and
+the normal default duration.
+
+The first mismatched import into an empty composition offers **Match composition**
+or **Keep settings**. Matching frame rate and duration are separate, optional
+checkboxes. Keep settings fits and centres the source in the existing canvas.
+Cancel leaves the document unchanged. Import and matching undo together.
+
+Imports into an existing scene keep its settings. To change them, choose
+**Match composition to this media…** in the source inspector or node context menu.
+The optional scene-control scaling proportionally fits authored spatial controls
+into the new canvas. Otherwise only canvas bounds change. Media retains its chosen
+placement mode, and keyframe times remain in seconds. The same scaling choice is
+available in **File > Composition settings…**. These edits are undoable.
 
 ## Decoding and colour
 
@@ -65,6 +86,7 @@ The `footage` operation is exposed by the node catalog and document schema:
 {
   "type": "footage",
   "asset": "shot.mp4",
+  "placement": "fit",
   "timing": {
     "start": { "ticks": 2, "rate": 1 },
     "source_in": { "ticks": 1, "rate": 2 },
@@ -74,5 +96,6 @@ The `footage` operation is exposed by the node catalog and document schema:
 ```
 
 This places the clip at composition second 2, starting at source second 0.5.
-`timing` can be updated through ordinary revision-checked `set_parameter`
+`placement` accepts `fit`, `fill`, `original`, `stretch`, or `legacy`. Omitted
+placement defaults to `legacy` for compatibility. Both `placement` and `timing` can be updated through ordinary revision-checked `set_parameter`
 transactions. `source_out` is exclusive; null uses the source duration.
