@@ -43,13 +43,13 @@ pub fn call(studio: &mut Studio, name: &str, args: &Value) -> Result<Value> {
     }
     if name == "diagnostics" {
         return Ok(
-            json!({"initialized":true,"adapter":studio.renderer.adapter.name,"snapshot":studio.renderer.try_diagnostics()?,"preview_rendering":studio.displayed_ticket != studio.wanted}),
+            json!({"initialized":true,"adapter":studio.renderer.adapter.name,"snapshot":studio.renderer.try_diagnostics()?,"preview_rendering":studio.preview_pending}),
         );
     }
     let project = &studio.project;
     if name == "inspect" {
         return Ok(
-            json!({"session":project.session,"revision":project.document.revision(),"composition":project.document.snapshot(),"history":project.document.history(),"selected":project.selected,"preview":{"node":project.preview.unwrap_or(project.document.snapshot().output),"frame":project.frame,"rendering":studio.displayed_ticket != studio.wanted},"viewer":{"exposure":studio.view.exposure,"alpha":studio.view.alpha,"scale":studio.navigation.manual_scale(),"pan":studio.navigation.pan()},"inspector_draft":studio.draft_dirty,"busy":studio.files.busy() || studio.authoring_dialog_open() || studio.graph.dragging(),"status":studio.status,"error":studio.error}),
+            json!({"session":project.session,"revision":project.document.revision(),"composition":project.document.snapshot(),"history":project.document.history(),"selected":project.selected,"preview":{"node":project.preview.unwrap_or(project.document.snapshot().output),"frame":project.frame,"displayed_time":studio.displayed_time,"rendering":studio.preview_pending},"viewer":{"exposure":studio.view.exposure,"alpha":studio.view.alpha,"scale":studio.navigation.manual_scale(),"pan":studio.navigation.pan()},"inspector_draft":studio.draft_dirty,"busy":studio.files.busy() || studio.authoring_dialog_open() || studio.graph.dragging(),"status":studio.status,"error":studio.error}),
         );
     }
     let session: NodeId = args["session"]

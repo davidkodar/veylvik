@@ -110,6 +110,9 @@ foreground-over-background behavior.
 ```
 
 The viewer consumes GPU-resident frames on the same Vulkan device as the UI.
+Playback lets each requested preview finish, then skips ahead to the current
+clock time if rendering is slower than the composition frame rate. Scrubbing
+and explicit edits still replace obsolete requests. Render errors stop playback.
 **View exposure** adjusts only the display by −16 to +16 stops. **Alpha** shows
 coverage as grayscale, independent of exposure; **Reset view** restores normal
 color viewing. These controls do not change the document, history or exports.
@@ -392,7 +395,10 @@ Edits run on the UI thread, appear in the editor, and share its undo history.
 Unapplied inspector drafts, active node drags, and file jobs block remote changes.
 Image assets must already be loaded through the editor. `preview` accepts an
 absolute `frame` in 0–1000000 and optional `node`, pauses playback, and requests
-an asynchronous GPU preview. Live tools do not save or export files; normal UI
+an asynchronous GPU preview. Live inspection reports `preview.displayed_time`
+for the last successfully displayed frame, separately from the requested frame;
+`preview.rendering` is false after either completion or failure.
+Live tools do not save or export files; normal UI
 file actions remain available. Both transports bound incoming messages to 4 MiB.
 
 ## Development
@@ -409,7 +415,7 @@ available. Default tests leave it explicitly ignored so document/control tests
 can run on machines without graphics. CI runs it with Mesa's software Vulkan;
 hardware validation remains a separate check.
 
-The workspace has five boundaries:
+The workspace has seven crates:
 
 - `veylvik-document`: serialization, exact time, curves, graph validation,
   transactional editing, undo/redo, and atomic persistence. No GPU dependencies.

@@ -106,6 +106,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 displayed: None,
                 displayed_ticket: None,
                 wanted: None,
+                preview_pending: false,
+                displayed_time: None,
                 draft,
                 draft_dirty: false,
                 graph: graph::Graph::default(),
@@ -152,6 +154,8 @@ struct Studio {
     displayed: Option<Arc<DisplayFrame>>,
     displayed_ticket: Option<PreviewTicket>,
     wanted: Option<PreviewTicket>,
+    preview_pending: bool,
+    displayed_time: Option<veylvik_document::Time>,
     draft: Node,
     draft_dirty: bool,
     graph: graph::Graph,
@@ -190,6 +194,7 @@ impl Studio {
         self.navigation.fit();
         self.displayed = None;
         self.displayed_ticket = None;
+        self.displayed_time = None;
         self.refresh_draft();
         self.request_preview();
     }
@@ -266,6 +271,7 @@ impl Studio {
     }
     fn request_preview(&mut self) {
         self.wanted = None;
+        self.preview_pending = false;
         let result = (|| {
             let scheduler = self
                 .scheduler
@@ -282,10 +288,14 @@ impl Studio {
         match result {
             Ok(ticket) => {
                 self.wanted = Some(ticket);
+                self.preview_pending = true;
                 self.status = "Rendering…".into();
                 self.error = false;
             }
-            Err(e) => self.fail(e),
+            Err(e) => {
+                self.playing = false;
+                self.fail(e);
+            }
         }
     }
     fn apply_draft(&mut self) -> bool {
@@ -1145,26 +1155,37 @@ impl eframe::App for Studio {
         ctx.request_repaint_after(Duration::from_secs(2));
         if let Some(scheduler) = &self.scheduler {
             match scheduler.try_take() {
-                Ok(Some(result)) if self.wanted == Some(result.ticket) => match result.frame {
-                    Ok(frame) => {
-                        self.displayed = Some(self.display.frame(
-                            &self.renderer,
-                            frame,
-                            self.view,
-                            viewer::ViewTransform::default(),
-                        ));
-                        self.displayed_ticket = Some(result.ticket);
-                        if !self.error && !self.files.busy() {
-                            self.status = format!(
-                                "{:.1} ms · {}",
-                                result.elapsed.as_secs_f64() * 1000.0,
-                                self.renderer.adapter.name
-                            );
+                Ok(Some(result)) if self.wanted == Some(result.ticket) => {
+                    self.preview_pending = false;
+                    match result.frame {
+                        Ok(frame) => {
+                            self.displayed = Some(self.display.frame(
+                                &self.renderer,
+                                frame,
+                                self.view,
+                                viewer::ViewTransform::default(),
+                            ));
+                            self.displayed_ticket = Some(result.ticket);
+                            self.displayed_time = Some(result.request.time);
+                            if !self.error && !self.files.busy() {
+                                self.status = format!(
+                                    "{:.1} ms · {}",
+                                    result.elapsed.as_secs_f64() * 1000.0,
+                                    self.renderer.adapter.name
+                                );
+                            }
+                        }
+                        Err(e) => {
+                            self.playing = false;
+                            self.fail(e);
                         }
                     }
-                    Err(e) => self.fail(e),
-                },
-                Err(e) => self.fail(e),
+                }
+                Err(e) => {
+                    self.preview_pending = false;
+                    self.playing = false;
+                    self.fail(e);
+                }
                 _ => {}
             }
         }
@@ -1173,7 +1194,9 @@ impl eframe::App for Studio {
             let elapsed =
                 (self.playback.elapsed().as_secs_f64() * fps.ticks as f64 / fps.rate as f64) as i64;
             let frame = (self.playback_frame + elapsed) % (self.end_frame + 1);
-            if frame != self.project.frame {
+            // Playback must let an active frame finish before submitting again.
+            // Explicit edits and scrubbing still replace obsolete work immediately.
+            if frame != self.project.frame && !self.preview_pending {
                 self.project.frame = frame;
                 self.request_preview();
             }
