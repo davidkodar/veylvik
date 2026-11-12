@@ -61,6 +61,16 @@ impl Project {
         project.load_available_inputs();
         Ok(project)
     }
+    pub fn example(id: &str) -> Result<Self> {
+        let scene = veylvik_document::presets::showcase::build(id)?;
+        let mut project = Self::blank(960, 540, Time::new(24, 1)?, 96)?;
+        project.selected = scene.composition.output;
+        project.frame = 48;
+        project.document = Document::new(scene.composition)?;
+        // Like the startup demo, viewing or playing a bundled example is clean.
+        project.saved_revision = Some(0);
+        Ok(project)
+    }
     pub fn blank(width: u32, height: u32, frame_rate: Time, frame_count: u32) -> Result<Self> {
         let mut composition = veylvik_document::blank(width, height, frame_rate)?;
         composition.frame_count = frame_count;
@@ -760,6 +770,19 @@ mod save_tests {
 #[cfg(test)]
 mod startup_tests {
     use super::*;
+    #[test]
+    fn examples_are_clean_until_edited() {
+        for entry in veylvik_document::presets::builtin::ALL {
+            let mut project = Project::example(entry.id).unwrap();
+            assert!(project.path.is_none());
+            project.frame = 48;
+            assert!(!project.dirty());
+            project
+                .apply(&[Command::FrameCount { frame_count: 120 }])
+                .unwrap();
+            assert!(project.dirty());
+        }
+    }
     #[test]
     fn viewing_the_startup_demo_is_clean_but_authored_work_is_dirty() {
         let mut project = Project::open(None).unwrap();

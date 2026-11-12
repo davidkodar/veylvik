@@ -22,6 +22,7 @@ mod node_palette;
 mod preset_library;
 mod preview_images;
 mod project;
+mod showcase_gallery;
 mod transform_handles;
 mod viewer;
 use display::{Display, DisplayFrame, Paint, ViewSettings};
@@ -161,6 +162,7 @@ enum Leave {
     Open,
     New,
     Recover(veylvik_document::NodeId),
+    Example(&'static str),
     Close,
 }
 struct Studio {
@@ -584,6 +586,10 @@ impl Studio {
                 self.allow_close = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }
+            Leave::Example(id) => match Project::example(id) {
+                Ok(project) => self.open_project(project, ctx),
+                Err(e) => self.fail(e),
+            },
             Leave::New => self
                 .composition_controls
                 .begin(self.project.document.snapshot(), true),

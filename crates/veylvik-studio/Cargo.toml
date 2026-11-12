@@ -10,6 +10,7 @@ veylvik-render.workspace = true
 veylvik-io.workspace = true
 wgpu.workspace = true
 bytemuck.workspace = true
+image.workspace = true
 pollster.workspace = true
 serde_json.workspace = true
 serde.workspace = true

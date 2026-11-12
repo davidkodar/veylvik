@@ -1,6 +1,7 @@
 //! Portable, versioned effect graphs. Boundary sources are supplied by the host;
 //! files contain no filesystem dependencies or application/session state.
 pub mod builtin;
+pub mod showcase;
 use crate::{
     Command, Composition, Error, Node, NodeId, NodePosition, Operation, Result, Time, fail,
     groups::Group,

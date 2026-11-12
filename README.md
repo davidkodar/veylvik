@@ -212,7 +212,16 @@ input names, defaults and controls save with the composition. Nested groups are 
 contours; **Liquid Shimmer** adds a smooth four-second flow loop with protected
 frame edges. Every starter remains an editable group with public controls.
 
-Select an effect, choose the image for each named input, then **Add effect**.
+Starter cards play short rendered examples. Select a card for **Before / After**,
+pause and frame scrubbing. **Try example** opens a complete editable four-second
+scene: **After hours** (neon title), **Prism / identity** (floating emblem), or
+**Fluid type** (liquid lettering). Unsaved work uses the normal save/discard/cancel
+prompt. Playing an untouched example does not mark it modified; Save As creates
+your own project. The shapes, palette, motion and effect controls are editable,
+with no external fonts or media required.
+
+Choose **Apply to my composition**, select the image for each named input, then
+**Add effect**. Saved custom effects open directly at input selection.
 Insertion creates independent nodes and one undo step, selects its preview, and
 leaves the composition output unchanged. Use **Set as output** when ready.
 Presets retain their authored pixel values and exact animation times; they do not
@@ -1090,3 +1099,11 @@ not an open editor’s cached images. Missing or invalid images fail collection;
 normal failures remove the files created by that attempt. An interrupted process
 may leave an incomplete folder. Limits are 64 MiB per encoded image, 128 MiB per
 decoded image, and 1 GiB of total encoded image data. No Vulkan device is needed.
+
+Bundled library previews are generated from the editable showcase factories using
+the Vulkan renderer (48 frames at 12 fps, downsampled to 320 × 180). Regenerate
+them after changing a showcase or starter effect:
+
+```sh
+cargo run -p veylvik-io --example showcase_previews -- crates/veylvik-studio/assets/showcase
+```

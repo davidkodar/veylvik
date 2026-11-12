@@ -3665,6 +3665,7 @@ dependencies = [
  "ashpd",
  "bytemuck",
  "eframe",
+ "image",
  "pollster",
  "serde",
  "serde_json",

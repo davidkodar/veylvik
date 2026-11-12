@@ -89,3 +89,27 @@ fn starter_effects_render_identically_after_portable_round_trip_and_shimmer_anim
         }
     }
 }
+
+#[test]
+#[ignore = "requires Vulkan"]
+fn showcase_scenes_have_visible_effects_motion_and_seamless_endpoints() {
+    let renderer = Renderer::new().unwrap();
+    for entry in builtin::ALL {
+        let scene = presets::showcase::build(entry.id).unwrap();
+        let after = Plan::compile(&scene.composition).unwrap();
+        let before = Plan::compile_output(&scene.composition, scene.before).unwrap();
+        let start = renderer.render(&after, Time::new(0, 1).unwrap()).unwrap();
+        let middle = renderer.render(&after, Time::new(2, 1).unwrap()).unwrap();
+        let end = renderer.render(&after, Time::new(4, 1).unwrap()).unwrap();
+        let untreated = renderer.render(&before, Time::new(2, 1).unwrap()).unwrap();
+        assert_eq!(start, end, "{} loop seam", entry.id);
+        assert_ne!(start, middle, "{} has no motion", entry.id);
+        let changed = middle
+            .iter()
+            .zip(&untreated)
+            .filter(|(a, b)| (0..3).any(|i| (a[i] - b[i]).abs() > 0.01))
+            .count();
+        assert!(changed > 2000, "{} effect is not visible", entry.id);
+        assert!(middle.iter().flatten().all(|v| v.is_finite()));
+    }
+}

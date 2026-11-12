@@ -15,6 +15,8 @@ pub struct Library {
     pub listing: veylvik_io::presets::Listing,
     pub ready: Option<Preset>,
     query: String,
+    gallery: crate::showcase_gallery::Gallery,
+    detail: Option<&'static str>,
     inputs: BTreeMap<String, NodeId>,
     position: Option<NodePosition>,
     identity: Option<(NodeId, u64)>,
@@ -34,6 +36,7 @@ impl Source {
 }
 enum Action {
     Refresh,
+    Example(&'static str),
     Import,
     Load(Source),
     Export,
@@ -111,7 +114,8 @@ impl Studio {
         let mut open = true;
         let mut action = None;
         egui::Window::new("Effect library").id(egui::Id::new("effect-library")).open(&mut open).collapsible(false)
-            .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO).default_width(560.0).show(ctx, |ui| {
+            .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO).default_width(560.0).default_height(560.0).show(ctx, |ui| {
+                egui::ScrollArea::vertical().max_height((ctx.content_rect().height()-100.0).max(220.0)).show(ui, |ui| {
                 ui.add_enabled_ui(!self.files.busy(), |ui| {
                     if let Some(preset) = &self.library.ready {
                         ui.heading(&preset.group.label);
@@ -134,15 +138,34 @@ impl Studio {
                             if ui.button("Export preset…").clicked() { action = Some(Action::Export); }
                             if ui.button("Back").clicked() { self.library.ready = None; }
                         });
+                    } else if let Some(id) = self.library.detail {
+                        let entry = builtin::ALL.iter().find(|e| e.id==id).unwrap();
+                        ui.heading(veylvik_document::presets::showcase::title(id));
+                        ui.add(egui::Label::new(veylvik_document::presets::showcase::description(id)).wrap());
+                        ui.horizontal_wrapped(|ui| {
+                            if ui.button("Try example").clicked() { action=Some(Action::Example(id)); }
+                            if ui.button("Apply to my composition").clicked() { action=Some(Action::Load(Source::Builtin(id))); }
+                            if ui.button("Back to library").clicked() { self.library.detail=None; }
+                        });
+                        ui.separator();
+                        self.library.gallery.detail(ui,id);
+                        ui.weak(format!("{} · 4 seconds · editable vector scene",entry.label));
                     } else {
                         ui.add(egui::TextEdit::singleline(&mut self.library.query).hint_text("Search effects…").desired_width(f32::INFINITY));
                         let words: Vec<_> = self.library.query.to_lowercase().split_whitespace().map(str::to_owned).collect();
                         let matches = |text: &str| words.iter().all(|w| text.to_lowercase().contains(w));
-                        egui::ScrollArea::vertical().max_height(320.0).show(ui, |ui| {
+                        egui::ScrollArea::vertical().max_height(400.0).show(ui, |ui| {
                             ui.strong("Starter effects");
                             for entry in builtin::ALL {
                                 if matches(&format!("{} {}", entry.label, entry.description)) {
-                                    ui.group(|ui| { if ui.button(entry.label).clicked() { action = Some(Action::Load(Source::Builtin(entry.id))); } ui.label(entry.description); });
+                                    ui.group(|ui| { ui.horizontal(|ui| {
+                                        if self.library.gallery.card(ui,entry.id).clicked() { self.library.detail=Some(entry.id); }
+                                        ui.vertical(|ui| {
+                                            if ui.button(entry.label).clicked() { self.library.detail=Some(entry.id); }
+                                            ui.add(egui::Label::new(entry.description).wrap());
+                                            ui.weak("Explore example");
+                                        });
+                                    }); });
                                 }
                             }
                             ui.separator(); ui.strong("Your effects");
@@ -169,12 +192,17 @@ impl Studio {
                 });
                 if self.files.busy() { ui.spinner(); }
                 if self.error { ui.colored_label(egui::Color32::LIGHT_RED, &self.status); }
+                });
             });
         if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
             open = false;
         }
         self.library.open &= open;
         match action {
+            Some(Action::Example(id)) => {
+                self.library.open = false;
+                self.leave(crate::Leave::Example(id), ctx);
+            }
             Some(Action::Refresh) => self.refresh_presets(),
             Some(Action::Load(source)) => {
                 let result = self
