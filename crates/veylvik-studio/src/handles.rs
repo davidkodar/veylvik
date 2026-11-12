@@ -2,6 +2,40 @@
 use eframe::egui::{self, Color32, Pos2, Rect, Sense, Stroke, Vec2};
 use veylvik_document::{Operation, Result, Scalar, Time};
 
+/// Claim the press origin, even when a motion event in the same UI frame has
+/// already moved the pointer outside this small handle's hit rectangle.
+pub(super) fn interact(ui: &egui::Ui, hit: Rect, id: egui::Id) -> egui::Response {
+    let press = ui.input(|input| {
+        (input.pointer.primary_pressed() && input.pointer.primary_down())
+            .then(|| input.pointer.press_origin())
+            .flatten()
+    });
+    if ui.is_enabled()
+        && let Some(origin) = press
+        && hit.contains(origin)
+        && ui.clip_rect().contains(origin)
+        && ui.ctx().layer_id_at(origin) == Some(ui.layer_id())
+    {
+        ui.ctx().set_dragged_id(id);
+    }
+    ui.interact(hit, id, Sense::drag())
+}
+
+pub(super) fn drag_delta(response: &egui::Response) -> Vec2 {
+    response
+        .ctx
+        .input(|input| {
+            input.pointer.primary_pressed().then(|| {
+                input
+                    .pointer
+                    .interact_pos()
+                    .zip(input.pointer.press_origin())
+                    .map_or(Vec2::ZERO, |(current, origin)| current - origin)
+            })
+        })
+        .unwrap_or_else(|| response.drag_delta())
+}
+
 pub(super) fn edit(scalar: &mut Scalar, time: Time, delta: f32, min: f32, max: f32) -> Result<()> {
     let value = (scalar.at(time)? + delta).clamp(min, max);
     if let Scalar::Constant { value: current } = scalar {
@@ -154,14 +188,14 @@ pub fn show(
         if !hit.is_positive() {
             continue;
         }
-        let response = ui
-            .interact(hit, ui.id().with(("geometry_handle", index)), Sense::drag())
+        let response = interact(ui, hit, ui.id().with(("geometry_handle", index)))
             .on_hover_cursor(egui::CursorIcon::Grab)
             .on_hover_text(hint);
         painter.circle_filled(point, 5.0, Color32::from_gray(25));
         painter.circle_stroke(point, 5.0, Stroke::new(1.5_f32, color));
-        if response.dragged() && response.drag_delta() != Vec2::ZERO {
-            move_handle(operation, index, response.drag_delta() / scale, time)?;
+        let delta = drag_delta(&response);
+        if response.dragged() && delta != Vec2::ZERO {
+            move_handle(operation, index, delta / scale, time)?;
             changed = true;
         }
     }
@@ -238,5 +272,74 @@ mod tests {
             .is_err()
         );
         assert_eq!(serde_json::to_vec(&operation).unwrap(), before);
+    }
+}
+
+#[cfg(test)]
+mod interaction_tests {
+    use super::*;
+
+    #[test]
+    fn coalesced_press_and_motion_move_the_handle_without_panning() {
+        let ctx = egui::Context::default();
+        let mut operation = Operation::Ellipse {
+            x: 100.0.into(),
+            y: 100.0.into(),
+            radius_x: 25.0.into(),
+            radius_y: 25.0.into(),
+            feather: 1.0.into(),
+        };
+        let mut nav = crate::viewer::Navigation::default();
+        let mut origin = Pos2::ZERO;
+        let mut run = |events| {
+            let _ = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(Pos2::ZERO, egui::vec2(400.0, 300.0))),
+                    events,
+                    ..Default::default()
+                },
+                |ui| {
+                    egui::CentralPanel::default().show_inside(ui, |ui| {
+                        let image = egui::vec2(320.0, 240.0);
+                        let (canvas, response) =
+                            ui.allocate_exact_size(image, Sense::click_and_drag());
+                        nav.interact(ui, &response, canvas, image);
+                        origin = canvas.min + egui::vec2(100.0, 100.0);
+                        show(
+                            ui,
+                            canvas,
+                            nav.transform(canvas, image, 1.0),
+                            image,
+                            &mut operation,
+                            Time::new(0, 1).unwrap(),
+                        )
+                        .unwrap();
+                    });
+                },
+            );
+            origin
+        };
+        let origin = run(vec![]);
+        run(vec![egui::Event::PointerMoved(origin)]);
+        let moved = origin + egui::vec2(40.0, 20.0);
+        run(vec![
+            egui::Event::PointerButton {
+                pos: origin,
+                button: egui::PointerButton::Primary,
+                pressed: true,
+                modifiers: egui::Modifiers::NONE,
+            },
+            egui::Event::PointerMoved(moved),
+        ]);
+        run(vec![egui::Event::PointerButton {
+            pos: moved,
+            button: egui::PointerButton::Primary,
+            pressed: false,
+            modifiers: egui::Modifiers::NONE,
+        }]);
+        assert_eq!(nav.pan(), [0.0, 0.0]);
+        let time = Time::new(0, 1).unwrap();
+        assert_eq!(operation.scalar("x").unwrap().at(time).unwrap(), 140.0);
+        assert_eq!(operation.scalar("y").unwrap().at(time).unwrap(), 120.0);
     }
 }

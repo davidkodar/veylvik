@@ -1,5 +1,5 @@
 //! Direct affine authoring in image coordinates; viewer navigation stays separate.
-use eframe::egui::{self, Color32, Rect, Sense, Stroke, Vec2};
+use eframe::egui::{self, Color32, Rect, Stroke, Vec2};
 use veylvik_document::{Operation, Result, Time};
 
 struct Geometry {
@@ -177,12 +177,7 @@ pub fn show(
         if !hit.is_positive() {
             continue;
         }
-        let response = ui
-            .interact(
-                hit,
-                ui.id().with(("transform_handle", index)),
-                Sense::drag(),
-            )
+        let response = crate::handles::interact(ui, hit, ui.id().with(("transform_handle", index)))
             .on_hover_cursor(egui::CursorIcon::Grab)
             .on_hover_text(hint);
         if index == 3 {
@@ -191,14 +186,15 @@ pub fn show(
             painter.circle_filled(point, 5.0, Color32::from_gray(25));
             painter.circle_stroke(point, 5.0, Stroke::new(1.5_f32, color));
         }
+        let delta = crate::handles::drag_delta(&response);
         if response.dragged()
-            && response.drag_delta() != Vec2::ZERO
+            && delta != Vec2::ZERO
             && let Some(pointer) = response.interact_pointer_pos()
         {
             move_handle(
                 operation,
                 index,
-                response.drag_delta() / scale,
+                delta / scale,
                 (pointer - origin) / scale,
                 image,
                 time,

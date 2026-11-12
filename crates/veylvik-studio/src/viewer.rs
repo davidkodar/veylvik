@@ -86,7 +86,12 @@ impl Navigation {
                 self.zoom_at(factor, point, canvas, image, ui.ctx().pixels_per_point());
             }
         }
-        if response.dragged() {
+        // Let small authoring handles claim a coalesced press/motion first.
+        // Their press-origin hit test runs later in the same UI pass.
+        if response.dragged()
+            && ui.ctx().dragged_id() == Some(response.id)
+            && !ui.input(|input| input.pointer.primary_pressed())
+        {
             self.scale = Some(self.scale(canvas, image, ui.ctx().pixels_per_point()));
             self.pan += response.drag_delta();
             self.limit_pan();
