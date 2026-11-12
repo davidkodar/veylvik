@@ -10,6 +10,7 @@ pub enum ParameterKind {
     Seed,
     Color,
     Asset,
+    Path,
 }
 #[derive(Debug, Clone, Copy, Serialize)]
 pub struct Parameter {
@@ -28,6 +29,9 @@ impl Parameter {
             ParameterKind::Seed => json!(self.default as u32),
             ParameterKind::Color => json!([0.0, 0.0, 0.0, 1.0]),
             ParameterKind::Asset => json!("image.png"),
+            ParameterKind::Path => {
+                serde_json::to_value(crate::vector::PathMask::default()).unwrap()
+            }
         }
     }
     fn schema(&self) -> Value {
@@ -43,6 +47,7 @@ impl Parameter {
             ParameterKind::Color => {
                 json!({"type":"array","minItems":4,"maxItems":4,"prefixItems":[{"type":"number"},{"type":"number"},{"type":"number"},{"type":"number","minimum":0,"maximum":1}]})
             }
+            ParameterKind::Path => crate::vector::schema(),
             ParameterKind::Asset => {
                 json!({"type":"string","minLength":1,"maxLength":MAX_ASSET_NAME})
             }
@@ -208,8 +213,16 @@ pub static MASK: NodeType = NodeType {
     inputs: &["image", "mask"],
     parameters: &[],
 };
+pub static PATH: NodeType = NodeType {
+    type_id: "path",
+    version: 1,
+    label: "Path mask",
+    description: "Closed vector contours rasterized into an antialiased white alpha mask.",
+    inputs: &[],
+    parameters: &[other("geometry", ParameterKind::Path, "pixels")],
+};
 pub static TYPES: &[&NodeType] = &[
-    &SOLID, &NOISE, &EXPOSURE, &TRANSFORM, &BLUR, &MERGE, &IMAGE, &AFFINE, &ELLIPSE, &MASK,
+    &SOLID, &NOISE, &EXPOSURE, &TRANSFORM, &BLUR, &MERGE, &IMAGE, &AFFINE, &ELLIPSE, &MASK, &PATH,
 ];
 pub fn operation_schema() -> Value {
     json!({"oneOf":TYPES.iter().map(|node|node.schema()).collect::<Vec<_>>()})

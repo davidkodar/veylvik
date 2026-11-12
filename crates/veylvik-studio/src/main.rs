@@ -1,6 +1,7 @@
 mod animation;
 mod control;
 mod sequence;
+mod vector_editor;
 use animation::scalar;
 mod display;
 mod files;
@@ -642,6 +643,9 @@ impl Studio {
             .time()
             .unwrap_or(veylvik_document::Time { ticks: 0, rate: 1 });
         match &mut self.draft.operation {
+            Operation::Path { geometry } => {
+                self.draft_dirty |= vector_editor::edit(ui, geometry);
+            }
             Operation::Solid { color } => {
                 ui.label("Linear RGB and alpha");
                 for (i, label) in ["Red", "Green", "Blue", "Alpha"].iter().enumerate() {

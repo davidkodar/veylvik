@@ -96,3 +96,30 @@ impl PathMask {
         Ok(())
     }
 }
+
+impl Default for PathMask {
+    fn default() -> Self {
+        Self {
+            fill_rule: FillRule::NonZero,
+            commands: vec![
+                PathCommand::Move { to: [100.0, 100.0] },
+                PathCommand::Line { to: [400.0, 100.0] },
+                PathCommand::Line { to: [400.0, 300.0] },
+                PathCommand::Line { to: [100.0, 300.0] },
+                PathCommand::Close {},
+            ],
+        }
+    }
+}
+/// Strict schema shared by graph authoring and MCP clients.
+pub fn schema() -> serde_json::Value {
+    use serde_json::json;
+    let point = json!({"type":"array","minItems":2,"maxItems":2,"items":{"type":"number","minimum":-MAX_PATH_COORDINATE,"maximum":MAX_PATH_COORDINATE}});
+    let commands: Vec<_> = [("move",vec!["to"]),("line",vec!["to"]),("quad",vec!["control","to"]),("cubic",vec!["control1","control2","to"]),("close",vec![])].into_iter().map(|(kind,fields)| {
+        let mut properties = json!({"command":{"const":kind}});
+        let mut required = vec!["command"];
+        for field in fields { properties[field] = point.clone(); required.push(field); }
+        json!({"type":"object","properties":properties,"required":required,"additionalProperties":false})
+    }).collect();
+    json!({"type":"object","properties":{"fill_rule":{"enum":["non_zero","even_odd"]},"commands":{"type":"array","minItems":1,"maxItems":MAX_PATH_COMMANDS,"items":{"oneOf":commands}}},"required":["fill_rule","commands"],"additionalProperties":false})
+}

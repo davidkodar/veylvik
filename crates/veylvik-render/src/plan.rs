@@ -53,6 +53,7 @@ pub(crate) enum Input {
     Empty,
     Value(usize),
     Asset(String),
+    Vector(usize),
 }
 pub(crate) struct Pass {
     pub node: usize,
@@ -113,6 +114,15 @@ impl Plan {
                 Operation::Affine { .. } => Kernel::Affine,
                 Operation::Ellipse { .. } => Kernel::Ellipse,
                 Operation::Mask => Kernel::Mask,
+                Operation::Path { .. } => {
+                    if composition.width > crate::MAX_VECTOR_DIMENSION
+                        || composition.height > crate::MAX_VECTOR_DIMENSION
+                    {
+                        return Err(error("vector mask dimensions exceed 4096"));
+                    }
+                    inputs[0] = Input::Vector(index);
+                    Kernel::Image
+                }
                 Operation::Image { asset } => {
                     inputs[0] = Input::Asset(asset.clone());
                     Kernel::Image
@@ -217,6 +227,15 @@ impl Plan {
             })
             .collect()
     }
+    pub(crate) fn vector_bytes(&self) -> u64 {
+        self.nodes
+            .iter()
+            .filter(|n| matches!(n.operation, Operation::Path { .. }))
+            .count() as u64
+            * u64::from(self.width)
+            * u64::from(self.height)
+            * 16
+    }
     /// Working bytes when pixels stay on the GPU (only a 4-byte validation result is read).
     pub fn gpu_working_bytes(&self) -> u64 {
         self.working_bytes() - self.width as u64 * self.height as u64 * 16 + 8
@@ -224,6 +243,7 @@ impl Plan {
     /// Declared GPU buffer bytes, excluding source uploads and driver/staging overhead.
     pub fn working_bytes(&self) -> u64 {
         self.width as u64 * self.height as u64 * 16 * (self.slot_count as u64 + 1)
+            + self.vector_bytes()
             + self.passes.len() as u64 * 48
             + 16
     }

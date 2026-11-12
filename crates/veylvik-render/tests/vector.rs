@@ -127,3 +127,67 @@ fn vector_masks_preserve_winding_curves_resize_and_gpu_compositing() {
     assert!(renderer.render_path_mask(&invalid, 32, 32).is_err());
     assert_eq!(renderer.resource_stats().unwrap().buffers_created, before);
 }
+
+#[test]
+#[ignore = "requires Vulkan"]
+fn path_nodes_render_cache_edit_and_preflight_without_external_assets() {
+    use veylvik_document::*;
+    let mut renderer = Renderer::new().unwrap();
+    let geometry = rectangles(FillRule::EvenOdd);
+    let node = Node::new(
+        "path",
+        Operation::Path {
+            geometry: geometry.clone(),
+        },
+        &[],
+    );
+    let mut doc = demo();
+    doc.width = 32;
+    doc.height = 32;
+    doc.output = node.id;
+    doc.nodes = [(node.id, node)].into();
+    let plan = Plan::compile(&doc).unwrap();
+    assert!(plan.required_assets().is_empty());
+    let request = RenderRequest::full(Time::new(0, 1).unwrap());
+    let inputs = ImageInputs::default();
+    let reference = renderer.render_path_mask(&geometry, 32, 32).unwrap();
+    let expected = renderer.read_frame(&reference).unwrap().pixels;
+    drop(reference);
+    let frame = renderer.render_gpu_cached(&plan, request, &inputs).unwrap();
+    assert_eq!(renderer.read_frame(&frame).unwrap().pixels, expected);
+    let again = renderer.render_gpu_cached(&plan, request, &inputs).unwrap();
+    assert!(std::sync::Arc::ptr_eq(&frame, &again));
+    doc.nodes.get_mut(&doc.output).unwrap().label = "renamed".into();
+    let renamed = renderer
+        .render_gpu_cached(&Plan::compile(&doc).unwrap(), request, &inputs)
+        .unwrap();
+    assert!(std::sync::Arc::ptr_eq(&frame, &renamed));
+    let Operation::Path { geometry } = &mut doc.nodes.get_mut(&doc.output).unwrap().operation
+    else {
+        unreachable!()
+    };
+    geometry.fill_rule = FillRule::NonZero;
+    let edited = renderer
+        .render_gpu_cached(&Plan::compile(&doc).unwrap(), request, &inputs)
+        .unwrap();
+    assert!(!std::sync::Arc::ptr_eq(&frame, &edited));
+    assert_eq!(
+        renderer.read_frame(&edited).unwrap().pixels[16 * 32 + 16],
+        [1.0; 4]
+    );
+    drop((frame, again, renamed, edited));
+    renderer.clear_frame_cache().unwrap();
+    renderer.trim_resources().unwrap();
+    renderer.budget_bytes = plan.gpu_working_bytes() - 1;
+    let before = renderer.resource_stats().unwrap().buffers_created;
+    assert!(renderer.render_gpu(&plan, request, &inputs).is_err());
+    assert_eq!(renderer.resource_stats().unwrap().buffers_created, before);
+    renderer.budget_bytes = plan.gpu_working_bytes();
+    assert!(renderer.render_gpu(&plan, request, &inputs).is_ok());
+    doc.width = MAX_VECTOR_DIMENSION + 1;
+    assert!(Plan::compile(&doc).is_err());
+    let solid = Node::new("small preview", Operation::Solid { color: [0.0; 4] }, &[]);
+    let output = solid.id;
+    doc.nodes.insert(output, solid);
+    assert!(Plan::compile_output(&doc, output).is_ok());
+}

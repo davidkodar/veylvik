@@ -22,9 +22,25 @@ fn animated_mask_composition_matches_cli_and_mcp() {
     let name = format!("veylvik-motion-{}-{unique}", std::process::id());
     let root = Scratch(std::env::temp_dir().join(name));
     fs::create_dir(&root.0).unwrap();
-    veylvik_document::motion_demo()
-        .save(&root.0.join("motion.veylvik"))
-        .unwrap();
+    let mut document = veylvik_document::motion_demo();
+    // Exercise persisted vector masks through both command transports as well
+    // as the animated procedural masks already present in the demo.
+    let path = veylvik_document::Node::new(
+        "vector mask",
+        veylvik_document::Operation::Path {
+            geometry: veylvik_document::vector::PathMask::default(),
+        },
+        &[],
+    );
+    let output = veylvik_document::Node::new(
+        "vector composite",
+        veylvik_document::Operation::Merge,
+        &[("background", document.output), ("foreground", path.id)],
+    );
+    document.nodes.insert(path.id, path);
+    document.output = output.id;
+    document.nodes.insert(output.id, output);
+    document.save(&root.0.join("motion.veylvik")).unwrap();
     let messages = [
         json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"test","version":"1"}}}),
         json!({"jsonrpc":"2.0","method":"notifications/initialized"}),
@@ -67,7 +83,7 @@ fn animated_mask_composition_matches_cli_and_mcp() {
     let catalog = replies[1]["result"]["structuredContent"]["nodes"]
         .as_array()
         .unwrap();
-    for kind in ["affine", "ellipse", "mask"] {
+    for kind in ["affine", "ellipse", "mask", "path"] {
         assert!(
             catalog
                 .iter()

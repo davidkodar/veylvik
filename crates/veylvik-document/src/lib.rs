@@ -63,6 +63,9 @@ pub enum Operation {
         feather: Scalar,
     },
     Mask,
+    Path {
+        geometry: vector::PathMask,
+    },
 }
 impl Operation {
     pub fn descriptor(&self) -> &'static registry::NodeType {
@@ -77,6 +80,7 @@ impl Operation {
             Self::Affine { .. } => &registry::AFFINE,
             Self::Ellipse { .. } => &registry::ELLIPSE,
             Self::Mask => &registry::MASK,
+            Self::Path { .. } => &registry::PATH,
         }
     }
     pub fn inputs(&self) -> &'static [&'static str] {
@@ -136,6 +140,7 @@ impl Operation {
             }
         }
         match self {
+            Self::Path { geometry } => geometry.validate(),
             Self::Solid { color }
                 if color.iter().any(|v| !v.is_finite()) || !(0.0..=1.0).contains(&color[3]) =>
             {

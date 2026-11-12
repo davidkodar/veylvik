@@ -208,8 +208,11 @@ produces a GPU frame suitable for `insert_gpu` and the Apply mask node. Geometry
 preparation uses Vello Hybrid on CPU; coverage rasterization uses Vulkan. The
 coverage target is 8-bit, while the masked image retains scene-linear HDR color.
 Paths are limited to 4096 commands, coordinates within ±32768, and dimensions up
-to 4096 per axis. This is currently a library API, without path authoring in Studio
-or path commands in the document graph. Vello scratch memory is separate from the
+to 4096 per axis. The Path mask node persists this geometry in the composition and exposes its
+strict schema through MCP. Studio edits coordinates, fill rules, segments and
+contours in the inspector, with Apply/Revert and shared undo. Animate the result
+with an Affine node; path-point keyframes and on-canvas pen editing are not yet
+implemented. Vello scratch memory is separate from the
 compositor buffer budget; image atlases cannot grow and intermediate layers are
 disabled. `release_vector_resources` frees its persistent pipelines and scratch
 resources without invalidating retained output frames.

@@ -99,6 +99,10 @@ fn params(node: &Node, width: u32, height: u32, time: Time) -> Result<Params> {
             ];
             p.extra[0] = feather.at(time)?.max(1.0);
         }
+        Operation::Path { .. } => {
+            p.values = [width as f32, height as f32, 0.0, 0.0];
+            p.extra[0] = width as f32;
+        }
         Operation::Merge | Operation::Mask | Operation::Image { .. } => {}
     }
     Ok(p)
@@ -308,6 +312,34 @@ impl Renderer {
         inputs: &ImageInputs,
         download: bool,
     ) -> Result<(Executed, Region)> {
+        let mut vectors = BTreeMap::new();
+        if plan.vector_bytes() > 0 {
+            request.time.seconds()?;
+            if let Some(region) = request.region {
+                region.validate(plan.width, plan.height)?;
+            }
+            for node in &plan.nodes {
+                params(node, plan.width, plan.height, request.time)?;
+            }
+            let needed = (if download {
+                plan.working_bytes()
+            } else {
+                plan.gpu_working_bytes()
+            }) + self.source_bytes(plan, inputs)?;
+            if self.resource_stats()?.held_bytes.saturating_add(needed) > self.budget_bytes {
+                return Err(error(
+                    "render including vector masks exceeds GPU buffer budget",
+                ));
+            }
+            for (index, node) in plan.nodes.iter().enumerate() {
+                if let Operation::Path { geometry } = &node.operation {
+                    vectors.insert(
+                        index,
+                        self.render_path_mask(geometry, plan.width, plan.height)?,
+                    );
+                }
+            }
+        }
         let mut pool = self
             .pool
             .lock()
@@ -352,7 +384,8 @@ impl Renderer {
         } else {
             plan.gpu_working_bytes()
         } + source_bytes
-            + pool.stats().held_bytes;
+            + pool.stats().held_bytes
+            - plan.vector_bytes();
         if working_bytes > self.budget_bytes {
             return Err(error(format!(
                 "render requires {} bytes, budget is {}",
@@ -381,7 +414,7 @@ impl Renderer {
         }
         let validation = self.device.push_error_scope(wgpu::ErrorFilter::Validation);
         let allocation = self.device.push_error_scope(wgpu::ErrorFilter::OutOfMemory);
-        let result = self.encode_and_read(plan, &evaluated, byte_size, inputs, &mut pool, download);
+        let result = self.encode_and_read(plan, &evaluated, inputs, &vectors, &mut pool, download);
         let allocation_error = pollster::block_on(allocation.pop());
         let validation_error = pollster::block_on(validation.pop());
         if let Some(e) = allocation_error.or(validation_error) {
@@ -493,11 +526,12 @@ impl Renderer {
         &self,
         plan: &Plan,
         evaluated: &[Params],
-        byte_size: u64,
         inputs: &ImageInputs,
+        vectors: &BTreeMap<usize, GpuFrame>,
         pool: &mut pool::Pool,
         download: bool,
     ) -> Result<Executed> {
+        let byte_size = u64::from(plan.width) * u64::from(plan.height) * 16;
         let mut resources = pool.frame(self.budget_bytes);
         let dummy = resources.take(
             &self.device,
@@ -568,6 +602,7 @@ impl Renderer {
                     plan::Input::Empty => &dummy,
                     plan::Input::Value(slot) => &buffers[*slot],
                     plan::Input::Asset(key) => &sources[key.as_str()],
+                    plan::Input::Vector(index) => vectors[index].buffer(),
                 }
             };
             let bind = self.device.create_bind_group(&wgpu::BindGroupDescriptor {

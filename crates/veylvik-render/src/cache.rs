@@ -45,6 +45,47 @@ impl Key {
                 match input {
                     Input::Empty => words.extend([0, 0, 0]),
                     Input::Value(slot) => words.extend([1, *slot as u32, 0]),
+                    Input::Vector(index) => {
+                        use veylvik_document::vector::PathCommand::*;
+                        let veylvik_document::Operation::Path { geometry } =
+                            &plan.nodes[*index].operation
+                        else {
+                            unreachable!()
+                        };
+                        words.extend([
+                            3,
+                            geometry.fill_rule as u32,
+                            geometry.commands.len() as u32,
+                        ]);
+                        for command in &geometry.commands {
+                            match command {
+                                Move { to } => {
+                                    words.push(0);
+                                    words.extend(to.map(f32::to_bits));
+                                }
+                                Line { to } => {
+                                    words.push(1);
+                                    words.extend(to.map(f32::to_bits));
+                                }
+                                Quad { control, to } => {
+                                    words.push(2);
+                                    words.extend(control.map(f32::to_bits));
+                                    words.extend(to.map(f32::to_bits));
+                                }
+                                Cubic {
+                                    control1,
+                                    control2,
+                                    to,
+                                } => {
+                                    words.push(3);
+                                    words.extend(control1.map(f32::to_bits));
+                                    words.extend(control2.map(f32::to_bits));
+                                    words.extend(to.map(f32::to_bits));
+                                }
+                                Close {} => words.push(4),
+                            }
+                        }
+                    }
                     Input::Asset(asset) => {
                         let image = images
                             .source(asset)
