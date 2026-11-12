@@ -1,4 +1,4 @@
-//! Live tools execute on the UI thread against its single document owner.
+//! Live edits execute on the UI thread; image encoding uses immutable snapshots.
 use crate::Studio;
 use serde_json::{Value, json};
 use veylvik_document::{Command, NodeId, Operation};
@@ -25,10 +25,11 @@ fn build_catalog() -> Value {
         tool("apply","Validate or atomically apply commands to the open editor. Requires the session and revision from inspect. set_parameter and set_key preserve node identity and wiring. Image references must already be known to the editor; new paths require import. Unapplied inspector changes or file jobs block mutation.",json!({"session":session,"revision":revision,"dry_run":{"type":"boolean"},"commands":{"type":"array","minItems":1,"maxItems":4096,"items":veylvik_document::schema::command()}}),&["session","revision","commands"]),
         tool("undo","Undo one editor transaction.",json!({"session":session,"revision":revision}),&["session","revision"]),
         tool("redo","Redo one editor transaction.",json!({"session":session,"revision":revision}),&["session","revision"]),
+        tool("preview_image","Capture the current completed preview as an inline PNG without changing the editor. Use preview to pause/seek first; pending or stale frames are rejected. Captures applied pixels, excluding inspector drafts, overlays and viewer exposure/alpha settings. Encoding runs in the background; returned session/revision/time identify the captured snapshot.",json!({"session":session,"revision":revision,"max_edge":{"type":"integer","minimum":1,"maximum":1024}}),&["session","revision"]),
         tool("preview","Pause playback, seek to an absolute frame and optionally preview a node. The GPU preview is asynchronous; composition output is unchanged.",json!({"session":session,"revision":revision,"frame":{"type":"integer","minimum":0,"maximum":1000000},"node":{"type":"string","format":"uuid"}}),&["session","revision","frame"])
     ]})
 }
-pub fn call(studio: &mut Studio, name: &str, args: &Value) -> Result<Value> {
+fn validate_arguments(name: &str, args: &Value) -> Result<()> {
     let catalog = catalog_ref();
     let descriptor = catalog["tools"]
         .as_array()
@@ -47,6 +48,10 @@ pub fn call(studio: &mut Studio, name: &str, args: &Value) -> Result<Value> {
             return Err(format!("missing argument {key}").into());
         }
     }
+    Ok(())
+}
+pub fn call(studio: &mut Studio, name: &str, args: &Value) -> Result<Value> {
+    validate_arguments(name, args)?;
     if name == "nodes" {
         return Ok(veylvik_document::registry::catalog());
     }
@@ -62,7 +67,7 @@ pub fn call(studio: &mut Studio, name: &str, args: &Value) -> Result<Value> {
             .map(|value| value.as_bool().ok_or("summary must be boolean"))
             .transpose()?
             .unwrap_or(false);
-        let mut result = json!({"session":project.session,"revision":project.document.revision(),"history":project.document.history(),"selected":project.selected,"preview":{"node":project.preview.unwrap_or(project.document.snapshot().output),"frame":project.frame,"displayed_time":studio.displayed_time,"rendering":studio.preview_pending},"viewer":{"exposure":studio.view.exposure,"alpha":studio.view.alpha,"scale":studio.navigation.manual_scale(),"pan":studio.navigation.pan()},"unavailable_assets":project.unavailable_assets(),"inspector_draft":studio.draft_dirty,"busy":studio.files.busy() || studio.authoring_dialog_open() || studio.graph.dragging(),"status":studio.status,"error":studio.error});
+        let mut result = json!({"session":project.session,"revision":project.document.revision(),"history":project.document.history(),"selected":project.selected,"preview":{"node":project.preview.unwrap_or(project.document.snapshot().output),"frame":project.frame,"displayed_time":studio.displayed_time,"rendering":studio.preview_pending,"playing":studio.playing},"viewer":{"exposure":studio.view.exposure,"alpha":studio.view.alpha,"scale":studio.navigation.manual_scale(),"pan":studio.navigation.pan()},"unavailable_assets":project.unavailable_assets(),"inspector_draft":studio.draft_dirty,"busy":studio.files.busy() || studio.authoring_dialog_open() || studio.graph.dragging(),"status":studio.status,"error":studio.error});
         if summary {
             result["summary"] = veylvik_document::inspection::summary(project.document.snapshot());
         } else {
@@ -76,19 +81,7 @@ pub fn call(studio: &mut Studio, name: &str, args: &Value) -> Result<Value> {
         result["revision"] = json!(project.document.revision());
         return Ok(result);
     }
-    let session: NodeId = args["session"]
-        .as_str()
-        .ok_or("session must be a UUID")?
-        .parse()?;
-    if session != project.session {
-        return Err("editor session changed; inspect the open project again".into());
-    }
-    let revision = args["revision"]
-        .as_u64()
-        .ok_or("revision must be a nonnegative integer")?;
-    if revision != project.document.revision() {
-        return Err(format!("revision conflict: current {}", project.document.revision()).into());
-    }
+    let (session, revision) = identity(project, args)?;
     if studio.files.busy()
         || studio.authoring_dialog_open()
         || studio.confirm.is_some()
@@ -187,5 +180,81 @@ fn read_graph(document: &veylvik_document::Composition, name: &str, args: &Value
             .map(|value| value.as_str().ok_or("parameter must be a string"))
             .transpose()?;
         Ok(veylvik_document::inspection::node(document, id, parameter)?)
+    }
+}
+
+fn identity(project: &crate::project::Project, args: &Value) -> Result<(NodeId, u64)> {
+    let session: NodeId = args["session"]
+        .as_str()
+        .ok_or("session must be a UUID")?
+        .parse()?;
+    if session != project.session {
+        return Err("editor session changed; inspect the open project again".into());
+    }
+    let revision = args["revision"]
+        .as_u64()
+        .ok_or("revision must be a nonnegative integer")?;
+    if revision != project.document.revision() {
+        return Err(format!("revision conflict: current {}", project.document.revision()).into());
+    }
+    Ok((session, revision))
+}
+
+fn snapshot(studio: &Studio, args: &Value) -> Result<crate::preview_images::Snapshot> {
+    validate_arguments("preview_image", args)?;
+    let (session, revision) = identity(&studio.project, args)?;
+    let max_edge = args
+        .get("max_edge")
+        .map(|value| value.as_u64().ok_or("max_edge must be an integer"))
+        .transpose()?
+        .unwrap_or(512);
+    if !(1..=veylvik_io::preview::MAX_PREVIEW_EDGE as u64).contains(&max_edge) {
+        return Err("max_edge must be within 1..1024".into());
+    }
+    if studio.playing || studio.preview_pending || studio.displayed_ticket != studio.wanted {
+        return Err(
+            "preview is not ready; pause/seek with preview and wait for rendering to finish".into(),
+        );
+    }
+    let displayed = studio
+        .displayed
+        .as_ref()
+        .ok_or("no completed preview is available")?;
+    let time = studio
+        .displayed_time
+        .ok_or("no completed preview time is available")?;
+    let node = studio
+        .project
+        .preview
+        .unwrap_or(studio.project.document.snapshot().output);
+    let metadata = json!({"session":session,"revision":revision,"node":node,"time":time,"frame":studio.project.frame,"source_region":displayed.frame.region(),"inspector_draft":studio.draft_dirty,"viewer_settings_applied":false,"encoding":"sRGB straight-alpha PNG","filter":"linear-premultiplied area"});
+    Ok(crate::preview_images::Snapshot {
+        frame: displayed.frame.clone(),
+        metadata,
+        max_edge: max_edge as u32,
+    })
+}
+
+pub fn dispatch(studio: &mut Studio, request: veylvik_control::ipc::Request) {
+    if request.name != "preview_image" {
+        let result =
+            call(studio, &request.name, &request.arguments).map_err(|error| error.to_string());
+        request.respond(result);
+        return;
+    }
+    let prepared = (|| -> Result<_> {
+        let snapshot = snapshot(studio, &request.arguments)?;
+        if studio.preview_images.is_none() {
+            studio.preview_images = Some(crate::preview_images::Worker::new()?);
+        }
+        Ok(snapshot)
+    })();
+    match prepared {
+        Ok(snapshot) => studio.preview_images.as_ref().unwrap().submit(
+            request,
+            studio.renderer.clone(),
+            snapshot,
+        ),
+        Err(error) => request.respond(Err(error.to_string())),
     }
 }

@@ -752,3 +752,18 @@ This size limit applies to the returned image. The graph still renders at its
 composition resolution, with the renderer's existing memory limits. The tool
 creates no files and changes neither document revision nor undo history. The
 live editor's `preview` tool remains an asynchronous seek/display operation.
+
+The live editor also exposes `preview_image`, requiring `session` and `revision`
+from `inspect` and accepting the same `max_edge` bound. First use `preview` to
+pause/seek, then wait until `inspect.preview.rendering` is false. Capture rejects
+playback, incomplete previews, and an older frame left visible after a render
+failure. `inspect.preview.playing` reports playback explicitly.
+
+Live capture reads an immutable completed GPU frame on a background worker with
+one active and one queued job. Editing remains available while readback and PNG
+encoding run. Returned session, revision, frame, and time identify the captured
+snapshot even if the project changes afterward. The image contains applied
+composition pixels, excluding inspector drafts, viewer exposure/alpha settings,
+and overlays; metadata reports `inspector_draft` and
+`viewer_settings_applied: false`. No file is created, and capture does not change
+selection, playhead, document history, or viewer settings.

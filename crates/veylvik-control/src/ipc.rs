@@ -1,5 +1,5 @@
 //! Opt-in local transport. A private new directory owns one Unix socket.
-use crate::{MAX_MESSAGE_BYTES, Protocol};
+use crate::{MAX_MESSAGE_BYTES, Protocol, ToolOutput};
 use serde_json::{Value, json};
 use std::{
     fs,
@@ -21,10 +21,13 @@ pub const SOCKET_NAME: &str = "control.sock";
 pub struct Request {
     pub name: String,
     pub arguments: Value,
-    reply: mpsc::SyncSender<Result<Value, String>>,
+    reply: mpsc::SyncSender<Result<ToolOutput, String>>,
 }
 impl Request {
     pub fn respond(self, result: Result<Value, String>) {
+        self.respond_output(result.map(ToolOutput::from));
+    }
+    pub fn respond_output(self, result: Result<ToolOutput, String>) {
         let _ = self.reply.send(result);
     }
 }
@@ -126,7 +129,7 @@ fn serve_client(
     let mut protocol = Protocol::default();
     while let Some(bytes) = read_message(&mut input, stop)? {
         let response = match serde_json::from_slice(&bytes) {
-            Ok(message) => protocol.handle(message, catalog, |name, arguments| {
+            Ok(message) => protocol.handle_output(message, catalog, |name, arguments| {
                 let (reply, result) = mpsc::sync_channel(1);
                 requests
                     .try_send(Request {
@@ -254,12 +257,25 @@ mod tests {
                 serde_json::from_str::<Value>(&line).unwrap()["result"]["structuredContent"]["revision"],
                 7
             );
+            writeln!(socket, "{}", json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"preview_image","arguments":{}}})).unwrap();
+            line.clear();
+            input.read_line(&mut line).unwrap();
+            let result: Value = serde_json::from_str(&line).unwrap();
+            assert_eq!(
+                result["result"]["content"][1],
+                json!({"type":"image","mimeType":"image/png","data":"UE5H"})
+            );
+            assert_eq!(result["result"]["structuredContent"]["revision"], 7);
         });
         awakened.recv_timeout(Duration::from_secs(5)).unwrap();
         let request = server.try_recv().unwrap();
         assert_eq!(request.name, "inspect");
         assert_eq!(request.arguments["test"], 42);
         request.respond(Ok(json!({"revision":7})));
+        awakened.recv_timeout(Duration::from_secs(5)).unwrap();
+        let request = server.try_recv().unwrap();
+        assert_eq!(request.name, "preview_image");
+        request.respond_output(Ok(ToolOutput::png(json!({"revision":7}), b"PNG")));
         client.join().unwrap();
         drop(server);
         assert!(!directory.exists());

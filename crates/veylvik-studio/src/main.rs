@@ -12,6 +12,7 @@ mod display;
 mod files;
 mod graph;
 mod handles;
+mod preview_images;
 mod project;
 mod viewer;
 use display::{Display, DisplayFrame, Paint, ViewSettings};
@@ -97,6 +98,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 recovery::Recovery::new(recovery::default_store()?, &project, cc.egui_ctx.clone());
             let mut app = Studio {
                 control,
+                preview_images: None,
                 recovery,
                 project,
                 renderer,
@@ -145,6 +147,7 @@ enum Leave {
 struct Studio {
     recovery: recovery::Recovery,
     control: Option<veylvik_control::ipc::Server>,
+    preview_images: Option<preview_images::Worker>,
     project: Project,
     renderer: Arc<Renderer>,
     scheduler: Option<GpuPreviewScheduler>,
@@ -1291,9 +1294,7 @@ impl eframe::App for Studio {
             let Some(request) = self.control.as_ref().and_then(|server| server.try_recv()) else {
                 break;
             };
-            let result =
-                control::call(self, &request.name, &request.arguments).map_err(|e| e.to_string());
-            request.respond(result);
+            control::dispatch(self, request);
         }
         ctx.request_repaint_after(Duration::from_secs(2));
         if let Some(scheduler) = &self.scheduler {
@@ -1580,6 +1581,7 @@ impl eframe::App for Studio {
             .finish(self.allow_close || (!self.project.dirty() && !self.draft_dirty));
         self.control.take();
         self.scheduler.take();
+        self.preview_images.take();
         self.displayed.take();
         let _ = self.renderer.device().poll(wgpu::PollType::Wait {
             submission_index: None,
