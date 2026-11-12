@@ -83,6 +83,44 @@ impl Document {
                 Command::Put { node } => {
                     next.nodes.insert(node.id, node.as_ref().clone());
                 }
+                Command::SetParameter {
+                    id,
+                    parameter,
+                    value,
+                } => {
+                    let node = next
+                        .nodes
+                        .get_mut(id)
+                        .ok_or_else(|| Error("cannot edit missing node".into()))?;
+                    if !node
+                        .operation
+                        .descriptor()
+                        .parameters
+                        .iter()
+                        .any(|p| p.name == parameter)
+                    {
+                        return fail("unknown node parameter");
+                    }
+                    let mut operation = serde_json::to_value(&node.operation)
+                        .map_err(|error| Error(error.to_string()))?;
+                    operation[parameter] = value.clone();
+                    node.operation = serde_json::from_value(operation)
+                        .map_err(|error| Error(error.to_string()))?;
+                }
+                Command::SetKey {
+                    id,
+                    parameter,
+                    time,
+                    value,
+                } => {
+                    next.nodes
+                        .get_mut(id)
+                        .ok_or_else(|| Error("cannot edit missing node".into()))?
+                        .operation
+                        .scalar_mut(parameter)
+                        .ok_or_else(|| Error("parameter is not an animated scalar".into()))?
+                        .set_key_at(*time, *value)?;
+                }
                 Command::Remove { id } => {
                     if next.nodes.remove(id).is_none() {
                         return fail("cannot remove missing node");

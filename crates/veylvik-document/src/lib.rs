@@ -420,6 +420,17 @@ pub enum Command {
     Put {
         node: Box<Node>,
     },
+    SetParameter {
+        id: NodeId,
+        parameter: String,
+        value: serde_json::Value,
+    },
+    SetKey {
+        id: NodeId,
+        parameter: String,
+        time: Time,
+        value: f32,
+    },
     Remove {
         id: NodeId,
     },

@@ -396,6 +396,27 @@ and supplies input ports to the compiler. The `apply` tool embeds these schemas.
 requires the current revision from `inspect`. A batch is validated atomically
 and becomes one undo step. `apply` with `dry_run: true` changes nothing.
 
+Use focused commands when changing an existing effect. `set_parameter` replaces
+one registered parameter with the value shape shown in the `nodes` catalog:
+
+```json
+{"command":"set_parameter","id":"UUID","parameter":"stops","value":{"kind":"constant","value":1}}
+```
+
+`set_key` inserts or updates a scalar key at an exact rational time:
+
+```json
+{"command":"set_key","id":"UUID","parameter":"stops","time":{"ticks":24,"rate":24},"value":2}
+```
+
+Key edits preserve existing interpolation and other keys; equivalent timestamps
+update the existing key without rewriting its time. A constant becomes a
+single-key linear curve. Static parameters such as color and seed use
+`set_parameter`. Both commands preserve node identity, label, position and wiring,
+validate the resulting graph, and participate in the same atomic batch and undo
+step. Unknown parameters, wrong value shapes and out-of-range values reject the
+batch. Changing a scalar with `set_parameter` replaces its complete curve.
+
 For larger projects, `inspect` with `{"summary":true}` returns `summary` instead
 of `composition`: format, output UUID, node count and operation counts. Both
 headless and live sessions also support these read-only queries:
