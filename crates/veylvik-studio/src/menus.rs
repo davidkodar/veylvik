@@ -19,7 +19,15 @@ impl Studio {
             let side = ui.spacing().interact_size.y;
             let (mark, _) = ui.allocate_exact_size(egui::Vec2::splat(side), egui::Sense::hover());
             crate::icons::paint_mark(ui.painter(), mark, true);
-            ui.label(egui::RichText::new("VEYLVIK").color(self.accent).strong());
+            // Caps sized to the menu text so the bar keeps its height.
+            let cap = ui.text_style_height(&egui::TextStyle::Button) * 0.72;
+            let (word, _) = ui.allocate_exact_size(
+                egui::vec2(crate::icons::WORDMARK_WIDTH * cap, side),
+                egui::Sense::hover(),
+            );
+            let ink = ui.visuals().widgets.inactive.text_color();
+            let top = word.center().y - cap / 2.0;
+            crate::icons::paint_wordmark(ui.painter(), egui::pos2(word.left(), top), cap, ink);
             ui.separator();
             ui.menu_button("File", |ui| {
                 if item(ui, "New composition…", "Ctrl+N", true) { self.leave(Leave::New, ui.ctx()); }

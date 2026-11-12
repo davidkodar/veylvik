@@ -1995,7 +1995,7 @@ impl Studio {
                 });
         }
         diagnostics::show(ctx, &mut self.statistics, &self.renderer);
-        self.about.show(ctx, &self.renderer, self.accent);
+        self.about.show(ctx, &self.renderer);
         if self.help {
             egui::Window::new("Keyboard shortcuts")
                 .open(&mut self.help)
@@ -2426,10 +2426,19 @@ impl eframe::App for Studio {
                                 self.refresh_draft();
                             }
                         }
-                        response.on_hover_text(format!(
-                            "{:.0}% · scroll to zoom · drag to pan · double-click to fit",
-                            self.navigation.scale(canvas, image, ctx.pixels_per_point()) * 100.0
-                        ));
+                        // egui keeps an open tooltip while the pointer stays inside the
+                        // widget, even under a window opened later; require the viewer to
+                        // be the top layer so dialogs over it never carry its hint.
+                        let viewer_on_top = ctx
+                            .pointer_hover_pos()
+                            .is_some_and(|pos| ctx.layer_id_at(pos) == Some(response.layer_id));
+                        if viewer_on_top {
+                            response.on_hover_text(format!(
+                                "{:.0}% · scroll to zoom · drag to pan · double-click to fit",
+                                self.navigation.scale(canvas, image, ctx.pixels_per_point())
+                                    * 100.0
+                            ));
+                        }
                         if frame.settings != self.view || frame.transform != transform {
                             self.displayed = Some(self.display.frame(
                                 &self.renderer,

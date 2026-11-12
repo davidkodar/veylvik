@@ -112,7 +112,7 @@ pub fn paint_mark(painter: &egui::Painter, rect: egui::Rect, tile: bool) {
             TILE,
         );
     }
-    let (arm, width, gradient) = if detailed {
+    let (arm, width, gradient_axis) = if detailed {
         (
             [(27.0, 30.0), (64.0, 98.0), (101.0, 30.0)],
             12.0,
@@ -125,12 +125,13 @@ pub fn paint_mark(painter: &egui::Painter, rect: egui::Rect, tile: bool) {
             [(20.0, 24.0), (104.0, 100.0)],
         )
     };
-    painter.add(gradient_v(
+    mitred_stroke(
+        painter,
         arm.map(|(x, y)| egui::vec2(x, y)),
         width,
-        gradient.map(|(x, y)| egui::vec2(x, y)),
+        gradient(gradient_axis.map(|(x, y)| egui::vec2(x, y))),
         |p| at(p.x, p.y),
-    ));
+    );
     if detailed {
         painter.add(egui::Shape::line(
             vec![at(27.0, 30.0), at(56.0, 30.0), at(75.0, 65.0)],
@@ -160,14 +161,14 @@ pub fn paint_mark(painter: &egui::Painter, rect: egui::Rect, tile: bool) {
     }
 }
 
-/// A mitred two-segment stroke, coloured by a linear violet-to-teal gradient. Vertex
-/// colours interpolate linearly, which is exact for a linear gradient.
-fn gradient_v(
+/// A mitred two-segment stroke with butt caps, as SVG draws `stroke-linejoin="miter"`.
+fn mitred_stroke(
+    painter: &egui::Painter,
     [p0, p1, p2]: [egui::Vec2; 3],
     width: f32,
-    [from, to]: [egui::Vec2; 2],
+    colour: impl Fn(egui::Vec2) -> egui::Color32,
     place: impl Fn(egui::Vec2) -> egui::Pos2,
-) -> egui::Shape {
+) {
     let normal = |a: egui::Vec2, b: egui::Vec2| {
         let d = (b - a).normalized();
         egui::vec2(-d.y, d.x)
@@ -175,24 +176,134 @@ fn gradient_v(
     let (n1, n2) = (normal(p0, p1), normal(p1, p2));
     let miter = (n1 + n2) / (1.0 + n1.dot(n2));
     let half = width / 2.0;
-    let points = [
+    let outline = [
         p0 + n1 * half,
-        p0 - n1 * half,
         p1 + miter * half,
-        p1 - miter * half,
         p2 + n2 * half,
         p2 - n2 * half,
+        p1 - miter * half,
+        p0 - n1 * half,
     ];
-    let axis = to - from;
+    let triangles = [[0, 5, 4], [0, 4, 1], [1, 4, 3], [1, 3, 2]];
+    fill_smooth(painter, &outline, &triangles, colour, place);
+}
+
+/// Fill a simple polygon with antialiased edges. A raw `egui::Mesh` has hard, jagged
+/// edges; like egui's own shapes, this fades a one-pixel band across the outline.
+/// `triangles` index `outline`; colours are sampled in the caller's units, so a linear
+/// gradient stays exact.
+fn fill_smooth(
+    painter: &egui::Painter,
+    outline: &[egui::Vec2],
+    triangles: &[[u32; 3]],
+    colour: impl Fn(egui::Vec2) -> egui::Color32,
+    place: impl Fn(egui::Vec2) -> egui::Pos2,
+) {
+    let n = outline.len();
+    let points: Vec<egui::Pos2> = outline.iter().map(|&p| place(p)).collect();
+    let area: f32 = (0..n)
+        .map(|i| {
+            let (a, b) = (points[i], points[(i + 1) % n]);
+            a.x * b.y - b.x * a.y
+        })
+        .sum();
+    let side = area.signum();
+    let outward = |a: egui::Pos2, b: egui::Pos2| {
+        let d = (b - a).normalized();
+        egui::vec2(d.y, -d.x) * side
+    };
+    let half = 0.5 / painter.ctx().pixels_per_point();
     let mut mesh = egui::Mesh::default();
-    for p in points {
-        let t = ((p - from).dot(axis) / axis.length_sq()).clamp(0.0, 1.0);
-        mesh.colored_vertex(place(p), VIOLET.lerp_to_gamma(TEAL, t));
+    let mut ring = Vec::with_capacity(n);
+    for i in 0..n {
+        let (prev, here, next) = (points[(i + n - 1) % n], points[i], points[(i + 1) % n]);
+        let (a, b) = (outward(prev, here), outward(here, next));
+        let mut offset = (a + b) / (1.0 + a.dot(b)).max(1e-3);
+        if offset.length() > 4.0 {
+            offset = offset.normalized() * 4.0; // Bound spikes at very sharp corners.
+        }
+        mesh.colored_vertex(here - offset * half, colour(outline[i]));
+        ring.push(here + offset * half);
     }
-    for [a, b, c] in [[0, 1, 3], [0, 3, 2], [2, 3, 5], [2, 5, 4]] {
+    for p in ring {
+        mesh.colored_vertex(p, egui::Color32::TRANSPARENT);
+    }
+    for &[a, b, c] in triangles {
         mesh.add_triangle(a, b, c);
     }
-    egui::Shape::mesh(mesh)
+    let n = n as u32;
+    for i in 0..n {
+        let j = (i + 1) % n;
+        mesh.add_triangle(i, j, n + i);
+        mesh.add_triangle(j, n + j, n + i);
+    }
+    painter.add(egui::Shape::mesh(mesh));
+}
+
+/// Linear violet-to-teal gradient between two points, as in the SVG artwork.
+fn gradient([from, to]: [egui::Vec2; 2]) -> impl Fn(egui::Vec2) -> egui::Color32 {
+    let axis = to - from;
+    move |p| {
+        VIOLET.lerp_to_gamma(
+            TEAL,
+            ((p - from).dot(axis) / axis.length_sq()).clamp(0.0, 1.0),
+        )
+    }
+}
+
+/// Width of the wordmark in cap heights, from the first V to the tip of the K.
+pub const WORDMARK_WIDTH: f32 = 5.34;
+
+/// The VEYLVIK wordmark from `assets/branding/veylvik-logo.svg`, drawn as geometry in
+/// 100-unit caps with its top-left at `left_top`. One ink colour throughout: the icon
+/// carries the brand colour. The Y and K keep slanted terminals with a small optical
+/// overshoot (about 1.5 units) beyond the cap and base lines.
+pub fn paint_wordmark(painter: &egui::Painter, left_top: egui::Pos2, cap: f32, ink: egui::Color32) {
+    let unit = cap / 100.0;
+    let at = move |p: egui::Vec2| left_top + p * unit;
+    let bar = |x0: f32, y0: f32, x1: f32, y1: f32| {
+        painter.rect_filled(
+            egui::Rect::from_two_pos(at(egui::vec2(x0, y0)), at(egui::vec2(x1, y1))),
+            0.0,
+            ink,
+        );
+    };
+    let stroke = |points: [(f32, f32); 3]| {
+        mitred_stroke(
+            painter,
+            points.map(|(x, y)| egui::vec2(x, y)),
+            20.0,
+            |_| ink,
+            at,
+        );
+    };
+    let v = |x: f32| {
+        let outline = [
+            (0.0, 0.0),
+            (23.0, 0.0),
+            (35.0, 58.0),
+            (47.0, 0.0),
+            (70.0, 0.0),
+            (47.0, 100.0),
+            (23.0, 100.0),
+        ]
+        .map(|(px, py)| egui::vec2(px + x, py));
+        let triangles = [[0, 1, 2], [0, 2, 6], [6, 2, 5], [2, 3, 5], [3, 4, 5]];
+        fill_smooth(painter, &outline, &triangles, |_| ink, at);
+    };
+    v(0.0);
+    bar(94.0, 0.0, 114.0, 100.0);
+    bar(94.0, 0.0, 146.0, 20.0);
+    bar(94.0, 40.0, 138.0, 60.0);
+    bar(94.0, 80.0, 146.0, 100.0);
+    stroke([(178.56, 4.0), (208.0, 50.0), (237.44, 4.0)]);
+    bar(198.0, 50.0, 218.0, 100.0);
+    bar(266.0, 0.0, 286.0, 100.0);
+    bar(266.0, 80.0, 318.0, 100.0);
+    v(332.0);
+    bar(422.0, 0.0, 442.0, 100.0);
+    bar(468.0, 0.0, 488.0, 100.0);
+    stroke([(524.54, 4.5), (488.0, 52.0), (526.06, 95.5)]);
 }
 #[cfg(test)]
 mod tests {

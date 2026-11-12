@@ -126,7 +126,7 @@ impl Controls {
             ("GPU buffer budget", memory(Some(renderer.budget_bytes))),
         ]
     }
-    pub fn show(&mut self, ctx: &egui::Context, renderer: &Renderer, accent: egui::Color32) {
+    pub fn show(&mut self, ctx: &egui::Context, renderer: &Renderer) {
         if !self.open {
             return;
         }
@@ -157,7 +157,19 @@ impl Controls {
                     let (mark, _) = ui.allocate_exact_size(egui::Vec2::splat(72.0), egui::Sense::hover());
                     crate::icons::paint_mark(ui.painter(), mark, true);
                     ui.add_space(6.0);
-                    ui.label(egui::RichText::new("VEYLVIK").size(30.0).strong().color(accent));
+                    let cap = 28.0;
+                    let (word, _) = ui.allocate_exact_size(
+                        egui::vec2(crate::icons::WORDMARK_WIDTH * cap, cap * 1.04),
+                        egui::Sense::hover(),
+                    );
+                    let ink = ui.visuals().strong_text_color();
+                    crate::icons::paint_wordmark(
+                        ui.painter(),
+                        word.left_top() + egui::vec2(0.0, cap * 0.02),
+                        cap,
+                        ink,
+                    );
+                    ui.add_space(4.0);
                     ui.label("Compositing, effects and animation");
                     ui.add_space(12.0);
                 });
