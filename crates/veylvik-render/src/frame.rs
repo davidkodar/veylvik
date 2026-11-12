@@ -31,13 +31,17 @@ impl Image {
             ));
         }
         static NEXT_IMAGE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
-        let identity = NEXT_IMAGE
-            .fetch_update(
-                std::sync::atomic::Ordering::Relaxed,
-                std::sync::atomic::Ordering::Relaxed,
-                |value| value.checked_add(1),
-            )
-            .map_err(|_| error("image identity exhausted"))?;
+        let ordering = std::sync::atomic::Ordering::Relaxed;
+        let mut identity = NEXT_IMAGE.load(ordering);
+        loop {
+            let next = identity
+                .checked_add(1)
+                .ok_or_else(|| error("image identity exhausted"))?;
+            match NEXT_IMAGE.compare_exchange_weak(identity, next, ordering, ordering) {
+                Ok(_) => break,
+                Err(current) => identity = current,
+            }
+        }
         Ok(Self {
             identity,
             width,
