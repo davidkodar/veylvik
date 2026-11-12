@@ -82,4 +82,50 @@ fn sequence_cancellation_collision_and_frame_parity() {
     let manifest: serde_json::Value =
         serde_json::from_slice(&std::fs::read(directory.join("sequence.json")).unwrap()).unwrap();
     assert_eq!(manifest["status"], "rendering");
+    // A GUI export uses its captured pixels even if no source file exists.
+    let node = veylvik_document::Node::new(
+        "snapshot",
+        veylvik_document::Operation::Image {
+            asset: "absent.png".into(),
+        },
+        &[],
+    );
+    doc.output = node.id;
+    doc.nodes = [(node.id, node)].into_iter().collect();
+    let request = SequenceRequest {
+        frames: FrameRange::new(0, 0, doc.frame_rate).unwrap(),
+        output: doc.output,
+        region: None,
+    };
+    let mut inputs = veylvik_render::ImageInputs::default();
+    let missing = root.join("missing");
+    assert!(
+        veylvik_io::sequence::render_sequence_with_inputs(
+            &renderer,
+            &doc,
+            &inputs,
+            &missing,
+            request,
+            |_, _| true
+        )
+        .is_err()
+    );
+    assert!(!missing.exists());
+    inputs.insert(
+        "absent.png",
+        std::sync::Arc::new(veylvik_render::Image::new(1, 1, vec![[1.0, 0.0, 0.0, 1.0]]).unwrap()),
+    );
+    let result = veylvik_io::sequence::render_sequence_with_inputs(
+        &renderer,
+        &doc,
+        &inputs,
+        &root.join("snapshot"),
+        request,
+        |_, _| true,
+    )
+    .unwrap();
+    assert_eq!(result["manifest"]["status"], "complete");
+    let image =
+        veylvik_io::load_png(&root.join("snapshot/frame-000000.png"), 128 * 1024 * 1024).unwrap();
+    assert_eq!(image.pixels()[0], [1.0, 0.0, 0.0, 1.0]);
 }

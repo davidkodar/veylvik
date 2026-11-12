@@ -16,6 +16,7 @@ pub enum Choice {
     Import,
     Save,
     Export,
+    Folder,
 }
 pub enum Completed {
     Cancelled,
@@ -23,6 +24,7 @@ pub enum Completed {
     Imported { path: PathBuf, image: Arc<Image> },
     Saved(Saved),
     Exported(PathBuf),
+    Sequence(serde_json::Value),
 }
 pub struct Tasks {
     sender: mpsc::SyncSender<Result<Completed, String>>,
@@ -78,13 +80,15 @@ pub fn select(choice: Choice, folder: &Path, name: &str) -> Result<Option<PathBu
         Choice::Save => ("Save composition", "Veylvik composition", "*.veylvik"),
         Choice::Import => ("Import image", "PNG image", "*.png"),
         Choice::Export => ("Export frame", "PNG image", "*.png"),
+        Choice::Folder => ("Choose parent folder for PNG sequence", "Folders", "*"),
     };
     let result: ashpd::Result<SelectedFiles> = pollster::block_on(async {
-        if matches!(choice, Choice::Open | Choice::Import) {
+        if matches!(choice, Choice::Open | Choice::Import | Choice::Folder) {
             SelectedFiles::open_file()
                 .title(title)
                 .modal(true)
                 .multiple(false)
+                .directory(matches!(choice, Choice::Folder))
                 .current_folder(folder)?
                 .filter(FileFilter::new(label).glob(pattern))
                 .send()

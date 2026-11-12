@@ -89,11 +89,20 @@ replacement and requires reopening or saving elsewhere. This check is not an
 atomic filesystem transaction against unrelated simultaneous writers.
 Closing asks about unsaved document or inspector changes.
 
+**Sequence…** opens animation export settings. Choose inclusive first/last frames,
+a new folder name, and an existing parent folder through the desktop portal.
+Export captures the current preview root, composition, and loaded source pixels;
+it runs in the background with a progress bar and **Cancel export** between
+frames. Completed frames remain in the export folder if cancelled. Cancel the
+folder picker itself if it is still open. Other project edits wait until export
+finishes.
+
 | Shortcut | Action |
 |---|---|
 | Space | Play / pause |
 | Ctrl+O / Ctrl+I | Open composition / import PNG |
 | Ctrl+E | Export current preview to PNG |
+| Ctrl+Shift+E | Export PNG sequence |
 | Ctrl+S | Save |
 | Ctrl+Shift+S | Save as |
 | Ctrl+Z / Ctrl+Shift+Z | Undo / redo |

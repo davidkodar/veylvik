@@ -5,7 +5,7 @@ use std::path::Path;
 use veylvik_document::{
     Composition, NodeId, Time, atomic_create, atomic_write, sequence::FrameRange,
 };
-use veylvik_render::{Plan, Region, RenderRequest, Renderer};
+use veylvik_render::{ImageInputs, Plan, Region, RenderRequest, Renderer};
 #[derive(Clone, Copy)]
 pub struct SequenceRequest {
     pub frames: FrameRange,
@@ -21,6 +21,48 @@ pub fn render_sequence(
     base: &Path,
     directory: &Path,
     request: SequenceRequest,
+    progress: impl FnMut(u32, u32) -> bool,
+) -> Result<Value> {
+    export(
+        renderer,
+        document,
+        directory,
+        request,
+        |plan| crate::load_inputs(plan, base, renderer.budget_bytes),
+        progress,
+    )
+}
+/// Render from the host's immutable source snapshot without reopening image files.
+pub fn render_sequence_with_inputs(
+    renderer: &Renderer,
+    document: &Composition,
+    inputs: &ImageInputs,
+    directory: &Path,
+    request: SequenceRequest,
+    progress: impl FnMut(u32, u32) -> bool,
+) -> Result<Value> {
+    export(
+        renderer,
+        document,
+        directory,
+        request,
+        |plan| {
+            for asset in plan.required_assets() {
+                if inputs.get(asset).is_none() {
+                    return Err(format!("missing image input: {asset}").into());
+                }
+            }
+            Ok(inputs.clone())
+        },
+        progress,
+    )
+}
+fn export(
+    renderer: &Renderer,
+    document: &Composition,
+    directory: &Path,
+    request: SequenceRequest,
+    load: impl FnOnce(&Plan) -> Result<ImageInputs>,
     mut progress: impl FnMut(u32, u32) -> bool,
 ) -> Result<Value> {
     let total = request.frames.count()?;
@@ -33,7 +75,7 @@ pub fn render_sequence(
     });
     region.validate(document.width, document.height)?;
     let plan = Plan::compile_output(document, request.output)?;
-    let inputs = crate::load_inputs(&plan, base, renderer.budget_bytes)?;
+    let inputs = load(&plan)?;
     // Reserving a new directory ensures neither originals nor earlier renders
     // become export targets. Per-file publication also refuses collisions.
     std::fs::create_dir(directory)?;

@@ -1,4 +1,5 @@
 mod animation;
+mod sequence;
 use animation::scalar;
 mod display;
 mod files;
@@ -81,6 +82,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 playback_frame: 0,
                 end_frame: 240,
                 files: Tasks::new(cc.egui_ctx.clone()),
+                export_controls: sequence::Controls::default(),
                 confirm: None,
                 after_save: None,
                 allow_close: false,
@@ -117,6 +119,7 @@ struct Studio {
     playback_frame: i64,
     end_frame: i64,
     files: Tasks,
+    export_controls: sequence::Controls,
     confirm: Option<Leave>,
     after_save: Option<Leave>,
     allow_close: bool,
@@ -351,10 +354,60 @@ impl Studio {
         });
         self.file_started(result);
     }
+    fn export_sequence(&mut self, settings: sequence::Settings, ctx: &egui::Context) {
+        use std::sync::atomic::Ordering;
+        if self.files.busy() || !self.apply_draft() {
+            return;
+        }
+        self.playing = false;
+        let document = self.project.document.snapshot().clone();
+        let inputs = self.project.inputs.clone();
+        let base = self.project.base.clone();
+        let renderer = self.renderer.clone();
+        let request = veylvik_io::sequence::SequenceRequest {
+            frames: settings.frames,
+            output: self.project.preview.unwrap_or(document.output),
+            region: None,
+        };
+        let progress = Arc::new(sequence::Progress::default());
+        progress
+            .total
+            .store(settings.frames.count().unwrap(), Ordering::Relaxed);
+        self.export_controls.active = Some(progress.clone());
+        let context = ctx.clone();
+        let result = self.files.start(move || {
+            let Some(parent) = files::select(Choice::Folder, &base, "")? else {
+                return Ok(Completed::Cancelled);
+            };
+            if progress.cancel.load(Ordering::Relaxed) {
+                return Ok(Completed::Cancelled);
+            }
+            veylvik_io::sequence::render_sequence_with_inputs(
+                &renderer,
+                &document,
+                &inputs,
+                &parent.join(settings.name),
+                request,
+                |completed, total| {
+                    progress.completed.store(completed, Ordering::Relaxed);
+                    progress.total.store(total, Ordering::Relaxed);
+                    context.request_repaint();
+                    !progress.cancel.load(Ordering::Relaxed)
+                },
+            )
+            .map(Completed::Sequence)
+            .map_err(|e| e.to_string())
+        });
+        if result.is_err() {
+            self.export_controls.active = None;
+        }
+        self.file_started(result);
+    }
     fn poll_files(&mut self, ctx: &egui::Context) {
         let Some(result) = self.files.poll() else {
             return;
         };
+        self.export_controls.active = None;
         match result {
             Ok(Completed::Cancelled) => {
                 self.after_save = None;
@@ -362,6 +415,7 @@ impl Studio {
                 self.error = false;
             }
             Ok(Completed::Opened(project)) => {
+                self.export_controls = sequence::Controls::default();
                 self.project = *project;
                 self.graph = graph::Graph::default();
                 self.displayed = None;
@@ -388,6 +442,17 @@ impl Studio {
                 if let Some(action) = self.after_save.take() {
                     self.leave_now(action, ctx);
                 }
+            }
+            Ok(Completed::Sequence(result)) => {
+                let manifest = &result["manifest"];
+                self.status = format!(
+                    "Sequence {}: {} / {} frames in {}",
+                    manifest["status"].as_str().unwrap_or("finished"),
+                    manifest["completed"],
+                    manifest["count"],
+                    result["directory"].as_str().unwrap_or("export folder")
+                );
+                self.error = false;
             }
             Ok(Completed::Exported(path)) => {
                 self.status = format!("Exported {}", path.display());
@@ -459,6 +524,9 @@ impl Studio {
             }
             if ui.button("Export…").clicked() {
                 self.export_frame();
+            }
+            if ui.button("Sequence…").clicked() {
+                self.export_controls.open = true;
             }
             if ui.button("Save").clicked() {
                 self.save_project(false);
@@ -757,6 +825,7 @@ impl Studio {
                         ("Ctrl+O", "Open composition"),
                         ("Ctrl+I", "Import PNG image"),
                         ("Ctrl+E", "Export current preview"),
+                        ("Ctrl+Shift+E", "Export PNG sequence"),
                         ("Ctrl+S", "Save"),
                         ("Ctrl+Shift+S", "Save as"),
                         ("Ctrl+Z", "Undo"),
@@ -830,6 +899,11 @@ impl eframe::App for Studio {
             if ctx.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, egui::Key::I)) {
                 self.import_image();
             }
+            if ctx.input_mut(|i| {
+                i.consume_key(egui::Modifiers::CTRL | egui::Modifiers::SHIFT, egui::Key::E)
+            }) {
+                self.export_controls.open = true;
+            }
             if ctx.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, egui::Key::E)) {
                 self.export_frame();
             }
@@ -854,6 +928,7 @@ impl eframe::App for Studio {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
             self.leave(Leave::Close, &ctx);
         }
+        self.export_controls.progress(ui);
         ui.add_enabled_ui(!self.files.busy() && self.confirm.is_none(), |ui| {
             egui::Panel::top("toolbar").show_inside(ui, |ui| self.toolbar(ui));
             egui::Panel::bottom("status").show_inside(ui, |ui| {
@@ -929,6 +1004,13 @@ impl eframe::App for Studio {
             });
         });
         self.dialogs(&ctx);
+        if let Some(settings) = self.export_controls.show(
+            &ctx,
+            self.project.document.snapshot().frame_rate,
+            !self.files.busy() && self.confirm.is_none(),
+        ) {
+            self.export_sequence(settings, &ctx);
+        }
     }
     fn on_exit(&mut self) {
         self.scheduler.take();
