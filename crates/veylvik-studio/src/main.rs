@@ -16,6 +16,7 @@ mod handles;
 mod icons;
 mod key_timeline;
 mod menus;
+mod node_clipboard;
 mod node_finder;
 mod node_palette;
 mod preset_library;
@@ -1739,6 +1740,8 @@ impl Studio {
         );
         for action in actions {
             match action {
+                graph::Action::Copy => self.copy_graph_nodes(ui.ctx()),
+                graph::Action::Paste { text, position } => self.paste_graph_nodes(&text, position),
                 graph::Action::AddAt(position) => {
                     if !self.files.busy()
                         && !self.authoring_dialog_open()

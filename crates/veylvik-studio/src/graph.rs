@@ -16,6 +16,11 @@ pub enum NodeAction {
     EditGroup,
 }
 pub enum Action {
+    Copy,
+    Paste {
+        text: String,
+        position: NodePosition,
+    },
     AddAt(NodePosition),
     Node {
         id: NodeId,
@@ -114,6 +119,7 @@ pub struct Graph {
     selection: std::collections::BTreeSet<NodeId>,
     active: Option<NodeId>,
     marquee: Option<(Pos2, std::collections::BTreeSet<NodeId>)>,
+    pending_paste: Option<(NodePosition, f64)>,
 }
 impl Default for Graph {
     fn default() -> Self {
@@ -140,6 +146,7 @@ impl Default for Graph {
             selection: Default::default(),
             active: None,
             marquee: None,
+            pending_paste: None,
         }
     }
 }
@@ -903,6 +910,18 @@ impl Graph {
                     }
                     ui.close();
                 }
+                if ui
+                    .button("Paste nodes     Ctrl+V")
+                    .on_hover_text("Paste a Veylvik node selection from the system clipboard")
+                    .clicked()
+                {
+                    if let Some(position) = self.menu_position {
+                        self.pending_paste = Some((position, ui.input(|i| i.time)));
+                        ui.ctx()
+                            .send_viewport_cmd(egui::ViewportCommand::RequestPaste);
+                    }
+                    ui.close();
+                }
                 ui.separator();
                 if ui.button("Select all nodes     Ctrl+A").clicked() {
                     self.selection = nodes.iter().map(|n| n.id).collect();
@@ -988,6 +1007,7 @@ impl Graph {
                     actions.push(Action::Node { id:node.id,action:NodeAction::Bypass }); ui.close();
                 }
                 ui.separator();
+                if ui.button(format!("Copy {} selected node(s)     Ctrl+C",self.selection.len())).clicked() {actions.push(Action::Copy);ui.close();}
                 for (label,action) in [("Duplicate node / group     Ctrl+D",NodeAction::Duplicate),("Duplicate upstream branch     Ctrl+Shift+D",NodeAction::DuplicateBranch)] {
                     if ui.button(label).clicked() { actions.push(Action::Node { id:node.id,action }); ui.close(); }
                 }
@@ -1251,6 +1271,51 @@ impl Graph {
                 self.wire = None;
             }
         }
+        if self
+            .pending_paste
+            .is_some_and(|(_, time)| ui.input(|i| i.time) - time > 2.0)
+        {
+            self.pending_paste = None;
+        }
+        if ui.is_enabled()
+            && !self.dragging()
+            && !ui.ctx().egui_wants_keyboard_input()
+            && (response.contains_pointer() || self.pending_paste.is_some())
+        {
+            let (copy, paste) = ui.input_mut(|input| {
+                let mut copy = false;
+                let mut paste = None;
+                input.events.retain(|event| match event {
+                    egui::Event::Copy => {
+                        copy = true;
+                        false
+                    }
+                    egui::Event::Paste(text) => {
+                        paste = Some(
+                            if text.len() <= veylvik_document::limits::MAX_DOCUMENT_BYTES {
+                                text.clone()
+                            } else {
+                                String::new()
+                            },
+                        );
+                        false
+                    }
+                    _ => true,
+                });
+                (copy, paste)
+            });
+            if copy && !self.selection.is_empty() {
+                actions.push(Action::Copy);
+            }
+            if let Some(text) = paste {
+                let position = self
+                    .pending_paste
+                    .take()
+                    .map(|(position, _)| position)
+                    .unwrap_or_else(|| self.insertion_position(ui.ctx()));
+                actions.push(Action::Paste { text, position });
+            }
+        }
         if response.contains_pointer()
             && !ui.ctx().egui_wants_keyboard_input()
             && ui.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, egui::Key::A))
@@ -1356,6 +1421,76 @@ impl Graph {
         }
         actions
     }
+    pub fn selected_positions(&self, doc: &Composition) -> BTreeMap<NodeId, NodePosition> {
+        self.moving_members(doc)
+            .into_iter()
+            .map(|(id, p)| (id, NodePosition { x: p.x, y: p.y }))
+            .collect()
+    }
+    pub fn select_pasted(&mut self, ids: std::collections::BTreeSet<NodeId>, root: NodeId) {
+        self.selection = ids;
+        self.active = Some(root);
+    }
+    pub fn place_paste(
+        &mut self,
+        doc: &Composition,
+        revision: u64,
+        copy: &mut veylvik_document::editing::BranchCopy,
+        position: NodePosition,
+    ) -> veylvik_document::Result<()> {
+        self.sync(doc, revision);
+        let base: BTreeMap<_, _> = copy
+            .nodes
+            .iter()
+            .enumerate()
+            .map(|(index, (id, node))| {
+                (
+                    *id,
+                    node.position
+                        .map(|p| egui::pos2(p.x, p.y))
+                        .unwrap_or(egui::pos2(index as f32 * 220.0, 0.0)),
+                )
+            })
+            .collect();
+        let bounds = base.values().fold(Rect::NOTHING, |bounds, p| {
+            bounds.union(Rect::from_min_size(*p, NODE_SIZE))
+        });
+        let occupied = self.positions.values().fold(Rect::NOTHING, |bounds, p| {
+            bounds.union(Rect::from_min_size(*p, NODE_SIZE))
+        });
+        let desired = egui::vec2(position.x, position.y) - bounds.min.to_vec2();
+        let candidates = [
+            desired,
+            egui::vec2(desired.x, occupied.max.y + 60.0 - bounds.min.y),
+            egui::vec2(occupied.max.x + 60.0 - bounds.min.x, desired.y),
+            egui::vec2(desired.x, occupied.min.y - 60.0 - bounds.max.y),
+        ];
+        let offset = candidates
+            .into_iter()
+            .find(|offset| {
+                base.values().all(|p| {
+                    let p = *p + *offset;
+                    p.x.is_finite()
+                        && p.y.is_finite()
+                        && p.x.abs() <= 1_000_000.0
+                        && p.y.abs() <= 1_000_000.0
+                }) && self.positions.values().all(|p| {
+                    !Rect::from_min_size(*p, NODE_SIZE)
+                        .expand(12.0)
+                        .intersects(bounds.translate(*offset))
+                })
+            })
+            .ok_or_else(|| {
+                veylvik_document::Error(
+                    "No room to paste nodes within graph coordinate limits".into(),
+                )
+            })?;
+        for (id, node) in &mut copy.nodes {
+            let p = base[id] + offset;
+            node.position = Some(NodePosition { x: p.x, y: p.y });
+        }
+        Ok(())
+    }
     fn moving_members(&self, doc: &Composition) -> BTreeMap<NodeId, Pos2> {
         let mut ids = self.selection.clone();
         for id in &self.selection {
@@ -1382,6 +1517,84 @@ mod tests {
             &[],
         )
         .id
+    }
+    #[test]
+    fn pasted_selection_preserves_offsets_and_avoids_existing_nodes() {
+        use veylvik_document::{Node, Operation, Time, clipboard::NodeClipboard};
+        let mut doc = veylvik_document::blank(8, 8, Time::new(24, 1).unwrap()).unwrap();
+        let first = doc.output;
+        doc.nodes.get_mut(&first).unwrap().position = Some(NodePosition { x: 100.0, y: 100.0 });
+        let mut node = Node::new("Other", Operation::Solid { color: [1.0; 4] }, &[]);
+        node.position = Some(NodePosition { x: 400.0, y: 300.0 });
+        let second = node.id;
+        doc.nodes.insert(second, node);
+        let session = NodeId::new_v4();
+        let clip = NodeClipboard::capture(&doc, session, [first, second].into(), second).unwrap();
+        let mut copy = clip.paste(&doc, session).unwrap();
+        let mut graph = Graph::default();
+        graph
+            .place_paste(&doc, 0, &mut copy, NodePosition { x: 100.0, y: 100.0 })
+            .unwrap();
+        let a = copy.nodes[&copy.mapping[&first]].position.unwrap();
+        let b = copy.nodes[&copy.mapping[&second]].position.unwrap();
+        assert_eq!((b.x - a.x, b.y - a.y), (300.0, 200.0));
+        for node in copy.nodes.values() {
+            let p = node.position.unwrap();
+            p.validate().unwrap();
+            assert!(graph.positions.values().all(|old| {
+                !Rect::from_min_size(*old, NODE_SIZE)
+                    .expand(12.0)
+                    .intersects(Rect::from_min_size(egui::pos2(p.x, p.y), NODE_SIZE))
+            }));
+        }
+        let owner = veylvik_document::Document::new(doc).unwrap();
+        owner.prepare(0, &copy.into_commands()).unwrap();
+    }
+    #[test]
+    fn graph_consumes_native_clipboard_events_and_keeps_menu_paste_position() {
+        let doc = veylvik_document::demo();
+        let ctx = egui::Context::default();
+        let mut graph = Graph::default();
+        let run = |graph: &mut Graph, events| {
+            let mut actions = Vec::new();
+            let _ = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(Pos2::ZERO, egui::vec2(1200.0, 600.0))),
+                    events,
+                    ..Default::default()
+                },
+                |ui| {
+                    actions = graph.show(ui, &doc, 0, doc.output, Color32::LIGHT_BLUE);
+                },
+            );
+            actions
+        };
+        run(&mut graph, vec![]);
+        let inside = graph.canvas.unwrap().center();
+        let actions = run(
+            &mut graph,
+            vec![egui::Event::PointerMoved(inside), egui::Event::Copy],
+        );
+        assert!(matches!(actions.as_slice(), [Action::Copy]));
+        let expected = graph.insertion_position(&ctx);
+        let actions = run(&mut graph, vec![egui::Event::Paste("nodes".into())]);
+        assert!(
+            matches!(actions.as_slice(),[Action::Paste{text,position}] if text=="nodes" && position.x==expected.x && position.y==expected.y)
+        );
+        graph.pending_paste = Some((NodePosition { x: 123.0, y: 456.0 }, ctx.input(|i| i.time)));
+        let actions = run(
+            &mut graph,
+            vec![
+                egui::Event::PointerMoved(egui::pos2(5.0, 5.0)),
+                egui::Event::Paste("menu".into()),
+            ],
+        );
+        assert!(
+            matches!(actions.as_slice(),[Action::Paste{text,position}] if text=="menu" && position.x==123.0 && position.y==456.0)
+        );
+        assert!(graph.pending_paste.is_none());
+        let actions = run(&mut graph, vec![egui::Event::Paste("outside".into())]);
+        assert!(actions.is_empty());
     }
     #[test]
     fn shift_selection_moves_nodes_together_and_box_selection_does_not_pan() {
@@ -1816,6 +2029,11 @@ mod arrangement_tests {
         assert_eq!(
             graph.automatic[&output].x - graph.automatic[&source].x,
             220.0
+        );
+        graph.selection.insert(output);
+        assert_eq!(
+            graph.selected_positions(&doc).len(),
+            doc.groups[&group].members.len()
         );
         graph.expand(group);
         graph.sync(&doc, 0);

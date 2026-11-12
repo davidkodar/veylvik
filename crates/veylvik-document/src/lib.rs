@@ -1,4 +1,5 @@
 //! Serializable compositions and transactional editing, independent of GPU and UI.
+pub mod clipboard;
 pub mod editing;
 pub mod groups;
 mod history;

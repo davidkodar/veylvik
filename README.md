@@ -442,7 +442,20 @@ cannot be deleted from this menu; disconnect consumers first. Right-click empty
 canvas for **Add node**, arrangement and fit controls. **Add node**, the toolbar
 button and **Tab** share the focused searchable picker; Up/Down selects, Enter
 adds and Escape cancels. The canvas menu captures its opening position before
-the pointer moves into the menu. Clipboard paste is not yet supported.
+the pointer moves into the menu.
+
+**Copy selected nodes** in the node context menu (or Ctrl+C over the canvas) writes
+a versioned selection to the system clipboard. **Paste nodes** on empty canvas
+(or Ctrl+V) inserts independent copies at that location, avoiding existing nodes.
+Internal wiring, keyframes, text/fonts and complete groups are preserved. Same-project
+external links reconnect to surviving source nodes; unavailable or cross-project
+inputs become shared transparent nodes labelled **Input: ...** for reconnection.
+Clipboard data is bounded and validated before one atomic, undoable paste; the
+composition output is unchanged. Copied image references retain their original
+base across projects; files are not read by paste. Use Reload images or Replace
+source for unloaded images. Authored resolution and animation times are preserved,
+not automatically scaled. Text fields and the animation editor keep their own
+clipboard handling. Cut is not yet supported.
 
 Shift-click adds or removes nodes from the selection. Shift-drag empty canvas
 box-selects nodes without panning; Ctrl+A selects all visible nodes while the
@@ -450,7 +463,8 @@ pointer is over the graph. Drag any selected node to move the selection together
 including hidden members of collapsed groups, as one undoable layout edit.
 The active inspector node has a stronger outline. A plain click selects one node;
 clicking empty canvas clears the selection. Manual group movement also disables
-Auto arrange. Context-menu commands still target the node you right-clicked.
+Auto arrange. Node actions target the node you right-clicked; **Copy selected nodes** explicitly
+uses the whole highlighted selection.
 
 Drag the graph background to pan, Ctrl+scroll to zoom, and use **Fit** to see
 the whole graph. **Arrange** lays out connected branches as one undoable edit, treating
