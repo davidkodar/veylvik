@@ -17,9 +17,11 @@ pub enum Choice {
     Save,
     Export,
     Folder,
+    Font,
 }
 pub enum Completed {
     Cancelled,
+    Outlined(Box<veylvik_document::Node>),
     Opened(Box<Project>),
     Imported { path: PathBuf, image: Arc<Image> },
     Saved(Saved),
@@ -78,19 +80,31 @@ pub fn select(choice: Choice, folder: &Path, name: &str) -> Result<Option<PathBu
     let (title, label, pattern) = match choice {
         Choice::Open => ("Open composition", "Veylvik composition", "*.veylvik"),
         Choice::Save => ("Save composition", "Veylvik composition", "*.veylvik"),
+        Choice::Font => ("Choose font for text outlines", "Font", "*.ttf"),
         Choice::Import => ("Import image", "PNG image", "*.png"),
         Choice::Export => ("Export frame", "PNG image", "*.png"),
         Choice::Folder => ("Choose parent folder for PNG sequence", "Folders", "*"),
     };
+    let filter = if matches!(choice, Choice::Font) {
+        FileFilter::new(label)
+            .glob("*.ttf")
+            .glob("*.otf")
+            .glob("*.ttc")
+    } else {
+        FileFilter::new(label).glob(pattern)
+    };
     let result: ashpd::Result<SelectedFiles> = pollster::block_on(async {
-        if matches!(choice, Choice::Open | Choice::Import | Choice::Folder) {
+        if matches!(
+            choice,
+            Choice::Open | Choice::Import | Choice::Folder | Choice::Font
+        ) {
             SelectedFiles::open_file()
                 .title(title)
                 .modal(true)
                 .multiple(false)
                 .directory(matches!(choice, Choice::Folder))
                 .current_folder(folder)?
-                .filter(FileFilter::new(label).glob(pattern))
+                .filter(filter)
                 .send()
                 .await?
                 .response()
@@ -100,7 +114,7 @@ pub fn select(choice: Choice, folder: &Path, name: &str) -> Result<Option<PathBu
                 .modal(true)
                 .current_name(name)
                 .current_folder(folder)?
-                .filter(FileFilter::new(label).glob(pattern))
+                .filter(filter)
                 .send()
                 .await?
                 .response()

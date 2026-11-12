@@ -233,6 +233,12 @@ and combined outlines at the path limit. It performs no font discovery, fallback
 paragraph bidi layout, wrapping or bitmap/color-glyph rendering. This library
 boundary does not yet provide a live editable Text node.
 
+In Studio, choose **Add node → Outline text…**, enter a single text run, and
+choose a TTF/OTF/TTC font through the desktop picker. Conversion runs in the
+background and inserts one undoable Path mask at the graph's insertion position.
+Cancellation or an invalid font leaves the document unchanged and reopens the
+text settings. The original font is read only.
+
 Convert one text run into a portable composition with an explicit font:
 
 ```sh

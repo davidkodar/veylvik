@@ -1,6 +1,7 @@
 mod animation;
 mod control;
 mod sequence;
+mod text_outline;
 mod vector_editor;
 use animation::scalar;
 mod display;
@@ -106,6 +107,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 end_frame: 240,
                 files: Tasks::new(cc.egui_ctx.clone()),
                 export_controls: sequence::Controls::default(),
+                outline_controls: text_outline::Controls::default(),
                 confirm: None,
                 after_save: None,
                 allow_close: false,
@@ -144,6 +146,7 @@ struct Studio {
     end_frame: i64,
     files: Tasks,
     export_controls: sequence::Controls,
+    outline_controls: text_outline::Controls,
     confirm: Option<Leave>,
     after_save: Option<Leave>,
     allow_close: bool,
@@ -281,6 +284,10 @@ impl Studio {
         }
     }
     fn leave(&mut self, action: Leave, ctx: &egui::Context) {
+        if self.outline_controls.open {
+            self.fail("Finish or close the text outline dialog first.");
+            return;
+        }
         if self.files.busy() {
             self.fail("Finish or cancel the current file operation first.");
             return;
@@ -311,6 +318,47 @@ impl Studio {
                 self.file_started(result);
             }
         }
+    }
+    fn outline_text(&mut self, mut request: veylvik_io::text::OutlineRequest, ctx: &egui::Context) {
+        if self.files.busy() || !self.apply_draft() {
+            self.outline_controls.open = true;
+            return;
+        }
+        let document = self.project.document.snapshot();
+        if document.width > veylvik_render::MAX_VECTOR_DIMENSION
+            || document.height > veylvik_render::MAX_VECTOR_DIMENSION
+        {
+            self.outline_controls.open = true;
+            self.fail(
+                "Text outlines currently require a canvas no larger than 4096 pixels per axis.",
+            );
+            return;
+        }
+        self.playing = false;
+        let folder = self.project.base.clone();
+        let position = self.graph.insertion_position(ctx);
+        let result = self.files.start(move || {
+            let Some(path) = files::select(Choice::Font, &folder, "")? else {
+                return Ok(Completed::Cancelled);
+            };
+            request.font = path.to_str().ok_or("Font path is not UTF-8")?.into();
+            let outlined =
+                veylvik_io::text::outline(&folder, &request).map_err(|e| e.to_string())?;
+            let mut node = Node::new(
+                &request.text,
+                Operation::Path {
+                    geometry: outlined.geometry,
+                },
+                &[],
+            );
+            node.position = Some(position);
+            Ok(Completed::Outlined(Box::new(node)))
+        });
+        self.outline_controls.pending = result.is_ok();
+        if result.is_err() {
+            self.outline_controls.open = true;
+        }
+        self.file_started(result);
     }
     fn import_image(&mut self) {
         if self.files.busy() || !self.apply_draft() {
@@ -432,13 +480,33 @@ impl Studio {
             return;
         };
         self.export_controls.active = None;
+        if self.outline_controls.pending {
+            self.outline_controls.pending = false;
+            self.outline_controls.open = !matches!(&result, Ok(Completed::Outlined(_)));
+        }
         match result {
             Ok(Completed::Cancelled) => {
                 self.after_save = None;
                 self.status = "Cancelled".into();
                 self.error = false;
             }
+            Ok(Completed::Outlined(node)) => {
+                let id = node.id;
+                match self.project.apply(&[Command::Put { node }]) {
+                    Ok(()) => {
+                        self.project.selected = id;
+                        self.project.preview = Some(id);
+                        self.refresh_draft();
+                        self.request_preview();
+                    }
+                    Err(error) => {
+                        self.outline_controls.open = true;
+                        self.fail(error);
+                    }
+                }
+            }
             Ok(Completed::Opened(project)) => {
+                self.outline_controls = text_outline::Controls::default();
                 self.export_controls = sequence::Controls::default();
                 self.project = *project;
                 self.graph = graph::Graph::default();
@@ -582,6 +650,12 @@ impl Studio {
                 self.history(true);
             }
             ui.menu_button("Add node", |ui| {
+                if ui.button("Outline text…").clicked() && self.can_change_selection() {
+                    self.playing = false;
+                    self.outline_controls.open = true;
+                    ui.close();
+                }
+                ui.separator();
                 for kind in veylvik_document::registry::TYPES {
                     if kind.type_id == "image" {
                         continue;
@@ -930,7 +1004,11 @@ impl eframe::App for Studio {
             }
             ctx.request_repaint_after(Duration::from_millis(16));
         }
-        if !self.files.busy() && self.confirm.is_none() && !ctx.egui_wants_keyboard_input() {
+        if !self.files.busy()
+            && !self.outline_controls.open
+            && self.confirm.is_none()
+            && !ctx.egui_wants_keyboard_input()
+        {
             if ctx.input_mut(|i| {
                 i.consume_key(egui::Modifiers::CTRL | egui::Modifiers::SHIFT, egui::Key::S)
             }) {
@@ -980,85 +1058,94 @@ impl eframe::App for Studio {
             self.leave(Leave::Close, &ctx);
         }
         self.export_controls.progress(ui);
-        ui.add_enabled_ui(!self.files.busy() && self.confirm.is_none(), |ui| {
-            egui::Panel::top("toolbar").show_inside(ui, |ui| self.toolbar(ui));
-            egui::Panel::bottom("status").show_inside(ui, |ui| {
-                if self.files.busy() {
-                    ui.horizontal(|ui| {
-                        ui.spinner();
-                        ui.label("File operation in progress…");
-                    });
-                }
-                ui.colored_label(
-                    if self.error {
-                        egui::Color32::LIGHT_RED
-                    } else {
-                        egui::Color32::from_gray(165)
-                    },
-                    &self.status,
-                );
-            });
-            egui::Panel::bottom("graph")
-                .default_size(245.0)
-                .min_size(130.0)
-                .resizable(true)
-                .show_inside(ui, |ui| {
-                    self.timeline(ui);
-                    ui.separator();
-                    self.graph(ui);
-                });
-            egui::Panel::right("inspector")
-                .default_size(280.0)
-                .min_size(250.0)
-                .resizable(true)
-                .show_inside(ui, |ui| {
-                    egui::ScrollArea::vertical().show(ui, |ui| self.inspector(ui));
-                });
-            egui::CentralPanel::default().show_inside(ui, |ui| {
-                ui.horizontal(|ui| {
-                    ui.heading("Viewer");
-                    ui.weak(if self.project.preview.is_some() {
-                        "Selected node preview"
-                    } else {
-                        "Composition output"
-                    });
-                });
-                if self.displayed.is_some() && self.displayed_ticket != self.wanted {
-                    ui.weak(if self.error {
-                        "Showing previous frame · preview failed"
-                    } else {
-                        "Showing previous frame · rendering"
-                    });
-                }
-                if let Some(frame) = &self.displayed {
-                    let available = ui.available_size();
-                    let aspect = frame.frame.width() as f32 / frame.frame.height() as f32;
-                    let width = available.x.min(available.y * aspect).max(1.0);
-                    let size = egui::vec2(width, width / aspect);
-                    let rect = egui::Rect::from_center_size(
-                        ui.available_rect_before_wrap().center(),
-                        size,
-                    );
-                    ui.painter().add(egui_wgpu::Callback::new_paint_callback(
-                        rect,
-                        Paint(frame.clone()),
-                    ));
-                } else {
-                    ui.centered_and_justified(|ui| {
-                        ui.label(if self.error {
-                            "Preview unavailable"
+        ui.add_enabled_ui(
+            !self.files.busy() && !self.outline_controls.open && self.confirm.is_none(),
+            |ui| {
+                egui::Panel::top("toolbar").show_inside(ui, |ui| self.toolbar(ui));
+                egui::Panel::bottom("status").show_inside(ui, |ui| {
+                    if self.files.busy() {
+                        ui.horizontal(|ui| {
+                            ui.spinner();
+                            ui.label("File operation in progress…");
+                        });
+                    }
+                    ui.colored_label(
+                        if self.error {
+                            egui::Color32::LIGHT_RED
                         } else {
-                            "Preparing preview…"
+                            egui::Color32::from_gray(165)
+                        },
+                        &self.status,
+                    );
+                });
+                egui::Panel::bottom("graph")
+                    .default_size(245.0)
+                    .min_size(130.0)
+                    .resizable(true)
+                    .show_inside(ui, |ui| {
+                        self.timeline(ui);
+                        ui.separator();
+                        self.graph(ui);
+                    });
+                egui::Panel::right("inspector")
+                    .default_size(280.0)
+                    .min_size(250.0)
+                    .resizable(true)
+                    .show_inside(ui, |ui| {
+                        egui::ScrollArea::vertical().show(ui, |ui| self.inspector(ui));
+                    });
+                egui::CentralPanel::default().show_inside(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.heading("Viewer");
+                        ui.weak(if self.project.preview.is_some() {
+                            "Selected node preview"
+                        } else {
+                            "Composition output"
                         });
                     });
-                }
-            });
-        });
+                    if self.displayed.is_some() && self.displayed_ticket != self.wanted {
+                        ui.weak(if self.error {
+                            "Showing previous frame · preview failed"
+                        } else {
+                            "Showing previous frame · rendering"
+                        });
+                    }
+                    if let Some(frame) = &self.displayed {
+                        let available = ui.available_size();
+                        let aspect = frame.frame.width() as f32 / frame.frame.height() as f32;
+                        let width = available.x.min(available.y * aspect).max(1.0);
+                        let size = egui::vec2(width, width / aspect);
+                        let rect = egui::Rect::from_center_size(
+                            ui.available_rect_before_wrap().center(),
+                            size,
+                        );
+                        ui.painter().add(egui_wgpu::Callback::new_paint_callback(
+                            rect,
+                            Paint(frame.clone()),
+                        ));
+                    } else {
+                        ui.centered_and_justified(|ui| {
+                            ui.label(if self.error {
+                                "Preview unavailable"
+                            } else {
+                                "Preparing preview…"
+                            });
+                        });
+                    }
+                });
+            },
+        );
         self.dialogs(&ctx);
+        if let Some(request) = self
+            .outline_controls
+            .show(&ctx, !self.files.busy() && self.confirm.is_none())
+        {
+            self.outline_text(request, &ctx);
+        }
         if let Some(settings) = self.export_controls.show(
             &ctx,
             self.project.document.snapshot().frame_rate,
-            !self.files.busy() && self.confirm.is_none(),
+            !self.files.busy() && !self.outline_controls.open && self.confirm.is_none(),
         ) {
             self.export_sequence(settings, &ctx);
         }

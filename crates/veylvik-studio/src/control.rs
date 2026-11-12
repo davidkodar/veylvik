@@ -43,7 +43,7 @@ pub fn call(studio: &mut Studio, name: &str, args: &Value) -> Result<Value> {
     let project = &studio.project;
     if name == "inspect" {
         return Ok(
-            json!({"session":project.session,"revision":project.document.revision(),"composition":project.document.snapshot(),"history":project.document.history(),"selected":project.selected,"preview":{"node":project.preview.unwrap_or(project.document.snapshot().output),"frame":project.frame,"rendering":studio.displayed_ticket != studio.wanted},"inspector_draft":studio.draft_dirty,"busy":studio.files.busy(),"status":studio.status,"error":studio.error}),
+            json!({"session":project.session,"revision":project.document.revision(),"composition":project.document.snapshot(),"history":project.document.history(),"selected":project.selected,"preview":{"node":project.preview.unwrap_or(project.document.snapshot().output),"frame":project.frame,"rendering":studio.displayed_ticket != studio.wanted},"inspector_draft":studio.draft_dirty,"busy":studio.files.busy() || studio.outline_controls.open,"status":studio.status,"error":studio.error}),
         );
     }
     let session: NodeId = args["session"]
@@ -59,7 +59,11 @@ pub fn call(studio: &mut Studio, name: &str, args: &Value) -> Result<Value> {
     if revision != project.document.revision() {
         return Err(format!("revision conflict: current {}", project.document.revision()).into());
     }
-    if studio.files.busy() || studio.confirm.is_some() || studio.graph.dragging() {
+    if studio.files.busy()
+        || studio.outline_controls.open
+        || studio.confirm.is_some()
+        || studio.graph.dragging()
+    {
         return Err("editor is busy; finish the current interaction first".into());
     }
     let dry_run = args
