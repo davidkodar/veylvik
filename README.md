@@ -211,6 +211,7 @@ finishes.
 |---|---|
 | Space | Play / pause |
 | Tab | Search and add a node |
+| Ctrl+F | Find and preview an existing node |
 | Ctrl+O / Ctrl+I | Open composition / import PNG or OpenEXR |
 | Ctrl+E | Export current preview to PNG or OpenEXR |
 | Ctrl+Shift+E | Export PNG or OpenEXR sequence |
@@ -918,3 +919,12 @@ unchanged, including zero alpha. Numeric RGB still supports HDR and negative
 values. Merely opening the picker does not clamp or rewrite those authored
 values; choosing a color replaces RGB in the inspector draft. Apply/Ctrl+Enter,
 Revert, and undo behave as for numeric edits.
+
+
+Use **Find** in the graph header or **Ctrl+F** to locate an existing node by name,
+operation type, or UUID. Searches match all typed words, ignore case, and include
+the full authored label even when a long display label is shortened. Up/Down
+select a result, Enter selects and previews it, and Escape cancels. Choosing a
+node brings its graph card into view without changing composition output,
+document revision, or undo history. Apply or revert any inspector draft first.
+The result list lays out only visible rows, keeping large graphs navigable.

@@ -4,6 +4,7 @@ use std::collections::BTreeMap;
 use veylvik_document::{Composition, NodeId, NodePosition};
 const NODE_SIZE: Vec2 = egui::vec2(160.0, 60.0);
 pub enum Action {
+    Find,
     Select {
         id: NodeId,
         preview: bool,
@@ -71,6 +72,12 @@ impl Default for Graph {
     }
 }
 impl Graph {
+    pub fn focus(&mut self, doc: &Composition, revision: u64, id: NodeId) {
+        self.sync(doc, revision);
+        if let Some(canvas) = self.canvas {
+            self.reveal(id, canvas);
+        }
+    }
     pub fn dragging(&self) -> bool {
         self.drag.is_some() || self.wire.is_some()
     }
@@ -355,6 +362,14 @@ impl Graph {
         let mut zoom_factor = 1.0;
         ui.horizontal(|ui| {
             ui.heading("Nodes");
+            if ui
+                .button("Find")
+                .on_hover_text("Find and preview a node (Ctrl+F)")
+                .clicked()
+            {
+                actions.push(Action::Find);
+            }
+
             if ui.button("Fit").clicked() {
                 fit = true;
             }

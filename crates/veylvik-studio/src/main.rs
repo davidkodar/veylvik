@@ -12,6 +12,7 @@ mod display;
 mod files;
 mod graph;
 mod handles;
+mod node_finder;
 mod node_palette;
 mod preview_images;
 mod project;
@@ -120,6 +121,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 draft_dirty: false,
                 graph: graph::Graph::default(),
                 node_palette: node_palette::Controls::default(),
+                node_finder: node_finder::Controls::default(),
                 status: String::new(),
                 error: false,
                 playing: false,
@@ -169,6 +171,7 @@ struct Studio {
     draft_dirty: bool,
     graph: graph::Graph,
     node_palette: node_palette::Controls,
+    node_finder: node_finder::Controls,
     status: String,
     error: bool,
     playing: bool,
@@ -188,7 +191,10 @@ struct Studio {
 }
 impl Studio {
     fn authoring_dialog_open(&self) -> bool {
-        self.outline_controls.open || self.composition_controls.open || self.node_palette.open
+        self.outline_controls.open
+            || self.composition_controls.open
+            || self.node_palette.open
+            || self.node_finder.open
     }
     fn open_project(&mut self, project: Project, ctx: &egui::Context) {
         let recovery = recovery::Recovery::new(self.recovery.store.clone(), &project, ctx.clone());
@@ -196,6 +202,7 @@ impl Studio {
         self.recovery = recovery;
         self.outline_controls = text_outline::Controls::default();
         self.node_palette = node_palette::Controls::default();
+        self.node_finder = node_finder::Controls::default();
         self.composition_controls = composition::Controls::default();
         self.export_controls = sequence::Controls::default();
         self.project = project;
@@ -270,6 +277,18 @@ impl Studio {
         } else {
             true
         }
+    }
+    fn open_node_finder(&mut self) {
+        if self.files.busy()
+            || self.authoring_dialog_open()
+            || !self.can_change_selection()
+            || self.graph.dragging()
+        {
+            return;
+        }
+        self.playing = false;
+        self.node_finder
+            .open(self.project.document.snapshot(), self.project.selected);
     }
     fn open_node_palette(&mut self, ctx: &egui::Context) {
         if self.files.busy()
@@ -1249,6 +1268,7 @@ impl Studio {
         );
         for action in actions {
             match action {
+                graph::Action::Find => self.open_node_finder(),
                 graph::Action::Select { id, preview } => {
                     if self.can_change_selection() {
                         self.project.selected = id;
@@ -1329,6 +1349,7 @@ impl Studio {
                     for (key, action) in [
                         ("Space", "Play / pause"),
                         ("Tab", "Search and add a node"),
+                        ("Ctrl+F", "Find and preview an existing node"),
                         ("Ctrl+D", "Duplicate selected node"),
                         ("Ctrl+Shift+D", "Duplicate upstream branch"),
                         ("Ctrl+Enter", "Apply inspector draft"),
@@ -1442,6 +1463,9 @@ impl eframe::App for Studio {
                 i.consume_key(egui::Modifiers::CTRL | egui::Modifiers::SHIFT, egui::Key::Z)
             }) {
                 self.history(true);
+            }
+            if ctx.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, egui::Key::F)) {
+                self.open_node_finder();
             }
             if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Tab)) {
                 self.open_node_palette(&ctx);
@@ -1650,6 +1674,21 @@ impl eframe::App for Studio {
                     memory.surrender_focus(focused);
                 }
             });
+        }
+        if let Some(id) = self.node_finder.show(&ctx) {
+            if self.project.document.snapshot().nodes.contains_key(&id) {
+                self.project.selected = id;
+                self.project.preview = Some(id);
+                self.graph.focus(
+                    self.project.document.snapshot(),
+                    self.project.document.revision(),
+                    id,
+                );
+                self.refresh_draft();
+                self.request_preview();
+            } else {
+                self.fail("The selected node no longer exists");
+            }
         }
         if let Some((choice, position)) = self.node_palette.show(&ctx) {
             self.add_from_palette(choice, position);
