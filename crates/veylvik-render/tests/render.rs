@@ -531,3 +531,166 @@ fn preview_scheduler_recovers_from_invalid_input_and_preserves_request_identity(
     assert_eq!(result.frame.unwrap().pixels[0], [0.5; 4]);
     assert!(result.resources.unwrap().buffers_created > 0);
 }
+
+#[test]
+#[ignore = "requires Vulkan"]
+fn gpu_frames_remain_immutable_and_held_allocations_count_against_budget() {
+    let mut renderer = Renderer::new().unwrap();
+    let node = Node::new(
+        "source",
+        Operation::Solid {
+            color: [2.0, 0.5, 0.0, 0.5],
+        },
+        &[],
+    );
+    let id = node.id;
+    let mut doc = composition(vec![node], id);
+    let plan = Plan::compile(&doc).unwrap();
+    let request = RenderRequest {
+        time: Time::new(0, 1).unwrap(),
+        region: Some(Region {
+            x: 2,
+            y: 1,
+            width: 3,
+            height: 2,
+        }),
+    };
+    renderer.budget_bytes = plan.gpu_working_bytes();
+    let first = renderer
+        .render_gpu(&plan, request, &ImageInputs::default())
+        .unwrap();
+    assert_eq!(
+        renderer.resource_stats().unwrap().held_bytes,
+        first.byte_size()
+    );
+    assert!(
+        renderer
+            .render_gpu(&plan, request, &ImageInputs::default())
+            .is_err()
+    );
+    assert!(renderer.read_frame(&first).is_err());
+    renderer.budget_bytes = 512 * 1024 * 1024;
+    doc.nodes.get_mut(&id).unwrap().operation = Operation::Solid {
+        color: [0.0, 0.0, 1.0, 1.0],
+    };
+    let second = renderer
+        .render_gpu(
+            &Plan::compile(&doc).unwrap(),
+            request,
+            &ImageInputs::default(),
+        )
+        .unwrap();
+    assert_eq!(
+        renderer.read_frame(&first).unwrap().pixels,
+        vec![[1.0, 0.25, 0.0, 0.5]; 6]
+    );
+    assert_eq!(
+        renderer.read_frame(&second).unwrap().pixels,
+        vec![[0.0, 0.0, 1.0, 1.0]; 6]
+    );
+    let other = Renderer::new().unwrap();
+    assert!(other.read_frame(&first).is_err());
+    renderer.trim_resources().unwrap();
+    assert_eq!(
+        renderer.resource_stats().unwrap().resident_bytes,
+        first.byte_size() + second.byte_size()
+    );
+    drop(first);
+    assert_eq!(
+        renderer.resource_stats().unwrap().held_bytes,
+        second.byte_size()
+    );
+    drop(second);
+    assert_eq!(renderer.resource_stats().unwrap().resident_bytes, 0);
+    // A frame may outlive its renderer without a lock, dangling allocation, or panic.
+    let frame = renderer
+        .render_gpu(&plan, request, &ImageInputs::default())
+        .unwrap();
+    drop(renderer);
+    drop(frame);
+}
+
+#[test]
+#[ignore = "requires Vulkan"]
+fn gpu_validation_rejects_nonfinite_output_without_poisoning_renderer() {
+    let renderer = Renderer::new().unwrap();
+    let node = Node::new(
+        "source",
+        Operation::Image {
+            asset: "plate".into(),
+        },
+        &[],
+    );
+    let gain = Node::new(
+        "gain",
+        Operation::Exposure { stops: 32.0.into() },
+        &[("image", node.id)],
+    );
+    let id = gain.id;
+    let doc = composition(vec![node, gain], id);
+    let plan = Plan::compile(&doc).unwrap();
+    let mut inputs = ImageInputs::default();
+    inputs.insert(
+        "plate",
+        std::sync::Arc::new(Image::new(1, 1, vec![[f32::MAX, 0.0, 0.0, 1.0]]).unwrap()),
+    );
+    let request = RenderRequest::full(Time::new(0, 1).unwrap());
+    assert!(
+        renderer
+            .render_gpu(&plan, request, &inputs)
+            .err()
+            .unwrap()
+            .to_string()
+            .contains("non-finite")
+    );
+    assert_eq!(renderer.resource_stats().unwrap().held_bytes, 0);
+    inputs.insert(
+        "plate",
+        std::sync::Arc::new(Image::new(1, 1, vec![[0.0, 0.0, 0.0, 1.0]]).unwrap()),
+    );
+    assert!(renderer.render_gpu(&plan, request, &inputs).is_ok());
+}
+
+#[test]
+#[ignore = "requires Vulkan"]
+fn gpu_preview_scheduler_shares_device_and_releases_cancelled_outputs() {
+    use std::{
+        sync::{Arc, mpsc},
+        time::Duration,
+    };
+    let renderer = Arc::new(Renderer::new().unwrap());
+    let node = Node::new(
+        "solid",
+        Operation::Solid {
+            color: [0.25, 0.5, 1.0, 1.0],
+        },
+        &[],
+    );
+    let id = node.id;
+    let plan = Arc::new(Plan::compile(&composition(vec![node], id)).unwrap());
+    let (tx, rx) = mpsc::channel();
+    let scheduler = GpuPreviewScheduler::with_renderer(renderer.clone(), move || {
+        tx.send(()).unwrap();
+    })
+    .unwrap();
+    let request = RenderRequest::full(Time::new(0, 1).unwrap());
+    let ticket = scheduler
+        .submit(5, plan.clone(), request, ImageInputs::default())
+        .unwrap();
+    rx.recv_timeout(Duration::from_secs(30)).unwrap();
+    let result = scheduler.try_take().unwrap().unwrap();
+    assert_eq!(result.ticket, ticket);
+    let frame = result.frame.unwrap();
+    assert_eq!(
+        renderer.read_frame(&frame).unwrap().pixels[0],
+        [0.25, 0.5, 1.0, 1.0]
+    );
+    drop(frame);
+    scheduler
+        .submit(6, plan, request, ImageInputs::default())
+        .unwrap();
+    rx.recv_timeout(Duration::from_secs(30)).unwrap();
+    scheduler.cancel().unwrap();
+    assert!(scheduler.try_take().unwrap().is_none());
+    assert_eq!(renderer.resource_stats().unwrap().held_bytes, 0);
+}

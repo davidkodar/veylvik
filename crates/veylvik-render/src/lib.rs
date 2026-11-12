@@ -1,14 +1,14 @@
 //! Whole-frame GPU execution. No window, document mutation, or timeline dependency.
 mod frame;
-pub use frame::{Image, ImageInputs, Region, RenderRequest, RenderedFrame};
+pub use frame::{GpuFrame, Image, ImageInputs, Region, RenderRequest, RenderedFrame};
 mod plan;
 mod pool;
 mod scheduler;
 pub use plan::{Kernel, PassInfo, Plan};
 pub use pool::ResourceStats;
-pub use scheduler::{PreviewResult, PreviewScheduler, PreviewTicket};
+pub use scheduler::{GpuPreviewScheduler, PreviewResult, PreviewScheduler, PreviewTicket};
 use std::collections::BTreeMap;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use veylvik_document::{Node, Operation, Time};
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -63,7 +63,9 @@ pub struct Renderer {
     queue: wgpu::Queue,
     pipelines: BTreeMap<Kernel, wgpu::ComputePipeline>,
     layout: wgpu::BindGroupLayout,
+    validation_pipeline: wgpu::ComputePipeline,
     pool: Mutex<pool::Pool>,
+    owner: Arc<frame::DeviceIdentity>,
     pub pool_limit_bytes: u64,
     pub adapter: wgpu::AdapterInfo,
     pub budget_bytes: u64,
@@ -92,6 +94,18 @@ impl Renderer {
             })
             .await
             .map_err(error)?;
+        Self::from_device(device, queue, info)
+    }
+    /// Share a Vulkan device with a window host. The host supplies the matching
+    /// queue and adapter info; all frame consumers must use this same device.
+    pub fn from_device(
+        device: wgpu::Device,
+        queue: wgpu::Queue,
+        info: wgpu::AdapterInfo,
+    ) -> Result<Self> {
+        if info.backend != wgpu::Backend::Vulkan {
+            return Err(error("Veylvik requires a Vulkan device"));
+        }
         let scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("composition kernels"),
@@ -163,7 +177,20 @@ impl Renderer {
                 )
             })
             .collect();
-        if let Some(e) = scope.pop().await {
+        let validation_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("finite output validation"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("validate.wgsl").into()),
+        });
+        let validation_pipeline =
+            device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                label: Some("finite output validation"),
+                layout: None,
+                module: &validation_shader,
+                entry_point: Some("validate"),
+                compilation_options: Default::default(),
+                cache: None,
+            });
+        if let Some(e) = pollster::block_on(scope.pop()) {
             return Err(error(e));
         }
         Ok(Self {
@@ -171,7 +198,9 @@ impl Renderer {
             queue,
             pipelines,
             layout,
+            validation_pipeline,
             pool: Mutex::new(pool::Pool::default()),
+            owner: Arc::new(frame::DeviceIdentity),
             pool_limit_bytes: 128 * 1024 * 1024,
             adapter: info,
             budget_bytes: 512 * 1024 * 1024,
@@ -198,17 +227,19 @@ impl Renderer {
             .render_frame(plan, RenderRequest::full(time), &ImageInputs::default())?
             .pixels)
     }
-    pub fn render_frame(
+    fn execute(
         &self,
         plan: &Plan,
         request: RenderRequest,
         inputs: &ImageInputs,
-    ) -> Result<RenderedFrame> {
+        download: bool,
+    ) -> Result<(Executed, Region)> {
         let mut pool = self
             .pool
             .lock()
             .map_err(|_| error("renderer resource pool poisoned"))?;
-        pool.trim(self.pool_limit_bytes.min(self.budget_bytes));
+        let available = self.budget_bytes.saturating_sub(pool.stats().held_bytes);
+        pool.trim(self.pool_limit_bytes.min(available));
         if pool.failed {
             return Err(error(
                 "renderer unavailable after a GPU failure; create a new renderer",
@@ -243,7 +274,12 @@ impl Renderer {
             }
             source_bytes += source.byte_size();
         }
-        let working_bytes = plan.working_bytes() + source_bytes;
+        let working_bytes = if download {
+            plan.working_bytes()
+        } else {
+            plan.gpu_working_bytes()
+        } + source_bytes
+            + pool.stats().held_bytes;
         if working_bytes > self.budget_bytes {
             return Err(error(format!(
                 "render requires {} bytes, budget is {}",
@@ -265,7 +301,7 @@ impl Renderer {
         }
         let validation = self.device.push_error_scope(wgpu::ErrorFilter::Validation);
         let allocation = self.device.push_error_scope(wgpu::ErrorFilter::OutOfMemory);
-        let result = self.encode_and_read(plan, &evaluated, byte_size, inputs, &mut pool);
+        let result = self.encode_and_read(plan, &evaluated, byte_size, inputs, &mut pool, download);
         let allocation_error = pollster::block_on(allocation.pop());
         let validation_error = pollster::block_on(validation.pop());
         if let Some(e) = allocation_error.or(validation_error) {
@@ -273,24 +309,45 @@ impl Renderer {
             pool.failed = true;
             return Err(error(e));
         }
-        pool.trim(self.pool_limit_bytes.min(self.budget_bytes));
-        let full = result?;
-        if region.x == 0
-            && region.y == 0
-            && region.width == plan.width
-            && region.height == plan.height
-        {
-            return Ok(RenderedFrame {
-                region,
-                pixels: full,
-            });
-        }
-        let mut pixels = Vec::with_capacity(region.width as usize * region.height as usize);
-        for y in region.y..region.y + region.height {
-            let start = (y * plan.width + region.x) as usize;
-            pixels.extend_from_slice(&full[start..start + region.width as usize]);
-        }
-        Ok(RenderedFrame { region, pixels })
+        let available = self.budget_bytes.saturating_sub(pool.stats().held_bytes);
+        pool.trim(self.pool_limit_bytes.min(available));
+        Ok((result?, region))
+    }
+    pub fn render_frame(
+        &self,
+        plan: &Plan,
+        request: RenderRequest,
+        inputs: &ImageInputs,
+    ) -> Result<RenderedFrame> {
+        let (Executed::Cpu(full), region) = self.execute(plan, request, inputs, true)? else {
+            unreachable!()
+        };
+        Ok(crop(full, region, plan.width, plan.height))
+    }
+    /// Evaluate without any pixel readback. Held outputs count against the budget
+    /// of later renders until their handles are dropped.
+    pub fn render_gpu(
+        &self,
+        plan: &Plan,
+        request: RenderRequest,
+        inputs: &ImageInputs,
+    ) -> Result<GpuFrame> {
+        let (Executed::Gpu(storage), region) = self.execute(plan, request, inputs, false)? else {
+            unreachable!()
+        };
+        Ok(GpuFrame {
+            storage,
+            owner: self.owner.clone(),
+            region,
+            width: plan.width,
+            height: plan.height,
+        })
+    }
+    pub fn device(&self) -> &wgpu::Device {
+        &self.device
+    }
+    pub fn queue(&self) -> &wgpu::Queue {
+        &self.queue
     }
     fn encode_and_read(
         &self,
@@ -299,7 +356,8 @@ impl Renderer {
         byte_size: u64,
         inputs: &ImageInputs,
         pool: &mut pool::Pool,
-    ) -> Result<Vec<[f32; 4]>> {
+        download: bool,
+    ) -> Result<Executed> {
         let mut resources = pool.frame(self.budget_bytes);
         let dummy = resources.take(
             &self.device,
@@ -386,37 +444,148 @@ impl Renderer {
                 pass.dispatch_workgroups(plan.width.div_ceil(8), plan.height.div_ceil(8), 1);
             }
         }
-        let readback = resources.take(
-            &self.device,
-            byte_size,
-            wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
-            "readback",
-        )?;
-        encoder.copy_buffer_to_buffer(&buffers[plan.output_slot], 0, &readback, 0, byte_size);
+        let readback = if download {
+            let buffer = resources.take(
+                &self.device,
+                byte_size,
+                wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+                "readback",
+            )?;
+            encoder.copy_buffer_to_buffer(&buffers[plan.output_slot], 0, &buffer, 0, byte_size);
+            Some(buffer)
+        } else {
+            let flag = resources.take(
+                &self.device,
+                4,
+                wgpu::BufferUsages::STORAGE
+                    | wgpu::BufferUsages::COPY_DST
+                    | wgpu::BufferUsages::COPY_SRC,
+                "finite output flag",
+            )?;
+            self.queue.write_buffer(&flag, 0, &[0; 4]);
+            let bind = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("finite output validation"),
+                layout: &self.validation_pipeline.get_bind_group_layout(0),
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: buffers[plan.output_slot].as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: flag.as_entire_binding(),
+                    },
+                ],
+            });
+            {
+                let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor::default());
+                pass.set_pipeline(&self.validation_pipeline);
+                pass.set_bind_group(0, &bind, &[]);
+                pass.dispatch_workgroups(plan.width.div_ceil(8), plan.height.div_ceil(8), 1);
+            }
+            let status = resources.take(
+                &self.device,
+                4,
+                wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+                "validation readback",
+            )?;
+            encoder.copy_buffer_to_buffer(&flag, 0, &status, 0, 4);
+            Some(status)
+        };
         resources.submitted();
         let submission = self.queue.submit([encoder.finish()]);
-        let (tx, rx) = std::sync::mpsc::channel();
-        readback.slice(..).map_async(wgpu::MapMode::Read, move |r| {
-            let _ = tx.send(r);
-        });
+        let readback = readback.unwrap();
+        if download {
+            let pixels = self.map_values(&readback, submission)?;
+            resources.completed();
+            validate_pixels(&pixels)?;
+            Ok(Executed::Cpu(pixels))
+        } else {
+            let flags: Vec<u32> = self.map_values(&readback, submission)?;
+            resources.completed();
+            if flags[0] != 0 {
+                return Err(error("render produced non-finite pixels"));
+            }
+            Ok(Executed::Gpu(resources.pin(&buffers[plan.output_slot])))
+        }
+    }
+
+    fn wait(&self, submission: wgpu::SubmissionIndex) -> Result<()> {
         self.device
             .poll(wgpu::PollType::Wait {
                 submission_index: Some(submission),
                 timeout: Some(std::time::Duration::from_secs(30)),
             })
             .map_err(error)?;
+        Ok(())
+    }
+    fn map_values<T: bytemuck::Pod>(
+        &self,
+        buffer: &wgpu::Buffer,
+        submission: wgpu::SubmissionIndex,
+    ) -> Result<Vec<T>> {
+        let (tx, rx) = std::sync::mpsc::channel();
+        buffer.slice(..).map_async(wgpu::MapMode::Read, move |r| {
+            let _ = tx.send(r);
+        });
+        self.wait(submission)?;
         rx.recv_timeout(std::time::Duration::from_secs(1))
             .map_err(error)?
             .map_err(error)?;
-        let mapped = readback.slice(..).get_mapped_range();
-        let pixels: Vec<[f32; 4]> = bytemuck::cast_slice(&mapped).to_vec();
+        let mapped = buffer.slice(..).get_mapped_range();
+        let pixels = bytemuck::cast_slice(&mapped).to_vec();
         drop(mapped);
-        readback.unmap();
-        resources.completed();
-        if pixels.iter().flatten().any(|v| !v.is_finite()) {
-            return Err(error("render produced non-finite pixels"));
-        }
+        buffer.unmap();
         Ok(pixels)
+    }
+    /// Explicit readback for export, picking, or reference checks. The frame must
+    /// belong to this renderer. Its crop is applied after the full buffer is read.
+    pub fn read_frame(&self, frame: &GpuFrame) -> Result<RenderedFrame> {
+        if !Arc::ptr_eq(&self.owner, &frame.owner) {
+            return Err(error("GPU frame belongs to another renderer"));
+        }
+        let mut pool = self
+            .pool
+            .lock()
+            .map_err(|_| error("renderer resource pool poisoned"))?;
+        let available = self.budget_bytes.saturating_sub(pool.stats().held_bytes);
+        pool.trim(self.pool_limit_bytes.min(available));
+        if pool.failed {
+            return Err(error("renderer unavailable after a GPU failure"));
+        }
+        if pool.stats().held_bytes + frame.byte_size() > self.budget_bytes {
+            return Err(error("GPU readback exceeds budget"));
+        }
+        let validation = self.device.push_error_scope(wgpu::ErrorFilter::Validation);
+        let allocation = self.device.push_error_scope(wgpu::ErrorFilter::OutOfMemory);
+        let result = (|| {
+            let mut resources = pool.frame(self.budget_bytes);
+            let buffer = resources.take(
+                &self.device,
+                frame.byte_size(),
+                wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+                "readback",
+            )?;
+            let mut encoder = self
+                .device
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+            encoder.copy_buffer_to_buffer(frame.buffer(), 0, &buffer, 0, frame.byte_size());
+            resources.submitted();
+            let pixels = self.map_values(&buffer, self.queue.submit([encoder.finish()]))?;
+            resources.completed();
+            validate_pixels(&pixels)?;
+            Ok(crop(pixels, frame.region, frame.width, frame.height))
+        })();
+        let allocation_error = pollster::block_on(allocation.pop());
+        let validation_error = pollster::block_on(validation.pop());
+        if let Some(e) = allocation_error.or(validation_error) {
+            pool.trim(0);
+            pool.failed = true;
+            return Err(error(e));
+        }
+        let available = self.budget_bytes.saturating_sub(pool.stats().held_bytes);
+        pool.trim(self.pool_limit_bytes.min(available));
+        result
     }
 }
 /// Display/output boundary: unpremultiply, clip to SDR and apply the sRGB transfer curve.
@@ -447,4 +616,29 @@ pub fn to_srgba8(pixels: &[[f32; 4]]) -> Vec<u8> {
             ]
         })
         .collect()
+}
+
+enum Executed {
+    Cpu(Vec<[f32; 4]>),
+    Gpu(pool::PinnedBuffer),
+}
+fn validate_pixels(pixels: &[[f32; 4]]) -> Result<()> {
+    if pixels.iter().flatten().any(|v| !v.is_finite()) {
+        return Err(error("render produced non-finite pixels"));
+    }
+    Ok(())
+}
+fn crop(full: Vec<[f32; 4]>, region: Region, width: u32, height: u32) -> RenderedFrame {
+    if region.x == 0 && region.y == 0 && region.width == width && region.height == height {
+        return RenderedFrame {
+            region,
+            pixels: full,
+        };
+    }
+    let mut pixels = Vec::with_capacity(region.width as usize * region.height as usize);
+    for y in region.y..region.y + region.height {
+        let start = (y * width + region.x) as usize;
+        pixels.extend_from_slice(&full[start..start + region.width as usize]);
+    }
+    RenderedFrame { region, pixels }
 }

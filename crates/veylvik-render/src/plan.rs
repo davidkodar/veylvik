@@ -205,6 +205,10 @@ impl Plan {
             })
             .collect()
     }
+    /// Working bytes when pixels stay on the GPU (only a 4-byte validation result is read).
+    pub fn gpu_working_bytes(&self) -> u64 {
+        self.working_bytes() - self.width as u64 * self.height as u64 * 16 + 8
+    }
     /// Declared GPU buffer bytes, excluding source uploads and driver/staging overhead.
     pub fn working_bytes(&self) -> u64 {
         self.width as u64 * self.height as u64 * 16 * (self.slot_count as u64 + 1)

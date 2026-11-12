@@ -1,6 +1,12 @@
 //! Exact-size buffer reuse. In-flight or mapped buffers never enter the idle pool.
 use crate::{Result, error};
-use std::collections::VecDeque;
+use std::{
+    collections::VecDeque,
+    sync::{
+        Arc,
+        atomic::{AtomicU64, Ordering},
+    },
+};
 #[derive(Debug, Clone, Copy, Default, serde::Serialize)]
 pub struct ResourceStats {
     pub buffers_created: u64,
@@ -8,6 +14,7 @@ pub struct ResourceStats {
     pub buffers_evicted: u64,
     pub resident_bytes: u64,
     pub idle_bytes: u64,
+    pub held_bytes: u64,
     pub peak_resident_bytes: u64,
 }
 struct Entry {
@@ -19,11 +26,18 @@ struct Entry {
 pub(crate) struct Pool {
     idle: VecDeque<Entry>,
     stats: ResourceStats,
+    retired: Arc<AtomicU64>,
     pub failed: bool,
 }
 impl Pool {
-    pub fn stats(&self) -> ResourceStats {
+    pub fn stats(&mut self) -> ResourceStats {
+        self.reap();
         self.stats
+    }
+    fn reap(&mut self) {
+        let retired = self.retired.swap(0, Ordering::AcqRel);
+        self.stats.resident_bytes -= retired;
+        self.stats.held_bytes -= retired;
     }
     fn evict(&mut self) -> bool {
         let Some(entry) = self.idle.pop_front() else {
@@ -36,6 +50,7 @@ impl Pool {
         true
     }
     pub fn trim(&mut self, limit: u64) {
+        self.reap();
         while self.stats.idle_bytes > limit {
             if !self.evict() {
                 break;
@@ -58,6 +73,21 @@ pub(crate) struct FrameBuffers<'a> {
     reusable: bool,
 }
 impl FrameBuffers<'_> {
+    pub fn pin(&mut self, buffer: &wgpu::Buffer) -> PinnedBuffer {
+        let index = self
+            .entries
+            .iter()
+            .position(|entry| &entry.buffer == buffer)
+            .unwrap();
+        let entry = self.entries.swap_remove(index);
+        self.pool.stats.held_bytes += entry.size;
+        PinnedBuffer {
+            buffer: entry.buffer,
+            size: entry.size,
+            retired: self.pool.retired.clone(),
+        }
+    }
+
     pub fn take(
         &mut self,
         device: &wgpu::Device,
@@ -129,5 +159,19 @@ impl Drop for FrameBuffers<'_> {
             self.pool.failed = true;
             self.pool.trim(0);
         }
+    }
+}
+
+/// Output allocations are never recycled while visible to a consumer. Retirement
+/// uses an atomic counter so dropping a frame cannot deadlock the render mutex.
+pub(crate) struct PinnedBuffer {
+    pub buffer: wgpu::Buffer,
+    size: u64,
+    retired: Arc<AtomicU64>,
+}
+impl Drop for PinnedBuffer {
+    fn drop(&mut self) {
+        self.buffer.destroy();
+        self.retired.fetch_add(self.size, Ordering::Release);
     }
 }

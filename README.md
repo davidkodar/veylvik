@@ -57,7 +57,11 @@ encoding; it is not an HDR delivery format or a tone mapper.
 The compiler validates the entire graph, prunes unreachable nodes, and assigns
 explicit compute passes and reusable image-buffer slots by last use. Box blur
 lowers to horizontal and vertical passes, with transparent boundaries. Intermediate pixels stay on the GPU;
-only the final image is read back. One device and queue own all resources.
+export reads back only the final image. `render_gpu` instead returns an immutable
+GPU frame, reading only a four-byte finite-value status flag. Held frames count
+against subsequent render budgets and are never recycled as intermediates.
+`read_frame` explicitly downloads one, including its requested crop. A GPU
+consumer must retain the frame until its submission finishes. One device and queue own all resources.
 The default 512 MiB render budget covers declared GPU image buffers, readback,
 uniforms, and each unique source image upload; it does not measure driver overhead
 or bound total process RAM. `check` reports graph working bytes before source
@@ -129,7 +133,9 @@ keeps at most one active and one pending request, and replaces obsolete pending
 work. Generation and document revision accompany every completion. Cancellation
 suppresses old results; it does not interrupt submitted GPU work. A wake callback
 can notify a UI without polling. Dropping the scheduler joins the worker.
-Direct `Renderer` calls remain synchronous. Plans, pipelines, and GPU
+`GpuPreviewScheduler` shares a host-owned Vulkan renderer and produces these
+GPU-resident frames. `Renderer::from_device` integrates with a window host on
+the same device and queue. Direct `Renderer` calls remain synchronous. Plans, pipelines, and GPU
 buffers can be reused. A bounded pool retains up to 128 MiB of idle buffers by
 default, within the render budget. Buffers return to the pool only after GPU
 completion and readback unmapping. `Renderer::resource_stats` reports allocations,

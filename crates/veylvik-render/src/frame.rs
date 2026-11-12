@@ -99,3 +99,35 @@ pub struct RenderedFrame {
     pub region: Region,
     pub pixels: Vec<[f32; 4]>,
 }
+
+/// Completed, immutable scene-linear RGBA32F output on the renderer's device.
+/// Retain this handle until all GPU consumers have completed their submissions.
+/// Dropping it releases its allocation; it is never recycled as an intermediate.
+/// A crop describes a view into the full-size buffer, not a packed allocation.
+pub struct GpuFrame {
+    pub(crate) storage: crate::pool::PinnedBuffer,
+    pub(crate) owner: Arc<DeviceIdentity>,
+    pub(crate) region: Region,
+    pub(crate) width: u32,
+    pub(crate) height: u32,
+}
+pub(crate) struct DeviceIdentity;
+impl GpuFrame {
+    pub fn region(&self) -> Region {
+        self.region
+    }
+    pub fn width(&self) -> u32 {
+        self.width
+    }
+    pub fn height(&self) -> u32 {
+        self.height
+    }
+    /// Read-only storage buffer of row-major premultiplied `[f32; 4]` pixels.
+    /// Use only with this renderer's device. Do not destroy or modify the buffer.
+    pub fn buffer(&self) -> &wgpu::Buffer {
+        &self.storage.buffer
+    }
+    pub fn byte_size(&self) -> u64 {
+        self.width as u64 * self.height as u64 * 16
+    }
+}

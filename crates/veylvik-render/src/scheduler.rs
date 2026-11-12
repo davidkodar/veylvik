@@ -1,6 +1,7 @@
 //! One active render, one replaceable pending request, one replaceable completion.
 use crate::{
-    ImageInputs, Plan, RenderRequest, RenderedFrame, Renderer, ResourceStats, Result, error,
+    GpuFrame, ImageInputs, Plan, RenderRequest, RenderedFrame, Renderer, ResourceStats, Result,
+    error,
 };
 use std::{
     sync::{Arc, Condvar, Mutex},
@@ -21,10 +22,10 @@ struct Job {
     inputs: ImageInputs,
 }
 /// Completion for the newest request only. Time includes initialization if needed.
-pub struct PreviewResult {
+pub struct PreviewResult<F = RenderedFrame> {
     pub ticket: PreviewTicket,
     pub request: RenderRequest,
-    pub frame: Result<RenderedFrame>,
+    pub frame: Result<F>,
     pub elapsed: Duration,
     pub resources: Option<ResourceStats>,
 }
@@ -33,8 +34,8 @@ pub struct PreviewResult {
 /// Submitted GPU work runs to completion; cancellation suppresses its result.
 /// Dropping the scheduler joins its worker, including an active render. Inputs and
 /// plans are immutable snapshots; document mutation stays with the caller.
-pub struct PreviewScheduler {
-    worker: LatestWorker<Job, PreviewResult>,
+pub struct PreviewScheduler<F = RenderedFrame> {
+    worker: LatestWorker<Job, PreviewResult<F>>,
 }
 impl PreviewScheduler {
     pub fn new() -> Result<Self> {
@@ -79,6 +80,35 @@ impl PreviewScheduler {
         )?;
         Ok(Self { worker })
     }
+}
+/// Preview worker producing GPU-resident output on a host-owned renderer/device.
+pub type GpuPreviewScheduler = PreviewScheduler<GpuFrame>;
+impl PreviewScheduler<GpuFrame> {
+    pub fn with_renderer(
+        renderer: Arc<Renderer>,
+        wake: impl Fn() + Send + 'static,
+    ) -> Result<Self> {
+        let worker = LatestWorker::new(
+            move |generation, job: Job| {
+                let start = Instant::now();
+                let frame = renderer.render_gpu(&job.plan, job.request, &job.inputs);
+                PreviewResult {
+                    ticket: PreviewTicket {
+                        generation,
+                        revision: job.revision,
+                    },
+                    request: job.request,
+                    frame,
+                    elapsed: start.elapsed(),
+                    resources: renderer.resource_stats().ok(),
+                }
+            },
+            wake,
+        )?;
+        Ok(Self { worker })
+    }
+}
+impl<F: Send + 'static> PreviewScheduler<F> {
     pub fn submit(
         &self,
         revision: u64,
@@ -102,7 +132,7 @@ impl PreviewScheduler {
         self.worker.cancel()
     }
     /// Nonblocking. A returned error means the worker has terminated unexpectedly.
-    pub fn try_take(&self) -> Result<Option<PreviewResult>> {
+    pub fn try_take(&self) -> Result<Option<PreviewResult<F>>> {
         self.worker.try_take()
     }
 }
