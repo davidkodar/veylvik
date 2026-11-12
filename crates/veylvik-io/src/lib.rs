@@ -5,6 +5,7 @@ pub mod footage;
 pub mod import;
 pub mod presets;
 pub mod preview;
+pub mod video;
 pub use export::{FrameFormat, save_frame};
 pub use import::{load_exr, load_image};
 pub mod recovery;
@@ -163,7 +164,7 @@ pub fn save_tracked(
         .canonicalize()?;
     let mut saved = composition.clone();
     for node in saved.nodes.values_mut() {
-        if let Operation::Image { asset } = &mut node.operation
+        if let Operation::Image { asset } | Operation::Footage { asset, .. } = &mut node.operation
             && Path::new(asset).is_relative()
         {
             let resolved = base.join(&*asset);
@@ -208,7 +209,7 @@ pub fn protect_inputs(composition: &Composition, base: &Path, destination: &Path
         ),
     );
     for node in composition.nodes.values() {
-        if let Operation::Image { asset } = &node.operation {
+        if let Operation::Image { asset } | Operation::Footage { asset, .. } = &node.operation {
             let input = base.join(asset);
             if footage::is_sequence(&input) && input.exists() {
                 for frame in footage::dependencies(&input)? {

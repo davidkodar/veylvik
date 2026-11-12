@@ -149,7 +149,7 @@ impl Project {
     fn load_available_inputs(&mut self) {
         let mut remaining = 256 * 1024 * 1024;
         for node in self.document.snapshot().nodes.values() {
-            if let Operation::Image { asset } = &node.operation
+            if let Operation::Image { asset } | Operation::Footage { asset, .. } = &node.operation
                 && !self.inputs.contains_key(asset)
                 && !self.asset_errors.contains_key(asset)
             {
@@ -174,7 +174,8 @@ impl Project {
             .nodes
             .values()
             .filter_map(|node| {
-                if let Operation::Image { asset } = &node.operation
+                if let Operation::Image { asset } | Operation::Footage { asset, .. } =
+                    &node.operation
                     && !self.inputs.contains_key(asset)
                 {
                     Some((
@@ -312,6 +313,8 @@ impl Project {
         path: &Path,
         image: impl Into<veylvik_io::footage::Media>,
     ) -> Result<()> {
+        let image = image.into();
+        let temporal = !matches!(&image, veylvik_io::footage::Media::Still(_));
         let mut node = self
             .document
             .snapshot()
@@ -319,20 +322,26 @@ impl Project {
             .get(&id)
             .ok_or("Image node no longer exists")?
             .clone();
-        let Operation::Image { asset } = &node.operation else {
+        let Some(asset) = node.operation.asset() else {
             return Err("Selected node is not an image".into());
         };
         let next = path.to_str().ok_or("image path is not UTF-8")?.to_owned();
-        if asset != &next {
-            node.operation = Operation::Image {
-                asset: next.clone(),
-            };
+        let promote = temporal && matches!(node.operation, Operation::Image { .. });
+        if asset != next || promote {
+            if promote {
+                node.operation = Operation::Footage {
+                    asset: next.clone(),
+                    timing: Default::default(),
+                };
+            } else {
+                *node.operation.asset_mut().unwrap() = next.clone();
+            }
             self.apply(&[Command::Put {
                 node: Box::new(node),
             }])?;
         }
         // Retain other loaded sources so undo can restore the previous image.
-        image.into().insert(&mut self.inputs, next);
+        image.insert(&mut self.inputs, next);
         Ok(())
     }
     pub fn import(
@@ -341,14 +350,23 @@ impl Project {
         image: impl Into<veylvik_io::footage::Media>,
         position: veylvik_document::NodePosition,
     ) -> Result<()> {
+        let image = image.into();
+        let temporal = !matches!(&image, veylvik_io::footage::Media::Still(_));
         let asset = path.to_str().ok_or("image path is not UTF-8")?.to_owned();
         self.add_at(
-            Operation::Image {
-                asset: asset.clone(),
+            if temporal {
+                Operation::Footage {
+                    asset: asset.clone(),
+                    timing: Default::default(),
+                }
+            } else {
+                Operation::Image {
+                    asset: asset.clone(),
+                }
             },
             Some(position),
         )?;
-        image.into().insert(&mut self.inputs, asset);
+        image.insert(&mut self.inputs, asset);
         Ok(())
     }
 }
@@ -363,7 +381,7 @@ pub fn load_inputs(
     let mut seen = std::collections::BTreeSet::new();
     const BUDGET: u64 = 256 * 1024 * 1024;
     for node in composition.nodes.values() {
-        if let Operation::Image { asset } = &node.operation
+        if let Operation::Image { asset } | Operation::Footage { asset, .. } = &node.operation
             && seen.insert(asset)
         {
             let replaced = inputs.source_budget(asset);

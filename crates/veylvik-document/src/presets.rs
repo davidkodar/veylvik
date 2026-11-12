@@ -72,11 +72,12 @@ impl Preset {
         if self.nodes.keys().copied().collect::<BTreeSet<_>>() != self.group.members {
             return fail("preset nodes must exactly match its group members");
         }
-        if self
-            .nodes
-            .values()
-            .any(|n| matches!(n.operation, Operation::Image { .. }))
-        {
+        if self.nodes.values().any(|n| {
+            matches!(
+                n.operation,
+                Operation::Image { .. } | Operation::Footage { .. }
+            )
+        }) {
             return fail("Expose image sources as effect inputs before saving a portable preset");
         }
         let mut nodes = self.nodes.clone();

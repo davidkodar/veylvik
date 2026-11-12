@@ -19,9 +19,10 @@ changed or invalid frame reports an error rather than displaying another frame
 as if it were correct. Reload sources after changing files on disk. Source decoding
 runs off the interface thread; compositing and effects remain on Vulkan.
 
-Compressed video containers are not supported yet. Export those shots as PNG or
-OpenEXR frames first. Project collection currently rejects sequence assets; copy
-the sequence directory with its manifest manually.
+Direct video import is available through **File > Import media…**; see
+[Video footage](video-footage.md) for formats, timing controls and decoding limits.
+Project collection currently rejects sequence assets; copy the sequence directory
+with its manifest manually.
 
 ## Track a feature
 

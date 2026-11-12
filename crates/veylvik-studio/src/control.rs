@@ -202,12 +202,15 @@ pub fn call(studio: &mut Studio, name: &str, args: &Value) -> Result<Value> {
                 .nodes
                 .values()
                 .filter_map(|node| match &node.operation {
-                    Operation::Image { asset } => Some(asset.as_str()),
+                    Operation::Image { asset } | Operation::Footage { asset, .. } => {
+                        Some(asset.as_str())
+                    }
                     _ => None,
                 })
                 .collect();
             for node in candidate.nodes.values() {
-                if let Operation::Image { asset } = &node.operation
+                if let Operation::Image { asset } | Operation::Footage { asset, .. } =
+                    &node.operation
                     && !studio.project.inputs.contains_key(asset)
                     && !known.contains(asset.as_str())
                 {

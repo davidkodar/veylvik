@@ -7,7 +7,9 @@ use std::{
     io::Read,
     path::{Path, PathBuf},
 };
-use veylvik_document::{Composition, Operation};
+use veylvik_document::Composition;
+#[cfg(test)]
+use veylvik_document::Operation;
 
 const MAX_FILE_BYTES: u64 = 64 * 1024 * 1024;
 const MAX_TOTAL_BYTES: u64 = 1024 * 1024 * 1024;
@@ -55,10 +57,10 @@ fn collect_with_limit(
     document.validate()?;
     document.encoded_size()?;
     let mut copy = document.clone();
-    let mut sources: BTreeMap<(PathBuf, bool), String> = BTreeMap::new();
+    let mut sources: BTreeMap<(PathBuf, String), String> = BTreeMap::new();
     let mut planned_bytes = 0u64;
     for node in copy.nodes.values_mut() {
-        let Operation::Image { asset } = &mut node.operation else {
+        let Some(asset) = node.operation.asset_mut() else {
             continue;
         };
         if crate::footage::is_sequence(Path::new(asset)) {
@@ -69,12 +71,22 @@ fn collect_with_limit(
             .canonicalize()
             .map_err(|error| format!("cannot collect image {asset}: {error}"))?;
         // Decoder choice follows the original asset key, including extensionless PNGs.
-        let exr = Path::new(asset)
+        let extension = if crate::video::is_video(Path::new(asset)) {
+            Path::new(asset)
+                .extension()
+                .unwrap()
+                .to_string_lossy()
+                .to_ascii_lowercase()
+        } else if Path::new(asset)
             .extension()
-            .and_then(|s| s.to_str())
-            .is_some_and(|s| s.eq_ignore_ascii_case("exr"));
+            .is_some_and(|e| e.eq_ignore_ascii_case("exr"))
+        {
+            "exr".into()
+        } else {
+            "png".into()
+        };
         let next = sources.len() + 1;
-        let relative = match sources.entry((source.clone(), exr)) {
+        let relative = match sources.entry((source.clone(), extension.clone())) {
             std::collections::btree_map::Entry::Occupied(entry) => entry.get().clone(),
             std::collections::btree_map::Entry::Vacant(entry) => {
                 let metadata = std::fs::metadata(&source)?;
@@ -92,10 +104,7 @@ fn collect_with_limit(
                     return Err("collected image files exceed the collection byte limit".into());
                 }
                 entry
-                    .insert(format!(
-                        "assets/image-{next:04}.{}",
-                        if exr { "exr" } else { "png" }
-                    ))
+                    .insert(format!("assets/image-{next:04}.{}", extension))
                     .clone()
             }
         };
@@ -129,7 +138,7 @@ fn collect_with_limit(
         pending.files.push(destination.clone());
         drop(data);
         // Validate the actual copied bytes, not a second read of a changing source.
-        crate::load_image(&destination, crate::MAX_IMAGE_BYTES)?;
+        crate::footage::load(&destination, crate::MAX_IMAGE_BYTES)?;
     }
     File::open(directory.join("assets"))?.sync_all()?;
     let project = directory.join("project.veylvik");

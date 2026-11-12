@@ -156,7 +156,8 @@ impl NodeClipboard {
                 node.id = mapping[id];
                 if self.source_session != session
                     && let Some(base) = &self.source_base
-                    && let Operation::Image { asset } = &mut node.operation
+                    && let Operation::Image { asset } | Operation::Footage { asset, .. } =
+                        &mut node.operation
                     && std::path::Path::new(asset).is_relative()
                 {
                     *asset = std::path::Path::new(base)

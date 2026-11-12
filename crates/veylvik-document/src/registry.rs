@@ -8,6 +8,7 @@ pub const MAX_ASSET_NAME: usize = 4096;
 pub enum ParameterKind {
     Scalar,
     Typography,
+    MediaTiming,
     TextFeatures,
     TextContent,
     TextFont,
@@ -40,6 +41,7 @@ pub struct Parameter {
 impl Parameter {
     fn default_value(&self) -> Value {
         match self.kind {
+            ParameterKind::MediaTiming => json!(crate::media::Timing::default()),
             ParameterKind::Typography => json!(crate::text::Typography::default()),
             ParameterKind::TextFeatures => json!(""),
             ParameterKind::TextContent => json!("Your text"),
@@ -99,6 +101,7 @@ impl Parameter {
                 json!({"type":"array","minItems":4,"maxItems":4,"prefixItems":[{"type":"number"},{"type":"number"},{"type":"number"},{"type":"number","minimum":0,"maximum":1}]})
             }
             ParameterKind::Path => crate::vector::schema(),
+            ParameterKind::MediaTiming => crate::media::schema(),
             ParameterKind::Asset => {
                 json!({"type":"string","minLength":1,"maxLength":MAX_ASSET_NAME})
             }
@@ -396,6 +399,17 @@ pub static BLEND: NodeType = NodeType {
         scalar("opacity", "factor", 0.0, 1.0, 1.0),
     ],
 };
+pub static FOOTAGE: NodeType = NodeType {
+    type_id: "footage",
+    version: 1,
+    label: "Footage",
+    description: "Time-aware video or image sequence, with exact source in/out and timeline placement. Outside the clip is transparent; pixels retain native dimensions.",
+    inputs: &[],
+    parameters: &[
+        other("asset", ParameterKind::Asset, "asset key"),
+        other("timing", ParameterKind::MediaTiming, "seconds"),
+    ],
+};
 pub static IMAGE: NodeType = NodeType {
     type_id: "image",
     version: 1,
@@ -536,6 +550,7 @@ pub static TYPES: &[&NodeType] = &[
     &BLUR,
     &MERGE,
     &IMAGE,
+    &FOOTAGE,
     &AFFINE,
     &ELLIPSE,
     &MASK,

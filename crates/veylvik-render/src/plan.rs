@@ -267,6 +267,10 @@ impl Plan {
                         Kernel::Image
                     }
                 }
+                Operation::Footage { .. } => {
+                    inputs[0] = Input::Asset(footage_key(node.id));
+                    Kernel::Image
+                }
                 Operation::Image { asset } => {
                     inputs[0] = Input::Asset(asset.clone());
                     Kernel::Image
@@ -395,11 +399,23 @@ impl Plan {
         Ok(true)
     }
 
+    pub fn required_inputs(&self) -> BTreeSet<&str> {
+        self.passes
+            .iter()
+            .flat_map(|p| &p.inputs)
+            .filter_map(|i| match i {
+                Input::Asset(key) => Some(key.as_str()),
+                _ => None,
+            })
+            .collect()
+    }
     pub fn required_assets(&self) -> BTreeSet<&str> {
         self.nodes
             .iter()
             .filter_map(|n| match &n.operation {
-                Operation::Image { asset } => Some(asset.as_str()),
+                Operation::Image { asset } | Operation::Footage { asset, .. } => {
+                    Some(asset.as_str())
+                }
                 _ => None,
             })
             .collect()
@@ -494,4 +510,8 @@ fn shareable(operation: &Operation) -> bool {
             | Operation::CombineMask { .. }
             | Operation::Mask {}
     )
+}
+
+pub(crate) fn footage_key(id: veylvik_document::NodeId) -> String {
+    format!("\0footage:{id}")
 }

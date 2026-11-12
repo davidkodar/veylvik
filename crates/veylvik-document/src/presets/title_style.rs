@@ -53,12 +53,12 @@ impl TitleStyle {
         {
             return fail("Title style needs an editable text source");
         }
-        if self
-            .composition
-            .nodes
-            .values()
-            .any(|n| matches!(n.operation, Operation::Image { .. }))
-        {
+        if self.composition.nodes.values().any(|n| {
+            matches!(
+                n.operation,
+                Operation::Image { .. } | Operation::Footage { .. }
+            )
+        }) {
             return fail(
                 "Image-based fills need external assets. Save procedural materials or gradients as title styles.",
             );

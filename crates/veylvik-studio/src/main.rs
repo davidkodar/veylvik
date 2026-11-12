@@ -15,6 +15,7 @@ mod graph_layout;
 mod handles;
 mod icons;
 mod key_timeline;
+mod media_controls;
 mod menus;
 mod node_clipboard;
 mod node_finder;
@@ -536,7 +537,7 @@ impl Studio {
                 if self.draft_dirty
                     && matches!(
                         self.draft.operation,
-                        Operation::Text { .. } | Operation::Path { .. }
+                        Operation::Text { .. } | Operation::Path { .. } | Operation::Footage { .. }
                     )
                 {
                     let doc = self
@@ -828,11 +829,12 @@ impl Studio {
         }
         self.playing = false;
         let composition = self.project.document.snapshot().clone();
-        if !composition
-            .nodes
-            .values()
-            .any(|node| matches!(node.operation, Operation::Image { .. }))
-        {
+        if !composition.nodes.values().any(|node| {
+            matches!(
+                node.operation,
+                Operation::Image { .. } | Operation::Footage { .. }
+            )
+        }) {
             self.status = "No image sources to reload".into();
             self.error = false;
             return;
@@ -860,7 +862,10 @@ impl Studio {
         {
             return;
         }
-        if !matches!(self.draft.operation, Operation::Image { .. }) {
+        if !matches!(
+            self.draft.operation,
+            Operation::Image { .. } | Operation::Footage { .. }
+        ) {
             return;
         }
         self.playing = false;
@@ -1465,6 +1470,21 @@ impl Studio {
             | Operation::Exposure { .. }
             | Operation::Transform { .. }
             | Operation::Blur { .. } => {}
+            Operation::Footage { asset, timing } => {
+                ui.label(asset.as_str());
+                let changed = media_controls::edit(
+                    ui,
+                    timing,
+                    self.project.inputs.info(asset),
+                    self.project.document.snapshot().frame_rate,
+                );
+                self.draft_dirty |= changed;
+                text_changed |= changed;
+                if let Some(reason) = self.project.unavailable_assets().get(asset.as_str()) {
+                    ui.colored_label(egui::Color32::LIGHT_RED, *reason);
+                }
+                replace_image = ui.button("Replace source…").clicked();
+            }
             Operation::Image { asset } => {
                 ui.label("Source image / sequence");
                 ui.label(asset.as_str());
@@ -1501,7 +1521,12 @@ impl Studio {
                 text_changed |= changed;
             }
         }
-        if text_changed && matches!(self.draft.operation, Operation::Text { .. }) {
+        if text_changed
+            && matches!(
+                self.draft.operation,
+                Operation::Text { .. } | Operation::Footage { .. }
+            )
+        {
             self.queue_text_preview(ui.ctx());
         }
         if let Some(selection) = import_font {
@@ -2057,7 +2082,7 @@ impl eframe::App for Studio {
                 if self.draft_dirty
                     && matches!(
                         self.draft.operation,
-                        Operation::Text { .. } | Operation::Path { .. }
+                        Operation::Text { .. } | Operation::Path { .. } | Operation::Footage { .. }
                     )
                 {
                     self.request_preview();

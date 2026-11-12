@@ -72,7 +72,19 @@ impl Image {
 }
 /// Time-aware host source. Decoding runs on the render worker, never the UI thread.
 /// The host must bound its cache and return immutable frames with stable identities.
+#[derive(Debug, Clone)]
+pub struct SourceInfo {
+    pub width: u32,
+    pub height: u32,
+    pub duration: Option<Time>,
+    pub frame_rate: Option<Time>,
+    pub frames: Option<u32>,
+    pub description: String,
+}
 pub trait FrameSource: Send + Sync {
+    fn info(&self) -> Option<SourceInfo> {
+        None
+    }
     fn frame(&self, time: Time) -> Result<Arc<Image>>;
     fn byte_budget(&self) -> u64;
 }
@@ -119,6 +131,18 @@ impl ImageInputs {
         self.1.remove(&key);
         self.2.insert(key, source);
     }
+    pub fn info(&self, key: &str) -> Option<SourceInfo> {
+        self.2.get(key).and_then(|s| s.info()).or_else(|| {
+            self.get(key).map(|i| SourceInfo {
+                width: i.width(),
+                height: i.height(),
+                duration: None,
+                frame_rate: None,
+                frames: None,
+                description: "Still image".into(),
+            })
+        })
+    }
     pub fn source_budget(&self, key: &str) -> u64 {
         self.2.get(key).map_or_else(
             || self.get(key).map_or(0, |i| i.byte_size()),
@@ -127,9 +151,45 @@ impl ImageInputs {
     }
     pub fn resolve(&self, plan: &crate::Plan, time: Time) -> Result<Self> {
         let mut result = self.clone();
-        for key in plan.required_assets() {
-            if let Some(source) = self.2.get(key) {
-                result.insert(key, source.frame(time)?);
+        let mut decoded_bytes = 0u64;
+        for node in &plan.nodes {
+            if let veylvik_document::Operation::Footage { asset, timing } = &node.operation {
+                let key = crate::plan::footage_key(node.id);
+                if self.contains_key(&key) {
+                    continue;
+                }
+                let info = self.info(asset);
+                let time = timing.source_time(time, info.and_then(|i| i.duration))?;
+                let image = if let Some(time) = time {
+                    if let Some(source) = self.2.get(asset) {
+                        source.frame(time)?
+                    } else {
+                        self.get(asset)
+                            .cloned()
+                            .ok_or_else(|| error(format!("missing footage: {asset}")))?
+                    }
+                } else {
+                    static EMPTY: std::sync::OnceLock<Arc<Image>> = std::sync::OnceLock::new();
+                    EMPTY
+                        .get_or_init(|| {
+                            Arc::new(Image::new(1, 1, vec![[0.0; 4]]).expect("valid empty image"))
+                        })
+                        .clone()
+                };
+                decoded_bytes += image.byte_size();
+                if decoded_bytes > 256 * 1024 * 1024 {
+                    return Err(error("Decoded footage sources exceed 256 MiB per frame"));
+                }
+                result.insert(key, image);
+            } else if let veylvik_document::Operation::Image { asset } = &node.operation
+                && let Some(source) = self.2.get(asset)
+            {
+                let image = source.frame(time)?;
+                decoded_bytes += image.byte_size();
+                if decoded_bytes > 256 * 1024 * 1024 {
+                    return Err(error("Decoded footage sources exceed 256 MiB per frame"));
+                }
+                result.insert(asset, image);
             }
         }
         Ok(result)

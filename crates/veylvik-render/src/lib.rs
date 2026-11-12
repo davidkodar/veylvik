@@ -4,7 +4,9 @@ mod diagnostics;
 pub use diagnostics::Diagnostics;
 mod frame;
 pub use cache::CacheStats;
-pub use frame::{FrameSource, GpuFrame, Image, ImageInputs, Region, RenderRequest, RenderedFrame};
+pub use frame::{
+    FrameSource, GpuFrame, Image, ImageInputs, Region, RenderRequest, RenderedFrame, SourceInfo,
+};
 mod plan;
 mod pool;
 mod scheduler;
@@ -243,7 +245,10 @@ fn params(
             p.size_op[3] = *mode as u32;
             p.values[0] = sample("opacity")?;
         }
-        Operation::Merge {} | Operation::Mask {} | Operation::Image { .. } => {}
+        Operation::Merge {}
+        | Operation::Mask {}
+        | Operation::Image { .. }
+        | Operation::Footage { .. } => {}
     }
     Ok(p)
 }
@@ -447,7 +452,7 @@ impl Renderer {
     fn source_bytes(&self, plan: &Plan, inputs: &ImageInputs) -> Result<u64> {
         let mut seen = std::collections::BTreeSet::new();
         let mut bytes = 0;
-        for asset in plan.required_assets() {
+        for asset in plan.required_inputs() {
             let source = inputs
                 .source(asset)
                 .ok_or_else(|| error(format!("missing image input: {asset}")))?;
@@ -498,7 +503,7 @@ impl Renderer {
             return Err(error("frame exceeds adapter buffer limits"));
         }
         let source_bytes = self.source_bytes(plan, inputs)?;
-        for asset in plan.required_assets() {
+        for asset in plan.required_inputs() {
             let source = inputs
                 .source(asset)
                 .ok_or_else(|| error(format!("missing image input: {asset}")))?;
@@ -531,8 +536,13 @@ impl Renderer {
             .map(|(n, curves)| params(n, curves, plan.width, plan.height, time))
             .collect::<Result<_>>()?;
         for (node, p) in plan.nodes.iter().zip(&mut evaluated) {
-            if let Operation::Image { asset } = &node.operation {
-                let source = inputs.source(asset).unwrap();
+            if let Some(asset) = node.operation.asset() {
+                let key = if matches!(node.operation, Operation::Footage { .. }) {
+                    plan::footage_key(node.id)
+                } else {
+                    asset.to_owned()
+                };
+                let source = inputs.source(&key).unwrap();
                 let region = source.region();
                 p.values[0] = region.width as f32;
                 p.values[1] = region.height as f32;
@@ -685,7 +695,7 @@ impl Renderer {
         self.queue.write_buffer(&dummy, 0, &[0; 16]);
         let mut sources = BTreeMap::new();
         let mut source_buffers = BTreeMap::<u64, wgpu::Buffer>::new();
-        for key in plan.required_assets() {
+        for key in plan.required_inputs() {
             let image = inputs.source(key).unwrap();
             let buffer = if let Some(buffer) = source_buffers.get(&image.identity()) {
                 buffer.clone()

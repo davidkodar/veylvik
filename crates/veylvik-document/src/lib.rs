@@ -24,6 +24,7 @@ pub use gradient::GradientMode;
 pub mod schema;
 pub mod text;
 pub use text::{TextAlignment, TextFont};
+pub mod media;
 pub mod sequence;
 pub mod tracking;
 pub mod vector;
@@ -199,6 +200,10 @@ pub enum Operation {
     Image {
         asset: String,
     },
+    Footage {
+        asset: String,
+        timing: media::Timing,
+    },
     Affine {
         x: Scalar,
         y: Scalar,
@@ -227,6 +232,19 @@ pub enum Operation {
     },
 }
 impl Operation {
+    pub fn asset(&self) -> Option<&str> {
+        match self {
+            Self::Image { asset } | Self::Footage { asset, .. } => Some(asset),
+            _ => None,
+        }
+    }
+    pub fn asset_mut(&mut self) -> Option<&mut String> {
+        match self {
+            Self::Image { asset } | Self::Footage { asset, .. } => Some(asset),
+            _ => None,
+        }
+    }
+
     pub fn descriptor(&self) -> &'static registry::NodeType {
         match self {
             Self::Text { .. } => &registry::TEXT,
@@ -251,6 +269,7 @@ impl Operation {
             Self::Merge {} => &registry::MERGE,
             Self::Blend { .. } => &registry::BLEND,
             Self::Image { .. } => &registry::IMAGE,
+            Self::Footage { .. } => &registry::FOOTAGE,
             Self::Affine { .. } => &registry::AFFINE,
             Self::Ellipse { .. } => &registry::ELLIPSE,
             Self::ChannelMask { .. } => &registry::CHANNEL_MASK,
@@ -487,6 +506,15 @@ impl Operation {
                     return fail("Text colour needs finite RGB and alpha in [0,1]");
                 }
                 Ok(())
+            }
+            Self::Footage { asset, timing } => {
+                if asset.trim().is_empty()
+                    || asset.chars().count() > registry::MAX_ASSET_NAME
+                    || asset.contains('\0')
+                {
+                    return fail("Footage needs a valid asset key");
+                }
+                timing.validate()
             }
             Self::Path { geometry } => geometry.validate(),
             Self::Solid { color }

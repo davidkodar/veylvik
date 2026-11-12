@@ -13,6 +13,7 @@ use veylvik_render::{FrameSource, Image, ImageInputs};
 pub enum Media {
     Still(Arc<Image>),
     Sequence(Arc<Sequence>),
+    Video(Arc<crate::video::Video>),
 }
 impl From<Arc<Image>> for Media {
     fn from(image: Arc<Image>) -> Self {
@@ -24,12 +25,14 @@ impl Media {
         match self {
             Self::Still(i) => i.byte_size(),
             Self::Sequence(s) => s.byte_budget(),
+            Self::Video(v) => v.byte_budget(),
         }
     }
     pub fn insert(self, inputs: &mut ImageInputs, key: impl Into<String>) {
         match self {
             Self::Still(i) => inputs.insert(key, i),
             Self::Sequence(s) => inputs.insert_source(key, s),
+            Self::Video(v) => inputs.insert_source(key, v),
         }
     }
 }
@@ -39,7 +42,11 @@ pub fn is_sequence(path: &Path) -> bool {
         || path.file_name().is_some_and(|n| n == "sequence.json")
 }
 pub fn load(path: &Path, budget: u64) -> Result<Media> {
-    if is_sequence(path) {
+    if crate::video::is_video(path) {
+        Ok(Media::Video(Arc::new(crate::video::Video::open(
+            path, budget,
+        )?)))
+    } else if is_sequence(path) {
         Ok(Media::Sequence(Arc::new(Sequence::open(path, budget)?)))
     } else {
         Ok(Media::Still(Arc::new(crate::load_image(path, budget)?)))
@@ -170,6 +177,16 @@ impl Sequence {
     }
 }
 impl FrameSource for Sequence {
+    fn info(&self) -> Option<veylvik_render::SourceInfo> {
+        Some(veylvik_render::SourceInfo {
+            width: self.size.0,
+            height: self.size.1,
+            duration: Time::at_frame(self.files.len() as i64, self.rate).ok(),
+            frame_rate: Some(self.rate),
+            frames: Some(self.files.len() as u32),
+            description: "Image sequence".into(),
+        })
+    }
     fn byte_budget(&self) -> u64 {
         self.budget
     }

@@ -21,12 +21,12 @@ fn entries(query: &str) -> Vec<Entry> {
     let mut entries: Vec<_> = registry::TYPES
         .iter()
         .map(|kind| {
-            if kind.type_id == "image" {
+            if matches!(kind.type_id, "image" | "footage") {
                 Entry {
                     choice: Choice::Image,
-                    label: "Import image…",
-                    description: "Import a PNG or OpenEXR image through the file picker.",
-                    id: "image",
+                    label: if kind.type_id == "footage" {"Import footage…"} else {"Import image…"},
+                    description: "Import video, PNG, OpenEXR or an image sequence through the file picker.",
+                    id: kind.type_id,
                 }
             } else {
                 Entry {

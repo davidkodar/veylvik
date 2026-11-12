@@ -116,11 +116,7 @@ pub fn select(choice: Choice, folder: &Path, name: &str) -> Result<Option<PathBu
             "PNG or OpenEXR sequence",
             "*.png",
         ),
-        Choice::Import => (
-            "Import image or sequence",
-            "Images and image sequences",
-            "*.png",
-        ),
+        Choice::Import => ("Import media", "Video, images and image sequences", "*.png"),
         Choice::Export => (
             "Export frame (.png or .exr)",
             "PNG or OpenEXR image",
@@ -137,6 +133,14 @@ pub fn select(choice: Choice, folder: &Path, name: &str) -> Result<Option<PathBu
         FileFilter::new(label)
             .glob("*.png")
             .glob("*.exr")
+            .glob("*.mp4")
+            .glob("*.mov")
+            .glob("*.m4v")
+            .glob("*.mkv")
+            .glob("*.webm")
+            .glob("*.avi")
+            .glob("*.mpg")
+            .glob("*.mpeg")
             .glob("*.veyseq")
             .glob("sequence.json")
     } else if matches!(choice, Choice::Export | Choice::ImportSequence) {
