@@ -12,7 +12,11 @@ struct Session {
 fn tool(name: &str, description: &str, properties: Value, required: &[&str]) -> Value {
     json!({"name":name,"description":description,"inputSchema":{"type":"object","properties":properties,"required":required,"additionalProperties":false}})
 }
-fn tools() -> Value {
+fn tools() -> &'static Value {
+    static TOOLS: std::sync::OnceLock<Value> = std::sync::OnceLock::new();
+    TOOLS.get_or_init(build_tools)
+}
+fn build_tools() -> Value {
     let revision = json!({"type":"integer","minimum":0});
     json!({"tools":[
         tool("inspect","Read project state and revision. Set summary=true for compact composition metadata without node payloads; graph and get_node provide targeted inspection.",json!({"summary":{"type":"boolean"}}),&[]),
@@ -222,7 +226,7 @@ pub fn serve(
         asset_base,
         renderer: None,
     };
-    veylvik_control::serve(input, output, &tools(), |name, args| {
+    veylvik_control::serve(input, output, tools(), |name, args| {
         session.call(name, args).map_err(|e| e.to_string())
     })
 }

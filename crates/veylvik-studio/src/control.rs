@@ -7,6 +7,13 @@ fn tool(name: &str, description: &str, properties: Value, required: &[&str]) -> 
     json!({"name":name,"description":description,"inputSchema":{"type":"object","properties":properties,"required":required,"additionalProperties":false}})
 }
 pub fn catalog() -> Value {
+    catalog_ref().clone()
+}
+fn catalog_ref() -> &'static Value {
+    static CATALOG: std::sync::OnceLock<Value> = std::sync::OnceLock::new();
+    CATALOG.get_or_init(build_catalog)
+}
+fn build_catalog() -> Value {
     let session = json!({"type":"string","format":"uuid"});
     let revision = json!({"type":"integer","minimum":0});
     json!({"tools":[
@@ -22,7 +29,7 @@ pub fn catalog() -> Value {
     ]})
 }
 pub fn call(studio: &mut Studio, name: &str, args: &Value) -> Result<Value> {
-    let catalog = catalog();
+    let catalog = catalog_ref();
     let descriptor = catalog["tools"]
         .as_array()
         .unwrap()
