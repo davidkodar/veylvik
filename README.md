@@ -146,6 +146,13 @@ remove keys. **Remove key at playhead** deletes an exact-time key; removing the
 last key keeps its value as a constant. Choose Linear, Hold, or Ease in/out for each animated parameter.
 **Make constant here** replaces a curve with its evaluated playhead value; Apply
 and undo work as for other inspector edits.
+When the selected ellipse is the displayed preview, orange viewer handles edit
+its center and horizontal/vertical radii. The outline follows the draft; the
+rendered image updates on **Apply**. **Revert** discards the gesture, and an Apply
+is one undo step. Constants remain constant; animated parameters insert or update
+keys at the playhead. Handles follow viewer zoom and pan, are hidden during
+playback or stale previews, and never appear in exported images.
+
 Saving uses the same atomic persistence and source-image protection as MCP.
 Open, import, save-as, and export use the desktop file portal. File selection and
 image loading run on a bounded background worker. Save-as preserves the original

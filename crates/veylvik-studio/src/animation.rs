@@ -88,7 +88,7 @@ pub fn scalar(
                     }
                 }
                 let at_key = scalar.keys().is_some_and(|keys| keys.iter().any(|key| key.time.compare(time).is_ok_and(|order| order.is_eq())));
-                if ui.add_enabled(at_key, egui::Button::new("Remove key at playhead").small()).clicked() {
+                if scalar.keys().is_some() && ui.add_enabled(at_key, egui::Button::new("Remove key at playhead").small()).clicked() {
                     match scalar.remove_key_at(time) {
                         Ok(()) => changed = true,
                         Err(error) => { ui.colored_label(egui::Color32::LIGHT_RED, error.to_string()); }

@@ -11,6 +11,7 @@ use animation::scalar;
 mod display;
 mod files;
 mod graph;
+mod handles;
 mod project;
 mod viewer;
 use display::{Display, DisplayFrame, Paint, ViewSettings};
@@ -1505,6 +1506,27 @@ impl eframe::App for Studio {
                                 Paint(self.displayed.as_ref().unwrap().clone()),
                             ),
                         );
+                        let root = self
+                            .project
+                            .preview
+                            .unwrap_or(self.project.document.snapshot().output);
+                        if !self.playing
+                            && self.displayed_ticket == self.wanted
+                            && root == self.draft.id
+                            && let Ok(time) = self.project.time()
+                        {
+                            match handles::show(
+                                ui,
+                                canvas,
+                                transform,
+                                image,
+                                &mut self.draft.operation,
+                                time,
+                            ) {
+                                Ok(changed) => self.draft_dirty |= changed,
+                                Err(error) => self.fail(error),
+                            }
+                        }
                     } else {
                         ui.centered_and_justified(|ui| {
                             ui.label(if self.error {
