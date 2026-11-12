@@ -3642,6 +3642,7 @@ dependencies = [
  "bytemuck",
  "pollster",
  "serde",
+ "serde_json",
  "thiserror 2.0.21",
  "vello_common 0.2.0",
  "vello_hybrid",

@@ -103,6 +103,7 @@ impl Plan {
             .collect();
         let mut passes = Vec::new();
         let mut outputs = BTreeMap::new();
+        let mut shared = BTreeMap::new();
         for (index, node) in nodes.iter().enumerate() {
             let mut inputs = [Input::Empty, Input::Empty];
             for (i, port) in node.operation.inputs().iter().enumerate() {
@@ -115,6 +116,25 @@ impl Plan {
                     unreachable!()
                 };
                 outputs.insert(node.id, value);
+                continue;
+            }
+            // Collision-free structural keys are built once at compile time.
+            // Labels, UUIDs and layout do not affect pure operation results.
+            let key = if shareable(&node.operation) {
+                Some((
+                    serde_json::to_vec(&node.operation).map_err(error)?,
+                    inputs.each_ref().map(|input| match input {
+                        Input::Value(value) => Some(*value),
+                        _ => None,
+                    }),
+                ))
+            } else {
+                None
+            };
+            if let Some(key) = &key
+                && let Some(value) = shared.get(key)
+            {
+                outputs.insert(node.id, *value);
                 continue;
             }
             let kernel = match &node.operation {
@@ -160,6 +180,9 @@ impl Plan {
                 output: value,
             });
             outputs.insert(node.id, value);
+            if let Some(key) = key {
+                shared.insert(key, value);
+            }
         }
         let final_value = outputs[&output];
         let mut uses = vec![0usize; passes.len()];
@@ -270,4 +293,22 @@ fn identity(operation: &Operation) -> bool {
         Operation::Transform { x, y } => zero(x) && zero(y),
         _ => false,
     }
+}
+
+fn shareable(operation: &Operation) -> bool {
+    // External/vector sources keep their existing ownership and resource policy.
+    // New operation kinds must opt in explicitly after their purity is established.
+    matches!(
+        operation,
+        Operation::Solid { .. }
+            | Operation::Noise { .. }
+            | Operation::Exposure { .. }
+            | Operation::Transform { .. }
+            | Operation::Blur { .. }
+            | Operation::Merge {}
+            | Operation::Blend { .. }
+            | Operation::Affine { .. }
+            | Operation::Ellipse { .. }
+            | Operation::Mask {}
+    )
 }

@@ -37,6 +37,10 @@ The render compiler aliases constant zero exposure, zero translation, and
 zero-radius blur directly to their input. Their authored nodes remain editable,
 but they require no GPU dispatch or extra image slot. Animated controls retain
 their passes even when the current evaluated value happens to be zero.
+Identical pure operations with the same resolved inputs also share execution,
+including whole two-pass blurs. Parameters and animation curves must match
+structurally; labels, UUIDs and node positions do not affect sharing. Image and
+vector sources retain their separate upload and coverage-cache policies.
 
 ## HDR frame export
 
