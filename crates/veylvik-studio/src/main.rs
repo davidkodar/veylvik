@@ -248,6 +248,22 @@ impl Studio {
             true
         }
     }
+    fn duplicate_selected(&mut self, ctx: &egui::Context) {
+        if !self.can_change_selection() || self.graph.dragging() {
+            return;
+        }
+        self.playing = false;
+        match self
+            .project
+            .duplicate_at(self.graph.insertion_position(ctx))
+        {
+            Ok(_) => {
+                self.refresh_draft();
+                self.request_preview();
+            }
+            Err(e) => self.fail(e),
+        }
+    }
     fn request_preview(&mut self) {
         self.wanted = None;
         let result = (|| {
@@ -956,6 +972,9 @@ impl Studio {
                 Err(e) => self.fail(e),
             }
         }
+        if ui.button("Duplicate node").clicked() {
+            self.duplicate_selected(ui.ctx());
+        }
         if ui.button("Delete node").clicked() && self.can_change_selection() {
             match self.project.apply(&[Command::Remove {
                 id: self.project.selected,
@@ -1085,6 +1104,7 @@ impl Studio {
                 .show(ctx, |ui| {
                     for (key, action) in [
                         ("Space", "Play / pause"),
+                        ("Ctrl+D", "Duplicate selected node"),
                         ("Ctrl+N", "New composition"),
                         ("Ctrl+O", "Open composition"),
                         ("Ctrl+I", "Import PNG or OpenEXR image"),
@@ -1176,6 +1196,9 @@ impl eframe::App for Studio {
                 i.consume_key(egui::Modifiers::CTRL | egui::Modifiers::SHIFT, egui::Key::Z)
             }) {
                 self.history(true);
+            }
+            if ctx.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, egui::Key::D)) {
+                self.duplicate_selected(&ctx);
             }
             if ctx.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, egui::Key::N)) {
                 self.leave(Leave::New, &ctx);

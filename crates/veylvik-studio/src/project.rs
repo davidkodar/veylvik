@@ -210,6 +210,19 @@ impl Project {
         self.preview = Some(id);
         Ok(id)
     }
+    pub fn duplicate_at(&mut self, position: veylvik_document::NodePosition) -> Result<NodeId> {
+        let mut node = self.document.snapshot().nodes[&self.selected].clone();
+        node.id = NodeId::new_v4();
+        node.label.push_str(" copy");
+        node.position = Some(position);
+        let id = node.id;
+        self.apply(&[Command::Put {
+            node: Box::new(node),
+        }])?;
+        self.selected = id;
+        self.preview = Some(id);
+        Ok(id)
+    }
     pub fn save_snapshot(&self) -> SaveSnapshot {
         SaveSnapshot {
             composition: self.document.snapshot().clone(),
@@ -243,6 +256,68 @@ impl Project {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn duplication_preserves_connections_and_keys_with_independent_history() {
+        let mut project = Project::open(None).unwrap();
+        project.selected = project
+            .document
+            .snapshot()
+            .nodes
+            .values()
+            .find(|node| matches!(node.operation, Operation::Affine { .. }))
+            .unwrap()
+            .id;
+        let source = project.selected;
+        let original = project.document.snapshot().nodes[&source].clone();
+        let output = project.document.snapshot().output;
+        let count = project.document.snapshot().nodes.len();
+        let copy = project
+            .duplicate_at(veylvik_document::NodePosition { x: 250.0, y: 180.0 })
+            .unwrap();
+        assert_ne!(copy, source);
+        let duplicate = project.document.snapshot().nodes[&copy].clone();
+        assert_eq!(duplicate.inputs, original.inputs);
+        assert_eq!(
+            serde_json::to_value(&duplicate.operation).unwrap(),
+            serde_json::to_value(&original.operation).unwrap()
+        );
+        assert_eq!(project.document.snapshot().output, output);
+        assert_eq!(project.selected, copy);
+        assert_eq!(project.preview, Some(copy));
+        assert_eq!(project.document.history().undo_steps, 1);
+        let mut changed = duplicate.clone();
+        changed.operation = Operation::Exposure { stops: 3.0.into() };
+        project
+            .apply(&[Command::Put {
+                node: Box::new(changed),
+            }])
+            .unwrap();
+        assert_eq!(
+            serde_json::to_value(&project.document.snapshot().nodes[&source]).unwrap(),
+            serde_json::to_value(&original).unwrap()
+        );
+        project.undo(false).unwrap();
+        project.undo(false).unwrap();
+        assert_eq!(project.document.snapshot().nodes.len(), count);
+        assert_eq!(project.selected, output);
+        project.undo(true).unwrap();
+        assert_eq!(
+            serde_json::to_value(&project.document.snapshot().nodes[&copy]).unwrap(),
+            serde_json::to_value(&duplicate).unwrap()
+        );
+        let revision = project.document.revision();
+        let selected = project.selected;
+        assert!(
+            project
+                .duplicate_at(veylvik_document::NodePosition {
+                    x: f32::NAN,
+                    y: 0.0
+                })
+                .is_err()
+        );
+        assert_eq!(project.document.revision(), revision);
+        assert_eq!(project.selected, selected);
+    }
     #[test]
     fn socket_rewiring_is_atomic_undoable_and_ignores_noops() {
         let mut project = Project::open(None).unwrap();

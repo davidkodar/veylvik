@@ -158,11 +158,16 @@ finishes.
 | Ctrl+S | Save |
 | Ctrl+Shift+S | Save as |
 | Ctrl+Z / Ctrl+Shift+Z | Undo / redo |
+| Ctrl+D | Duplicate selected node |
 | Q | Close |
 | ? | Show shortcuts |
 
 The editor follows the current Omarchy accent, with a fallback when Omarchy is
 absent. Node positions are saved with the project; each drag is one undo step.
+**Duplicate node** (Ctrl+D) copies the selected node with its animation and input
+connections, selects the copy, and creates one undo step. The composition output
+stays unchanged. Apply or revert inspector drafts before duplicating.
+
 Drag the graph background to pan, Ctrl+scroll to zoom, and use **Fit** to see
 the whole graph. **Arrange** restores an automatic layout as one undoable edit. Source images load when the
 project opens or an image is imported, within a 256 MiB host image budget. The
