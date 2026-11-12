@@ -179,6 +179,14 @@ pub static DISPLACE: NodeType = NodeType {
         scalar("y", "pixels", -8192.0, 8192.0, 20.0),
     ],
 };
+pub static MORPHOLOGY: NodeType = NodeType {
+    type_id: "morphology",
+    version: 1,
+    label: "Grow/shrink mask",
+    description: "Expand alpha with a positive radius (dilation), contract with a negative radius (erosion). Uses a square neighborhood and transparent borders. Radius rounds to the nearest integer, half away from zero. Outputs a white premultiplied mask, including at radius zero; source RGB is ignored.",
+    inputs: &["image"],
+    parameters: &[scalar("radius", "pixels", -32.0, 32.0, 2.0)],
+};
 pub static BLUR: NodeType = NodeType {
     type_id: "blur",
     version: 1,
@@ -320,6 +328,7 @@ pub static TYPES: &[&NodeType] = &[
     &CHANNEL_MASK,
     &COLORIZE,
     &GRADIENT,
+    &MORPHOLOGY,
 ];
 pub fn operation_schema() -> Value {
     json!({"oneOf":TYPES.iter().map(|node|node.schema()).collect::<Vec<_>>()})

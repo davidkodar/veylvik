@@ -266,6 +266,8 @@ includes retained history statistics. Supported operations:
 | Transform | image | X/Y translation in pixels, bilinear sampling |
 | Displace | image, map | Animated X/Y strength in pixels; red/green map channels, alpha-weighted |
 | Blur | image | Box radius, 0–32 pixels, rounded to an integer |
+| Grow/shrink mask | image | Signed alpha radius, −32 to +32 pixels; square neighborhood |
+| Colorize | image | Straight HDR low/high colors mapped through luminance and source alpha |
 | Merge | background, foreground | Premultiplied foreground-over-background |
 | Image | none | Asset key; native image size, top-left anchor, transparent padding |
 | Affine | image | Translation, signed X/Y scale, clockwise rotation, pixel-space pivot |
@@ -773,3 +775,19 @@ composition pixels, excluding inspector drafts, viewer exposure/alpha settings,
 and overlays; metadata reports `inspector_draft` and
 `viewer_settings_applied: false`. No file is created, and capture does not change
 selection, playhead, document history, or viewer settings.
+
+
+## Growing and shrinking masks
+
+**Grow/shrink mask** (`morphology`) reads input alpha and produces a white
+premultiplied mask. Positive radius expands coverage using the maximum alpha in
+a square neighborhood; negative radius contracts it using the minimum. Radius
+animates from −32 to +32 pixels and rounds to the nearest integer, with half
+values rounded away from zero. Samples outside the canvas are transparent, so
+erosion also contracts shapes touching the canvas boundary.
+
+At radius zero the result is still white alpha coverage, not the original RGB.
+Use **Channel mask** first when coverage comes from image luminance or another
+color channel. Follow with **Blur** to soften the edge, **Colorize** to tint it,
+or connect it to **Mask** to limit another image. The square neighborhood is
+implemented as two separable GPU passes; corners are square rather than circular.

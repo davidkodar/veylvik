@@ -12,6 +12,8 @@ pub enum Kernel {
     Exposure,
     Transform,
     Displace,
+    MorphologyHorizontal,
+    MorphologyVertical,
     BlurHorizontal,
     BlurVertical,
     Merge,
@@ -25,13 +27,15 @@ pub enum Kernel {
     Gradient,
 }
 impl Kernel {
-    pub(crate) const ALL: [Self; 17] = [
+    pub(crate) const ALL: [Self; 19] = [
         Self::Solid,
         Self::Noise,
         Self::FractalNoise,
         Self::Exposure,
         Self::Transform,
         Self::Displace,
+        Self::MorphologyHorizontal,
+        Self::MorphologyVertical,
         Self::BlurHorizontal,
         Self::BlurVertical,
         Self::Merge,
@@ -52,6 +56,8 @@ impl Kernel {
             Self::Exposure => "exposure",
             Self::Displace => "displace",
             Self::Transform => "transform",
+            Self::MorphologyHorizontal => "morphology_horizontal",
+            Self::MorphologyVertical => "morphology_vertical",
             Self::BlurHorizontal => "blur_horizontal",
             Self::BlurVertical => "blur_vertical",
             Self::Merge => "merge",
@@ -186,6 +192,17 @@ impl Plan {
                 Operation::Image { asset } => {
                     inputs[0] = Input::Asset(asset.clone());
                     Kernel::Image
+                }
+                Operation::Morphology { .. } => {
+                    let intermediate = passes.len();
+                    passes.push(Pass {
+                        node: index,
+                        kernel: Kernel::MorphologyHorizontal,
+                        inputs,
+                        output: intermediate,
+                    });
+                    inputs = [Input::Value(intermediate), Input::Empty];
+                    Kernel::MorphologyVertical
                 }
                 Operation::Blur { .. } => {
                     let intermediate = passes.len();
@@ -379,6 +396,7 @@ fn shareable(operation: &Operation) -> bool {
             | Operation::Exposure { .. }
             | Operation::Displace { .. }
             | Operation::Transform { .. }
+            | Operation::Morphology { .. }
             | Operation::Blur { .. }
             | Operation::Merge {}
             | Operation::Blend { .. }

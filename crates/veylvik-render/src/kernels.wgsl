@@ -220,3 +220,27 @@ fn gradient(@builtin(global_invocation_id) gid:vec3<u32>) {
     level=clamp(level,0.0,1.0);
     result[index(gid)]=vec4<f32>(vec3<f32>(level),1.0);
 }
+
+// A square alpha neighborhood factors exactly into horizontal and vertical extrema.
+// Zero radius still extracts white coverage, so it cannot alias a colored input.
+fn morphology_axis(gid:vec3<u32>,axis:vec2<i32>)->vec4<f32> {
+    let erode=p.values.x<0.0;
+    let radius=i32(abs(p.values.x));
+    var coverage=select(0.0,1.0,erode);
+    for(var offset=-radius;offset<=radius;offset++) {
+        let pos=vec2<i32>(gid.xy)+axis*offset;
+        let alpha=clamp(sample_source(pos.x,pos.y).a,0.0,1.0);
+        coverage=select(max(coverage,alpha),min(coverage,alpha),erode);
+    }
+    return vec4<f32>(coverage);
+}
+@compute @workgroup_size(8,8)
+fn morphology_horizontal(@builtin(global_invocation_id) gid:vec3<u32>) {
+    if !inside(gid) {return;}
+    result[index(gid)]=morphology_axis(gid,vec2<i32>(1,0));
+}
+@compute @workgroup_size(8,8)
+fn morphology_vertical(@builtin(global_invocation_id) gid:vec3<u32>) {
+    if !inside(gid) {return;}
+    result[index(gid)]=morphology_axis(gid,vec2<i32>(0,1));
+}

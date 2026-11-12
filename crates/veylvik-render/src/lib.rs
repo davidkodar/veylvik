@@ -93,6 +93,9 @@ fn params(
             p.values[0] = sample("x")?;
             p.values[1] = sample("y")?;
         }
+        Operation::Morphology { .. } => {
+            p.values[0] = sample("radius")?.round();
+        }
         Operation::Blur { .. } => {
             p.values[0] = sample("radius")?;
         }

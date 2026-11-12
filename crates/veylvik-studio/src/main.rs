@@ -1018,6 +1018,10 @@ impl Studio {
             Operation::Mask {} => {
                 ui.label("Image multiplied by mask alpha");
             }
+            Operation::Morphology { .. } => {
+                ui.label("Positive radius grows alpha; negative shrinks it.");
+                ui.label("Square neighborhood, transparent borders, white mask output.");
+            }
             Operation::Displace { .. } => {
                 ui.label("Map red drives X, green drives Y.");
                 ui.label("Mid-gray is neutral; alpha controls strength.");
