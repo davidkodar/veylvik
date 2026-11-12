@@ -17,6 +17,13 @@ impl Drop for Scratch {
 #[test]
 #[ignore = "requires Vulkan"]
 fn sequence_cancellation_collision_and_frame_parity() {
+    for format in [veylvik_io::FrameFormat::Png, veylvik_io::FrameFormat::Exr] {
+        check_sequence(format);
+    }
+}
+fn check_sequence(format: veylvik_io::FrameFormat) {
+    let first = format!("frame-000000.{}", format.extension());
+    let second = format!("frame-000001.{}", format.extension());
     let root = Scratch(std::env::temp_dir().join(format!("veylvik-sequence-{}", NodeId::new_v4())));
     std::fs::create_dir(&root.0).unwrap();
     let renderer = Renderer::new().unwrap();
@@ -24,6 +31,7 @@ fn sequence_cancellation_collision_and_frame_parity() {
     doc.width = 13;
     doc.height = 7;
     let request = SequenceRequest {
+        format,
         frames: FrameRange::new(-1, 1, Time::new(30000, 1001).unwrap()).unwrap(),
         output: doc.output,
         region: None,
@@ -33,10 +41,19 @@ fn sequence_cancellation_collision_and_frame_parity() {
         done < 1
     })
     .unwrap();
+    assert_eq!(result["manifest"]["format"], format.extension());
+    assert_eq!(
+        result["manifest"]["alpha"],
+        if format == veylvik_io::FrameFormat::Png {
+            "straight"
+        } else {
+            "premultiplied"
+        }
+    );
     assert_eq!(result["manifest"]["status"], "cancelled");
     assert_eq!(result["manifest"]["completed"], 1);
-    assert!(directory.join("frame-000000.png").is_file());
-    assert!(!directory.join("frame-000001.png").exists());
+    assert!(directory.join(&first).is_file());
+    assert!(!directory.join(&second).exists());
     let manifest = std::fs::read(directory.join("sequence.json")).unwrap();
     assert!(render_sequence(&renderer, &doc, &root, &directory, request, |_, _| true).is_err());
     assert_eq!(
@@ -61,24 +78,21 @@ fn sequence_cancellation_collision_and_frame_parity() {
     assert_eq!(result["manifest"]["status"], "complete");
     assert_eq!(result["manifest"]["completed"], 3);
     assert_eq!(
-        std::fs::read(directory.join("frame-000000.png")).unwrap(),
-        std::fs::read(root.join("cancelled/frame-000000.png")).unwrap()
+        std::fs::read(directory.join(&first)).unwrap(),
+        std::fs::read(root.join("cancelled").join(&first)).unwrap()
     );
     // Collision introduced after reservation must never replace the file.
     let directory = root.join("collision");
     assert!(
         render_sequence(&renderer, &doc, &root, &directory, request, |done, _| {
             if done == 0 {
-                std::fs::write(directory.join("frame-000000.png"), b"original").unwrap();
+                std::fs::write(directory.join(&first), b"original").unwrap();
             }
             true
         })
         .is_err()
     );
-    assert_eq!(
-        std::fs::read(directory.join("frame-000000.png")).unwrap(),
-        b"original"
-    );
+    assert_eq!(std::fs::read(directory.join(&first)).unwrap(), b"original");
     let manifest: serde_json::Value =
         serde_json::from_slice(&std::fs::read(directory.join("sequence.json")).unwrap()).unwrap();
     assert_eq!(manifest["status"], "rendering");
@@ -93,6 +107,7 @@ fn sequence_cancellation_collision_and_frame_parity() {
     doc.output = node.id;
     doc.nodes = [(node.id, node)].into_iter().collect();
     let request = SequenceRequest {
+        format: veylvik_io::FrameFormat::Png,
         frames: FrameRange::new(0, 0, doc.frame_rate).unwrap(),
         output: doc.output,
         region: None,

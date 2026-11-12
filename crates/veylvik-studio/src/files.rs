@@ -87,7 +87,7 @@ pub fn select(choice: Choice, folder: &Path, name: &str) -> Result<Option<PathBu
             "PNG or OpenEXR image",
             "*.png",
         ),
-        Choice::Folder => ("Choose parent folder for PNG sequence", "Folders", "*"),
+        Choice::Folder => ("Choose parent folder for image sequence", "Folders", "*"),
     };
     let filter = if matches!(choice, Choice::Font) {
         FileFilter::new(label)

@@ -438,6 +438,7 @@ impl Studio {
         let base = self.project.base.clone();
         let renderer = self.renderer.clone();
         let request = veylvik_io::sequence::SequenceRequest {
+            format: settings.format,
             frames: settings.frames,
             output: self.project.preview.unwrap_or(document.output),
             region: None,
@@ -975,7 +976,7 @@ impl Studio {
                         ("Ctrl+O", "Open composition"),
                         ("Ctrl+I", "Import PNG image"),
                         ("Ctrl+E", "Export current preview"),
-                        ("Ctrl+Shift+E", "Export PNG sequence"),
+                        ("Ctrl+Shift+E", "Export image sequence"),
                         ("Ctrl+S", "Save"),
                         ("Ctrl+Shift+S", "Save as"),
                         ("Ctrl+Z", "Undo"),

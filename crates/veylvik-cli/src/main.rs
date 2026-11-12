@@ -5,7 +5,7 @@ use std::path::Path;
 use veylvik_document::{Composition, Node, Operation, Time};
 use veylvik_render::{Plan, Region, RenderRequest, Renderer};
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
-const USAGE: &str = "usage: veylvik open [FILE] [--control-dir NEW_DIRECTORY] | demo FILE [--motion] | import IMAGE.png FILE | outline-text FONT TEXT NEW_FILE [OPTIONS] | nodes | check FILE | render FILE OUTPUT.png|OUTPUT.exr [TICKS RATE] [--node UUID] [--crop X Y WIDTH HEIGHT] | render-sequence FILE DIRECTORY START END [--node UUID] [--crop X Y WIDTH HEIGHT] | mcp FILE | mcp --studio DIRECTORY";
+const USAGE: &str = "usage: veylvik open [FILE] [--control-dir NEW_DIRECTORY] | demo FILE [--motion] | import IMAGE.png FILE | outline-text FONT TEXT NEW_FILE [OPTIONS] | nodes | check FILE | render FILE OUTPUT.png|OUTPUT.exr [TICKS RATE] [--node UUID] [--crop X Y WIDTH HEIGHT] | render-sequence FILE DIRECTORY START END [--format png|exr] [--node UUID] [--crop X Y WIDTH HEIGHT] | mcp FILE | mcp --studio DIRECTORY";
 fn run() -> Result<()> {
     let args: Vec<String> = std::env::args().collect();
     match args.get(1).map(String::as_str) {
@@ -110,9 +110,31 @@ fn run() -> Result<()> {
                 doc.frame_rate,
             )?;
             if args.get(6).is_some_and(|arg| !arg.starts_with("--")) {
-                return Err("sequence options must be --node or --crop".into());
+                return Err("sequence options must be --node, --crop or --format".into());
             }
-            let (output, request) = render_options(&doc, &args[6..])?;
+            let mut options = Vec::new();
+            let mut format = None;
+            let mut index = 6;
+            while index < args.len() {
+                if args[index] == "--format" {
+                    if format.is_some() || index + 1 >= args.len() {
+                        return Err(
+                            "--format needs one png or exr value and cannot be repeated".into()
+                        );
+                    }
+                    format = Some(serde_json::from_value::<assets::FrameFormat>(
+                        serde_json::json!(args[index + 1]),
+                    )?);
+                    index += 2;
+                } else {
+                    options.push(args[index].clone());
+                    index += 1;
+                }
+            }
+            if options.first().is_some_and(|arg| !arg.starts_with("--")) {
+                return Err("sequence options must be --node, --crop or --format".into());
+            }
+            let (output, request) = render_options(&doc, &options)?;
             let renderer = Renderer::new()?;
             let result = assets::sequence::render_sequence(
                 &renderer,
@@ -120,6 +142,7 @@ fn run() -> Result<()> {
                 &assets::document_base(Path::new(&args[2]))?,
                 Path::new(&args[3]),
                 assets::sequence::SequenceRequest {
+                    format: format.unwrap_or_default(),
                     frames,
                     output,
                     region: request.region,

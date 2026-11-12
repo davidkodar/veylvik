@@ -13,10 +13,12 @@ pub struct Progress {
 }
 pub struct Settings {
     pub frames: FrameRange,
+    pub format: veylvik_io::FrameFormat,
     pub name: String,
 }
 pub struct Controls {
     pub open: bool,
+    format: veylvik_io::FrameFormat,
     start: i64,
     end: i64,
     name: String,
@@ -26,6 +28,7 @@ impl Default for Controls {
     fn default() -> Self {
         Self {
             open: false,
+            format: veylvik_io::FrameFormat::Png,
             start: 0,
             end: 95,
             name: "frames".into(),
@@ -38,9 +41,12 @@ impl Controls {
         let mut settings = None;
         let mut open = self.open;
         if open {
-            egui::Window::new("Export PNG sequence").open(&mut open).collapsible(false).show(ctx, |ui| {
+            egui::Window::new("Export image sequence").open(&mut open).collapsible(false).show(ctx, |ui| {
                 ui.add_enabled_ui(enabled, |ui| {
                     ui.label("Export the current preview node at the composition frame rate.");
+                    egui::ComboBox::from_id_salt("sequence-format").selected_text(self.format.label()).show_ui(ui,|ui| {
+                        for format in [veylvik_io::FrameFormat::Png,veylvik_io::FrameFormat::Exr] { ui.selectable_value(&mut self.format,format,format.label()); }
+                    });
                     ui.horizontal(|ui| {
                         ui.label("First frame"); ui.add(egui::DragValue::new(&mut self.start));
                         ui.label("Last frame (inclusive)"); ui.add(egui::DragValue::new(&mut self.end));
@@ -53,7 +59,7 @@ impl Controls {
                         Err(error) => { ui.colored_label(egui::Color32::LIGHT_RED, error); }
                     }
                     if ui.add_enabled(result.is_ok(), egui::Button::new("Choose parent folder and export…")).clicked() {
-                        settings = Some(Settings { frames: result.unwrap(), name: self.name.clone() });
+                        settings = Some(Settings { format:self.format,frames: result.unwrap(), name: self.name.clone() });
                     }
                 });
             });

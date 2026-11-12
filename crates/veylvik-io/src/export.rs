@@ -1,12 +1,27 @@
 //! Explicit SDR PNG or scene-linear RGBA32F OpenEXR output.
 use crate::Result;
 use std::{io::Write, path::Path};
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum FrameFormat {
+    #[default]
     Png,
     Exr,
 }
 impl FrameFormat {
+    pub fn extension(self) -> &'static str {
+        match self {
+            Self::Png => "png",
+            Self::Exr => "exr",
+        }
+    }
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Png => "PNG (SDR)",
+            Self::Exr => "OpenEXR (HDR)",
+        }
+    }
+
     pub fn from_path(path: &Path) -> Result<Self> {
         match path
             .extension()
@@ -26,10 +41,29 @@ pub fn save_frame(path: &Path, width: u32, height: u32, pixels: &[[f32; 4]]) -> 
         FrameFormat::Exr => save_exr(path, width, height, pixels),
     }
 }
+/// Publish a new frame without replacing an existing file or symlink.
+pub fn save_frame_new(path: &Path, width: u32, height: u32, pixels: &[[f32; 4]]) -> Result<()> {
+    match FrameFormat::from_path(path)? {
+        FrameFormat::Png => {
+            veylvik_document::atomic_create(path, &crate::encode_png(width, height, pixels)?)?;
+            Ok(())
+        }
+        FrameFormat::Exr => write_exr(path, width, height, pixels, false),
+    }
+}
 /// Lossless ZIP16 scanlines, 32-bit float RGBA, linear Rec.709/D65 chromaticities,
 /// and premultiplied alpha. RGB is preserved, including HDR, negatives and emission
 /// at zero alpha. Single-threaded block encoding avoids a second full-frame copy.
 pub fn save_exr(path: &Path, width: u32, height: u32, pixels: &[[f32; 4]]) -> Result<()> {
+    write_exr(path, width, height, pixels, true)
+}
+fn write_exr(
+    path: &Path,
+    width: u32,
+    height: u32,
+    pixels: &[[f32; 4]],
+    replace: bool,
+) -> Result<()> {
     use exr::prelude::*;
     if width == 0
         || height == 0
@@ -60,7 +94,7 @@ pub fn save_exr(path: &Path, width: u32, height: u32, pixels: &[[f32; 4]]) -> Re
         blue: Vec2(0.15, 0.06),
         white: Vec2(0.3127, 0.3290),
     });
-    veylvik_document::atomic_write_with(path, |file| {
+    let write = |file: &mut std::fs::File| {
         let mut writer = std::io::BufWriter::new(file);
         image
             .write()
@@ -68,6 +102,11 @@ pub fn save_exr(path: &Path, width: u32, height: u32, pixels: &[[f32; 4]]) -> Re
             .to_buffered(&mut writer)
             .map_err(std::io::Error::other)?;
         writer.flush()
-    })?;
+    };
+    if replace {
+        veylvik_document::atomic_write_with(path, write)?;
+    } else {
+        veylvik_document::atomic_create_with(path, write)?;
+    }
     Ok(())
 }

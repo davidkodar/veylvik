@@ -9,6 +9,7 @@ use veylvik_render::{ImageInputs, Plan, Region, RenderRequest, Renderer};
 #[derive(Clone, Copy)]
 pub struct SequenceRequest {
     pub frames: FrameRange,
+    pub format: crate::FrameFormat,
     pub output: NodeId,
     pub region: Option<Region>,
 }
@@ -81,9 +82,9 @@ fn export(
     std::fs::create_dir(directory)?;
     let manifest_path = directory.join("sequence.json");
     let mut manifest = json!({
-        "schema":1, "status":"rendering", "format":"png", "color_space":"srgb",
-        "alpha":"straight", "frames":request.frames, "count":total, "completed":0,
-        "file_pattern":"frame-%06d.png", "file_start":0,
+        "schema":1, "status":"rendering", "format":request.format, "color_space":if request.format == crate::FrameFormat::Png { "srgb" } else { "linear_rec709" },
+        "alpha":if request.format == crate::FrameFormat::Png { "straight" } else { "premultiplied" }, "frames":request.frames, "count":total, "completed":0,
+        "file_pattern":format!("frame-%06d.{}",request.format.extension()), "file_start":0,
         "output_node":request.output, "region":region
     });
     atomic_create(&manifest_path, &serde_json::to_vec_pretty(&manifest)?)?;
@@ -100,11 +101,11 @@ fn export(
             &inputs,
         )?;
         let frame = renderer.read_frame(&frame)?;
-        let path = directory.join(format!("frame-{completed:06}.png"));
-        atomic_create(
-            &path,
-            &crate::encode_png(region.width, region.height, &frame.pixels)?,
-        )?;
+        let path = directory.join(format!(
+            "frame-{completed:06}.{}",
+            request.format.extension()
+        ));
+        crate::export::save_frame_new(&path, region.width, region.height, &frame.pixels)?;
         completed += 1;
     }
     manifest["completed"] = json!(completed);

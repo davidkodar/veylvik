@@ -326,6 +326,13 @@ pub fn atomic_write_with(
 ) -> Result<()> {
     atomic_publish_with(path, true, write)
 }
+/// Stream a new file without replacing an existing file or symlink.
+pub fn atomic_create_with(
+    path: &Path,
+    write: impl FnOnce(&mut std::fs::File) -> std::io::Result<()>,
+) -> Result<()> {
+    atomic_publish_with(path, false, write)
+}
 fn atomic_publish_with(
     path: &Path,
     replace: bool,

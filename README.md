@@ -48,8 +48,7 @@ is a standalone image with its origin at zero, as for PNG.
 
 Encoding streams through a same-directory temporary file; failures before
 publication preserve the existing destination. `.png` still exports SDR sRGB
-with straight alpha. Other frame extensions are rejected. OpenEXR import and
-OpenEXR sequences are not currently exposed.
+with straight alpha. Other frame extensions are rejected. OpenEXR import is not currently exposed.
 
 ## Animation sequences
 
@@ -60,20 +59,22 @@ OpenEXR sequences are not currently exposed.
 Start and end are inclusive absolute frame indices at the composition's rational
 frame rate. Negative frame indices are supported. Each request allows 1–10000
 frames and validates every timestamp before writing. Optional `--node` and
-`--crop` work as for a single frame. The output directory must not exist; its
+`--crop` work as for a single frame. Use `--format exr` for HDR OpenEXR frames;
+PNG remains the default. The output directory must not exist; its
 parent must already exist. Outputs never replace earlier renders.
 
-Files are `frame-000000.png` onward, with timing, region, source frame range, and
+Files are `frame-000000.png` or `frame-000000.exr` onward, with timing, region, source frame range, and
 completion recorded in `sequence.json`. Only `status: "complete"` denotes a
 finished sequence. Interrupted or failed jobs can leave a `rendering` manifest
 and usable completed frames. The library supports cancellation between frames,
 recorded as `cancelled`. CLI progress is newline-delimited JSON on stderr; the
 final result is JSON on stdout. One plan and source set serve the entire render,
-and frames are written one at a time. PNG sequences retain the same SDR colour
-and alpha rules as single-frame export; no video encoding or audio is included.
+and frames are written one at a time. The manifest records format, color space and alpha convention. PNG and OpenEXR
+sequences use the same respective color and alpha rules as single-frame export;
+no video encoding or audio is included.
 
 MCP `render_sequence` takes `revision`, `path`, `start`, `end`, and optional `node`
-and `region`. It runs synchronously and returns the sequence manifest. The stdio
+and `region`, plus `format` (`png` or `exr`). It runs synchronously and returns the sequence manifest. The stdio
 adapter does not yet expose mid-request cancellation or progress notifications.
 
 ## Blend controls
