@@ -1,6 +1,7 @@
 //! Shared document and undo-retention limits, measured in canonical JSON bytes.
 use crate::{Error, Result};
 use std::io::{self, Write};
+pub const MAX_NODES: usize = 4096;
 pub const MAX_DOCUMENT_BYTES: usize = 16 * 1024 * 1024;
 pub const MAX_HISTORY_BYTES: usize = 128 * 1024 * 1024;
 pub const MAX_HISTORY_STEPS: usize = 64;

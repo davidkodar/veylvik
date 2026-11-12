@@ -1,4 +1,5 @@
 //! Serializable compositions and transactional editing, independent of GPU and UI.
+pub mod editing;
 mod history;
 mod procedural;
 pub use procedural::procedural_demo;
@@ -312,7 +313,7 @@ impl Composition {
         if self.frame_rate.seconds()? <= 0.0 {
             return fail("frame rate must be positive");
         }
-        if self.nodes.len() > 4096 {
+        if self.nodes.len() > limits::MAX_NODES {
             return fail("composition exceeds 4096 nodes");
         }
         if !self.nodes.contains_key(&self.output) {

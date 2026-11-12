@@ -317,6 +317,32 @@ impl Studio {
             Err(e) => self.fail(e),
         }
     }
+    fn duplicate_branch(&mut self) {
+        if !self.can_change_selection() || self.graph.dragging() {
+            return;
+        }
+        self.playing = false;
+        let result = (|| -> Result<(), Box<dyn std::error::Error>> {
+            let mut copy = veylvik_document::editing::copy_branch(
+                self.project.document.snapshot(),
+                self.project.selected,
+            )?;
+            self.graph.place_branch_copy(
+                self.project.document.snapshot(),
+                self.project.document.revision(),
+                &mut copy,
+            )?;
+            self.project.insert_branch(copy)?;
+            Ok(())
+        })();
+        match result {
+            Ok(()) => {
+                self.refresh_draft();
+                self.request_preview();
+            }
+            Err(error) => self.fail(error),
+        }
+    }
     fn request_preview(&mut self) {
         self.wanted = None;
         self.preview_pending = false;
@@ -1140,6 +1166,13 @@ impl Studio {
         if ui.button("Duplicate node").clicked() {
             self.duplicate_selected(ui.ctx());
         }
+        if ui
+            .button("Duplicate branch")
+            .on_hover_text("Copy this node and all upstream dependencies (Ctrl+Shift+D)")
+            .clicked()
+        {
+            self.duplicate_branch();
+        }
         if ui.button("Delete node").clicked() && self.can_change_selection() {
             match self.project.apply(&[Command::Remove {
                 id: self.project.selected,
@@ -1272,6 +1305,7 @@ impl Studio {
                         ("Space", "Play / pause"),
                         ("Tab", "Search and add a node"),
                         ("Ctrl+D", "Duplicate selected node"),
+                        ("Ctrl+Shift+D", "Duplicate upstream branch"),
                         ("Ctrl+Enter", "Apply inspector draft"),
                         ("Ctrl+N", "New composition"),
                         ("Ctrl+O", "Open composition"),
@@ -1386,6 +1420,11 @@ impl eframe::App for Studio {
             }
             if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Tab)) {
                 self.open_node_palette(&ctx);
+            }
+            if ctx.input_mut(|i| {
+                i.consume_key(egui::Modifiers::CTRL | egui::Modifiers::SHIFT, egui::Key::D)
+            }) {
+                self.duplicate_branch();
             }
             if ctx.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, egui::Key::D)) {
                 self.duplicate_selected(&ctx);

@@ -93,6 +93,49 @@ impl Graph {
             y: position.y,
         }
     }
+    pub fn place_branch_copy(
+        &mut self,
+        doc: &Composition,
+        revision: u64,
+        copy: &mut veylvik_document::editing::BranchCopy,
+    ) -> veylvik_document::Result<()> {
+        self.sync(doc, revision);
+        let bounds = |ids: Vec<NodeId>| {
+            ids.into_iter().fold(Rect::NOTHING, |rect, id| {
+                rect.union(Rect::from_min_size(self.positions[&id], NODE_SIZE))
+            })
+        };
+        let all = bounds(self.positions.keys().copied().collect());
+        let branch = bounds(copy.mapping.keys().copied().collect());
+        // Try below, right, above, then left. A separating axis guarantees no overlap.
+        let candidates = [
+            egui::vec2(0.0, all.max.y + 60.0 - branch.min.y),
+            egui::vec2(all.max.x + 60.0 - branch.min.x, 0.0),
+            egui::vec2(0.0, all.min.y - 60.0 - branch.max.y),
+            egui::vec2(all.min.x - 60.0 - branch.max.x, 0.0),
+        ];
+        let offset = candidates
+            .into_iter()
+            .find(|offset| {
+                copy.mapping.keys().all(|id| {
+                    let p = self.positions[id] + *offset;
+                    p.x.abs() <= 1_000_000.0 && p.y.abs() <= 1_000_000.0
+                })
+            })
+            .ok_or_else(|| {
+                veylvik_document::Error(
+                    "No room to place the copied branch within graph coordinate limits".into(),
+                )
+            })?;
+        for (old, new) in &copy.mapping {
+            let position = self.positions[old] + offset;
+            copy.nodes.get_mut(new).unwrap().position = Some(NodePosition {
+                x: position.x,
+                y: position.y,
+            });
+        }
+        Ok(())
+    }
     fn vacant_position(&self, desired: Pos2) -> Pos2 {
         let collisions = |candidate: Pos2| {
             self.positions.values().any(|p| {
@@ -528,6 +571,46 @@ mod tests {
             &[],
         )
         .id
+    }
+    #[test]
+    fn branch_copy_layout_preserves_offsets_and_avoids_existing_nodes() {
+        let mut doc =
+            veylvik_document::blank(8, 8, veylvik_document::Time::new(24, 1).unwrap()).unwrap();
+        let first = doc.output;
+        doc.nodes.get_mut(&first).unwrap().position = Some(NodePosition {
+            x: 100.0,
+            y: 999_950.0,
+        });
+        let mut effect = veylvik_document::Node::new(
+            "Effect",
+            veylvik_document::Operation::Exposure { stops: 1.0.into() },
+            &[("image", first)],
+        );
+        effect.position = Some(NodePosition {
+            x: 400.0,
+            y: 999_900.0,
+        });
+        doc.output = effect.id;
+        doc.nodes.insert(effect.id, effect);
+        let mut graph = Graph::default();
+        let mut copy = veylvik_document::editing::copy_branch(&doc, doc.output).unwrap();
+        graph.place_branch_copy(&doc, 0, &mut copy).unwrap();
+        let mut offset = None;
+        for (old, new) in &copy.mapping {
+            let p = copy.nodes[new].position.unwrap();
+            let p = egui::pos2(p.x, p.y);
+            let delta = p - graph.positions[old];
+            if let Some(offset) = offset {
+                assert_eq!(delta, offset);
+            } else {
+                offset = Some(delta);
+            }
+            assert!(p.x.abs() <= 1_000_000.0 && p.y.abs() <= 1_000_000.0);
+            assert!(graph.positions.values().all(|old| {
+                !Rect::from_min_size(*old, NODE_SIZE).intersects(Rect::from_min_size(p, NODE_SIZE))
+            }));
+        }
+        assert!(offset.unwrap().x > 0.0); // Below would exceed the coordinate bound.
     }
     #[test]
     fn insertion_avoids_dense_nodes_and_preserves_free_positions() {

@@ -218,6 +218,7 @@ finishes.
 | Ctrl+Shift+S | Save as |
 | Ctrl+Z / Ctrl+Shift+Z | Undo / redo |
 | Ctrl+D | Duplicate selected node |
+| Ctrl+Shift+D | Duplicate selected node and its upstream branch |
 | Ctrl+Enter | Apply inspector draft |
 | Ctrl+R | Reload source images |
 | Q | Close |
@@ -228,6 +229,14 @@ absent. Node positions are saved with the project; each drag is one undo step.
 **Duplicate node** (Ctrl+D) copies the selected node with its animation and input
 connections, selects the copy, and creates one undo step. The composition output
 stays unchanged. Apply or revert inspector drafts before duplicating.
+**Duplicate branch** (`Ctrl+Shift+D`) copies the selected node and all upstream
+nodes as one undo step. Connections are remapped entirely within the copy, and
+shared ancestors are copied once. Animation, node versions, and image asset
+keys are preserved; source files and loaded image pixels are shared. The copied
+branch keeps relative node positions and is placed outside existing graph bounds.
+The copied root becomes the preview; the composition output stays unchanged.
+Copying is rejected atomically if document size, node count, or graph coordinate
+limits would be exceeded.
 
 Drag the graph background to pan, Ctrl+scroll to zoom, and use **Fit** to see
 the whole graph. **Arrange** restores an automatic layout as one undoable edit. Source images load when the

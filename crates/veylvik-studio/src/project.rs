@@ -258,6 +258,13 @@ impl Project {
         self.preview = Some(id);
         Ok(id)
     }
+    pub fn insert_branch(&mut self, copy: veylvik_document::editing::BranchCopy) -> Result<NodeId> {
+        let id = copy.root;
+        self.apply(&copy.into_commands())?;
+        self.selected = id;
+        self.preview = Some(id);
+        Ok(id)
+    }
     pub fn save_snapshot(&self) -> SaveSnapshot {
         SaveSnapshot {
             composition: self.document.snapshot().clone(),
