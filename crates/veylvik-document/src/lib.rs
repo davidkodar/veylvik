@@ -25,6 +25,7 @@ pub mod schema;
 pub mod text;
 pub use text::{TextAlignment, TextFont};
 pub mod sequence;
+pub mod tracking;
 pub mod vector;
 pub use blending::BlendMode;
 use serde::{Deserialize, Serialize};

@@ -1,6 +1,7 @@
 //! Filesystem, PNG, OpenEXR and font adapters; rendering and shaping stay independent of paths.
 pub mod collect;
 pub mod export;
+pub mod footage;
 pub mod import;
 pub mod presets;
 pub mod preview;
@@ -119,7 +120,7 @@ pub fn load_png(path: &Path, budget: u64) -> Result<Image> {
 pub fn inspect_inputs(plan: &Plan, base: &Path) -> Result<u64> {
     let mut bytes = 0;
     for key in plan.required_assets() {
-        let image = load_image(&base.join(key), MAX_IMAGE_BYTES)
+        let image = footage::load(&base.join(key), MAX_IMAGE_BYTES)
             .map_err(|error| format!("image {key}: {error}"))?;
         bytes += image.byte_size();
     }
@@ -136,9 +137,9 @@ pub fn load_inputs(plan: &Plan, base: &Path, budget: u64) -> Result<ImageInputs>
     let mut inputs = ImageInputs::default();
     for key in plan.required_assets() {
         let image =
-            load_image(&base.join(key), remaining).map_err(|e| format!("image {key}: {e}"))?;
+            footage::load(&base.join(key), remaining).map_err(|e| format!("image {key}: {e}"))?;
         remaining -= image.byte_size();
-        inputs.insert(key, Arc::new(image));
+        image.insert(&mut inputs, key);
     }
     Ok(inputs)
 }
@@ -209,6 +210,14 @@ pub fn protect_inputs(composition: &Composition, base: &Path, destination: &Path
     for node in composition.nodes.values() {
         if let Operation::Image { asset } = &node.operation {
             let input = base.join(asset);
+            if footage::is_sequence(&input) && input.exists() {
+                for frame in footage::dependencies(&input)? {
+                    let resolved = frame.canonicalize().unwrap_or(frame);
+                    if resolved == target {
+                        return Err("destination would replace an input sequence frame".into());
+                    }
+                }
+            }
             let resolved = input
                 .canonicalize()
                 .ok()

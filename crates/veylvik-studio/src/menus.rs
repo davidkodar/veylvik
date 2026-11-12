@@ -28,9 +28,10 @@ impl Studio {
                     self.recovery.refresh(); self.recovery.open = true;
                 }
                 ui.separator();
-                if item(ui, "Import image…", "Ctrl+I", true) {
+                if item(ui, "Import image or sequence…", "Ctrl+I", true) {
                     self.import_image(self.graph.insertion_position(ui.ctx()));
                 }
+                if item(ui, "Import numbered sequence…", "", true) { self.import_media(self.graph.insertion_position(ui.ctx()), true); }
                 if item(ui, "Reload source images", "Ctrl+R", !self.draft_dirty) { self.reload_images(); }
                 ui.separator();
                 if item(ui, "Export current preview…", "Ctrl+E", true) { self.export_frame(); }

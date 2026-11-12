@@ -6,22 +6,24 @@ use ashpd::desktop::{
 };
 use std::{
     path::{Path, PathBuf},
-    sync::{Arc, mpsc},
+    sync::mpsc,
     thread::JoinHandle,
 };
-use veylvik_render::Image;
+use veylvik_io::footage::Media;
 #[derive(Clone, Copy)]
 pub enum Choice {
     Open,
     PresetOpen,
     PresetSave,
     Import,
+    ImportSequence,
     Save,
     Export,
     Folder,
     Font,
 }
 pub enum Completed {
+    Tracked(crate::tracking::Tracked),
     PresetLibrary(veylvik_io::presets::Listing),
     PresetLoaded(Box<veylvik_document::presets::Preset>),
     Cancelled,
@@ -36,7 +38,7 @@ pub enum Completed {
     Imported {
         position: veylvik_document::NodePosition,
         path: PathBuf,
-        image: Arc<Image>,
+        image: Media,
     },
     Reloaded {
         session: veylvik_document::NodeId,
@@ -48,7 +50,7 @@ pub enum Completed {
         revision: u64,
         node: veylvik_document::NodeId,
         path: PathBuf,
-        image: Arc<Image>,
+        image: Media,
     },
     Saved(Saved),
     Exported(PathBuf),
@@ -109,7 +111,16 @@ pub fn select(choice: Choice, folder: &Path, name: &str) -> Result<Option<PathBu
         Choice::Open => ("Open composition", "Veylvik composition", "*.veylvik"),
         Choice::Save => ("Save composition", "Veylvik composition", "*.veylvik"),
         Choice::Font => ("Choose font", "Font", "*.ttf"),
-        Choice::Import => ("Import image", "PNG or OpenEXR image", "*.png"),
+        Choice::ImportSequence => (
+            "Choose the first numbered frame",
+            "PNG or OpenEXR sequence",
+            "*.png",
+        ),
+        Choice::Import => (
+            "Import image or sequence",
+            "Images and image sequences",
+            "*.png",
+        ),
         Choice::Export => (
             "Export frame (.png or .exr)",
             "PNG or OpenEXR image",
@@ -122,7 +133,13 @@ pub fn select(choice: Choice, folder: &Path, name: &str) -> Result<Option<PathBu
             .glob("*.ttf")
             .glob("*.otf")
             .glob("*.ttc")
-    } else if matches!(choice, Choice::Export | Choice::Import) {
+    } else if matches!(choice, Choice::Import) {
+        FileFilter::new(label)
+            .glob("*.png")
+            .glob("*.exr")
+            .glob("*.veyseq")
+            .glob("sequence.json")
+    } else if matches!(choice, Choice::Export | Choice::ImportSequence) {
         FileFilter::new(label).glob("*.png").glob("*.exr")
     } else {
         FileFilter::new(label).glob(pattern)

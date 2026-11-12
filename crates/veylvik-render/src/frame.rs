@@ -70,11 +70,18 @@ impl Image {
         self.pixels.len() as u64 * 16
     }
 }
+/// Time-aware host source. Decoding runs on the render worker, never the UI thread.
+/// The host must bound its cache and return immutable frames with stable identities.
+pub trait FrameSource: Send + Sync {
+    fn frame(&self, time: Time) -> Result<Arc<Image>>;
+    fn byte_budget(&self) -> u64;
+}
 /// The host supplies immutable images; a later render can supply new content under the same key.
 #[derive(Default, Clone)]
 pub struct ImageInputs(
     BTreeMap<String, Arc<Image>>,
     BTreeMap<String, Arc<GpuFrame>>,
+    BTreeMap<String, Arc<dyn FrameSource>>,
 );
 impl ImageInputs {
     /// Declared CPU pixel bytes, counting shared images once.
@@ -84,11 +91,17 @@ impl ImageInputs {
             .values()
             .filter(|image| seen.insert(image.identity()))
             .map(|image| image.byte_size())
-            .sum()
+            .sum::<u64>()
+            + self
+                .2
+                .values()
+                .map(|source| source.byte_budget())
+                .sum::<u64>()
     }
     pub fn insert(&mut self, key: impl Into<String>, image: Arc<Image>) {
         let key = key.into();
         self.1.remove(&key);
+        self.2.remove(&key);
         self.0.insert(key, image);
     }
     /// Retain a completed frame from the same renderer as a source. Its crop is
@@ -97,13 +110,35 @@ impl ImageInputs {
     pub fn insert_gpu(&mut self, key: impl Into<String>, frame: Arc<GpuFrame>) {
         let key = key.into();
         self.0.remove(&key);
+        self.2.remove(&key);
         self.1.insert(key, frame);
+    }
+    pub fn insert_source(&mut self, key: impl Into<String>, source: Arc<dyn FrameSource>) {
+        let key = key.into();
+        self.0.remove(&key);
+        self.1.remove(&key);
+        self.2.insert(key, source);
+    }
+    pub fn source_budget(&self, key: &str) -> u64 {
+        self.2.get(key).map_or_else(
+            || self.get(key).map_or(0, |i| i.byte_size()),
+            |s| s.byte_budget(),
+        )
+    }
+    pub fn resolve(&self, plan: &crate::Plan, time: Time) -> Result<Self> {
+        let mut result = self.clone();
+        for key in plan.required_assets() {
+            if let Some(source) = self.2.get(key) {
+                result.insert(key, source.frame(time)?);
+            }
+        }
+        Ok(result)
     }
     pub fn get_gpu(&self, key: &str) -> Option<&Arc<GpuFrame>> {
         self.1.get(key)
     }
     pub fn contains_key(&self, key: &str) -> bool {
-        self.0.contains_key(key) || self.1.contains_key(key)
+        self.0.contains_key(key) || self.1.contains_key(key) || self.2.contains_key(key)
     }
     pub(crate) fn source(&self, key: &str) -> Option<Source<'_>> {
         self.0

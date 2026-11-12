@@ -153,13 +153,13 @@ impl Project {
                 && !self.inputs.contains_key(asset)
                 && !self.asset_errors.contains_key(asset)
             {
-                match veylvik_io::load_image(
+                match veylvik_io::footage::load(
                     &self.base.join(asset),
                     remaining.min(128 * 1024 * 1024),
                 ) {
                     Ok(image) => {
                         remaining -= image.byte_size();
-                        self.inputs.insert(asset, Arc::new(image));
+                        image.insert(&mut self.inputs, asset);
                     }
                     Err(error) => {
                         self.asset_errors.insert(asset.clone(), error.to_string());
@@ -310,7 +310,7 @@ impl Project {
         &mut self,
         id: NodeId,
         path: &Path,
-        image: Arc<veylvik_render::Image>,
+        image: impl Into<veylvik_io::footage::Media>,
     ) -> Result<()> {
         let mut node = self
             .document
@@ -332,13 +332,13 @@ impl Project {
             }])?;
         }
         // Retain other loaded sources so undo can restore the previous image.
-        self.inputs.insert(next, image);
+        image.into().insert(&mut self.inputs, next);
         Ok(())
     }
     pub fn import(
         &mut self,
         path: &Path,
-        image: Arc<veylvik_render::Image>,
+        image: impl Into<veylvik_io::footage::Media>,
         position: veylvik_document::NodePosition,
     ) -> Result<()> {
         let asset = path.to_str().ok_or("image path is not UTF-8")?.to_owned();
@@ -348,7 +348,7 @@ impl Project {
             },
             Some(position),
         )?;
-        self.inputs.insert(asset, image);
+        image.into().insert(&mut self.inputs, asset);
         Ok(())
     }
 }
@@ -366,11 +366,12 @@ pub fn load_inputs(
         if let Operation::Image { asset } = &node.operation
             && seen.insert(asset)
         {
-            let replaced = inputs.get(asset).map_or(0, |image| image.byte_size());
+            let replaced = inputs.source_budget(asset);
             let remaining = BUDGET.saturating_sub(inputs.byte_size().saturating_sub(replaced));
-            let image = veylvik_io::load_image(&base.join(asset), remaining.min(128 * 1024 * 1024))
-                .map_err(|error| format!("Image {asset}: {error}"))?;
-            inputs.insert(asset, Arc::new(image));
+            let image =
+                veylvik_io::footage::load(&base.join(asset), remaining.min(128 * 1024 * 1024))
+                    .map_err(|error| format!("Image {asset}: {error}"))?;
+            image.insert(&mut inputs, asset);
             // Aliased keys may still retain the replaced allocation.
             if inputs.byte_size() > BUDGET {
                 return Err(

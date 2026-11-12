@@ -61,6 +61,9 @@ fn collect_with_limit(
         let Operation::Image { asset } = &mut node.operation else {
             continue;
         };
+        if crate::footage::is_sequence(Path::new(asset)) {
+            return Err("Collecting image sequences is not supported yet; copy the sequence directory with its manifest".into());
+        }
         let source = base
             .join(&*asset)
             .canonicalize()

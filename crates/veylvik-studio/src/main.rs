@@ -35,6 +35,7 @@ mod text_effects;
 mod text_outline;
 mod text_viewer;
 mod title_styles;
+mod tracking;
 mod transform_handles;
 mod vector_editor;
 mod viewer;
@@ -167,6 +168,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 playback_frame: 0,
                 files: Tasks::new(cc.egui_ctx.clone()),
                 export_controls: sequence::Controls::default(),
+                tracking: tracking::Controls::default(),
                 outline_controls: text_outline::Controls::default(),
                 composition_controls: composition::Controls::default(),
                 confirm: None,
@@ -232,6 +234,7 @@ struct Studio {
     playback_frame: i64,
     files: Tasks,
     export_controls: sequence::Controls,
+    tracking: tracking::Controls,
     outline_controls: text_outline::Controls,
     composition_controls: composition::Controls,
     confirm: Option<Leave>,
@@ -265,6 +268,10 @@ impl Studio {
         self.animation_editor = animation_editor::Editor::default();
         self.composition_controls = composition::Controls::default();
         self.export_controls = sequence::Controls::default();
+        if let Some(p) = &self.tracking.active {
+            p.cancel.store(true, std::sync::atomic::Ordering::Relaxed);
+        }
+        self.tracking = tracking::Controls::default();
         self.occlusion = Default::default();
         self.project = project;
         self.graph = graph::Graph::default();
@@ -863,12 +870,12 @@ impl Studio {
             };
             let path = path.canonicalize().map_err(|error| error.to_string())?;
             let asset = path.to_str().ok_or("Image path is not UTF-8")?;
-            let replaced_bytes = inputs.get(asset).map_or(0, |image| image.byte_size());
+            let replaced_bytes = inputs.source_budget(asset);
             let budget = (256u64 * 1024 * 1024)
                 .saturating_sub(inputs.byte_size() - replaced_bytes)
                 .min(128 * 1024 * 1024);
             let image =
-                Arc::new(veylvik_io::load_image(&path, budget).map_err(|error| error.to_string())?);
+                veylvik_io::footage::load(&path, budget).map_err(|error| error.to_string())?;
             Ok(Completed::Replaced {
                 session,
                 revision,
@@ -880,24 +887,43 @@ impl Studio {
         self.file_started(result);
     }
     fn import_image(&mut self, position: veylvik_document::NodePosition) {
+        self.import_media(position, false);
+    }
+    fn import_media(&mut self, position: veylvik_document::NodePosition, sequence: bool) {
         if self.files.busy() || !self.apply_draft() {
             return;
         }
         self.playing = false;
         let folder = self.project.base.clone();
+        let rate = self.project.document.snapshot().frame_rate;
         let budget = (256u64 * 1024 * 1024)
             .saturating_sub(self.project.inputs.byte_size())
             .min(128 * 1024 * 1024);
         let result = self.files.start(move || {
-            let Some(path) = files::select(Choice::Import, &folder, "")? else {
+            let Some(path) = files::select(
+                if sequence {
+                    Choice::ImportSequence
+                } else {
+                    Choice::Import
+                },
+                &folder,
+                "",
+            )?
+            else {
                 return Ok(Completed::Cancelled);
             };
             let path = path.canonicalize().map_err(|e| e.to_string())?;
-            let image = veylvik_io::load_image(&path, budget).map_err(|e| e.to_string())?;
+            let (path, image) = if sequence {
+                veylvik_io::footage::import_numbered(&path, rate, budget)
+                    .map_err(|e| e.to_string())?
+            } else {
+                let image = veylvik_io::footage::load(&path, budget).map_err(|e| e.to_string())?;
+                (path, image)
+            };
             Ok(Completed::Imported {
                 position,
                 path,
-                image: Arc::new(image),
+                image,
             })
         });
         self.file_started(result);
@@ -1002,11 +1028,13 @@ impl Studio {
             return;
         };
         self.export_controls.active = None;
+        self.tracking.active = None;
         if self.outline_controls.pending {
             self.outline_controls.pending = false;
             self.outline_controls.open = !matches!(&result, Ok(Completed::Outlined(_)));
         }
         match result {
+            Ok(Completed::Tracked(result)) => self.tracking_completed(result),
             Ok(Completed::Cancelled) => {
                 self.after_save = None;
                 self.status = "Cancelled".into();
@@ -1247,6 +1275,15 @@ impl Studio {
             return;
         }
         self.occlusion_controls(ui);
+        if ui
+            .add_enabled(!self.files.busy(), egui::Button::new("Track motion…"))
+            .on_hover_text(
+                "Track a feature and attach editable movement to text, a mask or a layer",
+            )
+            .clicked()
+        {
+            self.begin_tracking();
+        }
         ui.label(if matches!(self.draft.operation, Operation::Text { .. }) {
             "Layer name"
         } else {
@@ -1424,7 +1461,7 @@ impl Studio {
             | Operation::Transform { .. }
             | Operation::Blur { .. } => {}
             Operation::Image { asset } => {
-                ui.label("Source image");
+                ui.label("Source image / sequence");
                 ui.label(asset.as_str());
                 ui.label("Images use native size and transparent padding.");
                 if let Some(reason) = self.project.unavailable_assets().get(asset.as_str()) {
@@ -1971,7 +2008,7 @@ impl Studio {
                         ("Ctrl+Enter", "Apply inspector draft"),
                         ("Ctrl+N", "New composition"),
                         ("Ctrl+O", "Open composition"),
-                        ("Ctrl+I", "Import PNG or OpenEXR image"),
+                        ("Ctrl+I", "Import image or image sequence"),
                         ("Ctrl+R", "Reload source images"),
                         ("Ctrl+E", "Export current preview"),
                         ("Ctrl+Shift+E", "Export image sequence"),
@@ -2348,6 +2385,7 @@ impl eframe::App for Studio {
                             egui::Sense::click_and_drag(),
                         );
                         if !self.text_viewer.active
+                            && !self.tracking.open
                             && !self.path_pen.active
                             && !(self.path_transform.active
                                 && matches!(self.draft.operation, Operation::Path { .. })
@@ -2443,11 +2481,15 @@ impl eframe::App for Studio {
                             self.draft_dirty = true;
                             self.apply_draft();
                         }
+                        if self.tracking.open && self.tracking.source == self.project.preview && self.displayed_ticket == self.wanted {
+                            self.tracking.overlay(ui, canvas, transform, image, self.project.frame, self.project.document.snapshot().frame_rate);
+                        }
                         let root = self
                             .project
                             .preview
                             .unwrap_or(self.project.document.snapshot().output);
                         if !self.playing
+                            && !self.tracking.open
                             && (self.displayed_ticket == self.wanted
                                 || matches!(
                                     self.draft.operation,
@@ -2636,6 +2678,7 @@ impl eframe::App for Studio {
         {
             self.outline_text(request);
         }
+        self.tracking_window(&ctx);
         if let Some(settings) = self.export_controls.show(
             &ctx,
             self.project.document.snapshot().frame_rate,

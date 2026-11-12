@@ -4,11 +4,12 @@ mod diagnostics;
 pub use diagnostics::Diagnostics;
 mod frame;
 pub use cache::CacheStats;
-pub use frame::{GpuFrame, Image, ImageInputs, Region, RenderRequest, RenderedFrame};
+pub use frame::{FrameSource, GpuFrame, Image, ImageInputs, Region, RenderRequest, RenderedFrame};
 mod plan;
 mod pool;
 mod scheduler;
 mod texture;
+pub mod tracking;
 mod vector;
 pub use plan::{Kernel, PassInfo, Plan};
 pub use pool::ResourceStats;
@@ -563,6 +564,8 @@ impl Renderer {
         request: RenderRequest,
         inputs: &ImageInputs,
     ) -> Result<RenderedFrame> {
+        let resolved = inputs.resolve(plan, request.time)?;
+        let inputs = &resolved;
         let (Executed::Cpu(full), region) = self.execute(plan, request, inputs, true)? else {
             unreachable!()
         };
@@ -576,6 +579,8 @@ impl Renderer {
         request: RenderRequest,
         inputs: &ImageInputs,
     ) -> Result<GpuFrame> {
+        let resolved = inputs.resolve(plan, request.time)?;
+        let inputs = &resolved;
         let (Executed::Gpu(storage), region) = self.execute(plan, request, inputs, false)? else {
             unreachable!()
         };
@@ -597,6 +602,8 @@ impl Renderer {
         request: RenderRequest,
         inputs: &ImageInputs,
     ) -> Result<Arc<GpuFrame>> {
+        let resolved = inputs.resolve(plan, request.time)?;
+        let inputs = &resolved;
         let source_bytes = self.source_bytes(plan, inputs)?;
         let key = cache::Key::new(plan, request, inputs)?;
         let mut cache = self
