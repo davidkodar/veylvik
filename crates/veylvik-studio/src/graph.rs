@@ -89,6 +89,7 @@ struct Drag {
     id: NodeId,
     start: Pos2,
     current: Pos2,
+    members: BTreeMap<NodeId, Pos2>,
 }
 pub struct Graph {
     revision: Option<u64>,
@@ -110,6 +111,9 @@ pub struct Graph {
     rename: Option<(NodeId, String)>,
     rename_open: bool,
     rename_focus: bool,
+    selection: std::collections::BTreeSet<NodeId>,
+    active: Option<NodeId>,
+    marquee: Option<(Pos2, std::collections::BTreeSet<NodeId>)>,
 }
 impl Default for Graph {
     fn default() -> Self {
@@ -133,6 +137,9 @@ impl Default for Graph {
             rename: None,
             rename_open: false,
             rename_focus: false,
+            selection: Default::default(),
+            active: None,
+            marquee: None,
         }
     }
 }
@@ -226,7 +233,7 @@ impl Graph {
         }
     }
     pub fn dragging(&self) -> bool {
-        self.drag.is_some() || self.wire.is_some()
+        self.drag.is_some() || self.wire.is_some() || self.marquee.is_some()
     }
     pub fn insertion_position(&self, ctx: &egui::Context) -> NodePosition {
         let Some(canvas) = self.canvas else {
@@ -646,11 +653,19 @@ impl Graph {
         let newly_inserted = self.revision.is_some() && !self.positions.contains_key(&selected);
         self.sync(doc, revision);
         let nodes = self.visual_nodes(doc);
+        self.selection
+            .retain(|id| nodes.iter().any(|n| n.id == *id));
+        if self.active != Some(selected) {
+            self.selection.clear();
+            self.selection.insert(selected);
+            self.active = Some(selected);
+        }
         let mut actions = Vec::new();
         let mut fit = std::mem::take(&mut self.fit_pending);
         let mut zoom_factor = 1.0;
         ui.horizontal(|ui| {
             ui.heading("Nodes");
+            if self.selection.len()>1 { ui.weak(format!("{} selected",self.selection.len())); }
             if ui
                 .button("Add node")
                 .on_hover_text("Search and add a node (Tab)")
@@ -748,7 +763,7 @@ impl Graph {
                     ui.colored_label(colour, label);
                 }
             });
-            ui.weak("Drag background to pan · Ctrl+scroll to zoom · double-click to preview");
+            ui.weak("Shift+drag selects · Drag pans · Ctrl+scroll zooms");
         });
         let (canvas, response) = ui.allocate_exact_size(
             ui.available_size().max(egui::vec2(1.0, 1.0)),
@@ -808,7 +823,10 @@ impl Graph {
             y += spacing;
         }
         if let Some(drag) = &self.drag {
-            self.positions.insert(drag.id, drag.current);
+            let delta = drag.current - drag.start;
+            for (id, start) in &drag.members {
+                self.positions.insert(*id, *start + delta);
+            }
         }
         let mut sockets = Vec::new();
         for node in &nodes {
@@ -842,7 +860,8 @@ impl Graph {
                             60.0 * (index + 1) as f32 / (node.inputs.len() + 1) as f32,
                         ))
                         * self.zoom;
-                let highlighted = node.id == selected || *source == selected;
+                let highlighted =
+                    self.selection.contains(&node.id) || self.selection.contains(source);
                 let colour = if self.wire_colours {
                     colours[source]
                 } else {
@@ -882,6 +901,21 @@ impl Graph {
                     if let Some(position) = self.menu_position {
                         actions.push(Action::AddAt(position));
                     }
+                    ui.close();
+                }
+                ui.separator();
+                if ui.button("Select all nodes     Ctrl+A").clicked() {
+                    self.selection = nodes.iter().map(|n| n.id).collect();
+                    ui.close();
+                }
+                if ui
+                    .add_enabled(
+                        !self.selection.is_empty(),
+                        egui::Button::new("Clear selection"),
+                    )
+                    .clicked()
+                {
+                    self.selection.clear();
                     ui.close();
                 }
                 ui.separator();
@@ -926,6 +960,11 @@ impl Graph {
                 )
                 .on_hover_text(&node.label);
             if response.secondary_clicked() {
+                if !self.selection.contains(&node.id) {
+                    self.selection.clear();
+                    self.selection.insert(node.id);
+                }
+                self.active = Some(node.id);
                 self.rename = Some((node.id, node.label.clone()));
                 actions.push(Action::Select {
                     id: node.id,
@@ -977,6 +1016,18 @@ impl Graph {
                 }
             });
             if response.drag_started() {
+                if !self.selection.contains(&node.id) {
+                    if !ui.input(|i| i.modifiers.shift) {
+                        self.selection.clear();
+                    }
+                    self.selection.insert(node.id);
+                }
+                self.active = Some(node.id);
+                actions.push(Action::Select {
+                    id: node.id,
+                    preview: false,
+                });
+                let members = self.moving_members(doc);
                 let preserve_layout = self.auto_arrange;
                 self.auto_arrange = false;
                 self.auto_view = None;
@@ -985,53 +1036,46 @@ impl Graph {
                     id: node.id,
                     start: self.positions[&node.id],
                     current: self.positions[&node.id],
+                    members,
                 });
             }
             if response.dragged()
                 && let Some(drag) = &mut self.drag
             {
-                drag.current += response.drag_delta() / self.zoom;
-                drag.current.x = drag.current.x.clamp(-1_000_000.0, 1_000_000.0);
-                drag.current.y = drag.current.y.clamp(-1_000_000.0, 1_000_000.0);
+                let requested = drag.current - drag.start + response.drag_delta() / self.zoom;
+                let mut delta = requested;
+                for axis in 0..2 {
+                    let low = drag
+                        .members
+                        .values()
+                        .map(|p| -1_000_000.0 - p[axis])
+                        .fold(f32::NEG_INFINITY, f32::max);
+                    let high = drag
+                        .members
+                        .values()
+                        .map(|p| 1_000_000.0 - p[axis])
+                        .fold(f32::INFINITY, f32::min);
+                    delta[axis] = delta[axis].clamp(low, high);
+                }
+                drag.current = drag.start + delta;
                 node_dragged = true;
             }
             if response.drag_stopped()
                 && let Some(drag) = self.drag.take()
                 && drag.start.distance(drag.current) > 0.01
             {
-                if drag.preserve_layout {
-                    let mut positions = self.positions.clone();
-                    positions.insert(drag.id, drag.current);
-                    if let Some(group) = self.selected_group(doc, drag.id) {
-                        for id in &group.members {
-                            if *id != drag.id {
-                                *positions.get_mut(id).unwrap() += drag.current - drag.start;
-                            }
-                        }
-                    }
-                    actions.push(Action::Arrange(
-                        positions
-                            .into_iter()
-                            .map(|(id, p)| (id, NodePosition { x: p.x, y: p.y }))
-                            .collect(),
-                    ));
-                } else if let Some(group) = self.selected_group(doc, drag.id) {
-                    let delta = drag.current - drag.start;
-                    actions.push(Action::Arrange(
-                        group
-                            .members
-                            .iter()
-                            .map(|id| {
-                                let p = if *id == drag.id {
-                                    drag.current
-                                } else {
-                                    self.positions[id] + delta
-                                };
-                                (*id, NodePosition { x: p.x, y: p.y })
-                            })
-                            .collect(),
-                    ));
+                let delta = drag.current - drag.start;
+                let mut positions = if drag.preserve_layout {
+                    self.positions.clone()
                 } else {
+                    BTreeMap::new()
+                };
+                positions.extend(
+                    drag.members
+                        .into_iter()
+                        .map(|(id, start)| (id, start + delta)),
+                );
+                if positions.len() == 1 {
                     actions.push(Action::Place {
                         id: drag.id,
                         position: NodePosition {
@@ -1039,18 +1083,36 @@ impl Graph {
                             y: drag.current.y,
                         },
                     });
+                } else {
+                    actions.push(Action::Arrange(
+                        positions
+                            .into_iter()
+                            .map(|(id, p)| (id, NodePosition { x: p.x, y: p.y }))
+                            .collect(),
+                    ));
                 }
                 // Resync even after a rejected placement, so a failed gesture
                 // never leaves a ghost layout in the viewport.
                 self.revision = None;
             }
             if response.clicked() || response.double_clicked() {
-                actions.push(Action::Select {
-                    id: node.id,
-                    preview: response.double_clicked(),
-                });
+                let shift = ui.input(|i| i.modifiers.shift) && !response.double_clicked();
+                if shift && self.selection.contains(&node.id) {
+                    self.selection.remove(&node.id);
+                } else {
+                    if !shift {
+                        self.selection.clear();
+                    }
+                    self.selection.insert(node.id);
+                    self.active = Some(node.id);
+                    actions.push(Action::Select {
+                        id: node.id,
+                        preview: response.double_clicked(),
+                    });
+                }
             }
-            let selected = node.id == selected;
+            let active = node.id == selected;
+            let selected = self.selection.contains(&node.id);
             painter.rect_filled(rect, 0.0, Color32::from_rgb(36, 41, 50));
             if self.role_colours {
                 let colour = node.role_colour(doc);
@@ -1071,9 +1133,19 @@ impl Graph {
                 rect,
                 0.0,
                 egui::Stroke::new(
-                    if selected { 2.0_f32 } else { 1.0_f32 },
+                    if selected && active {
+                        2.5_f32
+                    } else if selected {
+                        2.0_f32
+                    } else {
+                        1.0_f32
+                    },
                     if selected {
-                        accent
+                        if active {
+                            accent
+                        } else {
+                            accent.gamma_multiply(0.75)
+                        }
                     } else {
                         Color32::from_gray(65)
                     },
@@ -1179,8 +1251,62 @@ impl Graph {
                 self.wire = None;
             }
         }
+        if response.contains_pointer()
+            && !ui.ctx().egui_wants_keyboard_input()
+            && ui.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, egui::Key::A))
+        {
+            self.selection = nodes.iter().map(|n| n.id).collect();
+        }
+        if response.clicked() && !pointer_on_node && !ui.input(|i| i.modifiers.shift) {
+            self.selection.clear();
+        }
+        if response.drag_started()
+            && ui.input(|i| i.modifiers.shift)
+            && let Some(start) = ui.input(|i| i.pointer.press_origin())
+            && !nodes.iter().any(|n| {
+                Rect::from_min_size(
+                    canvas.min + self.pan + self.positions[&n.id].to_vec2() * self.zoom,
+                    NODE_SIZE * self.zoom,
+                )
+                .contains(start)
+            })
+        {
+            self.marquee = Some((start, self.selection.clone()));
+        }
+        if let Some((start, initial)) = &self.marquee {
+            if let Some(point) = ui.input(|i| i.pointer.interact_pos()) {
+                let rect = Rect::from_two_pos(*start, point).intersect(canvas);
+                self.selection = initial.clone();
+                self.selection.extend(
+                    nodes
+                        .iter()
+                        .filter(|n| {
+                            rect.intersects(Rect::from_min_size(
+                                canvas.min + self.pan + self.positions[&n.id].to_vec2() * self.zoom,
+                                NODE_SIZE * self.zoom,
+                            ))
+                        })
+                        .map(|n| n.id),
+                );
+                painter.rect_filled(rect, 0.0, accent.gamma_multiply(0.12));
+                painter.rect_stroke(
+                    rect,
+                    0.0,
+                    egui::Stroke::new(1.0_f32, accent),
+                    egui::StrokeKind::Inside,
+                );
+            }
+            if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                self.selection = initial.clone();
+                self.marquee = None;
+            } else if response.drag_stopped() || !ui.input(|i| i.pointer.primary_down()) {
+                self.marquee = None;
+            }
+        }
         if response.dragged()
             && !node_dragged
+            && self.marquee.is_none()
+            && !ui.input(|i| i.modifiers.shift)
             && self.drag.is_none()
             && !wiring
             && ui.ctx().dragged_id() == Some(response.id)
@@ -1230,6 +1356,17 @@ impl Graph {
         }
         actions
     }
+    fn moving_members(&self, doc: &Composition) -> BTreeMap<NodeId, Pos2> {
+        let mut ids = self.selection.clone();
+        for id in &self.selection {
+            if let Some(group) = self.selected_group(doc, *id) {
+                ids.extend(group.members.iter().copied());
+            }
+        }
+        ids.into_iter()
+            .filter_map(|id| self.positions.get(&id).map(|p| (id, *p)))
+            .collect()
+    }
     pub fn renaming(&self) -> bool {
         self.rename_open
     }
@@ -1245,6 +1382,151 @@ mod tests {
             &[],
         )
         .id
+    }
+    #[test]
+    fn shift_selection_moves_nodes_together_and_box_selection_does_not_pan() {
+        use veylvik_document::{Node, Operation, Time};
+        let mut doc = veylvik_document::blank(8, 8, Time::new(24, 1).unwrap()).unwrap();
+        let first = doc.output;
+        doc.nodes.get_mut(&first).unwrap().position = Some(NodePosition { x: 25.0, y: 20.0 });
+        let mut other = Node::new("Other", Operation::Solid { color: [1.0; 4] }, &[]);
+        other.position = Some(NodePosition { x: 245.0, y: 20.0 });
+        let second = other.id;
+        doc.nodes.insert(second, other);
+        let ctx = egui::Context::default();
+        let mut graph = Graph::default();
+        let mut primary = first;
+        fn run(
+            ctx: &egui::Context,
+            graph: &mut Graph,
+            doc: &Composition,
+            primary: &mut NodeId,
+            shift: bool,
+            events: Vec<egui::Event>,
+        ) -> Vec<Action> {
+            let mut actions = Vec::new();
+            let _ = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(Pos2::ZERO, egui::vec2(1200.0, 600.0))),
+                    modifiers: egui::Modifiers {
+                        shift,
+                        ..Default::default()
+                    },
+                    events,
+                    ..Default::default()
+                },
+                |ui| {
+                    actions = graph.show(ui, doc, 0, *primary, Color32::LIGHT_BLUE);
+                },
+            );
+            for action in &actions {
+                if let Action::Select { id, .. } = action {
+                    *primary = *id;
+                }
+            }
+            actions
+        }
+        let event = |point, pressed, shift| egui::Event::PointerButton {
+            pos: point,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: egui::Modifiers {
+                shift,
+                ..Default::default()
+            },
+        };
+        run(&ctx, &mut graph, &doc, &mut primary, false, vec![]);
+        let origin = graph.canvas.unwrap().min;
+        let point = origin + egui::vec2(300.0, 50.0);
+        run(
+            &ctx,
+            &mut graph,
+            &doc,
+            &mut primary,
+            true,
+            vec![egui::Event::PointerMoved(point), event(point, true, true)],
+        );
+        run(
+            &ctx,
+            &mut graph,
+            &doc,
+            &mut primary,
+            true,
+            vec![event(point, false, true)],
+        );
+        assert_eq!(graph.selection.len(), 2);
+        let from = origin + egui::vec2(100.0, 50.0);
+        let to = from + egui::vec2(30.0, 40.0);
+        run(
+            &ctx,
+            &mut graph,
+            &doc,
+            &mut primary,
+            false,
+            vec![egui::Event::PointerMoved(from), event(from, true, false)],
+        );
+        run(
+            &ctx,
+            &mut graph,
+            &doc,
+            &mut primary,
+            false,
+            vec![egui::Event::PointerMoved(to)],
+        );
+        let actions = run(
+            &ctx,
+            &mut graph,
+            &doc,
+            &mut primary,
+            false,
+            vec![event(to, false, false)],
+        );
+        let positions = actions
+            .iter()
+            .find_map(|a| {
+                if let Action::Arrange(p) = a {
+                    Some(p)
+                } else {
+                    None
+                }
+            })
+            .unwrap();
+        assert_eq!(positions.len(), 2);
+        for (id, p) in positions {
+            let old = doc.nodes[id].position.unwrap();
+            assert_eq!((p.x - old.x, p.y - old.y), (30.0, 40.0));
+        }
+        graph.selection.clear();
+        graph.revision = None;
+        run(&ctx, &mut graph, &doc, &mut primary, false, vec![]);
+        let start = origin + egui::vec2(5.0, 5.0);
+        let end = origin + egui::vec2(300.0, 50.0);
+        run(
+            &ctx,
+            &mut graph,
+            &doc,
+            &mut primary,
+            true,
+            vec![egui::Event::PointerMoved(start), event(start, true, true)],
+        );
+        run(
+            &ctx,
+            &mut graph,
+            &doc,
+            &mut primary,
+            true,
+            vec![egui::Event::PointerMoved(end)],
+        );
+        run(
+            &ctx,
+            &mut graph,
+            &doc,
+            &mut primary,
+            true,
+            vec![event(end, false, true)],
+        );
+        assert_eq!(graph.selection, [first, second].into());
+        assert_eq!(graph.pan, Vec2::ZERO);
     }
     #[test]
     fn context_menu_targets_clicked_node_and_captures_empty_canvas_position() {

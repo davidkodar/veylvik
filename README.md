@@ -444,6 +444,14 @@ button and **Tab** share the focused searchable picker; Up/Down selects, Enter
 adds and Escape cancels. The canvas menu captures its opening position before
 the pointer moves into the menu. Clipboard paste is not yet supported.
 
+Shift-click adds or removes nodes from the selection. Shift-drag empty canvas
+box-selects nodes without panning; Ctrl+A selects all visible nodes while the
+pointer is over the graph. Drag any selected node to move the selection together,
+including hidden members of collapsed groups, as one undoable layout edit.
+The active inspector node has a stronger outline. A plain click selects one node;
+clicking empty canvas clears the selection. Manual group movement also disables
+Auto arrange. Context-menu commands still target the node you right-clicked.
+
 Drag the graph background to pan, Ctrl+scroll to zoom, and use **Fit** to see
 the whole graph. **Arrange** lays out connected branches as one undoable edit, treating
 collapsed effects as a single stage and placing unused branches separately. It never
