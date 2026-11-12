@@ -1,5 +1,7 @@
 //! Serializable compositions and transactional editing, independent of GPU and UI.
 mod history;
+mod procedural;
+pub use procedural::procedural_demo;
 pub mod limits;
 pub mod registry;
 pub use history::{Document, HistoryStats};

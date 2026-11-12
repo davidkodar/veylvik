@@ -5,7 +5,7 @@ use std::path::Path;
 use veylvik_document::{Composition, Node, Operation, Time};
 use veylvik_render::{Plan, Region, RenderRequest, Renderer};
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
-const USAGE: &str = "usage: veylvik open [FILE] [--control-dir NEW_DIRECTORY] | demo FILE [--motion] | import IMAGE.png|IMAGE.exr FILE | outline-text FONT TEXT NEW_FILE [OPTIONS] | nodes | check FILE | render FILE OUTPUT.png|OUTPUT.exr [TICKS RATE] [--node UUID] [--crop X Y WIDTH HEIGHT] | render-sequence FILE DIRECTORY START END [--format png|exr] [--node UUID] [--crop X Y WIDTH HEIGHT] | mcp FILE | mcp --studio DIRECTORY";
+const USAGE: &str = "usage: veylvik open [FILE] [--control-dir NEW_DIRECTORY] | demo FILE [--motion|--procedural] | import IMAGE.png|IMAGE.exr FILE | outline-text FONT TEXT NEW_FILE [OPTIONS] | nodes | check FILE | render FILE OUTPUT.png|OUTPUT.exr [TICKS RATE] [--node UUID] [--crop X Y WIDTH HEIGHT] | render-sequence FILE DIRECTORY START END [--format png|exr] [--node UUID] [--crop X Y WIDTH HEIGHT] | mcp FILE | mcp --studio DIRECTORY";
 fn run() -> Result<()> {
     let args: Vec<String> = std::env::args().collect();
     match args.get(1).map(String::as_str) {
@@ -40,11 +40,14 @@ fn run() -> Result<()> {
         )?,
         Some("outline-text") => outline::run(&args[2..])?,
         Some("nodes") if args.len() == 2 => println!("{}", veylvik_document::registry::catalog()),
-        Some("demo") if args.len() == 3 || (args.len() == 4 && args[3] == "--motion") => {
-            let composition = if args.len() == 4 {
-                veylvik_document::motion_demo()
-            } else {
-                veylvik_document::demo()
+        Some("demo")
+            if args.len() == 3
+                || (args.len() == 4 && matches!(args[3].as_str(), "--motion" | "--procedural")) =>
+        {
+            let composition = match args.get(3).map(String::as_str) {
+                Some("--motion") => veylvik_document::motion_demo(),
+                Some("--procedural") => veylvik_document::procedural_demo(),
+                _ => veylvik_document::demo(),
             };
             composition.save(Path::new(&args[2]))?;
             println!("{}", serde_json::json!({"saved":args[2]}));

@@ -104,6 +104,9 @@ foreground-over-background behavior.
 ./target/release/veylvik open
 # Save the editable ribbon animation as a project:
 ./target/release/veylvik demo /tmp/ribbons.veylvik --motion
+# Or an asset-free procedural energy animation (960 × 540, six seconds):
+./target/release/veylvik demo /tmp/energy.veylvik --procedural
+./target/release/veylvik open /tmp/energy.veylvik
 ```
 
 The viewer consumes GPU-resident frames on the same Vulkan device as the UI.
