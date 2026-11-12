@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="780" height="160" viewBox="0 0 780 160" role="img"><title>Veylvik logo, for light backgrounds</title>
+<defs><linearGradient id="signal" x1="25" y1="29" x2="99" y2="94" gradientUnits="userSpaceOnUse"><stop stop-color="#9c8cff"/><stop offset="1" stop-color="#5eead4"/></linearGradient>
+<linearGradient id="word" x1="0" y1="0" x2="70" y2="100" gradientUnits="userSpaceOnUse"><stop stop-color="#9c8cff"/><stop offset="1" stop-color="#5eead4"/></linearGradient>
+<clipPath id="tile"><rect width="128" height="128" rx="28"/></clipPath></defs>
+<g transform="scale(1.25)" clip-path="url(#tile)">
+<path fill="#171b24" d="M0 0h128v128H0z"/>
+<path fill="none" stroke="url(#signal)" stroke-width="12" stroke-linejoin="miter" d="m27 30 37 68 37-68"/>
+<path fill="none" stroke="#9c8cff" stroke-width="3" d="M27 30h29l19 35"/>
+<path fill="#171b24" stroke="#9c8cff" stroke-width="4" d="M20 23h14v14H20zM49 23h14v14H49z"/>
+<path fill="#5eead4" d="M94 23h14v14H94z"/>
+</g>
+<g transform="translate(196 30)" fill="none" stroke="#171b24" stroke-width="20" stroke-linejoin="miter" stroke-miterlimit="10">
+<path stroke="none" fill="url(#word)" transform="translate(0 0)" d="M0 0h23l12 58 12-58h23L47 100H23z"/>
+<path d="M104 0v100M94 10h52M94 50h44M94 90h52"/>
+<path d="M176 0l32 50 32-50M208 50v50"/>
+<path d="M276 0v100M266 90h52"/>
+<path stroke="none" fill="#171b24" transform="translate(344 0)" d="M0 0h23l12 58 12-58h23L47 100H23z"/>
+<path stroke="#5eead4" d="M450 0v100"/>
+<path d="M496 0v100M546 0l-40 52 42 48"/>
+</g>
+</svg>
