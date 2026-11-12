@@ -51,6 +51,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             return Err("usage: veylvik-studio [FILE] [--control-dir NEW_DIRECTORY]".into());
         }
     }
+    let render_limits = veylvik_io::runtime::RenderLimits::from_env()?;
     let project = Project::open(path.as_deref())?;
     let mut setup = egui_wgpu::WgpuSetupCreateNew::without_display_handle();
     setup.instance_descriptor.backends = wgpu::Backends::VULKAN;
@@ -75,11 +76,13 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 .wgpu_render_state
                 .as_ref()
                 .ok_or("Vulkan render state unavailable")?;
-            let renderer = Arc::new(Renderer::from_device(
+            let mut renderer = Renderer::from_device(
                 state.device.clone(),
                 state.queue.clone(),
                 state.adapter.get_info(),
-            )?);
+            )?;
+            render_limits.apply(&mut renderer);
+            let renderer = Arc::new(renderer);
             let context = cc.egui_ctx.clone();
             let scheduler = GpuPreviewScheduler::with_renderer(renderer.clone(), move || {
                 context.request_repaint()

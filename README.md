@@ -853,3 +853,28 @@ Live copies are placed outside existing graph bounds and selected for preview.
 Headless copies retain stored positions; use `place` commands or Studio's Arrange
 when a different layout is needed. Live mutations require applied/reverted
 inspector drafts; dry runs inspect the applied document.
+
+
+## GPU working-memory budget
+
+CLI renders, headless MCP rendering, and Studio share the optional
+`VEYLVIK_GPU_BUDGET_MIB` environment setting. The default is 512 MiB; accepted
+values are decimal integers from 64 to 16384. For example:
+
+```sh
+VEYLVIK_GPU_BUDGET_MIB=1024 ./target/release/veylvik open project.veylvik
+VEYLVIK_GPU_BUDGET_MIB=1024 ./target/release/veylvik render project.veylvik frame.png
+```
+
+Set it when starting the process. Studio applies it before sharing the renderer
+with workers; headless MCP reads it when rendering first initializes Vulkan.
+Invalid settings fail rendering explicitly, while headless document inspection
+and editing remain available without initializing the GPU. Live MCP diagnostics
+and the Stats window report the effective limits.
+
+Smaller budgets also reduce the idle pool to at most one-quarter, frame cache to
+one-eighth, and vector cache to one-sixteenth of the budget. Larger budgets retain
+the usual cache caps. The budget covers declared GPU buffers, including held
+frames; it excludes driver allocations, vector rasterizer scratch, and UI
+textures. Device buffer-size limits and existing image-decoding limits still
+apply. Increasing this setting does not change rendering quality or pixel values.

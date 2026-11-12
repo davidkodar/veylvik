@@ -126,7 +126,7 @@ impl Session {
         }
         let plan = Plan::compile_output(doc, output)?;
         if self.renderer.is_none() {
-            self.renderer = Some(Renderer::new()?);
+            self.renderer = Some(crate::assets::runtime::renderer()?);
         }
         let renderer = self.renderer.as_ref().unwrap();
         let inputs = crate::assets::load_inputs(&plan, &self.asset_base, renderer.budget_bytes)?;
@@ -238,7 +238,7 @@ impl Session {
                     .map(|value| serde_json::from_value(value.clone()))
                     .transpose()?;
                 if self.renderer.is_none() {
-                    self.renderer = Some(Renderer::new()?);
+                    self.renderer = Some(crate::assets::runtime::renderer()?);
                 }
                 let mut result = crate::assets::sequence::render_sequence(
                     self.renderer.as_ref().unwrap(),

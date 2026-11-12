@@ -3,7 +3,7 @@ mod mcp;
 mod outline;
 use std::path::Path;
 use veylvik_document::{Composition, Node, Operation, Time};
-use veylvik_render::{Plan, Region, RenderRequest, Renderer};
+use veylvik_render::{Plan, Region, RenderRequest};
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 const USAGE: &str = "usage: veylvik open [FILE] [--control-dir NEW_DIRECTORY] | demo FILE [--motion|--procedural] | import IMAGE.png|IMAGE.exr FILE | outline-text FONT TEXT NEW_FILE [OPTIONS] | nodes | check FILE | render FILE OUTPUT.png|OUTPUT.exr [TICKS RATE] [--node UUID] [--crop X Y WIDTH HEIGHT] | render-sequence FILE DIRECTORY START END [--format png|exr] [--node UUID] [--crop X Y WIDTH HEIGHT] | mcp FILE | mcp --studio DIRECTORY";
 fn run() -> Result<()> {
@@ -139,7 +139,7 @@ fn run() -> Result<()> {
                 return Err("sequence options must be --node, --crop or --format".into());
             }
             let (output, request) = render_options(&doc, &options)?;
-            let renderer = Renderer::new()?;
+            let renderer = assets::runtime::renderer()?;
             let result = assets::sequence::render_sequence(
                 &renderer,
                 &doc,
@@ -166,7 +166,7 @@ fn run() -> Result<()> {
             let doc = Composition::load(Path::new(&args[2]))?;
             let (output, request) = render_options(&doc, &args[4..])?;
             let plan = Plan::compile_output(&doc, output)?;
-            let renderer = Renderer::new()?;
+            let renderer = assets::runtime::renderer()?;
             let inputs = assets::load_inputs(
                 &plan,
                 &assets::document_base(Path::new(&args[2]))?,
