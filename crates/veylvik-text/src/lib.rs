@@ -4,7 +4,8 @@
 //! belong to a higher layout layer. Font variation axes currently use defaults.
 mod editable;
 mod layout;
-pub use editable::outline;
+mod rich;
+pub use editable::{bounds, font_data, mapped_bounds, outline};
 pub use layout::{Alignment, MAX_LINES, ShapedText, TextOptions};
 use std::{collections::BTreeMap, sync::Arc};
 use veylvik_document::vector::{FillRule, MAX_PATH_COMMANDS, PathCommand, PathMask};
@@ -64,6 +65,7 @@ pub struct Glyph {
     pub missing: bool,
     /// False for spaces and fonts with no supported vector outline for a glyph.
     pub has_outline: bool,
+    pub commands: std::ops::Range<usize>,
 }
 pub struct ShapedRun {
     /// Glyphs in visual order as emitted by the shaper.
@@ -189,6 +191,7 @@ impl Font {
                 -(position.y_advance as f32) * scale,
             ];
             let transform = |p: [f32; 2]| [origin[0] + p[0] * scale, origin[1] - p[1] * scale];
+            let command_start = commands.len();
             for command in outline {
                 commands.push(match *command {
                     PathCommand::Move { to } => PathCommand::Move { to: transform(to) },
@@ -216,6 +219,7 @@ impl Font {
                 advance,
                 missing: id == 0,
                 has_outline: !outline.is_empty(),
+                commands: command_start..commands.len(),
             });
             pen[0] += advance[0];
             pen[1] += advance[1];

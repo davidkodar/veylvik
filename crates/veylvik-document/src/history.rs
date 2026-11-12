@@ -139,6 +139,16 @@ impl Document {
                     {
                         return fail("unknown node parameter");
                     }
+                    if parameter == "content"
+                        && let Some(after) = value.as_str()
+                        && let crate::Operation::Text {
+                            content,
+                            typography,
+                            ..
+                        } = &mut node.operation
+                    {
+                        typography.remap(content, after);
+                    }
                     let mut operation = serde_json::to_value(&node.operation)
                         .map_err(|error| Error(error.to_string()))?;
                     operation[parameter] = value.clone();

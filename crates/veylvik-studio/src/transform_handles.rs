@@ -117,6 +117,22 @@ fn move_handle(
         }
         _ => unreachable!(),
     }
+    if matches!(&next,Operation::Text{typography,..} if typography.linked_scale)
+        && matches!(index, 1 | 2)
+    {
+        let (axis, other, before, old_other) = if index == 1 {
+            ("scale_x", "scale_y", geometry.scales.x, geometry.scales.y)
+        } else {
+            ("scale_y", "scale_x", geometry.scales.y, geometry.scales.x)
+        };
+        let current = next.scalar(axis).unwrap().at(time)?;
+        let target = if before.abs() > 0.0001 {
+            old_other * current / before
+        } else {
+            current
+        };
+        edit(&mut next, other, target - old_other, time)?;
+    }
     *operation = next;
     Ok(())
 }

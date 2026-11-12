@@ -142,6 +142,41 @@ impl Plan {
         if !composition.nodes.contains_key(&output) {
             return Err(error("requested output node is missing"));
         }
+        // Resolve bypasses before traversal, so disabled compound effects dispatch no work.
+        let mut effective = None;
+        if composition.nodes.values().any(|node| node.bypass) {
+            let mut next = composition.clone();
+            for node in composition.nodes.values().filter(|n| n.bypass) {
+                let source = if let Some(group) =
+                    composition.groups.values().find(|g| g.output == node.id)
+                {
+                    let external: BTreeSet<_> = group
+                        .members
+                        .iter()
+                        .flat_map(|id| composition.nodes[id].inputs.values())
+                        .filter(|id| !group.members.contains(id))
+                        .copied()
+                        .collect();
+                    (external.len() == 1).then(|| *external.first().unwrap())
+                } else if node.inputs.len() == 1 {
+                    node.inputs.values().next().copied()
+                } else {
+                    None
+                };
+                let source = source.ok_or_else(|| {
+                    error("Bypass needs one source image or a single-input effect group")
+                })?;
+                let target = next.nodes.get_mut(&node.id).unwrap();
+                target.operation = Operation::Transform {
+                    x: 0.0.into(),
+                    y: 0.0.into(),
+                };
+                target.inputs = [("image".into(), source)].into();
+                target.bypass = false;
+            }
+            effective = Some(next);
+        }
+        let composition = effective.as_ref().unwrap_or(composition);
         // Depth-first postorder completes each input branch before starting its
         // siblings. UUID-sorted ready queues can retain all generators at once.
         // Use an explicit stack so valid deep documents cannot overflow Rust's stack.

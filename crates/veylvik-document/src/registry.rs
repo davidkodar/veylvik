@@ -7,6 +7,7 @@ pub const MAX_ASSET_NAME: usize = 4096;
 #[serde(rename_all = "snake_case")]
 pub enum ParameterKind {
     Scalar,
+    Typography,
     TextFeatures,
     TextContent,
     TextFont,
@@ -39,6 +40,7 @@ pub struct Parameter {
 impl Parameter {
     fn default_value(&self) -> Value {
         match self.kind {
+            ParameterKind::Typography => json!(crate::text::Typography::default()),
             ParameterKind::TextFeatures => json!(""),
             ParameterKind::TextContent => json!("Your text"),
             ParameterKind::TextFont => json!(crate::TextFont::default()),
@@ -64,6 +66,7 @@ impl Parameter {
     }
     fn schema(&self) -> Value {
         match self.kind {
+            ParameterKind::Typography => crate::text::typography_schema(),
             ParameterKind::TextFeatures => json!({"type":"string","maxLength":256}),
             ParameterKind::TextContent => json!({"type":"string","maxLength":4096}),
             ParameterKind::TextFont => crate::text::font_schema(),
@@ -488,6 +491,13 @@ pub static TEXT: NodeType = NodeType {
         scalar("scale_x", "factor", -100.0, 100.0, 1.0),
         scalar("scale_y", "factor", -100.0, 100.0, 1.0),
         scalar("wrap_width", "pixels", 0.0, 8192.0, 0.0),
+        scalar("box_height", "pixels", 0.0, 8192.0, 0.0),
+        scalar("padding", "pixels", 0.0, 4096.0, 0.0),
+        other(
+            "typography",
+            ParameterKind::Typography,
+            "text layout and animation",
+        ),
         other("underline", ParameterKind::Boolean, "style"),
         other("features", ParameterKind::TextFeatures, "OpenType"),
         Parameter {

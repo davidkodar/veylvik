@@ -614,7 +614,7 @@ position, rotation and horizontal/vertical scale support timeline keyframes.
 Mirror and flip buttons preserve animation keys. Viewer handles manipulate the
 text's source coordinates. Downstream transforms can change where that source
 appears; preview the text node itself for direct source placement in that case.
-The inspector keeps the wording and **Text / Layout / Transform / Style** tabs
+The inspector keeps the wording and **Text / Layout / Transform / Style / Animation** tabs
 above the scrolling controls. Sliders have precise numeric entry and individual
 **Reset** buttons. Reset uses the registered default at the current frame while
 preserving other animation keys; **Keys** opens detailed animation controls.
@@ -623,11 +623,37 @@ directly. Changing the material reuses its node and preserves its animation;
 **Plain colour** bypasses it. **Browse effects…** opens the full effect library
 after the current surface. Choosing an image fill replaces the surface and
 reuses an existing fill node, keeping other effects connected.
-Typing previews the draft; **Apply** commits one Undo step, **Revert** restores
-it. Changing text keeps connected materials, reflections and animation intact.
+Typing previews the draft and commits when editing finishes; drags commit after release.
+**Apply** explicitly commits a draft and **Revert** discards one. Undo restores a
+completed editing session. Changing text keeps connected materials and effects intact.
+Double-click the selected title or choose **Edit text** for a readable editor overlay
+in the viewer, with caret, selection, clipboard and typing undo. Escape or Done
+leaves editing mode. The overlay is upright even when effects distort the result;
+it is not a perspective-deformed caret on the final processed image.
+
+**Layout** supports box width/height, padding, top/middle/bottom alignment and
+shrink-to-fit. **Layout box** in the viewer enables a resizable box; the inspector
+reports overflow. **Transform** includes a nine-point anchor, linked scales and
+centre-in-frame. Viewer safe-area guides and centre snapping are optional.
+**Style** separates Colour, Gradient, Material and Image/animation fills. Material
+parameters stay in the text inspector. Attached single-source effects, including
+compound groups, can be disabled, reordered, removed and adjusted inline. Shared
+branches remain explicit in the node graph. Outline, shadow, glow, shine and bevel
+relief have quick actions. **Saved text styles** stores typography and procedural
+fills/effects in `$XDG_DATA_HOME/veylvik/title-styles`; applying one preserves wording
+and position. Styles containing external image assets are rejected.
+
+**Animation** provides typewriter, rise, scale and spin, grouped by shaped character
+cluster, word, line or whole title. Entrance/exit timing, stagger and easing are
+stored in the document and work in headless rendering too. Parameter diamonds
+show keyed state; reset-at-frame and remove-animation are separate actions.
+Selected character ranges support relative size and optional font overrides;
+the inspector offers bundled Sans styles for selections. Ranges follow text edits.
+The text source remains one mask, so a material/effect applies across the whole title.
 
 The searchable font picker lists **Bundled**, **System**, and **Added** fonts by
-family and style. Liberation Sans regular/bold/italic/bold-italic and Hack regular
+family, with a separate style selector, selected-font preview, favourites and recent
+fonts. Liberation Sans regular/bold/italic/bold-italic and Hack regular
 are bundled. System fonts are discovered through Fontconfig in the background;
 **Refresh fonts** picks up newly installed OS fonts without restarting Studio.
 **Add font…** validates and copies a TTF/OTF/TTC font into Veylvik's own library
@@ -641,7 +667,7 @@ are excluded from the list. The bundled Liberation font license is in
 `crates/veylvik-text/assets/fonts/LICENSE`.
 OpenType feature tags are in **Font options**; language and explicit
 right-to-left direction are in **Layout**. Mixed-direction paragraphs, automatic font fallback, variable
-font axes, rich-text spans and per-character animation are not implemented yet.
+font axes and independently coloured character runs are not implemented yet.
 Missing characters and excessive outline complexity produce explicit errors.
 
 The library's **Connect into selected layer** option preserves the existing

@@ -209,3 +209,180 @@ fn switching_between_material_and_image_fill_is_atomic_and_reuses_the_fill() {
     assert_eq!(owner.snapshot().output, material);
     assert!(text_style::fill(owner.snapshot(), text, material).is_err());
 }
+
+#[test]
+fn text_stack_reorders_removes_compound_effects_and_preserves_wording() {
+    use presets::text_style;
+    let mut scene = demo();
+    let text = Node::new(
+        "Title",
+        serde_json::from_value(registry::TEXT.default_operation()).unwrap(),
+        &[],
+    );
+    let id = text.id;
+    scene.nodes.insert(id, text);
+    scene.output = id;
+    let mut owner = Document::new(scene).unwrap();
+    let commands = text_style::shadow(owner.snapshot(), id).unwrap();
+    owner.apply(0, &commands).unwrap();
+    let shadow = owner.snapshot().output;
+    let effect = recipes::Recipe::Outline
+        .build(owner.snapshot(), shadow)
+        .unwrap();
+    let output = effect.root;
+    let commands = presets::connect_after(
+        owner.snapshot(),
+        shadow,
+        output,
+        effect.into_grouped_commands(owner.snapshot()).unwrap(),
+    )
+    .unwrap();
+    owner.apply(1, &commands).unwrap();
+    assert_eq!(
+        text_style::chain(owner.snapshot(), id).unwrap(),
+        vec![shadow, output]
+    );
+    let commands = text_style::swap(owner.snapshot(), id, 0).unwrap();
+    owner.apply(2, &commands).unwrap();
+    assert_eq!(
+        text_style::chain(owner.snapshot(), id).unwrap(),
+        vec![output, shadow]
+    );
+    let commands = text_style::remove_effect(owner.snapshot(), id, output).unwrap();
+    owner.apply(3, &commands).unwrap();
+    assert_eq!(
+        text_style::chain(owner.snapshot(), id).unwrap(),
+        vec![shadow]
+    );
+    let commands = text_style::gradient(owner.snapshot(), id).unwrap();
+    owner.apply(4, &commands).unwrap();
+    assert!(
+        text_style::fill_source(owner.snapshot(), id)
+            .unwrap()
+            .is_some()
+    );
+    let commands = text_style::plain(owner.snapshot(), id).unwrap();
+    owner.apply(5, &commands).unwrap();
+    assert!(
+        text_style::fill_source(owner.snapshot(), id)
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(
+        text_style::chain(owner.snapshot(), id).unwrap(),
+        vec![shadow]
+    );
+}
+
+#[test]
+fn saved_title_styles_preserve_words_position_and_are_undoable() {
+    let source = presets::showcase::build("gold_text").unwrap().composition;
+    let id = source
+        .nodes
+        .values()
+        .find(|n| matches!(n.operation, Operation::Text { .. }))
+        .unwrap()
+        .id;
+    let style = presets::title_style::TitleStyle::capture(&source, id, "My gold title").unwrap();
+    let mut doc = blank(1920, 1080, Time::new(24, 1).unwrap()).unwrap();
+    let mut op: Operation = serde_json::from_value(registry::TEXT.default_operation()).unwrap();
+    if let Operation::Text { content, x, .. } = &mut op {
+        *content = "Keep my wording".into();
+        *x = 320.0.into();
+    }
+    let node = Node::new("My title", op, &[]);
+    let id = node.id;
+    doc.nodes.insert(id, node);
+    doc.output = id;
+    let commands = style.apply(&doc, id).unwrap();
+    let mut owner = Document::new(doc.clone()).unwrap();
+    owner.apply(0, &commands).unwrap();
+    if let Operation::Text { content, x, .. } = &owner.snapshot().nodes[&id].operation {
+        assert_eq!(content, "Keep my wording");
+        assert_eq!(x.at(Time::new(0, 1).unwrap()).unwrap(), 320.0);
+    } else {
+        panic!()
+    }
+    owner.undo(1).unwrap();
+    assert_eq!(
+        serde_json::to_value(owner.snapshot()).unwrap(),
+        serde_json::to_value(doc).unwrap()
+    );
+}
+
+#[test]
+fn character_styles_track_unicode_edits_and_reject_overlapping_ranges() {
+    let mut t = text::Typography::default();
+    t.set_span(text::TextSpan {
+        start: 2,
+        end: 5,
+        font: None,
+        scale: 1.5,
+    });
+    t.remap("Åabc", "ÅaXYZc");
+    t.validate().unwrap();
+    assert_eq!((t.spans[0].start, t.spans[0].end), (2, 7));
+    t.set_span(text::TextSpan {
+        start: 3,
+        end: 6,
+        font: None,
+        scale: 0.8,
+    });
+    t.validate().unwrap();
+    assert_eq!(t.spans.len(), 3);
+    t.remap("ÅaXYZc", "Z");
+    t.validate().unwrap();
+    t.spans.push(text::TextSpan {
+        start: 0,
+        end: 1,
+        font: None,
+        scale: f32::NAN,
+    });
+    assert!(t.validate().is_err());
+}
+
+#[test]
+fn parameter_commands_preserve_character_ranges_when_replacing_words() {
+    let mut doc = blank(320, 180, Time::new(24, 1).unwrap()).unwrap();
+    let mut op: Operation = serde_json::from_value(registry::TEXT.default_operation()).unwrap();
+    if let Operation::Text {
+        content,
+        typography,
+        ..
+    } = &mut op
+    {
+        *content = "Long title".into();
+        typography.spans.push(text::TextSpan {
+            start: 5,
+            end: 10,
+            font: None,
+            scale: 1.2,
+        });
+    }
+    let node = Node::new("Text", op, &[]);
+    let id = node.id;
+    doc.nodes.insert(id, node);
+    doc.output = id;
+    let mut owner = Document::new(doc).unwrap();
+    owner
+        .apply(
+            0,
+            &[Command::SetParameter {
+                id,
+                parameter: "content".into(),
+                value: serde_json::json!("Hi"),
+            }],
+        )
+        .unwrap();
+    owner.snapshot().validate().unwrap();
+    owner.undo(1).unwrap();
+    if let Operation::Text {
+        content,
+        typography,
+        ..
+    } = &owner.snapshot().nodes[&id].operation
+    {
+        assert_eq!(content, "Long title");
+        assert_eq!(typography.spans[0].start, 5);
+    }
+}

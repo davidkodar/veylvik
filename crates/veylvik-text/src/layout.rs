@@ -36,6 +36,16 @@ pub struct ShapedText {
 }
 impl Font {
     pub fn shape_lines(&self, text: &str, options: &TextOptions) -> Result<ShapedText> {
+        self.shape_lines_with(text, options, |text, options, _| {
+            self.shape_run(text, options)
+        })
+    }
+    pub(crate) fn shape_lines_with(
+        &self,
+        text: &str,
+        options: &TextOptions,
+        mut shape: impl FnMut(&str, &RunOptions, usize) -> Result<ShapedRun>,
+    ) -> Result<ShapedText> {
         if text.len() > MAX_TEXT_BYTES {
             return Err(error("text exceeds 4096 UTF-8 bytes"));
         }
@@ -73,7 +83,7 @@ impl Font {
             if options.alignment != Alignment::Left {
                 run_options.origin[0] = 0.0;
             }
-            let mut run = self.shape_run(line, &run_options)?;
+            let mut run = shape(line, &run_options, offset)?;
             let shift = match options.alignment {
                 Alignment::Left => 0.0,
                 Alignment::Center => options.run.origin[0] - run.advance[0] * 0.5,
@@ -84,6 +94,8 @@ impl Font {
             }
             for glyph in &mut run.glyphs {
                 glyph.cluster += offset as u32;
+                glyph.commands.start += commands.len();
+                glyph.commands.end += commands.len();
                 glyph.origin[0] += shift;
                 if glyph
                     .origin

@@ -52,7 +52,7 @@ fn text_renders_premultiplied_and_cache_tracks_content_font_and_animation() {
     assert_ne!(pixels, renderer.read_frame(&changed).unwrap().pixels);
     if let Operation::Text { font, x, .. } = &mut doc.nodes.get_mut(&doc.output).unwrap().operation
     {
-        *font = TextFont::Italic {};
+        **font = TextFont::Italic {};
         *x = Scalar::Linear {
             keys: vec![
                 Key {
@@ -105,4 +105,54 @@ fn text_renders_premultiplied_and_cache_tracks_content_font_and_animation() {
         .render_frame(&Plan::compile(&doc).unwrap(), request, &inputs)
         .unwrap();
     assert!(blank.pixels.iter().all(|p| *p == [0.0; 4]));
+}
+
+#[test]
+#[ignore = "requires Vulkan"]
+fn procedural_text_motion_and_compound_bypass_render_correctly() {
+    let renderer = Renderer::new().unwrap();
+    let mut doc = blank(160, 100, Time::new(24, 1).unwrap()).unwrap();
+    let mut op: Operation = serde_json::from_value(registry::TEXT.default_operation()).unwrap();
+    if let Operation::Text {
+        content,
+        size,
+        x,
+        y,
+        typography,
+        ..
+    } = &mut op
+    {
+        *content = "Hi".into();
+        *size = 40.0.into();
+        *x = 80.0.into();
+        *y = 65.0.into();
+        typography.motion = text::TextMotion::Scale;
+    }
+    let title = Node::new("Title", op, &[]);
+    let id = title.id;
+    doc.nodes.insert(id, title);
+    doc.output = id;
+    let inputs = ImageInputs::default();
+    let plan = Plan::compile(&doc).unwrap();
+    let frame = |plan: &Plan, t| {
+        renderer
+            .read_frame(
+                &renderer
+                    .render_gpu_cached(plan, RenderRequest::full(Time::new(t, 1).unwrap()), &inputs)
+                    .unwrap(),
+            )
+            .unwrap()
+            .pixels
+    };
+    let start = frame(&plan, 0);
+    let end = frame(&plan, 2);
+    assert!(start.iter().all(|p| p[3] == 0.0));
+    assert!(end.iter().any(|p| p[3] > 0.0));
+    assert_eq!(frame(&plan, 0), start);
+    let commands = presets::text_style::shadow(&doc, id).unwrap();
+    let owner = Document::new(doc).unwrap();
+    let mut shadow = owner.prepare(0, &commands).unwrap();
+    assert_ne!(frame(&Plan::compile(&shadow).unwrap(), 2), end);
+    shadow.nodes.get_mut(&shadow.output).unwrap().bypass = true;
+    assert_eq!(frame(&Plan::compile(&shadow).unwrap(), 2), end);
 }

@@ -26,6 +26,8 @@ enum Source {
     Bundled,
     System,
     Added,
+    Favourites,
+    Recent,
 }
 #[derive(Default)]
 pub struct Browser {
@@ -35,10 +37,22 @@ pub struct Browser {
     pending: Option<mpsc::Receiver<(Vec<Face>, String)>>,
     notice: String,
     refresh_pending: bool,
+    favourites: Vec<String>,
+    recent: Vec<String>,
+    preview_font: Option<TextFont>,
 }
 impl Browser {
     pub fn new(ctx: &egui::Context) -> Self {
         let mut browser = Self::default();
+        if let Ok(dir) = directory()
+            && let Ok(bytes) = std::fs::read(dir.with_file_name("font-preferences.json"))
+            && bytes.len() < 65536
+            && let Ok((favourites, recent)) =
+                serde_json::from_slice::<(Vec<String>, Vec<String>)>(&bytes)
+        {
+            browser.favourites = favourites.into_iter().take(128).collect();
+            browser.recent = recent.into_iter().take(12).collect();
+        }
         browser.refresh(ctx);
         browser
     }
@@ -94,26 +108,34 @@ impl Browser {
         let mut changed = false;
         let mut selected = None;
         egui::ComboBox::from_id_salt("text-font-browser").width(ui.available_width().min(300.0)).height(400.0)
-            .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside).selected_text(font.label()).show_ui(ui,|ui| {
+            .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside).selected_text(font.label().split(" · ").next().unwrap_or(font.label())).show_ui(ui,|ui| {
             ui.set_min_width(300.0);
             ui.horizontal(|ui| { ui.add(egui::TextEdit::singleline(&mut self.query).hint_text("Search family or style…").desired_width(240.0)); if ui.small_button("Clear").clicked() { self.query.clear(); } });
-            ui.horizontal(|ui| { for (value,label) in [(Source::All,"All"),(Source::Bundled,"Bundled"),(Source::System,"System"),(Source::Added,"Added")] { ui.selectable_value(&mut self.source,value,label); } });
+            ui.horizontal_wrapped(|ui| { for (value,label) in [(Source::All,"All"),(Source::Bundled,"Bundled"),(Source::System,"System"),(Source::Added,"Added"),(Source::Favourites,"Favourites"),(Source::Recent,"Recent")] { ui.selectable_value(&mut self.source,value,label); } });
             let query=self.query.to_lowercase();
-            if matches!(self.source,Source::All|Source::Bundled) {
+            if matches!(self.source,Source::All|Source::Bundled|Source::Favourites|Source::Recent) {
                 ui.weak("Bundled with Veylvik");
                 for value in [TextFont::Display,TextFont::Sans {},TextFont::Italic {},TextFont::BoldItalic {},TextFont::Mono {}] {
                     let label=value.label().to_owned();
+                    if matches!(self.source,Source::All|Source::Bundled) && !matches!(value,TextFont::Sans{}|TextFont::Mono{}) {continue;}
+                    if self.source==Source::Favourites && !self.favourites.contains(&label) || self.source==Source::Recent && !self.recent.contains(&label) {continue;}
                     if !query.split_whitespace().all(|word| label.to_lowercase().contains(word)) { continue; }
-                    if ui.selectable_label(*font==value,label).clicked() { changed |= *font != value; *font=value; ui.close(); }
+                    let display=if matches!(self.source,Source::All|Source::Bundled){label.split(" · ").next().unwrap_or(&label).to_owned()}else{label};
+                    if ui.selectable_label(*font==value,display).clicked() { changed |= *font != value; *font=value; ui.close(); }
                 }
             }
-            let matches:Vec<_>=self.faces.iter().filter(|face| match self.source {Source::Bundled=>false,Source::Added=>face.added,Source::System=>!face.added,Source::All=>true}).filter(|face|query.split_whitespace().all(|word|face.label.to_lowercase().contains(word))).collect();
+            let mut matches:Vec<_>=self.faces.iter().filter(|face| match self.source {Source::Bundled=>false,Source::Added=>face.added,Source::System=>!face.added,Source::All=>true,Source::Favourites=>self.favourites.contains(&face.label),Source::Recent=>self.recent.contains(&face.label)}).filter(|face|query.split_whitespace().all(|word|face.label.to_lowercase().contains(word))).collect();
+            let family_mode=matches!(self.source,Source::All|Source::System|Source::Added);
+            if family_mode {
+                matches.sort_by_key(|f|(f.label.split(" · ").next().unwrap_or(&f.label),!matches!(f.label.split(" · ").nth(1),Some("Regular"|"Normal"|"Book"))));
+                matches.dedup_by(|a,b|a.label.split(" · ").next()==b.label.split(" · ").next());
+            }
             if !matches!(self.source,Source::Bundled) {
-                ui.weak(format!("{} font faces",matches.len()));
+                ui.weak(format!("{} {}",matches.len(),if family_mode{"font families"}else{"font faces"}));
                 egui::ScrollArea::vertical().id_salt("font-faces").max_height(if self.source==Source::All {140.0} else {220.0}).show_rows(ui,ui.text_style_height(&egui::TextStyle::Body)+6.0,matches.len(),|ui,rows| {
                     for index in rows {
                         let face=matches[index];
-                        if ui.selectable_label(font.label()==face.label,format!("{}{}",face.label,if face.added {" · Added"}else{""})).on_hover_text(face.path.display().to_string()).clicked() { selected=Some(Selection::Face(face.clone())); ui.close(); }
+                        if ui.selectable_label(font.label()==face.label,format!("{}{}",if family_mode {face.label.split(" · ").next().unwrap_or(&face.label)}else{&face.label},if face.added {" · Added"}else{""})).on_hover_text(face.path.display().to_string()).clicked() { selected=Some(Selection::Face(face.clone())); ui.close(); }
                     }
                 });
                 if matches.is_empty() && self.pending.is_none() { ui.weak("No matching fonts. Try another source or add a font file."); }
@@ -127,7 +149,112 @@ impl Browser {
                 if ui.button("Use file once…").on_hover_text("Embed a font in this project without adding it to the library.").clicked() { selected=Some(Selection::File); ui.close(); }
             });
         });
+        ui.horizontal_wrapped(|ui| {
+            let saved = self.favourites.iter().any(|s| s == font.label());
+            if ui
+                .small_button(if saved {
+                    "★ Favourite"
+                } else {
+                    "☆ Favourite"
+                })
+                .clicked()
+            {
+                if saved {
+                    self.favourites.retain(|s| s != font.label());
+                } else if self.favourites.len() < 128 {
+                    self.favourites.push(font.label().into());
+                }
+                self.save_preferences();
+            }
+            ui.label("Style");
+            let family = font
+                .label()
+                .split(" · ")
+                .next()
+                .unwrap_or(font.label())
+                .to_owned();
+            let style = font.label().split(" · ").nth(1).unwrap_or("Regular");
+            egui::ComboBox::from_id_salt("font-family-style")
+                .selected_text(style)
+                .show_ui(ui, |ui| {
+                    for builtin in [
+                        TextFont::Sans {},
+                        TextFont::Display,
+                        TextFont::Italic {},
+                        TextFont::BoldItalic {},
+                        TextFont::Mono {},
+                    ] {
+                        if builtin.label().split(" · ").next() == Some(family.as_str())
+                            && ui
+                                .selectable_label(
+                                    font == &builtin,
+                                    builtin.label().split(" · ").nth(1).unwrap_or("Regular"),
+                                )
+                                .clicked()
+                        {
+                            *font = builtin;
+                            changed = true;
+                        }
+                    }
+                    for face in &self.faces {
+                        if face.label.split(" · ").next() == Some(family.as_str())
+                            && ui
+                                .selectable_label(
+                                    font.label() == face.label,
+                                    face.label.split(" · ").nth(1).unwrap_or("Regular"),
+                                )
+                                .clicked()
+                        {
+                            selected = Some(Selection::Face(face.clone()));
+                        }
+                    }
+                });
+        });
+        if self.preview_font.as_ref() != Some(font) {
+            if let Ok((bytes, index)) = veylvik_text::font_data(font) {
+                let mut definitions = egui::FontDefinitions::default();
+                let mut data = egui::FontData::from_owned(bytes.to_vec());
+                data.index = index;
+                definitions
+                    .font_data
+                    .insert("text-preview".into(), std::sync::Arc::new(data));
+                definitions.families.insert(
+                    egui::FontFamily::Name("text-preview".into()),
+                    vec!["text-preview".into()],
+                );
+                ui.ctx().set_fonts(definitions);
+                self.preview_font = Some(font.clone());
+            }
+        } else {
+            ui.label(
+                egui::RichText::new("Aa Bb 0123 · Veylvik").font(egui::FontId::new(
+                    22.0,
+                    egui::FontFamily::Name("text-preview".into()),
+                )),
+            );
+        }
+        if changed {
+            self.remember(font.label());
+        }
+        if let Some(Selection::Face(face)) = &selected {
+            self.remember(&face.label);
+        }
         (changed, selected)
+    }
+    fn remember(&mut self, label: &str) {
+        self.recent.retain(|s| s != label);
+        self.recent.insert(0, label.into());
+        self.recent.truncate(12);
+        self.save_preferences();
+    }
+    fn save_preferences(&self) {
+        if let Ok(dir) = directory()
+            && let Some(parent) = dir.parent()
+            && std::fs::create_dir_all(parent).is_ok()
+            && let Ok(bytes) = serde_json::to_vec(&(&self.favourites, &self.recent))
+        {
+            let _ = std::fs::write(dir.with_file_name("font-preferences.json"), bytes);
+        }
     }
 }
 fn directory() -> Result<PathBuf, String> {

@@ -65,6 +65,16 @@ pub fn set_parameter(
     {
         return fail("unknown control parameter");
     }
+    if parameter == "content"
+        && let Some(after) = value.as_str()
+        && let crate::Operation::Text {
+            content,
+            typography,
+            ..
+        } = &mut node.operation
+    {
+        typography.remap(content, after);
+    }
     let mut operation = serde_json::to_value(&node.operation).map_err(|e| Error(e.to_string()))?;
     operation[parameter] = value;
     node.operation = serde_json::from_value(operation).map_err(|e| Error(e.to_string()))?;

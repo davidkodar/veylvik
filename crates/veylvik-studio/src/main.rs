@@ -9,7 +9,10 @@ mod editable_text;
 mod font_browser;
 mod recovery;
 mod sequence;
+mod text_effects;
 mod text_outline;
+mod text_viewer;
+mod title_styles;
 mod vector_editor;
 use animation::scalar;
 mod display;
@@ -134,7 +137,11 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 draft,
                 draft_dirty: false,
                 text_preview_deadline: None,
+                text_edits: Default::default(),
+                text_commit_deadline: None,
                 fonts: font_browser::Browser::new(&cc.egui_ctx),
+                text_viewer: Default::default(),
+                title_styles: Default::default(),
                 graph: graph::Graph::default(),
                 effects: effects::Controls::default(),
                 library: preset_library::Library::default(),
@@ -192,7 +199,11 @@ struct Studio {
     draft: Node,
     draft_dirty: bool,
     text_preview_deadline: Option<Instant>,
+    text_commit_deadline: Option<Instant>,
+    text_edits: std::collections::BTreeMap<veylvik_document::NodeId, Node>,
     fonts: font_browser::Browser,
+    text_viewer: text_viewer::Editor,
+    title_styles: title_styles::Library,
     graph: graph::Graph,
     effects: effects::Controls,
     library: preset_library::Library,
@@ -303,12 +314,17 @@ impl Studio {
     }
     fn refresh_draft(&mut self) {
         self.text_preview_deadline = None;
+        self.text_commit_deadline = None;
+        self.text_edits.clear();
         self.effects.edits.clear();
         self.effects.connections.clear();
         self.draft = self.project.document.snapshot().nodes[&self.project.selected].clone();
         self.draft_dirty = false;
     }
     fn can_change_selection(&mut self) -> bool {
+        if matches!(self.draft.operation, Operation::Text { .. }) {
+            return self.apply_draft();
+        }
         if self.draft_dirty {
             self.fail("Apply or revert the current parameter changes first.");
             false
@@ -469,6 +485,7 @@ impl Studio {
         }
     }
     fn queue_text_preview(&mut self, ctx: &egui::Context) {
+        self.text_commit_deadline = Some(Instant::now() + Duration::from_millis(300));
         let deadline = self
             .text_preview_deadline
             .get_or_insert_with(|| Instant::now() + Duration::from_millis(32));
@@ -486,12 +503,10 @@ impl Studio {
             Ok::<_, Box<dyn std::error::Error>>(scheduler.submit(
                 self.project.document.revision(),
                 if self.draft_dirty && matches!(self.draft.operation, Operation::Text { .. }) {
-                    let doc = self.project.document.prepare(
-                        self.project.document.revision(),
-                        &[Command::Put {
-                            node: Box::new(self.draft.clone()),
-                        }],
-                    )?;
+                    let doc = self
+                        .project
+                        .document
+                        .prepare(self.project.document.revision(), &self.text_commands())?;
                     std::sync::Arc::new(veylvik_render::Plan::compile_output(
                         &doc,
                         self.project.preview.unwrap_or(doc.output),
@@ -516,14 +531,20 @@ impl Studio {
             }
         }
     }
+    fn text_commands(&self) -> Vec<Command> {
+        std::iter::once(&self.draft)
+            .chain(self.text_edits.values())
+            .map(|n| Command::Put {
+                node: Box::new(n.clone()),
+            })
+            .collect()
+    }
     fn apply_draft(&mut self) -> bool {
         if !self.draft_dirty {
             return true;
         }
         let commands = if self.effects.edits.is_empty() && self.effects.connections.is_empty() {
-            vec![Command::Put {
-                node: Box::new(self.draft.clone()),
-            }]
+            self.text_commands()
         } else {
             self.effects
                 .edits
@@ -709,7 +730,7 @@ impl Studio {
             };
             let font = font_browser::load(&face)?;
             if let Operation::Text { font: target, .. } = &mut node.operation {
-                *target = font;
+                **target = font;
             }
             veylvik_text::outline(&node.operation, time).map_err(|e| e.to_string())?;
             Ok(Completed::TextFont {
@@ -1778,6 +1799,16 @@ impl eframe::App for Studio {
         self.theme(&ctx);
         self.poll_files(&ctx);
         self.fonts.poll(&ctx);
+        if self.draft_dirty
+            && self
+                .text_commit_deadline
+                .is_some_and(|t| Instant::now() >= t)
+            && !ctx.egui_wants_keyboard_input()
+            && !ctx.input(|i| i.pointer.any_down())
+        {
+            self.text_commit_deadline = None;
+            self.apply_draft();
+        }
         if let Some(deadline) = self.text_preview_deadline {
             if Instant::now() >= deadline && !self.preview_pending {
                 self.text_preview_deadline = None;
@@ -1975,8 +2006,8 @@ impl eframe::App for Studio {
                         }
                     });
                 egui::Panel::right("inspector")
-                    .default_size(280.0)
-                    .min_size(250.0)
+                    .default_size(340.0)
+                    .min_size(300.0)
                     .resizable(true)
                     .show_inside(ui, |ui| {
                         self.inspector_actions(ui);
@@ -2001,6 +2032,38 @@ impl eframe::App for Studio {
                 egui::CentralPanel::default().show_inside(ui, |ui| {
                     ui.horizontal_wrapped(|ui| {
                         ui.heading("Viewer");
+                        if matches!(self.draft.operation, Operation::Text { .. }) {
+                            if ui
+                                .selectable_label(self.text_viewer.active, "Edit text")
+                                .clicked()
+                            {
+                                self.text_viewer.toggle(self.draft.id);
+                            }
+                            if ui
+                                .checkbox(&mut self.text_viewer.layout, "Layout box")
+                                .changed()
+                                && self.text_viewer.layout
+                                && let Operation::Text {
+                                    wrap_width,
+                                    box_height,
+                                    typography,
+                                    ..
+                                } = &mut self.draft.operation
+                                && let Ok(time) = self.project.time()
+                                && (wrap_width.at(time).unwrap_or(0.0) == 0.0
+                                    || box_height.at(time).unwrap_or(0.0) == 0.0)
+                            {
+                                *wrap_width =
+                                    (self.project.document.snapshot().width as f32 * 0.8).into();
+                                *box_height =
+                                    (self.project.document.snapshot().height as f32 * 0.4).into();
+                                typography.anchor = Some([0.5, 0.5]);
+                                self.draft_dirty = true;
+                                self.queue_text_preview(ui.ctx());
+                            }
+                            ui.checkbox(&mut self.text_viewer.guides, "Safe guides");
+                            ui.checkbox(&mut self.text_viewer.snap, "Snap");
+                        }
                         ui.weak(if self.project.preview.is_some() {
                             "Selected node preview"
                         } else {
@@ -2041,10 +2104,38 @@ impl eframe::App for Studio {
                             ui.available_size().max(egui::vec2(1.0, 1.0)),
                             egui::Sense::click_and_drag(),
                         );
-                        self.navigation.interact(ui, &response, canvas, image);
+                        if !self.text_viewer.active
+                            && !(response.double_clicked()
+                                && matches!(self.draft.operation, Operation::Text { .. }))
+                        {
+                            self.navigation.interact(ui, &response, canvas, image);
+                        }
                         let transform =
                             self.navigation
                                 .transform(canvas, image, ctx.pixels_per_point());
+                        if response.clicked()
+                            && !self.text_viewer.active
+                            && self.project.preview.is_none()
+                            && let Some(pointer) = response.interact_pointer_pos()
+                            && let Ok(time) = self.project.time()
+                        {
+                            let [ox, oy, sx, sy] = transform.0;
+                            let local = pointer
+                                - canvas.min
+                                - egui::vec2(canvas.width() * ox, canvas.height() * oy);
+                            let point = [
+                                local.x / (canvas.width() * sx / image.x),
+                                local.y / (canvas.height() * sy / image.y),
+                            ];
+                            if let Some(id) =
+                                text_viewer::pick(self.project.document.snapshot(), time, point)
+                                && id != self.draft.id
+                                && self.can_change_selection()
+                            {
+                                self.project.selected = id;
+                                self.refresh_draft();
+                            }
+                        }
                         response.on_hover_text(format!(
                             "{:.0}% · scroll to zoom · drag to pan · double-click to fit",
                             self.navigation.scale(canvas, image, ctx.pixels_per_point()) * 100.0
@@ -2111,23 +2202,71 @@ impl eframe::App for Studio {
                                     )))
                             && let Ok(time) = self.project.time()
                         {
-                            match handles::show(
-                                ui,
-                                canvas,
-                                transform,
-                                image,
-                                &mut self.draft.operation,
-                                time,
-                            ) {
-                                Ok(changed) => {
-                                    self.draft_dirty |= changed;
-                                    if changed
-                                        && matches!(self.draft.operation, Operation::Text { .. })
-                                    {
-                                        self.queue_text_preview(ui.ctx());
+                            let is_text = matches!(self.draft.operation, Operation::Text { .. });
+                            if is_text
+                                && self.text_viewer.show(
+                                    ui,
+                                    canvas,
+                                    transform,
+                                    image,
+                                    self.draft.id,
+                                    &mut self.draft.operation,
+                                    time,
+                                )
+                            {
+                                self.draft_dirty = true;
+                                self.queue_text_preview(ui.ctx());
+                            }
+                            if !is_text || (!self.text_viewer.active && !self.text_viewer.layout) {
+                                match handles::show(
+                                    ui,
+                                    canvas,
+                                    transform,
+                                    image,
+                                    &mut self.draft.operation,
+                                    time,
+                                ) {
+                                    Ok(changed) => {
+                                        if changed
+                                            && self.text_viewer.snap
+                                            && matches!(
+                                                self.draft.operation,
+                                                Operation::Text { .. }
+                                            )
+                                        {
+                                            let threshold = 6.0
+                                                / (canvas.width() * transform.0[2] / image.x)
+                                                    .max(0.001);
+                                            for (name, center) in
+                                                [("x", image.x * 0.5), ("y", image.y * 0.5)]
+                                            {
+                                                if let Some(value) =
+                                                    self.draft.operation.scalar_mut(name)
+                                                    && let Ok(current) = value.at(time)
+                                                    && (current - center).abs() < threshold
+                                                {
+                                                    let _ = handles::edit(
+                                                        value,
+                                                        time,
+                                                        center - current,
+                                                        -32768.0,
+                                                        32768.0,
+                                                    );
+                                                }
+                                            }
+                                        }
+                                        self.draft_dirty |= changed;
+                                        if changed
+                                            && matches!(
+                                                self.draft.operation,
+                                                Operation::Text { .. }
+                                            )
+                                        {
+                                            self.queue_text_preview(ui.ctx());
+                                        }
                                     }
+                                    Err(error) => self.fail(error),
                                 }
-                                Err(error) => self.fail(error),
                             }
                         }
                     } else {

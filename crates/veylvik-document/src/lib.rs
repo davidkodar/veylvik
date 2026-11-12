@@ -47,7 +47,7 @@ pub use animation::{CompiledScalar, Handle, Interpolation, Key, Scalar, Segment,
 pub enum Operation {
     Text {
         content: String,
-        font: TextFont,
+        font: Box<TextFont>,
         alignment: TextAlignment,
         rtl: bool,
         language: String,
@@ -60,6 +60,12 @@ pub enum Operation {
         scale_x: Scalar,
         scale_y: Scalar,
         wrap_width: Scalar,
+        #[serde(default = "text::zero")]
+        box_height: Scalar,
+        #[serde(default = "text::zero")]
+        padding: Scalar,
+        #[serde(default)]
+        typography: Box<text::Typography>,
         underline: bool,
         features: String,
         color: [f32; 4],
@@ -288,6 +294,8 @@ impl Operation {
             (Self::Patina { wear, .. }, "wear") => Some(wear),
             (Self::Patina { scratches, .. }, "scratches") => Some(scratches),
             (Self::Text { rotation, .. }, "rotation") => Some(rotation),
+            (Self::Text { padding, .. }, "padding") => Some(padding),
+            (Self::Text { box_height, .. }, "box_height") => Some(box_height),
             (Self::Text { scale_x, .. }, "scale_x") => Some(scale_x),
             (Self::Text { scale_y, .. }, "scale_y") => Some(scale_y),
             (Self::Text { wrap_width, .. }, "wrap_width") => Some(wrap_width),
@@ -377,6 +385,8 @@ impl Operation {
             (Self::Patina { wear, .. }, "wear") => Some(wear),
             (Self::Patina { scratches, .. }, "scratches") => Some(scratches),
             (Self::Text { rotation, .. }, "rotation") => Some(rotation),
+            (Self::Text { padding, .. }, "padding") => Some(padding),
+            (Self::Text { box_height, .. }, "box_height") => Some(box_height),
             (Self::Text { scale_x, .. }, "scale_x") => Some(scale_x),
             (Self::Text { scale_y, .. }, "scale_y") => Some(scale_y),
             (Self::Text { wrap_width, .. }, "wrap_width") => Some(wrap_width),
@@ -454,6 +464,19 @@ impl Operation {
                 ..
             } => {
                 text::validate(content, font, language)?;
+                if let Self::Text { typography, .. } = self {
+                    typography.validate()?;
+                    for span in &typography.spans {
+                        if span.end > content.len()
+                            || !content.is_char_boundary(span.start)
+                            || !content.is_char_boundary(span.end)
+                        {
+                            return fail(
+                                "Character styles must use UTF-8 boundaries inside the text",
+                            );
+                        }
+                    }
+                }
                 if features.len() > 256 || !features.is_ascii() {
                     return fail("OpenType feature list must be ASCII, at most 256 bytes");
                 }
@@ -515,6 +538,8 @@ pub struct Node {
     /// Authored scene backdrop, replaceable without flattening the subject.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub scene_background: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub bypass: bool,
     pub operation: Operation,
     pub inputs: BTreeMap<String, NodeId>,
 }
@@ -526,6 +551,7 @@ impl Node {
             label: label.into(),
             position: None,
             scene_background: false,
+            bypass: false,
             operation,
             inputs: inputs.iter().map(|(k, v)| ((*k).into(), *v)).collect(),
         }

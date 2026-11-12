@@ -51,6 +51,12 @@ impl Key {
                             &plan.nodes[*index].operation
                         {
                             let op = &plan.nodes[*index].operation;
+                            if let veylvik_document::Operation::Text { typography, .. } = op
+                                && typography.motion != veylvik_document::text::TextMotion::None
+                            {
+                                let seconds = request.time.seconds()?.to_bits();
+                                words.extend([seconds as u32, (seconds >> 32) as u32]);
+                            }
                             let bytes = serde_json::to_vec(op).map_err(error)?;
                             words.extend([4, bytes.len() as u32]);
                             for chunk in bytes.chunks(4) {
