@@ -512,3 +512,14 @@ their actual interpolation shape; the horizontal span runs from first to last
 key and the vertical range fits the key values. Invalid drafts omit the plot
 until corrected. Editing still uses the exact time/value controls below the
 plot, and Apply commits the complete inspector draft as one undo step.
+
+### Renderer diagnostics
+
+The native **Stats** window and MCP `diagnostics` tool report declared GPU
+buffer residency, held frames, idle buffers, allocation/upload reuse, and frame
+and vector cache hits, misses, sizes, and limits. Reading diagnostics never
+waits for an active render: `snapshot` is null while the required renderer locks
+are busy. The headless server reports `initialized: false` until its first render;
+inspection alone does not initialize Vulkan. These counters exclude driver and
+vector rasterizer scratch allocations and are not total process or VRAM usage.
+Diagnostics are read-only and do not change the document revision or clear caches.

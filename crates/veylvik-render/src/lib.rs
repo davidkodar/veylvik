@@ -1,5 +1,7 @@
 //! Whole-frame GPU execution. No window, document mutation, or timeline dependency.
 mod cache;
+mod diagnostics;
+pub use diagnostics::Diagnostics;
 mod frame;
 pub use cache::CacheStats;
 pub use frame::{GpuFrame, Image, ImageInputs, Region, RenderRequest, RenderedFrame};

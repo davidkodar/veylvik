@@ -11,6 +11,7 @@ pub fn catalog() -> Value {
     let revision = json!({"type":"integer","minimum":0});
     json!({"tools":[
         tool("inspect","Read the open project, session identity, revision, selection and preview state.",json!({}),&[]),
+        tool("diagnostics","Read GPU buffer and cache counters without waiting for an active render. Snapshot is null while the renderer is busy. Declared buffers exclude driver and rasterizer scratch allocations.",json!({}),&[]),
         tool("nodes","Read built-in operations, ports, defaults and parameter schemas.",json!({}),&[]),
         tool("apply","Validate or atomically apply commands to the open editor. Requires the session and revision from inspect. Image assets must already be loaded. Unapplied inspector changes or file jobs block mutation.",json!({"session":session,"revision":revision,"dry_run":{"type":"boolean"},"commands":{"type":"array","minItems":1,"maxItems":4096,"items":veylvik_document::schema::command()}}),&["session","revision","commands"]),
         tool("undo","Undo one editor transaction.",json!({"session":session,"revision":revision}),&["session","revision"]),
@@ -39,6 +40,11 @@ pub fn call(studio: &mut Studio, name: &str, args: &Value) -> Result<Value> {
     }
     if name == "nodes" {
         return Ok(veylvik_document::registry::catalog());
+    }
+    if name == "diagnostics" {
+        return Ok(
+            json!({"initialized":true,"adapter":studio.renderer.adapter.name,"snapshot":studio.renderer.try_diagnostics()?,"preview_rendering":studio.displayed_ticket != studio.wanted}),
+        );
     }
     let project = &studio.project;
     if name == "inspect" {

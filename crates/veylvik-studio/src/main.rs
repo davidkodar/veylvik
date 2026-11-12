@@ -1,6 +1,7 @@
 mod animation;
 mod control;
 mod curve_preview;
+mod diagnostics;
 mod sequence;
 mod text_outline;
 mod vector_editor;
@@ -116,6 +117,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 after_save: None,
                 allow_close: false,
                 help: false,
+                statistics: false,
                 theme_checked: Instant::now() - Duration::from_secs(10),
                 accent: egui::Color32::from_rgb(255, 214, 10),
             };
@@ -157,6 +159,7 @@ struct Studio {
     after_save: Option<Leave>,
     allow_close: bool,
     help: bool,
+    statistics: bool,
     theme_checked: Instant,
     accent: egui::Color32,
 }
@@ -716,6 +719,9 @@ impl Studio {
                     }
                 }
             });
+            if ui.button("Stats").clicked() {
+                self.statistics = !self.statistics;
+            }
             if ui.button("?").clicked() {
                 self.help = !self.help;
             }
@@ -990,6 +996,7 @@ impl Studio {
                     });
                 });
         }
+        diagnostics::show(ctx, &mut self.statistics, &self.renderer);
         if self.help {
             egui::Window::new("Keyboard shortcuts")
                 .open(&mut self.help)

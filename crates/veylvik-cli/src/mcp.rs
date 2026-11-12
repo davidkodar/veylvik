@@ -16,6 +16,7 @@ fn tools() -> Value {
     let revision = json!({"type":"integer","minimum":0});
     json!({"tools":[
         tool("inspect","Read the composition and current revision.",json!({}),&[]),
+        tool("diagnostics","Read existing renderer buffer and cache counters without initializing a GPU. Snapshot is null until rendering initializes the device. Declared buffer accounting excludes driver and rasterizer scratch memory.",json!({}),&[]),
         tool("nodes","List supported node operations, ports and example payloads.",json!({}),&[]),
         tool("outline_text","Read an explicit font and convert explicitly separated directional/script text lines into portable Path mask geometry. Does not modify the document. Apply the returned operation with a put command. No fallback, automatic wrapping or mixed-direction paragraph layout.",json!({"revision":revision,"font":{"type":"string"},"text":{"type":"string","maxLength":4096},"alignment":{"enum":["left","center","right"]},"line_height":{"type":"number","minimum":1,"maximum":4096},"font_index":{"type":"integer","minimum":0,"maximum":u32::MAX},"font_size":{"type":"number","minimum":1,"maximum":1024},"origin":{"type":"array","minItems":2,"maxItems":2,"items":{"type":"number","minimum":-32768,"maximum":32768}},"direction":{"enum":["left_to_right","right_to_left"]},"language":{"type":"string","minLength":1,"maxLength":64}}),&["revision","font","text"]),
         tool("apply","Validate or commit an atomic batch. dry_run returns the candidate without changing history. Use nodes for payload examples. A put command inserts or replaces the complete node.",json!({"revision":revision,"dry_run":{"type":"boolean"},"commands":{"type":"array","minItems":1,"maxItems":4096,"items":veylvik_document::schema::command()}}),&["revision","commands"]),
@@ -56,7 +57,7 @@ impl Session {
                 return Err(format!("missing argument {key}").into());
             }
         }
-        if !matches!(name, "inspect" | "nodes")
+        if !matches!(name, "inspect" | "nodes" | "diagnostics")
             && required_u64(args, "revision")? != self.document.revision()
         {
             return Err(format!("revision conflict: current {}", self.document.revision()).into());
@@ -65,6 +66,12 @@ impl Session {
             "inspect" => Ok(
                 json!({"revision":self.document.revision(),"composition":self.document.snapshot(),"history":self.document.history()}),
             ),
+            "diagnostics" => match &self.renderer {
+                Some(renderer) => Ok(
+                    json!({"initialized":true,"adapter":renderer.adapter.name,"snapshot":renderer.try_diagnostics()?}),
+                ),
+                None => Ok(json!({"initialized":false,"adapter":null,"snapshot":null})),
+            },
             "nodes" => Ok(veylvik_document::registry::catalog()),
             "outline_text" => {
                 let mut payload = args.clone();
@@ -248,6 +255,7 @@ mod tests {
             names,
             [
                 "inspect",
+                "diagnostics",
                 "nodes",
                 "outline_text",
                 "apply",
@@ -286,6 +294,11 @@ mod image_tests {
             asset_base: std::env::temp_dir(),
             renderer: None,
         };
+        let diagnostics = session.call("diagnostics", &json!({})).unwrap();
+        assert_eq!(diagnostics["initialized"], false);
+        assert!(diagnostics["snapshot"].is_null());
+        assert!(session.renderer.is_none());
+        assert_eq!(session.document.revision(), 0);
         let command = json!({"command":"put","node":{"id":output,"version":1,"label":"Plate","operation":{"type":"image","asset":"plate.png"},"inputs":{}}});
         session
             .call(
