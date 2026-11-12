@@ -859,6 +859,7 @@ fn curve_modes_reach_gpu_and_cache_keys_follow_evaluated_values() {
         (Interpolation::Linear, 2.0_f32),
         (Interpolation::Step, 0.0),
         (Interpolation::Smooth, 1.25),
+        (Interpolation::Monotone, 2.0),
     ] {
         stops.set_interpolation(mode);
         doc.nodes.get_mut(&id).unwrap().operation = Operation::Exposure {

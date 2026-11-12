@@ -18,7 +18,7 @@ pub fn scalar(
             egui::ComboBox::from_id_salt("interpolation")
                 .selected_text(mode_label(mode))
                 .show_ui(ui, |ui| {
-                    for choice in [Interpolation::Linear, Interpolation::Step, Interpolation::Smooth] {
+                    for choice in [Interpolation::Linear, Interpolation::Step, Interpolation::Smooth, Interpolation::Monotone] {
                         ui.selectable_value(&mut mode, choice, mode_label(choice));
                     }
                 });
@@ -108,6 +108,7 @@ fn mode_label(mode: Interpolation) -> &'static str {
         Interpolation::Linear => "Linear",
         Interpolation::Step => "Hold",
         Interpolation::Smooth => "Ease in/out",
+        Interpolation::Monotone => "Auto smooth",
     }
 }
 

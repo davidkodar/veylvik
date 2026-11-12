@@ -143,7 +143,7 @@ key or inserts one at the current frame while preserving interpolation. Equivale
 rational times update the existing key without changing its stored timestamp.
 These edits pause playback and remain drafts until Apply. Expanded key lists edit exact rational times and values or
 remove keys. **Remove key at playhead** deletes an exact-time key; removing the
-last key keeps its value as a constant. Choose Linear, Hold, or Ease in/out for each animated parameter.
+last key keeps its value as a constant. Choose Linear, Hold, Ease in/out, or Auto smooth for each animated parameter.
 **Make constant here** replaces a curve with its evaluated playhead value; Apply
 and undo work as for other inspector edits.
 When the selected ellipse is the displayed preview, orange viewer handles edit
@@ -247,7 +247,13 @@ includes retained history statistics. Supported operations:
 | Path | none | Closed vector contours and fill rule |
 | Blend | background, foreground | Blend mode and animated opacity |
 
-Scalar parameters accept constants or `linear`, `step`, and `smooth` keyframes.
+Scalar parameters accept constants or `linear`, `step`, `smooth`, and `monotone` keyframes.
+Auto smooth (`monotone`) uses cubic Hermite interpolation with shared weighted
+harmonic interior slopes and adjacent secant slopes at the ends. It carries
+velocity through intermediate keys, flattens at reversals and plateaus, and stays
+between neighboring key values. Two keys produce a linear segment; values hold
+outside the authored range. Time differences are computed exactly before float
+conversion, including near the timestamp limits.
 Step holds each value until the next exact key time. Smooth applies cubic
 smoothstep (`3t² − 2t³`) within each interval, easing in and out without
 overshooting the endpoint values. Curves contain 1–4096 keys. Outside

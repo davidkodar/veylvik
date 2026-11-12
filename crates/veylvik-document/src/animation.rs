@@ -58,6 +58,7 @@ pub enum Scalar {
     Linear { keys: Vec<Key> },
     Step { keys: Vec<Key> },
     Smooth { keys: Vec<Key> },
+    Monotone { keys: Vec<Key> },
 }
 impl From<f32> for Scalar {
     fn from(value: f32) -> Self {
@@ -70,6 +71,7 @@ pub enum Interpolation {
     Linear,
     Step,
     Smooth,
+    Monotone,
 }
 impl Scalar {
     pub fn interpolation(&self) -> Option<Interpolation> {
@@ -78,12 +80,16 @@ impl Scalar {
             Self::Linear { .. } => Some(Interpolation::Linear),
             Self::Step { .. } => Some(Interpolation::Step),
             Self::Smooth { .. } => Some(Interpolation::Smooth),
+            Self::Monotone { .. } => Some(Interpolation::Monotone),
         }
     }
     pub fn keys(&self) -> Option<&[Key]> {
         match self {
             Self::Constant { .. } => None,
-            Self::Linear { keys } | Self::Step { keys } | Self::Smooth { keys } => Some(keys),
+            Self::Linear { keys }
+            | Self::Step { keys }
+            | Self::Smooth { keys }
+            | Self::Monotone { keys } => Some(keys),
         }
     }
     /// Insert or update a key at an exact rational time. Existing equivalent
@@ -136,7 +142,10 @@ impl Scalar {
     pub fn keys_mut(&mut self) -> Option<&mut Vec<Key>> {
         match self {
             Self::Constant { .. } => None,
-            Self::Linear { keys } | Self::Step { keys } | Self::Smooth { keys } => Some(keys),
+            Self::Linear { keys }
+            | Self::Step { keys }
+            | Self::Smooth { keys }
+            | Self::Monotone { keys } => Some(keys),
         }
     }
     /// Change the curve without changing its keys. Constants remain constants.
@@ -149,13 +158,17 @@ impl Scalar {
             Interpolation::Linear => Self::Linear { keys },
             Interpolation::Step => Self::Step { keys },
             Interpolation::Smooth => Self::Smooth { keys },
+            Interpolation::Monotone => Self::Monotone { keys },
         };
     }
 
     pub fn validate(&self) -> Result<()> {
         match self {
             Self::Constant { value } if !value.is_finite() => fail("non-finite scalar"),
-            Self::Linear { keys } | Self::Step { keys } | Self::Smooth { keys } => {
+            Self::Linear { keys }
+            | Self::Step { keys }
+            | Self::Smooth { keys }
+            | Self::Monotone { keys } => {
                 if keys.is_empty() || keys.len() > MAX_KEYS {
                     return fail(format!("animation needs 1..={MAX_KEYS} keys"));
                 }
@@ -186,7 +199,10 @@ impl Scalar {
         };
         match self {
             Self::Constant { value } => check(*value),
-            Self::Linear { keys } | Self::Step { keys } | Self::Smooth { keys } => {
+            Self::Linear { keys }
+            | Self::Step { keys }
+            | Self::Smooth { keys }
+            | Self::Monotone { keys } => {
                 for key in keys {
                     check(key.value)?;
                 }
@@ -194,17 +210,33 @@ impl Scalar {
             }
         }
     }
+    /// Compile monotone segments once for bounded normalized sampling in plots.
+    /// Other interpolation modes return no segments.
+    pub fn monotone_segments(&self) -> Result<Option<Vec<MonotoneSegment>>> {
+        self.validate()?;
+        let Self::Monotone { keys } = self else {
+            return Ok(None);
+        };
+        Ok(Some(
+            (0..keys.len() - 1)
+                .map(|index| monotone_segment(keys, index))
+                .collect(),
+        ))
+    }
     pub fn at(&self, time: Time) -> Result<f32> {
         self.validate()?;
         time.seconds()?;
         match self {
             Self::Constant { value } => Ok(*value),
-            Self::Linear { keys } | Self::Step { keys } | Self::Smooth { keys } => {
+            Self::Linear { keys }
+            | Self::Step { keys }
+            | Self::Smooth { keys }
+            | Self::Monotone { keys } => {
                 let first = &keys[0];
                 if !time.compare(first.time)?.is_gt() {
                     return Ok(first.value);
                 }
-                for pair in keys.windows(2) {
+                for (index, pair) in keys.windows(2).enumerate() {
                     if time.compare(pair[1].time)?.is_eq() {
                         return Ok(pair[1].value);
                     }
@@ -223,6 +255,9 @@ impl Scalar {
                         let factor =
                             elapsed as f64 / span as f64 * b.rate as f64 / time.rate as f64;
                         let factor = factor.clamp(0.0, 1.0);
+                        if matches!(self, Self::Monotone { .. }) {
+                            return monotone_segment(keys, index).sample(factor);
+                        }
                         let factor = if matches!(self, Self::Smooth { .. }) {
                             factor * factor * (3.0 - 2.0 * factor)
                         } else {
@@ -236,5 +271,71 @@ impl Scalar {
                 Ok(keys.last().unwrap().value)
             }
         }
+    }
+}
+
+/// A validated monotone cubic segment in normalized interval coordinates.
+#[derive(Debug, Clone, Copy)]
+pub struct MonotoneSegment {
+    values: [f64; 2],
+    tangents: [f64; 2],
+}
+impl MonotoneSegment {
+    /// Sample within the segment, holding endpoint values outside 0..=1.
+    pub fn sample(self, fraction: f64) -> Result<f32> {
+        if !fraction.is_finite() {
+            return fail("non-finite curve fraction");
+        }
+        let [a, b] = self.values;
+        if fraction <= 0.0 {
+            return Ok(a as f32);
+        }
+        if fraction >= 1.0 {
+            return Ok(b as f32);
+        }
+        let t = fraction;
+        let t2 = t * t;
+        let t3 = t2 * t;
+        let value = (2.0 * t3 - 3.0 * t2 + 1.0) * a
+            + (t3 - 2.0 * t2 + t) * self.tangents[0]
+            + (-2.0 * t3 + 3.0 * t2) * b
+            + (t3 - t2) * self.tangents[1];
+        // Preserve registered parameter bounds even at floating-point extremes.
+        Ok(value.clamp(a.min(b), a.max(b)) as f32)
+    }
+}
+fn duration(a: Time, b: Time) -> f64 {
+    let ticks = b.ticks as i128 * a.rate as i128 - a.ticks as i128 * b.rate as i128;
+    ticks as f64 / a.rate as f64 / b.rate as f64
+}
+fn secant(a: &Key, b: &Key) -> f64 {
+    (b.value as f64 - a.value as f64) / duration(a.time, b.time)
+}
+fn tangent(keys: &[Key], index: usize) -> f64 {
+    if index == 0 {
+        return secant(&keys[0], &keys[1]);
+    }
+    if index == keys.len() - 1 {
+        return secant(&keys[index - 1], &keys[index]);
+    }
+    let left = secant(&keys[index - 1], &keys[index]);
+    let right = secant(&keys[index], &keys[index + 1]);
+    if left == 0.0 || right == 0.0 || left.is_sign_positive() != right.is_sign_positive() {
+        return 0.0;
+    }
+    // Weighted harmonic interior slopes (Fritsch–Butland); endpoint slopes
+    // use the adjacent secant. Unlike per-interval smoothstep, neighboring
+    // segments share a derivative without overshooting their key values.
+    let h_left = duration(keys[index - 1].time, keys[index].time);
+    let h_right = duration(keys[index].time, keys[index + 1].time);
+    let w_left = 2.0 * h_right + h_left;
+    let w_right = h_right + 2.0 * h_left;
+    (w_left + w_right) / (w_left / left + w_right / right)
+}
+fn monotone_segment(keys: &[Key], index: usize) -> MonotoneSegment {
+    let span = duration(keys[index].time, keys[index + 1].time);
+    MonotoneSegment {
+        values: [keys[index].value as f64, keys[index + 1].value as f64],
+        tangents: [tangent(keys, index) * span, tangent(keys, index + 1) * span],
     }
 }

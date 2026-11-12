@@ -134,7 +134,7 @@ fn invalid_parameter_and_key_batches_leave_the_whole_document_unchanged() {
 
 #[test]
 fn removing_keys_uses_exact_times_preserves_modes_and_is_atomic() {
-    for kind in ["linear", "step", "smooth"] {
+    for kind in ["linear", "step", "smooth", "monotone"] {
         let mut document = Document::new(motion_demo()).unwrap();
         let id = document.snapshot().output;
         document

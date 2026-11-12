@@ -23,6 +23,7 @@ fn plot(scalar: &Scalar, time: Time, width: f32) -> Option<Plot> {
         Scalar::Linear { keys } => (keys, Interpolation::Linear),
         Scalar::Step { keys } => (keys, Interpolation::Step),
         Scalar::Smooth { keys } => (keys, Interpolation::Smooth),
+        Scalar::Monotone { keys } => (keys, Interpolation::Monotone),
         _ => return None,
     };
     let first = keys.first()?.time;
@@ -52,6 +53,7 @@ fn plot(scalar: &Scalar, time: Time, width: f32) -> Option<Plot> {
             ]
         })
         .collect();
+    let segments = scalar.monotone_segments().ok()?;
     let mut points = vec![key_points[0]];
     for (index, pair) in keys.windows(2).enumerate() {
         let a = key_points[index];
@@ -62,7 +64,7 @@ fn plot(scalar: &Scalar, time: Time, width: f32) -> Option<Plot> {
                 points.push(b);
             }
             Interpolation::Linear => points.push(b),
-            Interpolation::Smooth => {
+            Interpolation::Smooth | Interpolation::Monotone => {
                 // At most 32 samples per segment; total scales with canvas width
                 // plus key count, not width multiplied by key count.
                 let samples =
@@ -70,10 +72,12 @@ fn plot(scalar: &Scalar, time: Time, width: f32) -> Option<Plot> {
                 for step in 1..=samples {
                     let t = step as f64 / samples as f64;
                     let eased = t * t * (3.0 - 2.0 * t);
-                    points.push([
-                        a[0] + (b[0] - a[0]) * t as f32,
-                        y(pair[0].value as f64 * (1.0 - eased) + pair[1].value as f64 * eased),
-                    ]);
+                    let value = if let Some(segments) = &segments {
+                        segments[index].sample(t).ok()? as f64
+                    } else {
+                        pair[0].value as f64 * (1.0 - eased) + pair[1].value as f64 * eased
+                    };
+                    points.push([a[0] + (b[0] - a[0]) * t as f32, y(value)]);
                 }
             }
         }
@@ -155,6 +159,29 @@ pub fn show(ui: &mut egui::Ui, scalar: &Scalar, time: Time) {
 mod tests {
     use super::*;
     use veylvik_document::Key;
+    #[test]
+    fn auto_smooth_plot_uses_the_document_sampler() {
+        let scalar = Scalar::Monotone {
+            keys: vec![
+                Key {
+                    time: Time::new(0, 1).unwrap(),
+                    value: 0.0,
+                },
+                Key {
+                    time: Time::new(1, 1).unwrap(),
+                    value: 1.0,
+                },
+                Key {
+                    time: Time::new(3, 1).unwrap(),
+                    value: 2.0,
+                },
+            ],
+        };
+        let plot = plot(&scalar, Time::new(1, 2).unwrap(), 192.0).unwrap();
+        let expected = (1.0 - (7.0 / 13.0 - plot.min) / (plot.max - plot.min)) as f32;
+        assert!((plot.points[8][1] - expected).abs() < 1e-6);
+        assert!(plot.points.iter().flatten().all(|value| value.is_finite()));
+    }
     #[test]
     fn plots_preserve_large_adjacent_times_modes_and_invalid_drafts() {
         let first = Time::new(i64::MAX - 2, 1).unwrap();
