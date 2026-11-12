@@ -481,6 +481,35 @@ impl Studio {
         }
         self.file_started(result);
     }
+    fn reload_images(&mut self) {
+        if self.files.busy() || !self.can_change_selection() || self.graph.dragging() {
+            return;
+        }
+        self.playing = false;
+        let composition = self.project.document.snapshot().clone();
+        if !composition
+            .nodes
+            .values()
+            .any(|node| matches!(node.operation, Operation::Image { .. }))
+        {
+            self.status = "No image sources to reload".into();
+            self.error = false;
+            return;
+        }
+        let base = self.project.base.clone();
+        let session = self.project.session;
+        let revision = self.project.document.revision();
+        let result = self.files.start(move || {
+            let inputs =
+                project::load_inputs(&composition, &base).map_err(|error| error.to_string())?;
+            Ok(Completed::Reloaded {
+                session,
+                revision,
+                inputs,
+            })
+        });
+        self.file_started(result);
+    }
     fn import_image(&mut self) {
         if self.files.busy() || !self.apply_draft() {
             return;
@@ -641,6 +670,20 @@ impl Studio {
                     Err(e) => self.fail(e),
                 }
             }
+            Ok(Completed::Reloaded {
+                session,
+                revision,
+                inputs,
+            }) => {
+                if self.project.session == session && self.project.document.revision() == revision {
+                    self.project.inputs = inputs;
+                    self.request_preview();
+                } else {
+                    self.fail(
+                        "Source reload became obsolete; reload again for the current project.",
+                    );
+                }
+            }
             Ok(Completed::Saved(saved)) => {
                 self.status = format!("Saved {}", saved.stamp.path().display());
                 self.error = false;
@@ -739,6 +782,13 @@ impl Studio {
             }
             if ui.button("Import…").clicked() {
                 self.import_image();
+            }
+            if ui
+                .button("Reload images")
+                .on_hover_text("Reload all source images from disk (Ctrl+R)")
+                .clicked()
+            {
+                self.reload_images();
             }
             if ui
                 .button("Export…")
@@ -1130,6 +1180,7 @@ impl Studio {
                         ("Ctrl+N", "New composition"),
                         ("Ctrl+O", "Open composition"),
                         ("Ctrl+I", "Import PNG or OpenEXR image"),
+                        ("Ctrl+R", "Reload source images"),
                         ("Ctrl+E", "Export current preview"),
                         ("Ctrl+Shift+E", "Export image sequence"),
                         ("Ctrl+S", "Save"),
@@ -1241,6 +1292,9 @@ impl eframe::App for Studio {
             }
             if ctx.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, egui::Key::O)) {
                 self.leave(Leave::Open, &ctx);
+            }
+            if ctx.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, egui::Key::R)) {
+                self.reload_images();
             }
             if ctx.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, egui::Key::I)) {
                 self.import_image();

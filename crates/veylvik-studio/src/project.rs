@@ -123,22 +123,7 @@ impl Project {
         Ok(plan)
     }
     pub fn reload_inputs(&mut self) -> Result<()> {
-        // Load every image node so switching preview roots never reads files in a paint callback.
-        let mut inputs = ImageInputs::default();
-        let mut remaining = 256 * 1024 * 1024;
-        for node in self.document.snapshot().nodes.values() {
-            if let Operation::Image { asset } = &node.operation
-                && !inputs.contains_key(asset)
-            {
-                let image = veylvik_io::load_image(
-                    &self.base.join(asset),
-                    remaining.min(128 * 1024 * 1024),
-                )?;
-                remaining -= image.byte_size();
-                inputs.insert(asset, Arc::new(image));
-            }
-        }
-        self.inputs = inputs;
+        self.inputs = load_inputs(self.document.snapshot(), &self.base)?;
         Ok(())
     }
     pub fn apply(&mut self, commands: &[Command]) -> Result<()> {
@@ -254,9 +239,98 @@ impl Project {
         Ok(())
     }
 }
+/// Build a complete replacement snapshot before publishing any changed sources.
+pub fn load_inputs(composition: &Composition, base: &Path) -> Result<ImageInputs> {
+    // Include disconnected sources so switching preview roots needs no disk access.
+    let mut inputs = ImageInputs::default();
+    let mut remaining = 256 * 1024 * 1024;
+    for node in composition.nodes.values() {
+        if let Operation::Image { asset } = &node.operation
+            && !inputs.contains_key(asset)
+        {
+            let image = veylvik_io::load_image(&base.join(asset), remaining.min(128 * 1024 * 1024))
+                .map_err(|error| format!("Image {asset}: {error}"))?;
+            remaining -= image.byte_size();
+            inputs.insert(asset, Arc::new(image));
+        }
+    }
+    Ok(inputs)
+}
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn source_reload_replaces_all_inputs_without_changing_history_and_failure_keeps_old_images() {
+        let root = std::env::temp_dir().join(format!("veylvik-reload-{}", NodeId::new_v4()));
+        std::fs::create_dir(&root).unwrap();
+        let a = root.join("a.png");
+        let b = root.join("b.exr");
+        veylvik_io::save_frame(&a, 1, 1, &[[1.0, 0.0, 0.0, 1.0]]).unwrap();
+        veylvik_io::save_frame(&b, 1, 1, &[[0.0, 0.0, 2.0, 1.0]]).unwrap();
+        let mut project = Project::blank(1, 1, Time::new(24, 1).unwrap(), 24).unwrap();
+        project.base = root.clone();
+        let mut first = Node::new(
+            "A",
+            Operation::Image {
+                asset: "a.png".into(),
+            },
+            &[],
+        );
+        first.id = NodeId::from_u128(1);
+        let mut second = Node::new(
+            "B",
+            Operation::Image {
+                asset: "b.exr".into(),
+            },
+            &[],
+        );
+        second.id = NodeId::from_u128(2);
+        project
+            .apply(&[
+                Command::Put {
+                    node: Box::new(first),
+                },
+                Command::Put {
+                    node: Box::new(second),
+                },
+            ])
+            .unwrap();
+        project.reload_inputs().unwrap();
+        let before = serde_json::to_vec(project.document.snapshot()).unwrap();
+        let revision = project.document.revision();
+        let old_a = project.inputs.get("a.png").unwrap().clone();
+        let old_b = project.inputs.get("b.exr").unwrap().clone();
+        veylvik_io::save_frame(&a, 1, 1, &[[0.0, 1.0, 0.0, 1.0]]).unwrap();
+        std::fs::remove_file(&b).unwrap();
+        assert!(
+            project
+                .reload_inputs()
+                .unwrap_err()
+                .to_string()
+                .contains("b.exr")
+        );
+        assert!(Arc::ptr_eq(project.inputs.get("a.png").unwrap(), &old_a));
+        assert!(Arc::ptr_eq(project.inputs.get("b.exr").unwrap(), &old_b));
+        veylvik_io::save_frame(&b, 1, 1, &[[0.0, 0.0, 4.0, 1.0]]).unwrap();
+        project.reload_inputs().unwrap();
+        assert!(!Arc::ptr_eq(project.inputs.get("a.png").unwrap(), &old_a));
+        assert_eq!(
+            project.inputs.get("a.png").unwrap().pixels(),
+            &[[0.0, 1.0, 0.0, 1.0]]
+        );
+        assert_eq!(
+            project.inputs.get("b.exr").unwrap().pixels(),
+            &[[0.0, 0.0, 4.0, 1.0]]
+        );
+        assert_eq!(project.document.revision(), revision);
+        assert_eq!(project.document.history().undo_steps, 1);
+        assert_eq!(
+            serde_json::to_vec(project.document.snapshot()).unwrap(),
+            before
+        );
+        assert_eq!(old_a.pixels(), &[[1.0, 0.0, 0.0, 1.0]]);
+        std::fs::remove_dir_all(root).unwrap();
+    }
     #[test]
     fn duplication_preserves_connections_and_keys_with_independent_history() {
         let mut project = Project::open(None).unwrap();

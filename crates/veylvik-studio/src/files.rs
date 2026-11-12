@@ -23,7 +23,15 @@ pub enum Completed {
     Cancelled,
     Outlined(Box<veylvik_document::Node>),
     Opened(Box<Project>),
-    Imported { path: PathBuf, image: Arc<Image> },
+    Imported {
+        path: PathBuf,
+        image: Arc<Image>,
+    },
+    Reloaded {
+        session: veylvik_document::NodeId,
+        revision: u64,
+        inputs: veylvik_render::ImageInputs,
+    },
     Saved(Saved),
     Exported(PathBuf),
     Sequence(serde_json::Value),

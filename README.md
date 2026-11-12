@@ -172,6 +172,7 @@ finishes.
 | Ctrl+Shift+S | Save as |
 | Ctrl+Z / Ctrl+Shift+Z | Undo / redo |
 | Ctrl+D | Duplicate selected node |
+| Ctrl+R | Reload source images |
 | Q | Close |
 | ? | Show shortcuts |
 
@@ -183,8 +184,13 @@ stays unchanged. Apply or revert inspector drafts before duplicating.
 
 Drag the graph background to pan, Ctrl+scroll to zoom, and use **Fit** to see
 the whole graph. **Arrange** restores an automatic layout as one undoable edit. Source images load when the
-project opens or an image is imported, within a 256 MiB host image budget. The
-initial UI uses English labels. A working `org.freedesktop.portal.FileChooser`
+project opens or an image is imported, within a 256 MiB host image budget.
+**Reload images** (Ctrl+R) reads all current sources in the background and refreshes
+preview after every file succeeds. A failed reload retains all previous inputs;
+fix the source and retry. Reload pauses playback and requires a clean inspector
+draft, but does not edit the composition or history. Each replacement snapshot
+has the same 256 MiB bound; the old snapshot remains resident while it loads.
+The initial UI uses English labels. A working `org.freedesktop.portal.FileChooser`
 service is required for interactive file selection; failures are shown in the
 window. Headless file commands remain available without a desktop service.
 The viewer filters scaled images bilinearly in linear premultiplied color,
