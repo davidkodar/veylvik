@@ -9,6 +9,7 @@ type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 /// GUI state owns the same transactional document used by headless clients.
 pub struct Project {
     pub session: NodeId,
+    pub recovery_origin: Option<NodeId>,
     pub document: Document,
     pub path: Option<PathBuf>,
     pub base: PathBuf,
@@ -42,6 +43,7 @@ impl Project {
         let selected = composition.output;
         let mut project = Self {
             session: NodeId::new_v4(),
+            recovery_origin: None,
             document: Document::new(composition)?,
             saved_revision: path.as_ref().map(|_| 0),
             compiled: None,
@@ -52,6 +54,26 @@ impl Project {
             preview: None,
             inputs: ImageInputs::default(),
             frame: 0,
+        };
+        project.reload_inputs()?;
+        Ok(project)
+    }
+    pub fn recover(store: &veylvik_io::recovery::Store, id: NodeId) -> Result<Self> {
+        let composition = store.read(id)?;
+        let selected = composition.output;
+        let mut project = Self {
+            session: NodeId::new_v4(),
+            recovery_origin: Some(id),
+            document: Document::new(composition)?,
+            path: None,
+            base: std::env::current_dir()?,
+            selected,
+            preview: None,
+            inputs: ImageInputs::default(),
+            frame: 0,
+            saved_revision: None,
+            stamp: None,
+            compiled: None,
         };
         project.reload_inputs()?;
         Ok(project)

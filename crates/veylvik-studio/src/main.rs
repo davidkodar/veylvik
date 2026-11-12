@@ -2,6 +2,7 @@ mod animation;
 mod control;
 mod curve_preview;
 mod diagnostics;
+mod recovery;
 mod sequence;
 mod text_outline;
 mod vector_editor;
@@ -90,8 +91,11 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             } else {
                 None
             };
+            let recovery =
+                recovery::Recovery::new(recovery::default_store()?, &project, cc.egui_ctx.clone());
             let mut app = Studio {
                 control,
+                recovery,
                 project,
                 renderer,
                 scheduler: Some(scheduler),
@@ -130,9 +134,11 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
 #[derive(Clone, Copy)]
 enum Leave {
     Open,
+    Recover(veylvik_document::NodeId),
     Close,
 }
 struct Studio {
+    recovery: recovery::Recovery,
     control: Option<veylvik_control::ipc::Server>,
     project: Project,
     renderer: Arc<Renderer>,
@@ -313,6 +319,15 @@ impl Studio {
             Leave::Close => {
                 self.allow_close = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            }
+            Leave::Recover(id) => {
+                let store = self.recovery.store.clone();
+                let result = self.files.start(move || {
+                    Project::recover(&store, id)
+                        .map(|project| Completed::Opened(Box::new(project)))
+                        .map_err(|e| e.to_string())
+                });
+                self.file_started(result);
             }
             Leave::Open => {
                 let folder = self.project.base.clone();
@@ -517,6 +532,10 @@ impl Studio {
                 }
             }
             Ok(Completed::Opened(project)) => {
+                let recovery =
+                    recovery::Recovery::new(self.recovery.store.clone(), &project, ctx.clone());
+                self.recovery.finish(true);
+                self.recovery = recovery;
                 self.outline_controls = text_outline::Controls::default();
                 self.export_controls = sequence::Controls::default();
                 self.project = *project;
@@ -719,6 +738,10 @@ impl Studio {
                     }
                 }
             });
+            if ui.button("Recover").clicked() {
+                self.recovery.refresh();
+                self.recovery.open = true;
+            }
             if ui.button("Stats").clicked() {
                 self.statistics = !self.statistics;
             }
@@ -1028,6 +1051,9 @@ impl eframe::App for Studio {
         let ctx = ui.ctx().clone();
         self.theme(&ctx);
         self.poll_files(&ctx);
+        if let Some(error) = self.recovery.tick(&self.project) {
+            self.fail(error);
+        }
         for _ in 0..8 {
             let Some(request) = self.control.as_ref().and_then(|server| server.try_recv()) else {
                 break;
@@ -1248,6 +1274,12 @@ impl eframe::App for Studio {
             },
         );
         self.dialogs(&ctx);
+        if let Some(id) = self.recovery.show(
+            &ctx,
+            !self.files.busy() && self.confirm.is_none() && !self.outline_controls.open,
+        ) {
+            self.leave(Leave::Recover(id), &ctx);
+        }
         if let Some(request) = self
             .outline_controls
             .show(&ctx, !self.files.busy() && self.confirm.is_none())
@@ -1263,6 +1295,8 @@ impl eframe::App for Studio {
         }
     }
     fn on_exit(&mut self) {
+        self.recovery
+            .finish(self.allow_close || (!self.project.dirty() && !self.draft_dirty));
         self.control.take();
         self.scheduler.take();
         self.displayed.take();

@@ -523,3 +523,27 @@ are busy. The headless server reports `initialized: false` until its first rende
 inspection alone does not initialize Vulkan. These counters exclude driver and
 vector rasterizer scratch allocations and are not total process or VRAM usage.
 Diagnostics are read-only and do not change the document revision or clear caches.
+
+### Crash recovery
+
+Studio writes a separate recovery copy of unsaved **applied** edits at most once
+every ten seconds while its event loop runs. Copies live in
+`$XDG_STATE_HOME/veylvik/recovery`, or `~/.local/state/veylvik/recovery` when the
+state variable is unset. Each session has its own private file, published
+atomically by a background worker with one active and one latest pending write.
+No recovery copy replaces a project or an original image. Image paths become
+absolute in the copy so recovery does not depend on the old project directory.
+
+After an interrupted session, the recovery dialog offers available copies;
+**Recover** reopens that list. Running editor sessions are excluded using OS
+file locks, which release automatically on a crash. A restored composition is
+unsaved and uses Save As. Saving or explicitly discarding it removes its recovery
+copies. Failed restores leave the copy intact. Other sessions' copies are
+retained. Copies retain the 16 MiB document limit; up to 256 available records
+are listed, with no automatic deletion of older unsaved work.
+
+Recovery does not include an unapplied inspector draft, undo history, source
+image bytes, or edits made since the last completed snapshot. It supplements
+normal saving. A recovery storage error is shown; normal project saving remains
+available. If storage is unavailable at startup, restart after fixing it to
+re-enable background recovery.
