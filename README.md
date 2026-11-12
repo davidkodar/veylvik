@@ -230,7 +230,10 @@ one are preserved. PNG export unpremultiplies, clips to SDR, and applies sRGB
 encoding; it is not an HDR delivery format or a tone mapper.
 
 The compiler validates the entire graph, prunes unreachable nodes, and assigns
-explicit compute passes and reusable image-buffer slots by last use. Box blur
+explicit compute passes and reusable image-buffer slots by last use. It visits
+input branches in depth-first port order, keeping independent layers close to
+their consumers instead of scheduling by UUID. Traversal is iterative for deep
+graphs; this is a deterministic heuristic, not a minimum-memory optimizer. Box blur
 lowers to horizontal and vertical passes, with transparent boundaries. Intermediate pixels stay on the GPU;
 export reads back only the final image. `render_gpu` instead returns an immutable
 GPU frame, reading only a four-byte finite-value status flag. Held frames count

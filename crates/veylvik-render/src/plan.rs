@@ -95,22 +95,27 @@ impl Plan {
         Self::compile_output(composition, composition.output)
     }
     pub fn compile_output(composition: &Composition, output: NodeId) -> Result<Self> {
-        let order = composition.validate()?;
+        composition.validate()?;
         if !composition.nodes.contains_key(&output) {
             return Err(error("requested output node is missing"));
         }
-        let mut reachable = BTreeSet::new();
-        let mut todo = vec![output];
-        while let Some(id) = todo.pop() {
-            if reachable.insert(id) {
-                todo.extend(composition.nodes[&id].inputs.values().copied());
+        // Depth-first postorder completes each input branch before starting its
+        // siblings. UUID-sorted ready queues can retain all generators at once.
+        // Use an explicit stack so valid deep documents cannot overflow Rust's stack.
+        let mut visited = BTreeSet::new();
+        let mut todo = vec![(output, false)];
+        let mut nodes = Vec::new();
+        while let Some((id, expanded)) = todo.pop() {
+            let node = &composition.nodes[&id];
+            if expanded {
+                nodes.push(node.clone());
+            } else if visited.insert(id) {
+                todo.push((id, true));
+                for port in node.operation.inputs().iter().rev() {
+                    todo.push((node.inputs[*port], false));
+                }
             }
         }
-        let nodes: Vec<Node> = order
-            .into_iter()
-            .filter(|id| reachable.contains(id))
-            .map(|id| composition.nodes[&id].clone())
-            .collect();
         let mut passes = Vec::new();
         let mut outputs = BTreeMap::new();
         let mut shared = BTreeMap::new();
