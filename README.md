@@ -33,6 +33,11 @@ Import a still image, inspect available nodes, or render a crop:
 the composition. Crops are extracted after full-frame evaluation, so blur and
 transform dependencies match a full render. This does not yet reduce GPU work.
 
+The render compiler aliases constant zero exposure, zero translation, and
+zero-radius blur directly to their input. Their authored nodes remain editable,
+but they require no GPU dispatch or extra image slot. Animated controls retain
+their passes even when the current evaluated value happens to be zero.
+
 ## HDR frame export
 
 Use an `.exr` output filename with CLI/MCP `render` or Studio's **Export…** picker

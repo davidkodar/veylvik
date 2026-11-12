@@ -169,7 +169,9 @@ fn long_chains_need_only_two_image_slots() {
     for _ in 0..100 {
         let node = Node::new(
             "gain",
-            Operation::Exposure { stops: 0.0.into() },
+            Operation::Exposure {
+                stops: 0.125.into(),
+            },
             &[("image", id)],
         );
         id = node.id;
@@ -462,10 +464,18 @@ fn separable_blur_matches_direct_reference_and_pool_is_bounded() {
         let stats = renderer.resource_stats().unwrap();
         assert_eq!(stats.resident_bytes, stats.idle_bytes);
         assert!(stats.resident_bytes <= renderer.budget_bytes);
-        if let Some(count) = created {
+        if let Some((passes, count)) = created
+            && passes == plan.pass_count()
+        {
             assert_eq!(stats.buffers_created, count);
         }
-        created = Some(stats.buffers_created);
+        // Identity blur has fewer passes; every warmed plan still reuses all buffers.
+        renderer.render_frame(&plan, request, &inputs).unwrap();
+        assert_eq!(
+            renderer.resource_stats().unwrap().buffers_created,
+            stats.buffers_created
+        );
+        created = Some((plan.pass_count(), stats.buffers_created));
     }
     assert!(renderer.resource_stats().unwrap().buffers_reused > 0);
     renderer.trim_resources().unwrap();

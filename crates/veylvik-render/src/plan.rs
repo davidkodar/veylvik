@@ -1,7 +1,7 @@
 //! Compile authored nodes to explicit passes, then assign image lifetimes.
 use crate::{Result, error};
 use std::collections::{BTreeMap, BTreeSet};
-use veylvik_document::{Composition, Node, NodeId, Operation};
+use veylvik_document::{Composition, Node, NodeId, Operation, Scalar};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -107,6 +107,15 @@ impl Plan {
             let mut inputs = [Input::Empty, Input::Empty];
             for (i, port) in node.operation.inputs().iter().enumerate() {
                 inputs[i] = Input::Value(outputs[&node.inputs[*port]]);
+            }
+            // Preserve authored nodes, but alias exact constant identity effects
+            // before lifetime assignment so they need no dispatch or image slot.
+            if identity(&node.operation) {
+                let Input::Value(value) = inputs[0] else {
+                    unreachable!()
+                };
+                outputs.insert(node.id, value);
+                continue;
             }
             let kernel = match &node.operation {
                 Operation::Solid { .. } => Kernel::Solid,
@@ -250,5 +259,15 @@ impl Plan {
             + self.vector_bytes()
             + self.passes.len() as u64 * 48
             + 16
+    }
+}
+
+fn identity(operation: &Operation) -> bool {
+    let zero = |value: &Scalar| matches!(value,Scalar::Constant { value } if *value==0.0);
+    match operation {
+        Operation::Exposure { stops } => zero(stops),
+        Operation::Blur { radius } => zero(radius),
+        Operation::Transform { x, y } => zero(x) && zero(y),
+        _ => false,
     }
 }
