@@ -4,6 +4,8 @@ pub mod limits;
 pub mod registry;
 pub use history::{Document, HistoryStats};
 pub mod blending;
+pub mod channels;
+pub use channels::MaskChannel;
 pub mod schema;
 pub mod sequence;
 pub mod vector;
@@ -80,6 +82,9 @@ pub enum Operation {
         feather: Scalar,
     },
     Mask {},
+    ChannelMask {
+        channel: MaskChannel,
+    },
     Path {
         geometry: vector::PathMask,
     },
@@ -99,6 +104,7 @@ impl Operation {
             Self::Image { .. } => &registry::IMAGE,
             Self::Affine { .. } => &registry::AFFINE,
             Self::Ellipse { .. } => &registry::ELLIPSE,
+            Self::ChannelMask { .. } => &registry::CHANNEL_MASK,
             Self::Mask {} => &registry::MASK,
             Self::Path { .. } => &registry::PATH,
         }

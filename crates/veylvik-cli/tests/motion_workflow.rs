@@ -62,6 +62,34 @@ fn animated_mask_composition_matches_cli_and_mcp() {
     document.nodes.insert(map.id, map);
     document.output = distortion.id;
     document.nodes.insert(distortion.id, distortion);
+    let mask = veylvik_document::Node::new(
+        "procedural mask",
+        veylvik_document::Operation::ChannelMask {
+            channel: veylvik_document::MaskChannel::Luminance,
+        },
+        &[(
+            "image",
+            document
+                .nodes
+                .values()
+                .find(|n| {
+                    matches!(
+                        n.operation,
+                        veylvik_document::Operation::FractalNoise { .. }
+                    )
+                })
+                .unwrap()
+                .id,
+        )],
+    );
+    let masked = veylvik_document::Node::new(
+        "masked distortion",
+        veylvik_document::Operation::Mask {},
+        &[("image", document.output), ("mask", mask.id)],
+    );
+    document.nodes.insert(mask.id, mask);
+    document.output = masked.id;
+    document.nodes.insert(masked.id, masked);
     document.save(&root.0.join("motion.veylvik")).unwrap();
     let messages = [
         json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"test","version":"1"}}}),
@@ -113,6 +141,7 @@ fn animated_mask_composition_matches_cli_and_mcp() {
         "path",
         "displace",
         "fractal_noise",
+        "channel_mask",
     ] {
         assert!(
             catalog

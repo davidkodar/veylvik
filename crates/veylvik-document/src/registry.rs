@@ -12,6 +12,7 @@ pub enum ParameterKind {
     Asset,
     Path,
     BlendMode,
+    MaskChannel,
 }
 #[derive(Debug, Clone, Copy, Serialize)]
 pub struct Parameter {
@@ -29,6 +30,7 @@ impl Parameter {
             ParameterKind::Scalar => json!({"kind":"constant","value":self.default}),
             ParameterKind::Seed => json!(self.default as u32),
             ParameterKind::BlendMode => json!(crate::BlendMode::Normal),
+            ParameterKind::MaskChannel => json!(crate::MaskChannel::Luminance),
             ParameterKind::Color => json!([0.0, 0.0, 0.0, 1.0]),
             ParameterKind::Asset => json!("image.png"),
             ParameterKind::Path => {
@@ -46,6 +48,7 @@ impl Parameter {
                 ]})
             }
             ParameterKind::BlendMode => json!({"type":"string","enum":crate::BlendMode::ALL}),
+            ParameterKind::MaskChannel => json!({"type":"string","enum":crate::MaskChannel::ALL}),
             ParameterKind::Seed => json!({"type":"integer","minimum":0,"maximum":u32::MAX}),
             ParameterKind::Color => {
                 json!({"type":"array","minItems":4,"maxItems":4,"prefixItems":[{"type":"number"},{"type":"number"},{"type":"number"},{"type":"number","minimum":0,"maximum":1}]})
@@ -252,6 +255,14 @@ pub static MASK: NodeType = NodeType {
     inputs: &["image", "mask"],
     parameters: &[],
 };
+pub static CHANNEL_MASK: NodeType = NodeType {
+    type_id: "channel_mask",
+    version: 1,
+    label: "Channel mask",
+    description: "Convert premultiplied red, green, blue, alpha or linear Rec.709 luminance to white mask coverage. Coverage clamps to [0, source alpha], preserving transparent boundaries without division by alpha.",
+    inputs: &["image"],
+    parameters: &[other("channel", ParameterKind::MaskChannel, "channel")],
+};
 pub static PATH: NodeType = NodeType {
     type_id: "path",
     version: 1,
@@ -275,6 +286,7 @@ pub static TYPES: &[&NodeType] = &[
     &BLEND,
     &DISPLACE,
     &FRACTAL_NOISE,
+    &CHANNEL_MASK,
 ];
 pub fn operation_schema() -> Value {
     json!({"oneOf":TYPES.iter().map(|node|node.schema()).collect::<Vec<_>>()})

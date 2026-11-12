@@ -195,6 +195,7 @@ includes retained history statistics. Supported operations:
 | Image | none | Asset key; native image size, top-left anchor, transparent padding |
 | Affine | image | Translation, signed X/Y scale, clockwise rotation, pixel-space pivot |
 | Ellipse | none | Center, X/Y radii, and radial feather in pixels |
+| Channel mask | image | Convert luminance, red, green, blue, or alpha into white mask coverage |
 | Mask | image, mask | Multiply premultiplied image by mask alpha; ignore mask RGB |
 | Path | none | Closed vector contours and fill rule |
 | Blend | background, foreground | Blend mode and animated opacity |
@@ -463,3 +464,15 @@ colored cell Noise retains its existing output for saved compositions.
 Connect Fractal noise to Displace's map port for smooth diagonal distortion,
 or transform and combine maps upstream for other patterns. Its RGB is grayscale
 and alpha is one; it is a color texture, not an alpha mask.
+
+### Channels as masks
+
+Channel mask converts an image channel into white premultiplied mask coverage.
+Select Red, Green, Blue, Alpha, or scene-linear Rec.709 Luminance
+(`0.2126 R + 0.7152 G + 0.0722 B`). The selected premultiplied value is clamped
+to `[0, source alpha]` and written to all four output channels. This preserves
+transparent boundaries and avoids division by tiny alpha. Negative values
+become zero and HDR values saturate at source alpha. Connect Fractal noise to
+Channel mask, then connect that mask to Apply mask to reveal an image through
+an animated procedural texture. Alpha extraction preserves coverage but replaces
+image color with white.

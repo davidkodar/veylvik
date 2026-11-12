@@ -156,3 +156,18 @@ fn fractal_noise(@builtin(global_invocation_id) gid:vec3<u32>) {
     let n=clamp(total/weight,0.0,1.0);
     result[index(gid)]=vec4<f32>(n,n,n,1.0);
 }
+
+@compute @workgroup_size(8,8)
+fn channel_mask(@builtin(global_invocation_id) gid:vec3<u32>) {
+    if !inside(gid) {return;}
+    let color=source[index(gid)];
+    var coverage=dot(color.rgb,vec3<f32>(0.2126,0.7152,0.0722));
+    switch p.size_op.w {
+        case 1u: { coverage=color.r; }
+        case 2u: { coverage=color.g; }
+        case 3u: { coverage=color.b; }
+        case 4u: { coverage=color.a; }
+        default: {}
+    }
+    result[index(gid)]=vec4<f32>(clamp(coverage,0.0,color.a));
+}
