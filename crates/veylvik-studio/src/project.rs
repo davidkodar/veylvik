@@ -101,6 +101,28 @@ impl Project {
         self.reconcile();
         Ok(())
     }
+    pub fn connect(&mut self, source: NodeId, target: NodeId, port: &str) -> Result<bool> {
+        let doc = self.document.snapshot();
+        if !doc.nodes.contains_key(&source) {
+            return Err("source node does not exist".into());
+        }
+        let mut node = doc
+            .nodes
+            .get(&target)
+            .ok_or("target node does not exist")?
+            .clone();
+        if !node.operation.inputs().contains(&port) {
+            return Err("unknown input port".into());
+        }
+        if node.inputs.get(port) == Some(&source) {
+            return Ok(false);
+        }
+        node.inputs.insert(port.to_owned(), source);
+        self.apply(&[Command::Put {
+            node: Box::new(node),
+        }])?;
+        Ok(true)
+    }
     pub fn undo(&mut self, redo: bool) -> Result<()> {
         let revision = self.document.revision();
         if redo {
@@ -177,6 +199,38 @@ impl Project {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn socket_rewiring_is_atomic_undoable_and_ignores_noops() {
+        let mut project = Project::open(None).unwrap();
+        let output = project.selected;
+        let first = project
+            .add(Operation::Exposure { stops: 1.0.into() })
+            .unwrap();
+        let second = project
+            .add(Operation::Exposure { stops: 2.0.into() })
+            .unwrap();
+        let revision = project.document.revision();
+        assert!(!project.connect(first, second, "image").unwrap());
+        assert_eq!(project.document.revision(), revision);
+        assert!(project.connect(second, first, "image").is_err());
+        assert!(project.connect(first, second, "unknown").is_err());
+        assert_eq!(project.document.revision(), revision);
+        assert!(project.connect(output, second, "image").unwrap());
+        assert_eq!(
+            project.document.snapshot().nodes[&second].inputs["image"],
+            output
+        );
+        project.undo(false).unwrap();
+        assert_eq!(
+            project.document.snapshot().nodes[&second].inputs["image"],
+            first
+        );
+        project.undo(true).unwrap();
+        assert_eq!(
+            project.document.snapshot().nodes[&second].inputs["image"],
+            output
+        );
+    }
     #[test]
     fn preview_is_not_output_and_invalid_connections_are_atomic() {
         let mut project = Project::open(None).unwrap();

@@ -215,7 +215,7 @@ impl Studio {
     }
     fn history(&mut self, redo: bool) {
         if self.graph.dragging() {
-            self.fail("Finish moving the node first.");
+            self.fail("Finish the graph gesture first.");
             return;
         }
         if !self.can_change_selection() {
@@ -884,6 +884,22 @@ impl Studio {
                         if preview {
                             self.project.preview = Some(id);
                             self.request_preview();
+                        }
+                    }
+                }
+                graph::Action::Connect {
+                    source,
+                    target,
+                    port,
+                } => {
+                    if self.can_change_selection() {
+                        match self.project.connect(source, target, port) {
+                            Ok(true) => {
+                                self.refresh_draft();
+                                self.request_preview();
+                            }
+                            Ok(false) => {}
+                            Err(error) => self.fail(error),
                         }
                     }
                 }

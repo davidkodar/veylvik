@@ -4,9 +4,42 @@ use std::collections::BTreeMap;
 use veylvik_document::{Composition, NodeId, NodePosition};
 const NODE_SIZE: Vec2 = egui::vec2(160.0, 60.0);
 pub enum Action {
-    Select { id: NodeId, preview: bool },
-    Place { id: NodeId, position: NodePosition },
+    Select {
+        id: NodeId,
+        preview: bool,
+    },
+    Place {
+        id: NodeId,
+        position: NodePosition,
+    },
     Arrange(Vec<(NodeId, NodePosition)>),
+    Connect {
+        source: NodeId,
+        target: NodeId,
+        port: &'static str,
+    },
+}
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+enum Socket {
+    Output(NodeId),
+    Input(NodeId, &'static str),
+}
+impl Socket {
+    fn connection(self, other: Self) -> Option<Action> {
+        match (self, other) {
+            (Self::Output(source), Self::Input(target, port))
+            | (Self::Input(target, port), Self::Output(source))
+                if source != target =>
+            {
+                Some(Action::Connect {
+                    source,
+                    target,
+                    port,
+                })
+            }
+            _ => None,
+        }
+    }
 }
 struct Drag {
     id: NodeId,
@@ -21,6 +54,7 @@ pub struct Graph {
     pan: Vec2,
     canvas: Option<Rect>,
     drag: Option<Drag>,
+    wire: Option<Socket>,
 }
 impl Default for Graph {
     fn default() -> Self {
@@ -32,12 +66,13 @@ impl Default for Graph {
             pan: Vec2::ZERO,
             canvas: None,
             drag: None,
+            wire: None,
         }
     }
 }
 impl Graph {
     pub fn dragging(&self) -> bool {
-        self.drag.is_some()
+        self.drag.is_some() || self.wire.is_some()
     }
     pub fn insertion_position(&self, ctx: &egui::Context) -> NodePosition {
         let Some(canvas) = self.canvas else {
@@ -153,6 +188,7 @@ impl Graph {
         if self.revision == Some(revision) {
             return;
         }
+        self.wire = None;
         self.revision = Some(revision);
         self.automatic.clear();
         self.positions.clear();
@@ -281,14 +317,35 @@ impl Graph {
         if let Some(drag) = &self.drag {
             self.positions.insert(drag.id, drag.current);
         }
+        let mut sockets = Vec::new();
         for node in doc.nodes.values() {
-            for source in node.inputs.values() {
+            let origin = canvas.min + self.pan + self.positions[&node.id].to_vec2() * self.zoom;
+            sockets.push((
+                Socket::Output(node.id),
+                origin + egui::vec2(160.0, 30.0) * self.zoom,
+            ));
+            for (index, port) in node.operation.inputs().iter().enumerate() {
+                let y = 60.0 * (index + 1) as f32 / (node.operation.inputs().len() + 1) as f32;
+                sockets.push((
+                    Socket::Input(node.id, port),
+                    origin + egui::vec2(0.0, y) * self.zoom,
+                ));
+            }
+        }
+        for node in doc.nodes.values() {
+            for (index, port) in node.operation.inputs().iter().enumerate() {
+                let source = &node.inputs[*port];
                 let from = canvas.min
                     + self.pan
                     + (self.positions[source].to_vec2() + egui::vec2(160.0, 30.0)) * self.zoom;
                 let to = canvas.min
                     + self.pan
-                    + (self.positions[&node.id].to_vec2() + egui::vec2(0.0, 30.0)) * self.zoom;
+                    + (self.positions[&node.id].to_vec2()
+                        + egui::vec2(
+                            0.0,
+                            60.0 * (index + 1) as f32 / (node.operation.inputs().len() + 1) as f32,
+                        ))
+                        * self.zoom;
                 let bend = egui::vec2(45.0 * self.zoom, 0.0);
                 painter.add(egui::epaint::CubicBezierShape::from_points_stroke(
                     [from, from + bend, to - bend, to],
@@ -310,7 +367,8 @@ impl Graph {
             }
             let response = ui
                 .interact(
-                    rect.intersect(canvas),
+                    rect.shrink2(egui::vec2(9.0, 0.0) * self.zoom)
+                        .intersect(canvas),
                     ui.id().with(node.id),
                     egui::Sense::click_and_drag(),
                 )
@@ -384,7 +442,76 @@ impl Graph {
                 Color32::from_gray(160),
             );
         }
-        if response.dragged() && !node_dragged && self.drag.is_none() {
+        let pointer = ui.input(|input| input.pointer.hover_pos());
+        let radius = (8.0 * self.zoom).max(5.0);
+        let hovered = pointer.filter(|p| canvas.contains(*p)).and_then(|p| {
+            sockets
+                .iter()
+                .filter(|(socket, position)| {
+                    position.distance(p) <= radius
+                        && self
+                            .wire
+                            .is_none_or(|from| from.connection(*socket).is_some())
+                })
+                .min_by(|a, b| a.1.distance_sq(p).total_cmp(&b.1.distance_sq(p)))
+                .map(|(socket, _)| *socket)
+        });
+        for (socket, position) in &sockets {
+            if !canvas.contains(*position) {
+                continue;
+            }
+            let hit = ui
+                .interact(
+                    Rect::from_center_size(*position, Vec2::splat(radius * 2.0)).intersect(canvas),
+                    ui.id().with(socket),
+                    egui::Sense::drag(),
+                )
+                .on_hover_text(match socket {
+                    Socket::Output(_) => "Output",
+                    Socket::Input(_, port) => port,
+                });
+            if hit.drag_started() {
+                self.wire = Some(*socket);
+                self.drag = None;
+            }
+            painter.circle_filled(
+                *position,
+                (4.0 * self.zoom).max(2.5),
+                if hovered == Some(*socket) || self.wire == Some(*socket) {
+                    accent
+                } else {
+                    Color32::from_gray(180)
+                },
+            );
+        }
+        let wiring = self.wire.is_some();
+        if ui.input(|input| input.key_pressed(egui::Key::Escape)) || !ui.is_enabled() {
+            self.wire = None;
+        }
+        if let Some(from) = self.wire {
+            if let Some(pointer) = pointer
+                && let Some((_, start)) = sockets.iter().find(|(socket, _)| *socket == from)
+            {
+                let (start, end) = match from {
+                    Socket::Output(_) => (*start, pointer),
+                    Socket::Input(..) => (pointer, *start),
+                };
+                let bend = egui::vec2(45.0 * self.zoom, 0.0);
+                painter.add(egui::epaint::CubicBezierShape::from_points_stroke(
+                    [start, start + bend, end - bend, end],
+                    false,
+                    Color32::TRANSPARENT,
+                    egui::Stroke::new(2.0_f32, accent),
+                ));
+            }
+            if ui.input(|input| input.pointer.any_released()) {
+                if let Some(action) = hovered.and_then(|to| from.connection(to)) {
+                    actions.push(action);
+                }
+                self.wire = None;
+            }
+        }
+        if response.dragged() && !node_dragged && self.drag.is_none() && !wiring {
             self.pan += response.drag_delta();
         }
         actions

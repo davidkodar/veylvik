@@ -69,8 +69,10 @@ adapter does not yet expose mid-request cancellation or progress notifications.
 ```
 
 The viewer consumes GPU-resident frames on the same Vulkan device as the UI.
-Select and arrange nodes, connect named inputs in the inspector, add procedural
-nodes, and preview any node without changing composition output. Inspector
+Select and arrange nodes, drag between output and input sockets to connect them,
+add procedural nodes, and preview any node without changing composition output.
+Socket drags work in either direction; Escape or dropping on empty space cancels.
+Each accepted rewire is one undo step. Named inputs are also editable in the inspector. Inspector
 changes are drafts until **Apply**; one apply creates one undo step. Invalid
 connections fail atomically. **Revert** discards the draft. Apply or revert before
 selecting another node or using undo/redo.
