@@ -455,7 +455,8 @@ Launch a session against a saved composition:
 The server uses newline-delimited JSON-RPC on stdio and MCP protocol version
 2025-11-25. Initialize, then send `notifications/initialized` before using tools.
 The tools are `inspect`, `graph`, `get_node`, `nodes`, `diagnostics`, `outline_text`,
-`apply`, `undo`, `redo`, `save`, `render`, and `render_sequence`.
+`apply`, `duplicate_branch`, `undo`, `redo`, `save`, `render`, `render_sequence`,
+and `preview_image`.
 `nodes` provides defaults, parameter units/bounds, named ports, and operation JSON
 schemas from the document registry. The same registry validates scalar parameters
 and supplies input ports to the compiler. The `apply` tool embeds these schemas. Every mutation, save, or render
@@ -533,7 +534,7 @@ directory or remove the stale endpoint yourself. One client connects at a time.
 The toolbar shows **MCP** when live control is enabled.
 
 Live tools are `inspect`, `graph`, `get_node`, `nodes`, `diagnostics`, `apply`,
-`undo`, `redo`, and `preview`.
+`duplicate_branch`, `undo`, `redo`, `preview`, and `preview_image`.
 `inspect` returns a project `session` UUID and `revision`; both are required for
 edits, undo/redo, and preview. Opening a project creates a new session identity,
 so an old command cannot target a newly opened project with the same revision.
@@ -835,3 +836,20 @@ For an outside outline, connect **Grow/shrink mask** with a positive radius to
 `mask` and the original shape to `other`, then choose Subtract. Follow with
 **Colorize** for a colored outline or **Blur** for a halo. Combine masks can also
 intersect moving shapes or cut holes in image-derived mattes.
+
+
+## Branch duplication over MCP
+
+Both headless and live servers expose `duplicate_branch`. Supply `revision` and
+`node`; live requests also require `session`. The result includes the copied
+`root`, `copied_nodes`, and a `mapping` object from original UUIDs to copied UUIDs.
+The operation is one atomic undo step and preserves composition output, animation,
+shared ancestors, and asset references. It writes no source files.
+
+`dry_run: true` validates the proposed transaction without changing revision,
+history, selection, playback, or preview. Returned IDs are provisional: a later
+commit generates fresh IDs, so use the mapping returned by that committed call.
+Live copies are placed outside existing graph bounds and selected for preview.
+Headless copies retain stored positions; use `place` commands or Studio's Arrange
+when a different layout is needed. Live mutations require applied/reverted
+inspector drafts; dry runs inspect the applied document.

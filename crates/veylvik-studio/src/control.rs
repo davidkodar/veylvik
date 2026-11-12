@@ -23,6 +23,7 @@ fn build_catalog() -> Value {
         tool("diagnostics","Read GPU buffer and cache counters without waiting for an active render. Snapshot is null while the renderer is busy. Declared buffers exclude driver and rasterizer scratch allocations.",json!({}),&[]),
         tool("nodes","Read built-in operations, ports, defaults and parameter schemas.",json!({}),&[]),
         tool("apply","Validate or atomically apply commands to the open editor. Requires the session and revision from inspect. set_parameter and set_key preserve node identity and wiring. Image references must already be known to the editor; new paths require import. Unapplied inspector changes or file jobs block mutation.",json!({"session":session,"revision":revision,"dry_run":{"type":"boolean"},"commands":{"type":"array","minItems":1,"maxItems":4096,"items":veylvik_document::schema::command()}}),&["session","revision","commands"]),
+        tool("duplicate_branch","Copy a node and all upstream dependencies as one undoable transaction, preserving shared ancestors and asset references. Places the copy outside existing graph bounds, selects/previews its root, and leaves composition output unchanged. Returns root and old-to-new ID mapping. Dry-run IDs are provisional and are not reused on commit.",json!({"session":session,"revision":revision,"node":{"type":"string","format":"uuid"},"dry_run":{"type":"boolean"}}),&["session","revision","node"]),
         tool("undo","Undo one editor transaction.",json!({"session":session,"revision":revision}),&["session","revision"]),
         tool("redo","Redo one editor transaction.",json!({"session":session,"revision":revision}),&["session","revision"]),
         tool("preview_image","Capture the current completed preview as an inline PNG without changing the editor. Use preview to pause/seek first; pending or stale frames are rejected. Captures applied pixels, excluding inspector drafts, overlays and viewer exposure/alpha settings. Encoding runs in the background; returned session/revision/time identify the captured snapshot.",json!({"session":session,"revision":revision,"max_edge":{"type":"integer","minimum":1,"maximum":1024}}),&["session","revision"]),
@@ -97,7 +98,32 @@ pub fn call(studio: &mut Studio, name: &str, args: &Value) -> Result<Value> {
     if studio.draft_dirty && !dry_run {
         return Err("Apply or revert the inspector draft before live edits".into());
     }
+    let mut copied = None;
     match name {
+        "duplicate_branch" => {
+            let root = args["node"]
+                .as_str()
+                .ok_or("node must be a UUID")?
+                .parse()?;
+            let mut copy =
+                veylvik_document::editing::copy_branch(studio.project.document.snapshot(), root)?;
+            studio.graph.place_branch_copy(
+                studio.project.document.snapshot(),
+                revision,
+                &mut copy,
+            )?;
+            let mut result = json!({"session":session,"revision":revision,"root":copy.root,"mapping":copy.mapping,"copied_nodes":copy.nodes.len(),"dry_run":dry_run,"valid":true});
+            if dry_run {
+                studio
+                    .project
+                    .document
+                    .prepare(revision, &copy.into_commands())?;
+                return Ok(result);
+            }
+            studio.project.insert_branch(copy)?;
+            result["revision"] = json!(studio.project.document.revision());
+            copied = Some(result);
+        }
         "apply" => {
             let commands: Vec<Command> = serde_json::from_value(args["commands"].clone())?;
             let candidate = studio.project.document.prepare(revision, &commands)?;
@@ -155,9 +181,17 @@ pub fn call(studio: &mut Studio, name: &str, args: &Value) -> Result<Value> {
     studio.playing = false;
     studio.refresh_draft();
     studio.request_preview();
-    Ok(
-        json!({"session":session,"revision":studio.project.document.revision(),"frame":studio.project.frame,"preview_node":studio.project.preview.unwrap_or(studio.project.document.snapshot().output)}),
-    )
+    let mut result = copied.unwrap_or_else(
+        || json!({"session":session,"revision":studio.project.document.revision()}),
+    );
+    result["frame"] = json!(studio.project.frame);
+    result["preview_node"] = json!(
+        studio
+            .project
+            .preview
+            .unwrap_or(studio.project.document.snapshot().output)
+    );
+    Ok(result)
 }
 
 fn read_graph(document: &veylvik_document::Composition, name: &str, args: &Value) -> Result<Value> {

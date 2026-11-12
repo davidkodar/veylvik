@@ -26,6 +26,7 @@ fn build_tools() -> Value {
         tool("nodes","List supported node operations, ports and example payloads.",json!({}),&[]),
         tool("outline_text","Read an explicit font and convert explicitly separated directional/script text lines into portable Path mask geometry. Does not modify the document. Apply the returned operation with a put command. No fallback, automatic wrapping or mixed-direction paragraph layout.",json!({"revision":revision,"font":{"type":"string"},"text":{"type":"string","maxLength":4096},"alignment":{"enum":["left","center","right"]},"line_height":{"type":"number","minimum":1,"maximum":4096},"font_index":{"type":"integer","minimum":0,"maximum":u32::MAX},"font_size":{"type":"number","minimum":1,"maximum":1024},"origin":{"type":"array","minItems":2,"maxItems":2,"items":{"type":"number","minimum":-32768,"maximum":32768}},"direction":{"enum":["left_to_right","right_to_left"]},"language":{"type":"string","minLength":1,"maxLength":64}}),&["revision","font","text"]),
         tool("apply","Validate or commit an atomic batch. dry_run returns the candidate without changing history. Use nodes for payload examples. A put command inserts or replaces a complete node; set_parameter changes one registered parameter, and set_key inserts or updates a scalar key.",json!({"revision":revision,"dry_run":{"type":"boolean"},"commands":{"type":"array","minItems":1,"maxItems":4096,"items":veylvik_document::schema::command()}}),&["revision","commands"]),
+        tool("duplicate_branch","Copy a node and all upstream dependencies as one transaction. Shared ancestors are copied once; returns the copied root and old-to-new ID mapping. Output and assets stay unchanged. Stored layout positions are preserved. Dry-run IDs are provisional and are not reused on commit.",json!({"revision":revision,"node":{"type":"string","format":"uuid"},"dry_run":{"type":"boolean"}}),&["revision","node"]),
         tool("undo","Undo one transaction, with a revision precondition.",json!({"revision":revision}),&["revision"]),
         tool("redo","Redo one transaction, with a revision precondition.",json!({"revision":revision}),&["revision"]),
         tool("save","Atomically save the current composition to an explicit path.",json!({"path":{"type":"string"},"revision":revision}),&["path","revision"]),
@@ -171,6 +172,28 @@ impl Session {
                 Ok(
                     json!({"revision":self.document.revision(),"operation":{"type":"path","geometry":outlined.geometry},"glyph_count":outlined.glyph_count,"advance":outlined.advance,"line_count":outlined.line_count}),
                 )
+            }
+            "duplicate_branch" => {
+                let root = args["node"]
+                    .as_str()
+                    .ok_or("node must be a UUID")?
+                    .parse()?;
+                let dry_run = args
+                    .get("dry_run")
+                    .map(|value| value.as_bool().ok_or("dry_run must be boolean"))
+                    .transpose()?
+                    .unwrap_or(false);
+                let copy = veylvik_document::editing::copy_branch(self.document.snapshot(), root)?;
+                let mut result = json!({"root":copy.root,"mapping":copy.mapping,"copied_nodes":copy.nodes.len(),"dry_run":dry_run});
+                let commands = copy.into_commands();
+                if dry_run {
+                    self.document.prepare(self.document.revision(), &commands)?;
+                } else {
+                    self.document.apply(self.document.revision(), &commands)?;
+                }
+                result["revision"] = json!(self.document.revision());
+                result["valid"] = json!(true);
+                Ok(result)
             }
             "apply" => {
                 let commands: Vec<Command> = serde_json::from_value(args["commands"].clone())?;
@@ -368,6 +391,7 @@ mod tests {
                 "outline_text",
                 "preview_image",
                 "apply",
+                "duplicate_branch",
                 "undo",
                 "redo",
                 "save",
@@ -451,5 +475,66 @@ fn read_graph(document: &veylvik_document::Composition, name: &str, args: &Value
             .map(|value| value.as_str().ok_or("parameter must be a string"))
             .transpose()?;
         Ok(veylvik_document::inspection::node(document, id, parameter)?)
+    }
+}
+
+#[cfg(test)]
+mod branch_tests {
+    use super::*;
+    #[test]
+    fn branch_tool_dry_run_guards_and_history_do_not_initialize_renderer() {
+        let composition = veylvik_document::demo();
+        let root = composition.output;
+        let before = serde_json::to_value(&composition).unwrap();
+        let count = composition.nodes.len();
+        let mut session = Session {
+            document: Document::new(composition).unwrap(),
+            asset_base: std::env::temp_dir(),
+            renderer: None,
+        };
+        let dry = session
+            .call(
+                "duplicate_branch",
+                &json!({"revision":0,"node":root,"dry_run":true}),
+            )
+            .unwrap();
+        assert_eq!(dry["valid"], true);
+        assert_eq!(dry["revision"], 0);
+        assert_eq!(
+            serde_json::to_value(session.document.snapshot()).unwrap(),
+            before
+        );
+        assert_eq!(session.document.history().undo_steps, 0);
+        for args in [
+            json!({"revision":1,"node":root}),
+            json!({"revision":0,"node":root,"dry_run":"true"}),
+            json!({"revision":0,"node":"not-a-uuid"}),
+            json!({"revision":0,"node":veylvik_document::NodeId::new_v4()}),
+            json!({"revision":0,"node":root,"extra":true}),
+        ] {
+            assert!(session.call("duplicate_branch", &args).is_err());
+        }
+        let actual = session
+            .call("duplicate_branch", &json!({"revision":0,"node":root}))
+            .unwrap();
+        assert_eq!(actual["revision"], 1);
+        assert_eq!(actual["dry_run"], false);
+        assert_ne!(actual["root"], dry["root"]);
+        let copied: veylvik_document::NodeId = actual["root"].as_str().unwrap().parse().unwrap();
+        assert!(session.document.snapshot().nodes.contains_key(&copied));
+        assert_eq!(session.document.snapshot().output, root);
+        assert_eq!(
+            session.document.snapshot().nodes.len(),
+            count + actual["copied_nodes"].as_u64().unwrap() as usize
+        );
+        assert_eq!(actual["mapping"][root.to_string()], actual["root"]);
+        session.call("undo", &json!({"revision":1})).unwrap();
+        assert_eq!(
+            serde_json::to_value(session.document.snapshot()).unwrap(),
+            before
+        );
+        session.call("redo", &json!({"revision":2})).unwrap();
+        assert!(session.document.snapshot().nodes.contains_key(&copied));
+        assert!(session.renderer.is_none());
     }
 }
