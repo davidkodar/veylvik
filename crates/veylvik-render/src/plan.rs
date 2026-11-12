@@ -1,7 +1,7 @@
 //! Compile authored nodes to explicit passes, then assign image lifetimes.
 use crate::{Result, error};
 use std::collections::{BTreeMap, BTreeSet};
-use veylvik_document::{Composition, Node, NodeId, Operation, Scalar};
+use veylvik_document::{CompiledScalar, Composition, Node, NodeId, Operation, Scalar};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -89,6 +89,7 @@ pub struct Plan {
     pub(crate) width: u32,
     pub(crate) height: u32,
     pub(crate) nodes: Vec<Node>,
+    pub(crate) curves: Vec<BTreeMap<&'static str, CompiledScalar>>,
     pub(crate) passes: Vec<Pass>,
     pub(crate) output_slot: usize,
     pub(crate) slot_count: usize,
@@ -240,8 +241,24 @@ impl Plan {
                 }
             }
         }
+        let curves = nodes
+            .iter()
+            .map(|node| {
+                node.operation
+                    .descriptor()
+                    .parameters
+                    .iter()
+                    .filter_map(|parameter| {
+                        node.operation.scalar(parameter.name).map(|scalar| {
+                            scalar.compile().map(|compiled| (parameter.name, compiled))
+                        })
+                    })
+                    .collect::<std::result::Result<BTreeMap<_, _>, _>>()
+            })
+            .collect::<std::result::Result<Vec<_>, _>>()?;
         Ok(Self {
             root: output,
+            curves,
             width: composition.width,
             height: composition.height,
             nodes,

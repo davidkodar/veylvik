@@ -588,6 +588,13 @@ Channel mask, then connect that mask to Apply mask to reveal an image through
 an animated procedural texture. Alpha extraction preserves coverage but replaces
 image color with white.
 
+Execution plans freeze scalar animation into immutable `CompiledScalar` snapshots.
+Compilation validates keys and precomputes monotone segments; frame evaluation
+uses exact rational comparisons and binary search without revalidating every key.
+Authoring changes require a new compiled snapshot. The authored curves remain in
+the document for editing and serialization; compiled curve storage is CPU memory
+and is separate from the GPU resource budget.
+
 Compiled preview plans are reused across node renames, layout changes, frame-rate
 changes, and edits to disconnected branches when the preview root, dimensions,
 reachable operations, and input wiring are unchanged. The candidate document is

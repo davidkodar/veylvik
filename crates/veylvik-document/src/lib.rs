@@ -27,7 +27,7 @@ fn fail<T>(message: impl Into<String>) -> Result<T> {
 }
 
 pub mod animation;
-pub use animation::{Interpolation, Key, Scalar, Time};
+pub use animation::{CompiledScalar, Interpolation, Key, Scalar, Time};
 /// All image ports carry scene-linear Rec.709, premultiplied RGBA float pixels.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]

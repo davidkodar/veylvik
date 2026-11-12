@@ -189,8 +189,8 @@ impl Renderer {
         if let Some(region) = request.region {
             region.validate(plan.width, plan.height)?;
         }
-        for node in &plan.nodes {
-            crate::params(node, plan.width, plan.height, request.time)?;
+        for (node, curves) in plan.nodes.iter().zip(&plan.curves) {
+            crate::params(node, curves, plan.width, plan.height, request.time)?;
         }
         let base = (if download {
             plan.working_bytes()

@@ -223,54 +223,76 @@ impl Scalar {
                 .collect(),
         ))
     }
+    /// Freeze a validated curve for repeated sampling without revalidation.
+    pub fn compile(&self) -> Result<CompiledScalar> {
+        let segments = self.monotone_segments()?;
+        Ok(CompiledScalar {
+            scalar: self.clone(),
+            segments,
+        })
+    }
     pub fn at(&self, time: Time) -> Result<f32> {
         self.validate()?;
+        self.sample_validated(time, None)
+    }
+    fn sample_validated(&self, time: Time, segments: Option<&[MonotoneSegment]>) -> Result<f32> {
         time.seconds()?;
-        match self {
-            Self::Constant { value } => Ok(*value),
-            Self::Linear { keys }
-            | Self::Step { keys }
-            | Self::Smooth { keys }
-            | Self::Monotone { keys } => {
-                let first = &keys[0];
-                if !time.compare(first.time)?.is_gt() {
-                    return Ok(first.value);
-                }
-                for (index, pair) in keys.windows(2).enumerate() {
-                    if time.compare(pair[1].time)?.is_eq() {
-                        return Ok(pair[1].value);
-                    }
-                    if time.compare(pair[1].time)?.is_lt() {
-                        if matches!(self, Self::Step { .. }) {
-                            return Ok(pair[0].value);
-                        }
-                        let a = pair[0].time;
-                        let b = pair[1].time;
-                        // Subtract exactly before converting; large adjacent ticks can
-                        // collapse to the same f64 seconds value.
-                        let elapsed = time.ticks as i128 * a.rate as i128
-                            - a.ticks as i128 * time.rate as i128;
-                        let span =
-                            b.ticks as i128 * a.rate as i128 - a.ticks as i128 * b.rate as i128;
-                        let factor =
-                            elapsed as f64 / span as f64 * b.rate as f64 / time.rate as f64;
-                        let factor = factor.clamp(0.0, 1.0);
-                        if matches!(self, Self::Monotone { .. }) {
-                            return monotone_segment(keys, index).sample(factor);
-                        }
-                        let factor = if matches!(self, Self::Smooth { .. }) {
-                            factor * factor * (3.0 - 2.0 * factor)
-                        } else {
-                            factor
-                        };
-                        return Ok((pair[0].value as f64 * (1.0 - factor)
-                            + pair[1].value as f64 * factor)
-                            as f32);
-                    }
-                }
-                Ok(keys.last().unwrap().value)
-            }
+        let Some(keys) = self.keys() else {
+            let Self::Constant { value } = self else {
+                unreachable!()
+            };
+            return Ok(*value);
+        };
+        let upper =
+            keys.partition_point(|key| key.time.compare(time).expect("validated times").is_lt());
+        if upper == 0 {
+            return Ok(keys[0].value);
         }
+        if upper == keys.len() {
+            return Ok(keys[upper - 1].value);
+        }
+        if keys[upper].time.compare(time)?.is_eq() {
+            return Ok(keys[upper].value);
+        }
+        let a = &keys[upper - 1];
+        let b = &keys[upper];
+        if matches!(self, Self::Step { .. }) {
+            return Ok(a.value);
+        }
+        // Subtract exactly before converting; large adjacent ticks can collapse
+        // to the same f64 seconds value.
+        let elapsed =
+            time.ticks as i128 * a.time.rate as i128 - a.time.ticks as i128 * time.rate as i128;
+        let span =
+            b.time.ticks as i128 * a.time.rate as i128 - a.time.ticks as i128 * b.time.rate as i128;
+        let factor =
+            (elapsed as f64 / span as f64 * b.time.rate as f64 / time.rate as f64).clamp(0.0, 1.0);
+        if matches!(self, Self::Monotone { .. }) {
+            let segment = segments.map_or_else(
+                || monotone_segment(keys, upper - 1),
+                |segments| segments[upper - 1],
+            );
+            return segment.sample(factor);
+        }
+        let factor = if matches!(self, Self::Smooth { .. }) {
+            factor * factor * (3.0 - 2.0 * factor)
+        } else {
+            factor
+        };
+        Ok((a.value as f64 * (1.0 - factor) + b.value as f64 * factor) as f32)
+    }
+}
+
+/// Immutable validated animation with binary-search lookup and precomputed
+/// monotone segments. Later authoring changes do not affect this snapshot.
+#[derive(Debug, Clone)]
+pub struct CompiledScalar {
+    scalar: Scalar,
+    segments: Option<Vec<MonotoneSegment>>,
+}
+impl CompiledScalar {
+    pub fn at(&self, time: Time) -> Result<f32> {
+        self.scalar.sample_validated(time, self.segments.as_deref())
     }
 }
 

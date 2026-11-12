@@ -17,7 +17,7 @@ use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 pub use texture::{TextureEncoding, TextureTarget};
 pub use vector::MAX_VECTOR_DIMENSION;
-use veylvik_document::{Node, Operation, Time};
+use veylvik_document::{CompiledScalar, Node, Operation, Time};
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("{0}")]
@@ -36,7 +36,20 @@ struct Params {
     values: [f32; 4],
     extra: [f32; 4],
 }
-fn params(node: &Node, width: u32, height: u32, time: Time) -> Result<Params> {
+fn params(
+    node: &Node,
+    curves: &BTreeMap<&'static str, CompiledScalar>,
+    width: u32,
+    height: u32,
+    time: Time,
+) -> Result<Params> {
+    let sample = |name: &str| -> Result<f32> {
+        curves
+            .get(name)
+            .ok_or_else(|| error("compiled scalar parameter missing"))?
+            .at(time)
+            .map_err(Into::into)
+    };
     let mut p = Params {
         size_op: [width, height, 0, 0],
         values: [0.0; 4],
@@ -50,51 +63,37 @@ fn params(node: &Node, width: u32, height: u32, time: Time) -> Result<Params> {
             p.values = *low;
             p.extra = *high;
         }
-        Operation::Noise { seed, scale } => {
+        Operation::Noise { seed, .. } => {
             p.size_op[3] = *seed;
-            p.values[0] = scale.at(time)?;
+            p.values[0] = sample("scale")?;
         }
-        Operation::FractalNoise {
-            seed,
-            scale,
-            octaves,
-            roughness,
-            evolution,
-        } => {
+        Operation::FractalNoise { seed, .. } => {
             p.size_op[3] = *seed;
             p.values = [
-                scale.at(time)?,
-                octaves.at(time)?.round(),
-                roughness.at(time)?,
-                evolution.at(time)?,
+                sample("scale")?,
+                sample("octaves")?.round(),
+                sample("roughness")?,
+                sample("evolution")?,
             ];
         }
-        Operation::Exposure { stops } => {
-            let stops = stops.at(time)?;
+        Operation::Exposure { .. } => {
+            let stops = sample("stops")?;
             p.values[0] = stops.exp2();
         }
-        Operation::Transform { x, y } | Operation::Displace { x, y } => {
-            p.values[0] = x.at(time)?;
-            p.values[1] = y.at(time)?;
+        Operation::Transform { .. } | Operation::Displace { .. } => {
+            p.values[0] = sample("x")?;
+            p.values[1] = sample("y")?;
         }
-        Operation::Blur { radius } => {
-            p.values[0] = radius.at(time)?;
+        Operation::Blur { .. } => {
+            p.values[0] = sample("radius")?;
         }
-        Operation::Affine {
-            x,
-            y,
-            scale_x,
-            scale_y,
-            rotation,
-            pivot_x,
-            pivot_y,
-        } => {
-            let (sx, sy) = (scale_x.at(time)? as f64, scale_y.at(time)? as f64);
+        Operation::Affine { .. } => {
+            let (sx, sy) = (sample("scale_x")? as f64, sample("scale_y")? as f64);
             if sx.abs() >= 1e-6_f32 as f64 && sy.abs() >= 1e-6_f32 as f64 {
-                let radians = (rotation.at(time)? as f64).rem_euclid(360.0).to_radians();
+                let radians = (sample("rotation")? as f64).rem_euclid(360.0).to_radians();
                 let (sin, cos) = radians.sin_cos();
-                let (px, py) = (pivot_x.at(time)? as f64, pivot_y.at(time)? as f64);
-                let (tx, ty) = (px + x.at(time)? as f64, py + y.at(time)? as f64);
+                let (px, py) = (sample("pivot_x")? as f64, sample("pivot_y")? as f64);
+                let (tx, ty) = (px + sample("x")? as f64, py + sample("y")? as f64);
                 let m = [cos / sx, sin / sx, -sin / sy, cos / sy];
                 p.values = m.map(|v| v as f32);
                 p.extra = [
@@ -105,20 +104,14 @@ fn params(node: &Node, width: u32, height: u32, time: Time) -> Result<Params> {
                 ];
             }
         }
-        Operation::Ellipse {
-            x,
-            y,
-            radius_x,
-            radius_y,
-            feather,
-        } => {
+        Operation::Ellipse { .. } => {
             p.values = [
-                x.at(time)?,
-                y.at(time)?,
-                radius_x.at(time)?,
-                radius_y.at(time)?,
+                sample("x")?,
+                sample("y")?,
+                sample("radius_x")?,
+                sample("radius_y")?,
             ];
-            p.extra[0] = feather.at(time)?.max(1.0);
+            p.extra[0] = sample("feather")?.max(1.0);
         }
         Operation::Path { .. } => {
             p.values = [width as f32, height as f32, 0.0, 0.0];
@@ -127,9 +120,9 @@ fn params(node: &Node, width: u32, height: u32, time: Time) -> Result<Params> {
         Operation::ChannelMask { channel } => {
             p.size_op[3] = *channel as u32;
         }
-        Operation::Blend { mode, opacity } => {
+        Operation::Blend { mode, .. } => {
             p.size_op[3] = *mode as u32;
-            p.values[0] = opacity.at(time)?;
+            p.values[0] = sample("opacity")?;
         }
         Operation::Merge {} | Operation::Mask {} | Operation::Image { .. } => {}
     }
@@ -401,7 +394,8 @@ impl Renderer {
         let mut evaluated: Vec<_> = plan
             .nodes
             .iter()
-            .map(|n| params(n, plan.width, plan.height, time))
+            .zip(&plan.curves)
+            .map(|(n, curves)| params(n, curves, plan.width, plan.height, time))
             .collect::<Result<_>>()?;
         for (node, p) in plan.nodes.iter().zip(&mut evaluated) {
             if let Operation::Image { asset } = &node.operation {

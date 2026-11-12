@@ -315,3 +315,56 @@ fn monotone_segments_handle_extreme_uneven_rational_spacing() {
         }
     }
 }
+
+#[test]
+fn compiled_curves_are_validated_immutable_snapshots_with_exact_samples() {
+    for mode in [
+        Interpolation::Linear,
+        Interpolation::Step,
+        Interpolation::Smooth,
+        Interpolation::Monotone,
+    ] {
+        let mut scalar = curve(mode);
+        let compiled = scalar.compile().unwrap();
+        for tick in -20..=200 {
+            let time = Time::new(tick, 24).unwrap();
+            assert_eq!(
+                compiled.at(time).unwrap().to_bits(),
+                scalar.at(time).unwrap().to_bits()
+            );
+        }
+        let exact = Time::new(2, 1).unwrap();
+        scalar.set_key_at(exact, -3.0).unwrap();
+        assert_eq!(compiled.at(exact).unwrap(), 8.0);
+        assert_eq!(scalar.compile().unwrap().at(exact).unwrap(), -3.0);
+        assert!(compiled.at(Time { ticks: 0, rate: 0 }).is_err());
+        scalar.keys_mut().unwrap()[1].time.rate = 0;
+        assert!(scalar.compile().is_err());
+    }
+    let constant = Scalar::from(-0.0).compile().unwrap();
+    assert_eq!(
+        constant.at(Time::new(0, 1).unwrap()).unwrap().to_bits(),
+        (-0.0_f32).to_bits()
+    );
+    assert!(Scalar::from(f32::NAN).compile().is_err());
+    let extreme = Scalar::Monotone {
+        keys: vec![
+            Key {
+                time: Time::new(i64::MAX - 2, u32::MAX).unwrap(),
+                value: -1.0,
+            },
+            Key {
+                time: Time::new(i64::MAX, u32::MAX).unwrap(),
+                value: 1.0,
+            },
+        ],
+    }
+    .compile()
+    .unwrap();
+    assert_eq!(
+        extreme
+            .at(Time::new(i64::MAX - 1, u32::MAX).unwrap())
+            .unwrap(),
+        0.0
+    );
+}
