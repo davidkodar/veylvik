@@ -164,7 +164,53 @@ pub static IMAGE: NodeType = NodeType {
     inputs: &[],
     parameters: &[other("asset", ParameterKind::Asset, "asset key")],
 };
-pub static TYPES: &[&NodeType] = &[&SOLID, &NOISE, &EXPOSURE, &TRANSFORM, &BLUR, &MERGE, &IMAGE];
+pub static AFFINE: NodeType = NodeType {
+    type_id: "affine",
+    version: 1,
+    label: "Affine transform",
+    description: "Scale around a pixel-space pivot, rotate clockwise, then translate; bilinear sampling and transparent borders. Scale magnitude below 0.000001 produces transparent output.",
+    inputs: &["image"],
+    parameters: &[
+        scalar("x", "pixels", -1_000_000.0, 1_000_000.0, 0.0),
+        scalar("y", "pixels", -1_000_000.0, 1_000_000.0, 0.0),
+        scalar("scale_x", "factor", -1000.0, 1000.0, 1.0),
+        scalar("scale_y", "factor", -1000.0, 1000.0, 1.0),
+        scalar(
+            "rotation",
+            "degrees clockwise",
+            -1_000_000.0,
+            1_000_000.0,
+            0.0,
+        ),
+        scalar("pivot_x", "pixels", -1_000_000.0, 1_000_000.0, 0.0),
+        scalar("pivot_y", "pixels", -1_000_000.0, 1_000_000.0, 0.0),
+    ],
+};
+pub static ELLIPSE: NodeType = NodeType {
+    type_id: "ellipse",
+    version: 1,
+    label: "Ellipse mask",
+    description: "White premultiplied ellipse coverage. Feather uses normalized radial distance scaled by the smaller radius, with at least a one-pixel transition. Zero radius is transparent.",
+    inputs: &[],
+    parameters: &[
+        scalar("x", "pixels", -1_000_000.0, 1_000_000.0, 320.0),
+        scalar("y", "pixels", -1_000_000.0, 1_000_000.0, 180.0),
+        scalar("radius_x", "pixels", 0.0, 8192.0, 100.0),
+        scalar("radius_y", "pixels", 0.0, 8192.0, 100.0),
+        scalar("feather", "pixels", 0.0, 8192.0, 1.0),
+    ],
+};
+pub static MASK: NodeType = NodeType {
+    type_id: "mask",
+    version: 1,
+    label: "Apply mask",
+    description: "Multiply all premultiplied image channels by mask alpha; mask RGB is ignored.",
+    inputs: &["image", "mask"],
+    parameters: &[],
+};
+pub static TYPES: &[&NodeType] = &[
+    &SOLID, &NOISE, &EXPOSURE, &TRANSFORM, &BLUR, &MERGE, &IMAGE, &AFFINE, &ELLIPSE, &MASK,
+];
 pub fn operation_schema() -> Value {
     json!({"oneOf":TYPES.iter().map(|node|node.schema()).collect::<Vec<_>>()})
 }

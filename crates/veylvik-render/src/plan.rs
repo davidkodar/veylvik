@@ -14,9 +14,12 @@ pub enum Kernel {
     BlurVertical,
     Merge,
     Image,
+    Affine,
+    Ellipse,
+    Mask,
 }
 impl Kernel {
-    pub(crate) const ALL: [Self; 8] = [
+    pub(crate) const ALL: [Self; 11] = [
         Self::Solid,
         Self::Noise,
         Self::Exposure,
@@ -25,6 +28,9 @@ impl Kernel {
         Self::BlurVertical,
         Self::Merge,
         Self::Image,
+        Self::Affine,
+        Self::Ellipse,
+        Self::Mask,
     ];
     pub(crate) fn entry(self) -> &'static str {
         match self {
@@ -36,6 +42,9 @@ impl Kernel {
             Self::BlurVertical => "blur_vertical",
             Self::Merge => "merge",
             Self::Image => "image",
+            Self::Affine => "affine",
+            Self::Ellipse => "ellipse",
+            Self::Mask => "mask",
         }
     }
 }
@@ -101,6 +110,9 @@ impl Plan {
                 Operation::Exposure { .. } => Kernel::Exposure,
                 Operation::Transform { .. } => Kernel::Transform,
                 Operation::Merge => Kernel::Merge,
+                Operation::Affine { .. } => Kernel::Affine,
+                Operation::Ellipse { .. } => Kernel::Ellipse,
+                Operation::Mask => Kernel::Mask,
                 Operation::Image { asset } => {
                     inputs[0] = Input::Asset(asset.clone());
                     Kernel::Image

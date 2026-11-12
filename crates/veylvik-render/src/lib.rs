@@ -55,7 +55,47 @@ fn params(node: &Node, width: u32, height: u32, time: Time) -> Result<Params> {
         Operation::Blur { radius } => {
             p.values[0] = radius.at(time)?;
         }
-        Operation::Merge | Operation::Image { .. } => {}
+        Operation::Affine {
+            x,
+            y,
+            scale_x,
+            scale_y,
+            rotation,
+            pivot_x,
+            pivot_y,
+        } => {
+            let (sx, sy) = (scale_x.at(time)? as f64, scale_y.at(time)? as f64);
+            if sx.abs() >= 1e-6_f32 as f64 && sy.abs() >= 1e-6_f32 as f64 {
+                let radians = (rotation.at(time)? as f64).rem_euclid(360.0).to_radians();
+                let (sin, cos) = radians.sin_cos();
+                let (px, py) = (pivot_x.at(time)? as f64, pivot_y.at(time)? as f64);
+                let (tx, ty) = (px + x.at(time)? as f64, py + y.at(time)? as f64);
+                let m = [cos / sx, sin / sx, -sin / sy, cos / sy];
+                p.values = m.map(|v| v as f32);
+                p.extra = [
+                    (px - m[0] * tx - m[1] * ty) as f32,
+                    (py - m[2] * tx - m[3] * ty) as f32,
+                    1.0,
+                    0.0,
+                ];
+            }
+        }
+        Operation::Ellipse {
+            x,
+            y,
+            radius_x,
+            radius_y,
+            feather,
+        } => {
+            p.values = [
+                x.at(time)?,
+                y.at(time)?,
+                radius_x.at(time)?,
+                radius_y.at(time)?,
+            ];
+            p.extra[0] = feather.at(time)?.max(1.0);
+        }
+        Operation::Merge | Operation::Mask | Operation::Image { .. } => {}
     }
     Ok(p)
 }

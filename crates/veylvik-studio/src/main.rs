@@ -161,7 +161,7 @@ impl Studio {
             return true;
         }
         match self.project.apply(&[Command::Put {
-            node: self.draft.clone(),
+            node: Box::new(self.draft.clone()),
         }]) {
             Ok(()) => {
                 self.refresh_draft();
@@ -285,31 +285,36 @@ impl Studio {
                 self.history(true);
             }
             ui.menu_button("Add node", |ui| {
-                for (label, operation) in [
-                    (
-                        "Solid",
-                        Operation::Solid {
-                            color: [0.2, 0.4, 1.0, 1.0],
-                        },
-                    ),
-                    (
-                        "Noise",
-                        Operation::Noise {
-                            seed: 42,
-                            scale: 12.0.into(),
-                        },
-                    ),
-                    ("Exposure", Operation::Exposure { stops: 0.0.into() }),
-                    (
-                        "Transform",
-                        Operation::Transform {
-                            x: 0.0.into(),
-                            y: 0.0.into(),
-                        },
-                    ),
-                    ("Blur", Operation::Blur { radius: 4.0.into() }),
-                    ("Merge", Operation::Merge),
-                ] {
+                for kind in veylvik_document::registry::TYPES {
+                    if kind.type_id == "image" {
+                        continue;
+                    }
+                    let label = kind.label;
+                    let mut operation: Operation = serde_json::from_value(kind.default_operation())
+                        .expect("validated registry defaults");
+                    let doc = self.project.document.snapshot();
+                    match &mut operation {
+                        Operation::Ellipse {
+                            x,
+                            y,
+                            radius_x,
+                            radius_y,
+                            ..
+                        } => {
+                            *x = (doc.width as f32 * 0.5).into();
+                            *y = (doc.height as f32 * 0.5).into();
+                            let radius = doc.width.min(doc.height) as f32 * 0.25;
+                            *radius_x = radius.into();
+                            *radius_y = radius.into();
+                        }
+                        Operation::Affine {
+                            pivot_x, pivot_y, ..
+                        } => {
+                            *pivot_x = (doc.width as f32 * 0.5).into();
+                            *pivot_y = (doc.height as f32 * 0.5).into();
+                        }
+                        _ => {}
+                    }
                     if ui.button(label).clicked() && self.can_change_selection() {
                         match self.project.add(operation) {
                             Ok(_) => {
@@ -351,60 +356,40 @@ impl Studio {
                     });
                 }
             }
-            Operation::Noise { seed, scale } => {
+            Operation::Noise { seed, .. } => {
                 ui.horizontal(|ui| {
                     ui.label("Seed");
                     self.draft_dirty |= ui.add(egui::DragValue::new(seed)).changed();
                 });
-                self.draft_dirty |= scalar(
-                    ui,
-                    "Cell size",
-                    scale,
-                    bounds(&veylvik_document::registry::NOISE, "scale"),
-                    time,
-                );
-            }
-            Operation::Exposure { stops } => {
-                self.draft_dirty |= scalar(
-                    ui,
-                    "Exposure (stops)",
-                    stops,
-                    bounds(&veylvik_document::registry::EXPOSURE, "stops"),
-                    time,
-                )
-            }
-            Operation::Transform { x, y } => {
-                self.draft_dirty |= scalar(
-                    ui,
-                    "X (pixels)",
-                    x,
-                    bounds(&veylvik_document::registry::TRANSFORM, "x"),
-                    time,
-                );
-                self.draft_dirty |= scalar(
-                    ui,
-                    "Y (pixels)",
-                    y,
-                    bounds(&veylvik_document::registry::TRANSFORM, "y"),
-                    time,
-                );
-            }
-            Operation::Blur { radius } => {
-                self.draft_dirty |= scalar(
-                    ui,
-                    "Radius (pixels)",
-                    radius,
-                    bounds(&veylvik_document::registry::BLUR, "radius"),
-                    time,
-                )
             }
             Operation::Merge => {
                 ui.label("Foreground over background");
             }
+            Operation::Mask => {
+                ui.label("Image multiplied by mask alpha");
+            }
+            Operation::Affine { .. }
+            | Operation::Ellipse { .. }
+            | Operation::Exposure { .. }
+            | Operation::Transform { .. }
+            | Operation::Blur { .. } => {}
             Operation::Image { asset } => {
                 ui.label("Source image");
                 ui.label(asset.as_str());
                 ui.label("Use the import command to create image compositions.");
+            }
+        }
+        let kind = self.draft.operation.descriptor();
+        for parameter in kind.parameters {
+            if let Some(value) = self.draft.operation.scalar_mut(parameter.name) {
+                let label = format!("{} ({})", parameter.name.replace('_', " "), parameter.unit);
+                self.draft_dirty |= scalar(
+                    ui,
+                    &label,
+                    value,
+                    parameter.min.unwrap()..=parameter.max.unwrap(),
+                    time,
+                );
             }
         }
         ui.separator();
@@ -677,17 +662,6 @@ impl Studio {
                 });
         }
     }
-}
-fn bounds(
-    kind: &veylvik_document::registry::NodeType,
-    name: &str,
-) -> std::ops::RangeInclusive<f32> {
-    let parameter = kind
-        .parameters
-        .iter()
-        .find(|parameter| parameter.name == name)
-        .unwrap();
-    parameter.min.unwrap()..=parameter.max.unwrap()
 }
 fn scalar(
     ui: &mut egui::Ui,

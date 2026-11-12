@@ -164,6 +164,14 @@ fn out_of_range_animated_values_fail_before_commit() {
         },
         &[("image", doc.snapshot().output)],
     );
-    assert!(doc.apply(0, &[Command::Put { node }]).is_err());
+    assert!(
+        doc.apply(
+            0,
+            &[Command::Put {
+                node: Box::new(node)
+            }]
+        )
+        .is_err()
+    );
     assert_eq!(doc.revision(), 0);
 }

@@ -38,6 +38,8 @@ transform dependencies match a full render. This does not yet reduce GPU work.
 ./target/release/veylvik open /tmp/example.veylvik
 # Or start an unsaved demo:
 ./target/release/veylvik open
+# Save the editable ribbon animation as a project:
+./target/release/veylvik demo /tmp/ribbons.veylvik --motion
 ```
 
 The viewer consumes GPU-resident frames on the same Vulkan device as the UI.
@@ -84,10 +86,20 @@ ports, and an output node. Supported operations:
 | Blur | image | Box radius, 0–32 pixels, rounded to an integer |
 | Merge | background, foreground | Premultiplied foreground-over-background |
 | Image | none | Asset key; native image size, top-left anchor, transparent padding |
+| Affine | image | Translation, signed X/Y scale, clockwise rotation, pixel-space pivot |
+| Ellipse | none | Center, X/Y radii, and radial feather in pixels |
+| Mask | image, mask | Multiply premultiplied image by mask alpha; ignore mask RGB |
 
 Scalar parameters accept constants or linearly interpolated keyframes. Outside
 the key range they hold the nearest endpoint. Input boundaries are transparent
 black. Image dimensions are 1–8192 per axis, subject to GPU limits and budget.
+Affine transforms scale around the pivot, rotate clockwise, then translate;
+integer coordinates address pixel centers. Negative scales flip the image and
+scale magnitudes below 0.000001 produce transparent output. Ellipse feather uses
+normalized radial distance scaled by the smaller radius, with a minimum one-pixel
+transition; it is not an exact signed-distance feather on noncircular ellipses.
+Zero ellipse radius produces transparent output. All these scalar controls can
+be animated, and their registry supplies both inspector bounds and MCP schemas.
 
 Intermediate images use scene-linear Rec.709 premultiplied RGBA32F. Values above
 one are preserved. PNG export unpremultiplies, clips to SDR, and applies sRGB

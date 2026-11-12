@@ -134,13 +134,44 @@ impl Scalar {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Operation {
-    Solid { color: [f32; 4] },
-    Noise { seed: u32, scale: Scalar },
-    Exposure { stops: Scalar },
-    Transform { x: Scalar, y: Scalar },
-    Blur { radius: Scalar },
+    Solid {
+        color: [f32; 4],
+    },
+    Noise {
+        seed: u32,
+        scale: Scalar,
+    },
+    Exposure {
+        stops: Scalar,
+    },
+    Transform {
+        x: Scalar,
+        y: Scalar,
+    },
+    Blur {
+        radius: Scalar,
+    },
     Merge,
-    Image { asset: String },
+    Image {
+        asset: String,
+    },
+    Affine {
+        x: Scalar,
+        y: Scalar,
+        scale_x: Scalar,
+        scale_y: Scalar,
+        rotation: Scalar,
+        pivot_x: Scalar,
+        pivot_y: Scalar,
+    },
+    Ellipse {
+        x: Scalar,
+        y: Scalar,
+        radius_x: Scalar,
+        radius_y: Scalar,
+        feather: Scalar,
+    },
+    Mask,
 }
 impl Operation {
     pub fn descriptor(&self) -> &'static registry::NodeType {
@@ -152,6 +183,9 @@ impl Operation {
             Self::Blur { .. } => &registry::BLUR,
             Self::Merge => &registry::MERGE,
             Self::Image { .. } => &registry::IMAGE,
+            Self::Affine { .. } => &registry::AFFINE,
+            Self::Ellipse { .. } => &registry::ELLIPSE,
+            Self::Mask => &registry::MASK,
         }
     }
     pub fn inputs(&self) -> &'static [&'static str] {
@@ -164,6 +198,36 @@ impl Operation {
             (Self::Transform { x, .. }, "x") => Some(x),
             (Self::Transform { y, .. }, "y") => Some(y),
             (Self::Blur { radius }, "radius") => Some(radius),
+            (Self::Affine { x, .. } | Self::Ellipse { x, .. }, "x") => Some(x),
+            (Self::Affine { y, .. } | Self::Ellipse { y, .. }, "y") => Some(y),
+            (Self::Affine { scale_x, .. }, "scale_x") => Some(scale_x),
+            (Self::Affine { scale_y, .. }, "scale_y") => Some(scale_y),
+            (Self::Affine { rotation, .. }, "rotation") => Some(rotation),
+            (Self::Affine { pivot_x, .. }, "pivot_x") => Some(pivot_x),
+            (Self::Affine { pivot_y, .. }, "pivot_y") => Some(pivot_y),
+            (Self::Ellipse { radius_x, .. }, "radius_x") => Some(radius_x),
+            (Self::Ellipse { radius_y, .. }, "radius_y") => Some(radius_y),
+            (Self::Ellipse { feather, .. }, "feather") => Some(feather),
+            _ => None,
+        }
+    }
+    pub fn scalar_mut(&mut self, name: &str) -> Option<&mut Scalar> {
+        match (self, name) {
+            (Self::Noise { scale, .. }, "scale") => Some(scale),
+            (Self::Exposure { stops }, "stops") => Some(stops),
+            (Self::Transform { x, .. }, "x") => Some(x),
+            (Self::Transform { y, .. }, "y") => Some(y),
+            (Self::Blur { radius }, "radius") => Some(radius),
+            (Self::Affine { x, .. } | Self::Ellipse { x, .. }, "x") => Some(x),
+            (Self::Affine { y, .. } | Self::Ellipse { y, .. }, "y") => Some(y),
+            (Self::Affine { scale_x, .. }, "scale_x") => Some(scale_x),
+            (Self::Affine { scale_y, .. }, "scale_y") => Some(scale_y),
+            (Self::Affine { rotation, .. }, "rotation") => Some(rotation),
+            (Self::Affine { pivot_x, .. }, "pivot_x") => Some(pivot_x),
+            (Self::Affine { pivot_y, .. }, "pivot_y") => Some(pivot_y),
+            (Self::Ellipse { radius_x, .. }, "radius_x") => Some(radius_x),
+            (Self::Ellipse { radius_y, .. }, "radius_y") => Some(radius_y),
+            (Self::Ellipse { feather, .. }, "feather") => Some(feather),
             _ => None,
         }
     }
@@ -336,7 +400,7 @@ pub fn atomic_write(path: &Path, data: &[u8]) -> Result<()> {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "command", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Command {
-    Put { node: Node },
+    Put { node: Box<Node> },
     Remove { id: NodeId },
     Output { id: NodeId },
     Resize { width: u32, height: u32 },
@@ -382,7 +446,7 @@ impl Document {
         for command in commands {
             match command {
                 Command::Put { node } => {
-                    next.nodes.insert(node.id, node.clone());
+                    next.nodes.insert(node.id, node.as_ref().clone());
                 }
                 Command::Remove { id } => {
                     if next.nodes.remove(id).is_none() {
@@ -496,5 +560,127 @@ pub fn demo() -> Composition {
             .into_iter()
             .map(|n| (n.id, n))
             .collect(),
+    }
+}
+
+/// Editable motion-graphics composition using masks, HDR color, and affine animation.
+pub fn motion_demo() -> Composition {
+    let mut nodes = Vec::new();
+    let mut add = |label: &str, operation: Operation, inputs: &[(&str, NodeId)]| {
+        let node = Node::new(label, operation, inputs);
+        let id = node.id;
+        nodes.push(node);
+        id
+    };
+    let mut output = add(
+        "Midnight",
+        Operation::Solid {
+            color: [0.004, 0.008, 0.022, 1.0],
+        },
+        &[],
+    );
+    for (name, color, x, y, rx, ry, feather, angle) in [
+        (
+            "Blue atmosphere",
+            [0.05, 0.15, 1.2, 0.65],
+            530.0,
+            280.0,
+            200.0,
+            130.0,
+            140.0,
+            12.0,
+        ),
+        (
+            "Rose ribbon",
+            [1.8, 0.025, 0.3, 0.8],
+            490.0,
+            260.0,
+            245.0,
+            45.0,
+            60.0,
+            32.0,
+        ),
+        (
+            "Cyan ribbon",
+            [0.015, 1.2, 1.8, 0.85],
+            460.0,
+            270.0,
+            280.0,
+            38.0,
+            45.0,
+            -27.0,
+        ),
+        (
+            "Silver core",
+            [1.8, 2.4, 2.8, 0.9],
+            440.0,
+            260.0,
+            180.0,
+            5.0,
+            8.0,
+            -27.0,
+        ),
+    ] {
+        let color = add(&format!("{name} color"), Operation::Solid { color }, &[]);
+        let shape = add(
+            &format!("{name} shape"),
+            Operation::Ellipse {
+                x: x.into(),
+                y: y.into(),
+                radius_x: rx.into(),
+                radius_y: ry.into(),
+                feather: feather.into(),
+            },
+            &[],
+        );
+        let masked = add(name, Operation::Mask, &[("image", color), ("mask", shape)]);
+        let motion = add(
+            &format!("{name} motion"),
+            Operation::Affine {
+                x: 0.0.into(),
+                y: 0.0.into(),
+                scale_x: 1.0.into(),
+                scale_y: 1.0.into(),
+                rotation: Scalar::Linear {
+                    keys: vec![
+                        Key {
+                            time: Time { ticks: 0, rate: 1 },
+                            value: angle,
+                        },
+                        Key {
+                            time: Time { ticks: 2, rate: 1 },
+                            value: -angle,
+                        },
+                        Key {
+                            time: Time { ticks: 4, rate: 1 },
+                            value: angle,
+                        },
+                    ],
+                },
+                pivot_x: 480.0.into(),
+                pivot_y: 270.0.into(),
+            },
+            &[("image", masked)],
+        );
+        output = add(
+            &format!("{name} over"),
+            Operation::Merge,
+            &[("background", output), ("foreground", motion)],
+        );
+    }
+    let output = add(
+        "Composite",
+        Operation::Exposure {
+            stops: (-0.5).into(),
+        },
+        &[("image", output)],
+    );
+    Composition {
+        schema: 1,
+        width: 960,
+        height: 540,
+        frame_rate: Time { ticks: 24, rate: 1 },
+        nodes: nodes.into_iter().map(|node| (node.id, node)).collect(),
+        output,
     }
 }

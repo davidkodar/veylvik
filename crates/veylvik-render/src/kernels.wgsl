@@ -29,13 +29,43 @@ fn exposure(@builtin(global_invocation_id) gid:vec3<u32>) {
     if !inside(gid) {return;}
     let i=index(gid);result[i]=vec4<f32>(source[i].rgb*p.values.x,source[i].a);
 }
+fn bilinear(pos:vec2<f32>)->vec4<f32> {
+    // Reject far-away coordinates before float-to-int conversion or adding one.
+    if any(pos < vec2<f32>(-1.0)) || any(pos > vec2<f32>(p.size_op.xy)) {return vec4<f32>(0.0);}
+    let base=vec2<i32>(floor(pos));let f=fract(pos);
+    let a=mix(sample_source(base.x,base.y),sample_source(base.x+1,base.y),f.x);
+    let b=mix(sample_source(base.x,base.y+1),sample_source(base.x+1,base.y+1),f.x);
+    return mix(a,b,f.y);
+}
 @compute @workgroup_size(8,8)
 fn transform(@builtin(global_invocation_id) gid:vec3<u32>) {
     if !inside(gid) {return;}
-    let pos=vec2<f32>(gid.xy)-p.values.xy;let base=vec2<i32>(floor(pos));let f=fract(pos);
-    let a=mix(sample_source(base.x,base.y),sample_source(base.x+1,base.y),f.x);
-    let b=mix(sample_source(base.x,base.y+1),sample_source(base.x+1,base.y+1),f.x);
-    result[index(gid)]=mix(a,b,f.y);
+    result[index(gid)]=bilinear(vec2<f32>(gid.xy)-p.values.xy);
+}
+@compute @workgroup_size(8,8)
+fn affine(@builtin(global_invocation_id) gid:vec3<u32>) {
+    if !inside(gid) {return;}
+    var color=vec4<f32>(0.0);
+    if p.extra.z>0.0 {
+        let pos=vec2<f32>(gid.xy);
+        color=bilinear(vec2<f32>(dot(p.values.xy,pos),dot(p.values.zw,pos))+p.extra.xy);
+    }
+    result[index(gid)]=color;
+}
+@compute @workgroup_size(8,8)
+fn ellipse(@builtin(global_invocation_id) gid:vec3<u32>) {
+    if !inside(gid) {return;}
+    var alpha=0.0;
+    if p.values.z>0.0 && p.values.w>0.0 {
+        let distance=(length((vec2<f32>(gid.xy)-p.values.xy)/p.values.zw)-1.0)*min(p.values.z,p.values.w);
+        alpha=1.0-smoothstep(-p.extra.x*0.5,p.extra.x*0.5,distance);
+    }
+    result[index(gid)]=vec4<f32>(alpha);
+}
+@compute @workgroup_size(8,8)
+fn mask(@builtin(global_invocation_id) gid:vec3<u32>) {
+    if !inside(gid) {return;}
+    let i=index(gid);result[i]=source[i]*clamp(second[i].a,0.0,1.0);
 }
 fn blur_axis(gid:vec3<u32>,axis:vec2<i32>)->vec4<f32> {
     let radius=i32(round(p.values.x));var total=vec4<f32>(0.0);

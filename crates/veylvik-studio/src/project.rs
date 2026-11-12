@@ -28,7 +28,11 @@ impl Project {
                 Some(path),
             )
         } else {
-            (veylvik_document::demo(), std::env::current_dir()?, None)
+            (
+                veylvik_document::motion_demo(),
+                std::env::current_dir()?,
+                None,
+            )
         };
         let selected = composition.output;
         let mut project = Self {
@@ -119,7 +123,9 @@ impl Project {
             .collect();
         let node = Node::new(operation.descriptor().label, operation.clone(), &ports);
         let id = node.id;
-        self.apply(&[Command::Put { node }])?;
+        self.apply(&[Command::Put {
+            node: Box::new(node),
+        }])?;
         self.selected = id;
         self.preview = Some(id);
         Ok(id)
@@ -148,7 +154,13 @@ mod tests {
         let revision = project.document.revision();
         let mut node = project.document.snapshot().nodes[&added].clone();
         node.inputs.insert("image".into(), added);
-        assert!(project.apply(&[Command::Put { node }]).is_err());
+        assert!(
+            project
+                .apply(&[Command::Put {
+                    node: Box::new(node)
+                }])
+                .is_err()
+        );
         assert_eq!(project.document.revision(), revision);
         project.undo(false).unwrap();
         assert_eq!(project.selected, output);
@@ -169,7 +181,11 @@ mod plan_tests {
         assert!(Arc::ptr_eq(&first, &project.plan().unwrap()));
         let mut node = project.document.snapshot().nodes[&project.selected].clone();
         node.label = "Changed".into();
-        project.apply(&[Command::Put { node }]).unwrap();
+        project
+            .apply(&[Command::Put {
+                node: Box::new(node),
+            }])
+            .unwrap();
         assert!(!Arc::ptr_eq(&first, &project.plan().unwrap()));
     }
 }

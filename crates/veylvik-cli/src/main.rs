@@ -4,7 +4,7 @@ use std::path::Path;
 use veylvik_document::{Composition, Node, Operation, Time};
 use veylvik_render::{Plan, Region, RenderRequest, Renderer};
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
-const USAGE: &str = "usage: veylvik open [FILE] | demo FILE | import IMAGE.png FILE | nodes | check FILE | render FILE OUTPUT.png [TICKS RATE] [--node UUID] [--crop X Y WIDTH HEIGHT] | mcp FILE";
+const USAGE: &str = "usage: veylvik open [FILE] | demo FILE [--motion] | import IMAGE.png FILE | nodes | check FILE | render FILE OUTPUT.png [TICKS RATE] [--node UUID] [--crop X Y WIDTH HEIGHT] | mcp FILE";
 fn run() -> Result<()> {
     let args: Vec<String> = std::env::args().collect();
     match args.get(1).map(String::as_str) {
@@ -27,8 +27,13 @@ fn run() -> Result<()> {
             std::io::stdout().lock(),
         )?,
         Some("nodes") if args.len() == 2 => println!("{}", veylvik_document::registry::catalog()),
-        Some("demo") if args.len() == 3 => {
-            veylvik_document::demo().save(Path::new(&args[2]))?;
+        Some("demo") if args.len() == 3 || (args.len() == 4 && args[3] == "--motion") => {
+            let composition = if args.len() == 4 {
+                veylvik_document::motion_demo()
+            } else {
+                veylvik_document::demo()
+            };
+            composition.save(Path::new(&args[2]))?;
             println!("{}", serde_json::json!({"saved":args[2]}));
         }
         Some("import") if args.len() == 4 => {

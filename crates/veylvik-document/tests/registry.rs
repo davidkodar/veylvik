@@ -35,6 +35,19 @@ fn scalar_registry_bounds_drive_document_validation() {
             if !matches!(parameter.kind, ParameterKind::Scalar) {
                 continue;
             }
+            let mut editable: Operation =
+                serde_json::from_value(descriptor.default_operation()).unwrap();
+            *editable
+                .scalar_mut(parameter.name)
+                .expect("UI scalar accessor") = parameter.min.unwrap().into();
+            assert_eq!(
+                editable
+                    .scalar(parameter.name)
+                    .unwrap()
+                    .at(veylvik_document::Time::new(0, 1).unwrap())
+                    .unwrap(),
+                parameter.min.unwrap()
+            );
             for bound in [parameter.min.unwrap(), parameter.max.unwrap()] {
                 let mut value = descriptor.default_operation();
                 value[parameter.name]["value"] = serde_json::json!(bound);
