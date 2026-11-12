@@ -80,6 +80,44 @@ impl Document {
         let mut next = self.composition.clone();
         for command in commands {
             match command {
+                Command::PutGroup { group } => {
+                    next.groups.insert(group.id, group.as_ref().clone());
+                }
+                Command::Ungroup { id } => {
+                    if next.groups.remove(id).is_none() {
+                        return fail("group does not exist");
+                    }
+                }
+                Command::SetControl { id, control, value } => {
+                    let exposed = next
+                        .groups
+                        .get(id)
+                        .and_then(|g| g.controls.get(control))
+                        .ok_or_else(|| Error("unknown group control".into()))?
+                        .clone();
+                    crate::groups::set_parameter(
+                        &mut next,
+                        exposed.node,
+                        &exposed.parameter,
+                        value.clone(),
+                    )?;
+                }
+                Command::ConnectGroup { id, input, source } => {
+                    let ports = next
+                        .groups
+                        .get(id)
+                        .and_then(|g| g.inputs.get(input))
+                        .ok_or_else(|| Error("unknown group input".into()))?
+                        .targets
+                        .clone();
+                    for target in ports {
+                        next.nodes
+                            .get_mut(&target.node)
+                            .ok_or_else(|| Error("missing group member".into()))?
+                            .inputs
+                            .insert(target.port, *source);
+                    }
+                }
                 Command::Put { node } => {
                     next.nodes.insert(node.id, node.as_ref().clone());
                 }

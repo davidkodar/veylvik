@@ -18,12 +18,21 @@ fn index(doc: &Composition) -> Vec<Entry> {
             if chars.next().is_some() {
                 label.push('…');
             }
+            let group = doc.groups.values().find(|g| g.output == node.id);
+            if let Some(group) = group {
+                label = group.label.clone();
+            }
             Entry {
                 id: node.id,
                 label,
-                kind: kind.label,
+                kind: if group.is_some() {
+                    "Effect group"
+                } else {
+                    kind.label
+                },
                 search: format!(
-                    "{} {} {} {}",
+                    "{} {} {} {} {}",
+                    group.map_or("", |g| g.label.as_str()),
                     node.label,
                     kind.type_id.replace('_', " "),
                     kind.label,

@@ -54,6 +54,7 @@ impl Studio {
                     self.refresh_draft(); self.request_preview();
                 }
                 ui.separator();
+                if item(ui, "Create effect group…", "", ready) { self.begin_group(false); }
                 if item(ui, "Duplicate selected node", "Ctrl+D", ready) { self.duplicate_selected(ui.ctx()); }
                 if item(ui, "Duplicate upstream branch", "Ctrl+Shift+D", ready) { self.duplicate_branch(); }
                 if item(ui, "Delete selected node", "", ready) { self.delete_selected(); }

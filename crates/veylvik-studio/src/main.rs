@@ -11,6 +11,7 @@ mod text_outline;
 mod vector_editor;
 use animation::scalar;
 mod display;
+mod effects;
 mod files;
 mod graph;
 mod handles;
@@ -124,6 +125,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 draft,
                 draft_dirty: false,
                 graph: graph::Graph::default(),
+                effects: effects::Controls::default(),
                 node_palette: node_palette::Controls::default(),
                 node_finder: node_finder::Controls::default(),
                 key_timeline: key_timeline::Keys::default(),
@@ -177,6 +179,7 @@ struct Studio {
     draft: Node,
     draft_dirty: bool,
     graph: graph::Graph,
+    effects: effects::Controls,
     node_palette: node_palette::Controls,
     node_finder: node_finder::Controls,
     key_timeline: key_timeline::Keys,
@@ -201,7 +204,8 @@ struct Studio {
 }
 impl Studio {
     fn authoring_dialog_open(&self) -> bool {
-        self.outline_controls.open
+        self.effects.open
+            || self.outline_controls.open
             || self.composition_controls.open
             || self.node_palette.open
             || self.node_finder.open
@@ -219,6 +223,7 @@ impl Studio {
         self.export_controls = sequence::Controls::default();
         self.project = project;
         self.graph = graph::Graph::default();
+        self.effects = effects::Controls::default();
         self.navigation.fit();
         self.displayed = None;
         self.displayed_ticket = None;
@@ -279,6 +284,8 @@ impl Studio {
         self.error = true;
     }
     fn refresh_draft(&mut self) {
+        self.effects.edits.clear();
+        self.effects.connections.clear();
         self.draft = self.project.document.snapshot().nodes[&self.project.selected].clone();
         self.draft_dirty = false;
     }
@@ -365,6 +372,13 @@ impl Studio {
             return;
         }
         self.playing = false;
+        if let Some(group) = self
+            .graph
+            .selected_group(self.project.document.snapshot(), self.project.selected)
+        {
+            self.duplicate_group(group.id);
+            return;
+        }
         match self
             .project
             .duplicate_at(self.graph.insertion_position(ctx))
@@ -436,9 +450,32 @@ impl Studio {
         if !self.draft_dirty {
             return true;
         }
-        match self.project.apply(&[Command::Put {
-            node: Box::new(self.draft.clone()),
-        }]) {
+        let commands = if self.effects.edits.is_empty() && self.effects.connections.is_empty() {
+            vec![Command::Put {
+                node: Box::new(self.draft.clone()),
+            }]
+        } else {
+            self.effects
+                .edits
+                .iter()
+                .map(|((id, control), value)| Command::SetControl {
+                    id: *id,
+                    control: control.clone(),
+                    value: value.clone(),
+                })
+                .chain(
+                    self.effects
+                        .connections
+                        .iter()
+                        .map(|((id, input), source)| Command::ConnectGroup {
+                            id: *id,
+                            input: input.clone(),
+                            source: *source,
+                        }),
+                )
+                .collect()
+        };
+        match self.project.apply(&commands) {
             Ok(()) => {
                 self.refresh_draft();
                 self.request_preview();
@@ -965,6 +1002,9 @@ impl Studio {
         ui.separator();
     }
     fn inspector(&mut self, ui: &mut egui::Ui) {
+        if self.effect_inspector(ui) {
+            return;
+        }
         ui.label(self.draft.operation.descriptor().label);
         ui.add_space(8.0);
         self.draft_dirty |= ui.text_edit_singleline(&mut self.draft.label).changed();
@@ -1305,6 +1345,19 @@ impl Studio {
         );
         for action in actions {
             match action {
+                graph::Action::Group => self.begin_group(false),
+                graph::Action::CloseGroup(id) => {
+                    if self.can_change_selection() {
+                        self.graph.collapse(id);
+                        self.project.selected = self.project.document.snapshot().groups[&id].output;
+                        self.refresh_draft();
+                    }
+                }
+                graph::Action::OpenGroup(id) => {
+                    if self.can_change_selection() {
+                        self.graph.expand(id);
+                    }
+                }
                 graph::Action::Find => self.open_node_finder(),
                 graph::Action::Add => self.open_node_palette(ui.ctx()),
                 graph::Action::Select { id, preview } => {
@@ -1321,9 +1374,21 @@ impl Studio {
                     source,
                     target,
                     port,
+                    group,
                 } => {
                     if self.can_change_selection() {
-                        match self.project.connect(source, target, port) {
+                        let result = if group {
+                            self.project
+                                .apply(&[Command::ConnectGroup {
+                                    id: target,
+                                    input: port,
+                                    source,
+                                }])
+                                .map(|_| true)
+                        } else {
+                            self.project.connect(source, target, &port)
+                        };
+                        match result {
                             Ok(true) => {
                                 self.refresh_draft();
                                 self.request_preview();
@@ -1358,6 +1423,7 @@ impl Studio {
         self.draft.position = self.project.document.snapshot().nodes[&self.draft.id].position;
     }
     fn dialogs(&mut self, ctx: &egui::Context) {
+        self.effect_dialog(ctx);
         if let Some(action) = self.confirm {
             egui::Window::new("Unsaved changes")
                 .collapsible(false)
@@ -1742,6 +1808,16 @@ impl eframe::App for Studio {
             if self.project.document.snapshot().nodes.contains_key(&id) {
                 self.project.selected = id;
                 self.project.preview = Some(id);
+                if let Some(group) = self
+                    .project
+                    .document
+                    .snapshot()
+                    .groups
+                    .values()
+                    .find(|g| g.output == id)
+                {
+                    self.graph.collapse(group.id);
+                }
                 self.graph.focus(
                     self.project.document.snapshot(),
                     self.project.document.revision(),

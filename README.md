@@ -185,6 +185,37 @@ current draft, including while editing a parameter field. Invalid
 connections fail atomically. **Revert** discards the draft. Apply or revert before
 selecting another node or using undo/redo.
 
+**Reusable effect groups:** **Add → Glow effect / Outline effect** creates a collapsed
+node group with public controls. **Group…** in the graph or **Edit → Create effect
+group…** groups nodes feeding the selected output. Uncheck source nodes to expose
+their connections as inputs. Groups currently have one output and cannot overlap
+or nest; every member must contribute to the output. To change group membership
+in the editor, ungroup and regroup the desired nodes.
+
+Select a collapsed group to edit its exposed controls in the inspector. Changes
+remain drafts until **Apply**, including scalar keyframes and color edits. **Edit effect…**
+renames the effect, exposes scalar/color/seed parameters, names controls and inputs,
+and captures defaults. Optional scalar ranges must fit the underlying parameter
+bounds and contain its current curve and default. These ranges apply to internal
+node edits and automation too. **Reset to default** is an ordinary inspector edit.
+**Show in animation** opens the underlying node in the animation workspace.
+
+**Open group / Close group** reveals or hides internal nodes without changing the
+project. A collapsed input socket reconnects all of its internal consumers together.
+**Duplicate effect** (or Ctrl+D on a collapsed group) copies its internal nodes,
+controls and animation while retaining external input connections. **Ungroup**
+removes only the boundary; pixels and node parameters remain unchanged. Groups,
+input names, defaults and controls save with the composition. A separate preset
+file library and nested groups are not implemented yet.
+
+Groups add no rendering passes. Exposed controls directly reference registered
+node parameters; there is no second evaluator or duplicate value storage.
+MCP **apply** accepts **put_group**, **ungroup**, **set_control** and
+**connect_group** through the shared command schema. **inspect** includes group
+metadata, and summary inspection reports the group count. `set_control` accepts
+the parameter's existing schema, including complete animated scalar curves.
+Group boundary violations and invalid controls reject the entire transaction.
+
 Scrub the timeline or play it to evaluate animation. Scalar controls can add a
 key at the playhead. For animated parameters, **At playhead** edits an existing
 key or inserts one at the current frame while preserving interpolation. Equivalent
@@ -253,7 +284,7 @@ connections, selects the copy, and creates one undo step. The composition output
 stays unchanged. Apply or revert inspector drafts before duplicating.
 **Duplicate branch** (`Ctrl+Shift+D`) copies the selected node and all upstream
 nodes as one undo step. Connections are remapped entirely within the copy, and
-shared ancestors are copied once. Animation, node versions, and image asset
+shared ancestors are copied once. Complete groups and their controls, animation, node versions, and image asset
 keys are preserved; source files and loaded image pixels are shared. The copied
 branch keeps relative node positions and is placed outside existing graph bounds.
 The copied root becomes the preview; the composition output stays unchanged.

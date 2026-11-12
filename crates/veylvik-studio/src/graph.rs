@@ -5,6 +5,9 @@ use veylvik_document::{Composition, NodeId, NodePosition};
 const NODE_SIZE: Vec2 = egui::vec2(160.0, 60.0);
 pub enum Action {
     Find,
+    Group,
+    OpenGroup(NodeId),
+    CloseGroup(NodeId),
     Add,
     Select {
         id: NodeId,
@@ -18,30 +21,26 @@ pub enum Action {
     Connect {
         source: NodeId,
         target: NodeId,
-        port: &'static str,
+        port: String,
+        group: bool,
     },
 }
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 enum Socket {
     Output(NodeId),
-    Input(NodeId, &'static str),
+    Input(NodeId, usize),
 }
 impl Socket {
-    fn connection(self, other: Self) -> Option<Action> {
-        match (self, other) {
-            (Self::Output(source), Self::Input(target, port))
-            | (Self::Input(target, port), Self::Output(source))
-                if source != target =>
-            {
-                Some(Action::Connect {
-                    source,
-                    target,
-                    port,
-                })
-            }
-            _ => None,
-        }
+    fn compatible(self, other: Self) -> bool {
+        matches!((self, other), (Self::Output(a), Self::Input(b, _)) | (Self::Input(b, _), Self::Output(a)) if a != b)
     }
+}
+struct VisualNode {
+    id: NodeId,
+    label: String,
+    subtitle: String,
+    group: Option<NodeId>,
+    inputs: Vec<(String, NodeId)>,
 }
 struct Drag {
     id: NodeId,
@@ -50,6 +49,7 @@ struct Drag {
 }
 pub struct Graph {
     revision: Option<u64>,
+    expanded: std::collections::BTreeSet<NodeId>,
     positions: BTreeMap<NodeId, Pos2>,
     automatic: BTreeMap<NodeId, Pos2>,
     zoom: f32,
@@ -62,6 +62,7 @@ impl Default for Graph {
     fn default() -> Self {
         Self {
             revision: None,
+            expanded: Default::default(),
             positions: BTreeMap::new(),
             automatic: BTreeMap::new(),
             zoom: 1.0,
@@ -73,7 +74,74 @@ impl Default for Graph {
     }
 }
 impl Graph {
+    pub fn expand(&mut self, id: NodeId) {
+        self.expanded.insert(id);
+    }
+    pub fn collapse(&mut self, id: NodeId) {
+        self.expanded.remove(&id);
+    }
+    pub fn selected_group<'a>(
+        &self,
+        doc: &'a Composition,
+        selected: NodeId,
+    ) -> Option<&'a veylvik_document::groups::Group> {
+        doc.groups
+            .values()
+            .find(|g| g.output == selected && !self.expanded.contains(&g.id))
+    }
+    fn visual_nodes(&self, doc: &Composition) -> Vec<VisualNode> {
+        let owners: BTreeMap<_, _> = doc
+            .groups
+            .values()
+            .filter(|g| !self.expanded.contains(&g.id))
+            .flat_map(|g| g.members.iter().map(move |id| (*id, g)))
+            .collect();
+        let source = |id: NodeId| owners.get(&id).map_or(id, |g| g.output);
+        doc.nodes
+            .values()
+            .filter_map(|n| {
+                if let Some(g) = owners.get(&n.id) {
+                    if n.id != g.output {
+                        return None;
+                    }
+                    Some(VisualNode {
+                        id: n.id,
+                        label: g.label.clone(),
+                        subtitle: format!("Effect · {} nodes", g.members.len()),
+                        group: Some(g.id),
+                        inputs: g
+                            .inputs
+                            .keys()
+                            .map(|name| (name.clone(), source(g.source(doc, name).unwrap())))
+                            .collect(),
+                    })
+                } else {
+                    Some(VisualNode {
+                        id: n.id,
+                        label: n.label.clone(),
+                        subtitle: if n.id == doc.output {
+                            "Composition output".into()
+                        } else {
+                            n.operation.descriptor().label.into()
+                        },
+                        group: None,
+                        inputs: n
+                            .operation
+                            .inputs()
+                            .iter()
+                            .map(|port| (port.to_string(), source(n.inputs[*port])))
+                            .collect(),
+                    })
+                }
+            })
+            .collect()
+    }
     pub fn focus(&mut self, doc: &Composition, revision: u64, id: NodeId) {
+        for group in doc.groups.values() {
+            if group.members.contains(&id) && group.output != id {
+                self.expanded.insert(group.id);
+            }
+        }
         self.sync(doc, revision);
         if let Some(canvas) = self.canvas {
             self.reveal(id, canvas);
@@ -334,10 +402,13 @@ impl Graph {
         self.pan = point - (point - self.pan) * (zoom / self.zoom);
         self.zoom = zoom;
     }
-    fn fit(&mut self, canvas: Rect) {
-        let bounds = self.positions.values().fold(Rect::NOTHING, |rect, pos| {
-            rect.union(Rect::from_min_size(*pos, NODE_SIZE))
-        });
+    fn fit(&mut self, canvas: Rect, nodes: &[VisualNode]) {
+        let bounds = nodes
+            .iter()
+            .map(|n| &self.positions[&n.id])
+            .fold(Rect::NOTHING, |rect, pos| {
+                rect.union(Rect::from_min_size(*pos, NODE_SIZE))
+            });
         if !bounds.is_finite() {
             return;
         }
@@ -358,6 +429,7 @@ impl Graph {
     ) -> Vec<Action> {
         let newly_inserted = self.revision.is_some() && !self.positions.contains_key(&selected);
         self.sync(doc, revision);
+        let nodes = self.visual_nodes(doc);
         let mut actions = Vec::new();
         let mut fit = false;
         let mut zoom_factor = 1.0;
@@ -378,6 +450,22 @@ impl Graph {
                 actions.push(Action::Find);
             }
 
+            if ui
+                .button("Group…")
+                .on_hover_text("Create a reusable effect from nodes")
+                .clicked()
+            {
+                actions.push(Action::Group);
+            }
+            if let Some(g) = doc.groups.values().find(|g| g.members.contains(&selected)) {
+                if self.expanded.contains(&g.id) {
+                    if ui.button("Close group").clicked() {
+                        actions.push(Action::CloseGroup(g.id));
+                    }
+                } else if ui.button("Open group").clicked() {
+                    actions.push(Action::OpenGroup(g.id));
+                }
+            }
             if ui.button("Fit").clicked() {
                 fit = true;
             }
@@ -407,7 +495,7 @@ impl Graph {
             self.reveal(selected, canvas);
         }
         if fit {
-            self.fit(canvas);
+            self.fit(canvas, &nodes);
         }
         if zoom_factor != 1.0 {
             self.zoom_at(self.zoom * zoom_factor, canvas.center(), canvas);
@@ -446,23 +534,22 @@ impl Graph {
             self.positions.insert(drag.id, drag.current);
         }
         let mut sockets = Vec::new();
-        for node in doc.nodes.values() {
+        for node in &nodes {
             let origin = canvas.min + self.pan + self.positions[&node.id].to_vec2() * self.zoom;
             sockets.push((
                 Socket::Output(node.id),
                 origin + egui::vec2(160.0, 30.0) * self.zoom,
             ));
-            for (index, port) in node.operation.inputs().iter().enumerate() {
-                let y = 60.0 * (index + 1) as f32 / (node.operation.inputs().len() + 1) as f32;
+            for (index, _) in node.inputs.iter().enumerate() {
+                let y = 60.0 * (index + 1) as f32 / (node.inputs.len() + 1) as f32;
                 sockets.push((
-                    Socket::Input(node.id, port),
+                    Socket::Input(node.id, index),
                     origin + egui::vec2(0.0, y) * self.zoom,
                 ));
             }
         }
-        for node in doc.nodes.values() {
-            for (index, port) in node.operation.inputs().iter().enumerate() {
-                let source = &node.inputs[*port];
+        for node in &nodes {
+            for (index, (_, source)) in node.inputs.iter().enumerate() {
                 let from = canvas.min
                     + self.pan
                     + (self.positions[source].to_vec2() + egui::vec2(160.0, 30.0)) * self.zoom;
@@ -471,7 +558,7 @@ impl Graph {
                     + (self.positions[&node.id].to_vec2()
                         + egui::vec2(
                             0.0,
-                            60.0 * (index + 1) as f32 / (node.operation.inputs().len() + 1) as f32,
+                            60.0 * (index + 1) as f32 / (node.inputs.len() + 1) as f32,
                         ))
                         * self.zoom;
                 let bend = egui::vec2(45.0 * self.zoom, 0.0);
@@ -484,7 +571,7 @@ impl Graph {
             }
         }
         let mut node_dragged = false;
-        for node in doc.nodes.values() {
+        for node in &nodes {
             let rect = Rect::from_min_size(
                 canvas.min + self.pan + self.positions[&node.id].to_vec2() * self.zoom,
                 NODE_SIZE * self.zoom,
@@ -520,13 +607,34 @@ impl Graph {
                 && let Some(drag) = self.drag.take()
                 && drag.start.distance(drag.current) > 0.01
             {
-                actions.push(Action::Place {
-                    id: drag.id,
-                    position: NodePosition {
-                        x: drag.current.x,
-                        y: drag.current.y,
-                    },
-                });
+                if let Some(group) = self.selected_group(doc, drag.id) {
+                    let delta = drag.current - drag.start;
+                    actions.push(Action::Arrange(
+                        group
+                            .members
+                            .iter()
+                            .map(|id| {
+                                let p = if *id == drag.id {
+                                    drag.current
+                                } else {
+                                    self.positions[id] + delta
+                                };
+                                (*id, NodePosition { x: p.x, y: p.y })
+                            })
+                            .collect(),
+                    ));
+                } else {
+                    actions.push(Action::Place {
+                        id: drag.id,
+                        position: NodePosition {
+                            x: drag.current.x,
+                            y: drag.current.y,
+                        },
+                    });
+                }
+                // Resync even after a rejected placement, so a failed gesture
+                // never leaves a ghost layout in the viewport.
+                self.revision = None;
             }
             if response.clicked() || response.double_clicked() {
                 actions.push(Action::Select {
@@ -557,15 +665,10 @@ impl Graph {
                 egui::FontId::proportional(13.0 * self.zoom),
                 Color32::WHITE,
             );
-            let subtitle = if node.id == doc.output {
-                "Composition output"
-            } else {
-                node.operation.descriptor().label
-            };
             text.text(
                 rect.min + egui::vec2(10.0, 41.0) * self.zoom,
                 egui::Align2::LEFT_CENTER,
-                subtitle,
+                &node.subtitle,
                 egui::FontId::proportional(11.0 * self.zoom),
                 Color32::from_gray(160),
             );
@@ -577,9 +680,7 @@ impl Graph {
                 .iter()
                 .filter(|(socket, position)| {
                     position.distance(p) <= radius
-                        && self
-                            .wire
-                            .is_none_or(|from| from.connection(*socket).is_some())
+                        && self.wire.is_none_or(|from| from.compatible(*socket))
                 })
                 .min_by(|a, b| a.1.distance_sq(p).total_cmp(&b.1.distance_sq(p)))
                 .map(|(socket, _)| *socket)
@@ -588,16 +689,21 @@ impl Graph {
             if !canvas.contains(*position) {
                 continue;
             }
-            let hit = ui
-                .interact(
-                    Rect::from_center_size(*position, Vec2::splat(radius * 2.0)).intersect(canvas),
-                    ui.id().with(socket),
-                    egui::Sense::drag(),
-                )
-                .on_hover_text(match socket {
-                    Socket::Output(_) => "Output",
-                    Socket::Input(_, port) => port,
-                });
+            let hit = crate::handles::interact(
+                ui,
+                Rect::from_center_size(*position, Vec2::splat(radius * 2.0)).intersect(canvas),
+                ui.id().with(socket),
+            )
+            .on_hover_text(match socket {
+                Socket::Output(_) => "Output",
+                Socket::Input(id, index) => {
+                    let node = nodes.iter().find(|n| n.id == *id).unwrap();
+                    let key = &node.inputs[*index].0;
+                    node.group.map_or(key.as_str(), |id| {
+                        doc.groups[&id].inputs[key].label.as_str()
+                    })
+                }
+            });
             if hit.drag_started() {
                 self.wire = Some(*socket);
                 self.drag = None;
@@ -633,13 +739,30 @@ impl Graph {
                 ));
             }
             if ui.input(|input| input.pointer.any_released()) {
-                if let Some(action) = hovered.and_then(|to| from.connection(to)) {
-                    actions.push(action);
+                if let Some(to) = hovered.filter(|to| from.compatible(*to)) {
+                    let (source, target, index) = match (from, to) {
+                        (Socket::Output(a), Socket::Input(b, index))
+                        | (Socket::Input(b, index), Socket::Output(a)) => (a, b, index),
+                        _ => unreachable!(),
+                    };
+                    let node = nodes.iter().find(|n| n.id == target).unwrap();
+                    actions.push(Action::Connect {
+                        source,
+                        target: node.group.unwrap_or(target),
+                        port: node.inputs[index].0.clone(),
+                        group: node.group.is_some(),
+                    });
                 }
                 self.wire = None;
             }
         }
-        if response.dragged() && !node_dragged && self.drag.is_none() && !wiring {
+        if response.dragged()
+            && !node_dragged
+            && self.drag.is_none()
+            && !wiring
+            && ui.ctx().dragged_id() == Some(response.id)
+            && !ui.input(|input| input.pointer.primary_pressed())
+        {
             self.pan += response.drag_delta();
         }
         actions
@@ -656,6 +779,72 @@ mod tests {
             &[],
         )
         .id
+    }
+    #[test]
+    fn fast_socket_drag_reconnects_group_without_panning() {
+        use veylvik_document::{Node, Operation, Time, groups::Group};
+        let mut doc = veylvik_document::blank(8, 8, Time::new(24, 1).unwrap()).unwrap();
+        let original = doc.output;
+        doc.nodes.get_mut(&original).unwrap().position = Some(NodePosition { x: 25.0, y: 20.0 });
+        let mut source = Node::new("Other", Operation::Solid { color: [1.0; 4] }, &[]);
+        source.position = Some(NodePosition { x: 25.0, y: 110.0 });
+        let source_id = source.id;
+        doc.nodes.insert(source.id, source);
+        let mut effect = Node::new(
+            "Blur",
+            Operation::Blur { radius: 4.0.into() },
+            &[("image", original)],
+        );
+        effect.position = Some(NodePosition { x: 400.0, y: 50.0 });
+        let output = effect.id;
+        doc.nodes.insert(output, effect);
+        let group = Group::capture(&doc, [output].into(), output, "Effect").unwrap();
+        let group_id = group.id;
+        doc.groups.insert(group.id, group);
+        let ctx = egui::Context::default();
+        let mut graph = Graph::default();
+        let mut run = |events| {
+            let mut actions = Vec::new();
+            let _ = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(Pos2::ZERO, egui::vec2(800.0, 400.0))),
+                    events,
+                    ..Default::default()
+                },
+                |ui| {
+                    egui::CentralPanel::default().show_inside(ui, |ui| {
+                        actions = graph.show(ui, &doc, 0, output, Color32::LIGHT_BLUE);
+                    });
+                },
+            );
+            (actions, graph.canvas.unwrap().min)
+        };
+        let (_, origin) = run(vec![]);
+        let from = origin + egui::vec2(185.0, 140.0);
+        let to = origin + egui::vec2(400.0, 80.0);
+        run(vec![egui::Event::PointerMoved(from)]);
+        run(vec![
+            egui::Event::PointerButton {
+                pos: from,
+                button: egui::PointerButton::Primary,
+                pressed: true,
+                modifiers: egui::Modifiers::NONE,
+            },
+            egui::Event::PointerMoved(from + egui::vec2(40.0, 20.0)),
+        ]);
+        let (actions, _) = run(vec![
+            egui::Event::PointerMoved(to),
+            egui::Event::PointerButton {
+                pos: to,
+                button: egui::PointerButton::Primary,
+                pressed: false,
+                modifiers: egui::Modifiers::NONE,
+            },
+        ]);
+        assert_eq!(graph.pan, Vec2::ZERO);
+        assert!(
+            matches!(actions.as_slice(), [Action::Connect { source, target, port, group: true }] if *source == source_id && *target == group_id && port == "input_1")
+        );
     }
     #[test]
     fn effect_layout_stays_inside_coordinate_limits_and_does_not_overlap() {

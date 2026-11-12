@@ -1,5 +1,6 @@
 //! Serializable compositions and transactional editing, independent of GPU and UI.
 pub mod editing;
+pub mod groups;
 mod history;
 mod procedural;
 pub mod recipes;
@@ -292,6 +293,8 @@ pub struct Composition {
     pub frame_rate: Time,
     #[serde(default = "default_frame_count")]
     pub frame_count: u32,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub groups: BTreeMap<NodeId, groups::Group>,
     pub nodes: BTreeMap<NodeId, Node>,
     pub output: NodeId,
 }
@@ -367,6 +370,7 @@ impl Composition {
         if order.len() != self.nodes.len() {
             return fail("graph contains a cycle");
         }
+        groups::validate(self)?;
         Ok(order)
     }
     pub fn save(&self, path: &Path) -> Result<()> {
@@ -448,6 +452,22 @@ fn atomic_publish_with(
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "command", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Command {
+    PutGroup {
+        group: Box<groups::Group>,
+    },
+    Ungroup {
+        id: NodeId,
+    },
+    SetControl {
+        id: NodeId,
+        control: String,
+        value: serde_json::Value,
+    },
+    ConnectGroup {
+        id: NodeId,
+        input: String,
+        source: NodeId,
+    },
     Put {
         node: Box<Node>,
     },
@@ -493,6 +513,7 @@ pub enum Command {
 pub fn blank(width: u32, height: u32, frame_rate: Time) -> Result<Composition> {
     let node = Node::new("Background", Operation::Solid { color: [0.0; 4] }, &[]);
     let composition = Composition {
+        groups: Default::default(),
         schema: 1,
         frame_count: DEFAULT_FRAME_COUNT,
         width,
@@ -560,6 +581,7 @@ pub fn demo() -> Composition {
         &[("background", background.id), ("foreground", transform.id)],
     );
     Composition {
+        groups: Default::default(),
         schema: 1,
         frame_count: DEFAULT_FRAME_COUNT,
         width: 640,
@@ -693,6 +715,7 @@ pub fn motion_demo() -> Composition {
         &[("image", output)],
     );
     Composition {
+        groups: Default::default(),
         schema: 1,
         frame_count: 96,
         width: 960,

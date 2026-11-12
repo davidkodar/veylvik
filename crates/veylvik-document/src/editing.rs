@@ -8,6 +8,7 @@ pub struct BranchCopy {
     pub root: NodeId,
     pub mapping: BTreeMap<NodeId, NodeId>,
     pub nodes: BTreeMap<NodeId, Node>,
+    pub groups: Vec<crate::groups::Group>,
 }
 impl BranchCopy {
     pub fn into_commands(self) -> Vec<Command> {
@@ -16,6 +17,9 @@ impl BranchCopy {
             .map(|node| Command::Put {
                 node: Box::new(node),
             })
+            .chain(self.groups.into_iter().map(|group| Command::PutGroup {
+                group: Box::new(group),
+            }))
             .collect()
     }
 }
@@ -63,7 +67,28 @@ pub fn copy_branch(composition: &Composition, root: NodeId) -> Result<BranchCopy
             (*new, node)
         })
         .collect();
+    let groups = composition
+        .groups
+        .values()
+        .filter(|g| g.members.iter().all(|id| mapping.contains_key(id)))
+        .map(|g| {
+            let mut group = g.clone();
+            group.id = NodeId::new_v4();
+            group.output = mapping[&g.output];
+            group.members = g.members.iter().map(|id| mapping[id]).collect();
+            for input in group.inputs.values_mut() {
+                for target in &mut input.targets {
+                    target.node = mapping[&target.node];
+                }
+            }
+            for control in group.controls.values_mut() {
+                control.node = mapping[&control.node];
+            }
+            group
+        })
+        .collect();
     Ok(BranchCopy {
+        groups,
         root: mapping[&root],
         mapping,
         nodes,

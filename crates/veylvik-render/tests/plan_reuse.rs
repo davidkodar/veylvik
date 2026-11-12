@@ -30,6 +30,7 @@ fn plan_reuse_tracks_reachable_definitions_and_validates_disconnected_edits() {
         &[("image", image.id)],
     );
     let mut doc = Composition {
+        groups: Default::default(),
         schema: 1,
         frame_count: 240,
         width: 13,
@@ -102,6 +103,7 @@ fn plan_reuse_preserves_signed_zero_in_authored_parameters() {
         &[],
     );
     let mut doc = Composition {
+        groups: Default::default(),
         schema: 1,
         frame_count: 240,
         width: 1,

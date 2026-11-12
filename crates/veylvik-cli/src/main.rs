@@ -70,6 +70,7 @@ fn run() -> Result<()> {
                 &[],
             );
             let doc = Composition {
+                groups: Default::default(),
                 schema: 1,
                 frame_count: 240,
                 width: image.width(),

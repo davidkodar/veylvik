@@ -11,7 +11,7 @@ pub fn summary(document: &Composition) -> Value {
     }
     json!({"schema":document.schema,"width":document.width,"height":document.height,
         "frame_rate":document.frame_rate,"frame_count":document.frame_count,
-        "output":document.output,"node_count":document.nodes.len(),"operations":operations})
+        "group_count":document.groups.len(),"output":document.output,"node_count":document.nodes.len(),"operations":operations})
 }
 
 /// Stable UUID ordering; callers should compare document revisions between pages.

@@ -23,7 +23,7 @@ fn build_catalog() -> Value {
         tool("diagnostics","Read GPU buffer and cache counters without waiting for an active render. Snapshot is null while the renderer is busy. Declared buffers exclude driver and rasterizer scratch allocations.",json!({}),&[]),
         tool("nodes","Read built-in operations, ports, defaults and parameter schemas.",json!({}),&[]),
         tool("apply","Validate or atomically apply commands to the open editor. Requires the session and revision from inspect. set_parameter and set_key preserve node identity and wiring. Image references must already be known to the editor; new paths require import. Unapplied inspector changes or file jobs block mutation.",json!({"session":session,"revision":revision,"dry_run":{"type":"boolean"},"commands":{"type":"array","minItems":1,"maxItems":4096,"items":veylvik_document::schema::command()}}),&["session","revision","commands"]),
-        tool("add_effect","Expand an editable effect recipe into ordinary nodes as one undoable transaction. Places the effect without overlapping existing nodes, selects/previews its root, and preserves composition output. Returns named role IDs for editing controls. Discover recipes with nodes; dry-run IDs are provisional.",json!({"session":session,"revision":revision,"input":{"type":"string","format":"uuid"},"recipe":{"type":"string","enum":veylvik_document::recipes::Recipe::ALL},"dry_run":{"type":"boolean"}}),&["session","revision","input","recipe"]),
+        tool("add_effect","Create an editable effect group with exposed controls and ordinary internal nodes as one undoable transaction. Places the effect without overlapping existing nodes, selects/previews its root, and preserves composition output. Returns named role IDs for editing controls. Discover recipes with nodes; dry-run IDs are provisional.",json!({"session":session,"revision":revision,"input":{"type":"string","format":"uuid"},"recipe":{"type":"string","enum":veylvik_document::recipes::Recipe::ALL},"dry_run":{"type":"boolean"}}),&["session","revision","input","recipe"]),
         tool("duplicate_branch","Copy a node and all upstream dependencies as one undoable transaction, preserving shared ancestors and asset references. Places the copy outside existing graph bounds, selects/previews its root, and leaves composition output unchanged. Returns root and old-to-new ID mapping. Dry-run IDs are provisional and are not reused on commit.",json!({"session":session,"revision":revision,"node":{"type":"string","format":"uuid"},"dry_run":{"type":"boolean"}}),&["session","revision","node"]),
         tool("undo","Undo one editor transaction.",json!({"session":session,"revision":revision}),&["session","revision"]),
         tool("redo","Redo one editor transaction.",json!({"session":session,"revision":revision}),&["session","revision"]),
@@ -118,10 +118,10 @@ pub fn call(studio: &mut Studio, name: &str, args: &Value) -> Result<Value> {
             )?;
             let mut result = json!({"session":session,"revision":revision,"root":effect.root,"roles":effect.roles,"added_nodes":effect.nodes.len(),"recipe":recipe,"dry_run":dry_run,"valid":true});
             if dry_run {
-                studio
-                    .project
-                    .document
-                    .prepare(revision, &effect.into_commands())?;
+                studio.project.document.prepare(
+                    revision,
+                    &effect.into_grouped_commands(studio.project.document.snapshot())?,
+                )?;
                 return Ok(result);
             }
             studio.project.insert_effect(effect)?;

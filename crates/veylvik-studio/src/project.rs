@@ -268,7 +268,8 @@ impl Project {
     }
     pub fn insert_effect(&mut self, effect: veylvik_document::recipes::Effect) -> Result<NodeId> {
         let id = effect.root;
-        self.apply(&effect.into_commands())?;
+        let commands = effect.into_grouped_commands(self.document.snapshot())?;
+        self.apply(&commands)?;
         self.selected = id;
         self.preview = Some(id);
         Ok(id)

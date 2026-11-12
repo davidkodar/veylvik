@@ -68,6 +68,7 @@ pub fn run(args: &[String]) -> Result<()> {
         &[],
     );
     let document = Composition {
+        groups: Default::default(),
         schema: 1,
         frame_count: 240,
         width,

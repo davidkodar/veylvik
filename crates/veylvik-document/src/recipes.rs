@@ -129,6 +129,46 @@ pub struct Effect {
     pub roles: BTreeMap<&'static str, NodeId>,
 }
 impl Effect {
+    /// Shared native/headless recipe construction, including its public controls.
+    pub fn into_grouped_commands(self, composition: &Composition) -> Result<Vec<Command>> {
+        let mut candidate = composition.clone();
+        let members = self.nodes.iter().map(|n| n.id).collect();
+        for node in &self.nodes {
+            candidate.nodes.insert(node.id, node.clone());
+        }
+        let label = if self.roles.contains_key("blur") {
+            "Glow effect"
+        } else {
+            "Outline effect"
+        };
+        let mut group = crate::groups::Group::capture(&candidate, members, self.root, label)?;
+        for (role, node) in &self.roles {
+            for parameter in candidate.nodes[node].operation.descriptor().parameters {
+                if matches!(
+                    parameter.kind,
+                    crate::registry::ParameterKind::Scalar | crate::registry::ParameterKind::Color
+                ) {
+                    let key = format!("{role}_{}", parameter.name);
+                    let label = match (*role, parameter.name) {
+                        ("blur", "radius") => "Radius".to_string(),
+                        ("brightness", "stops") => "Intensity".to_string(),
+                        ("composite", "opacity") => "Mix".to_string(),
+                        _ => format!("{} {}", role, parameter.name.replace('_', " ")),
+                    };
+                    group.controls.insert(
+                        key,
+                        crate::groups::Control::new(&candidate, *node, parameter.name, &label)?,
+                    );
+                }
+            }
+        }
+        let mut commands = self.into_commands();
+        commands.push(Command::PutGroup {
+            group: Box::new(group),
+        });
+        Ok(commands)
+    }
+
     pub fn into_commands(self) -> Vec<Command> {
         self.nodes
             .into_iter()

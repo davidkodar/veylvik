@@ -151,6 +151,7 @@ mod tests {
             &[],
         );
         let doc = Composition {
+            groups: Default::default(),
             schema: 1,
             frame_count: 240,
             width: 2,
@@ -187,6 +188,7 @@ mod tests {
             &[],
         );
         let doc = Composition {
+            groups: Default::default(),
             schema: 1,
             frame_count: 240,
             width: 4,
@@ -262,6 +264,7 @@ mod tests {
             &[],
         );
         let doc = Composition {
+            groups: Default::default(),
             schema: 1,
             frame_count: 240,
             width: 1,
@@ -339,6 +342,7 @@ mod tests {
             &[],
         );
         let doc = Composition {
+            groups: Default::default(),
             schema: 1,
             frame_count: 240,
             width: 2,
