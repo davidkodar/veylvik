@@ -189,7 +189,19 @@ that same renderer and remain retained by the input snapshot. Their allocations
 already count as held GPU memory and are not charged again as uploads. Cache
 keys include immutable frame identity. `ImageInputs::byte_size` continues to
 count CPU pixels only; `contains_key` covers both CPU and GPU sources. This is a
-render-library boundary, not yet a Klipp connection or external-texture importer.
+render-library boundary, not yet a Klipp connection.
+
+External GPU producers can render into a `TextureTarget` allocated by
+`Renderer::create_texture_target` on the shared device, then call `import_texture`
+to capture an immutable frame. RGBA8/BGRA8 unorm, RGBA16F and RGBA32F targets are
+supported. The caller specifies linear or sRGB RGB and straight or premultiplied
+alpha; the GPU converts to linear premultiplied Rec.709 without clipping HDR.
+Only a four-byte validation flag is read back. Foreign-renderer targets are
+rejected before GPU use; later producer writes do not change imported frames.
+Producer texture memory remains caller-owned, outside the buffer pool budget;
+each target allocation is capped, but the host must bound aggregate producer
+allocations. Submit producer writes on the shared queue before importing, and
+retain the target without modifying or destroying it until import returns.
 The CLI/MCP adapter resolves image asset keys as PNG paths relative to the opened
 composition's directory (absolute paths also work). Save-as rebases relative paths
 without mutating the live session. Save/export refuse to replace an input image.

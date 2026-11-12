@@ -6,11 +6,13 @@ pub use frame::{GpuFrame, Image, ImageInputs, Region, RenderRequest, RenderedFra
 mod plan;
 mod pool;
 mod scheduler;
+mod texture;
 pub use plan::{Kernel, PassInfo, Plan};
 pub use pool::ResourceStats;
 pub use scheduler::{GpuPreviewScheduler, PreviewResult, PreviewScheduler, PreviewTicket};
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
+pub use texture::{TextureEncoding, TextureTarget};
 use veylvik_document::{Node, Operation, Time};
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -106,6 +108,7 @@ pub struct Renderer {
     pipelines: BTreeMap<Kernel, wgpu::ComputePipeline>,
     layout: wgpu::BindGroupLayout,
     validation_pipeline: wgpu::ComputePipeline,
+    texture_pipeline: wgpu::ComputePipeline,
     pool: Mutex<pool::Pool>,
     cache: Mutex<cache::FrameCache>,
     pub cache_limit_bytes: u64,
@@ -234,6 +237,7 @@ impl Renderer {
                 compilation_options: Default::default(),
                 cache: None,
             });
+        let texture_pipeline = texture::pipeline(&device);
         if let Some(e) = pollster::block_on(scope.pop()) {
             return Err(error(e));
         }
@@ -243,6 +247,7 @@ impl Renderer {
             pipelines,
             layout,
             validation_pipeline,
+            texture_pipeline,
             pool: Mutex::new(pool::Pool::default()),
             cache: Mutex::new(cache::FrameCache::default()),
             cache_limit_bytes: 64 * 1024 * 1024,
