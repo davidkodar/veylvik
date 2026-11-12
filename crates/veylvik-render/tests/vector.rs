@@ -191,3 +191,106 @@ fn path_nodes_render_cache_edit_and_preflight_without_external_assets() {
     doc.nodes.insert(output, solid);
     assert!(Plan::compile_output(&doc, output).is_ok());
 }
+
+#[test]
+#[ignore = "requires Vulkan"]
+fn vector_coverage_cache_survives_animation_and_yields_to_memory_pressure() {
+    use veylvik_document::*;
+    let mut renderer = Renderer::new().unwrap();
+    let path = Node::new(
+        "path",
+        Operation::Path {
+            geometry: rectangles(FillRule::EvenOdd),
+        },
+        &[],
+    );
+    let exposure = Node::new(
+        "animated",
+        Operation::Exposure {
+            stops: Scalar::Linear {
+                keys: vec![
+                    Key {
+                        time: Time::new(0, 1).unwrap(),
+                        value: 0.0,
+                    },
+                    Key {
+                        time: Time::new(1, 1).unwrap(),
+                        value: 1.0,
+                    },
+                ],
+            },
+        },
+        &[("image", path.id)],
+    );
+    let mut doc = demo();
+    doc.width = 32;
+    doc.height = 32;
+    doc.output = exposure.id;
+    doc.nodes = [path.clone(), exposure]
+        .into_iter()
+        .map(|n| (n.id, n))
+        .collect();
+    let plan = Plan::compile(&doc).unwrap();
+    let inputs = ImageInputs::default();
+    let first = renderer
+        .render_frame(
+            &plan,
+            RenderRequest::full(Time::new(0, 1).unwrap()),
+            &inputs,
+        )
+        .unwrap();
+    let stats = renderer.vector_cache_stats().unwrap();
+    assert_eq!(stats.misses, 1);
+    assert_eq!(stats.entries, 1);
+    let second = renderer
+        .render_frame(
+            &plan,
+            RenderRequest::full(Time::new(1, 1).unwrap()),
+            &inputs,
+        )
+        .unwrap();
+    assert_eq!(renderer.vector_cache_stats().unwrap().hits, 1);
+    assert_eq!(
+        second.pixels[5 * 32 + 5][0],
+        first.pixels[5 * 32 + 5][0] * 2.0
+    );
+    // A limit equal to the declared plan workspace must not charge a cached
+    // source twice or force its rerasterization.
+    renderer.budget_bytes = plan.working_bytes();
+    renderer
+        .render_frame(
+            &plan,
+            RenderRequest::full(Time::new(0, 1).unwrap()),
+            &inputs,
+        )
+        .unwrap();
+    assert_eq!(renderer.vector_cache_stats().unwrap().hits, 2);
+    doc.nodes.get_mut(&path.id).unwrap().operation = Operation::Path {
+        geometry: rectangles(FillRule::NonZero),
+    };
+    renderer
+        .render_frame(
+            &Plan::compile(&doc).unwrap(),
+            RenderRequest::full(Time::new(0, 1).unwrap()),
+            &inputs,
+        )
+        .unwrap();
+    assert_eq!(renderer.vector_cache_stats().unwrap().misses, 2);
+    assert!(renderer.vector_cache_stats().unwrap().evictions >= 1);
+    // Ordinary non-vector rendering can reclaim retained mask storage.
+    let solid = Node::new("solid", Operation::Solid { color: [0.0; 4] }, &[]);
+    doc.output = solid.id;
+    doc.nodes = [(solid.id, solid)].into();
+    let simple = Plan::compile(&doc).unwrap();
+    renderer.budget_bytes = simple.gpu_working_bytes();
+    renderer
+        .render_gpu(
+            &simple,
+            RenderRequest::full(Time::new(0, 1).unwrap()),
+            &inputs,
+        )
+        .unwrap();
+    assert_eq!(renderer.vector_cache_stats().unwrap().entries, 0);
+    renderer.clear_frame_cache().unwrap();
+    assert_eq!(renderer.resource_stats().unwrap().held_bytes, 0);
+}

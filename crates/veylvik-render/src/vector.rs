@@ -143,3 +143,125 @@ impl Renderer {
         Ok(())
     }
 }
+
+#[derive(Clone, PartialEq)]
+pub(crate) struct Key {
+    geometry: PathMask,
+    width: u32,
+    height: u32,
+}
+impl Renderer {
+    pub fn vector_cache_stats(&self) -> Result<crate::CacheStats> {
+        Ok(self
+            .vector_cache
+            .lock()
+            .map_err(|_| error("vector cache poisoned"))?
+            .stats())
+    }
+    pub(crate) fn trim_vector_cache_to_budget(&self) -> Result<()> {
+        let mut cache = self
+            .vector_cache
+            .lock()
+            .map_err(|_| error("vector cache poisoned"))?;
+        cache.trim(self.vector_cache_limit_bytes.min(self.budget_bytes));
+        while self.resource_stats()?.held_bytes > self.budget_bytes && cache.evict() {}
+        Ok(())
+    }
+    pub(crate) fn vector_sources(
+        &self,
+        plan: &crate::Plan,
+        request: crate::RenderRequest,
+        inputs: &crate::ImageInputs,
+        download: bool,
+    ) -> Result<std::collections::BTreeMap<usize, std::sync::Arc<GpuFrame>>> {
+        {
+            let mut pool = self
+                .pool
+                .lock()
+                .map_err(|_| error("renderer resource pool poisoned"))?;
+            let available = self.budget_bytes.saturating_sub(pool.stats().held_bytes);
+            pool.trim(self.pool_limit_bytes.min(available));
+            if pool.failed {
+                return Err(error("renderer unavailable after a GPU failure"));
+            }
+        }
+        request.time.seconds()?;
+        if let Some(region) = request.region {
+            region.validate(plan.width, plan.height)?;
+        }
+        for node in &plan.nodes {
+            crate::params(node, plan.width, plan.height, request.time)?;
+        }
+        let base = (if download {
+            plan.working_bytes()
+        } else {
+            plan.gpu_working_bytes()
+        }) - plan.vector_bytes()
+            + self.source_bytes(plan, inputs)?;
+        let keys: Vec<_> = plan
+            .nodes
+            .iter()
+            .enumerate()
+            .filter_map(|(index, node)| {
+                if let veylvik_document::Operation::Path { geometry } = &node.operation {
+                    Some((
+                        index,
+                        Key {
+                            geometry: geometry.clone(),
+                            width: plan.width,
+                            height: plan.height,
+                        },
+                    ))
+                } else {
+                    None
+                }
+            })
+            .collect();
+        let frame_bytes = u64::from(plan.width) * u64::from(plan.height) * 16;
+        let mut cache = self
+            .vector_cache
+            .lock()
+            .map_err(|_| error("vector cache poisoned"))?;
+        cache.trim(self.vector_cache_limit_bytes.min(self.budget_bytes));
+        // A cached source is already a held buffer. Charge only missing masks,
+        // and evict unused retained coverage before declaring the render too big.
+        loop {
+            let missing = keys.iter().filter(|(_, key)| !cache.contains(key)).count() as u64;
+            let needed = self.resource_stats()?.held_bytes + base + missing * frame_bytes;
+            if needed <= self.budget_bytes {
+                break;
+            }
+            if !cache.evict() {
+                return Err(error(
+                    "render including vector masks exceeds GPU buffer budget",
+                ));
+            }
+        }
+        let mut frames = std::collections::BTreeMap::new();
+        let mut prepared: Vec<(Key, std::sync::Arc<GpuFrame>)> = Vec::new();
+        for (index, key) in keys {
+            if let Some((_, frame)) = prepared.iter().find(|(candidate, _)| candidate == &key) {
+                frames.insert(index, frame.clone());
+                continue;
+            }
+            let frame = if let Some(frame) = cache.lookup(&key) {
+                frame
+            } else {
+                let frame = std::sync::Arc::new(self.render_path_mask(
+                    &key.geometry,
+                    key.width,
+                    key.height,
+                )?);
+                cache.insert(
+                    key.clone(),
+                    frame.clone(),
+                    self.vector_cache_limit_bytes.min(self.budget_bytes),
+                );
+                frame
+            };
+            prepared.push((key, frame.clone()));
+            frames.insert(index, frame);
+        }
+        Ok(frames)
+    }
+}

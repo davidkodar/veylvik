@@ -215,7 +215,13 @@ with an Affine node; path-point keyframes and on-canvas pen editing are not yet
 implemented. Vello scratch memory is separate from the
 compositor buffer budget; image atlases cannot grow and intermediate layers are
 disabled. `release_vector_resources` frees its persistent pipelines and scratch
-resources without invalidating retained output frames.
+resources without invalidating retained output frames. Graph renders retain up
+to 16 completed vector masks within a separate 32 MiB cache limit, keyed by exact
+geometry, fill rule and canvas size. These buffers count against the same GPU
+buffer budget as other held frames. Animation of downstream nodes reuses coverage;
+changed geometry misses the cache. Memory pressure evicts retained masks even for
+non-vector renders. `vector_cache_stats` reports reuse and `clear_frame_cache`
+clears both final-output and vector-coverage caches.
 
 `veylvik-text` shapes a single horizontal directional/script run from immutable
 host-supplied font bytes, using HarfRust and vector font outlines. It returns

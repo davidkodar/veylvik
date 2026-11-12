@@ -116,6 +116,8 @@ pub struct Renderer {
     validation_pipeline: wgpu::ComputePipeline,
     texture_pipeline: wgpu::ComputePipeline,
     vector_backend: Mutex<Option<vector::Backend>>,
+    vector_cache: Mutex<cache::FrameCache<vector::Key>>,
+    pub vector_cache_limit_bytes: u64,
     pool: Mutex<pool::Pool>,
     cache: Mutex<cache::FrameCache>,
     pub cache_limit_bytes: u64,
@@ -256,6 +258,8 @@ impl Renderer {
             validation_pipeline,
             texture_pipeline,
             vector_backend: Mutex::new(None),
+            vector_cache: Mutex::new(cache::FrameCache::default()),
+            vector_cache_limit_bytes: 32 * 1024 * 1024,
             pool: Mutex::new(pool::Pool::default()),
             cache: Mutex::new(cache::FrameCache::default()),
             cache_limit_bytes: 64 * 1024 * 1024,
@@ -312,34 +316,7 @@ impl Renderer {
         inputs: &ImageInputs,
         download: bool,
     ) -> Result<(Executed, Region)> {
-        let mut vectors = BTreeMap::new();
-        if plan.vector_bytes() > 0 {
-            request.time.seconds()?;
-            if let Some(region) = request.region {
-                region.validate(plan.width, plan.height)?;
-            }
-            for node in &plan.nodes {
-                params(node, plan.width, plan.height, request.time)?;
-            }
-            let needed = (if download {
-                plan.working_bytes()
-            } else {
-                plan.gpu_working_bytes()
-            }) + self.source_bytes(plan, inputs)?;
-            if self.resource_stats()?.held_bytes.saturating_add(needed) > self.budget_bytes {
-                return Err(error(
-                    "render including vector masks exceeds GPU buffer budget",
-                ));
-            }
-            for (index, node) in plan.nodes.iter().enumerate() {
-                if let Operation::Path { geometry } = &node.operation {
-                    vectors.insert(
-                        index,
-                        self.render_path_mask(geometry, plan.width, plan.height)?,
-                    );
-                }
-            }
-        }
+        let vectors = self.vector_sources(plan, request, inputs, download)?;
         let mut pool = self
             .pool
             .lock()
@@ -484,6 +461,7 @@ impl Renderer {
             let available = self.budget_bytes.saturating_sub(pool.stats().held_bytes);
             pool.trim(self.pool_limit_bytes.min(available));
         }
+        self.trim_vector_cache_to_budget()?;
         // Budget reductions apply even when a previous request is a cache hit.
         while self.resource_stats()?.held_bytes > self.budget_bytes && cache.evict() {}
         if self.resource_stats()?.held_bytes > self.budget_bytes {
@@ -514,6 +492,10 @@ impl Renderer {
             .lock()
             .map_err(|_| error("frame cache poisoned"))?
             .trim(0);
+        self.vector_cache
+            .lock()
+            .map_err(|_| error("vector cache poisoned"))?
+            .trim(0);
         Ok(())
     }
     pub fn device(&self) -> &wgpu::Device {
@@ -527,7 +509,7 @@ impl Renderer {
         plan: &Plan,
         evaluated: &[Params],
         inputs: &ImageInputs,
-        vectors: &BTreeMap<usize, GpuFrame>,
+        vectors: &BTreeMap<usize, Arc<GpuFrame>>,
         pool: &mut pool::Pool,
         download: bool,
     ) -> Result<Executed> {

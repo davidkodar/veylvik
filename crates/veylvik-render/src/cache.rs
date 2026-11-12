@@ -99,16 +99,27 @@ impl Key {
         Ok(Self(words))
     }
 }
-#[derive(Default)]
-pub(crate) struct FrameCache {
-    entries: VecDeque<(Key, Arc<GpuFrame>)>,
+pub(crate) struct FrameCache<K = Key> {
+    entries: VecDeque<(K, Arc<GpuFrame>)>,
     stats: CacheStats,
 }
-impl FrameCache {
+impl<K> Default for FrameCache<K> {
+    fn default() -> Self {
+        Self {
+            entries: VecDeque::new(),
+            stats: CacheStats::default(),
+        }
+    }
+}
+impl<K: PartialEq> FrameCache<K> {
+    pub fn contains(&self, key: &K) -> bool {
+        self.entries.iter().any(|(candidate, _)| candidate == key)
+    }
+
     pub fn stats(&self) -> CacheStats {
         self.stats
     }
-    pub fn lookup(&mut self, key: &Key) -> Option<Arc<GpuFrame>> {
+    pub fn lookup(&mut self, key: &K) -> Option<Arc<GpuFrame>> {
         if let Some(index) = self
             .entries
             .iter()
@@ -138,7 +149,7 @@ impl FrameCache {
             self.evict();
         }
     }
-    pub fn insert(&mut self, key: Key, frame: Arc<GpuFrame>, limit: u64) {
+    pub fn insert(&mut self, key: K, frame: Arc<GpuFrame>, limit: u64) {
         if frame.byte_size() > limit {
             return;
         }
