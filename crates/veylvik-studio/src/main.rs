@@ -22,6 +22,7 @@ mod node_palette;
 mod path_edit;
 mod path_handles;
 mod path_pen;
+mod path_transform;
 mod preset_library;
 mod preview_images;
 mod project;
@@ -147,6 +148,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 fonts: font_browser::Browser::new(&cc.egui_ctx),
                 text_viewer: Default::default(),
                 path_pen: Default::default(),
+                path_transform: Default::default(),
                 title_styles: Default::default(),
                 graph: graph::Graph::default(),
                 effects: effects::Controls::default(),
@@ -210,6 +212,7 @@ struct Studio {
     fonts: font_browser::Browser,
     text_viewer: text_viewer::Editor,
     path_pen: path_pen::Pen,
+    path_transform: path_transform::Editor,
     title_styles: title_styles::Library,
     graph: graph::Graph,
     effects: effects::Controls,
@@ -321,6 +324,7 @@ impl Studio {
         self.error = true;
     }
     fn refresh_draft(&mut self) {
+        self.path_transform.reset_gesture();
         self.path_pen.cancel();
         self.text_preview_deadline = None;
         self.text_commit_deadline = None;
@@ -2213,13 +2217,6 @@ impl eframe::App for Studio {
                 egui::CentralPanel::default().show_inside(ui, |ui| {
                     ui.horizontal_wrapped(|ui| {
                         ui.heading("Viewer");
-                        if matches!(self.draft.operation, Operation::Path { .. })
-                            && !self.playing
-                            && self.path_pen.toolbar(ui)
-                        {
-                            self.project.preview = Some(self.draft.id);
-                            self.request_preview();
-                        }
                         if matches!(self.draft.operation, Operation::Text { .. }) {
                             if ui
                                 .selectable_label(self.text_viewer.active, "Edit text")
@@ -2283,6 +2280,26 @@ impl eframe::App for Studio {
                             self.view = ViewSettings::default();
                         }
                     });
+                    if matches!(self.draft.operation, Operation::Path { .. }) {
+                        ui.horizontal_wrapped(|ui| {
+                            if matches!(self.draft.operation, Operation::Path { .. })
+                                && !self.playing
+                                && self.path_pen.toolbar(ui)
+                            {
+                                self.path_transform.active = false;
+                                self.project.preview = Some(self.draft.id);
+                                self.request_preview();
+                            }
+                            if matches!(self.draft.operation, Operation::Path { .. })
+                                && !self.playing
+                                && !self.path_pen.active
+                                && self.path_transform.toolbar(ui)
+                            {
+                                self.project.preview = Some(self.draft.id);
+                                self.request_preview();
+                            }
+                        });
+                    }
                     if let Some(frame) = self.displayed.clone() {
                         let image = egui::vec2(
                             frame.frame.region().width as f32,
@@ -2294,6 +2311,9 @@ impl eframe::App for Studio {
                         );
                         if !self.text_viewer.active
                             && !self.path_pen.active
+                            && !(self.path_transform.active
+                                && matches!(self.draft.operation, Operation::Path { .. })
+                                && ui.input(|i| i.pointer.primary_down()))
                             && !(response.double_clicked()
                                 && matches!(self.draft.operation, Operation::Text { .. }))
                         {
@@ -2417,7 +2437,23 @@ impl eframe::App for Studio {
                                 self.draft_dirty = true;
                                 self.queue_text_preview(ui.ctx());
                             }
-                            if !self.path_pen.active
+                            let transform_mask = self.path_transform.active
+                                && matches!(self.draft.operation, Operation::Path { .. });
+                            if transform_mask
+                                && !self.path_pen.active
+                                && let Operation::Path { geometry } = &mut self.draft.operation
+                                && self
+                                    .path_transform
+                                    .show(ui, canvas, transform, image, geometry)
+                            {
+                                self.draft_dirty = true;
+                                self.text_preview_deadline.get_or_insert_with(|| {
+                                    Instant::now() + Duration::from_millis(32)
+                                });
+                                ui.ctx().request_repaint_after(Duration::from_millis(32));
+                            }
+                            if !transform_mask
+                                && !self.path_pen.active
                                 && (!is_text
                                     || (!self.text_viewer.active && !self.text_viewer.layout))
                             {

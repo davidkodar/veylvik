@@ -21,6 +21,7 @@ pub fn edit(ui: &mut egui::Ui, path: &mut PathMask) -> bool {
     ui.label("Use Draw mask or Add contour above the viewer.");
     ui.label("Click for corners; drag for curves. Close at the first point.");
     ui.weak("Right-click a point to insert, delete, smooth or sharpen.");
+    ui.weak("Transform mask moves, rotates or scales all contours together.");
     ui.weak("Preview selected to edit. Apply saves; Revert cancels.");
     ui.add_space(6.0);
     ui.collapsing("Precision coordinates", |ui| {

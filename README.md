@@ -625,6 +625,11 @@ intact until the contour is closed. Right-click a viewer anchor to insert a poin
 after it, make it smooth or a corner, or delete it. Insertion splits the next
 segment at its midpoint without changing the curve; deletion keeps at least three
 anchors. These edits use live GPU draft preview and Apply/Revert with shared undo.
+The viewer also offers a separate Transform mask mode: drag inside its bounding
+box to move all contours, corners to scale, side handles to stretch, and the round
+handle to rotate about the centre. Keep proportions controls corner scaling; Shift
+snaps rotation to 15 degrees. These geometry edits retain the same Apply/Revert
+workflow, and coordinate-limit violations leave the last valid shape intact.
 Animate the result with an Affine node;
 path-point keyframes are not yet implemented. Vello scratch memory is separate from the
 compositor buffer budget; image atlases cannot grow and intermediate layers are
