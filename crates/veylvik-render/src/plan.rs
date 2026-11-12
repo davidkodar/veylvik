@@ -110,10 +110,10 @@ impl Plan {
                 Operation::Noise { .. } => Kernel::Noise,
                 Operation::Exposure { .. } => Kernel::Exposure,
                 Operation::Transform { .. } => Kernel::Transform,
-                Operation::Merge => Kernel::Merge,
+                Operation::Merge {} => Kernel::Merge,
                 Operation::Affine { .. } => Kernel::Affine,
                 Operation::Ellipse { .. } => Kernel::Ellipse,
-                Operation::Mask => Kernel::Mask,
+                Operation::Mask {} => Kernel::Mask,
                 Operation::Path { .. } => {
                     if composition.width > crate::MAX_VECTOR_DIMENSION
                         || composition.height > crate::MAX_VECTOR_DIMENSION

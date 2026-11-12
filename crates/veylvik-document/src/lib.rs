@@ -42,7 +42,7 @@ pub enum Operation {
     Blur {
         radius: Scalar,
     },
-    Merge,
+    Merge {},
     Image {
         asset: String,
     },
@@ -62,7 +62,7 @@ pub enum Operation {
         radius_y: Scalar,
         feather: Scalar,
     },
-    Mask,
+    Mask {},
     Path {
         geometry: vector::PathMask,
     },
@@ -75,11 +75,11 @@ impl Operation {
             Self::Exposure { .. } => &registry::EXPOSURE,
             Self::Transform { .. } => &registry::TRANSFORM,
             Self::Blur { .. } => &registry::BLUR,
-            Self::Merge => &registry::MERGE,
+            Self::Merge {} => &registry::MERGE,
             Self::Image { .. } => &registry::IMAGE,
             Self::Affine { .. } => &registry::AFFINE,
             Self::Ellipse { .. } => &registry::ELLIPSE,
-            Self::Mask => &registry::MASK,
+            Self::Mask {} => &registry::MASK,
             Self::Path { .. } => &registry::PATH,
         }
     }
@@ -406,7 +406,7 @@ pub fn demo() -> Composition {
     );
     let merge = Node::new(
         "Composite",
-        Operation::Merge,
+        Operation::Merge {},
         &[("background", background.id), ("foreground", transform.id)],
     );
     Composition {
@@ -492,7 +492,11 @@ pub fn motion_demo() -> Composition {
             },
             &[],
         );
-        let masked = add(name, Operation::Mask, &[("image", color), ("mask", shape)]);
+        let masked = add(
+            name,
+            Operation::Mask {},
+            &[("image", color), ("mask", shape)],
+        );
         let motion = add(
             &format!("{name} motion"),
             Operation::Affine {
@@ -523,7 +527,7 @@ pub fn motion_demo() -> Composition {
         );
         output = add(
             &format!("{name} over"),
-            Operation::Merge,
+            Operation::Merge {},
             &[("background", output), ("foreground", motion)],
         );
     }

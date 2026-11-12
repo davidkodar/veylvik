@@ -81,7 +81,7 @@ fn vector_masks_preserve_winding_curves_resize_and_gpu_compositing() {
     );
     let output = veylvik_document::Node::new(
         "mask",
-        veylvik_document::Operation::Mask,
+        veylvik_document::Operation::Mask {},
         &[("image", solid.id), ("mask", mask.id)],
     );
     let mut doc = veylvik_document::demo();

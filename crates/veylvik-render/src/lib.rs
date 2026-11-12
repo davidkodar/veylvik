@@ -103,7 +103,7 @@ fn params(node: &Node, width: u32, height: u32, time: Time) -> Result<Params> {
             p.values = [width as f32, height as f32, 0.0, 0.0];
             p.extra[0] = width as f32;
         }
-        Operation::Merge | Operation::Mask | Operation::Image { .. } => {}
+        Operation::Merge {} | Operation::Mask {} | Operation::Image { .. } => {}
     }
     Ok(p)
 }

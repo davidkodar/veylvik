@@ -266,7 +266,7 @@ mod image_tests {
         session.call("undo", &json!({"revision":1})).unwrap();
         assert!(matches!(
             session.document.snapshot().nodes[&output].operation,
-            veylvik_document::Operation::Merge
+            veylvik_document::Operation::Merge {}
         ));
         let error=session.call("render",&json!({"revision":2,"path":"/tmp/unused.png","ticks":0,"rate":1,"region":{"x":0,"y":0,"width":0,"height":1}})).unwrap_err();
         assert!(error.to_string().contains("region"));

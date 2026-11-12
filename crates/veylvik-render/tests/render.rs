@@ -50,7 +50,7 @@ fn gpu_matches_analytic_references_and_enforces_budget() {
     );
     let merge = Node::new(
         "merge",
-        Operation::Merge,
+        Operation::Merge {},
         &[("background", bg.id), ("foreground", fg.id)],
     );
     let exposure = Node::new(
@@ -257,7 +257,7 @@ fn gpu_image_injection_preview_and_crop_match_full_frame() {
     );
     let merge = Node::new(
         "merge",
-        Operation::Merge,
+        Operation::Merge {},
         &[("background", first.id), ("foreground", second.id)],
     );
     let blur = Node::new(
@@ -371,7 +371,7 @@ fn lowered_blur_preserves_fanout_and_never_aliases_inputs() {
     );
     let merge = Node::new(
         "merge",
-        Operation::Merge,
+        Operation::Merge {},
         &[("background", source.id), ("foreground", blur.id)],
     );
     let id = merge.id;
@@ -897,7 +897,7 @@ fn immutable_source_uploads_reuse_contents_and_aliases_share_budget() {
     let b = Node::new("alias", Operation::Image { asset: "b".into() }, &[]);
     let merge = Node::new(
         "over",
-        Operation::Merge,
+        Operation::Merge {},
         &[("background", a.id), ("foreground", b.id)],
     );
     let exposure = Node::new(

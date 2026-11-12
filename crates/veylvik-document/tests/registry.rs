@@ -81,3 +81,25 @@ fn empty_and_nul_assets_are_rejected() {
         );
     }
 }
+
+#[test]
+fn every_operation_rejects_unknown_fields_including_parameterless_nodes() {
+    for descriptor in registry::TYPES {
+        let mut value = descriptor.default_operation();
+        value["future_parameter"] = serde_json::json!(true);
+        assert!(
+            serde_json::from_value::<Operation>(value).is_err(),
+            "{} silently accepted an unknown field",
+            descriptor.type_id
+        );
+    }
+    // Existing serialized files retain the same representation.
+    assert_eq!(
+        serde_json::to_value(Operation::Merge {}).unwrap(),
+        serde_json::json!({"type":"merge"})
+    );
+    assert_eq!(
+        serde_json::to_value(Operation::Mask {}).unwrap(),
+        serde_json::json!({"type":"mask"})
+    );
+}

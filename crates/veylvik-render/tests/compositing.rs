@@ -122,7 +122,7 @@ fn ellipse_coverage_and_alpha_mask_preserve_hdr_premultiplication() {
         );
         let mask = Node::new(
             "mask",
-            Operation::Mask,
+            Operation::Mask {},
             &[("image", solid.id), ("mask", ellipse.id)],
         );
         let id = mask.id;
@@ -155,7 +155,7 @@ fn ellipse_coverage_and_alpha_mask_preserve_hdr_premultiplication() {
     );
     let mask = Node::new(
         "mask",
-        Operation::Mask,
+        Operation::Mask {},
         &[("image", solid.id), ("mask", image.id)],
     );
     let id = mask.id;

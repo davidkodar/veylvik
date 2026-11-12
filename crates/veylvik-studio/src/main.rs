@@ -665,10 +665,10 @@ impl Studio {
                     self.draft_dirty |= ui.add(egui::DragValue::new(seed)).changed();
                 });
             }
-            Operation::Merge => {
+            Operation::Merge {} => {
                 ui.label("Foreground over background");
             }
-            Operation::Mask => {
+            Operation::Mask {} => {
                 ui.label("Image multiplied by mask alpha");
             }
             Operation::Affine { .. }

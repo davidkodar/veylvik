@@ -34,7 +34,7 @@ fn animated_mask_composition_matches_cli_and_mcp() {
     );
     let output = veylvik_document::Node::new(
         "vector composite",
-        veylvik_document::Operation::Merge,
+        veylvik_document::Operation::Merge {},
         &[("background", document.output), ("foreground", path.id)],
     );
     document.nodes.insert(path.id, path);
