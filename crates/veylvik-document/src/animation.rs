@@ -28,6 +28,32 @@ impl Time {
         Self::new(ticks, rate)
     }
 
+    /// Exact rational addition, reduced before narrowing to the storage types.
+    pub fn checked_add(self, other: Self) -> Result<Self> {
+        self.combine(other, false)
+    }
+    /// Exact rational subtraction, including i64::MIN without negating it.
+    pub fn checked_sub(self, other: Self) -> Result<Self> {
+        self.combine(other, true)
+    }
+    fn combine(self, other: Self, subtract: bool) -> Result<Self> {
+        self.seconds()?;
+        other.seconds()?;
+        let a = i128::from(self.ticks) * i128::from(other.rate);
+        let b = i128::from(other.ticks) * i128::from(self.rate);
+        let numerator = if subtract { a - b } else { a + b };
+        let denominator = i128::from(self.rate) * i128::from(other.rate);
+        let (mut a, mut b) = (numerator.abs(), denominator);
+        while b != 0 {
+            (a, b) = (b, a % b);
+        }
+        Self::new(
+            i64::try_from(numerator / a).map_err(|_| crate::Error("time overflow".into()))?,
+            u32::try_from(denominator / a)
+                .map_err(|_| crate::Error("time denominator overflow".into()))?,
+        )
+    }
+
     pub fn new(ticks: i64, rate: u32) -> Result<Self> {
         if rate == 0 {
             return fail("time rate must be positive");

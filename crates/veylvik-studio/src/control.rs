@@ -69,7 +69,7 @@ pub fn call(studio: &mut Studio, name: &str, args: &Value) -> Result<Value> {
             .map(|value| value.as_bool().ok_or("summary must be boolean"))
             .transpose()?
             .unwrap_or(false);
-        let mut result = json!({"session":project.session,"revision":project.document.revision(),"history":project.document.history(),"selected":project.selected,"preview":{"node":project.preview.unwrap_or(project.document.snapshot().output),"frame":project.frame,"displayed_time":studio.displayed_time,"rendering":studio.preview_pending,"playing":studio.playing},"viewer":{"exposure":studio.view.exposure,"alpha":studio.view.alpha,"scale":studio.navigation.manual_scale(),"pan":studio.navigation.pan()},"unavailable_assets":project.unavailable_assets(),"inspector_draft":studio.draft_dirty,"busy":studio.files.busy() || studio.authoring_dialog_open() || studio.graph.dragging(),"status":studio.status,"error":studio.error});
+        let mut result = json!({"session":project.session,"revision":project.document.revision(),"history":project.document.history(),"selected":project.selected,"preview":{"node":project.preview.unwrap_or(project.document.snapshot().output),"frame":project.frame,"displayed_time":studio.displayed_time,"rendering":studio.preview_pending,"playing":studio.playing},"viewer":{"exposure":studio.view.exposure,"alpha":studio.view.alpha,"scale":studio.navigation.manual_scale(),"pan":studio.navigation.pan()},"unavailable_assets":project.unavailable_assets(),"inspector_draft":studio.draft_dirty,"busy":studio.files.busy() || studio.authoring_dialog_open() || (studio.graph.dragging() || studio.animation_editor.dragging()),"status":studio.status,"error":studio.error});
         if summary {
             result["summary"] = veylvik_document::inspection::summary(project.document.snapshot());
         } else {
@@ -87,7 +87,7 @@ pub fn call(studio: &mut Studio, name: &str, args: &Value) -> Result<Value> {
     if studio.files.busy()
         || studio.authoring_dialog_open()
         || studio.confirm.is_some()
-        || studio.graph.dragging()
+        || (studio.graph.dragging() || studio.animation_editor.dragging())
     {
         return Err("editor is busy; finish the current interaction first".into());
     }

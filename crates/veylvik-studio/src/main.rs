@@ -1,5 +1,6 @@
 mod about;
 mod animation;
+mod animation_editor;
 mod composition;
 mod control;
 mod curve_preview;
@@ -126,6 +127,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 node_palette: node_palette::Controls::default(),
                 node_finder: node_finder::Controls::default(),
                 key_timeline: key_timeline::Keys::default(),
+                animation_editor: animation_editor::Editor::default(),
                 status: String::new(),
                 error: false,
                 playing: false,
@@ -178,6 +180,7 @@ struct Studio {
     node_palette: node_palette::Controls,
     node_finder: node_finder::Controls,
     key_timeline: key_timeline::Keys,
+    animation_editor: animation_editor::Editor,
     status: String,
     error: bool,
     playing: bool,
@@ -211,6 +214,7 @@ impl Studio {
         self.node_palette = node_palette::Controls::default();
         self.node_finder = node_finder::Controls::default();
         self.key_timeline = key_timeline::Keys::default();
+        self.animation_editor = animation_editor::Editor::default();
         self.composition_controls = composition::Controls::default();
         self.export_controls = sequence::Controls::default();
         self.project = project;
@@ -291,6 +295,7 @@ impl Studio {
             || self.authoring_dialog_open()
             || !self.can_change_selection()
             || self.graph.dragging()
+            || self.animation_editor.dragging()
         {
             return;
         }
@@ -303,6 +308,7 @@ impl Studio {
             || self.authoring_dialog_open()
             || !self.can_change_selection()
             || self.graph.dragging()
+            || self.animation_editor.dragging()
         {
             return;
         }
@@ -354,7 +360,8 @@ impl Studio {
         }
     }
     fn duplicate_selected(&mut self, ctx: &egui::Context) {
-        if !self.can_change_selection() || self.graph.dragging() {
+        if !self.can_change_selection() || self.graph.dragging() || self.animation_editor.dragging()
+        {
             return;
         }
         self.playing = false;
@@ -370,7 +377,8 @@ impl Studio {
         }
     }
     fn duplicate_branch(&mut self) {
-        if !self.can_change_selection() || self.graph.dragging() {
+        if !self.can_change_selection() || self.graph.dragging() || self.animation_editor.dragging()
+        {
             return;
         }
         self.playing = false;
@@ -602,7 +610,11 @@ impl Studio {
         self.file_started(result);
     }
     fn reload_images(&mut self) {
-        if self.files.busy() || !self.can_change_selection() || self.graph.dragging() {
+        if self.files.busy()
+            || !self.can_change_selection()
+            || self.graph.dragging()
+            || self.animation_editor.dragging()
+        {
             return;
         }
         self.playing = false;
@@ -632,7 +644,11 @@ impl Studio {
         self.file_started(result);
     }
     fn replace_image(&mut self) {
-        if self.files.busy() || !self.can_change_selection() || self.graph.dragging() {
+        if self.files.busy()
+            || !self.can_change_selection()
+            || self.graph.dragging()
+            || self.animation_editor.dragging()
+        {
             return;
         }
         if !matches!(self.draft.operation, Operation::Image { .. }) {
@@ -1174,6 +1190,10 @@ impl Studio {
         let count = self.project.document.snapshot().frame_count;
         let end_frame = (i64::from(count) - 1).max(self.project.frame);
         ui.horizontal(|ui| {
+            ui.add_enabled_ui(!self.animation_editor.dragging(), |ui| {
+                ui.selectable_value(&mut self.animation_editor.visible, false, "Nodes");
+                ui.selectable_value(&mut self.animation_editor.visible, true, "Animation");
+            });
             if ui
                 .button(if self.playing { "Pause" } else { "Play" })
                 .clicked()
@@ -1196,6 +1216,58 @@ impl Studio {
                 self.request_preview();
             }
         });
+    }
+    fn animation_workspace(&mut self, ui: &mut egui::Ui) {
+        let ready = !self.draft_dirty && !self.playing;
+        if !ready {
+            ui.weak("Pause playback and apply or revert inspector changes to edit animation.");
+        }
+        let mut actions = Vec::new();
+        ui.add_enabled_ui(ready, |ui| {
+            actions = self.animation_editor.show(
+                ui,
+                self.project.document.snapshot(),
+                self.project.document.revision(),
+                self.project.selected,
+                self.project.frame,
+            );
+        });
+        for action in actions {
+            match action {
+                animation_editor::Action::Select(id) => {
+                    self.project.selected = id;
+                    self.refresh_draft();
+                }
+                animation_editor::Action::Seek(frame) => {
+                    self.project.frame = frame;
+                    self.playing = false;
+                    self.request_preview();
+                }
+                animation_editor::Action::Commit {
+                    revision,
+                    node,
+                    parameter,
+                    scalar,
+                } => {
+                    if revision != self.project.document.revision() {
+                        self.fail("Animation changed during the edit; please try again.");
+                        continue;
+                    }
+                    let command = Command::SetParameter {
+                        id: node,
+                        parameter,
+                        value: serde_json::to_value(scalar).expect("finite validated scalar"),
+                    };
+                    match self.project.apply(&[command]) {
+                        Ok(()) => {
+                            self.refresh_draft();
+                            self.request_preview();
+                        }
+                        Err(error) => self.fail(error),
+                    }
+                }
+            }
+        }
     }
     fn toggle_play(&mut self) {
         self.playing = !self.playing;
@@ -1395,11 +1467,13 @@ impl eframe::App for Studio {
             && !self.authoring_dialog_open()
             && self.confirm.is_none()
             && !self.graph.dragging()
+            && !self.animation_editor.dragging()
             && ctx.input_mut(|input| input.consume_key(egui::Modifiers::CTRL, egui::Key::Enter));
         if !self.files.busy()
             && !self.authoring_dialog_open()
             && self.confirm.is_none()
-            && !ctx.egui_wants_keyboard_input()
+            && (!ctx.egui_wants_keyboard_input() || self.animation_editor.has_focus(&ctx))
+            && !self.animation_editor.dragging()
         {
             if ctx.input_mut(|i| {
                 i.consume_key(egui::Modifiers::CTRL | egui::Modifiers::SHIFT, egui::Key::S)
@@ -1500,9 +1574,15 @@ impl eframe::App for Studio {
                     .min_size(130.0)
                     .resizable(true)
                     .show_inside(ui, |ui| {
-                        self.timeline(ui);
+                        ui.add_enabled_ui(!self.animation_editor.dragging(), |ui| {
+                            self.timeline(ui)
+                        });
                         ui.separator();
-                        self.graph(ui);
+                        if self.animation_editor.visible {
+                            self.animation_workspace(ui);
+                        } else {
+                            self.graph(ui);
+                        }
                     });
                 egui::Panel::right("inspector")
                     .default_size(280.0)
@@ -1628,6 +1708,7 @@ impl eframe::App for Studio {
             && !self.authoring_dialog_open()
             && self.confirm.is_none()
             && !self.graph.dragging()
+            && !self.animation_editor.dragging()
             && self.apply_draft()
         {
             ctx.memory_mut(|memory| {

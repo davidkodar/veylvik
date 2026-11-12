@@ -1,12 +1,12 @@
 //! Read-only curve plots use exact rational differences for the horizontal axis.
 use eframe::egui;
 use veylvik_document::{Interpolation, Scalar, Time};
-struct Plot {
-    points: Vec<[f32; 2]>,
-    keys: Vec<[f32; 2]>,
-    playhead: Option<f32>,
-    min: f64,
-    max: f64,
+pub(super) struct Plot {
+    pub(super) points: Vec<[f32; 2]>,
+    pub(super) keys: Vec<[f32; 2]>,
+    pub(super) playhead: Option<f32>,
+    pub(super) min: f64,
+    pub(super) max: f64,
 }
 fn relative(time: Time, first: Time, last: Time) -> Option<f64> {
     let span = last.ticks as i128 * first.rate as i128 - first.ticks as i128 * last.rate as i128;
@@ -16,7 +16,7 @@ fn relative(time: Time, first: Time, last: Time) -> Option<f64> {
     let elapsed = time.ticks as i128 * first.rate as i128 - first.ticks as i128 * time.rate as i128;
     Some(elapsed as f64 / span as f64 * last.rate as f64 / time.rate as f64)
 }
-fn plot(scalar: &Scalar, time: Time, width: f32) -> Option<Plot> {
+pub(super) fn plot(scalar: &Scalar, time: Time, width: f32) -> Option<Plot> {
     scalar.validate().ok()?;
     time.seconds().ok()?;
     let (keys, mode) = match scalar {

@@ -958,6 +958,31 @@ frame (half frames round up), while authored times remain unchanged. Keys before
 frame zero or after the composition’s final frame are hidden. Unapplied inspector
 changes appear in the strip after **Apply**.
 
+Choose **Animation** beside **Nodes** to open the animation workspace. Expand a
+node to select a scalar parameter. **Keyframes** shows parameter lanes for that
+node; **Curves** plots the selected parameter with the same interpolation used by
+the renderer. Click a key to select it, Shift-click to select several keys within
+one parameter, and drag to move them. Curve dragging changes time and value;
+keyframe dragging changes time only. Horizontal movement snaps the *offset* to
+whole frames, preserving any existing subframe spacing. Escape cancels a drag.
+
+**Copy keys** / Ctrl+C copies the selection; **Paste at playhead** / Ctrl+V anchors
+its first key at the current frame. Delete removes selected keys. Removing all
+keys retains the curve's evaluated value as a constant. Paste and drag reject
+colliding timestamps rather than overwriting existing keys. Each operation is
+one undo step, committed immediately; the inspector's Apply button is not needed.
+During dragging only the curve/key preview changes; the GPU viewer updates on
+release. Pause playback and apply or revert inspector drafts before editing.
+
+Use **Add key**, the interpolation selector, **Fit composition**, and **Fit keys**
+for common operations. Scroll over the plot to zoom; Shift-scroll pans time.
+Scroll bars navigate parameter lanes. Fit keys includes keys outside the rendered
+composition; the playhead itself stays within the composition. Resize the lower
+workspace by dragging its top divider for a larger curve view. Free Bézier tangent
+handles and selections spanning multiple parameters are not implemented yet.
+Edits use revision-checked `set_parameter` transactions, also available through
+MCP; no separate animation format or renderer is involved.
+
 To move or archive an editable project with its images, collect it into a new
 folder:
 

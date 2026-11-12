@@ -45,7 +45,7 @@ impl Studio {
             });
             ui.menu_button("Edit", |ui| {
                 let history = self.project.document.history();
-                let ready = !self.draft_dirty && !self.graph.dragging();
+                let ready = !self.draft_dirty && !self.graph.dragging() && !self.animation_editor.dragging();
                 if item(ui, "Undo", "Ctrl+Z", ready && history.undo_steps > 0) { self.history(false); }
                 if item(ui, "Redo", "Ctrl+Shift+Z", ready && history.redo_steps > 0) { self.history(true); }
                 ui.separator();
@@ -62,7 +62,7 @@ impl Studio {
                 if item(ui, "Find node…", "Ctrl+F", ready) { self.open_node_finder(); }
             });
             ui.menu_button("Add", |ui| {
-                let ready = !self.draft_dirty && !self.graph.dragging();
+                let ready = !self.draft_dirty && !self.graph.dragging() && !self.animation_editor.dragging();
                 if item(ui, "Search nodes…", "Tab", ready) { self.open_node_palette(ui.ctx()); }
                 ui.separator();
                 let mut chosen = None;

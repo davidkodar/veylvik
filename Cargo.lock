@@ -3666,6 +3666,7 @@ dependencies = [
  "bytemuck",
  "eframe",
  "pollster",
+ "serde",
  "serde_json",
  "veylvik-control",
  "veylvik-document",

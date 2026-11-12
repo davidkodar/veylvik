@@ -103,7 +103,7 @@ pub fn scalar(
     });
     changed
 }
-fn mode_label(mode: Interpolation) -> &'static str {
+pub(super) fn mode_label(mode: Interpolation) -> &'static str {
     match mode {
         Interpolation::Linear => "Linear",
         Interpolation::Step => "Hold",

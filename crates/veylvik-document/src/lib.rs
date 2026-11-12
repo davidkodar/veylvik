@@ -33,6 +33,7 @@ fn fail<T>(message: impl Into<String>) -> Result<T> {
 }
 
 pub mod animation;
+pub mod key_edit;
 pub use animation::{CompiledScalar, Interpolation, Key, Scalar, Time};
 /// All image ports carry scene-linear Rec.709, premultiplied RGBA float pixels.
 #[derive(Debug, Clone, Serialize, Deserialize)]
