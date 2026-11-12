@@ -614,6 +614,15 @@ position, rotation and horizontal/vertical scale support timeline keyframes.
 Mirror and flip buttons preserve animation keys. Viewer handles manipulate the
 text's source coordinates. Downstream transforms can change where that source
 appears; preview the text node itself for direct source placement in that case.
+The inspector keeps the wording and **Text / Layout / Transform / Style** tabs
+above the scrolling controls. Sliders have precise numeric entry and individual
+**Reset** buttons. Reset uses the registered default at the current frame while
+preserving other animation keys; **Keys** opens detailed animation controls.
+**Add material or effect…** opens Style, where choosing a material applies it
+directly. Changing the material reuses its node and preserves its animation;
+**Plain colour** bypasses it. **Browse effects…** opens the full effect library
+after the current surface. Choosing an image fill replaces the surface and
+reuses an existing fill node, keeping other effects connected.
 Typing previews the draft; **Apply** commits one Undo step, **Revert** restores
 it. Changing text keeps connected materials, reflections and animation intact.
 
@@ -621,8 +630,8 @@ Regular/bold/italic/bold-italic Liberation Sans and a monospace font are bundled
 **Choose font file…** embeds a TTF/OTF/TTC font (up to 8 MiB) in the project;
 rendering does not depend on that file remaining installed. The bundled
 Liberation font license is in `crates/veylvik-text/assets/fonts/LICENSE`.
-OpenType feature tags, language and explicit right-to-left direction are under
-advanced controls. Mixed-direction paragraphs, automatic font fallback, variable
+OpenType feature tags are in **Font options**; language and explicit
+right-to-left direction are in **Layout**. Mixed-direction paragraphs, automatic font fallback, variable
 font axes, rich-text spans and per-character animation are not implemented yet.
 Missing characters and excessive outline complexity produce explicit errors.
 

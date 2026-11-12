@@ -92,3 +92,120 @@ fn text_font_and_content_validation_is_bounded() {
         font.validate().unwrap();
     }
 }
+
+#[test]
+fn text_style_replaces_material_without_stacking_and_keeps_connections_and_history() {
+    use presets::text_style;
+    let mut scene = demo();
+    let text = Node::new(
+        "Title",
+        serde_json::from_value(registry::TEXT.default_operation()).unwrap(),
+        &[],
+    );
+    let id = text.id;
+    scene.nodes.insert(id, text);
+    scene.output = id;
+    let mut owner = Document::new(scene).unwrap();
+    let commands = text_style::apply(owner.snapshot(), id, Some("gold_text"), None).unwrap();
+    owner.apply(0, &commands).unwrap();
+    let material = text_style::current(owner.snapshot(), id).unwrap().unwrap();
+    let count = owner.snapshot().nodes.len();
+    let before = owner.snapshot().nodes[&material]
+        .operation
+        .scalar("lighting")
+        .unwrap()
+        .clone();
+    let commands = text_style::apply(owner.snapshot(), id, Some("silver_text"), None).unwrap();
+    owner.apply(1, &commands).unwrap();
+    assert_eq!(owner.snapshot().nodes.len(), count);
+    assert_eq!(
+        text_style::current(owner.snapshot(), id).unwrap(),
+        Some(material)
+    );
+    assert!(matches!(
+        owner.snapshot().nodes[&material].operation,
+        Operation::Material {
+            kind: MaterialKind::Silver,
+            ..
+        }
+    ));
+    assert_eq!(
+        serde_json::to_value(
+            owner.snapshot().nodes[&material]
+                .operation
+                .scalar("lighting")
+        )
+        .unwrap(),
+        serde_json::to_value(Some(before)).unwrap()
+    );
+    let commands = text_style::apply(owner.snapshot(), id, None, None).unwrap();
+    owner.apply(2, &commands).unwrap();
+    assert_eq!(owner.snapshot().output, id);
+    assert_eq!(text_style::current(owner.snapshot(), id).unwrap(), None);
+    owner.undo(3).unwrap();
+    assert_eq!(owner.snapshot().output, material);
+    let image = owner
+        .snapshot()
+        .nodes
+        .values()
+        .find(|n| matches!(n.operation, Operation::Solid { .. }))
+        .unwrap()
+        .id;
+    let (_, commands) = presets::fill_layer(owner.snapshot(), id, image).unwrap();
+    owner.apply(4, &commands).unwrap();
+    assert_eq!(
+        text_style::current(owner.snapshot(), id).unwrap(),
+        Some(material)
+    );
+    let commands = text_style::apply(owner.snapshot(), id, Some("bronze_text"), None).unwrap();
+    owner.apply(5, &commands).unwrap();
+    assert_eq!(owner.snapshot().nodes.len(), count + 1);
+    assert!(matches!(
+        owner.snapshot().nodes[&material].operation,
+        Operation::Material {
+            kind: MaterialKind::Bronze,
+            ..
+        }
+    ));
+}
+
+#[test]
+fn switching_between_material_and_image_fill_is_atomic_and_reuses_the_fill() {
+    use presets::text_style;
+    let mut scene = demo();
+    let image = scene
+        .nodes
+        .values()
+        .find(|n| matches!(n.operation, Operation::Solid { .. }))
+        .unwrap()
+        .id;
+    let title = Node::new(
+        "Title",
+        serde_json::from_value(registry::TEXT.default_operation()).unwrap(),
+        &[],
+    );
+    let text = title.id;
+    scene.nodes.insert(text, title);
+    scene.output = text;
+    let mut owner = Document::new(scene).unwrap();
+    owner
+        .apply(
+            0,
+            &text_style::apply(owner.snapshot(), text, Some("gold_text"), None).unwrap(),
+        )
+        .unwrap();
+    let material = text_style::output(owner.snapshot(), text).unwrap();
+    let (fill, commands) = text_style::fill(owner.snapshot(), text, image).unwrap();
+    owner.apply(1, &commands).unwrap();
+    assert_eq!(owner.snapshot().output, fill);
+    assert_eq!(text_style::current(owner.snapshot(), text).unwrap(), None);
+    let count = owner.snapshot().nodes.len();
+    let (again, commands) = text_style::fill(owner.snapshot(), text, image).unwrap();
+    owner.apply(2, &commands).unwrap();
+    assert_eq!(fill, again);
+    assert_eq!(owner.snapshot().nodes.len(), count);
+    owner.undo(3).unwrap();
+    owner.undo(4).unwrap();
+    assert_eq!(owner.snapshot().output, material);
+    assert!(text_style::fill(owner.snapshot(), text, material).is_err());
+}

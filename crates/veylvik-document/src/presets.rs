@@ -4,6 +4,7 @@ pub mod background;
 pub mod builtin;
 pub mod resolution;
 pub mod showcase;
+pub mod text_style;
 use crate::{
     Command, Composition, Error, Node, NodeId, NodePosition, Operation, Result, Time, fail,
     groups::Group,

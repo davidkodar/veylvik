@@ -465,6 +465,12 @@ impl Studio {
             Err(error) => self.fail(error),
         }
     }
+    fn queue_text_preview(&mut self, ctx: &egui::Context) {
+        let deadline = self
+            .text_preview_deadline
+            .get_or_insert_with(|| Instant::now() + Duration::from_millis(32));
+        ctx.request_repaint_after(deadline.saturating_duration_since(Instant::now()));
+    }
     fn request_preview(&mut self) {
         self.wanted = None;
         self.preview_pending = false;
@@ -1189,7 +1195,11 @@ impl Studio {
         if self.effect_inspector(ui) {
             return;
         }
-        ui.label(self.draft.operation.descriptor().label);
+        ui.label(if matches!(self.draft.operation, Operation::Text { .. }) {
+            "Layer name"
+        } else {
+            self.draft.operation.descriptor().label
+        });
         ui.add_space(8.0);
         self.draft_dirty |= ui.text_edit_singleline(&mut self.draft.label).changed();
         ui.separator();
@@ -1200,9 +1210,13 @@ impl Studio {
         let mut replace_image = false;
         let mut import_font = false;
         let mut text_changed = false;
+        let text_canvas = [
+            self.project.document.snapshot().width as f32,
+            self.project.document.snapshot().height as f32,
+        ];
         match &mut self.draft.operation {
             op @ Operation::Text { .. } => {
-                let (changed, import) = editable_text::controls(ui, op, time);
+                let (changed, import) = editable_text::controls(ui, op, time, text_canvas);
                 self.draft_dirty |= changed;
                 text_changed |= changed;
                 import_font = import;
@@ -1381,12 +1395,12 @@ impl Studio {
             }
         }
         if text_changed && matches!(self.draft.operation, Operation::Text { .. }) {
-            self.text_preview_deadline =
-                Some(Instant::now() + std::time::Duration::from_millis(150));
+            self.queue_text_preview(ui.ctx());
         }
         if import_font {
             self.import_text_font();
         }
+
         if self.draft_dirty {
             self.playing = false;
         }
@@ -1757,13 +1771,17 @@ impl eframe::App for Studio {
         self.theme(&ctx);
         self.poll_files(&ctx);
         if let Some(deadline) = self.text_preview_deadline {
-            if Instant::now() >= deadline {
+            if Instant::now() >= deadline && !self.preview_pending {
                 self.text_preview_deadline = None;
                 if self.draft_dirty && matches!(self.draft.operation, Operation::Text { .. }) {
                     self.request_preview();
                 }
             } else {
-                ctx.request_repaint_after(deadline.saturating_duration_since(Instant::now()));
+                ctx.request_repaint_after(
+                    deadline
+                        .saturating_duration_since(Instant::now())
+                        .max(Duration::from_millis(8)),
+                );
             }
         }
         if let Some(error) = self.recovery.tick(&self.project) {
@@ -1954,7 +1972,23 @@ impl eframe::App for Studio {
                     .resizable(true)
                     .show_inside(ui, |ui| {
                         self.inspector_actions(ui);
-                        egui::ScrollArea::vertical().show(ui, |ui| self.inspector(ui));
+                        if matches!(self.draft.operation, Operation::Text { .. })
+                            && self
+                                .graph
+                                .selected_group(
+                                    self.project.document.snapshot(),
+                                    self.project.selected,
+                                )
+                                .is_none()
+                            && editable_text::header(ui, &mut self.draft.operation)
+                        {
+                            self.draft_dirty = true;
+                            self.playing = false;
+                            self.queue_text_preview(ui.ctx());
+                        }
+                        egui::ScrollArea::vertical()
+                            .id_salt(("inspector-body", editable_text::body_id(ui)))
+                            .show(ui, |ui| self.inspector(ui));
                     });
                 egui::CentralPanel::default().show_inside(ui, |ui| {
                     ui.horizontal_wrapped(|ui| {
@@ -2082,8 +2116,7 @@ impl eframe::App for Studio {
                                     if changed
                                         && matches!(self.draft.operation, Operation::Text { .. })
                                     {
-                                        self.text_preview_deadline =
-                                            Some(Instant::now() + Duration::from_millis(40));
+                                        self.queue_text_preview(ui.ctx());
                                     }
                                 }
                                 Err(error) => self.fail(error),

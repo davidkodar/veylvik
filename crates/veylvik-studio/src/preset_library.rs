@@ -14,6 +14,7 @@ pub struct Library {
     pub open: bool,
     pub listing: veylvik_io::presets::Listing,
     pub ready: Option<Preset>,
+    pub source: Option<NodeId>,
     query: String,
     category: String,
     sizing: veylvik_document::presets::resolution::Sizing,
@@ -98,11 +99,12 @@ impl Studio {
             return;
         }
         let doc = self.project.document.snapshot();
+        let selected = self.library.source.unwrap_or(self.project.selected);
         let source = doc
             .groups
             .values()
-            .find(|g| g.members.contains(&self.project.selected))
-            .map_or(self.project.selected, |g| g.output);
+            .find(|g| g.members.contains(&selected))
+            .map_or(selected, |g| g.output);
         self.library.anchor = Some(source);
         self.library.connect = !preset.group.inputs.is_empty();
         self.library.inputs = preset
