@@ -12,6 +12,7 @@ mod display;
 mod files;
 mod graph;
 mod handles;
+mod key_timeline;
 mod node_finder;
 mod node_palette;
 mod preview_images;
@@ -122,6 +123,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 graph: graph::Graph::default(),
                 node_palette: node_palette::Controls::default(),
                 node_finder: node_finder::Controls::default(),
+                key_timeline: key_timeline::Keys::default(),
                 status: String::new(),
                 error: false,
                 playing: false,
@@ -172,6 +174,7 @@ struct Studio {
     graph: graph::Graph,
     node_palette: node_palette::Controls,
     node_finder: node_finder::Controls,
+    key_timeline: key_timeline::Keys,
     status: String,
     error: bool,
     playing: bool,
@@ -203,6 +206,7 @@ impl Studio {
         self.outline_controls = text_outline::Controls::default();
         self.node_palette = node_palette::Controls::default();
         self.node_finder = node_finder::Controls::default();
+        self.key_timeline = key_timeline::Keys::default();
         self.composition_controls = composition::Controls::default();
         self.export_controls = sequence::Controls::default();
         self.project = project;
@@ -1231,7 +1235,23 @@ impl Studio {
         ui.add_space(15.0);
         ui.weak("Parameter changes become one undo step when applied.");
     }
+    fn sync_key_timeline(&mut self) {
+        self.key_timeline.sync(
+            self.project.document.snapshot(),
+            self.project.document.revision(),
+            self.project.selected,
+        );
+    }
+    fn seek_key(&mut self, forward: bool) {
+        self.sync_key_timeline();
+        if let Some(frame) = self.key_timeline.adjacent(self.project.frame, forward) {
+            self.project.frame = frame;
+            self.playing = false;
+            self.request_preview();
+        }
+    }
     fn timeline(&mut self, ui: &mut egui::Ui) {
+        self.sync_key_timeline();
         let count = self.project.document.snapshot().frame_count;
         let end_frame = (i64::from(count) - 1).max(self.project.frame);
         ui.horizontal(|ui| {
@@ -1251,6 +1271,11 @@ impl Studio {
             ui.label(format!("of {count} frames"));
             let fps = self.project.document.snapshot().frame_rate;
             ui.weak(format!("{} / {} fps", fps.ticks, fps.rate));
+            if let Some(frame) = self.key_timeline.show(ui, self.project.frame, count) {
+                self.project.frame = frame;
+                self.playing = false;
+                self.request_preview();
+            }
         });
     }
     fn toggle_play(&mut self) {
@@ -1348,6 +1373,10 @@ impl Studio {
                 .show(ctx, |ui| {
                     for (key, action) in [
                         ("Space", "Play / pause"),
+                        (
+                            "Alt+Left / Right",
+                            "Previous / next selected-node keyed frame",
+                        ),
                         ("Tab", "Search and add a node"),
                         ("Ctrl+F", "Find and preview an existing node"),
                         ("Ctrl+D", "Duplicate selected node"),
@@ -1500,6 +1529,11 @@ impl eframe::App for Studio {
             }
             if ctx.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, egui::Key::Z)) {
                 self.history(false);
+            }
+            for (key, forward) in [(egui::Key::ArrowLeft, false), (egui::Key::ArrowRight, true)] {
+                if ctx.input_mut(|i| i.consume_key(egui::Modifiers::ALT, key)) {
+                    self.seek_key(forward);
+                }
             }
             if ctx.input(|i| i.key_pressed(egui::Key::Space)) {
                 self.toggle_play();

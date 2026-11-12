@@ -210,6 +210,7 @@ finishes.
 | Shortcut | Action |
 |---|---|
 | Space | Play / pause |
+| Alt+Left / Alt+Right | Previous / next keyed frame on the selected node |
 | Tab | Search and add a node |
 | Ctrl+F | Find and preview an existing node |
 | Ctrl+O / Ctrl+I | Open composition / import PNG or OpenEXR |
@@ -928,3 +929,11 @@ select a result, Enter selects and previews it, and Escape cancels. Choosing a
 node brings its graph card into view without changing composition output,
 document revision, or undo history. Apply or revert any inspector draft first.
 The result list lays out only visible rows, keeping large graphs navigable.
+
+The timeline’s **Prev key** / **Next key** buttons and marker strip navigate the
+selected node’s applied scalar keys. Click or drag on the strip to seek the
+nearest keyed frame; navigation pauses playback and does not edit the document.
+Keys shared across parameters appear once. Subframe keys seek the nearest output
+frame (half frames round up), while authored times remain unchanged. Keys before
+frame zero or after the composition’s final frame are hidden. Unapplied inspector
+changes appear in the strip after **Apply**.
