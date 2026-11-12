@@ -112,6 +112,8 @@ impl Studio {
             });
             ui.menu_button("Help", |ui| {
                 if item(ui, "Keyboard shortcuts", "?", true) { self.help = true; }
+                ui.separator();
+                if item(ui, "About Veylvik…", "", true) { self.about.begin(); }
             });
             ui.separator();
             // Reserve only the remaining space so long filenames never push menus offscreen.

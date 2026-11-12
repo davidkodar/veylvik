@@ -157,6 +157,17 @@ The menu bar groups application commands under **File**, **Edit**, **Add**,
 provides categorized node submenus and editable effect recipes. The project name
 and unsaved indicator stay on the right; long names truncate without hiding menus.
 
+**Help → About Veylvik…** shows the version, build number, source commit, build
+profile, platform, OS, CPU, active Vulkan GPU and driver, system RAM, and the
+app’s resident memory. **Copy details** copies these facts for a bug report.
+Build numbers follow the source commit count, like Klipp; builds from modified
+source are marked. The package builder carries this identity into source archives.
+The GPU buffer budget is an application limit, not the GPU’s physical VRAM.
+
+Opening the bundled demo starts clean. Playback, seeking, and preview selection
+do not require a save on quit; document edits and unapplied inspector changes do.
+You can still save the untouched demo explicitly with **File → Save**.
+
 Contextual buttons remain beside their work: **Add node / Find / Fit / Arrange**
 in the graph, **Apply / Revert** and selected-node actions in the inspector,
 playback and key navigation on the timeline, and display controls in the viewer.

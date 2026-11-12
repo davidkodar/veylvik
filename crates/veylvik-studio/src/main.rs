@@ -1,3 +1,4 @@
+mod about;
 mod animation;
 mod composition;
 mod control;
@@ -138,6 +139,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 after_save: None,
                 allow_close: false,
                 help: false,
+                about: about::Controls::default(),
                 statistics: false,
                 theme_checked: Instant::now() - Duration::from_secs(10),
                 accent: egui::Color32::from_rgb(255, 214, 10),
@@ -189,6 +191,7 @@ struct Studio {
     after_save: Option<Leave>,
     allow_close: bool,
     help: bool,
+    about: about::Controls,
     statistics: bool,
     theme_checked: Instant,
     accent: egui::Color32,
@@ -1284,6 +1287,7 @@ impl Studio {
                 });
         }
         diagnostics::show(ctx, &mut self.statistics, &self.renderer);
+        self.about.show(ctx, &self.renderer, self.accent);
         if self.help {
             egui::Window::new("Keyboard shortcuts")
                 .open(&mut self.help)

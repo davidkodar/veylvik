@@ -46,7 +46,8 @@ impl Project {
             session: NodeId::new_v4(),
             recovery_origin: None,
             document: Document::new(composition)?,
-            saved_revision: path.as_ref().map(|_| 0),
+            // The bundled demo is a clean starting point, even without a save path.
+            saved_revision: Some(0),
             compiled: None,
             stamp,
             base,
@@ -752,5 +753,29 @@ mod save_tests {
         assert_eq!(project.document.snapshot().width, 120);
         assert_eq!(Composition::load(&path).unwrap().width, 960);
         std::fs::remove_file(path).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod startup_tests {
+    use super::*;
+    #[test]
+    fn viewing_the_startup_demo_is_clean_but_authored_work_is_dirty() {
+        let mut project = Project::open(None).unwrap();
+        assert!(project.path.is_none());
+        assert!(!project.dirty());
+        project.frame = 48;
+        project.selected = *project.document.snapshot().nodes.keys().next().unwrap();
+        project.preview = Some(project.selected);
+        assert!(!project.dirty());
+        project
+            .apply(&[Command::FrameCount { frame_count: 100 }])
+            .unwrap();
+        assert!(project.dirty());
+        assert!(
+            Project::blank(640, 360, Time::new(24, 1).unwrap(), 100)
+                .unwrap()
+                .dirty()
+        );
     }
 }

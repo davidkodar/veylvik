@@ -20,9 +20,17 @@ fi
 stage="$(mktemp -d "${TMPDIR:-/tmp}/veylvik-package.XXXXXXXX")"
 trap 'rm -rf -- "$stage"' EXIT
 mkdir -p "$root/target/packages"
+build_number="$(git -C "$root" rev-list --count HEAD)"
+build_commit="$(git -C "$root" rev-parse --short=12 HEAD)"
+build_modified=false
+if [[ -n "$(GIT_OPTIONAL_LOCKS=0 git -C "$root" status --porcelain --untracked-files=normal)" ]]; then
+    build_modified=true
+fi
+printf 'build-number=%s\ncommit=%s\nmodified=%s\n' "$build_number" "$build_commit" "$build_modified" > "$stage/build-info.txt"
 tar -C "$root" -czf "$stage/veylvik-$version.tar.gz" \
     --transform="s,^,veylvik-$version/," \
-    Cargo.toml Cargo.lock rust-toolchain.toml crates bin pkgbuild README.md
+    Cargo.toml Cargo.lock rust-toolchain.toml crates bin pkgbuild README.md \
+    -C "$stage" build-info.txt
 checksum="$(sha256sum "$stage/veylvik-$version.tar.gz")"
 checksum="${checksum%% *}"
 sed "s/sha256sums=('SKIP')/sha256sums=('$checksum')/" \
