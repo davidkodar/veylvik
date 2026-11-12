@@ -202,6 +202,18 @@ Producer texture memory remains caller-owned, outside the buffer pool budget;
 each target allocation is capped, but the host must bound aggregate producer
 allocations. Submit producer writes on the shared queue before importing, and
 retain the target without modifying or destroying it until import returns.
+`veylvik_document::vector::PathMask` stores closed contours with line, quadratic,
+and cubic Bézier segments and nonzero/even-odd filling. `render_path_mask`
+produces a GPU frame suitable for `insert_gpu` and the Apply mask node. Geometry
+preparation uses Vello Hybrid on CPU; coverage rasterization uses Vulkan. The
+coverage target is 8-bit, while the masked image retains scene-linear HDR color.
+Paths are limited to 4096 commands, coordinates within ±32768, and dimensions up
+to 4096 per axis. This is currently a library API, without path authoring in Studio
+or path commands in the document graph. Vello scratch memory is separate from the
+compositor buffer budget; image atlases cannot grow and intermediate layers are
+disabled. `release_vector_resources` frees its persistent pipelines and scratch
+resources without invalidating retained output frames.
+
 The CLI/MCP adapter resolves image asset keys as PNG paths relative to the opened
 composition's directory (absolute paths also work). Save-as rebases relative paths
 without mutating the live session. Save/export refuse to replace an input image.

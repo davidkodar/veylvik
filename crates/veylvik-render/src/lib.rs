@@ -7,12 +7,14 @@ mod plan;
 mod pool;
 mod scheduler;
 mod texture;
+mod vector;
 pub use plan::{Kernel, PassInfo, Plan};
 pub use pool::ResourceStats;
 pub use scheduler::{GpuPreviewScheduler, PreviewResult, PreviewScheduler, PreviewTicket};
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 pub use texture::{TextureEncoding, TextureTarget};
+pub use vector::MAX_VECTOR_DIMENSION;
 use veylvik_document::{Node, Operation, Time};
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -109,6 +111,7 @@ pub struct Renderer {
     layout: wgpu::BindGroupLayout,
     validation_pipeline: wgpu::ComputePipeline,
     texture_pipeline: wgpu::ComputePipeline,
+    vector_backend: Mutex<Option<vector::Backend>>,
     pool: Mutex<pool::Pool>,
     cache: Mutex<cache::FrameCache>,
     pub cache_limit_bytes: u64,
@@ -248,6 +251,7 @@ impl Renderer {
             layout,
             validation_pipeline,
             texture_pipeline,
+            vector_backend: Mutex::new(None),
             pool: Mutex::new(pool::Pool::default()),
             cache: Mutex::new(cache::FrameCache::default()),
             cache_limit_bytes: 64 * 1024 * 1024,

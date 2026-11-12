@@ -5,6 +5,7 @@ pub mod registry;
 pub use history::{Document, HistoryStats};
 pub mod schema;
 pub mod sequence;
+pub mod vector;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
