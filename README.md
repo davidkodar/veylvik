@@ -159,7 +159,9 @@ where the picker opened. Gradient endpoints and shape defaults follow the
 composition size. Image and outlined-text choices open their import dialogs.
 Socket drags work in either direction; Escape or dropping on empty space cancels.
 Each accepted rewire is one undo step. Named inputs are also editable in the inspector. Inspector
-changes are drafts until **Apply**; one apply creates one undo step. Invalid
+changes are drafts until **Apply**; one apply creates one undo step. Apply and
+Revert stay visible above the scrolling inspector. **Ctrl+Enter** applies the
+current draft, including while editing a parameter field. Invalid
 connections fail atomically. **Revert** discards the draft. Apply or revert before
 selecting another node or using undo/redo.
 
@@ -216,6 +218,7 @@ finishes.
 | Ctrl+Shift+S | Save as |
 | Ctrl+Z / Ctrl+Shift+Z | Undo / redo |
 | Ctrl+D | Duplicate selected node |
+| Ctrl+Enter | Apply inspector draft |
 | Ctrl+R | Reload source images |
 | Q | Close |
 | ? | Show shortcuts |

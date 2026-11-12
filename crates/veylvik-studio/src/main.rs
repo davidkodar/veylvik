@@ -944,8 +944,30 @@ impl Studio {
             }
         });
     }
-    fn inspector(&mut self, ui: &mut egui::Ui) {
+    fn inspector_actions(&mut self, ui: &mut egui::Ui) {
         ui.heading("Inspector");
+        ui.horizontal(|ui| {
+            if ui
+                .add_enabled(self.draft_dirty, egui::Button::new("Apply"))
+                .on_hover_text("Commit this draft as one undo step (Ctrl+Enter)")
+                .clicked()
+            {
+                self.apply_draft();
+            }
+            if ui
+                .add_enabled(self.draft_dirty, egui::Button::new("Revert"))
+                .on_hover_text("Discard unapplied inspector changes")
+                .clicked()
+            {
+                self.refresh_draft();
+            }
+            if self.draft_dirty {
+                ui.weak("Unapplied changes");
+            }
+        });
+        ui.separator();
+    }
+    fn inspector(&mut self, ui: &mut egui::Ui) {
         ui.label(self.draft.operation.descriptor().label);
         ui.add_space(8.0);
         self.draft_dirty |= ui.text_edit_singleline(&mut self.draft.label).changed();
@@ -1095,21 +1117,6 @@ impl Studio {
                     }
                 });
         }
-        ui.add_space(10.0);
-        ui.horizontal(|ui| {
-            if ui
-                .add_enabled(self.draft_dirty, egui::Button::new("Apply"))
-                .clicked()
-            {
-                self.apply_draft();
-            }
-            if ui
-                .add_enabled(self.draft_dirty, egui::Button::new("Revert"))
-                .clicked()
-            {
-                self.refresh_draft();
-            }
-        });
         ui.separator();
         if ui.button("Preview selected").clicked() {
             self.project.preview = Some(self.project.selected);
@@ -1265,6 +1272,7 @@ impl Studio {
                         ("Space", "Play / pause"),
                         ("Tab", "Search and add a node"),
                         ("Ctrl+D", "Duplicate selected node"),
+                        ("Ctrl+Enter", "Apply inspector draft"),
                         ("Ctrl+N", "New composition"),
                         ("Ctrl+O", "Open composition"),
                         ("Ctrl+I", "Import PNG or OpenEXR image"),
@@ -1352,6 +1360,12 @@ impl eframe::App for Studio {
             }
             ctx.request_repaint_after(Duration::from_millis(16));
         }
+        // Consume early, apply after widgets have processed this frame's text edits.
+        let apply_inspector = !self.files.busy()
+            && !self.authoring_dialog_open()
+            && self.confirm.is_none()
+            && !self.graph.dragging()
+            && ctx.input_mut(|input| input.consume_key(egui::Modifiers::CTRL, egui::Key::Enter));
         if !self.files.busy()
             && !self.authoring_dialog_open()
             && self.confirm.is_none()
@@ -1452,6 +1466,7 @@ impl eframe::App for Studio {
                     .min_size(250.0)
                     .resizable(true)
                     .show_inside(ui, |ui| {
+                        self.inspector_actions(ui);
                         egui::ScrollArea::vertical().show(ui, |ui| self.inspector(ui));
                     });
                 egui::CentralPanel::default().show_inside(ui, |ui| {
@@ -1559,6 +1574,19 @@ impl eframe::App for Studio {
                 });
             },
         );
+        if apply_inspector
+            && !self.files.busy()
+            && !self.authoring_dialog_open()
+            && self.confirm.is_none()
+            && !self.graph.dragging()
+            && self.apply_draft()
+        {
+            ctx.memory_mut(|memory| {
+                if let Some(focused) = memory.focused() {
+                    memory.surrender_focus(focused);
+                }
+            });
+        }
         if let Some((choice, position)) = self.node_palette.show(&ctx) {
             self.add_from_palette(choice, position);
         }
