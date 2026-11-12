@@ -505,3 +505,10 @@ immutable file bytes that were checked. Original input files remain protected
 from save/export overwrites, including EXR inputs. EXR export supports a wider
 pixel contract, including emission at zero alpha, so not every exported frame
 is currently accepted as an image input.
+
+Expanding an animated parameter's key editor shows a read-only curve preview
+with key markers and the current playhead. Linear, Hold, and Ease in/out draw
+their actual interpolation shape; the horizontal span runs from first to last
+key and the vertical range fits the key values. Invalid drafts omit the plot
+until corrected. Editing still uses the exact time/value controls below the
+plot, and Apply commits the complete inspector draft as one undo step.

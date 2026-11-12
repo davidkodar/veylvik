@@ -32,13 +32,15 @@ pub fn scalar(
                 changed |= ui.add(egui::DragValue::new(value).speed(0.1).range(range.clone())).changed();
             }
             _ => {
-                let keys = scalar.keys_mut().unwrap();
+                let key_count = scalar.keys_mut().unwrap().len();
                 match &value {
-                    Ok(value) => { ui.weak(format!("{} keyframes · {value:.3} now", keys.len())); }
+                    Ok(value) => { ui.weak(format!("{key_count} keyframes · {value:.3} now")); }
                     Err(error) => { ui.colored_label(egui::Color32::LIGHT_RED, error.to_string()); }
                 }
                 let mut remove = None;
                 egui::CollapsingHeader::new(format!("Edit {label} keys")).show(ui, |ui| {
+                    crate::curve_preview::show(ui, scalar, time);
+                    let keys = scalar.keys_mut().unwrap();
                     egui::ScrollArea::vertical().max_height(240.0).show(ui, |ui| {
                         for (index, key) in keys.iter_mut().enumerate() {
                             ui.push_id(index, |ui| {
@@ -55,6 +57,7 @@ pub fn scalar(
                     });
                 });
                 if let Some(index) = remove {
+                    let keys = scalar.keys_mut().unwrap();
                     let removed = keys.remove(index);
                     if keys.is_empty() { *scalar = removed.value.into(); }
                     changed = true;

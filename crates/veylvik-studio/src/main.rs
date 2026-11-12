@@ -1,5 +1,6 @@
 mod animation;
 mod control;
+mod curve_preview;
 mod sequence;
 mod text_outline;
 mod vector_editor;
