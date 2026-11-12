@@ -85,7 +85,7 @@ impl Project {
         let mut remaining = 256 * 1024 * 1024;
         for node in self.document.snapshot().nodes.values() {
             if let Operation::Image { asset } = &node.operation
-                && inputs.get(asset).is_none()
+                && !inputs.contains_key(asset)
             {
                 let image =
                     veylvik_io::load_png(&self.base.join(asset), remaining.min(128 * 1024 * 1024))?;

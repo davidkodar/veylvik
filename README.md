@@ -182,6 +182,14 @@ or bound total process RAM. `check` reports graph working bytes before source
 uploads and also checks the reachable PNG inputs against the combined budget.
 
 The renderer receives immutable `ImageInputs` from its host and never opens files.
+Hosts can also insert a completed `GpuFrame` with `insert_gpu`. The image node
+reads its buffer directly, using the frame's crop as a top-left source view;
+there is no pixel download, repacking, or reupload. GPU sources must come from
+that same renderer and remain retained by the input snapshot. Their allocations
+already count as held GPU memory and are not charged again as uploads. Cache
+keys include immutable frame identity. `ImageInputs::byte_size` continues to
+count CPU pixels only; `contains_key` covers both CPU and GPU sources. This is a
+render-library boundary, not yet a Klipp connection or external-texture importer.
 The CLI/MCP adapter resolves image asset keys as PNG paths relative to the opened
 composition's directory (absolute paths also work). Save-as rebases relative paths
 without mutating the live session. Save/export refuse to replace an input image.

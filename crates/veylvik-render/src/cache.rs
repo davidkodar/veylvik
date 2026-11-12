@@ -47,7 +47,7 @@ impl Key {
                     Input::Value(slot) => words.extend([1, *slot as u32, 0]),
                     Input::Asset(asset) => {
                         let image = images
-                            .get(asset)
+                            .source(asset)
                             .ok_or_else(|| error(format!("missing image input: {asset}")))?;
                         let id = image.identity();
                         words.extend([2, id as u32, (id >> 32) as u32]);

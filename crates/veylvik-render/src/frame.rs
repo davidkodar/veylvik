@@ -1,7 +1,23 @@
-//! Explicit image and render-request contracts. No filesystem access or GPU handles.
+//! Explicit CPU/GPU image and render-request contracts. No filesystem access.
 use crate::{Result, error};
 use std::{collections::BTreeMap, sync::Arc};
 use veylvik_document::Time;
+
+pub(crate) fn next_identity() -> Result<u64> {
+    static NEXT_RESOURCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+    let ordering = std::sync::atomic::Ordering::Relaxed;
+    let mut identity = NEXT_RESOURCE.load(ordering);
+    loop {
+        let next = identity
+            .checked_add(1)
+            .ok_or_else(|| error("image identity exhausted"))?;
+        match NEXT_RESOURCE.compare_exchange_weak(identity, next, ordering, ordering) {
+            Ok(_) => break,
+            Err(current) => identity = current,
+        }
+    }
+    Ok(identity)
+}
 
 /// Scene-linear Rec.709 premultiplied pixels. RGB may be negative or exceed one.
 #[derive(Debug)]
@@ -30,18 +46,7 @@ impl Image {
                 "image pixels must be finite and premultiplied, with alpha in [0,1] and zero RGB at zero alpha",
             ));
         }
-        static NEXT_IMAGE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
-        let ordering = std::sync::atomic::Ordering::Relaxed;
-        let mut identity = NEXT_IMAGE.load(ordering);
-        loop {
-            let next = identity
-                .checked_add(1)
-                .ok_or_else(|| error("image identity exhausted"))?;
-            match NEXT_IMAGE.compare_exchange_weak(identity, next, ordering, ordering) {
-                Ok(_) => break,
-                Err(current) => identity = current,
-            }
-        }
+        let identity = next_identity()?;
         Ok(Self {
             identity,
             width,
@@ -67,7 +72,10 @@ impl Image {
 }
 /// The host supplies immutable images; a later render can supply new content under the same key.
 #[derive(Default, Clone)]
-pub struct ImageInputs(BTreeMap<String, Arc<Image>>);
+pub struct ImageInputs(
+    BTreeMap<String, Arc<Image>>,
+    BTreeMap<String, Arc<GpuFrame>>,
+);
 impl ImageInputs {
     /// Declared CPU pixel bytes, counting shared images once.
     pub fn byte_size(&self) -> u64 {
@@ -79,10 +87,68 @@ impl ImageInputs {
             .sum()
     }
     pub fn insert(&mut self, key: impl Into<String>, image: Arc<Image>) {
-        self.0.insert(key.into(), image);
+        let key = key.into();
+        self.1.remove(&key);
+        self.0.insert(key, image);
+    }
+    /// Retain a completed frame from the same renderer as a source. Its crop is
+    /// presented at the image node's top-left, without packing or pixel readback.
+    /// The renderer checks ownership before using it; held allocations remain budgeted.
+    pub fn insert_gpu(&mut self, key: impl Into<String>, frame: Arc<GpuFrame>) {
+        let key = key.into();
+        self.0.remove(&key);
+        self.1.insert(key, frame);
+    }
+    pub fn get_gpu(&self, key: &str) -> Option<&Arc<GpuFrame>> {
+        self.1.get(key)
+    }
+    pub fn contains_key(&self, key: &str) -> bool {
+        self.0.contains_key(key) || self.1.contains_key(key)
+    }
+    pub(crate) fn source(&self, key: &str) -> Option<Source<'_>> {
+        self.0
+            .get(key)
+            .map(Source::Cpu)
+            .or_else(|| self.1.get(key).map(Source::Gpu))
     }
     pub fn get(&self, key: &str) -> Option<&Arc<Image>> {
         self.0.get(key)
+    }
+}
+#[derive(Clone, Copy)]
+pub(crate) enum Source<'a> {
+    Cpu(&'a Arc<Image>),
+    Gpu(&'a Arc<GpuFrame>),
+}
+impl Source<'_> {
+    pub fn identity(self) -> u64 {
+        match self {
+            Self::Cpu(image) => image.identity(),
+            Self::Gpu(frame) => frame.identity,
+        }
+    }
+    pub fn byte_size(self) -> u64 {
+        match self {
+            Self::Cpu(image) => image.byte_size(),
+            Self::Gpu(frame) => frame.byte_size(),
+        }
+    }
+    pub fn storage_width(self) -> u32 {
+        match self {
+            Self::Cpu(image) => image.width(),
+            Self::Gpu(frame) => frame.width,
+        }
+    }
+    pub fn region(self) -> Region {
+        match self {
+            Self::Cpu(image) => Region {
+                x: 0,
+                y: 0,
+                width: image.width(),
+                height: image.height(),
+            },
+            Self::Gpu(frame) => frame.region,
+        }
     }
 }
 /// A crop in composition pixels. The initial executor evaluates the whole graph before cropping.
@@ -131,6 +197,7 @@ pub struct RenderedFrame {
 /// Dropping it releases its allocation; it is never recycled as an intermediate.
 /// A crop describes a view into the full-size buffer, not a packed allocation.
 pub struct GpuFrame {
+    pub(crate) identity: u64,
     pub(crate) storage: crate::pool::PinnedBuffer,
     pub(crate) owner: Arc<DeviceIdentity>,
     pub(crate) region: Region,

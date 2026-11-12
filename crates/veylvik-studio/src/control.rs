@@ -76,7 +76,7 @@ pub fn call(studio: &mut Studio, name: &str, args: &Value) -> Result<Value> {
             let candidate = studio.project.document.prepare(revision, &commands)?;
             for node in candidate.nodes.values() {
                 if let Operation::Image { asset } = &node.operation
-                    && studio.project.inputs.get(asset).is_none()
+                    && !studio.project.inputs.contains_key(asset)
                 {
                     return Err(format!(
                         "image asset is not loaded in the editor: {asset}; import it first"

@@ -48,7 +48,7 @@ pub fn render_sequence_with_inputs(
         request,
         |plan| {
             for asset in plan.required_assets() {
-                if inputs.get(asset).is_none() {
+                if !inputs.contains_key(asset) {
                     return Err(format!("missing image input: {asset}").into());
                 }
             }

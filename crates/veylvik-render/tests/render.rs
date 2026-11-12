@@ -974,3 +974,124 @@ fn immutable_source_uploads_reuse_contents_and_aliases_share_budget() {
     assert_eq!(stats.source_upload_bytes, 48);
     assert!(stats.resident_bytes <= renderer.budget_bytes);
 }
+
+#[test]
+#[ignore = "requires Vulkan"]
+fn gpu_frame_inputs_preserve_crops_ownership_cache_and_budget() {
+    use std::sync::Arc;
+    let mut renderer = Renderer::new().unwrap();
+    let source_node = Node::new(
+        "source",
+        Operation::Image {
+            asset: "cpu".into(),
+        },
+        &[],
+    );
+    let source_id = source_node.id;
+    let source_plan = Plan::compile(&composition(vec![source_node], source_id)).unwrap();
+    let pixels: Vec<_> = (0..91)
+        .map(|i| [(i % 13) as f32 / 13.0, (i / 13) as f32 / 7.0, 2.0, 1.0])
+        .collect();
+    let mut cpu = ImageInputs::default();
+    cpu.insert("cpu", Arc::new(Image::new(13, 7, pixels.clone()).unwrap()));
+    let crop = Region {
+        x: 3,
+        y: 2,
+        width: 4,
+        height: 3,
+    };
+    let source = Arc::new(
+        renderer
+            .render_gpu(
+                &source_plan,
+                RenderRequest {
+                    time: Time::new(0, 1).unwrap(),
+                    region: Some(crop),
+                },
+                &cpu,
+            )
+            .unwrap(),
+    );
+    let source_uploads = renderer.resource_stats().unwrap().source_uploads;
+    let input_node = Node::new(
+        "gpu",
+        Operation::Image {
+            asset: "frame".into(),
+        },
+        &[],
+    );
+    let input_id = input_node.id;
+    let plan = Plan::compile(&composition(vec![input_node], input_id)).unwrap();
+    let mut inputs = ImageInputs::default();
+    inputs.insert_gpu("frame", source.clone());
+    assert!(inputs.contains_key("frame"));
+    assert!(inputs.get("frame").is_none());
+    assert!(Arc::ptr_eq(inputs.get_gpu("frame").unwrap(), &source));
+    assert_eq!(inputs.byte_size(), 0); // GPU retention is accounted by the renderer.
+    renderer.budget_bytes = source.byte_size() + plan.working_bytes();
+    let request = RenderRequest::full(Time::new(0, 1).unwrap());
+    let output = renderer.render_frame(&plan, request, &inputs).unwrap();
+    for y in 0..7 {
+        for x in 0..13 {
+            let expected = if x < 4 && y < 3 {
+                pixels[(y + 2) * 13 + x + 3]
+            } else {
+                [0.0; 4]
+            };
+            assert_eq!(output.pixels[y * 13 + x], expected);
+        }
+    }
+    let stats = renderer.resource_stats().unwrap();
+    assert_eq!(stats.source_uploads, source_uploads);
+    assert_eq!(stats.held_bytes, source.byte_size());
+    assert!(stats.resident_bytes <= renderer.budget_bytes);
+    let foreign = Renderer::new().unwrap();
+    assert!(foreign.render_frame(&plan, request, &inputs).is_err());
+    assert!(foreign.render_gpu_cached(&plan, request, &inputs).is_err());
+    assert_eq!(foreign.resource_stats().unwrap().buffers_created, 0);
+    renderer.budget_bytes = 512 * 1024 * 1024;
+    let first = renderer.render_gpu_cached(&plan, request, &inputs).unwrap();
+    let hit = renderer.render_gpu_cached(&plan, request, &inputs).unwrap();
+    assert!(Arc::ptr_eq(&first, &hit));
+    let solid = Node::new(
+        "new pixels",
+        Operation::Solid {
+            color: [0.75, 0.25, 3.0, 1.0],
+        },
+        &[],
+    );
+    let id = solid.id;
+    let replacement = Arc::new(
+        renderer
+            .render_gpu(
+                &Plan::compile(&composition(vec![solid], id)).unwrap(),
+                RenderRequest {
+                    time: request.time,
+                    region: Some(crop),
+                },
+                &ImageInputs::default(),
+            )
+            .unwrap(),
+    );
+    inputs.insert_gpu("frame", replacement);
+    let changed = renderer.render_gpu_cached(&plan, request, &inputs).unwrap();
+    assert!(!Arc::ptr_eq(&first, &changed));
+    assert_eq!(
+        renderer.read_frame(&changed).unwrap().pixels[0],
+        [0.75, 0.25, 3.0, 1.0]
+    );
+    assert_eq!(renderer.read_frame(&first).unwrap().pixels, output.pixels);
+    inputs.insert(
+        "frame",
+        Arc::new(Image::new(1, 1, vec![[0.0, 0.0, 0.0, 1.0]]).unwrap()),
+    );
+    assert!(inputs.get_gpu("frame").is_none());
+    assert_eq!(inputs.byte_size(), 16);
+    assert_eq!(
+        renderer
+            .render_frame(&plan, request, &inputs)
+            .unwrap()
+            .pixels[0],
+        [0.0, 0.0, 0.0, 1.0]
+    );
+}

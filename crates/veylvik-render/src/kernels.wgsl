@@ -91,6 +91,6 @@ fn merge(@builtin(global_invocation_id) gid:vec3<u32>) {
 fn image(@builtin(global_invocation_id) gid:vec3<u32>) {
     if !inside(gid) {return;}
     var color=vec4<f32>(0.0);
-    if gid.x<u32(p.extra.x) && gid.y<u32(p.extra.y) {color=source[gid.y*u32(p.extra.x)+gid.x];}
+    if gid.x<u32(p.values.x) && gid.y<u32(p.values.y) {color=source[(gid.y+u32(p.extra.w))*u32(p.extra.x)+gid.x+u32(p.extra.z)];}
     result[index(gid)]=color;
 }

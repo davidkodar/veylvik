@@ -273,6 +273,25 @@ impl Renderer {
             .render_frame(plan, RenderRequest::full(time), &ImageInputs::default())?
             .pixels)
     }
+    fn source_bytes(&self, plan: &Plan, inputs: &ImageInputs) -> Result<u64> {
+        let mut seen = std::collections::BTreeSet::new();
+        let mut bytes = 0;
+        for asset in plan.required_assets() {
+            let source = inputs
+                .source(asset)
+                .ok_or_else(|| error(format!("missing image input: {asset}")))?;
+            match source {
+                frame::Source::Gpu(frame) if !Arc::ptr_eq(&frame.owner, &self.owner) => {
+                    return Err(error("GPU image input belongs to another renderer"));
+                }
+                frame::Source::Cpu(image) if seen.insert(image.identity()) => {
+                    bytes += image.byte_size()
+                }
+                _ => {} // Same-renderer GPU sources already count as held allocations.
+            }
+        }
+        Ok(bytes)
+    }
     fn execute(
         &self,
         plan: &Plan,
@@ -306,11 +325,10 @@ impl Renderer {
         {
             return Err(error("frame exceeds adapter buffer limits"));
         }
-        let mut source_bytes = 0;
-        let mut source_ids = std::collections::BTreeSet::new();
+        let source_bytes = self.source_bytes(plan, inputs)?;
         for asset in plan.required_assets() {
             let source = inputs
-                .get(asset)
+                .source(asset)
                 .ok_or_else(|| error(format!("missing image input: {asset}")))?;
             if source.byte_size() > limits.max_storage_buffer_binding_size
                 || source.byte_size() > limits.max_buffer_size
@@ -318,9 +336,6 @@ impl Renderer {
                 return Err(error(format!(
                     "image input {asset} exceeds adapter buffer limits"
                 )));
-            }
-            if source_ids.insert(source.identity()) {
-                source_bytes += source.byte_size();
             }
         }
         let working_bytes = if download {
@@ -343,9 +358,16 @@ impl Renderer {
             .collect::<Result<_>>()?;
         for (node, p) in plan.nodes.iter().zip(&mut evaluated) {
             if let Operation::Image { asset } = &node.operation {
-                let image = inputs.get(asset).unwrap();
-                p.extra[0] = image.width() as f32;
-                p.extra[1] = image.height() as f32;
+                let source = inputs.source(asset).unwrap();
+                let region = source.region();
+                p.values[0] = region.width as f32;
+                p.values[1] = region.height as f32;
+                p.extra = [
+                    source.storage_width() as f32,
+                    0.0,
+                    region.x as f32,
+                    region.y as f32,
+                ];
             }
         }
         let validation = self.device.push_error_scope(wgpu::ErrorFilter::Validation);
@@ -385,6 +407,7 @@ impl Renderer {
             unreachable!()
         };
         Ok(GpuFrame {
+            identity: frame::next_identity()?,
             storage,
             owner: self.owner.clone(),
             region,
@@ -401,6 +424,7 @@ impl Renderer {
         request: RenderRequest,
         inputs: &ImageInputs,
     ) -> Result<Arc<GpuFrame>> {
+        let source_bytes = self.source_bytes(plan, inputs)?;
         let key = cache::Key::new(plan, request, inputs)?;
         let mut cache = self
             .cache
@@ -426,14 +450,6 @@ impl Renderer {
         if let Some(frame) = cache.lookup(&key) {
             return Ok(frame);
         }
-        let mut source_ids = std::collections::BTreeSet::new();
-        let source_bytes: u64 = plan
-            .required_assets()
-            .into_iter()
-            .map(|asset| inputs.get(asset).unwrap())
-            .filter(|image| source_ids.insert(image.identity()))
-            .map(|image| image.byte_size())
-            .sum();
         let needed = plan.gpu_working_bytes() + source_bytes;
         while self.resource_stats()?.held_bytes + needed > self.budget_bytes && cache.evict() {}
         let frame = Arc::new(self.render_gpu(plan, request, inputs)?);
@@ -484,16 +500,29 @@ impl Renderer {
         let mut sources = BTreeMap::new();
         let mut source_buffers = BTreeMap::<u64, wgpu::Buffer>::new();
         for key in plan.required_assets() {
-            let image = inputs.get(key).unwrap();
+            let image = inputs.source(key).unwrap();
             let buffer = if let Some(buffer) = source_buffers.get(&image.identity()) {
                 buffer.clone()
             } else {
-                let (buffer, upload) =
-                    resources.source(&self.device, image.identity(), image.byte_size(), key)?;
-                if upload {
-                    self.queue
-                        .write_buffer(&buffer, 0, bytemuck::cast_slice(image.pixels()));
-                }
+                let buffer = match image {
+                    frame::Source::Cpu(image) => {
+                        let (buffer, upload) = resources.source(
+                            &self.device,
+                            image.identity(),
+                            image.byte_size(),
+                            key,
+                        )?;
+                        if upload {
+                            self.queue.write_buffer(
+                                &buffer,
+                                0,
+                                bytemuck::cast_slice(image.pixels()),
+                            );
+                        }
+                        buffer
+                    }
+                    frame::Source::Gpu(frame) => frame.buffer().clone(),
+                };
                 source_buffers.insert(image.identity(), buffer.clone());
                 buffer
             };
