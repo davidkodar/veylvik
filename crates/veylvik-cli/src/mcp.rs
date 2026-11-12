@@ -15,7 +15,9 @@ fn tool(name: &str, description: &str, properties: Value, required: &[&str]) -> 
 fn tools() -> Value {
     let revision = json!({"type":"integer","minimum":0});
     json!({"tools":[
-        tool("inspect","Read the composition and current revision.",json!({}),&[]),
+        tool("inspect","Read project state and revision. Set summary=true for compact composition metadata without node payloads; graph and get_node provide targeted inspection.",json!({"summary":{"type":"boolean"}}),&[]),
+        tool("graph","Page node metadata in stable UUID order without parameter payloads. Labels over 256 characters are marked as truncated. Compare revisions between pages.",json!({"offset":{"type":"integer","minimum":0},"limit":{"type":"integer","minimum":1,"maximum":128}}),&[]),
+        tool("get_node","Read one exact authored node, or just a named parameter. Does not evaluate curves or change selection.",json!({"id":{"type":"string","format":"uuid"},"parameter":{"type":"string"}}),&["id"]),
         tool("diagnostics","Read existing renderer buffer and cache counters without initializing a GPU. Snapshot is null until rendering initializes the device. Declared buffer accounting excludes driver and rasterizer scratch memory.",json!({}),&[]),
         tool("nodes","List supported node operations, ports and example payloads.",json!({}),&[]),
         tool("outline_text","Read an explicit font and convert explicitly separated directional/script text lines into portable Path mask geometry. Does not modify the document. Apply the returned operation with a put command. No fallback, automatic wrapping or mixed-direction paragraph layout.",json!({"revision":revision,"font":{"type":"string"},"text":{"type":"string","maxLength":4096},"alignment":{"enum":["left","center","right"]},"line_height":{"type":"number","minimum":1,"maximum":4096},"font_index":{"type":"integer","minimum":0,"maximum":u32::MAX},"font_size":{"type":"number","minimum":1,"maximum":1024},"origin":{"type":"array","minItems":2,"maxItems":2,"items":{"type":"number","minimum":-32768,"maximum":32768}},"direction":{"enum":["left_to_right","right_to_left"]},"language":{"type":"string","minLength":1,"maxLength":64}}),&["revision","font","text"]),
@@ -57,15 +59,35 @@ impl Session {
                 return Err(format!("missing argument {key}").into());
             }
         }
-        if !matches!(name, "inspect" | "nodes" | "diagnostics")
-            && required_u64(args, "revision")? != self.document.revision()
+        if !matches!(
+            name,
+            "inspect" | "nodes" | "diagnostics" | "graph" | "get_node"
+        ) && required_u64(args, "revision")? != self.document.revision()
         {
             return Err(format!("revision conflict: current {}", self.document.revision()).into());
         }
         match name {
-            "inspect" => Ok(
-                json!({"revision":self.document.revision(),"composition":self.document.snapshot(),"history":self.document.history()}),
-            ),
+            "inspect" => {
+                let summary = args
+                    .get("summary")
+                    .map(|value| value.as_bool().ok_or("summary must be boolean"))
+                    .transpose()?
+                    .unwrap_or(false);
+                let mut result =
+                    json!({"revision":self.document.revision(),"history":self.document.history()});
+                if summary {
+                    result["summary"] =
+                        veylvik_document::inspection::summary(self.document.snapshot());
+                } else {
+                    result["composition"] = serde_json::to_value(self.document.snapshot())?;
+                }
+                Ok(result)
+            }
+            "graph" | "get_node" => {
+                let mut result = read_graph(self.document.snapshot(), name, args)?;
+                result["revision"] = json!(self.document.revision());
+                Ok(result)
+            }
             "diagnostics" => match &self.renderer {
                 Some(renderer) => Ok(
                     json!({"initialized":true,"adapter":renderer.adapter.name,"snapshot":renderer.try_diagnostics()?}),
@@ -209,6 +231,45 @@ pub fn serve(
 mod tests {
     use super::*;
     #[test]
+    fn targeted_queries_validate_arguments_without_mutation_or_gpu_initialization() {
+        let mut session = Session {
+            document: Document::new(veylvik_document::motion_demo()).unwrap(),
+            asset_base: std::env::temp_dir(),
+            renderer: None,
+        };
+        let id = session.document.snapshot().output;
+        let summary = session.call("inspect", &json!({"summary":true})).unwrap();
+        assert!(summary.get("composition").is_none());
+        assert_eq!(summary["summary"]["output"], json!(id));
+        assert!(session.call("inspect", &json!({"summary":"yes"})).is_err());
+        let page = session.call("graph", &json!({"limit":2})).unwrap();
+        assert_eq!(page["nodes"].as_array().unwrap().len(), 2);
+        assert_eq!(page["revision"], 0);
+        let full = session.call("get_node", &json!({"id":id})).unwrap();
+        let parameter = session
+            .call("get_node", &json!({"id":id,"parameter":"stops"}))
+            .unwrap();
+        assert_eq!(parameter["value"], full["node"]["operation"]["stops"]);
+        for args in [
+            json!({"offset":-1}),
+            json!({"limit":0}),
+            json!({"limit":"2"}),
+            json!({"offset":100000}),
+        ] {
+            assert!(session.call("graph", &args).is_err());
+        }
+        for args in [
+            json!({}),
+            json!({"id":"bad"}),
+            json!({"id":id,"parameter":3}),
+            json!({"id":id,"parameter":"unknown"}),
+        ] {
+            assert!(session.call("get_node", &args).is_err());
+        }
+        assert_eq!(session.document.revision(), 0);
+        assert!(session.renderer.is_none());
+    }
+    #[test]
     fn protocol_enforces_lifecycle_and_transaction_revision() {
         let messages = [
             json!({"jsonrpc":"2.0","id":0,"method":"tools/list"}),
@@ -255,6 +316,8 @@ mod tests {
             names,
             [
                 "inspect",
+                "graph",
+                "get_node",
                 "diagnostics",
                 "nodes",
                 "outline_text",
@@ -319,5 +382,28 @@ mod image_tests {
         let error=session.call("render",&json!({"revision":2,"path":"/tmp/unused.png","ticks":0,"rate":1,"region":{"x":0,"y":0,"width":0,"height":1}})).unwrap_err();
         assert!(error.to_string().contains("region"));
         assert!(session.renderer.is_none());
+    }
+}
+
+fn read_graph(document: &veylvik_document::Composition, name: &str, args: &Value) -> Result<Value> {
+    if name == "graph" {
+        let offset = args
+            .get("offset")
+            .map(|value| value.as_u64().ok_or("offset must be an unsigned integer"))
+            .transpose()?
+            .unwrap_or(0);
+        let limit = args
+            .get("limit")
+            .map(|value| value.as_u64().ok_or("limit must be an unsigned integer"))
+            .transpose()?
+            .unwrap_or(32);
+        Ok(veylvik_document::inspection::page(document, offset, limit)?)
+    } else {
+        let id = args["id"].as_str().ok_or("id must be a UUID")?.parse()?;
+        let parameter = args
+            .get("parameter")
+            .map(|value| value.as_str().ok_or("parameter must be a string"))
+            .transpose()?;
+        Ok(veylvik_document::inspection::node(document, id, parameter)?)
     }
 }

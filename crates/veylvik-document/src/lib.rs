@@ -2,6 +2,7 @@
 mod history;
 mod procedural;
 pub use procedural::procedural_demo;
+pub mod inspection;
 pub mod limits;
 pub mod registry;
 pub use history::{Document, HistoryStats};

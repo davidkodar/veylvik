@@ -10,10 +10,12 @@ pub fn catalog() -> Value {
     let session = json!({"type":"string","format":"uuid"});
     let revision = json!({"type":"integer","minimum":0});
     json!({"tools":[
-        tool("inspect","Read the open project, session identity, revision, selection and preview state.",json!({}),&[]),
+        tool("inspect","Read project state and revision. Set summary=true for compact composition metadata without node payloads; graph and get_node provide targeted inspection.",json!({"summary":{"type":"boolean"}}),&[]),
+        tool("graph","Page node metadata in stable UUID order without parameter payloads. Labels over 256 characters are marked as truncated. Compare revisions between pages.",json!({"offset":{"type":"integer","minimum":0},"limit":{"type":"integer","minimum":1,"maximum":128}}),&[]),
+        tool("get_node","Read one exact authored node, or just a named parameter. Does not evaluate curves or change selection.",json!({"id":{"type":"string","format":"uuid"},"parameter":{"type":"string"}}),&["id"]),
         tool("diagnostics","Read GPU buffer and cache counters without waiting for an active render. Snapshot is null while the renderer is busy. Declared buffers exclude driver and rasterizer scratch allocations.",json!({}),&[]),
         tool("nodes","Read built-in operations, ports, defaults and parameter schemas.",json!({}),&[]),
-        tool("apply","Validate or atomically apply commands to the open editor. Requires the session and revision from inspect. Image assets must already be loaded. Unapplied inspector changes or file jobs block mutation.",json!({"session":session,"revision":revision,"dry_run":{"type":"boolean"},"commands":{"type":"array","minItems":1,"maxItems":4096,"items":veylvik_document::schema::command()}}),&["session","revision","commands"]),
+        tool("apply","Validate or atomically apply commands to the open editor. Requires the session and revision from inspect. Image references must already be known to the editor; new paths require import. Unapplied inspector changes or file jobs block mutation.",json!({"session":session,"revision":revision,"dry_run":{"type":"boolean"},"commands":{"type":"array","minItems":1,"maxItems":4096,"items":veylvik_document::schema::command()}}),&["session","revision","commands"]),
         tool("undo","Undo one editor transaction.",json!({"session":session,"revision":revision}),&["session","revision"]),
         tool("redo","Redo one editor transaction.",json!({"session":session,"revision":revision}),&["session","revision"]),
         tool("preview","Pause playback, seek to an absolute frame and optionally preview a node. The GPU preview is asynchronous; composition output is unchanged.",json!({"session":session,"revision":revision,"frame":{"type":"integer","minimum":0,"maximum":1000000},"node":{"type":"string","format":"uuid"}}),&["session","revision","frame"])
@@ -48,9 +50,24 @@ pub fn call(studio: &mut Studio, name: &str, args: &Value) -> Result<Value> {
     }
     let project = &studio.project;
     if name == "inspect" {
-        return Ok(
-            json!({"session":project.session,"revision":project.document.revision(),"composition":project.document.snapshot(),"history":project.document.history(),"selected":project.selected,"preview":{"node":project.preview.unwrap_or(project.document.snapshot().output),"frame":project.frame,"displayed_time":studio.displayed_time,"rendering":studio.preview_pending},"viewer":{"exposure":studio.view.exposure,"alpha":studio.view.alpha,"scale":studio.navigation.manual_scale(),"pan":studio.navigation.pan()},"unavailable_assets":project.unavailable_assets(),"inspector_draft":studio.draft_dirty,"busy":studio.files.busy() || studio.authoring_dialog_open() || studio.graph.dragging(),"status":studio.status,"error":studio.error}),
-        );
+        let summary = args
+            .get("summary")
+            .map(|value| value.as_bool().ok_or("summary must be boolean"))
+            .transpose()?
+            .unwrap_or(false);
+        let mut result = json!({"session":project.session,"revision":project.document.revision(),"history":project.document.history(),"selected":project.selected,"preview":{"node":project.preview.unwrap_or(project.document.snapshot().output),"frame":project.frame,"displayed_time":studio.displayed_time,"rendering":studio.preview_pending},"viewer":{"exposure":studio.view.exposure,"alpha":studio.view.alpha,"scale":studio.navigation.manual_scale(),"pan":studio.navigation.pan()},"unavailable_assets":project.unavailable_assets(),"inspector_draft":studio.draft_dirty,"busy":studio.files.busy() || studio.authoring_dialog_open() || studio.graph.dragging(),"status":studio.status,"error":studio.error});
+        if summary {
+            result["summary"] = veylvik_document::inspection::summary(project.document.snapshot());
+        } else {
+            result["composition"] = serde_json::to_value(project.document.snapshot())?;
+        }
+        return Ok(result);
+    }
+    if matches!(name, "graph" | "get_node") {
+        let mut result = read_graph(project.document.snapshot(), name, args)?;
+        result["session"] = json!(project.session);
+        result["revision"] = json!(project.document.revision());
+        return Ok(result);
     }
     let session: NodeId = args["session"]
         .as_str()
@@ -141,4 +158,27 @@ pub fn call(studio: &mut Studio, name: &str, args: &Value) -> Result<Value> {
     Ok(
         json!({"session":session,"revision":studio.project.document.revision(),"frame":studio.project.frame,"preview_node":studio.project.preview.unwrap_or(studio.project.document.snapshot().output)}),
     )
+}
+
+fn read_graph(document: &veylvik_document::Composition, name: &str, args: &Value) -> Result<Value> {
+    if name == "graph" {
+        let offset = args
+            .get("offset")
+            .map(|value| value.as_u64().ok_or("offset must be an unsigned integer"))
+            .transpose()?
+            .unwrap_or(0);
+        let limit = args
+            .get("limit")
+            .map(|value| value.as_u64().ok_or("limit must be an unsigned integer"))
+            .transpose()?
+            .unwrap_or(32);
+        Ok(veylvik_document::inspection::page(document, offset, limit)?)
+    } else {
+        let id = args["id"].as_str().ok_or("id must be a UUID")?.parse()?;
+        let parameter = args
+            .get("parameter")
+            .map(|value| value.as_str().ok_or("parameter must be a string"))
+            .transpose()?;
+        Ok(veylvik_document::inspection::node(document, id, parameter)?)
+    }
 }

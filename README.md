@@ -57,7 +57,7 @@ is a standalone image with its origin at zero, as for PNG.
 
 Encoding streams through a same-directory temporary file; failures before
 publication preserve the existing destination. `.png` still exports SDR sRGB
-with straight alpha. Other frame extensions are rejected. OpenEXR import is not currently exposed.
+with straight alpha. Other frame extensions are rejected. The supported OpenEXR input subset is described below.
 
 ## Animation sequences
 
@@ -388,13 +388,30 @@ Launch a session against a saved composition:
 
 The server uses newline-delimited JSON-RPC on stdio and MCP protocol version
 2025-11-25. Initialize, then send `notifications/initialized` before using tools.
-The tools are `inspect`, `nodes`, `apply`, `undo`, `redo`, `save`, `render`, and
-`render_sequence`.
+The tools are `inspect`, `graph`, `get_node`, `nodes`, `diagnostics`, `outline_text`,
+`apply`, `undo`, `redo`, `save`, `render`, and `render_sequence`.
 `nodes` provides defaults, parameter units/bounds, named ports, and operation JSON
 schemas from the document registry. The same registry validates scalar parameters
 and supplies input ports to the compiler. The `apply` tool embeds these schemas. Every mutation, save, or render
 requires the current revision from `inspect`. A batch is validated atomically
 and becomes one undo step. `apply` with `dry_run: true` changes nothing.
+
+For larger projects, `inspect` with `{"summary":true}` returns `summary` instead
+of `composition`: format, output UUID, node count and operation counts. Both
+headless and live sessions also support these read-only queries:
+
+- `graph` with `{"offset":0,"limit":32}` returns node metadata in UUID order,
+  without operation parameters. `limit` is 1–128; `next_offset: null` ends the
+  list. Labels are capped at 256 Unicode characters with `label_truncated` set
+  when needed. Compare returned revisions between pages and restart if changed.
+- `get_node` with `{"id":"UUID"}` returns the complete authored `node`.
+- `get_node` with `{"id":"UUID","parameter":"stops"}` returns that registered
+  parameter's exact `value`, including its curve when animated, without the rest
+  of the node. Parameter names come from the `nodes` catalog.
+
+These queries return the current `revision` (and live `session`), preserve
+selection/history, and do not evaluate frames or initialize a GPU. Default
+`inspect` behavior still returns the complete composition.
 
 The `render` tool optionally accepts `node` (a UUID) and `region` (an object with
 `x`, `y`, `width`, `height`). It returns the rendered region, path, and document
@@ -420,7 +437,8 @@ Normal editor shutdown removes its endpoint; after an abnormal exit, use a new
 directory or remove the stale endpoint yourself. One client connects at a time.
 The toolbar shows **MCP** when live control is enabled.
 
-Live tools are `inspect`, `nodes`, `apply`, `undo`, `redo`, and `preview`.
+Live tools are `inspect`, `graph`, `get_node`, `nodes`, `diagnostics`, `apply`,
+`undo`, `redo`, and `preview`.
 `inspect` returns a project `session` UUID and `revision`; both are required for
 edits, undo/redo, and preview. Opening a project creates a new session identity,
 so an old command cannot target a newly opened project with the same revision.
