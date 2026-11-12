@@ -47,6 +47,25 @@ fn cli_and_headless_mcp_honor_host_budget_and_cpu_inspection_stays_available() {
         .output()
         .unwrap();
     assert!(check.status.success());
+    let mut large = doc.clone();
+    large.width = 4096;
+    large.height = 4096;
+    let large_path = root.join("large.veylvik");
+    large.save(&large_path).unwrap();
+    let checked = Command::new(binary)
+        .env("VEYLVIK_GPU_BUDGET_MIB", "64")
+        .arg("check")
+        .arg(&large_path)
+        .output()
+        .unwrap();
+    assert!(
+        checked.status.success(),
+        "{}",
+        String::from_utf8_lossy(&checked.stderr)
+    );
+    let report: serde_json::Value = serde_json::from_slice(&checked.stdout).unwrap();
+    assert!(report["working_bytes"].as_u64().unwrap() > 512 * 1024 * 1024);
+    assert_eq!(report["source_bytes"], 0);
     let mut rendered = None;
     for budget in ["128", "512"] {
         let output = root.join(format!("{budget}.png"));
@@ -68,6 +87,34 @@ fn cli_and_headless_mcp_honor_host_budget_and_cpu_inspection_stays_available() {
         }
         rendered = Some(bytes);
     }
+    let mut image_doc = blank(8, 8, Time::new(24, 1).unwrap()).unwrap();
+    image_doc
+        .nodes
+        .get_mut(&image_doc.output)
+        .unwrap()
+        .operation = Operation::Image {
+        asset: "128.png".into(),
+    };
+    let image_path = root.join("image.veylvik");
+    image_doc.save(&image_path).unwrap();
+    let checked = Command::new(binary)
+        .arg("check")
+        .arg(&image_path)
+        .output()
+        .unwrap();
+    assert!(checked.status.success());
+    let report: serde_json::Value = serde_json::from_slice(&checked.stdout).unwrap();
+    assert_eq!(report["source_bytes"], 1920 * 1080 * 16);
+    std::fs::remove_file(root.join("128.png")).unwrap();
+    assert!(
+        !Command::new(binary)
+            .arg("check")
+            .arg(&image_path)
+            .output()
+            .unwrap()
+            .status
+            .success()
+    );
     let mut process = Command::new(binary)
         .env("VEYLVIK_GPU_BUDGET_MIB", "128")
         .arg("mcp")

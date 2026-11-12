@@ -878,3 +878,10 @@ the usual cache caps. The budget covers declared GPU buffers, including held
 frames; it excludes driver allocations, vector rasterizer scratch, and UI
 textures. Device buffer-size limits and existing image-decoding limits still
 apply. Increasing this setting does not change rendering quality or pixel values.
+
+
+`check` validates the graph and decodes reachable image assets one at a time,
+without initializing Vulkan or applying a GPU budget. Its JSON reports
+`working_bytes` for the compiled plan and `source_bytes` for decoded inputs.
+A valid check confirms document and asset validity; rendering still enforces the
+configured budget, held-frame accounting, and device limits.

@@ -112,10 +112,25 @@ pub fn load_png(path: &Path, budget: u64) -> Result<Image> {
     }
     Ok(Image::new(width, height, pixels)?)
 }
+/// Validate reachable image files one at a time without reserving GPU memory.
+/// Returns total decoded source bytes; each individual decode remains bounded.
+pub fn inspect_inputs(plan: &Plan, base: &Path) -> Result<u64> {
+    let mut bytes = 0;
+    for key in plan.required_assets() {
+        let image = load_image(&base.join(key), MAX_IMAGE_BYTES)
+            .map_err(|error| format!("image {key}: {error}"))?;
+        bytes += image.byte_size();
+    }
+    Ok(bytes)
+}
 pub fn load_inputs(plan: &Plan, base: &Path, budget: u64) -> Result<ImageInputs> {
-    let mut remaining = budget
-        .checked_sub(plan.working_bytes())
-        .ok_or("render exceeds image input budget")?;
+    let mut remaining = budget.checked_sub(plan.working_bytes()).ok_or_else(|| {
+        format!(
+            "render requires {} working bytes before sources, budget is {}",
+            plan.working_bytes(),
+            budget
+        )
+    })?;
     let mut inputs = ImageInputs::default();
     for key in plan.required_assets() {
         let image =

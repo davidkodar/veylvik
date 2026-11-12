@@ -96,14 +96,11 @@ fn run() -> Result<()> {
         Some("check") if args.len() == 3 => {
             let doc = Composition::load(Path::new(&args[2]))?;
             let plan = Plan::compile(&doc)?;
-            assets::load_inputs(
-                &plan,
-                &assets::document_base(Path::new(&args[2]))?,
-                512 * 1024 * 1024,
-            )?;
+            let source_bytes =
+                assets::inspect_inputs(&plan, &assets::document_base(Path::new(&args[2]))?)?;
             println!(
                 "{}",
-                serde_json::json!({"valid":true,"nodes":doc.nodes.len(),"reachable_nodes":plan.node_count(),"passes":plan.passes(),"image_slots":plan.image_slots(),"working_bytes":plan.working_bytes(),"assets":plan.required_assets()})
+                serde_json::json!({"valid":true,"nodes":doc.nodes.len(),"reachable_nodes":plan.node_count(),"passes":plan.passes(),"image_slots":plan.image_slots(),"working_bytes":plan.working_bytes(),"source_bytes":source_bytes,"assets":plan.required_assets()})
             );
         }
         Some("render-sequence") if args.len() >= 6 => {
