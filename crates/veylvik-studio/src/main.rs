@@ -15,6 +15,7 @@ mod handles;
 mod node_palette;
 mod preview_images;
 mod project;
+mod transform_handles;
 mod viewer;
 use display::{Display, DisplayFrame, Paint, ViewSettings};
 use eframe::{egui, egui_wgpu};

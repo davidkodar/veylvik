@@ -179,6 +179,15 @@ is one undo step. Constants remain constant; animated parameters insert or updat
 keys at the playhead. Handles follow viewer zoom and pan, are hidden during
 playback or stale previews, and never appear in exported images.
 
+**Affine transform** has a center handle for translation, two circular axis
+handles for independent X/Y scaling, and a square handle for clockwise rotation.
+Scaling along a rotated axis preserves the other axis; dragging through zero
+allows flipping. The pivot stays unchanged and remains editable in the inspector.
+The outline shows the transformed composition bounds, not detected image content.
+**Transform** has a translation handle at the translated composition center.
+These gestures use image coordinates at any viewer zoom, preserve animation
+modes, and remain drafts until Apply. Pan by dragging away from a handle.
+
 Saving uses the same atomic persistence and source-image protection as MCP.
 Open, import, save-as, and export use the desktop file portal. File selection and
 image loading run on a bounded background worker. Save-as preserves the original

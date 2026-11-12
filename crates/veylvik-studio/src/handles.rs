@@ -2,7 +2,7 @@
 use eframe::egui::{self, Color32, Pos2, Rect, Sense, Stroke, Vec2};
 use veylvik_document::{Operation, Result, Scalar, Time};
 
-fn edit(scalar: &mut Scalar, time: Time, delta: f32, min: f32, max: f32) -> Result<()> {
+pub(super) fn edit(scalar: &mut Scalar, time: Time, delta: f32, min: f32, max: f32) -> Result<()> {
     let value = (scalar.at(time)? + delta).clamp(min, max);
     if let Scalar::Constant { value: current } = scalar {
         *current = value;
@@ -59,6 +59,12 @@ pub fn show(
     operation: &mut Operation,
     time: Time,
 ) -> Result<bool> {
+    if matches!(
+        operation,
+        Operation::Affine { .. } | Operation::Transform { .. }
+    ) {
+        return crate::transform_handles::show(ui, canvas, transform, image, operation, time);
+    }
     let [ox, oy, sx, sy] = transform.0;
     let scale = egui::vec2(
         canvas.width() * sx / image.x,
