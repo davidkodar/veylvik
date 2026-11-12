@@ -10,6 +10,7 @@ pub enum Kernel {
     Noise,
     Exposure,
     Transform,
+    Displace,
     BlurHorizontal,
     BlurVertical,
     Merge,
@@ -20,11 +21,12 @@ pub enum Kernel {
     Mask,
 }
 impl Kernel {
-    pub(crate) const ALL: [Self; 12] = [
+    pub(crate) const ALL: [Self; 13] = [
         Self::Solid,
         Self::Noise,
         Self::Exposure,
         Self::Transform,
+        Self::Displace,
         Self::BlurHorizontal,
         Self::BlurVertical,
         Self::Merge,
@@ -39,6 +41,7 @@ impl Kernel {
             Self::Solid => "solid",
             Self::Noise => "noise",
             Self::Exposure => "exposure",
+            Self::Displace => "displace",
             Self::Transform => "transform",
             Self::BlurHorizontal => "blur_horizontal",
             Self::BlurVertical => "blur_vertical",
@@ -141,6 +144,7 @@ impl Plan {
                 Operation::Solid { .. } => Kernel::Solid,
                 Operation::Noise { .. } => Kernel::Noise,
                 Operation::Exposure { .. } => Kernel::Exposure,
+                Operation::Displace { .. } => Kernel::Displace,
                 Operation::Transform { .. } => Kernel::Transform,
                 Operation::Merge {} => Kernel::Merge,
                 Operation::Blend { .. } => Kernel::Blend,
@@ -303,6 +307,7 @@ fn shareable(operation: &Operation) -> bool {
         Operation::Solid { .. }
             | Operation::Noise { .. }
             | Operation::Exposure { .. }
+            | Operation::Displace { .. }
             | Operation::Transform { .. }
             | Operation::Blur { .. }
             | Operation::Merge {}

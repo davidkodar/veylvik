@@ -41,6 +41,10 @@ pub enum Operation {
         x: Scalar,
         y: Scalar,
     },
+    Displace {
+        x: Scalar,
+        y: Scalar,
+    },
     Blur {
         radius: Scalar,
     },
@@ -80,6 +84,7 @@ impl Operation {
             Self::Noise { .. } => &registry::NOISE,
             Self::Exposure { .. } => &registry::EXPOSURE,
             Self::Transform { .. } => &registry::TRANSFORM,
+            Self::Displace { .. } => &registry::DISPLACE,
             Self::Blur { .. } => &registry::BLUR,
             Self::Merge {} => &registry::MERGE,
             Self::Blend { .. } => &registry::BLEND,
@@ -97,8 +102,8 @@ impl Operation {
         match (self, name) {
             (Self::Noise { scale, .. }, "scale") => Some(scale),
             (Self::Exposure { stops }, "stops") => Some(stops),
-            (Self::Transform { x, .. }, "x") => Some(x),
-            (Self::Transform { y, .. }, "y") => Some(y),
+            (Self::Transform { x, .. } | Self::Displace { x, .. }, "x") => Some(x),
+            (Self::Transform { y, .. } | Self::Displace { y, .. }, "y") => Some(y),
             (Self::Blur { radius }, "radius") => Some(radius),
             (Self::Blend { opacity, .. }, "opacity") => Some(opacity),
             (Self::Affine { x, .. } | Self::Ellipse { x, .. }, "x") => Some(x),
@@ -118,8 +123,8 @@ impl Operation {
         match (self, name) {
             (Self::Noise { scale, .. }, "scale") => Some(scale),
             (Self::Exposure { stops }, "stops") => Some(stops),
-            (Self::Transform { x, .. }, "x") => Some(x),
-            (Self::Transform { y, .. }, "y") => Some(y),
+            (Self::Transform { x, .. } | Self::Displace { x, .. }, "x") => Some(x),
+            (Self::Transform { y, .. } | Self::Displace { y, .. }, "y") => Some(y),
             (Self::Blur { radius }, "radius") => Some(radius),
             (Self::Blend { opacity, .. }, "opacity") => Some(opacity),
             (Self::Affine { x, .. } | Self::Ellipse { x, .. }, "x") => Some(x),

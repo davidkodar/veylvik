@@ -40,6 +40,25 @@ fn animated_mask_composition_matches_cli_and_mcp() {
     document.nodes.insert(path.id, path);
     document.output = output.id;
     document.nodes.insert(output.id, output);
+    let map = veylvik_document::Node::new(
+        "distortion map",
+        veylvik_document::Operation::Noise {
+            seed: 42,
+            scale: 32.0.into(),
+        },
+        &[],
+    );
+    let distortion = veylvik_document::Node::new(
+        "distortion",
+        veylvik_document::Operation::Displace {
+            x: 8.5.into(),
+            y: (-4.25).into(),
+        },
+        &[("image", document.output), ("map", map.id)],
+    );
+    document.nodes.insert(map.id, map);
+    document.output = distortion.id;
+    document.nodes.insert(distortion.id, distortion);
     document.save(&root.0.join("motion.veylvik")).unwrap();
     let messages = [
         json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"test","version":"1"}}}),
@@ -84,7 +103,7 @@ fn animated_mask_composition_matches_cli_and_mcp() {
     let catalog = replies[1]["result"]["structuredContent"]["nodes"]
         .as_array()
         .unwrap();
-    for kind in ["affine", "ellipse", "mask", "path"] {
+    for kind in ["affine", "ellipse", "mask", "path", "displace"] {
         assert!(
             catalog
                 .iter()

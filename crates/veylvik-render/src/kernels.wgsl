@@ -116,3 +116,13 @@ fn blend(@builtin(global_invocation_id) gid:vec3<u32>) {
     }
     result[i]=vec4<f32>(rgb,f.a+b.a*(1.0-f.a));
 }
+
+@compute @workgroup_size(8,8)
+fn displace(@builtin(global_invocation_id) gid:vec3<u32>) {
+    if !inside(gid) {return;}
+    let map=second[index(gid)];
+    // Premultiplied algebra avoids division by tiny alpha. Transparent maps
+    // are neutral, including emissive RGB stored with zero alpha.
+    let delta=(2.0*clamp(map.rg,vec2<f32>(0.0),vec2<f32>(map.a))-vec2<f32>(map.a))*p.values.xy;
+    result[index(gid)]=bilinear(vec2<f32>(gid.xy)-delta);
+}

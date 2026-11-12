@@ -52,7 +52,7 @@ fn params(node: &Node, width: u32, height: u32, time: Time) -> Result<Params> {
             let stops = stops.at(time)?;
             p.values[0] = stops.exp2();
         }
-        Operation::Transform { x, y } => {
+        Operation::Transform { x, y } | Operation::Displace { x, y } => {
             p.values[0] = x.at(time)?;
             p.values[1] = y.at(time)?;
         }

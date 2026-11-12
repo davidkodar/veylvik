@@ -188,12 +188,15 @@ includes retained history statistics. Supported operations:
 | Noise | none | Seed and cell size, 1–8192 pixels |
 | Exposure | image | −32 to +32 stops |
 | Transform | image | X/Y translation in pixels, bilinear sampling |
+| Displace | image, map | Animated X/Y strength in pixels; red/green map channels, alpha-weighted |
 | Blur | image | Box radius, 0–32 pixels, rounded to an integer |
 | Merge | background, foreground | Premultiplied foreground-over-background |
 | Image | none | Asset key; native image size, top-left anchor, transparent padding |
 | Affine | image | Translation, signed X/Y scale, clockwise rotation, pixel-space pivot |
 | Ellipse | none | Center, X/Y radii, and radial feather in pixels |
 | Mask | image, mask | Multiply premultiplied image by mask alpha; ignore mask RGB |
+| Path | none | Closed vector contours and fill rule |
+| Blend | background, foreground | Blend mode and animated opacity |
 
 Scalar parameters accept constants or `linear`, `step`, and `smooth` keyframes.
 Step holds each value until the next exact key time. Smooth applies cubic
@@ -429,3 +432,16 @@ retention counts toward the render budget and yields to memory pressure.
 ownership. Direct CPU renders and intermediate node results are not cached. There is
 no video decoder, text engine, plug-in loader, simulation, or Klipp adapter
 in this version. No Klipp source is copied or linked.
+
+### Displacement maps
+
+Displace samples its image at `pixel - strength * (2 * map.rg - map.a)`.
+Here `map.rg` is premultiplied and clamped between zero and map alpha:
+straight map red/green values of 0.5 are neutral, 0 and 1 give negative and
+positive displacement, and alpha attenuates the effect. Transparent maps are
+neutral even when they contain emissive RGB. Positive strength moves image
+features right/down where the map is white. X/Y strengths animate independently
+within ±8192 pixels. Image sampling is bilinear in linear premultiplied RGBA,
+with transparent borders; image HDR and negative values are preserved. Map
+values are interpreted in scene-linear space, including imported PNGs after
+sRGB decoding. Blur a Noise output for a smooth procedural distortion map.

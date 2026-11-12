@@ -769,6 +769,10 @@ impl Studio {
             Operation::Mask {} => {
                 ui.label("Image multiplied by mask alpha");
             }
+            Operation::Displace { .. } => {
+                ui.label("Map red drives X, green drives Y.");
+                ui.label("Mid-gray is neutral; alpha controls strength.");
+            }
             Operation::Affine { .. }
             | Operation::Ellipse { .. }
             | Operation::Exposure { .. }

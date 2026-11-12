@@ -148,6 +148,17 @@ pub static TRANSFORM: NodeType = NodeType {
         scalar("y", "pixels", -1_000_000.0, 1_000_000.0, 0.0),
     ],
 };
+pub static DISPLACE: NodeType = NodeType {
+    type_id: "displace",
+    version: 1,
+    label: "Displace",
+    description: "Map red/green displace image horizontally/vertically. Straight map 0.5 is neutral, 0/1 give negative/positive strength; map alpha attenuates displacement. Map channels clamp to [0,1] before alpha weighting. Bilinear premultiplied sampling with transparent borders.",
+    inputs: &["image", "map"],
+    parameters: &[
+        scalar("x", "pixels", -8192.0, 8192.0, 20.0),
+        scalar("y", "pixels", -8192.0, 8192.0, 20.0),
+    ],
+};
 pub static BLUR: NodeType = NodeType {
     type_id: "blur",
     version: 1,
@@ -237,7 +248,7 @@ pub static PATH: NodeType = NodeType {
 };
 pub static TYPES: &[&NodeType] = &[
     &SOLID, &NOISE, &EXPOSURE, &TRANSFORM, &BLUR, &MERGE, &IMAGE, &AFFINE, &ELLIPSE, &MASK, &PATH,
-    &BLEND,
+    &BLEND, &DISPLACE,
 ];
 pub fn operation_schema() -> Value {
     json!({"oneOf":TYPES.iter().map(|node|node.schema()).collect::<Vec<_>>()})
