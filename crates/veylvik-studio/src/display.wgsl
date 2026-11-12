@@ -24,11 +24,20 @@ fn sample_pixel(position: vec2<i32>) -> vec4<f32> {
     let bottom = mix(sample_pixel(base + vec2<i32>(0,1)), sample_pixel(base + vec2<i32>(1,1)), weight.x);
     let pixel = mix(top, bottom, weight.y);
     let alpha = clamp(pixel.a, 0.0, 1.0);
+    if (params.size.z & 2u) != 0u {
+        // Coverage is displayed directly as gray, independent of exposure.
+        var gray = alpha;
+        if (params.size.z & 1u) != 0u {
+            gray = select(pow((alpha + 0.055) / 1.055, 2.4), alpha / 12.92, alpha <= 0.04045);
+        }
+        return vec4<f32>(vec3<f32>(gray), 1.0);
+    }
+    let gain = exp2(bitcast<f32>(params.size.w));
     var color = vec3<f32>(0.0);
-    if alpha > 0.0 { color = clamp(pixel.rgb / alpha, vec3<f32>(0.0), vec3<f32>(1.0)) * alpha; }
+    if alpha > 0.0 { color = clamp(pixel.rgb * gain / alpha, vec3<f32>(0.0), vec3<f32>(1.0)) * alpha; }
     let grid = (u32(v.position.x) / 12u + u32(v.position.y) / 12u) % 2u;
     let checker = select(0.045, 0.075, grid == 0u);
     color += vec3<f32>(checker * (1.0 - alpha));
-    if params.size.z == 0u { color = srgb(color); }
+    if (params.size.z & 1u) == 0u { color = srgb(color); }
     return vec4<f32>(color, 1.0);
 }

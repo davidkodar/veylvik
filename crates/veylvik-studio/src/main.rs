@@ -8,7 +8,7 @@ mod display;
 mod files;
 mod graph;
 mod project;
-use display::{Display, DisplayFrame, Paint};
+use display::{Display, DisplayFrame, Paint, ViewSettings};
 use eframe::{egui, egui_wgpu};
 use files::{Choice, Completed, Tasks};
 use project::Project;
@@ -93,6 +93,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 renderer,
                 scheduler: Some(scheduler),
                 display,
+                view: ViewSettings::default(),
                 displayed: None,
                 displayed_ticket: None,
                 wanted: None,
@@ -132,6 +133,7 @@ struct Studio {
     renderer: Arc<Renderer>,
     scheduler: Option<GpuPreviewScheduler>,
     display: Display,
+    view: ViewSettings,
     displayed: Option<Arc<DisplayFrame>>,
     displayed_ticket: Option<PreviewTicket>,
     wanted: Option<PreviewTicket>,
@@ -1011,7 +1013,7 @@ impl eframe::App for Studio {
             match scheduler.try_take() {
                 Ok(Some(result)) if self.wanted == Some(result.ticket) => match result.frame {
                     Ok(frame) => {
-                        self.displayed = Some(self.display.frame(&self.renderer, frame));
+                        self.displayed = Some(self.display.frame(&self.renderer, frame, self.view));
                         self.displayed_ticket = Some(result.ticket);
                         if !self.error && !self.files.busy() {
                             self.status = format!(
@@ -1129,6 +1131,7 @@ impl eframe::App for Studio {
                         egui::ScrollArea::vertical().show(ui, |ui| self.inspector(ui));
                     });
                 egui::CentralPanel::default().show_inside(ui, |ui| {
+                    let previous_view = self.view;
                     ui.horizontal(|ui| {
                         ui.heading("Viewer");
                         ui.weak(if self.project.preview.is_some() {
@@ -1136,7 +1139,31 @@ impl eframe::App for Studio {
                         } else {
                             "Composition output"
                         });
+                        ui.separator();
+                        ui.checkbox(&mut self.view.alpha, "Alpha")
+                            .on_hover_text("Inspect coverage without changing the composition");
+                        ui.add_enabled_ui(!self.view.alpha, |ui| {
+                            ui.label("View exposure");
+                            ui.add(
+                                egui::DragValue::new(&mut self.view.exposure)
+                                    .speed(0.1)
+                                    .range(-16.0..=16.0)
+                                    .suffix(" stops"),
+                            );
+                        });
+                        if ui.button("Reset view").clicked() {
+                            self.view = ViewSettings::default();
+                        }
                     });
+                    if self.view != previous_view
+                        && let Some(frame) = &self.displayed
+                    {
+                        self.displayed = Some(self.display.frame(
+                            &self.renderer,
+                            frame.frame.clone(),
+                            self.view,
+                        ));
+                    }
                     if self.displayed.is_some() && self.displayed_ticket != self.wanted {
                         ui.weak(if self.error {
                             "Showing previous frame · preview failed"

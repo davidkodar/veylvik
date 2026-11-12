@@ -3,6 +3,11 @@ use std::sync::Arc;
 use veylvik_render::{GpuFrame, Renderer};
 use wgpu::util::DeviceExt;
 
+#[derive(Debug, Default, Clone, Copy, PartialEq)]
+pub struct ViewSettings {
+    pub exposure: f32,
+    pub alpha: bool,
+}
 pub struct Display {
     pipeline: wgpu::RenderPipeline,
     format: wgpu::TextureFormat,
@@ -40,7 +45,17 @@ impl Display {
         });
         Self { pipeline, format }
     }
-    pub fn frame(&self, renderer: &Renderer, frame: Arc<GpuFrame>) -> Arc<DisplayFrame> {
+    pub fn frame(
+        &self,
+        renderer: &Renderer,
+        frame: Arc<GpuFrame>,
+        settings: ViewSettings,
+    ) -> Arc<DisplayFrame> {
+        let exposure = if settings.exposure.is_finite() {
+            settings.exposure.clamp(-16.0, 16.0)
+        } else {
+            0.0
+        };
         let uniform = renderer
             .device()
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -48,8 +63,8 @@ impl Display {
                 contents: bytemuck::cast_slice(&[
                     frame.width(),
                     frame.height(),
-                    u32::from(self.format.is_srgb()),
-                    0,
+                    u32::from(self.format.is_srgb()) | (u32::from(settings.alpha) << 1),
+                    exposure.to_bits(),
                     frame.region().x,
                     frame.region().y,
                     frame.region().width,
@@ -223,6 +238,82 @@ mod tests {
             }
         }
     }
+    #[test]
+    #[ignore = "requires Vulkan"]
+    fn viewer_exposure_and_alpha_inspection_leave_hdr_frame_unchanged() {
+        let renderer = Renderer::new().unwrap();
+        let node = Node::new(
+            "HDR",
+            Operation::Solid {
+                color: [4.0, 1.0, 0.0, 0.5],
+            },
+            &[],
+        );
+        let doc = Composition {
+            schema: 1,
+            width: 1,
+            height: 1,
+            frame_rate: Time::new(24, 1).unwrap(),
+            output: node.id,
+            nodes: [(node.id, node)].into(),
+        };
+        let frame = Arc::new(
+            renderer
+                .render_gpu(
+                    &Plan::compile(&doc).unwrap(),
+                    RenderRequest::full(Time::new(0, 1).unwrap()),
+                    &ImageInputs::default(),
+                )
+                .unwrap(),
+        );
+        for format in [
+            wgpu::TextureFormat::Rgba8Unorm,
+            wgpu::TextureFormat::Rgba8UnormSrgb,
+        ] {
+            for exposure in [-2.0, 0.0] {
+                let actual = paint_with_settings(
+                    &renderer,
+                    frame.clone(),
+                    1,
+                    1,
+                    format,
+                    ViewSettings {
+                        exposure,
+                        alpha: false,
+                    },
+                );
+                let green = if exposure == -2.0 { 0.1625 } else { 0.5375 };
+                let expected = veylvik_render::to_srgba8(&[[0.5375, green, 0.0375, 1.0]]);
+                for (a, b) in actual[0].iter().zip(expected) {
+                    assert!(
+                        a.abs_diff(b) <= 1,
+                        "{format:?} exposure={exposure}: {actual:?}"
+                    );
+                }
+            }
+            for exposure in [-2.0, 8.0] {
+                let actual = paint_with_settings(
+                    &renderer,
+                    frame.clone(),
+                    1,
+                    1,
+                    format,
+                    ViewSettings {
+                        exposure,
+                        alpha: true,
+                    },
+                );
+                for value in &actual[0][..3] {
+                    assert!(value.abs_diff(128) <= 1, "{actual:?}");
+                }
+                assert_eq!(actual[0][3], 255);
+            }
+        }
+        assert_eq!(
+            renderer.read_frame(&frame).unwrap().pixels,
+            [[2.0, 0.5, 0.0, 0.5]]
+        );
+    }
     fn paint(
         renderer: &Renderer,
         frame: Arc<GpuFrame>,
@@ -230,10 +321,27 @@ mod tests {
         height: u32,
         format: wgpu::TextureFormat,
     ) -> Vec<[u8; 4]> {
+        paint_with_settings(
+            renderer,
+            frame,
+            width,
+            height,
+            format,
+            ViewSettings::default(),
+        )
+    }
+    fn paint_with_settings(
+        renderer: &Renderer,
+        frame: Arc<GpuFrame>,
+        width: u32,
+        height: u32,
+        format: wgpu::TextureFormat,
+        settings: ViewSettings,
+    ) -> Vec<[u8; 4]> {
         let device = renderer.device();
         let scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
         let display = Display::new(device, format);
-        let frame = display.frame(renderer, frame);
+        let frame = display.frame(renderer, frame, settings);
         let target = device.create_texture(&wgpu::TextureDescriptor {
             label: None,
             size: wgpu::Extent3d {

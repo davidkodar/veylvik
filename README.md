@@ -107,6 +107,10 @@ foreground-over-background behavior.
 ```
 
 The viewer consumes GPU-resident frames on the same Vulkan device as the UI.
+**View exposure** adjusts only the display by −16 to +16 stops. **Alpha** shows
+coverage as grayscale, independent of exposure; **Reset view** restores normal
+color viewing. These controls do not change the document, history or exports.
+Live MCP inspection reports these viewer settings separately from the composition.
 Select and arrange nodes, drag between output and input sockets to connect them,
 add procedural nodes, and preview any node without changing composition output.
 Socket drags work in either direction; Escape or dropping on empty space cancels.
