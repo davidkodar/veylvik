@@ -1,10 +1,11 @@
 use veylvik_io as assets;
 mod mcp;
+mod outline;
 use std::path::Path;
 use veylvik_document::{Composition, Node, Operation, Time};
 use veylvik_render::{Plan, Region, RenderRequest, Renderer};
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
-const USAGE: &str = "usage: veylvik open [FILE] [--control-dir NEW_DIRECTORY] | demo FILE [--motion] | import IMAGE.png FILE | nodes | check FILE | render FILE OUTPUT.png [TICKS RATE] [--node UUID] [--crop X Y WIDTH HEIGHT] | render-sequence FILE DIRECTORY START END [--node UUID] [--crop X Y WIDTH HEIGHT] | mcp FILE | mcp --studio DIRECTORY";
+const USAGE: &str = "usage: veylvik open [FILE] [--control-dir NEW_DIRECTORY] | demo FILE [--motion] | import IMAGE.png FILE | outline-text FONT TEXT NEW_FILE [OPTIONS] | nodes | check FILE | render FILE OUTPUT.png [TICKS RATE] [--node UUID] [--crop X Y WIDTH HEIGHT] | render-sequence FILE DIRECTORY START END [--node UUID] [--crop X Y WIDTH HEIGHT] | mcp FILE | mcp --studio DIRECTORY";
 fn run() -> Result<()> {
     let args: Vec<String> = std::env::args().collect();
     match args.get(1).map(String::as_str) {
@@ -37,6 +38,7 @@ fn run() -> Result<()> {
             std::io::stdin().lock(),
             std::io::stdout().lock(),
         )?,
+        Some("outline-text") => outline::run(&args[2..])?,
         Some("nodes") if args.len() == 2 => println!("{}", veylvik_document::registry::catalog()),
         Some("demo") if args.len() == 3 || (args.len() == 4 && args[3] == "--motion") => {
             let composition = if args.len() == 4 {

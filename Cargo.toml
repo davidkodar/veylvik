@@ -20,6 +20,7 @@ veylvik-document = { path = "crates/veylvik-document" }
 veylvik-render = { path = "crates/veylvik-render" }
 veylvik-io = { path = "crates/veylvik-io" }
 veylvik-control = { path = "crates/veylvik-control" }
+veylvik-text = { path = "crates/veylvik-text" }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

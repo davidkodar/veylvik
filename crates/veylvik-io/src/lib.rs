@@ -1,5 +1,6 @@
-//! Filesystem and PNG adapter; the compositor only sees immutable linear images.
+//! Filesystem, PNG and font adapters; rendering and shaping stay independent of paths.
 pub mod sequence;
+pub mod text;
 use std::{
     fs::File,
     io::BufReader,

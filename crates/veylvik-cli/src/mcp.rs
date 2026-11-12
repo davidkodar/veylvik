@@ -17,6 +17,7 @@ fn tools() -> Value {
     json!({"tools":[
         tool("inspect","Read the composition and current revision.",json!({}),&[]),
         tool("nodes","List supported node operations, ports and example payloads.",json!({}),&[]),
+        tool("outline_text","Read an explicit font and convert one directional/script text run into portable Path mask geometry. Does not modify the document. Apply the returned operation with a put command. No fallback, wrapping or paragraph layout.",json!({"revision":revision,"font":{"type":"string"},"text":{"type":"string","maxLength":4096},"font_index":{"type":"integer","minimum":0,"maximum":u32::MAX},"font_size":{"type":"number","minimum":1,"maximum":1024},"origin":{"type":"array","minItems":2,"maxItems":2,"items":{"type":"number","minimum":-32768,"maximum":32768}},"direction":{"enum":["left_to_right","right_to_left"]},"language":{"type":"string","minLength":1,"maxLength":64}}),&["revision","font","text"]),
         tool("apply","Validate or commit an atomic batch. dry_run returns the candidate without changing history. Use nodes for payload examples. A put command inserts or replaces the complete node.",json!({"revision":revision,"dry_run":{"type":"boolean"},"commands":{"type":"array","minItems":1,"maxItems":4096,"items":veylvik_document::schema::command()}}),&["revision","commands"]),
         tool("undo","Undo one transaction, with a revision precondition.",json!({"revision":revision}),&["revision"]),
         tool("redo","Redo one transaction, with a revision precondition.",json!({"revision":revision}),&["revision"]),
@@ -65,6 +66,15 @@ impl Session {
                 json!({"revision":self.document.revision(),"composition":self.document.snapshot(),"history":self.document.history()}),
             ),
             "nodes" => Ok(veylvik_document::registry::catalog()),
+            "outline_text" => {
+                let mut payload = args.clone();
+                payload.as_object_mut().unwrap().remove("revision");
+                let request: crate::assets::text::OutlineRequest = serde_json::from_value(payload)?;
+                let outlined = crate::assets::text::outline(&self.asset_base, &request)?;
+                Ok(
+                    json!({"revision":self.document.revision(),"operation":{"type":"path","geometry":outlined.geometry},"glyph_count":outlined.glyph_count,"advance":outlined.advance}),
+                )
+            }
             "apply" => {
                 let commands: Vec<Command> = serde_json::from_value(args["commands"].clone())?;
                 let dry_run = match args.get("dry_run") {
@@ -223,7 +233,27 @@ mod tests {
             replies[4]["result"]["structuredContent"]["composition"]["width"],
             100
         );
-        assert_eq!(replies[5]["result"]["tools"].as_array().unwrap().len(), 8);
+        let names: std::collections::BTreeSet<_> = replies[5]["result"]["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|tool| tool["name"].as_str().unwrap())
+            .collect();
+        assert_eq!(
+            names,
+            [
+                "inspect",
+                "nodes",
+                "outline_text",
+                "apply",
+                "undo",
+                "redo",
+                "save",
+                "render",
+                "render_sequence"
+            ]
+            .into()
+        );
     }
 }
 

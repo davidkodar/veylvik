@@ -227,6 +227,22 @@ and combined outlines at the path limit. It performs no font discovery, fallback
 paragraph bidi layout, wrapping or bitmap/color-glyph rendering. This library
 boundary does not yet provide a live editable Text node.
 
+Convert one text run into a portable composition with an explicit font:
+
+```sh
+cargo run -p veylvik-cli -- outline-text /path/to/font.ttf "Veylvik ffi Å" title.veylvik --size 64 --origin 40 100 --canvas 960 240
+```
+
+The output file must be new. `--rtl`, `--language TAG` and `--font-index N`
+select run direction, language and a face within a font collection. Missing glyphs
+and text without visible outlines are rejected. The resulting Path mask can be
+edited or animated in Studio without keeping the source font installed. It is a
+conversion to geometry, so changing the wording requires a new conversion.
+Headless MCP exposes `outline_text` with the same inputs and a revision
+precondition; it returns a Path operation for an explicit `apply` transaction and
+does not change the document itself. Font paths resolve against the opened
+composition directory.
+
 The CLI/MCP adapter resolves image asset keys as PNG paths relative to the opened
 composition's directory (absolute paths also work). Save-as rebases relative paths
 without mutating the live session. Save/export refuse to replace an input image.
