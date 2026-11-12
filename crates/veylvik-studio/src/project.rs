@@ -69,10 +69,12 @@ impl Project {
     pub fn plan(&mut self) -> Result<Arc<Plan>> {
         let revision = self.document.revision();
         let output = self.preview.unwrap_or(self.document.snapshot().output);
-        if let Some((cached_revision, cached_output, plan)) = &self.compiled
-            && *cached_revision == revision
+        if let Some((cached_revision, cached_output, plan)) = &mut self.compiled
             && *cached_output == output
+            && (*cached_revision == revision
+                || plan.matches_composition(self.document.snapshot(), output)?)
         {
+            *cached_revision = revision;
             return Ok(plan.clone());
         }
         let plan = Arc::new(Plan::compile_output(self.document.snapshot(), output)?);
@@ -263,7 +265,7 @@ mod tests {
 mod plan_tests {
     use super::*;
     #[test]
-    fn scrubbing_reuses_compiled_plan_but_edits_invalidate_it() {
+    fn authoring_changes_reuse_plans_but_render_dependencies_invalidate_them() {
         let mut project = Project::open(None).unwrap();
         let first = project.plan().unwrap();
         project.frame = 20;
@@ -275,7 +277,25 @@ mod plan_tests {
                 node: Box::new(node),
             }])
             .unwrap();
-        assert!(!Arc::ptr_eq(&first, &project.plan().unwrap()));
+        assert!(Arc::ptr_eq(&first, &project.plan().unwrap()));
+        project
+            .apply(&[Command::Place {
+                id: project.selected,
+                position: Some(veylvik_document::NodePosition { x: 100.0, y: 120.0 }),
+            }])
+            .unwrap();
+        assert!(Arc::ptr_eq(&first, &project.plan().unwrap()));
+        let mut node = project.document.snapshot().nodes[&project.selected].clone();
+        node.operation = Operation::Exposure { stops: 2.0.into() };
+        project
+            .apply(&[Command::Put {
+                node: Box::new(node),
+            }])
+            .unwrap();
+        let changed = project.plan().unwrap();
+        assert!(!Arc::ptr_eq(&first, &changed));
+        project.undo(false).unwrap();
+        assert!(!Arc::ptr_eq(&changed, &project.plan().unwrap()));
     }
 }
 

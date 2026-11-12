@@ -476,3 +476,12 @@ become zero and HDR values saturate at source alpha. Connect Fractal noise to
 Channel mask, then connect that mask to Apply mask to reveal an image through
 an animated procedural texture. Alpha extraction preserves coverage but replaces
 image color with white.
+
+Compiled preview plans are reused across node renames, layout changes, frame-rate
+changes, and edits to disconnected branches when the preview root, dimensions,
+reachable operations, and input wiring are unchanged. The candidate document is
+still fully validated. Parameter, topology, resolution, and preview-root changes
+recompile; animation continues to evaluate at the current exact time. Key
+comparison retains timestamp representation to preserve identical floating-point
+evaluation. This complements the GPU frame cache, which compares evaluated render
+inputs and therefore also reuses equal pixels across different times.

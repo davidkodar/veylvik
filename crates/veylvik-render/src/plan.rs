@@ -82,6 +82,7 @@ pub struct PassInfo {
 }
 /// Immutable device-independent execution plan. UI layout never participates.
 pub struct Plan {
+    root: NodeId,
     pub(crate) width: u32,
     pub(crate) height: u32,
     pub(crate) nodes: Vec<Node>,
@@ -231,6 +232,7 @@ impl Plan {
             }
         }
         Ok(Self {
+            root: output,
             width: composition.width,
             height: composition.height,
             nodes,
@@ -239,6 +241,35 @@ impl Plan {
             slot_count,
         })
     }
+    /// Whether a validated composition has the same reachable render dependencies.
+    /// Labels, positions, frame rate and disconnected nodes do not affect a plan.
+    /// The entire candidate is validated, including disconnected nodes.
+    pub fn matches_composition(&self, composition: &Composition, output: NodeId) -> Result<bool> {
+        composition.validate()?;
+        if self.root != output
+            || self.width != composition.width
+            || self.height != composition.height
+        {
+            return Ok(false);
+        }
+        for before in &self.nodes {
+            let Some(after) = composition.nodes.get(&before.id) else {
+                return Ok(false);
+            };
+            if before.version != after.version || before.inputs != after.inputs {
+                return Ok(false);
+            }
+            // Exact serialized definitions preserve signed zero and timestamp
+            // representation. Only used after an authoring revision changes.
+            if serde_json::to_vec(&before.operation).map_err(error)?
+                != serde_json::to_vec(&after.operation).map_err(error)?
+            {
+                return Ok(false);
+            }
+        }
+        Ok(true)
+    }
+
     pub fn required_assets(&self) -> BTreeSet<&str> {
         self.nodes
             .iter()
