@@ -15,7 +15,7 @@ Build shots from nodes, animate every value with keyframes and curves, mask and 
 
 Veylvik is young, but it already works end to end: compose a graph, animate it, preview it live on the GPU, and export HDR frames and sequences. Keep copies of work you care about, because the project format can still change. No release has been published yet; build it from source or as a local Arch package.
 
-[![Gilded inferno: extruded gold lettering under layered procedural fire, with embers and a floor reflection, rendered by Veylvik](assets/readme/gilded-inferno.webp)](assets/readme/gilded-inferno.webp)
+[![Veylvik Studio with the Gilded inferno scene in the viewer: gold lettering under procedural fire with embers and a floor reflection, the node graph that builds it, and the Embers effect controls in the inspector](assets/readme/studio.webp)](assets/readme/studio.webp)
 
 <table>
   <tr>
@@ -30,7 +30,7 @@ Veylvik is young, but it already works end to end: compose a graph, animate it, 
   </tr>
 </table>
 
-*Every frame above is a bundled example scene rendered by Veylvik. Each one opens as an editable graph, with no external fonts or media.*
+*Every frame above is a bundled example scene rendered by Veylvik, including Gilded inferno in the editor. Each one opens as an editable graph, with no external fonts or media.*
 
 ## Compose, animate, deliver
 
