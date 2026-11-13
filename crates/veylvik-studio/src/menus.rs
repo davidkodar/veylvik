@@ -154,7 +154,7 @@ impl Studio {
 
 /// Add menu submenus. Every registered node type appears here, except media and text,
 /// which have their own Add entries (a test keeps this complete as nodes are added).
-pub(crate) const ADD_MENU: [(&str, &[&registry::NodeType]); 7] = [
+pub(crate) const ADD_MENU: [(&str, &[&registry::NodeType]); 8] = [
     (
         "Generators",
         &[
@@ -210,6 +210,7 @@ pub(crate) const ADD_MENU: [(&str, &[&registry::NodeType]); 7] = [
             &registry::METALLIC_SHINE,
         ],
     ),
+    ("Keying", &[&registry::CHROMA_KEY, &registry::LUMA_KEY]),
     (
         "Tracking",
         &[&registry::PLANAR_TRACK, &registry::PLANAR_WARP],

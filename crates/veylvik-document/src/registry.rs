@@ -12,6 +12,7 @@ pub enum ParameterKind {
     Typography,
     MediaTiming,
     FadeTiming,
+    KeyColor,
     MediaPlacement,
     TextFeatures,
     TextContent,
@@ -68,6 +69,7 @@ impl Parameter {
             ParameterKind::GradientMode => json!(crate::GradientMode::Linear),
             ParameterKind::MaskMode => json!(crate::MaskMode::Union),
             ParameterKind::Color => json!([self.default, self.default, self.default, 1.0]),
+            ParameterKind::KeyColor => json!([0.0, 1.0, 0.0, 1.0]),
             ParameterKind::Asset => json!("image.png"),
             ParameterKind::Path => {
                 serde_json::to_value(crate::vector::PathMask::default()).unwrap()
@@ -109,6 +111,9 @@ impl Parameter {
             }
             ParameterKind::PatinaKind => json!({"type":"string","enum":crate::PatinaKind::ALL}),
             ParameterKind::Seed => json!({"type":"integer","minimum":0,"maximum":u32::MAX}),
+            ParameterKind::KeyColor => {
+                json!({"type":"array","minItems":4,"maxItems":4,"items":{"type":"number","minimum":0}})
+            }
             ParameterKind::Color => {
                 json!({"type":"array","minItems":4,"maxItems":4,"prefixItems":[{"type":"number"},{"type":"number"},{"type":"number"},{"type":"number","minimum":0,"maximum":1}]})
             }
@@ -183,10 +188,11 @@ impl NodeType {
 }
 // Each descriptor lives with its node struct in `crate::nodes`.
 pub use crate::nodes::{
-    AFFINE, ATMOSPHERE, BLEND, BLUR, CHANNEL_MASK, COLOR_CORRECT, COLORIZE, COMBINE_MASK, DISPLACE,
-    ELLIPSE, EXPOSURE, FADE, FIRE, FOOTAGE, FRACTAL_NOISE, GLASS, GRADIENT, IMAGE, MASK, MATERIAL,
-    MERGE, METALLIC_SHINE, MORPHOLOGY, NOISE, PATH, PATINA, PLANAR_TRACK, PLANAR_WARP, SOLID,
-    SUN_GLINTS, SURFACE_BLEND, SURFACE_REFLECTION, TEXT, TRANSFORM,
+    AFFINE, ATMOSPHERE, BLEND, BLUR, CHANNEL_MASK, CHROMA_KEY, COLOR_CORRECT, COLORIZE,
+    COMBINE_MASK, DISPLACE, ELLIPSE, EXPOSURE, FADE, FIRE, FOOTAGE, FRACTAL_NOISE, GLASS, GRADIENT,
+    IMAGE, LUMA_KEY, MASK, MATERIAL, MERGE, METALLIC_SHINE, MORPHOLOGY, NOISE, PATH, PATINA,
+    PLANAR_TRACK, PLANAR_WARP, SOLID, SUN_GLINTS, SURFACE_BLEND, SURFACE_REFLECTION, TEXT,
+    TRANSFORM,
 };
 pub static TYPES: &[&NodeType] = &[
     &SOLID,
@@ -207,6 +213,8 @@ pub static TYPES: &[&NodeType] = &[
     &PATH,
     &BLEND,
     &FADE,
+    &CHROMA_KEY,
+    &LUMA_KEY,
     &SURFACE_BLEND,
     &DISPLACE,
     &FRACTAL_NOISE,

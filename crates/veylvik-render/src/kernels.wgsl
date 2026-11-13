@@ -29,6 +29,62 @@ fn exposure(@builtin(global_invocation_id) gid:vec3<u32>) {
     if !inside(gid) {return;}
     let i=index(gid);result[i]=vec4<f32>(source[i].rgb*p.values.x,source[i].a);
 }
+// Colour-difference chroma key on unpremultiplied colour. values: key RGB, tolerance;
+// extra: softness, despill. The key's dominant channel defines the backdrop direction.
+fn dominant(c:vec3<f32>)->u32 {
+    if c.g>=c.r && c.g>=c.b {return 1u;}
+    if c.b>=c.r {return 2u;}
+    return 0u;
+}
+fn lean(c:vec3<f32>,k:u32)->f32 {
+    // Dominant channel minus the larger other channel, relative to the dominant channel.
+    var others=vec2<f32>(c.g,c.b);
+    if k==1u {others=vec2<f32>(c.r,c.b);}
+    if k==2u {others=vec2<f32>(c.r,c.g);}
+    let top=max(c[k],1e-6);
+    return (c[k]-max(others.x,others.y))/top;
+}
+@compute @workgroup_size(8,8)
+fn chroma_key(@builtin(global_invocation_id) gid:vec3<u32>) {
+    if !inside(gid) {return;}
+    let i=index(gid); let c=source[i];
+    if c.a<=0.0 {result[i]=c;return;}
+    var rgb=c.rgb/c.a;
+    let key=max(p.values.xyz,vec3<f32>(0.0)); let tolerance=p.values.w;
+    let softness=p.extra.x; let despill=p.extra.y;
+    let k=dominant(key);
+    let key_lean=max(lean(key,k),1e-6);
+    var alpha=1.0;
+    let positive=max(rgb,vec3<f32>(0.0));
+    // Near-black pixels carry no reliable colour; keep them.
+    if dot(positive,vec3<f32>(0.2126,0.7152,0.0722))>0.002 {
+        let ratio=lean(positive,k)/key_lean;
+        let edge=1.0-tolerance;
+        if softness>0.0 {alpha=clamp((edge-ratio)/softness,0.0,1.0);}
+        else {alpha=select(1.0,0.0,ratio>=edge);}
+    }
+    if despill>0.0 {
+        var others=vec2<f32>(rgb.g,rgb.b);
+        if k==1u {others=vec2<f32>(rgb.r,rgb.b);}
+        if k==2u {others=vec2<f32>(rgb.r,rgb.g);}
+        let limit=0.5*(others.x+others.y);
+        if rgb[k]>limit {rgb[k]=mix(rgb[k],limit,despill);}
+    }
+    let a=alpha*c.a;
+    result[i]=vec4<f32>(rgb*a,a);
+}
+// Luma key: transparent at or below low, opaque at or above high (reversed when low > high).
+@compute @workgroup_size(8,8)
+fn luma_key(@builtin(global_invocation_id) gid:vec3<u32>) {
+    if !inside(gid) {return;}
+    let i=index(gid); let c=source[i];
+    if c.a<=0.0 {result[i]=c;return;}
+    let l=dot(c.rgb/c.a,vec3<f32>(0.2126,0.7152,0.0722));
+    let low=p.values.x; let high=p.values.y;
+    var alpha=select(0.0,1.0,l>=high);
+    if high!=low {alpha=clamp((l-low)/(high-low),0.0,1.0);}
+    result[i]=c*alpha;
+}
 // Fade: premultiplied colour and alpha scale together by the visibility in values.x.
 @compute @workgroup_size(8,8)
 fn fade(@builtin(global_invocation_id) gid:vec3<u32>) {

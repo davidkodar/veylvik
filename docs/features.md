@@ -7,10 +7,10 @@ Everything Veylvik can do today, area by area. Veylvik is a native Rust node com
 - Connect nodes by dragging between output and input sockets, in either direction; Escape or dropping on empty space cancels.
 - Each accepted rewire is one undo step; invalid connections fail atomically.
 - Named inputs are also editable in the inspector.
-- **Add node** button, **Add → Search nodes…** or **Tab**: searchable picker over all 34 node types, recipes and text outlines (by name or description); Up/Down, Enter to add, Escape cancels.
+- **Add node** button, **Add → Search nodes…** or **Tab**: searchable picker over all 36 node types, recipes and text outlines (by name or description); Up/Down, Enter to add, Escape cancels.
 - New effects connect to the selected node; procedural nodes appear where the picker opened.
 - Gradient endpoints and shape defaults follow the composition size.
-- **Add** menu submenus: Generators (Solid, Noise, Fractal noise, Gradient, Procedural fire, Smoke, fog and clouds); Masks and shapes (Ellipse mask, Path mask, Channel mask, Grow/shrink mask, Combine masks); Transform and distort (Affine transform, Transform, Displace); Colour and filters (Exposure, Colour correct, Colorize, Blur); Compositing (Merge, Blend, Fade, Apply mask, Surface blend); Materials and light (Text surface, Tarnish and dirt, Glass surface, Surface reflection, Sun glints, Metallic shine); Tracking (Planar track, Planar warp). Every node type is in exactly one submenu or has its own entry.
+- **Add** menu submenus: Generators (Solid, Noise, Fractal noise, Gradient, Procedural fire, Smoke, fog and clouds); Masks and shapes (Ellipse mask, Path mask, Channel mask, Grow/shrink mask, Combine masks); Transform and distort (Affine transform, Transform, Displace); Colour and filters (Exposure, Colour correct, Colorize, Blur); Compositing (Merge, Blend, Fade, Apply mask, Surface blend); Materials and light (Text surface, Tarnish and dirt, Glass surface, Surface reflection, Sun glints, Metallic shine); Keying (Chroma key, Luma key); Tracking (Planar track, Planar warp). Every node type is in exactly one submenu or has its own entry.
 - **Add → Image or footage…**, **Add → Text**, **Add → Text outlines…**, **Add → Effect library…**.
 - Editable recipes: **Glow effect**, **Outline effect**.
 - **Find** / **Ctrl+F**: locate a node by name, operation type or UUID (all words, case-insensitive), Enter selects and previews it.
@@ -151,6 +151,17 @@ Everything Veylvik can do today, area by area. Veylvik is a native Rust node com
 - **Ellipse mask**, **Path mask**, **Text** (see above).
 - **Procedural fire**, **Smoke, fog and clouds** (see Atmosphere).
 - **Image** and **Footage** sources (see Footage).
+
+## Keying
+
+- **Chroma key**: colour-difference key for green, blue or any coloured backdrop; brightness-independent, so unevenly lit, shadowed and HDR parts of a screen key alike.
+- **Key colour** with one-click **Green screen** / **Blue screen** presets; the screen need not match exactly.
+- **Tolerance** (how much of the screen goes) and **Softness** (edge falloff), keyframable.
+- Skin, greys and colours without the key's bias stay opaque; near-black pixels are kept.
+- **Despill**: limits the key colour in what remains to the average of the other channels, removing fringes and bounce light.
+- **Luma key**: **Low**/**High** luminance thresholds with a linear ramp; swap them to key out bright areas (white backdrops); HDR values allowed.
+- Both keep input alpha and output premultiplied colour; inspect the matte with **Show alpha**; refine with Grow/shrink mask, Blur and Combine masks (garbage mattes).
+- **Add → Keying** submenu.
 
 ## Colour
 

@@ -57,6 +57,7 @@ mod color;
 mod composite;
 mod filters;
 mod generators;
+mod keying;
 mod materials;
 mod media;
 mod text;

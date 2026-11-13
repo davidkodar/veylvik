@@ -133,6 +133,23 @@ layer faded fully out at a frame is neither rendered nor decoded, so footage beh
 costs nothing. Times are exact rationals like footage timing; the inspector edits them
 in frames.
 
+**Chroma key** makes a green, blue or other coloured backdrop transparent with a
+colour-difference key. It measures how strongly each pixel leans towards **Key colour**'s
+dominant channel (for green, green minus the larger of red and blue) relative to the
+pixel's own brightness, and compares that with the key, so shadowed, brightly lit and HDR
+parts of an uneven screen key alike and the screen need not match the key exactly; the
+**Green screen** and **Blue screen** buttons set typical screen colours. Pixels leaning at
+least 1 − **Tolerance** as much as the key become transparent, and over a further
+**Softness** they fade back to opaque. Skin, greys and colours without that bias stay
+opaque, and near-black pixels, which carry no reliable colour, are kept. **Despill**
+limits the key's channel in what remains to the average of the other two, removing
+coloured fringes and bounce light. **Luma key** keys by Rec.709 luminance instead:
+transparent at or below **Low**, opaque at or above **High**, with a linear ramp between;
+set Low above High to key out bright areas such as a white backdrop. Both keep input
+alpha, output premultiplied colour, work on HDR values and can be keyframed. Check a matte
+with **View → Show alpha**, then refine it with **Grow/shrink mask** and **Blur**, or
+combine it with a garbage **Path mask** through **Combine masks**.
+
 **Colour correct** grades footage and renders in scene-linear light, in a fixed order:
 white balance (**Temperature** warms or cools by up to a stop between red and blue,
 **Tint** shifts towards magenta or green), **Lift** (offset) and **Gain** (multiply),

@@ -21,6 +21,8 @@ pub enum Kernel {
     Exposure,
     ColorCorrect,
     Fade,
+    ChromaKey,
+    LumaKey,
     Transform,
     Displace,
     MorphologyHorizontal,
@@ -41,7 +43,7 @@ pub enum Kernel {
     Gradient,
 }
 impl Kernel {
-    pub(crate) const ALL: [Self; 33] = [
+    pub(crate) const ALL: [Self; 35] = [
         Self::Text,
         Self::Solid,
         Self::Noise,
@@ -57,6 +59,8 @@ impl Kernel {
         Self::Exposure,
         Self::ColorCorrect,
         Self::Fade,
+        Self::ChromaKey,
+        Self::LumaKey,
         Self::Transform,
         Self::Displace,
         Self::MorphologyHorizontal,
@@ -93,6 +97,8 @@ impl Kernel {
             Self::Exposure => "exposure",
             Self::ColorCorrect => "color_correct",
             Self::Fade => "fade",
+            Self::ChromaKey => "chroma_key",
+            Self::LumaKey => "luma_key",
             Self::Displace => "displace",
             Self::Transform => "transform",
             Self::MorphologyHorizontal => "morphology_horizontal",
