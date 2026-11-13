@@ -16,6 +16,8 @@ fn item(ui: &mut egui::Ui, label: &str, shortcut: &str, enabled: bool) -> bool {
 impl Studio {
     pub(super) fn menu_bar(&mut self, ui: &mut egui::Ui) {
         egui::MenuBar::new().ui(ui, |ui| {
+            ui.set_min_height(36.);
+            ui.spacing_mut().item_spacing.x=14.;
             let side = ui.spacing().interact_size.y;
             let (mark, _) = ui.allocate_exact_size(egui::Vec2::splat(side), egui::Sense::hover());
             crate::icons::paint_mark(ui.painter(), mark, true);
@@ -105,6 +107,7 @@ impl Studio {
                 }
             });
             ui.menu_button("View", |ui| {
+                ui.checkbox(&mut self.browser.visible, "Library panel");
                 if item(ui, "Preview selected node", "", true) {
                     self.project.preview = Some(self.project.selected); self.request_preview();
                 }
@@ -152,6 +155,8 @@ impl Studio {
             ui.separator();
             // Reserve only the remaining space so long filenames never push menus offscreen.
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if ui.add(egui::Button::new("Render").fill(egui::Color32::from_rgb(110,66,174))).clicked() {self.video_export.open=true;}
+
                 if let Some(server) = &self.control {
                     ui.weak("MCP").on_hover_text(format!(
                         "Assistants can drive this editor through veylvik mcp --studio.\nListening on {}",
@@ -169,7 +174,11 @@ impl Studio {
                 let name = self.project.path.as_ref().and_then(|p| p.file_name())
                     .map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "Untitled".into());
                 let title = if self.project.dirty() || self.draft_dirty { format!("{name} •") } else { name };
-                ui.add(egui::Label::new(&title).truncate()).on_hover_text(title);
+                if ui.ctx().content_rect().width()>1200. {
+                    let center=egui::pos2(ui.ctx().content_rect().center().x,ui.max_rect().center().y);
+                    ui.painter().text(center,egui::Align2::CENTER_CENTER,title.chars().take(42).collect::<String>(),egui::FontId::proportional(14.),ui.visuals().text_color());
+                } else {ui.add(egui::Label::new(&title).truncate()).on_hover_text(title);}
+
             });
         });
     }

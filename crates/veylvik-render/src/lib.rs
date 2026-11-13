@@ -1,6 +1,7 @@
 //! Whole-frame GPU execution. No window, document mutation, or timeline dependency.
 mod cache;
 mod diagnostics;
+mod material_preview;
 pub use diagnostics::Diagnostics;
 mod frame;
 pub use cache::CacheStats;

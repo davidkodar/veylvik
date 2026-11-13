@@ -3,3 +3,5 @@
 *.png
 !crates/veylvik-studio/assets/showcase/*.png
 !crates/veylvik-studio/assets/veylvik-256.png
+
+!crates/veylvik-studio/assets/materials/*.png

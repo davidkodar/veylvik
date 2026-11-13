@@ -161,7 +161,7 @@ pub fn show(
     let screen = |point: Vec2| origin + point * scale;
     let center = screen(geometry.center);
     let painter = ui.painter().with_clip_rect(canvas);
-    let color = Color32::from_rgb(255, 190, 80);
+    let color = crate::design::ACCENT;
     let stroke = Stroke::new(1.0_f32, color);
     let corners = [
         Vec2::ZERO,

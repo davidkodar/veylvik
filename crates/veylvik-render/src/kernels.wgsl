@@ -522,26 +522,11 @@ fn detailed_surface(uv:vec2<f32>, n:vec3<f32>, kind:u32)->vec3<f32> {
 
 // Alpha-derived bevel normals and a procedural studio environment. Metal tint
 // is reflected radiance; wood has diffuse grain, phosphor has emissive granules.
-@compute @workgroup_size(8,8)
-fn material(@builtin(global_invocation_id) gid:vec3<u32>) {
-    if !inside(gid) {return;}
-    let i=index(gid); let coverage=source[i].a;
-    if coverage==0.0 {result[i]=vec4<f32>(0.0);return;}
-    let uv=vec2<f32>(gid.xy)/p.values.x;
-    let r=i32(round(p.values.y)); let xy=vec2<i32>(gid.xy);
-    var slope=vec2<f32>(0.0);
-    if r>0 {
-        for(var ring=1;ring<=8;ring++) {
-            let offset=max(1,i32(round(f32(r)*f32(ring)/8.0)));
-            let weight=(1.0-f32(ring)/9.0)*0.5;
-            slope+=weight*vec2<f32>(sample_source(xy.x-offset,xy.y).a-sample_source(xy.x+offset,xy.y).a,
-                                    sample_source(xy.x,xy.y-offset).a-sample_source(xy.x,xy.y+offset).a);
-        }
-    }
+// Shared surface evaluation for authored shapes and library sample geometry.
+fn material_colour(uv:vec2<f32>,n:vec3<f32>)->vec3<f32> {
     let fine=fire_noise(vec3<f32>(uv*130.0,0.3),191u)-0.5;
     let brushed=fire_noise(vec3<f32>(uv.x*0.6,uv.y*240.0,1.1),71u)-0.5;
     let micro=select(fine*0.025,brushed*0.55,p.size_op.w==2u)*p.extra.x;
-    let n=normalize(vec3<f32>(slope*1.6,1.0));
     let phase=uv.y*0.7+n.y*0.26+n.x*0.13+p.values.w;
     let band=fract(phase);
     let rough=p.values.z;
@@ -577,6 +562,38 @@ fn material(@builtin(global_invocation_id) gid:vec3<u32>) {
         color+=vec3<f32>(1.0,0.78,0.45)*rim*0.1*(1.0-rough);
     }
     if p.size_op.w>=6u {color=detailed_surface(uv,n,p.size_op.w);}
+    return color;
+}
+@compute @workgroup_size(8,8)
+fn material_swatch(@builtin(global_invocation_id) gid:vec3<u32>) {
+    if !inside(gid) {return;}
+    let xy=(vec2<f32>(gid.xy)+vec2<f32>(0.5)-vec2<f32>(128.0,124.0))/108.0;
+    let radius=length(xy);
+    let coverage=clamp((1.0-radius)*108.0,0.0,1.0);
+    if coverage==0.0 {result[index(gid)]=vec4<f32>(0.0);return;}
+    let n=vec3<f32>(xy,sqrt(max(0.0,1.0-dot(xy,xy))));
+    let uv=vec2<f32>(atan2(n.x,max(0.001,n.z)),asin(clamp(n.y,-1.0,1.0)))*0.9+vec2<f32>(1.2,0.7);
+    let color=material_colour(uv,n)*(0.3+0.7*n.z);
+    result[index(gid)]=vec4<f32>(color*coverage,coverage);
+}
+@compute @workgroup_size(8,8)
+fn material(@builtin(global_invocation_id) gid:vec3<u32>) {
+    if !inside(gid) {return;}
+    let i=index(gid); let coverage=source[i].a;
+    if coverage==0.0 {result[i]=vec4<f32>(0.0);return;}
+    let uv=vec2<f32>(gid.xy)/p.values.x;
+    let r=i32(round(p.values.y)); let xy=vec2<i32>(gid.xy);
+    var slope=vec2<f32>(0.0);
+    if r>0 {
+        for(var ring=1;ring<=8;ring++) {
+            let offset=max(1,i32(round(f32(r)*f32(ring)/8.0)));
+            let weight=(1.0-f32(ring)/9.0)*0.5;
+            slope+=weight*vec2<f32>(sample_source(xy.x-offset,xy.y).a-sample_source(xy.x+offset,xy.y).a,
+                                    sample_source(xy.x,xy.y-offset).a-sample_source(xy.x,xy.y+offset).a);
+        }
+    }
+    let n=normalize(vec3<f32>(slope*1.6,1.0));
+    let color=material_colour(uv,n);
     result[i]=vec4<f32>(color*coverage,coverage);
 }
 fn atmosphere_field(q:vec3<f32>,kind:u32)->f32 {

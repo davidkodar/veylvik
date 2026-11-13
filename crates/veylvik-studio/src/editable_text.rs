@@ -39,75 +39,30 @@ fn parameter(
     let mut changed = false;
     ui.push_id(name, |ui| {
         ui.horizontal(|ui| {
-            ui.add_sized(
-                [
-                    (ui.available_width() - 5.0 * (22.0 + ui.spacing().item_spacing.x) - 2.0)
-                        .max(0.0),
-                    22.0,
-                ],
-                egui::Label::new(label).truncate(),
-            );
-            if ui
-                .add(crate::icons::Button::new(
-                    crate::icons::Icon::Reset,
-                    "Reset to default",
-                ))
-                .on_hover_text("Restore the default at this frame; keep other animation keys.")
-                .clicked()
-            {
-                match reset(value, time, default.at(time).unwrap()) {
-                    Ok(()) => changed = true,
-                    Err(e) => {
-                        ui.colored_label(egui::Color32::LIGHT_RED, e.to_string());
+            ui.spacing_mut().item_spacing.x=3.;
+            let response=ui.add_sized([76.,28.],egui::Label::new(label).truncate());
+            response.context_menu(|ui| {
+                changed |= crate::animation::details(ui,label,value,spec.min.unwrap()..=spec.max.unwrap(),time);
+            });
+            if let Ok(mut current)=value.at(time) {
+                let before=current;
+                ui.spacing_mut().slider_width=(ui.available_width()-184.).max(24.);
+                let slider=crate::design::slider(ui,&mut current,range);
+                let number=ui.add_sized([64.,26.],egui::DragValue::new(&mut current).speed(0.1).range(spec.min.unwrap()..=spec.max.unwrap()));
+                if slider.changed() || number.changed() {
+                    match crate::handles::edit(value,time,current-before,spec.min.unwrap(),spec.max.unwrap()) {
+                        Ok(())=>changed=true,Err(e)=>{ui.colored_label(egui::Color32::LIGHT_RED,e.to_string());}
                     }
                 }
             }
-            changed |= crate::animation::key_controls(ui, value, time);
-            egui::Popup::menu(&ui.add(crate::icons::Button::new(
-                crate::icons::Icon::More,
-                "Interpolation and keyframe details",
-            )))
-            .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
-            .show(|ui| {
-                changed |= crate::animation::details(
-                    ui,
-                    label,
-                    value,
-                    spec.min.unwrap()..=spec.max.unwrap(),
-                    time,
-                );
-            });
-        });
-        if let Ok(mut current) = value.at(time) {
-            let before = current;
-            ui.horizontal(|ui| {
-                ui.spacing_mut().slider_width = (ui.available_width() - 88.0).max(60.0);
-                let slider = ui.add(
-                    egui::Slider::new(&mut current, range)
-                        .show_value(false)
-                        .clamping(egui::SliderClamping::Never),
-                );
-                let number = ui.add(
-                    egui::DragValue::new(&mut current)
-                        .speed(0.1)
-                        .range(spec.min.unwrap()..=spec.max.unwrap()),
-                );
-                if slider.changed() || number.changed() {
-                    match crate::handles::edit(
-                        value,
-                        time,
-                        current - before,
-                        spec.min.unwrap(),
-                        spec.max.unwrap(),
-                    ) {
-                        Ok(()) => changed = true,
-                        Err(e) => {
-                            ui.colored_label(egui::Color32::LIGHT_RED, e.to_string());
-                        }
-                    }
+            changed |= crate::animation::key_controls(ui,value,time);
+            if ui.add(crate::icons::Button::new(crate::icons::Icon::Reset,"Reset to default"))
+                .on_hover_text("Restore the default at this frame; keep other animation keys. Right-click the parameter label for interpolation.").clicked() {
+                match reset(value,time,default.at(time).unwrap()) {
+                    Ok(())=>changed=true,Err(e)=>{ui.colored_label(egui::Color32::LIGHT_RED,e.to_string());}
                 }
-            });
-        }
+            }
+        });
     });
     changed
 }
@@ -128,6 +83,25 @@ pub fn header(ui: &mut egui::Ui, op: &mut Operation) -> bool {
     else {
         return false;
     };
+    let mut selected = tab(ui);
+    ui.horizontal_wrapped(|ui| {
+        for (value, label) in [
+            (Tab::Text, "Text"),
+            (Tab::Layout, "Layout"),
+            (Tab::Transform, "Transform"),
+            (Tab::Style, "Style"),
+            (Tab::Animation, "Animate"),
+        ] {
+            let response = crate::design::tab(ui, label, selected == value);
+            if response.clicked() {
+                selected = value;
+            }
+        }
+    });
+    ui.ctx()
+        .data_mut(|d| d.insert_temp(egui::Id::new("text-inspector-tab"), selected));
+    ui.separator();
+    ui.label("Text");
     let before = content.clone();
     let changed = egui::ScrollArea::vertical()
         .id_salt("text-content-scroll")
@@ -136,6 +110,7 @@ pub fn header(ui: &mut egui::Ui, op: &mut Operation) -> bool {
             let output = egui::TextEdit::multiline(content)
                 .id_salt("inspector-text-content")
                 .desired_rows(3)
+                .margin(egui::vec2(10., 10.))
                 .desired_width(f32::INFINITY)
                 .char_limit(4096)
                 .show(ui);
@@ -162,29 +137,7 @@ pub fn header(ui: &mut egui::Ui, op: &mut Operation) -> bool {
     if changed {
         typography.remap(&before, content);
     }
-    ui.small("Live preview · edits commit when you finish · Undo restores them");
-    let mut selected = tab(ui);
-    ui.horizontal_wrapped(|ui| {
-        for (value, label) in [
-            (Tab::Text, "Text"),
-            (Tab::Layout, "Layout"),
-            (Tab::Transform, "Transform"),
-            (Tab::Style, "Style"),
-            (Tab::Animation, "Animation"),
-        ] {
-            let response = ui.add(
-                egui::Button::new(label)
-                    .selected(selected == value)
-                    .min_size(egui::vec2(0.0, 28.0)),
-            );
-            if response.clicked() {
-                selected = value;
-            }
-        }
-    });
-    ui.ctx()
-        .data_mut(|d| d.insert_temp(egui::Id::new("text-inspector-tab"), selected));
-    ui.separator();
+
     changed
 }
 pub fn controls(
@@ -199,123 +152,151 @@ pub fn controls(
     let mut import = None;
     match selected {
         Tab::Text => {
-            if ui.button("Add material or effect…").clicked() {
-                ui.ctx()
-                    .data_mut(|d| d.insert_temp(egui::Id::new("text-inspector-tab"), Tab::Style));
-            }
-            if let Operation::Text(veylvik_document::nodes::Text {
-                font,
-                underline,
-                features,
-                ..
-            }) = op
-            {
-                ui.strong("Font family");
+            if let Operation::Text(veylvik_document::nodes::Text { font, .. }) = op {
                 let (edited, selection) = fonts.choose(ui, font);
                 changed |= edited;
                 import = selection;
-                ui.horizontal_wrapped(|ui| {
-                    if ui
-                        .button("Add font…")
-                        .on_hover_text("Install a font into Veylvik's library for all projects.")
-                        .clicked()
-                    {
-                        import = Some(crate::font_browser::Selection::Add);
+            }
+            changed |= parameter(ui, op, "size", "Size · px", 1.0..=512.0, time);
+            changed |= parameter(ui, op, "tracking", "Tracking", -32.0..=100.0, time);
+            changed |= parameter(ui, op, "line_height", "Line spacing", 0.5..=3., time);
+            if let Operation::Text(veylvik_document::nodes::Text { alignment, .. }) = op {
+                ui.horizontal(|ui| {
+                    ui.add_sized([76., 28.], egui::Label::new("Alignment"));
+                    for (value, icon, label) in [
+                        (
+                            TextAlignment::Left,
+                            crate::icons::Icon::AlignLeft,
+                            "Align left",
+                        ),
+                        (
+                            TextAlignment::Center,
+                            crate::icons::Icon::AlignCenter,
+                            "Align centre",
+                        ),
+                        (
+                            TextAlignment::Right,
+                            crate::icons::Icon::AlignRight,
+                            "Align right",
+                        ),
+                    ] {
+                        if ui
+                            .add(
+                                crate::icons::Button::new(icon, label)
+                                    .selected(*alignment == value),
+                            )
+                            .clicked()
+                        {
+                            *alignment = value;
+                            changed = true;
+                        }
                     }
-                    if ui.small_button("Reset font").clicked() {
-                        **font = TextFont::default();
-                        changed = true;
-                    }
-                    changed |= ui.checkbox(underline, "Underline").changed();
                 });
-                egui::Popup::menu(&ui.button("Font options"))
-                    .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
-                    .show(|ui| {
-                        if let TextFont::Embedded { index, .. } = font.as_mut() {
-                            ui.label("Collection face");
-                            changed |= ui
-                                .add(egui::DragValue::new(index).range(0..=1024))
-                                .changed();
-                            if ui.button("Reset face").clicked() {
-                                *index = 0;
+            }
+            ui.collapsing("Typography options", |ui| {
+                if let Operation::Text(veylvik_document::nodes::Text {
+                    font,
+                    underline,
+                    features,
+                    ..
+                }) = op
+                {
+                    ui.horizontal_wrapped(|ui| {
+                        if ui
+                            .button("Add font…")
+                            .on_hover_text(
+                                "Install a font into Veylvik's library for all projects.",
+                            )
+                            .clicked()
+                        {
+                            import = Some(crate::font_browser::Selection::Add);
+                        }
+                        if ui.small_button("Reset font").clicked() {
+                            **font = TextFont::default();
+                            changed = true;
+                        }
+                        changed |= ui.checkbox(underline, "Underline").changed();
+                    });
+                    egui::Popup::menu(&ui.button("Font options"))
+                        .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
+                        .show(|ui| {
+                            if let TextFont::Embedded { index, .. } = font.as_mut() {
+                                ui.label("Collection face");
+                                changed |= ui
+                                    .add(egui::DragValue::new(index).range(0..=1024))
+                                    .changed();
+                                if ui.button("Reset face").clicked() {
+                                    *index = 0;
+                                    changed = true;
+                                }
+                            }
+                            ui.label("OpenType features (e.g. kern=0, liga=0)");
+                            changed |= ui.text_edit_singleline(features).changed();
+                            if ui.button("Reset features").clicked() {
+                                features.clear();
                                 changed = true;
                             }
+                        });
+                }
+                if let Operation::Text(veylvik_document::nodes::Text {
+                    content,
+                    typography,
+                    ..
+                }) = op
+                {
+                    let range = ui.ctx().data_mut(|d| {
+                        d.get_temp::<(usize, usize)>(egui::Id::new("text-selection"))
+                    });
+                    ui.collapsing("Selected characters", |ui| {
+                        if let Some((start, end)) = range.filter(|(a, b)| {
+                            a < b
+                                && *b <= content.len()
+                                && content.is_char_boundary(*a)
+                                && content.is_char_boundary(*b)
+                        }) {
+                            ui.label(format!("Selection: {}", &content[start..end]));
+                            let key = egui::Id::new("span-size");
+                            let mut scale =
+                                ui.ctx().data_mut(|d| d.get_temp::<f32>(key).unwrap_or(1.0));
+                            ui.add(egui::Slider::new(&mut scale, 0.1..=4.0).text("Relative size"));
+                            ui.ctx().data_mut(|d| d.insert_temp(key, scale));
+                            let mut choice = None;
+                            ui.horizontal_wrapped(|ui| {
+                                for (label, font) in [
+                                    ("Keep font", None),
+                                    ("Sans regular", Some(TextFont::Sans {})),
+                                    ("Sans bold", Some(TextFont::Display)),
+                                    ("Sans italic", Some(TextFont::Italic {})),
+                                    ("Sans bold italic", Some(TextFont::BoldItalic {})),
+                                ] {
+                                    if ui.button(label).clicked() {
+                                        choice = Some(font);
+                                    }
+                                }
+                            });
+                            if let Some(font) = choice {
+                                let mut candidate = typography.clone();
+                                candidate.set_span(veylvik_document::text::TextSpan {
+                                    start,
+                                    end,
+                                    font,
+                                    scale,
+                                });
+                                if candidate.validate().is_ok() {
+                                    *typography = candidate;
+                                    changed = true;
+                                }
+                            }
+                        } else {
+                            ui.weak("Select characters in the text box above or in the viewer.");
                         }
-                        ui.label("OpenType features (e.g. kern=0, liga=0)");
-                        changed |= ui.text_edit_singleline(features).changed();
-                        if ui.button("Reset features").clicked() {
-                            features.clear();
+                        if ui.button("Clear character formatting").clicked() {
+                            typography.spans.clear();
                             changed = true;
                         }
                     });
-            }
-            if let Operation::Text(veylvik_document::nodes::Text {
-                content,
-                typography,
-                ..
-            }) = op
-            {
-                let range = ui
-                    .ctx()
-                    .data_mut(|d| d.get_temp::<(usize, usize)>(egui::Id::new("text-selection")));
-                ui.collapsing("Selected characters", |ui| {
-                    if let Some((start, end)) = range.filter(|(a, b)| {
-                        a < b
-                            && *b <= content.len()
-                            && content.is_char_boundary(*a)
-                            && content.is_char_boundary(*b)
-                    }) {
-                        ui.label(format!("Selection: {}", &content[start..end]));
-                        let key = egui::Id::new("span-size");
-                        let mut scale =
-                            ui.ctx().data_mut(|d| d.get_temp::<f32>(key).unwrap_or(1.0));
-                        ui.add(egui::Slider::new(&mut scale, 0.1..=4.0).text("Relative size"));
-                        ui.ctx().data_mut(|d| d.insert_temp(key, scale));
-                        let mut choice = None;
-                        ui.horizontal_wrapped(|ui| {
-                            for (label, font) in [
-                                ("Keep font", None),
-                                ("Sans regular", Some(TextFont::Sans {})),
-                                ("Sans bold", Some(TextFont::Display)),
-                                ("Sans italic", Some(TextFont::Italic {})),
-                                ("Sans bold italic", Some(TextFont::BoldItalic {})),
-                            ] {
-                                if ui.button(label).clicked() {
-                                    choice = Some(font);
-                                }
-                            }
-                        });
-                        if let Some(font) = choice {
-                            let mut candidate = typography.clone();
-                            candidate.set_span(veylvik_document::text::TextSpan {
-                                start,
-                                end,
-                                font,
-                                scale,
-                            });
-                            if candidate.validate().is_ok() {
-                                *typography = candidate;
-                                changed = true;
-                            }
-                        }
-                    } else {
-                        ui.weak("Select characters in the text box above or in the viewer.");
-                    }
-                    if ui.button("Clear character formatting").clicked() {
-                        typography.spans.clear();
-                        changed = true;
-                    }
-                });
-            }
-            changed |= parameter(ui, op, "size", "Size · px", 1.0..=512.0, time);
-            changed |= parameter(
-                ui,
-                op,
-                "tracking",
-                "Letter spacing · px",
-                -32.0..=100.0,
-                time,
-            );
+                }
+            });
         }
         Tab::Layout => {
             if let Some(warning) = ui
@@ -647,67 +628,69 @@ pub fn controls(
             Tab::Transform => &["x", "y", "rotation", "scale_x", "scale_y"],
             _ => &[],
         };
-        if ui.button("Reset this tab at current frame").clicked() {
-            let defaults = op.descriptor().default_operation();
-            for name in names {
-                let default: Scalar = serde_json::from_value(defaults[*name].clone()).unwrap();
-                changed |= reset(
-                    op.scalar_mut(name).unwrap(),
-                    time,
-                    default.at(time).unwrap(),
-                )
-                .is_ok();
-            }
-            if let Operation::Text(veylvik_document::nodes::Text {
-                font,
-                underline,
-                features,
-                alignment,
-                rtl,
-                language,
-                typography,
-                ..
-            }) = op
-            {
-                match selected {
-                    Tab::Text => {
-                        **font = TextFont::default();
-                        *underline = false;
-                        features.clear();
-                    }
-                    Tab::Layout => {
-                        *alignment = TextAlignment::Center;
-                        *rtl = false;
-                        language.clear();
-                        typography.vertical = veylvik_document::text::Vertical::Top;
-                        typography.auto_fit = false;
-                    }
-                    Tab::Transform => {
-                        typography.anchor = None;
-                        typography.linked_scale = false;
-                    }
-                    _ => {}
+        ui.menu_button("Tab options", |ui| {
+            if ui.button("Reset this tab at current frame").clicked() {
+                let defaults = op.descriptor().default_operation();
+                for name in names {
+                    let default: Scalar = serde_json::from_value(defaults[*name].clone()).unwrap();
+                    changed |= reset(
+                        op.scalar_mut(name).unwrap(),
+                        time,
+                        default.at(time).unwrap(),
+                    )
+                    .is_ok();
                 }
-                changed = true;
-            }
-        }
-        if ui
-            .button("Remove animation from this tab")
-            .on_hover_text(
-                "Keep the current values and remove their keyframes. Undo restores the keys.",
-            )
-            .clicked()
-        {
-            for name in names {
-                let scalar = op.scalar_mut(name).unwrap();
-                if scalar.keys().is_some()
-                    && let Ok(value) = scalar.at(time)
+                if let Operation::Text(veylvik_document::nodes::Text {
+                    font,
+                    underline,
+                    features,
+                    alignment,
+                    rtl,
+                    language,
+                    typography,
+                    ..
+                }) = op
                 {
-                    *scalar = value.into();
+                    match selected {
+                        Tab::Text => {
+                            **font = TextFont::default();
+                            *underline = false;
+                            features.clear();
+                        }
+                        Tab::Layout => {
+                            *alignment = TextAlignment::Center;
+                            *rtl = false;
+                            language.clear();
+                            typography.vertical = veylvik_document::text::Vertical::Top;
+                            typography.auto_fit = false;
+                        }
+                        Tab::Transform => {
+                            typography.anchor = None;
+                            typography.linked_scale = false;
+                        }
+                        _ => {}
+                    }
                     changed = true;
                 }
             }
-        }
+            if ui
+                .button("Remove animation from this tab")
+                .on_hover_text(
+                    "Keep the current values and remove their keyframes. Undo restores the keys.",
+                )
+                .clicked()
+            {
+                for name in names {
+                    let scalar = op.scalar_mut(name).unwrap();
+                    if scalar.keys().is_some()
+                        && let Ok(value) = scalar.at(time)
+                    {
+                        *scalar = value.into();
+                        changed = true;
+                    }
+                }
+            }
+        });
     }
     (changed, import)
 }
@@ -1160,8 +1143,20 @@ mod tests {
     #[test]
     fn parameter_rows_do_not_grow_a_resizable_inspector_on_repaint() {
         let ctx = egui::Context::default();
+        crate::design::install_fonts(&ctx);
+        crate::design::apply(&ctx);
         let mut op = Operation::Exposure(veylvik_document::nodes::Exposure { stops: 0.0.into() });
         let mut widths = Vec::new();
+        let mut fonts = crate::font_browser::Browser::default();
+        let mut font = veylvik_document::TextFont::Display;
+        let mut text = veylvik_document::presets::showcase::build("gold_text")
+            .unwrap()
+            .composition
+            .nodes
+            .into_values()
+            .find(|n| matches!(n.operation, Operation::Text(_)))
+            .unwrap()
+            .operation;
         for frame in 0..40 {
             let _ = ctx.run_ui(
                 egui::RawInput {
@@ -1181,7 +1176,16 @@ mod tests {
                         .min_size(300.0)
                         .resizable(true)
                         .show_inside(ui, |ui| {
+                            header(ui, &mut text);
                             egui::ScrollArea::vertical().show(ui, |ui| {
+                                fonts.choose(ui, &mut font);
+                                controls(
+                                    ui,
+                                    &mut text,
+                                    Time::new(0, 1).unwrap(),
+                                    [1920., 1080.],
+                                    &mut fonts,
+                                );
                                 parameter(
                                     ui,
                                     &mut op,
@@ -1326,4 +1330,16 @@ mod fill_navigation_tests {
             Some(false)
         );
     }
+}
+
+pub(super) fn overview(ui: &egui::Ui) -> bool {
+    tab(ui) == Tab::Text
+}
+pub(super) fn transform_overview(ui: &mut egui::Ui, op: &mut Operation, time: Time) -> bool {
+    let mut changed = false;
+    ui.heading("Transform");
+    changed |= parameter(ui, op, "x", "Position X", -4096. ..=4096., time);
+    changed |= parameter(ui, op, "y", "Position Y", -4096. ..=4096., time);
+    changed |= parameter(ui, op, "rotation", "Rotation", -180. ..=180., time);
+    changed
 }

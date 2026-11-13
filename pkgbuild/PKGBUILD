@@ -31,6 +31,7 @@ package() {
     install -Dm644 "$source_root/pkgbuild/veylvik.desktop" "$pkgdir/usr/share/applications/veylvik.desktop"
     install -Dm644 "$source_root/pkgbuild/veylvik.svg" "$pkgdir/usr/share/icons/hicolor/scalable/apps/veylvik.svg"
     # Panels and title bars pick the simplified mark; the node detail blurs below 32 px.
+    install -Dm644 "$source_root/crates/veylvik-studio/assets/fonts/Inter-LICENSE.txt" "$pkgdir/usr/share/licenses/veylvik/Inter-LICENSE.txt"
     local size
     for size in 16 24; do
         install -Dm644 "$source_root/pkgbuild/veylvik-small.svg" "$pkgdir/usr/share/icons/hicolor/${size}x${size}/apps/veylvik.svg"

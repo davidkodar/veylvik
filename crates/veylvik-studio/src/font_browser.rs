@@ -107,7 +107,11 @@ impl Browser {
     pub fn choose(&mut self, ui: &mut egui::Ui, font: &mut TextFont) -> (bool, Option<Selection>) {
         let mut changed = false;
         let mut selected = None;
-        egui::ComboBox::from_id_salt("text-font-browser").width(ui.available_width().min(300.0)).height(400.0)
+        let family_width =
+            (ui.available_width() - 76. - 82. - 2. * ui.spacing().item_spacing.x).max(80.);
+        ui.horizontal(|ui| {
+            ui.add_sized([76.,28.],egui::Label::new("Font"));
+        egui::ComboBox::from_id_salt("text-font-browser").width(family_width).truncate().height(400.0)
             .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside).selected_text(font.label().split(" · ").next().unwrap_or(font.label())).show_ui(ui,|ui| {
             ui.set_min_width(300.0);
             ui.horizontal(|ui| { ui.add(egui::TextEdit::singleline(&mut self.query).hint_text("Search family or style…").desired_width(240.0)); if ui.small_button("Clear").clicked() { self.query.clear(); } });
@@ -143,13 +147,6 @@ impl Browser {
             if self.pending.is_some() { ui.horizontal(|ui| {ui.spinner();ui.weak("Reading installed fonts…");}); }
             if !self.notice.is_empty() { ui.add(egui::Label::new(&self.notice).wrap()); }
             ui.separator();
-            ui.horizontal_wrapped(|ui| {
-                if ui.button("Add font…").on_hover_text("Keep a TTF, OTF or collection in Veylvik's font library for all projects.").clicked() { selected=Some(Selection::Add); ui.close(); }
-                if ui.button("Refresh fonts").clicked() { self.refresh(ui.ctx()); }
-                if ui.button("Use file once…").on_hover_text("Embed a font in this project without adding it to the library.").clicked() { selected=Some(Selection::File); ui.close(); }
-            });
-        });
-        ui.horizontal_wrapped(|ui| {
             let saved = self.favourites.iter().any(|s| s == font.label());
             if ui
                 .add(egui::Button::new("Favourite").selected(saved))
@@ -163,7 +160,12 @@ impl Browser {
                 }
                 self.save_preferences();
             }
-            ui.label("Style");
+            ui.horizontal_wrapped(|ui| {
+                if ui.button("Add font…").on_hover_text("Keep a TTF, OTF or collection in Veylvik's font library for all projects.").clicked() { selected=Some(Selection::Add); ui.close(); }
+                if ui.button("Refresh fonts").clicked() { self.refresh(ui.ctx()); }
+                if ui.button("Use file once…").on_hover_text("Embed a font in this project without adding it to the library.").clicked() { selected=Some(Selection::File); ui.close(); }
+            });
+        });
             let family = font
                 .label()
                 .split(" · ")
@@ -172,6 +174,7 @@ impl Browser {
                 .to_owned();
             let style = font.label().split(" · ").nth(1).unwrap_or("Regular");
             egui::ComboBox::from_id_salt("font-family-style")
+                .width(82.).truncate()
                 .selected_text(style)
                 .show_ui(ui, |ui| {
                     for builtin in [
@@ -207,28 +210,21 @@ impl Browser {
                     }
                 });
         });
-        if self.preview_font.as_ref() != Some(font) {
-            if let Ok((bytes, index)) = veylvik_text::font_data(font) {
-                let mut definitions = egui::FontDefinitions::default();
-                let mut data = egui::FontData::from_owned(bytes.to_vec());
-                data.index = index;
-                definitions
-                    .font_data
-                    .insert("text-preview".into(), std::sync::Arc::new(data));
-                definitions.families.insert(
-                    egui::FontFamily::Name("text-preview".into()),
-                    vec!["text-preview".into()],
-                );
-                ui.ctx().set_fonts(definitions);
-                self.preview_font = Some(font.clone());
-            }
-        } else {
-            ui.label(
-                egui::RichText::new("Aa Bb 0123 · Veylvik").font(egui::FontId::new(
-                    22.0,
-                    egui::FontFamily::Name("text-preview".into()),
-                )),
+        if self.preview_font.as_ref() != Some(font)
+            && let Ok((bytes, index)) = veylvik_text::font_data(font)
+        {
+            let mut definitions = crate::design::font_definitions();
+            let mut data = egui::FontData::from_owned(bytes.to_vec());
+            data.index = index;
+            definitions
+                .font_data
+                .insert("text-preview".into(), std::sync::Arc::new(data));
+            definitions.families.insert(
+                egui::FontFamily::Name("text-preview".into()),
+                vec!["text-preview".into()],
             );
+            ui.ctx().set_fonts(definitions);
+            self.preview_font = Some(font.clone());
         }
         if changed {
             self.remember(font.label());

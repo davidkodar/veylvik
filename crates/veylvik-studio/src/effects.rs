@@ -261,8 +261,19 @@ impl Studio {
                         let [min, max] = control
                             .range
                             .unwrap_or([descriptor.min.unwrap(), descriptor.max.unwrap()]);
-                        changed =
-                            animation::scalar(ui, &control.label, &mut scalar, min..=max, time);
+                        let default = serde_json::from_value::<veylvik_document::Scalar>(
+                            control.default.clone(),
+                        )
+                        .ok()
+                        .and_then(|s| s.at(time).ok());
+                        changed = animation::scalar_with_default(
+                            ui,
+                            &control.label,
+                            &mut scalar,
+                            min..=max,
+                            time,
+                            default,
+                        );
                         value = serde_json::to_value(scalar).unwrap();
                     }
                     ParameterKind::Color => {
@@ -282,22 +293,24 @@ impl Studio {
                         ui.weak("Open the group to edit this control's node.");
                     }
                 }
-                if ui.small_button("Reset to default").clicked() {
-                    value = control.default.clone();
-                    changed = true;
-                }
-                if ui
-                    .add_enabled(
-                        !self.draft_dirty && !changed,
-                        egui::Button::new("Show in animation"),
-                    )
-                    .clicked()
-                {
-                    self.graph.expand(group.id);
-                    self.project.selected = control.node;
-                    self.refresh_draft();
-                    self.animation_editor.visible = true;
-                }
+                ui.menu_button("Parameter options", |ui| {
+                    if ui.small_button("Reset to default").clicked() {
+                        value = control.default.clone();
+                        changed = true;
+                    }
+                    if ui
+                        .add_enabled(
+                            !self.draft_dirty && !changed,
+                            egui::Button::new("Show in animation"),
+                        )
+                        .clicked()
+                    {
+                        self.graph.expand(group.id);
+                        self.project.selected = control.node;
+                        self.refresh_draft();
+                        self.animation_editor.visible = true;
+                    }
+                });
                 ui.separator();
             });
             if changed {

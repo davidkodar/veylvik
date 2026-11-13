@@ -3,6 +3,7 @@ use eframe::egui;
 use std::collections::{BTreeMap, VecDeque};
 
 pub struct Gallery {
+    tiles: BTreeMap<&'static str, egui::TextureHandle>,
     textures: BTreeMap<(&'static str, bool), egui::TextureHandle>,
     recent: VecDeque<(&'static str, bool)>,
     playing: bool,
@@ -14,6 +15,7 @@ pub struct Gallery {
 impl Default for Gallery {
     fn default() -> Self {
         Self {
+            tiles: Default::default(),
             textures: Default::default(),
             recent: Default::default(),
             playing: true,
@@ -174,7 +176,7 @@ impl Gallery {
         }
         self.last_time = Some(now);
     }
-    fn image(
+    pub(super) fn image(
         &mut self,
         ui: &mut egui::Ui,
         id: &'static str,
@@ -219,6 +221,38 @@ impl Gallery {
         response
     }
 
+    /// Static browsing cards upload one frame rather than the whole animation atlas.
+    /// The fixed built-in catalogue bounds this cache to about 14 MiB.
+    pub(super) fn tile(
+        &mut self,
+        ui: &mut egui::Ui,
+        id: &'static str,
+        width: f32,
+    ) -> egui::Response {
+        let (rect, response) =
+            ui.allocate_exact_size(egui::vec2(width, width * 9. / 16.), egui::Sense::click());
+        if !ui.is_rect_visible(rect) {
+            return response;
+        }
+        let texture = self.tiles.entry(id).or_insert_with(|| {
+            let atlas = image::load_from_memory(bytes(id, false))
+                .expect("bundled preview")
+                .to_rgba8();
+            let image = image::imageops::crop_imm(&atlas, 0, 540, 320, 180).to_image();
+            ui.ctx().load_texture(
+                format!("library-tile-{id}"),
+                egui::ColorImage::from_rgba_unmultiplied([320, 180], image.as_raw()),
+                egui::TextureOptions::LINEAR,
+            )
+        });
+        ui.painter().image(
+            texture.id(),
+            rect,
+            egui::Rect::from_min_max(egui::Pos2::ZERO, egui::pos2(1., 1.)),
+            egui::Color32::WHITE,
+        );
+        response
+    }
     pub fn card(&mut self, ui: &mut egui::Ui, id: &'static str) -> egui::Response {
         self.image(ui, id, false, 160.0)
     }

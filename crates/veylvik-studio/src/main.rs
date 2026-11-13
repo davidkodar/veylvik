@@ -1,9 +1,11 @@
 mod about;
 mod animation;
 mod animation_editor;
+mod asset_browser;
 mod composition;
 mod control;
 mod curve_preview;
+mod design;
 mod diagnostics;
 mod display;
 mod editable_text;
@@ -112,7 +114,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 eframe::icon_data::from_png_bytes(include_bytes!("../assets/veylvik-256.png"))
                     .expect("bundled icon is a valid PNG"),
             ))
-            .with_inner_size([1280.0, 850.0])
+            .with_inner_size([1600.0, 960.0])
             .with_min_inner_size([800.0, 600.0]),
         renderer: eframe::Renderer::Wgpu,
         wgpu_options: egui_wgpu::WgpuConfiguration {
@@ -125,6 +127,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         "Veylvik",
         options,
         Box::new(move |cc| {
+            design::install_fonts(&cc.egui_ctx);
+            design::apply(&cc.egui_ctx);
             let state = cc
                 .wgpu_render_state
                 .as_ref()
@@ -198,6 +202,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 graph: graph::Graph::default(),
                 effects: effects::Controls::default(),
                 library: preset_library::Library::default(),
+                browser: asset_browser::Browser::default(),
                 node_palette: node_palette::Controls::default(),
                 node_finder: node_finder::Controls::default(),
                 key_timeline: key_timeline::Keys::default(),
@@ -274,6 +279,7 @@ struct Studio {
     graph: graph::Graph,
     effects: effects::Controls,
     library: preset_library::Library,
+    browser: asset_browser::Browser,
     node_palette: node_palette::Controls,
     node_finder: node_finder::Controls,
     key_timeline: key_timeline::Keys,
@@ -1466,40 +1472,34 @@ impl Studio {
             return;
         }
         self.theme_checked = Instant::now();
-        if let Some(home) = std::env::var_os("HOME") {
-            let path = PathBuf::from(home).join(".local/state/omarchy/current/theme/colors.toml");
-            if let Ok(text) = std::fs::read_to_string(path) {
-                for line in text.lines() {
-                    if let Some((key, value)) = line.split_once('=')
-                        && key.trim() == "accent"
-                        && let Ok(color) = egui::Color32::from_hex(
-                            value.trim().trim_matches('"').trim_matches('\''),
-                        )
-                    {
-                        self.accent = color;
-                    }
-                }
-            }
-        }
-        let mut style = (*ctx.global_style()).clone();
-        style.visuals = egui::Visuals::dark();
-        style.visuals.selection.bg_fill = self.accent.gamma_multiply(0.25);
-        style.visuals.selection.stroke.color = self.accent;
-        style.visuals.widgets.active.bg_stroke.color = self.accent;
-        style.visuals.panel_fill = egui::Color32::from_rgb(22, 25, 31);
-        for widget in [
-            &mut style.visuals.widgets.inactive,
-            &mut style.visuals.widgets.hovered,
-            &mut style.visuals.widgets.active,
-            &mut style.visuals.widgets.noninteractive,
-            &mut style.visuals.widgets.open,
-        ] {
-            widget.corner_radius = egui::CornerRadius::ZERO;
-        }
-        ctx.set_global_style(style);
+        self.accent = design::ACCENT;
+        design::apply(ctx);
     }
+
     fn inspector_actions(&mut self, ui: &mut egui::Ui) {
-        ui.heading("Inspector");
+        ui.horizontal(|ui| {
+            ui.set_min_height(28.);
+            ui.heading("Inspector");
+            if self.draft_dirty {
+                ui.horizontal(|ui| {
+                    if ui
+                        .add_enabled(self.draft_dirty, egui::Button::new("Apply"))
+                        .on_hover_text("Commit this draft as one undo step (Ctrl+Enter)")
+                        .clicked()
+                    {
+                        self.apply_draft();
+                    }
+                    if ui
+                        .add_enabled(self.draft_dirty, egui::Button::new("Revert"))
+                        .on_hover_text("Discard unapplied inspector changes")
+                        .clicked()
+                    {
+                        self.refresh_draft();
+                        self.request_preview();
+                    }
+                });
+            }
+        });
         let texts: Vec<_> =
             veylvik_document::presets::background::reachable(self.project.document.snapshot())
                 .into_iter()
@@ -1517,7 +1517,11 @@ impl Studio {
         let mut select = None;
         if !texts.is_empty() {
             egui::ComboBox::from_id_salt("scene-text-selector")
-                .selected_text("Edit scene text…")
+                .selected_text(if matches!(self.draft.operation, Operation::Text(_)) {
+                    self.draft.label.as_str()
+                } else {
+                    "Edit scene text…"
+                })
                 .show_ui(ui, |ui| {
                     for (id, label) in texts {
                         if ui
@@ -1554,70 +1558,27 @@ impl Studio {
             self.refresh_draft();
             self.request_preview();
         }
-        ui.horizontal(|ui| {
-            if ui
-                .add_enabled(self.draft_dirty, egui::Button::new("Apply"))
-                .on_hover_text("Commit this draft as one undo step (Ctrl+Enter)")
-                .clicked()
-            {
-                self.apply_draft();
-            }
-            if ui
-                .add_enabled(self.draft_dirty, egui::Button::new("Revert"))
-                .on_hover_text("Discard unapplied inspector changes")
-                .clicked()
-            {
-                self.refresh_draft();
-                self.request_preview();
-            }
-            if self.draft_dirty {
-                ui.weak("Unapplied changes");
-            }
-        });
         ui.separator();
     }
     fn inspector(&mut self, ui: &mut egui::Ui) {
         if self.effect_inspector(ui) {
             return;
         }
-        self.surface_controls(ui);
-        self.occlusion_controls(ui);
-        if ui
-            .add_enabled(!self.files.busy(), egui::Button::new("Track motion…"))
-            .on_hover_text(
-                "Track a feature and attach editable movement to text, a mask or a layer",
-            )
-            .clicked()
-        {
-            self.begin_tracking();
+        if !matches!(self.draft.operation, Operation::Text(_)) {
+            ui.label(
+                if matches!(
+                    self.draft.operation,
+                    Operation::Text(veylvik_document::nodes::Text { .. })
+                ) {
+                    "Layer name"
+                } else {
+                    self.draft.operation.descriptor().label
+                },
+            );
+            ui.add_space(8.0);
+            self.draft_dirty |= ui.text_edit_singleline(&mut self.draft.label).changed();
+            ui.separator();
         }
-        if ui
-            .button("Track surface…")
-            .on_hover_text("Track perspective motion and attach or stabilize any layer")
-            .clicked()
-        {
-            self.begin_planar();
-        }
-        if ui
-            .button("Select subject…")
-            .on_hover_text("Click a person or object to cut it out, track it through the shot, replace the background or put layers behind it")
-            .clicked()
-        {
-            self.begin_subject();
-        }
-        ui.label(
-            if matches!(
-                self.draft.operation,
-                Operation::Text(veylvik_document::nodes::Text { .. })
-            ) {
-                "Layer name"
-            } else {
-                self.draft.operation.descriptor().label
-            },
-        );
-        ui.add_space(8.0);
-        self.draft_dirty |= ui.text_edit_singleline(&mut self.draft.label).changed();
-        ui.separator();
         let time = self
             .project
             .time()
@@ -1684,6 +1645,11 @@ impl Studio {
         }
         self.draft_dirty |= dirty;
         text_changed |= media_changed;
+        if matches!(self.draft.operation, Operation::Text(_)) && editable_text::overview(ui) {
+            let changed = self.text_appearance_overview(ui);
+            self.draft_dirty |= changed;
+            text_changed |= changed;
+        }
         replace_image |= replace;
         if preview_soon {
             self.text_preview_deadline
@@ -1829,6 +1795,35 @@ impl Studio {
                 self.request_preview();
             }
         });
+        ui.menu_button("Layer tools", |ui| {
+            if matches!(self.draft.operation,Operation::Text(_)) {ui.label("Layer name");self.draft_dirty |= ui.text_edit_singleline(&mut self.draft.label).changed();ui.separator();}
+
+        self.surface_controls(ui);
+        self.occlusion_controls(ui);
+        if ui
+            .add_enabled(!self.files.busy(), egui::Button::new("Track motion…"))
+            .on_hover_text(
+                "Track a feature and attach editable movement to text, a mask or a layer",
+            )
+            .clicked()
+        {
+            self.begin_tracking();
+        }
+        if ui
+            .button("Track surface…")
+            .on_hover_text("Track perspective motion and attach or stabilize any layer")
+            .clicked()
+        {
+            self.begin_planar();
+        }
+        if ui
+            .button("Select subject…")
+            .on_hover_text("Click a person or object to cut it out, track it through the shot, replace the background or put layers behind it")
+            .clicked()
+        {
+            self.begin_subject();
+        }
+        });
         ui.menu_button("Node actions...", |ui| {
             if ui.button("Set as output").clicked() {
                 self.set_selected_output();
@@ -1936,13 +1931,20 @@ impl Studio {
         self.sync_key_timeline();
         let count = self.project.document.snapshot().frame_count;
         let end_frame = (i64::from(count) - 1).max(self.project.frame);
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             ui.add_enabled_ui(!self.animation_editor.dragging(), |ui| {
                 ui.selectable_value(&mut self.animation_editor.visible, false, "Nodes");
                 ui.selectable_value(&mut self.animation_editor.visible, true, "Animation");
             });
             if ui
-                .button(if self.playing { "Pause" } else { "Play" })
+                .add(icons::Button::new(
+                    if self.playing {
+                        icons::Icon::Pause
+                    } else {
+                        icons::Icon::Play
+                    },
+                    if self.playing { "Pause" } else { "Play" },
+                ))
                 .clicked()
             {
                 self.toggle_play();
@@ -1969,7 +1971,11 @@ impl Studio {
             }
             let mut frame = self.project.frame;
             let changed = ui
-                .add(egui::Slider::new(&mut frame, 0..=end_frame).text("Frame"))
+                .add(
+                    egui::DragValue::new(&mut frame)
+                        .range(0..=end_frame)
+                        .prefix("Frame "),
+                )
                 .changed();
             if changed && self.apply_draft() {
                 self.project.frame = frame;
@@ -2508,24 +2514,10 @@ impl eframe::App for Studio {
                         &self.status,
                     );
                 });
-                egui::Panel::bottom("graph")
-                    .default_size(245.0)
-                    .min_size(130.0)
-                    .resizable(true)
-                    .show_inside(ui, |ui| {
-                        ui.add_enabled_ui(!self.animation_editor.dragging(), |ui| {
-                            self.timeline(ui)
-                        });
-                        ui.separator();
-                        if self.animation_editor.visible {
-                            self.animation_workspace(ui);
-                        } else {
-                            self.graph(ui);
-                        }
-                    });
-                egui::Panel::right("inspector")
-                    .default_size(340.0)
-                    .min_size(300.0)
+                self.asset_browser(ui);
+                egui::Panel::right("inspector").frame(design::panel())
+                    .default_size(414.0)
+                    .min_size(340.0)
                     .resizable(true)
                     .show_inside(ui, |ui| {
                         self.inspector_actions(ui);
@@ -2547,10 +2539,26 @@ impl eframe::App for Studio {
                             .id_salt(("inspector-body", editable_text::body_id(ui)))
                             .show(ui, |ui| self.inspector(ui));
                     });
-                egui::CentralPanel::default().show_inside(ui, |ui| {
+                egui::Panel::bottom("graph").frame(design::panel())
+                    .default_size(300.0)
+                    .min_size(130.0)
+                    .resizable(true)
+                    .show_inside(ui, |ui| {
+                        ui.add_enabled_ui(!self.animation_editor.dragging(), |ui| {
+                            self.timeline(ui)
+                        });
+                        ui.separator();
+                        if self.animation_editor.visible {
+                            self.animation_workspace(ui);
+                        } else {
+                            self.graph(ui);
+                        }
+                    });
+                egui::CentralPanel::default().frame(design::panel()).show_inside(ui, |ui| {
                     ui.horizontal_wrapped(|ui| {
                         ui.heading("Viewer");
                         if matches!(self.draft.operation, Operation::Text(veylvik_document::nodes::Text { .. })) {
+                            ui.menu_button("Text tools", |ui| {
                             if ui
                                 .selectable_label(self.text_viewer.active, "Edit text")
                                 .clicked()
@@ -2581,6 +2589,7 @@ impl eframe::App for Studio {
                             }
                             ui.checkbox(&mut self.text_viewer.guides, "Safe guides");
                             ui.checkbox(&mut self.text_viewer.snap, "Snap");
+                            });
                         }
                         ui.weak(if self.project.preview.is_some() {
                             "Selected node preview"

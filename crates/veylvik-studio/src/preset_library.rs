@@ -20,7 +20,7 @@ pub struct Library {
     sizing: veylvik_document::presets::resolution::Sizing,
     background_placement: veylvik_document::presets::background::Placement,
     gallery: crate::showcase_gallery::Gallery,
-    detail: Option<&'static str>,
+    pub(super) detail: Option<&'static str>,
     inputs: BTreeMap<String, NodeId>,
     position: Option<NodePosition>,
     connect: bool,

@@ -268,3 +268,33 @@ fn replacing_backdrop_reveals_bricks_and_preserves_opaque_animated_text() {
     assert!(exposed > 500000, "brick background must be visible");
     assert!(preserved > 10000, "gold letters must remain above bricks");
 }
+
+#[test]
+#[ignore = "requires Vulkan"]
+fn library_spheres_are_finite_antialiased_and_material_specific() {
+    let renderer = Renderer::new().unwrap();
+    let gold = renderer
+        .material_swatch(MaterialKind::Gold, 0.15, 0.65)
+        .unwrap();
+    let silver = renderer
+        .material_swatch(MaterialKind::Silver, 0.15, 0.65)
+        .unwrap();
+    assert_eq!(gold.len(), 256 * 256);
+    assert_eq!(gold[0], [0.; 4]);
+    assert_eq!(gold[124 * 256 + 128][3], 1.);
+    assert!(
+        gold.iter()
+            .all(|p| p.iter().all(|v| v.is_finite()) && (0. ..=1.).contains(&p[3]))
+    );
+    assert!(gold.iter().any(|p| p[3] > 0. && p[3] < 1.));
+    assert!(
+        gold.iter()
+            .zip(&silver)
+            .any(|(a, b)| (a[2] - b[2]).abs() > 0.2)
+    );
+    assert!(
+        renderer
+            .material_swatch(MaterialKind::Gold, f32::NAN, 0.5)
+            .is_err()
+    );
+}

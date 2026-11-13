@@ -58,7 +58,9 @@ pub fn key_controls(ui: &mut egui::Ui, scalar: &mut Scalar, time: Time) -> bool 
         )
     });
     let visuals = ui.style().interact(&response);
-    ui.painter().rect_filled(rect, 3.0, visuals.bg_fill);
+    if response.hovered() {
+        ui.painter().rect_filled(rect, 4.0, visuals.bg_fill);
+    }
     let c = rect.center();
     let points = vec![
         c + egui::vec2(0.0, -5.0),
@@ -132,30 +134,29 @@ pub fn scalar_with_default(
     let mut changed = false;
     ui.push_id(label, |ui| {
         ui.horizontal(|ui| {
-            ui.add_sized(
-                [
-                    (ui.available_width()
-                        - 80.0
-                        - (if default.is_some() { 5.0 } else { 4.0 }) * 22.0
-                        - (if default.is_some() { 6.0 } else { 5.0 })
-                            * ui.spacing().item_spacing.x
-                        - 2.0)
-                        .max(0.0),
-                    22.0,
-                ],
-                egui::Label::new(label).truncate(),
-            );
+            ui.spacing_mut().item_spacing.x = 3.;
+            ui.add_sized([88., 28.], egui::Label::new(label).truncate())
+                .on_hover_text(label);
             if let Ok(mut value) = scalar.at(time) {
                 let old = value;
-                if ui
+                let mut edited = false;
+                if ui.available_width() > 220. {
+                    ui.spacing_mut().slider_width = (ui.available_width()
+                        - 72.
+                        - (if default.is_some() { 5. } else { 4. }) * 25.
+                        - 6.)
+                        .max(24.);
+                    edited |= crate::design::slider(ui, &mut value, range.clone()).changed();
+                }
+                edited |= ui
                     .add_sized(
-                        [56.0, 22.0],
+                        [64., 26.],
                         egui::DragValue::new(&mut value)
                             .speed(0.1)
                             .range(range.clone()),
                     )
-                    .changed()
-                {
+                    .changed();
+                if edited {
                     changed |= crate::handles::edit(
                         scalar,
                         time,

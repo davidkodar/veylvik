@@ -68,17 +68,24 @@ impl Keys {
 
     pub fn show(&self, ui: &mut egui::Ui, current: i64, count: u32) -> Option<i64> {
         let mut seek = None;
-        ui.weak(format!(
-            "Selected node · {} keyed frames",
-            self.frames.len()
-        ));
+        ui.weak(format!("{} keys", self.frames.len()));
         for (forward, label, hint) in [
             (false, "Prev key", "Alt+Left"),
             (true, "Next key", "Alt+Right"),
         ] {
             let target = self.adjacent(current, forward);
             if ui
-                .add_enabled(target.is_some(), egui::Button::new(label))
+                .add_enabled(
+                    target.is_some(),
+                    crate::icons::Button::new(
+                        if forward {
+                            crate::icons::Icon::Right
+                        } else {
+                            crate::icons::Icon::Left
+                        },
+                        label,
+                    ),
+                )
                 .on_hover_text(hint)
                 .clicked()
             {

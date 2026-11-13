@@ -684,26 +684,11 @@ impl Graph {
             ui.heading("Nodes");
             if self.selection.len()>1 { ui.weak(format!("{} selected",self.selection.len())); }
             if ui
-                .button("Add node")
+                .add(egui::Button::new("Add node").fill(egui::Color32::from_rgb(110,66,174)))
                 .on_hover_text("Search and add a node (Tab)")
                 .clicked()
             {
                 actions.push(Action::Add);
-            }
-            if ui
-                .button("Find")
-                .on_hover_text("Find and preview a node (Ctrl+F)")
-                .clicked()
-            {
-                actions.push(Action::Find);
-            }
-
-            if ui
-                .button("Group…")
-                .on_hover_text("Create a reusable effect from nodes")
-                .clicked()
-            {
-                actions.push(Action::Group);
             }
             if let Some(g) = doc.groups.values().find(|g| g.members.contains(&selected)) {
                 if self.expanded.contains(&g.id) {
@@ -716,13 +701,6 @@ impl Graph {
             }
             if ui.button("Fit").clicked() {
                 fit = true;
-            }
-            if ui.button("-").clicked() {
-                zoom_factor = 0.8;
-            }
-            ui.label(format!("{:.0}%", self.zoom * 100.0));
-            if ui.button("+").clicked() {
-                zoom_factor = 1.25;
             }
             if ui
                 .button("Arrange")
@@ -744,7 +722,30 @@ impl Graph {
                 self.auto_view = None;
                 self.revision = None;
             }
-            ui.menu_button("Layout...", |ui| {
+            ui.menu_button("More", |ui| {
+            if ui
+                .button("Find")
+                .on_hover_text("Find and preview a node (Ctrl+F)")
+                .clicked()
+            {
+                actions.push(Action::Find);
+            }
+
+            if ui
+                .button("Group…")
+                .on_hover_text("Create a reusable effect from nodes")
+                .clicked()
+            {
+                actions.push(Action::Group);
+            }
+            if ui.button("-").clicked() {
+                zoom_factor = 0.8;
+            }
+            ui.label(format!("{:.0}%", self.zoom * 100.0));
+            if ui.button("+").clicked() {
+                zoom_factor = 1.25;
+            }
+
                 if ui.button("Arrange selected branch").clicked() {
                     let positions = self.arrangement(doc, Some(selected));
                     if !positions.is_empty() {
@@ -780,7 +781,7 @@ impl Graph {
                     ui.colored_label(colour, label);
                 }
             });
-            ui.weak("Shift+drag selects · Drag pans · Ctrl+scroll zooms");
+
         });
         let (canvas, response) = ui.allocate_exact_size(
             ui.available_size().max(egui::vec2(1.0, 1.0)),
@@ -824,7 +825,7 @@ impl Graph {
             }
         }
         let painter = ui.painter().with_clip_rect(canvas);
-        painter.rect_filled(canvas, 0.0, Color32::from_rgb(18, 21, 27));
+        painter.rect_filled(canvas, 0.0, crate::design::CANVAS);
         let spacing = (32.0 * self.zoom).max(10.0);
         let offset = egui::vec2(
             self.pan.x.rem_euclid(spacing),
@@ -1146,7 +1147,7 @@ impl Graph {
             }
             let active = node.id == selected;
             let selected = self.selection.contains(&node.id);
-            painter.rect_filled(rect, 0.0, Color32::from_rgb(36, 41, 50));
+            painter.rect_filled(rect, 5.0, Color32::from_rgb(34, 38, 46));
             if self.role_colours {
                 let colour = node.role_colour(doc);
                 painter.rect_filled(
@@ -1164,7 +1165,7 @@ impl Graph {
             }
             painter.rect_stroke(
                 rect,
-                0.0,
+                5.0,
                 egui::Stroke::new(
                     if selected && active {
                         2.5_f32

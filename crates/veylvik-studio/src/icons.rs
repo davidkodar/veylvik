@@ -2,6 +2,11 @@
 use eframe::egui::{self, Widget};
 #[derive(Clone, Copy)]
 pub enum Icon {
+    AlignLeft,
+    AlignCenter,
+    AlignRight,
+    Play,
+    Pause,
     Left,
     Right,
     Up,
@@ -48,8 +53,47 @@ impl Widget for Button {
         let painter = ui.painter();
         let c = rect.center();
         let colour = visuals.fg_stroke.color;
-        painter.rect_filled(rect, 3.0, visuals.bg_fill);
+        if response.hovered() || self.selected {
+            painter.rect_filled(rect, 4.0, visuals.bg_fill);
+        }
         match self.icon {
+            Icon::AlignLeft | Icon::AlignCenter | Icon::AlignRight => {
+                for row in 0..4 {
+                    let width = if row % 2 == 0 { 12. } else { 8. };
+                    let left = match self.icon {
+                        Icon::AlignRight => 6. - width,
+                        Icon::AlignCenter => -width / 2.,
+                        _ => -6.,
+                    };
+                    let y = -5. + row as f32 * 3.5;
+                    painter.line_segment(
+                        [c + egui::vec2(left, y), c + egui::vec2(left + width, y)],
+                        egui::Stroke::new(1.5_f32, colour),
+                    );
+                }
+            }
+
+            Icon::Play => {
+                painter.add(egui::Shape::convex_polygon(
+                    vec![
+                        c + egui::vec2(-4., -6.),
+                        c + egui::vec2(6., 0.),
+                        c + egui::vec2(-4., 6.),
+                    ],
+                    colour,
+                    egui::Stroke::NONE,
+                ));
+            }
+            Icon::Pause => {
+                for x in [-4., 2.] {
+                    painter.rect_filled(
+                        egui::Rect::from_min_size(c + egui::vec2(x, -6.), egui::vec2(3., 12.)),
+                        1.,
+                        colour,
+                    );
+                }
+            }
+
             Icon::More => {
                 for x in [-4.0, 0.0, 4.0] {
                     painter.circle_filled(c + egui::vec2(x, 0.0), 1.2, colour);
