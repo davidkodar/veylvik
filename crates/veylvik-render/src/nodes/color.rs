@@ -106,3 +106,27 @@ impl RenderNode for veylvik_document::nodes::ColorCorrect {
         Ok(())
     }
 }
+
+impl RenderNode for veylvik_document::nodes::Lut {
+    fn passes(&self) -> Passes {
+        Passes::One(Kernel::Lut)
+    }
+    fn params(
+        &self,
+        _cx: &Cx<'_>,
+        sample: &dyn Fn(&str) -> Result<f32>,
+        p: &mut Params,
+    ) -> Result<()> {
+        use veylvik_document::media::{Curve, Gamut};
+        let curve = |c: Curve| Curve::ALL.iter().position(|x| *x == c).unwrap_or(0) as u32;
+        let gamut = |g: Gamut| Gamut::ALL.iter().position(|x| *x == g).unwrap_or(0) as u32;
+        let packed = curve(self.input.curve)
+            | gamut(self.input.gamut) << 4
+            | curve(self.output.curve) << 8
+            | gamut(self.output.gamut) << 12;
+        // values.x/y and extra are filled from the LUT asset by the renderer.
+        p.values[2] = sample("mix")?.clamp(0.0, 1.0);
+        p.values[3] = packed as f32;
+        Ok(())
+    }
+}

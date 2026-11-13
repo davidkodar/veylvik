@@ -54,9 +54,10 @@ pub enum Kernel {
     FuseBoxVertical,
     FuseEstimate,
     FuseFinish,
+    Lut,
 }
 impl Kernel {
-    pub(crate) const ALL: [Self; 48] = [
+    pub(crate) const ALL: [Self; 49] = [
         Self::Text,
         Self::Solid,
         Self::Noise,
@@ -105,6 +106,7 @@ impl Kernel {
         Self::FuseBoxVertical,
         Self::FuseEstimate,
         Self::FuseFinish,
+        Self::Lut,
     ];
     pub(crate) fn entry(self) -> &'static str {
         match self {
@@ -154,6 +156,7 @@ impl Kernel {
             Self::FuseBoxVertical => "fuse_box_vertical",
             Self::FuseEstimate => "fuse_estimate",
             Self::FuseFinish => "fuse_finish",
+            Self::Lut => "lut",
             Self::CombineMask => "combine_mask",
             Self::Mask => "mask",
         }
@@ -289,7 +292,15 @@ impl Plan {
             }
             let kernel = match veylvik_document::each_node!(&node.operation, n => crate::nodes::RenderNode::passes(n))
             {
-                crate::nodes::Passes::One(kernel) => kernel,
+                crate::nodes::Passes::One(kernel) => {
+                    // A node that reads a file (such as a LUT) gets it on its next free input.
+                    if let Some(asset) = node.operation.asset()
+                        && let Some(slot) = inputs.iter_mut().find(|i| matches!(i, Input::Empty))
+                    {
+                        *slot = Input::Asset(asset.to_owned());
+                    }
+                    kernel
+                }
                 crate::nodes::Passes::Separable(first, second) => {
                     let intermediate = passes.len();
                     passes.push(Pass {
@@ -504,13 +515,7 @@ impl Plan {
     pub fn required_assets(&self) -> BTreeSet<&str> {
         self.nodes
             .iter()
-            .filter_map(|n| match &n.operation {
-                Operation::Image(veylvik_document::nodes::Image { asset })
-                | Operation::Footage(veylvik_document::nodes::Footage { asset, .. }) => {
-                    Some(asset.as_str())
-                }
-                _ => None,
-            })
+            .filter_map(|n| n.operation.asset())
             .collect()
     }
     pub fn image_slots(&self) -> usize {

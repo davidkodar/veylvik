@@ -130,7 +130,12 @@ impl Renderer {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("composition kernels"),
             source: wgpu::ShaderSource::Wgsl(
-                concat!(include_str!("kernels.wgsl"), include_str!("matte.wgsl")).into(),
+                concat!(
+                    include_str!("kernels.wgsl"),
+                    include_str!("matte.wgsl"),
+                    include_str!("lut.wgsl")
+                )
+                .into(),
             ),
         });
         let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {

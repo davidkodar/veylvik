@@ -149,9 +149,7 @@ impl Project {
     fn load_available_inputs(&mut self) {
         let mut remaining = 256 * 1024 * 1024;
         for node in self.document.snapshot().nodes.values() {
-            if let Operation::Image(veylvik_document::nodes::Image { asset })
-            | Operation::Footage(veylvik_document::nodes::Footage { asset, .. }) =
-                &node.operation
+            if let Some(asset) = node.operation.asset()
                 && !self.inputs.contains_key(asset)
                 && !self.asset_errors.contains_key(asset)
             {
@@ -161,10 +159,11 @@ impl Project {
                 ) {
                     Ok(image) => {
                         remaining -= image.byte_size();
-                        image.insert(&mut self.inputs, asset);
+                        image.insert(&mut self.inputs, asset.to_owned());
                     }
                     Err(error) => {
-                        self.asset_errors.insert(asset.clone(), error.to_string());
+                        self.asset_errors
+                            .insert(asset.to_owned(), error.to_string());
                     }
                 }
             }
@@ -176,13 +175,11 @@ impl Project {
             .nodes
             .values()
             .filter_map(|node| {
-                if let Operation::Image(veylvik_document::nodes::Image { asset })
-                | Operation::Footage(veylvik_document::nodes::Footage { asset, .. }) =
-                    &node.operation
+                if let Some(asset) = node.operation.asset()
                     && !self.inputs.contains_key(asset)
                 {
                     Some((
-                        asset.as_str(),
+                        asset,
                         self.asset_errors
                             .get(asset)
                             .map(String::as_str)
@@ -413,8 +410,7 @@ pub fn load_inputs(
     let mut seen = std::collections::BTreeSet::new();
     const BUDGET: u64 = 256 * 1024 * 1024;
     for node in composition.nodes.values() {
-        if let Operation::Image(veylvik_document::nodes::Image { asset })
-        | Operation::Footage(veylvik_document::nodes::Footage { asset, .. }) = &node.operation
+        if let Some(asset) = node.operation.asset()
             && seen.insert(asset)
         {
             let replaced = inputs.source_budget(asset);

@@ -170,6 +170,7 @@ Everything Veylvik can do today, area by area. Veylvik is a native Rust node com
 ## Colour
 
 - **Exposure**: −32 to +32 stops.
+- **LUT**: 3D `.cube` LUTs (2–65³, DOMAIN_MIN/MAX, 1D refused) applied in scene-linear light: **Input** and **Output** curve and gamut (Rec.709, sRGB, linear, PQ, HLG, Apple Log, S-Log3, LogC3/4, V-Log; Rec.709, Rec.2020, P3-D65, S-Gamut3(.Cine), ARRI Wide Gamut 3/4, V-Gamut) so camera and creative LUTs both work; trilinear lookup on the GPU; **Mix**; **Choose .cube…**, opened automatically when added.
 - **Colour correct**: Temperature, Tint, Lift, Gain, Contrast (around 18 % grey), Gamma, Saturation; fixed order; alpha kept; no clamping; every control keyframable; identity at defaults is skipped.
 - **Colorize**: map luminance to Shadows/Highlights (low/high) RGBA colours, HDR or transparent.
 - Duotone via the **Duotone Print** starter.

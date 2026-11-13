@@ -191,6 +191,22 @@ Every control can be keyframed. At the defaults (0, 0, 0, 1, 1, 1, 1) the node i
 exact identity and the renderer skips it. Use **Exposure** for whole-stop brightness
 changes and **Colorize** for mapping luminance to colours.
 
+**LUT** applies a 3D `.cube` LUT (Adobe/Resolve format, sizes 2 to 65, with optional
+`DOMAIN_MIN`/`DOMAIN_MAX`; 1D LUTs are refused). Because LUTs work on encoded values and
+Veylvik works in scene-linear light, **Input** names what the LUT expects and **Output**
+what it produces, each a curve (Rec.709, sRGB, linear, PQ, HLG, Apple Log, S-Log3, LogC3,
+LogC4, V-Log) and a gamut (Rec.709, Rec.2020, P3-D65, S-Gamut3, S-Gamut3.Cine, ARRI Wide
+Gamut 3/4, V-Gamut); Auto means Rec.709. The node converts scene-linear colour into the
+input gamut and curve, looks it up with trilinear interpolation, and decodes the result
+from the output curve and gamut back to scene-linear Rec.709. A camera LUT such as
+S-Log3 / S-Gamut3.Cine to Rec.709 therefore takes the camera's curve and gamut as Input
+and Rec.709 as Output, applied to footage that Input colour has already decoded; a
+creative look made for Rec.709 video takes Rec.709 both ways. **Mix** blends with the
+original. It works on unpremultiplied colour and keeps alpha. **Choose .cube…** picks
+the file; adding a LUT from the Add menu opens the chooser straight away. The `.cube`
+file is a project asset like an image, so save-as, recovery, missing-media repair and
+reloading treat it the same way.
+
 ## Native editor
 
 ```sh

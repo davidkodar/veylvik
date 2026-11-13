@@ -527,6 +527,10 @@ impl Studio {
                     Ok(_) => {
                         self.refresh_draft();
                         self.request_preview();
+                        // A new LUT starts by choosing its .cube file.
+                        if matches!(self.draft.operation, Operation::Lut(_)) {
+                            self.replace_image();
+                        }
                     }
                     Err(error) => self.fail(error),
                 }
@@ -989,9 +993,15 @@ impl Studio {
             self.draft.operation,
             Operation::Image(veylvik_document::nodes::Image { .. })
                 | Operation::Footage(veylvik_document::nodes::Footage { .. })
+                | Operation::Lut(_)
         ) {
             return;
         }
+        let choice = if matches!(self.draft.operation, Operation::Lut(_)) {
+            Choice::Lut
+        } else {
+            Choice::Import
+        };
         self.playing = false;
         let folder = self.project.base.clone();
         let session = self.project.session;
@@ -999,7 +1009,7 @@ impl Studio {
         let node = self.project.selected;
         let inputs = self.project.inputs.clone();
         let result = self.files.start(move || {
-            let Some(path) = files::select(Choice::Import, &folder, "")? else {
+            let Some(path) = files::select(choice, &folder, "")? else {
                 return Ok(Completed::Cancelled);
             };
             let path = path.canonicalize().map_err(|error| error.to_string())?;

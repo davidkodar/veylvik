@@ -63,6 +63,8 @@ pub fn load(path: &Path, budget: u64) -> Result<Media> {
         )?)))
     } else if is_sequence(path) {
         Ok(Media::Sequence(Arc::new(Sequence::open(path, budget)?)))
+    } else if crate::lut::is_lut(path) {
+        Ok(Media::Still(Arc::new(crate::lut::load(path)?)))
     } else {
         Ok(Media::Still(Arc::new(crate::load_image(path, budget)?)))
     }

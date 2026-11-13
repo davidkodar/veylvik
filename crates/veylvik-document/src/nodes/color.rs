@@ -87,3 +87,47 @@ node!(Colorize, COLORIZE, [], {
         Ok(())
     }
 });
+
+/// Applies a 3D `.cube` LUT, converting scene-linear colour into the LUT's input encoding and
+/// its output back, so camera and creative LUTs work in a scene-linear graph.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Lut {
+    pub asset: String,
+    pub mix: Scalar,
+    /// What the LUT expects; Auto means Rec.709 video.
+    pub input: media::InputColour,
+    /// What the LUT produces; Auto means Rec.709 video.
+    pub output: media::InputColour,
+}
+pub static LUT: NodeType = NodeType {
+    type_id: "lut",
+    version: 1,
+    label: "LUT",
+    description: "Apply a 3D .cube LUT (up to 65³, with DOMAIN_MIN/MAX) to scene-linear colour. Input names the encoding the LUT expects and Output what it produces, each a curve (rec709, srgb, linear, pq, hlg, apple_log, slog3, logc3, logc4, vlog) and gamut (rec709, rec2020, p3_d65, s_gamut3, s_gamut3_cine, arri_wide_gamut3, arri_wide_gamut4, v_gamut); auto means Rec.709. Colour is encoded into the input space, looked up with trilinear interpolation and decoded from the output space back to scene-linear Rec.709. A camera LUT such as S-Log3/S-Gamut3.Cine to Rec.709 takes input slog3 with s_gamut3_cine and output rec709; a creative look made for Rec.709 video takes rec709 both ways. Mix blends with the original. Works on unpremultiplied colour and keeps alpha.",
+    inputs: &["image"],
+    parameters: &[
+        other("asset", ParameterKind::Asset, ".cube file"),
+        scalar("mix", "amount", 0.0, 1.0, 1.0),
+        other("input", ParameterKind::MediaColour, ""),
+        other("output", ParameterKind::MediaColour, ""),
+    ],
+};
+node!(Lut, LUT, [mix], {
+    fn validate(&self) -> Result<()> {
+        let asset = &self.asset;
+        if asset.trim().is_empty()
+            || asset.chars().count() > crate::registry::MAX_ASSET_NAME
+            || asset.contains('\0')
+        {
+            return fail("LUT needs a .cube file");
+        }
+        Ok(())
+    }
+    fn asset(&self) -> Option<&str> {
+        Some(&self.asset)
+    }
+    fn asset_mut(&mut self) -> Option<&mut String> {
+        Some(&mut self.asset)
+    }
+});

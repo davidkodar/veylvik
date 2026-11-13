@@ -1,7 +1,7 @@
 //! Live edits execute on the UI thread; image encoding uses immutable snapshots.
 use crate::Studio;
 use serde_json::{Value, json};
-use veylvik_document::{Command, NodeId, Operation};
+use veylvik_document::{Command, NodeId};
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 pub fn catalog() -> Value {
     catalog_ref().clone()
@@ -183,20 +183,12 @@ pub fn call(
                 .snapshot()
                 .nodes
                 .values()
-                .filter_map(|node| match &node.operation {
-                    Operation::Image(veylvik_document::nodes::Image { asset })
-                    | Operation::Footage(veylvik_document::nodes::Footage { asset, .. }) => {
-                        Some(asset.as_str())
-                    }
-                    _ => None,
-                })
+                .filter_map(|node| node.operation.asset())
                 .collect();
             for node in candidate.nodes.values() {
-                if let Operation::Image(veylvik_document::nodes::Image { asset })
-                | Operation::Footage(veylvik_document::nodes::Footage { asset, .. }) =
-                    &node.operation
+                if let Some(asset) = node.operation.asset()
                     && !studio.project.inputs.contains_key(asset)
-                    && !known.contains(asset.as_str())
+                    && !known.contains(asset)
                 {
                     return Err(format!(
                         "image asset is not known to the editor: {asset}; import it first"

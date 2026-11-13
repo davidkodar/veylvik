@@ -4,6 +4,7 @@ pub mod export;
 pub mod export_audio;
 pub mod footage;
 pub mod import;
+pub mod lut;
 pub mod presets;
 pub mod preview;
 pub mod video;
@@ -20,7 +21,7 @@ use std::{
     path::{Path, PathBuf},
     sync::Arc,
 };
-use veylvik_document::{Composition, Operation};
+use veylvik_document::Composition;
 use veylvik_render::{Image, ImageInputs, Plan};
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 const MAX_IMAGE_BYTES: u64 = 128 * 1024 * 1024;
@@ -166,9 +167,7 @@ pub fn save_tracked(
         .canonicalize()?;
     let mut saved = composition.clone();
     for node in saved.nodes.values_mut() {
-        if let Operation::Image(veylvik_document::nodes::Image { asset })
-        | Operation::Footage(veylvik_document::nodes::Footage { asset, .. }) =
-            &mut node.operation
+        if let Some(asset) = node.operation.asset_mut()
             && Path::new(asset).is_relative()
         {
             let resolved = base.join(&*asset);
@@ -213,9 +212,7 @@ pub fn protect_inputs(composition: &Composition, base: &Path, destination: &Path
         ),
     );
     for node in composition.nodes.values() {
-        if let Operation::Image(veylvik_document::nodes::Image { asset })
-        | Operation::Footage(veylvik_document::nodes::Footage { asset, .. }) = &node.operation
-        {
+        if let Some(asset) = node.operation.asset() {
             let input = base.join(asset);
             if footage::is_sequence(&input) && input.exists() {
                 for frame in footage::dependencies(&input)? {
@@ -249,6 +246,7 @@ pub fn protect_inputs(composition: &Composition, base: &Path, destination: &Path
 #[cfg(test)]
 mod tests {
     use super::*;
+    use veylvik_document::Operation;
     use veylvik_document::{Node, Time};
     struct Temp(PathBuf);
     impl Temp {

@@ -4,7 +4,7 @@ use std::{
     path::{Path, PathBuf},
     time::SystemTime,
 };
-use veylvik_document::{Composition, NodeId, Operation};
+use veylvik_document::{Composition, NodeId};
 #[derive(Clone)]
 pub struct Store {
     directory: PathBuf,
@@ -70,10 +70,7 @@ impl Store {
         use std::os::unix::fs::DirBuilderExt;
         let mut copy = composition.clone();
         for node in copy.nodes.values_mut() {
-            if let Operation::Image(veylvik_document::nodes::Image { asset })
-            | Operation::Footage(veylvik_document::nodes::Footage { asset, .. }) =
-                &mut node.operation
-            {
+            if let Some(asset) = node.operation.asset_mut() {
                 let path = Path::new(asset);
                 if path.is_relative() {
                     let absolute = base.join(path);
@@ -118,7 +115,11 @@ impl Store {
             return Err("recovery copy must be a regular file".into());
         }
         let composition = Composition::load(&path)?;
-        if composition.nodes.values().any(|node| matches!(&node.operation, Operation::Image(veylvik_document::nodes::Image { asset }) | Operation::Footage(veylvik_document::nodes::Footage { asset, .. }) if !Path::new(asset).is_absolute())) {
+        if composition.nodes.values().any(|node| {
+            node.operation
+                .asset()
+                .is_some_and(|asset| !Path::new(asset).is_absolute())
+        }) {
             return Err("recovery image paths must be absolute".into());
         }
         Ok(composition)

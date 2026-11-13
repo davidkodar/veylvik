@@ -22,6 +22,7 @@ pub enum Choice {
     Video,
     Folder,
     Font,
+    Lut,
 }
 pub enum Completed {
     /// An eyedropper sample, to apply to the draft colour it was taken for.
@@ -126,6 +127,7 @@ pub fn select(choice: Choice, folder: &Path, name: &str) -> Result<Option<PathBu
         Choice::Open => ("Open composition", "Veylvik composition", "*.veylvik"),
         Choice::Save => ("Save composition", "Veylvik composition", "*.veylvik"),
         Choice::Font => ("Choose font", "Font", "*.ttf"),
+        Choice::Lut => ("Choose a 3D LUT", "Cube LUT", "*.cube"),
         Choice::ImportSequence => (
             "Choose the first numbered frame",
             "PNG or OpenEXR sequence",
@@ -167,7 +169,12 @@ pub fn select(choice: Choice, folder: &Path, name: &str) -> Result<Option<PathBu
     let result: ashpd::Result<SelectedFiles> = pollster::block_on(async {
         if matches!(
             choice,
-            Choice::Open | Choice::PresetOpen | Choice::Import | Choice::Folder | Choice::Font
+            Choice::Open
+                | Choice::PresetOpen
+                | Choice::Import
+                | Choice::Folder
+                | Choice::Font
+                | Choice::Lut
         ) {
             SelectedFiles::open_file()
                 .title(title)
