@@ -357,6 +357,41 @@ impl Plan {
     /// Whether a validated composition has the same reachable render dependencies.
     /// Labels, positions, frame rate and disconnected nodes do not affect a plan.
     /// The entire candidate is validated, including disconnected nodes.
+    /// Nodes that can contribute to the output at `time`, following every input except those
+    /// a node ignores then (see `RenderNode::idle_inputs`).
+    pub(crate) fn visible_at(&self, time: veylvik_document::Time) -> Result<BTreeSet<NodeId>> {
+        let index: BTreeMap<NodeId, usize> = self
+            .nodes
+            .iter()
+            .enumerate()
+            .map(|(i, n)| (n.id, i))
+            .collect();
+        let mut visible = BTreeSet::new();
+        let mut pending = vec![self.root];
+        while let Some(id) = pending.pop() {
+            let Some(&i) = index.get(&id) else { continue };
+            if !visible.insert(id) {
+                continue;
+            }
+            let node = &self.nodes[i];
+            let curves = &self.curves[i];
+            let sample = |name: &str| -> Result<f32> {
+                curves
+                    .get(name)
+                    .ok_or_else(|| error("compiled scalar parameter missing"))?
+                    .at(time)
+                    .map_err(Into::into)
+            };
+            let idle = veylvik_document::each_node!(&node.operation, n => crate::nodes::RenderNode::idle_inputs(n, &sample))?;
+            pending.extend(
+                node.inputs
+                    .iter()
+                    .filter(|(port, _)| !idle.contains(&port.as_str()))
+                    .map(|(_, id)| *id),
+            );
+        }
+        Ok(visible)
+    }
     pub fn matches_composition(&self, composition: &Composition, output: NodeId) -> Result<bool> {
         composition.validate()?;
         if self.root != output

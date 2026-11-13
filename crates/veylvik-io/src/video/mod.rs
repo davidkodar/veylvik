@@ -22,7 +22,8 @@ struct State {
     decoder: Option<Session>,
     backend: Backend,
     raw: VecDeque<(usize, Decoded)>,
-    gpu: Option<(usize, Arc<GpuFrame>)>,
+    /// Last converted frame: index, requested size (None for full size), frame.
+    gpu: Option<(usize, Option<[u32; 2]>, Arc<GpuFrame>)>,
     fallback: String,
     gpu_conversions: u64,
     cpu_realizations: u64,
@@ -606,14 +607,23 @@ impl FrameSource for Video {
         time: Time,
         renderer: &Renderer,
     ) -> veylvik_render::Result<Option<Arc<GpuFrame>>> {
+        self.gpu_frame_sized(time, renderer, None)
+    }
+    fn gpu_frame_sized(
+        &self,
+        time: Time,
+        renderer: &Renderer,
+        target: Option<[u32; 2]>,
+    ) -> veylvik_render::Result<Option<Arc<GpuFrame>>> {
         let work = || -> Result<Arc<GpuFrame>> {
             if stamp(&self.path)? != self.stamp {
                 return Err("Video changed on disk; reload sources before continuing".into());
             }
             let index = self.index(time)?;
             let mut state = self.state.lock().map_err(|_| "Video decoder unavailable")?;
-            if let Some((n, frame)) = &state.gpu
+            if let Some((n, size, frame)) = &state.gpu
                 && *n == index
+                && *size == target
                 && renderer.owns_frame(frame)
             {
                 return Ok(frame.clone());
@@ -623,9 +633,12 @@ impl FrameSource for Video {
             let (bytes, encoding) = self.decoded(&mut state, index)?;
             let direct = if let Decoded::Hardware(hardware) = &bytes {
                 match hardware.cuda() {
-                    Ok(Some(cuda)) => {
-                        Some(renderer.import_cuda_video(&cuda, encoding, &self.colour.lut))
-                    }
+                    Ok(Some(cuda)) => Some(renderer.import_cuda_video_sized(
+                        &cuda,
+                        encoding,
+                        &self.colour.lut,
+                        target,
+                    )),
                     Ok(None) => None,
                     Err(e) => Some(Err(veylvik_render::Error::Message(e.to_string()))),
                 }
@@ -648,12 +661,12 @@ impl FrameSource for Video {
                     if matches!(bytes, Decoded::Hardware(_)) {
                         state.staged_frames += 1;
                     }
-                    renderer.import_video(&staged, encoding, &self.colour.lut)?
+                    renderer.import_video_sized(&staged, encoding, &self.colour.lut, target)?
                 }
             };
             let frame = Arc::new(frame);
             state.gpu_conversions += 1;
-            state.gpu = Some((index, frame.clone()));
+            state.gpu = Some((index, target, frame.clone()));
             self.publish(&state);
             Ok(frame)
         };

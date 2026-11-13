@@ -89,6 +89,16 @@ pub trait FrameSource: Send + Sync {
     fn gpu_frame(&self, _time: Time, _renderer: &crate::Renderer) -> Result<Option<Arc<GpuFrame>>> {
         Ok(None)
     }
+    /// A frame no larger than `target` (rotated width and height), when the source can reduce
+    /// during conversion; otherwise the full-size frame. Placement scales either correctly.
+    fn gpu_frame_sized(
+        &self,
+        time: Time,
+        renderer: &crate::Renderer,
+        _target: Option<[u32; 2]>,
+    ) -> Result<Option<Arc<GpuFrame>>> {
+        self.gpu_frame(time, renderer)
+    }
     fn byte_budget(&self) -> u64;
 }
 /// The host supplies immutable images; a later render can supply new content under the same key.
@@ -163,11 +173,13 @@ impl ImageInputs {
     ) -> Result<Self> {
         let mut result = self.clone();
         let mut decoded_bytes = 0u64;
+        // Hidden branches (behind a fully transparent blend) get an empty stand-in, not a decode.
+        let visible = plan.visible_at(time)?;
         for node in &plan.nodes {
             if let veylvik_document::Operation::Footage(veylvik_document::nodes::Footage {
                 asset,
                 timing,
-                ..
+                placement,
             }) = &node.operation
             {
                 let key = crate::plan::footage_key(node.id);
@@ -175,11 +187,15 @@ impl ImageInputs {
                     continue;
                 }
                 let info = self.info(asset);
+                let target = info.as_ref().and_then(|i| {
+                    placed_size(*placement, [i.width, i.height], [plan.width, plan.height])
+                });
                 let time = timing.source_time(time, info.and_then(|i| i.duration))?;
+                let time = time.filter(|_| visible.contains(&node.id));
                 let image = if let Some(time) = time {
                     if let Some(source) = self.2.get(asset) {
                         if let Some(renderer) = renderer
-                            && let Some(frame) = source.gpu_frame(time, renderer)?
+                            && let Some(frame) = source.gpu_frame_sized(time, renderer, target)?
                         {
                             decoded_bytes += frame.byte_size();
                             if decoded_bytes > 256 * 1024 * 1024 {
@@ -213,6 +229,7 @@ impl ImageInputs {
                 asset,
             }) = &node.operation
                 && let Some(source) = self.2.get(asset)
+                && visible.contains(&node.id)
             {
                 if let Some(renderer) = renderer
                     && let Some(frame) = source.gpu_frame(time, renderer)?
@@ -357,5 +374,68 @@ impl GpuFrame {
     }
     pub fn byte_size(&self) -> u64 {
         self.width as u64 * self.height as u64 * 16
+    }
+}
+
+/// Size to decode footage at for its placement on a `canvas`: never larger than the source,
+/// and `None` when the placement needs native pixels or no reduction is possible.
+pub(crate) fn placed_size(
+    placement: veylvik_document::media::Placement,
+    source: [u32; 2],
+    canvas: [u32; 2],
+) -> Option<[u32; 2]> {
+    use veylvik_document::media::Placement;
+    let [sw, sh] = source.map(f64::from);
+    let [cw, ch] = canvas.map(f64::from);
+    let (sx, sy) = match placement {
+        Placement::Fit => {
+            let s = (cw / sw).min(ch / sh);
+            (s, s)
+        }
+        Placement::Fill => {
+            let s = (cw / sw).max(ch / sh);
+            (s, s)
+        }
+        Placement::Stretch => (cw / sw, ch / sh),
+        Placement::Original | Placement::Legacy => return None,
+    };
+    let size = [
+        (sw * sx.min(1.)).ceil() as u32,
+        (sh * sy.min(1.)).ceil() as u32,
+    ];
+    (size != source && size.iter().all(|&v| v > 0)).then_some(size)
+}
+
+#[cfg(test)]
+mod placement_tests {
+    use super::placed_size;
+    use veylvik_document::media::Placement;
+    #[test]
+    fn footage_decodes_at_the_size_its_placement_needs() {
+        let phone = [2160, 3840];
+        assert_eq!(
+            placed_size(Placement::Fill, phone, [1080, 1920]),
+            Some([1080, 1920])
+        );
+        // Fill covers the canvas, so a wider canvas keeps more source height.
+        assert_eq!(
+            placed_size(Placement::Fill, phone, [1920, 1080]),
+            Some([1920, 3414])
+        );
+        assert_eq!(
+            placed_size(Placement::Fit, phone, [1920, 1080]),
+            Some([608, 1080])
+        );
+        assert_eq!(
+            placed_size(Placement::Stretch, phone, [1920, 1080]),
+            Some([1920, 1080])
+        );
+        // Native pixels are kept, and nothing is ever decoded larger than the source.
+        assert_eq!(placed_size(Placement::Original, phone, [1080, 1920]), None);
+        assert_eq!(placed_size(Placement::Legacy, phone, [1080, 1920]), None);
+        assert_eq!(
+            placed_size(Placement::Fill, [1280, 720], [3840, 2160]),
+            None
+        );
     }
 }

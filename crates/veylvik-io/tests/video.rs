@@ -517,7 +517,7 @@ fn bridge_budget_failure_stages_hardware_and_recovers_on_later_frames() {
     let budget = renderer.budget_bytes;
     // Fits the compact staged plane buffer but not the external allocation's
     // conservative 64 KiB reservation. Decoder must stay hardware-backed.
-    renderer.budget_bytes = 320 * 180 * 16 + 320 * 180 * 3 / 2 + 262144 + 96;
+    renderer.budget_bytes = 320 * 180 * 16 + 320 * 180 * 3 / 2 + 262144 + 112;
     source
         .gpu_frame(Time::new(0, 24).unwrap(), &renderer)
         .unwrap()

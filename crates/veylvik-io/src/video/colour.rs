@@ -215,6 +215,65 @@ mod gpu_tests {
     use veylvik_render::{Renderer, VideoEncoding, VideoFormat};
     #[test]
     #[ignore = "requires Vulkan"]
+    fn reduced_conversion_area_averages_the_full_conversion_with_rotation() {
+        let renderer = Renderer::new().unwrap();
+        let colour = Transform::new(1, 13).unwrap();
+        for rotation in [0, 90] {
+            let encoding = VideoEncoding {
+                width: 8,
+                height: 4,
+                format: VideoFormat::Nv12,
+                rotation,
+                kr: 0.2126,
+                kb: 0.0722,
+                full_range: false,
+                chroma_location: [0.0, 0.5],
+                primaries: colour.matrix,
+            };
+            let bytes: Vec<u8> = (0..48u32)
+                .map(|i| {
+                    if i < 32 {
+                        (40 + i * 6) as u8
+                    } else {
+                        (110 + (i % 5) * 9) as u8
+                    }
+                })
+                .collect();
+            let full = renderer
+                .import_video(&bytes, encoding, &colour.lut)
+                .unwrap();
+            let full = renderer.read_frame(&full).unwrap();
+            let (w, h) = encoding.dimensions();
+            let half = renderer
+                .import_video_sized(&bytes, encoding, &colour.lut, Some([w / 2, h / 2]))
+                .unwrap();
+            assert_eq!((half.width(), half.height()), (w / 2, h / 2));
+            let half = renderer.read_frame(&half).unwrap();
+            for y in 0..h / 2 {
+                for x in 0..w / 2 {
+                    let at =
+                        |dx: u32, dy: u32| full.pixels[((y * 2 + dy) * w + x * 2 + dx) as usize];
+                    let expected: Vec<f32> = (0..4)
+                        .map(|c| (at(0, 0)[c] + at(1, 0)[c] + at(0, 1)[c] + at(1, 1)[c]) / 4.)
+                        .collect();
+                    let actual = half.pixels[(y * (w / 2) + x) as usize];
+                    for (a, b) in actual.iter().zip(&expected) {
+                        assert!(
+                            (a - b).abs() < 1e-5,
+                            "rotation {rotation} at {x},{y}: {a} != {b}"
+                        );
+                    }
+                }
+            }
+            assert!(
+                renderer
+                    .import_video_sized(&bytes, encoding, &colour.lut, Some([w + 1, h]))
+                    .is_err()
+            );
+        }
+    }
+    #[test]
+    #[ignore = "requires Vulkan"]
     fn planes_preserve_hdr_range_chroma_and_rotated_geometry() {
         let renderer = Renderer::new().unwrap();
         for format in [VideoFormat::Nv12, VideoFormat::P010] {

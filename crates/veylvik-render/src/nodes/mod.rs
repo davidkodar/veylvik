@@ -42,6 +42,14 @@ pub(crate) trait RenderNode {
     fn identity(&self) -> bool {
         false
     }
+    /// Input ports whose content cannot affect the output at this time, such as a fully
+    /// transparent blend's foreground; footage reached only through them is not decoded.
+    fn idle_inputs(
+        &self,
+        _sample: &dyn Fn(&str) -> Result<f32>,
+    ) -> Result<&'static [&'static str]> {
+        Ok(&[])
+    }
 }
 
 mod color;

@@ -88,13 +88,34 @@ impl Renderer {
         encoding: VideoEncoding,
         lut: &[f32],
     ) -> Result<GpuFrame> {
-        self.convert_video(Input::Host(bytes), encoding, lut)
+        self.convert_video(Input::Host(bytes), encoding, lut, None)
+    }
+    /// Converts decoded planes, area-reducing to `target` (after rotation) when given. A
+    /// target may not exceed the rotated source size.
+    pub fn import_video_sized(
+        &self,
+        bytes: &[u8],
+        encoding: VideoEncoding,
+        lut: &[f32],
+        target: Option<[u32; 2]>,
+    ) -> Result<GpuFrame> {
+        self.convert_video(Input::Host(bytes), encoding, lut, target)
     }
     pub fn import_cuda_video(
         &self,
         frame: &veylvik_interop::CudaFrame,
         encoding: VideoEncoding,
         lut: &[f32],
+    ) -> Result<GpuFrame> {
+        self.import_cuda_video_sized(frame, encoding, lut, None)
+    }
+    /// CUDA planes, optionally area-reduced to `target` as for [`Self::import_video_sized`].
+    pub fn import_cuda_video_sized(
+        &self,
+        frame: &veylvik_interop::CudaFrame,
+        encoding: VideoEncoding,
+        lut: &[f32],
+        target: Option<[u32; 2]>,
     ) -> Result<GpuFrame> {
         if frame.dimensions() != [encoding.width, encoding.height]
             || !matches!(
@@ -104,13 +125,14 @@ impl Renderer {
         {
             return Err(error("CUDA planes do not match video encoding"));
         }
-        self.convert_video(Input::Cuda(frame), encoding, lut)
+        self.convert_video(Input::Cuda(frame), encoding, lut, target)
     }
     fn convert_video(
         &self,
         input: Input<'_>,
         encoding: VideoEncoding,
         lut: &[f32],
+        target: Option<[u32; 2]>,
     ) -> Result<GpuFrame> {
         let byte_len = match input {
             Input::Host(bytes) => bytes.len() as u64,
@@ -124,7 +146,11 @@ impl Renderer {
         {
             return Err(error("invalid decoded video buffer or transfer table"));
         }
-        let (width, height) = encoding.dimensions();
+        let (full_width, full_height) = encoding.dimensions();
+        let [width, height] = target.unwrap_or([full_width, full_height]);
+        if width == 0 || height == 0 || width > full_width || height > full_height {
+            return Err(error("video target size must be within the source size"));
+        }
         let size = u64::from(width) * u64::from(height) * 16;
         let raw_size = byte_len.div_ceil(4) * 4;
         let external_reservation = if matches!(input, Input::Cuda(_)) {
@@ -150,7 +176,7 @@ impl Renderer {
             self.pool_limit_bytes
                 .min(available.saturating_sub(external_reservation)),
         );
-        if size + raw_size.max(external_reservation) + 262144 + 96 > available {
+        if size + raw_size.max(external_reservation) + 262144 + 112 > available {
             return Err(error("video conversion exceeds GPU budget"));
         }
         let validation = self.device.push_error_scope(wgpu::ErrorFilter::Validation);
@@ -186,7 +212,7 @@ impl Renderer {
             )?;
             let uniform = resources.take(
                 &self.device,
-                96,
+                112,
                 wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
                 "video colour encoding",
             )?;
@@ -197,7 +223,7 @@ impl Renderer {
             }
             self.queue
                 .write_buffer(&table, 0, bytemuck::cast_slice(lut));
-            let mut params = Vec::with_capacity(96);
+            let mut params = Vec::with_capacity(112);
             params.extend_from_slice(bytemuck::cast_slice(&[
                 encoding.width,
                 encoding.height,
@@ -219,6 +245,7 @@ impl Renderer {
                 0.0,
                 0.0,
             ]));
+            params.extend_from_slice(bytemuck::cast_slice(&[width, height, 0, 0]));
             self.queue.write_buffer(&uniform, 0, &params);
             let group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: Some("decoded video"),

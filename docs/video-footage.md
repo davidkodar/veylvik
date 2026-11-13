@@ -123,6 +123,20 @@ Project collection copies supported video files within the existing 64 MiB
 per-file / 1 GiB total collection limits. Image-sequence collection remains
 unsupported; keep its manifest and frame directory together.
 
+## Decode size and hidden layers
+
+Footage is converted on the GPU at the size its placement needs on the canvas, never
+larger than the source: a 4K phone clip placed with **Fill** in a 1080 × 1920
+composition is converted at 1080 × 1920. The reduction happens during colour
+conversion as an area average in scene-linear light, which avoids the aliasing of
+shrinking later and uses about a quarter of the memory, so several 4K clips can share a
+frame (crossfades, picture-in-picture) within the 256 MiB per-frame decode budget.
+**Original size** keeps native pixels. A downstream zoom beyond 100 % samples the
+reduced frame; use Original size and a transform when a shot is punched in strongly.
+
+Footage that cannot affect the current frame is not decoded at all: outside its
+timeline range, or behind a Blend or Surface blend whose opacity is zero at that time.
+
 ## Automation
 
 The `footage` operation is exposed by the node catalog and document schema:

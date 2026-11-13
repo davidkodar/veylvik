@@ -15,6 +15,14 @@ impl RenderNode for veylvik_document::nodes::Merge {
     }
 }
 impl RenderNode for veylvik_document::nodes::Blend {
+    /// At zero opacity the result is exactly the background.
+    fn idle_inputs(&self, sample: &dyn Fn(&str) -> Result<f32>) -> Result<&'static [&'static str]> {
+        Ok(if sample("opacity")? == 0.0 {
+            &["foreground"]
+        } else {
+            &[]
+        })
+    }
     fn passes(&self) -> Passes {
         Passes::One(Kernel::Blend)
     }
@@ -108,6 +116,14 @@ impl RenderNode for veylvik_document::nodes::ChannelMask {
     }
 }
 impl RenderNode for veylvik_document::nodes::SurfaceBlend {
+    /// At zero opacity the result is exactly the background.
+    fn idle_inputs(&self, sample: &dyn Fn(&str) -> Result<f32>) -> Result<&'static [&'static str]> {
+        Ok(if sample("opacity")? == 0.0 {
+            &["foreground"]
+        } else {
+            &[]
+        })
+    }
     fn passes(&self) -> Passes {
         Passes::One(Kernel::SurfaceBlend)
     }

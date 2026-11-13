@@ -3,6 +3,7 @@ struct Params {
     yuv:vec4<f32>, // kr, kb, full range, unused
     row0:vec4<f32>, row1:vec4<f32>, row2:vec4<f32>,
     chroma:vec4<f32>, // sample location in source luma coordinates
+    output_size:vec4<u32>, // output width/height after rotation; equal to the source for 1:1
 }
 @group(0) @binding(0) var<storage,read> raw:array<u32>;
 @group(0) @binding(1) var<storage,read> lut:array<f32>;
@@ -17,15 +18,12 @@ fn chroma_at(q:vec2<i32>)->vec2<f32> {
     return vec2<f32>(f32(word_at(i*2u)>>6u),f32(word_at(i*2u+2u)>>6u));
 }
 fn linear(v:f32)->f32 {return lut[u32(round(clamp(v,0.0,1.0)*65535.0))];}
-@compute @workgroup_size(8,8)
-fn convert(@builtin(global_invocation_id) id:vec3<u32>) {
-    var dims=p.size.xy;
-    if p.size.w==90u || p.size.w==270u {dims=dims.yx;}
-    if any(id.xy>=dims) {return;}
-    var q=id.xy;
-    if p.size.w==90u {q=vec2<u32>(p.size.x-1u-id.y,id.x);}
-    if p.size.w==180u {q=p.size.xy-vec2<u32>(1u)-id.xy;}
-    if p.size.w==270u {q=vec2<u32>(id.y,p.size.y-1u-id.x);}
+// One rotated output pixel converted to scene-linear premultiplied RGBA.
+fn pixel(o:vec2<u32>)->vec4<f32> {
+    var q=o;
+    if p.size.w==90u {q=vec2<u32>(p.size.x-1u-o.y,o.x);}
+    if p.size.w==180u {q=p.size.xy-vec2<u32>(1u)-o;}
+    if p.size.w==270u {q=vec2<u32>(o.y,p.size.y-1u-o.x);}
     let i=q.y*p.size.x+q.x;
     var rgb=vec3<f32>(0.0); var alpha=1.0;
     if p.size.z==0u {
@@ -45,5 +43,28 @@ fn convert(@builtin(global_invocation_id) id:vec3<u32>) {
         let g=y-2.0*kb*(1.0-kb)/kg*uv.x-2.0*kr*(1.0-kr)/kg*uv.y;
         rgb=vec3<f32>(linear(r),linear(g),linear(b));
     }
-    output[id.y*dims.x+id.x]=vec4<f32>(vec3<f32>(dot(p.row0.xyz,rgb),dot(p.row1.xyz,rgb),dot(p.row2.xyz,rgb))*alpha,alpha);
+    return vec4<f32>(vec3<f32>(dot(p.row0.xyz,rgb),dot(p.row1.xyz,rgb),dot(p.row2.xyz,rgb))*alpha,alpha);
+}
+@compute @workgroup_size(8,8)
+fn convert(@builtin(global_invocation_id) id:vec3<u32>) {
+    var dims=p.size.xy;
+    if p.size.w==90u || p.size.w==270u {dims=dims.yx;}
+    let sized=p.output_size.xy;
+    if any(id.xy>=sized) {return;}
+    if all(sized==dims) {
+        output[id.y*sized.x+id.x]=pixel(id.xy);
+        return;
+    }
+    // Reduced output: area-average the source footprint in scene-linear light, which avoids
+    // the aliasing of shrinking later with point or bilinear sampling.
+    let ratio=vec2<f32>(dims)/vec2<f32>(sized);
+    let lo=vec2<f32>(id.xy)*ratio; let hi=lo+ratio;
+    var sum=vec4<f32>(0.0); var weight=0.0;
+    for (var y=u32(floor(lo.y)); y<min(u32(ceil(hi.y)),dims.y); y++) {
+        for (var x=u32(floor(lo.x)); x<min(u32(ceil(hi.x)),dims.x); x++) {
+            let w=max(0.0,min(hi.x,f32(x+1u))-max(lo.x,f32(x)))*max(0.0,min(hi.y,f32(y+1u))-max(lo.y,f32(y)));
+            sum+=pixel(vec2<u32>(x,y))*w; weight+=w;
+        }
+    }
+    output[id.y*sized.x+id.x]=sum/weight;
 }
