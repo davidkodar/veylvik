@@ -18,6 +18,10 @@ pub(crate) struct InspectCx<'a> {
     /// Refresh the viewer preview soon, for continuous edits such as path dragging.
     pub preview_soon: bool,
     pub error: Option<String>,
+    /// The colour field this node is currently sampling with the eyedropper, if any.
+    pub picking: Option<&'static str>,
+    /// An eyedropper request for this colour field.
+    pub pick: Option<&'static str>,
 }
 pub(crate) trait Inspect {
     /// Node-specific controls above the registered parameters; most nodes have none.

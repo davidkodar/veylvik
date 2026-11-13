@@ -12,11 +12,17 @@ impl Inspect for veylvik_document::nodes::Colorize {
         {
             ui.label("Map luminance to linear RGBA colors.");
             ui.push_id("low", |ui| {
-                ui.label("Shadows");
+                ui.horizontal(|ui| {
+                    ui.label("Shadows");
+                    crate::eyedropper::button(ui, cx, "low");
+                });
                 cx.dirty |= animation::color(ui, low);
             });
             ui.push_id("high", |ui| {
-                ui.label("Highlights");
+                ui.horizontal(|ui| {
+                    ui.label("Highlights");
+                    crate::eyedropper::button(ui, cx, "high");
+                });
                 cx.dirty |= animation::color(ui, high);
             });
         }

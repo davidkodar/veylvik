@@ -156,6 +156,7 @@ Everything Veylvik can do today, area by area. Veylvik is a native Rust node com
 
 - **Chroma key**: colour-difference key for green, blue or any coloured backdrop; brightness-independent, so unevenly lit, shadowed and HDR parts of a screen key alike.
 - **Key colour** with one-click **Green screen** / **Blue screen** presets; the screen need not match exactly.
+- **Pick** eyedropper on colour parameters (Key colour, Solid, Colorize): click to sample a 5 × 5 area or drag to average a rectangle, exact scene-linear HDR values read back off the UI thread; samples the node's input, so a chroma key picks the screen, not its result; Esc cancels.
 - **Tolerance** (how much of the screen goes) and **Softness** (edge falloff), keyframable.
 - Skin, greys and colours without the key's bias stay opaque; near-black pixels are kept.
 - **Despill**: limits the key colour in what remains to the average of the other channels, removing fringes and bounce light.

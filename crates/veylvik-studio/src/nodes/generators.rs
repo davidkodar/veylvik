@@ -9,7 +9,10 @@ impl Inspect for veylvik_document::nodes::Solid {
     fn inspect(&mut self, ui: &mut egui::Ui, cx: &mut InspectCx<'_>) {
         let veylvik_document::nodes::Solid { color } = self;
         {
-            ui.label("Linear RGB and alpha");
+            ui.horizontal(|ui| {
+                ui.label("Linear RGB and alpha");
+                crate::eyedropper::button(ui, cx, "color");
+            });
             cx.dirty |= animation::color(ui, color);
         }
     }

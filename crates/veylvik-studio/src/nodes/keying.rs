@@ -18,7 +18,10 @@ impl Inspect for veylvik_document::nodes::ChromaKey {
                 }
             }
         });
-        ui.label("Key colour (linear RGB)");
+        ui.horizontal(|ui| {
+            ui.label("Key colour (linear RGB)");
+            crate::eyedropper::button(ui, cx, "key_color");
+        });
         cx.dirty |= animation::color(ui, &mut self.key_color);
         ui.weak("Pixels leaning towards the key colour's dominant channel become transparent. Raise Tolerance to remove more of an unevenly lit screen, Softness for gentler edges, and use Despill against coloured fringes. Check the matte with View → Show alpha.");
     }

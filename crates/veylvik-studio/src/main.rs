@@ -8,6 +8,7 @@ mod diagnostics;
 mod display;
 mod editable_text;
 mod effects;
+mod eyedropper;
 mod files;
 mod font_browser;
 mod graph;
@@ -167,6 +168,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             let mut app = Studio {
                 control,
                 control_error,
+                picking: None,
                 preview_images: None,
                 recovery,
                 project,
@@ -240,6 +242,8 @@ struct Studio {
     control: Option<veylvik_control::ipc::Server>,
     /// Why the default live-control socket could not be opened, shown on the menu bar.
     control_error: Option<String>,
+    /// Eyedropper waiting for a click or drag in the viewer.
+    picking: Option<eyedropper::Picking>,
     preview_images: Option<preview_images::Worker>,
     project: Project,
     renderer: Arc<Renderer>,
@@ -806,6 +810,47 @@ impl Studio {
         });
         self.file_started(result);
     }
+    /// Samples `region` for the eyedropper on the file worker. Nodes with an image input sample
+    /// what feeds them (a chroma key picks the screen, not its keyed result); generators sample
+    /// the viewed image.
+    fn sample_colour(&mut self, picking: eyedropper::Picking, region: veylvik_render::Region) {
+        if self.files.busy() {
+            self.fail("Wait for the current file task before sampling a colour.");
+            return;
+        }
+        let time = match self.project.time() {
+            Ok(time) => time,
+            Err(error) => {
+                self.fail(error);
+                return;
+            }
+        };
+        let document = self.project.document.snapshot().clone();
+        let source = document
+            .nodes
+            .get(&picking.node)
+            .and_then(|node| node.inputs.get("image").copied())
+            .unwrap_or(self.project.preview.unwrap_or(document.output));
+        let (renderer, inputs, session) = (
+            self.renderer.clone(),
+            self.project.inputs.clone(),
+            self.project.session,
+        );
+        self.status = "Sampling colour…".into();
+        let result = self.files.start(move || {
+            let plan = veylvik_render::Plan::compile_output(&document, source)
+                .map_err(|e| e.to_string())?;
+            let (rgb, pixels) = eyedropper::sample(&renderer, &plan, &inputs, time, region)?;
+            Ok(Completed::Picked(eyedropper::Sampled {
+                session,
+                node: picking.node,
+                field: picking.field,
+                rgb,
+                pixels,
+            }))
+        });
+        self.file_started(result);
+    }
     fn import_text_font(&mut self, selection: font_browser::Selection) {
         if self.files.busy() {
             return;
@@ -1252,6 +1297,25 @@ impl Studio {
                 }
             }
             Ok(Completed::Opened(project)) => self.open_project(*project, ctx),
+            Ok(Completed::Picked(sample)) => {
+                if sample.session == self.project.session
+                    && sample.node == self.draft.id
+                    && eyedropper::apply(&mut self.draft.operation, sample.field, sample.rgb)
+                {
+                    self.draft_dirty = true;
+                    self.playing = false;
+                    let [r, g, b] = sample.rgb;
+                    self.status = format!(
+                        "Sampled R {r:.4} G {g:.4} B {b:.4} (scene-linear) from {} pixels · Apply to keep",
+                        sample.pixels
+                    );
+                    self.error = false;
+                } else {
+                    self.fail(
+                        "The sampled colour no longer matches the selected node; pick again.",
+                    );
+                }
+            }
             Ok(Completed::Imported {
                 path,
                 image,
@@ -1548,6 +1612,12 @@ impl Studio {
             replace_image: false,
             preview_soon: false,
             error: None,
+            picking: self
+                .picking
+                .as_ref()
+                .filter(|p| p.node == self.draft.id)
+                .map(|p| p.field),
+            pick: None,
         };
         match &mut self.draft.operation {
             op @ Operation::Text(veylvik_document::nodes::Text { .. }) => {
@@ -1567,8 +1637,23 @@ impl Studio {
             replace_image: replace,
             preview_soon,
             error,
+            pick,
             ..
         } = cx;
+        if let Some(field) = pick {
+            // A second press on the active field cancels, like Esc.
+            let active = self
+                .picking
+                .as_ref()
+                .is_some_and(|p| p.node == self.draft.id && p.field == field);
+            self.picking = (!active).then(|| eyedropper::Picking::new(self.draft.id, field));
+            self.status = if active {
+                "Eyedropper cancelled".into()
+            } else {
+                "Eyedropper: click or drag in the viewer to sample a colour · Esc cancels".into()
+            };
+            self.error = false;
+        }
         self.draft_dirty |= dirty;
         text_changed |= media_changed;
         replace_image |= replace;
@@ -2544,6 +2629,7 @@ impl eframe::App for Studio {
                             egui::Sense::click_and_drag(),
                         );
                         if !self.text_viewer.active
+                            && self.picking.is_none()
                             && !self.tracking.open && !self.planar.open
                             && !self.path_pen.active
                             && !(self.path_transform.active
@@ -2639,8 +2725,18 @@ impl eframe::App for Studio {
                                 },
                             );
                         }
+                        if ui.input(|i| i.key_pressed(egui::Key::Escape)) && self.picking.take().is_some() {
+                            self.status = "Eyedropper cancelled".into();
+                        }
+                        if let Some(picking) = &mut self.picking
+                            && let Some(region) = picking.overlay(ui, canvas, transform, frame.frame.region())
+                        {
+                            let picking = self.picking.take().unwrap();
+                            self.sample_colour(picking, region);
+                        }
                         self.occlusion_canvas(ui, canvas, transform, image);
-                        if !self.occlusion_pending()
+                        if self.picking.is_none()
+                            && !self.occlusion_pending()
                             && let Operation::Path(veylvik_document::nodes::Path { geometry }) = &self.draft.operation
                             && let Some(geometry) =
                                 self.path_pen.show(ui, canvas, transform, image, geometry)
@@ -2660,6 +2756,7 @@ impl eframe::App for Studio {
                             .preview
                             .unwrap_or(self.project.document.snapshot().output);
                         if !self.playing
+                            && self.picking.is_none()
                             && !self.tracking.open && !self.planar.open
                             && (self.displayed_ticket == self.wanted
                                 || matches!(

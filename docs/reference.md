@@ -146,7 +146,16 @@ limits the key's channel in what remains to the average of the other two, removi
 coloured fringes and bounce light. **Luma key** keys by Rec.709 luminance instead:
 transparent at or below **Low**, opaque at or above **High**, with a linear ramp between;
 set Low above High to key out bright areas such as a white backdrop. Both keep input
-alpha, output premultiplied colour, work on HDR values and can be keyframed. Check a matte
+alpha, output premultiplied colour, work on HDR values and can be keyframed.
+
+**Pick** beside a colour parameter (Chroma key's Key colour, Solid, Colorize's Shadows and
+Highlights) is an eyedropper: click in the viewer to sample a 5 × 5 area, or drag to
+average a rectangle; Esc or pressing Pick again cancels. It samples exact scene-linear
+values, including HDR, rendered on the file worker so the editor never waits. Nodes with
+an image input sample what feeds them, so a chroma key picks the screen even while the
+viewer shows its keyed result; generators sample the viewed image. Coverage-weighted
+averaging returns straight colour, and fully transparent areas are refused. The sample
+becomes an inspector draft; Apply keeps it. Check a matte
 with **View → Show alpha**, then refine it with **Grow/shrink mask** and **Blur**, or
 combine it with a garbage **Path mask** through **Combine masks**.
 

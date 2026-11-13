@@ -24,6 +24,8 @@ pub enum Choice {
     Font,
 }
 pub enum Completed {
+    /// An eyedropper sample, to apply to the draft colour it was taken for.
+    Picked(crate::eyedropper::Sampled),
     Tracked(crate::tracking::Tracked),
     PlanarTracked(crate::planar::Tracked),
     PresetLibrary(veylvik_io::presets::Listing),
