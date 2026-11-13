@@ -40,7 +40,8 @@ A source may be an image sequence or any animated node output. Feature matching
 uses Vulkan compute and reads back only candidate scores, not full image pixels.
 This first tracker follows translation at integer-pixel precision using a fixed
 reference patch. It does not estimate rotation, scale, perspective, deforming
-silhouettes or hidden features. Planar tracking is a separate future feature.
+silhouettes or hidden features; for surfaces that turn or change scale, use
+[planar tracking](planar-tracking.md).
 
 Cancellation keeps accepted samples available for explicit application; it does
 not modify the graph. At least two accepted samples are needed. Composition edits

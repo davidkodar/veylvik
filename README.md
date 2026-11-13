@@ -38,13 +38,13 @@ Veylvik is young, but it already works end to end: compose a graph, animate it, 
 - **Animation:** every scalar can be keyed at exact rational times with linear, hold, ease, auto-smooth or Bézier interpolation. A curve workspace lets you edit keys and tangents directly, and keyframe markers on the timeline navigate the selected node.
 - **Masks:** draw vector masks with a pen tool straight in the viewer, edit points and topology, transform the whole shape, and animate it frame by frame. Grow, shrink, feather, combine and convert channels into mattes. Guided occlusion lets you place a title behind foreground objects without wiring anything.
 - **Text and titles:** GPU-rendered editable text with a searchable library of system and personal fonts, layout, styling and animation tools, and outlines, glows and surface materials connected as ordinary effects.
-- **Looks and materials:** 58 starter effects in a searchable library. They include glows, streaks, distortions, echoes and particle overlays; procedural metals, wood, marble, brick, paper and leather; glass and reflections; procedural fire; and smoke, fog and clouds. Every starter is an editable group with public controls, and they scale to any resolution, up to native UHD.
+- **Looks and materials:** 59 starter effects in a searchable library. They include glows, streaks, distortions, echoes and particle overlays; procedural metals, wood, marble, brick, paper and leather; glass and reflections; procedural fire; and smoke, fog and clouds. Every starter is an editable group with public controls, and they scale to any resolution, up to native UHD.
 - **Effect groups and presets:** collapse nodes into reusable effects with named controls and inputs, save them to your library, and share them as portable `.veyfx` files.
 - **Colour:** processing in scene-linear Rec.709 with premultiplied alpha and no clamping, so HDR highlights and negative values survive the whole graph. The viewer has exposure and alpha views, and a colour picker that never rewrites your HDR values.
 - **Deliver:** export the current frame or a whole range as SDR PNG or lossless 32-bit float OpenEXR, or encode an MP4 on the GPU (NVENC) with the footage's sound and optional music mixed in. Sequence export writes a manifest that only marks itself complete once every frame is on disk.
 - **Work safely:** atomic saves that check for changes on disk before replacing a file, bounded undo history, crash recovery copies, missing-media repair, and **Collect project** to gather a project and its images into one portable folder.
 
-The [reference](docs/reference.md) documents every node, limit and command in detail.
+The [feature list](docs/features.md) covers everything Veylvik can do, area by area, and the [reference](docs/reference.md) documents every node, limit and command in detail.
 
 ## How it is built and tested
 
@@ -103,11 +103,12 @@ Read the [MCP reference](docs/reference.md#mcp) for the tools and command schema
 ## Roadmap
 
 - **Klipp integration:** use Veylvik compositions and effect presets inside [Klipp](https://github.com/davidkodar/klipp), the native video editor for Linux, using the project's size, frame rate and footage.
-- **Footage and tracking:** image-sequence sources and GPU point tracking, so masks and effects can follow movement in a shot.
+- **Tracking:** smoothing and a forward-backward quality measure for planar tracks.
 - More generators, a general particle emitter, and nested groups.
 
 ## Documentation and development
 
+- [Features](docs/features.md)
 - [Reference](docs/reference.md)
 - [Native editor](docs/reference.md#native-editor)
 - [Composition and rendering](docs/reference.md#composition-and-rendering)

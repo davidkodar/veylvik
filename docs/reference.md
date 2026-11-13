@@ -230,7 +230,7 @@ input names, defaults and controls save with the composition. Nested groups are 
 **Add → Effect library…** opens searchable starter and saved effects. The bundled
 **Prismatic Glow** adds cyan/rose light spill; **Neon Outline** adds luminous
 contours; **Liquid Shimmer** adds a smooth four-second flow loop with protected
-frame edges. The library contains **58 starter effects**, searchable by name,
+frame edges. The library contains **59 starter effects**, searchable by name,
 description or category, with category counts in the left sidebar and a search field above the results. Every starter remains an editable group with public controls.
 
 The expanded set includes:
@@ -993,8 +993,7 @@ values can reuse output. Changed sources and parameters invalidate it. Cache
 retention counts toward the render budget and yields to memory pressure.
 `cache_stats` reports hits/misses/evictions; `clear_frame_cache` releases cache
 ownership. Direct CPU renders and intermediate node results are not cached. There is
-no video decoder, text engine, plug-in loader, simulation, or Klipp adapter
-in this version. No Klipp source is copied or linked.
+no plug-in loader, simulation, or Klipp adapter in this version. No Klipp source is copied or linked.
 
 ### Displacement maps
 
