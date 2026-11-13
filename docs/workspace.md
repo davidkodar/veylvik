@@ -17,8 +17,9 @@ provides composition inputs and background/foreground placement.
 Material cards use bundled GPU-rendered samples of the same surface shader used
 in compositions. Curved samples show metals and leather; flat samples show wood,
 brick, paper and other repeating surfaces. Sample lighting and geometry differ
-from your composition. Effect cards use still frames from their rendered examples;
-open More options for animated before/after previews.
+from your composition. Effect and template cards play a rendered loop while hovered and return to a
+still frame when the pointer leaves. Only the hovered card animates. Open More
+options for before/after comparison and playback controls.
 
 The Inspector uses tabs for text, layout, transform, style and animation. Parameter
 rows keep values, keyframe navigation and reset controls together. Right-click a

@@ -3,6 +3,8 @@ use eframe::egui;
 use std::collections::{BTreeMap, VecDeque};
 
 pub struct Gallery {
+    hover: Option<(&'static str, f64, f64)>,
+    hover_texture: Option<(&'static str, egui::TextureHandle)>,
     tiles: BTreeMap<&'static str, egui::TextureHandle>,
     textures: BTreeMap<(&'static str, bool), egui::TextureHandle>,
     recent: VecDeque<(&'static str, bool)>,
@@ -15,6 +17,8 @@ pub struct Gallery {
 impl Default for Gallery {
     fn default() -> Self {
         Self {
+            hover: None,
+            hover_texture: None,
             tiles: Default::default(),
             textures: Default::default(),
             recent: Default::default(),
@@ -221,8 +225,24 @@ impl Gallery {
         response
     }
 
-    /// Static browsing cards upload one frame rather than the whole animation atlas.
-    /// The fixed built-in catalogue bounds this cache to about 14 MiB.
+    fn hover_frame(&mut self, id: &'static str, now: f64, hovered: bool) -> Option<usize> {
+        if !hovered {
+            if self.hover.is_some_and(|(active, _, _)| active == id) {
+                self.hover = None;
+            }
+            return None;
+        }
+        let start = match self.hover {
+            Some((active, start, last)) if active == id && now - last <= 0.3 => start,
+            _ => now,
+        };
+        self.hover = Some((id, start, now));
+        Some((24 + ((now - start).max(0.) * 12.).floor() as usize) % 48)
+    }
+
+    /// Idle cards upload one still. Only the hovered card uploads/plays an atlas,
+    /// with a separate single-entry cache so browsing cannot accumulate animations.
+    /// The fixed built-in catalogue bounds the still cache to about 14 MiB.
     pub(super) fn tile(
         &mut self,
         ui: &mut egui::Ui,
@@ -232,6 +252,39 @@ impl Gallery {
         let (rect, response) =
             ui.allocate_exact_size(egui::vec2(width, width * 9. / 16.), egui::Sense::click());
         if !ui.is_rect_visible(rect) {
+            return response;
+        }
+        if let Some(frame) = self.hover_frame(id, ui.input(|i| i.time), response.hovered()) {
+            if self
+                .hover_texture
+                .as_ref()
+                .is_none_or(|(active, _)| *active != id)
+            {
+                let atlas = image::load_from_memory(bytes(id, false))
+                    .expect("bundled preview")
+                    .to_rgba8();
+                self.hover_texture = Some((
+                    id,
+                    ui.ctx().load_texture(
+                        format!("hover-preview-{id}"),
+                        egui::ColorImage::from_rgba_unmultiplied(
+                            [atlas.width() as usize, atlas.height() as usize],
+                            atlas.as_raw(),
+                        ),
+                        egui::TextureOptions::LINEAR,
+                    ),
+                ));
+            }
+            let x = (frame % 8) as f32 / 8.;
+            let y = (frame / 8) as f32 / 6.;
+            ui.painter().image(
+                self.hover_texture.as_ref().unwrap().1.id(),
+                rect,
+                egui::Rect::from_min_max(egui::pos2(x, y), egui::pos2(x + 1. / 8., y + 1. / 6.)),
+                egui::Color32::WHITE,
+            );
+            ui.ctx()
+                .request_repaint_after(std::time::Duration::from_millis(83));
             return response;
         }
         let texture = self.tiles.entry(id).or_insert_with(|| {
@@ -254,7 +307,7 @@ impl Gallery {
         response
     }
     pub fn card(&mut self, ui: &mut egui::Ui, id: &'static str) -> egui::Response {
-        self.image(ui, id, false, 160.0)
+        self.tile(ui, id, 160.0)
     }
     pub fn detail(&mut self, ui: &mut egui::Ui, id: &'static str) {
         ui.horizontal(|ui| {
@@ -281,6 +334,23 @@ impl Gallery {
 #[cfg(test)]
 mod tests {
     #[test]
+    fn hover_playback_is_exclusive_loops_and_resets_on_exit() {
+        let mut gallery = super::Gallery::default();
+        assert_eq!(gallery.hover_frame("heat_haze", 0., true), Some(24));
+        assert_eq!(gallery.hover_frame("heat_haze", 0.25, true), Some(27));
+        assert_eq!(gallery.hover_frame("clouds", 0.25, false), None);
+        assert_eq!(gallery.hover_frame("heat_haze", 0.5, true), Some(30));
+        assert_eq!(gallery.hover_frame("clouds", 0.5, true), Some(24));
+        assert_eq!(gallery.hover_frame("clouds", 0.6, false), None);
+        assert_eq!(gallery.hover_frame("clouds", 0.7, true), Some(24));
+        for tick in 1..=16 {
+            gallery.hover_frame("clouds", 0.7 + f64::from(tick) * 0.25, true);
+        }
+        assert_eq!(gallery.hover_frame("clouds", 4.7, true), Some(24));
+        assert_eq!(gallery.hover_frame("clouds", 10., true), Some(24));
+    }
+
+    #[test]
     fn browsing_many_effects_bounds_textures_and_skips_clipped_cards() {
         use super::*;
         let ctx = egui::Context::default();
@@ -292,7 +362,7 @@ mod tests {
                     ..Default::default()
                 },
                 |ui| {
-                    gallery.card(ui, entry.id);
+                    gallery.image(ui, entry.id, false, 160.);
                 },
             );
             assert!(gallery.textures.contains_key(&(entry.id, false)));
@@ -308,7 +378,7 @@ mod tests {
             },
             |ui| {
                 ui.set_clip_rect(egui::Rect::NOTHING);
-                gallery.card(ui, "prismatic_glow");
+                gallery.image(ui, "prismatic_glow", false, 160.);
             },
         );
         assert!(!gallery.textures.contains_key(&("prismatic_glow", false)));
