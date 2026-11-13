@@ -13,6 +13,7 @@ mod scheduler;
 mod texture;
 pub mod tracking;
 mod vector;
+mod video;
 pub use plan::{Kernel, PassInfo, Plan};
 pub use pool::ResourceStats;
 pub use scheduler::{GpuPreviewScheduler, PreviewResult, PreviewScheduler, PreviewTicket};
@@ -21,6 +22,7 @@ use std::sync::{Arc, Mutex};
 pub use texture::{TextureEncoding, TextureTarget};
 pub use vector::MAX_VECTOR_DIMENSION;
 use veylvik_document::{CompiledScalar, Node, Operation, Time};
+pub use video::{VideoEncoding, VideoFormat};
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("{0}")]
@@ -260,6 +262,7 @@ pub struct Renderer {
     layout: wgpu::BindGroupLayout,
     validation_pipeline: wgpu::ComputePipeline,
     texture_pipeline: wgpu::ComputePipeline,
+    video_pipeline: wgpu::ComputePipeline,
     vector_backend: Mutex<Option<vector::Backend>>,
     vector_cache: Mutex<cache::FrameCache<vector::Key>>,
     pub vector_cache_limit_bytes: u64,
@@ -406,6 +409,7 @@ impl Renderer {
                 cache: None,
             });
         let texture_pipeline = texture::pipeline(&device);
+        let video_pipeline = video::pipeline(&device);
         if let Some(e) = pollster::block_on(scope.pop()) {
             return Err(error(e));
         }
@@ -416,6 +420,7 @@ impl Renderer {
             layout,
             validation_pipeline,
             texture_pipeline,
+            video_pipeline,
             vector_backend: Mutex::new(None),
             vector_cache: Mutex::new(cache::FrameCache::default()),
             vector_cache_limit_bytes: 32 * 1024 * 1024,
@@ -584,7 +589,7 @@ impl Renderer {
         request: RenderRequest,
         inputs: &ImageInputs,
     ) -> Result<RenderedFrame> {
-        let resolved = inputs.resolve(plan, request.time)?;
+        let resolved = inputs.resolve_on(plan, request.time, Some(self))?;
         let inputs = &resolved;
         let (Executed::Cpu(full), region) = self.execute(plan, request, inputs, true)? else {
             unreachable!()
@@ -599,7 +604,7 @@ impl Renderer {
         request: RenderRequest,
         inputs: &ImageInputs,
     ) -> Result<GpuFrame> {
-        let resolved = inputs.resolve(plan, request.time)?;
+        let resolved = inputs.resolve_on(plan, request.time, Some(self))?;
         let inputs = &resolved;
         let (Executed::Gpu(storage), region) = self.execute(plan, request, inputs, false)? else {
             unreachable!()
@@ -622,7 +627,7 @@ impl Renderer {
         request: RenderRequest,
         inputs: &ImageInputs,
     ) -> Result<Arc<GpuFrame>> {
-        let resolved = inputs.resolve(plan, request.time)?;
+        let resolved = inputs.resolve_on(plan, request.time, Some(self))?;
         let inputs = &resolved;
         let source_bytes = self.source_bytes(plan, inputs)?;
         let key = cache::Key::new(plan, request, inputs)?;

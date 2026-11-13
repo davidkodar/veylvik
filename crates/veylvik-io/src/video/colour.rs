@@ -2,8 +2,8 @@
 //! until the final multiplication, avoiding implicit decoder alpha transforms.
 use crate::Result;
 pub struct Transform {
-    lut: Vec<f32>,
-    matrix: [[f32; 3]; 3],
+    pub(super) lut: Vec<f32>,
+    pub(super) matrix: [[f32; 3]; 3],
 }
 fn inverse(m: [[f64; 3]; 3]) -> [[f64; 3]; 3] {
     let [[a, b, c], [d, e, f], [g, h, i]] = m;
@@ -129,5 +129,173 @@ mod tests {
         assert!((p[3] - 0.5).abs() < 0.0001);
         let pq = Transform::new(9, 16).unwrap();
         assert!((pq.lut[32768] - 0.9225).abs() < 0.001);
+    }
+}
+
+impl Transform {
+    /// CPU realization is reserved for callers explicitly requesting host pixels.
+    /// Normal rendering uses the renderer's plane conversion on its own device.
+    pub(super) fn decoded_pixels(
+        &self,
+        bytes: &[u8],
+        e: veylvik_render::VideoEncoding,
+    ) -> Vec<[f32; 4]> {
+        use veylvik_render::VideoFormat;
+        if e.format == VideoFormat::Rgba64 {
+            return self.pixels(bytes);
+        }
+        let (width, height) = e.dimensions();
+        let depth = if e.format == VideoFormat::P010 {
+            4.0
+        } else {
+            1.0
+        };
+        let sample = |i: usize| {
+            if e.format == VideoFormat::P010 {
+                f32::from(u16::from_le_bytes([bytes[i * 2], bytes[i * 2 + 1]]) >> 6)
+            } else {
+                f32::from(bytes[i])
+            }
+        };
+        let uv = |x: i32, y: i32| {
+            let x = x.clamp(0, e.width as i32 / 2 - 1) as usize;
+            let y = y.clamp(0, e.height as i32 / 2 - 1) as usize;
+            let i = e.width as usize * e.height as usize + y * e.width as usize + x * 2;
+            [sample(i), sample(i + 1)]
+        };
+        (0..width * height)
+            .map(|i| {
+                let (x, y) = (i % width, i / width);
+                let (x, y) = match e.rotation {
+                    90 => (e.width - 1 - y, x),
+                    180 => (e.width - 1 - x, e.height - 1 - y),
+                    270 => (y, e.height - 1 - x),
+                    _ => (x, y),
+                };
+                let mut luma = sample((y * e.width + x) as usize);
+                let cx = (x as f32 - e.chroma_location[0]) * 0.5;
+                let cy = (y as f32 - e.chroma_location[1]) * 0.5;
+                let (bx, by) = (cx.floor() as i32, cy.floor() as i32);
+                let (fx, fy) = (cx - cx.floor(), cy - cy.floor());
+                let a = uv(bx, by);
+                let b = uv(bx + 1, by);
+                let c = uv(bx, by + 1);
+                let d = uv(bx + 1, by + 1);
+                let mut chroma = std::array::from_fn::<_, 2, _>(|k| {
+                    (a[k] * (1.0 - fx) + b[k] * fx) * (1.0 - fy)
+                        + (c[k] * (1.0 - fx) + d[k] * fx) * fy
+                });
+                if e.full_range {
+                    luma /= 256.0 * depth - 1.0;
+                    chroma = chroma.map(|v| (v - 128.0 * depth) / (256.0 * depth - 1.0));
+                } else {
+                    luma = (luma - 16.0 * depth) / (219.0 * depth);
+                    chroma = chroma.map(|v| (v - 128.0 * depth) / (224.0 * depth));
+                }
+                let kg = 1.0 - e.kr - e.kb;
+                let rgb = [
+                    luma + 2.0 * (1.0 - e.kr) * chroma[1],
+                    luma - 2.0 * e.kb * (1.0 - e.kb) / kg * chroma[0]
+                        - 2.0 * e.kr * (1.0 - e.kr) / kg * chroma[1],
+                    luma + 2.0 * (1.0 - e.kb) * chroma[0],
+                ];
+                let rgb = rgb.map(|v| self.lut[(v.clamp(0.0, 1.0) * 65535.0).round() as usize]);
+                let rgb = self
+                    .matrix
+                    .map(|m| m[0] * rgb[0] + m[1] * rgb[1] + m[2] * rgb[2]);
+                [rgb[0], rgb[1], rgb[2], 1.0]
+            })
+            .collect()
+    }
+}
+
+#[cfg(test)]
+mod gpu_tests {
+    use super::*;
+    use veylvik_render::{Renderer, VideoEncoding, VideoFormat};
+    #[test]
+    #[ignore = "requires Vulkan"]
+    fn planes_preserve_hdr_range_chroma_and_rotated_geometry() {
+        let renderer = Renderer::new().unwrap();
+        for format in [VideoFormat::Nv12, VideoFormat::P010] {
+            for full_range in [false, true] {
+                for rotation in [0, 90, 180, 270] {
+                    let colour = Transform::new(9, 16).unwrap();
+                    let encoding = VideoEncoding {
+                        width: 8,
+                        height: 4,
+                        format,
+                        rotation,
+                        kr: 0.2627,
+                        kb: 0.0593,
+                        full_range,
+                        chroma_location: [0.5, 0.5],
+                        primaries: colour.matrix,
+                    };
+                    let samples: Vec<u16> = (0..48)
+                        .map(|i| {
+                            if i < 32 {
+                                64 + i * 5
+                            } else {
+                                100 + (i % 7) * 6
+                            }
+                        })
+                        .collect();
+                    let bytes = if format == VideoFormat::Nv12 {
+                        samples.iter().map(|v| *v as u8).collect::<Vec<_>>()
+                    } else {
+                        samples
+                            .iter()
+                            .flat_map(|v| (v * 4 * 64).to_le_bytes())
+                            .collect()
+                    };
+                    let gpu = renderer
+                        .import_video(&bytes, encoding, &colour.lut)
+                        .unwrap();
+                    assert_eq!((gpu.width(), gpu.height()), encoding.dimensions());
+                    let pixels = renderer.read_frame(&gpu).unwrap().pixels;
+                    let reference = colour.decoded_pixels(&bytes, encoding);
+                    for (a, b) in pixels.iter().zip(reference) {
+                        for (a, b) in a.iter().zip(b) {
+                            assert!((a - b).abs() < 0.015, "{format:?} {rotation} {a} != {b}");
+                        }
+                    }
+                }
+            }
+        }
+        let colour = Transform::new(1, 13).unwrap();
+        let encoding = VideoEncoding {
+            width: 1,
+            height: 1,
+            format: VideoFormat::Rgba64,
+            rotation: 0,
+            kr: 0.2126,
+            kb: 0.0722,
+            full_range: true,
+            chroma_location: [0.0, 0.5],
+            primaries: colour.matrix,
+        };
+        let bytes = [32768u16, 16384, 60000, 32768]
+            .into_iter()
+            .flat_map(u16::to_le_bytes)
+            .collect::<Vec<_>>();
+        let result = renderer
+            .read_frame(
+                &renderer
+                    .import_video(&bytes, encoding, &colour.lut)
+                    .unwrap(),
+            )
+            .unwrap();
+        for (a, b) in result.pixels[0].iter().zip(colour.pixels(&bytes)[0]) {
+            assert!((a - b).abs() < 1e-6);
+        }
+        assert!(
+            renderer
+                .import_video(&bytes[..7], encoding, &colour.lut)
+                .is_err()
+        );
+        let mut invalid = encoding;
+        invalid.width = 8193;
+        assert!(renderer.import_video(&bytes, invalid, &colour.lut).is_err());
     }
 }

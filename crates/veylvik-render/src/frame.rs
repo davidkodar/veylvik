@@ -86,6 +86,9 @@ pub trait FrameSource: Send + Sync {
         None
     }
     fn frame(&self, time: Time) -> Result<Arc<Image>>;
+    fn gpu_frame(&self, _time: Time, _renderer: &crate::Renderer) -> Result<Option<Arc<GpuFrame>>> {
+        Ok(None)
+    }
     fn byte_budget(&self) -> u64;
 }
 /// The host supplies immutable images; a later render can supply new content under the same key.
@@ -150,6 +153,14 @@ impl ImageInputs {
         )
     }
     pub fn resolve(&self, plan: &crate::Plan, time: Time) -> Result<Self> {
+        self.resolve_on(plan, time, None)
+    }
+    pub(crate) fn resolve_on(
+        &self,
+        plan: &crate::Plan,
+        time: Time,
+        renderer: Option<&crate::Renderer>,
+    ) -> Result<Self> {
         let mut result = self.clone();
         let mut decoded_bytes = 0u64;
         for node in &plan.nodes {
@@ -162,6 +173,18 @@ impl ImageInputs {
                 let time = timing.source_time(time, info.and_then(|i| i.duration))?;
                 let image = if let Some(time) = time {
                     if let Some(source) = self.2.get(asset) {
+                        if let Some(renderer) = renderer
+                            && let Some(frame) = source.gpu_frame(time, renderer)?
+                        {
+                            decoded_bytes += frame.byte_size();
+                            if decoded_bytes > 256 * 1024 * 1024 {
+                                return Err(error(
+                                    "Decoded footage sources exceed 256 MiB per frame",
+                                ));
+                            }
+                            result.insert_gpu(key, frame);
+                            continue;
+                        }
                         source.frame(time)?
                     } else {
                         self.get(asset)
@@ -184,6 +207,16 @@ impl ImageInputs {
             } else if let veylvik_document::Operation::Image { asset } = &node.operation
                 && let Some(source) = self.2.get(asset)
             {
+                if let Some(renderer) = renderer
+                    && let Some(frame) = source.gpu_frame(time, renderer)?
+                {
+                    decoded_bytes += frame.byte_size();
+                    if decoded_bytes > 256 * 1024 * 1024 {
+                        return Err(error("Decoded footage sources exceed 256 MiB per frame"));
+                    }
+                    result.insert_gpu(asset, frame);
+                    continue;
+                }
                 let image = source.frame(time)?;
                 decoded_bytes += image.byte_size();
                 if decoded_bytes > 256 * 1024 * 1024 {

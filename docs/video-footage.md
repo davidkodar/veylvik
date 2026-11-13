@@ -44,19 +44,38 @@ available in **File > Composition settings…**. These edits are undoable.
 
 ## Decoding and colour
 
-This initial adapter uses CPU FFmpeg decoding. Rendering, compositing, effects
-and point matching remain on Vulkan. Hardware decoding and GPU-resident video
-frames are the next performance stage, with software decoding retained as a
-compatibility fallback.
+Video decoding tries NVIDIA NVDEC first, then native Intel/AMD VA-API devices,
+and finally software decoding. A hardware candidate must successfully decode a
+frame before it is selected; unsupported codecs, pixel formats or drivers fall
+back explicitly. The inspector identifies the active backend and any fallback.
+A hardware failure during playback retries the requested frame through software.
 
-Video is indexed by presentation timestamps rather than an assumed constant
-frame rate. Seeking handles reordered frames and variable-frame-rate files.
-Sequential requests reuse a decoder process; random seeks restart it using
-accurate input seeking. Decoded frames use a small bounded cache, and decoder
-pipes apply backpressure. Indexing and decoding run on workers, not the UI thread.
+The hardware path supports even-sized 4:2:0 NV12 and 10-bit P010 sources. It
+transfers these compact planes through host staging, then performs chroma
+reconstruction, range/matrix conversion, rotation, transfer decoding and primary
+conversion on the renderer's Vulkan device. Linear RGBA frames remain on that
+device for effects and display. This is hardware decoding with a staged transfer,
+not zero-copy decode-to-Vulkan interoperability. Software fallback retains FFmpeg
+matrix/range conversion, with transfer and primary conversion on Vulkan.
+
+Indexing reads packet presentation timestamps rather than decoding every frame
+on the CPU or assuming a constant frame rate. Sources must have distinct packet
+presentation timestamps; remux sources with missing or duplicate timestamps.
+Seeking handles reordered frames and variable-frame-rate files. Sequential
+requests reuse the decoder process; random seeks restart it using accurate input
+seeking. Plane caches and decoder pipes are bounded. Indexing and decoding run on
+workers, and inspector metadata never waits for a decoder or GPU fence.
 The cache budget does not include FFmpeg's internal buffers or conversion scratch.
 
-Decoded RGB is converted explicitly to scene-linear Rec.709 using source transfer
+Callers explicitly requesting CPU pixels still have a CPU realization path.
+Normal Studio, CLI/MCP rendering and tracking use the render-device path.
+The Rust `Video::diagnostics()` API reports hardware selection, host staging,
+fallback reason, GPU conversion count and CPU realization count.
+`Video::open_with_policy` permits automatic, software-only or hardware-required
+selection for integrations and diagnostics. Hardware-required mode returns an
+error rather than silently falling back.
+
+Decoded colour is converted explicitly to scene-linear Rec.709 using source transfer
 and primary tags, then premultiplied by alpha exactly once. SDR and PQ transfer
 functions are supported; PQ uses a 100-nit reference without tone mapping.
 Incomplete colour tags are reported in the inspector. Defaults assume Rec.709

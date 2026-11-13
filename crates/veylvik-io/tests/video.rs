@@ -60,7 +60,7 @@ fn video_seeking_matches_sequential_decode_with_b_frames_and_nonzero_start() {
     let frames: Vec<_> = (0..24)
         .map(|n| video.frame(Time::new(n, 24).unwrap()).unwrap())
         .collect();
-    for n in [0, 23, 1, 12, 7, 22, 3] {
+    for n in [0, 23, 1, 5, 12, 7, 22, 3] {
         let sought = video.frame(Time::new(n, 24).unwrap()).unwrap();
         assert_eq!(sought.pixels(), frames[n as usize].pixels(), "frame {n}");
     }
@@ -298,4 +298,168 @@ fn video_colour_is_linear_and_alpha_is_premultiplied() {
     let p = frame.pixels()[0];
     assert!((p[3] - 0.5).abs() < 0.01, "alpha {:?}", p);
     assert!((p[0] - 0.107).abs() < 0.01, "linear premultiplied {:?}", p);
+}
+
+#[test]
+#[ignore = "requires NVIDIA NVDEC, Vulkan and FFmpeg libx264/libx265"]
+fn hardware_frames_stay_linear_on_gpu_and_seek_in_8_and_10_bit() {
+    use veylvik_io::video::{DecodePolicy, Video};
+    use veylvik_render::Renderer;
+    let dir = Scratch::new();
+    let renderer = Renderer::new().unwrap();
+    for (codec, pix, extension) in [
+        ("libx264", "yuv420p", "mp4"),
+        ("libx265", "yuv420p10le", "mp4"),
+    ] {
+        let path = dir.0.join(format!("{codec}.{extension}"));
+        let mut cmd = Command::new("ffmpeg");
+        cmd.args([
+            "-v",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "testsrc2=size=320x180:rate=24:duration=1",
+            "-c:v",
+            codec,
+            "-pix_fmt",
+            pix,
+            "-color_primaries",
+            "bt709",
+            "-color_trc",
+            "bt709",
+            "-colorspace",
+            "bt709",
+            "-threads",
+            "2",
+        ]);
+        if codec == "libx265" {
+            cmd.args(["-x265-params", "log-level=error:pools=2:frame-threads=2"]);
+        }
+        assert!(cmd.arg(&path).status().unwrap().success());
+        let hardware =
+            Video::open_with_policy(&path, 8 * 1024 * 1024, DecodePolicy::HardwareRequired)
+                .unwrap();
+        assert!(hardware.diagnostics().unwrap().hardware);
+        assert_eq!(hardware.diagnostics().unwrap().cpu_realizations, 0);
+        let hardware = Arc::new(hardware);
+        let mut inputs = veylvik_render::ImageInputs::default();
+        inputs.insert_source("clip", hardware.clone());
+        let mut doc = veylvik_document::blank(320, 180, Time::new(24, 1).unwrap()).unwrap();
+        doc.nodes.get_mut(&doc.output).unwrap().operation = veylvik_document::Operation::Footage {
+            asset: "clip".into(),
+            timing: Default::default(),
+            placement: Default::default(),
+        };
+        renderer
+            .render_gpu(
+                &veylvik_render::Plan::compile(&doc).unwrap(),
+                veylvik_render::RenderRequest::full(Time::new(0, 1).unwrap()),
+                &inputs,
+            )
+            .unwrap();
+        assert_eq!(hardware.diagnostics().unwrap().cpu_realizations, 0);
+        let software =
+            Video::open_with_policy(&path, 8 * 1024 * 1024, DecodePolicy::Software).unwrap();
+        let mut sequential = Vec::new();
+        for n in 0..24 {
+            let time = Time::new(n, 24).unwrap();
+            let gpu = hardware.gpu_frame(time, &renderer).unwrap().unwrap();
+            let pixels = renderer.read_frame(&gpu).unwrap().pixels;
+            let reference = hardware.frame(time).unwrap();
+            let difference = pixels
+                .iter()
+                .zip(reference.pixels())
+                .flat_map(|(a, b)| a.iter().zip(b).map(|(a, b)| (a - b).abs()))
+                .fold(0.0f32, f32::max);
+            assert!(
+                difference < 0.001,
+                "GPU versus CPU realization: {difference}"
+            );
+            // Independent FFmpeg software decode checks plane ordering/range/matrix.
+            // Chroma reconstruction differs at edges; compare mean error.
+            let sw = software.frame(time).unwrap();
+            let mean = pixels
+                .iter()
+                .zip(sw.pixels())
+                .flat_map(|(a, b)| a[..3].iter().zip(&b[..3]).map(|(a, b)| (a - b).abs()))
+                .sum::<f32>()
+                / (pixels.len() * 3) as f32;
+            assert!(
+                mean < 0.025,
+                "hardware vs software mean colour error {mean}"
+            );
+            sequential.push(pixels);
+        }
+        let before = hardware.diagnostics().unwrap().cpu_realizations;
+        for n in [0, 23, 1, 5, 12, 7, 22, 3] {
+            let time = Time::new(n, 24).unwrap();
+            let gpu = hardware.gpu_frame(time, &renderer).unwrap().unwrap();
+            assert_eq!(
+                renderer.read_frame(&gpu).unwrap().pixels,
+                sequential[n as usize]
+            );
+            assert!(Arc::ptr_eq(
+                &gpu,
+                &hardware.gpu_frame(time, &renderer).unwrap().unwrap()
+            ));
+        }
+        assert_eq!(hardware.diagnostics().unwrap().cpu_realizations, before);
+        let other = Renderer::new().unwrap();
+        let gpu = hardware
+            .gpu_frame(Time::new(0, 1).unwrap(), &other)
+            .unwrap()
+            .unwrap();
+        assert!(other.owns_frame(&gpu));
+        assert!(!renderer.owns_frame(&gpu));
+    }
+}
+
+#[test]
+#[ignore = "requires NVDEC and Vulkan; UHD throughput diagnostic"]
+fn uhd_decode_reports_real_backend_and_conversion_cost() {
+    use veylvik_io::video::{DecodePolicy, Video};
+    let dir = Scratch::new();
+    let path = dir.0.join("uhd.mp4");
+    assert!(
+        Command::new("ffmpeg")
+            .args([
+                "-v",
+                "error",
+                "-f",
+                "lavfi",
+                "-i",
+                "testsrc2=size=3840x2160:rate=24:duration=1",
+                "-c:v",
+                "libx264",
+                "-preset",
+                "ultrafast",
+                "-pix_fmt",
+                "yuv420p",
+                "-threads",
+                "2"
+            ])
+            .arg(&path)
+            .status()
+            .unwrap()
+            .success()
+    );
+    let renderer = veylvik_render::Renderer::new().unwrap();
+    for policy in [DecodePolicy::HardwareRequired, DecodePolicy::Software] {
+        let video = Video::open_with_policy(&path, 128 * 1024 * 1024, policy).unwrap();
+        let started = std::time::Instant::now();
+        for n in 0..24 {
+            video
+                .gpu_frame(Time::new(n, 24).unwrap(), &renderer)
+                .unwrap();
+        }
+        let elapsed = started.elapsed();
+        let diagnostics = video.diagnostics().unwrap();
+        assert_eq!(diagnostics.cpu_realizations, 0);
+        assert_eq!(diagnostics.gpu_conversions, 24);
+        eprintln!(
+            "UHD {policy:?}: {elapsed:?}, {:.1} frames/s, {diagnostics:?}",
+            24.0 / elapsed.as_secs_f64()
+        );
+    }
 }
