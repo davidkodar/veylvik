@@ -38,6 +38,10 @@ fn duration_frames(duration: Time, rate: Time) -> u32 {
     let denominator = i128::from(duration.rate) * i128::from(rate.rate);
     ((numerator + denominator - 1) / denominator).clamp(1, u32::MAX as i128) as u32
 }
+/// The current composition's settings matched to `info` (size, rate and duration), in place.
+pub(crate) fn matched_current(doc: &veylvik_document::Composition, info: &SourceInfo) -> Settings {
+    matched(Settings::current(doc), info, true, true)
+}
 fn matched(mut settings: Settings, info: &SourceInfo, rate: bool, duration: bool) -> Settings {
     settings.width = info.width;
     settings.height = info.height;
@@ -66,12 +70,22 @@ impl Studio {
         }
     }
     pub(crate) fn new_from_media(&mut self) {
+        self.new_from_media_path(None);
+    }
+    /// Creates a composition matched to `path`, or asks with the file picker when `None`.
+    pub(crate) fn new_from_media_path(&mut self, path: Option<PathBuf>) {
         let folder = self.project.base.clone();
         let session = self.project.session;
         let revision = self.project.document.revision();
         let result = self.files.start(move || {
-            let Some(path) = files::select(Choice::Import, &folder, "")? else {
-                return Ok(Completed::Cancelled);
+            let path = match path {
+                Some(path) => path,
+                None => {
+                    let Some(path) = files::select(Choice::Import, &folder, "")? else {
+                        return Ok(Completed::Cancelled);
+                    };
+                    path
+                }
             };
             let path = path.canonicalize().map_err(|e| e.to_string())?;
             let image =

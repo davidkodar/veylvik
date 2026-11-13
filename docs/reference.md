@@ -907,14 +907,29 @@ tool error saying so; when another client holds the editor, the call gives up af
 five seconds and says the editor is busy.
 
 Live tools are `inspect`, `graph`, `get_node`, `nodes`, `diagnostics`, `apply`,
-`duplicate_branch`, `add_effect`, `undo`, `redo`, `preview`, and `preview_image`.
+`duplicate_branch`, `add_effect`, `get_preset`, `insert_preset`, `undo`, `redo`,
+`preview`, `preview_image`, `new_project`, `open_project`, `new_from_media` and
+`import_media`.
+
+`new_project` replaces the open project with an empty composition (`width`, `height`,
+optional `frame_rate` as `{ticks, rate}` and `frame_count`) and returns its session.
+`open_project` and `new_from_media` take an absolute `path` and run on the editor's file
+worker like the File menu: they return `started`, `inspect` reports `busy` until the job
+finishes, and a new `session` once the project is open (`status` and `error` report
+failures). All three refuse while the open project has unsaved changes unless
+`discard_changes` is true; nothing is saved implicitly. `import_media` imports an
+absolute `path` (video, PNG, OpenEXR, or a numbered sequence with `sequence: true`) into
+the current session and revision, exactly like **Import media…**, and selects the new
+Footage node when done. With `match_composition: true` an empty composition adopts the
+media's size, frame rate and duration; the matching dialog is never shown for live
+imports.
 `inspect` returns a project `session` UUID and `revision`; both are required for
 edits, undo/redo, and preview. Opening a project creates a new session identity,
 so an old command cannot target a newly opened project with the same revision.
 Edits run on the UI thread, appear in the editor, and share its undo history.
 `apply` supports dry runs and uses the same command schema as headless editing.
 Unapplied inspector drafts, active node drags, and file jobs block remote changes.
-New image paths must be imported through the editor. Existing asset references,
+New media paths enter through `import_media` (or the editor). Existing asset references,
 including unavailable sources, can remain in live edits; `inspect.unavailable_assets`
 reports their load errors. `preview` accepts an
 absolute `frame` in 0–1000000 and optional `node`, pauses playback, and requests

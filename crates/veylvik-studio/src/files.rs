@@ -48,6 +48,8 @@ pub enum Completed {
         position: veylvik_document::NodePosition,
         path: PathBuf,
         image: Media,
+        /// Whether an empty composition adopts the media's settings; `None` asks the user.
+        matching: Option<bool>,
     },
     Reloaded {
         session: veylvik_document::NodeId,

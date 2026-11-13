@@ -784,19 +784,27 @@ impl Studio {
                 });
                 self.file_started(result);
             }
-            Leave::Open => {
-                let folder = self.project.base.clone();
-                let result = self.files.start(move || {
+            Leave::Open => self.open_path(None),
+        }
+    }
+    /// Opens `path`, or asks with the file picker when `None`, on the file worker.
+    pub(crate) fn open_path(&mut self, path: Option<PathBuf>) {
+        let folder = self.project.base.clone();
+        let result = self.files.start(move || {
+            let path = match path {
+                Some(path) => path,
+                None => {
                     let Some(path) = files::select(Choice::Open, &folder, "")? else {
                         return Ok(Completed::Cancelled);
                     };
-                    Project::open(Some(&path))
-                        .map(|project| Completed::Opened(Box::new(project)))
-                        .map_err(|e| e.to_string())
-                });
-                self.file_started(result);
-            }
-        }
+                    path
+                }
+            };
+            Project::open(Some(&path))
+                .map(|project| Completed::Opened(Box::new(project)))
+                .map_err(|e| e.to_string())
+        });
+        self.file_started(result);
     }
     fn import_text_font(&mut self, selection: font_browser::Selection) {
         if self.files.busy() {
@@ -965,6 +973,17 @@ impl Studio {
         self.import_media(position, false);
     }
     fn import_media(&mut self, position: veylvik_document::NodePosition, sequence: bool) {
+        self.import_media_from(position, sequence, None, None);
+    }
+    /// Imports `path`, or asks with the file picker when `None`. `matching` decides whether
+    /// an empty composition adopts the media's settings; `None` asks with the dialog.
+    pub(crate) fn import_media_from(
+        &mut self,
+        position: veylvik_document::NodePosition,
+        sequence: bool,
+        path: Option<PathBuf>,
+        matching: Option<bool>,
+    ) {
         if self.files.busy() || !self.apply_draft() {
             return;
         }
@@ -977,17 +996,19 @@ impl Studio {
             .saturating_sub(self.project.inputs.byte_size())
             .min(128 * 1024 * 1024);
         let result = self.files.start(move || {
-            let Some(path) = files::select(
-                if sequence {
-                    Choice::ImportSequence
-                } else {
-                    Choice::Import
-                },
-                &folder,
-                "",
-            )?
-            else {
-                return Ok(Completed::Cancelled);
+            let path = match path {
+                Some(path) => path,
+                None => {
+                    let choice = if sequence {
+                        Choice::ImportSequence
+                    } else {
+                        Choice::Import
+                    };
+                    let Some(path) = files::select(choice, &folder, "")? else {
+                        return Ok(Completed::Cancelled);
+                    };
+                    path
+                }
             };
             let path = path.canonicalize().map_err(|e| e.to_string())?;
             let (path, image) = if sequence {
@@ -1003,6 +1024,7 @@ impl Studio {
                 position,
                 path,
                 image,
+                matching,
             })
         });
         self.file_started(result);
@@ -1236,9 +1258,15 @@ impl Studio {
                 position,
                 session,
                 revision,
+                matching,
             }) => {
                 if session != self.project.session || revision != self.project.document.revision() {
                     self.fail("Import became obsolete; import again for the current composition.");
+                } else if let Some(matching) = matching {
+                    let settings = matching.then(|| image.info()).flatten().map(|info| {
+                        media_import::matched_current(self.project.document.snapshot(), &info)
+                    });
+                    self.finish_import(path, image, position, settings);
                 } else if self.project.is_empty()
                     && image.info().is_some_and(|i| {
                         let doc = self.project.document.snapshot();
@@ -2201,7 +2229,7 @@ impl eframe::App for Studio {
             let Some(request) = self.control.as_ref().and_then(|server| server.try_recv()) else {
                 break;
             };
-            control::dispatch(self, request);
+            control::dispatch(self, request, &ctx);
         }
         ctx.request_repaint_after(Duration::from_secs(2));
         if let Some(scheduler) = &self.scheduler {

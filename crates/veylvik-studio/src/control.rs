@@ -28,8 +28,16 @@ fn validate_arguments(name: &str, args: &Value) -> Result<()> {
     }
     Ok(())
 }
-pub fn call(studio: &mut Studio, name: &str, args: &Value) -> Result<Value> {
+pub fn call(
+    studio: &mut Studio,
+    name: &str,
+    args: &Value,
+    ctx: &eframe::egui::Context,
+) -> Result<Value> {
     validate_arguments(name, args)?;
+    if let Some(result) = project_files(studio, name, args, ctx)? {
+        return Ok(result);
+    }
     if name == "nodes" {
         return Ok(veylvik_document::registry::catalog());
     }
@@ -324,10 +332,14 @@ fn snapshot(studio: &Studio, args: &Value) -> Result<crate::preview_images::Snap
     })
 }
 
-pub fn dispatch(studio: &mut Studio, request: veylvik_control::ipc::Request) {
+pub fn dispatch(
+    studio: &mut Studio,
+    request: veylvik_control::ipc::Request,
+    ctx: &eframe::egui::Context,
+) {
     if request.name != "preview_image" {
         let result =
-            call(studio, &request.name, &request.arguments).map_err(|error| error.to_string());
+            call(studio, &request.name, &request.arguments, ctx).map_err(|error| error.to_string());
         request.respond(result);
         return;
     }
@@ -345,5 +357,115 @@ pub fn dispatch(studio: &mut Studio, request: veylvik_control::ipc::Request) {
             snapshot,
         ),
         Err(error) => request.respond(Err(error.to_string())),
+    }
+}
+
+/// New, open and import: project-level file actions through the editor's own file jobs.
+/// `None` for every other tool.
+fn project_files(
+    studio: &mut Studio,
+    name: &str,
+    args: &Value,
+    ctx: &eframe::egui::Context,
+) -> Result<Option<Value>> {
+    if !matches!(
+        name,
+        "new_project" | "open_project" | "new_from_media" | "import_media"
+    ) {
+        return Ok(None);
+    }
+    if studio.files.busy()
+        || studio.authoring_dialog_open()
+        || studio.confirm.is_some()
+        || studio.graph.dragging()
+        || studio.animation_editor.dragging()
+    {
+        return Err("editor is busy; finish the current interaction first".into());
+    }
+    let path = || -> Result<std::path::PathBuf> {
+        let path = std::path::PathBuf::from(args["path"].as_str().ok_or("path must be a string")?);
+        if !path.is_absolute() {
+            return Err("path must be absolute".into());
+        }
+        if !path.exists() {
+            return Err(format!("{} does not exist", path.display()).into());
+        }
+        Ok(path)
+    };
+    if name == "import_media" {
+        // The job re-checks both on completion, so an edit in between makes it obsolete.
+        identity(&studio.project, args)?;
+        if studio.draft_dirty {
+            return Err("Apply or revert the inspector draft before importing".into());
+        }
+        let path = path()?;
+        let sequence = args
+            .get("sequence")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        let matching = args
+            .get("match_composition")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        let position = match args.get("position") {
+            Some(p) => serde_json::from_value(p.clone())?,
+            None => studio.graph.insertion_position(ctx),
+        };
+        studio.import_media_from(position, sequence, Some(path), Some(matching));
+        return Ok(Some(
+            json!({"started": studio.files.busy(), "session": studio.project.session}),
+        ));
+    }
+    let discard = args
+        .get("discard_changes")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    if (studio.project.dirty() || studio.draft_dirty) && !discard {
+        return Err("The open project has unsaved changes; save it in the editor, or pass discard_changes: true".into());
+    }
+    let previous = studio.project.session;
+    studio.draft_dirty = false;
+    match name {
+        "new_project" => {
+            let size = |key: &str| -> Result<u32> {
+                Ok(u32::try_from(
+                    args[key]
+                        .as_u64()
+                        .ok_or(format!("{key} must be an integer"))?,
+                )?)
+            };
+            let frame_rate = match args.get("frame_rate") {
+                Some(rate) => serde_json::from_value(rate.clone())?,
+                None => veylvik_document::Time { ticks: 24, rate: 1 },
+            };
+            let frame_count = match args.get("frame_count") {
+                Some(count) => {
+                    u32::try_from(count.as_u64().ok_or("frame_count must be an integer")?)?
+                }
+                None => veylvik_document::DEFAULT_FRAME_COUNT,
+            };
+            let project = crate::project::Project::blank(
+                size("width")?,
+                size("height")?,
+                frame_rate,
+                frame_count,
+            )?;
+            studio.open_project(project, ctx);
+            Ok(Some(
+                json!({"session": studio.project.session, "revision": studio.project.document.revision()}),
+            ))
+        }
+        "open_project" => {
+            studio.open_path(Some(path()?));
+            Ok(Some(
+                json!({"started": studio.files.busy(), "previous_session": previous}),
+            ))
+        }
+        _ => {
+            studio.new_from_media_path(Some(path()?));
+            Ok(Some(
+                json!({"started": studio.files.busy(), "previous_session": previous}),
+            ))
+        }
     }
 }
