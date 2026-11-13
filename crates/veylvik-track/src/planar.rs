@@ -1,5 +1,5 @@
 //! GPU planar feature detection and batched perspective-aware patch matching.
-use crate::estimate::{Consensus, estimate};
+use crate::estimate::{Consensus, Motion, estimate};
 use crate::{Result, error};
 use std::sync::Arc;
 use veylvik_document::planar::{self, Feature, Homography, Point, Quad};
@@ -24,6 +24,8 @@ pub struct Settings {
     /// for floors, roads and other planes that keep filling the same part of the frame
     /// while the camera moves, each re-anchor detects fresh texture there.
     pub screen_area: bool,
+    /// Transformations the surface may undergo; see [`Motion`].
+    pub motion: Motion,
 }
 impl Default for Settings {
     fn default() -> Self {
@@ -33,6 +35,7 @@ impl Default for Settings {
             tolerance_pixels: 2.,
             reanchor_below: 24,
             screen_area: false,
+            motion: Motion::Auto,
         }
     }
 }
@@ -525,7 +528,7 @@ impl PlanarTracker {
                 accepted: false,
             });
         }
-        let consensus = estimate(&features, size, settings.tolerance_pixels)
+        let consensus = estimate(&features, size, settings.tolerance_pixels, settings.motion)
             .map_err(|e| error(e.to_string()))?;
         for (f, &accepted) in features.iter_mut().zip(&consensus.accepted) {
             f.accepted = accepted;

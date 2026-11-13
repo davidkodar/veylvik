@@ -401,6 +401,15 @@ impl Studio {
                             .response
                             .on_hover_text("A mask whose alpha covers foreground objects (people, cars, hands) crossing the surface. Matches under it are ignored on every frame, so the plane stays locked behind them. Animate the mask with the path tools.");
                     }
+                    egui::ComboBox::from_label("Motion")
+                        .selected_text(self.planar.settings.motion.label())
+                        .show_ui(ui, |ui| {
+                            for model in veylvik_track::estimate::Motion::ALL {
+                                ui.selectable_value(&mut self.planar.settings.motion, model, model.label());
+                            }
+                        })
+                        .response
+                        .on_hover_text("How the surface may move between frames. Automatic uses perspective only when the matches clearly need it; simpler models need fewer matches and keep distant or off-screen corners steady.");
                     let mut separate = self.planar.area.is_some();
                     if ui.checkbox(&mut separate, "Separate tracking area")
                         .on_hover_text("Analyze a larger textured area of the same plane (amber) than the corners the layer is pinned to (cyan). Corners can then sit on blank or partly hidden parts of the surface, and tracking lasts while any of the area stays in view.")

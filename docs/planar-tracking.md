@@ -91,6 +91,25 @@ lighting, texture, wear, displacement, softness and grain; see
 outline workflow. Rejected feature matches diagnose tracking; they are not
 an occlusion mask and do not automatically transfer cracks or wear to a layer.
 
+## Motion models
+
+**Motion** in Tracking settings limits how the surface may move between frames:
+**Position**, **Position, rotation, scale**, **Affine (shear)**, **Perspective**, or
+**Automatic** (the default). Simpler models need fewer matches (two to five accepted
+instead of six) and cannot invent perspective the evidence does not support, which
+keeps distant or off-screen corners steady on small or low-texture areas. Rotation and
+scale are fitted in pixels, so portrait and landscape frames behave alike.
+**Automatic** fits both perspective and affine motion on every frame and keeps the
+affine result unless perspective explains clearly more matches or clearly smaller
+errors; when too few matches remain for either, it falls back to similarity and then
+translation. Choose **Perspective** to force full perspective on surfaces that turn
+strongly towards or away from the camera. Headless tools take `motion` with the values
+`auto`, `perspective`, `affine`, `similarity` and `translation`.
+
+A track still ends when the pinned corners pass behind the camera, for example the near
+end of a wall the camera walks past. That is the geometry of the shot, not a tracker
+failure; keep the corners on the part of the surface that stays in front of the camera.
+
 ## Occlusion
 
 People, cars or hands crossing the surface pull matches away from the plane. Choose
@@ -145,7 +164,7 @@ frame. The result is written to a new project with one added Planar track node, 
 JSON report gives the tracked range, why it stopped, re-anchors and worst error.
 
 The headless MCP server exposes `track_surface` with the same inputs (`source`,
-`surface`, `start`, `end`) plus optional `occlusion`, `region`, `area_follows`,
+`surface`, `start`, `end`) plus optional `motion`, `occlusion`, `region`, `area_follows`,
 `feature_radius`, `search_radius`, `tolerance` and `reanchor`. It adds the Planar track node as one undoable
 transaction; connect it to `planar_warp` nodes with `apply`. Both operations, their
 data schema, and all three warp modes are also exposed through the node catalog and

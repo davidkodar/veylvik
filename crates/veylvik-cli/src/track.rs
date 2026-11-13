@@ -47,6 +47,11 @@ impl Request {
                 _ => return Err("area_follows must be \"surface\" or \"screen\"".into()),
             };
         }
+        if let Some(value) = args.get("motion") {
+            settings.motion = serde_json::from_value(value.clone()).map_err(
+                |_| "motion must be auto, perspective, affine, similarity or translation",
+            )?;
+        }
         if let Some(value) = args.get("reanchor") {
             settings.reanchor_below = if value.as_bool().ok_or("reanchor must be boolean")? {
                 24
@@ -144,6 +149,7 @@ pub fn run(
         "complete": range.stop == veylvik_track::planar::Stop::Complete,
         "message": range.stop.message(), "reanchored": range.anchors - 1,
         "worst_rms_pixels": worst,
+        "motion": request.settings.motion,
     });
     let (node, commands) = veylvik_document::planar::save(doc, request.source, range.data)?;
     Ok((node, commands, report))
