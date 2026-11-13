@@ -2,6 +2,11 @@
 use eframe::egui::{self, Widget};
 #[derive(Clone, Copy)]
 pub enum Icon {
+    Effects,
+    Materials,
+    Templates,
+    Media,
+    Inspector,
     AlignLeft,
     AlignCenter,
     AlignRight,
@@ -23,6 +28,7 @@ pub struct Button {
     label: String,
     selected: bool,
     tooltip: bool,
+    caption: bool,
 }
 impl Button {
     pub fn new(icon: Icon, label: impl Into<String>) -> Self {
@@ -31,7 +37,12 @@ impl Button {
             label: label.into(),
             selected: false,
             tooltip: true,
+            caption: false,
         }
+    }
+    pub fn caption(mut self) -> Self {
+        self.caption = true;
+        self
     }
     /// Keeps the label for accessibility but leaves the hover tooltip to the caller.
     pub fn without_tooltip(mut self) -> Self {
@@ -45,18 +56,100 @@ impl Button {
 }
 impl Widget for Button {
     fn ui(self, ui: &mut egui::Ui) -> egui::Response {
-        let (rect, response) = ui.allocate_exact_size(egui::vec2(22.0, 22.0), egui::Sense::click());
+        let (rect, response) = ui.allocate_exact_size(
+            if self.caption {
+                egui::vec2(54., 48.)
+            } else {
+                egui::vec2(22., 22.)
+            },
+            egui::Sense::click(),
+        );
         response.widget_info(|| {
             egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), &self.label)
         });
         let visuals = ui.style().interact_selectable(&response, self.selected);
         let painter = ui.painter();
-        let c = rect.center();
+        let c = rect.center()
+            - if self.caption {
+                egui::vec2(0., 8.)
+            } else {
+                egui::Vec2::ZERO
+            };
         let colour = visuals.fg_stroke.color;
         if response.hovered() || self.selected {
             painter.rect_filled(rect, 4.0, visuals.bg_fill);
         }
+        if self.caption {
+            painter.text(
+                egui::pos2(rect.center().x, rect.bottom() - 5.),
+                egui::Align2::CENTER_BOTTOM,
+                &self.label,
+                egui::FontId::proportional(10.),
+                colour,
+            );
+        }
         match self.icon {
+            Icon::Effects => {
+                painter.add(egui::Shape::closed_line(
+                    vec![
+                        c + egui::vec2(0., -8.),
+                        c + egui::vec2(2., -2.),
+                        c + egui::vec2(8., 0.),
+                        c + egui::vec2(2., 2.),
+                        c + egui::vec2(0., 8.),
+                        c + egui::vec2(-2., 2.),
+                        c + egui::vec2(-8., 0.),
+                        c + egui::vec2(-2., -2.),
+                    ],
+                    egui::Stroke::new(1.4_f32, colour),
+                ));
+            }
+            Icon::Materials => {
+                painter.circle_stroke(c, 7., egui::Stroke::new(1.4_f32, colour));
+                painter.line_segment(
+                    [c + egui::vec2(-4., 3.), c + egui::vec2(3., -4.)],
+                    (1.4, colour),
+                );
+            }
+            Icon::Templates => {
+                for x in [-6., 2.] {
+                    for y in [-6., 2.] {
+                        painter.rect_stroke(
+                            egui::Rect::from_min_size(c + egui::vec2(x, y), egui::Vec2::splat(5.)),
+                            1.,
+                            (1.2, colour),
+                            egui::StrokeKind::Inside,
+                        );
+                    }
+                }
+            }
+            Icon::Media => {
+                painter.rect_stroke(
+                    egui::Rect::from_center_size(c, egui::vec2(16., 12.)),
+                    1.,
+                    (1.3, colour),
+                    egui::StrokeKind::Inside,
+                );
+                painter.add(egui::Shape::convex_polygon(
+                    vec![
+                        c + egui::vec2(-2., -3.),
+                        c + egui::vec2(3., 0.),
+                        c + egui::vec2(-2., 3.),
+                    ],
+                    colour,
+                    egui::Stroke::NONE,
+                ));
+            }
+            Icon::Inspector => {
+                for (y, x) in [(-5., -3.), (0., 3.), (5., -1.)] {
+                    painter.line_segment(
+                        [c + egui::vec2(-7., y), c + egui::vec2(7., y)],
+                        (1.2, colour),
+                    );
+                    painter.circle_filled(c + egui::vec2(x, y), 2., colour);
+                }
+            }
+
             Icon::AlignLeft | Icon::AlignCenter | Icon::AlignRight => {
                 for row in 0..4 {
                     let width = if row % 2 == 0 { 12. } else { 8. };

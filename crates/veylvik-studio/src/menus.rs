@@ -108,6 +108,7 @@ impl Studio {
             });
             ui.menu_button("View", |ui| {
                 ui.checkbox(&mut self.browser.visible, "Library panel");
+                ui.checkbox(&mut self.inspector_visible, "Inspector panel");
                 if item(ui, "Preview selected node", "", true) {
                     self.project.preview = Some(self.project.selected); self.request_preview();
                 }

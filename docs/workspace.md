@@ -3,7 +3,9 @@
 The docked **Library** sits on the left, the viewer and node workspace in the
 centre, and the Inspector on the right. Resize the panel dividers to suit your
 screen. Collapse the Library with its header arrow; restore it through
-**View > Library panel**. Narrow windows use a compact library button.
+the persistent Effects, Materials, Templates or Media buttons on the left rail.
+The Inspector also has a collapse arrow and a persistent button on the right.
+Both panels can be toggled from the View menu.
 
 Use the Library tabs to browse effects, materials, example templates or imported
 media. Search filters the current tab. Materials also have category filters.
@@ -38,3 +40,6 @@ The keyframe strip uses labelled frame ticks that adapt to the available width
 and composition duration. Click or drag anywhere on the ruler to scrub; clicking
 near a keyframe snaps to it. The previous/next key buttons still navigate the
 selected node's applied keys.
+
+Auto-arrange is enabled by default and adapts the node canvas to its available
+space. Manually moving a node switches it off so your arrangement stays yours.

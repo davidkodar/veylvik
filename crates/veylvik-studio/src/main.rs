@@ -204,6 +204,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 effects: effects::Controls::default(),
                 library: preset_library::Library::default(),
                 browser: asset_browser::Browser::default(),
+                inspector_visible: true,
                 node_palette: node_palette::Controls::default(),
                 node_finder: node_finder::Controls::default(),
                 key_timeline: key_timeline::Keys::default(),
@@ -281,6 +282,7 @@ struct Studio {
     effects: effects::Controls,
     library: preset_library::Library,
     browser: asset_browser::Browser,
+    inspector_visible: bool,
     node_palette: node_palette::Controls,
     node_finder: node_finder::Controls,
     key_timeline: key_timeline::Keys,
@@ -1481,6 +1483,13 @@ impl Studio {
         ui.horizontal(|ui| {
             ui.set_min_height(28.);
             ui.heading("Inspector");
+            if ui
+                .add(icons::Button::new(icons::Icon::Right, "Collapse inspector"))
+                .clicked()
+            {
+                self.inspector_visible = false;
+            }
+
             if self.draft_dirty {
                 ui.horizontal(|ui| {
                     if ui
@@ -2516,6 +2525,7 @@ impl eframe::App for Studio {
                     );
                 });
                 self.asset_browser(ui);
+                if self.inspector_visible {
                 egui::Panel::right("inspector").frame(design::panel())
                     .default_size(414.0)
                     .min_size(340.0)
@@ -2540,6 +2550,11 @@ impl eframe::App for Studio {
                             .id_salt(("inspector-body", editable_text::body_id(ui)))
                             .show(ui, |ui| self.inspector(ui));
                     });
+                } else {
+                    egui::Panel::right("inspector-tool-rail").exact_size(76.).frame(design::panel()).show_inside(ui,|ui| {
+                        if ui.add(icons::Button::new(icons::Icon::Inspector,"Inspector").caption()).clicked() {self.inspector_visible=true;}
+                    });
+                }
                 egui::Panel::bottom("graph").frame(design::panel())
                     .default_size(300.0)
                     .min_size(130.0)

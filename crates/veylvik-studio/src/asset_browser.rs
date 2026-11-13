@@ -82,20 +82,25 @@ fn label(entry: builtin::Builtin) -> String {
 impl Studio {
     pub(super) fn asset_browser(&mut self, ui: &mut egui::Ui) {
         if !self.browser.visible {
-            return;
-        }
-        if ui.available_width() < 1100. {
-            egui::Panel::left("compact-library")
-                .exact_size(32.)
+            egui::Panel::left("library-tool-rail")
+                .exact_size(76.)
+                .frame(design::panel())
                 .show_inside(ui, |ui| {
-                    if ui
-                        .add(icons::Button::new(
-                            icons::Icon::Right,
-                            "Open library (compact workspace)",
-                        ))
-                        .clicked()
-                    {
-                        self.open_preset_library(ui.ctx());
+                    for (tab, icon, label) in [
+                        (Tab::Effects, icons::Icon::Effects, "Effects"),
+                        (Tab::Materials, icons::Icon::Materials, "Materials"),
+                        (Tab::Templates, icons::Icon::Templates, "Templates"),
+                        (Tab::Media, icons::Icon::Media, "Media"),
+                    ] {
+                        if ui.add(icons::Button::new(icon, label).caption()).clicked() {
+                            if self.browser.tab != tab {
+                                self.browser.query.clear();
+                                self.browser.category = "All".into();
+                                self.browser.selected = None;
+                            }
+                            self.browser.tab = tab;
+                            self.browser.visible = true;
+                        }
                     }
                 });
             return;
