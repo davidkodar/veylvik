@@ -249,8 +249,10 @@ impl Gallery {
         id: &'static str,
         width: f32,
     ) -> egui::Response {
-        let (rect, response) =
-            ui.allocate_exact_size(egui::vec2(width, width * 9. / 16.), egui::Sense::click());
+        let (rect, response) = ui.allocate_exact_size(
+            egui::vec2(width, width * 9. / 16.),
+            egui::Sense::click_and_drag(),
+        );
         if !ui.is_rect_visible(rect) {
             return response;
         }

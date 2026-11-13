@@ -314,6 +314,7 @@ struct Studio {
 impl Studio {
     fn authoring_dialog_open(&self) -> bool {
         self.library.open
+            || self.browser.choosing()
             || self.occlusion.open
             || self.effects.open
             || self.outline_controls.open
@@ -2097,6 +2098,9 @@ impl Studio {
             self.project.selected,
             self.accent,
         );
+        if let Some(rect) = self.graph.canvas_rect() {
+            self.library_drop_target(ui, rect, true);
+        }
         for action in actions {
             match action {
                 graph::Action::Copy => self.copy_graph_nodes(ui.ctx()),
@@ -2253,6 +2257,7 @@ impl Studio {
     fn dialogs(&mut self, ctx: &egui::Context) {
         self.effect_dialog(ctx);
         self.preset_library(ctx);
+        self.library_drop_options(ctx);
         if let Some(action) = self.confirm {
             egui::Window::new("Unsaved changes")
                 .collapsible(false)
@@ -2789,6 +2794,7 @@ impl eframe::App for Studio {
                             self.sample_colour(picking, region);
                         }
                         self.occlusion_canvas(ui, canvas, transform, image);
+                        self.library_drop_target(ui,canvas,false);
                         if self.picking.is_none()
                             && !self.occlusion_pending()
                             && let Operation::Path(veylvik_document::nodes::Path { geometry }) = &self.draft.operation

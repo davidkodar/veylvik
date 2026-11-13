@@ -161,6 +161,9 @@ impl Default for Graph {
     }
 }
 impl Graph {
+    pub(super) fn canvas_rect(&self) -> Option<Rect> {
+        self.canvas
+    }
     pub fn expand(&mut self, id: NodeId) {
         self.expanded.insert(id);
         self.auto_view = None;

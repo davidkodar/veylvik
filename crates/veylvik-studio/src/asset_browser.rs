@@ -14,7 +14,21 @@ enum Tab {
     Templates,
     Media,
 }
+#[derive(Clone, Copy)]
+pub(super) struct LibraryDrag {
+    id: &'static str,
+    template: bool,
+}
+#[derive(Clone, Copy)]
+enum Use {
+    Text,
+    Configure,
+    Example,
+    Background,
+    Foreground,
+}
 pub struct Browser {
+    drop_choice: Option<(LibraryDrag, Option<veylvik_document::NodePosition>)>,
     pub visible: bool,
     tab: Tab,
     query: String,
@@ -23,10 +37,16 @@ pub struct Browser {
     textures: BTreeMap<&'static str, egui::TextureHandle>,
     gallery: crate::showcase_gallery::Gallery,
 }
+impl Browser {
+    pub(super) fn choosing(&self) -> bool {
+        self.drop_choice.is_some()
+    }
+}
 impl Default for Browser {
     fn default() -> Self {
         Self {
             visible: true,
+            drop_choice: None,
             tab: Tab::Materials,
             query: String::new(),
             category: "All".into(),
@@ -106,6 +126,8 @@ impl Studio {
             return;
         }
 
+        let mut use_action = None;
+        let can_fill_text = matches!(self.draft.operation, Operation::Text(_));
         let mut chosen = None;
         let mut apply = None;
         let mut details = None;
@@ -161,7 +183,7 @@ impl Studio {
                             ui.vertical(|ui| {
                                 ui.set_width(width);
                                 let response=if let Some(bytes)=swatch(entry.id).filter(|_|self.browser.tab==Tab::Materials) {
-                                    let (rect,response)=ui.allocate_exact_size(egui::vec2(width,width),egui::Sense::click());
+                                    let (rect,response)=ui.allocate_exact_size(egui::vec2(width,width),egui::Sense::click_and_drag());
                                     if ui.is_rect_visible(rect) {
                                         let texture=self.browser.textures.entry(entry.id).or_insert_with(|| {
                                             let image=image::load_from_memory(bytes).expect("bundled material sample").to_rgba8();
@@ -173,9 +195,14 @@ impl Studio {
                                     response
                                 } else {self.browser.gallery.tile(ui,entry.id,width)};
                                 if response.hovered() || self.browser.selected==Some(entry.id) {ui.painter().rect_stroke(response.rect,6.,egui::Stroke::new(1.5_f32,if self.browser.selected==Some(entry.id) {design::ACCENT} else {design::BORDER}),egui::StrokeKind::Inside);}
+                                let title=ui.add_sized([width,26.],egui::Button::new(label(entry)).frame(false).sense(egui::Sense::click_and_drag()));
+                                let payload=LibraryDrag{id:entry.id,template:self.browser.tab==Tab::Templates};
+                                for response in [&response,&title] {response.dnd_set_drag_payload(payload);}
+                                let response=response.union(title);
                                 if response.clicked() {chosen=Some(entry.id);}
-                                response.on_hover_text(entry.description);
-                                if ui.add_sized([width,26.],egui::Button::new(label(entry)).frame(false)).clicked() {chosen=Some(entry.id);}
+                                if response.double_clicked() {use_action=Some((payload,if payload.template {Use::Example}else if builtin::is_material(entry.id)&&can_fill_text {Use::Text}else{Use::Configure}));}
+                                response.context_menu(|ui| {if let Some(action)=usage_options(ui,payload,can_fill_text) {use_action=Some((payload,action));ui.close();}});
+                                response.on_hover_text(format!("{}\nDouble-click to use · right-click for actions · drag to viewer or nodes",entry.description));
                             });
                         }});
                     }
@@ -193,6 +220,9 @@ impl Studio {
                 } else {ui.weak("Select an item to preview or apply it.");}
             }
         });
+        if let Some((item, action)) = use_action {
+            self.use_library_item(item, action, None, ui.ctx());
+        }
         if let Some(id) = chosen {
             self.browser.selected = Some(id);
         }
@@ -335,5 +365,173 @@ impl Studio {
         ui.separator();
         changed |= crate::editable_text::transform_overview(ui, &mut self.draft.operation, time);
         changed
+    }
+}
+
+fn usage_options(ui: &mut egui::Ui, item: LibraryDrag, can_fill_text: bool) -> Option<Use> {
+    let mut action = None;
+    if builtin::is_material(item.id) {
+        if ui
+            .add_enabled(can_fill_text, egui::Button::new("Apply to selected text"))
+            .clicked()
+        {
+            action = Some(Use::Text);
+        }
+        if ui.button("Use as background").clicked() {
+            action = Some(Use::Background);
+        }
+        if ui.button("Use as foreground").clicked() {
+            action = Some(Use::Foreground);
+        }
+        ui.separator();
+    }
+    if ui.button("Apply to composition…").clicked() {
+        action = Some(Use::Configure);
+    }
+    if ui
+        .button(if item.template {
+            "Open starter scene…"
+        } else {
+            "Try example scene…"
+        })
+        .clicked()
+    {
+        action = Some(Use::Example);
+    }
+    action
+}
+impl Studio {
+    fn use_library_item(
+        &mut self,
+        item: LibraryDrag,
+        action: Use,
+        position: Option<veylvik_document::NodePosition>,
+        ctx: &egui::Context,
+    ) {
+        if self.files.busy() || self.authoring_dialog_open() {
+            return;
+        }
+        match action {
+            Use::Example => self.leave(crate::Leave::Example(item.id), ctx),
+            Use::Configure => {
+                self.open_preset_library(ctx);
+                if self.library.open {
+                    self.library.detail = Some(item.id);
+                    if position.is_some() {
+                        self.library.position = position;
+                    }
+                }
+            }
+            Use::Text => {
+                if !self.apply_draft() {
+                    return;
+                }
+                let result = text_style::apply(
+                    self.project.document.snapshot(),
+                    self.project.selected,
+                    Some(item.id),
+                    None,
+                )
+                .map_err(|e| e.to_string())
+                .and_then(|commands| self.project.apply(&commands).map_err(|e| e.to_string()));
+                match result {
+                    Ok(()) => {
+                        self.refresh_draft();
+                        self.request_preview();
+                    }
+                    Err(e) => self.fail(e),
+                }
+            }
+            Use::Background | Use::Foreground => {
+                if !self.apply_draft() {
+                    return;
+                }
+                let doc = self.project.document.snapshot();
+                let result = if matches!(action, Use::Foreground) {
+                    builtin::material_layer(item.id, doc, true, position)
+                } else {
+                    veylvik_document::presets::background::insert(
+                        item.id,
+                        doc,
+                        veylvik_document::presets::background::Placement::Automatic,
+                        position,
+                    )
+                };
+                match result {
+                    Ok(instance) => match self.project.apply(&instance.commands) {
+                        Ok(()) => {
+                            self.project.selected = instance.output;
+                            self.project.preview = None;
+                            self.graph.collapse(instance.group);
+                            self.refresh_draft();
+                            self.request_preview();
+                        }
+                        Err(e) => self.fail(e),
+                    },
+                    Err(e) => self.fail(e),
+                }
+            }
+        }
+    }
+    pub(super) fn library_drop_target(&mut self, ui: &egui::Ui, rect: egui::Rect, graph: bool) {
+        if self.files.busy() || self.authoring_dialog_open() {
+            return;
+        }
+        if let Some(payload) = egui::DragAndDrop::payload::<LibraryDrag>(ui.ctx())
+            && ui.input(|i| i.pointer.hover_pos().is_some_and(|p| rect.contains(p)))
+        {
+            let painter = ui.painter().with_clip_rect(rect);
+            painter.rect_stroke(
+                rect.shrink(3.),
+                5.,
+                egui::Stroke::new(2.0_f32, design::ACCENT),
+                egui::StrokeKind::Inside,
+            );
+            painter.text(
+                rect.center_top() + egui::vec2(0., 12.),
+                egui::Align2::CENTER_TOP,
+                "Drop to choose placement",
+                egui::FontId::proportional(14.),
+                design::ACCENT,
+            );
+            if ui.input(|i| i.pointer.primary_released()) {
+                egui::DragAndDrop::clear_payload(ui.ctx());
+                self.browser.drop_choice = Some((
+                    *payload,
+                    graph.then(|| self.graph.insertion_position(ui.ctx())),
+                ));
+            }
+        }
+    }
+    pub(super) fn library_drop_options(&mut self, ctx: &egui::Context) {
+        let Some((item, position)) = self.browser.drop_choice else {
+            return;
+        };
+        let mut open = true;
+        let mut action = None;
+        egui::Window::new("Use library item")
+            .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
+            .default_width(280.)
+            .collapsible(false)
+            .resizable(false)
+            .open(&mut open)
+            .show(ctx, |ui| {
+                if let Some(entry) = builtin::ALL.iter().find(|e| e.id == item.id) {
+                    ui.heading(label(*entry));
+                }
+                ui.label(format!("Selected layer: {}", self.draft.label));
+                action =
+                    usage_options(ui, item, matches!(self.draft.operation, Operation::Text(_)));
+                if ui.button("Cancel").clicked() {
+                    self.browser.drop_choice = None;
+                }
+            });
+        if !open || ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+            self.browser.drop_choice = None;
+        }
+        if let Some(action) = action {
+            self.browser.drop_choice = None;
+            self.use_library_item(item, action, position, ctx);
+        }
     }
 }

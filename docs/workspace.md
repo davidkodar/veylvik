@@ -44,3 +44,10 @@ selected node's applied keys.
 
 Auto-arrange is enabled by default and adapts the node canvas to its available
 space. Manually moving a node switches it off so your arrangement stays yours.
+
+Library cards support both double-click and a right-click menu. Double-click a
+material to fill selected text; effects open their composition setup, and template
+cards open an example scene through the normal unsaved-changes flow. Drag a card
+onto the viewer or node canvas for explicit placement choices. Materials offer
+text fill, background and foreground; other effects offer composition setup or
+an example. Cancelling a drop leaves the composition unchanged.

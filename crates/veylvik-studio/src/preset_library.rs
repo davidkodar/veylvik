@@ -22,7 +22,7 @@ pub struct Library {
     gallery: crate::showcase_gallery::Gallery,
     pub(super) detail: Option<&'static str>,
     inputs: BTreeMap<String, NodeId>,
-    position: Option<NodePosition>,
+    pub(super) position: Option<NodePosition>,
     connect: bool,
     anchor: Option<NodeId>,
     identity: Option<(NodeId, u64)>,
