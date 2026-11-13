@@ -2,10 +2,12 @@
 mod colour;
 mod hardware;
 mod process;
+mod session;
 use crate::Result;
 use hardware::Backend;
 pub use hardware::DecodePolicy;
 use serde_json::Value;
+use session::Session;
 use std::{
     collections::VecDeque,
     path::{Path, PathBuf},
@@ -17,7 +19,7 @@ use veylvik_render::{FrameSource, Image, SourceInfo};
 use veylvik_render::{GpuFrame, Renderer, VideoEncoding, VideoFormat};
 struct State {
     cache: VecDeque<(usize, Arc<Image>)>,
-    decoder: Option<process::Decoder>,
+    decoder: Option<Session>,
     backend: Backend,
     raw: VecDeque<(usize, Arc<[u8]>)>,
     gpu: Option<(usize, Arc<GpuFrame>)>,
@@ -30,6 +32,9 @@ pub struct DecodeDiagnostics {
     pub backend: String,
     pub hardware: bool,
     pub host_staging: bool,
+    pub in_process: bool,
+    pub device_context_id: Option<u64>,
+    pub seeks: u64,
     pub fallback_reason: String,
     pub gpu_conversions: u64,
     pub cpu_realizations: u64,
@@ -91,6 +96,12 @@ impl Video {
                 backend: state.backend.label().into(),
                 hardware: state.backend.hardware(),
                 host_staging: true,
+                in_process: state
+                    .decoder
+                    .as_ref()
+                    .is_some_and(|d| d.device_id().is_some()),
+                device_context_id: state.decoder.as_ref().and_then(Session::device_id),
+                seeks: state.decoder.as_ref().map_or(0, Session::seeks),
                 fallback_reason: state.fallback.clone(),
                 gpu_conversions: state.gpu_conversions,
                 cpu_realizations: state.cpu_realizations,
@@ -339,6 +350,9 @@ impl Video {
                 backend: "Opening".into(),
                 hardware: false,
                 host_staging: true,
+                in_process: false,
+                device_context_id: None,
+                seeks: 0,
                 fallback_reason: String::new(),
                 gpu_conversions: 0,
                 cpu_realizations: 0,
@@ -370,7 +384,17 @@ impl Video {
         });
         Ok(upper.saturating_sub(1))
     }
-    fn decoder(&self, index: usize, backend: &Backend) -> Result<process::Decoder> {
+    fn decoder(&self, index: usize, backend: &Backend) -> Result<Session> {
+        if backend.hardware() {
+            return Session::hardware(
+                &self.path,
+                backend,
+                [self.encoding.width, self.encoding.height],
+                self.hardware_format,
+                index,
+                self.timestamps[index],
+            );
+        }
         let mut cmd = Command::new("ffmpeg");
         cmd.args([
             "-v",
@@ -384,7 +408,6 @@ impl Video {
             "file,pipe",
             "-noautorotate",
         ]);
-        backend.configure(&mut cmd);
         if index > 0 {
             // Seek strictly between presentation timestamps so rounding cannot drop
             // the requested frame. Accurate input seeking discards earlier frames.
@@ -393,24 +416,9 @@ impl Video {
                 * self.time_base.seconds()?;
             cmd.args(["-seek_timestamp", "1", "-ss", &format!("{midpoint:.12}")]);
         }
-        let (filter, format, bytes) = if backend.hardware() {
-            let format = if self.hardware_format == VideoFormat::Nv12 {
-                "nv12"
-            } else {
-                "p010le"
-            };
-            (
-                format!("hwdownload,format={format}"),
-                format,
-                self.encoding.byte_len()?,
-            )
-        } else {
-            (
-                self.filter.clone(),
-                "rgba64le",
-                self.info.width as usize * self.info.height as usize * 8,
-            )
-        };
+        let filter = &self.filter;
+        let format = "rgba64le";
+        let bytes = self.info.width as usize * self.info.height as usize * 8;
         cmd.arg("-i").arg(&self.path).args([
             "-map",
             "0:v:0",
@@ -418,7 +426,7 @@ impl Video {
             "-sn",
             "-dn",
             "-vf",
-            &filter,
+            filter,
             "-fps_mode",
             "passthrough",
             "-pix_fmt",
@@ -427,7 +435,7 @@ impl Video {
             "rawvideo",
             "pipe:1",
         ]);
-        process::Decoder::new(&mut cmd, bytes, index)
+        process::Decoder::new(&mut cmd, bytes, index).map(Session::Software)
     }
     fn initialize(&self, candidates: Vec<Backend>) -> Result<()> {
         let mut state = self.state.lock().map_err(|_| "Video decoder unavailable")?;
@@ -436,7 +444,7 @@ impl Video {
             for backend in candidates {
                 let attempt = self
                     .decoder(0, &backend)
-                    .and_then(|mut d| d.read().map(|bytes| (d, bytes)));
+                    .and_then(|mut d| d.read(&self.timestamps).map(|bytes| (d, bytes)));
                 match attempt {
                     Ok((decoder, bytes)) => {
                         state.backend = backend;
@@ -460,7 +468,7 @@ impl Video {
             "hardware initialization failed".into()
         };
         let mut decoder = self.decoder(0, &Backend::Software)?;
-        let bytes = decoder.read()?;
+        let bytes = decoder.read(&self.timestamps)?;
         state.decoder = Some(decoder);
         state.raw.push_back((0, bytes.into()));
         self.publish(&state);
@@ -474,21 +482,27 @@ impl Video {
             bytes.clone()
         } else {
             let attempt = (|| {
-                // Latest-frame preview can skip a few display frames. Drain those
-                // decoded planes instead of reopening the codec on every skipped frame.
-                if state
-                    .decoder
-                    .as_ref()
-                    .is_none_or(|d| d.next > index || index - d.next > 8)
+                // Native sessions discard skipped frames on the GPU and seek
+                // without reopening. Software pipes drain small preview gaps.
+                let positioned = if let Some(d) = state.decoder.as_mut() {
+                    d.position(index, &self.timestamps)?
+                } else {
+                    false
+                };
+                if !positioned
+                    && state
+                        .decoder
+                        .as_ref()
+                        .is_none_or(|d| d.next() > index || index - d.next() > 8)
                 {
                     state.decoder = None;
                     state.decoder = Some(self.decoder(index, &state.backend)?);
                 }
                 let decoder = state.decoder.as_mut().unwrap();
-                while decoder.next < index {
-                    decoder.read()?;
+                while decoder.next() < index {
+                    decoder.read(&self.timestamps)?;
                 }
-                decoder.read()
+                decoder.read(&self.timestamps)
             })();
             let bytes = match attempt {
                 Ok(bytes) => bytes,
@@ -504,7 +518,7 @@ impl Video {
                     state.cache.clear();
                     state.gpu = None;
                     let mut decoder = self.decoder(index, &state.backend)?;
-                    let bytes = decoder.read()?;
+                    let bytes = decoder.read(&self.timestamps)?;
                     state.decoder = Some(decoder);
                     bytes
                 }
@@ -547,7 +561,11 @@ impl FrameSource for Video {
                 " · {} · Vulkan colour{}",
                 report.backend,
                 if report.hardware {
-                    " · staged planes"
+                    if report.in_process {
+                        " · in-process · staged planes"
+                    } else {
+                        " · staged planes"
+                    }
                 } else {
                     ""
                 }

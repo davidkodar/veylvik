@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 [dependencies]
+veylvik-decode = { path = "../veylvik-decode" }
 serde.workspace = true
 veylvik-text.workspace = true
 veylvik-document.workspace = true

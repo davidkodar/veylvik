@@ -340,7 +340,9 @@ fn hardware_frames_stay_linear_on_gpu_and_seek_in_8_and_10_bit() {
         let hardware =
             Video::open_with_policy(&path, 8 * 1024 * 1024, DecodePolicy::HardwareRequired)
                 .unwrap();
-        assert!(hardware.diagnostics().unwrap().hardware);
+        let initial = hardware.diagnostics().unwrap();
+        assert!(initial.hardware && initial.in_process && initial.host_staging);
+        let device_id = initial.device_context_id.unwrap();
         assert_eq!(hardware.diagnostics().unwrap().cpu_realizations, 0);
         let hardware = Arc::new(hardware);
         let mut inputs = veylvik_render::ImageInputs::default();
@@ -404,7 +406,13 @@ fn hardware_frames_stay_linear_on_gpu_and_seek_in_8_and_10_bit() {
                 &hardware.gpu_frame(time, &renderer).unwrap().unwrap()
             ));
         }
-        assert_eq!(hardware.diagnostics().unwrap().cpu_realizations, before);
+        let after = hardware.diagnostics().unwrap();
+        assert_eq!(after.cpu_realizations, before);
+        assert_eq!(after.device_context_id, Some(device_id));
+        assert!(
+            after.seeks >= 4,
+            "Native seeking should retain its decoder/device"
+        );
         let other = Renderer::new().unwrap();
         let gpu = hardware
             .gpu_frame(Time::new(0, 1).unwrap(), &other)

@@ -1,0 +1,16 @@
+[package]
+name = "veylvik-decode"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+ffmpeg-next = { version = "=9.0.0", default-features = false, features = ["format"] }
+
+# FFmpeg hardware handles live exclusively in this small boundary crate.
+# All application, document and rendering crates retain unsafe_code = forbid.
+[lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+[lints.clippy]
+undocumented_unsafe_blocks = "deny"

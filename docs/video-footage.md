@@ -46,9 +46,14 @@ available in **File > Composition settings…**. These edits are undoable.
 
 Video decoding tries NVIDIA NVDEC first, then native Intel/AMD VA-API devices,
 and finally software decoding. A hardware candidate must successfully decode a
-frame before it is selected; unsupported codecs, pixel formats or drivers fall
+hardware frame before it is selected; unsupported codecs, pixel formats or drivers fall
 back explicitly. The inspector identifies the active backend and any fallback.
 A hardware failure during playback retries the requested frame through software.
+
+Hardware decoding runs inside Veylvik through the FFmpeg libraries. Clips share
+reference-counted device contexts (the primary CUDA context on NVIDIA), while
+each clip owns its demuxer and decoder. Hardware frames retain their device and
+frame pool until released, including when a decoder closes or seeks.
 
 The hardware path supports even-sized 4:2:0 NV12 and 10-bit P010 sources. It
 transfers these compact planes through host staging, then performs chroma
@@ -62,15 +67,21 @@ Indexing reads packet presentation timestamps rather than decoding every frame
 on the CPU or assuming a constant frame rate. Sources must have distinct packet
 presentation timestamps; remux sources with missing or duplicate timestamps.
 Seeking handles reordered frames and variable-frame-rate files. Sequential
-requests reuse the decoder process; random seeks restart it using accurate input
-seeking. Plane caches and decoder pipes are bounded. Indexing and decoding run on
+hardware requests reuse the decoder; random seeks flush and reposition it using
+stream timestamps without reopening the device. Skipped/preroll hardware frames
+are discarded on the GPU before host staging. The software compatibility path
+uses a bounded FFmpeg process and restarts it for distant/backward seeks.
+Plane caches are bounded. Indexing and decoding run on
 workers, and inspector metadata never waits for a decoder or GPU fence.
 The cache budget does not include FFmpeg's internal buffers or conversion scratch.
+Demux operations have a 30-second interrupt deadline. In-process GPU driver calls
+cannot be forcibly terminated like a child process.
 
 Callers explicitly requesting CPU pixels still have a CPU realization path.
 Normal Studio, CLI/MCP rendering and tracking use the render-device path.
 The Rust `Video::diagnostics()` API reports hardware selection, host staging,
-fallback reason, GPU conversion count and CPU realization count.
+fallback reason, in-process status, shared device context ID, native seek count,
+GPU conversion count and CPU realization count.
 `Video::open_with_policy` permits automatic, software-only or hardware-required
 selection for integrations and diagnostics. Hardware-required mode returns an
 error rather than silently falling back.
@@ -118,3 +129,6 @@ This places the clip at composition second 2, starting at source second 0.5.
 `placement` accepts `fit`, `fill`, `original`, `stretch`, or `legacy`. Omitted
 placement defaults to `legacy` for compatibility. Both `placement` and `timing` can be updated through ordinary revision-checked `set_parameter`
 transactions. `source_out` is exclusive; null uses the source duration.
+
+Building from source requires the FFmpeg development libraries, libclang and
+pkg-config. The Arch package declares these build/runtime dependencies.

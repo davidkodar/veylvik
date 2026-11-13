@@ -1,5 +1,5 @@
-//! Hardware candidates are accepted only after decoding a frame through a hardware-only filter.
-use std::{path::PathBuf, process::Command};
+//! Hardware candidates are accepted only after decoding a verified hardware frame.
+use std::path::PathBuf;
 use veylvik_render::VideoFormat;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DecodePolicy {
@@ -23,31 +23,6 @@ impl Backend {
     }
     pub fn hardware(&self) -> bool {
         !matches!(self, Self::Software)
-    }
-    pub fn configure(&self, cmd: &mut Command) {
-        match self {
-            Self::Software => {}
-            Self::Nvdec(codec) => {
-                cmd.args([
-                    "-hwaccel",
-                    "cuda",
-                    "-hwaccel_output_format",
-                    "cuda",
-                    "-c:v",
-                    codec,
-                ]);
-            }
-            Self::Vaapi(device) => {
-                cmd.args([
-                    "-hwaccel",
-                    "vaapi",
-                    "-hwaccel_output_format",
-                    "vaapi",
-                    "-hwaccel_device",
-                ])
-                .arg(device);
-            }
-        }
     }
 }
 pub(super) fn candidates(
