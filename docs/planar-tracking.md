@@ -91,6 +91,16 @@ lighting, texture, wear, displacement, softness and grain; see
 outline workflow. Rejected feature matches diagnose tracking; they are not
 an occlusion mask and do not automatically transfer cracks or wear to a layer.
 
+## Occlusion
+
+People, cars or hands crossing the surface pull matches away from the plane. Choose
+an **Occlusion matte** in Tracking settings: any mask node whose alpha covers the
+foreground object, such as an outline drawn with the pen and animated with the path
+tools. The matte is rendered for every analyzed frame on the GPU; detection skips
+patches touching it on the reference frame and matches whose patch lands on it are
+rejected before the plane is fitted, so the surface stays locked behind the object.
+Headless tools take the matte node as `occlusion`.
+
 ## Re-anchoring
 
 The reference texture is fixed per anchor. On walking, zooming or turning shots the
@@ -135,7 +145,7 @@ frame. The result is written to a new project with one added Planar track node, 
 JSON report gives the tracked range, why it stopped, re-anchors and worst error.
 
 The headless MCP server exposes `track_surface` with the same inputs (`source`,
-`surface`, `start`, `end`) plus optional `region`, `area_follows`,
+`surface`, `start`, `end`) plus optional `occlusion`, `region`, `area_follows`,
 `feature_radius`, `search_radius`, `tolerance` and `reanchor`. It adds the Planar track node as one undoable
 transaction; connect it to `planar_warp` nodes with `apply`. Both operations, their
 data schema, and all three warp modes are also exposed through the node catalog and

@@ -18,6 +18,8 @@ pub struct Controls {
     surface: Quad,
     /// Separate analysis area on the same plane; `None` analyzes the corners themselves.
     area: Option<Quad>,
+    /// Node whose alpha marks foreground objects the tracker ignores.
+    occlusion: Option<NodeId>,
     settings: Settings,
     end: i64,
     result: Option<Tracked>,
@@ -41,6 +43,7 @@ impl Default for Controls {
             active: None,
             surface: [[0.2, 0.2], [0.8, 0.2], [0.8, 0.8], [0.2, 0.8]],
             area: None,
+            occlusion: None,
             settings: Settings::default(),
             end: 0,
             result: None,
@@ -377,6 +380,24 @@ impl Studio {
                     ui.horizontal(|ui| {ui.label("Feature radius");ui.add(egui::DragValue::new(&mut self.planar.settings.patch_radius).range(3..=16).suffix(" px"));});
                     ui.horizontal(|ui| {ui.label("Search per level");ui.add(egui::DragValue::new(&mut self.planar.settings.search_radius).range(1..=48).suffix(" px"));});
                     ui.horizontal(|ui| {ui.label("Match tolerance");ui.add(egui::DragValue::new(&mut self.planar.settings.tolerance_pixels).range(0.1..=32.).speed(0.1).suffix(" px"));});
+                    {
+                        let doc = self.project.document.snapshot();
+                        let name = |id: Option<NodeId>| id.and_then(|id| doc.nodes.get(&id)).map_or("None".to_owned(), |n| n.label.clone());
+                        let mut options: Vec<_> = doc.nodes.values()
+                            .filter(|n| Some(n.id) != self.planar.source && matches!(n.operation,
+                                Operation::Path { .. } | Operation::Ellipse { .. } | Operation::Mask {} | Operation::CombineMask { .. }
+                                | Operation::ChannelMask { .. } | Operation::Morphology { .. } | Operation::Blur { .. } | Operation::Affine { .. }))
+                            .map(|n| (n.label.clone(), n.id)).collect();
+                        options.sort();
+                        egui::ComboBox::from_label("Occlusion matte")
+                            .selected_text(name(self.planar.occlusion))
+                            .show_ui(ui, |ui| {
+                                ui.selectable_value(&mut self.planar.occlusion, None, "None");
+                                for (label, id) in options { ui.selectable_value(&mut self.planar.occlusion, Some(id), label); }
+                            })
+                            .response
+                            .on_hover_text("A mask whose alpha covers foreground objects (people, cars, hands) crossing the surface. Matches under it are ignored on every frame, so the plane stays locked behind them. Animate the mask with the path tools.");
+                    }
                     let mut separate = self.planar.area.is_some();
                     if ui.checkbox(&mut separate, "Separate tracking area")
                         .on_hover_text("Analyze a larger textured area of the same plane (amber) than the corners the layer is pinned to (cyan). Corners can then sit on blank or partly hidden parts of the surface, and tracking lasts while any of the area stays in view.")
@@ -563,6 +584,20 @@ impl Studio {
                 return;
             }
         };
+        let doc = self.project.document.snapshot();
+        let occlusion = match self
+            .planar
+            .occlusion
+            .filter(|id| doc.nodes.contains_key(id))
+            .map(|id| Plan::compile_output(doc, id))
+            .transpose()
+        {
+            Ok(p) => p,
+            Err(e) => {
+                self.fail(e);
+                return;
+            }
+        };
         let (session, revision) = (self.project.session, self.project.document.revision());
         let (start, end, rate) = (
             self.project.frame,
@@ -639,6 +674,7 @@ impl Studio {
                 let range = tracker.track_range(
                     &renderer,
                     &plan,
+                    occlusion.as_ref().map(|plan| (plan, &inputs)),
                     &inputs,
                     surface,
                     region,

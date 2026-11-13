@@ -69,13 +69,15 @@ pub struct TrackedPlane {
 }
 impl PlanarTracker {
     /// Track `surface` from `start` (its reference frame) towards `end`, in either direction,
-    /// on the rendered output of `plan`. Accepted frames are kept when the track is lost or
+    /// on the rendered output of `plan`. `occlusion` renders a matte per frame whose alpha
+    /// excludes foreground objects. Accepted frames are kept when the track is lost or
     /// cancelled; `max_bytes` bounds the encoded diagnostics so the result stays savable.
     #[allow(clippy::too_many_arguments)]
     pub fn track_range(
         &self,
         renderer: &Renderer,
         plan: &crate::Plan,
+        occlusion: Option<(&crate::Plan, &crate::ImageInputs)>,
         inputs: &crate::ImageInputs,
         surface: Quad,
         region: Option<Quad>,
@@ -88,23 +90,90 @@ impl PlanarTracker {
         let at = |frame: i64| {
             veylvik_document::Time::at_frame(frame, rate).map_err(|e| error(e.to_string()))
         };
-        let render = |frame: i64| {
+        let render_with = |plan: &crate::Plan, inputs: &crate::ImageInputs, frame: i64| {
             renderer.render_gpu_cached(plan, crate::RenderRequest::full(at(frame)?), inputs)
         };
-        let reference_time = at(start)?;
-        let mut reference = render(start)?;
-        let mut levels = self.pyramid(renderer, &reference)?;
+        let render = |plan: &crate::Plan, frame: i64| render_with(plan, inputs, frame);
+        let matte = |frame: i64| {
+            occlusion
+                .map(|(plan, inputs)| render_with(plan, inputs, frame))
+                .transpose()
+        };
         if let Some(region) = region {
             planar::validate_quad(region).map_err(|e| error(e.to_string()))?;
         }
-        let mut points = self.detect(renderer, &reference, region.unwrap_or(surface), settings)?;
-        let initial = self.track(
+        let visible =
+            |quad: Quad| quad.map(|[x, y]| [x.clamp(0.005, 0.995), y.clamp(0.005, 0.995)]);
+        // Everything needed to match against one reference frame.
+        struct Anchor {
+            image: Arc<GpuFrame>,
+            levels: Vec<GpuFrame>,
+            points: Vec<Point>,
+            /// Corners and analyzed area as seen on this reference.
+            corners: Quad,
+            area: Quad,
+        }
+        // A candidate anchor on an accepted frame: image, levels, matte, corners, area.
+        type Candidate = Box<(
+            Arc<GpuFrame>,
+            Vec<GpuFrame>,
+            Option<Arc<GpuFrame>>,
+            Quad,
+            Quad,
+        )>;
+        // Returns the candidate unchanged when too little texture is visible there.
+        let reanchor =
+            |candidate: Candidate, minimum: usize| -> std::result::Result<Anchor, Candidate> {
+                let detect_in = visible(if settings.screen_area {
+                    region.unwrap_or(surface)
+                } else {
+                    candidate.4
+                });
+                let points = planar::validate_quad(detect_in).ok().and_then(|_| {
+                    self.detect_masked(
+                        renderer,
+                        &candidate.0,
+                        detect_in,
+                        settings,
+                        candidate.2.as_deref(),
+                    )
+                    .ok()
+                });
+                match points {
+                    Some(points) if points.len() >= minimum.max(12) => {
+                        let (image, levels, _, corners, _) = *candidate;
+                        Ok(Anchor {
+                            image,
+                            levels,
+                            points,
+                            corners,
+                            area: detect_in,
+                        })
+                    }
+                    _ => Err(candidate),
+                }
+            };
+        let reference_time = at(start)?;
+        let image = render(plan, start)?;
+        let first_matte = matte(start)?;
+        let area = region.unwrap_or(surface);
+        let points =
+            self.detect_masked(renderer, &image, area, settings, first_matte.as_deref())?;
+        let mut anchor = Anchor {
+            levels: self.pyramid(renderer, &image)?,
+            image,
+            points,
+            corners: surface,
+            area,
+        };
+        let initial = self.track_masked(
             renderer,
-            &reference,
-            &reference,
-            &points,
+            &anchor.image,
+            &anchor.image,
+            &anchor.points,
             Homography::IDENTITY,
             settings,
+            first_matte.as_deref(),
         )?;
         let first = planar::Sample {
             time: reference_time,
@@ -125,82 +194,57 @@ impl PlanarTracker {
             return Err(error("Not enough project space for tracking diagnostics"));
         }
         let mut stop = Stop::Complete;
-        if !observe(start, &reference, &data.samples[0]) {
+        if !observe(start, &anchor.image, &data.samples[0]) {
             stop = Stop::Cancelled;
         }
-        // `anchor` is the corners and `area` the analyzed region, both as seen on the current reference.
-        let (mut anchor, mut motion, mut anchors) = (surface, Homography::IDENTITY, 1);
-        let mut area = region.unwrap_or(surface);
+        let (mut motion, mut anchors) = (Homography::IDENTITY, 1);
         // The last accepted frame, kept so a failed frame can retry from a fresh anchor there.
-        let mut previous: Option<(Arc<GpuFrame>, Vec<GpuFrame>, Quad, Quad)> = None;
+        let mut previous: Option<Candidate> = None;
         let step = if end > start { 1 } else { -1 };
         let mut frame = start;
         while stop == Stop::Complete && frame != end {
             frame += step;
-            let current = render(frame)?;
+            let current = render(plan, frame)?;
+            let current_matte = matte(frame)?;
             let current_levels = self.pyramid(renderer, &current)?;
-            let mut attempt = self.track_multiscale(
-                renderer,
-                &reference,
-                &current,
-                &levels,
-                &current_levels,
-                &points,
-                motion,
-                settings,
-            );
+            let solve = |anchor: &Anchor, motion: Homography| {
+                self.track_multiscale_masked(
+                    renderer,
+                    &anchor.image,
+                    &current,
+                    &anchor.levels,
+                    &current_levels,
+                    &anchor.points,
+                    motion,
+                    settings,
+                    current_matte.as_deref(),
+                )
+            };
+            let mut attempt = solve(&anchor, motion);
             if attempt.is_err()
                 && settings.reanchor_below > 0
-                && let Some((image, image_levels, corners, seen)) = previous.take()
+                && let Some(Ok(fresh)) = previous.take().map(|candidate| reanchor(candidate, 0))
             {
-                let visible = if settings.screen_area {
-                    region.unwrap_or(surface)
-                } else {
-                    seen
-                }
-                .map(|[x, y]| [x.clamp(0.005, 0.995), y.clamp(0.005, 0.995)]);
-                if planar::validate_quad(visible).is_ok()
-                    && let Ok(fresh) = self.detect(renderer, &image, visible, settings)
-                    && fresh.len() >= 12
-                {
-                    (anchor, area, motion, points, levels, reference) = (
-                        corners,
-                        visible,
-                        Homography::IDENTITY,
-                        fresh,
-                        image_levels,
-                        image,
-                    );
-                    anchors += 1;
-                    attempt = self.track_multiscale(
-                        renderer,
-                        &reference,
-                        &current,
-                        &levels,
-                        &current_levels,
-                        &points,
-                        motion,
-                        settings,
-                    );
-                }
+                anchor = fresh;
+                motion = Homography::IDENTITY;
+                anchors += 1;
+                attempt = solve(&anchor, motion);
             }
+            let lost = |e: &dyn std::fmt::Display| Stop::Lost {
+                frame,
+                reason: e.to_string(),
+            };
             let found = match attempt {
                 Ok(found) => found,
                 Err(e) => {
-                    stop = Stop::Lost {
-                        frame,
-                        reason: e.to_string(),
-                    };
+                    stop = lost(&e);
                     break;
                 }
             };
-            let corners = match found.consensus.motion.transform_quad(anchor) {
+            let corners = match found.consensus.motion.transform_quad(anchor.corners) {
                 Ok(corners) => corners,
                 Err(e) => {
-                    stop = Stop::Lost {
-                        frame,
-                        reason: e.to_string(),
-                    };
+                    stop = lost(&e);
                     break;
                 }
             };
@@ -208,7 +252,7 @@ impl PlanarTracker {
             let seen = found
                 .consensus
                 .motion
-                .transform_quad(area)
+                .transform_quad(anchor.area)
                 .unwrap_or(corners);
             motion = found.consensus.motion;
             let accepted = found.features.iter().filter(|f| f.accepted).count();
@@ -227,35 +271,18 @@ impl PlanarTracker {
                 stop = Stop::Cancelled;
             }
             data.samples.push(sample);
+            let candidate = Box::new((current, current_levels, current_matte, corners, seen));
             if accepted >= settings.reanchor_below as usize {
-                previous = Some((current, current_levels, corners, seen));
-                continue;
-            }
-            {
-                // Detect inside the visible part of the surface; the anchor itself may
-                // extend past the frame edges. Keep the old reference if too little remains.
-                let visible = if settings.screen_area {
-                    region.unwrap_or(surface)
-                } else {
-                    seen
-                }
-                .map(|[x, y]| [x.clamp(0.005, 0.995), y.clamp(0.005, 0.995)]);
-                if planar::validate_quad(visible).is_ok()
-                    && let Ok(fresh) = self.detect(renderer, &current, visible, settings)
-                    && fresh.len() > accepted
-                    && fresh.len() >= 12
-                {
-                    (anchor, area, motion, points, levels, reference) = (
-                        corners,
-                        visible,
-                        Homography::IDENTITY,
-                        fresh,
-                        current_levels,
-                        current,
-                    );
-                    anchors += 1;
-                } else {
-                    previous = Some((current, current_levels, corners, seen));
+                previous = Some(candidate);
+            } else {
+                // Too few matches remain: continue from this frame with freshly detected texture.
+                match reanchor(candidate, accepted + 1) {
+                    Ok(fresh) => {
+                        anchor = fresh;
+                        motion = Homography::IDENTITY;
+                        anchors += 1;
+                    }
+                    Err(candidate) => previous = Some(candidate),
                 }
             }
         }
@@ -320,6 +347,17 @@ impl PlanarTracker {
         surface: Quad,
         settings: Settings,
     ) -> Result<Vec<Point>> {
+        self.detect_masked(renderer, frame, surface, settings, None)
+    }
+    /// As [`Self::detect`], skipping corners whose patch touches `occlusion` on this frame.
+    pub fn detect_masked(
+        &self,
+        renderer: &Renderer,
+        frame: &GpuFrame,
+        surface: Quad,
+        settings: Settings,
+        occlusion: Option<&GpuFrame>,
+    ) -> Result<Vec<Point>> {
         self.validate(renderer, frame, frame, settings)?;
         planar::validate_quad(surface).map_err(|e| error(e.to_string()))?;
         if surface.iter().flatten().any(|v| !(0. ..=1.).contains(v)) {
@@ -335,6 +373,7 @@ impl PlanarTracker {
             &[[0.; 4]],
             256,
             [1, 1],
+            occlusion,
         )?;
         let mut points = Vec::new();
         for v in values.as_chunks::<4>().0 {
@@ -368,6 +407,23 @@ impl PlanarTracker {
         points: &[Point],
         prediction: Homography,
         settings: Settings,
+    ) -> Result<TrackedPlane> {
+        self.track_masked(
+            renderer, reference, current, points, prediction, settings, None,
+        )
+    }
+    /// As [`Self::track`]; matches whose patch lands on `occlusion` (the current frame's
+    /// matte) are rejected before the plane is fitted.
+    #[allow(clippy::too_many_arguments)]
+    pub fn track_masked(
+        &self,
+        renderer: &Renderer,
+        reference: &GpuFrame,
+        current: &GpuFrame,
+        points: &[Point],
+        prediction: Homography,
+        settings: Settings,
+        occlusion: Option<&GpuFrame>,
     ) -> Result<TrackedPlane> {
         self.validate(renderer, reference, current, settings)?;
         if !(6..=256).contains(&points.len()) {
@@ -410,6 +466,7 @@ impl PlanarTracker {
             &gpu_points,
             count * points.len() as u32,
             [count.div_ceil(64), points.len() as u32],
+            occlusion,
         )?;
         let mut features = Vec::with_capacity(points.len());
         for (&origin, scores) in origins.iter().zip(values.chunks_exact(count as usize)) {
@@ -566,8 +623,35 @@ impl PlanarTracker {
         reference_levels: &[GpuFrame],
         current_levels: &[GpuFrame],
         points: &[Point],
+        prediction: Homography,
+        settings: Settings,
+    ) -> Result<TrackedPlane> {
+        self.track_multiscale_masked(
+            renderer,
+            reference,
+            current,
+            reference_levels,
+            current_levels,
+            points,
+            prediction,
+            settings,
+            None,
+        )
+    }
+    /// As [`Self::track_multiscale`]. Coarse levels only predict; the matte applies to
+    /// the full-resolution solves that decide acceptance.
+    #[allow(clippy::too_many_arguments)]
+    pub fn track_multiscale_masked(
+        &self,
+        renderer: &Renderer,
+        reference: &GpuFrame,
+        current: &GpuFrame,
+        reference_levels: &[GpuFrame],
+        current_levels: &[GpuFrame],
+        points: &[Point],
         mut prediction: Homography,
         settings: Settings,
+        occlusion: Option<&GpuFrame>,
     ) -> Result<TrackedPlane> {
         self.validate(renderer, reference, current, settings)?;
         if reference_levels.len() != current_levels.len() {
@@ -597,25 +681,29 @@ impl PlanarTracker {
         // Coarse texture can be ambiguous even when fine detail is distinctive.
         // Preserve the local solve as a fallback rather than regressing it.
         let found = self
-            .track(renderer, reference, current, points, prediction, settings)
+            .track_masked(
+                renderer, reference, current, points, prediction, settings, occlusion,
+            )
             .or_else(|_| {
-                self.track(
+                self.track_masked(
                     renderer,
                     reference,
                     current,
                     points,
                     initial_prediction,
                     settings,
+                    occlusion,
                 )
             })?;
         Ok(self
-            .track(
+            .track_masked(
                 renderer,
                 reference,
                 current,
                 points,
                 found.consensus.motion,
                 settings,
+                occlusion,
             )
             .unwrap_or(found))
     }
@@ -661,7 +749,15 @@ impl PlanarTracker {
         features: &[[f32; 4]],
         count: u32,
         dispatch: [u32; 2],
+        occlusion: Option<&GpuFrame>,
     ) -> Result<Vec<f32>> {
+        if let Some(matte) = occlusion
+            && (!Arc::ptr_eq(&matte.owner, &renderer.owner)
+                || matte.width != reference.width
+                || matte.height != reference.height)
+        {
+            return Err(error("Occlusion matte must match the tracked frames"));
+        }
         let mut pool = renderer
             .pool
             .lock()
@@ -702,7 +798,19 @@ impl PlanarTracker {
             .queue
             .write_buffer(&points, 0, bytemuck::cast_slice(features));
         // Auto layouts omit unused shader bindings for the detection entry point.
+        let empty = resources.take(
+            &renderer.device,
+            16,
+            wgpu::BufferUsages::STORAGE,
+            "planar empty occlusion",
+        )?;
         let mut entries = vec![
+            wgpu::BindGroupEntry {
+                binding: 5,
+                resource: occlusion.map_or(empty.as_entire_binding(), |m| {
+                    m.storage.buffer.as_entire_binding()
+                }),
+            },
             wgpu::BindGroupEntry {
                 binding: 0,
                 resource: uniform.as_entire_binding(),

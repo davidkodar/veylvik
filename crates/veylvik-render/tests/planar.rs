@@ -118,6 +118,78 @@ fn gpu_planar_detection_perspective_occlusion_and_flat_rejection() {
         )
         .unwrap();
     assert!(refined.consensus.rms_pixels < 0.5);
+    // An occlusion matte over the foreground object removes its matches before the
+    // fit, and a matte on the reference keeps detection off the covered area.
+    let matte = |inside: &dyn Fn(f64, f64) -> bool| {
+        let pixels = (0..width * height)
+            .map(|i| {
+                let (x, y) = (f64::from(i % width), f64::from(i / width));
+                if inside(x, y) {
+                    [0., 0., 0., 1.]
+                } else {
+                    [0.; 4]
+                }
+            })
+            .collect();
+        let mut inputs = ImageInputs::default();
+        inputs.insert(
+            "source",
+            Arc::new(Image::new(width, height, pixels).unwrap()),
+        );
+        renderer
+            .render_gpu(
+                &plan,
+                RenderRequest::full(Time::new(0, 1).unwrap()),
+                &inputs,
+            )
+            .unwrap()
+    };
+    let (ox, oy) = ((73., 112.), (43., 107.));
+    let occluder = matte(&|x, y| x > ox.0 && x < ox.1 && y > oy.0 && y < oy.1);
+    let masked = tracker
+        .track_masked(
+            &renderer,
+            &reference,
+            &current,
+            &points,
+            h,
+            settings,
+            Some(&occluder),
+        )
+        .unwrap();
+    let under = |f: &veylvik_document::planar::Feature| {
+        let (x, y) = (
+            f.position[0] * f64::from(width),
+            f.position[1] * f64::from(height),
+        );
+        x > ox.0 - 4. && x < ox.1 + 4. && y > oy.0 - 4. && y < oy.1 + 4.
+    };
+    assert!(
+        masked
+            .features
+            .iter()
+            .filter(|f| under(f))
+            .all(|f| !f.accepted)
+    );
+    assert!(masked.features.iter().filter(|f| f.accepted).count() >= 12);
+    for p in surface {
+        let (expected, actual) = (
+            h.project(p).unwrap(),
+            masked.consensus.motion.project(p).unwrap(),
+        );
+        assert!(((actual[0] - expected[0]) * f64::from(width)).abs() < 0.8);
+        assert!(((actual[1] - expected[1]) * f64::from(height)).abs() < 0.8);
+    }
+    let left = matte(&|x, _| x < 96.);
+    let right_only = tracker
+        .detect_masked(&renderer, &reference, surface, settings, Some(&left))
+        .unwrap();
+    assert!(right_only.len() >= 8);
+    assert!(
+        right_only
+            .iter()
+            .all(|p| p[0] * f64::from(width) >= 96. - 0.5)
+    );
     let flat = make(Homography::IDENTITY, false, true);
     assert!(tracker.detect(&renderer, &flat, surface, settings).is_err());
     assert!(

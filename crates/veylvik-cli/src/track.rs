@@ -11,6 +11,8 @@ type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 pub struct Request {
     pub source: NodeId,
     pub surface: Quad,
+    /// Matte whose alpha marks foreground objects to ignore, rendered per frame.
+    pub occlusion: Option<NodeId>,
     /// Optional area to analyze instead of the corners: any textured part of the same plane.
     pub region: Option<Quad>,
     /// Composition frames; `start` is the reference frame, `end` may precede it.
@@ -67,6 +69,15 @@ impl Request {
                 .map(|value| serde_json::from_value(value.clone()))
                 .transpose()
                 .map_err(|e| format!("region must be four [x, y] corners: {e}"))?,
+            occlusion: args
+                .get("occlusion")
+                .map(|value| -> Result<NodeId> {
+                    Ok(value
+                        .as_str()
+                        .ok_or("occlusion must be a node UUID")?
+                        .parse()?)
+                })
+                .transpose()?,
             frames: [frame("start")?, frame("end")?],
             settings,
         })
@@ -95,6 +106,17 @@ pub fn run(
     }
     let plan = Plan::compile_output(doc, request.source)?;
     let inputs = crate::assets::load_inputs(&plan, base, renderer.budget_bytes)?;
+    let occlusion = request
+        .occlusion
+        .map(|id| -> Result<_> {
+            if !doc.nodes.contains_key(&id) {
+                return Err("occlusion node does not exist".into());
+            }
+            let plan = Plan::compile_output(doc, id)?;
+            let inputs = crate::assets::load_inputs(&plan, base, renderer.budget_bytes)?;
+            Ok((plan, inputs))
+        })
+        .transpose()?;
     let budget = veylvik_document::limits::MAX_DOCUMENT_BYTES
         .saturating_sub(doc.encoded_size()?)
         .saturating_sub(64 * 1024);
@@ -102,6 +124,7 @@ pub fn run(
     let range = tracker.track_range(
         renderer,
         &plan,
+        occlusion.as_ref().map(|(plan, inputs)| (plan, inputs)),
         &inputs,
         request.surface,
         request.region,

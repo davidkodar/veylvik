@@ -8,6 +8,14 @@ struct Settings {
 @group(0) @binding(2) var<storage, read> current: array<vec4<f32>>;
 @group(0) @binding(3) var<storage, read_write> scores: array<f32>;
 @group(0) @binding(4) var<storage, read> features: array<vec4<f32>>;
+// Occlusion matte for the frame being sampled (reference in detect, current in
+// correlate). A one-element buffer means no matte; alpha above one half excludes.
+@group(0) @binding(5) var<storage, read> occlusion: array<vec4<f32>>;
+fn occluded(p: vec2<i32>) -> bool {
+    if arrayLength(&occlusion) < settings.size.x*settings.size.y { return false; }
+    let c = clamp(p, vec2<i32>(0), vec2<i32>(settings.size)-vec2<i32>(1));
+    return occlusion[u32(c.y)*settings.size.x+u32(c.x)].a > 0.5;
+}
 fn luma(p: vec4<f32>) -> f32 { return dot(p.rgb,vec3<f32>(0.2126,0.7152,0.0722)); }
 fn reference_luma(p: vec2<i32>) -> f32 { return luma(reference[u32(p.y)*settings.size.x+u32(p.x)]); }
 fn cur(p: vec2<f32>) -> f32 {
@@ -51,6 +59,9 @@ fn detect(@builtin(global_invocation_id) id: vec3<u32>) {
         let pf=vec2<f32>(p); let r=f32(settings.radius);
         if !inside_quad(pf+vec2<f32>(-r,-r)) || !inside_quad(pf+vec2<f32>(r,-r)) ||
            !inside_quad(pf+vec2<f32>(r,r)) || !inside_quad(pf+vec2<f32>(-r,r)) { continue; }
+        let ri=i32(settings.radius);
+        if occluded(p) || occluded(p+vec2<i32>(-ri,-ri)) || occluded(p+vec2<i32>(ri,-ri)) ||
+           occluded(p+vec2<i32>(ri,ri)) || occluded(p+vec2<i32>(-ri,ri)) { continue; }
         var xx=0.0; var yy=0.0; var xy=0.0;
         for (var dy=-2;dy<=2;dy++) { for (var dx=-2;dx<=2;dx++) {
             let q=p+vec2<i32>(dx,dy);
@@ -81,6 +92,8 @@ fn correlate(@builtin(global_invocation_id) id: vec3<u32>) {
         if any(q<vec2<f32>(0.0)) || any(q>=vec2<f32>(settings.size)-vec2<f32>(1.0)) {
             scores[output]=-2.0;return;
         }
+        // A patch touching the occlusion matte on the current frame never matches.
+        if occluded(vec2<i32>(round(q))) { scores[output]=-2.0;return; }
         let a=reference_luma(p);let b=cur(q);sa+=a;sb+=b;aa+=a*a;bb+=b*b;ab+=a*b;
     }}
     let n=f32((2*r+1)*(2*r+1)); let va=max(0.0,aa-sa*sa/n);let vb=max(0.0,bb-sb*sb/n);
