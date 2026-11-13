@@ -2,7 +2,7 @@ use crate::*;
 use veylvik_document::{Operation, TextAlignment, TextFont, Time};
 /// Resolve editable typography to contours at an exact timeline time.
 pub fn outline(operation: &Operation, time: Time) -> Result<PathMask> {
-    let Operation::Text {
+    let Operation::Text(veylvik_document::nodes::Text {
         content,
         font,
         alignment,
@@ -23,7 +23,7 @@ pub fn outline(operation: &Operation, time: Time) -> Result<PathMask> {
         underline,
         features,
         ..
-    } = operation
+    }) = operation
     else {
         return Err(error("Expected editable text"));
     };
@@ -301,7 +301,12 @@ mod tests {
             .composition
             .nodes
             .into_values()
-            .find(|n| matches!(n.operation, Operation::Text { .. }))
+            .find(|n| {
+                matches!(
+                    n.operation,
+                    Operation::Text(veylvik_document::nodes::Text { .. })
+                )
+            })
             .unwrap();
         node.operation
     }
@@ -309,11 +314,11 @@ mod tests {
     fn typography_is_portable_and_transformable_without_losing_wording() {
         let mut op = text();
         let original = outline(&op, Time::new(0, 1).unwrap()).unwrap();
-        if let Operation::Text { scale_x, .. } = &mut op {
+        if let Operation::Text(veylvik_document::nodes::Text { scale_x, .. }) = &mut op {
             *scale_x = (-1.0).into();
         }
         assert_ne!(original, outline(&op, Time::new(0, 1).unwrap()).unwrap());
-        if let Operation::Text { content, font, .. } = &mut op {
+        if let Operation::Text(veylvik_document::nodes::Text { content, font, .. }) = &mut op {
             *content = "Åffi\nVeylvik".into();
             **font = TextFont::embedded(
                 "Portable font".into(),
@@ -323,30 +328,30 @@ mod tests {
             .unwrap();
         }
         outline(&op, Time::new(0, 1).unwrap()).unwrap();
-        if let Operation::Text { font, .. } = &mut op {
+        if let Operation::Text(veylvik_document::nodes::Text { font, .. }) = &mut op {
             **font = TextFont::Display;
         }
         let bundled = outline(&op, Time::new(0, 1).unwrap()).unwrap();
-        if let Operation::Text {
+        if let Operation::Text(veylvik_document::nodes::Text {
             underline,
             wrap_width,
             features,
             ..
-        } = &mut op
+        }) = &mut op
         {
             *underline = true;
             *wrap_width = 240.0.into();
             *features = "kern=0, liga=0".into();
         }
         assert_ne!(bundled, outline(&op, Time::new(0, 1).unwrap()).unwrap());
-        if let Operation::Text { content, .. } = &mut op {
+        if let Operation::Text(veylvik_document::nodes::Text { content, .. }) = &mut op {
             *content = String::new();
         }
         outline(&op, Time::new(0, 1).unwrap())
             .unwrap()
             .validate()
             .unwrap();
-        if let Operation::Text { content, .. } = &mut op {
+        if let Operation::Text(veylvik_document::nodes::Text { content, .. }) = &mut op {
             *content = "\u{10ffff}".into();
         }
         assert!(
@@ -451,7 +456,12 @@ mod authoring_tests {
             .composition
             .nodes
             .into_values()
-            .find(|n| matches!(n.operation, Operation::Text { .. }))
+            .find(|n| {
+                matches!(
+                    n.operation,
+                    Operation::Text(veylvik_document::nodes::Text { .. })
+                )
+            })
             .unwrap()
             .operation
     }
@@ -460,9 +470,9 @@ mod authoring_tests {
         let mut op = text();
         let time = Time::new(0, 1).unwrap();
         let before = bounds(&outline(&op, time).unwrap());
-        if let Operation::Text {
+        if let Operation::Text(veylvik_document::nodes::Text {
             typography, x, y, ..
-        } = &mut op
+        }) = &mut op
         {
             typography.anchor = Some([0.5, 0.5]);
             *x = 300.0.into();
@@ -472,13 +482,13 @@ mod authoring_tests {
         assert!(((centered[0] + centered[2]) * 0.5 - 300.0).abs() < 0.01);
         assert!(((centered[1] + centered[3]) * 0.5 - 200.0).abs() < 0.01);
         assert!((centered[2] - centered[0] - (before[2] - before[0])).abs() < 0.01);
-        if let Operation::Text {
+        if let Operation::Text(veylvik_document::nodes::Text {
             wrap_width,
             box_height,
             padding,
             typography,
             ..
-        } = &mut op
+        }) = &mut op
         {
             *wrap_width = 200.0.into();
             *box_height = 80.0.into();
@@ -493,7 +503,7 @@ mod authoring_tests {
     fn staged_text_animation_is_stateless_and_preserves_complete_result() {
         let mut op = text();
         let end = outline(&op, Time::new(10, 1).unwrap()).unwrap();
-        if let Operation::Text { typography, .. } = &mut op {
+        if let Operation::Text(veylvik_document::nodes::Text { typography, .. }) = &mut op {
             typography.motion = veylvik_document::text::TextMotion::Scale;
         }
         let start = outline(&op, Time::new(0, 1).unwrap()).unwrap();
@@ -513,16 +523,21 @@ mod rich_tests {
             .composition
             .nodes
             .into_values()
-            .find(|n| matches!(n.operation, Operation::Text { .. }))
+            .find(|n| {
+                matches!(
+                    n.operation,
+                    Operation::Text(veylvik_document::nodes::Text { .. })
+                )
+            })
             .unwrap()
             .operation;
-        if let Operation::Text {
+        if let Operation::Text(veylvik_document::nodes::Text {
             content,
             size,
             wrap_width,
             typography,
             ..
-        } = &mut op
+        }) = &mut op
         {
             *content = "Åbc title words".into();
             *size = 40.0.into();
@@ -536,7 +551,7 @@ mod rich_tests {
         }
         let styled = outline(&op, Time::new(0, 1).unwrap()).unwrap();
         styled.validate().unwrap();
-        if let Operation::Text { typography, .. } = &mut op {
+        if let Operation::Text(veylvik_document::nodes::Text { typography, .. }) = &mut op {
             typography.spans.clear();
         }
         assert_ne!(styled, outline(&op, Time::new(0, 1).unwrap()).unwrap());

@@ -77,7 +77,12 @@ fn invalid_parameter_and_key_batches_leave_the_whole_document_unchanged() {
         .snapshot()
         .nodes
         .values()
-        .find(|node| matches!(node.operation, Operation::Solid { .. }))
+        .find(|node| {
+            matches!(
+                node.operation,
+                Operation::Solid(veylvik_document::nodes::Solid { .. })
+            )
+        })
         .unwrap()
         .id;
     let before = serde_json::to_vec(document.snapshot()).unwrap();
@@ -119,7 +124,7 @@ fn invalid_parameter_and_key_batches_leave_the_whole_document_unchanged() {
         )
         .unwrap();
     assert!(
-        matches!(document.snapshot().nodes[&solid].operation, Operation::Solid { color } if color == [-2.0,3.0,0.5,0.25])
+        matches!(document.snapshot().nodes[&solid].operation, Operation::Solid(veylvik_document::nodes::Solid { color }) if color == [-2.0,3.0,0.5,0.25])
     );
     document.apply(1, &[key(id, "stops", 1, 2, 1.5)]).unwrap();
     assert_eq!(

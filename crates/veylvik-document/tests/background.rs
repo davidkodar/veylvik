@@ -56,9 +56,10 @@ fn legacy_backdrop_detection_and_professional_behind_mode_are_distinct() {
 #[test]
 fn ambiguous_and_flattened_scenes_require_explicit_choice() {
     let mut doc = blank(96, 64, Time::new(24, 1).unwrap()).unwrap();
-    doc.nodes.get_mut(&doc.output).unwrap().operation = Operation::Image {
-        asset: "photo.png".into(),
-    };
+    doc.nodes.get_mut(&doc.output).unwrap().operation =
+        Operation::Image(veylvik_document::nodes::Image {
+            asset: "photo.png".into(),
+        });
     assert_eq!(background::automatic(&doc), None);
     assert!(background::insert("brick_red", &doc, Placement::Automatic, None).is_err());
     let explicit =

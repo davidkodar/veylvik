@@ -48,11 +48,14 @@ impl Key {
                     Input::Empty => words.extend([0, 0, 0]),
                     Input::Value(slot) => words.extend([1, *slot as u32, 0]),
                     Input::Vector(index) => {
-                        if let veylvik_document::Operation::Text { .. } =
-                            &plan.nodes[*index].operation
+                        if let veylvik_document::Operation::Text(veylvik_document::nodes::Text {
+                            ..
+                        }) = &plan.nodes[*index].operation
                         {
                             let op = &plan.nodes[*index].operation;
-                            if let veylvik_document::Operation::Text { typography, .. } = op
+                            if let veylvik_document::Operation::Text(
+                                veylvik_document::nodes::Text { typography, .. },
+                            ) = op
                                 && typography.motion != veylvik_document::text::TextMotion::None
                             {
                                 let seconds = request.time.seconds()?.to_bits();
@@ -73,8 +76,9 @@ impl Key {
                             continue;
                         }
                         use veylvik_document::vector::PathCommand::*;
-                        let veylvik_document::Operation::Path { geometry } =
-                            &plan.nodes[*index].operation
+                        let veylvik_document::Operation::Path(veylvik_document::nodes::Path {
+                            geometry,
+                        }) = &plan.nodes[*index].operation
                         else {
                             unreachable!()
                         };

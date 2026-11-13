@@ -2,7 +2,11 @@
 use super::*;
 use crate::{PatinaKind, ReflectionKind};
 fn external(b: &mut Builder, label: &str) -> NodeId {
-    let node = Node::new(label, Operation::Solid { color: [0.0; 4] }, &[]);
+    let node = Node::new(
+        label,
+        Operation::Solid(crate::nodes::Solid { color: [0.0; 4] }),
+        &[],
+    );
     let id = node.id;
     b.doc.nodes.insert(id, node);
     id
@@ -25,7 +29,7 @@ pub fn build(id: &str, b: &mut Builder, source: NodeId) -> Result<NodeId> {
             let environment = external(b, "Reflection scene");
             let node = b.add(
                 "Reflected scene on surface",
-                Operation::SurfaceReflection {
+                Operation::SurfaceReflection(crate::nodes::SurfaceReflection {
                     kind: ReflectionKind::Metal,
                     bevel: 5.0.into(),
                     curvature: 0.35.into(),
@@ -35,7 +39,7 @@ pub fn build(id: &str, b: &mut Builder, source: NodeId) -> Result<NodeId> {
                     scale: 1.0.into(),
                     offset_x: loop_value(-60.0, 60.0),
                     offset_y: 0.0.into(),
-                },
+                }),
                 &[("image", source), ("reflection", environment)],
             );
             for (p, l) in [
@@ -58,7 +62,7 @@ pub fn build(id: &str, b: &mut Builder, source: NodeId) -> Result<NodeId> {
             let roughness = if id == "clear_glass" { 0.0 } else { 18.0 };
             let glass = b.add(
                 "Refracted glass surface",
-                Operation::Glass {
+                Operation::Glass(crate::nodes::Glass {
                     bevel: 7.0.into(),
                     refraction: loop_value(12.0, 28.0),
                     roughness: roughness.into(),
@@ -66,12 +70,12 @@ pub fn build(id: &str, b: &mut Builder, source: NodeId) -> Result<NodeId> {
                     transmission: 0.96.into(),
                     tint: 0.15.into(),
                     dispersion: 0.12.into(),
-                },
+                }),
                 &[("image", source), ("background", background)],
             );
             let reflection = b.add(
                 "Glass scene reflection",
-                Operation::SurfaceReflection {
+                Operation::SurfaceReflection(crate::nodes::SurfaceReflection {
                     kind: ReflectionKind::Glass,
                     bevel: 7.0.into(),
                     curvature: 0.5.into(),
@@ -81,7 +85,7 @@ pub fn build(id: &str, b: &mut Builder, source: NodeId) -> Result<NodeId> {
                     scale: 1.0.into(),
                     offset_x: loop_value(-70.0, 70.0),
                     offset_y: 0.0.into(),
-                },
+                }),
                 &[("image", glass), ("reflection", environment)],
             );
             for (p, l) in [
@@ -120,7 +124,7 @@ pub fn build(id: &str, b: &mut Builder, source: NodeId) -> Result<NodeId> {
         "metal_patina" => {
             let node = b.add(
                 "Uneven tarnish and dirt",
-                Operation::Patina {
+                Operation::Patina(crate::nodes::Patina {
                     kind: PatinaKind::Tarnish,
                     seed: 71,
                     amount: 0.75.into(),
@@ -128,7 +132,7 @@ pub fn build(id: &str, b: &mut Builder, source: NodeId) -> Result<NodeId> {
                     scale: 110.0.into(),
                     wear: 0.55.into(),
                     scratches: 0.25.into(),
-                },
+                }),
                 &[("image", source)],
             );
             for (p, l) in [

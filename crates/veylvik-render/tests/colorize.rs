@@ -6,7 +6,7 @@ use veylvik_render::*;
 fn colorize_endpoints_validate_and_default_to_black_and_white() {
     let operation: Operation =
         serde_json::from_value(registry::COLORIZE.default_operation()).unwrap();
-    let Operation::Colorize { low, high } = operation else {
+    let Operation::Colorize(veylvik_document::nodes::Colorize { low, high }) = operation else {
         panic!()
     };
     assert_eq!(low, [0.0, 0.0, 0.0, 1.0]);
@@ -17,26 +17,26 @@ fn colorize_endpoints_validate_and_default_to_black_and_white() {
         [0.0, 0.0, 0.0, 1.1],
     ] {
         assert!(
-            Operation::Colorize {
+            Operation::Colorize(veylvik_document::nodes::Colorize {
                 low: endpoint,
                 high
-            }
+            })
             .validate()
             .is_err()
         );
         assert!(
-            Operation::Colorize {
+            Operation::Colorize(veylvik_document::nodes::Colorize {
                 low,
                 high: endpoint
-            }
+            })
             .validate()
             .is_err()
         );
     }
-    Operation::Colorize {
+    Operation::Colorize(veylvik_document::nodes::Colorize {
         low: [-f32::MAX, f32::MAX, 0.0, 0.5],
         high,
-    }
+    })
     .validate()
     .unwrap();
 }
@@ -62,9 +62,10 @@ fn colorize_matches_premultiplied_reference_with_hdr_transparency_and_cache_chan
     ];
     let mut doc = blank(source.len() as u32, 1, Time::new(24, 1).unwrap()).unwrap();
     let source_id = doc.output;
-    doc.nodes.get_mut(&source_id).unwrap().operation = Operation::Image {
-        asset: "input".into(),
-    };
+    doc.nodes.get_mut(&source_id).unwrap().operation =
+        Operation::Image(veylvik_document::nodes::Image {
+            asset: "input".into(),
+        });
     let mut inputs = ImageInputs::default();
     inputs.insert(
         "input",
@@ -79,7 +80,7 @@ fn colorize_matches_premultiplied_reference_with_hdr_transparency_and_cache_chan
     ] {
         let colorize = Node::new(
             "Color",
-            Operation::Colorize { low, high },
+            Operation::Colorize(veylvik_document::nodes::Colorize { low, high }),
             &[("image", source_id)],
         );
         if doc.output != source_id {

@@ -67,11 +67,11 @@ pub fn set_parameter(
     }
     if parameter == "content"
         && let Some(after) = value.as_str()
-        && let crate::Operation::Text {
+        && let crate::Operation::Text(crate::nodes::Text {
             content,
             typography,
             ..
-        } = &mut node.operation
+        }) = &mut node.operation
     {
         typography.remap(content, after);
     }

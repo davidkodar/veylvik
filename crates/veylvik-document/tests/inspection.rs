@@ -9,10 +9,10 @@ fn targeted_inspection_pages_large_graphs_without_copying_animation_payloads() {
     for index in 1..=80u128 {
         let mut node = Node::new(
             "Noise",
-            Operation::Noise {
+            Operation::Noise(veylvik_document::nodes::Noise {
                 seed: index as u32,
                 scale: 8.0.into(),
-            },
+            }),
             &[],
         );
         node.id = NodeId::from_u128(index);
@@ -20,7 +20,7 @@ fn targeted_inspection_pages_large_graphs_without_copying_animation_payloads() {
     }
     let first = doc.nodes.get_mut(&doc.output).unwrap();
     first.label = "å".repeat(300);
-    first.operation = Operation::Noise {
+    first.operation = Operation::Noise(veylvik_document::nodes::Noise {
         seed: 1,
         scale: Scalar::Smooth {
             keys: (0..4096)
@@ -31,7 +31,7 @@ fn targeted_inspection_pages_large_graphs_without_copying_animation_payloads() {
                 })
                 .collect(),
         },
-    };
+    });
     doc.validate().unwrap();
     let before = serde_json::to_vec(&doc).unwrap();
     let summary = inspection::summary(&doc);

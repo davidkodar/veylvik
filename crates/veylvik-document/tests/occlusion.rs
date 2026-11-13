@@ -5,13 +5,23 @@ fn foreground_setup_preserves_text_effects_and_is_one_undoable_transaction() {
     let text = doc
         .nodes
         .values()
-        .find(|n| matches!(n.operation, Operation::Text { .. }))
+        .find(|n| {
+            matches!(
+                n.operation,
+                Operation::Text(veylvik_document::nodes::Text { .. })
+            )
+        })
         .unwrap()
         .id;
     let source = doc
         .nodes
         .values()
-        .find(|n| matches!(n.operation, Operation::Solid { .. }))
+        .find(|n| {
+            matches!(
+                n.operation,
+                Operation::Solid(veylvik_document::nodes::Solid { .. })
+            )
+        })
         .unwrap()
         .id;
     let sources = occlusion::independent_sources(&doc, text);
@@ -52,7 +62,12 @@ fn rejects_sources_containing_text_and_disconnected_text_without_mutation() {
     let text = doc
         .nodes
         .values()
-        .find(|n| matches!(n.operation, Operation::Text { .. }))
+        .find(|n| {
+            matches!(
+                n.operation,
+                Operation::Text(veylvik_document::nodes::Text { .. })
+            )
+        })
         .unwrap()
         .id;
     assert!(occlusion::create(&doc, text, doc.output, vector::PathMask::default()).is_err());
@@ -60,7 +75,12 @@ fn rejects_sources_containing_text_and_disconnected_text_without_mutation() {
     let source = doc
         .nodes
         .values()
-        .find(|n| matches!(n.operation, Operation::Solid { .. }))
+        .find(|n| {
+            matches!(
+                n.operation,
+                Operation::Solid(veylvik_document::nodes::Solid { .. })
+            )
+        })
         .unwrap()
         .id;
     doc.output = source;

@@ -96,9 +96,9 @@ fn saved_track_is_independent_reusable_and_undoable() {
     assert_eq!(document.snapshot().output, original);
     let warp = Node::new(
         "Tracked layer",
-        Operation::PlanarWarp {
+        Operation::PlanarWarp(veylvik_document::nodes::PlanarWarp {
             mode: WarpMode::Follow,
-        },
+        }),
         &[("image", original), ("track", id)],
     );
     let warp_id = warp.id;

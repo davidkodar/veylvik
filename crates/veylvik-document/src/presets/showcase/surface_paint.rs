@@ -5,11 +5,12 @@ pub(super) fn build() -> Result<Scene> {
     let mut doc = crate::blank(960, 540, Time::new(24, 1)?)?;
     doc.frame_count = 96;
     let white = doc.output;
-    doc.nodes.get_mut(&white).unwrap().operation = Operation::Solid { color: [1.; 4] };
+    doc.nodes.get_mut(&white).unwrap().operation =
+        Operation::Solid(crate::nodes::Solid { color: [1.; 4] });
     let plate = add(
         &mut doc,
         "Brick wall",
-        Operation::Material {
+        Operation::Material(crate::nodes::Material {
             kind: crate::MaterialKind::BrickRed,
             scale: 150.0.into(),
             bevel: 3.0.into(),
@@ -17,7 +18,7 @@ pub(super) fn build() -> Result<Scene> {
             lighting: 0.0.into(),
             grain: 0.8.into(),
             emission: 1.0.into(),
-        },
+        }),
         &[("image", white)],
     );
     doc.nodes.get_mut(&plate).unwrap().scene_background = true;
@@ -26,7 +27,7 @@ pub(super) fn build() -> Result<Scene> {
     let track = add(
         &mut doc,
         "Authored camera motion (example)",
-        Operation::PlanarTrack {
+        Operation::PlanarTrack(crate::nodes::PlanarTrack {
             data: Box::new(Track {
                 reference_time: Time::new(0, 1)?,
                 reference,
@@ -41,25 +42,25 @@ pub(super) fn build() -> Result<Scene> {
                     })
                     .collect(),
             }),
-        },
+        }),
         &[("image", plate)],
     );
     let moving_plate = add(
         &mut doc,
         "Wall follows camera",
-        Operation::PlanarWarp {
+        Operation::PlanarWarp(crate::nodes::PlanarWarp {
             mode: WarpMode::Follow,
-        },
+        }),
         &[("image", plate), ("track", track)],
     );
     let mut text = title_text("STAY\nCURIOUS");
-    if let Operation::Text {
+    if let Operation::Text(crate::nodes::Text {
         size,
         y,
         tracking,
         color,
         ..
-    } = &mut text
+    }) = &mut text
     {
         *size = 105.0.into();
         *y = 235.0.into();
@@ -70,15 +71,15 @@ pub(super) fn build() -> Result<Scene> {
     let moving_title = add(
         &mut doc,
         "Lettering follows same camera",
-        Operation::PlanarWarp {
+        Operation::PlanarWarp(crate::nodes::PlanarWarp {
             mode: WarpMode::Follow,
-        },
+        }),
         &[("image", title), ("track", track)],
     );
     let before = add(
         &mut doc,
         "Before: clean lettering on wall",
-        Operation::Merge {},
+        Operation::Merge(crate::nodes::Merge {}),
         &[("background", moving_plate), ("foreground", moving_title)],
     );
     doc.output = before;

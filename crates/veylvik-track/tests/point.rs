@@ -8,9 +8,10 @@ fn gpu_tracking_finds_translation_rejects_flat_and_ambiguous_patches() {
     let renderer = Renderer::new().unwrap();
     let tracker = PointTracker::new(&renderer);
     let mut doc = veylvik_document::blank(96, 64, Time::new(24, 1).unwrap()).unwrap();
-    doc.nodes.get_mut(&doc.output).unwrap().operation = Operation::Image {
-        asset: "source".into(),
-    };
+    doc.nodes.get_mut(&doc.output).unwrap().operation =
+        Operation::Image(veylvik_document::nodes::Image {
+            asset: "source".into(),
+        });
     let plan = Plan::compile(&doc).unwrap();
     let make = |shift: i32, copies: bool, flat: bool| {
         let mut pixels = vec![[0.0, 0.0, 0.0, 1.0]; 96 * 64];

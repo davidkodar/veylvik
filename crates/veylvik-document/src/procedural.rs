@@ -16,18 +16,22 @@ impl Scene {
     fn over(&mut self, background: NodeId, foreground: NodeId, label: &str) -> NodeId {
         self.add(
             label,
-            Operation::Blend {
+            Operation::Blend(crate::nodes::Blend {
                 mode: BlendMode::Add,
                 opacity: 1.0.into(),
-            },
+            }),
             &[("background", background), ("foreground", foreground)],
         )
     }
     fn color(&mut self, label: &str, color: [f32; 4], mask: NodeId) -> NodeId {
-        let solid = self.add(&format!("{label} color"), Operation::Solid { color }, &[]);
+        let solid = self.add(
+            &format!("{label} color"),
+            Operation::Solid(crate::nodes::Solid { color }),
+            &[],
+        );
         self.add(
             label,
-            Operation::Mask {},
+            Operation::Mask(crate::nodes::Mask {}),
             &[("image", solid), ("mask", mask)],
         )
     }
@@ -36,17 +40,17 @@ impl Scene {
         for pass in 1..=3 {
             blur = self.add(
                 &format!("{label} blur {pass}"),
-                Operation::Blur {
+                Operation::Blur(crate::nodes::Blur {
                     radius: (radius * 0.6).into(),
-                },
+                }),
                 &[("image", blur)],
             );
         }
         self.add(
             label,
-            Operation::Exposure {
+            Operation::Exposure(crate::nodes::Exposure {
                 stops: stops.into(),
-            },
+            }),
             &[("image", blur)],
         )
     }
@@ -100,43 +104,43 @@ pub fn procedural_demo() -> Composition {
     let mut scene = Scene { nodes: Vec::new() };
     let mut output = scene.add(
         "Deep space",
-        Operation::Solid {
+        Operation::Solid(crate::nodes::Solid {
             color: [0.002, 0.004, 0.012, 1.0],
-        },
+        }),
         &[],
     );
     let turbulence = scene.add(
         "Evolving turbulence",
-        Operation::FractalNoise {
+        Operation::FractalNoise(crate::nodes::FractalNoise {
             seed: 73,
             scale: 90.0.into(),
             octaves: 5.0.into(),
             roughness: 0.55.into(),
             evolution: animated(0.0, 1.8),
-        },
+        }),
         &[],
     );
     let texture = scene.add(
         "Cloud coverage",
-        Operation::ChannelMask {
+        Operation::ChannelMask(crate::nodes::ChannelMask {
             channel: MaskChannel::Luminance,
-        },
+        }),
         &[("image", turbulence)],
     );
     let core = scene.add(
         "Core silhouette",
-        Operation::Ellipse {
+        Operation::Ellipse(crate::nodes::Ellipse {
             x: 480.0.into(),
             y: 270.0.into(),
             radius_x: 150.0.into(),
             radius_y: 120.0.into(),
             feather: 110.0.into(),
-        },
+        }),
         &[],
     );
     let core = scene.add(
         "Textured core",
-        Operation::Mask {},
+        Operation::Mask(crate::nodes::Mask {}),
         &[("image", core), ("mask", texture)],
     );
     let core = scene.color("Violet atmosphere", [0.28, 0.025, 0.95, 1.0], core);
@@ -167,18 +171,18 @@ pub fn procedural_demo() -> Composition {
         circle(&mut commands, 480.0, 270.0, radius - thickness);
         let mask = scene.add(
             &format!("{name} outline"),
-            Operation::Path {
+            Operation::Path(crate::nodes::Path {
                 geometry: PathMask {
                     keys: vec![],
                     fill_rule: FillRule::EvenOdd,
                     commands,
                 },
-            },
+            }),
             &[],
         );
         let mask = scene.add(
             &format!("{name} tilt"),
-            Operation::Affine {
+            Operation::Affine(crate::nodes::Affine {
                 x: 0.0.into(),
                 y: 0.0.into(),
                 scale_x: 1.0.into(),
@@ -186,15 +190,15 @@ pub fn procedural_demo() -> Composition {
                 rotation: animated(angle, angle + 24.0),
                 pivot_x: 480.0.into(),
                 pivot_y: 270.0.into(),
-            },
+            }),
             &[("image", mask)],
         );
         let mask = scene.add(
             &format!("{name} distortion"),
-            Operation::Displace {
+            Operation::Displace(crate::nodes::Displace {
                 x: x.into(),
                 y: y.into(),
-            },
+            }),
             &[("image", mask), ("map", turbulence)],
         );
         let ring = scene.color(name, color, mask);
@@ -213,18 +217,18 @@ pub fn procedural_demo() -> Composition {
         let label = format!("Spark {}", index + 1);
         let mask = scene.add(
             &format!("{label} mask"),
-            Operation::Ellipse {
+            Operation::Ellipse(crate::nodes::Ellipse {
                 x: x.into(),
                 y: y.into(),
                 radius_x: radius.into(),
                 radius_y: radius.into(),
                 feather: 1.0.into(),
-            },
+            }),
             &[],
         );
         let mask = scene.add(
             &format!("{label} orbit"),
-            Operation::Affine {
+            Operation::Affine(crate::nodes::Affine {
                 x: 0.0.into(),
                 y: 0.0.into(),
                 scale_x: 1.0.into(),
@@ -232,7 +236,7 @@ pub fn procedural_demo() -> Composition {
                 rotation: animated(phase, phase + 360.0),
                 pivot_x: 480.0.into(),
                 pivot_y: 270.0.into(),
-            },
+            }),
             &[("image", mask)],
         );
         let spark = scene.color(&label, [1.2, 2.2, 4.0, 1.0], mask);
@@ -242,9 +246,9 @@ pub fn procedural_demo() -> Composition {
     }
     output = scene.add(
         "Output",
-        Operation::Exposure {
+        Operation::Exposure(crate::nodes::Exposure {
             stops: (-0.3).into(),
-        },
+        }),
         &[("image", output)],
     );
     Composition {

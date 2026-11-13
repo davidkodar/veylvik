@@ -17,9 +17,9 @@ fn recovery_copies_preserve_assets_and_leave_originals_and_other_sessions_untouc
     let second = NodeId::new_v4();
     let node = Node::new(
         "image",
-        Operation::Image {
+        Operation::Image(veylvik_document::nodes::Image {
             asset: "plate.exr".into(),
-        },
+        }),
         &[],
     );
     let mut doc = Composition {
@@ -38,7 +38,9 @@ fn recovery_copies_preserve_assets_and_leave_originals_and_other_sessions_untouc
     store.write(id, &doc, &root.0).unwrap();
     store.write(second, &doc, &root.0).unwrap();
     let recovered = store.read(id).unwrap();
-    let Operation::Image { asset } = &recovered.nodes[&recovered.output].operation else {
+    let Operation::Image(veylvik_document::nodes::Image { asset }) =
+        &recovered.nodes[&recovered.output].operation
+    else {
         unreachable!()
     };
     assert_eq!(std::path::Path::new(asset), root.0.join("plate.exr"));

@@ -6,10 +6,10 @@ impl Studio {
     pub(super) fn surface_controls(&mut self, ui: &mut egui::Ui) {
         if matches!(
             self.draft.operation,
-            Operation::PlanarWarp {
+            Operation::PlanarWarp(veylvik_document::nodes::PlanarWarp {
                 mode: veylvik_document::planar::WarpMode::Follow
                     | veylvik_document::planar::WarpMode::Fit
-            }
+            })
         ) && ui
             .button("Blend onto tracked surface…")
             .on_hover_text("Add surface lighting and texture controls to this output layer")
@@ -33,7 +33,10 @@ impl Studio {
                 Err(e) => self.fail(e),
             }
         }
-        if matches!(self.draft.operation, Operation::SurfaceBlend { .. }) {
+        if matches!(
+            self.draft.operation,
+            Operation::SurfaceBlend(veylvik_document::nodes::SurfaceBlend { .. })
+        ) {
             ui.horizontal(|ui| {
                 egui::ComboBox::from_id_salt("surface-look").selected_text("Starting look…").show_ui(ui,|ui| {
                     for look in Look::ALL {

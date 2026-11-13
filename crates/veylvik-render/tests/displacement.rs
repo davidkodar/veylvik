@@ -36,21 +36,21 @@ fn displacement_matches_reference_for_alpha_hdr_borders_animation_and_cache() {
     );
     let image = Node::new(
         "image",
-        Operation::Image {
+        Operation::Image(veylvik_document::nodes::Image {
             asset: "source".into(),
-        },
+        }),
         &[],
     );
     let field = Node::new(
         "map",
-        Operation::Image {
+        Operation::Image(veylvik_document::nodes::Image {
             asset: "map".into(),
-        },
+        }),
         &[],
     );
     let effect = Node::new(
         "displace",
-        Operation::Displace {
+        Operation::Displace(veylvik_document::nodes::Displace {
             x: Scalar::Linear {
                 keys: vec![
                     Key {
@@ -66,7 +66,7 @@ fn displacement_matches_reference_for_alpha_hdr_borders_animation_and_cache() {
                 ],
             },
             y: 1.25.into(),
-        },
+        }),
         &[("image", image.id), ("map", field.id)],
     );
     let doc = Composition {

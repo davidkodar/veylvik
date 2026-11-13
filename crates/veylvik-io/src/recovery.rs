@@ -70,7 +70,8 @@ impl Store {
         use std::os::unix::fs::DirBuilderExt;
         let mut copy = composition.clone();
         for node in copy.nodes.values_mut() {
-            if let Operation::Image { asset } | Operation::Footage { asset, .. } =
+            if let Operation::Image(veylvik_document::nodes::Image { asset })
+            | Operation::Footage(veylvik_document::nodes::Footage { asset, .. }) =
                 &mut node.operation
             {
                 let path = Path::new(asset);
@@ -117,7 +118,7 @@ impl Store {
             return Err("recovery copy must be a regular file".into());
         }
         let composition = Composition::load(&path)?;
-        if composition.nodes.values().any(|node| matches!(&node.operation, Operation::Image { asset } | Operation::Footage { asset, .. } if !Path::new(asset).is_absolute())) {
+        if composition.nodes.values().any(|node| matches!(&node.operation, Operation::Image(veylvik_document::nodes::Image { asset }) | Operation::Footage(veylvik_document::nodes::Footage { asset, .. }) if !Path::new(asset).is_absolute())) {
             return Err("recovery image paths must be absolute".into());
         }
         Ok(composition)

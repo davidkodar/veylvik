@@ -44,7 +44,7 @@ fn fractal_noise_matches_lattice_reference_and_animated_cache_identity() {
         ] {
             let node = Node::new(
                 "noise",
-                Operation::FractalNoise {
+                Operation::FractalNoise(veylvik_document::nodes::FractalNoise {
                     seed,
                     scale: scale.into(),
                     octaves: octaves.into(),
@@ -63,7 +63,7 @@ fn fractal_noise_matches_lattice_reference_and_animated_cache_identity() {
                             },
                         ],
                     },
-                },
+                }),
                 &[],
             );
             let doc = Composition {

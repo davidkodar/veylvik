@@ -164,7 +164,12 @@ impl ImageInputs {
         let mut result = self.clone();
         let mut decoded_bytes = 0u64;
         for node in &plan.nodes {
-            if let veylvik_document::Operation::Footage { asset, timing, .. } = &node.operation {
+            if let veylvik_document::Operation::Footage(veylvik_document::nodes::Footage {
+                asset,
+                timing,
+                ..
+            }) = &node.operation
+            {
                 let key = crate::plan::footage_key(node.id);
                 if self.contains_key(&key) {
                     continue;
@@ -204,7 +209,9 @@ impl ImageInputs {
                     return Err(error("Decoded footage sources exceed 256 MiB per frame"));
                 }
                 result.insert(key, image);
-            } else if let veylvik_document::Operation::Image { asset } = &node.operation
+            } else if let veylvik_document::Operation::Image(veylvik_document::nodes::Image {
+                asset,
+            }) = &node.operation
                 && let Some(source) = self.2.get(asset)
             {
                 if let Some(renderer) = renderer

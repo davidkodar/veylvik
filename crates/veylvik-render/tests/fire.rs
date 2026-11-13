@@ -2,16 +2,17 @@ use veylvik_document::*;
 use veylvik_render::*;
 fn scene(width: u32, height: u32, phase: f32) -> Composition {
     let mut doc = blank(width, height, Time::new(24, 1).unwrap()).unwrap();
-    doc.nodes.get_mut(&doc.output).unwrap().operation = Operation::Fire {
-        seed: 297,
-        x: (width as f32 * 0.5).into(),
-        y: (height as f32 * 0.85).into(),
-        width: (width as f32 * 0.7).into(),
-        height: (height as f32 * 0.7).into(),
-        evolution: phase.into(),
-        intensity: 1.1.into(),
-        turbulence: 1.4.into(),
-    };
+    doc.nodes.get_mut(&doc.output).unwrap().operation =
+        Operation::Fire(veylvik_document::nodes::Fire {
+            seed: 297,
+            x: (width as f32 * 0.5).into(),
+            y: (height as f32 * 0.85).into(),
+            width: (width as f32 * 0.7).into(),
+            height: (height as f32 * 0.7).into(),
+            evolution: phase.into(),
+            intensity: 1.1.into(),
+            turbulence: 1.4.into(),
+        });
     doc
 }
 #[test]

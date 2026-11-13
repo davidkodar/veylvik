@@ -5,29 +5,29 @@ fn tracked_surface_upgrade_preserves_graph_and_supports_generic_occlusion() {
     let source = doc.output;
     let track = Node::new(
         "Track",
-        Operation::PlanarTrack {
+        Operation::PlanarTrack(veylvik_document::nodes::PlanarTrack {
             data: Box::default(),
-        },
+        }),
         &[("image", source)],
     );
     let fg = Node::new(
         "Layer",
-        Operation::Solid {
+        Operation::Solid(veylvik_document::nodes::Solid {
             color: [1., 0.5, 0.1, 1.],
-        },
+        }),
         &[],
     );
     let warp = Node::new(
         "Warp",
-        Operation::PlanarWarp {
+        Operation::PlanarWarp(veylvik_document::nodes::PlanarWarp {
             mode: planar::WarpMode::Fit,
-        },
+        }),
         &[("image", fg.id), ("track", track.id)],
     );
     let warp_id = warp.id;
     let merge = Node::new(
         "Composite",
-        Operation::Merge {},
+        Operation::Merge(veylvik_document::nodes::Merge {}),
         &[("background", source), ("foreground", warp_id)],
     );
     doc.output = merge.id;
@@ -43,7 +43,7 @@ fn tracked_surface_upgrade_preserves_graph_and_supports_generic_occlusion() {
     assert_eq!(owner.snapshot().nodes[&id].inputs, original_inputs);
     assert!(matches!(
         owner.snapshot().nodes[&id].operation,
-        Operation::SurfaceBlend { .. }
+        Operation::SurfaceBlend(veylvik_document::nodes::SurfaceBlend { .. })
     ));
     let (occlusion, commands) =
         occlusion::create(owner.snapshot(), id, source, vector::PathMask::default()).unwrap();

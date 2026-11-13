@@ -49,14 +49,15 @@ impl TitleStyle {
             .composition
             .nodes
             .get(&self.text)
-            .is_some_and(|n| matches!(n.operation, Operation::Text { .. }))
+            .is_some_and(|n| matches!(n.operation, Operation::Text(crate::nodes::Text { .. })))
         {
             return fail("Title style needs an editable text source");
         }
         if self.composition.nodes.values().any(|n| {
             matches!(
                 n.operation,
-                Operation::Image { .. } | Operation::Footage { .. }
+                Operation::Image(crate::nodes::Image { .. })
+                    | Operation::Footage(crate::nodes::Footage { .. })
             )
         }) {
             return fail(
@@ -67,7 +68,7 @@ impl TitleStyle {
     }
     pub fn apply(&self, doc: &Composition, text: NodeId) -> Result<Vec<Command>> {
         self.validate()?;
-        let Operation::Text { content, x, y, .. } = &doc
+        let Operation::Text(crate::nodes::Text { content, x, y, .. }) = &doc
             .nodes
             .get(&text)
             .ok_or_else(|| Error("Select editable text".into()))?
@@ -99,13 +100,13 @@ impl TitleStyle {
             if node.id == self.text {
                 next.label = doc.nodes[&text].label.clone();
                 next.position = doc.nodes[&text].position;
-                if let Operation::Text {
+                if let Operation::Text(crate::nodes::Text {
                     content: wording,
                     typography,
                     x: tx,
                     y: ty,
                     ..
-                } = &mut next.operation
+                }) = &mut next.operation
                 {
                     typography.remap(wording, content);
                     *wording = content.clone();

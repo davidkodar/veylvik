@@ -6,8 +6,16 @@ use veylvik_render::*;
 #[ignore = "requires Vulkan"]
 fn blend_modes_match_straight_colour_reference_with_animated_opacity() {
     let renderer = Renderer::new().unwrap();
-    let background = Node::new("background", Operation::Image { asset: "b".into() }, &[]);
-    let foreground = Node::new("foreground", Operation::Image { asset: "f".into() }, &[]);
+    let background = Node::new(
+        "background",
+        Operation::Image(veylvik_document::nodes::Image { asset: "b".into() }),
+        &[],
+    );
+    let foreground = Node::new(
+        "foreground",
+        Operation::Image(veylvik_document::nodes::Image { asset: "f".into() }),
+        &[],
+    );
     // Transparent, partial, opaque, HDR and negative channels, including very small alpha.
     let colours = [
         [0.2, 0.7, 0.4],
@@ -50,7 +58,7 @@ fn blend_modes_match_straight_colour_reference_with_animated_opacity() {
     );
     let mut blend = Node::new(
         "blend",
-        Operation::Blend {
+        Operation::Blend(veylvik_document::nodes::Blend {
             mode: BlendMode::Normal,
             opacity: Scalar::Linear {
                 keys: vec![
@@ -66,12 +74,14 @@ fn blend_modes_match_straight_colour_reference_with_animated_opacity() {
                     },
                 ],
             },
-        },
+        }),
         &[("background", background.id), ("foreground", foreground.id)],
     );
     let mut previous = None;
     for mode in BlendMode::ALL {
-        if let Operation::Blend { mode: value, .. } = &mut blend.operation {
+        if let Operation::Blend(veylvik_document::nodes::Blend { mode: value, .. }) =
+            &mut blend.operation
+        {
             *value = mode;
         }
         let composition = Composition {

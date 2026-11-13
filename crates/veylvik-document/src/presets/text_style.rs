@@ -8,7 +8,7 @@ fn input_layer(doc: &Composition, text: NodeId) -> Result<NodeId> {
         .values()
         .filter(|n| {
             reachable.contains(&n.id)
-                && matches!(n.operation, Operation::Mask { .. })
+                && matches!(n.operation, Operation::Mask(crate::nodes::Mask { .. }))
                 && n.inputs.get("mask") == Some(&text)
         })
         .map(|n| n.id)
@@ -26,7 +26,10 @@ pub fn current(doc: &Composition, text: NodeId) -> Result<Option<NodeId>> {
         .values()
         .filter(|n| {
             reachable.contains(&n.id)
-                && matches!(n.operation, Operation::Material { .. })
+                && matches!(
+                    n.operation,
+                    Operation::Material(crate::nodes::Material { .. })
+                )
                 && n.inputs.get("image") == Some(&text)
         })
         .map(|n| n.id)
@@ -47,7 +50,7 @@ pub fn apply(
     if !doc
         .nodes
         .get(&text)
-        .is_some_and(|n| matches!(n.operation, Operation::Text { .. }))
+        .is_some_and(|n| matches!(n.operation, Operation::Text(crate::nodes::Text { .. })))
     {
         return fail("Select editable text first");
     }
@@ -67,14 +70,20 @@ pub fn apply(
     let material = preset
         .nodes
         .values()
-        .find(|n| matches!(n.operation, Operation::Material { .. }))
+        .find(|n| {
+            matches!(
+                n.operation,
+                Operation::Material(crate::nodes::Material { .. })
+            )
+        })
         .unwrap();
     if let Some(id) = current {
         let mut node = doc.nodes[&id].clone();
-        let Operation::Material { kind: new_kind, .. } = material.operation else {
+        let Operation::Material(crate::nodes::Material { kind: new_kind, .. }) = material.operation
+        else {
             unreachable!()
         };
-        if let Operation::Material { kind, .. } = &mut node.operation {
+        if let Operation::Material(crate::nodes::Material { kind, .. }) = &mut node.operation {
             *kind = new_kind;
         }
         node.label = format!("Text · {}", preset.group.label);
@@ -243,35 +252,35 @@ pub fn remove_effect(doc: &Composition, text: NodeId, id: NodeId) -> Result<Vec<
 pub fn shadow(doc: &Composition, source: NodeId) -> Result<Vec<Command>> {
     let alpha = Node::new(
         "Shadow alpha",
-        Operation::ChannelMask {
+        Operation::ChannelMask(crate::nodes::ChannelMask {
             channel: crate::MaskChannel::Alpha,
-        },
+        }),
         &[("image", source)],
     );
     let tint = Node::new(
         "Shadow colour",
-        Operation::Colorize {
+        Operation::Colorize(crate::nodes::Colorize {
             low: [0.0; 4],
             high: [0.0, 0.0, 0.0, 0.65],
-        },
+        }),
         &[("image", alpha.id)],
     );
     let offset = Node::new(
         "Shadow offset",
-        Operation::Transform {
+        Operation::Transform(crate::nodes::Transform {
             x: 8.0.into(),
             y: 12.0.into(),
-        },
+        }),
         &[("image", tint.id)],
     );
     let blur = Node::new(
         "Shadow softness",
-        Operation::Blur { radius: 8.0.into() },
+        Operation::Blur(crate::nodes::Blur { radius: 8.0.into() }),
         &[("image", offset.id)],
     );
     let merge = Node::new(
         "Shadow behind text",
-        Operation::Merge {},
+        Operation::Merge(crate::nodes::Merge {}),
         &[("background", blur.id), ("foreground", source)],
     );
     let output = merge.id;
@@ -333,11 +342,16 @@ pub fn plain(doc: &Composition, text: NodeId) -> Result<Vec<Command>> {
 pub fn gradient(doc: &Composition, text: NodeId) -> Result<Vec<Command>> {
     // Reuse the connected gradient, including its authored colours and animation.
     if let Some(image) = fill_source(doc, text)?
-        && matches!(doc.nodes[&image].operation, Operation::Colorize { .. })
-        && doc.nodes[&image]
-            .inputs
-            .get("image")
-            .is_some_and(|id| matches!(doc.nodes[id].operation, Operation::Gradient { .. }))
+        && matches!(
+            doc.nodes[&image].operation,
+            Operation::Colorize(crate::nodes::Colorize { .. })
+        )
+        && doc.nodes[&image].inputs.get("image").is_some_and(|id| {
+            matches!(
+                doc.nodes[id].operation,
+                Operation::Gradient(crate::nodes::Gradient { .. })
+            )
+        })
     {
         return if current(doc, text)?.is_none() {
             Ok(vec![])
@@ -347,21 +361,21 @@ pub fn gradient(doc: &Composition, text: NodeId) -> Result<Vec<Command>> {
     }
     let gradient = Node::new(
         "Text gradient",
-        Operation::Gradient {
+        Operation::Gradient(crate::nodes::Gradient {
             mode: crate::GradientMode::Linear,
             start_x: 0.0.into(),
             start_y: 0.0.into(),
             end_x: 0.0.into(),
             end_y: (doc.height as f32).into(),
-        },
+        }),
         &[],
     );
     let colors = Node::new(
         "Text gradient colours",
-        Operation::Colorize {
+        Operation::Colorize(crate::nodes::Colorize {
             low: [0.05, 0.15, 0.7, 1.0],
             high: [0.9, 0.5, 0.1, 1.0],
-        },
+        }),
         &[("image", gradient.id)],
     );
     let image = colors.id;

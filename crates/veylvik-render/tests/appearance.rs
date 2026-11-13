@@ -3,9 +3,10 @@ use veylvik_document::*;
 use veylvik_render::*;
 fn source() -> (Composition, ImageInputs, Vec<[f32; 4]>) {
     let mut doc = blank(96, 64, Time::new(24, 1).unwrap()).unwrap();
-    doc.nodes.get_mut(&doc.output).unwrap().operation = Operation::Image {
-        asset: "coverage".into(),
-    };
+    doc.nodes.get_mut(&doc.output).unwrap().operation =
+        Operation::Image(veylvik_document::nodes::Image {
+            asset: "coverage".into(),
+        });
     let pixels: Vec<_> = (0..96 * 64)
         .map(|i| {
             let alpha = if i % 96 < 8 {
@@ -32,13 +33,13 @@ fn shine_preserves_coverage_and_matches_specular_profile() {
     let (mut doc, inputs, source) = source();
     let node = Node::new(
         "shine",
-        Operation::MetallicShine {
+        Operation::MetallicShine(veylvik_document::nodes::MetallicShine {
             x: 48.0.into(),
             y: 32.0.into(),
             width: 20.0.into(),
             angle: 0.0.into(),
             intensity: 2.0.into(),
-        },
+        }),
         &[("image", doc.output)],
     );
     doc.output = node.id;
@@ -83,7 +84,7 @@ fn materials_are_distinct_finite_and_preserve_partial_alpha() {
     for kind in MaterialKind::ALL {
         let node = Node::new(
             "surface",
-            Operation::Material {
+            Operation::Material(veylvik_document::nodes::Material {
                 kind,
                 scale: 90.0.into(),
                 bevel: 4.0.into(),
@@ -91,7 +92,7 @@ fn materials_are_distinct_finite_and_preserve_partial_alpha() {
                 lighting: 0.0.into(),
                 grain: 0.6.into(),
                 emission: 1.0.into(),
-            },
+            }),
             &[("image", input)],
         );
         doc.output = node.id;
@@ -122,18 +123,19 @@ fn atmospheres_loop_without_state_preserve_clear_space_and_have_distinct_density
     let mut previous = Vec::new();
     for kind in AtmosphereKind::ALL {
         let mut doc = blank(128, 96, Time::new(24, 1).unwrap()).unwrap();
-        doc.nodes.get_mut(&doc.output).unwrap().operation = Operation::Atmosphere {
-            kind,
-            seed: 397,
-            x: 64.0.into(),
-            y: 90.0.into(),
-            width: 100.0.into(),
-            height: 80.0.into(),
-            evolution: 0.0.into(),
-            density: 3.0.into(),
-            detail: 1.3.into(),
-            lighting: 1.0.into(),
-        };
+        doc.nodes.get_mut(&doc.output).unwrap().operation =
+            Operation::Atmosphere(veylvik_document::nodes::Atmosphere {
+                kind,
+                seed: 397,
+                x: 64.0.into(),
+                y: 90.0.into(),
+                width: 100.0.into(),
+                height: 80.0.into(),
+                evolution: 0.0.into(),
+                density: 3.0.into(),
+                detail: 1.3.into(),
+                lighting: 1.0.into(),
+            });
         let render = |doc: &Composition| {
             renderer
                 .render(&Plan::compile(doc).unwrap(), Time::new(0, 1).unwrap())

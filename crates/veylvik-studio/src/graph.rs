@@ -69,21 +69,30 @@ impl VisualNode {
     fn role_colour(&self, doc: &Composition) -> Color32 {
         use veylvik_document::Operation;
         if self.group.is_some()
-            && !matches!(doc.nodes[&self.id].operation, Operation::Material { .. })
+            && !matches!(
+                doc.nodes[&self.id].operation,
+                Operation::Material(veylvik_document::nodes::Material { .. })
+            )
         {
             Color32::from_rgb(175, 130, 205)
         } else {
             match doc.nodes[&self.id].operation {
-                Operation::Text { .. } | Operation::Path { .. } | Operation::Ellipse { .. } => {
+                Operation::Text(veylvik_document::nodes::Text { .. })
+                | Operation::Path(veylvik_document::nodes::Path { .. })
+                | Operation::Ellipse(veylvik_document::nodes::Ellipse { .. }) => {
                     Color32::from_rgb(105, 170, 230)
                 }
-                Operation::Material { .. } | Operation::Glass { .. } | Operation::Patina { .. } => {
+                Operation::Material(veylvik_document::nodes::Material { .. })
+                | Operation::Glass(veylvik_document::nodes::Glass { .. })
+                | Operation::Patina(veylvik_document::nodes::Patina { .. }) => {
                     Color32::from_rgb(210, 170, 85)
                 }
-                Operation::Merge { .. }
-                | Operation::Blend { .. }
-                | Operation::Mask { .. }
-                | Operation::CombineMask { .. } => Color32::from_rgb(110, 180, 195),
+                Operation::Merge(veylvik_document::nodes::Merge { .. })
+                | Operation::Blend(veylvik_document::nodes::Blend { .. })
+                | Operation::Mask(veylvik_document::nodes::Mask { .. })
+                | Operation::CombineMask(veylvik_document::nodes::CombineMask { .. }) => {
+                    Color32::from_rgb(110, 180, 195)
+                }
                 ref op if op.inputs().is_empty() => Color32::from_rgb(95, 175, 150),
                 _ => Color32::from_rgb(175, 130, 205),
             }
@@ -1517,7 +1526,7 @@ mod tests {
     fn node_id() -> NodeId {
         veylvik_document::Node::new(
             "test",
-            veylvik_document::Operation::Solid { color: [0.0; 4] },
+            veylvik_document::Operation::Solid(veylvik_document::nodes::Solid { color: [0.0; 4] }),
             &[],
         )
         .id
@@ -1528,7 +1537,11 @@ mod tests {
         let mut doc = veylvik_document::blank(8, 8, Time::new(24, 1).unwrap()).unwrap();
         let first = doc.output;
         doc.nodes.get_mut(&first).unwrap().position = Some(NodePosition { x: 100.0, y: 100.0 });
-        let mut node = Node::new("Other", Operation::Solid { color: [1.0; 4] }, &[]);
+        let mut node = Node::new(
+            "Other",
+            Operation::Solid(veylvik_document::nodes::Solid { color: [1.0; 4] }),
+            &[],
+        );
         node.position = Some(NodePosition { x: 400.0, y: 300.0 });
         let second = node.id;
         doc.nodes.insert(second, node);
@@ -1606,7 +1619,11 @@ mod tests {
         let mut doc = veylvik_document::blank(8, 8, Time::new(24, 1).unwrap()).unwrap();
         let first = doc.output;
         doc.nodes.get_mut(&first).unwrap().position = Some(NodePosition { x: 25.0, y: 20.0 });
-        let mut other = Node::new("Other", Operation::Solid { color: [1.0; 4] }, &[]);
+        let mut other = Node::new(
+            "Other",
+            Operation::Solid(veylvik_document::nodes::Solid { color: [1.0; 4] }),
+            &[],
+        );
         other.position = Some(NodePosition { x: 245.0, y: 20.0 });
         let second = other.id;
         doc.nodes.insert(second, other);
@@ -1828,13 +1845,17 @@ mod tests {
         let mut doc = veylvik_document::blank(8, 8, Time::new(24, 1).unwrap()).unwrap();
         let original = doc.output;
         doc.nodes.get_mut(&original).unwrap().position = Some(NodePosition { x: 25.0, y: 20.0 });
-        let mut source = Node::new("Other", Operation::Solid { color: [1.0; 4] }, &[]);
+        let mut source = Node::new(
+            "Other",
+            Operation::Solid(veylvik_document::nodes::Solid { color: [1.0; 4] }),
+            &[],
+        );
         source.position = Some(NodePosition { x: 25.0, y: 110.0 });
         let source_id = source.id;
         doc.nodes.insert(source.id, source);
         let mut effect = Node::new(
             "Blur",
-            Operation::Blur { radius: 4.0.into() },
+            Operation::Blur(veylvik_document::nodes::Blur { radius: 4.0.into() }),
             &[("image", original)],
         );
         effect.position = Some(NodePosition { x: 400.0, y: 50.0 });
@@ -1923,7 +1944,9 @@ mod tests {
         });
         let mut effect = veylvik_document::Node::new(
             "Effect",
-            veylvik_document::Operation::Exposure { stops: 1.0.into() },
+            veylvik_document::Operation::Exposure(veylvik_document::nodes::Exposure {
+                stops: 1.0.into(),
+            }),
             &[("image", first)],
         );
         effect.position = Some(NodePosition {

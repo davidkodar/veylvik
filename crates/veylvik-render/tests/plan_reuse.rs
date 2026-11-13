@@ -4,14 +4,14 @@ use veylvik_render::Plan;
 fn plan_reuse_tracks_reachable_definitions_and_validates_disconnected_edits() {
     let image = Node::new(
         "image",
-        Operation::Solid {
+        Operation::Solid(veylvik_document::nodes::Solid {
             color: [0.2, 0.4, 0.6, 1.0],
-        },
+        }),
         &[],
     );
     let output = Node::new(
         "exposure",
-        Operation::Exposure {
+        Operation::Exposure(veylvik_document::nodes::Exposure {
             stops: Scalar::Linear {
                 keys: vec![
                     Key {
@@ -26,7 +26,7 @@ fn plan_reuse_tracks_reachable_definitions_and_validates_disconnected_edits() {
                     },
                 ],
             },
-        },
+        }),
         &[("image", image.id)],
     );
     let mut doc = Composition {
@@ -49,16 +49,17 @@ fn plan_reuse_tracks_reachable_definitions_and_validates_disconnected_edits() {
     doc.frame_count = 800;
     let other = Node::new(
         "disconnected",
-        Operation::Noise {
+        Operation::Noise(veylvik_document::nodes::Noise {
             seed: 17,
             scale: 8.0.into(),
-        },
+        }),
         &[],
     );
     doc.nodes.insert(other.id, other.clone());
     assert!(plan.matches_composition(&doc, output.id).unwrap());
     // Timestamp representation changes recompile to preserve exact evaluation.
-    let Operation::Exposure { stops } = &mut doc.nodes.get_mut(&output.id).unwrap().operation
+    let Operation::Exposure(veylvik_document::nodes::Exposure { stops }) =
+        &mut doc.nodes.get_mut(&output.id).unwrap().operation
     else {
         unreachable!()
     };
@@ -80,16 +81,18 @@ fn plan_reuse_tracks_reachable_definitions_and_validates_disconnected_edits() {
         .unwrap()
         .inputs
         .insert("image".into(), image.id);
-    doc.nodes.get_mut(&image.id).unwrap().operation = Operation::Solid {
-        color: [0.3, 0.4, 0.6, 1.0],
-    };
+    doc.nodes.get_mut(&image.id).unwrap().operation =
+        Operation::Solid(veylvik_document::nodes::Solid {
+            color: [0.3, 0.4, 0.6, 1.0],
+        });
     assert!(!plan.matches_composition(&doc, output.id).unwrap());
     doc.nodes.insert(image.id, image);
     assert!(plan.matches_composition(&doc, output.id).unwrap());
-    doc.nodes.get_mut(&other.id).unwrap().operation = Operation::Noise {
-        seed: 17,
-        scale: 0.0.into(),
-    };
+    doc.nodes.get_mut(&other.id).unwrap().operation =
+        Operation::Noise(veylvik_document::nodes::Noise {
+            seed: 17,
+            scale: 0.0.into(),
+        });
     assert!(plan.matches_composition(&doc, output.id).is_err());
 }
 
@@ -97,9 +100,9 @@ fn plan_reuse_tracks_reachable_definitions_and_validates_disconnected_edits() {
 fn plan_reuse_preserves_signed_zero_in_authored_parameters() {
     let node = Node::new(
         "solid",
-        Operation::Solid {
+        Operation::Solid(veylvik_document::nodes::Solid {
             color: [0.0, 0.0, 0.0, 1.0],
-        },
+        }),
         &[],
     );
     let mut doc = Composition {
@@ -113,8 +116,9 @@ fn plan_reuse_preserves_signed_zero_in_authored_parameters() {
         nodes: [(node.id, node)].into(),
     };
     let plan = Plan::compile(&doc).unwrap();
-    doc.nodes.get_mut(&doc.output).unwrap().operation = Operation::Solid {
-        color: [-0.0, 0.0, 0.0, 1.0],
-    };
+    doc.nodes.get_mut(&doc.output).unwrap().operation =
+        Operation::Solid(veylvik_document::nodes::Solid {
+            color: [-0.0, 0.0, 0.0, 1.0],
+        });
     assert!(!plan.matches_composition(&doc, doc.output).unwrap());
 }

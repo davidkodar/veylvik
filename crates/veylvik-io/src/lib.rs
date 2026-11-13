@@ -165,7 +165,9 @@ pub fn save_tracked(
         .canonicalize()?;
     let mut saved = composition.clone();
     for node in saved.nodes.values_mut() {
-        if let Operation::Image { asset } | Operation::Footage { asset, .. } = &mut node.operation
+        if let Operation::Image(veylvik_document::nodes::Image { asset })
+        | Operation::Footage(veylvik_document::nodes::Footage { asset, .. }) =
+            &mut node.operation
             && Path::new(asset).is_relative()
         {
             let resolved = base.join(&*asset);
@@ -210,7 +212,9 @@ pub fn protect_inputs(composition: &Composition, base: &Path, destination: &Path
         ),
     );
     for node in composition.nodes.values() {
-        if let Operation::Image { asset } | Operation::Footage { asset, .. } = &node.operation {
+        if let Operation::Image(veylvik_document::nodes::Image { asset })
+        | Operation::Footage(veylvik_document::nodes::Footage { asset, .. }) = &node.operation
+        {
             let input = base.join(asset);
             if footage::is_sequence(&input) && input.exists() {
                 for frame in footage::dependencies(&input)? {
@@ -282,18 +286,20 @@ mod tests {
         std::fs::create_dir(temp.0.join("sub")).unwrap();
         let target = temp.0.join("missing.png");
         let mut doc = veylvik_document::blank(1, 1, Time::new(24, 1).unwrap()).unwrap();
-        doc.nodes.get_mut(&doc.output).unwrap().operation = Operation::Image {
-            asset: "sub/../missing.png".into(),
-        };
+        doc.nodes.get_mut(&doc.output).unwrap().operation =
+            Operation::Image(veylvik_document::nodes::Image {
+                asset: "sub/../missing.png".into(),
+            });
         assert!(protect_inputs(&doc, &temp.0, &target).is_err());
         assert!(save_tracked(&doc, &temp.0, &target, None).is_err());
         assert!(!target.exists());
         #[cfg(unix)]
         {
             std::os::unix::fs::symlink(&temp.0, temp.0.join("alias")).unwrap();
-            doc.nodes.get_mut(&doc.output).unwrap().operation = Operation::Image {
-                asset: "alias/missing.png".into(),
-            };
+            doc.nodes.get_mut(&doc.output).unwrap().operation =
+                Operation::Image(veylvik_document::nodes::Image {
+                    asset: "alias/missing.png".into(),
+                });
             assert!(protect_inputs(&doc, &temp.0, &target).is_err());
         }
         assert!(protect_inputs(&doc, &temp.0, &temp.0.join("project.veylvik")).is_ok());
@@ -345,9 +351,9 @@ mod tests {
         std::fs::create_dir(temp.0.join("sub")).unwrap();
         let node = Node::new(
             "image",
-            Operation::Image {
+            Operation::Image(veylvik_document::nodes::Image {
                 asset: "source.png".into(),
-            },
+            }),
             &[],
         );
         let doc = Composition {
@@ -371,7 +377,7 @@ mod tests {
         .unwrap();
         assert_eq!(inputs.get("../source.png").unwrap().pixels()[0], [1.0; 4]);
         assert!(
-            matches!(&doc.nodes[&doc.output].operation,Operation::Image {asset} if asset=="source.png")
+            matches!(&doc.nodes[&doc.output].operation,Operation::Image(veylvik_document::nodes::Image {asset}) if asset=="source.png")
         );
         let before = std::fs::read(&image_path).unwrap();
         assert!(save(&doc, &temp.0, &image_path).is_err());

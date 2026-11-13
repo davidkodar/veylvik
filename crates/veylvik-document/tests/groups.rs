@@ -132,7 +132,11 @@ fn shared_input_reconnects_all_targets_and_cycles_are_atomic() {
     let (key, input) = group.inputs.first_key_value().unwrap();
     assert_eq!(input.targets.len(), 2);
     doc.groups.insert(group.id, group.clone());
-    let other = Node::new("other", Operation::Solid { color: [1.0; 4] }, &[]);
+    let other = Node::new(
+        "other",
+        Operation::Solid(veylvik_document::nodes::Solid { color: [1.0; 4] }),
+        &[],
+    );
     let original_source = group.source(&doc, key).unwrap();
     let source = other.id;
     let mut owner = Document::new(doc).unwrap();
@@ -255,7 +259,7 @@ fn boundaries_reject_leaks_orphans_overlaps_and_invalid_defaults() {
     d.groups.remove(&group.id);
     let leak = Node::new(
         "leak",
-        Operation::Blur { radius: 1.0.into() },
+        Operation::Blur(veylvik_document::nodes::Blur { radius: 1.0.into() }),
         &[("image", bright)],
     );
     d.nodes.insert(leak.id, leak);

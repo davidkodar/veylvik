@@ -31,7 +31,11 @@ fn recipes_expand_as_independent_editable_nodes_in_one_transaction() {
 fn recipes_reject_node_overflow_without_changing_the_source() {
     let mut doc = blank(1, 1, Time::new(24, 1).unwrap()).unwrap();
     for _ in 1..limits::MAX_NODES - 3 {
-        let node = Node::new("Unused", Operation::Solid { color: [0.0; 4] }, &[]);
+        let node = Node::new(
+            "Unused",
+            Operation::Solid(veylvik_document::nodes::Solid { color: [0.0; 4] }),
+            &[],
+        );
         doc.nodes.insert(node.id, node);
     }
     assert!(recipes::Recipe::Glow.build(&doc, doc.output).is_ok());

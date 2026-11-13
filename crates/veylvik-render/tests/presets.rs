@@ -10,17 +10,19 @@ fn starter_effects_render_identically_after_portable_round_trip_and_shimmer_anim
     let inputs = ImageInputs::default();
     // A small gradient gives distortion and edge operations measurable detail.
     let mut base = blank(96, 54, Time::new(24, 1).unwrap()).unwrap();
-    base.nodes.get_mut(&base.output).unwrap().operation = Operation::Gradient {
-        mode: GradientMode::Linear,
-        start_x: 0.0.into(),
-        start_y: 0.0.into(),
-        end_x: 96.0.into(),
-        end_y: 54.0.into(),
-    };
+    base.nodes.get_mut(&base.output).unwrap().operation =
+        Operation::Gradient(veylvik_document::nodes::Gradient {
+            mode: GradientMode::Linear,
+            start_x: 0.0.into(),
+            start_y: 0.0.into(),
+            end_x: 96.0.into(),
+            end_y: 54.0.into(),
+        });
     let mut flat = blank(48, 32, Time::new(24, 1).unwrap()).unwrap();
-    flat.nodes.get_mut(&flat.output).unwrap().operation = Operation::Solid {
-        color: [0.2, 0.3, 0.4, 1.0],
-    };
+    flat.nodes.get_mut(&flat.output).unwrap().operation =
+        Operation::Solid(veylvik_document::nodes::Solid {
+            color: [0.2, 0.3, 0.4, 1.0],
+        });
     let neon = builtin::build("neon_outline")
         .unwrap()
         .instantiate(&flat, &[("input_1".into(), flat.output)].into(), None)

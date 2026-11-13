@@ -14,8 +14,16 @@ fn composition(nodes: Vec<Node>, output: NodeId) -> Composition {
 }
 #[test]
 fn compile_prunes_unused_nodes() {
-    let a = Node::new("a", Operation::Solid { color: [1.0; 4] }, &[]);
-    let b = Node::new("b", Operation::Solid { color: [0.0; 4] }, &[]);
+    let a = Node::new(
+        "a",
+        Operation::Solid(veylvik_document::nodes::Solid { color: [1.0; 4] }),
+        &[],
+    );
+    let b = Node::new(
+        "b",
+        Operation::Solid(veylvik_document::nodes::Solid { color: [0.0; 4] }),
+        &[],
+    );
     let id = a.id;
     let plan = Plan::compile(&composition(vec![a, b], id)).unwrap();
     assert_eq!(plan.node_count(), 1);
@@ -38,26 +46,26 @@ fn gpu_matches_analytic_references_and_enforces_budget() {
     );
     let bg = Node::new(
         "bg",
-        Operation::Solid {
+        Operation::Solid(veylvik_document::nodes::Solid {
             color: [0.2, 0.4, 0.8, 1.0],
-        },
+        }),
         &[],
     );
     let fg = Node::new(
         "fg",
-        Operation::Solid {
+        Operation::Solid(veylvik_document::nodes::Solid {
             color: [4.0, 0.0, 0.0, 0.5],
-        },
+        }),
         &[],
     );
     let merge = Node::new(
         "merge",
-        Operation::Merge {},
+        Operation::Merge(veylvik_document::nodes::Merge {}),
         &[("background", bg.id), ("foreground", fg.id)],
     );
     let exposure = Node::new(
         "exposure",
-        Operation::Exposure {
+        Operation::Exposure(veylvik_document::nodes::Exposure {
             stops: Scalar::Linear {
                 keys: vec![
                     Key {
@@ -72,7 +80,7 @@ fn gpu_matches_analytic_references_and_enforces_budget() {
                     },
                 ],
             },
-        },
+        }),
         &[("image", merge.id)],
     );
     let id = exposure.id;
@@ -96,10 +104,10 @@ fn gpu_matches_analytic_references_and_enforces_budget() {
     }
     let transform = Node::new(
         "move",
-        Operation::Transform {
+        Operation::Transform(veylvik_document::nodes::Transform {
             x: 0.5.into(),
             y: 0.0.into(),
-        },
+        }),
         &[("image", id)],
     );
     doc.output = transform.id;
@@ -112,7 +120,7 @@ fn gpu_matches_analytic_references_and_enforces_budget() {
     assert_eq!(pixels[1][3], 1.0);
     let blur = Node::new(
         "blur",
-        Operation::Blur { radius: 1.0.into() },
+        Operation::Blur(veylvik_document::nodes::Blur { radius: 1.0.into() }),
         &[("image", id)],
     );
     doc.output = blur.id;
@@ -124,10 +132,10 @@ fn gpu_matches_analytic_references_and_enforces_budget() {
     assert_eq!(pixels[14][3], 1.0);
     let source = Node::new(
         "noise",
-        Operation::Noise {
+        Operation::Noise(veylvik_document::nodes::Noise {
             seed: 42,
             scale: 2.0.into(),
-        },
+        }),
         &[],
     );
     let id = source.id;
@@ -167,15 +175,19 @@ fn gpu_matches_analytic_references_and_enforces_budget() {
 
 #[test]
 fn long_chains_need_only_two_image_slots() {
-    let first = Node::new("source", Operation::Solid { color: [1.0; 4] }, &[]);
+    let first = Node::new(
+        "source",
+        Operation::Solid(veylvik_document::nodes::Solid { color: [1.0; 4] }),
+        &[],
+    );
     let mut id = first.id;
     let mut nodes = vec![first];
     for _ in 0..100 {
         let node = Node::new(
             "gain",
-            Operation::Exposure {
+            Operation::Exposure(veylvik_document::nodes::Exposure {
                 stops: 0.125.into(),
-            },
+            }),
             &[("image", id)],
         );
         id = node.id;
@@ -220,16 +232,16 @@ fn image_contract_and_regions_reject_invalid_data() {
 fn alternate_root_only_requires_its_own_sources() {
     let first = Node::new(
         "first",
-        Operation::Image {
+        Operation::Image(veylvik_document::nodes::Image {
             asset: "first.png".into(),
-        },
+        }),
         &[],
     );
     let second = Node::new(
         "second",
-        Operation::Image {
+        Operation::Image(veylvik_document::nodes::Image {
             asset: "second.png".into(),
-        },
+        }),
         &[],
     );
     let preview = first.id;
@@ -249,26 +261,26 @@ fn gpu_image_injection_preview_and_crop_match_full_frame() {
     let mut renderer = Renderer::new().expect("Vulkan required");
     let first = Node::new(
         "first",
-        Operation::Image {
+        Operation::Image(veylvik_document::nodes::Image {
             asset: "plate".into(),
-        },
+        }),
         &[],
     );
     let second = Node::new(
         "same asset",
-        Operation::Image {
+        Operation::Image(veylvik_document::nodes::Image {
             asset: "plate".into(),
-        },
+        }),
         &[],
     );
     let merge = Node::new(
         "merge",
-        Operation::Merge {},
+        Operation::Merge(veylvik_document::nodes::Merge {}),
         &[("background", first.id), ("foreground", second.id)],
     );
     let blur = Node::new(
         "blur",
-        Operation::Blur { radius: 1.0.into() },
+        Operation::Blur(veylvik_document::nodes::Blur { radius: 1.0.into() }),
         &[("image", merge.id)],
     );
     let preview = first.id;
@@ -369,15 +381,19 @@ fn gpu_image_injection_preview_and_crop_match_full_frame() {
 
 #[test]
 fn lowered_blur_preserves_fanout_and_never_aliases_inputs() {
-    let source = Node::new("source", Operation::Solid { color: [0.5; 4] }, &[]);
+    let source = Node::new(
+        "source",
+        Operation::Solid(veylvik_document::nodes::Solid { color: [0.5; 4] }),
+        &[],
+    );
     let blur = Node::new(
         "blur",
-        Operation::Blur { radius: 3.0.into() },
+        Operation::Blur(veylvik_document::nodes::Blur { radius: 3.0.into() }),
         &[("image", source.id)],
     );
     let merge = Node::new(
         "merge",
-        Operation::Merge {},
+        Operation::Merge(veylvik_document::nodes::Merge {}),
         &[("background", source.id), ("foreground", blur.id)],
     );
     let id = merge.id;
@@ -409,14 +425,14 @@ fn separable_blur_matches_direct_reference_and_pool_is_bounded() {
     let mut renderer = Renderer::new().unwrap();
     let source = Node::new(
         "image",
-        Operation::Image {
+        Operation::Image(veylvik_document::nodes::Image {
             asset: "plate".into(),
-        },
+        }),
         &[],
     );
     let blur = Node::new(
         "blur",
-        Operation::Blur { radius: 0.0.into() },
+        Operation::Blur(veylvik_document::nodes::Blur { radius: 0.0.into() }),
         &[("image", source.id)],
     );
     let id = blur.id;
@@ -435,9 +451,10 @@ fn separable_blur_matches_direct_reference_and_pool_is_bounded() {
     let request = RenderRequest::full(Time::new(0, 1).unwrap());
     let mut created = None;
     for radius in [0.0f32, 0.5, 1.0, 3.0, 32.0] {
-        doc.nodes.get_mut(&id).unwrap().operation = Operation::Blur {
-            radius: radius.into(),
-        };
+        doc.nodes.get_mut(&id).unwrap().operation =
+            Operation::Blur(veylvik_document::nodes::Blur {
+                radius: radius.into(),
+            });
         let plan = Plan::compile(&doc).unwrap();
         renderer.budget_bytes = plan.working_bytes() + 91 * 16;
         let actual = renderer.render_frame(&plan, request, &inputs).unwrap();
@@ -511,9 +528,9 @@ fn preview_scheduler_recovers_from_invalid_input_and_preserves_request_identity(
     .unwrap();
     let node = Node::new(
         "image",
-        Operation::Image {
+        Operation::Image(veylvik_document::nodes::Image {
             asset: "plate".into(),
-        },
+        }),
         &[],
     );
     let id = node.id;
@@ -552,9 +569,9 @@ fn gpu_frames_remain_immutable_and_held_allocations_count_against_budget() {
     let mut renderer = Renderer::new().unwrap();
     let node = Node::new(
         "source",
-        Operation::Solid {
+        Operation::Solid(veylvik_document::nodes::Solid {
             color: [2.0, 0.5, 0.0, 0.5],
-        },
+        }),
         &[],
     );
     let id = node.id;
@@ -584,9 +601,9 @@ fn gpu_frames_remain_immutable_and_held_allocations_count_against_budget() {
     );
     assert!(renderer.read_frame(&first).is_err());
     renderer.budget_bytes = 512 * 1024 * 1024;
-    doc.nodes.get_mut(&id).unwrap().operation = Operation::Solid {
+    doc.nodes.get_mut(&id).unwrap().operation = Operation::Solid(veylvik_document::nodes::Solid {
         color: [0.0, 0.0, 1.0, 1.0],
-    };
+    });
     let second = renderer
         .render_gpu(
             &Plan::compile(&doc).unwrap(),
@@ -630,14 +647,14 @@ fn gpu_validation_rejects_nonfinite_output_without_poisoning_renderer() {
     let renderer = Renderer::new().unwrap();
     let node = Node::new(
         "source",
-        Operation::Image {
+        Operation::Image(veylvik_document::nodes::Image {
             asset: "plate".into(),
-        },
+        }),
         &[],
     );
     let gain = Node::new(
         "gain",
-        Operation::Exposure { stops: 32.0.into() },
+        Operation::Exposure(veylvik_document::nodes::Exposure { stops: 32.0.into() }),
         &[("image", node.id)],
     );
     let id = gain.id;
@@ -675,9 +692,9 @@ fn gpu_preview_scheduler_shares_device_and_releases_cancelled_outputs() {
     let renderer = Arc::new(Renderer::new().unwrap());
     let node = Node::new(
         "solid",
-        Operation::Solid {
+        Operation::Solid(veylvik_document::nodes::Solid {
             color: [0.25, 0.5, 1.0, 1.0],
-        },
+        }),
         &[],
     );
     let id = node.id;
@@ -717,15 +734,15 @@ fn output_cache_keys_evaluated_dependencies_and_evicts_within_budget() {
     let mut renderer = Renderer::new().unwrap();
     let source = Node::new(
         "source",
-        Operation::Image {
+        Operation::Image(veylvik_document::nodes::Image {
             asset: "plate".into(),
-        },
+        }),
         &[],
     );
     let source_id = source.id;
     let gain = Node::new(
         "gain",
-        Operation::Exposure {
+        Operation::Exposure(veylvik_document::nodes::Exposure {
             stops: Scalar::Linear {
                 keys: vec![
                     Key {
@@ -740,7 +757,7 @@ fn output_cache_keys_evaluated_dependencies_and_evicts_within_budget() {
                     },
                 ],
             },
-        },
+        }),
         &[("image", source_id)],
     );
     let id = gain.id;
@@ -758,7 +775,11 @@ fn output_cache_keys_evaluated_dependencies_and_evicts_within_budget() {
     doc.nodes.get_mut(&id).unwrap().label = "Label does not change pixels".into();
     doc.nodes.get_mut(&id).unwrap().position =
         Some(veylvik_document::NodePosition { x: -42.0, y: 123.0 });
-    let unused = Node::new("unused", Operation::Solid { color: [1.0; 4] }, &[]);
+    let unused = Node::new(
+        "unused",
+        Operation::Solid(veylvik_document::nodes::Solid { color: [1.0; 4] }),
+        &[],
+    );
     doc.nodes.insert(unused.id, unused);
     let held = renderer
         .render_gpu_cached(
@@ -837,7 +858,11 @@ fn output_cache_keys_evaluated_dependencies_and_evicts_within_budget() {
 fn curve_modes_reach_gpu_and_cache_keys_follow_evaluated_values() {
     use std::sync::Arc;
     let renderer = Renderer::new().unwrap();
-    let source = Node::new("white", Operation::Solid { color: [1.0; 4] }, &[]);
+    let source = Node::new(
+        "white",
+        Operation::Solid(veylvik_document::nodes::Solid { color: [1.0; 4] }),
+        &[],
+    );
     let mut stops = Scalar::Linear {
         keys: vec![
             Key {
@@ -854,9 +879,9 @@ fn curve_modes_reach_gpu_and_cache_keys_follow_evaluated_values() {
     };
     let exposure = Node::new(
         "gain",
-        Operation::Exposure {
+        Operation::Exposure(veylvik_document::nodes::Exposure {
             stops: stops.clone(),
-        },
+        }),
         &[("image", source.id)],
     );
     let id = exposure.id;
@@ -869,9 +894,10 @@ fn curve_modes_reach_gpu_and_cache_keys_follow_evaluated_values() {
         (Interpolation::Monotone, 2.0),
     ] {
         stops.set_interpolation(mode);
-        doc.nodes.get_mut(&id).unwrap().operation = Operation::Exposure {
-            stops: stops.clone(),
-        };
+        doc.nodes.get_mut(&id).unwrap().operation =
+            Operation::Exposure(veylvik_document::nodes::Exposure {
+                stops: stops.clone(),
+            });
         let plan = Plan::compile(&doc).unwrap();
         let frame = renderer
             .render_gpu_cached(
@@ -912,16 +938,24 @@ fn curve_modes_reach_gpu_and_cache_keys_follow_evaluated_values() {
 fn immutable_source_uploads_reuse_contents_and_aliases_share_budget() {
     use std::sync::Arc;
     let mut renderer = Renderer::new().unwrap();
-    let a = Node::new("a", Operation::Image { asset: "a".into() }, &[]);
-    let b = Node::new("alias", Operation::Image { asset: "b".into() }, &[]);
+    let a = Node::new(
+        "a",
+        Operation::Image(veylvik_document::nodes::Image { asset: "a".into() }),
+        &[],
+    );
+    let b = Node::new(
+        "alias",
+        Operation::Image(veylvik_document::nodes::Image { asset: "b".into() }),
+        &[],
+    );
     let merge = Node::new(
         "over",
-        Operation::Merge {},
+        Operation::Merge(veylvik_document::nodes::Merge {}),
         &[("background", a.id), ("foreground", b.id)],
     );
     let exposure = Node::new(
         "animated",
-        Operation::Exposure {
+        Operation::Exposure(veylvik_document::nodes::Exposure {
             stops: Scalar::Linear {
                 keys: vec![
                     Key {
@@ -936,7 +970,7 @@ fn immutable_source_uploads_reuse_contents_and_aliases_share_budget() {
                     },
                 ],
             },
-        },
+        }),
         &[("image", merge.id)],
     );
     let output = exposure.id;
@@ -1003,9 +1037,9 @@ fn gpu_frame_inputs_preserve_crops_ownership_cache_and_budget() {
     let mut renderer = Renderer::new().unwrap();
     let source_node = Node::new(
         "source",
-        Operation::Image {
+        Operation::Image(veylvik_document::nodes::Image {
             asset: "cpu".into(),
-        },
+        }),
         &[],
     );
     let source_id = source_node.id;
@@ -1036,9 +1070,9 @@ fn gpu_frame_inputs_preserve_crops_ownership_cache_and_budget() {
     let source_uploads = renderer.resource_stats().unwrap().source_uploads;
     let input_node = Node::new(
         "gpu",
-        Operation::Image {
+        Operation::Image(veylvik_document::nodes::Image {
             asset: "frame".into(),
-        },
+        }),
         &[],
     );
     let input_id = input_node.id;
@@ -1076,9 +1110,9 @@ fn gpu_frame_inputs_preserve_crops_ownership_cache_and_budget() {
     assert!(Arc::ptr_eq(&first, &hit));
     let solid = Node::new(
         "new pixels",
-        Operation::Solid {
+        Operation::Solid(veylvik_document::nodes::Solid {
             color: [0.75, 0.25, 3.0, 1.0],
-        },
+        }),
         &[],
     );
     let id = solid.id;

@@ -191,13 +191,13 @@ mod tests {
         doc.nodes.get_mut(&doc.output).unwrap().label = "Ångström Background".into();
         let node = Node::new(
             &format!("{} TailMarker", "ä".repeat(300)),
-            Operation::FractalNoise {
+            Operation::FractalNoise(veylvik_document::nodes::FractalNoise {
                 seed: 1,
                 scale: 32.0.into(),
                 octaves: 3.0.into(),
                 roughness: 0.5.into(),
                 evolution: 0.0.into(),
-            },
+            }),
             &[],
         );
         let id = node.id;

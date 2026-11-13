@@ -23,7 +23,11 @@ fn shaped_outlines_feed_document_nodes_and_gpu_rasterization() {
     assert!(expected.iter().filter(|p| p[3] > 0.0).count() > 500);
     assert!(expected.iter().any(|p| p[3] > 0.0 && p[3] < 1.0));
     assert_eq!(expected[0], [0.0; 4]);
-    let node = Node::new("Outlined title", Operation::Path { geometry: path }, &[]);
+    let node = Node::new(
+        "Outlined title",
+        Operation::Path(veylvik_document::nodes::Path { geometry: path }),
+        &[],
+    );
     let document = Composition {
         groups: Default::default(),
         schema: 1,

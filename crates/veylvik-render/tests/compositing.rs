@@ -26,9 +26,9 @@ fn affine_matches_independent_inverse_sampling_and_degenerate_cases() {
     let renderer = Renderer::new().unwrap();
     let source = Node::new(
         "source",
-        Operation::Image {
+        Operation::Image(veylvik_document::nodes::Image {
             asset: "plate".into(),
-        },
+        }),
         &[],
     );
     let pixels: Vec<_> = (0..91)
@@ -48,7 +48,7 @@ fn affine_matches_independent_inverse_sampling_and_degenerate_cases() {
         (1.0e-8, 1.0, 0.0, 0.0, 0.0),
         (1.0, 1.0, 0.0, 1_000_000.0, 0.0),
     ] {
-        let operation = Operation::Affine {
+        let operation = Operation::Affine(veylvik_document::nodes::Affine {
             x: tx.into(),
             y: ty.into(),
             scale_x: sx.into(),
@@ -56,7 +56,7 @@ fn affine_matches_independent_inverse_sampling_and_degenerate_cases() {
             rotation: angle.into(),
             pivot_x: 6.0.into(),
             pivot_y: 3.0.into(),
-        };
+        });
         let node = Node::new("affine", operation, &[("image", source.id)]);
         let id = node.id;
         let plan = Plan::compile(&composition(vec![source.clone(), node], id)).unwrap();
@@ -105,26 +105,26 @@ fn ellipse_coverage_and_alpha_mask_preserve_hdr_premultiplication() {
     let renderer = Renderer::new().unwrap();
     let solid = Node::new(
         "HDR",
-        Operation::Solid {
+        Operation::Solid(veylvik_document::nodes::Solid {
             color: [4.0, -2.0, 1.0, 0.5],
-        },
+        }),
         &[],
     );
     for radius_y in [2.0, 0.0] {
         let ellipse = Node::new(
             "ellipse",
-            Operation::Ellipse {
+            Operation::Ellipse(veylvik_document::nodes::Ellipse {
                 x: 6.0.into(),
                 y: 3.0.into(),
                 radius_x: 4.0.into(),
                 radius_y: radius_y.into(),
                 feather: 2.0.into(),
-            },
+            }),
             &[],
         );
         let mask = Node::new(
             "mask",
-            Operation::Mask {},
+            Operation::Mask(veylvik_document::nodes::Mask {}),
             &[("image", solid.id), ("mask", ellipse.id)],
         );
         let id = mask.id;
@@ -150,14 +150,14 @@ fn ellipse_coverage_and_alpha_mask_preserve_hdr_premultiplication() {
     }
     let image = Node::new(
         "mask image",
-        Operation::Image {
+        Operation::Image(veylvik_document::nodes::Image {
             asset: "mask".into(),
-        },
+        }),
         &[],
     );
     let mask = Node::new(
         "mask",
-        Operation::Mask {},
+        Operation::Mask(veylvik_document::nodes::Mask {}),
         &[("image", solid.id), ("mask", image.id)],
     );
     let id = mask.id;

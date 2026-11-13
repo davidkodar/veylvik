@@ -34,7 +34,10 @@ fn tracking_wraps_atomically_and_survives_undo_and_serialization() {
             .unwrap(),
         3.0
     );
-    assert!(matches!(op, Operation::Transform { .. }));
+    assert!(matches!(
+        op,
+        Operation::Transform(veylvik_document::nodes::Transform { .. })
+    ));
     let encoded = serde_json::to_vec(document.snapshot()).unwrap();
     let decoded: veylvik_document::Composition = serde_json::from_slice(&encoded).unwrap();
     decoded.validate().unwrap();
@@ -71,10 +74,10 @@ fn retracking_preserves_outer_keys_and_curve_interpolation() {
     };
     let node = Node::new(
         "Existing motion",
-        Operation::Transform {
+        Operation::Transform(veylvik_document::nodes::Transform {
             x: scalar.clone(),
             y: scalar,
-        },
+        }),
         &[("image", doc.output)],
     );
     let id = node.id;

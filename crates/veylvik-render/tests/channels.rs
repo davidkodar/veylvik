@@ -26,16 +26,16 @@ fn channel_masks_preserve_coverage_and_convert_hdr_without_alpha_division() {
     );
     let image = Node::new(
         "source",
-        Operation::Image {
+        Operation::Image(veylvik_document::nodes::Image {
             asset: "source".into(),
-        },
+        }),
         &[],
     );
     let mut previous = None;
     for channel in MaskChannel::ALL {
         let mask = Node::new(
             "mask",
-            Operation::ChannelMask { channel },
+            Operation::ChannelMask(veylvik_document::nodes::ChannelMask { channel }),
             &[("image", image.id)],
         );
         let doc = Composition {

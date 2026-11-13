@@ -116,9 +116,9 @@ fn run() -> Result<()> {
                 pathdiff::diff_paths(&source, parent).ok_or("cannot make image path relative")?;
             let node = Node::new(
                 "Image",
-                Operation::Image {
+                Operation::Image(veylvik_document::nodes::Image {
                     asset: relative.to_str().ok_or("image path is not UTF-8")?.into(),
-                },
+                }),
                 &[],
             );
             let doc = Composition {

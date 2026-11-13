@@ -105,12 +105,12 @@ impl crate::Studio {
                                     )
                                 } else {
                                     match &mut target.operation {
-                                        Operation::Colorize { high, .. } => {
-                                            crate::animation::color(ui, high)
-                                        }
-                                        Operation::Solid { color } => {
-                                            crate::animation::color(ui, color)
-                                        }
+                                        Operation::Colorize(
+                                            veylvik_document::nodes::Colorize { high, .. },
+                                        ) => crate::animation::color(ui, high),
+                                        Operation::Solid(veylvik_document::nodes::Solid {
+                                            color,
+                                        }) => crate::animation::color(ui, color),
                                         _ => false,
                                     }
                                 };

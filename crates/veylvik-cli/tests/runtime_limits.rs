@@ -8,12 +8,13 @@ fn cli_and_headless_mcp_honor_host_budget_and_cpu_inspection_stays_available() {
     std::fs::create_dir(&root).unwrap();
     let path = root.join("source.veylvik");
     let mut doc = blank(1920, 1080, Time::new(24, 1).unwrap()).unwrap();
-    doc.nodes.get_mut(&doc.output).unwrap().operation = Operation::Solid {
-        color: [0.25, 0.5, 1.0, 0.5],
-    };
+    doc.nodes.get_mut(&doc.output).unwrap().operation =
+        Operation::Solid(veylvik_document::nodes::Solid {
+            color: [0.25, 0.5, 1.0, 0.5],
+        });
     let blur = Node::new(
         "Blur",
-        Operation::Blur { radius: 1.0.into() },
+        Operation::Blur(veylvik_document::nodes::Blur { radius: 1.0.into() }),
         &[("image", doc.output)],
     );
     doc.output = blur.id;
@@ -92,9 +93,9 @@ fn cli_and_headless_mcp_honor_host_budget_and_cpu_inspection_stays_available() {
         .nodes
         .get_mut(&image_doc.output)
         .unwrap()
-        .operation = Operation::Image {
+        .operation = Operation::Image(veylvik_document::nodes::Image {
         asset: "128.png".into(),
-    };
+    });
     let image_path = root.join("image.veylvik");
     image_doc.save(&image_path).unwrap();
     let checked = Command::new(binary)

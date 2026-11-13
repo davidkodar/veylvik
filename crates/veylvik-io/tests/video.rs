@@ -149,7 +149,7 @@ fn footage_timing_shares_one_source_without_cross_contaminating_clips() {
     let mut doc = veylvik_document::blank(64, 32, Time::new(24, 1).unwrap()).unwrap();
     let first = Node::new(
         "First",
-        Operation::Footage {
+        Operation::Footage(veylvik_document::nodes::Footage {
             placement: Default::default(),
             asset: path.to_str().unwrap().into(),
             timing: Timing {
@@ -157,11 +157,13 @@ fn footage_timing_shares_one_source_without_cross_contaminating_clips() {
                 source_in: Time::new(1, 2).unwrap(),
                 source_out: Some(Time::new(3, 4).unwrap()),
             },
-        },
+        }),
         &[],
     );
     let mut second = Node::new("Second", first.operation.clone(), &[]);
-    if let Operation::Footage { timing, .. } = &mut second.operation {
+    if let Operation::Footage(veylvik_document::nodes::Footage { timing, .. }) =
+        &mut second.operation
+    {
         timing.start = Time::new(0, 1).unwrap();
         timing.source_in = Time::new(0, 1).unwrap();
     }
@@ -170,7 +172,7 @@ fn footage_timing_shares_one_source_without_cross_contaminating_clips() {
     doc.nodes.insert(second.id, second.clone());
     let merge = Node::new(
         "Both clips",
-        Operation::Merge {},
+        Operation::Merge(veylvik_document::nodes::Merge {}),
         &[("background", first.id), ("foreground", second.id)],
     );
     let merged = merge.id;
@@ -235,7 +237,7 @@ fn footage_timing_shares_one_source_without_cross_contaminating_clips() {
     let restored = veylvik_document::Composition::load(&saved).unwrap();
     assert!(matches!(
         restored.nodes[&first.id].operation,
-        Operation::Footage { .. }
+        Operation::Footage(veylvik_document::nodes::Footage { .. })
     ));
     assert!(veylvik_io::protect_inputs(&doc, &dir.0, &path).is_err());
     let recovery = veylvik_io::collect::collect(&doc, &dir.0, &dir.0.join("collected")).unwrap();
@@ -348,11 +350,12 @@ fn hardware_frames_stay_linear_on_gpu_and_seek_in_8_and_10_bit() {
         let mut inputs = veylvik_render::ImageInputs::default();
         inputs.insert_source("clip", hardware.clone());
         let mut doc = veylvik_document::blank(320, 180, Time::new(24, 1).unwrap()).unwrap();
-        doc.nodes.get_mut(&doc.output).unwrap().operation = veylvik_document::Operation::Footage {
-            asset: "clip".into(),
-            timing: Default::default(),
-            placement: Default::default(),
-        };
+        doc.nodes.get_mut(&doc.output).unwrap().operation =
+            veylvik_document::Operation::Footage(veylvik_document::nodes::Footage {
+                asset: "clip".into(),
+                timing: Default::default(),
+                placement: Default::default(),
+            });
         renderer
             .render_gpu(
                 &veylvik_render::Plan::compile(&doc).unwrap(),

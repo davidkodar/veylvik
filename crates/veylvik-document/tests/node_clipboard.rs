@@ -10,7 +10,7 @@ fn same_project_paste_remaps_internal_edges_keeps_external_edges_and_undoes_atom
     let source = doc.output;
     let mut first = Node::new(
         "Exposure",
-        Operation::Exposure { stops: 1.0.into() },
+        Operation::Exposure(veylvik_document::nodes::Exposure { stops: 1.0.into() }),
         &[("image", source)],
     );
     first.position = Some(NodePosition { x: 100.0, y: 200.0 });
@@ -24,7 +24,7 @@ fn same_project_paste_remaps_internal_edges_keeps_external_edges_and_undoes_atom
     doc.nodes.insert(a, first);
     let second = Node::new(
         "Merge",
-        Operation::Merge {},
+        Operation::Merge(veylvik_document::nodes::Merge {}),
         &[("background", source), ("foreground", a)],
     );
     let b = second.id;
@@ -58,7 +58,7 @@ fn other_project_and_deleted_sources_receive_shared_explicit_transparent_inputs(
     let source = doc.output;
     let node = Node::new(
         "Merge",
-        Operation::Merge {},
+        Operation::Merge(veylvik_document::nodes::Merge {}),
         &[("background", source), ("foreground", source)],
     );
     let id = node.id;
@@ -77,7 +77,7 @@ fn other_project_and_deleted_sources_receive_shared_explicit_transparent_inputs(
         assert_ne!(boundary, source);
         assert!(copy.nodes[&boundary].label.starts_with("Input: "));
         assert!(
-            matches!(copy.nodes[&boundary].operation,Operation::Solid{color} if color==[0.0;4])
+            matches!(copy.nodes[&boundary].operation,Operation::Solid(veylvik_document::nodes::Solid {color}) if color==[0.0;4])
         );
         let owner = Document::new(target).unwrap();
         owner.prepare(0, &copy.into_commands()).unwrap();
@@ -110,7 +110,7 @@ fn malformed_clipboards_are_rejected_before_any_edit() {
     let mut doc = blank(8, 8, Time::new(24, 1).unwrap()).unwrap();
     let node = Node::new(
         "Exposure",
-        Operation::Exposure { stops: 1.0.into() },
+        Operation::Exposure(veylvik_document::nodes::Exposure { stops: 1.0.into() }),
         &[("image", doc.output)],
     );
     let id = node.id;
@@ -129,7 +129,7 @@ fn malformed_clipboards_are_rejected_before_any_edit() {
     assert!(bad.validate().is_err());
     let mut bad = clip.clone();
     bad.fragment.nodes.get_mut(&doc.output).unwrap().operation =
-        Operation::Solid { color: [1.0; 4] };
+        Operation::Solid(veylvik_document::nodes::Solid { color: [1.0; 4] });
     assert!(bad.validate().is_err());
     let mut bad = clip;
     bad.fragment
@@ -145,9 +145,9 @@ fn paste_limits_are_checked_and_image_references_are_only_data() {
     let mut doc = blank(8, 8, Time::new(24, 1).unwrap()).unwrap();
     let image = Node::new(
         "Image",
-        Operation::Image {
+        Operation::Image(veylvik_document::nodes::Image {
             asset: "missing/source.png".into(),
-        },
+        }),
         &[],
     );
     let id = image.id;
@@ -158,10 +158,14 @@ fn paste_limits_are_checked_and_image_references_are_only_data() {
     clip.source_base = Some("/tmp/source-project".into());
     let copy = clip.paste(&doc, NodeId::new_v4()).unwrap();
     assert!(
-        matches!(&copy.nodes[&copy.root].operation,Operation::Image{asset} if asset=="/tmp/source-project/missing/source.png")
+        matches!(&copy.nodes[&copy.root].operation,Operation::Image(veylvik_document::nodes::Image {asset}) if asset=="/tmp/source-project/missing/source.png")
     );
     while doc.nodes.len() < veylvik_document::limits::MAX_NODES {
-        let node = Node::new("Source", Operation::Solid { color: [0.0; 4] }, &[]);
+        let node = Node::new(
+            "Source",
+            Operation::Solid(veylvik_document::nodes::Solid { color: [0.0; 4] }),
+            &[],
+        );
         doc.nodes.insert(node.id, node);
     }
     assert!(clip.paste(&doc, session).is_err());

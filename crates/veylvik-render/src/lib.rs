@@ -63,14 +63,16 @@ fn params(
         extra: [0.0; 4],
     };
     match &node.operation {
-        Operation::PlanarTrack { .. } => {}
-        Operation::PlanarWarp { mode } => {
+        Operation::PlanarTrack(veylvik_document::nodes::PlanarTrack { .. }) => {}
+        Operation::PlanarWarp(veylvik_document::nodes::PlanarWarp { mode }) => {
             let track = node
                 .inputs
                 .get("track")
                 .and_then(|id| nodes.iter().find(|n| n.id == *id))
                 .ok_or_else(|| error("Planar track missing"))?;
-            let Operation::PlanarTrack { data } = &track.operation else {
+            let Operation::PlanarTrack(veylvik_document::nodes::PlanarTrack { data }) =
+                &track.operation
+            else {
                 return Err(error("Invalid planar track input"));
             };
             let forward = data.motion_at(time)?;
@@ -96,14 +98,14 @@ fn params(
             p.values.copy_from_slice(&matrix[..4]);
             p.extra.copy_from_slice(&matrix[4..8]);
         }
-        Operation::Solid { color } => {
+        Operation::Solid(veylvik_document::nodes::Solid { color }) => {
             p.values = *color;
         }
-        Operation::Colorize { low, high } => {
+        Operation::Colorize(veylvik_document::nodes::Colorize { low, high }) => {
             p.values = *low;
             p.extra = *high;
         }
-        Operation::Gradient { mode, .. } => {
+        Operation::Gradient(veylvik_document::nodes::Gradient { mode, .. }) => {
             p.size_op[3] = *mode as u32;
             p.values = [
                 sample("start_x")?,
@@ -112,11 +114,11 @@ fn params(
                 sample("end_y")?,
             ];
         }
-        Operation::Noise { seed, .. } => {
+        Operation::Noise(veylvik_document::nodes::Noise { seed, .. }) => {
             p.size_op[3] = *seed;
             p.values[0] = sample("scale")?;
         }
-        Operation::MetallicShine { .. } => {
+        Operation::MetallicShine(veylvik_document::nodes::MetallicShine { .. }) => {
             p.values = [
                 sample("x")?,
                 sample("y")?,
@@ -125,7 +127,9 @@ fn params(
             ];
             p.extra[0] = sample("intensity")?;
         }
-        Operation::SurfaceReflection { kind, .. } => {
+        Operation::SurfaceReflection(veylvik_document::nodes::SurfaceReflection {
+            kind, ..
+        }) => {
             p.size_op[3] = *kind as u32;
             p.values = [
                 sample("bevel")?,
@@ -140,7 +144,7 @@ fn params(
                 sample("offset_y")?,
             ];
         }
-        Operation::Glass { .. } => {
+        Operation::Glass(veylvik_document::nodes::Glass { .. }) => {
             p.values = [
                 sample("bevel")?,
                 sample("refraction")?,
@@ -154,7 +158,7 @@ fn params(
                 0.0,
             ];
         }
-        Operation::SunGlints { seed, .. } => {
+        Operation::SunGlints(veylvik_document::nodes::SunGlints { seed, .. }) => {
             p.size_op[3] = *seed;
             p.values = [
                 sample("size")?,
@@ -164,7 +168,7 @@ fn params(
             ];
             p.extra = [sample("density")?, sample("angle")?.to_radians(), 0.0, 0.0];
         }
-        Operation::Patina { kind, seed, .. } => {
+        Operation::Patina(veylvik_document::nodes::Patina { kind, seed, .. }) => {
             p.size_op[2] = *seed;
             p.size_op[3] = *kind as u32;
             p.values = [
@@ -175,7 +179,7 @@ fn params(
             ];
             p.extra[0] = sample("scratches")?;
         }
-        Operation::Material { kind, .. } => {
+        Operation::Material(veylvik_document::nodes::Material { kind, .. }) => {
             p.size_op[3] = *kind as u32;
             p.values = [
                 sample("scale")?,
@@ -185,7 +189,7 @@ fn params(
             ];
             p.extra = [sample("grain")?, sample("emission")?, 0.0, 0.0];
         }
-        Operation::Atmosphere { kind, seed, .. } => {
+        Operation::Atmosphere(veylvik_document::nodes::Atmosphere { kind, seed, .. }) => {
             p.size_op[2] = *seed;
             p.size_op[3] = *kind as u32;
             p.values = [
@@ -201,7 +205,7 @@ fn params(
                 sample("lighting")?,
             ];
         }
-        Operation::Fire { seed, .. } => {
+        Operation::Fire(veylvik_document::nodes::Fire { seed, .. }) => {
             p.size_op[3] = *seed;
             p.values = [
                 sample("x")?,
@@ -216,7 +220,7 @@ fn params(
                 0.0,
             ];
         }
-        Operation::FractalNoise { seed, .. } => {
+        Operation::FractalNoise(veylvik_document::nodes::FractalNoise { seed, .. }) => {
             p.size_op[3] = *seed;
             p.values = [
                 sample("scale")?,
@@ -225,21 +229,22 @@ fn params(
                 sample("evolution")?,
             ];
         }
-        Operation::Exposure { .. } => {
+        Operation::Exposure(veylvik_document::nodes::Exposure { .. }) => {
             let stops = sample("stops")?;
             p.values[0] = stops.exp2();
         }
-        Operation::Transform { .. } | Operation::Displace { .. } => {
+        Operation::Transform(veylvik_document::nodes::Transform { .. })
+        | Operation::Displace(veylvik_document::nodes::Displace { .. }) => {
             p.values[0] = sample("x")?;
             p.values[1] = sample("y")?;
         }
-        Operation::Morphology { .. } => {
+        Operation::Morphology(veylvik_document::nodes::Morphology { .. }) => {
             p.values[0] = sample("radius")?.round();
         }
-        Operation::Blur { .. } => {
+        Operation::Blur(veylvik_document::nodes::Blur { .. }) => {
             p.values[0] = sample("radius")?;
         }
-        Operation::Affine { .. } => {
+        Operation::Affine(veylvik_document::nodes::Affine { .. }) => {
             let (sx, sy) = (sample("scale_x")? as f64, sample("scale_y")? as f64);
             if sx.abs() >= 1e-6_f32 as f64 && sy.abs() >= 1e-6_f32 as f64 {
                 let radians = (sample("rotation")? as f64).rem_euclid(360.0).to_radians();
@@ -256,7 +261,7 @@ fn params(
                 ];
             }
         }
-        Operation::Ellipse { .. } => {
+        Operation::Ellipse(veylvik_document::nodes::Ellipse { .. }) => {
             p.values = [
                 sample("x")?,
                 sample("y")?,
@@ -265,20 +270,20 @@ fn params(
             ];
             p.extra[0] = sample("feather")?.max(1.0);
         }
-        Operation::Text { color, .. } => {
+        Operation::Text(veylvik_document::nodes::Text { color, .. }) => {
             p.values = *color;
         }
-        Operation::Path { .. } => {
+        Operation::Path(veylvik_document::nodes::Path { .. }) => {
             p.values = [width as f32, height as f32, 0.0, 0.0];
             p.extra[0] = width as f32;
         }
-        Operation::ChannelMask { channel } => {
+        Operation::ChannelMask(veylvik_document::nodes::ChannelMask { channel }) => {
             p.size_op[3] = *channel as u32;
         }
-        Operation::CombineMask { mode } => {
+        Operation::CombineMask(veylvik_document::nodes::CombineMask { mode }) => {
             p.size_op[3] = *mode as u32;
         }
-        Operation::SurfaceBlend { .. } => {
+        Operation::SurfaceBlend(veylvik_document::nodes::SurfaceBlend { .. }) => {
             p.values = [
                 sample("opacity")?,
                 sample("lighting")?,
@@ -297,14 +302,14 @@ fn params(
                 p.size_op[3] = (ms as u64 ^ (ms as u64 >> 32)) as u32;
             }
         }
-        Operation::Blend { mode, .. } => {
+        Operation::Blend(veylvik_document::nodes::Blend { mode, .. }) => {
             p.size_op[3] = *mode as u32;
             p.values[0] = sample("opacity")?;
         }
-        Operation::Merge {}
-        | Operation::Mask {}
-        | Operation::Image { .. }
-        | Operation::Footage { .. } => {}
+        Operation::Merge(veylvik_document::nodes::Merge {})
+        | Operation::Mask(veylvik_document::nodes::Mask {})
+        | Operation::Image(veylvik_document::nodes::Image { .. })
+        | Operation::Footage(veylvik_document::nodes::Footage { .. }) => {}
     }
     Ok(p)
 }
@@ -581,14 +586,19 @@ impl Renderer {
             .collect::<Result<_>>()?;
         for (node, p) in plan.nodes.iter().zip(&mut evaluated) {
             if let Some(asset) = node.operation.asset() {
-                let key = if matches!(node.operation, Operation::Footage { .. }) {
+                let key = if matches!(
+                    node.operation,
+                    Operation::Footage(veylvik_document::nodes::Footage { .. })
+                ) {
                     plan::footage_key(node.id)
                 } else {
                     asset.to_owned()
                 };
                 let source = inputs.source(&key).unwrap();
                 let region = source.region();
-                if let Operation::Footage { placement, .. } = node.operation {
+                if let Operation::Footage(veylvik_document::nodes::Footage { placement, .. }) =
+                    node.operation
+                {
                     use veylvik_document::media::Placement;
                     p.size_op[3] = match placement {
                         Placement::Legacy => 0,

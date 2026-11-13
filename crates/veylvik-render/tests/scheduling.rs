@@ -8,16 +8,16 @@ fn layered(count: u128) -> Composition {
     for index in 1..=count {
         let mut source = Node::new(
             "Layer",
-            Operation::Solid {
+            Operation::Solid(veylvik_document::nodes::Solid {
                 color: [index as f32 / 64.0, 0.1, 0.2, 0.25],
-            },
+            }),
             &[],
         );
         source.id = NodeId::from_u128(index);
         if index > 1 {
             let mut merge = Node::new(
                 "Over",
-                Operation::Merge {},
+                Operation::Merge(veylvik_document::nodes::Merge {}),
                 &[("background", output), ("foreground", source.id)],
             );
             merge.id = NodeId::from_u128(count + index);

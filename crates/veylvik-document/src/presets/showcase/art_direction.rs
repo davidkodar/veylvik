@@ -10,49 +10,49 @@ impl Art {
         add(&mut self.doc, name, op, inputs)
     }
     fn solid(&mut self, name: &str, color: [f32; 4]) -> NodeId {
-        self.node(name, Operation::Solid { color }, &[])
+        self.node(name, Operation::Solid(crate::nodes::Solid { color }), &[])
     }
     fn path(&mut self, name: &str, commands: Vec<PathCommand>) -> NodeId {
         self.node(
             name,
-            Operation::Path {
+            Operation::Path(crate::nodes::Path {
                 geometry: PathMask {
                     keys: vec![],
                     fill_rule: FillRule::NonZero,
                     commands,
                 },
-            },
+            }),
             &[],
         )
     }
     fn mask(&mut self, name: &str, image: NodeId, mask: NodeId) -> NodeId {
         self.node(
             name,
-            Operation::Mask {},
+            Operation::Mask(crate::nodes::Mask {}),
             &[("image", image), ("mask", mask)],
         )
     }
     fn over(&mut self, name: &str, bg: NodeId, fg: NodeId) -> NodeId {
         self.node(
             name,
-            Operation::Merge {},
+            Operation::Merge(crate::nodes::Merge {}),
             &[("background", bg), ("foreground", fg)],
         )
     }
     fn plus(&mut self, name: &str, bg: NodeId, fg: NodeId, amount: f32) -> NodeId {
         self.node(
             name,
-            Operation::Blend {
+            Operation::Blend(crate::nodes::Blend {
                 mode: BlendMode::Add,
                 opacity: amount.into(),
-            },
+            }),
             &[("background", bg), ("foreground", fg)],
         )
     }
     fn blur(&mut self, image: NodeId, r: f32) -> NodeId {
         self.node(
             "Soft diffusion",
-            Operation::Blur { radius: r.into() },
+            Operation::Blur(crate::nodes::Blur { radius: r.into() }),
             &[("image", image)],
         )
     }
@@ -62,7 +62,11 @@ impl Art {
         self.plus("Radiant halo", image, b, 0.8)
     }
     fn tint(&mut self, name: &str, image: NodeId, low: [f32; 4], high: [f32; 4]) -> NodeId {
-        self.node(name, Operation::Colorize { low, high }, &[("image", image)])
+        self.node(
+            name,
+            Operation::Colorize(crate::nodes::Colorize { low, high }),
+            &[("image", image)],
+        )
     }
     fn ellipse(
         &mut self,
@@ -75,26 +79,26 @@ impl Art {
     ) -> NodeId {
         self.node(
             name,
-            Operation::Ellipse {
+            Operation::Ellipse(crate::nodes::Ellipse {
                 x,
                 y,
                 radius_x: rx,
                 radius_y: ry,
                 feather: f.into(),
-            },
+            }),
             &[],
         )
     }
     fn gradient(&mut self, name: &str, start: f32, end: f32) -> NodeId {
         self.node(
             name,
-            Operation::Gradient {
+            Operation::Gradient(crate::nodes::Gradient {
                 mode: GradientMode::Linear,
                 start_x: 0.0.into(),
                 start_y: start.into(),
                 end_x: 0.0.into(),
                 end_y: end.into(),
-            },
+            }),
             &[],
         )
     }
@@ -120,7 +124,7 @@ impl Art {
     ) -> NodeId {
         self.node(
             name,
-            Operation::Affine {
+            Operation::Affine(crate::nodes::Affine {
                 x: offset[0].clone(),
                 y: offset[1].clone(),
                 scale_x: scale[0].clone(),
@@ -128,30 +132,30 @@ impl Art {
                 rotation: angle,
                 pivot_x: pivot[0].into(),
                 pivot_y: pivot[1].into(),
-            },
+            }),
             &[("image", image)],
         )
     }
     fn noise(&mut self, scale: f32, seed: u32) -> NodeId {
         self.node(
             "Animated material turbulence",
-            Operation::FractalNoise {
+            Operation::FractalNoise(crate::nodes::FractalNoise {
                 seed,
                 scale: scale.into(),
                 octaves: 4.0.into(),
                 roughness: 0.58.into(),
                 evolution: cycle(0.0, 1.8),
-            },
+            }),
             &[],
         )
     }
     fn displace(&mut self, name: &str, image: NodeId, map: NodeId, x: f32, y: f32) -> NodeId {
         self.node(
             name,
-            Operation::Displace {
+            Operation::Displace(crate::nodes::Displace {
                 x: x.into(),
                 y: y.into(),
-            },
+            }),
             &[("image", image), ("map", map)],
         )
     }
@@ -207,17 +211,17 @@ fn wave(a: f32, b: f32, phase: usize) -> Scalar {
 fn outline(a: &mut Art, mask: NodeId, dx: f32, dy: f32, color: [f32; 4]) -> NodeId {
     let shifted = a.node(
         "Bevel offset",
-        Operation::Transform {
+        Operation::Transform(crate::nodes::Transform {
             x: dx.into(),
             y: dy.into(),
-        },
+        }),
         &[("image", mask)],
     );
     let diff = a.node(
         "Bevel edge",
-        Operation::CombineMask {
+        Operation::CombineMask(crate::nodes::CombineMask {
             mode: crate::MaskMode::Subtract,
-        },
+        }),
         &[("mask", mask), ("other", shifted)],
     );
     let ink = a.solid("Bevel light", color);
@@ -256,10 +260,10 @@ fn gold_fire(a: &mut Art, bg: NodeId, with_fire: bool) -> Result<NodeId> {
     for i in (1..=5).rev() {
         let shifted = a.node(
             "Extruded gold depth",
-            Operation::Transform {
+            Operation::Transform(crate::nodes::Transform {
                 x: (i as f32 * 1.5).into(),
                 y: (i as f32 * 2.0).into(),
-            },
+            }),
             &[("image", side)],
         );
         extrusion = a.over("Layered depth", extrusion, shifted);
@@ -280,7 +284,7 @@ fn gold_fire(a: &mut Art, bg: NodeId, with_fire: bool) -> Result<NodeId> {
     let face = shine.output;
     let fire = a.node(
         "Fire · rising turbulent volume",
-        Operation::Fire {
+        Operation::Fire(crate::nodes::Fire {
             seed: 297,
             x: 480.0.into(),
             y: 285.0.into(),
@@ -302,7 +306,7 @@ fn gold_fire(a: &mut Art, bg: NodeId, with_fire: bool) -> Result<NodeId> {
             },
             intensity: 1.1.into(),
             turbulence: 1.4.into(),
-        },
+        }),
         &[],
     );
     let halo = a.blur(fire, 6.0);
@@ -379,10 +383,10 @@ fn dripping(a: &mut Art, bg: NodeId, pink: bool) -> NodeId {
         let fade = sampled(&|f| (u(f) / 0.1).min((1.0 - u(f)) / 0.12).clamp(0.0, 1.0));
         mask = a.node(
             "Droplet lifetime",
-            Operation::Blend {
+            Operation::Blend(crate::nodes::Blend {
                 mode: BlendMode::Normal,
                 opacity: fade,
-            },
+            }),
             &[("background", mask), ("foreground", drop)],
         );
     }
@@ -512,9 +516,9 @@ fn nova(a: &mut Art, bg: NodeId) -> NodeId {
     );
     let ring = a.node(
         "Plasma rim",
-        Operation::CombineMask {
+        Operation::CombineMask(crate::nodes::CombineMask {
             mode: crate::MaskMode::Subtract,
-        },
+        }),
         &[("mask", outer), ("other", inner)],
     );
     let turbulence = a.noise(40.0, 71);
@@ -613,7 +617,7 @@ pub(super) fn build(id: &str) -> Result<Scene> {
         let sky = atmosphere_plate(&mut a, "clouds");
         let clouds = a.node(
             "Animated reflection clouds",
-            Operation::Atmosphere {
+            Operation::Atmosphere(crate::nodes::Atmosphere {
                 kind: crate::AtmosphereKind::Clouds,
                 seed: 397,
                 x: 480.0.into(),
@@ -637,7 +641,7 @@ pub(super) fn build(id: &str) -> Result<Scene> {
                 density: 4.0.into(),
                 detail: 1.0.into(),
                 lighting: 1.0.into(),
-            },
+            }),
             &[],
         );
         a.over("Cloud reflection environment", sky, clouds)
@@ -649,7 +653,7 @@ pub(super) fn build(id: &str) -> Result<Scene> {
             let mask = a.text("GOLD");
             a.node(
                 "Polished base material",
-                Operation::Material {
+                Operation::Material(crate::nodes::Material {
                     kind: if id == "metal_patina" {
                         crate::MaterialKind::Bronze
                     } else {
@@ -661,7 +665,7 @@ pub(super) fn build(id: &str) -> Result<Scene> {
                     lighting: cycle(0.0, 0.12),
                     grain: 0.35.into(),
                     emission: 1.0.into(),
-                },
+                }),
                 &[("image", mask)],
             )
         }
@@ -746,13 +750,13 @@ mod tests {
             .nodes
             .values()
             .find(|n| match &n.operation {
-                Operation::Ellipse { x, .. } => {
+                Operation::Ellipse(crate::nodes::Ellipse { x, .. }) => {
                     n.label == "Falling droplet" && x.at(Time::new(0, 1).unwrap()).unwrap() == 180.0
                 }
                 _ => false,
             })
             .unwrap();
-        let Operation::Ellipse { y, .. } = &drop.operation else {
+        let Operation::Ellipse(crate::nodes::Ellipse { y, .. }) = &drop.operation else {
             unreachable!()
         };
         let at = |frame| y.at(Time::new(frame, 24).unwrap()).unwrap();
@@ -763,7 +767,7 @@ mod tests {
             .values()
             .find(|n| n.label == "Droplet lifetime" && n.inputs.get("foreground") == Some(&drop.id))
             .unwrap();
-        let Operation::Blend { opacity, .. } = &lifetime.operation else {
+        let Operation::Blend(crate::nodes::Blend { opacity, .. }) = &lifetime.operation else {
             unreachable!()
         };
         assert_eq!(opacity.at(Time::new(0, 1).unwrap()).unwrap(), 0.0);

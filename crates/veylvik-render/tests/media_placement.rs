@@ -20,11 +20,12 @@ fn placement_samples_full_source_before_clipping_and_preserves_alpha() {
         (Placement::Stretch, [0.5, 1.0], [0.0, 0.0]),
     ] {
         let mut doc = blank(4, 4, Time::new(24, 1).unwrap()).unwrap();
-        doc.nodes.get_mut(&doc.output).unwrap().operation = Operation::Footage {
-            asset: "source".into(),
-            timing: Default::default(),
-            placement: mode,
-        };
+        doc.nodes.get_mut(&doc.output).unwrap().operation =
+            Operation::Footage(veylvik_document::nodes::Footage {
+                asset: "source".into(),
+                timing: Default::default(),
+                placement: mode,
+            });
         let plan = Plan::compile(&doc).unwrap();
         let result = renderer
             .render_frame(
@@ -63,11 +64,12 @@ fn placement_samples_full_source_before_clipping_and_preserves_alpha() {
         Arc::new(Image::new(1, 1, vec![[0.25, 0.0, 0.0, 0.5]]).unwrap()),
     );
     let mut doc = blank(4, 4, Time::new(24, 1).unwrap()).unwrap();
-    doc.nodes.get_mut(&doc.output).unwrap().operation = Operation::Footage {
-        asset: "small".into(),
-        timing: Default::default(),
-        placement: Placement::Fit,
-    };
+    doc.nodes.get_mut(&doc.output).unwrap().operation =
+        Operation::Footage(veylvik_document::nodes::Footage {
+            asset: "small".into(),
+            timing: Default::default(),
+            placement: Placement::Fit,
+        });
     let result = renderer
         .render_frame(
             &Plan::compile(&doc).unwrap(),
@@ -84,9 +86,9 @@ fn old_footage_defaults_to_legacy_placement() {
     })).unwrap();
     assert!(matches!(
         operation,
-        Operation::Footage {
+        Operation::Footage(veylvik_document::nodes::Footage {
             placement: Placement::Legacy,
             ..
-        }
+        })
     ));
 }

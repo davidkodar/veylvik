@@ -176,14 +176,16 @@ pub fn call(studio: &mut Studio, name: &str, args: &Value) -> Result<Value> {
                 .nodes
                 .values()
                 .filter_map(|node| match &node.operation {
-                    Operation::Image { asset } | Operation::Footage { asset, .. } => {
+                    Operation::Image(veylvik_document::nodes::Image { asset })
+                    | Operation::Footage(veylvik_document::nodes::Footage { asset, .. }) => {
                         Some(asset.as_str())
                     }
                     _ => None,
                 })
                 .collect();
             for node in candidate.nodes.values() {
-                if let Operation::Image { asset } | Operation::Footage { asset, .. } =
+                if let Operation::Image(veylvik_document::nodes::Image { asset })
+                | Operation::Footage(veylvik_document::nodes::Footage { asset, .. }) =
                     &node.operation
                     && !studio.project.inputs.contains_key(asset)
                     && !known.contains(asset.as_str())
@@ -284,7 +286,7 @@ fn snapshot(studio: &Studio, args: &Value) -> Result<crate::preview_images::Snap
     if studio.draft_dirty
         && matches!(
             studio.draft.operation,
-            veylvik_document::Operation::Text { .. }
+            veylvik_document::Operation::Text(veylvik_document::nodes::Text { .. })
         )
     {
         return Err("Apply or revert the text preview before capturing applied pixels".into());

@@ -34,9 +34,9 @@ impl Builder {
     fn opaque_field(&mut self, image: NodeId) -> NodeId {
         let black = self.add(
             "Opaque field background",
-            Operation::Solid {
+            Operation::Solid(crate::nodes::Solid {
                 color: [0.0, 0.0, 0.0, 1.0],
-            },
+            }),
             &[],
         );
         self.blend(black, image, BlendMode::Normal, 1.0.into())
@@ -45,40 +45,44 @@ impl Builder {
     fn blur(&mut self, image: NodeId, radius: f32) -> NodeId {
         self.add(
             "Diffusion",
-            Operation::Blur {
+            Operation::Blur(crate::nodes::Blur {
                 radius: radius.into(),
-            },
+            }),
             &[("image", image)],
         )
     }
     fn tint(&mut self, image: NodeId, low: [f32; 4], high: [f32; 4]) -> NodeId {
         self.add(
             "Palette",
-            Operation::Colorize { low, high },
+            Operation::Colorize(crate::nodes::Colorize { low, high }),
             &[("image", image)],
         )
     }
     fn blend(&mut self, bg: NodeId, fg: NodeId, mode: BlendMode, opacity: Scalar) -> NodeId {
         self.add(
             "Layer mix",
-            Operation::Blend { mode, opacity },
+            Operation::Blend(crate::nodes::Blend { mode, opacity }),
             &[("background", bg), ("foreground", fg)],
         )
     }
     fn shift(&mut self, image: NodeId, x: Scalar, y: Scalar) -> NodeId {
-        self.add("Offset", Operation::Transform { x, y }, &[("image", image)])
+        self.add(
+            "Offset",
+            Operation::Transform(crate::nodes::Transform { x, y }),
+            &[("image", image)],
+        )
     }
     fn mask(&mut self, image: NodeId, mask: NodeId) -> NodeId {
         self.add(
             "Masked detail",
-            Operation::Mask {},
+            Operation::Mask(crate::nodes::Mask {}),
             &[("image", image), ("mask", mask)],
         )
     }
     fn affine(&mut self, image: NodeId, scale: Scalar, angle: Scalar) -> NodeId {
         self.add(
             "Echo transform",
-            Operation::Affine {
+            Operation::Affine(crate::nodes::Affine {
                 x: 0.0.into(),
                 y: 0.0.into(),
                 scale_x: scale.clone(),
@@ -86,7 +90,7 @@ impl Builder {
                 rotation: angle,
                 pivot_x: 480.0.into(),
                 pivot_y: 270.0.into(),
-            },
+            }),
             &[("image", image)],
         )
     }
@@ -99,9 +103,9 @@ impl Builder {
         let valid = self.mask(diff, shift);
         self.add(
             "Edge luminance",
-            Operation::ChannelMask {
+            Operation::ChannelMask(crate::nodes::ChannelMask {
                 channel: MaskChannel::Luminance,
-            },
+            }),
             &[("image", valid)],
         )
     }
@@ -123,44 +127,48 @@ impl Builder {
         }
         self.add(
             "Horizontal bands",
-            Operation::Path {
+            Operation::Path(crate::nodes::Path {
                 geometry: PathMask {
                     keys: vec![],
                     fill_rule: FillRule::NonZero,
                     commands,
                 },
-            },
+            }),
             &[],
         )
     }
     fn flow(&mut self, source: NodeId, scale: f32, x: f32, y: f32) -> Result<NodeId> {
         let noise = self.add(
             "Flow field",
-            Operation::FractalNoise {
+            Operation::FractalNoise(crate::nodes::FractalNoise {
                 seed: 83,
                 scale: scale.into(),
                 octaves: 3.0.into(),
                 roughness: 0.5.into(),
                 evolution: cycle(0.0, 0.8),
-            },
+            }),
             &[],
         );
-        let solid = self.add("Frame coverage", Operation::Solid { color: [1.0; 4] }, &[]);
+        let solid = self.add(
+            "Frame coverage",
+            Operation::Solid(crate::nodes::Solid { color: [1.0; 4] }),
+            &[],
+        );
         let inset = self.add(
             "Protected boundary",
-            Operation::Morphology {
+            Operation::Morphology(crate::nodes::Morphology {
                 radius: (-32.0).into(),
-            },
+            }),
             &[("image", solid)],
         );
         let soft = self.blur(inset, 6.0);
         let field = self.mask(noise, soft);
         let out = self.add(
             "Refraction",
-            Operation::Displace {
+            Operation::Displace(crate::nodes::Displace {
                 x: x.into(),
                 y: y.into(),
-            },
+            }),
             &[("image", source), ("map", field)],
         );
         self.expose(out, "x", "Horizontal refraction")?;
@@ -194,7 +202,7 @@ pub(super) fn build(id: &str, b: &mut Builder, source: NodeId) -> Result<NodeId>
             // Compress before blur, then expand: anisotropic diffusion without a new kernel.
             let compress = b.add(
                 "Compress highlights",
-                Operation::Affine {
+                Operation::Affine(crate::nodes::Affine {
                     x: 0.0.into(),
                     y: 0.0.into(),
                     scale_x: 0.1.into(),
@@ -202,13 +210,13 @@ pub(super) fn build(id: &str, b: &mut Builder, source: NodeId) -> Result<NodeId>
                     rotation: 0.0.into(),
                     pivot_x: 480.0.into(),
                     pivot_y: 270.0.into(),
-                },
+                }),
                 &[("image", source)],
             );
             let soft = b.blur(compress, 10.0);
             let stretch = b.add(
                 "Stretch light",
-                Operation::Affine {
+                Operation::Affine(crate::nodes::Affine {
                     x: 0.0.into(),
                     y: 0.0.into(),
                     scale_x: 10.0.into(),
@@ -216,7 +224,7 @@ pub(super) fn build(id: &str, b: &mut Builder, source: NodeId) -> Result<NodeId>
                     rotation: 0.0.into(),
                     pivot_x: 480.0.into(),
                     pivot_y: 270.0.into(),
-                },
+                }),
                 &[("image", soft)],
             );
             let color = b.tint(stretch, [0.0; 4], [0.2, 0.7, 1.8, 1.0]);
@@ -302,14 +310,14 @@ pub(super) fn build(id: &str, b: &mut Builder, source: NodeId) -> Result<NodeId>
         "ink_bleed" => {
             let luminance = b.add(
                 "Ink coverage",
-                Operation::ChannelMask {
+                Operation::ChannelMask(crate::nodes::ChannelMask {
                     channel: MaskChannel::Luminance,
-                },
+                }),
                 &[("image", source)],
             );
             let grow = b.add(
                 "Spread ink",
-                Operation::Morphology { radius: 7.0.into() },
+                Operation::Morphology(crate::nodes::Morphology { radius: 7.0.into() }),
                 &[("image", luminance)],
             );
             let soft = b.blur(grow, 3.0);
@@ -333,13 +341,13 @@ pub(super) fn build(id: &str, b: &mut Builder, source: NodeId) -> Result<NodeId>
             };
             let shape = b.add(
                 "Light shape",
-                Operation::Ellipse {
+                Operation::Ellipse(crate::nodes::Ellipse {
                     x,
                     y,
                     radius_x: rx.into(),
                     radius_y: ry.into(),
                     feather: feather.into(),
-                },
+                }),
                 &[],
             );
             b.expose(shape, "x", "Light center X")?;
@@ -357,13 +365,13 @@ pub(super) fn build(id: &str, b: &mut Builder, source: NodeId) -> Result<NodeId>
         "film_grain" => {
             let noise = b.add(
                 "Fine grain",
-                Operation::FractalNoise {
+                Operation::FractalNoise(crate::nodes::FractalNoise {
                     seed: 127,
                     scale: 2.0.into(),
                     octaves: 2.0.into(),
                     roughness: 0.65.into(),
                     evolution: cycle(0.0, 3.0),
-                },
+                }),
                 &[],
             );
             let color = b.tint(noise, [0.0, 0.0, 0.0, 1.0], [0.3, 0.3, 0.3, 1.0]);
@@ -422,7 +430,7 @@ pub(super) fn build(id: &str, b: &mut Builder, source: NodeId) -> Result<NodeId>
 fn particles(id: &str, b: &mut Builder, source: NodeId) -> Result<NodeId> {
     let mut layer = b.add(
         "Transparent particle layer",
-        Operation::Solid { color: [0.0; 4] },
+        Operation::Solid(crate::nodes::Solid { color: [0.0; 4] }),
         &[],
     );
     for i in 0..18 {
@@ -450,13 +458,13 @@ fn particles(id: &str, b: &mut Builder, source: NodeId) -> Result<NodeId> {
         };
         let dot = b.add(
             &format!("Particle {:02} · path", i + 1),
-            Operation::Ellipse {
+            Operation::Ellipse(crate::nodes::Ellipse {
                 x,
                 y,
                 radius_x: radius.into(),
                 radius_y: (if id == "embers" { radius * 2.5 } else { radius }).into(),
                 feather: (radius * 0.8).into(),
-            },
+            }),
             &[],
         );
         // Fade to zero at each wrap. This hides respawns and makes frame 0 == 96.

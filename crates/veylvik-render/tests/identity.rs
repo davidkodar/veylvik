@@ -4,20 +4,20 @@ use veylvik_render::*;
 fn document() -> Composition {
     let source = Node::new(
         "source",
-        Operation::Solid {
+        Operation::Solid(veylvik_document::nodes::Solid {
             color: [4.0, -0.2, 0.4, 0.5],
-        },
+        }),
         &[],
     );
     let mut output = source.id;
     let mut nodes = vec![source];
     for operation in [
-        Operation::Exposure { stops: 0.0.into() },
-        Operation::Transform {
+        Operation::Exposure(veylvik_document::nodes::Exposure { stops: 0.0.into() }),
+        Operation::Transform(veylvik_document::nodes::Transform {
             x: 0.0.into(),
             y: 0.0.into(),
-        },
-        Operation::Blur { radius: 0.0.into() },
+        }),
+        Operation::Blur(veylvik_document::nodes::Blur { radius: 0.0.into() }),
     ] {
         let node = Node::new("identity", operation, &[("image", output)]);
         output = node.id;
@@ -48,7 +48,7 @@ fn constant_identity_effects_alias_sources_before_slot_assignment() {
         Plan::compile_output(&doc, source).unwrap().working_bytes()
     );
     let node = doc.nodes.get_mut(&doc.output).unwrap();
-    node.operation = Operation::Blur {
+    node.operation = Operation::Blur(veylvik_document::nodes::Blur {
         radius: Scalar::Linear {
             keys: vec![
                 Key {
@@ -63,12 +63,12 @@ fn constant_identity_effects_alias_sources_before_slot_assignment() {
                 },
             ],
         },
-    };
+    });
     assert_eq!(Plan::compile(&doc).unwrap().pass_count(), 3);
     // Aliases used by both ports must retain the source through the merge pass.
     let merge = Node::new(
         "merge",
-        Operation::Merge {},
+        Operation::Merge(veylvik_document::nodes::Merge {}),
         &[("background", source), ("foreground", doc.output)],
     );
     doc.output = merge.id;
@@ -100,7 +100,7 @@ fn identity_chains_share_cached_pixels_and_preserve_preview_and_fanout() {
     let mut doc = doc;
     let merge = Node::new(
         "merge",
-        Operation::Merge {},
+        Operation::Merge(veylvik_document::nodes::Merge {}),
         &[("background", source), ("foreground", doc.output)],
     );
     doc.output = merge.id;

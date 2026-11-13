@@ -94,9 +94,9 @@ fn malformed_and_path_dependent_presets_fail_validation_without_panics() {
         .nodes
         .get_mut(&invalid.group.output)
         .unwrap()
-        .operation = Operation::Image {
+        .operation = Operation::Image(veylvik_document::nodes::Image {
         asset: "/tmp/private.png".into(),
-    };
+    });
     assert!(invalid.validate().is_err());
     let mut invalid = preset.clone();
     invalid.group.inputs.values_mut().next().unwrap().targets[0].node = NodeId::new_v4();
@@ -231,7 +231,7 @@ fn material_layers_fill_canvas_preserve_graph_and_undo_atomically() {
         let group = &doc.groups[&instance.group];
         assert!(group.inputs.is_empty());
         assert!(group.members.iter().any(
-            |id| matches!(doc.nodes[id].operation,Operation::Solid {color} if color==[1.0;4])
+            |id| matches!(doc.nodes[id].operation,Operation::Solid(veylvik_document::nodes::Solid {color}) if color==[1.0;4])
         ));
         assert_eq!(
             doc.nodes[&doc.output].inputs[if foreground {
@@ -259,7 +259,7 @@ fn material_layers_fill_canvas_preserve_graph_and_undo_atomically() {
             .members
             .iter()
             .find_map(|id| match &doc.nodes[id].operation {
-                Operation::Material { scale, .. } => Some(scale),
+                Operation::Material(veylvik_document::nodes::Material { scale, .. }) => Some(scale),
                 _ => None,
             })
             .unwrap();

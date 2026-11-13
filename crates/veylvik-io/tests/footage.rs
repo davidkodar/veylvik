@@ -55,9 +55,10 @@ fn numbered_import_is_reusable_and_protects_every_frame() {
     );
     assert_eq!(before, std::fs::read(&path).unwrap());
     let mut doc = veylvik_document::blank(1, 1, Time::new(24, 1).unwrap()).unwrap();
-    doc.nodes.get_mut(&doc.output).unwrap().operation = Operation::Image {
-        asset: path.to_str().unwrap().into(),
-    };
+    doc.nodes.get_mut(&doc.output).unwrap().operation =
+        Operation::Image(veylvik_document::nodes::Image {
+            asset: path.to_str().unwrap().into(),
+        });
     for n in 0..2 {
         assert!(
             veylvik_io::protect_inputs(&doc, &dir.0, &dir.0.join(format!("shot{n:04}.png")))
@@ -72,7 +73,8 @@ fn sequence_frames_invalidate_gpu_cache_at_exact_frame_boundaries() {
     let (_dir, path, media) = source();
     let mut doc = veylvik_document::blank(1, 1, Time::new(24, 1).unwrap()).unwrap();
     let key = path.to_str().unwrap();
-    doc.nodes.get_mut(&doc.output).unwrap().operation = Operation::Image { asset: key.into() };
+    doc.nodes.get_mut(&doc.output).unwrap().operation =
+        Operation::Image(veylvik_document::nodes::Image { asset: key.into() });
     let mut inputs = ImageInputs::default();
     media.insert(&mut inputs, key);
     let plan = Plan::compile(&doc).unwrap();

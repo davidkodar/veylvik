@@ -75,14 +75,19 @@ impl Preset {
         if self.nodes.values().any(|n| {
             matches!(
                 n.operation,
-                Operation::Image { .. } | Operation::Footage { .. }
+                Operation::Image(crate::nodes::Image { .. })
+                    | Operation::Footage(crate::nodes::Footage { .. })
             )
         }) {
             return fail("Expose image sources as effect inputs before saving a portable preset");
         }
         let mut nodes = self.nodes.clone();
         for input in self.group.inputs.values() {
-            let mut stub = Node::new("Input", Operation::Solid { color: [0.0; 4] }, &[]);
+            let mut stub = Node::new(
+                "Input",
+                Operation::Solid(crate::nodes::Solid { color: [0.0; 4] }),
+                &[],
+            );
             while nodes.contains_key(&stub.id) || stub.id == self.group.id {
                 stub.id = NodeId::new_v4();
             }
@@ -300,7 +305,7 @@ pub fn fill_layer(
     }
     let mut mask = Node::new(
         "Image inside text / shape",
-        Operation::Mask {},
+        Operation::Mask(crate::nodes::Mask {}),
         &[("image", image), ("mask", layer)],
     );
     mask.position = doc

@@ -4,14 +4,14 @@ use veylvik_render::{Image, ImageInputs, Plan, RenderRequest, Renderer};
 fn scene() -> (veylvik_document::Composition, ImageInputs) {
     let mut doc = veylvik_document::blank(64, 48, Time::new(24, 1).unwrap()).unwrap();
     let bg = doc.output;
-    doc.nodes.get_mut(&bg).unwrap().operation = Operation::Image {
+    doc.nodes.get_mut(&bg).unwrap().operation = Operation::Image(veylvik_document::nodes::Image {
         asset: "plate".into(),
-    };
+    });
     let fg = Node::new(
         "Layer",
-        Operation::Image {
+        Operation::Image(veylvik_document::nodes::Image {
             asset: "layer".into(),
-        },
+        }),
         &[],
     );
     let blend = Node::new(
@@ -80,7 +80,8 @@ fn surface_blending_preserves_clean_plate_and_transfers_light_detail_and_cracks(
     neutral(&mut doc);
     let clean = render(&doc);
     let mut merge = doc.clone();
-    merge.nodes.get_mut(&merge.output).unwrap().operation = Operation::Merge {};
+    merge.nodes.get_mut(&merge.output).unwrap().operation =
+        Operation::Merge(veylvik_document::nodes::Merge {});
     assert_eq!(
         clean,
         render(&merge),

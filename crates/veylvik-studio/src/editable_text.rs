@@ -120,11 +120,11 @@ fn reset(value: &mut Scalar, time: Time, default: f32) -> veylvik_document::Resu
     }
 }
 pub fn header(ui: &mut egui::Ui, op: &mut Operation) -> bool {
-    let Operation::Text {
+    let Operation::Text(veylvik_document::nodes::Text {
         content,
         typography,
         ..
-    } = op
+    }) = op
     else {
         return false;
     };
@@ -203,12 +203,12 @@ pub fn controls(
                 ui.ctx()
                     .data_mut(|d| d.insert_temp(egui::Id::new("text-inspector-tab"), Tab::Style));
             }
-            if let Operation::Text {
+            if let Operation::Text(veylvik_document::nodes::Text {
                 font,
                 underline,
                 features,
                 ..
-            } = op
+            }) = op
             {
                 ui.strong("Font family");
                 let (edited, selection) = fonts.choose(ui, font);
@@ -249,11 +249,11 @@ pub fn controls(
                         }
                     });
             }
-            if let Operation::Text {
+            if let Operation::Text(veylvik_document::nodes::Text {
                 content,
                 typography,
                 ..
-            } = op
+            }) = op
             {
                 let range = ui
                     .ctx()
@@ -325,12 +325,12 @@ pub fn controls(
             {
                 ui.colored_label(egui::Color32::YELLOW, warning);
             }
-            if let Operation::Text {
+            if let Operation::Text(veylvik_document::nodes::Text {
                 alignment,
                 rtl,
                 language,
                 ..
-            } = op
+            }) = op
             {
                 ui.strong("Alignment");
                 ui.horizontal(|ui| {
@@ -393,7 +393,7 @@ pub fn controls(
                 time,
             );
             changed |= parameter(ui, op, "padding", "Padding · px", 0.0..=200.0, time);
-            if let Operation::Text { typography, .. } = op {
+            if let Operation::Text(veylvik_document::nodes::Text { typography, .. }) = op {
                 use veylvik_document::text::Vertical;
                 ui.horizontal(|ui| {
                     for (value, label) in [
@@ -413,7 +413,7 @@ pub fn controls(
             ui.weak("Width and height enable a layout box. Zero height preserves baseline layout. Long words stay intact.");
         }
         Tab::Transform => {
-            if let Operation::Text { typography, .. } = op {
+            if let Operation::Text(veylvik_document::nodes::Text { typography, .. }) = op {
                 ui.strong("Anchor");
                 egui::Grid::new("text-anchor").show(ui, |ui| {
                     for y in 0..3 {
@@ -452,7 +452,7 @@ pub fn controls(
                 for (name, v) in [("x", canvas[0] * 0.5), ("y", canvas[1] * 0.5)] {
                     changed |= reset(op.scalar_mut(name).unwrap(), time, v).is_ok();
                 }
-                if let Operation::Text { typography, .. } = op {
+                if let Operation::Text(veylvik_document::nodes::Text { typography, .. }) = op {
                     typography.anchor = Some([0.5, 0.5]);
                 }
             }
@@ -469,7 +469,7 @@ pub fn controls(
                 changed |= parameter(ui, op, name, label, range, time);
             }
             let new_scale = op.scalar("scale_x").unwrap().at(time).unwrap_or(1.0);
-            if matches!(op,Operation::Text{typography,..} if typography.linked_scale)
+            if matches!(op,Operation::Text(veylvik_document::nodes::Text {typography,..}) if typography.linked_scale)
                 && old_scale != new_scale
             {
                 let old_y = op.scalar("scale_y").unwrap().at(time).unwrap_or(1.0);
@@ -485,7 +485,7 @@ pub fn controls(
                 .is_ok();
             }
             let new_height = op.scalar("scale_y").unwrap().at(time).unwrap_or(1.0);
-            if matches!(op,Operation::Text{typography,..} if typography.linked_scale)
+            if matches!(op,Operation::Text(veylvik_document::nodes::Text {typography,..}) if typography.linked_scale)
                 && old_scale == new_scale
                 && old_height != new_height
             {
@@ -524,7 +524,7 @@ pub fn controls(
             ui.weak("Or drag the handles directly in the viewer.");
         }
         Tab::Animation => {
-            if let Operation::Text { typography, .. } = op {
+            if let Operation::Text(veylvik_document::nodes::Text { typography, .. }) = op {
                 use veylvik_document::text::{TextMotion, TextUnit};
                 ui.strong("Text animation");
                 egui::ComboBox::from_id_salt("text-motion")
@@ -658,7 +658,7 @@ pub fn controls(
                 )
                 .is_ok();
             }
-            if let Operation::Text {
+            if let Operation::Text(veylvik_document::nodes::Text {
                 font,
                 underline,
                 features,
@@ -667,7 +667,7 @@ pub fn controls(
                 language,
                 typography,
                 ..
-            } = op
+            }) = op
             {
                 match selected {
                     Tab::Text => {
@@ -772,7 +772,11 @@ impl crate::Studio {
         }
     }
     pub(super) fn text_connections(&mut self, ui: &mut egui::Ui) {
-        if !matches!(self.draft.operation, Operation::Text { .. }) || tab(ui) != Tab::Style {
+        if !matches!(
+            self.draft.operation,
+            Operation::Text(veylvik_document::nodes::Text { .. })
+        ) || tab(ui) != Tab::Style
+        {
             return;
         }
         self.title_style_library(ui);
@@ -787,7 +791,12 @@ impl crate::Studio {
             .flatten();
         let is_gradient = source
             .and_then(|id| doc.nodes[&id].inputs.get("image"))
-            .is_some_and(|id| matches!(doc.nodes[id].operation, Operation::Gradient { .. }));
+            .is_some_and(|id| {
+                matches!(
+                    doc.nodes[id].operation,
+                    Operation::Gradient(veylvik_document::nodes::Gradient { .. })
+                )
+            });
         let default = if material.is_some() {
             2u8
         } else if is_gradient {
@@ -835,7 +844,9 @@ impl crate::Studio {
                 .get(&id)
                 .unwrap_or(&self.project.document.snapshot().nodes[&id])
                 .clone();
-            if let Operation::Colorize { low, high } = &mut node.operation {
+            if let Operation::Colorize(veylvik_document::nodes::Colorize { low, high }) =
+                &mut node.operation
+            {
                 ui.strong("Gradient colours");
                 let mut changed = false;
                 ui.collapsing("Start colour", |ui| {
@@ -855,7 +866,10 @@ impl crate::Studio {
                         .get(&gradient)
                         .unwrap_or(&self.project.document.snapshot().nodes[&gradient])
                         .clone();
-                    if matches!(source.operation, Operation::Gradient { .. }) {
+                    if matches!(
+                        source.operation,
+                        Operation::Gradient(veylvik_document::nodes::Gradient { .. })
+                    ) {
                         ui.collapsing("Gradient direction", |ui| {
                             if let Ok(time) = self.project.time() {
                                 let mut changed = false;
@@ -963,13 +977,17 @@ impl crate::Studio {
                 self.apply_text_style(style, ui.ctx());
             }
         }
-        if !matches!(self.draft.operation, Operation::Text { .. }) {
+        if !matches!(
+            self.draft.operation,
+            Operation::Text(veylvik_document::nodes::Text { .. })
+        ) {
             return;
         }
         ui.separator();
         if mode == 0
             && default == 0
-            && let Operation::Text { color, .. } = &mut self.draft.operation
+            && let Operation::Text(veylvik_document::nodes::Text { color, .. }) =
+                &mut self.draft.operation
         {
             let mut changed = false;
             ui.strong("Plain fill colour");
@@ -1102,9 +1120,9 @@ pub(super) fn handles_in_scene(
             if node.inputs.values().any(|input| *input == id)
                 && !matches!(
                     node.operation,
-                    Operation::Affine { .. }
-                        | Operation::Transform { .. }
-                        | Operation::Displace { .. }
+                    Operation::Affine(veylvik_document::nodes::Affine { .. })
+                        | Operation::Transform(veylvik_document::nodes::Transform { .. })
+                        | Operation::Displace(veylvik_document::nodes::Displace { .. })
                 )
             {
                 pending.push(node.id);
@@ -1142,7 +1160,7 @@ mod tests {
     #[test]
     fn parameter_rows_do_not_grow_a_resizable_inspector_on_repaint() {
         let ctx = egui::Context::default();
-        let mut op = Operation::Exposure { stops: 0.0.into() };
+        let mut op = Operation::Exposure(veylvik_document::nodes::Exposure { stops: 0.0.into() });
         let mut widths = Vec::new();
         for frame in 0..40 {
             let _ = ctx.run_ui(
@@ -1211,7 +1229,12 @@ mod tests {
         let text = doc
             .nodes
             .values()
-            .find(|n| matches!(n.operation, Operation::Text { .. }))
+            .find(|n| {
+                matches!(
+                    n.operation,
+                    Operation::Text(veylvik_document::nodes::Text { .. })
+                )
+            })
             .unwrap()
             .id;
         assert!(handles_in_scene(&doc, text));
@@ -1219,10 +1242,10 @@ mod tests {
         assert!(!downstream(&doc, text).contains(&presets::background::automatic(&doc).unwrap()));
         let transform = Node::new(
             "Moved scene",
-            Operation::Transform {
+            Operation::Transform(veylvik_document::nodes::Transform {
                 x: 10.0.into(),
                 y: 0.0.into(),
-            },
+            }),
             &[("image", doc.output)],
         );
         doc.output = transform.id;

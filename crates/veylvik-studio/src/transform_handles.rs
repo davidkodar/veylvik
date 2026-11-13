@@ -18,8 +18,15 @@ impl Geometry {
                 .expect("transform parameter")
                 .at(time)
         };
-        let text = matches!(operation, Operation::Text { .. });
-        let affine = text || matches!(operation, Operation::Affine { .. });
+        let text = matches!(
+            operation,
+            Operation::Text(veylvik_document::nodes::Text { .. })
+        );
+        let affine = text
+            || matches!(
+                operation,
+                Operation::Affine(veylvik_document::nodes::Affine { .. })
+            );
         let pivot = if text {
             egui::vec2(sample("x")?, sample("y")?)
         } else if affine {
@@ -117,7 +124,7 @@ fn move_handle(
         }
         _ => unreachable!(),
     }
-    if matches!(&next,Operation::Text{typography,..} if typography.linked_scale)
+    if matches!(&next,Operation::Text(veylvik_document::nodes::Text {typography,..}) if typography.linked_scale)
         && matches!(index, 1 | 2)
     {
         let (axis, other, before, old_other) = if index == 1 {
@@ -163,7 +170,10 @@ pub fn show(
         egui::vec2(0.0, image.y),
         Vec2::ZERO,
     ];
-    if !matches!(operation, Operation::Text { .. }) {
+    if !matches!(
+        operation,
+        Operation::Text(veylvik_document::nodes::Text { .. })
+    ) {
         painter.add(egui::Shape::line(
             corners.map(|point| screen(geometry.map(point))).to_vec(),
             stroke,
@@ -235,7 +245,7 @@ mod tests {
     use super::*;
     use veylvik_document::{Interpolation, Scalar};
     fn affine() -> Operation {
-        Operation::Affine {
+        Operation::Affine(veylvik_document::nodes::Affine {
             x: 3.0.into(),
             y: 4.0.into(),
             scale_x: (-2.0).into(),
@@ -243,7 +253,7 @@ mod tests {
             rotation: 90.0.into(),
             pivot_x: 10.0.into(),
             pivot_y: 20.0.into(),
-        }
+        })
     }
     #[test]
     fn geometry_and_axis_drags_match_forward_affine_with_negative_scales() {
@@ -330,10 +340,10 @@ mod tests {
     fn translation_preserves_constants_and_animated_exact_keys_with_registry_bounds() {
         let time = Time::new(0, 1).unwrap();
         let image = egui::vec2(640.0, 360.0);
-        let mut operation = Operation::Transform {
+        let mut operation = Operation::Transform(veylvik_document::nodes::Transform {
             x: 0.0.into(),
             y: 0.0.into(),
-        };
+        });
         operation
             .scalar_mut("y")
             .unwrap()

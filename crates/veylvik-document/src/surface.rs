@@ -29,7 +29,7 @@ impl Look {
             Self::SoftPrint => (0.65, 0.3, 0., 0.3, 0.7),
             Self::Sticker => (0.2, 0.1, 0., 0.3, 0.),
         };
-        Operation::SurfaceBlend {
+        Operation::SurfaceBlend(crate::nodes::SurfaceBlend {
             opacity: 1.0.into(),
             lighting: lighting.into(),
             detail: detail.into(),
@@ -38,7 +38,7 @@ impl Look {
             distortion: 0.0.into(),
             softness: softness.into(),
             grain: 0.0.into(),
-        }
+        })
     }
 }
 /// Upgrade the composition's ordinary tracked-layer merge, preserving identity
@@ -51,15 +51,15 @@ pub fn integrate(doc: &Composition, warp: NodeId, look: Look) -> Result<(NodeId,
     };
     if !matches!(
         node.operation,
-        Operation::PlanarWarp {
+        Operation::PlanarWarp(crate::nodes::PlanarWarp {
             mode: crate::planar::WarpMode::Follow | crate::planar::WarpMode::Fit
-        }
+        })
     ) {
         return fail("Select a Follow or Fit planar warp");
     }
     let source = doc.nodes[&node.inputs["track"]].inputs["image"];
     let current = &doc.nodes[&doc.output];
-    let node = if matches!(current.operation, Operation::Merge {})
+    let node = if matches!(current.operation, Operation::Merge(crate::nodes::Merge {}))
         && current.inputs.get("foreground") == Some(&warp)
         && current.inputs.get("background") == Some(&source)
     {

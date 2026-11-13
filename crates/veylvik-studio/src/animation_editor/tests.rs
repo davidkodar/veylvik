@@ -235,10 +235,10 @@ fn box_selection_moves_multiple_parameters_in_one_transaction() {
     };
     let node = veylvik_document::Node::new(
         "motion",
-        veylvik_document::Operation::Transform {
+        veylvik_document::Operation::Transform(veylvik_document::nodes::Transform {
             x: curve.clone(),
             y: curve,
-        },
+        }),
         &[("image", doc.output)],
     );
     doc.output = node.id;

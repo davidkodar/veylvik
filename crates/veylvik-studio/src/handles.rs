@@ -49,13 +49,13 @@ pub(super) fn edit(scalar: &mut Scalar, time: Time, delta: f32, min: f32, max: f
 fn move_handle(operation: &mut Operation, handle: usize, delta: Vec2, time: Time) -> Result<()> {
     let mut next = operation.clone();
     match &mut next {
-        Operation::Ellipse {
+        Operation::Ellipse(veylvik_document::nodes::Ellipse {
             x,
             y,
             radius_x,
             radius_y,
             ..
-        } => match handle {
+        }) => match handle {
             0 => {
                 edit(x, time, delta.x, -1_000_000.0, 1_000_000.0)?;
                 edit(y, time, delta.y, -1_000_000.0, 1_000_000.0)?;
@@ -64,13 +64,13 @@ fn move_handle(operation: &mut Operation, handle: usize, delta: Vec2, time: Time
             2 => edit(radius_y, time, delta.y, 0.0, 8192.0)?,
             _ => unreachable!(),
         },
-        Operation::Gradient {
+        Operation::Gradient(veylvik_document::nodes::Gradient {
             start_x,
             start_y,
             end_x,
             end_y,
             ..
-        } => {
+        }) => {
             let (x, y) = if handle == 0 {
                 (start_x, start_y)
             } else {
@@ -95,11 +95,13 @@ pub fn show(
 ) -> Result<bool> {
     if matches!(
         operation,
-        Operation::Text { .. } | Operation::Affine { .. } | Operation::Transform { .. }
+        Operation::Text(veylvik_document::nodes::Text { .. })
+            | Operation::Affine(veylvik_document::nodes::Affine { .. })
+            | Operation::Transform(veylvik_document::nodes::Transform { .. })
     ) {
         return crate::transform_handles::show(ui, canvas, transform, image, operation, time);
     }
-    if let Operation::Path { geometry } = operation {
+    if let Operation::Path(veylvik_document::nodes::Path { geometry }) = operation {
         let mut shape = geometry.at(time)?;
         let changed = crate::path_handles::show(
             ui,
@@ -132,13 +134,13 @@ pub fn show(
         painter.add(egui::Shape::line(outline, Stroke::new(1.0_f32, color)));
     };
     let points = match operation {
-        Operation::Ellipse {
+        Operation::Ellipse(veylvik_document::nodes::Ellipse {
             x,
             y,
             radius_x,
             radius_y,
             ..
-        } => {
+        }) => {
             let center = origin + egui::vec2(x.at(time)?, y.at(time)?) * scale;
             let radii = egui::vec2(radius_x.at(time)?, radius_y.at(time)?) * scale;
             ellipse(center, radii);
@@ -157,13 +159,13 @@ pub fn show(
                 ),
             ]
         }
-        Operation::Gradient {
+        Operation::Gradient(veylvik_document::nodes::Gradient {
             mode,
             start_x,
             start_y,
             end_x,
             end_y,
-        } => {
+        }) => {
             let start = egui::vec2(start_x.at(time)?, start_y.at(time)?);
             let end = egui::vec2(end_x.at(time)?, end_y.at(time)?);
             let center = origin + start * scale;
@@ -223,13 +225,13 @@ mod tests {
     use veylvik_document::{Interpolation, Key};
     #[test]
     fn gradient_handles_edit_endpoints_independently() {
-        let mut operation = Operation::Gradient {
+        let mut operation = Operation::Gradient(veylvik_document::nodes::Gradient {
             mode: veylvik_document::GradientMode::Radial,
             start_x: 10.0.into(),
             start_y: 20.0.into(),
             end_x: 100.0.into(),
             end_y: 200.0.into(),
-        };
+        });
         let time = Time::new(0, 1).unwrap();
         move_handle(&mut operation, 1, egui::vec2(-5.0, 8.0), time).unwrap();
         assert_eq!(operation.scalar("start_x").unwrap().at(time).unwrap(), 10.0);
@@ -253,7 +255,7 @@ mod tests {
     }
     #[test]
     fn handle_edits_keep_constants_and_preserve_exact_animation() {
-        let mut operation = Operation::Ellipse {
+        let mut operation = Operation::Ellipse(veylvik_document::nodes::Ellipse {
             x: 10.0.into(),
             y: Scalar::Smooth {
                 keys: vec![Key {
@@ -265,7 +267,7 @@ mod tests {
             radius_x: 100.0.into(),
             radius_y: 50.0.into(),
             feather: 1.0.into(),
-        };
+        });
         let time = Time { ticks: 0, rate: 1 };
         move_handle(&mut operation, 0, egui::vec2(5.0, -2.0), time).unwrap();
         assert!(
@@ -298,13 +300,13 @@ mod interaction_tests {
     #[test]
     fn coalesced_press_and_motion_move_the_handle_without_panning() {
         let ctx = egui::Context::default();
-        let mut operation = Operation::Ellipse {
+        let mut operation = Operation::Ellipse(veylvik_document::nodes::Ellipse {
             x: 100.0.into(),
             y: 100.0.into(),
             radius_x: 25.0.into(),
             radius_y: 25.0.into(),
             feather: 1.0.into(),
-        };
+        });
         let mut nav = crate::viewer::Navigation::default();
         let mut origin = Pos2::ZERO;
         let mut run = |events| {

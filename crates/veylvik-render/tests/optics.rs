@@ -3,9 +3,10 @@ use veylvik_document::*;
 use veylvik_render::*;
 fn scene(op: Operation) -> (Composition, ImageInputs, Vec<[f32; 4]>) {
     let mut doc = blank(96, 64, Time::new(24, 1).unwrap()).unwrap();
-    doc.nodes.get_mut(&doc.output).unwrap().operation = Operation::Image {
-        asset: "shape".into(),
-    };
+    doc.nodes.get_mut(&doc.output).unwrap().operation =
+        Operation::Image(veylvik_document::nodes::Image {
+            asset: "shape".into(),
+        });
     let pixels: Vec<_> = (0..96 * 64)
         .map(|i| {
             let a = if i % 96 < 16 {
@@ -20,16 +21,19 @@ fn scene(op: Operation) -> (Composition, ImageInputs, Vec<[f32; 4]>) {
         .collect();
     let env = Node::new(
         "environment",
-        Operation::Image {
+        Operation::Image(veylvik_document::nodes::Image {
             asset: "environment".into(),
-        },
+        }),
         &[],
     );
     let mut bindings = vec![("image", doc.output)];
-    if matches!(op, Operation::SurfaceReflection { .. }) {
+    if matches!(
+        op,
+        Operation::SurfaceReflection(veylvik_document::nodes::SurfaceReflection { .. })
+    ) {
         bindings.push(("reflection", env.id));
     }
-    if matches!(op, Operation::Glass { .. }) {
+    if matches!(op, Operation::Glass(veylvik_document::nodes::Glass { .. })) {
         bindings.push(("background", env.id));
     }
     let node = Node::new("optics", op, &bindings);
@@ -68,17 +72,19 @@ fn set(doc: &mut Composition, key: &str, value: f32) {
 #[ignore = "requires Vulkan"]
 fn reflection_preserves_alpha_and_tracks_changed_environment() {
     let r = Renderer::new().unwrap();
-    let (mut doc, mut inputs, original) = scene(Operation::SurfaceReflection {
-        kind: ReflectionKind::Metal,
-        bevel: 4.0.into(),
-        curvature: 0.4.into(),
-        roughness: 2.0.into(),
-        strength: 0.8.into(),
-        rotation: 0.0.into(),
-        scale: 1.0.into(),
-        offset_x: 0.0.into(),
-        offset_y: 0.0.into(),
-    });
+    let (mut doc, mut inputs, original) = scene(Operation::SurfaceReflection(
+        veylvik_document::nodes::SurfaceReflection {
+            kind: ReflectionKind::Metal,
+            bevel: 4.0.into(),
+            curvature: 0.4.into(),
+            roughness: 2.0.into(),
+            strength: 0.8.into(),
+            rotation: 0.0.into(),
+            scale: 1.0.into(),
+            offset_x: 0.0.into(),
+            offset_y: 0.0.into(),
+        },
+    ));
     let first = render(&r, &doc, &inputs);
     assert_ne!(first, original);
     for (a, b) in first.iter().zip(&original) {
@@ -102,7 +108,7 @@ fn reflection_preserves_alpha_and_tracks_changed_environment() {
 #[ignore = "requires Vulkan"]
 fn glass_unity_ior_is_background_cutout_and_frosting_is_finite() {
     let r = Renderer::new().unwrap();
-    let (mut doc, mut inputs, original) = scene(Operation::Glass {
+    let (mut doc, mut inputs, original) = scene(Operation::Glass(veylvik_document::nodes::Glass {
         bevel: 4.0.into(),
         refraction: 0.0.into(),
         roughness: 0.0.into(),
@@ -110,7 +116,7 @@ fn glass_unity_ior_is_background_cutout_and_frosting_is_finite() {
         transmission: 1.0.into(),
         tint: 0.0.into(),
         dispersion: 0.0.into(),
-    });
+    }));
     // Zero bevel removes grazing Fresnel: unity IOR then gives exact transmission.
     set(&mut doc, "bevel", 0.0);
     for (p, source) in render(&r, &doc, &inputs).iter().zip(original) {
@@ -147,15 +153,16 @@ fn glass_unity_ior_is_background_cutout_and_frosting_is_finite() {
 #[ignore = "requires Vulkan"]
 fn glints_are_repeatable_looping_and_can_be_disabled() {
     let r = Renderer::new().unwrap();
-    let (mut doc, inputs, original) = scene(Operation::SunGlints {
-        seed: 193,
-        size: 8.0.into(),
-        intensity: 3.0.into(),
-        threshold: 0.1.into(),
-        evolution: 0.0.into(),
-        density: 1.0.into(),
-        angle: 15.0.into(),
-    });
+    let (mut doc, inputs, original) =
+        scene(Operation::SunGlints(veylvik_document::nodes::SunGlints {
+            seed: 193,
+            size: 8.0.into(),
+            intensity: 3.0.into(),
+            threshold: 0.1.into(),
+            evolution: 0.0.into(),
+            density: 1.0.into(),
+            angle: 15.0.into(),
+        }));
     let start = render(&r, &doc, &inputs);
     assert_ne!(start, original);
     set(&mut doc, "evolution", 2.0);
@@ -174,15 +181,16 @@ fn patina_styles_preserve_coverage_and_zero_amounts_restore_clean_surface() {
     let r = Renderer::new().unwrap();
     let mut previous = Vec::new();
     for kind in PatinaKind::ALL {
-        let (mut doc, inputs, original) = scene(Operation::Patina {
-            kind,
-            seed: 71,
-            amount: 0.8.into(),
-            dirt: 0.3.into(),
-            scale: 60.0.into(),
-            wear: 0.5.into(),
-            scratches: 0.2.into(),
-        });
+        let (mut doc, inputs, original) =
+            scene(Operation::Patina(veylvik_document::nodes::Patina {
+                kind,
+                seed: 71,
+                amount: 0.8.into(),
+                dirt: 0.3.into(),
+                scale: 60.0.into(),
+                wear: 0.5.into(),
+                scratches: 0.2.into(),
+            }));
         let result = render(&r, &doc, &inputs);
         assert_ne!(result, original);
         assert!(previous.iter().all(|p| p != &result));

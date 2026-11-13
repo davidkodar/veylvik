@@ -46,259 +46,97 @@ fn fail<T>(message: impl Into<String>) -> Result<T> {
 
 pub mod animation;
 pub mod key_edit;
+pub mod nodes;
 pub use animation::{CompiledScalar, Handle, Interpolation, Key, Scalar, Segment, Time};
 /// All image ports carry scene-linear Rec.709, premultiplied RGBA float pixels.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Operation {
-    SurfaceBlend {
-        opacity: Scalar,
-        lighting: Scalar,
-        detail: Scalar,
-        wear: Scalar,
-        threshold: Scalar,
-        distortion: Scalar,
-        softness: Scalar,
-        grain: Scalar,
-    },
-    PlanarTrack {
-        data: Box<planar::Track>,
-    },
-    PlanarWarp {
-        mode: planar::WarpMode,
-    },
-    Text {
-        content: String,
-        font: Box<TextFont>,
-        alignment: TextAlignment,
-        rtl: bool,
-        language: String,
-        size: Scalar,
-        x: Scalar,
-        y: Scalar,
-        tracking: Scalar,
-        line_height: Scalar,
-        rotation: Scalar,
-        scale_x: Scalar,
-        scale_y: Scalar,
-        wrap_width: Scalar,
-        #[serde(default = "text::zero")]
-        box_height: Scalar,
-        #[serde(default = "text::zero")]
-        padding: Scalar,
-        #[serde(default)]
-        typography: Box<text::Typography>,
-        underline: bool,
-        features: String,
-        color: [f32; 4],
-    },
-    Solid {
-        color: [f32; 4],
-    },
-    Colorize {
-        low: [f32; 4],
-        high: [f32; 4],
-    },
-    Gradient {
-        mode: GradientMode,
-        start_x: Scalar,
-        start_y: Scalar,
-        end_x: Scalar,
-        end_y: Scalar,
-    },
-    Noise {
-        seed: u32,
-        scale: Scalar,
-    },
-    SurfaceReflection {
-        kind: ReflectionKind,
-        bevel: Scalar,
-        curvature: Scalar,
-        roughness: Scalar,
-        strength: Scalar,
-        rotation: Scalar,
-        scale: Scalar,
-        offset_x: Scalar,
-        offset_y: Scalar,
-    },
-    Glass {
-        bevel: Scalar,
-        refraction: Scalar,
-        roughness: Scalar,
-        ior: Scalar,
-        transmission: Scalar,
-        tint: Scalar,
-        dispersion: Scalar,
-    },
-    SunGlints {
-        seed: u32,
-        size: Scalar,
-        intensity: Scalar,
-        threshold: Scalar,
-        evolution: Scalar,
-        density: Scalar,
-        angle: Scalar,
-    },
-    Patina {
-        kind: PatinaKind,
-        seed: u32,
-        amount: Scalar,
-        dirt: Scalar,
-        scale: Scalar,
-        wear: Scalar,
-        scratches: Scalar,
-    },
-    Material {
-        kind: MaterialKind,
-        scale: Scalar,
-        bevel: Scalar,
-        roughness: Scalar,
-        lighting: Scalar,
-        grain: Scalar,
-        emission: Scalar,
-    },
-    Atmosphere {
-        kind: AtmosphereKind,
-        seed: u32,
-        x: Scalar,
-        y: Scalar,
-        width: Scalar,
-        height: Scalar,
-        evolution: Scalar,
-        density: Scalar,
-        detail: Scalar,
-        lighting: Scalar,
-    },
-    MetallicShine {
-        x: Scalar,
-        y: Scalar,
-        width: Scalar,
-        angle: Scalar,
-        intensity: Scalar,
-    },
-    Fire {
-        seed: u32,
-        x: Scalar,
-        y: Scalar,
-        width: Scalar,
-        height: Scalar,
-        evolution: Scalar,
-        intensity: Scalar,
-        turbulence: Scalar,
-    },
-    FractalNoise {
-        seed: u32,
-        scale: Scalar,
-        octaves: Scalar,
-        roughness: Scalar,
-        evolution: Scalar,
-    },
-    Exposure {
-        stops: Scalar,
-    },
-    Transform {
-        x: Scalar,
-        y: Scalar,
-    },
-    Displace {
-        x: Scalar,
-        y: Scalar,
-    },
-    Morphology {
-        radius: Scalar,
-    },
-    Blur {
-        radius: Scalar,
-    },
-    Merge {},
-    Blend {
-        mode: BlendMode,
-        opacity: Scalar,
-    },
-    Image {
-        asset: String,
-    },
-    Footage {
-        asset: String,
-        timing: media::Timing,
-        #[serde(default)]
-        placement: media::Placement,
-    },
-    Affine {
-        x: Scalar,
-        y: Scalar,
-        scale_x: Scalar,
-        scale_y: Scalar,
-        rotation: Scalar,
-        pivot_x: Scalar,
-        pivot_y: Scalar,
-    },
-    Ellipse {
-        x: Scalar,
-        y: Scalar,
-        radius_x: Scalar,
-        radius_y: Scalar,
-        feather: Scalar,
-    },
-    Mask {},
-    CombineMask {
-        mode: MaskMode,
-    },
-    ChannelMask {
-        channel: MaskChannel,
-    },
-    Path {
-        geometry: vector::PathMask,
-    },
+    SurfaceBlend(nodes::SurfaceBlend),
+    PlanarTrack(nodes::PlanarTrack),
+    PlanarWarp(nodes::PlanarWarp),
+    Text(nodes::Text),
+    Solid(nodes::Solid),
+    Colorize(nodes::Colorize),
+    Gradient(nodes::Gradient),
+    Noise(nodes::Noise),
+    SurfaceReflection(nodes::SurfaceReflection),
+    Glass(nodes::Glass),
+    SunGlints(nodes::SunGlints),
+    Patina(nodes::Patina),
+    Material(nodes::Material),
+    Atmosphere(nodes::Atmosphere),
+    MetallicShine(nodes::MetallicShine),
+    Fire(nodes::Fire),
+    FractalNoise(nodes::FractalNoise),
+    Exposure(nodes::Exposure),
+    Transform(nodes::Transform),
+    Displace(nodes::Displace),
+    Morphology(nodes::Morphology),
+    Blur(nodes::Blur),
+    Merge(nodes::Merge),
+    Blend(nodes::Blend),
+    Image(nodes::Image),
+    Footage(nodes::Footage),
+    Affine(nodes::Affine),
+    Ellipse(nodes::Ellipse),
+    Mask(nodes::Mask),
+    CombineMask(nodes::CombineMask),
+    ChannelMask(nodes::ChannelMask),
+    Path(nodes::Path),
 }
 impl Operation {
     pub fn asset(&self) -> Option<&str> {
         match self {
-            Self::Image { asset } | Self::Footage { asset, .. } => Some(asset),
+            Self::Image(crate::nodes::Image { asset })
+            | Self::Footage(crate::nodes::Footage { asset, .. }) => Some(asset),
             _ => None,
         }
     }
     pub fn asset_mut(&mut self) -> Option<&mut String> {
         match self {
-            Self::Image { asset } | Self::Footage { asset, .. } => Some(asset),
+            Self::Image(crate::nodes::Image { asset })
+            | Self::Footage(crate::nodes::Footage { asset, .. }) => Some(asset),
             _ => None,
         }
     }
 
     pub fn descriptor(&self) -> &'static registry::NodeType {
         match self {
-            Self::SurfaceBlend { .. } => &registry::SURFACE_BLEND,
-            Self::PlanarTrack { .. } => &registry::PLANAR_TRACK,
-            Self::PlanarWarp { .. } => &registry::PLANAR_WARP,
-            Self::Text { .. } => &registry::TEXT,
-            Self::MetallicShine { .. } => &registry::METALLIC_SHINE,
-            Self::SurfaceReflection { .. } => &registry::SURFACE_REFLECTION,
-            Self::Glass { .. } => &registry::GLASS,
-            Self::SunGlints { .. } => &registry::SUN_GLINTS,
-            Self::Patina { .. } => &registry::PATINA,
-            Self::Material { .. } => &registry::MATERIAL,
-            Self::Atmosphere { .. } => &registry::ATMOSPHERE,
-            Self::Fire { .. } => &registry::FIRE,
-            Self::Solid { .. } => &registry::SOLID,
-            Self::Colorize { .. } => &registry::COLORIZE,
-            Self::FractalNoise { .. } => &registry::FRACTAL_NOISE,
-            Self::Gradient { .. } => &registry::GRADIENT,
-            Self::Noise { .. } => &registry::NOISE,
-            Self::Exposure { .. } => &registry::EXPOSURE,
-            Self::Transform { .. } => &registry::TRANSFORM,
-            Self::Displace { .. } => &registry::DISPLACE,
-            Self::Morphology { .. } => &registry::MORPHOLOGY,
-            Self::Blur { .. } => &registry::BLUR,
-            Self::Merge {} => &registry::MERGE,
-            Self::Blend { .. } => &registry::BLEND,
-            Self::Image { .. } => &registry::IMAGE,
-            Self::Footage { .. } => &registry::FOOTAGE,
-            Self::Affine { .. } => &registry::AFFINE,
-            Self::Ellipse { .. } => &registry::ELLIPSE,
-            Self::ChannelMask { .. } => &registry::CHANNEL_MASK,
-            Self::CombineMask { .. } => &registry::COMBINE_MASK,
-            Self::Mask {} => &registry::MASK,
-            Self::Path { .. } => &registry::PATH,
+            Self::SurfaceBlend(crate::nodes::SurfaceBlend { .. }) => &registry::SURFACE_BLEND,
+            Self::PlanarTrack(crate::nodes::PlanarTrack { .. }) => &registry::PLANAR_TRACK,
+            Self::PlanarWarp(crate::nodes::PlanarWarp { .. }) => &registry::PLANAR_WARP,
+            Self::Text(crate::nodes::Text { .. }) => &registry::TEXT,
+            Self::MetallicShine(crate::nodes::MetallicShine { .. }) => &registry::METALLIC_SHINE,
+            Self::SurfaceReflection(crate::nodes::SurfaceReflection { .. }) => {
+                &registry::SURFACE_REFLECTION
+            }
+            Self::Glass(crate::nodes::Glass { .. }) => &registry::GLASS,
+            Self::SunGlints(crate::nodes::SunGlints { .. }) => &registry::SUN_GLINTS,
+            Self::Patina(crate::nodes::Patina { .. }) => &registry::PATINA,
+            Self::Material(crate::nodes::Material { .. }) => &registry::MATERIAL,
+            Self::Atmosphere(crate::nodes::Atmosphere { .. }) => &registry::ATMOSPHERE,
+            Self::Fire(crate::nodes::Fire { .. }) => &registry::FIRE,
+            Self::Solid(crate::nodes::Solid { .. }) => &registry::SOLID,
+            Self::Colorize(crate::nodes::Colorize { .. }) => &registry::COLORIZE,
+            Self::FractalNoise(crate::nodes::FractalNoise { .. }) => &registry::FRACTAL_NOISE,
+            Self::Gradient(crate::nodes::Gradient { .. }) => &registry::GRADIENT,
+            Self::Noise(crate::nodes::Noise { .. }) => &registry::NOISE,
+            Self::Exposure(crate::nodes::Exposure { .. }) => &registry::EXPOSURE,
+            Self::Transform(crate::nodes::Transform { .. }) => &registry::TRANSFORM,
+            Self::Displace(crate::nodes::Displace { .. }) => &registry::DISPLACE,
+            Self::Morphology(crate::nodes::Morphology { .. }) => &registry::MORPHOLOGY,
+            Self::Blur(crate::nodes::Blur { .. }) => &registry::BLUR,
+            Self::Merge(crate::nodes::Merge {}) => &registry::MERGE,
+            Self::Blend(crate::nodes::Blend { .. }) => &registry::BLEND,
+            Self::Image(crate::nodes::Image { .. }) => &registry::IMAGE,
+            Self::Footage(crate::nodes::Footage { .. }) => &registry::FOOTAGE,
+            Self::Affine(crate::nodes::Affine { .. }) => &registry::AFFINE,
+            Self::Ellipse(crate::nodes::Ellipse { .. }) => &registry::ELLIPSE,
+            Self::ChannelMask(crate::nodes::ChannelMask { .. }) => &registry::CHANNEL_MASK,
+            Self::CombineMask(crate::nodes::CombineMask { .. }) => &registry::COMBINE_MASK,
+            Self::Mask(crate::nodes::Mask {}) => &registry::MASK,
+            Self::Path(crate::nodes::Path { .. }) => &registry::PATH,
         }
     }
     pub fn inputs(&self) -> &'static [&'static str] {
@@ -306,199 +144,375 @@ impl Operation {
     }
     pub fn scalar(&self, name: &str) -> Option<&Scalar> {
         match (self, name) {
-            (Self::SurfaceBlend { grain, .. }, "grain") => Some(grain),
-            (Self::SurfaceBlend { softness, .. }, "softness") => Some(softness),
-            (Self::SurfaceBlend { distortion, .. }, "distortion") => Some(distortion),
-            (Self::SurfaceBlend { threshold, .. }, "threshold") => Some(threshold),
-            (Self::SurfaceBlend { wear, .. }, "wear") => Some(wear),
-            (Self::SurfaceBlend { detail, .. }, "detail") => Some(detail),
-            (Self::SurfaceBlend { lighting, .. }, "lighting") => Some(lighting),
-            (Self::SurfaceBlend { opacity, .. }, "opacity") => Some(opacity),
-            (Self::Noise { scale, .. } | Self::FractalNoise { scale, .. }, "scale") => Some(scale),
-            (Self::MetallicShine { x, .. }, "x") => Some(x),
-            (Self::MetallicShine { y, .. }, "y") => Some(y),
-            (Self::MetallicShine { width, .. }, "width") => Some(width),
-            (Self::MetallicShine { angle, .. }, "angle") => Some(angle),
-            (Self::MetallicShine { intensity, .. }, "intensity") => Some(intensity),
-            (Self::SurfaceReflection { bevel, .. }, "bevel") => Some(bevel),
-            (Self::SurfaceReflection { curvature, .. }, "curvature") => Some(curvature),
-            (Self::SurfaceReflection { roughness, .. }, "roughness") => Some(roughness),
-            (Self::SurfaceReflection { strength, .. }, "strength") => Some(strength),
-            (Self::SurfaceReflection { rotation, .. }, "rotation") => Some(rotation),
-            (Self::SurfaceReflection { scale, .. }, "scale") => Some(scale),
-            (Self::SurfaceReflection { offset_x, .. }, "offset_x") => Some(offset_x),
-            (Self::SurfaceReflection { offset_y, .. }, "offset_y") => Some(offset_y),
-            (Self::Glass { bevel, .. }, "bevel") => Some(bevel),
-            (Self::Glass { refraction, .. }, "refraction") => Some(refraction),
-            (Self::Glass { roughness, .. }, "roughness") => Some(roughness),
-            (Self::Glass { ior, .. }, "ior") => Some(ior),
-            (Self::Glass { transmission, .. }, "transmission") => Some(transmission),
-            (Self::Glass { tint, .. }, "tint") => Some(tint),
-            (Self::Glass { dispersion, .. }, "dispersion") => Some(dispersion),
-            (Self::SunGlints { size, .. }, "size") => Some(size),
-            (Self::SunGlints { intensity, .. }, "intensity") => Some(intensity),
-            (Self::SunGlints { threshold, .. }, "threshold") => Some(threshold),
-            (Self::SunGlints { evolution, .. }, "evolution") => Some(evolution),
-            (Self::SunGlints { density, .. }, "density") => Some(density),
-            (Self::SunGlints { angle, .. }, "angle") => Some(angle),
-            (Self::Patina { amount, .. }, "amount") => Some(amount),
-            (Self::Patina { dirt, .. }, "dirt") => Some(dirt),
-            (Self::Patina { scale, .. }, "scale") => Some(scale),
-            (Self::Patina { wear, .. }, "wear") => Some(wear),
-            (Self::Patina { scratches, .. }, "scratches") => Some(scratches),
-            (Self::Text { rotation, .. }, "rotation") => Some(rotation),
-            (Self::Text { padding, .. }, "padding") => Some(padding),
-            (Self::Text { box_height, .. }, "box_height") => Some(box_height),
-            (Self::Text { scale_x, .. }, "scale_x") => Some(scale_x),
-            (Self::Text { scale_y, .. }, "scale_y") => Some(scale_y),
-            (Self::Text { wrap_width, .. }, "wrap_width") => Some(wrap_width),
-            (Self::Text { size, .. }, "size") => Some(size),
-            (Self::Text { x, .. }, "x") => Some(x),
-            (Self::Text { y, .. }, "y") => Some(y),
-            (Self::Text { tracking, .. }, "tracking") => Some(tracking),
-            (Self::Text { line_height, .. }, "line_height") => Some(line_height),
-            (Self::Material { scale, .. }, "scale") => Some(scale),
-            (Self::Material { bevel, .. }, "bevel") => Some(bevel),
-            (Self::Material { roughness, .. }, "roughness") => Some(roughness),
-            (Self::Material { lighting, .. }, "lighting") => Some(lighting),
-            (Self::Material { grain, .. }, "grain") => Some(grain),
-            (Self::Material { emission, .. }, "emission") => Some(emission),
-            (Self::Atmosphere { x, .. }, "x") => Some(x),
-            (Self::Atmosphere { y, .. }, "y") => Some(y),
-            (Self::Atmosphere { width, .. }, "width") => Some(width),
-            (Self::Atmosphere { height, .. }, "height") => Some(height),
-            (Self::Atmosphere { evolution, .. }, "evolution") => Some(evolution),
-            (Self::Atmosphere { density, .. }, "density") => Some(density),
-            (Self::Atmosphere { detail, .. }, "detail") => Some(detail),
-            (Self::Atmosphere { lighting, .. }, "lighting") => Some(lighting),
-            (Self::Fire { x, .. }, "x") => Some(x),
-            (Self::Fire { y, .. }, "y") => Some(y),
-            (Self::Fire { width, .. }, "width") => Some(width),
-            (Self::Fire { height, .. }, "height") => Some(height),
-            (Self::Fire { evolution, .. }, "evolution") => Some(evolution),
-            (Self::Fire { intensity, .. }, "intensity") => Some(intensity),
-            (Self::Fire { turbulence, .. }, "turbulence") => Some(turbulence),
-            (Self::FractalNoise { octaves, .. }, "octaves") => Some(octaves),
-            (Self::FractalNoise { roughness, .. }, "roughness") => Some(roughness),
-            (Self::FractalNoise { evolution, .. }, "evolution") => Some(evolution),
-            (Self::Gradient { start_x, .. }, "start_x") => Some(start_x),
-            (Self::Gradient { start_y, .. }, "start_y") => Some(start_y),
-            (Self::Gradient { end_x, .. }, "end_x") => Some(end_x),
-            (Self::Gradient { end_y, .. }, "end_y") => Some(end_y),
-            (Self::Exposure { stops }, "stops") => Some(stops),
-            (Self::Transform { x, .. } | Self::Displace { x, .. }, "x") => Some(x),
-            (Self::Transform { y, .. } | Self::Displace { y, .. }, "y") => Some(y),
-            (Self::Blur { radius } | Self::Morphology { radius }, "radius") => Some(radius),
-            (Self::Blend { opacity, .. }, "opacity") => Some(opacity),
-            (Self::Affine { x, .. } | Self::Ellipse { x, .. }, "x") => Some(x),
-            (Self::Affine { y, .. } | Self::Ellipse { y, .. }, "y") => Some(y),
-            (Self::Affine { scale_x, .. }, "scale_x") => Some(scale_x),
-            (Self::Affine { scale_y, .. }, "scale_y") => Some(scale_y),
-            (Self::Affine { rotation, .. }, "rotation") => Some(rotation),
-            (Self::Affine { pivot_x, .. }, "pivot_x") => Some(pivot_x),
-            (Self::Affine { pivot_y, .. }, "pivot_y") => Some(pivot_y),
-            (Self::Ellipse { radius_x, .. }, "radius_x") => Some(radius_x),
-            (Self::Ellipse { radius_y, .. }, "radius_y") => Some(radius_y),
-            (Self::Ellipse { feather, .. }, "feather") => Some(feather),
+            (Self::SurfaceBlend(crate::nodes::SurfaceBlend { grain, .. }), "grain") => Some(grain),
+            (Self::SurfaceBlend(crate::nodes::SurfaceBlend { softness, .. }), "softness") => {
+                Some(softness)
+            }
+            (Self::SurfaceBlend(crate::nodes::SurfaceBlend { distortion, .. }), "distortion") => {
+                Some(distortion)
+            }
+            (Self::SurfaceBlend(crate::nodes::SurfaceBlend { threshold, .. }), "threshold") => {
+                Some(threshold)
+            }
+            (Self::SurfaceBlend(crate::nodes::SurfaceBlend { wear, .. }), "wear") => Some(wear),
+            (Self::SurfaceBlend(crate::nodes::SurfaceBlend { detail, .. }), "detail") => {
+                Some(detail)
+            }
+            (Self::SurfaceBlend(crate::nodes::SurfaceBlend { lighting, .. }), "lighting") => {
+                Some(lighting)
+            }
+            (Self::SurfaceBlend(crate::nodes::SurfaceBlend { opacity, .. }), "opacity") => {
+                Some(opacity)
+            }
+            (
+                Self::Noise(crate::nodes::Noise { scale, .. })
+                | Self::FractalNoise(crate::nodes::FractalNoise { scale, .. }),
+                "scale",
+            ) => Some(scale),
+            (Self::MetallicShine(crate::nodes::MetallicShine { x, .. }), "x") => Some(x),
+            (Self::MetallicShine(crate::nodes::MetallicShine { y, .. }), "y") => Some(y),
+            (Self::MetallicShine(crate::nodes::MetallicShine { width, .. }), "width") => {
+                Some(width)
+            }
+            (Self::MetallicShine(crate::nodes::MetallicShine { angle, .. }), "angle") => {
+                Some(angle)
+            }
+            (Self::MetallicShine(crate::nodes::MetallicShine { intensity, .. }), "intensity") => {
+                Some(intensity)
+            }
+            (Self::SurfaceReflection(crate::nodes::SurfaceReflection { bevel, .. }), "bevel") => {
+                Some(bevel)
+            }
+            (
+                Self::SurfaceReflection(crate::nodes::SurfaceReflection { curvature, .. }),
+                "curvature",
+            ) => Some(curvature),
+            (
+                Self::SurfaceReflection(crate::nodes::SurfaceReflection { roughness, .. }),
+                "roughness",
+            ) => Some(roughness),
+            (
+                Self::SurfaceReflection(crate::nodes::SurfaceReflection { strength, .. }),
+                "strength",
+            ) => Some(strength),
+            (
+                Self::SurfaceReflection(crate::nodes::SurfaceReflection { rotation, .. }),
+                "rotation",
+            ) => Some(rotation),
+            (Self::SurfaceReflection(crate::nodes::SurfaceReflection { scale, .. }), "scale") => {
+                Some(scale)
+            }
+            (
+                Self::SurfaceReflection(crate::nodes::SurfaceReflection { offset_x, .. }),
+                "offset_x",
+            ) => Some(offset_x),
+            (
+                Self::SurfaceReflection(crate::nodes::SurfaceReflection { offset_y, .. }),
+                "offset_y",
+            ) => Some(offset_y),
+            (Self::Glass(crate::nodes::Glass { bevel, .. }), "bevel") => Some(bevel),
+            (Self::Glass(crate::nodes::Glass { refraction, .. }), "refraction") => Some(refraction),
+            (Self::Glass(crate::nodes::Glass { roughness, .. }), "roughness") => Some(roughness),
+            (Self::Glass(crate::nodes::Glass { ior, .. }), "ior") => Some(ior),
+            (Self::Glass(crate::nodes::Glass { transmission, .. }), "transmission") => {
+                Some(transmission)
+            }
+            (Self::Glass(crate::nodes::Glass { tint, .. }), "tint") => Some(tint),
+            (Self::Glass(crate::nodes::Glass { dispersion, .. }), "dispersion") => Some(dispersion),
+            (Self::SunGlints(crate::nodes::SunGlints { size, .. }), "size") => Some(size),
+            (Self::SunGlints(crate::nodes::SunGlints { intensity, .. }), "intensity") => {
+                Some(intensity)
+            }
+            (Self::SunGlints(crate::nodes::SunGlints { threshold, .. }), "threshold") => {
+                Some(threshold)
+            }
+            (Self::SunGlints(crate::nodes::SunGlints { evolution, .. }), "evolution") => {
+                Some(evolution)
+            }
+            (Self::SunGlints(crate::nodes::SunGlints { density, .. }), "density") => Some(density),
+            (Self::SunGlints(crate::nodes::SunGlints { angle, .. }), "angle") => Some(angle),
+            (Self::Patina(crate::nodes::Patina { amount, .. }), "amount") => Some(amount),
+            (Self::Patina(crate::nodes::Patina { dirt, .. }), "dirt") => Some(dirt),
+            (Self::Patina(crate::nodes::Patina { scale, .. }), "scale") => Some(scale),
+            (Self::Patina(crate::nodes::Patina { wear, .. }), "wear") => Some(wear),
+            (Self::Patina(crate::nodes::Patina { scratches, .. }), "scratches") => Some(scratches),
+            (Self::Text(crate::nodes::Text { rotation, .. }), "rotation") => Some(rotation),
+            (Self::Text(crate::nodes::Text { padding, .. }), "padding") => Some(padding),
+            (Self::Text(crate::nodes::Text { box_height, .. }), "box_height") => Some(box_height),
+            (Self::Text(crate::nodes::Text { scale_x, .. }), "scale_x") => Some(scale_x),
+            (Self::Text(crate::nodes::Text { scale_y, .. }), "scale_y") => Some(scale_y),
+            (Self::Text(crate::nodes::Text { wrap_width, .. }), "wrap_width") => Some(wrap_width),
+            (Self::Text(crate::nodes::Text { size, .. }), "size") => Some(size),
+            (Self::Text(crate::nodes::Text { x, .. }), "x") => Some(x),
+            (Self::Text(crate::nodes::Text { y, .. }), "y") => Some(y),
+            (Self::Text(crate::nodes::Text { tracking, .. }), "tracking") => Some(tracking),
+            (Self::Text(crate::nodes::Text { line_height, .. }), "line_height") => {
+                Some(line_height)
+            }
+            (Self::Material(crate::nodes::Material { scale, .. }), "scale") => Some(scale),
+            (Self::Material(crate::nodes::Material { bevel, .. }), "bevel") => Some(bevel),
+            (Self::Material(crate::nodes::Material { roughness, .. }), "roughness") => {
+                Some(roughness)
+            }
+            (Self::Material(crate::nodes::Material { lighting, .. }), "lighting") => Some(lighting),
+            (Self::Material(crate::nodes::Material { grain, .. }), "grain") => Some(grain),
+            (Self::Material(crate::nodes::Material { emission, .. }), "emission") => Some(emission),
+            (Self::Atmosphere(crate::nodes::Atmosphere { x, .. }), "x") => Some(x),
+            (Self::Atmosphere(crate::nodes::Atmosphere { y, .. }), "y") => Some(y),
+            (Self::Atmosphere(crate::nodes::Atmosphere { width, .. }), "width") => Some(width),
+            (Self::Atmosphere(crate::nodes::Atmosphere { height, .. }), "height") => Some(height),
+            (Self::Atmosphere(crate::nodes::Atmosphere { evolution, .. }), "evolution") => {
+                Some(evolution)
+            }
+            (Self::Atmosphere(crate::nodes::Atmosphere { density, .. }), "density") => {
+                Some(density)
+            }
+            (Self::Atmosphere(crate::nodes::Atmosphere { detail, .. }), "detail") => Some(detail),
+            (Self::Atmosphere(crate::nodes::Atmosphere { lighting, .. }), "lighting") => {
+                Some(lighting)
+            }
+            (Self::Fire(crate::nodes::Fire { x, .. }), "x") => Some(x),
+            (Self::Fire(crate::nodes::Fire { y, .. }), "y") => Some(y),
+            (Self::Fire(crate::nodes::Fire { width, .. }), "width") => Some(width),
+            (Self::Fire(crate::nodes::Fire { height, .. }), "height") => Some(height),
+            (Self::Fire(crate::nodes::Fire { evolution, .. }), "evolution") => Some(evolution),
+            (Self::Fire(crate::nodes::Fire { intensity, .. }), "intensity") => Some(intensity),
+            (Self::Fire(crate::nodes::Fire { turbulence, .. }), "turbulence") => Some(turbulence),
+            (Self::FractalNoise(crate::nodes::FractalNoise { octaves, .. }), "octaves") => {
+                Some(octaves)
+            }
+            (Self::FractalNoise(crate::nodes::FractalNoise { roughness, .. }), "roughness") => {
+                Some(roughness)
+            }
+            (Self::FractalNoise(crate::nodes::FractalNoise { evolution, .. }), "evolution") => {
+                Some(evolution)
+            }
+            (Self::Gradient(crate::nodes::Gradient { start_x, .. }), "start_x") => Some(start_x),
+            (Self::Gradient(crate::nodes::Gradient { start_y, .. }), "start_y") => Some(start_y),
+            (Self::Gradient(crate::nodes::Gradient { end_x, .. }), "end_x") => Some(end_x),
+            (Self::Gradient(crate::nodes::Gradient { end_y, .. }), "end_y") => Some(end_y),
+            (Self::Exposure(crate::nodes::Exposure { stops }), "stops") => Some(stops),
+            (
+                Self::Transform(crate::nodes::Transform { x, .. })
+                | Self::Displace(crate::nodes::Displace { x, .. }),
+                "x",
+            ) => Some(x),
+            (
+                Self::Transform(crate::nodes::Transform { y, .. })
+                | Self::Displace(crate::nodes::Displace { y, .. }),
+                "y",
+            ) => Some(y),
+            (
+                Self::Blur(crate::nodes::Blur { radius })
+                | Self::Morphology(crate::nodes::Morphology { radius }),
+                "radius",
+            ) => Some(radius),
+            (Self::Blend(crate::nodes::Blend { opacity, .. }), "opacity") => Some(opacity),
+            (
+                Self::Affine(crate::nodes::Affine { x, .. })
+                | Self::Ellipse(crate::nodes::Ellipse { x, .. }),
+                "x",
+            ) => Some(x),
+            (
+                Self::Affine(crate::nodes::Affine { y, .. })
+                | Self::Ellipse(crate::nodes::Ellipse { y, .. }),
+                "y",
+            ) => Some(y),
+            (Self::Affine(crate::nodes::Affine { scale_x, .. }), "scale_x") => Some(scale_x),
+            (Self::Affine(crate::nodes::Affine { scale_y, .. }), "scale_y") => Some(scale_y),
+            (Self::Affine(crate::nodes::Affine { rotation, .. }), "rotation") => Some(rotation),
+            (Self::Affine(crate::nodes::Affine { pivot_x, .. }), "pivot_x") => Some(pivot_x),
+            (Self::Affine(crate::nodes::Affine { pivot_y, .. }), "pivot_y") => Some(pivot_y),
+            (Self::Ellipse(crate::nodes::Ellipse { radius_x, .. }), "radius_x") => Some(radius_x),
+            (Self::Ellipse(crate::nodes::Ellipse { radius_y, .. }), "radius_y") => Some(radius_y),
+            (Self::Ellipse(crate::nodes::Ellipse { feather, .. }), "feather") => Some(feather),
             _ => None,
         }
     }
     pub fn scalar_mut(&mut self, name: &str) -> Option<&mut Scalar> {
         match (self, name) {
-            (Self::SurfaceBlend { grain, .. }, "grain") => Some(grain),
-            (Self::SurfaceBlend { softness, .. }, "softness") => Some(softness),
-            (Self::SurfaceBlend { distortion, .. }, "distortion") => Some(distortion),
-            (Self::SurfaceBlend { threshold, .. }, "threshold") => Some(threshold),
-            (Self::SurfaceBlend { wear, .. }, "wear") => Some(wear),
-            (Self::SurfaceBlend { detail, .. }, "detail") => Some(detail),
-            (Self::SurfaceBlend { lighting, .. }, "lighting") => Some(lighting),
-            (Self::SurfaceBlend { opacity, .. }, "opacity") => Some(opacity),
-            (Self::Noise { scale, .. } | Self::FractalNoise { scale, .. }, "scale") => Some(scale),
-            (Self::MetallicShine { x, .. }, "x") => Some(x),
-            (Self::MetallicShine { y, .. }, "y") => Some(y),
-            (Self::MetallicShine { width, .. }, "width") => Some(width),
-            (Self::MetallicShine { angle, .. }, "angle") => Some(angle),
-            (Self::MetallicShine { intensity, .. }, "intensity") => Some(intensity),
-            (Self::SurfaceReflection { bevel, .. }, "bevel") => Some(bevel),
-            (Self::SurfaceReflection { curvature, .. }, "curvature") => Some(curvature),
-            (Self::SurfaceReflection { roughness, .. }, "roughness") => Some(roughness),
-            (Self::SurfaceReflection { strength, .. }, "strength") => Some(strength),
-            (Self::SurfaceReflection { rotation, .. }, "rotation") => Some(rotation),
-            (Self::SurfaceReflection { scale, .. }, "scale") => Some(scale),
-            (Self::SurfaceReflection { offset_x, .. }, "offset_x") => Some(offset_x),
-            (Self::SurfaceReflection { offset_y, .. }, "offset_y") => Some(offset_y),
-            (Self::Glass { bevel, .. }, "bevel") => Some(bevel),
-            (Self::Glass { refraction, .. }, "refraction") => Some(refraction),
-            (Self::Glass { roughness, .. }, "roughness") => Some(roughness),
-            (Self::Glass { ior, .. }, "ior") => Some(ior),
-            (Self::Glass { transmission, .. }, "transmission") => Some(transmission),
-            (Self::Glass { tint, .. }, "tint") => Some(tint),
-            (Self::Glass { dispersion, .. }, "dispersion") => Some(dispersion),
-            (Self::SunGlints { size, .. }, "size") => Some(size),
-            (Self::SunGlints { intensity, .. }, "intensity") => Some(intensity),
-            (Self::SunGlints { threshold, .. }, "threshold") => Some(threshold),
-            (Self::SunGlints { evolution, .. }, "evolution") => Some(evolution),
-            (Self::SunGlints { density, .. }, "density") => Some(density),
-            (Self::SunGlints { angle, .. }, "angle") => Some(angle),
-            (Self::Patina { amount, .. }, "amount") => Some(amount),
-            (Self::Patina { dirt, .. }, "dirt") => Some(dirt),
-            (Self::Patina { scale, .. }, "scale") => Some(scale),
-            (Self::Patina { wear, .. }, "wear") => Some(wear),
-            (Self::Patina { scratches, .. }, "scratches") => Some(scratches),
-            (Self::Text { rotation, .. }, "rotation") => Some(rotation),
-            (Self::Text { padding, .. }, "padding") => Some(padding),
-            (Self::Text { box_height, .. }, "box_height") => Some(box_height),
-            (Self::Text { scale_x, .. }, "scale_x") => Some(scale_x),
-            (Self::Text { scale_y, .. }, "scale_y") => Some(scale_y),
-            (Self::Text { wrap_width, .. }, "wrap_width") => Some(wrap_width),
-            (Self::Text { size, .. }, "size") => Some(size),
-            (Self::Text { x, .. }, "x") => Some(x),
-            (Self::Text { y, .. }, "y") => Some(y),
-            (Self::Text { tracking, .. }, "tracking") => Some(tracking),
-            (Self::Text { line_height, .. }, "line_height") => Some(line_height),
-            (Self::Material { scale, .. }, "scale") => Some(scale),
-            (Self::Material { bevel, .. }, "bevel") => Some(bevel),
-            (Self::Material { roughness, .. }, "roughness") => Some(roughness),
-            (Self::Material { lighting, .. }, "lighting") => Some(lighting),
-            (Self::Material { grain, .. }, "grain") => Some(grain),
-            (Self::Material { emission, .. }, "emission") => Some(emission),
-            (Self::Atmosphere { x, .. }, "x") => Some(x),
-            (Self::Atmosphere { y, .. }, "y") => Some(y),
-            (Self::Atmosphere { width, .. }, "width") => Some(width),
-            (Self::Atmosphere { height, .. }, "height") => Some(height),
-            (Self::Atmosphere { evolution, .. }, "evolution") => Some(evolution),
-            (Self::Atmosphere { density, .. }, "density") => Some(density),
-            (Self::Atmosphere { detail, .. }, "detail") => Some(detail),
-            (Self::Atmosphere { lighting, .. }, "lighting") => Some(lighting),
-            (Self::Fire { x, .. }, "x") => Some(x),
-            (Self::Fire { y, .. }, "y") => Some(y),
-            (Self::Fire { width, .. }, "width") => Some(width),
-            (Self::Fire { height, .. }, "height") => Some(height),
-            (Self::Fire { evolution, .. }, "evolution") => Some(evolution),
-            (Self::Fire { intensity, .. }, "intensity") => Some(intensity),
-            (Self::Fire { turbulence, .. }, "turbulence") => Some(turbulence),
-            (Self::FractalNoise { octaves, .. }, "octaves") => Some(octaves),
-            (Self::FractalNoise { roughness, .. }, "roughness") => Some(roughness),
-            (Self::FractalNoise { evolution, .. }, "evolution") => Some(evolution),
-            (Self::Gradient { start_x, .. }, "start_x") => Some(start_x),
-            (Self::Gradient { start_y, .. }, "start_y") => Some(start_y),
-            (Self::Gradient { end_x, .. }, "end_x") => Some(end_x),
-            (Self::Gradient { end_y, .. }, "end_y") => Some(end_y),
-            (Self::Exposure { stops }, "stops") => Some(stops),
-            (Self::Transform { x, .. } | Self::Displace { x, .. }, "x") => Some(x),
-            (Self::Transform { y, .. } | Self::Displace { y, .. }, "y") => Some(y),
-            (Self::Blur { radius } | Self::Morphology { radius }, "radius") => Some(radius),
-            (Self::Blend { opacity, .. }, "opacity") => Some(opacity),
-            (Self::Affine { x, .. } | Self::Ellipse { x, .. }, "x") => Some(x),
-            (Self::Affine { y, .. } | Self::Ellipse { y, .. }, "y") => Some(y),
-            (Self::Affine { scale_x, .. }, "scale_x") => Some(scale_x),
-            (Self::Affine { scale_y, .. }, "scale_y") => Some(scale_y),
-            (Self::Affine { rotation, .. }, "rotation") => Some(rotation),
-            (Self::Affine { pivot_x, .. }, "pivot_x") => Some(pivot_x),
-            (Self::Affine { pivot_y, .. }, "pivot_y") => Some(pivot_y),
-            (Self::Ellipse { radius_x, .. }, "radius_x") => Some(radius_x),
-            (Self::Ellipse { radius_y, .. }, "radius_y") => Some(radius_y),
-            (Self::Ellipse { feather, .. }, "feather") => Some(feather),
+            (Self::SurfaceBlend(crate::nodes::SurfaceBlend { grain, .. }), "grain") => Some(grain),
+            (Self::SurfaceBlend(crate::nodes::SurfaceBlend { softness, .. }), "softness") => {
+                Some(softness)
+            }
+            (Self::SurfaceBlend(crate::nodes::SurfaceBlend { distortion, .. }), "distortion") => {
+                Some(distortion)
+            }
+            (Self::SurfaceBlend(crate::nodes::SurfaceBlend { threshold, .. }), "threshold") => {
+                Some(threshold)
+            }
+            (Self::SurfaceBlend(crate::nodes::SurfaceBlend { wear, .. }), "wear") => Some(wear),
+            (Self::SurfaceBlend(crate::nodes::SurfaceBlend { detail, .. }), "detail") => {
+                Some(detail)
+            }
+            (Self::SurfaceBlend(crate::nodes::SurfaceBlend { lighting, .. }), "lighting") => {
+                Some(lighting)
+            }
+            (Self::SurfaceBlend(crate::nodes::SurfaceBlend { opacity, .. }), "opacity") => {
+                Some(opacity)
+            }
+            (
+                Self::Noise(crate::nodes::Noise { scale, .. })
+                | Self::FractalNoise(crate::nodes::FractalNoise { scale, .. }),
+                "scale",
+            ) => Some(scale),
+            (Self::MetallicShine(crate::nodes::MetallicShine { x, .. }), "x") => Some(x),
+            (Self::MetallicShine(crate::nodes::MetallicShine { y, .. }), "y") => Some(y),
+            (Self::MetallicShine(crate::nodes::MetallicShine { width, .. }), "width") => {
+                Some(width)
+            }
+            (Self::MetallicShine(crate::nodes::MetallicShine { angle, .. }), "angle") => {
+                Some(angle)
+            }
+            (Self::MetallicShine(crate::nodes::MetallicShine { intensity, .. }), "intensity") => {
+                Some(intensity)
+            }
+            (Self::SurfaceReflection(crate::nodes::SurfaceReflection { bevel, .. }), "bevel") => {
+                Some(bevel)
+            }
+            (
+                Self::SurfaceReflection(crate::nodes::SurfaceReflection { curvature, .. }),
+                "curvature",
+            ) => Some(curvature),
+            (
+                Self::SurfaceReflection(crate::nodes::SurfaceReflection { roughness, .. }),
+                "roughness",
+            ) => Some(roughness),
+            (
+                Self::SurfaceReflection(crate::nodes::SurfaceReflection { strength, .. }),
+                "strength",
+            ) => Some(strength),
+            (
+                Self::SurfaceReflection(crate::nodes::SurfaceReflection { rotation, .. }),
+                "rotation",
+            ) => Some(rotation),
+            (Self::SurfaceReflection(crate::nodes::SurfaceReflection { scale, .. }), "scale") => {
+                Some(scale)
+            }
+            (
+                Self::SurfaceReflection(crate::nodes::SurfaceReflection { offset_x, .. }),
+                "offset_x",
+            ) => Some(offset_x),
+            (
+                Self::SurfaceReflection(crate::nodes::SurfaceReflection { offset_y, .. }),
+                "offset_y",
+            ) => Some(offset_y),
+            (Self::Glass(crate::nodes::Glass { bevel, .. }), "bevel") => Some(bevel),
+            (Self::Glass(crate::nodes::Glass { refraction, .. }), "refraction") => Some(refraction),
+            (Self::Glass(crate::nodes::Glass { roughness, .. }), "roughness") => Some(roughness),
+            (Self::Glass(crate::nodes::Glass { ior, .. }), "ior") => Some(ior),
+            (Self::Glass(crate::nodes::Glass { transmission, .. }), "transmission") => {
+                Some(transmission)
+            }
+            (Self::Glass(crate::nodes::Glass { tint, .. }), "tint") => Some(tint),
+            (Self::Glass(crate::nodes::Glass { dispersion, .. }), "dispersion") => Some(dispersion),
+            (Self::SunGlints(crate::nodes::SunGlints { size, .. }), "size") => Some(size),
+            (Self::SunGlints(crate::nodes::SunGlints { intensity, .. }), "intensity") => {
+                Some(intensity)
+            }
+            (Self::SunGlints(crate::nodes::SunGlints { threshold, .. }), "threshold") => {
+                Some(threshold)
+            }
+            (Self::SunGlints(crate::nodes::SunGlints { evolution, .. }), "evolution") => {
+                Some(evolution)
+            }
+            (Self::SunGlints(crate::nodes::SunGlints { density, .. }), "density") => Some(density),
+            (Self::SunGlints(crate::nodes::SunGlints { angle, .. }), "angle") => Some(angle),
+            (Self::Patina(crate::nodes::Patina { amount, .. }), "amount") => Some(amount),
+            (Self::Patina(crate::nodes::Patina { dirt, .. }), "dirt") => Some(dirt),
+            (Self::Patina(crate::nodes::Patina { scale, .. }), "scale") => Some(scale),
+            (Self::Patina(crate::nodes::Patina { wear, .. }), "wear") => Some(wear),
+            (Self::Patina(crate::nodes::Patina { scratches, .. }), "scratches") => Some(scratches),
+            (Self::Text(crate::nodes::Text { rotation, .. }), "rotation") => Some(rotation),
+            (Self::Text(crate::nodes::Text { padding, .. }), "padding") => Some(padding),
+            (Self::Text(crate::nodes::Text { box_height, .. }), "box_height") => Some(box_height),
+            (Self::Text(crate::nodes::Text { scale_x, .. }), "scale_x") => Some(scale_x),
+            (Self::Text(crate::nodes::Text { scale_y, .. }), "scale_y") => Some(scale_y),
+            (Self::Text(crate::nodes::Text { wrap_width, .. }), "wrap_width") => Some(wrap_width),
+            (Self::Text(crate::nodes::Text { size, .. }), "size") => Some(size),
+            (Self::Text(crate::nodes::Text { x, .. }), "x") => Some(x),
+            (Self::Text(crate::nodes::Text { y, .. }), "y") => Some(y),
+            (Self::Text(crate::nodes::Text { tracking, .. }), "tracking") => Some(tracking),
+            (Self::Text(crate::nodes::Text { line_height, .. }), "line_height") => {
+                Some(line_height)
+            }
+            (Self::Material(crate::nodes::Material { scale, .. }), "scale") => Some(scale),
+            (Self::Material(crate::nodes::Material { bevel, .. }), "bevel") => Some(bevel),
+            (Self::Material(crate::nodes::Material { roughness, .. }), "roughness") => {
+                Some(roughness)
+            }
+            (Self::Material(crate::nodes::Material { lighting, .. }), "lighting") => Some(lighting),
+            (Self::Material(crate::nodes::Material { grain, .. }), "grain") => Some(grain),
+            (Self::Material(crate::nodes::Material { emission, .. }), "emission") => Some(emission),
+            (Self::Atmosphere(crate::nodes::Atmosphere { x, .. }), "x") => Some(x),
+            (Self::Atmosphere(crate::nodes::Atmosphere { y, .. }), "y") => Some(y),
+            (Self::Atmosphere(crate::nodes::Atmosphere { width, .. }), "width") => Some(width),
+            (Self::Atmosphere(crate::nodes::Atmosphere { height, .. }), "height") => Some(height),
+            (Self::Atmosphere(crate::nodes::Atmosphere { evolution, .. }), "evolution") => {
+                Some(evolution)
+            }
+            (Self::Atmosphere(crate::nodes::Atmosphere { density, .. }), "density") => {
+                Some(density)
+            }
+            (Self::Atmosphere(crate::nodes::Atmosphere { detail, .. }), "detail") => Some(detail),
+            (Self::Atmosphere(crate::nodes::Atmosphere { lighting, .. }), "lighting") => {
+                Some(lighting)
+            }
+            (Self::Fire(crate::nodes::Fire { x, .. }), "x") => Some(x),
+            (Self::Fire(crate::nodes::Fire { y, .. }), "y") => Some(y),
+            (Self::Fire(crate::nodes::Fire { width, .. }), "width") => Some(width),
+            (Self::Fire(crate::nodes::Fire { height, .. }), "height") => Some(height),
+            (Self::Fire(crate::nodes::Fire { evolution, .. }), "evolution") => Some(evolution),
+            (Self::Fire(crate::nodes::Fire { intensity, .. }), "intensity") => Some(intensity),
+            (Self::Fire(crate::nodes::Fire { turbulence, .. }), "turbulence") => Some(turbulence),
+            (Self::FractalNoise(crate::nodes::FractalNoise { octaves, .. }), "octaves") => {
+                Some(octaves)
+            }
+            (Self::FractalNoise(crate::nodes::FractalNoise { roughness, .. }), "roughness") => {
+                Some(roughness)
+            }
+            (Self::FractalNoise(crate::nodes::FractalNoise { evolution, .. }), "evolution") => {
+                Some(evolution)
+            }
+            (Self::Gradient(crate::nodes::Gradient { start_x, .. }), "start_x") => Some(start_x),
+            (Self::Gradient(crate::nodes::Gradient { start_y, .. }), "start_y") => Some(start_y),
+            (Self::Gradient(crate::nodes::Gradient { end_x, .. }), "end_x") => Some(end_x),
+            (Self::Gradient(crate::nodes::Gradient { end_y, .. }), "end_y") => Some(end_y),
+            (Self::Exposure(crate::nodes::Exposure { stops }), "stops") => Some(stops),
+            (
+                Self::Transform(crate::nodes::Transform { x, .. })
+                | Self::Displace(crate::nodes::Displace { x, .. }),
+                "x",
+            ) => Some(x),
+            (
+                Self::Transform(crate::nodes::Transform { y, .. })
+                | Self::Displace(crate::nodes::Displace { y, .. }),
+                "y",
+            ) => Some(y),
+            (
+                Self::Blur(crate::nodes::Blur { radius })
+                | Self::Morphology(crate::nodes::Morphology { radius }),
+                "radius",
+            ) => Some(radius),
+            (Self::Blend(crate::nodes::Blend { opacity, .. }), "opacity") => Some(opacity),
+            (
+                Self::Affine(crate::nodes::Affine { x, .. })
+                | Self::Ellipse(crate::nodes::Ellipse { x, .. }),
+                "x",
+            ) => Some(x),
+            (
+                Self::Affine(crate::nodes::Affine { y, .. })
+                | Self::Ellipse(crate::nodes::Ellipse { y, .. }),
+                "y",
+            ) => Some(y),
+            (Self::Affine(crate::nodes::Affine { scale_x, .. }), "scale_x") => Some(scale_x),
+            (Self::Affine(crate::nodes::Affine { scale_y, .. }), "scale_y") => Some(scale_y),
+            (Self::Affine(crate::nodes::Affine { rotation, .. }), "rotation") => Some(rotation),
+            (Self::Affine(crate::nodes::Affine { pivot_x, .. }), "pivot_x") => Some(pivot_x),
+            (Self::Affine(crate::nodes::Affine { pivot_y, .. }), "pivot_y") => Some(pivot_y),
+            (Self::Ellipse(crate::nodes::Ellipse { radius_x, .. }), "radius_x") => Some(radius_x),
+            (Self::Ellipse(crate::nodes::Ellipse { radius_y, .. }), "radius_y") => Some(radius_y),
+            (Self::Ellipse(crate::nodes::Ellipse { feather, .. }), "feather") => Some(feather),
             _ => None,
         }
     }
@@ -516,17 +530,17 @@ impl Operation {
             }
         }
         match self {
-            Self::PlanarTrack { data } => data.validate(),
-            Self::Text {
+            Self::PlanarTrack(crate::nodes::PlanarTrack { data }) => data.validate(),
+            Self::Text(crate::nodes::Text {
                 content,
                 font,
                 language,
                 features,
                 color,
                 ..
-            } => {
+            }) => {
                 text::validate(content, font, language)?;
-                if let Self::Text { typography, .. } = self {
+                if let Self::Text(crate::nodes::Text { typography, .. }) = self {
                     typography.validate()?;
                     for span in &typography.spans {
                         if span.end > content.len()
@@ -547,7 +561,7 @@ impl Operation {
                 }
                 Ok(())
             }
-            Self::Footage { asset, timing, .. } => {
+            Self::Footage(crate::nodes::Footage { asset, timing, .. }) => {
                 if asset.trim().is_empty()
                     || asset.chars().count() > registry::MAX_ASSET_NAME
                     || asset.contains('\0')
@@ -556,20 +570,20 @@ impl Operation {
                 }
                 timing.validate()
             }
-            Self::Path { geometry } => geometry.validate(),
-            Self::Solid { color }
+            Self::Path(crate::nodes::Path { geometry }) => geometry.validate(),
+            Self::Solid(crate::nodes::Solid { color })
                 if color.iter().any(|v| !v.is_finite()) || !(0.0..=1.0).contains(&color[3]) =>
             {
                 fail("solid needs finite RGB and alpha in [0,1]")
             }
-            Self::Colorize { low, high }
+            Self::Colorize(crate::nodes::Colorize { low, high })
                 if [low, high].iter().any(|color| {
                     color.iter().any(|v| !v.is_finite()) || !(0.0..=1.0).contains(&color[3])
                 }) =>
             {
                 fail("colorize needs finite RGB and alpha in [0,1] for both endpoints")
             }
-            Self::Image { asset }
+            Self::Image(crate::nodes::Image { asset })
                 if asset.trim().is_empty()
                     || asset.chars().count() > registry::MAX_ASSET_NAME
                     || asset.contains('\0') =>
@@ -692,14 +706,19 @@ impl Composition {
                     node.label
                 ));
             }
-            if matches!(node.operation, Operation::PlanarWarp { .. })
-                && !node
-                    .inputs
-                    .get("track")
-                    .and_then(|id| self.nodes.get(id))
-                    .is_some_and(|n| {
-                        matches!(n.operation, Operation::PlanarTrack { .. }) && !n.bypass
-                    })
+            if matches!(
+                node.operation,
+                Operation::PlanarWarp(crate::nodes::PlanarWarp { .. })
+            ) && !node
+                .inputs
+                .get("track")
+                .and_then(|id| self.nodes.get(id))
+                .is_some_and(|n| {
+                    matches!(
+                        n.operation,
+                        Operation::PlanarTrack(crate::nodes::PlanarTrack { .. })
+                    ) && !n.bypass
+                })
             {
                 return fail("Planar warp needs an enabled Planar track on its track input");
             }
@@ -871,7 +890,11 @@ pub enum Command {
 
 /// A transparent composition with one editable background generator.
 pub fn blank(width: u32, height: u32, frame_rate: Time) -> Result<Composition> {
-    let node = Node::new("Background", Operation::Solid { color: [0.0; 4] }, &[]);
+    let node = Node::new(
+        "Background",
+        Operation::Solid(crate::nodes::Solid { color: [0.0; 4] }),
+        &[],
+    );
     let composition = Composition {
         groups: Default::default(),
         schema: 1,
@@ -889,22 +912,22 @@ pub fn blank(width: u32, height: u32, frame_rate: Time) -> Result<Composition> {
 pub fn demo() -> Composition {
     let background = Node::new(
         "Background",
-        Operation::Solid {
+        Operation::Solid(crate::nodes::Solid {
             color: [0.015, 0.025, 0.06, 1.0],
-        },
+        }),
         &[],
     );
     let noise = Node::new(
         "Noise",
-        Operation::Noise {
+        Operation::Noise(crate::nodes::Noise {
             seed: 42,
             scale: 18.0.into(),
-        },
+        }),
         &[],
     );
     let exposure = Node::new(
         "Animated exposure",
-        Operation::Exposure {
+        Operation::Exposure(crate::nodes::Exposure {
             stops: Scalar::Linear {
                 keys: vec![
                     Key {
@@ -919,25 +942,25 @@ pub fn demo() -> Composition {
                     },
                 ],
             },
-        },
+        }),
         &[("image", noise.id)],
     );
     let blur = Node::new(
         "Soft glow",
-        Operation::Blur { radius: 4.0.into() },
+        Operation::Blur(crate::nodes::Blur { radius: 4.0.into() }),
         &[("image", exposure.id)],
     );
     let transform = Node::new(
         "Offset",
-        Operation::Transform {
+        Operation::Transform(crate::nodes::Transform {
             x: 80.0.into(),
             y: 40.0.into(),
-        },
+        }),
         &[("image", blur.id)],
     );
     let merge = Node::new(
         "Composite",
-        Operation::Merge {},
+        Operation::Merge(crate::nodes::Merge {}),
         &[("background", background.id), ("foreground", transform.id)],
     );
     Composition {
@@ -966,9 +989,9 @@ pub fn motion_demo() -> Composition {
     };
     let mut output = add(
         "Midnight",
-        Operation::Solid {
+        Operation::Solid(crate::nodes::Solid {
             color: [0.004, 0.008, 0.022, 1.0],
-        },
+        }),
         &[],
     );
     for (name, color, x, y, rx, ry, feather, angle) in [
@@ -1013,26 +1036,30 @@ pub fn motion_demo() -> Composition {
             -27.0,
         ),
     ] {
-        let color = add(&format!("{name} color"), Operation::Solid { color }, &[]);
+        let color = add(
+            &format!("{name} color"),
+            Operation::Solid(crate::nodes::Solid { color }),
+            &[],
+        );
         let shape = add(
             &format!("{name} shape"),
-            Operation::Ellipse {
+            Operation::Ellipse(crate::nodes::Ellipse {
                 x: x.into(),
                 y: y.into(),
                 radius_x: rx.into(),
                 radius_y: ry.into(),
                 feather: feather.into(),
-            },
+            }),
             &[],
         );
         let masked = add(
             name,
-            Operation::Mask {},
+            Operation::Mask(crate::nodes::Mask {}),
             &[("image", color), ("mask", shape)],
         );
         let motion = add(
             &format!("{name} motion"),
-            Operation::Affine {
+            Operation::Affine(crate::nodes::Affine {
                 x: 0.0.into(),
                 y: 0.0.into(),
                 scale_x: 1.0.into(),
@@ -1058,20 +1085,20 @@ pub fn motion_demo() -> Composition {
                 },
                 pivot_x: 480.0.into(),
                 pivot_y: 270.0.into(),
-            },
+            }),
             &[("image", masked)],
         );
         output = add(
             &format!("{name} over"),
-            Operation::Merge {},
+            Operation::Merge(crate::nodes::Merge {}),
             &[("background", output), ("foreground", motion)],
         );
     }
     let output = add(
         "Composite",
-        Operation::Exposure {
+        Operation::Exposure(crate::nodes::Exposure {
             stops: (-0.5).into(),
-        },
+        }),
         &[("image", output)],
     );
     Composition {

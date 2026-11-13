@@ -67,22 +67,22 @@ impl Recipe {
                 let blur = add(
                     "blur",
                     "Glow blur",
-                    Operation::Blur { radius: 8.0.into() },
+                    Operation::Blur(crate::nodes::Blur { radius: 8.0.into() }),
                     &[("image", input)],
                 );
                 let bright = add(
                     "brightness",
                     "Glow brightness",
-                    Operation::Exposure { stops: 1.0.into() },
+                    Operation::Exposure(crate::nodes::Exposure { stops: 1.0.into() }),
                     &[("image", blur)],
                 );
                 add(
                     "composite",
                     "Glow composite",
-                    Operation::Blend {
+                    Operation::Blend(crate::nodes::Blend {
                         mode: BlendMode::Add,
                         opacity: 1.0.into(),
-                    },
+                    }),
                     &[("background", input), ("foreground", bright)],
                 )
             }
@@ -90,30 +90,30 @@ impl Recipe {
                 let grow = add(
                     "grow",
                     "Outline width",
-                    Operation::Morphology { radius: 4.0.into() },
+                    Operation::Morphology(crate::nodes::Morphology { radius: 4.0.into() }),
                     &[("image", input)],
                 );
                 let outline = add(
                     "outline",
                     "Outside outline",
-                    Operation::CombineMask {
+                    Operation::CombineMask(crate::nodes::CombineMask {
                         mode: MaskMode::Subtract,
-                    },
+                    }),
                     &[("mask", grow), ("other", input)],
                 );
                 let color = add(
                     "color",
                     "Outline color",
-                    Operation::Colorize {
+                    Operation::Colorize(crate::nodes::Colorize {
                         low: [1.0; 4],
                         high: [1.0; 4],
-                    },
+                    }),
                     &[("image", outline)],
                 );
                 add(
                     "composite",
                     "Outline composite",
-                    Operation::Merge {},
+                    Operation::Merge(crate::nodes::Merge {}),
                     &[("background", input), ("foreground", color)],
                 )
             }

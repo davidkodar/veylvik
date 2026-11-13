@@ -8,12 +8,13 @@ use veylvik_render::*;
 #[ignore = "requires Vulkan"]
 fn group_boundaries_add_no_passes_and_animated_controls_match_expanded_rendering() {
     let mut doc = blank(13, 7, Time::new(24, 1).unwrap()).unwrap();
-    doc.nodes.get_mut(&doc.output).unwrap().operation = Operation::Solid {
-        color: [0.25, 0.5, 0.75, 1.0],
-    };
+    doc.nodes.get_mut(&doc.output).unwrap().operation =
+        Operation::Solid(veylvik_document::nodes::Solid {
+            color: [0.25, 0.5, 0.75, 1.0],
+        });
     let exposure = Node::new(
         "Exposure",
-        Operation::Exposure { stops: 1.0.into() },
+        Operation::Exposure(veylvik_document::nodes::Exposure { stops: 1.0.into() }),
         &[("image", doc.output)],
     );
     let id = exposure.id;

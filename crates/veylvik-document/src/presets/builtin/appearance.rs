@@ -30,7 +30,7 @@ pub fn build(id: &str, b: &mut Builder, source: NodeId) -> Result<NodeId> {
     if let Some(kind) = material {
         let node = b.add(
             "Surface grain, bevel and reflection",
-            Operation::Material {
+            Operation::Material(crate::nodes::Material {
                 kind,
                 scale: 180.0.into(),
                 bevel: 5.0.into(),
@@ -54,7 +54,7 @@ pub fn build(id: &str, b: &mut Builder, source: NodeId) -> Result<NodeId> {
                 },
                 grain: 0.65.into(),
                 emission: 1.0.into(),
-            },
+            }),
             &[("image", source)],
         );
         for (p, l) in [
@@ -72,15 +72,15 @@ pub fn build(id: &str, b: &mut Builder, source: NodeId) -> Result<NodeId> {
             b.expose(node, "emission", "Phosphor emission")?;
             let halo = b.add(
                 "Phosphor bloom",
-                Operation::Blur { radius: 8.0.into() },
+                Operation::Blur(crate::nodes::Blur { radius: 8.0.into() }),
                 &[("image", node)],
             );
             let out = b.add(
                 "Emissive glow",
-                Operation::Blend {
+                Operation::Blend(crate::nodes::Blend {
                     mode: BlendMode::Add,
                     opacity: 0.5.into(),
-                },
+                }),
                 &[("background", node), ("foreground", halo)],
             );
             b.expose(halo, "radius", "Glow spread")?;
@@ -99,7 +99,7 @@ pub fn build(id: &str, b: &mut Builder, source: NodeId) -> Result<NodeId> {
     };
     let volume = b.add(
         "Turbulent atmospheric volume",
-        Operation::Atmosphere {
+        Operation::Atmosphere(crate::nodes::Atmosphere {
             kind,
             seed: 397,
             x: 480.0.into(),
@@ -119,7 +119,7 @@ pub fn build(id: &str, b: &mut Builder, source: NodeId) -> Result<NodeId> {
             density: density.into(),
             detail: 1.0.into(),
             lighting: 1.0.into(),
-        },
+        }),
         &[],
     );
     for (p, l) in [
@@ -136,7 +136,7 @@ pub fn build(id: &str, b: &mut Builder, source: NodeId) -> Result<NodeId> {
     }
     Ok(b.add(
         "Atmosphere over image",
-        Operation::Merge {},
+        Operation::Merge(crate::nodes::Merge {}),
         &[("background", source), ("foreground", volume)],
     ))
 }

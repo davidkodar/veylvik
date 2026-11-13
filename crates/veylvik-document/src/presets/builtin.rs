@@ -347,9 +347,9 @@ pub fn build(id: &str) -> Result<Preset> {
         "surface_paint" => {
             let background = Node::new(
                 "Clean surface",
-                Operation::Solid {
+                Operation::Solid(crate::nodes::Solid {
                     color: [0.5, 0.5, 0.5, 1.],
-                },
+                }),
                 &[],
             );
             let plate = background.id;
@@ -399,49 +399,49 @@ pub fn build(id: &str) -> Result<Preset> {
         "prismatic_glow" => {
             let blur = b.add(
                 "Light spread",
-                Operation::Blur {
+                Operation::Blur(crate::nodes::Blur {
                     radius: 12.0.into(),
-                },
+                }),
                 &[("image", source)],
             );
             let cyan = b.add(
                 "Cyan light",
-                Operation::Colorize {
+                Operation::Colorize(crate::nodes::Colorize {
                     low: [0.0; 4],
                     high: [0.25, 0.9, 1.8, 0.7],
-                },
+                }),
                 &[("image", blur)],
             );
             let rose = b.add(
                 "Rose light",
-                Operation::Colorize {
+                Operation::Colorize(crate::nodes::Colorize {
                     low: [0.0; 4],
                     high: [1.5, 0.15, 0.55, 0.55],
-                },
+                }),
                 &[("image", blur)],
             );
             let offset = b.add(
                 "Color separation",
-                Operation::Transform {
+                Operation::Transform(crate::nodes::Transform {
                     x: 10.0.into(),
                     y: (-3.0).into(),
-                },
+                }),
                 &[("image", rose)],
             );
             let first = b.add(
                 "Cyan spill",
-                Operation::Blend {
+                Operation::Blend(crate::nodes::Blend {
                     mode: BlendMode::Add,
                     opacity: 0.5.into(),
-                },
+                }),
                 &[("background", source), ("foreground", cyan)],
             );
             let output = b.add(
                 "Prismatic light",
-                Operation::Blend {
+                Operation::Blend(crate::nodes::Blend {
                     mode: BlendMode::Add,
                     opacity: 0.5.into(),
-                },
+                }),
                 &[("background", first), ("foreground", offset)],
             );
             b.expose(blur, "radius", "Spread")?;
@@ -453,74 +453,74 @@ pub fn build(id: &str) -> Result<Preset> {
         "neon_outline" => {
             let shifted = b.add(
                 "Edge sampling",
-                Operation::Transform {
+                Operation::Transform(crate::nodes::Transform {
                     x: 3.0.into(),
                     y: 3.0.into(),
-                },
+                }),
                 &[("image", source)],
             );
             let difference = b.add(
                 "Edge contrast",
-                Operation::Blend {
+                Operation::Blend(crate::nodes::Blend {
                     mode: BlendMode::Difference,
                     opacity: 1.0.into(),
-                },
+                }),
                 &[("background", source), ("foreground", shifted)],
             );
             let valid = b.add(
                 "Valid edge samples",
-                Operation::Mask {},
+                Operation::Mask(crate::nodes::Mask {}),
                 &[("image", difference), ("mask", shifted)],
             );
             let mask = b.add(
                 "Luminance edges",
-                Operation::ChannelMask {
+                Operation::ChannelMask(crate::nodes::ChannelMask {
                     channel: MaskChannel::Luminance,
-                },
+                }),
                 &[("image", valid)],
             );
             let grow = b.add(
                 "Edge width",
-                Operation::Morphology { radius: 1.0.into() },
+                Operation::Morphology(crate::nodes::Morphology { radius: 1.0.into() }),
                 &[("image", mask)],
             );
             let edge = grow;
             let color = b.add(
                 "Neon color",
-                Operation::Solid {
+                Operation::Solid(crate::nodes::Solid {
                     color: [0.1, 1.2, 2.0, 1.0],
-                },
+                }),
                 &[],
             );
             let core = b.add(
                 "Neon core",
-                Operation::Mask {},
+                Operation::Mask(crate::nodes::Mask {}),
                 &[("image", color), ("mask", edge)],
             );
             let halo = b.add(
                 "Halo spread",
-                Operation::Blur { radius: 8.0.into() },
+                Operation::Blur(crate::nodes::Blur { radius: 8.0.into() }),
                 &[("image", core)],
             );
             let boost = b.add(
                 "Halo energy",
-                Operation::Exposure { stops: 2.0.into() },
+                Operation::Exposure(crate::nodes::Exposure { stops: 2.0.into() }),
                 &[("image", halo)],
             );
             let first = b.add(
                 "Neon halo",
-                Operation::Blend {
+                Operation::Blend(crate::nodes::Blend {
                     mode: BlendMode::Add,
                     opacity: 0.75.into(),
-                },
+                }),
                 &[("background", source), ("foreground", boost)],
             );
             let output = b.add(
                 "Neon contours",
-                Operation::Blend {
+                Operation::Blend(crate::nodes::Blend {
                     mode: BlendMode::Add,
                     opacity: 0.8.into(),
-                },
+                }),
                 &[("background", first), ("foreground", core)],
             );
             b.expose(grow, "radius", "Width")?;
@@ -533,7 +533,7 @@ pub fn build(id: &str) -> Result<Preset> {
         "liquid_shimmer" => {
             let flow = b.add(
                 "Flow field",
-                Operation::FractalNoise {
+                Operation::FractalNoise(crate::nodes::FractalNoise {
                     seed: 47,
                     scale: 60.0.into(),
                     octaves: 3.0.into(),
@@ -557,35 +557,39 @@ pub fn build(id: &str) -> Result<Preset> {
                             },
                         ],
                     },
-                },
+                }),
                 &[],
             );
             // Attenuate the vector field at the canvas boundary at any resolution.
             // This avoids transparent slivers without cropping or scaling the image.
-            let canvas = b.add("Frame coverage", Operation::Solid { color: [1.0; 4] }, &[]);
+            let canvas = b.add(
+                "Frame coverage",
+                Operation::Solid(crate::nodes::Solid { color: [1.0; 4] }),
+                &[],
+            );
             let inset = b.add(
                 "Protected edges",
-                Operation::Morphology {
+                Operation::Morphology(crate::nodes::Morphology {
                     radius: (-16.0).into(),
-                },
+                }),
                 &[("image", canvas)],
             );
             let feather = b.add(
                 "Edge transition",
-                Operation::Blur { radius: 4.0.into() },
+                Operation::Blur(crate::nodes::Blur { radius: 4.0.into() }),
                 &[("image", inset)],
             );
             let field = b.add(
                 "Bounded flow",
-                Operation::Mask {},
+                Operation::Mask(crate::nodes::Mask {}),
                 &[("image", flow), ("mask", feather)],
             );
             let output = b.add(
                 "Liquid refraction",
-                Operation::Displace {
+                Operation::Displace(crate::nodes::Displace {
                     x: 12.0.into(),
                     y: 6.0.into(),
-                },
+                }),
                 &[("image", source), ("map", field)],
             );
             b.expose(output, "x", "Horizontal shimmer")?;
@@ -676,7 +680,7 @@ pub fn category(id: &str) -> &'static str {
 
 /// Authored one-way pass: both endpoints are outside the canvas for a clean loop.
 pub(crate) fn metallic_shine() -> Operation {
-    Operation::MetallicShine {
+    Operation::MetallicShine(crate::nodes::MetallicShine {
         x: Scalar::Linear {
             keys: [(0, -480.0), (4, 1440.0)]
                 .into_iter()
@@ -691,11 +695,11 @@ pub(crate) fn metallic_shine() -> Operation {
         width: 90.0.into(),
         angle: 20.0.into(),
         intensity: 1.8.into(),
-    }
+    })
 }
 
 pub(crate) fn sun_glints() -> Operation {
-    Operation::SunGlints {
+    Operation::SunGlints(crate::nodes::SunGlints {
         seed: 193,
         size: 18.0.into(),
         intensity: 3.0.into(),
@@ -712,7 +716,7 @@ pub(crate) fn sun_glints() -> Operation {
         },
         density: 0.75.into(),
         angle: 15.0.into(),
-    }
+    })
 }
 
 /// True for reusable surface presets that can shade an opaque full-frame source.
@@ -736,10 +740,10 @@ pub fn material_layer(
     };
     let mut merge = Node::new(
         "Material layer composite",
-        Operation::Blend {
+        Operation::Blend(crate::nodes::Blend {
             mode: BlendMode::Normal,
             opacity: 1.0.into(),
-        },
+        }),
         &[("background", back), ("foreground", front)],
     );
     merge.position = position.map(|p| crate::NodePosition {
@@ -770,7 +774,7 @@ pub(super) fn material_surface(
     let mut preset = build(id)?;
     let source = Node::new(
         "Full-frame surface",
-        Operation::Solid { color: [1.0; 4] },
+        Operation::Solid(crate::nodes::Solid { color: [1.0; 4] }),
         &[],
     );
     for input in preset.group.inputs.values() {

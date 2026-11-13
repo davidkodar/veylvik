@@ -396,7 +396,10 @@ impl Studio {
         self.draft_dirty = false;
     }
     fn can_change_selection(&mut self) -> bool {
-        if matches!(self.draft.operation, Operation::Text { .. }) {
+        if matches!(
+            self.draft.operation,
+            Operation::Text(veylvik_document::nodes::Text { .. })
+        ) {
             return self.apply_draft();
         }
         if self.draft_dirty {
@@ -467,19 +470,23 @@ impl Studio {
                 let operation = node_palette::operation(kind, doc.width, doc.height);
                 if matches!(
                     operation,
-                    Operation::PlanarTrack { .. } | Operation::PlanarWarp { .. }
+                    Operation::PlanarTrack(veylvik_document::nodes::PlanarTrack { .. })
+                        | Operation::PlanarWarp(veylvik_document::nodes::PlanarWarp { .. })
                 ) {
                     self.begin_planar();
                     return;
                 }
 
-                let added = if matches!(operation, Operation::Text { .. }) {
+                let added = if matches!(
+                    operation,
+                    Operation::Text(veylvik_document::nodes::Text { .. })
+                ) {
                     let mut text = Node::new("Text", operation, &[]);
                     text.position = Some(position);
                     let id = text.id;
                     let mut merge = Node::new(
                         "Text over scene",
-                        Operation::Merge {},
+                        Operation::Merge(veylvik_document::nodes::Merge {}),
                         &[("background", doc.output), ("foreground", id)],
                     );
                     merge.position = Some(veylvik_document::NodePosition {
@@ -587,7 +594,9 @@ impl Studio {
                 if self.draft_dirty
                     && matches!(
                         self.draft.operation,
-                        Operation::Text { .. } | Operation::Path { .. } | Operation::Footage { .. }
+                        Operation::Text(veylvik_document::nodes::Text { .. })
+                            | Operation::Path(veylvik_document::nodes::Path { .. })
+                            | Operation::Footage(veylvik_document::nodes::Footage { .. })
                     )
                 {
                     let doc = self
@@ -817,7 +826,9 @@ impl Studio {
                 }
             };
             let font = font_browser::load(&face)?;
-            if let Operation::Text { font: target, .. } = &mut node.operation {
+            if let Operation::Text(veylvik_document::nodes::Text { font: target, .. }) =
+                &mut node.operation
+            {
                 **target = font;
             }
             veylvik_text::outline(&node.operation, time).map_err(|e| e.to_string())?;
@@ -856,9 +867,9 @@ impl Studio {
                 veylvik_io::text::outline(&folder, &request).map_err(|e| e.to_string())?;
             let mut node = Node::new(
                 &request.label(),
-                Operation::Path {
+                Operation::Path(veylvik_document::nodes::Path {
                     geometry: outlined.geometry,
-                },
+                }),
                 &[],
             );
             node.position = position;
@@ -883,7 +894,8 @@ impl Studio {
         if !composition.nodes.values().any(|node| {
             matches!(
                 node.operation,
-                Operation::Image { .. } | Operation::Footage { .. }
+                Operation::Image(veylvik_document::nodes::Image { .. })
+                    | Operation::Footage(veylvik_document::nodes::Footage { .. })
             )
         }) {
             self.status = "No image sources to reload".into();
@@ -915,7 +927,8 @@ impl Studio {
         }
         if !matches!(
             self.draft.operation,
-            Operation::Image { .. } | Operation::Footage { .. }
+            Operation::Image(veylvik_document::nodes::Image { .. })
+                | Operation::Footage(veylvik_document::nodes::Footage { .. })
         ) {
             return;
         }
@@ -1373,7 +1386,9 @@ impl Studio {
                 .into_iter()
                 .filter_map(|id| {
                     let node = &self.project.document.snapshot().nodes[&id];
-                    if let Operation::Text { content, .. } = &node.operation {
+                    if let Operation::Text(veylvik_document::nodes::Text { content, .. }) =
+                        &node.operation
+                    {
                         Some((id, content.chars().take(28).collect::<String>()))
                     } else {
                         None
@@ -1464,11 +1479,16 @@ impl Studio {
         {
             self.begin_planar();
         }
-        ui.label(if matches!(self.draft.operation, Operation::Text { .. }) {
-            "Layer name"
-        } else {
-            self.draft.operation.descriptor().label
-        });
+        ui.label(
+            if matches!(
+                self.draft.operation,
+                Operation::Text(veylvik_document::nodes::Text { .. })
+            ) {
+                "Layer name"
+            } else {
+                self.draft.operation.descriptor().label
+            },
+        );
         ui.add_space(8.0);
         self.draft_dirty |= ui.text_edit_singleline(&mut self.draft.label).changed();
         ui.separator();
@@ -1484,31 +1504,33 @@ impl Studio {
             self.project.document.snapshot().height as f32,
         ];
         match &mut self.draft.operation {
-            op @ Operation::Text { .. } => {
+            op @ Operation::Text(veylvik_document::nodes::Text { .. }) => {
                 let (changed, import) =
                     editable_text::controls(ui, op, time, text_canvas, &mut self.fonts);
                 self.draft_dirty |= changed;
                 text_changed |= changed;
                 import_font = import;
             }
-            Operation::Path { geometry } => match shape_animation::edit(ui, geometry, time) {
-                Ok(true) => {
-                    self.draft_dirty = true;
-                    self.text_preview_deadline
-                        .get_or_insert_with(|| Instant::now() + Duration::from_millis(32));
-                    ui.ctx().request_repaint_after(Duration::from_millis(32));
+            Operation::Path(veylvik_document::nodes::Path { geometry }) => {
+                match shape_animation::edit(ui, geometry, time) {
+                    Ok(true) => {
+                        self.draft_dirty = true;
+                        self.text_preview_deadline
+                            .get_or_insert_with(|| Instant::now() + Duration::from_millis(32));
+                        ui.ctx().request_repaint_after(Duration::from_millis(32));
+                    }
+                    Err(error) => self.fail(error),
+                    _ => {}
                 }
-                Err(error) => self.fail(error),
-                _ => {}
-            },
-            Operation::SurfaceBlend { .. } => {
+            }
+            Operation::SurfaceBlend(veylvik_document::nodes::SurfaceBlend { .. }) => {
                 ui.weak("Lighting follows the surface; Detail transfers texture. Wear reveals dark cracks. All amounts can be animated.");
             }
-            Operation::PlanarTrack { data } => {
+            Operation::PlanarTrack(veylvik_document::nodes::PlanarTrack { data }) => {
                 ui.label(format!("{} tracked frames", data.samples.len()));
                 ui.weak("Connect this node to a Planar warp's track input. The source image passes through unchanged.");
             }
-            Operation::PlanarWarp { mode } => {
+            Operation::PlanarWarp(veylvik_document::nodes::PlanarWarp { mode }) => {
                 egui::ComboBox::from_id_salt("planar-warp-mode")
                     .selected_text(mode.label())
                     .show_ui(ui, |ui| {
@@ -1518,11 +1540,11 @@ impl Studio {
                         }
                     });
             }
-            Operation::Solid { color } => {
+            Operation::Solid(veylvik_document::nodes::Solid { color }) => {
                 ui.label("Linear RGB and alpha");
                 self.draft_dirty |= animation::color(ui, color);
             }
-            Operation::Colorize { low, high } => {
+            Operation::Colorize(veylvik_document::nodes::Colorize { low, high }) => {
                 ui.label("Map luminance to linear RGBA colors.");
                 ui.push_id("low", |ui| {
                     ui.label("Shadows");
@@ -1533,15 +1555,15 @@ impl Studio {
                     self.draft_dirty |= animation::color(ui, high);
                 });
             }
-            Operation::Noise { seed, .. }
-            | Operation::FractalNoise { seed, .. }
-            | Operation::Fire { seed, .. } => {
+            Operation::Noise(veylvik_document::nodes::Noise { seed, .. })
+            | Operation::FractalNoise(veylvik_document::nodes::FractalNoise { seed, .. })
+            | Operation::Fire(veylvik_document::nodes::Fire { seed, .. }) => {
                 ui.horizontal(|ui| {
                     ui.label("Seed");
                     self.draft_dirty |= ui.add(egui::DragValue::new(seed)).changed();
                 });
             }
-            Operation::Blend { mode, .. } => {
+            Operation::Blend(veylvik_document::nodes::Blend { mode, .. }) => {
                 egui::ComboBox::from_id_salt("blend-mode")
                     .selected_text(mode.label())
                     .show_ui(ui, |ui| {
@@ -1551,7 +1573,7 @@ impl Studio {
                         }
                     });
             }
-            Operation::Gradient { mode, .. } => {
+            Operation::Gradient(veylvik_document::nodes::Gradient { mode, .. }) => {
                 egui::ComboBox::from_id_salt("gradient-mode")
                     .selected_text(mode.label())
                     .show_ui(ui, |ui| {
@@ -1562,7 +1584,7 @@ impl Studio {
                     });
                 ui.label("Use Colorize for colors or Channel mask for coverage.");
             }
-            Operation::CombineMask { mode } => {
+            Operation::CombineMask(veylvik_document::nodes::CombineMask { mode }) => {
                 egui::ComboBox::from_id_salt("mask-mode")
                     .selected_text(mode.label())
                     .show_ui(ui, |ui| {
@@ -1573,7 +1595,7 @@ impl Studio {
                     });
                 ui.label("Subtract removes other from mask; RGB is ignored.");
             }
-            Operation::ChannelMask { channel } => {
+            Operation::ChannelMask(veylvik_document::nodes::ChannelMask { channel }) => {
                 egui::ComboBox::from_id_salt("mask-channel")
                     .selected_text(channel.label())
                     .show_ui(ui, |ui| {
@@ -1585,13 +1607,16 @@ impl Studio {
                     });
                 ui.label("Convert image content to mask coverage.");
             }
-            Operation::Merge {} => {
+            Operation::Merge(veylvik_document::nodes::Merge {}) => {
                 ui.label("Foreground over background");
             }
-            Operation::Mask {} => {
+            Operation::Mask(veylvik_document::nodes::Mask {}) => {
                 ui.label("Image multiplied by mask alpha");
             }
-            Operation::SurfaceReflection { kind, .. } => {
+            Operation::SurfaceReflection(veylvik_document::nodes::SurfaceReflection {
+                kind,
+                ..
+            }) => {
                 egui::ComboBox::from_id_salt("reflection-kind")
                     .selected_text(kind.label())
                     .show_ui(ui, |ui| {
@@ -1602,13 +1627,13 @@ impl Studio {
                     });
                 ui.label("Connect any image or animated branch to Reflection.");
             }
-            Operation::Glass { .. } => {
+            Operation::Glass(veylvik_document::nodes::Glass { .. }) => {
                 ui.label("Use isolated shape alpha and the scene behind it. Roughness makes frosted glass.");
             }
-            Operation::SunGlints { seed, .. } => {
+            Operation::SunGlints(veylvik_document::nodes::SunGlints { seed, .. }) => {
                 self.draft_dirty |= ui.add(egui::DragValue::new(seed).prefix("Seed ")).changed();
             }
-            Operation::Patina { kind, seed, .. } => {
+            Operation::Patina(veylvik_document::nodes::Patina { kind, seed, .. }) => {
                 egui::ComboBox::from_id_salt("patina-kind")
                     .selected_text(kind.label())
                     .show_ui(ui, |ui| {
@@ -1619,7 +1644,7 @@ impl Studio {
                     });
                 self.draft_dirty |= ui.add(egui::DragValue::new(seed).prefix("Seed ")).changed();
             }
-            Operation::Material { kind, .. } => {
+            Operation::Material(veylvik_document::nodes::Material { kind, .. }) => {
                 egui::ComboBox::from_id_salt("Material-kind")
                     .selected_text(kind.label())
                     .show_ui(ui, |ui| {
@@ -1629,7 +1654,7 @@ impl Studio {
                         }
                     });
             }
-            Operation::Atmosphere { kind, seed, .. } => {
+            Operation::Atmosphere(veylvik_document::nodes::Atmosphere { kind, seed, .. }) => {
                 self.draft_dirty |= ui.add(egui::DragValue::new(seed).prefix("Seed ")).changed();
                 egui::ComboBox::from_id_salt("Atmosphere-kind")
                     .selected_text(kind.label())
@@ -1640,28 +1665,28 @@ impl Studio {
                         }
                     });
             }
-            Operation::MetallicShine { .. } => {
+            Operation::MetallicShine(veylvik_document::nodes::MetallicShine { .. }) => {
                 ui.label("Apply to isolated text or a logo before adding a background.");
                 ui.label("Animate X/Y to sweep; alpha stays unchanged.");
             }
-            Operation::Morphology { .. } => {
+            Operation::Morphology(veylvik_document::nodes::Morphology { .. }) => {
                 ui.label("Positive radius grows alpha; negative shrinks it.");
                 ui.label("Square neighborhood, transparent borders, white mask output.");
             }
-            Operation::Displace { .. } => {
+            Operation::Displace(veylvik_document::nodes::Displace { .. }) => {
                 ui.label("Map red drives X, green drives Y.");
                 ui.label("Mid-gray is neutral; alpha controls strength.");
             }
-            Operation::Affine { .. }
-            | Operation::Ellipse { .. }
-            | Operation::Exposure { .. }
-            | Operation::Transform { .. }
-            | Operation::Blur { .. } => {}
-            Operation::Footage {
+            Operation::Affine(veylvik_document::nodes::Affine { .. })
+            | Operation::Ellipse(veylvik_document::nodes::Ellipse { .. })
+            | Operation::Exposure(veylvik_document::nodes::Exposure { .. })
+            | Operation::Transform(veylvik_document::nodes::Transform { .. })
+            | Operation::Blur(veylvik_document::nodes::Blur { .. }) => {}
+            Operation::Footage(veylvik_document::nodes::Footage {
                 asset,
                 timing,
                 placement,
-            } => {
+            }) => {
                 ui.label(asset.as_str());
                 let changed = media_controls::edit(
                     ui,
@@ -1677,7 +1702,7 @@ impl Studio {
                 }
                 replace_image = ui.button("Replace source…").clicked();
             }
-            Operation::Image { asset } => {
+            Operation::Image(veylvik_document::nodes::Image { asset }) => {
                 ui.label("Source image / sequence");
                 ui.label(asset.as_str());
                 ui.label("Images use native size and transparent padding.");
@@ -1691,15 +1716,17 @@ impl Studio {
             if ui.button("Match composition to this media…").clicked() {
                 self.match_media(self.project.selected);
             }
-            if matches!(self.draft.operation, Operation::Image { .. })
-                && ui.button("Enable placement controls").clicked()
+            if matches!(
+                self.draft.operation,
+                Operation::Image(veylvik_document::nodes::Image { .. })
+            ) && ui.button("Enable placement controls").clicked()
             {
                 let asset = self.draft.operation.asset().unwrap().to_owned();
-                self.draft.operation = Operation::Footage {
+                self.draft.operation = Operation::Footage(veylvik_document::nodes::Footage {
                     asset,
                     timing: Default::default(),
                     placement: Default::default(),
-                };
+                });
                 self.draft_dirty = true;
                 text_changed = true;
             }
@@ -1709,7 +1736,10 @@ impl Studio {
         }
         let kind = self.draft.operation.descriptor();
         for parameter in kind.parameters {
-            if matches!(self.draft.operation, Operation::Text { .. }) {
+            if matches!(
+                self.draft.operation,
+                Operation::Text(veylvik_document::nodes::Text { .. })
+            ) {
                 break;
             }
             if let Some(value) = self.draft.operation.scalar_mut(parameter.name) {
@@ -1747,7 +1777,8 @@ impl Studio {
         if text_changed
             && matches!(
                 self.draft.operation,
-                Operation::Text { .. } | Operation::Footage { .. }
+                Operation::Text(veylvik_document::nodes::Text { .. })
+                    | Operation::Footage(veylvik_document::nodes::Footage { .. })
             )
         {
             self.queue_text_preview(ui.ctx());
@@ -1760,8 +1791,10 @@ impl Studio {
             self.playing = false;
         }
         self.text_connections(ui);
-        if matches!(self.draft.operation, Operation::Text { .. })
-            && self.project.preview.is_none()
+        if matches!(
+            self.draft.operation,
+            Operation::Text(veylvik_document::nodes::Text { .. })
+        ) && self.project.preview.is_none()
             && !editable_text::handles_in_scene(self.project.document.snapshot(), self.draft.id)
         {
             ui.weak("A downstream effect moves this text. Use Preview selected for source-position handles.");
@@ -2307,7 +2340,9 @@ impl eframe::App for Studio {
                 if self.draft_dirty
                     && matches!(
                         self.draft.operation,
-                        Operation::Text { .. } | Operation::Path { .. } | Operation::Footage { .. }
+                        Operation::Text(veylvik_document::nodes::Text { .. })
+                            | Operation::Path(veylvik_document::nodes::Path { .. })
+                            | Operation::Footage(veylvik_document::nodes::Footage { .. })
                     )
                 {
                     self.request_preview();
@@ -2513,7 +2548,7 @@ impl eframe::App for Studio {
                     .resizable(true)
                     .show_inside(ui, |ui| {
                         self.inspector_actions(ui);
-                        if matches!(self.draft.operation, Operation::Text { .. })
+                        if matches!(self.draft.operation, Operation::Text(veylvik_document::nodes::Text { .. }))
                             && self
                                 .graph
                                 .selected_group(
@@ -2534,7 +2569,7 @@ impl eframe::App for Studio {
                 egui::CentralPanel::default().show_inside(ui, |ui| {
                     ui.horizontal_wrapped(|ui| {
                         ui.heading("Viewer");
-                        if matches!(self.draft.operation, Operation::Text { .. }) {
+                        if matches!(self.draft.operation, Operation::Text(veylvik_document::nodes::Text { .. })) {
                             if ui
                                 .selectable_label(self.text_viewer.active, "Edit text")
                                 .clicked()
@@ -2545,12 +2580,12 @@ impl eframe::App for Studio {
                                 .checkbox(&mut self.text_viewer.layout, "Layout box")
                                 .changed()
                                 && self.text_viewer.layout
-                                && let Operation::Text {
+                                && let Operation::Text(veylvik_document::nodes::Text {
                                     wrap_width,
                                     box_height,
                                     typography,
                                     ..
-                                } = &mut self.draft.operation
+                                }) = &mut self.draft.operation
                                 && let Ok(time) = self.project.time()
                                 && (wrap_width.at(time).unwrap_or(0.0) == 0.0
                                     || box_height.at(time).unwrap_or(0.0) == 0.0)
@@ -2602,17 +2637,17 @@ impl eframe::App for Studio {
                             ui.strong("Outline foreground object");
                             self.path_pen.toolbar(ui);
                         });
-                    } else if matches!(self.draft.operation, Operation::Path { .. }) {
+                    } else if matches!(self.draft.operation, Operation::Path(veylvik_document::nodes::Path { .. })) {
                         ui.horizontal_wrapped(|ui| {
-                            if matches!(self.draft.operation, Operation::Path { .. })
+                            if matches!(self.draft.operation, Operation::Path(veylvik_document::nodes::Path { .. }))
                                 && !self.playing
-                                && ui.add_enabled_ui(!matches!(&self.draft.operation,Operation::Path { geometry } if !geometry.keys.is_empty()), |ui| self.path_pen.toolbar(ui)).inner
+                                && ui.add_enabled_ui(!matches!(&self.draft.operation,Operation::Path(veylvik_document::nodes::Path { geometry }) if !geometry.keys.is_empty()), |ui| self.path_pen.toolbar(ui)).inner
                             {
                                 self.path_transform.active = false;
                                 self.project.preview = Some(self.draft.id);
                                 self.request_preview();
                             }
-                            if matches!(self.draft.operation, Operation::Path { .. })
+                            if matches!(self.draft.operation, Operation::Path(veylvik_document::nodes::Path { .. }))
                                 && !self.playing
                                 && !self.path_pen.active
                                 && self.path_transform.toolbar(ui)
@@ -2645,10 +2680,10 @@ impl eframe::App for Studio {
                             && !self.tracking.open && !self.planar.open
                             && !self.path_pen.active
                             && !(self.path_transform.active
-                                && matches!(self.draft.operation, Operation::Path { .. })
+                                && matches!(self.draft.operation, Operation::Path(veylvik_document::nodes::Path { .. }))
                                 && ui.input(|i| i.pointer.primary_down()))
                             && !(response.double_clicked()
-                                && matches!(self.draft.operation, Operation::Text { .. }))
+                                && matches!(self.draft.operation, Operation::Text(veylvik_document::nodes::Text { .. })))
                         {
                             self.navigation.interact(ui, &response, canvas, image);
                         }
@@ -2739,11 +2774,11 @@ impl eframe::App for Studio {
                         }
                         self.occlusion_canvas(ui, canvas, transform, image);
                         if !self.occlusion_pending()
-                            && let Operation::Path { geometry } = &self.draft.operation
+                            && let Operation::Path(veylvik_document::nodes::Path { geometry }) = &self.draft.operation
                             && let Some(geometry) =
                                 self.path_pen.show(ui, canvas, transform, image, geometry)
                         {
-                            self.draft.operation = Operation::Path { geometry };
+                            self.draft.operation = Operation::Path(veylvik_document::nodes::Path { geometry });
                             self.draft_dirty = true;
                             self.apply_draft();
                         }
@@ -2762,7 +2797,7 @@ impl eframe::App for Studio {
                             && (self.displayed_ticket == self.wanted
                                 || matches!(
                                     self.draft.operation,
-                                    Operation::Text { .. } | Operation::Path { .. }
+                                    Operation::Text(veylvik_document::nodes::Text { .. }) | Operation::Path(veylvik_document::nodes::Path { .. })
                                 ))
                             && (root == self.draft.id
                                 || veylvik_document::occlusion::find(
@@ -2770,7 +2805,7 @@ impl eframe::App for Studio {
                                     self.draft.id,
                                 )
                                 .is_some_and(|setup| setup.output == root)
-                                || (matches!(self.draft.operation, Operation::Text { .. })
+                                || (matches!(self.draft.operation, Operation::Text(veylvik_document::nodes::Text { .. }))
                                     && self.project.preview.is_none()
                                     && editable_text::handles_in_scene(
                                         self.project.document.snapshot(),
@@ -2778,8 +2813,8 @@ impl eframe::App for Studio {
                                     )))
                             && let Ok(time) = self.project.time()
                         {
-                            if let Operation::Path { geometry } = &self.draft.operation { shape_animation::ghosts(ui,canvas,transform,image,geometry,time); }
-                            let is_text = matches!(self.draft.operation, Operation::Text { .. });
+                            if let Operation::Path(veylvik_document::nodes::Path { geometry }) = &self.draft.operation { shape_animation::ghosts(ui,canvas,transform,image,geometry,time); }
+                            let is_text = matches!(self.draft.operation, Operation::Text(veylvik_document::nodes::Text { .. }));
                             if is_text
                                 && self.text_viewer.show(
                                     ui,
@@ -2795,9 +2830,9 @@ impl eframe::App for Studio {
                                 self.queue_text_preview(ui.ctx());
                             }
                             let transform_mask = self.path_transform.active
-                                && matches!(self.draft.operation, Operation::Path { .. });
+                                && matches!(self.draft.operation, Operation::Path(veylvik_document::nodes::Path { .. }));
                             if transform_mask && !self.path_pen.active
-                                && let Operation::Path { geometry } = &mut self.draft.operation {
+                                && let Operation::Path(veylvik_document::nodes::Path { geometry }) = &mut self.draft.operation {
                                 match self.path_transform.show_at(ui,canvas,transform,image,geometry,time) {
                                     Ok(true) => {
                                         self.draft_dirty = true;
@@ -2826,7 +2861,7 @@ impl eframe::App for Studio {
                                             && self.text_viewer.snap
                                             && matches!(
                                                 self.draft.operation,
-                                                Operation::Text { .. }
+                                                Operation::Text(veylvik_document::nodes::Text { .. })
                                             )
                                         {
                                             let threshold = 6.0
@@ -2854,7 +2889,7 @@ impl eframe::App for Studio {
                                         if changed
                                             && matches!(
                                                 self.draft.operation,
-                                                Operation::Path { .. }
+                                                Operation::Path(veylvik_document::nodes::Path { .. })
                                             )
                                         {
                                             self.text_preview_deadline.get_or_insert_with(|| {
@@ -2866,7 +2901,7 @@ impl eframe::App for Studio {
                                         if changed
                                             && matches!(
                                                 self.draft.operation,
-                                                Operation::Text { .. }
+                                                Operation::Text(veylvik_document::nodes::Text { .. })
                                             )
                                         {
                                             self.queue_text_preview(ui.ctx());

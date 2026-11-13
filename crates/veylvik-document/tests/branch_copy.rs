@@ -4,28 +4,33 @@ use veylvik_document::*;
 fn copy_remaps_shared_ancestors_once_preserves_curves_assets_and_is_one_transaction() {
     let mut doc = blank(8, 8, Time::new(24, 1).unwrap()).unwrap();
     let source = doc.output;
-    doc.nodes.get_mut(&source).unwrap().operation = Operation::Image {
-        asset: "relative/source.exr".into(),
-    };
+    doc.nodes.get_mut(&source).unwrap().operation =
+        Operation::Image(veylvik_document::nodes::Image {
+            asset: "relative/source.exr".into(),
+        });
     let mut stops = Scalar::from(0.0);
     stops.set_key_at(Time::new(0, 24).unwrap(), 0.0).unwrap();
     stops.set_key_at(Time::new(24, 24).unwrap(), 2.0).unwrap();
     stops.set_interpolation(Interpolation::Monotone);
     let effect = Node::new(
         "Animated",
-        Operation::Exposure { stops },
+        Operation::Exposure(veylvik_document::nodes::Exposure { stops }),
         &[("image", source)],
     );
     let effect_id = effect.id;
     doc.nodes.insert(effect.id, effect);
     let merge = Node::new(
         "Shared",
-        Operation::Merge {},
+        Operation::Merge(veylvik_document::nodes::Merge {}),
         &[("background", source), ("foreground", effect_id)],
     );
     doc.output = merge.id;
     doc.nodes.insert(merge.id, merge);
-    let disconnected = Node::new("Unrelated", Operation::Solid { color: [0.0; 4] }, &[]);
+    let disconnected = Node::new(
+        "Unrelated",
+        Operation::Solid(veylvik_document::nodes::Solid { color: [0.0; 4] }),
+        &[],
+    );
     doc.nodes.insert(disconnected.id, disconnected);
     let before = serde_json::to_value(&doc).unwrap();
     let copy = editing::copy_branch(&doc, doc.output).unwrap();
@@ -68,7 +73,7 @@ fn deep_branch_copy_is_iterative_and_rejects_overflow_before_publication() {
     for _ in 1..2048 {
         let node = Node::new(
             "Deep",
-            Operation::Exposure { stops: 1.0.into() },
+            Operation::Exposure(veylvik_document::nodes::Exposure { stops: 1.0.into() }),
             &[("image", doc.output)],
         );
         doc.output = node.id;

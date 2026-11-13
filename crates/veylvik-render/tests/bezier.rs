@@ -5,9 +5,9 @@ use veylvik_render::*;
 fn bezier_exposure_and_mixed_hold_match_analytic_values_and_cache_updates() {
     let source = Node::new(
         "source",
-        Operation::Solid {
+        Operation::Solid(veylvik_document::nodes::Solid {
             color: [0.25, 0.5, 0.75, 1.0],
-        },
+        }),
         &[],
     );
     let curve = Scalar::Linear {
@@ -40,7 +40,7 @@ fn bezier_exposure_and_mixed_hold_match_analytic_values_and_cache_updates() {
     };
     let output = Node::new(
         "animated",
-        Operation::Exposure { stops: curve },
+        Operation::Exposure(veylvik_document::nodes::Exposure { stops: curve }),
         &[("image", source.id)],
     );
     let id = output.id;

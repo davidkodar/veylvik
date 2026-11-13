@@ -99,9 +99,9 @@ fn check_sequence(format: veylvik_io::FrameFormat) {
     // A GUI export uses its captured pixels even if no source file exists.
     let node = veylvik_document::Node::new(
         "snapshot",
-        veylvik_document::Operation::Image {
+        veylvik_document::Operation::Image(veylvik_document::nodes::Image {
             asset: "absent.png".into(),
-        },
+        }),
         &[],
     );
     doc.output = node.id;

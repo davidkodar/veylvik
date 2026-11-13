@@ -62,9 +62,9 @@ pub fn run(args: &[String]) -> Result<()> {
     let outlined = assets::text::outline(Path::new("."), &request)?;
     let node = Node::new(
         &request.label(),
-        Operation::Path {
+        Operation::Path(veylvik_document::nodes::Path {
             geometry: outlined.geometry,
-        },
+        }),
         &[],
     );
     let document = Composition {

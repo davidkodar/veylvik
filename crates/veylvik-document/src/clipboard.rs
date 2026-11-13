@@ -38,7 +38,7 @@ impl NodeClipboard {
         for id in &external {
             let mut stub = Node::new(
                 &format!("Input: {}", doc.nodes[id].label),
-                Operation::Solid { color: [0.0; 4] },
+                Operation::Solid(crate::nodes::Solid { color: [0.0; 4] }),
                 &[],
             );
             stub.id = *id;
@@ -104,7 +104,7 @@ impl NodeClipboard {
         }
         for id in &self.external {
             let node = &self.fragment.nodes[id];
-            if !matches!(node.operation,Operation::Solid {color} if color==[0.0;4])
+            if !matches!(node.operation,Operation::Solid(crate::nodes::Solid {color}) if color==[0.0;4])
                 || !node.inputs.is_empty()
                 || self
                     .fragment
@@ -156,7 +156,8 @@ impl NodeClipboard {
                 node.id = mapping[id];
                 if self.source_session != session
                     && let Some(base) = &self.source_base
-                    && let Operation::Image { asset } | Operation::Footage { asset, .. } =
+                    && let Operation::Image(crate::nodes::Image { asset })
+                    | Operation::Footage(crate::nodes::Footage { asset, .. }) =
                         &mut node.operation
                     && std::path::Path::new(asset).is_relative()
                 {

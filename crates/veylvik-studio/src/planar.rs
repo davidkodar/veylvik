@@ -305,12 +305,17 @@ impl Studio {
         // Reopening a saved track displays its persisted diagnostics and offers
         // new consumers without rerunning analysis.
         let selected = &doc.nodes[&self.project.selected];
-        let track_node = if matches!(selected.operation, Operation::PlanarWarp { .. }) {
+        let track_node = if matches!(
+            selected.operation,
+            Operation::PlanarWarp(veylvik_document::nodes::PlanarWarp { .. })
+        ) {
             &doc.nodes[&selected.inputs["track"]]
         } else {
             selected
         };
-        if let Operation::PlanarTrack { data } = &track_node.operation {
+        if let Operation::PlanarTrack(veylvik_document::nodes::PlanarTrack { data }) =
+            &track_node.operation
+        {
             let source = track_node.inputs["image"];
             self.planar.saved = Some(track_node.id);
             self.planar.edited = false;
@@ -363,7 +368,7 @@ impl Studio {
             ui.add_enabled_ui(self.planar.active.is_none(),|ui| {
                 let old=self.planar.source;
                 egui::ComboBox::from_id_salt("planar-source").selected_text(old.and_then(|id|doc.nodes.get(&id)).map_or("Source",|n|n.label.as_str())).show_ui(ui,|ui| {
-                    for node in doc.nodes.values() { if !matches!(node.operation,Operation::PlanarTrack {..}|Operation::PlanarWarp {..}) { ui.selectable_value(&mut self.planar.source,Some(node.id),&node.label); } }
+                    for node in doc.nodes.values() { if !matches!(node.operation,Operation::PlanarTrack(veylvik_document::nodes::PlanarTrack {..})|Operation::PlanarWarp(veylvik_document::nodes::PlanarWarp {..})) { ui.selectable_value(&mut self.planar.source,Some(node.id),&node.label); } }
                 });
                 if old!=self.planar.source {self.planar.result=None;self.planar.base=None;self.planar.saved=None;self.planar.correction_frame=None;self.planar.live=Arc::new(Mutex::new(Live::default()));view=true;}
                 if ui.button("View tracking source").clicked() {view=true;}
@@ -383,8 +388,8 @@ impl Studio {
                         let name = |id: Option<NodeId>| id.and_then(|id| doc.nodes.get(&id)).map_or("None".to_owned(), |n| n.label.clone());
                         let mut options: Vec<_> = doc.nodes.values()
                             .filter(|n| Some(n.id) != self.planar.source && matches!(n.operation,
-                                Operation::Path { .. } | Operation::Ellipse { .. } | Operation::Mask {} | Operation::CombineMask { .. }
-                                | Operation::ChannelMask { .. } | Operation::Morphology { .. } | Operation::Blur { .. } | Operation::Affine { .. }))
+                                Operation::Path(veylvik_document::nodes::Path { .. }) | Operation::Ellipse(veylvik_document::nodes::Ellipse { .. }) | Operation::Mask(veylvik_document::nodes::Mask {}) | Operation::CombineMask(veylvik_document::nodes::CombineMask { .. })
+                                | Operation::ChannelMask(veylvik_document::nodes::ChannelMask { .. }) | Operation::Morphology(veylvik_document::nodes::Morphology { .. }) | Operation::Blur(veylvik_document::nodes::Blur { .. }) | Operation::Affine(veylvik_document::nodes::Affine { .. })))
                             .map(|n| (n.label.clone(), n.id)).collect();
                         options.sort();
                         egui::ComboBox::from_label("Occlusion matte")
@@ -495,9 +500,9 @@ impl Studio {
                     self.fail("Saved track no longer exists");
                     return;
                 };
-                node.operation = Operation::PlanarTrack {
+                node.operation = Operation::PlanarTrack(veylvik_document::nodes::PlanarTrack {
                     data: Box::new(result.data.clone()),
-                };
+                });
                 node.inputs.insert("image".into(), result.source);
                 commands.push(veylvik_document::Command::Put {
                     node: Box::new(node),
@@ -526,9 +531,9 @@ impl Studio {
             };
             let warp = veylvik_document::Node::new(
                 self.planar.mode.label(),
-                Operation::PlanarWarp {
+                Operation::PlanarWarp(veylvik_document::nodes::PlanarWarp {
                     mode: self.planar.mode,
-                },
+                }),
                 &[("image", image), ("track", track)],
             );
             selected = warp.id;
@@ -542,7 +547,7 @@ impl Studio {
                     if self.planar.blend_surface {
                         self.planar.look.operation()
                     } else {
-                        Operation::Merge {}
+                        Operation::Merge(veylvik_document::nodes::Merge {})
                     },
                     &[("background", result.source), ("foreground", output)],
                 );

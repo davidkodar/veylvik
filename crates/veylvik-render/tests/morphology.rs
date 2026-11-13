@@ -3,9 +3,9 @@ use veylvik_document::*;
 use veylvik_render::*;
 
 fn operation(radius: f32) -> Operation {
-    Operation::Morphology {
+    Operation::Morphology(veylvik_document::nodes::Morphology {
         radius: radius.into(),
-    }
+    })
 }
 fn reference(pixels: &[[f32; 4]], width: u32, height: u32, radius: f32) -> Vec<[f32; 4]> {
     let radius = radius.round() as i32;
@@ -68,9 +68,10 @@ fn morphology_matches_square_reference_and_animated_cache_and_crop() {
             .collect();
         let mut doc = blank(width, height, Time::new(24, 1).unwrap()).unwrap();
         let source_id = doc.output;
-        doc.nodes.get_mut(&source_id).unwrap().operation = Operation::Image {
-            asset: "source".into(),
-        };
+        doc.nodes.get_mut(&source_id).unwrap().operation =
+            Operation::Image(veylvik_document::nodes::Image {
+                asset: "source".into(),
+            });
         let node = Node::new("Mask", operation(0.0), &[("image", source_id)]);
         doc.output = node.id;
         doc.nodes.insert(node.id, node);

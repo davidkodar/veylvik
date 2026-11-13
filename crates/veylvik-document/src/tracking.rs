@@ -40,17 +40,20 @@ pub fn attach(
         }
     }
     let mut node = if replace {
-        if !matches!(input.operation, Operation::Transform { .. }) {
+        if !matches!(
+            input.operation,
+            Operation::Transform(crate::nodes::Transform { .. })
+        ) {
             return fail("Only translation transforms can replace tracking keys");
         }
         input.clone()
     } else {
         Node::new(
             "Tracked motion",
-            Operation::Transform {
+            Operation::Transform(crate::nodes::Transform {
                 x: 0.0.into(),
                 y: 0.0.into(),
-            },
+            }),
             &[("image", target)],
         )
     };

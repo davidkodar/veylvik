@@ -46,22 +46,22 @@ fn offset(op: &Operation, parameter: &str, m: Mapping) -> f32 {
         "pivot_y" | "start_y" | "end_y" => Some(1),
         "x" if matches!(
             op,
-            Operation::Text { .. }
-                | Operation::Ellipse { .. }
-                | Operation::Fire { .. }
-                | Operation::MetallicShine { .. }
-                | Operation::Atmosphere { .. }
+            Operation::Text(crate::nodes::Text { .. })
+                | Operation::Ellipse(crate::nodes::Ellipse { .. })
+                | Operation::Fire(crate::nodes::Fire { .. })
+                | Operation::MetallicShine(crate::nodes::MetallicShine { .. })
+                | Operation::Atmosphere(crate::nodes::Atmosphere { .. })
         ) =>
         {
             Some(0)
         }
         "y" if matches!(
             op,
-            Operation::Text { .. }
-                | Operation::Ellipse { .. }
-                | Operation::Fire { .. }
-                | Operation::MetallicShine { .. }
-                | Operation::Atmosphere { .. }
+            Operation::Text(crate::nodes::Text { .. })
+                | Operation::Ellipse(crate::nodes::Ellipse { .. })
+                | Operation::Fire(crate::nodes::Fire { .. })
+                | Operation::MetallicShine(crate::nodes::MetallicShine { .. })
+                | Operation::Atmosphere(crate::nodes::Atmosphere { .. })
         ) =>
         {
             Some(1)
@@ -125,7 +125,7 @@ pub fn map_graph(
                 }
             }
         }
-        if let Operation::Path { geometry } = &mut node.operation {
+        if let Operation::Path(crate::nodes::Path { geometry }) = &mut node.operation {
             let point = |p: &mut [f32; 2]| {
                 p[0] = p[0] * m.scale + m.offset[0];
                 p[1] = p[1] * m.scale + m.offset[1];
@@ -172,13 +172,13 @@ mod tests {
         ] {
             let ellipse = Node::new(
                 "circle",
-                Operation::Ellipse {
+                Operation::Ellipse(crate::nodes::Ellipse {
                     x: 100.0.into(),
                     y: 50.0.into(),
                     radius_x: 20.0.into(),
                     radius_y: 20.0.into(),
                     feather: 1.0.into(),
-                },
+                }),
                 &[],
             );
             let id = ellipse.id;
@@ -207,10 +207,10 @@ mod tests {
             );
             assert_eq!(
                 offset(
-                    &Operation::Transform {
+                    &Operation::Transform(crate::nodes::Transform {
                         x: 1.0.into(),
                         y: 1.0.into()
-                    },
+                    }),
                     "x",
                     Mapping {
                         scale,

@@ -145,9 +145,9 @@ mod tests {
         let renderer = Renderer::new().unwrap();
         let node = Node::new(
             "red",
-            Operation::Solid {
+            Operation::Solid(veylvik_document::nodes::Solid {
                 color: [0.25, 0.0, 0.0, 1.0],
-            },
+            }),
             &[],
         );
         let doc = Composition {
@@ -182,9 +182,9 @@ mod tests {
         let renderer = Renderer::new().unwrap();
         let node = Node::new(
             "source",
-            Operation::Image {
+            Operation::Image(veylvik_document::nodes::Image {
                 asset: "source".into(),
-            },
+            }),
             &[],
         );
         let doc = Composition {
@@ -258,9 +258,9 @@ mod tests {
         let renderer = Renderer::new().unwrap();
         let node = Node::new(
             "HDR",
-            Operation::Solid {
+            Operation::Solid(veylvik_document::nodes::Solid {
                 color: [4.0, 1.0, 0.0, 0.5],
-            },
+            }),
             &[],
         );
         let doc = Composition {
@@ -336,9 +336,9 @@ mod tests {
         let renderer = Renderer::new().unwrap();
         let node = Node::new(
             "pixels",
-            Operation::Image {
+            Operation::Image(veylvik_document::nodes::Image {
                 asset: "pixels".into(),
-            },
+            }),
             &[],
         );
         let doc = Composition {

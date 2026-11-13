@@ -30,7 +30,9 @@ impl Keys {
         self.source = Some((revision, selected));
         self.frames.clear();
         if let Some(node) = doc.nodes.get(&selected) {
-            if let veylvik_document::Operation::Path { geometry } = &node.operation {
+            if let veylvik_document::Operation::Path(veylvik_document::nodes::Path { geometry }) =
+                &node.operation
+            {
                 self.frames.extend(
                     geometry
                         .keys
@@ -220,7 +222,11 @@ mod tests {
         let shape = geometry.clone();
         geometry.set_key(Time::new(0, 1).unwrap(), &shape).unwrap();
         geometry.set_key(Time::new(1, 1).unwrap(), &shape).unwrap();
-        let node = Node::new("Mask", Operation::Path { geometry }, &[]);
+        let node = Node::new(
+            "Mask",
+            Operation::Path(veylvik_document::nodes::Path { geometry }),
+            &[],
+        );
         let id = node.id;
         doc.nodes.insert(id, node);
         let mut keys = Keys::default();
@@ -243,10 +249,10 @@ mod tests {
         };
         let node = Node::new(
             "Animated",
-            Operation::Transform {
+            Operation::Transform(veylvik_document::nodes::Transform {
                 x: curve.clone(),
                 y: curve,
-            },
+            }),
             &[("image", doc.output)],
         );
         let id = node.id;

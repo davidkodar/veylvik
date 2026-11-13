@@ -149,7 +149,9 @@ impl Project {
     fn load_available_inputs(&mut self) {
         let mut remaining = 256 * 1024 * 1024;
         for node in self.document.snapshot().nodes.values() {
-            if let Operation::Image { asset } | Operation::Footage { asset, .. } = &node.operation
+            if let Operation::Image(veylvik_document::nodes::Image { asset })
+            | Operation::Footage(veylvik_document::nodes::Footage { asset, .. }) =
+                &node.operation
                 && !self.inputs.contains_key(asset)
                 && !self.asset_errors.contains_key(asset)
             {
@@ -174,7 +176,8 @@ impl Project {
             .nodes
             .values()
             .filter_map(|node| {
-                if let Operation::Image { asset } | Operation::Footage { asset, .. } =
+                if let Operation::Image(veylvik_document::nodes::Image { asset })
+                | Operation::Footage(veylvik_document::nodes::Footage { asset, .. }) =
                     &node.operation
                     && !self.inputs.contains_key(asset)
                 {
@@ -326,14 +329,18 @@ impl Project {
             return Err("Selected node is not an image".into());
         };
         let next = path.to_str().ok_or("image path is not UTF-8")?.to_owned();
-        let promote = temporal && matches!(node.operation, Operation::Image { .. });
+        let promote = temporal
+            && matches!(
+                node.operation,
+                Operation::Image(veylvik_document::nodes::Image { .. })
+            );
         if asset != next || promote {
             if promote {
-                node.operation = Operation::Footage {
+                node.operation = Operation::Footage(veylvik_document::nodes::Footage {
                     asset: next.clone(),
                     timing: Default::default(),
                     placement: Default::default(),
-                };
+                });
             } else {
                 *node.operation.asset_mut().unwrap() = next.clone();
             }
@@ -349,7 +356,7 @@ impl Project {
         let doc = self.document.snapshot();
         doc.nodes.len() == 1
             && doc.groups.is_empty()
-            && matches!(doc.nodes[&doc.output].operation, Operation::Solid { color } if color == [0.0; 4])
+            && matches!(doc.nodes[&doc.output].operation, Operation::Solid(veylvik_document::nodes::Solid { color }) if color == [0.0; 4])
     }
     pub fn import(
         &mut self,
@@ -364,11 +371,11 @@ impl Project {
         let previous_output = self.document.snapshot().output;
         let mut node = Node::new(
             path.file_name().and_then(|s| s.to_str()).unwrap_or("Media"),
-            Operation::Footage {
+            Operation::Footage(veylvik_document::nodes::Footage {
                 asset: asset.clone(),
                 timing: Default::default(),
                 placement: veylvik_document::media::Placement::Fit,
-            },
+            }),
             &[],
         );
         node.position = Some(position);
@@ -404,7 +411,8 @@ pub fn load_inputs(
     let mut seen = std::collections::BTreeSet::new();
     const BUDGET: u64 = 256 * 1024 * 1024;
     for node in composition.nodes.values() {
-        if let Operation::Image { asset } | Operation::Footage { asset, .. } = &node.operation
+        if let Operation::Image(veylvik_document::nodes::Image { asset })
+        | Operation::Footage(veylvik_document::nodes::Footage { asset, .. }) = &node.operation
             && seen.insert(asset)
         {
             let replaced = inputs.source_budget(asset);
@@ -448,10 +456,10 @@ mod tests {
         assert_eq!(project.document.history().undo_steps, 1);
         assert!(matches!(
             project.document.snapshot().nodes[&id].operation,
-            Operation::Footage {
+            Operation::Footage(veylvik_document::nodes::Footage {
                 placement: veylvik_document::media::Placement::Fit,
                 ..
-            }
+            })
         ));
         project.undo(false).unwrap();
         assert_eq!(
@@ -484,14 +492,15 @@ mod tests {
         std::fs::create_dir(&root).unwrap();
         veylvik_io::save_frame(&root.join("available.png"), 1, 1, &[[0.0, 1.0, 0.0, 1.0]]).unwrap();
         let mut doc = veylvik_document::blank(1, 1, Time::new(24, 1).unwrap()).unwrap();
-        doc.nodes.get_mut(&doc.output).unwrap().operation = Operation::Image {
-            asset: "missing.png".into(),
-        };
+        doc.nodes.get_mut(&doc.output).unwrap().operation =
+            Operation::Image(veylvik_document::nodes::Image {
+                asset: "missing.png".into(),
+            });
         let available = Node::new(
             "Available",
-            Operation::Image {
+            Operation::Image(veylvik_document::nodes::Image {
                 asset: "available.png".into(),
-            },
+            }),
             &[],
         );
         doc.nodes.insert(available.id, available);
@@ -546,7 +555,9 @@ mod tests {
         let image = project.selected;
         let original = project.document.snapshot().nodes[&image].clone();
         let effect = project
-            .add(Operation::Exposure { stops: 1.0.into() })
+            .add(Operation::Exposure(veylvik_document::nodes::Exposure {
+                stops: 1.0.into(),
+            }))
             .unwrap();
         project.apply(&[Command::Output { id: effect }]).unwrap();
         let steps = project.document.history().undo_steps;
@@ -595,17 +606,17 @@ mod tests {
         project.base = root.clone();
         let mut first = Node::new(
             "A",
-            Operation::Image {
+            Operation::Image(veylvik_document::nodes::Image {
                 asset: "a.png".into(),
-            },
+            }),
             &[],
         );
         first.id = NodeId::from_u128(1);
         let mut second = Node::new(
             "B",
-            Operation::Image {
+            Operation::Image(veylvik_document::nodes::Image {
                 asset: "b.exr".into(),
-            },
+            }),
             &[],
         );
         second.id = NodeId::from_u128(2);
@@ -668,7 +679,12 @@ mod tests {
             .snapshot()
             .nodes
             .values()
-            .find(|node| matches!(node.operation, Operation::Affine { .. }))
+            .find(|node| {
+                matches!(
+                    node.operation,
+                    Operation::Affine(veylvik_document::nodes::Affine { .. })
+                )
+            })
             .unwrap()
             .id;
         let source = project.selected;
@@ -690,7 +706,8 @@ mod tests {
         assert_eq!(project.preview, Some(copy));
         assert_eq!(project.document.history().undo_steps, 1);
         let mut changed = duplicate.clone();
-        changed.operation = Operation::Exposure { stops: 3.0.into() };
+        changed.operation =
+            Operation::Exposure(veylvik_document::nodes::Exposure { stops: 3.0.into() });
         project
             .apply(&[Command::Put {
                 node: Box::new(changed),
@@ -727,10 +744,14 @@ mod tests {
         let mut project = Project::open(None).unwrap();
         let output = project.selected;
         let first = project
-            .add(Operation::Exposure { stops: 1.0.into() })
+            .add(Operation::Exposure(veylvik_document::nodes::Exposure {
+                stops: 1.0.into(),
+            }))
             .unwrap();
         let second = project
-            .add(Operation::Exposure { stops: 2.0.into() })
+            .add(Operation::Exposure(veylvik_document::nodes::Exposure {
+                stops: 2.0.into(),
+            }))
             .unwrap();
         let revision = project.document.revision();
         assert!(!project.connect(first, second, "image").unwrap());
@@ -759,7 +780,9 @@ mod tests {
         let mut project = Project::open(None).unwrap();
         let output = project.document.snapshot().output;
         let added = project
-            .add(Operation::Exposure { stops: 1.0.into() })
+            .add(Operation::Exposure(veylvik_document::nodes::Exposure {
+                stops: 1.0.into(),
+            }))
             .unwrap();
         assert_eq!(project.preview, Some(added));
         assert_eq!(project.document.snapshot().output, output);
@@ -807,7 +830,8 @@ mod plan_tests {
             .unwrap();
         assert!(Arc::ptr_eq(&first, &project.plan().unwrap()));
         let mut node = project.document.snapshot().nodes[&project.selected].clone();
-        node.operation = Operation::Exposure { stops: 2.0.into() };
+        node.operation =
+            Operation::Exposure(veylvik_document::nodes::Exposure { stops: 2.0.into() });
         project
             .apply(&[Command::Put {
                 node: Box::new(node),

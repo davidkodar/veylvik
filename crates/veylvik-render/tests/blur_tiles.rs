@@ -9,12 +9,13 @@ fn blur_matches_reference_across_row_tiles_partial_edges_and_radius_paths() {
     for (width, height) in [(1u32, 1u32), (83, 17)] {
         let mut doc = blank(width, height, Time::new(24, 1).unwrap()).unwrap();
         let image = doc.output;
-        doc.nodes.get_mut(&image).unwrap().operation = Operation::Image {
-            asset: "plate".into(),
-        };
+        doc.nodes.get_mut(&image).unwrap().operation =
+            Operation::Image(veylvik_document::nodes::Image {
+                asset: "plate".into(),
+            });
         let blur = Node::new(
             "Blur",
-            Operation::Blur { radius: 1.0.into() },
+            Operation::Blur(veylvik_document::nodes::Blur { radius: 1.0.into() }),
             &[("image", image)],
         );
         doc.output = blur.id;
@@ -36,9 +37,10 @@ fn blur_matches_reference_across_row_tiles_partial_edges_and_radius_paths() {
             Arc::new(Image::new(width, height, pixels.clone()).unwrap()),
         );
         for radius in [0.5f32, 1.0, 2.5, 3.0, 8.0, 31.5, 32.0, 64.0, 128.0, 256.0] {
-            doc.nodes.get_mut(&doc.output).unwrap().operation = Operation::Blur {
-                radius: radius.into(),
-            };
+            doc.nodes.get_mut(&doc.output).unwrap().operation =
+                Operation::Blur(veylvik_document::nodes::Blur {
+                    radius: radius.into(),
+                });
             let frame = renderer
                 .render_frame(
                     &Plan::compile(&doc).unwrap(),

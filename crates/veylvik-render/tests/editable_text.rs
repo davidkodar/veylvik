@@ -8,14 +8,14 @@ fn text_renders_premultiplied_and_cache_tracks_content_font_and_animation() {
     doc.width = 160;
     doc.height = 100;
     let mut op: Operation = serde_json::from_value(registry::TEXT.default_operation()).unwrap();
-    if let Operation::Text {
+    if let Operation::Text(veylvik_document::nodes::Text {
         content,
         size,
         x,
         y,
         color,
         ..
-    } = &mut op
+    }) = &mut op
     {
         *content = "Åffi".into();
         *size = 48.0.into();
@@ -42,7 +42,8 @@ fn text_renders_premultiplied_and_cache_tracks_content_font_and_animation() {
         &frame,
         &renderer.render_gpu_cached(&plan, request, &inputs).unwrap()
     ));
-    if let Operation::Text { content, .. } = &mut doc.nodes.get_mut(&doc.output).unwrap().operation
+    if let Operation::Text(veylvik_document::nodes::Text { content, .. }) =
+        &mut doc.nodes.get_mut(&doc.output).unwrap().operation
     {
         *content = "New".into();
     }
@@ -50,7 +51,8 @@ fn text_renders_premultiplied_and_cache_tracks_content_font_and_animation() {
         .render_gpu_cached(&Plan::compile(&doc).unwrap(), request, &inputs)
         .unwrap();
     assert_ne!(pixels, renderer.read_frame(&changed).unwrap().pixels);
-    if let Operation::Text { font, x, .. } = &mut doc.nodes.get_mut(&doc.output).unwrap().operation
+    if let Operation::Text(veylvik_document::nodes::Text { font, x, .. }) =
+        &mut doc.nodes.get_mut(&doc.output).unwrap().operation
     {
         **font = TextFont::Italic {};
         *x = Scalar::Linear {
@@ -97,7 +99,8 @@ fn text_renders_premultiplied_and_cache_tracks_content_font_and_animation() {
         .unwrap();
     assert_eq!(full.pixels.len(), 3840 * 2160);
     assert!(full.pixels.iter().any(|p| p[3] > 0.0));
-    if let Operation::Text { content, .. } = &mut doc.nodes.get_mut(&doc.output).unwrap().operation
+    if let Operation::Text(veylvik_document::nodes::Text { content, .. }) =
+        &mut doc.nodes.get_mut(&doc.output).unwrap().operation
     {
         content.clear();
     }
@@ -113,14 +116,14 @@ fn procedural_text_motion_and_compound_bypass_render_correctly() {
     let renderer = Renderer::new().unwrap();
     let mut doc = blank(160, 100, Time::new(24, 1).unwrap()).unwrap();
     let mut op: Operation = serde_json::from_value(registry::TEXT.default_operation()).unwrap();
-    if let Operation::Text {
+    if let Operation::Text(veylvik_document::nodes::Text {
         content,
         size,
         x,
         y,
         typography,
         ..
-    } = &mut op
+    }) = &mut op
     {
         *content = "Hi".into();
         *size = 40.0.into();

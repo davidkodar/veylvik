@@ -69,21 +69,21 @@ fn vector_masks_preserve_winding_curves_resize_and_gpu_compositing() {
     }
     let mask = veylvik_document::Node::new(
         "path",
-        veylvik_document::Operation::Image {
+        veylvik_document::Operation::Image(veylvik_document::nodes::Image {
             asset: "path".into(),
-        },
+        }),
         &[],
     );
     let solid = veylvik_document::Node::new(
         "HDR",
-        veylvik_document::Operation::Solid {
+        veylvik_document::Operation::Solid(veylvik_document::nodes::Solid {
             color: [4.0, 2.0, 1.0, 1.0],
-        },
+        }),
         &[],
     );
     let output = veylvik_document::Node::new(
         "mask",
-        veylvik_document::Operation::Mask {},
+        veylvik_document::Operation::Mask(veylvik_document::nodes::Mask {}),
         &[("image", solid.id), ("mask", mask.id)],
     );
     let mut doc = veylvik_document::demo();
@@ -139,9 +139,9 @@ fn path_nodes_render_cache_edit_and_preflight_without_external_assets() {
     let geometry = rectangles(FillRule::EvenOdd);
     let node = Node::new(
         "path",
-        Operation::Path {
+        Operation::Path(veylvik_document::nodes::Path {
             geometry: geometry.clone(),
-        },
+        }),
         &[],
     );
     let mut doc = demo();
@@ -165,7 +165,8 @@ fn path_nodes_render_cache_edit_and_preflight_without_external_assets() {
         .render_gpu_cached(&Plan::compile(&doc).unwrap(), request, &inputs)
         .unwrap();
     assert!(std::sync::Arc::ptr_eq(&frame, &renamed));
-    let Operation::Path { geometry } = &mut doc.nodes.get_mut(&doc.output).unwrap().operation
+    let Operation::Path(veylvik_document::nodes::Path { geometry }) =
+        &mut doc.nodes.get_mut(&doc.output).unwrap().operation
     else {
         unreachable!()
     };
@@ -189,7 +190,11 @@ fn path_nodes_render_cache_edit_and_preflight_without_external_assets() {
     assert!(renderer.render_gpu(&plan, request, &inputs).is_ok());
     doc.width = MAX_VECTOR_DIMENSION + 1;
     assert!(Plan::compile(&doc).is_err());
-    let solid = Node::new("small preview", Operation::Solid { color: [0.0; 4] }, &[]);
+    let solid = Node::new(
+        "small preview",
+        Operation::Solid(veylvik_document::nodes::Solid { color: [0.0; 4] }),
+        &[],
+    );
     let output = solid.id;
     doc.nodes.insert(output, solid);
     assert!(Plan::compile_output(&doc, output).is_ok());
@@ -202,14 +207,14 @@ fn vector_coverage_cache_survives_animation_and_yields_to_memory_pressure() {
     let mut renderer = Renderer::new().unwrap();
     let path = Node::new(
         "path",
-        Operation::Path {
+        Operation::Path(veylvik_document::nodes::Path {
             geometry: rectangles(FillRule::EvenOdd),
-        },
+        }),
         &[],
     );
     let exposure = Node::new(
         "animated",
-        Operation::Exposure {
+        Operation::Exposure(veylvik_document::nodes::Exposure {
             stops: Scalar::Linear {
                 keys: vec![
                     Key {
@@ -224,7 +229,7 @@ fn vector_coverage_cache_survives_animation_and_yields_to_memory_pressure() {
                     },
                 ],
             },
-        },
+        }),
         &[("image", path.id)],
     );
     let mut doc = demo();
@@ -270,9 +275,10 @@ fn vector_coverage_cache_survives_animation_and_yields_to_memory_pressure() {
         )
         .unwrap();
     assert_eq!(renderer.vector_cache_stats().unwrap().hits, 2);
-    doc.nodes.get_mut(&path.id).unwrap().operation = Operation::Path {
-        geometry: rectangles(FillRule::NonZero),
-    };
+    doc.nodes.get_mut(&path.id).unwrap().operation =
+        Operation::Path(veylvik_document::nodes::Path {
+            geometry: rectangles(FillRule::NonZero),
+        });
     renderer
         .render_frame(
             &Plan::compile(&doc).unwrap(),
@@ -283,7 +289,11 @@ fn vector_coverage_cache_survives_animation_and_yields_to_memory_pressure() {
     assert_eq!(renderer.vector_cache_stats().unwrap().misses, 2);
     assert!(renderer.vector_cache_stats().unwrap().evictions >= 1);
     // Ordinary non-vector rendering can reclaim retained mask storage.
-    let solid = Node::new("solid", Operation::Solid { color: [0.0; 4] }, &[]);
+    let solid = Node::new(
+        "solid",
+        Operation::Solid(veylvik_document::nodes::Solid { color: [0.0; 4] }),
+        &[],
+    );
     doc.output = solid.id;
     doc.nodes = [(solid.id, solid)].into();
     let simple = Plan::compile(&doc).unwrap();
@@ -324,7 +334,11 @@ fn animated_path_pixels_and_caches_follow_sampled_shape() {
     }
     geometry.set_key(Time::new(0, 1).unwrap(), &first).unwrap();
     geometry.set_key(Time::new(1, 1).unwrap(), &last).unwrap();
-    let node = Node::new("Animated mask", Operation::Path { geometry }, &[]);
+    let node = Node::new(
+        "Animated mask",
+        Operation::Path(veylvik_document::nodes::Path { geometry }),
+        &[],
+    );
     let mut doc = blank(32, 32, Time::new(24, 1).unwrap()).unwrap();
     doc.output = node.id;
     doc.nodes = [(node.id, node)].into();

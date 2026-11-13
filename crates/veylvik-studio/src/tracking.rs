@@ -181,7 +181,7 @@ impl Studio {
                 ui.label("3. Attach the accepted movement.");
                 egui::ComboBox::from_id_salt("tracking-target").selected_text(self.tracking.target.and_then(|id| doc.nodes.get(&id)).map_or("Choose text, mask or layer", |n| n.label.as_str())).show_ui(ui, |ui| { for node in doc.nodes.values() { ui.selectable_value(&mut self.tracking.target,Some(node.id),&node.label); } });
                 ui.horizontal(|ui| { ui.label("Offset X"); ui.add(egui::DragValue::new(&mut self.tracking.offset[0]).speed(0.5)); ui.label("Y"); ui.add(egui::DragValue::new(&mut self.tracking.offset[1]).speed(0.5)); });
-                let transform = self.tracking.target.and_then(|id| doc.nodes.get(&id)).is_some_and(|n| matches!(n.operation, Operation::Transform { .. }));
+                let transform = self.tracking.target.and_then(|id| doc.nodes.get(&id)).is_some_and(|n| matches!(n.operation, Operation::Transform(veylvik_document::nodes::Transform { .. })));
                 if !transform { self.tracking.replace = false; }
                 ui.add_enabled(transform,egui::Checkbox::new(&mut self.tracking.replace,"Update target's position keys"));
                 let fresh = result.session == self.project.session && result.revision == self.project.document.revision();

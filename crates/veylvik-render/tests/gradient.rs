@@ -3,13 +3,13 @@ use veylvik_document::*;
 use veylvik_render::*;
 
 fn operation(mode: GradientMode, start: [f32; 2], end: [f32; 2]) -> Operation {
-    Operation::Gradient {
+    Operation::Gradient(veylvik_document::nodes::Gradient {
         mode,
         start_x: start[0].into(),
         start_y: start[1].into(),
         end_x: end[0].into(),
         end_y: end[1].into(),
-    }
+    })
 }
 fn reference(mode: GradientMode, start: [f32; 2], end: [f32; 2], x: u32, y: u32) -> f64 {
     let dx = end[0] as f64 - start[0] as f64;
@@ -79,10 +79,10 @@ fn gradients_match_geometry_reference_animate_and_compose_with_color_and_masks()
     doc.nodes.get_mut(&id).unwrap().operation = gradient;
     let color = Node::new(
         "Color",
-        Operation::Colorize {
+        Operation::Colorize(veylvik_document::nodes::Colorize {
             low: [2.0, 0.0, 0.0, 0.5],
             high: [0.0, 0.0, 4.0, 0.25],
-        },
+        }),
         &[("image", id)],
     );
     doc.output = color.id;
@@ -115,9 +115,9 @@ fn gradients_match_geometry_reference_animate_and_compose_with_color_and_masks()
     }
     let mask = Node::new(
         "Coverage",
-        Operation::ChannelMask {
+        Operation::ChannelMask(veylvik_document::nodes::ChannelMask {
             channel: MaskChannel::Luminance,
-        },
+        }),
         &[("image", id)],
     );
     doc.output = mask.id;

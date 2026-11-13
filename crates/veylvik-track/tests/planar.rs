@@ -31,9 +31,10 @@ fn gpu_planar_detection_perspective_occlusion_and_flat_rejection() {
             + 0.1 * (x * 0.17 - y * 0.33).cos()) as f32
     };
     let mut doc = veylvik_document::blank(width, height, Time::new(24, 1).unwrap()).unwrap();
-    doc.nodes.get_mut(&doc.output).unwrap().operation = Operation::Image {
-        asset: "source".into(),
-    };
+    doc.nodes.get_mut(&doc.output).unwrap().operation =
+        Operation::Image(veylvik_document::nodes::Image {
+            asset: "source".into(),
+        });
     let plan = Plan::compile(&doc).unwrap();
     let make = |motion: Homography, occlude: bool, flat: bool| {
         let inverse = motion.inverse().unwrap();
@@ -207,13 +208,14 @@ fn planar_warp_follows_stabilizes_and_invalidates_cached_motion() {
     let renderer = Renderer::new().unwrap();
     let mut doc = veylvik_document::blank(64, 48, Time::new(24, 1).unwrap()).unwrap();
     let source = doc.output;
-    doc.nodes.get_mut(&source).unwrap().operation = Operation::Image {
-        asset: "source".into(),
-    };
+    doc.nodes.get_mut(&source).unwrap().operation =
+        Operation::Image(veylvik_document::nodes::Image {
+            asset: "source".into(),
+        });
     let reference = [[0., 0.], [1., 0.], [1., 1.], [0., 1.]];
     let track = Node::new(
         "Track",
-        Operation::PlanarTrack {
+        Operation::PlanarTrack(veylvik_document::nodes::PlanarTrack {
             data: Box::new(Track {
                 reference,
                 reference_time: Time::new(0, 1).unwrap(),
@@ -233,16 +235,16 @@ fn planar_warp_follows_stabilizes_and_invalidates_cached_motion() {
                     },
                 ],
             }),
-        },
+        }),
         &[("image", source)],
     );
     let track_id = track.id;
     doc.nodes.insert(track.id, track);
     let warp = Node::new(
         "Warp",
-        Operation::PlanarWarp {
+        Operation::PlanarWarp(veylvik_document::nodes::PlanarWarp {
             mode: WarpMode::Follow,
-        },
+        }),
         &[("image", source), ("track", track_id)],
     );
     doc.output = warp.id;
@@ -284,17 +286,20 @@ fn planar_warp_follows_stabilizes_and_invalidates_cached_motion() {
         )
         .unwrap();
     assert!(!Arc::ptr_eq(&a, &b));
-    doc.nodes.get_mut(&doc.output).unwrap().operation = Operation::PlanarWarp {
-        mode: WarpMode::Stabilize,
-    };
+    doc.nodes.get_mut(&doc.output).unwrap().operation =
+        Operation::PlanarWarp(veylvik_document::nodes::PlanarWarp {
+            mode: WarpMode::Stabilize,
+        });
     let stabilized = at(&Plan::compile(&doc).unwrap(), 1);
     assert_eq!(stabilized.pixels[24 * 64 + 16], pixels[24 * 64 + 24]);
-    doc.nodes.get_mut(&doc.output).unwrap().operation = Operation::PlanarWarp {
-        mode: WarpMode::Fit,
-    };
+    doc.nodes.get_mut(&doc.output).unwrap().operation =
+        Operation::PlanarWarp(veylvik_document::nodes::PlanarWarp {
+            mode: WarpMode::Fit,
+        });
     let fitted = at(&Plan::compile(&doc).unwrap(), 1);
     assert_eq!(fitted.pixels[24 * 64 + 32], pixels[24 * 64 + 24]);
-    let Operation::PlanarTrack { data } = &mut doc.nodes.get_mut(&track_id).unwrap().operation
+    let Operation::PlanarTrack(veylvik_document::nodes::PlanarTrack { data }) =
+        &mut doc.nodes.get_mut(&track_id).unwrap().operation
     else {
         unreachable!()
     };
@@ -355,9 +360,10 @@ fn pyramid_recovers_large_motion_rotation_scale_and_odd_dimensions() {
         value as f32
     };
     let mut doc = veylvik_document::blank(width, height, Time::new(24, 1).unwrap()).unwrap();
-    doc.nodes.get_mut(&doc.output).unwrap().operation = Operation::Image {
-        asset: "source".into(),
-    };
+    doc.nodes.get_mut(&doc.output).unwrap().operation =
+        Operation::Image(veylvik_document::nodes::Image {
+            asset: "source".into(),
+        });
     let plan = Plan::compile(&doc).unwrap();
     let make = |h: Homography| {
         let inverse = h.inverse().unwrap();

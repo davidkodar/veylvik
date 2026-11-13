@@ -20,19 +20,20 @@ fn mcp_returns_inline_previews_without_mutating_or_writing_the_project() {
     fs::create_dir(&scratch.0).unwrap();
     let mut doc = blank(32, 18, Time::new(24, 1).unwrap()).unwrap();
     let source = doc.output;
-    doc.nodes.get_mut(&source).unwrap().operation = Operation::Gradient {
-        mode: GradientMode::Linear,
-        start_x: 0.0.into(),
-        start_y: 0.0.into(),
-        end_x: 31.0.into(),
-        end_y: 0.0.into(),
-    };
+    doc.nodes.get_mut(&source).unwrap().operation =
+        Operation::Gradient(veylvik_document::nodes::Gradient {
+            mode: GradientMode::Linear,
+            start_x: 0.0.into(),
+            start_y: 0.0.into(),
+            end_x: 31.0.into(),
+            end_y: 0.0.into(),
+        });
     let color = Node::new(
         "Color",
-        Operation::Colorize {
+        Operation::Colorize(veylvik_document::nodes::Colorize {
             low: [1.0, 0.0, 0.0, 0.5],
             high: [0.0, 0.0, 1.0, 0.25],
-        },
+        }),
         &[("image", source)],
     );
     doc.output = color.id;

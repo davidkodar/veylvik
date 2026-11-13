@@ -27,14 +27,14 @@ fn animated_mask_composition_matches_cli_and_mcp() {
     // as the animated procedural masks already present in the demo.
     let path = veylvik_document::Node::new(
         "vector mask",
-        veylvik_document::Operation::Path {
+        veylvik_document::Operation::Path(veylvik_document::nodes::Path {
             geometry: veylvik_document::vector::PathMask::default(),
-        },
+        }),
         &[],
     );
     let output = veylvik_document::Node::new(
         "vector composite",
-        veylvik_document::Operation::Merge {},
+        veylvik_document::Operation::Merge(veylvik_document::nodes::Merge {}),
         &[("background", document.output), ("foreground", path.id)],
     );
     document.nodes.insert(path.id, path);
@@ -42,21 +42,21 @@ fn animated_mask_composition_matches_cli_and_mcp() {
     document.nodes.insert(output.id, output);
     let map = veylvik_document::Node::new(
         "distortion map",
-        veylvik_document::Operation::FractalNoise {
+        veylvik_document::Operation::FractalNoise(veylvik_document::nodes::FractalNoise {
             seed: 42,
             scale: 32.0.into(),
             octaves: 3.0.into(),
             roughness: 0.5.into(),
             evolution: 0.25.into(),
-        },
+        }),
         &[],
     );
     let distortion = veylvik_document::Node::new(
         "distortion",
-        veylvik_document::Operation::Displace {
+        veylvik_document::Operation::Displace(veylvik_document::nodes::Displace {
             x: 8.5.into(),
             y: (-4.25).into(),
-        },
+        }),
         &[("image", document.output), ("map", map.id)],
     );
     document.nodes.insert(map.id, map);
@@ -64,9 +64,9 @@ fn animated_mask_composition_matches_cli_and_mcp() {
     document.nodes.insert(distortion.id, distortion);
     let mask = veylvik_document::Node::new(
         "procedural mask",
-        veylvik_document::Operation::ChannelMask {
+        veylvik_document::Operation::ChannelMask(veylvik_document::nodes::ChannelMask {
             channel: veylvik_document::MaskChannel::Luminance,
-        },
+        }),
         &[(
             "image",
             document
@@ -75,7 +75,9 @@ fn animated_mask_composition_matches_cli_and_mcp() {
                 .find(|n| {
                     matches!(
                         n.operation,
-                        veylvik_document::Operation::FractalNoise { .. }
+                        veylvik_document::Operation::FractalNoise(
+                            veylvik_document::nodes::FractalNoise { .. }
+                        )
                     )
                 })
                 .unwrap()
@@ -84,7 +86,7 @@ fn animated_mask_composition_matches_cli_and_mcp() {
     );
     let masked = veylvik_document::Node::new(
         "masked distortion",
-        veylvik_document::Operation::Mask {},
+        veylvik_document::Operation::Mask(veylvik_document::nodes::Mask {}),
         &[("image", document.output), ("mask", mask.id)],
     );
     document.nodes.insert(mask.id, mask);
@@ -92,10 +94,10 @@ fn animated_mask_composition_matches_cli_and_mcp() {
     document.nodes.insert(masked.id, masked);
     let colorized = veylvik_document::Node::new(
         "Color mapping",
-        veylvik_document::Operation::Colorize {
+        veylvik_document::Operation::Colorize(veylvik_document::nodes::Colorize {
             low: [0.01, 0.02, 0.1, 0.2],
             high: [1.5, 0.3, 0.02, 0.9],
-        },
+        }),
         &[("image", document.output)],
     );
     document.output = colorized.id;

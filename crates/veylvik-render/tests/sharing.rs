@@ -4,21 +4,21 @@ use veylvik_render::*;
 fn branches() -> (Composition, NodeId, NodeId) {
     let a = Node::new(
         "A",
-        Operation::Solid {
+        Operation::Solid(veylvik_document::nodes::Solid {
             color: [0.4, 0.2, 0.8, 0.5],
-        },
+        }),
         &[],
     );
     let b = Node::new("B", a.operation.clone(), &[]);
     let blur_a = Node::new(
         "soft A",
-        Operation::Blur { radius: 2.0.into() },
+        Operation::Blur(veylvik_document::nodes::Blur { radius: 2.0.into() }),
         &[("image", a.id)],
     );
     let blur_b = Node::new("soft B", blur_a.operation.clone(), &[("image", b.id)]);
     let output = Node::new(
         "merge",
-        Operation::Merge {},
+        Operation::Merge(veylvik_document::nodes::Merge {}),
         &[("background", blur_a.id), ("foreground", blur_b.id)],
     );
     let ids = (blur_a.id, blur_b.id);
@@ -55,14 +55,16 @@ fn equivalent_branches_share_passes_without_merging_distinct_inputs_or_curves() 
     doc.nodes.get_mut(&b).unwrap().position = Some(NodePosition { x: 800.0, y: 100.0 });
     assert_eq!(Plan::compile(&doc).unwrap().pass_count(), 4);
     let source = doc.nodes[&b].inputs["image"];
-    doc.nodes.get_mut(&source).unwrap().operation = Operation::Solid {
-        color: [0.5, 0.2, 0.8, 0.5],
-    };
+    doc.nodes.get_mut(&source).unwrap().operation =
+        Operation::Solid(veylvik_document::nodes::Solid {
+            color: [0.5, 0.2, 0.8, 0.5],
+        });
     assert_eq!(Plan::compile(&doc).unwrap().pass_count(), 7);
-    doc.nodes.get_mut(&source).unwrap().operation = Operation::Solid {
-        color: [0.4, 0.2, 0.8, 0.5],
-    };
-    doc.nodes.get_mut(&b).unwrap().operation = Operation::Blur {
+    doc.nodes.get_mut(&source).unwrap().operation =
+        Operation::Solid(veylvik_document::nodes::Solid {
+            color: [0.4, 0.2, 0.8, 0.5],
+        });
+    doc.nodes.get_mut(&b).unwrap().operation = Operation::Blur(veylvik_document::nodes::Blur {
         radius: Scalar::Linear {
             keys: vec![
                 Key {
@@ -77,7 +79,7 @@ fn equivalent_branches_share_passes_without_merging_distinct_inputs_or_curves() 
                 },
             ],
         },
-    };
+    });
     assert_eq!(Plan::compile(&doc).unwrap().pass_count(), 6);
     doc.nodes.get_mut(&a).unwrap().operation = doc.nodes[&b].operation.clone();
     assert_eq!(Plan::compile(&doc).unwrap().pass_count(), 4);
@@ -108,7 +110,8 @@ fn duplicated_branches_match_explicit_sharing_and_keep_output_immutable() {
         .unwrap()
         .inputs
         .insert("foreground".into(), b);
-    doc.nodes.get_mut(&b).unwrap().operation = Operation::Blur { radius: 3.0.into() };
+    doc.nodes.get_mut(&b).unwrap().operation =
+        Operation::Blur(veylvik_document::nodes::Blur { radius: 3.0.into() });
     let changed = renderer
         .render_gpu_cached(&Plan::compile(&doc).unwrap(), request, &inputs)
         .unwrap();

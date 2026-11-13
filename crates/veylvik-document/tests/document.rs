@@ -70,7 +70,11 @@ fn transaction_is_atomic_and_history_revisions_never_go_backwards() {
 #[test]
 fn disconnected_cycles_and_wrong_ports_are_rejected() {
     let mut composition = demo();
-    let mut a = Node::new("a", Operation::Exposure { stops: 0.0.into() }, &[]);
+    let mut a = Node::new(
+        "a",
+        Operation::Exposure(veylvik_document::nodes::Exposure { stops: 0.0.into() }),
+        &[],
+    );
     a.inputs.insert("image".into(), a.id);
     composition.nodes.insert(a.id, a);
     assert!(
@@ -154,7 +158,7 @@ fn out_of_range_animated_values_fail_before_commit() {
     let mut doc = Document::new(demo()).unwrap();
     let node = Node::new(
         "invalid",
-        Operation::Blur {
+        Operation::Blur(veylvik_document::nodes::Blur {
             radius: Scalar::Linear {
                 keys: vec![
                     Key {
@@ -169,7 +173,7 @@ fn out_of_range_animated_values_fail_before_commit() {
                     },
                 ],
             },
-        },
+        }),
         &[("image", doc.snapshot().output)],
     );
     assert!(
@@ -272,7 +276,7 @@ fn blank_compositions_and_frame_rate_edits_are_validated_and_atomic() {
     let composition = blank(1920, 1080, Time::new(24, 1).unwrap()).unwrap();
     assert_eq!(composition.nodes.len(), 1);
     assert!(
-        matches!(composition.nodes[&composition.output].operation, Operation::Solid { color } if color == [0.0;4])
+        matches!(composition.nodes[&composition.output].operation, Operation::Solid(veylvik_document::nodes::Solid { color }) if color == [0.0;4])
     );
     assert!(blank(0, 1080, Time::new(24, 1).unwrap()).is_err());
     assert!(blank(1920, 1080, Time::new(0, 1).unwrap()).is_err());

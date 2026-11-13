@@ -68,25 +68,29 @@ pub fn create(
     if !doc.nodes.contains_key(&source) || depends_on(doc, source, text) {
         return fail("Choose a foreground layer that does not already contain this layer");
     }
-    let path = Node::new("Foreground outline", Operation::Path { geometry }, &[]);
+    let path = Node::new(
+        "Foreground outline",
+        Operation::Path(crate::nodes::Path { geometry }),
+        &[],
+    );
     let grow = Node::new(
         "Foreground edge expansion",
-        Operation::Morphology { radius: 0.0.into() },
+        Operation::Morphology(crate::nodes::Morphology { radius: 0.0.into() }),
         &[("image", path.id)],
     );
     let blur = Node::new(
         "Foreground edge softness",
-        Operation::Blur { radius: 0.0.into() },
+        Operation::Blur(crate::nodes::Blur { radius: 0.0.into() }),
         &[("image", grow.id)],
     );
     let cutout = Node::new(
         "Foreground object",
-        Operation::Mask {},
+        Operation::Mask(crate::nodes::Mask {}),
         &[("image", source), ("mask", blur.id)],
     );
     let merge = Node::new(
         "Layer behind object",
-        Operation::Merge {},
+        Operation::Merge(crate::nodes::Merge {}),
         &[("background", doc.output), ("foreground", cutout.id)],
     );
     let setup = Setup {
@@ -110,7 +114,10 @@ pub fn create(
 
 /// Recognize an unambiguous editable setup after save/load, without hidden UI metadata.
 pub fn find(doc: &Composition, outline: NodeId) -> Option<Setup> {
-    if !matches!(doc.nodes.get(&outline)?.operation, Operation::Path { .. }) {
+    if !matches!(
+        doc.nodes.get(&outline)?.operation,
+        Operation::Path(crate::nodes::Path { .. })
+    ) {
         return None;
     }
     let child = |id, port: &str| {
@@ -126,19 +133,22 @@ pub fn find(doc: &Composition, outline: NodeId) -> Option<Setup> {
         }
     };
     let grow = child(outline, "image")?;
-    if !matches!(grow.operation, Operation::Morphology { .. }) {
+    if !matches!(
+        grow.operation,
+        Operation::Morphology(crate::nodes::Morphology { .. })
+    ) {
         return None;
     }
     let blur = child(grow.id, "image")?;
-    if !matches!(blur.operation, Operation::Blur { .. }) {
+    if !matches!(blur.operation, Operation::Blur(crate::nodes::Blur { .. })) {
         return None;
     }
     let cutout = child(blur.id, "mask")?;
-    if !matches!(cutout.operation, Operation::Mask {}) {
+    if !matches!(cutout.operation, Operation::Mask(crate::nodes::Mask {})) {
         return None;
     }
     let merge = child(cutout.id, "foreground")?;
-    if !matches!(merge.operation, Operation::Merge {}) {
+    if !matches!(merge.operation, Operation::Merge(crate::nodes::Merge {})) {
         return None;
     }
     Some(Setup {

@@ -69,7 +69,9 @@ pub fn automatic(doc: &Composition) -> Option<NodeId> {
         }
         if matches!(
             node.operation,
-            Operation::Merge {} | Operation::Blend { .. } | Operation::SurfaceBlend { .. }
+            Operation::Merge(crate::nodes::Merge {})
+                | Operation::Blend(crate::nodes::Blend { .. })
+                | Operation::SurfaceBlend(crate::nodes::SurfaceBlend { .. })
         ) {
             composite = true;
             id = *node.inputs.get("background")?;
@@ -81,10 +83,10 @@ pub fn automatic(doc: &Composition) -> Option<NodeId> {
                 && eligible.contains(&id)
                 && matches!(
                     node.operation,
-                    Operation::Solid { .. }
-                        | Operation::Gradient { .. }
-                        | Operation::Noise { .. }
-                        | Operation::FractalNoise { .. }
+                    Operation::Solid(crate::nodes::Solid { .. })
+                        | Operation::Gradient(crate::nodes::Gradient { .. })
+                        | Operation::Noise(crate::nodes::Noise { .. })
+                        | Operation::FractalNoise(crate::nodes::FractalNoise { .. })
                 ))
             .then_some(id);
         }

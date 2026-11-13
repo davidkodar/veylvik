@@ -19,7 +19,9 @@ impl super::Studio {
     pub(super) fn occlusion_controls(&mut self, ui: &mut egui::Ui) {
         if matches!(
             self.draft.operation,
-            Operation::Text { .. } | Operation::PlanarWarp { .. } | Operation::SurfaceBlend { .. }
+            Operation::Text(veylvik_document::nodes::Text { .. })
+                | Operation::PlanarWarp(veylvik_document::nodes::PlanarWarp { .. })
+                | Operation::SurfaceBlend(veylvik_document::nodes::SurfaceBlend { .. })
         ) {
             if ui
                 .button("Place behind object…")
@@ -31,8 +33,8 @@ impl super::Studio {
             {
                 self.occlusion.open = true;
                 self.occlusion.source = match &self.draft.operation {
-                    Operation::SurfaceBlend { .. } => self.draft.inputs.get("background").copied(),
-                    Operation::PlanarWarp { .. } => self.draft.inputs.get("track")
+                    Operation::SurfaceBlend(veylvik_document::nodes::SurfaceBlend { .. }) => self.draft.inputs.get("background").copied(),
+                    Operation::PlanarWarp(veylvik_document::nodes::PlanarWarp { .. }) => self.draft.inputs.get("track")
                         .and_then(|id| self.project.document.snapshot().nodes.get(id))
                         .and_then(|n| n.inputs.get("image")).copied(),
                     _ => None,
@@ -47,7 +49,7 @@ impl super::Studio {
                     self.project.preview = None;
                     self.request_preview();
                 }
-                if ui.add_enabled(!matches!(&self.draft.operation,Operation::Path { geometry } if !geometry.keys.is_empty()),egui::Button::new("Redraw over source")).on_disabled_hover_text("Disable shape animation before redrawing the outline").clicked() && self.apply_draft() {
+                if ui.add_enabled(!matches!(&self.draft.operation,Operation::Path(veylvik_document::nodes::Path { geometry }) if !geometry.keys.is_empty()),egui::Button::new("Redraw over source")).on_disabled_hover_text("Disable shape animation before redrawing the outline").clicked() && self.apply_draft() {
                     self.begin_occlusion(setup.source, true);
                 }
             });
@@ -112,8 +114,8 @@ impl super::Studio {
             let doc=self.project.document.snapshot();
             let connected=occlusion::depends_on(doc,doc.output,self.draft.id);
             let independent = occlusion::independent_sources(doc, self.draft.id);
-            let mut candidates:Vec<_>=doc.nodes.values().filter(|n|independent.contains(&n.id) && !matches!(n.operation,Operation::Path {..}|Operation::Text {..}|Operation::Ellipse {..}|Operation::ChannelMask {..}|Operation::CombineMask {..})).collect();
-            candidates.sort_by_key(|n|(!matches!(n.operation,Operation::Image {..}),n.label.clone()));
+            let mut candidates:Vec<_>=doc.nodes.values().filter(|n|independent.contains(&n.id) && !matches!(n.operation,Operation::Path(veylvik_document::nodes::Path {..})|Operation::Text(veylvik_document::nodes::Text {..})|Operation::Ellipse(veylvik_document::nodes::Ellipse {..})|Operation::ChannelMask(veylvik_document::nodes::ChannelMask {..})|Operation::CombineMask(veylvik_document::nodes::CombineMask {..}))).collect();
+            candidates.sort_by_key(|n|(!matches!(n.operation,Operation::Image(veylvik_document::nodes::Image {..})),n.label.clone()));
             egui::ComboBox::from_id_salt("occlusion-source").width(340.0).selected_text(self.occlusion.source.and_then(|id|doc.nodes.get(&id)).map_or("Choose foreground image/layer…",|n|n.label.as_str())).show_ui(ui,|ui| {
                 for node in &candidates {ui.selectable_value(&mut self.occlusion.source,Some(node.id),format!("{} · {}",node.label,node.operation.descriptor().label));}
             });
@@ -176,7 +178,7 @@ impl super::Studio {
         let result = (|| -> Result<NodeId, Box<dyn std::error::Error>> {
             if pending.redraw {
                 let mut node = self.project.document.snapshot().nodes[&pending.owner].clone();
-                node.operation = Operation::Path { geometry };
+                node.operation = Operation::Path(veylvik_document::nodes::Path { geometry });
                 self.project.apply(&[Command::Put {
                     node: Box::new(node),
                 }])?;

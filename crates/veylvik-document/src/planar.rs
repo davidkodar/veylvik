@@ -66,9 +66,9 @@ pub fn save(
     }
     let node = crate::Node::new(
         "Planar track",
-        crate::Operation::PlanarTrack {
+        crate::Operation::PlanarTrack(crate::nodes::PlanarTrack {
             data: Box::new(data),
-        },
+        }),
         &[("image", source)],
     );
     let id = node.id;

@@ -173,9 +173,9 @@ mod tests {
     fn image(doc: &mut Composition, asset: &str) -> NodeId {
         let node = Node::new(
             "Source",
-            Operation::Image {
+            Operation::Image(veylvik_document::nodes::Image {
                 asset: asset.into(),
-            },
+            }),
             &[],
         );
         let id = node.id;
@@ -204,7 +204,7 @@ mod tests {
         assert_eq!(serde_json::to_value(&doc).unwrap(), original);
         let mut copied = Composition::load(&report.project).unwrap();
         let asset = |id| match &copied.nodes[&id].operation {
-            Operation::Image { asset } => asset.clone(),
+            Operation::Image(veylvik_document::nodes::Image { asset }) => asset.clone(),
             _ => unreachable!(),
         };
         assert_eq!(asset(png), asset(alias));

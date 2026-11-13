@@ -25,15 +25,20 @@ fn mask_modes_match_soft_coverage_and_preserve_input_order_and_cache_identity() 
     inputs.insert("b", Arc::new(Image::new(width, height, b.clone()).unwrap()));
     let mut doc = blank(width, height, Time::new(24, 1).unwrap()).unwrap();
     let first = doc.output;
-    doc.nodes.get_mut(&first).unwrap().operation = Operation::Image { asset: "a".into() };
-    let second = Node::new("B", Operation::Image { asset: "b".into() }, &[]);
+    doc.nodes.get_mut(&first).unwrap().operation =
+        Operation::Image(veylvik_document::nodes::Image { asset: "a".into() });
+    let second = Node::new(
+        "B",
+        Operation::Image(veylvik_document::nodes::Image { asset: "b".into() }),
+        &[],
+    );
     let other = second.id;
     doc.nodes.insert(other, second);
     let combine = Node::new(
         "Combine",
-        Operation::CombineMask {
+        Operation::CombineMask(veylvik_document::nodes::CombineMask {
             mode: MaskMode::Union,
-        },
+        }),
         &[("mask", first), ("other", other)],
     );
     doc.output = combine.id;
@@ -42,7 +47,7 @@ fn mask_modes_match_soft_coverage_and_preserve_input_order_and_cache_identity() 
     for reverse in [false, true] {
         for mode in MaskMode::ALL {
             let node = doc.nodes.get_mut(&doc.output).unwrap();
-            node.operation = Operation::CombineMask { mode };
+            node.operation = Operation::CombineMask(veylvik_document::nodes::CombineMask { mode });
             node.inputs
                 .insert("mask".into(), if reverse { other } else { first });
             node.inputs
@@ -90,39 +95,39 @@ fn mask_modes_match_soft_coverage_and_preserve_input_order_and_cache_identity() 
     // must yield exactly the eight surrounding pixels, including after tinting.
     let source = Node::new(
         "Point",
-        Operation::Ellipse {
+        Operation::Ellipse(veylvik_document::nodes::Ellipse {
             x: 8.0.into(),
             y: 4.0.into(),
             radius_x: 0.5.into(),
             radius_y: 0.5.into(),
             feather: 1.0.into(),
-        },
+        }),
         &[],
     );
     let source_id = source.id;
     doc.nodes.insert(source.id, source);
     let grown = Node::new(
         "Grow",
-        Operation::Morphology { radius: 1.0.into() },
+        Operation::Morphology(veylvik_document::nodes::Morphology { radius: 1.0.into() }),
         &[("image", source_id)],
     );
     let grown_id = grown.id;
     doc.nodes.insert(grown.id, grown);
     let outline = Node::new(
         "Outline",
-        Operation::CombineMask {
+        Operation::CombineMask(veylvik_document::nodes::CombineMask {
             mode: MaskMode::Subtract,
-        },
+        }),
         &[("mask", grown_id), ("other", source_id)],
     );
     let outline_id = outline.id;
     doc.nodes.insert(outline.id, outline);
     let color = Node::new(
         "Tint",
-        Operation::Colorize {
+        Operation::Colorize(veylvik_document::nodes::Colorize {
             low: [0.0, 0.0, 0.0, 1.0],
             high: [4.0, 0.0, 2.0, 0.5],
-        },
+        }),
         &[("image", outline_id)],
     );
     doc.output = color.id;

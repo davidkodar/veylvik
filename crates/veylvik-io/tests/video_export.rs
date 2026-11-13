@@ -120,9 +120,10 @@ fn gpu_planes_and_nvenc_mp4_are_correct_and_cancellation_is_atomic() {
     );
     drop(frame);
     // White opaque composition catches wrong transfer/range in actual MP4 too.
-    doc.nodes.get_mut(&doc.output).unwrap().operation = Operation::Solid {
-        color: [1., 1., 1., 1.],
-    };
+    doc.nodes.get_mut(&doc.output).unwrap().operation =
+        Operation::Solid(veylvik_document::nodes::Solid {
+            color: [1., 1., 1., 1.],
+        });
     for codec in [Codec::H264, Codec::Hevc10] {
         let mut settings = Settings::for_document(&doc);
         settings.codec = codec;

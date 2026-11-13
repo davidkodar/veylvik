@@ -7,9 +7,10 @@ fn effect_recipes_match_impulse_glow_and_outline_references() {
     let renderer = Renderer::new().unwrap();
     let mut doc = blank(25, 19, Time::new(24, 1).unwrap()).unwrap();
     let input = doc.output;
-    doc.nodes.get_mut(&input).unwrap().operation = Operation::Image {
-        asset: "point".into(),
-    };
+    doc.nodes.get_mut(&input).unwrap().operation =
+        Operation::Image(veylvik_document::nodes::Image {
+            asset: "point".into(),
+        });
     let color = [0.25, 0.5, 0.75, 1.0];
     let mut pixels = vec![[0.0; 4]; 25 * 19];
     pixels[9 * 25 + 12] = color;

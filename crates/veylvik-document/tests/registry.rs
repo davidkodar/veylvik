@@ -73,9 +73,9 @@ fn scalar_registry_bounds_drive_document_validation() {
 fn empty_and_nul_assets_are_rejected() {
     for asset in ["", "   ", "file\0.png"] {
         assert!(
-            Operation::Image {
+            Operation::Image(veylvik_document::nodes::Image {
                 asset: asset.into()
-            }
+            })
             .validate()
             .is_err()
         );
@@ -95,11 +95,11 @@ fn every_operation_rejects_unknown_fields_including_parameterless_nodes() {
     }
     // Existing serialized files retain the same representation.
     assert_eq!(
-        serde_json::to_value(Operation::Merge {}).unwrap(),
+        serde_json::to_value(Operation::Merge(veylvik_document::nodes::Merge {})).unwrap(),
         serde_json::json!({"type":"merge"})
     );
     assert_eq!(
-        serde_json::to_value(Operation::Mask {}).unwrap(),
+        serde_json::to_value(Operation::Mask(veylvik_document::nodes::Mask {})).unwrap(),
         serde_json::json!({"type":"mask"})
     );
 }

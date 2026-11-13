@@ -56,7 +56,7 @@ impl Editor {
                 );
             }
         }
-        let key = if let Operation::Text {
+        let key = if let Operation::Text(veylvik_document::nodes::Text {
             content,
             font,
             alignment,
@@ -66,7 +66,7 @@ impl Editor {
             features,
             typography,
             ..
-        } = &operation
+        }) = &operation
         {
             let values: Vec<_> = operation
                 .descriptor()
@@ -99,7 +99,9 @@ impl Editor {
         };
         if self.cached.as_ref().is_none_or(|(k, _)| *k != key) {
             let mut reference = operation.clone();
-            if let Operation::Text { typography, .. } = &mut reference {
+            if let Operation::Text(veylvik_document::nodes::Text { typography, .. }) =
+                &mut reference
+            {
                 typography.motion = veylvik_document::text::TextMotion::None;
             }
             match veylvik_text::outline(&reference, time) {
@@ -169,11 +171,11 @@ impl Editor {
         let just_opened = self.focus;
         let mut changed = false;
         if self.active {
-            let Operation::Text {
+            let Operation::Text(veylvik_document::nodes::Text {
                 content,
                 typography,
                 ..
-            } = operation
+            }) = operation
             else {
                 return false;
             };
@@ -248,7 +250,7 @@ impl Editor {
                 self.active = false;
             }
         } else if self.layout
-            && let Operation::Text {
+            && let Operation::Text(veylvik_document::nodes::Text {
                 wrap_width,
                 box_height,
                 x,
@@ -258,7 +260,7 @@ impl Editor {
                 scale_x,
                 scale_y,
                 ..
-            } = operation
+            }) = operation
         {
             let w = wrap_width.at(time).unwrap_or(0.0);
             let h = box_height.at(time).unwrap_or(0.0);
@@ -330,12 +332,14 @@ pub fn pick(doc: &veylvik_document::Composition, time: Time, point: [f32; 2]) ->
     doc.nodes
         .values()
         .filter(|n| {
-            matches!(n.operation, Operation::Text { .. })
-                && crate::editable_text::handles_in_scene(doc, n.id)
+            matches!(
+                n.operation,
+                Operation::Text(veylvik_document::nodes::Text { .. })
+            ) && crate::editable_text::handles_in_scene(doc, n.id)
         })
         .filter_map(|node| {
             let mut op = node.operation.clone();
-            if let Operation::Text { typography, .. } = &mut op {
+            if let Operation::Text(veylvik_document::nodes::Text { typography, .. }) = &mut op {
                 typography.motion = veylvik_document::text::TextMotion::None;
             }
             let path = veylvik_text::outline(&op, time).ok()?;

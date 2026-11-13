@@ -111,7 +111,11 @@ fn resolution_mapping_scales_base_geometry_and_every_shape_key() {
     geometry
         .set_key(Time::new(1, 1).unwrap(), &shifted(first, 50.0))
         .unwrap();
-    let node = Node::new("Mask", Operation::Path { geometry }, &[]);
+    let node = Node::new(
+        "Mask",
+        Operation::Path(veylvik_document::nodes::Path { geometry }),
+        &[],
+    );
     let id = node.id;
     let mut nodes = [(id, node)].into();
     map_graph(
@@ -122,7 +126,7 @@ fn resolution_mapping_scales_base_geometry_and_every_shape_key() {
         Sizing::Fit,
     )
     .unwrap();
-    let Operation::Path { geometry } = &nodes[&id].operation else {
+    let Operation::Path(veylvik_document::nodes::Path { geometry }) = &nodes[&id].operation else {
         panic!()
     };
     assert_eq!(

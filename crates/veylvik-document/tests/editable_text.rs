@@ -8,11 +8,16 @@ fn editable_titles_keep_effects_and_background_when_words_change() {
     let text = scene
         .nodes
         .values()
-        .find(|n| matches!(n.operation, Operation::Text { .. }))
+        .find(|n| {
+            matches!(
+                n.operation,
+                Operation::Text(veylvik_document::nodes::Text { .. })
+            )
+        })
         .unwrap();
     let mut owner = Document::new(scene.clone()).unwrap();
     let mut node = text.clone();
-    if let Operation::Text { content, .. } = &mut node.operation {
+    if let Operation::Text(veylvik_document::nodes::Text { content, .. }) = &mut node.operation {
         *content = "Veylvik Å".into();
     }
     owner
@@ -40,7 +45,12 @@ fn library_splice_and_image_fill_preserve_consumers_and_reject_cycles_atomically
     let text = scene
         .nodes
         .values()
-        .find(|n| matches!(n.operation, Operation::Text { .. }))
+        .find(|n| {
+            matches!(
+                n.operation,
+                Operation::Text(veylvik_document::nodes::Text { .. })
+            )
+        })
         .unwrap()
         .id;
     let effect = builtin::build("neon_outline").unwrap();
@@ -83,7 +93,7 @@ fn text_font_and_content_validation_is_bounded() {
     let mut operation: Operation =
         serde_json::from_value(registry::TEXT.default_operation()).unwrap();
     operation.validate().unwrap();
-    if let Operation::Text { content, .. } = &mut operation {
+    if let Operation::Text(veylvik_document::nodes::Text { content, .. }) = &mut operation {
         *content = "x".repeat(4097);
     }
     assert!(operation.validate().is_err());
@@ -124,10 +134,10 @@ fn text_style_replaces_material_without_stacking_and_keeps_connections_and_histo
     );
     assert!(matches!(
         owner.snapshot().nodes[&material].operation,
-        Operation::Material {
+        Operation::Material(veylvik_document::nodes::Material {
             kind: MaterialKind::Silver,
             ..
-        }
+        })
     ));
     assert_eq!(
         serde_json::to_value(
@@ -148,7 +158,12 @@ fn text_style_replaces_material_without_stacking_and_keeps_connections_and_histo
         .snapshot()
         .nodes
         .values()
-        .find(|n| matches!(n.operation, Operation::Solid { .. }))
+        .find(|n| {
+            matches!(
+                n.operation,
+                Operation::Solid(veylvik_document::nodes::Solid { .. })
+            )
+        })
         .unwrap()
         .id;
     let (_, commands) = presets::fill_layer(owner.snapshot(), id, image).unwrap();
@@ -162,10 +177,10 @@ fn text_style_replaces_material_without_stacking_and_keeps_connections_and_histo
     assert_eq!(owner.snapshot().nodes.len(), count + 1);
     assert!(matches!(
         owner.snapshot().nodes[&material].operation,
-        Operation::Material {
+        Operation::Material(veylvik_document::nodes::Material {
             kind: MaterialKind::Bronze,
             ..
-        }
+        })
     ));
 }
 
@@ -176,7 +191,12 @@ fn switching_between_material_and_image_fill_is_atomic_and_reuses_the_fill() {
     let image = scene
         .nodes
         .values()
-        .find(|n| matches!(n.operation, Operation::Solid { .. }))
+        .find(|n| {
+            matches!(
+                n.operation,
+                Operation::Solid(veylvik_document::nodes::Solid { .. })
+            )
+        })
         .unwrap()
         .id;
     let title = Node::new(
@@ -280,13 +300,18 @@ fn saved_title_styles_preserve_words_position_and_are_undoable() {
     let id = source
         .nodes
         .values()
-        .find(|n| matches!(n.operation, Operation::Text { .. }))
+        .find(|n| {
+            matches!(
+                n.operation,
+                Operation::Text(veylvik_document::nodes::Text { .. })
+            )
+        })
         .unwrap()
         .id;
     let style = presets::title_style::TitleStyle::capture(&source, id, "My gold title").unwrap();
     let mut doc = blank(1920, 1080, Time::new(24, 1).unwrap()).unwrap();
     let mut op: Operation = serde_json::from_value(registry::TEXT.default_operation()).unwrap();
-    if let Operation::Text { content, x, .. } = &mut op {
+    if let Operation::Text(veylvik_document::nodes::Text { content, x, .. }) = &mut op {
         *content = "Keep my wording".into();
         *x = 320.0.into();
     }
@@ -297,7 +322,9 @@ fn saved_title_styles_preserve_words_position_and_are_undoable() {
     let commands = style.apply(&doc, id).unwrap();
     let mut owner = Document::new(doc.clone()).unwrap();
     owner.apply(0, &commands).unwrap();
-    if let Operation::Text { content, x, .. } = &owner.snapshot().nodes[&id].operation {
+    if let Operation::Text(veylvik_document::nodes::Text { content, x, .. }) =
+        &owner.snapshot().nodes[&id].operation
+    {
         assert_eq!(content, "Keep my wording");
         assert_eq!(x.at(Time::new(0, 1).unwrap()).unwrap(), 320.0);
     } else {
@@ -345,11 +372,11 @@ fn character_styles_track_unicode_edits_and_reject_overlapping_ranges() {
 fn parameter_commands_preserve_character_ranges_when_replacing_words() {
     let mut doc = blank(320, 180, Time::new(24, 1).unwrap()).unwrap();
     let mut op: Operation = serde_json::from_value(registry::TEXT.default_operation()).unwrap();
-    if let Operation::Text {
+    if let Operation::Text(veylvik_document::nodes::Text {
         content,
         typography,
         ..
-    } = &mut op
+    }) = &mut op
     {
         *content = "Long title".into();
         typography.spans.push(text::TextSpan {
@@ -376,11 +403,11 @@ fn parameter_commands_preserve_character_ranges_when_replacing_words() {
         .unwrap();
     owner.snapshot().validate().unwrap();
     owner.undo(1).unwrap();
-    if let Operation::Text {
+    if let Operation::Text(veylvik_document::nodes::Text {
         content,
         typography,
         ..
-    } = &owner.snapshot().nodes[&id].operation
+    }) = &owner.snapshot().nodes[&id].operation
     {
         assert_eq!(content, "Long title");
         assert_eq!(typography.spans[0].start, 5);

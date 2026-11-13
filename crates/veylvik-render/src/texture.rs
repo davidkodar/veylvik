@@ -418,9 +418,9 @@ mod tests {
         // A converted frame is directly consumable by the graph, without CPU uploads.
         let node = veylvik_document::Node::new(
             "texture",
-            veylvik_document::Operation::Image {
+            veylvik_document::Operation::Image(veylvik_document::nodes::Image {
                 asset: "texture".into(),
-            },
+            }),
             &[],
         );
         let mut document = veylvik_document::demo();

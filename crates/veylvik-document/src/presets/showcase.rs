@@ -100,14 +100,14 @@ fn polygon(commands: &mut Vec<PathCommand>, points: &[[f32; 2]]) {
 fn title_text(word: &str) -> Operation {
     let mut operation: Operation =
         serde_json::from_value(crate::registry::TEXT.default_operation()).unwrap();
-    if let Operation::Text {
+    if let Operation::Text(crate::nodes::Text {
         content,
         size,
         x,
         y,
         tracking,
         ..
-    } = &mut operation
+    }) = &mut operation
     {
         *content = word.into();
         *size = 200.0.into();
@@ -155,9 +155,9 @@ pub fn build(id: &str) -> Result<Scene> {
     let background = add(
         &mut doc,
         "Midnight background",
-        Operation::Solid {
+        Operation::Solid(crate::nodes::Solid {
             color: [0.002, 0.004, 0.012, 1.0],
-        },
+        }),
         &[],
     );
     doc.nodes.get_mut(&background).unwrap().scene_background = true;
@@ -182,13 +182,13 @@ pub fn build(id: &str) -> Result<Scene> {
             &mut commands,
             &[[480.0, 235.0], [565.0, 365.0], [395.0, 365.0]],
         );
-        Operation::Path {
+        Operation::Path(crate::nodes::Path {
             geometry: PathMask {
                 keys: vec![],
                 fill_rule: FillRule::NonZero,
                 commands,
             },
-        }
+        })
     } else {
         title_text(if id == "neon_outline" { "NEON" } else { "FLOW" })
     };
@@ -196,13 +196,13 @@ pub fn build(id: &str) -> Result<Scene> {
     let ramp = add(
         &mut doc,
         "Vertical palette ramp",
-        Operation::Gradient {
+        Operation::Gradient(crate::nodes::Gradient {
             mode: crate::GradientMode::Linear,
             start_x: 0.0.into(),
             start_y: 180.0.into(),
             end_x: 0.0.into(),
             end_y: 360.0.into(),
-        },
+        }),
         &[],
     );
     let (low, high) = if super::builtin::category(id) == "Particles" {
@@ -217,19 +217,19 @@ pub fn build(id: &str) -> Result<Scene> {
     let ink = add(
         &mut doc,
         "Artwork palette",
-        Operation::Colorize { low, high },
+        Operation::Colorize(crate::nodes::Colorize { low, high }),
         &[("image", ramp)],
     );
     let art = add(
         &mut doc,
         "Color inside artwork",
-        Operation::Mask {},
+        Operation::Mask(crate::nodes::Mask {}),
         &[("image", ink), ("mask", shape)],
     );
     let art = add(
         &mut doc,
         "Artwork motion",
-        Operation::Affine {
+        Operation::Affine(crate::nodes::Affine {
             x: 0.0.into(),
             y: cycle(9.0, -9.0),
             scale_x: cycle(0.94, 1.04),
@@ -237,16 +237,16 @@ pub fn build(id: &str) -> Result<Scene> {
             rotation: if emblem { cycle(-6.0, 6.0) } else { 0.0.into() },
             pivot_x: 480.0.into(),
             pivot_y: 270.0.into(),
-        },
+        }),
         &[("image", art)],
     );
     let art = if id == "neon_outline" {
         add(
             &mut doc,
             "Title reveal",
-            Operation::Exposure {
+            Operation::Exposure(crate::nodes::Exposure {
                 stops: cycle(-3.0, 1.0),
-            },
+            }),
             &[("image", art)],
         )
     } else {
@@ -255,7 +255,7 @@ pub fn build(id: &str) -> Result<Scene> {
     let before = add(
         &mut doc,
         "Before · artwork on midnight",
-        Operation::Merge {},
+        Operation::Merge(crate::nodes::Merge {}),
         &[("background", background), ("foreground", art)],
     );
     doc.output = before;
@@ -287,7 +287,7 @@ mod tests {
             assert!(
                 doc.nodes
                     .values()
-                    .all(|n| !matches!(n.operation, Operation::Image { .. }))
+                    .all(|n| !matches!(n.operation, Operation::Image(crate::nodes::Image { .. })))
             );
             let group = doc
                 .groups
