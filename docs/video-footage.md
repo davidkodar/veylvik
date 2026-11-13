@@ -102,15 +102,19 @@ selection for integrations and diagnostics. Hardware-required mode returns an
 error rather than silently falling back.
 
 Decoded colour is converted explicitly to scene-linear Rec.709 using source transfer
-and primary tags, then premultiplied by alpha exactly once. SDR and PQ transfer
-functions are supported; PQ uses a 100-nit reference without tone mapping.
+and primary tags, then premultiplied by alpha exactly once. SDR, PQ and HLG transfer
+functions are supported. PQ uses a 100-nit reference without tone mapping, so its
+203-nit reference white lands at 2.03. HLG (iPhone and broadcast HDR) is decoded as
+scene light without the display's system gamma, scaled so its reference white
+(75% signal) also lands at 2.03, so PQ and HLG footage match in one composition;
+HLG peak signal reaches about 7.7.
 Incomplete colour tags are reported in the inspector. Defaults assume Rec.709
 primaries, sRGB transfer for RGB video or BT.709 transfer for YUV video, with
 BT.709 matrix for HD YUV and BT.601 matrix for SD YUV. Untagged RGB/JPEG-range video
 uses full range; other untagged YUV uses limited range.
 
 Alpha WebM currently requires conversion to a PNG/EXR sequence or RGBA FFV1.
-Unsupported primaries, HLG, constant-luminance BT.2020, anamorphic or interlaced
+Unsupported primaries, constant-luminance BT.2020, anamorphic or interlaced
 video produce explicit import errors. Convert those sources to supported footage
 or linear EXR first. Frame dimensions, source memory and index size are bounded:
 individual decoded frames use the existing 128 MiB image limit, manifests/indexes

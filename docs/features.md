@@ -307,7 +307,7 @@ Opened with **Add → Effect library…**; searchable by name, description or ca
 - NVIDIA direct CUDA-to-Vulkan GPU copy (matching device UUIDs); otherwise host-staged planes.
 - Supports NV12 and 10-bit P010 4:2:0 on the hardware path.
 - Vulkan does chroma reconstruction, range/matrix conversion, rotation, transfer decoding and primaries conversion.
-- Colour: explicit conversion to scene-linear Rec.709; SDR and PQ transfer (PQ at 100-nit reference, no tone mapping); incomplete tags reported; documented defaults for untagged sources.
+- Colour: explicit conversion to scene-linear Rec.709; SDR, PQ and HLG transfer (PQ at 100-nit reference, no tone mapping; HLG as scene light with reference white matched to PQ's at 2.03, so iPhone HDR imports directly); incomplete tags reported; documented defaults for untagged sources.
 - Variable frame rate and reordered frames handled via packet timestamps.
 - Rejected with explicit errors: alpha WebM, HLG, constant-luminance BT.2020, unsupported primaries, anamorphic, interlaced.
 - Decode at placed size (never larger than source), area-averaged in linear light; 256 MiB per-frame decode budget.

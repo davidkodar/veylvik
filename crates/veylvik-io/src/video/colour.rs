@@ -27,6 +27,20 @@ fn xyz(primaries: [[f64; 2]; 3]) -> [[f64; 3]; 3] {
     );
     std::array::from_fn(|r| std::array::from_fn(|c| matrix[r][c] * scale[c]))
 }
+/// BT.2100 HLG inverse OETF: signal 0..1 to normalised scene light 0..1.
+fn hlg(v: f64) -> f64 {
+    const A: f64 = 0.178_832_77;
+    const B: f64 = 1.0 - 4.0 * A;
+    const C: f64 = 0.559_910_73;
+    if v <= 0.5 {
+        v * v / 3.0
+    } else {
+        (((v - C) / A).exp() + B) / 12.0
+    }
+}
+/// Puts HLG reference white (75% signal) at 2.03, where PQ's 203-nit reference white lands on
+/// Veylvik's 100-nit scale, so HLG and PQ footage match in one composition.
+const HLG_SCALE: f64 = 2.03 / 0.264_962_56;
 impl Transform {
     pub fn new(primaries: u32, transfer: u32) -> Result<Self> {
         let rec709 = [[0.64, 0.33], [0.30, 0.60], [0.15, 0.06]];
@@ -37,9 +51,6 @@ impl Transform {
             9 => [[0.708, 0.292], [0.170, 0.797], [0.131, 0.046]],
             _ => return Err("Unsupported video colour primaries; convert to Rec.709 first".into()),
         };
-        if transfer == 18 {
-            return Err("HLG footage needs an explicit display transform; convert to linear EXR or SDR first".into());
-        }
         let input = xyz(source);
         let output = inverse(xyz(rec709));
         let matrix = std::array::from_fn(|r| {
@@ -66,6 +77,9 @@ impl Transform {
                             ((v + 0.1115) / 1.1115).powf(1.0 / 0.45)
                         }
                     }
+                    // HLG (BT.2100) as scene light, without the display OOTF, scaled so
+                    // reference white (75% signal) matches PQ's 203-nit reference (2.03).
+                    18 => hlg(v) * HLG_SCALE,
                     16 => {
                         let power = v.powf(1.0 / (2523.0 / 32.0));
                         ((power - 3424.0 / 4096.0).max(0.0)
@@ -129,6 +143,14 @@ mod tests {
         assert!((p[3] - 0.5).abs() < 0.0001);
         let pq = Transform::new(9, 16).unwrap();
         assert!((pq.lut[32768] - 0.9225).abs() < 0.001);
+        // HLG: reference white (75%) at 2.03 like PQ's 203 nits, mid signal on the square-law
+        // segment, peak signal at the scale itself.
+        let hlg = Transform::new(9, 18).unwrap();
+        let at = |v: f64| hlg.lut[(v * 65535.0).round() as usize];
+        assert!((at(0.75) - 2.03).abs() < 0.002, "{}", at(0.75));
+        assert!((at(0.5) - 0.25 / 3.0 * HLG_SCALE as f32).abs() < 0.002);
+        assert!((at(1.0) - HLG_SCALE as f32).abs() < 0.01);
+        assert!(hlg.lut.windows(2).all(|p| p[0] <= p[1]), "monotonic");
     }
 }
 

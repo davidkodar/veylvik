@@ -335,10 +335,10 @@ impl Video {
                 } else {
                     "colour-managed to linear Rec.709"
                 },
-                if matches!(transfer, 16 | 18) {
-                    " · HDR, 100 nit reference"
-                } else {
-                    ""
+                match transfer {
+                    16 => " · HDR (PQ), 100 nit reference",
+                    18 => " · HDR (HLG), reference white at 2.03",
+                    _ => "",
                 }
             ),
         };
