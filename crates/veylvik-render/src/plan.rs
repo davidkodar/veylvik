@@ -1,7 +1,7 @@
 //! Compile authored nodes to explicit passes, then assign image lifetimes.
 use crate::{Result, error};
 use std::collections::{BTreeMap, BTreeSet};
-use veylvik_document::{CompiledScalar, Composition, Node, NodeId, Operation, Scalar};
+use veylvik_document::{CompiledScalar, Composition, Node, NodeId, Operation};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -236,102 +236,51 @@ impl Plan {
                 outputs.insert(node.id, *value);
                 continue;
             }
-            let kernel = match &node.operation {
-                Operation::Solid(veylvik_document::nodes::Solid { .. }) => Kernel::Solid,
-                Operation::Fire(veylvik_document::nodes::Fire { .. }) => Kernel::Fire,
-                Operation::Atmosphere(veylvik_document::nodes::Atmosphere { .. }) => {
-                    Kernel::Atmosphere
+            let kernel = match veylvik_document::each_node!(&node.operation, n => crate::nodes::RenderNode::passes(n))
+            {
+                crate::nodes::Passes::One(kernel) => kernel,
+                crate::nodes::Passes::Separable(first, second) => {
+                    let intermediate = passes.len();
+                    passes.push(Pass {
+                        node: index,
+                        kernel: first,
+                        inputs,
+                        output: intermediate,
+                    });
+                    inputs = [Input::Value(intermediate), Input::Empty];
+                    second
                 }
-                Operation::Material(veylvik_document::nodes::Material { .. }) => Kernel::Material,
-                Operation::Patina(veylvik_document::nodes::Patina { .. }) => Kernel::Patina,
-                Operation::SunGlints(veylvik_document::nodes::SunGlints { .. }) => {
-                    Kernel::SunGlints
-                }
-                Operation::Glass(veylvik_document::nodes::Glass { .. }) => Kernel::Glass,
-                Operation::SurfaceReflection(veylvik_document::nodes::SurfaceReflection {
-                    ..
-                }) => Kernel::SurfaceReflection,
-                Operation::MetallicShine(veylvik_document::nodes::MetallicShine { .. }) => {
-                    Kernel::MetallicShine
-                }
-                Operation::FractalNoise(veylvik_document::nodes::FractalNoise { .. }) => {
-                    Kernel::FractalNoise
-                }
-                Operation::Noise(veylvik_document::nodes::Noise { .. }) => Kernel::Noise,
-                Operation::Exposure(veylvik_document::nodes::Exposure { .. }) => Kernel::Exposure,
-                Operation::Displace(veylvik_document::nodes::Displace { .. }) => Kernel::Displace,
-                Operation::Transform(veylvik_document::nodes::Transform { .. }) => {
-                    Kernel::Transform
-                }
-                Operation::Merge(veylvik_document::nodes::Merge {}) => Kernel::Merge,
-                Operation::Blend(veylvik_document::nodes::Blend { .. }) => Kernel::Blend,
-                Operation::SurfaceBlend(veylvik_document::nodes::SurfaceBlend { .. }) => {
-                    Kernel::SurfaceBlend
-                }
-                Operation::Affine(veylvik_document::nodes::Affine { .. }) => Kernel::Affine,
-                Operation::PlanarWarp(veylvik_document::nodes::PlanarWarp { .. }) => {
-                    Kernel::PlanarWarp
-                }
-                Operation::PlanarTrack(veylvik_document::nodes::PlanarTrack { .. }) => {
-                    unreachable!("track aliases its source")
-                }
-                Operation::Ellipse(veylvik_document::nodes::Ellipse { .. }) => Kernel::Ellipse,
-                Operation::ChannelMask(veylvik_document::nodes::ChannelMask { .. }) => {
-                    Kernel::ChannelMask
-                }
-                Operation::Colorize(veylvik_document::nodes::Colorize { .. }) => Kernel::Colorize,
-                Operation::Gradient(veylvik_document::nodes::Gradient { .. }) => Kernel::Gradient,
-                Operation::CombineMask(veylvik_document::nodes::CombineMask { .. }) => {
-                    Kernel::CombineMask
-                }
-                Operation::Mask(veylvik_document::nodes::Mask {}) => Kernel::Mask,
-                Operation::Path(veylvik_document::nodes::Path { .. })
-                | Operation::Text(veylvik_document::nodes::Text { .. }) => {
-                    if composition.width > crate::MAX_VECTOR_DIMENSION
-                        || composition.height > crate::MAX_VECTOR_DIMENSION
-                    {
-                        return Err(error("vector mask dimensions exceed 4096"));
+                crate::nodes::Passes::Special => match &node.operation {
+                    Operation::PlanarTrack(veylvik_document::nodes::PlanarTrack { .. }) => {
+                        unreachable!("track aliases its source")
                     }
-                    inputs[0] = Input::Vector(index);
-                    if matches!(
-                        node.operation,
-                        Operation::Text(veylvik_document::nodes::Text { .. })
-                    ) {
-                        Kernel::Text
-                    } else {
+                    Operation::Path(veylvik_document::nodes::Path { .. })
+                    | Operation::Text(veylvik_document::nodes::Text { .. }) => {
+                        if composition.width > crate::MAX_VECTOR_DIMENSION
+                            || composition.height > crate::MAX_VECTOR_DIMENSION
+                        {
+                            return Err(error("vector mask dimensions exceed 4096"));
+                        }
+                        inputs[0] = Input::Vector(index);
+                        if matches!(
+                            node.operation,
+                            Operation::Text(veylvik_document::nodes::Text { .. })
+                        ) {
+                            Kernel::Text
+                        } else {
+                            Kernel::Image
+                        }
+                    }
+                    Operation::Footage(veylvik_document::nodes::Footage { .. }) => {
+                        inputs[0] = Input::Asset(footage_key(node.id));
                         Kernel::Image
                     }
-                }
-                Operation::Footage(veylvik_document::nodes::Footage { .. }) => {
-                    inputs[0] = Input::Asset(footage_key(node.id));
-                    Kernel::Image
-                }
-                Operation::Image(veylvik_document::nodes::Image { asset }) => {
-                    inputs[0] = Input::Asset(asset.clone());
-                    Kernel::Image
-                }
-                Operation::Morphology(veylvik_document::nodes::Morphology { .. }) => {
-                    let intermediate = passes.len();
-                    passes.push(Pass {
-                        node: index,
-                        kernel: Kernel::MorphologyHorizontal,
-                        inputs,
-                        output: intermediate,
-                    });
-                    inputs = [Input::Value(intermediate), Input::Empty];
-                    Kernel::MorphologyVertical
-                }
-                Operation::Blur(veylvik_document::nodes::Blur { .. }) => {
-                    let intermediate = passes.len();
-                    passes.push(Pass {
-                        node: index,
-                        kernel: Kernel::BlurHorizontal,
-                        inputs,
-                        output: intermediate,
-                    });
-                    inputs = [Input::Value(intermediate), Input::Empty];
-                    Kernel::BlurVertical
-                }
+                    Operation::Image(veylvik_document::nodes::Image { asset }) => {
+                        inputs[0] = Input::Asset(asset.clone());
+                        Kernel::Image
+                    }
+                    _ => unreachable!("only structural nodes are special"),
+                },
             };
             let value = passes.len();
             passes.push(Pass {
@@ -512,48 +461,11 @@ impl Plan {
 }
 
 fn identity(operation: &Operation) -> bool {
-    let zero = |value: &Scalar| matches!(value,Scalar::Constant { value } if *value==0.0);
-    match operation {
-        Operation::PlanarTrack(veylvik_document::nodes::PlanarTrack { .. }) => true,
-        Operation::Exposure(veylvik_document::nodes::Exposure { stops }) => zero(stops),
-        Operation::Blur(veylvik_document::nodes::Blur { radius }) => zero(radius),
-        Operation::Transform(veylvik_document::nodes::Transform { x, y }) => zero(x) && zero(y),
-        _ => false,
-    }
+    veylvik_document::each_node!(operation, n => crate::nodes::RenderNode::identity(n))
 }
 
 fn shareable(operation: &Operation) -> bool {
-    // External/vector sources keep their existing ownership and resource policy.
-    // New operation kinds must opt in explicitly after their purity is established.
-    matches!(
-        operation,
-        Operation::Solid(veylvik_document::nodes::Solid { .. })
-            | Operation::Fire(veylvik_document::nodes::Fire { .. })
-            | Operation::Atmosphere(veylvik_document::nodes::Atmosphere { .. })
-            | Operation::Material(veylvik_document::nodes::Material { .. })
-            | Operation::Patina(veylvik_document::nodes::Patina { .. })
-            | Operation::SunGlints(veylvik_document::nodes::SunGlints { .. })
-            | Operation::Glass(veylvik_document::nodes::Glass { .. })
-            | Operation::SurfaceReflection(veylvik_document::nodes::SurfaceReflection { .. })
-            | Operation::MetallicShine(veylvik_document::nodes::MetallicShine { .. })
-            | Operation::FractalNoise(veylvik_document::nodes::FractalNoise { .. })
-            | Operation::Noise(veylvik_document::nodes::Noise { .. })
-            | Operation::Exposure(veylvik_document::nodes::Exposure { .. })
-            | Operation::Displace(veylvik_document::nodes::Displace { .. })
-            | Operation::Transform(veylvik_document::nodes::Transform { .. })
-            | Operation::Morphology(veylvik_document::nodes::Morphology { .. })
-            | Operation::Blur(veylvik_document::nodes::Blur { .. })
-            | Operation::Merge(veylvik_document::nodes::Merge {})
-            | Operation::Blend(veylvik_document::nodes::Blend { .. })
-            | Operation::SurfaceBlend(veylvik_document::nodes::SurfaceBlend { .. })
-            | Operation::Affine(veylvik_document::nodes::Affine { .. })
-            | Operation::Ellipse(veylvik_document::nodes::Ellipse { .. })
-            | Operation::ChannelMask(veylvik_document::nodes::ChannelMask { .. })
-            | Operation::Colorize(veylvik_document::nodes::Colorize { .. })
-            | Operation::Gradient(veylvik_document::nodes::Gradient { .. })
-            | Operation::CombineMask(veylvik_document::nodes::CombineMask { .. })
-            | Operation::Mask(veylvik_document::nodes::Mask {})
-    )
+    veylvik_document::each_node!(operation, n => crate::nodes::RenderNode::shareable(n))
 }
 
 pub(crate) fn footage_key(id: veylvik_document::NodeId) -> String {
