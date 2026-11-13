@@ -7,6 +7,7 @@ pub mod matte;
 pub mod models;
 pub mod protocol;
 pub mod worker;
+pub mod zoom;
 use serde::{Deserialize, Serialize};
 
 /// Side of the square model input; frames are resized to it without keeping the aspect ratio,

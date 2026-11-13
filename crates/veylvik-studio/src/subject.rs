@@ -53,6 +53,8 @@ pub struct Controls {
     frame: i64,
     end: i64,
     backward: bool,
+    /// Second, zoomed pass for small parts.
+    detail: bool,
     show_mask: bool,
     worker: Shared,
     preview: Option<Preview>,
@@ -183,6 +185,7 @@ impl Studio {
         self.subject.source = Some(self.project.selected);
         self.subject.open = true;
         self.subject.show_mask = true;
+        self.subject.detail = true;
         self.subject.points.clear();
         self.subject.preview = None;
         self.subject.done = None;
@@ -338,9 +341,10 @@ impl Studio {
                 && self.subject.frame > 0
                 && self.subject.end >= self.subject.frame)
                 .then_some(0),
+            detail: self.subject.detail,
         };
         let total = match analysis::schedule(&request, doc.frame_count) {
-            Ok(schedule) => schedule.len(),
+            Ok(schedule) => schedule.len() * if request.detail { 2 } else { 1 },
             Err(e) => {
                 self.fail(e);
                 return;
@@ -440,7 +444,7 @@ impl Studio {
         });
         self.subject.message = Some((
             format!(
-                "{}Tracked frames {}–{} ({} frames, {:.0} ms each){}.",
+                "{}Tracked frames {}–{} ({} frames, {:.0} ms each){}{}.",
                 if o.cancelled { "Stopped early. " } else { "" },
                 o.first_frame,
                 o.last_frame,
@@ -450,7 +454,10 @@ impl Studio {
                     format!("; subject absent on {} frames", o.absent)
                 } else {
                     String::new()
-                }
+                },
+                o.zoom
+                    .map(|z| format!("; detail pass at {z:.1}× zoom"))
+                    .unwrap_or_default()
             ),
             false,
         ));
@@ -633,7 +640,15 @@ impl Studio {
                         progress.completed.load(Ordering::Relaxed),
                         progress.total.load(Ordering::Relaxed).max(1),
                     );
-                    ui.add(egui::ProgressBar::new(done as f32 / total as f32).text(format!("Tracking {done} of {total} frames")));
+                    let detail = self.subject.detail;
+                    let text = if detail && done * 2 < total {
+                        format!("Locating the subject: {done} of {} frames", total / 2)
+                    } else if detail {
+                        format!("Detail pass: {} of {} frames", done - total / 2, total / 2)
+                    } else {
+                        format!("Tracking {done} of {total} frames")
+                    };
+                    ui.add(egui::ProgressBar::new(done as f32 / total as f32).text(text));
                     if ui.button("Stop").on_hover_text("Keep the frames tracked so far").clicked() {
                         cancel = true;
                     }
@@ -646,6 +661,8 @@ impl Studio {
                         self.subject.frame > 0,
                         egui::Checkbox::new(&mut self.subject.backward, "Also track back to the start"),
                     );
+                    ui.checkbox(&mut self.subject.detail, "Detail pass for small parts")
+                        .on_hover_text("Track a second time, zoomed in on the subject, so feet, hands and hair get more model pixels. About twice the analysis time; skipped automatically when the subject already fills the frame.");
                     let can = !self.subject.points.is_empty()
                         && self.subject.points.iter().any(|p| p.positive)
                         && !self.files.busy();

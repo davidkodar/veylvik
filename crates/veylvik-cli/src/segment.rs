@@ -110,6 +110,10 @@ impl Request {
                         .map_or_else(|| frame("frame"), |_| frame("end"))?,
                 ],
                 back_to: args.get("back_to").map(|_| frame("back_to")).transpose()?,
+                detail: match args.get("detail") {
+                    None => true,
+                    Some(v) => v.as_bool().ok_or("detail must be boolean")?,
+                },
             },
             model: args
                 .get("model")

@@ -1,8 +1,11 @@
 //! Subject analysis: renders the source node frame by frame, has the worker segment and track it,
 //! and writes the matte as a PNG16 sequence with a `.veyseq` manifest. Runs once, like tracking.
-use crate::{Point, Result, matte, worker::Worker};
+use crate::{Point, Result, matte, worker::Worker, zoom};
 use serde::Serialize;
-use std::path::{Path, PathBuf};
+use std::{
+    collections::BTreeMap,
+    path::{Path, PathBuf},
+};
 use veylvik_document::{Command, Composition, Node, NodeId, Operation, Time};
 use veylvik_render::{ImageInputs, Plan, RenderRequest, Renderer};
 
@@ -14,6 +17,8 @@ pub struct Request {
     pub frames: [i64; 2],
     /// Also track backward from the prompted frame to this earlier frame.
     pub back_to: Option<i64>,
+    /// Run a second, zoomed pass around the subject for small parts (feet, hands, hair).
+    pub detail: bool,
 }
 #[derive(Debug, Serialize)]
 pub struct Outcome {
@@ -25,6 +30,8 @@ pub struct Outcome {
     pub manifest: PathBuf,
     pub milliseconds_per_frame: f64,
     pub cancelled: bool,
+    /// Linear detail gain of the zoomed pass, or `None` when it was not used.
+    pub zoom: Option<f64>,
 }
 /// The frames to analyse, each with whether it carries the prompt, in processing order.
 pub fn schedule(request: &Request, frame_count: u32) -> Result<Vec<(i64, bool)>> {
@@ -81,25 +88,65 @@ pub fn analyse(
     let schedule = schedule(request, doc.frame_count)?;
     std::fs::create_dir_all(dir)?;
     let (width, height) = (doc.width as usize, doc.height as usize);
+    let (fw, fh) = (width as f64, height as f64);
+    let full = [0.0, 0.0, fw, fh];
     let started = std::time::Instant::now();
+    let passes = if request.detail { 2 } else { 1 };
+    let total = schedule.len() * passes;
+    let render = |frame: i64| -> Result<Vec<[f32; 4]>> {
+        let time = Time::at_frame(frame, doc.frame_rate).map_err(|e| e.to_string())?;
+        Ok(renderer
+            .render_frame(plan, RenderRequest::full(time), inputs)
+            .map_err(|e| e.to_string())?
+            .pixels)
+    };
+    // First pass, for the detail pass: where the subject is on every frame.
+    let mut windows = None;
+    if request.detail {
+        let mut boxes = BTreeMap::new();
+        for (index, &(frame, prompted)) in schedule.iter().enumerate() {
+            if !progress(index, total) {
+                return Err("Stopped while locating the subject; nothing was saved".into());
+            }
+            let input = matte::model_frame(&render(frame)?, width, height)?;
+            let mask = worker.frame(&input, prompted.then_some(request.points.as_slice()))?;
+            boxes.entry(frame).or_insert_with(|| {
+                mask.present()
+                    .then(|| zoom::bounds(&mask.logits, width, height))
+                    .flatten()
+            });
+        }
+        // The zoomed pass needs a marking point inside the prompted frame's window.
+        windows = zoom::windows(&boxes, fw, fh).filter(|w| {
+            zoom::map_points(&request.points, w[&request.frames[0]], fw, fh)
+                .iter()
+                .any(|p| p.positive)
+        });
+    }
+    let gain = windows
+        .as_ref()
+        .and_then(|w| w.values().next())
+        .map(|r| ((fw / (r[2] - r[0])) * (fh / (r[3] - r[1]))).sqrt());
+    let offset = schedule.len() * (passes - 1);
     let (mut done, mut absent, mut cancelled) = (Vec::new(), 0, false);
     for (index, &(frame, prompted)) in schedule.iter().enumerate() {
-        if !progress(index, schedule.len()) {
+        if !progress(offset + index, total) {
             cancelled = true;
             break;
         }
-        let time = Time::at_frame(frame, doc.frame_rate).map_err(|e| e.to_string())?;
-        let rendered = renderer
-            .render_frame(plan, RenderRequest::full(time), inputs)
-            .map_err(|e| e.to_string())?;
-        let input = matte::model_frame(&rendered.pixels, width, height)?;
-        let mask = worker.frame(&input, prompted.then_some(request.points.as_slice()))?;
+        let rect = windows.as_ref().map_or(full, |w| w[&frame]);
+        let input = matte::model_crop(&render(frame)?, width, height, rect)?;
+        let points = match &windows {
+            Some(_) => zoom::map_points(&request.points, rect, fw, fh),
+            None => request.points.clone(),
+        };
+        let mask = worker.frame(&input, prompted.then_some(points.as_slice()))?;
         // The second visit of the prompted frame only restarts memory for the backward run.
         if done.contains(&frame) {
             continue;
         }
         let alpha = if mask.present() {
-            matte::alpha(&mask.logits, width, height)?
+            matte::alpha_crop(&mask.logits, width, height, rect)?
         } else {
             absent += 1;
             vec![0.0; width * height]
@@ -141,6 +188,7 @@ pub fn analyse(
         manifest,
         milliseconds_per_frame: started.elapsed().as_secs_f64() * 1000.0 / done.len() as f64,
         cancelled,
+        zoom: gain,
     })
 }
 /// Nodes an analysis adds: the matte sequence, and the refined cutout of the source.
@@ -204,6 +252,7 @@ mod tests {
             }],
             frames,
             back_to,
+            detail: true,
         }
     }
     #[test]

@@ -3,18 +3,19 @@
 use crate::{Result, SIDE};
 use std::path::Path;
 
-/// Source pixels and coverage weights of each output pixel when resampling `from` to `to`.
-fn footprints(from: usize, to: usize) -> Vec<Vec<(usize, f32)>> {
-    let scale = from as f64 / to as f64;
+/// Source pixels and coverage weights of each of `to` output pixels covering the source span
+/// `start..start + span` (in source pixels, within `0..limit`).
+fn footprints(start: f64, span: f64, limit: usize, to: usize) -> Vec<Vec<(usize, f32)>> {
+    let scale = span / to as f64;
     (0..to)
         .map(|o| {
-            let (a, b) = (o as f64 * scale, (o + 1) as f64 * scale);
+            let (a, b) = (start + o as f64 * scale, start + (o + 1) as f64 * scale);
             if scale <= 1.0 {
-                return vec![((((a + b) * 0.5) as usize).min(from - 1), 1.0)];
+                return vec![((((a + b) * 0.5).max(0.0) as usize).min(limit - 1), 1.0)];
             }
             let mut taps = Vec::new();
-            let mut i = a.floor() as usize;
-            while (i as f64) < b && i < from {
+            let mut i = a.floor().max(0.0) as usize;
+            while (i as f64) < b && i < limit {
                 let cover = (b.min(i as f64 + 1.0) - a.max(i as f64)) / scale;
                 if cover > 0.0 {
                     taps.push((i, cover as f32));
@@ -37,10 +38,31 @@ fn srgb(linear: f32) -> u8 {
 /// Area-averages scene-linear premultiplied `pixels` (`width` × `height`, as seen over black) to
 /// SIDE² in linear light, then encodes sRGB bytes: models are trained on display-referred images.
 pub fn model_frame(pixels: &[[f32; 4]], width: usize, height: usize) -> Result<Vec<u8>> {
+    model_crop(
+        pixels,
+        width,
+        height,
+        [0.0, 0.0, width as f64, height as f64],
+    )
+}
+/// As [`model_frame`] for the window `rect` (x0, y0, x1, y1 in frame pixels) of the frame.
+pub fn model_crop(
+    pixels: &[[f32; 4]],
+    width: usize,
+    height: usize,
+    rect: [f64; 4],
+) -> Result<Vec<u8>> {
     if width == 0 || height == 0 || pixels.len() != width * height {
         return Err("frame size does not match its pixels".into());
     }
-    let (columns, rows) = (footprints(width, SIDE), footprints(height, SIDE));
+    if !(rect[0] >= 0.0 && rect[1] >= 0.0 && rect[2] > rect[0] && rect[3] > rect[1])
+        || rect[2] > width as f64 + 1e-6
+        || rect[3] > height as f64 + 1e-6
+    {
+        return Err("model window lies outside the frame".into());
+    }
+    let columns = footprints(rect[0], rect[2] - rect[0], width, SIDE);
+    let rows = footprints(rect[1], rect[3] - rect[1], height, SIDE);
     // Horizontal pass into SIDE × height, then vertical.
     let mut wide = vec![[0f32; 3]; SIDE * height];
     for y in 0..height {
@@ -74,26 +96,46 @@ pub fn model_frame(pixels: &[[f32; 4]], width: usize, height: usize) -> Result<V
 /// Bilinearly resamples SIDE² logits to `width` × `height` (pixel centres aligned), then applies
 /// the sigmoid: the edge stays as smooth as the model's own confidence.
 pub fn alpha(logits: &[f32], width: usize, height: usize) -> Result<Vec<f32>> {
+    alpha_crop(
+        logits,
+        width,
+        height,
+        [0.0, 0.0, width as f64, height as f64],
+    )
+}
+/// As [`alpha`] for logits of the window `rect` of the frame; pixels outside it are clear.
+pub fn alpha_crop(logits: &[f32], width: usize, height: usize, rect: [f64; 4]) -> Result<Vec<f32>> {
     if logits.len() != SIDE * SIDE {
         return Err("mask logits must be SIDE²".into());
     }
-    let axis = |n: usize| -> Vec<(usize, usize, f32)> {
+    // Model-space coordinate of each frame pixel centre, or None outside the window.
+    let axis = |n: usize, lo: f64, hi: f64| -> Vec<Option<(usize, usize, f32)>> {
         (0..n)
             .map(|o| {
-                let p =
-                    ((o as f32 + 0.5) * SIDE as f32 / n as f32 - 0.5).clamp(0.0, (SIDE - 1) as f32);
+                let c = o as f64 + 0.5;
+                if c < lo || c > hi {
+                    return None;
+                }
+                let p = ((c - lo) / (hi - lo) * SIDE as f64 - 0.5).clamp(0.0, (SIDE - 1) as f64);
                 let i = (p.floor() as usize).min(SIDE - 2);
-                (i, i + 1, p - i as f32)
+                Some((i, i + 1, (p - i as f64) as f32))
             })
             .collect()
     };
-    let (xs, ys) = (axis(width), axis(height));
+    let (xs, ys) = (
+        axis(width, rect[0], rect[2]),
+        axis(height, rect[1], rect[3]),
+    );
     let mut out = Vec::with_capacity(width * height);
-    for &(y0, y1, fy) in &ys {
-        for &(x0, x1, fx) in &xs {
+    for y in &ys {
+        for x in &xs {
+            let (Some((y0, y1, fy)), Some((x0, x1, fx))) = (y, x) else {
+                out.push(0.0);
+                continue;
+            };
             let at = |x: usize, y: usize| logits[y * SIDE + x];
-            let top = at(x0, y0) + (at(x1, y0) - at(x0, y0)) * fx;
-            let bottom = at(x0, y1) + (at(x1, y1) - at(x0, y1)) * fx;
+            let top = at(*x0, *y0) + (at(*x1, *y0) - at(*x0, *y0)) * fx;
+            let bottom = at(*x0, *y1) + (at(*x1, *y1) - at(*x0, *y1)) * fx;
             let logit = top + (bottom - top) * fy;
             out.push(1.0 / (1.0 + (-logit).exp()));
         }
@@ -153,5 +195,32 @@ mod tests {
         let soft = row.iter().filter(|v| **v > 0.05 && **v < 0.95).count();
         assert!((1..=8).contains(&soft), "{soft}");
         assert!(row.windows(2).all(|p| p[0] <= p[1]));
+    }
+    #[test]
+    fn crops_sample_only_their_window_and_map_back_to_the_same_place() {
+        // A frame that is black except a white square at 100..200 × 300..400.
+        let (w, h) = (400, 800);
+        let pixels: Vec<[f32; 4]> = (0..w * h)
+            .map(|i| {
+                let (x, y) = (i % w, i / w);
+                if (100..200).contains(&x) && (300..400).contains(&y) {
+                    [1.0; 4]
+                } else {
+                    [0.0, 0.0, 0.0, 1.0]
+                }
+            })
+            .collect();
+        // The window is exactly the square: the model sees white everywhere.
+        let crop = model_crop(&pixels, w, h, [100.0, 300.0, 200.0, 400.0]).unwrap();
+        assert!(crop.iter().all(|v| *v == 255));
+        assert!(model_crop(&pixels, w, h, [-1.0, 0.0, 10.0, 10.0]).is_err());
+        // Logits positive everywhere in the window: alpha 1 inside it, 0 outside.
+        let alpha =
+            alpha_crop(&vec![10.0; SIDE * SIDE], w, h, [100.0, 300.0, 200.0, 400.0]).unwrap();
+        assert!(
+            alpha[350 * w + 150] > 0.99
+                && alpha[350 * w + 50] == 0.0
+                && alpha[100 * w + 150] == 0.0
+        );
     }
 }
