@@ -294,26 +294,8 @@ impl Renderer {
         pollster::block_on(Self::create())
     }
     async fn create() -> Result<Self> {
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
-            backends: wgpu::Backends::VULKAN,
-            ..wgpu::InstanceDescriptor::new_without_display_handle()
-        });
-        let adapter = instance
-            .request_adapter(&wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::HighPerformance,
-                ..Default::default()
-            })
-            .await
-            .map_err(error)?;
+        let (_, adapter, device, queue) = create_gpu().await?;
         let info = adapter.get_info();
-        let (device, queue) = adapter
-            .request_device(&wgpu::DeviceDescriptor {
-                label: Some("Veylvik"),
-                required_limits: device_limits(&adapter),
-                ..Default::default()
-            })
-            .await
-            .map_err(error)?;
         Self::from_device(device, queue, info)
     }
     /// Share a Vulkan device with a window host. The host supplies the matching
@@ -1014,3 +996,32 @@ fn crop(full: Vec<[f32; 4]>, region: Region, width: u32, height: u32) -> Rendere
     }
     RenderedFrame { region, pixels }
 }
+
+/// Shared headless/window Vulkan setup with optional DMA-BUF ownership support.
+pub async fn create_gpu() -> Result<(wgpu::Instance, wgpu::Adapter, wgpu::Device, wgpu::Queue)> {
+    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+        backends: wgpu::Backends::VULKAN,
+        ..wgpu::InstanceDescriptor::new_without_display_handle()
+    });
+    let adapter = instance
+        .request_adapter(&wgpu::RequestAdapterOptions {
+            power_preference: wgpu::PowerPreference::HighPerformance,
+            ..Default::default()
+        })
+        .await
+        .map_err(error)?;
+    let (device, queue) = veylvik_interop::request_device(
+        &adapter,
+        &wgpu::DeviceDescriptor {
+            label: Some("Veylvik"),
+            required_limits: device_limits(&adapter),
+            ..Default::default()
+        },
+    )
+    .await
+    .map_err(error)?;
+
+    Ok((instance, adapter, device, queue))
+}
+
+pub use veylvik_interop::{DmaFrame, DmaLayout};

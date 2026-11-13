@@ -129,6 +129,7 @@ pub struct Outcome {
     pub direct_gpu_transfers: u32,
     pub staged_frames: u32,
     pub interop_fallback: Option<String>,
+    pub experimental_interop: bool,
 }
 #[derive(Clone)]
 enum Backend {
@@ -137,6 +138,13 @@ enum Backend {
     Software,
 }
 impl Backend {
+    fn device_kind(&self) -> Result<veylvik_decode::DeviceKind> {
+        match self {
+            Self::Nvenc => Ok(veylvik_decode::DeviceKind::Cuda),
+            Self::Vaapi(node) => Ok(veylvik_decode::DeviceKind::Vaapi(node.clone())),
+            Self::Software => Err("Software encoding has no direct GPU device".into()),
+        }
+    }
     fn label(&self) -> &'static str {
         match self {
             Self::Nvenc => "NVIDIA NVENC",
@@ -484,6 +492,7 @@ pub fn render(
         direct_gpu_transfers: 0,
         staged_frames: frames,
         interop_fallback: None,
+        experimental_interop: false,
     };
     if !notify(0, "", "Preparing") {
         return Ok(cancelled("", false, 0));
@@ -495,37 +504,40 @@ pub fn render(
     // starts, any error aborts; it never silently restarts with another backend.
     let temporary = Temporary::new(&parent)?;
     let native = native_settings(settings);
-    if !notify(0, "NVIDIA NVENC", "Checking direct GPU encoder") {
-        return Ok(cancelled("NVIDIA NVENC", true, 0));
-    }
     let trial = temporary.0.join("trial.mp4");
-    let direct = (|| -> Result<()> {
-        let mut encoder = veylvik_decode::encode::Encoder::open(&trial, native)?;
-        let mut target = encoder.frame()?;
-        target.fill(|destination| {
-            Ok(renderer.encode_video_cuda(&frame, settings.matte, destination)?)
-        })?;
-        encoder.send(target)?;
-        encoder.finish()
-    })();
-    let interop_fallback = match direct {
-        Ok(()) => {
-            fs::remove_file(&trial)?;
-            return render_direct(
-                renderer,
-                &plan,
-                inputs,
-                &target,
-                settings,
-                &times,
-                frame,
-                temporary,
-                native,
-                &mut notify,
-            );
+    let mut direct_failures = Vec::new();
+    for backend in backends(false) {
+        if !notify(0, backend.label(), "Checking direct GPU encoder") {
+            return Ok(cancelled(backend.label(), true, 0));
         }
-        Err(e) => Some(e.to_string()),
-    };
+        let direct = (|| -> Result<()> {
+            let mut encoder =
+                veylvik_decode::encode::Encoder::open_on(&trial, native, backend.device_kind()?)?;
+            let target = prepare_native_frame(renderer, &encoder, &backend, &frame, settings)?;
+            encoder.send(target)?;
+            encoder.finish()
+        })();
+        match direct {
+            Ok(()) => {
+                fs::remove_file(&trial)?;
+                return render_direct(
+                    renderer,
+                    &plan,
+                    inputs,
+                    &target,
+                    settings,
+                    &times,
+                    frame,
+                    temporary,
+                    native,
+                    &backend,
+                    &mut notify,
+                );
+            }
+            Err(e) => direct_failures.push(format!("{}: {e}", backend.label())),
+        }
+    }
+    let interop_fallback = Some(direct_failures.join("; "));
     let cancelled = |backend: &str, hardware, frames| {
         let mut result = cancelled(backend, hardware, frames);
         result.interop_fallback = interop_fallback.clone();
@@ -611,6 +623,7 @@ pub fn render(
         direct_gpu_transfers: 0,
         staged_frames: total,
         interop_fallback,
+        experimental_interop: false,
     })
 }
 
@@ -639,45 +652,53 @@ fn render_direct(
     first: std::sync::Arc<veylvik_render::GpuFrame>,
     temporary: Temporary,
     native: veylvik_decode::encode::Settings,
+    backend: &Backend,
     notify: &mut impl FnMut(u32, &str, &str) -> bool,
 ) -> Result<Outcome> {
     let total = times.len() as u32;
     let cancelled = |frames| Outcome {
         path: None,
         cancelled: true,
-        backend: "NVIDIA NVENC".into(),
+        backend: backend.label().into(),
         hardware: true,
         frames,
         host_staging: false,
         direct_gpu_transfers: frames,
         staged_frames: 0,
         interop_fallback: None,
+        experimental_interop: matches!(backend, Backend::Vaapi(_)),
     };
-    if !notify(0, "NVIDIA NVENC", "Preparing GPU export") {
+    if !notify(0, backend.label(), "Preparing GPU export") {
         return Ok(cancelled(0));
     }
     let output = temporary.0.join("video.mp4");
-    let mut encoder = veylvik_decode::encode::Encoder::open(&output, native)?;
+    let mut encoder =
+        veylvik_decode::encode::Encoder::open_on(&output, native, backend.device_kind()?)?;
     let mut first = Some(first);
     for (n, time) in times.iter().enumerate() {
-        if !notify(n as u32, "NVIDIA NVENC", "GPU rendering and encoding") {
+        if !notify(
+            n as u32,
+            backend.label(),
+            if matches!(backend, Backend::Vaapi(_)) {
+                "GPU encoding · experimental DMA-BUF"
+            } else {
+                "GPU rendering and encoding"
+            },
+        ) {
             return Ok(cancelled(n as u32));
         }
         let source = match first.take() {
             Some(frame) => frame,
             None => renderer.render_gpu_cached(plan, RenderRequest::full(*time), inputs)?,
         };
-        let mut frame = encoder.frame()?;
-        frame.fill(|destination| {
-            Ok(renderer.encode_video_cuda(&source, settings.matte, destination)?)
-        })?;
+        let frame = prepare_native_frame(renderer, &encoder, backend, &source, settings)?;
         encoder.send(frame)?;
     }
-    if !notify(total, "NVIDIA NVENC", "Finalizing MP4") {
+    if !notify(total, backend.label(), "Finalizing MP4") {
         return Ok(cancelled(total));
     }
     encoder.finish()?;
-    if !notify(total, "NVIDIA NVENC", "Publishing") {
+    if !notify(total, backend.label(), "Publishing") {
         return Ok(cancelled(total));
     }
     fs::File::open(&output)?.sync_all()?;
@@ -686,12 +707,40 @@ fn render_direct(
     Ok(Outcome {
         path: Some(target.to_owned()),
         cancelled: false,
-        backend: "NVIDIA NVENC".into(),
+        backend: backend.label().into(),
         hardware: true,
         frames: total,
         host_staging: false,
         direct_gpu_transfers: total,
         staged_frames: 0,
         interop_fallback: None,
+        experimental_interop: matches!(backend, Backend::Vaapi(_)),
     })
+}
+
+fn prepare_native_frame(
+    renderer: &Renderer,
+    encoder: &veylvik_decode::encode::Encoder,
+    backend: &Backend,
+    source: &veylvik_render::GpuFrame,
+    settings: &Settings,
+) -> Result<veylvik_decode::encode::Frame> {
+    match backend {
+        Backend::Nvenc => {
+            let mut frame = encoder.frame()?;
+            frame.fill(|destination| {
+                Ok(renderer.encode_video_cuda(source, settings.matte, destination)?)
+            })?;
+            Ok(frame)
+        }
+        Backend::Vaapi(node) => encoder.map_dma(renderer.encode_video_dma(
+            source,
+            settings.width,
+            settings.height,
+            settings.codec.ten_bit(),
+            settings.matte,
+            node,
+        )?),
+        Backend::Software => Err("No direct GPU frame path for software encoder".into()),
+    }
 }

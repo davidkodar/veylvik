@@ -329,3 +329,144 @@ fn direct_bridge_budget_fallback_is_explicit_and_renderer_recovers() {
     assert_eq!(direct.direct_gpu_transfers, 1);
     drop(gpu);
 }
+
+#[test]
+#[ignore = "requires Vulkan; no AMD/Intel hardware needed"]
+fn dma_plane_padding_matches_compact_gpu_output() {
+    let renderer = Renderer::new().unwrap();
+    let doc = veylvik_document::motion_demo();
+    let plan = Plan::compile(&doc).unwrap();
+    let gpu = renderer
+        .render_gpu_cached(
+            &plan,
+            RenderRequest::full(Time::new(1, 1).unwrap()),
+            &ImageInputs::default(),
+        )
+        .unwrap();
+    for (w, h) in [(2, 2), (322, 182), (1920, 1080), (3840, 2160)] {
+        for ten in [false, true] {
+            let layout = veylvik_render::DmaLayout::new(w, h, ten).unwrap();
+            let compact = renderer
+                .encode_video_planes(&gpu, w, h, ten, [0.18; 3])
+                .unwrap();
+            let padded = renderer
+                .encode_video_dma_planes(&gpu, layout, [0.18; 3])
+                .unwrap();
+            let row = w as usize * if ten { 2 } else { 1 };
+            let mut expected = vec![0; layout.bytes as usize];
+            for (source, offset, rows) in [
+                (0, 0, h as usize),
+                (row * h as usize, layout.uv_offset as usize, h as usize / 2),
+            ] {
+                for y in 0..rows {
+                    expected[offset + y * layout.pitch as usize
+                        ..offset + y * layout.pitch as usize + row]
+                        .copy_from_slice(&compact[source + y * row..source + (y + 1) * row]);
+                }
+            }
+            assert_eq!(padded, expected, "{w}x{h} ten_bit={ten}");
+        }
+    }
+    let held = renderer.resource_stats().unwrap().held_bytes;
+    assert!(
+        renderer
+            .encode_video_dma(
+                &gpu,
+                320,
+                180,
+                false,
+                [0.; 3],
+                std::path::Path::new("/dev/null")
+            )
+            .is_err()
+    );
+    assert_eq!(renderer.resource_stats().unwrap().held_bytes, held);
+    assert!(
+        renderer
+            .encode_video_planes(&gpu, 320, 180, false, [0.; 3])
+            .is_ok()
+    );
+}
+
+#[test]
+#[ignore = "pending AMD/Intel validation; set VEYLVIK_TEST_VAAPI_DEVICE to the matching render node"]
+fn vaapi_dma_import_encode_and_retention_on_real_hardware() {
+    let node = PathBuf::from(std::env::var_os("VEYLVIK_TEST_VAAPI_DEVICE").expect(
+        "Set VEYLVIK_TEST_VAAPI_DEVICE=/dev/dri/renderD128 to the Vulkan adapter's AMD/Intel node",
+    ));
+    let dir = Scratch::new();
+    let renderer = Renderer::new().unwrap();
+    let doc = veylvik_document::motion_demo();
+    let plan = Plan::compile(&doc).unwrap();
+    let inputs = ImageInputs::default();
+    for (w, h) in [(322, 182), (1920, 1080), (3840, 2160)] {
+        for ten in [false, true] {
+            let path = dir.0.join(format!("vaapi-{w}-{ten}.mp4"));
+            let settings = veylvik_decode::encode::Settings {
+                width: w,
+                height: h,
+                ten_bit: ten,
+                fps: [30000, 1001],
+                quality: 20,
+                fast: false,
+            };
+            let mut encoder = veylvik_decode::encode::Encoder::open_on(
+                &path,
+                settings,
+                veylvik_decode::DeviceKind::Vaapi(node.clone()),
+            )
+            .unwrap();
+            for n in 0..16 {
+                let source = renderer
+                    .render_gpu_cached(
+                        &plan,
+                        RenderRequest::full(Time::new(n, 24).unwrap()),
+                        &inputs,
+                    )
+                    .unwrap();
+                let held = renderer.resource_stats().unwrap().held_bytes;
+                let dma = renderer
+                    .encode_video_dma(&source, w, h, ten, [0.18; 3], &node)
+                    .unwrap();
+                assert!(
+                    renderer.resource_stats().unwrap().held_bytes >= held + dma.allocation_size()
+                );
+                let frame = encoder.map_dma(dma.clone()).unwrap();
+                drop(dma); // FFmpeg's mapped frame must retain the descriptor/allocation.
+                let diagnostic = frame.stage().unwrap();
+                let reference = renderer
+                    .encode_video_planes(&source, w, h, ten, [0.18; 3])
+                    .unwrap();
+                assert_eq!(
+                    diagnostic, reference,
+                    "DMA import parity {w}x{h} ten_bit={ten} frame={n}"
+                );
+                encoder.send(frame).unwrap();
+            }
+            encoder.finish().unwrap();
+            let probe = Command::new("ffprobe")
+                .args(["-v", "error", "-show_streams", "-of", "json"])
+                .arg(&path)
+                .output()
+                .unwrap();
+            assert!(probe.status.success());
+            let info: serde_json::Value = serde_json::from_slice(&probe.stdout).unwrap();
+            assert_eq!(info["streams"][0]["nb_frames"], "16");
+            assert_eq!(info["streams"][0]["avg_frame_rate"], "30000/1001");
+            assert_eq!(info["streams"][0]["color_transfer"], "bt709");
+            assert_eq!(
+                info["streams"][0]["pix_fmt"],
+                if ten { "yuv420p10le" } else { "yuv420p" }
+            );
+            assert!(
+                Command::new("ffmpeg")
+                    .args(["-v", "error", "-i"])
+                    .arg(&path)
+                    .args(["-f", "null", "-"])
+                    .status()
+                    .unwrap()
+                    .success()
+            );
+        }
+    }
+}

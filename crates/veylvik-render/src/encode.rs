@@ -1,5 +1,16 @@
 //! SDR Rec.709 video boundary: GPU resize, matte, transfer and YUV packing.
 use crate::{GpuFrame, Renderer, Result, error};
+use veylvik_interop::{DmaFrame, DmaLayout};
+enum Destination<'a, 'b> {
+    Host(Option<DmaLayout>),
+    Cuda(&'a mut veylvik_interop::CudaDestination<'b>),
+    Dma(&'a std::path::Path, DmaLayout),
+}
+struct Prepared {
+    bytes: Vec<u8>,
+    dma: Option<DmaFrame>,
+}
+
 pub(crate) fn pipeline(device: &wgpu::Device) -> wgpu::ComputePipeline {
     let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: Some("video export colour"),
@@ -25,7 +36,15 @@ impl Renderer {
         ten_bit: bool,
         matte: [f32; 3],
     ) -> Result<Vec<u8>> {
-        self.prepare_video_planes(frame, width, height, ten_bit, matte, None)
+        self.prepare_video_planes(
+            frame,
+            width,
+            height,
+            ten_bit,
+            matte,
+            Destination::Host(None),
+        )
+        .map(|p| p.bytes)
     }
     /// GPU-only handoff to a uniquely writable CUDA encoder frame.
     pub fn encode_video_cuda(
@@ -41,9 +60,50 @@ impl Renderer {
             height,
             destination.sample_bytes() == 2,
             matte,
-            Some(destination),
+            Destination::Cuda(destination),
         )
         .map(|_| ())
+    }
+    /// Linear, padded NV12/P010 for explicit diagnostics; production DMA export
+    /// does not read back these pixels.
+    pub fn encode_video_dma_planes(
+        &self,
+        frame: &GpuFrame,
+        layout: DmaLayout,
+        matte: [f32; 3],
+    ) -> Result<Vec<u8>> {
+        layout.validate().map_err(error)?;
+        self.prepare_video_planes(
+            frame,
+            layout.width,
+            layout.height,
+            layout.ten_bit,
+            matte,
+            Destination::Host(Some(layout)),
+        )
+        .map(|p| p.bytes)
+    }
+    pub fn encode_video_dma(
+        &self,
+        frame: &GpuFrame,
+        width: u32,
+        height: u32,
+        ten_bit: bool,
+        matte: [f32; 3],
+        render_node: &std::path::Path,
+    ) -> Result<std::sync::Arc<DmaFrame>> {
+        let layout = DmaLayout::new(width, height, ten_bit).map_err(error)?;
+        self.prepare_video_planes(
+            frame,
+            width,
+            height,
+            ten_bit,
+            matte,
+            Destination::Dma(render_node, layout),
+        )?
+        .dma
+        .map(std::sync::Arc::new)
+        .ok_or_else(|| error("Missing DMA-BUF output"))
     }
     fn prepare_video_planes(
         &self,
@@ -52,8 +112,8 @@ impl Renderer {
         height: u32,
         ten_bit: bool,
         matte: [f32; 3],
-        destination: Option<&mut veylvik_interop::CudaDestination<'_>>,
-    ) -> Result<Vec<u8>> {
+        destination: Destination<'_, '_>,
+    ) -> Result<Prepared> {
         if !self.owns_frame(frame)
             || frame.region.x != 0
             || frame.region.y != 0
@@ -76,14 +136,21 @@ impl Renderer {
                 "video needs even dimensions in 2..8192 and a valid matte",
             ));
         }
-        let bytes = u64::from(width) * u64::from(height) * 3 / if ten_bit { 1 } else { 2 };
+        let layout = match &destination {
+            Destination::Host(layout) => *layout,
+            Destination::Dma(_, layout) => Some(*layout),
+            Destination::Cuda(_) => None,
+        };
+        let host = matches!(destination, Destination::Host(_));
+        let compact_bytes = u64::from(width) * u64::from(height) * 3 / if ten_bit { 1 } else { 2 };
+        let bytes = layout.map_or(compact_bytes, |l| l.bytes);
         let size = bytes.div_ceil(4) * 4;
         if size > self.device.limits().max_storage_buffer_binding_size
             || size > self.device.limits().max_buffer_size
         {
             return Err(error("video output exceeds GPU limits"));
         }
-        let reservation = if destination.is_some() {
+        let reservation = if !host {
             size.div_ceil(65536) * 65536
         } else {
             0
@@ -114,7 +181,7 @@ impl Renderer {
                 wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
                 "encoder planes",
             )?;
-            let read = if destination.is_none() {
+            let read = if host {
                 Some(resources.take(
                     &self.device,
                     size,
@@ -140,9 +207,9 @@ impl Renderer {
             values.extend_from_slice(bytemuck::cast_slice(&[matte[0], matte[1], matte[2], 0.]));
             values.extend_from_slice(bytemuck::cast_slice(&[
                 if ten_bit { 10u32 } else { 8 },
-                0,
-                0,
-                0,
+                layout.map_or(0, |l| l.pitch / if ten_bit { 2 } else { 1 }),
+                layout.map_or(0, |l| l.uv_offset / if ten_bit { 2 } else { 1 }),
+                layout.map_or(0, |l| (l.bytes / if ten_bit { 2 } else { 1 }) as u32),
             ]));
             self.queue.write_buffer(&params, 0, &values);
             let group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -191,16 +258,44 @@ impl Renderer {
                 Vec::new()
             };
             resources.completed();
-            if let Some(destination) = destination {
-                destination
-                    .copy_from_vulkan(&self.device, &self.queue, &packed, reservation)
-                    .map_err(|e| {
-                        interop_failed = e.is::<veylvik_interop::FatalInterop>();
-                        error(e)
-                    })?;
+            let mut dma = None;
+            match destination {
+                Destination::Cuda(destination) => {
+                    destination
+                        .copy_from_vulkan(&self.device, &self.queue, &packed, reservation)
+                        .map_err(|e| {
+                            interop_failed = e.is::<veylvik_interop::FatalInterop>();
+                            error(e)
+                        })?;
+                }
+                Destination::Dma(node, layout) => {
+                    dma = Some(
+                        DmaFrame::export(
+                            &self.device,
+                            &self.queue,
+                            &packed,
+                            layout,
+                            node,
+                            reservation,
+                        )
+                        .map_err(|e| {
+                            interop_failed = e.is::<veylvik_interop::FatalInterop>();
+                            error(e)
+                        })?,
+                    );
+                }
+                Destination::Host(_) => {}
             }
-            Ok(data)
+            Ok(Prepared { bytes: data, dma })
         })();
+        let result = result.map(|mut prepared| {
+            if let Some(dma) = &mut prepared.dma {
+                dma.retain_accounting(std::sync::Arc::new(
+                    pool.hold_external(dma.allocation_size()),
+                ));
+            }
+            prepared
+        });
         if interop_failed {
             pool.failed = true;
         }

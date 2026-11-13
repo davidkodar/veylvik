@@ -74,3 +74,45 @@ the published path, cancellation and host staging. Additional fields
 the capability trial). `interop_fallback` contains the reason when the direct
 bridge was not selected. A direct NVIDIA export reports `host_staging: false`
 and zero staged frames.
+
+## AMD/Intel DMA-BUF status: experimental
+
+A direct Vulkan → DMA-BUF → VA-API encoder path is implemented for AMD/Intel,
+but has **not yet been verified on AMD or Intel hardware**. Its progress and
+completion messages identify experimental DMA-BUF use; JSON results set
+`experimental_interop: true`. This applies to export, not hardware decode.
+
+The path uses linear NV12/P010 buffers with aligned rows and plane offsets.
+It requires Vulkan external-memory DMA-BUF support, foreign-queue ownership,
+DRM device identification, and VA-API direct DRM PRIME import on the same
+render device. Tiled/compressed modifiers and cross-device copies are not
+implemented. No CPU pixel mapping/upload is part of the direct path.
+
+Vulkan completes and releases ownership before VA-API imports the buffer.
+FFmpeg references retain the FD and Vulkan allocation through encoding; those
+allocations remain charged against the renderer budget. Export trials include
+import, encode and MP4 finalization. If a trial fails, export falls back to the
+existing staged hardware path and reports the reason through `interop_fallback`.
+A successful trial checks capability, not final visual correctness on an
+untested driver. Failures after production encoding starts abort the export.
+
+### Hardware validation
+
+On a machine with a matching AMD/Intel Vulkan adapter and VA-API render node:
+
+```sh
+VEYLVIK_TEST_VAAPI_DEVICE=/dev/dri/renderD128 CARGO_BUILD_JOBS=2 cargo test -p veylvik-io --test video_export vaapi_dma_import_encode_and_retention_on_real_hardware -- --ignored --nocapture
+```
+
+Use the node corresponding to the selected Vulkan GPU. The test deliberately
+fails if the device is unavailable or the direct bridge cannot run; it does not
+silently skip or fall back. It checks padded, 1080p and 4K output in NV12/P010,
+exact pixel parity after direct import, retained-buffer lifetime, repeated
+frames, frame rate/colour metadata and complete video decoding. Diagnostic
+readback occurs only in this test. A codec unsupported by the card may fail
+that portion; record the GPU, driver, format and error when reporting results.
+
+Afterward, test native Studio export and cancellation, watch for corruption,
+and confirm `host_staging: false`, nonzero `direct_gpu_transfers`, and zero
+`staged_frames` in CLI/MCP output. Keep this path marked experimental until
+actual AMD and Intel results have been reviewed.

@@ -434,3 +434,8 @@ mod tests {
 
 mod encode;
 pub use encode::CudaDestination;
+
+mod device;
+pub use device::request_device;
+mod dma;
+pub use dma::{DmaFrame, DmaLayout};

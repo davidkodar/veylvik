@@ -61,6 +61,18 @@ impl Pool {
             }
         }
     }
+    pub fn hold_external(&mut self, size: u64) -> ExternalReservation {
+        self.stats.resident_bytes += size;
+        self.stats.held_bytes += size;
+        self.stats.peak_resident_bytes = self
+            .stats
+            .peak_resident_bytes
+            .max(self.stats.resident_bytes);
+        ExternalReservation {
+            size,
+            retired: self.retired.clone(),
+        }
+    }
     pub fn frame(&mut self, budget: u64) -> FrameBuffers<'_> {
         FrameBuffers {
             pool: self,
@@ -218,6 +230,16 @@ pub(crate) struct PinnedBuffer {
 impl Drop for PinnedBuffer {
     fn drop(&mut self) {
         self.buffer.destroy();
+        self.retired.fetch_add(self.size, Ordering::Release);
+    }
+}
+
+pub(crate) struct ExternalReservation {
+    size: u64,
+    retired: Arc<AtomicU64>,
+}
+impl Drop for ExternalReservation {
+    fn drop(&mut self) {
         self.retired.fetch_add(self.size, Ordering::Release);
     }
 }

@@ -78,13 +78,13 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     }
     let render_limits = veylvik_io::runtime::RenderLimits::from_env()?;
     let project = Project::open(path.as_deref())?;
-    let mut setup = egui_wgpu::WgpuSetupCreateNew::without_display_handle();
-    setup.instance_descriptor.backends = wgpu::Backends::VULKAN;
-    setup.device_descriptor = Arc::new(|adapter| wgpu::DeviceDescriptor {
-        label: Some("Veylvik studio"),
-        required_limits: veylvik_render::device_limits(adapter),
-        ..Default::default()
-    });
+    let (instance, adapter, device, queue) = pollster::block_on(veylvik_render::create_gpu())?;
+    let setup = egui_wgpu::WgpuSetupExisting {
+        instance,
+        adapter,
+        device,
+        queue,
+    };
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("Veylvik")
@@ -1248,6 +1248,8 @@ impl Studio {
                         result.backend,
                         if result.host_staging {
                             "RAM staging"
+                        } else if result.experimental_interop {
+                            "GPU transfer · experimental DMA-BUF"
                         } else {
                             "GPU transfer"
                         },

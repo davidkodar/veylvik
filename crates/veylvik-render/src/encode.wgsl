@@ -41,11 +41,24 @@ fn channel(i:u32)->u32 {
  if p.options.x==10u { return u32(round(clamp(select(64.0+876.0*value,512.0+896.0*value,chroma),0.0,1023.0)))<<6u; }
  return u32(round(clamp(select(16.0+219.0*value,128.0+224.0*value,chroma),0.0,255.0)));
 }
+// Optional linear DMA-BUF layout includes row padding and a page-aligned UV plane.
+fn stored_channel(i:u32)->u32 {
+ if p.options.y==0u { return channel(i); }
+ let pitch=p.options.y; let uv=p.options.z;
+ if i<uv {
+  let x=i%pitch;let y=i/pitch;
+  if x>=p.size.z || y>=p.size.w { return 0u; }
+  return channel(y*p.size.z+x);
+ }
+ let x=(i-uv)%pitch;let y=(i-uv)/pitch;
+ if x>=p.size.z || y>=p.size.w/2u { return 0u; }
+ return channel(p.size.z*p.size.w+y*p.size.z+x);
+}
 @compute @workgroup_size(64) fn encode(@builtin(global_invocation_id) id:vec3<u32>, @builtin(num_workgroups) groups:vec3<u32>) {
  let index=id.x+id.y*groups.x*64u;
- let per=select(4u,2u,p.options.x==10u);let count=p.size.z*p.size.w*3u/2u;
+ let per=select(4u,2u,p.options.x==10u);let count=select(p.size.z*p.size.w*3u/2u,p.options.w,p.options.y!=0u);
  if index*per>=count { return; }
  var value=0u;
- for(var n=0u;n<per;n++) { let i=index*per+n; if i<count { value|=channel(i)<<(n*(32u/per)); } }
+ for(var n=0u;n<per;n++) { let i=index*per+n; if i<count { value|=stored_channel(i)<<(n*(32u/per)); } }
  packed[index]=value;
 }

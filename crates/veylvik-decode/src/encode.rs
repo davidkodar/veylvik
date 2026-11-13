@@ -1,4 +1,4 @@
-//! In-process NVENC encoding from CUDA frames. No host pixel transfer is used.
+//! In-process NVENC/CUDA and VA-API/DMA-BUF encoding without host pixels.
 use super::*;
 
 #[derive(Clone, Copy)]
@@ -27,6 +27,9 @@ pub struct Frame {
 }
 impl Frame {
     fn destination(&mut self) -> Result<veylvik_interop::CudaDestination<'_>> {
+        if self.frame.frame.format() != Pixel::CUDA {
+            return Err("CUDA destination requires a CUDA frame".into());
+        }
         // SAFETY: This newly allocated frame has not been submitted. No other API
         // exposes its planes or mutates it. The mutable borrow prevents submit
         // until the destination is dropped; owner retains the allocation/device.
@@ -86,6 +89,7 @@ pub struct Encoder {
     frames: Frames,
     device: Arc<Device>,
     settings: Settings,
+    kind: DeviceKind,
     time_base: ff::Rational,
     stream_time_base: ff::Rational,
     submitted: i64,
@@ -93,6 +97,9 @@ pub struct Encoder {
 }
 impl Encoder {
     pub fn open(path: &Path, s: Settings) -> Result<Self> {
+        Self::open_on(path, s, DeviceKind::Cuda)
+    }
+    pub fn open_on(path: &Path, s: Settings, kind: DeviceKind) -> Result<Self> {
         if s.width < 2
             || s.height < 2
             || s.width > 8192
@@ -108,16 +115,20 @@ impl Encoder {
             return Err("Invalid native encoder settings".into());
         }
         ff::init()?;
-        let device = Device::shared(&DeviceKind::Cuda)?;
-        // SAFETY: Valid retained CUDA device. Frames takes ownership immediately.
+        let device = Device::shared(&kind)?;
+        // SAFETY: Valid retained hardware device. Frames takes ownership immediately.
         let frames = Frames(unsafe { ffi::av_hwframe_ctx_alloc(device.reference) });
         if frames.0.is_null() {
             return Err("Cannot allocate encoder frame pool".into());
         }
-        // SAFETY: Exclusive, uninitialized pool context with matching CUDA format.
+        // SAFETY: Exclusive, uninitialized pool context with the matching hardware format.
         unsafe {
             let pool = &mut *(*frames.0).data.cast::<ffi::AVHWFramesContext>();
-            pool.format = ffi::AVPixelFormat::AV_PIX_FMT_CUDA;
+            pool.format = if matches!(kind, DeviceKind::Cuda) {
+                ffi::AVPixelFormat::AV_PIX_FMT_CUDA
+            } else {
+                ffi::AVPixelFormat::AV_PIX_FMT_VAAPI
+            };
             pool.sw_format = if s.ten_bit {
                 ffi::AVPixelFormat::AV_PIX_FMT_P010LE
             } else {
@@ -131,19 +142,24 @@ impl Encoder {
                 return Err(ff::Error::from(ret).into());
             }
         }
-        let codec = ff::encoder::find_by_name(if s.ten_bit {
-            "hevc_nvenc"
-        } else {
-            "h264_nvenc"
-        })
-        .ok_or("NVENC encoder unavailable")?;
+        let codec_name = match (&kind, s.ten_bit) {
+            (DeviceKind::Cuda, false) => "h264_nvenc",
+            (DeviceKind::Cuda, true) => "hevc_nvenc",
+            (DeviceKind::Vaapi(_), false) => "h264_vaapi",
+            (DeviceKind::Vaapi(_), true) => "hevc_vaapi",
+        };
+        let codec = ff::encoder::find_by_name(codec_name).ok_or("Hardware encoder unavailable")?;
         let mut context = ff::codec::context::Context::new_with_codec(codec)
             .encoder()
             .video()?;
         let time_base = ff::Rational(s.fps[1], s.fps[0]);
         context.set_width(s.width);
         context.set_height(s.height);
-        context.set_format(Pixel::CUDA);
+        context.set_format(if matches!(kind, DeviceKind::Cuda) {
+            Pixel::CUDA
+        } else {
+            Pixel::VAAPI
+        });
         context.set_time_base(time_base);
         context.set_frame_rate(Some(ff::Rational(s.fps[0], s.fps[1])));
         context.set_aspect_ratio(ff::Rational(1, 1));
@@ -166,16 +182,23 @@ impl Encoder {
             ctx.chroma_sample_location = ffi::AVChromaLocation::AVCHROMA_LOC_CENTER;
         }
         let mut options = ff::Dictionary::new();
-        options.set("preset", if s.fast { "p2" } else { "p5" });
-        options.set("rc", "vbr");
-        options.set("cq", &s.quality.to_string());
         options.set("profile", if s.ten_bit { "main10" } else { "high" });
-        // Bound encoder buffering; no B-frame or lookahead queue can retain an
-        // unbounded number of CUDA allocations. Output still uses quality VBR.
-        options.set("rc-lookahead", "0");
-        options.set("surfaces", "4");
-        options.set("delay", "0");
-        options.set("zerolatency", "1");
+        match &kind {
+            DeviceKind::Cuda => {
+                options.set("preset", if s.fast { "p2" } else { "p5" });
+                options.set("rc", "vbr");
+                options.set("cq", &s.quality.to_string());
+                options.set("rc-lookahead", "0");
+                options.set("surfaces", "4");
+                options.set("delay", "0");
+                options.set("zerolatency", "1");
+            }
+            DeviceKind::Vaapi(_) => {
+                options.set("rc_mode", "CQP");
+                options.set("qp", &s.quality.to_string());
+                options.set("async_depth", "1");
+            }
+        }
         let codec = context.open_with(options)?;
         let mut output = ff::format::output_as(path, "mp4")?;
         {
@@ -202,6 +225,7 @@ impl Encoder {
             frames,
             device,
             settings: s,
+            kind,
             time_base,
             stream_time_base,
             submitted: 0,
@@ -230,6 +254,102 @@ impl Encoder {
         });
         Ok(Frame {
             initialized: false,
+            owner: frame.clone(),
+            frame,
+        })
+    }
+    /// Import immutable linear DMA-BUF planes without uploading or mapping pixels
+    /// on the CPU. FFmpeg retains the DRM frame and its Vulkan owner until done.
+    pub fn map_dma(&self, source: Arc<veylvik_interop::DmaFrame>) -> Result<Frame> {
+        use std::os::{fd::AsRawFd, unix::fs::MetadataExt};
+        let DeviceKind::Vaapi(node) = &self.kind else {
+            return Err("DMA-BUF requires a VA-API encoder".into());
+        };
+        let layout = source.layout();
+        layout.validate()?;
+        if layout.width != self.settings.width
+            || layout.height != self.settings.height
+            || layout.ten_bit != self.settings.ten_bit
+            || std::fs::metadata(node)?.rdev() != source.render_device()
+        {
+            return Err("DMA-BUF does not match the encoder geometry, format or device".into());
+        }
+        // SAFETY: All-zero C descriptor has no invalid enum/pointer values. Its
+        // fully populated plane/object entries are checked by DmaLayout::validate.
+        let mut descriptor: ffi::AVDRMFrameDescriptor = unsafe { std::mem::zeroed() };
+        descriptor.nb_objects = 1;
+        descriptor.nb_layers = 1;
+        descriptor.objects[0].fd = source.fd().as_raw_fd();
+        descriptor.objects[0].size = source.allocation_size() as usize;
+        descriptor.objects[0].format_modifier = 0; // DRM_FORMAT_MOD_LINEAR, never guessed for tiled data.
+        descriptor.layers[0].format =
+            u32::from_le_bytes(if layout.ten_bit { *b"P010" } else { *b"NV12" });
+        descriptor.layers[0].nb_planes = 2;
+        for (i, offset) in [0, layout.uv_offset].into_iter().enumerate() {
+            descriptor.layers[0].planes[i].object_index = 0;
+            descriptor.layers[0].planes[i].offset = offset as isize;
+            descriptor.layers[0].planes[i].pitch = layout.pitch as isize;
+        }
+        let mut owner = Box::new(DrmOwner {
+            descriptor,
+            _source: source,
+        });
+        let data = ptr::from_mut(&mut owner.descriptor).cast::<u8>();
+        let owner = Box::into_raw(owner);
+        let mut drm = ff::frame::Video::empty();
+        drm.set_format(Pixel::DRM_PRIME);
+        drm.set_width(layout.width);
+        drm.set_height(layout.height);
+        let mut mapped = ff::frame::Video::empty();
+        mapped.set_format(Pixel::VAAPI);
+        // SAFETY: The AVBuffer callback owns the stable Box, including descriptor,
+        // FD, and Vulkan allocation. av_hwframe_map retains source buffer refs.
+        // On failure both AVFrames unref normally; no borrowed FD is closed here.
+        unsafe {
+            let buffer = ffi::av_buffer_create(
+                data,
+                std::mem::size_of::<ffi::AVDRMFrameDescriptor>(),
+                Some(drop_drm),
+                owner.cast(),
+                0,
+            );
+            if buffer.is_null() {
+                drop(Box::from_raw(owner));
+                return Err("Cannot retain DMA-BUF descriptor".into());
+            }
+            (*drm.as_mut_ptr()).buf[0] = buffer;
+            (*drm.as_mut_ptr()).data[0] = data;
+            (*mapped.as_mut_ptr()).hw_frames_ctx = ffi::av_buffer_ref(self.frames.0);
+            if (*mapped.as_ptr()).hw_frames_ctx.is_null() {
+                return Err("Cannot retain VA-API frame pool".into());
+            }
+            let ret = ffi::av_hwframe_map(
+                mapped.as_mut_ptr(),
+                drm.as_ptr(),
+                ffi::AV_HWFRAME_MAP_READ as i32 | ffi::AV_HWFRAME_MAP_DIRECT as i32,
+            );
+            if ret < 0 {
+                return Err(ff::Error::from(ret).into());
+            }
+        }
+        if mapped.format() != Pixel::VAAPI
+            || mapped.width() != layout.width
+            || mapped.height() != layout.height
+        {
+            return Err("VA-API DMA-BUF mapping changed geometry or format".into());
+        }
+        mapped.set_pts(Some(self.submitted));
+        let frame = Arc::new(HardwareFrame {
+            frame: mapped,
+            format: if layout.ten_bit {
+                PlaneFormat::P010
+            } else {
+                PlaneFormat::Nv12
+            },
+            _device: self.device.clone(),
+        });
+        Ok(Frame {
+            initialized: true,
             owner: frame.clone(),
             frame,
         })
@@ -275,5 +395,17 @@ impl Encoder {
         }
         self.output.write_trailer()?;
         Ok(())
+    }
+}
+
+struct DrmOwner {
+    descriptor: ffi::AVDRMFrameDescriptor,
+    _source: Arc<veylvik_interop::DmaFrame>,
+}
+unsafe extern "C" fn drop_drm(opaque: *mut std::ffi::c_void, _data: *mut u8) {
+    // SAFETY: av_buffer_create takes exactly one Box ownership on success and
+    // invokes this callback once, after all source/mapped frame refs are gone.
+    unsafe {
+        drop(Box::from_raw(opaque.cast::<DrmOwner>()));
     }
 }
