@@ -9,7 +9,22 @@ pub(crate) enum Passes {
     One(Kernel),
     /// Horizontal then vertical pass through an intermediate image.
     Separable(Kernel, Kernel),
+    /// A fixed pipeline of passes; the last step's output is the node's output.
+    Chain(&'static [Step]),
     Special,
+}
+/// Where a chain step reads an image from.
+#[derive(Clone, Copy)]
+pub(crate) enum From {
+    /// The node's input port at this index.
+    Port(usize),
+    /// An earlier step's output.
+    Step(usize),
+    None,
+}
+pub(crate) struct Step {
+    pub kernel: Kernel,
+    pub inputs: [From; 3],
 }
 /// What a node's uniforms may depend on besides its own animated values.
 #[derive(Clone, Copy)]

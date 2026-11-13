@@ -23,6 +23,16 @@ pub struct LumaKey {
     pub high: Scalar,
 }
 
+/// Snaps a coarse matte (such as a Subject matte) to the image's real edges and removes the old
+/// background's colour from the subject's edge pixels.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RefineMatte {
+    pub radius: Scalar,
+    pub detail: Scalar,
+    pub decontaminate: Scalar,
+}
+
 pub static CHROMA_KEY: NodeType = NodeType {
     type_id: "chroma_key",
     version: 1,
@@ -48,6 +58,20 @@ pub static LUMA_KEY: NodeType = NodeType {
     ],
 };
 
+pub static REFINE_MATTE: NodeType = NodeType {
+    type_id: "refine_matte",
+    version: 1,
+    label: "Refine matte",
+    description: "Cut out a subject with a refined edge: Image is the footage, Matte a coarse mask of the subject (its alpha), such as a Subject matte from segmentation. Within Radius pixels of the matte's edge, each pixel's opacity is re-estimated from where its colour lies between the nearby subject and background colours, snapping the edge to the image and recovering hair and fine detail; higher Detail also refines where subject and background colours are closer. Decontaminate re-estimates the subject's colour at semi-transparent edges, removing the old background's colour so no halo shows over a new background. Refinement never weakens what the matte is sure of: its confident interior stays opaque, and changes fade out within about one Radius of its edge. Output is the premultiplied subject.",
+    inputs: &["image", "matte"],
+    parameters: &[
+        scalar("radius", "pixels", 1.0, 64.0, 6.0),
+        scalar("detail", "amount", 0.0, 1.0, 0.7),
+        scalar("decontaminate", "amount", 0.0, 1.0, 1.0),
+    ],
+};
+
+node!(RefineMatte, REFINE_MATTE, [radius, detail, decontaminate]);
 node!(ChromaKey, CHROMA_KEY, [tolerance, softness, despill], {
     fn validate(&self) -> Result<()> {
         let [r, g, b, _] = self.key_color;

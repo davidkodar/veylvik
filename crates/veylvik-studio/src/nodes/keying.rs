@@ -31,3 +31,8 @@ impl Inspect for veylvik_document::nodes::LumaKey {
         ui.weak("Transparent at or below Low, opaque at or above High. Set Low above High to key out bright areas instead, such as a white backdrop.");
     }
 }
+impl Inspect for veylvik_document::nodes::RefineMatte {
+    fn inspect(&mut self, ui: &mut egui::Ui, _cx: &mut InspectCx<'_>) {
+        ui.weak("Connect the footage to Image and a coarse subject mask to Matte. Raise Radius when the matte misses hair or edges by more than a few pixels; raise Detail to follow finer features. Decontaminate removes the old background's colour from the edges. Check the result with View → Show alpha.");
+    }
+}

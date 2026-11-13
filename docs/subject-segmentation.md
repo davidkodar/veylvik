@@ -5,10 +5,10 @@ shot by a local AI model. The analysis runs once, like planar tracking, and the
 result is an ordinary matte sequence that any node can use. Nothing leaves the
 computer.
 
-This first stage is headless: the `veylvik segment` command and the model
-manager. The Studio workflow (clicking in the viewer, **Track subject**, and
-one-click background replacement), GPU edge refinement and edge-band matting
-follow.
+Available today: the `veylvik segment` command, the model manager, and the
+**Refine matte** node for the edge. The Studio workflow (clicking in the viewer,
+**Track subject**, and one-click background replacement) and edge-band matting
+with a dedicated matting model follow.
 
 ## Models
 
@@ -60,9 +60,11 @@ veylvik segment FILE NEW_FILE SOURCE_UUID FRAME END "X,Y X,Y,- ..." [--back-to F
 
 The mattes are written next to `NEW_FILE` in
 `Subject mattes/<source id>/matte_NNNNN.png`, with a `subject.veyseq` manifest
-at the composition frame rate. `NEW_FILE` gets one new **Subject matte** Footage
-node that plays the sequence from the first analysed frame. Connect it as a
-mask, or use it to merge the subject over a new background. The command prints
+at the composition frame rate. `NEW_FILE` gets two new nodes: a **Subject matte**
+Footage node that plays the sequence from the first analysed frame, and a
+**Subject cutout** (Refine matte) that cuts the subject out of the source with
+refined, decontaminated edges. Merge the cutout over a new background, or use
+the matte as a mask. The command prints
 a JSON report with the frame range, frames where the subject was absent, and
 milliseconds per frame.
 
@@ -85,6 +87,12 @@ Frames where the model judges the subject absent are empty.
   conditions every later frame, together with the six most recent frames and up
   to sixteen object pointers. Tracking backward restarts from the prompted frame,
   as SAM 2 does.
+- **Refined edges.** The Subject cutout runs on the GPU at render time, so
+  its controls can change without a new analysis and the footage keeps its HDR
+  values. See **Refine matte** in the [reference](reference.md). On a real
+  shot, it makes skin edges against sand opaque right up to the edge, with the
+  one mixed pixel partly transparent and carrying the subject's colour instead of
+  the sand's.
 - **Edges.** The model's mask logits are resampled bilinearly to the
   composition size before the sigmoid. The edge is never upsampled from a
   binary mask, so it stays smooth instead of stair-stepped.

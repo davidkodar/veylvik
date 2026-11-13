@@ -41,9 +41,22 @@ pub enum Kernel {
     ChannelMask,
     Colorize,
     Gradient,
+    MattePack,
+    KnownSubject,
+    KnownBackground,
+    MatteBoxHorizontal,
+    MatteBoxVertical,
+    MatteProject,
+    MatteJoin,
+    FuseForeground,
+    FuseBackground,
+    FuseBoxHorizontal,
+    FuseBoxVertical,
+    FuseEstimate,
+    FuseFinish,
 }
 impl Kernel {
-    pub(crate) const ALL: [Self; 35] = [
+    pub(crate) const ALL: [Self; 48] = [
         Self::Text,
         Self::Solid,
         Self::Noise,
@@ -79,6 +92,19 @@ impl Kernel {
         Self::ChannelMask,
         Self::Colorize,
         Self::Gradient,
+        Self::MattePack,
+        Self::KnownSubject,
+        Self::KnownBackground,
+        Self::MatteBoxHorizontal,
+        Self::MatteBoxVertical,
+        Self::MatteProject,
+        Self::MatteJoin,
+        Self::FuseForeground,
+        Self::FuseBackground,
+        Self::FuseBoxHorizontal,
+        Self::FuseBoxVertical,
+        Self::FuseEstimate,
+        Self::FuseFinish,
     ];
     pub(crate) fn entry(self) -> &'static str {
         match self {
@@ -115,6 +141,19 @@ impl Kernel {
             Self::ChannelMask => "channel_mask",
             Self::Colorize => "colorize",
             Self::Gradient => "gradient",
+            Self::MattePack => "matte_pack",
+            Self::KnownSubject => "known_subject",
+            Self::KnownBackground => "known_background",
+            Self::MatteBoxHorizontal => "matte_box_horizontal",
+            Self::MatteBoxVertical => "matte_box_vertical",
+            Self::MatteProject => "matte_project",
+            Self::MatteJoin => "matte_join",
+            Self::FuseForeground => "fuse_foreground",
+            Self::FuseBackground => "fuse_background",
+            Self::FuseBoxHorizontal => "fuse_box_horizontal",
+            Self::FuseBoxVertical => "fuse_box_vertical",
+            Self::FuseEstimate => "fuse_estimate",
+            Self::FuseFinish => "fuse_finish",
             Self::CombineMask => "combine_mask",
             Self::Mask => "mask",
         }
@@ -130,7 +169,7 @@ pub(crate) enum Input {
 pub(crate) struct Pass {
     pub node: usize,
     pub kernel: Kernel,
-    pub inputs: [Input; 2],
+    pub inputs: [Input; 3],
     pub output: usize,
 }
 #[derive(serde::Serialize)]
@@ -216,7 +255,7 @@ impl Plan {
         let mut outputs = BTreeMap::new();
         let mut shared = BTreeMap::new();
         for (index, node) in nodes.iter().enumerate() {
-            let mut inputs = [Input::Empty, Input::Empty];
+            let mut inputs = [Input::Empty, Input::Empty, Input::Empty];
             for (i, port) in node.operation.inputs().iter().enumerate() {
                 inputs[i] = Input::Value(outputs[&node.inputs[*port]]);
             }
@@ -259,8 +298,30 @@ impl Plan {
                         inputs,
                         output: intermediate,
                     });
-                    inputs = [Input::Value(intermediate), Input::Empty];
+                    inputs = [Input::Value(intermediate), Input::Empty, Input::Empty];
                     second
+                }
+                crate::nodes::Passes::Chain(steps) => {
+                    let ports = inputs.clone();
+                    let mut values: Vec<usize> = Vec::with_capacity(steps.len());
+                    let resolve = |from: crate::nodes::From, values: &[usize]| match from {
+                        crate::nodes::From::Port(i) => ports[i].clone(),
+                        crate::nodes::From::Step(j) => Input::Value(values[j]),
+                        crate::nodes::From::None => Input::Empty,
+                    };
+                    let (last, rest) = steps.split_last().expect("a chain has steps");
+                    for step in rest {
+                        let value = passes.len();
+                        passes.push(Pass {
+                            node: index,
+                            kernel: step.kernel,
+                            inputs: step.inputs.map(|from| resolve(from, &values)),
+                            output: value,
+                        });
+                        values.push(value);
+                    }
+                    inputs = last.inputs.map(|from| resolve(from, &values));
+                    last.kernel
                 }
                 crate::nodes::Passes::Special => match &node.operation {
                     Operation::PlanarTrack(veylvik_document::nodes::PlanarTrack { .. }) => {

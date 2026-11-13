@@ -162,6 +162,9 @@ Everything Veylvik can do today, area by area. Veylvik is a native Rust node com
 - **Despill**: limits the key colour in what remains to the average of the other channels, removing fringes and bounce light.
 - **Luma key**: **Low**/**High** luminance thresholds with a linear ramp; swap them to key out bright areas (white backdrops); HDR values allowed.
 - Both keep input alpha and output premultiplied colour; inspect the matte with **Show alpha**; refine with Grow/shrink mask, Blur and Combine masks (garbage mattes).
+- **Refine matte**: cuts a subject out with a coarse matte (such as a Subject matte) and snaps the edge to the image: opacity re-estimated near the edge from local subject and background colours, recovering fine detail and correcting soft or misplaced edges; reliability checks keep patterned subjects and background grain clean; the confident interior stays opaque.
+- **Decontaminate** in Refine matte: blur-fusion foreground colour estimation removes the old background's colour from semi-transparent edges.
+- **Radius**, **Detail** and **Decontaminate**, keyframable; all live on the GPU, so changing them needs no new analysis.
 - **Add → Keying** submenu.
 
 ## Colour
@@ -355,7 +358,7 @@ Details: [Subject segmentation](subject-segmentation.md).
 - Click-prompted subject mattes from a local AI model (EdgeTAM, Apache-2.0), tracked through the shot; about 30 ms per frame on an RTX 4080.
 - Points that mark or exclude areas (1–32); forward, backward or both directions from the prompted frame; up to 4096 frames.
 - Analyses the rendered source node at composition size, so placement, trims and timing are included.
-- Writes a 16-bit matte sequence (`.veyseq`) beside the project and adds a **Subject matte** Footage node.
+- Writes a 16-bit matte sequence (`.veyseq`) beside the project and adds a **Subject matte** Footage node and a ready **Subject cutout** (Refine matte) wired to the source.
 - Smooth edges: model logits are resampled before the sigmoid, never upsampled as a binary mask.
 - Model manager: explicit install with pinned revision, size and SHA-256; uninstall; enable and disable; each model lists its uses, pros, cons, speed, memory and licence.
 - Runs in an isolated worker process on CUDA, with no silent CPU fallback.

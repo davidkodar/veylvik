@@ -119,8 +119,8 @@ impl Request {
         })
     }
 }
-/// Segments on `doc`, writing the mattes under `project_dir`; returns the commands that add the
-/// matte node and a report.
+/// Segments on `doc`, writing the mattes under `project_dir`; returns the matte node, the
+/// commands that add it and the refined cutout, and a report.
 pub fn run(
     renderer: &Renderer,
     doc: &Composition,
@@ -182,9 +182,10 @@ pub fn run(
         .ok_or("cannot express the matte path relative to the project")?
         .to_string_lossy()
         .into_owned();
-    let (node, commands) = analysis::matte_node(doc, asset, outcome.first_frame)?;
+    let added = analysis::matte_nodes(doc, request.source, asset, outcome.first_frame)?;
     let mut report = serde_json::to_value(&outcome)?;
     report["device"] = json!(worker.device);
     report["model"] = json!(model.id);
-    Ok((node, commands, report))
+    report["cutout"] = json!(added.cutout);
+    Ok((added.matte, added.commands, report))
 }

@@ -210,7 +210,14 @@ pub(crate) const ADD_MENU: [(&str, &[&registry::NodeType]); 8] = [
             &registry::METALLIC_SHINE,
         ],
     ),
-    ("Keying", &[&registry::CHROMA_KEY, &registry::LUMA_KEY]),
+    (
+        "Keying",
+        &[
+            &registry::CHROMA_KEY,
+            &registry::LUMA_KEY,
+            &registry::REFINE_MATTE,
+        ],
+    ),
     (
         "Tracking",
         &[&registry::PLANAR_TRACK, &registry::PLANAR_WARP],

@@ -129,7 +129,9 @@ impl Renderer {
         let scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("composition kernels"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("kernels.wgsl").into()),
+            source: wgpu::ShaderSource::Wgsl(
+                concat!(include_str!("kernels.wgsl"), include_str!("matte.wgsl")).into(),
+            ),
         });
         let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("composition buffers"),
@@ -156,6 +158,16 @@ impl Renderer {
                 },
                 wgpu::BindGroupLayoutEntry {
                     binding: 2,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: std::num::NonZeroU64::new(16),
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 4,
                     visibility: wgpu::ShaderStages::COMPUTE,
                     ty: wgpu::BindingType::Buffer {
                         ty: wgpu::BufferBindingType::Storage { read_only: true },
@@ -601,6 +613,10 @@ impl Renderer {
                     wgpu::BindGroupEntry {
                         binding: 3,
                         resource: output.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 4,
+                        resource: input(2).as_entire_binding(),
                     },
                 ],
             });

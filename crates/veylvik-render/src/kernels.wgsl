@@ -3,6 +3,7 @@ struct Params { size_op: vec4<u32>, values: vec4<f32>, extra: vec4<f32> }
 @group(0) @binding(1) var<storage, read> source: array<vec4<f32>>;
 @group(0) @binding(2) var<storage, read> second: array<vec4<f32>>;
 @group(0) @binding(3) var<storage, read_write> result: array<vec4<f32>>;
+@group(0) @binding(4) var<storage, read> third: array<vec4<f32>>;
 fn inside(gid:vec3<u32>)->bool { return gid.x<p.size_op.x && gid.y<p.size_op.y; }
 fn index(gid:vec3<u32>)->u32 { return gid.y*p.size_op.x+gid.x; }
 fn sample_source(x:i32,y:i32)->vec4<f32> {

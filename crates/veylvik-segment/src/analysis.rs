@@ -132,13 +132,21 @@ pub fn analyse(
         cancelled,
     })
 }
-/// Commands that add the matte as a Footage node starting at `first_frame`; `asset` is the
-/// manifest path relative to the project.
-pub fn matte_node(
+/// Nodes an analysis adds: the matte sequence, and the refined cutout of the source.
+pub struct Added {
+    pub matte: NodeId,
+    pub cutout: NodeId,
+    pub commands: Vec<Command>,
+}
+/// Commands that add the matte as a Footage node starting at `first_frame` (`asset` is the
+/// manifest path relative to the project) and a Refine matte node that cuts the subject out of
+/// `source` with it.
+pub fn matte_nodes(
     doc: &Composition,
+    source: NodeId,
     asset: String,
     first_frame: i64,
-) -> Result<(NodeId, Vec<Command>)> {
+) -> Result<Added> {
     let Operation::Footage(mut footage) =
         serde_json::from_value(veylvik_document::registry::FOOTAGE.default_operation())?
     else {
@@ -147,15 +155,30 @@ pub fn matte_node(
     footage.asset = asset;
     footage.timing.start =
         Time::at_frame(first_frame, doc.frame_rate).map_err(|e| e.to_string())?;
-    let node = Node::new("Subject matte", Operation::Footage(footage), &[]);
-    let id = node.id;
-    let commands = vec![Command::Put {
-        node: Box::new(node),
-    }];
+    let matte = Node::new("Subject matte", Operation::Footage(footage), &[]);
+    let refine: Operation =
+        serde_json::from_value(veylvik_document::registry::REFINE_MATTE.default_operation())?;
+    let cutout = Node::new(
+        "Subject cutout",
+        refine,
+        &[("image", source), ("matte", matte.id)],
+    );
+    let added = Added {
+        matte: matte.id,
+        cutout: cutout.id,
+        commands: vec![
+            Command::Put {
+                node: Box::new(matte),
+            },
+            Command::Put {
+                node: Box::new(cutout),
+            },
+        ],
+    };
     veylvik_document::Document::new(doc.clone())
-        .and_then(|d| d.prepare(0, &commands).map(|_| ()))
+        .and_then(|d| d.prepare(0, &added.commands).map(|_| ()))
         .map_err(|e| e.to_string())?;
-    Ok((id, commands))
+    Ok(added)
 }
 
 #[cfg(test)]
@@ -192,5 +215,24 @@ mod tests {
         let mut none = request([0, 1], None);
         none.points[0].positive = false;
         assert!(schedule(&none, 10).is_err());
+    }
+    #[test]
+    fn analysis_adds_the_matte_and_a_cutout_wired_to_the_source() {
+        let rate = Time { ticks: 30, rate: 1 };
+        let doc = veylvik_document::blank(64, 64, rate).unwrap();
+        let added = matte_nodes(&doc, doc.output, "mattes/subject.veyseq".into(), 12).unwrap();
+        let mut document = veylvik_document::Document::new(doc.clone()).unwrap();
+        document
+            .apply(document.revision(), &added.commands)
+            .unwrap();
+        let after = document.snapshot();
+        let cutout = &after.nodes[&added.cutout];
+        assert_eq!(cutout.inputs["image"], doc.output);
+        assert_eq!(cutout.inputs["matte"], added.matte);
+        let Operation::Footage(f) = &after.nodes[&added.matte].operation else {
+            panic!("matte is footage")
+        };
+        assert_eq!(f.asset, "mattes/subject.veyseq");
+        assert_eq!(f.timing.start.seconds().unwrap(), 0.4);
     }
 }

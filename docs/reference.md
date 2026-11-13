@@ -153,6 +153,22 @@ transparent at or below **Low**, opaque at or above **High**, with a linear ramp
 set Low above High to key out bright areas such as a white backdrop. Both keep input
 alpha, output premultiplied colour, work on HDR values and can be keyframed.
 
+**Refine matte** cuts a subject out of **Image** with a coarse matte on **Matte** (its
+alpha), such as the Subject matte from segmentation, and gives the matte the image's own
+edges. Near the matte's edge it averages the colours of pixels the matte is sure are
+subject and sure are background, within **Radius** pixels (default 6), and re-estimates each
+pixel's opacity from where its colour lies between the two. That snaps a soft or slightly
+misplaced edge to the real one and recovers fine detail. The estimate is used only where it
+is reliable: both colours nearby and different enough (higher **Detail** accepts closer
+colours), and the pixel's colour on the line between them, so a patterned subject such as a
+striped shirt keeps the coarse edge. Where the matte was unsure the edge is re-estimated
+fully; where it was sure of the background, only within about three pixels of the edge, so
+background grains that happen to match the subject stay out. The confident interior always
+stays opaque. **Decontaminate** then re-estimates the subject's colour at semi-transparent
+edges by blur-fusion foreground estimation, so no trace of the old background shows over a
+new one. Output is the premultiplied subject; HDR values are kept, and only negative colour
+that the estimate would introduce at edges is clipped.
+
 **Pick** beside a colour parameter (Chroma key's Key colour, Solid, Colorize's Shadows and
 Highlights) is an eyedropper: click in the viewer to sample a 5 × 5 area, or drag to
 average a rectangle; Esc or pressing Pick again cancels. It samples exact scene-linear
