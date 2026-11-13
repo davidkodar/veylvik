@@ -68,3 +68,41 @@ impl RenderNode for veylvik_document::nodes::Colorize {
         Ok(())
     }
 }
+impl RenderNode for veylvik_document::nodes::ColorCorrect {
+    fn passes(&self) -> Passes {
+        Passes::One(Kernel::ColorCorrect)
+    }
+    fn shareable(&self) -> bool {
+        true
+    }
+    fn identity(&self) -> bool {
+        let at = |value: &Scalar, default: f32| matches!(value, Scalar::Constant { value } if *value == default);
+        at(&self.temperature, 0.0)
+            && at(&self.tint, 0.0)
+            && at(&self.lift, 0.0)
+            && at(&self.gain, 1.0)
+            && at(&self.contrast, 1.0)
+            && at(&self.gamma, 1.0)
+            && at(&self.saturation, 1.0)
+    }
+    fn params(
+        &self,
+        _cx: &Cx<'_>,
+        sample: &dyn Fn(&str) -> Result<f32>,
+        p: &mut Params,
+    ) -> Result<()> {
+        p.values = [
+            sample("temperature")?,
+            sample("tint")?,
+            sample("lift")?,
+            sample("gain")?,
+        ];
+        p.extra = [
+            sample("contrast")?,
+            sample("gamma")?,
+            sample("saturation")?,
+            0.0,
+        ];
+        Ok(())
+    }
+}

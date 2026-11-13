@@ -29,6 +29,29 @@ fn exposure(@builtin(global_invocation_id) gid:vec3<u32>) {
     if !inside(gid) {return;}
     let i=index(gid);result[i]=vec4<f32>(source[i].rgb*p.values.x,source[i].a);
 }
+// Primary grade on unpremultiplied colour; each stage at its default is skipped so the
+// identity is exact. values: temperature, tint, lift, gain; extra: contrast, gamma, saturation.
+fn signed_pow(v:vec3<f32>,e:f32)->vec3<f32> {return sign(v)*pow(abs(v),vec3<f32>(e));}
+@compute @workgroup_size(8,8)
+fn color_correct(@builtin(global_invocation_id) gid:vec3<u32>) {
+    if !inside(gid) {return;}
+    let i=index(gid); let c=source[i];
+    if c.a<=0.0 {result[i]=c;return;}
+    var rgb=c.rgb/c.a;
+    let temperature=p.values.x; let tint=p.values.y; let lift=p.values.z; let gain=p.values.w;
+    let contrast=p.extra.x; let gamma=p.extra.y; let saturation=p.extra.z;
+    if temperature!=0.0 || tint!=0.0 {
+        rgb*=vec3<f32>(exp2(0.5*temperature),exp2(-0.5*tint),exp2(-0.5*temperature));
+    }
+    if gain!=1.0 || lift!=0.0 {rgb=rgb*gain+vec3<f32>(lift);}
+    if contrast!=1.0 {rgb=0.18*signed_pow(rgb/0.18,contrast);}
+    if gamma!=1.0 {rgb=signed_pow(rgb,1.0/gamma);}
+    if saturation!=1.0 {
+        let y=dot(rgb,vec3<f32>(0.2126,0.7152,0.0722));
+        rgb=vec3<f32>(y)+(rgb-vec3<f32>(y))*saturation;
+    }
+    result[i]=vec4<f32>(rgb*c.a,c.a);
+}
 fn bilinear(pos:vec2<f32>)->vec4<f32> {
     // Reject far-away coordinates before float-to-int conversion or adding one.
     if any(pos < vec2<f32>(-1.0)) || any(pos > vec2<f32>(p.size_op.xy)) {return vec4<f32>(0.0);}

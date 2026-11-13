@@ -22,3 +22,8 @@ impl Inspect for veylvik_document::nodes::Colorize {
         }
     }
 }
+impl Inspect for veylvik_document::nodes::ColorCorrect {
+    fn inspect(&mut self, ui: &mut egui::Ui, _cx: &mut InspectCx<'_>) {
+        ui.weak("Applied in order: white balance, lift and gain, contrast around 18% grey, gamma, saturation. Every control can be animated; defaults change nothing.");
+    }
+}

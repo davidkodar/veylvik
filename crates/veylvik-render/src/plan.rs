@@ -19,6 +19,7 @@ pub enum Kernel {
     SurfaceReflection,
     MetallicShine,
     Exposure,
+    ColorCorrect,
     Transform,
     Displace,
     MorphologyHorizontal,
@@ -39,7 +40,7 @@ pub enum Kernel {
     Gradient,
 }
 impl Kernel {
-    pub(crate) const ALL: [Self; 31] = [
+    pub(crate) const ALL: [Self; 32] = [
         Self::Text,
         Self::Solid,
         Self::Noise,
@@ -53,6 +54,7 @@ impl Kernel {
         Self::SurfaceReflection,
         Self::MetallicShine,
         Self::Exposure,
+        Self::ColorCorrect,
         Self::Transform,
         Self::Displace,
         Self::MorphologyHorizontal,
@@ -87,6 +89,7 @@ impl Kernel {
             Self::FractalNoise => "fractal_noise",
             Self::Noise => "noise",
             Self::Exposure => "exposure",
+            Self::ColorCorrect => "color_correct",
             Self::Displace => "displace",
             Self::Transform => "transform",
             Self::MorphologyHorizontal => "morphology_horizontal",

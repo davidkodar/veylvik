@@ -124,6 +124,17 @@ Input luminance is clamped to black–white before mapping; fully transparent in
 stays transparent. Endpoint alpha can turn a noise field into colored coverage.
 Colors are static parameters; place animated nodes before or after the mapping.
 
+**Colour correct** grades footage and renders in scene-linear light, in a fixed order:
+white balance (**Temperature** warms or cools by up to a stop between red and blue,
+**Tint** shifts towards magenta or green), **Lift** (offset) and **Gain** (multiply),
+**Contrast** around 18 % grey, **Gamma**, then **Saturation** with Rec.709 luminance.
+It works on unpremultiplied colour and multiplies coverage back afterwards, so alpha
+is unchanged and transparent pixels stay transparent. Values are not clamped: HDR
+highlights survive, and negative values keep their sign through contrast and gamma.
+Every control can be keyframed. At the defaults (0, 0, 0, 1, 1, 1, 1) the node is an
+exact identity and the renderer skips it. Use **Exposure** for whole-stop brightness
+changes and **Colorize** for mapping luminance to colours.
+
 ## Native editor
 
 ```sh
