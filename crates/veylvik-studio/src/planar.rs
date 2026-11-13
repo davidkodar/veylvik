@@ -1,7 +1,7 @@
 //! Guided planar analysis with explicit, undoable publication of reusable motion.
 use crate::{Studio, files::Completed, sequence::Progress, viewer::ViewTransform};
 use eframe::egui;
-use std::sync::{Arc, atomic::Ordering};
+use std::sync::{Arc, Mutex, atomic::Ordering};
 use veylvik_document::{
     NodeId, Operation, Time,
     planar::{Homography, Quad, Sample, Track, WarpMode},
@@ -26,6 +26,10 @@ pub struct Controls {
     edited: bool,
     blend_surface: bool,
     look: veylvik_document::surface::Look,
+    base: Option<Tracked>,
+    correction_frame: Option<i64>,
+    live: Arc<Mutex<Live>>,
+    live_sample: Option<Sample>,
 }
 impl Default for Controls {
     fn default() -> Self {
@@ -44,9 +48,21 @@ impl Default for Controls {
             edited: true,
             blend_surface: true,
             look: veylvik_document::surface::Look::Painted,
+            base: None,
+            correction_frame: None,
+            live: Arc::new(Mutex::new(Live::default())),
+            live_sample: None,
         }
     }
 }
+#[derive(Default)]
+struct Live {
+    // A single replaceable GPU frame bounds memory if analysis outruns the UI.
+    latest: Option<(i64, Arc<veylvik_render::GpuFrame>, Sample)>,
+    quality: Vec<(Time, bool)>,
+    lost: Option<i64>,
+}
+#[derive(Clone)]
 pub struct Tracked {
     session: NodeId,
     revision: u64,
@@ -69,14 +85,20 @@ impl Controls {
         let screen =
             |p: [f64; 2]| origin + egui::vec2(p[0] as f32 * scale.x, p[1] as f32 * scale.y);
         let time = Time::at_frame(frame, rate).ok();
-        let sample = self.result.as_ref().and_then(|r| {
-            time.and_then(|t| {
-                r.data
-                    .samples
-                    .iter()
-                    .find(|s| s.time.compare(t).is_ok_and(|o| o.is_eq()))
-            })
-        });
+        let sample = self
+            .live_sample
+            .as_ref()
+            .filter(|s| time.is_some_and(|t| s.time.compare(t).is_ok_and(|o| o.is_eq())))
+            .or_else(|| {
+                self.result.as_ref().and_then(|r| {
+                    time.and_then(|t| {
+                        r.data
+                            .samples
+                            .iter()
+                            .find(|s| s.time.compare(t).is_ok_and(|o| o.is_eq()))
+                    })
+                })
+            });
         let quad = sample
             .map(|s| s.corners)
             .or_else(|| {
@@ -117,7 +139,10 @@ impl Controls {
                 }
             }
         }
-        if self.active.is_none() && self.result.is_none() {
+        if self.active.is_none()
+            && self.result.is_none()
+            && self.correction_frame.is_none_or(|f| f == frame)
+        {
             for i in 0..4 {
                 let p = screen(self.surface[i]);
                 painter.rect_filled(
@@ -148,7 +173,89 @@ impl Controls {
         }
     }
 }
+fn weak(sample: &Sample) -> bool {
+    let accepted = sample.features.iter().filter(|f| f.accepted).count();
+    accepted < 12 || accepted * 3 < sample.features.len() * 2 || sample.rms_pixels > 1.5
+}
 impl Studio {
+    pub(super) fn poll_planar_preview(&mut self) {
+        if self.planar.active.is_none() {
+            return;
+        }
+        let latest = self
+            .planar
+            .live
+            .lock()
+            .ok()
+            .and_then(|mut live| live.latest.take());
+        if let Some((frame, image, sample)) = latest {
+            self.project.frame = frame;
+            self.project.preview = self.planar.source;
+            self.wanted = None;
+            self.displayed_ticket = None;
+            self.preview_pending = false;
+            self.displayed_time = Some(sample.time);
+            self.displayed = Some(self.display.frame(
+                &self.renderer,
+                image,
+                self.view,
+                ViewTransform::default(),
+            ));
+            self.planar.live_sample = Some(sample);
+        }
+    }
+    pub(super) fn planar_quality(&mut self, ui: &mut egui::Ui) {
+        if !self.planar.open {
+            return;
+        }
+        let doc = self.project.document.snapshot();
+        let count = doc.frame_count;
+        let rate = doc.frame_rate;
+        let mut quality: Vec<_> = self
+            .planar
+            .result
+            .as_ref()
+            .or(self.planar.base.as_ref())
+            .map(|r| r.data.samples.iter().map(|s| (s.time, weak(s))).collect())
+            .unwrap_or_default();
+        let lost = if let Ok(live) = self.planar.live.lock() {
+            quality.extend_from_slice(&live.quality);
+            live.lost
+        } else {
+            None
+        };
+        if quality.is_empty() && lost.is_none() {
+            return;
+        }
+        let mut seek = None;
+        ui.horizontal(|ui| {
+            ui.label("Surface track");
+            let (rect,response)=ui.allocate_exact_size(egui::vec2(ui.available_width().max(40.),14.),egui::Sense::click_and_drag());
+            let width=rect.width()/count.max(1) as f32;
+            let painter=ui.painter();
+            painter.rect_filled(rect,2.,egui::Color32::from_gray(45));
+            let x=|f:i64|rect.left()+f as f32*width;
+            for (time,weak) in quality {
+                if let Some(frame)=crate::key_timeline::frame(time,rate,count) {
+                    painter.rect_filled(egui::Rect::from_min_size(egui::pos2(x(frame),rect.top()),egui::vec2(width.max(1.),rect.height())),0.,if weak {egui::Color32::from_rgb(220,170,70)} else {egui::Color32::from_rgb(65,155,110)});
+                }
+            }
+            if let Some(frame)=lost {painter.rect_filled(egui::Rect::from_min_size(egui::pos2(x(frame),rect.top()),egui::vec2(width.max(3.),rect.height())),0.,egui::Color32::from_rgb(230,90,80));}
+            painter.vline(x(self.project.frame)+width*0.5,rect.y_range(),(1.5,egui::Color32::WHITE));
+            if self.planar.active.is_none() && (response.clicked()||response.dragged()) && let Some(p)=response.interact_pointer_pos() {
+                seek=Some(((p.x-rect.left())/width).floor().clamp(0.,count.saturating_sub(1) as f32) as i64);
+            }
+            response.on_hover_text("Tracking quality: green = strong, amber = weak or manual, red = analysis stopped, grey = no sample. Click to inspect a frame.");
+        });
+        if let Some(frame) = seek
+            && self.apply_draft()
+        {
+            self.project.frame = frame;
+            self.playing = false;
+            self.request_preview();
+        }
+    }
+
     pub(super) fn begin_planar(&mut self) {
         if !self.apply_draft() || self.files.busy() {
             return;
@@ -189,6 +296,10 @@ impl Studio {
     }
     pub(super) fn planar_completed(&mut self, result: Tracked) {
         self.planar.active = None;
+        self.planar.live_sample = None;
+        if let Ok(mut live) = self.planar.live.lock() {
+            live.latest = None;
+        }
         if result.session != self.project.session
             || result.revision != self.project.document.revision()
         {
@@ -199,7 +310,10 @@ impl Studio {
         self.error = false;
         self.planar.edited = true;
         self.planar.result = Some(result);
+        self.planar.base = None;
+        self.planar.correction_frame = None;
         self.planar.open = true;
+        self.request_preview();
     }
     pub(super) fn planar_window(&mut self, ctx: &egui::Context) {
         if !self.planar.open {
@@ -218,7 +332,7 @@ impl Studio {
                 egui::ComboBox::from_id_salt("planar-source").selected_text(old.and_then(|id|doc.nodes.get(&id)).map_or("Source",|n|n.label.as_str())).show_ui(ui,|ui| {
                     for node in doc.nodes.values() { if !matches!(node.operation,Operation::PlanarTrack {..}|Operation::PlanarWarp {..}) { ui.selectable_value(&mut self.planar.source,Some(node.id),&node.label); } }
                 });
-                if old!=self.planar.source {self.planar.result=None;view=true;}
+                if old!=self.planar.source {self.planar.result=None;self.planar.base=None;self.planar.saved=None;self.planar.correction_frame=None;self.planar.live=Arc::new(Mutex::new(Live::default()));view=true;}
                 if ui.button("View tracking source").clicked() {view=true;}
                 ui.checkbox(&mut self.planar.show_features,"Show feature matches");
                 ui.weak("Green circles: accepted. Coral crosses: rejected.");
@@ -227,11 +341,12 @@ impl Studio {
                 ui.horizontal(|ui| {if ui.button("To start").clicked() {self.planar.end=0;}
                     if ui.button("To end").clicked() {self.planar.end=i64::from(doc.frame_count)-1;}});
                 ui.collapsing("Tracking settings",|ui| {
+                    ui.weak("GPU pyramid: coarse motion search, full-resolution refinement.");
                     ui.horizontal(|ui| {ui.label("Feature radius");ui.add(egui::DragValue::new(&mut self.planar.settings.patch_radius).range(3..=16).suffix(" px"));});
-                    ui.horizontal(|ui| {ui.label("Search radius");ui.add(egui::DragValue::new(&mut self.planar.settings.search_radius).range(1..=48).suffix(" px"));});
+                    ui.horizontal(|ui| {ui.label("Search per level");ui.add(egui::DragValue::new(&mut self.planar.settings.search_radius).range(1..=48).suffix(" px"));});
                     ui.horizontal(|ui| {ui.label("Match tolerance");ui.add(egui::DragValue::new(&mut self.planar.settings.tolerance_pixels).range(0.1..=32.).speed(0.1).suffix(" px"));});
                 });
-                if self.planar.result.is_some() && ui.button("Adjust region / track again").clicked() {
+                if self.planar.result.is_some() && ui.button("Correct corners / retrack section").clicked() {
                     if let Some(result)=&self.planar.result
                         && let Ok(quad)=Time::at_frame(self.project.frame,doc.frame_rate)
                             .and_then(|time|result.data.motion_at(time))
@@ -239,9 +354,17 @@ impl Studio {
                             self.planar.surface=quad.map(|p|p.map(|v|v.clamp(0.,1.)));
                             if veylvik_document::planar::validate_quad(self.planar.surface).is_err() { self.planar.surface=Controls::default().surface; }
                     }
-                    self.planar.result=None;
+                    self.planar.base=self.planar.result.take();
+                    self.planar.correction_frame=Some(self.project.frame);
+                    self.planar.live_sample=None;
+                    self.planar.live=Arc::new(Mutex::new(Live::default()));
                 }
-                let valid=self.planar.source.is_some() && self.project.frame.abs_diff(self.planar.end)<4096 && self.project.frame!=self.planar.end;
+                if let Some(frame)=self.planar.correction_frame {
+                    ui.label(format!("Correction at frame {frame}. Drag the four corners, then track to the chosen endpoint. Other frames are preserved."));
+                    if ui.button("Return to correction frame").clicked() {self.project.frame=frame;view=true;}
+                    if ui.button("Cancel correction").clicked() {self.planar.result=self.planar.base.take();self.planar.correction_frame=None;}
+                }
+                let valid=self.planar.correction_frame.is_none_or(|f|f==self.project.frame) && self.planar.source.is_some() && self.project.frame.abs_diff(self.planar.end)<4096 && self.project.frame!=self.planar.end;
                 if ui.add_enabled(valid && !self.files.busy(),egui::Button::new("Track surface")).clicked() {track=true;}
             });
             if let Some(p)=&self.planar.active {
@@ -397,7 +520,36 @@ impl Studio {
             self.planar.end,
             self.project.document.snapshot().frame_rate,
         );
-        let (surface, settings) = (self.planar.surface, self.planar.settings);
+        // Reanalyzing without entering correction mode still preserves existing sections.
+        let base = self
+            .planar
+            .base
+            .clone()
+            .or_else(|| self.planar.result.clone());
+        if base
+            .as_ref()
+            .is_some_and(|b| b.session != session || b.revision != revision || b.source != source)
+        {
+            self.fail("Composition changed. Reopen the saved track before correcting it.");
+            return;
+        }
+        let surface = if self.planar.correction_frame.is_some() {
+            self.planar.surface
+        } else {
+            base.as_ref()
+                .and_then(|b| {
+                    Time::at_frame(start, rate)
+                        .ok()
+                        .and_then(|t| b.data.motion_at(t).ok())
+                        .and_then(|h| h.transform_quad(b.data.reference).ok())
+                })
+                .unwrap_or(self.planar.surface)
+        };
+        let settings = self.planar.settings;
+        let live = Arc::new(Mutex::new(Live::default()));
+        self.planar.live = live.clone();
+        self.planar.live_sample = None;
+        self.planar.base = base.clone();
         let available_bytes = veylvik_document::limits::MAX_DOCUMENT_BYTES
             .saturating_sub(
                 self.project
@@ -426,6 +578,7 @@ impl Studio {
                     RenderRequest::full(reference_time),
                     &inputs,
                 )?;
+                let reference_levels=tracker.pyramid(&renderer,&reference)?;
                 let points = tracker.detect(&renderer, &reference, surface, settings)?;
                 let initial = tracker.track(
                     &renderer,
@@ -456,6 +609,11 @@ impl Studio {
                 let mut frame = start;
                 let mut message = "Tracking complete".to_owned();
                 worker.completed.store(1, Ordering::Relaxed);
+                if let Ok(mut live)=live.lock() {
+                    live.quality.push((reference_time,weak(&data.samples[0])));
+                    live.latest=Some((start,reference.clone(),data.samples[0].clone()));
+                }
+                ctx.request_repaint();
                 while frame != end {
                     if worker.cancel.load(Ordering::Relaxed) {
                         message = "Cancelled; accepted frames are available to save".into();
@@ -465,26 +623,15 @@ impl Studio {
                     let time = Time::at_frame(frame, rate)?;
                     let current =
                         renderer.render_gpu_cached(&plan, RenderRequest::full(time), &inputs)?;
-                    let found = match tracker
-                        .track(&renderer, &reference, &current, &points, motion, settings)
-                    {
-                        Ok(v) => v,
-                        Err(e) => {
-                            message = format!("Stopped at frame {frame}: {e}");
+                    let current_levels=tracker.pyramid(&renderer,&current)?;
+                    let found = match tracker.track_multiscale(&renderer,&reference,&current,&reference_levels,&current_levels,&points,motion,settings) {
+                        Ok(v)=>v,
+                        Err(e)=> {
+                            message=format!("Stopped at frame {frame}: {e}");
+                            if let Ok(mut live)=live.lock() {live.lost=Some(frame);}
                             break;
                         }
                     };
-                    // Refine patches using this frame's perspective estimate.
-                    let found = tracker
-                        .track(
-                            &renderer,
-                            &reference,
-                            &current,
-                            &points,
-                            found.consensus.motion,
-                            settings,
-                        )
-                        .unwrap_or(found);
                     let corners = match found.consensus.motion.transform_quad(surface) {
                         Ok(q) => q,
                         Err(e) => {
@@ -504,6 +651,10 @@ impl Studio {
                         message = "Stopped before the project size limit; accepted frames remain available".into();
                         break;
                     }
+                    if let Ok(mut live)=live.lock() {
+                        live.quality.push((time,weak(&sample)));
+                        live.latest=Some((frame,current.clone(),sample.clone()));
+                    }
                     data.samples.push(sample);
                     worker
                         .completed
@@ -512,7 +663,11 @@ impl Studio {
                 }
                 data.samples.sort_by(|a, b| a.time.compare(b.time).unwrap());
                 data.validate()?;
-                message.push_str(&format!(" · {} frames", data.samples.len()));
+                message.push_str(&format!(" · {} analyzed frames", data.samples.len()));
+                if let Some(base)=&base {
+                    data=base.data.splice(&data)?;
+                    message.push_str("; other sections preserved");
+                }
                 Ok(Tracked {
                     session,
                     revision,

@@ -241,6 +241,37 @@ impl Track {
         }
         Ok(())
     }
+    /// Replace only successfully analyzed sample times, keeping the original
+    /// reference basis and all untouched sections. The new reference quad is a
+    /// correction at its reference time, not a new coordinate system for users.
+    pub fn splice(&self, section: &Track) -> Result<Self> {
+        self.validate()?;
+        section.validate()?;
+        let rebase = Homography::between(section.reference, self.reference)?;
+        let mut merged = self.clone();
+        for sample in &section.samples {
+            let mut sample = sample.clone();
+            for feature in &mut sample.features {
+                feature.reference = rebase
+                    .project(feature.reference)
+                    .ok_or_else(|| crate::Error("Invalid correction reference".into()))?;
+            }
+            if let Some(existing) = merged
+                .samples
+                .iter_mut()
+                .find(|s| s.time.compare(sample.time).is_ok_and(|o| o.is_eq()))
+            {
+                *existing = sample;
+            } else {
+                merged.samples.push(sample);
+            }
+        }
+        merged
+            .samples
+            .sort_by(|a, b| a.time.compare(b.time).expect("validated times"));
+        merged.validate()?;
+        Ok(merged)
+    }
     /// Interpolate corner positions, not matrix coefficients. Hold at endpoints.
     /// Call `validate` when accepting persisted data, before repeated evaluation.
     pub fn motion_at(&self, time: Time) -> Result<Homography> {

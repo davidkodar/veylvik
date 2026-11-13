@@ -240,3 +240,108 @@ fn planar_warp_follows_stabilizes_and_invalidates_cached_motion() {
         pixels[24 * 64 + 24]
     );
 }
+
+#[test]
+#[ignore = "requires Vulkan"]
+fn pyramid_recovers_large_motion_rotation_scale_and_odd_dimensions() {
+    let renderer = Renderer::new().unwrap();
+    let tracker = PlanarTracker::new(&renderer);
+    let settings = Settings {
+        patch_radius: 5,
+        search_radius: 12,
+        tolerance_pixels: 1.5,
+    };
+    let (width, height) = (513, 385);
+    let surface = [[0.18, 0.22], [0.68, 0.22], [0.68, 0.78], [0.18, 0.78]];
+    let angle = 0.055_f64;
+    let scale = 1.045;
+    let motion = Homography {
+        matrix: [
+            scale * angle.cos(),
+            -scale * angle.sin(),
+            0.145,
+            scale * angle.sin(),
+            scale * angle.cos(),
+            -0.045,
+            0.,
+            0.,
+            1.,
+        ],
+    };
+    let texture = |x: f64, y: f64| {
+        let mut value = 0.5;
+        for i in 1..=24 {
+            let k = f64::from(i);
+            let frequency = 0.025 + 0.004 * k * k / 3.;
+            value += 0.016
+                * (x * frequency * (k * 2.13).cos() + y * frequency * (k * 2.13).sin() + k * k)
+                    .sin();
+        }
+        value as f32
+    };
+    let mut doc = veylvik_document::blank(width, height, Time::new(24, 1).unwrap()).unwrap();
+    doc.nodes.get_mut(&doc.output).unwrap().operation = Operation::Image {
+        asset: "source".into(),
+    };
+    let plan = Plan::compile(&doc).unwrap();
+    let make = |h: Homography| {
+        let inverse = h.inverse().unwrap();
+        let pixels = (0..width * height)
+            .map(|i| {
+                let p = inverse
+                    .project([
+                        (f64::from(i % width) + 0.5) / f64::from(width),
+                        (f64::from(i / width) + 0.5) / f64::from(height),
+                    ])
+                    .unwrap();
+                let v = texture(p[0] * f64::from(width), p[1] * f64::from(height));
+                [v, v, v, 1.]
+            })
+            .collect();
+        let mut inputs = ImageInputs::default();
+        inputs.insert(
+            "source",
+            Arc::new(Image::new(width, height, pixels).unwrap()),
+        );
+        renderer
+            .render_gpu(
+                &plan,
+                RenderRequest::full(Time::new(0, 1).unwrap()),
+                &inputs,
+            )
+            .unwrap()
+    };
+    let reference = make(Homography::IDENTITY);
+    let current = make(motion);
+    let points = tracker
+        .detect(&renderer, &reference, surface, settings)
+        .unwrap();
+    let a = tracker.pyramid(&renderer, &reference).unwrap();
+    let b = tracker.pyramid(&renderer, &current).unwrap();
+    assert_eq!(a.len(), 3);
+    let found = tracker
+        .track_multiscale(
+            &renderer,
+            &reference,
+            &current,
+            &a,
+            &b,
+            &points,
+            Homography::IDENTITY,
+            settings,
+        )
+        .unwrap();
+    assert!(found.features.iter().filter(|f| f.accepted).count() >= 12);
+    for p in surface {
+        let actual = found.consensus.motion.project(p).unwrap();
+        let expected = motion.project(p).unwrap();
+        assert!(
+            ((actual[0] - expected[0]) * f64::from(width)).abs() < 0.8,
+            "{actual:?} != {expected:?}"
+        );
+        assert!(
+            ((actual[1] - expected[1]) * f64::from(height)).abs() < 0.8,
+            "{actual:?} != {expected:?}"
+        );
+    }
+}

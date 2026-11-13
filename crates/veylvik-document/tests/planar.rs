@@ -182,3 +182,68 @@ fn saved_track_is_independent_reusable_and_undoable() {
     document.undo(document.revision()).unwrap();
     assert!(!document.snapshot().nodes.contains_key(&id));
 }
+
+#[test]
+fn corrected_section_preserves_reference_other_frames_and_feature_basis() {
+    let mut original = Track::default();
+    original.samples = (0..10)
+        .map(|i| Sample {
+            time: Time::new(i, 24).unwrap(),
+            corners: original.reference.map(|p| [p[0] + i as f64 * 0.01, p[1]]),
+            features: vec![],
+            rms_pixels: 0.,
+        })
+        .collect();
+    let corrected = original.reference.map(|p| [p[0] + 0.05, p[1] + 0.02]);
+    let mut section = Track {
+        reference_time: Time::new(4, 24).unwrap(),
+        reference: corrected,
+        samples: vec![],
+    };
+    // A backward analysis returns sorted successful frames, stopping at frame 2.
+    for i in 2..=4 {
+        section.samples.push(Sample {
+            time: Time::new(i, 24).unwrap(),
+            corners: corrected.map(|p| [p[0] + (i - 4) as f64 * 0.01, p[1]]),
+            features: vec![Feature {
+                reference: [0.55, 0.52],
+                position: [0.55 + (i - 4) as f64 * 0.01, 0.52],
+                correlation: 1.,
+                separation: 0.5,
+                accepted: true,
+            }],
+            rms_pixels: 0.2,
+        });
+    }
+    let merged = original.splice(&section).unwrap();
+    assert_eq!(merged.reference, original.reference);
+    assert!(
+        merged
+            .reference_time
+            .compare(original.reference_time)
+            .unwrap()
+            .is_eq()
+    );
+    assert_eq!(merged.samples.len(), 10);
+    for i in [0, 1, 5, 6, 7, 8, 9] {
+        assert_eq!(
+            serde_json::to_value(&merged.samples[i]).unwrap(),
+            serde_json::to_value(&original.samples[i]).unwrap()
+        );
+    }
+    for i in 2..=4 {
+        close(merged.samples[i].features[0].reference, [0.5, 0.5]);
+        close(
+            merged
+                .motion_at(merged.samples[i].time)
+                .unwrap()
+                .project([0.5, 0.5])
+                .unwrap(),
+            merged.samples[i].features[0].position,
+        );
+    }
+    let mut invalid = section.clone();
+    invalid.samples[0].corners[0] = invalid.samples[0].corners[1];
+    assert!(original.splice(&invalid).is_err());
+    original.validate().unwrap();
+}

@@ -1947,6 +1947,7 @@ impl Studio {
                 self.request_preview();
             }
         });
+        self.planar_quality(ui);
     }
     fn animation_workspace(&mut self, ui: &mut egui::Ui) {
         let ready = !self.draft_dirty && !self.playing;
@@ -2337,6 +2338,7 @@ impl eframe::App for Studio {
                 _ => {}
             }
         }
+        self.poll_planar_preview();
         if self.playing {
             let fps = self.project.document.snapshot().frame_rate;
             let elapsed =

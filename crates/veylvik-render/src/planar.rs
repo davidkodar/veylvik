@@ -6,6 +6,7 @@ use veylvik_document::planar::{self, Consensus, Feature, Homography, Point, Quad
 pub struct PlanarTracker {
     detect: wgpu::ComputePipeline,
     correlate: wgpu::ComputePipeline,
+    downsample: wgpu::ComputePipeline,
     owner: Arc<crate::frame::DeviceIdentity>,
 }
 #[derive(Debug, Clone, Copy)]
@@ -48,7 +49,26 @@ impl PlanarTracker {
                     cache: None,
                 })
         };
+        let downsample_module =
+            renderer
+                .device
+                .create_shader_module(wgpu::ShaderModuleDescriptor {
+                    label: Some("planar pyramid"),
+                    source: wgpu::ShaderSource::Wgsl(include_str!("planar_pyramid.wgsl").into()),
+                });
+        let downsample =
+            renderer
+                .device
+                .create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                    label: Some("planar pyramid"),
+                    layout: None,
+                    module: &downsample_module,
+                    entry_point: Some("downsample"),
+                    compilation_options: Default::default(),
+                    cache: None,
+                });
         Self {
+            downsample,
             detect: pipeline("detect"),
             correlate: pipeline("correlate"),
             owner: renderer.owner.clone(),
@@ -212,6 +232,154 @@ impl PlanarTracker {
             consensus,
             features,
         })
+    }
+    /// Filtered GPU image pyramid. Pixels remain on the renderer's device;
+    /// retained levels count against its shared memory budget.
+    pub fn pyramid(&self, renderer: &Renderer, frame: &GpuFrame) -> Result<Vec<GpuFrame>> {
+        self.validate(renderer, frame, frame, Settings::default())?;
+        let mut levels = Vec::new();
+        for _ in 0..3 {
+            let input = levels.last().unwrap_or(frame);
+            if input.width.min(input.height) < 64 {
+                break;
+            }
+            let width = input.width / 2;
+            let height = input.height / 2;
+            let mut pool = renderer
+                .pool
+                .lock()
+                .map_err(|_| error("Tracking resource pool unavailable"))?;
+            if pool.failed {
+                return Err(error("Renderer unavailable after GPU failure"));
+            }
+            let mut resources = pool.frame(renderer.budget_bytes);
+            let uniform = resources.take(
+                &renderer.device,
+                16,
+                wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+                "pyramid size",
+            )?;
+            let output = resources.take(
+                &renderer.device,
+                u64::from(width) * u64::from(height) * 16,
+                wgpu::BufferUsages::STORAGE,
+                "planar pyramid",
+            )?;
+            renderer.queue.write_buffer(
+                &uniform,
+                0,
+                bytemuck::cast_slice(&[input.width, input.height, width, height]),
+            );
+            let bind = renderer
+                .device
+                .create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some("planar pyramid"),
+                    layout: &self.downsample.get_bind_group_layout(0),
+                    entries: &[
+                        wgpu::BindGroupEntry {
+                            binding: 0,
+                            resource: uniform.as_entire_binding(),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 1,
+                            resource: input.storage.buffer.as_entire_binding(),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 2,
+                            resource: output.as_entire_binding(),
+                        },
+                    ],
+                });
+            let mut encoder = renderer.device.create_command_encoder(&Default::default());
+            {
+                let mut pass = encoder.begin_compute_pass(&Default::default());
+                pass.set_pipeline(&self.downsample);
+                pass.set_bind_group(0, &bind, &[]);
+                pass.dispatch_workgroups(width.div_ceil(8), height.div_ceil(8), 1);
+            }
+            resources.submitted();
+            renderer.wait(renderer.queue.submit([encoder.finish()]))?;
+            resources.completed();
+            levels.push(GpuFrame {
+                identity: crate::frame::next_identity()?,
+                storage: resources.pin(&output),
+                owner: renderer.owner.clone(),
+                region: crate::Region {
+                    x: 0,
+                    y: 0,
+                    width,
+                    height,
+                },
+                width,
+                height,
+            });
+        }
+        Ok(levels)
+    }
+    /// Coarse-to-fine projective matching, followed by full-resolution refinement.
+    /// A coarse level may lack texture; only a successful full-resolution solve
+    /// is returned. Reference levels can be reused throughout an analysis.
+    #[allow(clippy::too_many_arguments)]
+    pub fn track_multiscale(
+        &self,
+        renderer: &Renderer,
+        reference: &GpuFrame,
+        current: &GpuFrame,
+        reference_levels: &[GpuFrame],
+        current_levels: &[GpuFrame],
+        points: &[Point],
+        mut prediction: Homography,
+        settings: Settings,
+    ) -> Result<TrackedPlane> {
+        self.validate(renderer, reference, current, settings)?;
+        if reference_levels.len() != current_levels.len() {
+            return Err(error("Mismatched tracking pyramids"));
+        }
+        let initial_prediction = prediction;
+        for (a, b) in reference_levels.iter().zip(current_levels).rev() {
+            let usable: Vec<_> = points
+                .iter()
+                .copied()
+                .filter(|p| {
+                    [a.width, a.height].iter().enumerate().all(|(axis, &size)| {
+                        let pixel = (p[axis] * f64::from(size) - 0.5).round();
+                        pixel >= f64::from(settings.patch_radius)
+                            && pixel + f64::from(settings.patch_radius) < f64::from(size)
+                    })
+                })
+                .collect();
+            let coarse = Settings {
+                tolerance_pixels: settings.tolerance_pixels.max(1.5),
+                ..settings
+            };
+            if let Ok(found) = self.track(renderer, a, b, &usable, prediction, coarse) {
+                prediction = found.consensus.motion;
+            }
+        }
+        // Coarse texture can be ambiguous even when fine detail is distinctive.
+        // Preserve the local solve as a fallback rather than regressing it.
+        let found = self
+            .track(renderer, reference, current, points, prediction, settings)
+            .or_else(|_| {
+                self.track(
+                    renderer,
+                    reference,
+                    current,
+                    points,
+                    initial_prediction,
+                    settings,
+                )
+            })?;
+        Ok(self
+            .track(
+                renderer,
+                reference,
+                current,
+                points,
+                found.consensus.motion,
+                settings,
+            )
+            .unwrap_or(found))
     }
     fn validate(
         &self,
