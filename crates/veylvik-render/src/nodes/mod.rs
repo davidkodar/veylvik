@@ -47,6 +47,7 @@ pub(crate) trait RenderNode {
     fn idle_inputs(
         &self,
         _sample: &dyn Fn(&str) -> Result<f32>,
+        _time: Time,
     ) -> Result<&'static [&'static str]> {
         Ok(&[])
     }

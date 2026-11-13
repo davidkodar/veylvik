@@ -29,6 +29,12 @@ fn exposure(@builtin(global_invocation_id) gid:vec3<u32>) {
     if !inside(gid) {return;}
     let i=index(gid);result[i]=vec4<f32>(source[i].rgb*p.values.x,source[i].a);
 }
+// Fade: premultiplied colour and alpha scale together by the visibility in values.x.
+@compute @workgroup_size(8,8)
+fn fade(@builtin(global_invocation_id) gid:vec3<u32>) {
+    if !inside(gid) {return;}
+    let i=index(gid); result[i]=source[i]*p.values.x;
+}
 // Primary grade on unpremultiplied colour; each stage at its default is skipped so the
 // identity is exact. values: temperature, tint, lift, gain; extra: contrast, gamma, saturation.
 fn signed_pow(v:vec3<f32>,e:f32)->vec3<f32> {return sign(v)*pow(abs(v),vec3<f32>(e));}

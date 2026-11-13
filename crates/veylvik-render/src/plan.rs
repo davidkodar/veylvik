@@ -20,6 +20,7 @@ pub enum Kernel {
     MetallicShine,
     Exposure,
     ColorCorrect,
+    Fade,
     Transform,
     Displace,
     MorphologyHorizontal,
@@ -40,7 +41,7 @@ pub enum Kernel {
     Gradient,
 }
 impl Kernel {
-    pub(crate) const ALL: [Self; 32] = [
+    pub(crate) const ALL: [Self; 33] = [
         Self::Text,
         Self::Solid,
         Self::Noise,
@@ -55,6 +56,7 @@ impl Kernel {
         Self::MetallicShine,
         Self::Exposure,
         Self::ColorCorrect,
+        Self::Fade,
         Self::Transform,
         Self::Displace,
         Self::MorphologyHorizontal,
@@ -90,6 +92,7 @@ impl Kernel {
             Self::Noise => "noise",
             Self::Exposure => "exposure",
             Self::ColorCorrect => "color_correct",
+            Self::Fade => "fade",
             Self::Displace => "displace",
             Self::Transform => "transform",
             Self::MorphologyHorizontal => "morphology_horizontal",
@@ -385,7 +388,7 @@ impl Plan {
                     .at(time)
                     .map_err(Into::into)
             };
-            let idle = veylvik_document::each_node!(&node.operation, n => crate::nodes::RenderNode::idle_inputs(n, &sample))?;
+            let idle = veylvik_document::each_node!(&node.operation, n => crate::nodes::RenderNode::idle_inputs(n, &sample, time))?;
             pending.extend(
                 node.inputs
                     .iter()

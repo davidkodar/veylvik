@@ -124,6 +124,15 @@ Input luminance is clamped to black–white before mapping; fully transparent in
 stays transparent. Endpoint alpha can turn a noise field into colored coverage.
 Colors are static parameters; place animated nodes before or after the mapping.
 
+**Fade** shows a layer only while it is on screen. **Start** is the first frame it
+appears; **End** the first frame it is gone, or **Until the end** of the composition.
+**Fade in** and **Fade out** ramp it linearly up after the start and down before the
+end, and must fit between them. **Opacity** multiplies the result and can be keyframed
+for anything beyond a simple ramp. Premultiplied colour and alpha scale together, and a
+layer faded fully out at a frame is neither rendered nor decoded, so footage behind it
+costs nothing. Times are exact rationals like footage timing; the inspector edits them
+in frames.
+
 **Colour correct** grades footage and renders in scene-linear light, in a fixed order:
 white balance (**Temperature** warms or cools by up to a stop between red and blue,
 **Tint** shifts towards magenta or green), **Lift** (offset) and **Gain** (multiply),

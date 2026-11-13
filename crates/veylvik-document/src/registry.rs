@@ -11,6 +11,7 @@ pub enum ParameterKind {
     Scalar,
     Typography,
     MediaTiming,
+    FadeTiming,
     MediaPlacement,
     TextFeatures,
     TextContent,
@@ -48,6 +49,7 @@ impl Parameter {
             ParameterKind::PlanarMode => json!(crate::planar::WarpMode::Follow),
             ParameterKind::MediaPlacement => json!(crate::media::Placement::default()),
             ParameterKind::MediaTiming => json!(crate::media::Timing::default()),
+            ParameterKind::FadeTiming => json!(crate::nodes::FadeTiming::default()),
             ParameterKind::Typography => json!(crate::text::Typography::default()),
             ParameterKind::TextFeatures => json!(""),
             ParameterKind::TextContent => json!("Your text"),
@@ -112,6 +114,7 @@ impl Parameter {
             }
             ParameterKind::Path => crate::vector::schema(),
             ParameterKind::MediaTiming => crate::media::schema(),
+            ParameterKind::FadeTiming => crate::nodes::fade_schema(),
             ParameterKind::MediaPlacement => {
                 json!({"type":"string","enum":["legacy","fit","fill","original","stretch"]})
             }
@@ -181,9 +184,9 @@ impl NodeType {
 // Each descriptor lives with its node struct in `crate::nodes`.
 pub use crate::nodes::{
     AFFINE, ATMOSPHERE, BLEND, BLUR, CHANNEL_MASK, COLOR_CORRECT, COLORIZE, COMBINE_MASK, DISPLACE,
-    ELLIPSE, EXPOSURE, FIRE, FOOTAGE, FRACTAL_NOISE, GLASS, GRADIENT, IMAGE, MASK, MATERIAL, MERGE,
-    METALLIC_SHINE, MORPHOLOGY, NOISE, PATH, PATINA, PLANAR_TRACK, PLANAR_WARP, SOLID, SUN_GLINTS,
-    SURFACE_BLEND, SURFACE_REFLECTION, TEXT, TRANSFORM,
+    ELLIPSE, EXPOSURE, FADE, FIRE, FOOTAGE, FRACTAL_NOISE, GLASS, GRADIENT, IMAGE, MASK, MATERIAL,
+    MERGE, METALLIC_SHINE, MORPHOLOGY, NOISE, PATH, PATINA, PLANAR_TRACK, PLANAR_WARP, SOLID,
+    SUN_GLINTS, SURFACE_BLEND, SURFACE_REFLECTION, TEXT, TRANSFORM,
 };
 pub static TYPES: &[&NodeType] = &[
     &SOLID,
@@ -203,6 +206,7 @@ pub static TYPES: &[&NodeType] = &[
     &TEXT,
     &PATH,
     &BLEND,
+    &FADE,
     &SURFACE_BLEND,
     &DISPLACE,
     &FRACTAL_NOISE,

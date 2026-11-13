@@ -16,7 +16,11 @@ impl RenderNode for veylvik_document::nodes::Merge {
 }
 impl RenderNode for veylvik_document::nodes::Blend {
     /// At zero opacity the result is exactly the background.
-    fn idle_inputs(&self, sample: &dyn Fn(&str) -> Result<f32>) -> Result<&'static [&'static str]> {
+    fn idle_inputs(
+        &self,
+        sample: &dyn Fn(&str) -> Result<f32>,
+        _time: veylvik_document::Time,
+    ) -> Result<&'static [&'static str]> {
         Ok(if sample("opacity")? == 0.0 {
             &["foreground"]
         } else {
@@ -117,7 +121,11 @@ impl RenderNode for veylvik_document::nodes::ChannelMask {
 }
 impl RenderNode for veylvik_document::nodes::SurfaceBlend {
     /// At zero opacity the result is exactly the background.
-    fn idle_inputs(&self, sample: &dyn Fn(&str) -> Result<f32>) -> Result<&'static [&'static str]> {
+    fn idle_inputs(
+        &self,
+        sample: &dyn Fn(&str) -> Result<f32>,
+        _time: veylvik_document::Time,
+    ) -> Result<&'static [&'static str]> {
         Ok(if sample("opacity")? == 0.0 {
             &["foreground"]
         } else {
@@ -164,5 +172,35 @@ impl RenderNode for veylvik_document::nodes::SurfaceBlend {
             }
         }
         Ok(())
+    }
+}
+impl RenderNode for veylvik_document::nodes::Fade {
+    fn passes(&self) -> Passes {
+        Passes::One(Kernel::Fade)
+    }
+    fn shareable(&self) -> bool {
+        true
+    }
+    fn identity(&self) -> bool {
+        matches!(self.opacity, Scalar::Constant { value } if value == 1.0)
+            && self.timing.always_visible()
+    }
+    fn params(
+        &self,
+        cx: &Cx<'_>,
+        sample: &dyn Fn(&str) -> Result<f32>,
+        p: &mut Params,
+    ) -> Result<()> {
+        p.values[0] = (f64::from(sample("opacity")?) * self.timing.envelope(cx.time)?) as f32;
+        Ok(())
+    }
+    /// Fully faded out: nothing upstream is rendered or decoded.
+    fn idle_inputs(
+        &self,
+        sample: &dyn Fn(&str) -> Result<f32>,
+        time: veylvik_document::Time,
+    ) -> Result<&'static [&'static str]> {
+        let visible = f64::from(sample("opacity")?) * self.timing.envelope(time)?;
+        Ok(if visible == 0.0 { &["image"] } else { &[] })
     }
 }
