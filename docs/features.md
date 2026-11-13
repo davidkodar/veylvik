@@ -369,6 +369,7 @@ Details: [Subject segmentation](subject-segmentation.md).
 - Smooth edges: model logits are resampled before the sigmoid, never upsampled as a binary mask.
 - Model manager: explicit install with pinned revision, size and SHA-256; uninstall; enable and disable; each model lists its uses, pros, cons, speed, memory and licence.
 - Runs in an isolated worker process on CUDA, with no silent CPU fallback.
+- Headless: CLI `segment` and MCP `segment_subject` with points, frame range, back_to, model, detail and matting.
 
 ## Export
 
@@ -419,7 +420,7 @@ Details: [Subject segmentation](subject-segmentation.md).
 - JSON on stdout, JSON errors on stderr, non-zero exit on failure.
 
 ### Headless MCP tools
-- `inspect`, `graph`, `get_node`, `nodes`, `diagnostics`, `outline_text`, `get_preset`, `insert_preset`, `apply`, `add_effect`, `duplicate_branch`, `track_surface`, `undo`, `redo`, `save`, `render`, `render_sequence`, `render_video`, `preview_image`.
+- `inspect`, `graph`, `get_node`, `nodes`, `diagnostics`, `outline_text`, `get_preset`, `insert_preset`, `apply`, `add_effect`, `duplicate_branch`, `track_surface`, `segment_subject`, `undo`, `redo`, `save`, `render`, `render_sequence`, `render_video`, `preview_image`.
 - `apply` commands: `put`, `set_parameter`, `set_key`, `remove_key`, `remove`, `output`, `resize`, `frame_count`, `frame_rate`, `place`, `put_group`, `ungroup`, `set_control`, `connect_group`; atomic batches up to 4096, dry run, one undo step.
 - Every mutation, save or render requires the current revision.
 

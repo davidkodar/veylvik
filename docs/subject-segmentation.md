@@ -7,6 +7,15 @@ computer.
 
 Edge-band matting with a dedicated matting model, for fine hair, follows.
 
+## MCP
+
+The headless MCP server (`veylvik mcp FILE`) exposes `segment_subject` with the
+same inputs as the command: `source`, `points` (objects with `x`, `y` and
+`positive`), `frame`, optional `end`, `back_to`, `model`, `detail` and
+`matting`, plus the document `revision`. It adds the Subject matte and
+Subject cutout as one undo step and returns the same report, including both
+node IDs.
+
 ## In Studio
 
 1. Select the footage node and choose **Select subject…** in the Inspector, or

@@ -31,6 +31,7 @@ fn build_tools() -> Value {
         tool("add_effect","Create an editable effect group with exposed controls and ordinary internal nodes as one transaction. Returns root and named role IDs; output is unchanged and layout is automatic. Discover recipes with nodes. Dry-run IDs are provisional.",json!({"revision":revision,"input":{"type":"string","format":"uuid"},"recipe":{"type":"string","enum":veylvik_document::recipes::Recipe::ALL},"dry_run":{"type":"boolean"}}),&["revision","input","recipe"]),
         tool("duplicate_branch","Copy a node and all upstream dependencies as one transaction. Shared ancestors are copied once; returns the copied root and old-to-new ID mapping. Output and assets stay unchanged. Stored layout positions are preserved. Dry-run IDs are provisional and are not reused on commit.",json!({"revision":revision,"node":{"type":"string","format":"uuid"},"dry_run":{"type":"boolean"}}),&["revision","node"]),
         tool("track_surface","Track one rigid planar surface on the GPU, exactly like Studio's Track surface, and add the result as a reusable Planar track node (one undo step; output unchanged). surface is four [x,y] corners in 0..1 composition coordinates, in perimeter order, on the start (reference) frame; end may precede start to track backward. Optional region is a separate, larger area of the same plane to analyze (like a tracking area separate from the corner pin), so the corners can be small, blank or leave the frame. area_follows=screen keeps that area fixed in the frame for floors, roads or sand that keep filling the same part of the shot, so re-anchoring keeps finding fresh texture during pans and walks. Optional occlusion is a node (e.g. an animated path mask) whose alpha marks foreground objects such as people crossing the surface; matches under it are ignored on every frame. motion constrains how the surface may move; auto uses perspective only when the matches clearly need it, which keeps distant or off-screen corners steady. refine (default true) aligns every pixel of the area after feature matching for sub-pixel stability. back_to also tracks backward from start to that earlier frame, so a clear middle frame can anchor a whole shot. Re-anchoring on the latest good frame is on by default so walking or zooming shots last longer. Connect the returned node to the track input of planar_warp nodes with apply. Returns frames tracked, first/last frame and why it stopped.",json!({"revision":revision,"source":{"type":"string","format":"uuid"},"surface":{"type":"array","minItems":4,"maxItems":4,"items":{"type":"array","minItems":2,"maxItems":2,"items":{"type":"number"}}},"region":{"type":"array","minItems":4,"maxItems":4,"items":{"type":"array","minItems":2,"maxItems":2,"items":{"type":"number"}}},"start":{"type":"integer","minimum":0},"end":{"type":"integer","minimum":0},"feature_radius":{"type":"integer","minimum":3,"maximum":16},"search_radius":{"type":"integer","minimum":1,"maximum":48},"tolerance":{"type":"number","minimum":0.1,"maximum":32},"reanchor":{"type":"boolean"},"area_follows":{"enum":["surface","screen"],"default":"surface"},"occlusion":{"type":"string","format":"uuid"},"motion":{"enum":["auto","perspective","affine","similarity","translation"],"default":"auto"},"refine":{"type":"boolean","default":true},"back_to":{"type":"integer","minimum":0}}),&["revision","source","surface","start","end"]),
+        tool("segment_subject","Cut out a person or object and track it through the shot with a local AI model, like Studio's Select subject. points are clicks in 0..1 composition coordinates on frame (the prompted frame); positive=true marks the subject, false excludes an area; several points spread over a person (head, body, legs, anything carried) select them reliably. Tracks from frame to end (either direction), and with back_to also backward to that earlier frame. model picks the tracker: edgetam (fastest), sam2.1-base-plus or sam2.1-large (more precise and consistent); it must be installed with `veylvik models install ID`. detail (default true) adds a zoomed second pass for feet, hands and hair; matting (default: when ViTMatte is installed) refines hair and soft edges. Writes a 16-bit matte sequence beside the project and adds a Subject matte Footage node and a Subject cutout (Refine matte) node in one undo step; output unchanged. Merge the cutout over a new background, or the shot behind it. Returns the nodes, frame range, frames where the subject was absent, zoom and timing.",json!({"revision":revision,"source":{"type":"string","format":"uuid"},"points":{"type":"array","minItems":1,"maxItems":32,"items":{"type":"object","additionalProperties":false,"properties":{"x":{"type":"number","minimum":0,"maximum":1},"y":{"type":"number","minimum":0,"maximum":1},"positive":{"type":"boolean"}},"required":["x","y","positive"]}},"frame":{"type":"integer","minimum":0},"end":{"type":"integer","minimum":0},"back_to":{"type":"integer","minimum":0},"model":{"enum":["edgetam","sam2.1-base-plus","sam2.1-large"],"default":"edgetam"},"detail":{"type":"boolean","default":true},"matting":{"type":"boolean"}}),&["revision","source","points","frame"]),
         tool("undo","Undo one transaction, with a revision precondition.",json!({"revision":revision}),&["revision"]),
         tool("redo","Redo one transaction, with a revision precondition.",json!({"revision":revision}),&["revision"]),
         tool("save","Atomically save the current composition to an explicit path.",json!({"path":{"type":"string"},"revision":revision}),&["path","revision"]),
@@ -248,6 +249,23 @@ impl Session {
                 let (node, commands, mut report) = crate::track::run(
                     self.renderer.as_ref().unwrap(),
                     self.document.snapshot(),
+                    &self.asset_base,
+                    &request,
+                )?;
+                self.document.apply(self.document.revision(), &commands)?;
+                report["node"] = json!(node);
+                report["revision"] = json!(self.document.revision());
+                Ok(report)
+            }
+            "segment_subject" => {
+                let request = crate::segment::Request::from_json(args)?;
+                if self.renderer.is_none() {
+                    self.renderer = Some(crate::assets::runtime::renderer()?);
+                }
+                let (node, commands, mut report) = crate::segment::run(
+                    self.renderer.as_ref().unwrap(),
+                    self.document.snapshot(),
+                    &self.asset_base,
                     &self.asset_base,
                     &request,
                 )?;
@@ -512,7 +530,8 @@ mod tests {
                 "render",
                 "render_sequence",
                 "render_video",
-                "track_surface"
+                "track_surface",
+                "segment_subject"
             ]
             .into()
         );
