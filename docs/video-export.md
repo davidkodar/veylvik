@@ -32,10 +32,22 @@ limited-range YCbCr conversion and NV12/P010 packing. The encoder receives
 4:2:0 video. HDR values are clipped to SDR; no tone mapping is applied.
 Use PNG sequences for transparency or EXR sequences for scene-linear HDR.
 
-This first encoder bridge reads compact NV12/P010 planes into host memory and
-feeds them to FFmpeg. NVENC/VA-API performs encoding on hardware. It is not a
-zero-copy Vulkan-to-encoder path. Hardware decode and export transport are
-separate capabilities.
+On compatible NVIDIA devices, Vulkan transfers prepared NV12/P010 planes to
+CUDA and in-process NVENC entirely on the GPU. Device UUIDs must match. The
+export trial checks the full transfer, encode and MP4 path at the requested
+settings before selecting it. No uncompressed pixels are mapped or staged in
+host memory on this path. Compressed packets still pass through the CPU muxer.
+
+This is a GPU-to-GPU copy, not zero-copy aliasing. Host synchronization waits
+and per-frame external allocation remain. If the direct bridge is unavailable,
+NVENC/VA-API can still encode via the explicit RAM-staged path. A bridge failure
+once export starts aborts rather than restarting the job. The completion message
+identifies GPU transfer or RAM staging. Hardware decode and export transport
+are separate capabilities.
+
+Native GPU/encoder calls run in-process. Cancellation is checked between
+frames and before publication; a stalled driver call cannot be forcibly killed
+without stopping the app.
 
 ## CLI and MCP
 
@@ -57,4 +69,8 @@ An explicit settings object requires `width`, `height`, `frame_rate`
 Studio MCP connection does not yet expose this export tool.
 
 The result identifies the encoder, whether it is hardware, the frame count,
-the published path, cancellation and host staging.
+the published path, cancellation and host staging. Additional fields
+`direct_gpu_transfers` and `staged_frames` count production frames (excluding
+the capability trial). `interop_fallback` contains the reason when the direct
+bridge was not selected. A direct NVIDIA export reports `host_staging: false`
+and zero staged frames.

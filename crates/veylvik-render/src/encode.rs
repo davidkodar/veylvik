@@ -25,6 +25,35 @@ impl Renderer {
         ten_bit: bool,
         matte: [f32; 3],
     ) -> Result<Vec<u8>> {
+        self.prepare_video_planes(frame, width, height, ten_bit, matte, None)
+    }
+    /// GPU-only handoff to a uniquely writable CUDA encoder frame.
+    pub fn encode_video_cuda(
+        &self,
+        frame: &GpuFrame,
+        matte: [f32; 3],
+        destination: &mut veylvik_interop::CudaDestination<'_>,
+    ) -> Result<()> {
+        let [width, height] = destination.dimensions();
+        self.prepare_video_planes(
+            frame,
+            width,
+            height,
+            destination.sample_bytes() == 2,
+            matte,
+            Some(destination),
+        )
+        .map(|_| ())
+    }
+    fn prepare_video_planes(
+        &self,
+        frame: &GpuFrame,
+        width: u32,
+        height: u32,
+        ten_bit: bool,
+        matte: [f32; 3],
+        destination: Option<&mut veylvik_interop::CudaDestination<'_>>,
+    ) -> Result<Vec<u8>> {
         if !self.owns_frame(frame)
             || frame.region.x != 0
             || frame.region.y != 0
@@ -54,6 +83,11 @@ impl Renderer {
         {
             return Err(error("video output exceeds GPU limits"));
         }
+        let reservation = if destination.is_some() {
+            size.div_ceil(65536) * 65536
+        } else {
+            0
+        };
         let mut pool = self
             .pool
             .lock()
@@ -62,26 +96,34 @@ impl Renderer {
             return Err(error("renderer unavailable after GPU failure"));
         }
         let available = self.budget_bytes.saturating_sub(pool.stats().held_bytes);
-        pool.trim(self.pool_limit_bytes.min(available));
-        if size * 2 + 48 > available {
+        pool.trim(
+            self.pool_limit_bytes
+                .min(available.saturating_sub(reservation)),
+        );
+        if size + size.max(reservation) + 48 > available {
             return Err(error("video output exceeds GPU budget"));
         }
         let validation = self.device.push_error_scope(wgpu::ErrorFilter::Validation);
         let allocation = self.device.push_error_scope(wgpu::ErrorFilter::OutOfMemory);
+        let mut interop_failed = false;
         let result = (|| {
-            let mut resources = pool.frame(self.budget_bytes);
+            let mut resources = pool.frame(self.budget_bytes.saturating_sub(reservation));
             let packed = resources.take(
                 &self.device,
                 size,
                 wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
                 "encoder planes",
             )?;
-            let read = resources.take(
-                &self.device,
-                size,
-                wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
-                "encoder bridge",
-            )?;
+            let read = if destination.is_none() {
+                Some(resources.take(
+                    &self.device,
+                    size,
+                    wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+                    "encoder bridge",
+                )?)
+            } else {
+                None
+            };
             let params = resources.take(
                 &self.device,
                 48,
@@ -130,14 +172,38 @@ impl Renderer {
                 let columns = groups.min(65535);
                 pass.dispatch_workgroups(columns, groups.div_ceil(columns), 1);
             }
-            encoder.copy_buffer_to_buffer(&packed, 0, &read, 0, size);
+            if let Some(read) = &read {
+                encoder.copy_buffer_to_buffer(&packed, 0, read, 0, size);
+            }
             resources.submitted();
-            let mut data: Vec<u8> =
-                self.map_values(&read, self.queue.submit([encoder.finish()]))?;
+            let submission = self.queue.submit([encoder.finish()]);
+            let data = if let Some(read) = &read {
+                let mut data: Vec<u8> = self.map_values(read, submission)?;
+                data.truncate(bytes as usize);
+                data
+            } else {
+                self.device
+                    .poll(wgpu::PollType::Wait {
+                        submission_index: Some(submission),
+                        timeout: Some(std::time::Duration::from_secs(30)),
+                    })
+                    .map_err(error)?;
+                Vec::new()
+            };
             resources.completed();
-            data.truncate(bytes as usize);
+            if let Some(destination) = destination {
+                destination
+                    .copy_from_vulkan(&self.device, &self.queue, &packed, reservation)
+                    .map_err(|e| {
+                        interop_failed = e.is::<veylvik_interop::FatalInterop>();
+                        error(e)
+                    })?;
+            }
             Ok(data)
         })();
+        if interop_failed {
+            pool.failed = true;
+        }
         if let Some(e) =
             pollster::block_on(allocation.pop()).or(pollster::block_on(validation.pop()))
         {

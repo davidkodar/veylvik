@@ -1243,9 +1243,14 @@ impl Studio {
                     "Video export cancelled; no partial video published".into()
                 } else {
                     format!(
-                        "Exported {} frames with {} to {}",
+                        "Exported {} frames with {} ({}) to {}",
                         result.frames,
                         result.backend,
+                        if result.host_staging {
+                            "RAM staging"
+                        } else {
+                            "GPU transfer"
+                        },
                         result
                             .path
                             .as_ref()

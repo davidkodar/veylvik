@@ -1,5 +1,5 @@
-//! One-way, immutable CUDA -> Vulkan buffer handoff. Pixels never visit the host.
-//! CUDA completes and relinquishes its mapping before Vulkan acquires ownership.
+//! CUDA/Vulkan GPU buffer handoffs. Pixels never visit the host.
+//! Each direction waits for completion before the receiving API uses the planes.
 //! Only synchronization waits run on the host; this is not an asynchronous bridge.
 use ash::vk;
 use cudarc::driver::sys as cu;
@@ -431,3 +431,6 @@ mod tests {
         assert!(super::same_device([0; 16], [0; 16]).is_err());
     }
 }
+
+mod encode;
+pub use encode::CudaDestination;

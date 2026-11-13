@@ -137,6 +137,10 @@ fn gpu_planes_and_nvenc_mp4_are_correct_and_cancellation_is_atomic() {
         })
         .unwrap();
         assert!(!result.cancelled && result.hardware && observed);
+        assert!(!result.host_staging, "{:?}", result.interop_fallback);
+        assert_eq!(result.direct_gpu_transfers, 10);
+        assert_eq!(result.staged_frames, 0);
+        assert!(result.interop_fallback.is_none());
         assert_eq!(result.frames, 10);
         assert_eq!(result.backend, "NVIDIA NVENC");
         let probe = Command::new("ffprobe")
@@ -208,4 +212,120 @@ fn gpu_planes_and_nvenc_mp4_are_correct_and_cancellation_is_atomic() {
     assert!(cancelled.cancelled);
     assert!(!output.exists());
     assert_eq!(std::fs::read_dir(&dir.0).unwrap().count(), before);
+}
+
+#[test]
+#[ignore = "requires Vulkan, CUDA external memory and NVIDIA NVENC"]
+fn direct_cuda_encoder_planes_match_staged_planes_exactly() {
+    let dir = Scratch::new();
+    let renderer = Renderer::new().unwrap();
+    let doc = veylvik_document::blank(320, 180, Time::new(24, 1).unwrap()).unwrap();
+    let inputs = ImageInputs::default();
+    let plan = Plan::compile(&doc).unwrap();
+    let gpu = renderer
+        .render_gpu_cached(
+            &plan,
+            RenderRequest::full(Time::new(0, 1).unwrap()),
+            &inputs,
+        )
+        .unwrap();
+    for (width, height) in [(322, 182), (3840, 2160)] {
+        for ten_bit in [false, true] {
+            let path = dir.0.join(format!("native-{width}-{ten_bit}.mp4"));
+            let mut encoder = veylvik_decode::encode::Encoder::open(
+                &path,
+                veylvik_decode::encode::Settings {
+                    width,
+                    height,
+                    fps: [30000, 1001],
+                    ten_bit,
+                    quality: 20,
+                    fast: false,
+                },
+            )
+            .unwrap();
+            assert!(encoder.send(encoder.frame().unwrap()).is_err());
+            for n in 0..8 {
+                let matte = [n as f32 / 8., 0.18, 0.75];
+                let mut frame = encoder.frame().unwrap();
+                assert!(frame.stage().is_err());
+                assert!(frame.fill(|_| Ok(())).is_err());
+                frame
+                    .fill(|destination| Ok(renderer.encode_video_cuda(&gpu, matte, destination)?))
+                    .unwrap();
+                let diagnostic = frame.stage().unwrap();
+                let staged = renderer
+                    .encode_video_planes(&gpu, width, height, ten_bit, matte)
+                    .unwrap();
+                assert_eq!(
+                    diagnostic, staged,
+                    "{width}x{height} ten_bit={ten_bit} frame={n}"
+                );
+                encoder.send(frame).unwrap();
+            }
+            encoder.finish().unwrap();
+            let probe = Command::new("ffprobe")
+                .args(["-v", "error", "-show_streams", "-of", "json"])
+                .arg(&path)
+                .output()
+                .unwrap();
+            assert!(probe.status.success());
+            let info: serde_json::Value = serde_json::from_slice(&probe.stdout).unwrap();
+            assert_eq!(info["streams"][0]["nb_frames"], "8");
+            assert_eq!(info["streams"][0]["avg_frame_rate"], "30000/1001");
+            assert_eq!(info["streams"][0]["color_transfer"], "bt709");
+            assert_eq!(
+                info["streams"][0]["pix_fmt"],
+                if ten_bit { "yuv420p10le" } else { "yuv420p" }
+            );
+        }
+    }
+}
+
+#[test]
+#[ignore = "requires Vulkan and NVIDIA NVENC"]
+fn direct_bridge_budget_fallback_is_explicit_and_renderer_recovers() {
+    let dir = Scratch::new();
+    let mut renderer = Renderer::new().unwrap();
+    let mut doc = veylvik_document::blank(320, 180, Time::new(24, 1).unwrap()).unwrap();
+    doc.frame_count = 1;
+    let inputs = ImageInputs::default();
+    let plan = Plan::compile(&doc).unwrap();
+    let gpu = renderer
+        .render_gpu_cached(
+            &plan,
+            RenderRequest::full(Time::new(0, 1).unwrap()),
+            &inputs,
+        )
+        .unwrap();
+    let original_budget = renderer.budget_bytes;
+    renderer.budget_bytes =
+        renderer.resource_stats().unwrap().held_bytes + 320 * 180 * 3 + 48 + 1024;
+    let settings = Settings::for_document(&doc);
+    let fallback = video_export::render(
+        &renderer,
+        &doc,
+        &inputs,
+        &dir.0.join("staged.mp4"),
+        &settings,
+        |_| true,
+    )
+    .unwrap();
+    assert!(fallback.host_staging && fallback.hardware);
+    assert_eq!(fallback.staged_frames, 1);
+    assert_eq!(fallback.direct_gpu_transfers, 0);
+    assert!(fallback.interop_fallback.unwrap().contains("budget"));
+    renderer.budget_bytes = original_budget;
+    let direct = video_export::render(
+        &renderer,
+        &doc,
+        &inputs,
+        &dir.0.join("direct.mp4"),
+        &settings,
+        |_| true,
+    )
+    .unwrap();
+    assert!(!direct.host_staging);
+    assert_eq!(direct.direct_gpu_transfers, 1);
+    drop(gpu);
 }

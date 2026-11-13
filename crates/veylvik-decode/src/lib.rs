@@ -1,7 +1,7 @@
-//! In-process hardware decoding. No raw FFmpeg handle escapes this crate.
+//! In-process hardware video codecs. No raw FFmpeg handle escapes this crate.
 //!
 //! Device contexts are reference counted across clips. Frames retain FFmpeg's
-//! hardware allocation until explicitly staged; this is not Vulkan interop yet.
+//! hardware allocation through GPU interop or explicit diagnostic staging.
 use ff::{ffi, format::Pixel};
 use ffmpeg_next as ff;
 use std::{
@@ -477,3 +477,5 @@ impl Decoder {
         }
     }
 }
+
+pub mod encode;

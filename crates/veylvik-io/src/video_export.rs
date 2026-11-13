@@ -126,6 +126,9 @@ pub struct Outcome {
     pub hardware: bool,
     pub frames: u32,
     pub host_staging: bool,
+    pub direct_gpu_transfers: u32,
+    pub staged_frames: u32,
+    pub interop_fallback: Option<String>,
 }
 #[derive(Clone)]
 enum Backend {
@@ -478,12 +481,56 @@ pub fn render(
         hardware,
         frames,
         host_staging: true,
+        direct_gpu_transfers: 0,
+        staged_frames: frames,
+        interop_fallback: None,
     };
     if !notify(0, "", "Preparing") {
         return Ok(cancelled("", false, 0));
     }
     let plan = Plan::compile(doc)?;
     let frame = renderer.render_gpu_cached(&plan, RenderRequest::full(times[0]), inputs)?;
+    // Probe the complete native encode/handoff/mux path before choosing it.
+    // A failed probe can use the established staged path. Once real encoding
+    // starts, any error aborts; it never silently restarts with another backend.
+    let temporary = Temporary::new(&parent)?;
+    let native = native_settings(settings);
+    if !notify(0, "NVIDIA NVENC", "Checking direct GPU encoder") {
+        return Ok(cancelled("NVIDIA NVENC", true, 0));
+    }
+    let trial = temporary.0.join("trial.mp4");
+    let direct = (|| -> Result<()> {
+        let mut encoder = veylvik_decode::encode::Encoder::open(&trial, native)?;
+        let mut target = encoder.frame()?;
+        target.fill(|destination| {
+            Ok(renderer.encode_video_cuda(&frame, settings.matte, destination)?)
+        })?;
+        encoder.send(target)?;
+        encoder.finish()
+    })();
+    let interop_fallback = match direct {
+        Ok(()) => {
+            fs::remove_file(&trial)?;
+            return render_direct(
+                renderer,
+                &plan,
+                inputs,
+                &target,
+                settings,
+                &times,
+                frame,
+                temporary,
+                native,
+                &mut notify,
+            );
+        }
+        Err(e) => Some(e.to_string()),
+    };
+    let cancelled = |backend: &str, hardware, frames| {
+        let mut result = cancelled(backend, hardware, frames);
+        result.interop_fallback = interop_fallback.clone();
+        result
+    };
     let first = renderer.encode_video_planes(
         &frame,
         settings.width,
@@ -517,12 +564,15 @@ pub fn render(
     }
     let backend = selected.ok_or_else(|| format!("No usable encoder. {}", failures.join("; ")))?;
     let hardware = !matches!(backend, Backend::Software);
-    let temporary = Temporary::new(&parent)?;
     let output = temporary.0.join("video.mp4");
     let mut encoder = Encoder::start(&mut backend.command(settings, Some(&output)))?;
     let mut first = Some(first);
     for (n, time) in times.iter().enumerate() {
-        if !notify(n as u32, backend.label(), "Rendering and encoding") {
+        if !notify(
+            n as u32,
+            backend.label(),
+            "RAM-staged rendering and encoding",
+        ) {
             return Ok(cancelled(backend.label(), hardware, n as u32));
         }
         let bytes = if let Some(first) = first.take() {
@@ -558,5 +608,90 @@ pub fn render(
         hardware,
         frames: total,
         host_staging: true,
+        direct_gpu_transfers: 0,
+        staged_frames: total,
+        interop_fallback,
+    })
+}
+
+fn native_settings(s: &Settings) -> veylvik_decode::encode::Settings {
+    veylvik_decode::encode::Settings {
+        width: s.width,
+        height: s.height,
+        fps: [s.frame_rate.ticks as i32, s.frame_rate.rate as i32],
+        ten_bit: s.codec.ten_bit(),
+        fast: s.quality == Quality::Draft,
+        quality: match s.quality {
+            Quality::Draft => 27,
+            Quality::High => 20,
+            Quality::Master => 15,
+        },
+    }
+}
+#[allow(clippy::too_many_arguments)]
+fn render_direct(
+    renderer: &Renderer,
+    plan: &Plan,
+    inputs: &ImageInputs,
+    target: &Path,
+    settings: &Settings,
+    times: &[Time],
+    first: std::sync::Arc<veylvik_render::GpuFrame>,
+    temporary: Temporary,
+    native: veylvik_decode::encode::Settings,
+    notify: &mut impl FnMut(u32, &str, &str) -> bool,
+) -> Result<Outcome> {
+    let total = times.len() as u32;
+    let cancelled = |frames| Outcome {
+        path: None,
+        cancelled: true,
+        backend: "NVIDIA NVENC".into(),
+        hardware: true,
+        frames,
+        host_staging: false,
+        direct_gpu_transfers: frames,
+        staged_frames: 0,
+        interop_fallback: None,
+    };
+    if !notify(0, "NVIDIA NVENC", "Preparing GPU export") {
+        return Ok(cancelled(0));
+    }
+    let output = temporary.0.join("video.mp4");
+    let mut encoder = veylvik_decode::encode::Encoder::open(&output, native)?;
+    let mut first = Some(first);
+    for (n, time) in times.iter().enumerate() {
+        if !notify(n as u32, "NVIDIA NVENC", "GPU rendering and encoding") {
+            return Ok(cancelled(n as u32));
+        }
+        let source = match first.take() {
+            Some(frame) => frame,
+            None => renderer.render_gpu_cached(plan, RenderRequest::full(*time), inputs)?,
+        };
+        let mut frame = encoder.frame()?;
+        frame.fill(|destination| {
+            Ok(renderer.encode_video_cuda(&source, settings.matte, destination)?)
+        })?;
+        encoder.send(frame)?;
+    }
+    if !notify(total, "NVIDIA NVENC", "Finalizing MP4") {
+        return Ok(cancelled(total));
+    }
+    encoder.finish()?;
+    if !notify(total, "NVIDIA NVENC", "Publishing") {
+        return Ok(cancelled(total));
+    }
+    fs::File::open(&output)?.sync_all()?;
+    fs::hard_link(&output, target)?;
+    fs::File::open(target.parent().ok_or("Missing output parent")?)?.sync_all()?;
+    Ok(Outcome {
+        path: Some(target.to_owned()),
+        cancelled: false,
+        backend: "NVIDIA NVENC".into(),
+        hardware: true,
+        frames: total,
+        host_staging: false,
+        direct_gpu_transfers: total,
+        staged_frames: 0,
+        interop_fallback: None,
     })
 }
