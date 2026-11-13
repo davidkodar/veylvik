@@ -52,6 +52,9 @@ impl Request {
                 |_| "motion must be auto, perspective, affine, similarity or translation",
             )?;
         }
+        if let Some(value) = args.get("refine") {
+            settings.refine = value.as_bool().ok_or("refine must be boolean")?;
+        }
         if let Some(value) = args.get("reanchor") {
             settings.reanchor_below = if value.as_bool().ok_or("reanchor must be boolean")? {
                 24

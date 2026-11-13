@@ -420,6 +420,8 @@ impl Studio {
                             self.planar.surface.map(|[x, y]| [(cx + (x - cx) * 1.6).clamp(0., 1.), (cy + (y - cy) * 1.6).clamp(0., 1.)])
                         });
                     }
+                    ui.checkbox(&mut self.planar.settings.refine, "Refine with area alignment")
+                        .on_hover_text("After feature matching, align every pixel of the tracking area directly on the GPU, including brightness changes. Steadier on blurred or low-contrast surfaces; kept only when it clearly improves the match.");
                     let mut reanchor = self.planar.settings.reanchor_below > 0;
                     if ui.checkbox(&mut reanchor, "Re-anchor when matches thin out")
                         .on_hover_text("Re-detect features on the latest good frame when fewer than 24 matches are accepted. Keeps walking and zooming shots tracked longer; each re-anchor can add slight drift.")

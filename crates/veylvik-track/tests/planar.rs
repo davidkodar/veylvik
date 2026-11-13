@@ -15,6 +15,7 @@ fn gpu_planar_detection_perspective_occlusion_and_flat_rejection() {
         reanchor_below: 0,
         screen_area: false,
         motion: veylvik_track::estimate::Motion::Perspective,
+        refine: false,
     };
     let (width, height) = (192_u32, 144_u32);
     let surface = [[0.12, 0.15], [0.85, 0.15], [0.85, 0.85], [0.12, 0.85]];
@@ -332,6 +333,7 @@ fn pyramid_recovers_large_motion_rotation_scale_and_odd_dimensions() {
         reanchor_below: 0,
         screen_area: false,
         motion: veylvik_track::estimate::Motion::Perspective,
+        refine: false,
     };
     let (width, height) = (513, 385);
     let surface = [[0.18, 0.22], [0.68, 0.22], [0.68, 0.78], [0.18, 0.78]];
@@ -425,6 +427,104 @@ fn pyramid_recovers_large_motion_rotation_scale_and_odd_dimensions() {
         assert!(
             ((actual[1] - expected[1]) * f64::from(height)).abs() < 0.8,
             "{actual:?} != {expected:?}"
+        );
+    }
+}
+
+#[test]
+#[ignore = "requires Vulkan"]
+fn area_alignment_reaches_sub_tenth_pixel_through_brightness_change_and_occluder() {
+    let renderer = Renderer::new().unwrap();
+    let tracker = PlanarTracker::new(&renderer);
+    let (width, height) = (240_u32, 320_u32);
+    let surface = [[0.15, 0.15], [0.85, 0.15], [0.85, 0.85], [0.15, 0.85]];
+    let truth = Homography::between(
+        surface,
+        [[0.17, 0.13], [0.86, 0.17], [0.84, 0.86], [0.13, 0.82]],
+    )
+    .unwrap();
+    let texture = |x: f64, y: f64| -> f32 {
+        (0.5 + 0.13 * (x * 0.31 + y * 0.07).sin()
+            + 0.12 * (y * 0.43 - x * 0.11).cos()
+            + 0.1 * (x * 0.19 + y * 0.23).sin()
+            + 0.08 * (x * 0.09 - y * 0.17).cos()) as f32
+    };
+    let mut doc = veylvik_document::blank(width, height, Time::new(24, 1).unwrap()).unwrap();
+    doc.nodes.get_mut(&doc.output).unwrap().operation =
+        Operation::Image(veylvik_document::nodes::Image {
+            asset: "source".into(),
+        });
+    let plan = Plan::compile(&doc).unwrap();
+    let make = |motion: Homography, gain: f32, occlude: bool| {
+        let inverse = motion.inverse().unwrap();
+        let pixels = (0..width * height)
+            .map(|i| {
+                let (x, y) = (f64::from(i % width), f64::from(i / width));
+                let p = inverse
+                    .project([(x + 0.5) / f64::from(width), (y + 0.5) / f64::from(height)])
+                    .unwrap();
+                let v = if occlude && x > 90. && x < 140. && y > 120. && y < 180. {
+                    0.9
+                } else {
+                    gain * texture(
+                        p[0] * f64::from(width) - 0.5,
+                        p[1] * f64::from(height) - 0.5,
+                    )
+                };
+                [v, v, v, 1.]
+            })
+            .collect();
+        let mut inputs = ImageInputs::default();
+        inputs.insert(
+            "source",
+            Arc::new(Image::new(width, height, pixels).unwrap()),
+        );
+        renderer
+            .render_gpu(
+                &plan,
+                RenderRequest::full(Time::new(0, 1).unwrap()),
+                &inputs,
+            )
+            .unwrap()
+    };
+    let error = |h: Homography| {
+        surface
+            .iter()
+            .map(|&p| {
+                let (a, b) = (h.project(p).unwrap(), truth.project(p).unwrap());
+                (((a[0] - b[0]) * f64::from(width)).powi(2)
+                    + ((a[1] - b[1]) * f64::from(height)).powi(2))
+                .sqrt()
+            })
+            .fold(0., f64::max)
+    };
+    let reference = make(Homography::IDENTITY, 1., false);
+    // Start 1.5 pixels away from the truth, as a slightly wrong feature solution would.
+    let nudge = Homography {
+        matrix: [
+            1.,
+            0.,
+            1.5 / f64::from(width),
+            0.,
+            1.,
+            -1.0 / f64::from(height),
+            0.,
+            0.,
+            1.,
+        ],
+    };
+    let start = nudge.compose(truth);
+    assert!(error(start) > 1.2);
+    for (gain, occlude) in [(1.0, false), (1.3, false), (1.0, true)] {
+        let current = make(truth, gain, occlude);
+        let refined = tracker
+            .align_area(&renderer, &reference, &current, None, surface, start, true)
+            .unwrap()
+            .unwrap_or_else(|| panic!("alignment rejected (gain {gain}, occluder {occlude})"));
+        assert!(
+            error(refined) < 0.1,
+            "gain {gain} occluder {occlude}: {:.3} px",
+            error(refined)
         );
     }
 }

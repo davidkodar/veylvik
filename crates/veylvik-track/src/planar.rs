@@ -9,6 +9,7 @@ pub struct PlanarTracker {
     detect: wgpu::ComputePipeline,
     correlate: wgpu::ComputePipeline,
     downsample: wgpu::ComputePipeline,
+    aligner: crate::refine::AreaAligner,
     owner: DeviceKey,
 }
 #[derive(Debug, Clone, Copy)]
@@ -26,6 +27,9 @@ pub struct Settings {
     pub screen_area: bool,
     /// Transformations the surface may undergo; see [`Motion`].
     pub motion: Motion,
+    /// After feature matching, align every pixel of the area directly (perspective and affine
+    /// models). Sub-pixel stability on blurred or low-texture surfaces.
+    pub refine: bool,
 }
 impl Default for Settings {
     fn default() -> Self {
@@ -36,6 +40,7 @@ impl Default for Settings {
             reanchor_below: 24,
             screen_area: false,
             motion: Motion::Auto,
+            refine: true,
         }
     }
 }
@@ -244,13 +249,28 @@ impl PlanarTracker {
                 frame,
                 reason: e.to_string(),
             };
-            let found = match attempt {
+            let mut found = match attempt {
                 Ok(found) => found,
                 Err(e) => {
                     stop = lost(&e);
                     break;
                 }
             };
+            if settings.refine
+                && matches!(found.consensus.model, Motion::Perspective | Motion::Affine)
+                && let Some(aligned) = self.aligner.align(
+                    renderer,
+                    &anchor.image,
+                    &current,
+                    current_matte.as_deref(),
+                    visible(anchor.area),
+                    found.consensus.motion,
+                    found.consensus.model == Motion::Perspective,
+                    (settings.tolerance_pixels * 3.).max(2.),
+                )?
+            {
+                found.consensus.motion = aligned;
+            }
             let corners = match found.consensus.motion.transform_quad(anchor.corners) {
                 Ok(corners) => corners,
                 Err(e) => {
@@ -346,8 +366,33 @@ impl PlanarTracker {
             downsample,
             detect: pipeline("detect"),
             correlate: pipeline("correlate"),
+            aligner: crate::refine::AreaAligner::new(renderer),
             owner: renderer.device_key(),
         }
+    }
+    /// Polishes a feature solution by aligning every pixel of `area` (on `reference`) directly;
+    /// `None` when that does not clearly improve the match. Exposed for tests and tools.
+    #[allow(clippy::too_many_arguments)]
+    pub fn align_area(
+        &self,
+        renderer: &Renderer,
+        reference: &GpuFrame,
+        current: &GpuFrame,
+        occlusion: Option<&GpuFrame>,
+        area: Quad,
+        initial: Homography,
+        perspective: bool,
+    ) -> Result<Option<Homography>> {
+        self.aligner.align(
+            renderer,
+            reference,
+            current,
+            occlusion,
+            area,
+            initial,
+            perspective,
+            6.,
+        )
     }
     /// Return up to 64 distributed corners in normalized image coordinates.
     pub fn detect(

@@ -110,6 +110,20 @@ A track still ends when the pinned corners pass behind the camera, for example t
 end of a wall the camera walks past. That is the geometry of the shot, not a tracker
 failure; keep the corners on the part of the surface that stays in front of the camera.
 
+## Area refinement
+
+Feature matches give a first estimate of the surface's motion on each frame. With
+**Refine with area alignment** (on by default), the GPU then aligns every sampled
+pixel of the tracking area directly against the reference frame: a damped
+Gauss-Newton fit of the plane motion together with a brightness gain and offset,
+robust to outliers and skipping pixels under the occlusion matte. Only small
+normal-equation sums return to the CPU. The refined motion is kept only when it
+lowers the photometric error clearly and stays within three match tolerances of the
+feature solution; otherwise the feature result stands. Refinement applies to the
+perspective and affine models. It costs roughly a tenth more analysis time and is
+most visible on blurred, low-contrast or finely textured surfaces. Headless tools
+take `refine: false` (or `--no-refine`) to compare.
+
 ## Occlusion
 
 People, cars or hands crossing the surface pull matches away from the plane. Choose
@@ -164,7 +178,7 @@ frame. The result is written to a new project with one added Planar track node, 
 JSON report gives the tracked range, why it stopped, re-anchors and worst error.
 
 The headless MCP server exposes `track_surface` with the same inputs (`source`,
-`surface`, `start`, `end`) plus optional `motion`, `occlusion`, `region`, `area_follows`,
+`surface`, `start`, `end`) plus optional `motion`, `refine`, `occlusion`, `region`, `area_follows`,
 `feature_radius`, `search_radius`, `tolerance` and `reanchor`. It adds the Planar track node as one undoable
 transaction; connect it to `planar_warp` nodes with `apply`. Both operations, their
 data schema, and all three warp modes are also exposed through the node catalog and

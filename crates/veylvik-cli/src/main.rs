@@ -7,7 +7,7 @@ use std::path::Path;
 use veylvik_document::{Composition, Node, Operation, Time};
 use veylvik_render::{Plan, Region, RenderRequest};
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
-const USAGE: &str = "usage: veylvik open [FILE] [--control-dir DIRECTORY | --no-control] | demo FILE [--motion|--procedural] | import IMAGE.png|IMAGE.exr FILE | outline-text FONT TEXT NEW_FILE [OPTIONS] | collect FILE NEW_DIRECTORY | nodes | check FILE | render FILE OUTPUT.png|OUTPUT.exr [TICKS RATE] [--node UUID] [--crop X Y WIDTH HEIGHT] | render-video FILE OUTPUT.mp4 [OPTIONS] | render-sequence FILE DIRECTORY START END [--format png|exr] [--node UUID] [--crop X Y WIDTH HEIGHT] | track FILE NEW_FILE SOURCE_UUID START END \"X,Y X,Y X,Y X,Y\" [\"AREA X,Y X,Y X,Y X,Y\"] [--screen-area] [--motion auto|perspective|affine|similarity|translation] | mcp FILE | mcp --studio [SOCKET|DIRECTORY]";
+const USAGE: &str = "usage: veylvik open [FILE] [--control-dir DIRECTORY | --no-control] | demo FILE [--motion|--procedural] | import IMAGE.png|IMAGE.exr FILE | outline-text FONT TEXT NEW_FILE [OPTIONS] | collect FILE NEW_DIRECTORY | nodes | check FILE | render FILE OUTPUT.png|OUTPUT.exr [TICKS RATE] [--node UUID] [--crop X Y WIDTH HEIGHT] | render-video FILE OUTPUT.mp4 [OPTIONS] | render-sequence FILE DIRECTORY START END [--format png|exr] [--node UUID] [--crop X Y WIDTH HEIGHT] | track FILE NEW_FILE SOURCE_UUID START END \"X,Y X,Y X,Y X,Y\" [\"AREA X,Y X,Y X,Y X,Y\"] [--screen-area] [--motion auto|perspective|affine|similarity|translation] [--no-refine] | mcp FILE | mcp --studio [SOCKET|DIRECTORY]";
 fn run() -> Result<()> {
     let args: Vec<String> = std::env::args().collect();
     match args.get(1).map(String::as_str) {
@@ -43,12 +43,14 @@ fn run() -> Result<()> {
         Some("track") => {
             // Flags may appear anywhere after the command; positional arguments keep their order.
             let mut screen_area = false;
+            let mut no_refine = false;
             let mut motion = None;
             let mut positional = Vec::new();
             let mut flags = args.iter();
             while let Some(arg) = flags.next() {
                 match arg.as_str() {
                     "--screen-area" => screen_area = true,
+                    "--no-refine" => no_refine = true,
                     "--motion" => {
                         motion = Some(flags.next().ok_or("--motion needs a model")?.clone())
                     }
@@ -85,6 +87,9 @@ fn run() -> Result<()> {
             }
             if let Some(motion) = motion {
                 args_json["motion"] = serde_json::json!(motion);
+            }
+            if no_refine {
+                args_json["refine"] = serde_json::json!(false);
             }
             let request = track::Request::from_json(&args_json)?;
             let mut document = veylvik_document::Document::new(Composition::load(input)?)?;
