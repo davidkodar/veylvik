@@ -99,6 +99,27 @@ pub trait FrameSource: Send + Sync {
     ) -> Result<Option<Arc<GpuFrame>>> {
         self.gpu_frame(time, renderer)
     }
+    /// As [`FrameSource::gpu_frame_sized`] with the Footage node's input colour; only sources
+    /// that can reinterpret their code values (video) honour a non-automatic choice.
+    fn gpu_frame_with(
+        &self,
+        time: Time,
+        renderer: &crate::Renderer,
+        target: Option<[u32; 2]>,
+        colour: veylvik_document::media::InputColour,
+    ) -> Result<Option<Arc<GpuFrame>>> {
+        let _ = colour;
+        self.gpu_frame_sized(time, renderer, target)
+    }
+    /// As [`FrameSource::frame`] with the Footage node's input colour.
+    fn frame_with(
+        &self,
+        time: Time,
+        colour: veylvik_document::media::InputColour,
+    ) -> Result<Arc<Image>> {
+        let _ = colour;
+        self.frame(time)
+    }
     fn byte_budget(&self) -> u64;
 }
 /// The host supplies immutable images; a later render can supply new content under the same key.
@@ -180,6 +201,7 @@ impl ImageInputs {
                 asset,
                 timing,
                 placement,
+                colour,
             }) = &node.operation
             {
                 let key = crate::plan::footage_key(node.id);
@@ -195,7 +217,8 @@ impl ImageInputs {
                 let image = if let Some(time) = time {
                     if let Some(source) = self.2.get(asset) {
                         if let Some(renderer) = renderer
-                            && let Some(frame) = source.gpu_frame_sized(time, renderer, target)?
+                            && let Some(frame) =
+                                source.gpu_frame_with(time, renderer, target, *colour)?
                         {
                             decoded_bytes += frame.byte_size();
                             if decoded_bytes > 256 * 1024 * 1024 {
@@ -206,7 +229,7 @@ impl ImageInputs {
                             result.insert_gpu(key, frame);
                             continue;
                         }
-                        source.frame(time)?
+                        source.frame_with(time, *colour)?
                     } else {
                         self.get(asset)
                             .cloned()

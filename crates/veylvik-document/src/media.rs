@@ -120,3 +120,123 @@ impl Placement {
         }
     }
 }
+
+/// How a video's code values become scene light: its transfer curve and its gamut. `Auto`
+/// follows the file's colour tags; camera log footage is usually untagged and needs a choice.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Curve {
+    #[default]
+    Auto,
+    Rec709,
+    Srgb,
+    Linear,
+    Pq,
+    Hlg,
+    AppleLog,
+    Slog3,
+    Logc3,
+    Logc4,
+    Vlog,
+}
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Gamut {
+    #[default]
+    Auto,
+    Rec709,
+    Rec2020,
+    P3D65,
+    SGamut3,
+    SGamut3Cine,
+    ArriWideGamut3,
+    ArriWideGamut4,
+    VGamut,
+}
+impl Curve {
+    pub const ALL: [Self; 11] = [
+        Self::Auto,
+        Self::Rec709,
+        Self::Srgb,
+        Self::Linear,
+        Self::Pq,
+        Self::Hlg,
+        Self::AppleLog,
+        Self::Slog3,
+        Self::Logc3,
+        Self::Logc4,
+        Self::Vlog,
+    ];
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Auto => "Auto (from file)",
+            Self::Rec709 => "Rec.709 video",
+            Self::Srgb => "sRGB",
+            Self::Linear => "Linear",
+            Self::Pq => "PQ (HDR10, Dolby Vision)",
+            Self::Hlg => "HLG (iPhone HDR, broadcast)",
+            Self::AppleLog => "Apple Log",
+            Self::Slog3 => "Sony S-Log3",
+            Self::Logc3 => "ARRI LogC3",
+            Self::Logc4 => "ARRI LogC4",
+            Self::Vlog => "Panasonic V-Log",
+        }
+    }
+    /// The gamut a camera curve is normally paired with, for one-click setup.
+    pub fn usual_gamut(self) -> Gamut {
+        match self {
+            Self::AppleLog | Self::Pq | Self::Hlg => Gamut::Rec2020,
+            Self::Slog3 => Gamut::SGamut3Cine,
+            Self::Logc3 => Gamut::ArriWideGamut3,
+            Self::Logc4 => Gamut::ArriWideGamut4,
+            Self::Vlog => Gamut::VGamut,
+            _ => Gamut::Auto,
+        }
+    }
+}
+impl Gamut {
+    pub const ALL: [Self; 9] = [
+        Self::Auto,
+        Self::Rec709,
+        Self::Rec2020,
+        Self::P3D65,
+        Self::SGamut3,
+        Self::SGamut3Cine,
+        Self::ArriWideGamut3,
+        Self::ArriWideGamut4,
+        Self::VGamut,
+    ];
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Auto => "Auto (from file)",
+            Self::Rec709 => "Rec.709 / sRGB",
+            Self::Rec2020 => "Rec.2020",
+            Self::P3D65 => "P3-D65",
+            Self::SGamut3 => "Sony S-Gamut3",
+            Self::SGamut3Cine => "Sony S-Gamut3.Cine",
+            Self::ArriWideGamut3 => "ARRI Wide Gamut 3",
+            Self::ArriWideGamut4 => "ARRI Wide Gamut 4",
+            Self::VGamut => "Panasonic V-Gamut",
+        }
+    }
+}
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct InputColour {
+    #[serde(default)]
+    pub curve: Curve,
+    #[serde(default)]
+    pub gamut: Gamut,
+}
+impl InputColour {
+    pub fn is_auto(&self) -> bool {
+        *self == Self::default()
+    }
+    pub fn schema() -> serde_json::Value {
+        let names = |v: serde_json::Value| v;
+        serde_json::json!({"type":"object","properties":{
+            "curve":{"type":"string","enum":names(serde_json::to_value(Curve::ALL).unwrap_or_default())},
+            "gamut":{"type":"string","enum":names(serde_json::to_value(Gamut::ALL).unwrap_or_default())}
+        },"additionalProperties":false})
+    }
+}

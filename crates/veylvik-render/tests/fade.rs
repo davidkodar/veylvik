@@ -60,6 +60,7 @@ fn fade_scales_premultiplied_pixels_by_its_envelope_and_skips_hidden_layers() {
             asset: "absent.mov".into(),
             timing: Default::default(),
             placement: Default::default(),
+            colour: Default::default(),
         });
     fade_over(&mut doc, clip, timing, 1.0);
     let plan = Plan::compile(&doc).unwrap();

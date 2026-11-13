@@ -151,6 +151,7 @@ fn footage_timing_shares_one_source_without_cross_contaminating_clips() {
         "First",
         Operation::Footage(veylvik_document::nodes::Footage {
             placement: Default::default(),
+            colour: Default::default(),
             asset: path.to_str().unwrap().into(),
             timing: Timing {
                 start: Time::new(1, 1).unwrap(),
@@ -355,6 +356,7 @@ fn hardware_frames_stay_linear_on_gpu_and_seek_in_8_and_10_bit() {
                 asset: "clip".into(),
                 timing: Default::default(),
                 placement: Default::default(),
+                colour: Default::default(),
             });
         renderer
             .render_gpu(

@@ -25,6 +25,7 @@ fn placement_samples_full_source_before_clipping_and_preserves_alpha() {
                 asset: "source".into(),
                 timing: Default::default(),
                 placement: mode,
+                colour: Default::default(),
             });
         let plan = Plan::compile(&doc).unwrap();
         let result = renderer
@@ -69,6 +70,7 @@ fn placement_samples_full_source_before_clipping_and_preserves_alpha() {
             asset: "small".into(),
             timing: Default::default(),
             placement: Placement::Fit,
+            colour: Default::default(),
         });
     let result = renderer
         .render_frame(

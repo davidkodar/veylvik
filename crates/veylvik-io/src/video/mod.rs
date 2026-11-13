@@ -15,15 +15,17 @@ use std::{
     sync::{Arc, Mutex},
 };
 use veylvik_document::Time;
+use veylvik_document::media::InputColour;
 use veylvik_render::{FrameSource, Image, SourceInfo};
 use veylvik_render::{GpuFrame, Renderer, VideoEncoding, VideoFormat};
+/// The last converted frame: index, requested size (None for full size), input colour.
+type Converted = (usize, Option<[u32; 2]>, InputColour, Arc<GpuFrame>);
 struct State {
-    cache: VecDeque<(usize, Arc<Image>)>,
+    cache: VecDeque<(usize, InputColour, Arc<Image>)>,
     decoder: Option<Session>,
     backend: Backend,
     raw: VecDeque<(usize, Decoded)>,
-    /// Last converted frame: index, requested size (None for full size), frame.
-    gpu: Option<(usize, Option<[u32; 2]>, Arc<GpuFrame>)>,
+    gpu: Option<Converted>,
     fallback: String,
     gpu_conversions: u64,
     cpu_realizations: u64,
@@ -58,6 +60,10 @@ pub struct Video {
     hardware_format: VideoFormat,
     policy: DecodePolicy,
     colour: colour::Transform,
+    /// The file's colour tags (H.273 primaries and transfer), for Input colour overrides.
+    tags: (u32, u32),
+    /// Transforms for Footage nodes that override the tags, most recent last.
+    overrides: Mutex<Vec<(InputColour, Arc<colour::Transform>)>>,
     budget: u64,
     state: Mutex<State>,
     report: Mutex<DecodeDiagnostics>,
@@ -356,6 +362,8 @@ impl Video {
             hardware_format,
             policy,
             colour,
+            tags: (primaries, transfer),
+            overrides: Mutex::new(Vec::new()),
             budget: (frame_bytes * 2).min(budget),
             report: Mutex::new(DecodeDiagnostics {
                 backend: "Opening".into(),
@@ -392,6 +400,29 @@ impl Video {
             return Err("Video changed during initialization; import it again".into());
         }
         Ok(video)
+    }
+    /// The transform for a Footage node's input colour; `None` uses the file's tags.
+    fn transform(&self, input: InputColour) -> Result<Option<Arc<colour::Transform>>> {
+        if input.is_auto() {
+            return Ok(None);
+        }
+        let mut overrides = self
+            .overrides
+            .lock()
+            .map_err(|_| "Colour transforms unavailable")?;
+        if let Some((_, transform)) = overrides.iter().find(|(colour, _)| *colour == input) {
+            return Ok(Some(transform.clone()));
+        }
+        let transform = Arc::new(colour::Transform::with_input(
+            input,
+            self.tags.0,
+            self.tags.1,
+        )?);
+        if overrides.len() >= 4 {
+            overrides.remove(0);
+        }
+        overrides.push((input, transform.clone()));
+        Ok(Some(transform))
     }
     fn index(&self, time: Time) -> Result<usize> {
         time.seconds()?;
@@ -615,28 +646,41 @@ impl FrameSource for Video {
         renderer: &Renderer,
         target: Option<[u32; 2]>,
     ) -> veylvik_render::Result<Option<Arc<GpuFrame>>> {
+        self.gpu_frame_with(time, renderer, target, InputColour::default())
+    }
+    fn gpu_frame_with(
+        &self,
+        time: Time,
+        renderer: &Renderer,
+        target: Option<[u32; 2]>,
+        input: InputColour,
+    ) -> veylvik_render::Result<Option<Arc<GpuFrame>>> {
         let work = || -> Result<Arc<GpuFrame>> {
+            let custom = self.transform(input)?;
+            let transform = custom.as_deref().unwrap_or(&self.colour);
             if stamp(&self.path)? != self.stamp {
                 return Err("Video changed on disk; reload sources before continuing".into());
             }
             let index = self.index(time)?;
             let mut state = self.state.lock().map_err(|_| "Video decoder unavailable")?;
-            if let Some((n, size, frame)) = &state.gpu
+            if let Some((n, size, colour, frame)) = &state.gpu
                 && *n == index
                 && *size == target
+                && *colour == input
                 && renderer.owns_frame(frame)
             {
                 return Ok(frame.clone());
             }
             state.cache.clear();
             state.gpu = None;
-            let (bytes, encoding) = self.decoded(&mut state, index)?;
+            let (bytes, mut encoding) = self.decoded(&mut state, index)?;
+            encoding.primaries = transform.matrix;
             let direct = if let Decoded::Hardware(hardware) = &bytes {
                 match hardware.cuda() {
                     Ok(Some(cuda)) => Some(renderer.import_cuda_video_sized(
                         &cuda,
                         encoding,
-                        &self.colour.lut,
+                        &transform.lut,
                         target,
                     )),
                     Ok(None) => None,
@@ -661,12 +705,12 @@ impl FrameSource for Video {
                     if matches!(bytes, Decoded::Hardware(_)) {
                         state.staged_frames += 1;
                     }
-                    renderer.import_video_sized(&staged, encoding, &self.colour.lut, target)?
+                    renderer.import_video_sized(&staged, encoding, &transform.lut, target)?
                 }
             };
             let frame = Arc::new(frame);
             state.gpu_conversions += 1;
-            state.gpu = Some((index, target, frame.clone()));
+            state.gpu = Some((index, target, input, frame.clone()));
             self.publish(&state);
             Ok(frame)
         };
@@ -675,30 +719,40 @@ impl FrameSource for Video {
             .map_err(|e| veylvik_render::Error::Message(e.to_string()))
     }
     fn frame(&self, time: Time) -> veylvik_render::Result<Arc<Image>> {
+        self.frame_with(time, InputColour::default())
+    }
+    fn frame_with(&self, time: Time, input: InputColour) -> veylvik_render::Result<Arc<Image>> {
         let work = || -> Result<Arc<Image>> {
+            let custom = self.transform(input)?;
+            let transform = custom.as_deref().unwrap_or(&self.colour);
             if stamp(&self.path)? != self.stamp {
                 return Err("Video changed on disk; reload sources before continuing".into());
             }
             let index = self.index(time)?;
             let mut state = self.state.lock().map_err(|_| "Video decoder unavailable")?;
-            if let Some((_, image)) = state.cache.iter().find(|(n, _)| *n == index) {
+            if let Some((_, _, image)) = state
+                .cache
+                .iter()
+                .find(|(n, colour, _)| *n == index && *colour == input)
+            {
                 return Ok(image.clone());
             }
             state.gpu = None;
-            let (bytes, encoding) = self.decoded(&mut state, index)?;
+            let (bytes, mut encoding) = self.decoded(&mut state, index)?;
+            encoding.primaries = transform.matrix;
             state.cpu_realizations += 1;
             if matches!(bytes, Decoded::Hardware(_)) {
                 state.staged_frames += 1;
             }
             let bytes = bytes.stage()?;
-            let pixels = self.colour.decoded_pixels(&bytes, encoding);
+            let pixels = transform.decoded_pixels(&bytes, encoding);
             let image = Arc::new(Image::new(self.info.width, self.info.height, pixels)?);
             state.raw.clear();
             let size = image.byte_size();
             while (state.cache.len() as u64 + 1) * size > self.budget {
                 state.cache.pop_front();
             }
-            state.cache.push_back((index, image.clone()));
+            state.cache.push_back((index, input, image.clone()));
             self.publish(&state);
             Ok(image)
         };

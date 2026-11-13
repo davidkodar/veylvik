@@ -113,6 +113,21 @@ primaries, sRGB transfer for RGB video or BT.709 transfer for YUV video, with
 BT.709 matrix for HD YUV and BT.601 matrix for SD YUV. Untagged RGB/JPEG-range video
 uses full range; other untagged YUV uses limited range.
 
+**Input colour** on a Footage node overrides the file's colour tags for video.
+Camera log footage is almost never tagged (a Sony a6700 S-Log3 file reports
+unknown transfer and primaries), so choose its curve: Apple Log, Sony S-Log3,
+ARRI LogC3 (EI 800), ARRI LogC4 or Panasonic V-Log, or a display curve (Rec.709,
+sRGB, linear, PQ, HLG). Choosing a camera curve also picks its usual gamut
+(S-Gamut3.Cine for S-Log3, ARRI Wide Gamut 3/4, V-Gamut, Rec.2020 for Apple
+Log), which can be changed. Curves follow the manufacturers' published formulas
+on the range-expanded signal, so a full-range Sony file and a legal-range file
+both decode correctly from their range tag; 18% grey decodes to 0.18 for every
+camera curve. Below their black point the curves would decode to small
+negatives, which are sensor noise rather than light and turn into colour casts
+in dark scenes once a wide camera gamut is converted, so they map to zero, as
+editors do. Each Footage node keeps its own choice, so two nodes can read the
+same file differently. Image sequences and stills ignore it.
+
 Alpha WebM currently requires conversion to a PNG/EXR sequence or RGBA FFV1.
 Unsupported primaries, constant-luminance BT.2020, anamorphic or interlaced
 video produce explicit import errors. Convert those sources to supported footage

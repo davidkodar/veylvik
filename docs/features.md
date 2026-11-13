@@ -307,6 +307,7 @@ Opened with **Add → Effect library…**; searchable by name, description or ca
 - NVIDIA direct CUDA-to-Vulkan GPU copy (matching device UUIDs); otherwise host-staged planes.
 - Supports NV12 and 10-bit P010 4:2:0 on the hardware path.
 - Vulkan does chroma reconstruction, range/matrix conversion, rotation, transfer decoding and primaries conversion.
+- **Input colour** on Footage: **Auto (from file)** or an explicit curve (Rec.709, sRGB, linear, PQ, HLG, **Apple Log**, **Sony S-Log3**, **ARRI LogC3**, **ARRI LogC4**, **Panasonic V-Log**) and gamut (Rec.709, Rec.2020, P3-D65, S-Gamut3, S-Gamut3.Cine, ARRI Wide Gamut 3/4, V-Gamut); choosing a camera curve picks its usual gamut; 18% grey decodes to 0.18; below-black sensor noise maps to zero instead of tinting dark scenes.
 - Colour: explicit conversion to scene-linear Rec.709; SDR, PQ and HLG transfer (PQ at 100-nit reference, no tone mapping; HLG as scene light with reference white matched to PQ's at 2.03, so iPhone HDR imports directly); incomplete tags reported; documented defaults for untagged sources.
 - Variable frame rate and reordered frames handled via packet timestamps.
 - Rejected with explicit errors: alpha WebM, HLG, constant-luminance BT.2020, unsupported primaries, anamorphic, interlaced.

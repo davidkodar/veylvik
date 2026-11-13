@@ -14,6 +14,7 @@ pub enum ParameterKind {
     FadeTiming,
     KeyColor,
     MediaPlacement,
+    MediaColour,
     TextFeatures,
     TextContent,
     TextFont,
@@ -49,6 +50,7 @@ impl Parameter {
             ParameterKind::PlanarTrack => json!(crate::planar::Track::default()),
             ParameterKind::PlanarMode => json!(crate::planar::WarpMode::Follow),
             ParameterKind::MediaPlacement => json!(crate::media::Placement::default()),
+            ParameterKind::MediaColour => json!(crate::media::InputColour::default()),
             ParameterKind::MediaTiming => json!(crate::media::Timing::default()),
             ParameterKind::FadeTiming => json!(crate::nodes::FadeTiming::default()),
             ParameterKind::Typography => json!(crate::text::Typography::default()),
@@ -119,6 +121,7 @@ impl Parameter {
             }
             ParameterKind::Path => crate::vector::schema(),
             ParameterKind::MediaTiming => crate::media::schema(),
+            ParameterKind::MediaColour => crate::media::InputColour::schema(),
             ParameterKind::FadeTiming => crate::nodes::fade_schema(),
             ParameterKind::MediaPlacement => {
                 json!({"type":"string","enum":["legacy","fit","fill","original","stretch"]})

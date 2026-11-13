@@ -37,10 +37,12 @@ Veylvik is young, but it already works end to end: compose a graph, animate it, 
 - **Node graph:** connect generators, effects, masks and merges by dragging between sockets. Search and add nodes with <kbd>Tab</kbd>, find existing ones with <kbd>Ctrl</kbd>+<kbd>F</kbd>, box-select, copy and paste across projects, duplicate whole branches, and let auto-arrange keep the graph readable. Preview any node without changing the output.
 - **Animation:** every scalar can be keyed at exact rational times with linear, hold, ease, auto-smooth or Bézier interpolation. A curve workspace lets you edit keys and tangents directly, and keyframe markers on the timeline navigate the selected node.
 - **Masks:** draw vector masks with a pen tool straight in the viewer, edit points and topology, transform the whole shape, and animate it frame by frame. Grow, shrink, feather, combine and convert channels into mattes. Guided occlusion lets you place a title behind foreground objects without wiring anything.
+- **Subject masks:** click a person or object in the viewer and get a clean matte tracked through the shot by a local AI model (EdgeTAM or SAM 2.1), with a zoomed detail pass for feet and hands, ViTMatte matting for hair, and edge decontamination. One click replaces the background, keeps the subject, or puts a title behind it. Models install from an AI models manager and run on your own GPU; nothing is uploaded.
+- **Tracking and keying:** GPU planar tracking that pins layers to surfaces through occlusions, camera moves and both directions, point tracking, and colour-difference chroma and luma keyers with despill and an eyedropper.
 - **Text and titles:** GPU-rendered editable text with a searchable library of system and personal fonts, layout, styling and animation tools, and outlines, glows and surface materials connected as ordinary effects.
 - **Looks and materials:** 59 starter effects in a searchable library. They include glows, streaks, distortions, echoes and particle overlays; procedural metals, wood, marble, brick, paper and leather; glass and reflections; procedural fire; and smoke, fog and clouds. Every starter is an editable group with public controls, and they scale to any resolution, up to native UHD.
 - **Effect groups and presets:** collapse nodes into reusable effects with named controls and inputs, save them to your library, and share them as portable `.veyfx` files.
-- **Colour:** processing in scene-linear Rec.709 with premultiplied alpha and no clamping, so HDR highlights and negative values survive the whole graph. The viewer has exposure and alpha views, and a colour picker that never rewrites your HDR values.
+- **Colour:** processing in scene-linear Rec.709 with premultiplied alpha and no clamping, so HDR highlights and negative values survive the whole graph. HDR video in PQ or HLG (iPhone HDR) imports directly, and camera log footage (Apple Log, Sony S-Log3, ARRI LogC3/LogC4, Panasonic V-Log) decodes to scene light with its camera gamut. The viewer has exposure and alpha views, and a colour picker that never rewrites your HDR values.
 - **Deliver:** export the current frame or a whole range as SDR PNG or lossless 32-bit float OpenEXR, or encode an MP4 on the GPU (NVENC) with the footage's sound and optional music mixed in. Sequence export writes a manifest that only marks itself complete once every frame is on disk.
 - **Work safely:** atomic saves that check for changes on disk before replacing a file, bounded undo history, crash recovery copies, missing-media repair, and **Collect project** to gather a project and its images into one portable folder.
 
@@ -104,7 +106,7 @@ Read the [MCP reference](docs/reference.md#mcp) for the tools and command schema
 ## Roadmap
 
 - **Klipp integration:** use Veylvik compositions and effect presets inside [Klipp](https://github.com/davidkodar/klipp), the native video editor for Linux, using the project's size, frame rate and footage.
-- **Subject masks:** click a person in the viewer and track a clean matte through the shot (the headless analysis is in place), with GPU edge refinement and edge-band matting.
+- **Colour:** .cube LUTs and an ACES-style working space.
 - **Tracking:** smoothing and a forward-backward quality measure for planar tracks.
 - More generators, a general particle emitter, and nested groups.
 

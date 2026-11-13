@@ -340,6 +340,7 @@ impl Project {
                     asset: next.clone(),
                     timing: Default::default(),
                     placement: Default::default(),
+                    colour: Default::default(),
                 });
             } else {
                 *node.operation.asset_mut().unwrap() = next.clone();
@@ -375,6 +376,7 @@ impl Project {
                 asset: asset.clone(),
                 timing: Default::default(),
                 placement: veylvik_document::media::Placement::Fit,
+                colour: Default::default(),
             }),
             &[],
         );

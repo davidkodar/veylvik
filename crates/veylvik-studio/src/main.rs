@@ -1693,6 +1693,7 @@ impl Studio {
                     asset,
                     timing: Default::default(),
                     placement: Default::default(),
+                    colour: Default::default(),
                 });
                 self.draft_dirty = true;
                 text_changed = true;

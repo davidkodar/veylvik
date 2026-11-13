@@ -25,6 +25,7 @@ impl Inspect for veylvik_document::nodes::Footage {
             asset,
             timing,
             placement,
+            colour,
         } = self;
         {
             ui.label(asset.as_str());
@@ -32,10 +33,55 @@ impl Inspect for veylvik_document::nodes::Footage {
                 media_controls::edit(ui, timing, placement, cx.inputs.info(asset), cx.frame_rate);
             cx.dirty |= changed;
             cx.text_changed |= changed;
+            if input_colour(ui, colour) {
+                cx.dirty = true;
+                cx.text_changed = true;
+            }
             if let Some(reason) = cx.unavailable.get(asset.as_str()) {
                 ui.colored_label(egui::Color32::LIGHT_RED, *reason);
             }
             cx.replace_image = ui.button("Replace source…").clicked();
         }
     }
+}
+
+/// Input colour for video footage: the file's tags by default, or an explicit camera curve and
+/// gamut. Picking a curve also picks its usual gamut. Returns true when changed.
+fn input_colour(ui: &mut egui::Ui, colour: &mut veylvik_document::media::InputColour) -> bool {
+    use veylvik_document::media::{Curve, Gamut};
+    let mut changed = false;
+    egui::Grid::new("footage-input-colour")
+        .num_columns(2)
+        .show(ui, |ui| {
+            ui.label("Input colour");
+            egui::ComboBox::from_id_salt("footage-curve")
+                .selected_text(colour.curve.label())
+                .show_ui(ui, |ui| {
+                    for curve in Curve::ALL {
+                        if ui
+                            .selectable_label(colour.curve == curve, curve.label())
+                            .clicked()
+                            && colour.curve != curve
+                        {
+                            colour.curve = curve;
+                            colour.gamut = curve.usual_gamut();
+                            changed = true;
+                        }
+                    }
+                });
+            ui.end_row();
+            ui.label("Gamut");
+            egui::ComboBox::from_id_salt("footage-gamut")
+                .selected_text(colour.gamut.label())
+                .show_ui(ui, |ui| {
+                    for gamut in Gamut::ALL {
+                        changed |= ui
+                            .selectable_value(&mut colour.gamut, gamut, gamut.label())
+                            .changed();
+                    }
+                });
+            ui.end_row();
+        });
+    ui.weak("Video only. Auto follows the file's colour tags. Camera log footage is usually untagged: choose its curve (Apple Log, S-Log3, LogC, V-Log) to get scene-linear light with 18% grey at 0.18.");
+    changed
 }

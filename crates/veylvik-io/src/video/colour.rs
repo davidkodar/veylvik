@@ -1,6 +1,7 @@
 //! Explicit encoded-RGB to scene-linear Rec.709 conversion. Alpha stays straight
 //! until the final multiplication, avoiding implicit decoder alpha transforms.
 use crate::Result;
+use veylvik_document::media::{Curve, Gamut, InputColour};
 pub struct Transform {
     pub(super) lut: Vec<f32>,
     pub(super) matrix: [[f32; 3]; 3],
@@ -41,71 +42,182 @@ fn hlg(v: f64) -> f64 {
 /// Puts HLG reference white (75% signal) at 2.03, where PQ's 203-nit reference white lands on
 /// Veylvik's 100-nit scale, so HLG and PQ footage match in one composition.
 const HLG_SCALE: f64 = 2.03 / 0.264_962_56;
+fn tagged_primaries(code: u32) -> Result<[[f64; 2]; 3]> {
+    Ok(match code {
+        1 => [[0.64, 0.33], [0.30, 0.60], [0.15, 0.06]],
+        5 => [[0.64, 0.33], [0.29, 0.60], [0.15, 0.06]],
+        6 | 7 => [[0.630, 0.340], [0.310, 0.595], [0.155, 0.070]],
+        9 => [[0.708, 0.292], [0.170, 0.797], [0.131, 0.046]],
+        _ => return Err("Unsupported video colour primaries; convert to Rec.709 first".into()),
+    })
+}
+/// Camera and display gamuts by their published CIE xy primaries (all D65).
+fn gamut_primaries(gamut: Gamut) -> [[f64; 2]; 3] {
+    match gamut {
+        Gamut::Auto | Gamut::Rec709 => [[0.64, 0.33], [0.30, 0.60], [0.15, 0.06]],
+        Gamut::Rec2020 => [[0.708, 0.292], [0.170, 0.797], [0.131, 0.046]],
+        Gamut::P3D65 => [[0.680, 0.320], [0.265, 0.690], [0.150, 0.060]],
+        Gamut::SGamut3 => [[0.730, 0.280], [0.140, 0.855], [0.100, -0.050]],
+        Gamut::SGamut3Cine => [[0.766, 0.275], [0.225, 0.800], [0.089, -0.087]],
+        Gamut::ArriWideGamut3 => [[0.6840, 0.3130], [0.2210, 0.8480], [0.0861, -0.1020]],
+        Gamut::ArriWideGamut4 => [[0.7347, 0.2653], [0.1424, 0.8576], [0.0991, -0.0308]],
+        Gamut::VGamut => [[0.730, 0.280], [0.165, 0.840], [0.100, -0.030]],
+    }
+}
+/// Decoding curves for tagged transfers (H.273 codes); unknown codes use BT.709.
+fn tagged(transfer: u32, v: f64) -> f64 {
+    match transfer {
+        8 => v,
+        13 => {
+            if v <= 0.04045 {
+                v / 12.92
+            } else {
+                ((v + 0.055) / 1.055).powf(2.4)
+            }
+        }
+        4 => v.powf(2.2),
+        5 => v.powf(2.8),
+        7 => {
+            if v < 0.0912 {
+                v / 4.0
+            } else {
+                ((v + 0.1115) / 1.1115).powf(1.0 / 0.45)
+            }
+        }
+        // HLG (BT.2100) as scene light, without the display OOTF, scaled so
+        // reference white (75% signal) matches PQ's 203-nit reference (2.03).
+        18 => hlg(v) * HLG_SCALE,
+        16 => {
+            let power = v.powf(1.0 / (2523.0 / 32.0));
+            ((power - 3424.0 / 4096.0).max(0.0) / (2413.0 / 128.0 - 2392.0 / 128.0 * power))
+                .powf(1.0 / (2610.0 / 16384.0))
+                * 100.0
+        }
+        14 | 15 => {
+            if v < 4.5 * 0.018053968510807 {
+                v / 4.5
+            } else {
+                ((v + 0.09929682680944) / 1.09929682680944).powf(1.0 / 0.45)
+            }
+        }
+        _ => {
+            if v < 0.081 {
+                v / 4.5
+            } else {
+                ((v + 0.099) / 1.099).powf(1.0 / 0.45)
+            }
+        }
+    }
+}
+/// Camera log curves from the manufacturers' published formulas, on the normalised signal
+/// (0..1 after range expansion); 18% grey decodes to 0.18.
+fn log_curve(curve: Curve, x: f64) -> f64 {
+    match curve {
+        Curve::AppleLog => {
+            const R0: f64 = -0.056_410_88;
+            const RT: f64 = 0.01;
+            const C: f64 = 47.287_112_36;
+            const BETA: f64 = 0.009_640_52;
+            const GAMMA: f64 = 0.085_504_79;
+            const DELTA: f64 = 0.693_369_45;
+            let pt = C * (RT - R0).powi(2);
+            if x >= pt {
+                ((x - DELTA) / GAMMA).exp2() - BETA
+            } else if x >= 0.0 {
+                (x / C).sqrt() + R0
+            } else {
+                R0
+            }
+        }
+        Curve::Slog3 => {
+            let code = x * 1023.0;
+            if code >= 171.210_294_692_9 {
+                10f64.powf((code - 420.0) / 261.5) * 0.19 - 0.01
+            } else {
+                (code - 95.0) * 0.01125 / (171.210_294_692_9 - 95.0)
+            }
+        }
+        Curve::Logc3 => {
+            // ARRI LogC3 at EI 800.
+            const CUT: f64 = 0.010_591;
+            const A: f64 = 5.555_556;
+            const B: f64 = 0.052_272;
+            const C: f64 = 0.247_190;
+            const D: f64 = 0.385_537;
+            const E: f64 = 5.367_655;
+            const F: f64 = 0.092_809;
+            if x > E * CUT + F {
+                (10f64.powf((x - D) / C) - B) / A
+            } else {
+                (x - F) / E
+            }
+        }
+        Curve::Logc4 => {
+            let a = (2f64.powi(18) - 16.0) / 117.45;
+            let b = (1023.0 - 95.0) / 1023.0;
+            let c = 95.0 / 1023.0;
+            let s = (7.0 * std::f64::consts::LN_2 * 2f64.powf(7.0 - 14.0 * c / b)) / (a * b);
+            let t = (2f64.powf(14.0 * (-c / b) + 6.0) - 64.0) / a;
+            if x >= 0.0 {
+                (2f64.powf(14.0 * (x - c) / b + 6.0) - 64.0) / a
+            } else {
+                x * s + t
+            }
+        }
+        Curve::Vlog => {
+            const CUT: f64 = 0.181;
+            const B: f64 = 0.008_73;
+            const C: f64 = 0.241_514;
+            const D: f64 = 0.598_206;
+            if x < CUT {
+                (x - 0.125) / 5.6
+            } else {
+                10f64.powf((x - D) / C) - B
+            }
+        }
+        // Display curves never reach here; they use their tagged decoders.
+        _ => tagged(1, x),
+    }
+}
 impl Transform {
     pub fn new(primaries: u32, transfer: u32) -> Result<Self> {
-        let rec709 = [[0.64, 0.33], [0.30, 0.60], [0.15, 0.06]];
-        let source = match primaries {
-            1 => rec709,
-            5 => [[0.64, 0.33], [0.29, 0.60], [0.15, 0.06]],
-            6 | 7 => [[0.630, 0.340], [0.310, 0.595], [0.155, 0.070]],
-            9 => [[0.708, 0.292], [0.170, 0.797], [0.131, 0.046]],
-            _ => return Err("Unsupported video colour primaries; convert to Rec.709 first".into()),
+        Ok(Self::build(tagged_primaries(primaries)?, |v| {
+            tagged(transfer, v)
+        }))
+    }
+    /// The transform for a Footage node's input colour: each `Auto` part follows the file's
+    /// tags (`primaries`, `transfer`), anything else overrides them.
+    pub fn with_input(input: InputColour, primaries: u32, transfer: u32) -> Result<Self> {
+        let source = match input.gamut {
+            Gamut::Auto => tagged_primaries(primaries)?,
+            gamut => gamut_primaries(gamut),
         };
+        let code = match input.curve {
+            Curve::Auto => transfer,
+            Curve::Rec709 => 1,
+            Curve::Srgb => 13,
+            Curve::Linear => 8,
+            Curve::Pq => 16,
+            Curve::Hlg => 18,
+            // Below their black point the curves decode to small negatives: sensor noise, not
+            // light. Through a wide camera gamut those become strong casts in dark scenes, so
+            // they map to zero, as editors do (and as Klipp does).
+            camera => return Ok(Self::build(source, |v| log_curve(camera, v).max(0.0))),
+        };
+        Ok(Self::build(source, |v| tagged(code, v)))
+    }
+    /// A 16-bit lookup table of `curve` and the primaries matrix from `source` to Rec.709.
+    fn build(source: [[f64; 2]; 3], curve: impl Fn(f64) -> f64) -> Self {
+        let rec709 = [[0.64, 0.33], [0.30, 0.60], [0.15, 0.06]];
         let input = xyz(source);
         let output = inverse(xyz(rec709));
         let matrix = std::array::from_fn(|r| {
             std::array::from_fn(|c| (0..3).map(|k| output[r][k] * input[k][c]).sum::<f64>() as f32)
         });
         let lut = (0..=65535)
-            .map(|n| {
-                let v = n as f64 / 65535.0;
-                let linear = match transfer {
-                    8 => v,
-                    13 => {
-                        if v <= 0.04045 {
-                            v / 12.92
-                        } else {
-                            ((v + 0.055) / 1.055).powf(2.4)
-                        }
-                    }
-                    4 => v.powf(2.2),
-                    5 => v.powf(2.8),
-                    7 => {
-                        if v < 0.0912 {
-                            v / 4.0
-                        } else {
-                            ((v + 0.1115) / 1.1115).powf(1.0 / 0.45)
-                        }
-                    }
-                    // HLG (BT.2100) as scene light, without the display OOTF, scaled so
-                    // reference white (75% signal) matches PQ's 203-nit reference (2.03).
-                    18 => hlg(v) * HLG_SCALE,
-                    16 => {
-                        let power = v.powf(1.0 / (2523.0 / 32.0));
-                        ((power - 3424.0 / 4096.0).max(0.0)
-                            / (2413.0 / 128.0 - 2392.0 / 128.0 * power))
-                            .powf(1.0 / (2610.0 / 16384.0))
-                            * 100.0
-                    }
-                    14 | 15 => {
-                        if v < 4.5 * 0.018053968510807 {
-                            v / 4.5
-                        } else {
-                            ((v + 0.09929682680944) / 1.09929682680944).powf(1.0 / 0.45)
-                        }
-                    }
-                    _ => {
-                        if v < 0.081 {
-                            v / 4.5
-                        } else {
-                            ((v + 0.099) / 1.099).powf(1.0 / 0.45)
-                        }
-                    }
-                };
-                linear as f32
-            })
+            .map(|n| curve(n as f64 / 65535.0) as f32)
             .collect();
-        Ok(Self { lut, matrix })
+        Self { lut, matrix }
     }
     pub fn pixels(&self, bytes: &[u8]) -> Vec<[f32; 4]> {
         bytes
@@ -151,6 +263,43 @@ mod tests {
         assert!((at(0.5) - 0.25 / 3.0 * HLG_SCALE as f32).abs() < 0.002);
         assert!((at(1.0) - HLG_SCALE as f32).abs() < 0.01);
         assert!(hlg.lut.windows(2).all(|p| p[0] <= p[1]), "monotonic");
+    }
+    #[test]
+    fn camera_log_curves_put_their_published_grey_at_0_18() {
+        // Each curve's 18% grey signal, from the manufacturers' specifications.
+        for (curve, grey) in [
+            (Curve::AppleLog, 0.488_34),
+            (Curve::Slog3, 420.0 / 1023.0),
+            (Curve::Logc3, 0.391_007),
+            (Curve::Logc4, 0.278_396),
+            (Curve::Vlog, 0.423_311),
+        ] {
+            let linear = log_curve(curve, grey);
+            assert!((linear - 0.18).abs() < 0.001, "{curve:?}: {linear}");
+            // Brighter signal means more light.
+            assert!(log_curve(curve, grey + 0.1) > linear);
+        }
+        // Auto parts follow the file's tags; an override replaces them.
+        let tagged = Transform::with_input(InputColour::default(), 1, 13).unwrap();
+        assert_eq!(tagged.lut[32768], Transform::new(1, 13).unwrap().lut[32768]);
+        let slog = Transform::with_input(
+            InputColour {
+                curve: Curve::Slog3,
+                gamut: Gamut::SGamut3Cine,
+            },
+            1,
+            1,
+        )
+        .unwrap();
+        let at = (420.0 / 1023.0 * 65535.0_f64).round() as usize;
+        assert!((slog.lut[at] - 0.18).abs() < 0.001);
+        // Below the black point the table holds zero, never negative noise.
+        assert_eq!(slog.lut[0], 0.0);
+        assert!(slog.lut.iter().all(|v| *v >= 0.0));
+        // A wide camera gamut maps neutral grey to neutral grey (rows sum to one).
+        for row in slog.matrix {
+            assert!((row.iter().sum::<f32>() - 1.0).abs() < 1e-4, "{row:?}");
+        }
     }
 }
 
