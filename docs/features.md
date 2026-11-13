@@ -10,8 +10,8 @@ Everything Veylvik can do today, area by area. Veylvik is a native Rust node com
 - **Add node** button, **Add → Search nodes…** or **Tab**: searchable picker over all 34 node types, recipes and text outlines (by name or description); Up/Down, Enter to add, Escape cancels.
 - New effects connect to the selected node; procedural nodes appear where the picker opened.
 - Gradient endpoints and shape defaults follow the composition size.
-- **Add** menu submenus: Generators (Solid, Noise, Fractal noise, Gradient); Masks and shapes (Ellipse mask, Path mask, Channel mask, Grow/shrink mask, Combine masks); Transform and distort (Affine transform, Transform, Displace); Color and filters (Exposure, Colorize, Blur); Compositing (Merge, Blend, Apply mask).
-- **Add → Image…**, **Add → Text**, **Add → Text outlines…**, **Add → Effect library…**.
+- **Add** menu submenus: Generators (Solid, Noise, Fractal noise, Gradient, Procedural fire, Smoke, fog and clouds); Masks and shapes (Ellipse mask, Path mask, Channel mask, Grow/shrink mask, Combine masks); Transform and distort (Affine transform, Transform, Displace); Colour and filters (Exposure, Colour correct, Colorize, Blur); Compositing (Merge, Blend, Fade, Apply mask, Surface blend); Materials and light (Text surface, Tarnish and dirt, Glass surface, Surface reflection, Sun glints, Metallic shine); Tracking (Planar track, Planar warp). Every node type is in exactly one submenu or has its own entry.
+- **Add → Image or footage…**, **Add → Text**, **Add → Text outlines…**, **Add → Effect library…**.
 - Editable recipes: **Glow effect**, **Outline effect**.
 - **Find** / **Ctrl+F**: locate a node by name, operation type or UUID (all words, case-insensitive), Enter selects and previews it.
 - Preview any node without changing composition output; **Set as output** / **Set selected node as output**.

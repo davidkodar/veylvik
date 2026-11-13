@@ -83,17 +83,11 @@ impl Studio {
                 ui.separator();
                 let mut chosen = None;
                 ui.add_enabled_ui(ready, |ui| {
-                    if item(ui, "Image…", "Ctrl+I", true) { chosen = Some(node_palette::Choice::Image); }
+                    if item(ui, "Image or footage…", "Ctrl+I", true) { chosen = Some(node_palette::Choice::Image); }
                     if item(ui, "Text", "", true) { chosen = Some(node_palette::Choice::Node(&registry::TEXT)); }
                     if item(ui, "Text outlines…", "", true) { chosen = Some(node_palette::Choice::Text); }
                     ui.separator();
-                    for (label, kinds) in [
-                        ("Generators", &[&registry::SOLID, &registry::NOISE, &registry::FRACTAL_NOISE, &registry::GRADIENT][..]),
-                        ("Masks and shapes", &[&registry::ELLIPSE, &registry::PATH, &registry::CHANNEL_MASK, &registry::MORPHOLOGY, &registry::COMBINE_MASK][..]),
-                        ("Transform and distort", &[&registry::AFFINE, &registry::TRANSFORM, &registry::DISPLACE][..]),
-                        ("Color and filters", &[&registry::EXPOSURE, &registry::COLORIZE, &registry::BLUR][..]),
-                        ("Compositing", &[&registry::MERGE, &registry::BLEND, &registry::MASK][..]),
-                    ] {
+                    for (label, kinds) in ADD_MENU {
                         ui.menu_button(label, |ui| {
                             for kind in kinds {
                                 if item(ui, kind.label, "", true) { chosen = Some(node_palette::Choice::Node(kind)); }
@@ -155,5 +149,92 @@ impl Studio {
                 ui.add(egui::Label::new(&title).truncate()).on_hover_text(title);
             });
         });
+    }
+}
+
+/// Add menu submenus. Every registered node type appears here, except media and text,
+/// which have their own Add entries (a test keeps this complete as nodes are added).
+pub(crate) const ADD_MENU: [(&str, &[&registry::NodeType]); 7] = [
+    (
+        "Generators",
+        &[
+            &registry::SOLID,
+            &registry::NOISE,
+            &registry::FRACTAL_NOISE,
+            &registry::GRADIENT,
+            &registry::FIRE,
+            &registry::ATMOSPHERE,
+        ],
+    ),
+    (
+        "Masks and shapes",
+        &[
+            &registry::ELLIPSE,
+            &registry::PATH,
+            &registry::CHANNEL_MASK,
+            &registry::MORPHOLOGY,
+            &registry::COMBINE_MASK,
+        ],
+    ),
+    (
+        "Transform and distort",
+        &[&registry::AFFINE, &registry::TRANSFORM, &registry::DISPLACE],
+    ),
+    (
+        "Colour and filters",
+        &[
+            &registry::EXPOSURE,
+            &registry::COLOR_CORRECT,
+            &registry::COLORIZE,
+            &registry::BLUR,
+        ],
+    ),
+    (
+        "Compositing",
+        &[
+            &registry::MERGE,
+            &registry::BLEND,
+            &registry::FADE,
+            &registry::MASK,
+            &registry::SURFACE_BLEND,
+        ],
+    ),
+    (
+        "Materials and light",
+        &[
+            &registry::MATERIAL,
+            &registry::PATINA,
+            &registry::GLASS,
+            &registry::SURFACE_REFLECTION,
+            &registry::SUN_GLINTS,
+            &registry::METALLIC_SHINE,
+        ],
+    ),
+    (
+        "Tracking",
+        &[&registry::PLANAR_TRACK, &registry::PLANAR_WARP],
+    ),
+];
+
+#[cfg(test)]
+mod add_menu_tests {
+    #[test]
+    fn add_menu_offers_every_registered_node_type_once() {
+        let mut listed: Vec<&str> = super::ADD_MENU
+            .iter()
+            .flat_map(|(_, kinds)| kinds.iter().map(|k| k.type_id))
+            .collect();
+        // Media and text have dedicated Add entries (Image…, Text).
+        listed.extend(["image", "footage", "text"]);
+        let mut sorted = listed.clone();
+        sorted.sort_unstable();
+        sorted.dedup();
+        assert_eq!(sorted.len(), listed.len(), "a node type is listed twice");
+        let mut registered: Vec<&str> = veylvik_document::registry::TYPES
+            .iter()
+            .map(|k| k.type_id)
+            .collect();
+        registered.sort_unstable();
+        assert_eq!(sorted, registered, "Add menu and node registry differ");
     }
 }
