@@ -1,4 +1,4 @@
-//! Bounded decoded-plane upload and Vulkan colour conversion. No linear pixel readback.
+//! Host upload or direct CUDA planes, followed by Vulkan colour conversion.
 use crate::{GpuFrame, Region, Renderer, Result, error, frame};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u32)]
@@ -74,6 +74,10 @@ pub(crate) fn pipeline(device: &wgpu::Device) -> wgpu::ComputePipeline {
         cache: None,
     })
 }
+enum Input<'a> {
+    Host(&'a [u8]),
+    Cuda(&'a veylvik_interop::CudaFrame),
+}
 impl Renderer {
     pub fn owns_frame(&self, frame: &GpuFrame) -> bool {
         std::sync::Arc::ptr_eq(&self.owner, &frame.owner)
@@ -84,7 +88,35 @@ impl Renderer {
         encoding: VideoEncoding,
         lut: &[f32],
     ) -> Result<GpuFrame> {
-        if encoding.byte_len()? != bytes.len()
+        self.convert_video(Input::Host(bytes), encoding, lut)
+    }
+    pub fn import_cuda_video(
+        &self,
+        frame: &veylvik_interop::CudaFrame,
+        encoding: VideoEncoding,
+        lut: &[f32],
+    ) -> Result<GpuFrame> {
+        if frame.dimensions() != [encoding.width, encoding.height]
+            || !matches!(
+                (frame.sample_bytes(), encoding.format),
+                (1, VideoFormat::Nv12) | (2, VideoFormat::P010)
+            )
+        {
+            return Err(error("CUDA planes do not match video encoding"));
+        }
+        self.convert_video(Input::Cuda(frame), encoding, lut)
+    }
+    fn convert_video(
+        &self,
+        input: Input<'_>,
+        encoding: VideoEncoding,
+        lut: &[f32],
+    ) -> Result<GpuFrame> {
+        let byte_len = match input {
+            Input::Host(bytes) => bytes.len() as u64,
+            Input::Cuda(frame) => frame.byte_len(),
+        };
+        if encoding.byte_len()? as u64 != byte_len
             || lut.len() != 65536
             || lut
                 .iter()
@@ -94,7 +126,12 @@ impl Renderer {
         }
         let (width, height) = encoding.dimensions();
         let size = u64::from(width) * u64::from(height) * 16;
-        let raw_size = (bytes.len() as u64).div_ceil(4) * 4;
+        let raw_size = byte_len.div_ceil(4) * 4;
+        let external_reservation = if matches!(input, Input::Cuda(_)) {
+            raw_size.div_ceil(65536) * 65536
+        } else {
+            0
+        };
         let limits = self.device.limits();
         if size.max(raw_size) > limits.max_storage_buffer_binding_size
             || size.max(raw_size) > limits.max_buffer_size
@@ -109,20 +146,32 @@ impl Renderer {
             return Err(error("renderer unavailable after a GPU failure"));
         }
         let available = self.budget_bytes.saturating_sub(pool.stats().held_bytes);
-        pool.trim(self.pool_limit_bytes.min(available));
-        if size + raw_size + 262144 + 96 > available {
+        pool.trim(
+            self.pool_limit_bytes
+                .min(available.saturating_sub(external_reservation)),
+        );
+        if size + raw_size.max(external_reservation) + 262144 + 96 > available {
             return Err(error("video conversion exceeds GPU budget"));
         }
         let validation = self.device.push_error_scope(wgpu::ErrorFilter::Validation);
         let allocation = self.device.push_error_scope(wgpu::ErrorFilter::OutOfMemory);
+        let mut interop_failed = false;
         let result = (|| {
-            let mut resources = pool.frame(self.budget_bytes);
-            let raw = resources.take(
-                &self.device,
-                raw_size,
-                wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
-                "decoded video planes",
-            )?;
+            let mut resources = pool.frame(self.budget_bytes.saturating_sub(external_reservation));
+            let raw = match input {
+                Input::Cuda(frame) => frame
+                    .into_vulkan(&self.device, &self.queue, external_reservation)
+                    .map_err(|e| {
+                        interop_failed = e.is::<veylvik_interop::FatalInterop>();
+                        error(e)
+                    })?,
+                Input::Host(_) => resources.take(
+                    &self.device,
+                    raw_size,
+                    wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+                    "decoded video planes",
+                )?,
+            };
             let table = resources.take(
                 &self.device,
                 262144,
@@ -141,9 +190,11 @@ impl Renderer {
                 wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
                 "video colour encoding",
             )?;
-            let mut padded = bytes.to_vec();
-            padded.resize(raw_size as usize, 0);
-            self.queue.write_buffer(&raw, 0, &padded);
+            if let Input::Host(bytes) = input {
+                let mut padded = bytes.to_vec();
+                padded.resize(raw_size as usize, 0);
+                self.queue.write_buffer(&raw, 0, &padded);
+            }
             self.queue
                 .write_buffer(&table, 0, bytemuck::cast_slice(lut));
             let mut params = Vec::with_capacity(96);
@@ -213,6 +264,9 @@ impl Renderer {
                 },
             })
         })();
+        if interop_failed {
+            pool.failed = true;
+        }
         let failure = pollster::block_on(allocation.pop()).or(pollster::block_on(validation.pop()));
         if let Some(e) = failure {
             pool.failed = true;

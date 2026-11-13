@@ -166,3 +166,87 @@ fn variable_rate_and_nonzero_start_seek_to_exact_presentation_times() {
         );
     }
 }
+
+#[test]
+#[ignore = "requires NVIDIA NVDEC, Vulkan and FFmpeg libx264/libx265"]
+fn direct_handoff_preserves_padded_planes_and_survives_decoder_drop() {
+    use std::sync::Arc;
+    use veylvik_render::{Renderer, VideoEncoding, VideoFormat};
+    let (dir, _) = fixture();
+    let mut renderer = Renderer::new().unwrap();
+    for (codec, decoder, pixel, format, encoding_format) in [
+        (
+            "libx264",
+            "h264_cuvid",
+            "yuv420p",
+            PlaneFormat::Nv12,
+            VideoFormat::Nv12,
+        ),
+        (
+            "libx265",
+            "hevc_cuvid",
+            "yuv420p10le",
+            PlaneFormat::P010,
+            VideoFormat::P010,
+        ),
+    ] {
+        let path = dir.0.join(format!("padded-{codec}.mkv"));
+        let mut command = Command::new("ffmpeg");
+        command.args([
+            "-v",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "testsrc2=size=322x182:rate=25:duration=0.2",
+            "-c:v",
+            codec,
+            "-threads",
+            "2",
+            "-pix_fmt",
+            pixel,
+        ]);
+        if codec == "libx265" {
+            command.args(["-x265-params", "log-level=error:pools=2:frame-threads=2"]);
+        }
+        assert!(command.arg(&path).status().unwrap().success());
+        let mut decoder =
+            Decoder::open(&path, DeviceKind::Cuda, Some(decoder), [322, 182], format).unwrap();
+        let held = Arc::new(decoder.frame_at(0).unwrap());
+        let cuda = held.cuda().unwrap().unwrap();
+        let staged = held.stage().unwrap();
+        drop(decoder);
+        drop(held);
+        let lut: Vec<_> = (0..65536).map(|n| n as f32 / 65535.0).collect();
+        let encoding = VideoEncoding {
+            width: 322,
+            height: 182,
+            format: encoding_format,
+            rotation: 0,
+            kr: 0.2126,
+            kb: 0.0722,
+            full_range: false,
+            chroma_location: [0., 0.5],
+            primaries: [[1., 0., 0.], [0., 1., 0.], [0., 0., 1.]],
+        };
+        let expected = renderer.import_video(&staged, encoding, &lut).unwrap();
+        let expected = renderer.read_frame(&expected).unwrap().pixels;
+        // Repeated allocations/imports exercise FD, context and ownership cleanup.
+        for _ in 0..32 {
+            let frame = renderer.import_cuda_video(&cuda, encoding, &lut).unwrap();
+            assert_eq!(renderer.read_frame(&frame).unwrap().pixels, expected);
+        }
+        assert!(
+            cuda.into_vulkan(renderer.device(), renderer.queue(), 1)
+                .is_err()
+        );
+        let budget = renderer.budget_bytes;
+        renderer.budget_bytes = 1;
+        assert!(renderer.import_cuda_video(&cuda, encoding, &lut).is_err());
+        renderer.budget_bytes = budget;
+        assert!(renderer.import_cuda_video(&cuda, encoding, &lut).is_ok());
+        let mut wrong = encoding;
+        wrong.width = 320;
+        assert!(renderer.import_cuda_video(&cuda, wrong, &lut).is_err());
+    }
+}

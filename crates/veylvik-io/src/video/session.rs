@@ -1,8 +1,27 @@
 //! Hardware sessions stay in-process; the compatibility scaler remains isolated.
 use super::{Backend, process};
 use crate::Result;
-use std::path::Path;
+use std::{path::Path, sync::Arc};
 use veylvik_render::VideoFormat;
+#[derive(Clone)]
+pub(super) enum Decoded {
+    Host(Arc<[u8]>),
+    Hardware(Arc<veylvik_decode::HardwareFrame>),
+}
+impl Decoded {
+    pub fn byte_len(&self) -> u64 {
+        match self {
+            Self::Host(b) => b.len() as u64,
+            Self::Hardware(f) => f.byte_len(),
+        }
+    }
+    pub fn stage(&self) -> Result<Arc<[u8]>> {
+        match self {
+            Self::Host(b) => Ok(b.clone()),
+            Self::Hardware(f) => Ok(f.stage()?.into()),
+        }
+    }
+}
 pub(super) enum Session {
     Hardware {
         decoder: Box<veylvik_decode::Decoder>,
@@ -45,15 +64,15 @@ impl Session {
             Self::Software(d) => d.next,
         }
     }
-    pub fn read(&mut self, timestamps: &[i64]) -> Result<Vec<u8>> {
+    pub fn read(&mut self, timestamps: &[i64]) -> Result<Decoded> {
         match self {
             Self::Hardware { decoder, next } => {
                 let pts = *timestamps.get(*next).ok_or("Frame index out of range")?;
-                let bytes = decoder.frame_at(pts)?.stage()?;
+                let frame = decoder.frame_at(pts)?;
                 *next += 1;
-                Ok(bytes)
+                Ok(Decoded::Hardware(Arc::new(frame)))
             }
-            Self::Software(d) => d.read(),
+            Self::Software(d) => d.read().map(|b| Decoded::Host(b.into())),
         }
     }
     pub fn device_id(&self) -> Option<u64> {

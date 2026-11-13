@@ -360,7 +360,11 @@ fn hardware_frames_stay_linear_on_gpu_and_seek_in_8_and_10_bit() {
                 &inputs,
             )
             .unwrap();
-        assert_eq!(hardware.diagnostics().unwrap().cpu_realizations, 0);
+        let first_transfer = hardware.diagnostics().unwrap();
+        assert_eq!(first_transfer.cpu_realizations, 0);
+        assert_eq!(first_transfer.staged_frames, 0);
+        assert_eq!(first_transfer.direct_gpu_transfers, 1, "{first_transfer:?}");
+        assert!(!first_transfer.host_staging);
         let software =
             Video::open_with_policy(&path, 8 * 1024 * 1024, DecodePolicy::Software).unwrap();
         let mut sequential = Vec::new();
@@ -465,9 +469,69 @@ fn uhd_decode_reports_real_backend_and_conversion_cost() {
         let diagnostics = video.diagnostics().unwrap();
         assert_eq!(diagnostics.cpu_realizations, 0);
         assert_eq!(diagnostics.gpu_conversions, 24);
+        if policy == DecodePolicy::HardwareRequired {
+            assert_eq!(diagnostics.direct_gpu_transfers, 24, "{diagnostics:?}");
+            assert_eq!(diagnostics.staged_frames, 0);
+            assert!(!diagnostics.host_staging);
+        }
         eprintln!(
             "UHD {policy:?}: {elapsed:?}, {:.1} frames/s, {diagnostics:?}",
             24.0 / elapsed.as_secs_f64()
         );
     }
+}
+
+#[test]
+#[ignore = "requires NVIDIA NVDEC, Vulkan and FFmpeg libx264"]
+fn bridge_budget_failure_stages_hardware_and_recovers_on_later_frames() {
+    use veylvik_io::video::{DecodePolicy, Video};
+    let dir = Scratch::new();
+    let path = dir.0.join("fallback.mp4");
+    assert!(
+        Command::new("ffmpeg")
+            .args([
+                "-v",
+                "error",
+                "-f",
+                "lavfi",
+                "-i",
+                "testsrc2=size=320x180:rate=24:duration=0.2",
+                "-c:v",
+                "libx264",
+                "-threads",
+                "2",
+                "-pix_fmt",
+                "yuv420p"
+            ])
+            .arg(&path)
+            .status()
+            .unwrap()
+            .success()
+    );
+    let source =
+        Video::open_with_policy(&path, 8 * 1024 * 1024, DecodePolicy::HardwareRequired).unwrap();
+    let mut renderer = veylvik_render::Renderer::new().unwrap();
+    let budget = renderer.budget_bytes;
+    // Fits the compact staged plane buffer but not the external allocation's
+    // conservative 64 KiB reservation. Decoder must stay hardware-backed.
+    renderer.budget_bytes = 320 * 180 * 16 + 320 * 180 * 3 / 2 + 262144 + 96;
+    source
+        .gpu_frame(Time::new(0, 24).unwrap(), &renderer)
+        .unwrap()
+        .unwrap();
+    let fallback = source.diagnostics().unwrap();
+    assert!(fallback.hardware && fallback.host_staging);
+    assert_eq!(fallback.staged_frames, 1);
+    assert_eq!(fallback.direct_gpu_transfers, 0);
+    assert!(fallback.interop_fallback.contains("budget"), "{fallback:?}");
+    renderer.budget_bytes = budget;
+    source
+        .gpu_frame(Time::new(1, 24).unwrap(), &renderer)
+        .unwrap()
+        .unwrap();
+    let recovered = source.diagnostics().unwrap();
+    assert!(recovered.hardware && !recovered.host_staging);
+    assert_eq!(recovered.staged_frames, 1);
+    assert_eq!(recovered.direct_gpu_transfers, 1);
+    assert!(recovered.interop_fallback.is_empty());
 }

@@ -718,6 +718,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "cudarc"
+version = "0.13.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "486c221362668c63a1636cfa51463b09574433b39029326cff40864b3ba12b6e"
+dependencies = [
+ "libloading",
+]
+
+[[package]]
 name = "cursor-icon"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3739,6 +3748,8 @@ name = "veylvik-decode"
 version = "0.1.0"
 dependencies = [
  "ffmpeg-next",
+ "veylvik-interop",
+ "veylvik-render",
 ]
 
 [[package]]
@@ -3751,6 +3762,15 @@ dependencies = [
  "thiserror 2.0.21",
  "ttf-parser",
  "uuid",
+]
+
+[[package]]
+name = "veylvik-interop"
+version = "0.1.0"
+dependencies = [
+ "ash",
+ "cudarc",
+ "wgpu",
 ]
 
 [[package]]
@@ -3781,6 +3801,7 @@ dependencies = [
  "vello_common 0.2.0",
  "vello_hybrid",
  "veylvik-document",
+ "veylvik-interop",
  "veylvik-text",
  "wgpu",
 ]

@@ -55,13 +55,24 @@ reference-counted device contexts (the primary CUDA context on NVIDIA), while
 each clip owns its demuxer and decoder. Hardware frames retain their device and
 frame pool until released, including when a decoder closes or seeks.
 
-The hardware path supports even-sized 4:2:0 NV12 and 10-bit P010 sources. It
-transfers these compact planes through host staging, then performs chroma
-reconstruction, range/matrix conversion, rotation, transfer decoding and primary
-conversion on the renderer's Vulkan device. Linear RGBA frames remain on that
-device for effects and display. This is hardware decoding with a staged transfer,
-not zero-copy decode-to-Vulkan interoperability. Software fallback retains FFmpeg
-matrix/range conversion, with transfer and primary conversion on Vulkan.
+The hardware path supports even-sized 4:2:0 NV12 and 10-bit P010 sources.
+On NVIDIA, CUDA copies the planes into exported, device-local Vulkan memory
+when the decoder and renderer device UUIDs match. The copy completes before
+Vulkan acquires ownership; pixels never pass through host memory on this path.
+This is a GPU-to-GPU copy, not an alias of NVDEC's original storage. The first
+implementation uses host synchronization waits and a dedicated allocation per
+handoff, rather than overlapping CUDA and Vulkan with external semaphores.
+
+Unsupported bridges, different GPUs or insufficient external-allocation budget
+use compact host-staged planes while retaining hardware decoding. VA-API uses
+this staged path. The inspector distinguishes direct GPU transfer from staging
+and reports bridge failures separately from decoder failures. A failure to
+confirm GPU completion stops that renderer rather than recycling in-flight memory.
+
+Vulkan performs chroma reconstruction, range/matrix conversion, rotation,
+transfer decoding and primary conversion. Linear RGBA frames stay on that device
+for effects and display. Software decoding retains FFmpeg matrix/range conversion,
+with transfer and primary conversion on Vulkan.
 
 Indexing reads packet presentation timestamps rather than decoding every frame
 on the CPU or assuming a constant frame rate. Sources must have distinct packet
@@ -69,11 +80,12 @@ presentation timestamps; remux sources with missing or duplicate timestamps.
 Seeking handles reordered frames and variable-frame-rate files. Sequential
 hardware requests reuse the decoder; random seeks flush and reposition it using
 stream timestamps without reopening the device. Skipped/preroll hardware frames
-are discarded on the GPU before host staging. The software compatibility path
+are discarded on the GPU before transfer. The software compatibility path
 uses a bounded FFmpeg process and restarts it for distant/backward seeks.
 Plane caches are bounded. Indexing and decoding run on
 workers, and inspector metadata never waits for a decoder or GPU fence.
-The cache budget does not include FFmpeg's internal buffers or conversion scratch.
+External Vulkan plane allocations reserve space within the renderer budget.
+The cache budget does not include FFmpeg's internal buffers or driver scratch.
 Demux operations have a 30-second interrupt deadline. In-process GPU driver calls
 cannot be forcibly terminated like a child process.
 
@@ -81,7 +93,10 @@ Callers explicitly requesting CPU pixels still have a CPU realization path.
 Normal Studio, CLI/MCP rendering and tracking use the render-device path.
 The Rust `Video::diagnostics()` API reports hardware selection, host staging,
 fallback reason, in-process status, shared device context ID, native seek count,
-GPU conversion count and CPU realization count.
+GPU conversion count, direct GPU transfer count, staged hardware frame count,
+bridge fallback reason and CPU realization count. `host_staging` describes the
+last GPU import path; explicit CPU pixel requests increment `staged_frames` but
+do not change that path selection.
 `Video::open_with_policy` permits automatic, software-only or hardware-required
 selection for integrations and diagnostics. Hardware-required mode returns an
 error rather than silently falling back.

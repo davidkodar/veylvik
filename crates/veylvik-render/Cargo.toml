@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 [dependencies]
+veylvik-interop = { path = "../veylvik-interop" }
 veylvik-document.workspace = true
 veylvik-text.workspace = true
 wgpu.workspace = true

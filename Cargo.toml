@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/veylvik-document", "crates/veylvik-render", "crates/veylvik-cli", "crates/veylvik-io", "crates/veylvik-studio", "crates/veylvik-control", "crates/veylvik-text", "crates/veylvik-decode"]
+members = ["crates/veylvik-document", "crates/veylvik-render", "crates/veylvik-cli", "crates/veylvik-io", "crates/veylvik-studio", "crates/veylvik-control", "crates/veylvik-text", "crates/veylvik-decode", "crates/veylvik-interop"]
 resolver = "3"
 
 [workspace.package]

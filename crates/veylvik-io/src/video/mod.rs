@@ -7,7 +7,7 @@ use crate::Result;
 use hardware::Backend;
 pub use hardware::DecodePolicy;
 use serde_json::Value;
-use session::Session;
+use session::{Decoded, Session};
 use std::{
     collections::VecDeque,
     path::{Path, PathBuf},
@@ -21,17 +21,24 @@ struct State {
     cache: VecDeque<(usize, Arc<Image>)>,
     decoder: Option<Session>,
     backend: Backend,
-    raw: VecDeque<(usize, Arc<[u8]>)>,
+    raw: VecDeque<(usize, Decoded)>,
     gpu: Option<(usize, Arc<GpuFrame>)>,
     fallback: String,
     gpu_conversions: u64,
     cpu_realizations: u64,
+    host_staging: bool,
+    staged_frames: u64,
+    direct_gpu_transfers: u64,
+    interop_fallback: String,
 }
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct DecodeDiagnostics {
     pub backend: String,
     pub hardware: bool,
     pub host_staging: bool,
+    pub staged_frames: u64,
+    pub direct_gpu_transfers: u64,
+    pub interop_fallback: String,
     pub in_process: bool,
     pub device_context_id: Option<u64>,
     pub seeks: u64,
@@ -95,7 +102,10 @@ impl Video {
             *report = DecodeDiagnostics {
                 backend: state.backend.label().into(),
                 hardware: state.backend.hardware(),
-                host_staging: true,
+                host_staging: state.host_staging,
+                staged_frames: state.staged_frames,
+                direct_gpu_transfers: state.direct_gpu_transfers,
+                interop_fallback: state.interop_fallback.clone(),
                 in_process: state
                     .decoder
                     .as_ref()
@@ -350,6 +360,9 @@ impl Video {
                 backend: "Opening".into(),
                 hardware: false,
                 host_staging: true,
+                staged_frames: 0,
+                direct_gpu_transfers: 0,
+                interop_fallback: String::new(),
                 in_process: false,
                 device_context_id: None,
                 seeks: 0,
@@ -366,6 +379,10 @@ impl Video {
                 fallback: String::new(),
                 gpu_conversions: 0,
                 cpu_realizations: 0,
+                host_staging: true,
+                staged_frames: 0,
+                direct_gpu_transfers: 0,
+                interop_fallback: String::new(),
             }),
         };
         // Fail at import for unavailable decoders/colour transforms, not at first playback.
@@ -449,7 +466,7 @@ impl Video {
                     Ok((decoder, bytes)) => {
                         state.backend = backend;
                         state.decoder = Some(decoder);
-                        state.raw.push_back((0, bytes.into()));
+                        state.raw.push_back((0, bytes));
                         self.publish(&state);
                         return Ok(());
                     }
@@ -470,11 +487,11 @@ impl Video {
         let mut decoder = self.decoder(0, &Backend::Software)?;
         let bytes = decoder.read(&self.timestamps)?;
         state.decoder = Some(decoder);
-        state.raw.push_back((0, bytes.into()));
+        state.raw.push_back((0, bytes));
         self.publish(&state);
         Ok(())
     }
-    fn decoded(&self, state: &mut State, index: usize) -> Result<(Arc<[u8]>, VideoEncoding)> {
+    fn decoded(&self, state: &mut State, index: usize) -> Result<(Decoded, VideoEncoding)> {
         if stamp(&self.path)? != self.stamp {
             return Err("Video changed on disk; reload sources before continuing".into());
         }
@@ -527,9 +544,8 @@ impl Video {
                 state.decoder = None;
                 return Err("Video changed during decoding; reload sources".into());
             }
-            let bytes: Arc<[u8]> = bytes.into();
             while state.raw.len() >= 2
-                || state.raw.iter().map(|(_, b)| b.len() as u64).sum::<u64>() + bytes.len() as u64
+                || state.raw.iter().map(|(_, b)| b.byte_len()).sum::<u64>() + bytes.byte_len()
                     > self.budget
             {
                 if state.raw.pop_front().is_none() {
@@ -562,7 +578,11 @@ impl FrameSource for Video {
                 report.backend,
                 if report.hardware {
                     if report.in_process {
-                        " · in-process · staged planes"
+                        if report.host_staging {
+                            " · in-process · staged planes"
+                        } else {
+                            " · CUDA to Vulkan · GPU transfer"
+                        }
                     } else {
                         " · staged planes"
                     }
@@ -570,6 +590,10 @@ impl FrameSource for Video {
                     ""
                 }
             ));
+            if !report.interop_fallback.is_empty() {
+                info.description
+                    .push_str(&format!(" · {}", report.interop_fallback));
+            }
             if !report.fallback_reason.is_empty() {
                 info.description
                     .push_str(&format!(" ({})", report.fallback_reason));
@@ -597,7 +621,37 @@ impl FrameSource for Video {
             state.cache.clear();
             state.gpu = None;
             let (bytes, encoding) = self.decoded(&mut state, index)?;
-            let frame = Arc::new(renderer.import_video(&bytes, encoding, &self.colour.lut)?);
+            let direct = if let Decoded::Hardware(hardware) = &bytes {
+                match hardware.cuda() {
+                    Ok(Some(cuda)) => {
+                        Some(renderer.import_cuda_video(&cuda, encoding, &self.colour.lut))
+                    }
+                    Ok(None) => None,
+                    Err(e) => Some(Err(veylvik_render::Error::Message(e.to_string()))),
+                }
+            } else {
+                None
+            };
+            let frame = match direct {
+                Some(Ok(frame)) => {
+                    state.host_staging = false;
+                    state.direct_gpu_transfers += 1;
+                    state.interop_fallback.clear();
+                    frame
+                }
+                attempt => {
+                    state.host_staging = true;
+                    if let Some(Err(e)) = attempt {
+                        state.interop_fallback = format!("GPU bridge unavailable: {e}");
+                    }
+                    let staged = bytes.stage()?;
+                    if matches!(bytes, Decoded::Hardware(_)) {
+                        state.staged_frames += 1;
+                    }
+                    renderer.import_video(&staged, encoding, &self.colour.lut)?
+                }
+            };
+            let frame = Arc::new(frame);
             state.gpu_conversions += 1;
             state.gpu = Some((index, frame.clone()));
             self.publish(&state);
@@ -620,6 +674,10 @@ impl FrameSource for Video {
             state.gpu = None;
             let (bytes, encoding) = self.decoded(&mut state, index)?;
             state.cpu_realizations += 1;
+            if matches!(bytes, Decoded::Hardware(_)) {
+                state.staged_frames += 1;
+            }
+            let bytes = bytes.stage()?;
             let pixels = self.colour.decoded_pixels(&bytes, encoding);
             let image = Arc::new(Image::new(self.info.width, self.info.height, pixels)?);
             state.raw.clear();

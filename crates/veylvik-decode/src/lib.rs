@@ -142,6 +142,51 @@ pub struct HardwareFrame {
     _device: Arc<Device>,
 }
 impl HardwareFrame {
+    /// Retain a CUDA hardware frame for a direct renderer handoff. Other
+    /// backends report no CUDA bridge and keep their explicit staged path.
+    pub fn cuda(self: &Arc<Self>) -> Result<Option<veylvik_interop::CudaFrame>> {
+        if self.frame.format() != Pixel::CUDA {
+            return Ok(None);
+        }
+        // SAFETY: A CUDA AVFrame and its device reference were verified at decode.
+        // The returned owner Arc retains both immutable planes and their context.
+        unsafe {
+            let device = &*((*self._device.reference)
+                .data
+                .cast::<ffi::AVHWDeviceContext>());
+            if device.type_ != ffi::AVHWDeviceType::AV_HWDEVICE_TYPE_CUDA || device.hwctx.is_null()
+            {
+                return Err("Invalid CUDA hardware context".into());
+            }
+            let cuda = &*device.hwctx.cast::<ffi::AVCUDADeviceContext>();
+            let frame = &*self.frame.as_ptr();
+            if frame.linesize[0] <= 0 || frame.linesize[1] <= 0 {
+                return Err("Invalid CUDA plane pitch".into());
+            }
+            Ok(Some(veylvik_interop::CudaFrame::from_raw(
+                cuda.cuda_ctx.cast(),
+                cuda.stream.cast(),
+                [
+                    (frame.data[0] as u64, frame.linesize[0] as usize),
+                    (frame.data[1] as u64, frame.linesize[1] as usize),
+                ],
+                [self.frame.width(), self.frame.height()],
+                if self.format == PlaneFormat::P010 {
+                    2
+                } else {
+                    1
+                },
+                self.clone(),
+            )?))
+        }
+    }
+    pub fn byte_len(&self) -> u64 {
+        let pixels = u64::from(self.frame.width()) * u64::from(self.frame.height());
+        match self.format {
+            PlaneFormat::Nv12 => pixels * 3 / 2,
+            PlaneFormat::P010 => pixels * 3,
+        }
+    }
     /// Explicit device-to-host transfer. Padding is stripped, never interpreted
     /// as pixels. Transfer/size/format failures return before exposing any bytes.
     pub fn stage(&self) -> Result<Vec<u8>> {
@@ -371,6 +416,19 @@ impl Decoder {
                         || [frame.width(), frame.height()] != self.size
                     {
                         return Err("Hardware decoder changed format or dimensions".into());
+                    }
+                    // SAFETY: A successfully received hardware AVFrame owns
+                    // its frame-pool reference. Check the actual plane format
+                    // before interpreting pitches or copying NV12/P010 bytes.
+                    unsafe {
+                        let reference = (*frame.as_ptr()).hw_frames_ctx;
+                        if reference.is_null() || (*reference).data.is_null() {
+                            return Err("Missing hardware frame pool".into());
+                        }
+                        let pool = &*(*reference).data.cast::<ffi::AVHWFramesContext>();
+                        if pool.sw_format != self.format.pixel().into() {
+                            return Err("Hardware plane format differs from indexed footage".into());
+                        }
                     }
                     let actual = frame
                         .timestamp()
