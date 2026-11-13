@@ -54,6 +54,8 @@ pub struct Settings {
     pub allow_software: bool,
     #[serde(default)]
     pub matte: [f32; 3],
+    #[serde(default)]
+    pub audio: crate::export_audio::Audio,
 }
 impl Settings {
     pub fn for_document(doc: &Composition) -> Self {
@@ -67,6 +69,7 @@ impl Settings {
             quality: Quality::High,
             allow_software: false,
             matte: [0.; 3],
+            audio: Default::default(),
         }
     }
     pub fn times(&self, doc: &Composition) -> Result<Vec<Time>> {
@@ -130,6 +133,8 @@ pub struct Outcome {
     pub staged_frames: u32,
     pub interop_fallback: Option<String>,
     pub experimental_interop: bool,
+    /// Sources mixed into the audio track; empty for a silent video.
+    pub audio: Vec<String>,
 }
 #[derive(Clone)]
 enum Backend {
@@ -493,10 +498,12 @@ pub fn render(
         staged_frames: frames,
         interop_fallback: None,
         experimental_interop: false,
+        audio: Vec::new(),
     };
     if !notify(0, "", "Preparing") {
         return Ok(cancelled("", false, 0));
     }
+    let soundtrack = Soundtrack::prepare(doc, settings, &times)?;
     let plan = Plan::compile(doc)?;
     let frame = renderer.render_gpu_cached(&plan, RenderRequest::full(times[0]), inputs)?;
     // Probe the complete native encode/handoff/mux path before choosing it.
@@ -531,6 +538,7 @@ pub fn render(
                     temporary,
                     native,
                     &backend,
+                    &soundtrack,
                     &mut notify,
                 );
             }
@@ -607,6 +615,11 @@ pub fn render(
         return Ok(cancelled(backend.label(), hardware, total));
     }
     drop(encoder);
+    let Some(output) =
+        soundtrack.apply(&output, || notify(total, backend.label(), "Mixing audio"))?
+    else {
+        return Ok(cancelled(backend.label(), hardware, total));
+    };
     if !notify(total, backend.label(), "Publishing") {
         return Ok(cancelled(backend.label(), hardware, total));
     }
@@ -614,6 +627,7 @@ pub fn render(
     fs::hard_link(&output, &target)?;
     fs::File::open(&parent)?.sync_all()?;
     Ok(Outcome {
+        audio: soundtrack.sources(),
         path: Some(target),
         cancelled: false,
         backend: backend.label().into(),
@@ -625,6 +639,68 @@ pub fn render(
         interop_fallback,
         experimental_interop: false,
     })
+}
+
+/// The export's audio, worked out before encoding so a bad music path fails early.
+struct Soundtrack {
+    clips: Vec<crate::export_audio::Clip>,
+    music: Option<(PathBuf, f32)>,
+    duration: f64,
+}
+impl Soundtrack {
+    fn prepare(doc: &Composition, settings: &Settings, times: &[Time]) -> Result<Self> {
+        let audio = &settings.audio;
+        let start = times[0].seconds()?;
+        let duration = times.len() as f64 / settings.frame_rate.seconds()?;
+        if audio.mute {
+            return Ok(Self {
+                clips: Vec::new(),
+                music: None,
+                duration,
+            });
+        }
+        if !(-60.0..=12.0).contains(&audio.music_gain_db) {
+            return Err("Music level must be within -60..+12 dB".into());
+        }
+        let music = match &audio.music {
+            Some(path) => {
+                let probe = crate::export_audio::probe(path)
+                    .map_err(|e| format!("Cannot read music file {}: {e}", path.display()))?;
+                if !probe.has_audio {
+                    return Err(format!("{} has no audio track", path.display()).into());
+                }
+                Some((path.clone(), audio.music_gain_db))
+            }
+            None => None,
+        };
+        let base = audio.base.clone().unwrap_or_else(|| PathBuf::from("."));
+        let clips = crate::export_audio::clips(doc, &base, [start, start + duration])?;
+        Ok(Self {
+            clips,
+            music,
+            duration,
+        })
+    }
+    fn sources(&self) -> Vec<String> {
+        self.clips
+            .iter()
+            .map(|c| c.path.display().to_string())
+            .chain(self.music.iter().map(|(p, _)| p.display().to_string()))
+            .collect()
+    }
+    /// The file to publish: `video` itself when silent, otherwise a muxed copy beside it.
+    /// `None` when cancelled.
+    fn apply(&self, video: &Path, keep: impl FnMut() -> bool) -> Result<Option<PathBuf>> {
+        if self.clips.is_empty() && self.music.is_none() {
+            return Ok(Some(video.to_owned()));
+        }
+        let mixed = video.with_file_name("with-audio.mp4");
+        let music = self.music.as_ref().map(|(p, g)| (p.as_path(), *g));
+        Ok(
+            crate::export_audio::mux(video, &mixed, &self.clips, music, self.duration, keep)?
+                .then_some(mixed),
+        )
+    }
 }
 
 fn native_settings(s: &Settings) -> veylvik_decode::encode::Settings {
@@ -653,6 +729,7 @@ fn render_direct(
     temporary: Temporary,
     native: veylvik_decode::encode::Settings,
     backend: &Backend,
+    soundtrack: &Soundtrack,
     notify: &mut impl FnMut(u32, &str, &str) -> bool,
 ) -> Result<Outcome> {
     let total = times.len() as u32;
@@ -667,6 +744,7 @@ fn render_direct(
         staged_frames: 0,
         interop_fallback: None,
         experimental_interop: matches!(backend, Backend::Vaapi(_)),
+        audio: Vec::new(),
     };
     if !notify(0, backend.label(), "Preparing GPU export") {
         return Ok(cancelled(0));
@@ -698,6 +776,11 @@ fn render_direct(
         return Ok(cancelled(total));
     }
     encoder.finish()?;
+    let Some(output) =
+        soundtrack.apply(&output, || notify(total, backend.label(), "Mixing audio"))?
+    else {
+        return Ok(cancelled(total));
+    };
     if !notify(total, backend.label(), "Publishing") {
         return Ok(cancelled(total));
     }
@@ -705,6 +788,7 @@ fn render_direct(
     fs::hard_link(&output, target)?;
     fs::File::open(target.parent().ok_or("Missing output parent")?)?.sync_all()?;
     Ok(Outcome {
+        audio: soundtrack.sources(),
         path: Some(target.to_owned()),
         cancelled: false,
         backend: backend.label().into(),

@@ -1052,7 +1052,11 @@ impl Studio {
         });
         self.file_started(result);
     }
-    fn export_video(&mut self, settings: veylvik_io::video_export::Settings, ctx: &egui::Context) {
+    fn export_video(
+        &mut self,
+        mut settings: veylvik_io::video_export::Settings,
+        ctx: &egui::Context,
+    ) {
         use std::sync::atomic::Ordering;
         if self.files.busy() || !self.apply_draft() {
             return;
@@ -1061,6 +1065,7 @@ impl Studio {
         let document = self.project.document.snapshot().clone();
         let inputs = self.project.inputs.clone();
         let base = self.project.base.clone();
+        settings.audio.base = Some(base.clone());
         let renderer = self.renderer.clone();
         let total = match settings.times(&document) {
             Ok(t) => t.len() as u32,

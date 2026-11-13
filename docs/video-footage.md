@@ -2,7 +2,7 @@
 
 Choose **File > Import media…** to open MP4, MOV, M4V, MKV, WebM, AVI or MPEG
 footage. FFmpeg must be installed; the Arch package declares it as a dependency.
-The first video stream is imported. Audio playback and export are not implemented.
+The first video stream is imported. Its sound is included in video exports (see video export); Studio does not play audio during preview yet.
 
 New media imports, including still images, create a **Footage** node. The inspector shows resolution,
 duration, frame count, average frame rate and colour assumptions. **Timeline start**

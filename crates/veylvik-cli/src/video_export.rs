@@ -3,7 +3,7 @@ use std::path::Path;
 use veylvik_document::{Composition, Time};
 pub fn run(args: &[String]) -> Result<()> {
     if args.len() < 2 {
-        return Err("render-video needs FILE OUTPUT.mp4 [--codec h264|hevc10] [--size W H] [--fps N D] [--range FIRST LAST] [--quality draft|high|master] [--allow-software]".into());
+        return Err("render-video needs FILE OUTPUT.mp4 [--codec h264|hevc10] [--size W H] [--fps N D] [--range FIRST LAST] [--quality draft|high|master] [--allow-software] [--no-audio] [--audio FILE] [--audio-gain DB]".into());
     }
     let doc = Composition::load(Path::new(&args[0]))?;
     let base = assets::document_base(Path::new(&args[0]))?;
@@ -46,14 +46,30 @@ pub fn run(args: &[String]) -> Result<()> {
                 settings.allow_software = true;
                 i += 1;
             }
+            "--no-audio" => {
+                settings.audio.mute = true;
+                i += 1;
+            }
+            "--audio" => {
+                settings.audio.music = Some(std::path::PathBuf::from(value(1)?));
+                i += 2;
+            }
+            "--audio-gain" => {
+                settings.audio.music_gain_db = value(1)?.parse()?;
+                i += 2;
+            }
             _ => return Err(format!("Unknown video export option {option}").into()),
         }
     }
+    settings.audio.base = Some(base.clone());
     settings.times(&doc)?;
     let renderer = assets::runtime::renderer()?;
     let plan = veylvik_render::Plan::compile(&doc)?;
     let inputs = assets::load_inputs(&plan, &base, renderer.budget_bytes)?;
-    let mut last = String::new();
+    // One updating line on a terminal; otherwise phase changes plus about one line a second.
+    use std::io::{IsTerminal, Write};
+    let terminal = std::io::stderr().is_terminal();
+    let (mut phase, mut printed) = (String::new(), std::time::Instant::now());
     let result = assets::video_export::render(
         &renderer,
         &doc,
@@ -62,13 +78,21 @@ pub fn run(args: &[String]) -> Result<()> {
         &settings,
         |p| {
             let line = format!("{} · {} · {}/{}", p.backend, p.phase, p.completed, p.total);
-            if line != last {
+            let changed = p.phase != phase;
+            if terminal {
+                eprint!("\r\x1b[2K{line}");
+                let _ = std::io::stderr().flush();
+            } else if changed || printed.elapsed() >= std::time::Duration::from_secs(1) {
                 eprintln!("{line}");
-                last = line;
+                printed = std::time::Instant::now();
             }
+            phase = p.phase;
             true
         },
     )?;
+    if terminal {
+        eprintln!();
+    }
     println!("{}", serde_json::to_string(&result)?);
     Ok(())
 }

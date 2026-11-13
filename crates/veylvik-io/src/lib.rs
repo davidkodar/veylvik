@@ -1,6 +1,7 @@
 //! Filesystem, PNG, OpenEXR and font adapters; rendering and shaping stay independent of paths.
 pub mod collect;
 pub mod export;
+pub mod export_audio;
 pub mod footage;
 pub mod import;
 pub mod presets;

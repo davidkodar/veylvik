@@ -185,6 +185,31 @@ fn settings_panel(ui: &mut egui::Ui, s: &mut Settings, doc: &Composition) -> Opt
             ui.label("Background");
             ui.color_edit_button_rgb(&mut s.matte);
             ui.end_row();
+            ui.label("Audio");
+            let mut include = !s.audio.mute;
+            if ui
+                .checkbox(&mut include, "Include footage audio")
+                .on_hover_text("Mix the sound of every clip feeding the output, at its timeline position and trims.")
+                .changed()
+            {
+                s.audio.mute = !include;
+            }
+            ui.end_row();
+            ui.label("Music");
+            ui.horizontal(|ui| {
+                let mut text = s.audio.music.as_ref().map(|p| p.display().to_string()).unwrap_or_default();
+                if ui
+                    .add(egui::TextEdit::singleline(&mut text).hint_text("Optional audio file path").desired_width(220.))
+                    .changed()
+                {
+                    s.audio.music = (!text.trim().is_empty()).then(|| std::path::PathBuf::from(text.trim()));
+                }
+                ui.add_enabled(
+                    s.audio.music.is_some(),
+                    egui::DragValue::new(&mut s.audio.music_gain_db).range(-60.0..=12.0).speed(0.2).suffix(" dB"),
+                );
+            });
+            ui.end_row();
         });
     ui.add_space(8.);
     ui.weak("Fits the composition without stretching. Source frame range is inclusive.");
@@ -194,7 +219,7 @@ fn settings_panel(ui: &mut egui::Ui, s: &mut Settings, doc: &Composition) -> Opt
         &mut s.allow_software,
         "Allow software encoding if hardware is unavailable",
     );
-    ui.weak("MP4 flattens transparency onto the background. For alpha or scene-linear HDR, use Export image sequence.");
+    ui.weak("MP4 flattens transparency onto the background and carries AAC audio. For alpha or scene-linear HDR, use Export image sequence.");
     let valid = s.times(doc);
     match &valid {
         Ok(times) => {

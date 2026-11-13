@@ -41,7 +41,7 @@ Veylvik is young, but it already works end to end: compose a graph, animate it, 
 - **Looks and materials:** 58 starter effects in a searchable library. They include glows, streaks, distortions, echoes and particle overlays; procedural metals, wood, marble, brick, paper and leather; glass and reflections; procedural fire; and smoke, fog and clouds. Every starter is an editable group with public controls, and they scale to any resolution, up to native UHD.
 - **Effect groups and presets:** collapse nodes into reusable effects with named controls and inputs, save them to your library, and share them as portable `.veyfx` files.
 - **Colour:** processing in scene-linear Rec.709 with premultiplied alpha and no clamping, so HDR highlights and negative values survive the whole graph. The viewer has exposure and alpha views, and a colour picker that never rewrites your HDR values.
-- **Deliver:** export the current frame or a whole range as SDR PNG or lossless 32-bit float OpenEXR. Sequence export writes a manifest that only marks itself complete once every frame is on disk.
+- **Deliver:** export the current frame or a whole range as SDR PNG or lossless 32-bit float OpenEXR, or encode an MP4 on the GPU (NVENC) with the footage's sound and optional music mixed in. Sequence export writes a manifest that only marks itself complete once every frame is on disk.
 - **Work safely:** atomic saves that check for changes on disk before replacing a file, bounded undo history, crash recovery copies, missing-media repair, and **Collect project** to gather a project and its images into one portable folder.
 
 The [reference](docs/reference.md) documents every node, limit and command in detail.

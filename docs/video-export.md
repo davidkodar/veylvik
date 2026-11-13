@@ -2,7 +2,7 @@
 
 Choose **File > Export video…** to export the composition output as an MP4.
 Choose H.264 for broad compatibility or HEVC 10-bit for smoother gradients on
-compatible players. Both are SDR Rec.709, with no audio or alpha channel.
+compatible players. Both are SDR Rec.709 without an alpha channel, with an AAC audio track (see Audio).
 
 The panel starts with the composition resolution, frame rate and entire frame
 range. Choose a size preset or enter even dimensions. The composition is fitted
@@ -48,6 +48,30 @@ are separate capabilities.
 Native GPU/encoder calls run in-process. Cancellation is checked between
 frames and before publication; a stalled driver call cannot be forcibly killed
 without stopping the app.
+
+## Audio
+
+Exports carry an AAC track (48 kHz stereo, 192 kbit/s). The sound of every Footage node
+that feeds the output is mixed in at the clip's timeline position, honouring its source
+in and out points, and clipped to the exported range; clips without sound are skipped.
+Clips are summed without automatic level reduction, so footage keeps its recorded
+loudness. The track always matches the video's length exactly. Audio follows footage
+timing, not visibility: a clip that is in the graph but faded out by a Blend still plays,
+so trim clips to the frames where they should be heard.
+
+An extra track, such as music, can be added; it starts at the first exported frame and
+plays at the chosen level (−60 to +12 dB). Mixing happens after encoding in one bounded
+FFmpeg run that copies the encoded video stream unchanged, and the result is published
+atomically like silent exports. Cancelling during **Mixing audio** leaves no file.
+
+```sh
+veylvik render-video scene.veylvik out.mp4 --audio music.mp3 --audio-gain -6
+veylvik render-video scene.veylvik silent.mp4 --no-audio
+```
+
+In Studio, the export dialog has **Include footage audio**, a **Music** file path and its
+level. The headless and live MCP tools accept the same choices as `settings.audio`
+(`mute`, `music`, `music_gain_db`), and the result lists the mixed `audio` sources.
 
 ## CLI and MCP
 
