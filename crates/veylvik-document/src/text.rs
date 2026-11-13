@@ -120,6 +120,8 @@ pub fn zero() -> crate::Scalar {
 pub enum Vertical {
     #[default]
     Top,
+    /// `center` is accepted too, matching horizontal `alignment`.
+    #[serde(alias = "center")]
     Middle,
     Bottom,
 }
@@ -236,7 +238,7 @@ impl Typography {
 pub fn typography_schema() -> serde_json::Value {
     serde_json::json!({"type":"object","additionalProperties":false,"properties":{
         "spans":{"type":"array","maxItems":32,"items":{"type":"object","additionalProperties":false,"properties":{"start":{"type":"integer","minimum":0},"end":{"type":"integer","minimum":1,"maximum":4096},"scale":{"type":"number","minimum":0.1,"maximum":8},"font":{"anyOf":[{"type":"null"},font_schema()]}},"required":["start","end","scale","font"]}},
-        "vertical":{"enum":["top","middle","bottom"]},"auto_fit":{"type":"boolean"},"linked_scale":{"type":"boolean"},
+        "vertical":{"enum":["top","middle","center","bottom"],"description":"center is an alias for middle"},"auto_fit":{"type":"boolean"},"linked_scale":{"type":"boolean"},
         "anchor":{"anyOf":[{"type":"null"},{"type":"array","minItems":2,"maxItems":2,"items":{"type":"number","minimum":0,"maximum":1}}]},
         "motion":{"enum":["none","typewriter","rise","scale","spin"]},"unit":{"enum":["character","word","line","whole"]},
         "start":{"type":"number","minimum":-86400,"maximum":86400},"duration":{"type":"number","minimum":0.001,"maximum":3600},"stagger":{"type":"number","minimum":0,"maximum":60},"exit":{"anyOf":[{"type":"null"},{"type":"number","minimum":-86400,"maximum":86400}]},"ease":{"type":"boolean"}
@@ -323,5 +325,14 @@ impl Typography {
         retained.push(span);
         retained.sort_by_key(|s| s.start);
         self.spans = retained;
+    }
+}
+#[cfg(test)]
+mod vertical_tests {
+    #[test]
+    fn center_reads_as_middle_and_saves_as_middle() {
+        let v: super::Vertical = serde_json::from_str("\"center\"").unwrap();
+        assert_eq!(v, super::Vertical::Middle);
+        assert_eq!(serde_json::to_string(&v).unwrap(), "\"middle\"");
     }
 }

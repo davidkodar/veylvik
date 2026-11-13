@@ -617,6 +617,24 @@ pub fn build(id: &str) -> Result<Preset> {
         }
         .into();
     }
+    // Multi-input effects get role names so automation can bind them without reading
+    // the graph; single-input effects keep `input_1` for existing scripts.
+    if group.inputs.len() > 1 {
+        let inputs = std::mem::take(&mut group.inputs);
+        for (key, input) in inputs {
+            let role = match input.targets.first().map(|target| target.port.as_str()) {
+                Some("background") if id == "surface_paint" => "surface",
+                Some("foreground") if id == "surface_paint" => "layer",
+                Some("background") => "background",
+                Some("reflection") => "reflection",
+                Some("image") => "shape",
+                _ => key.as_str(),
+            };
+            if group.inputs.insert(role.to_owned(), input).is_some() {
+                return Err(crate::Error(format!("{id}: duplicate input role {role}")));
+            }
+        }
+    }
     let group_id = group.id;
     b.doc.groups.insert(group_id, group);
     Preset::capture(&b.doc, group_id)

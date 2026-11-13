@@ -155,6 +155,18 @@ fn expanded_catalog_has_unique_discoverable_ids_and_editable_controls() {
             }
         );
     }
+    for (id, roles) in [
+        ("surface_paint", &["layer", "surface"][..]),
+        ("surface_reflection", &["reflection", "shape"][..]),
+        ("clear_glass", &["background", "reflection", "shape"][..]),
+    ] {
+        let preset = builtin::build(id).unwrap();
+        assert_eq!(
+            preset.group.inputs.keys().collect::<Vec<_>>(),
+            roles,
+            "{id}"
+        );
+    }
     assert_eq!(
         builtin::ALL
             .iter()
