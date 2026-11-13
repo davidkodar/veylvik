@@ -147,7 +147,7 @@ impl Default for Graph {
             role_colours: true,
             wire_colours: true,
             fit_pending: false,
-            auto_arrange: false,
+            auto_arrange: true,
             auto_view: None,
             menu_position: None,
             rename: None,
@@ -1629,7 +1629,11 @@ mod tests {
         let second = other.id;
         doc.nodes.insert(second, other);
         let ctx = egui::Context::default();
-        let mut graph = Graph::default();
+        // This interaction fixture uses explicit manual node coordinates.
+        let mut graph = Graph {
+            auto_arrange: false,
+            ..Default::default()
+        };
         let mut primary = first;
         fn run(
             ctx: &egui::Context,
@@ -1866,7 +1870,11 @@ mod tests {
         let group_id = group.id;
         doc.groups.insert(group.id, group);
         let ctx = egui::Context::default();
-        let mut graph = Graph::default();
+        // This interaction fixture uses explicit manual node coordinates.
+        let mut graph = Graph {
+            auto_arrange: false,
+            ..Default::default()
+        };
         let mut run = |events| {
             let mut actions = Vec::new();
             let _ = ctx.run_ui(
