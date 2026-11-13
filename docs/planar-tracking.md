@@ -105,6 +105,21 @@ behaviour. Tracking still stops when the surface crosses behind the camera or to
 little of it remains in view. The completion message reports how many times the
 track re-anchored.
 
+## Tracking area
+
+By default the four corners are also the area analyzed. Enable **Separate tracking
+area** to analyze a larger textured area of the same plane (amber handles) than the
+corners the layer is pinned to (cyan). Corners can then sit on blank, small or partly
+hidden parts of the surface, and re-anchoring detects inside whatever part of the
+area remains visible. Headless tools accept the same area as `region`.
+
+For floors, roads, sand and other planes that keep filling the same part of the frame
+while the camera moves, set the area to follow the screen (`area_follows: "screen"`,
+or `--screen-area` on the command line): every re-anchor then detects fresh texture in
+that fixed part of the frame instead of in the area carried along with the surface.
+Corners far outside the frame are extrapolated from the visible plane and can still
+end the track when they cross the projective horizon.
+
 ## Headless tracking
 
 The same analysis runs without Studio. From the command line:
@@ -120,8 +135,8 @@ frame. The result is written to a new project with one added Planar track node, 
 JSON report gives the tracked range, why it stopped, re-anchors and worst error.
 
 The headless MCP server exposes `track_surface` with the same inputs (`source`,
-`surface`, `start`, `end`) plus optional `feature_radius`, `search_radius`,
-`tolerance` and `reanchor`. It adds the Planar track node as one undoable
+`surface`, `start`, `end`) plus optional `region`, `area_follows`,
+`feature_radius`, `search_radius`, `tolerance` and `reanchor`. It adds the Planar track node as one undoable
 transaction; connect it to `planar_warp` nodes with `apply`. Both operations, their
 data schema, and all three warp modes are also exposed through the node catalog and
 the existing MCP editing commands.

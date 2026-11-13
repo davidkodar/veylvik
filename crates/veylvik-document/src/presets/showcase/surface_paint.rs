@@ -30,6 +30,7 @@ pub(super) fn build() -> Result<Scene> {
             data: Box::new(Track {
                 reference_time: Time::new(0, 1)?,
                 reference,
+                region: None,
                 samples: [(0, reference), (2, closer), (4, reference)]
                     .into_iter()
                     .map(|(ticks, corners)| Sample {

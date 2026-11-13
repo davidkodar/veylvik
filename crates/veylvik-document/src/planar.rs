@@ -33,6 +33,7 @@ impl Default for Track {
         Self {
             reference_time: time,
             reference,
+            region: None,
             samples: vec![Sample {
                 time,
                 corners: reference,
@@ -202,12 +203,19 @@ pub struct Sample {
 pub struct Track {
     pub reference_time: Time,
     pub reference: Quad,
+    /// Area analyzed on the reference frame when it differs from the corners: any
+    /// textured part of the same plane, so corners may be small, empty or off-screen.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub region: Option<Quad>,
     pub samples: Vec<Sample>,
 }
 impl Track {
     pub fn validate(&self) -> Result<()> {
         self.reference_time.seconds()?;
         validate_quad(self.reference)?;
+        if let Some(region) = self.region {
+            validate_quad(region)?;
+        }
         if self.samples.is_empty() || self.samples.len() > 4096 {
             return fail("planar track requires 1..4096 samples");
         }

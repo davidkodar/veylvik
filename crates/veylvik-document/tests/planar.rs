@@ -89,6 +89,7 @@ fn track_roundtrip_interpolation_and_invalid_times() {
     let mut track = Track {
         reference_time: Time::new(0, 1).unwrap(),
         reference: QUAD,
+        region: None,
         samples: vec![
             Sample {
                 time: Time::new(0, 1).unwrap(),
@@ -198,6 +199,7 @@ fn corrected_section_preserves_reference_other_frames_and_feature_basis() {
     let mut section = Track {
         reference_time: Time::new(4, 24).unwrap(),
         reference: corrected,
+        region: None,
         samples: vec![],
     };
     // A backward analysis returns sorted successful frames, stopping at frame 2.

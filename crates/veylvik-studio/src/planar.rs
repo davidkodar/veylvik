@@ -16,6 +16,8 @@ pub struct Controls {
     pub source: Option<NodeId>,
     pub active: Option<Arc<Progress>>,
     surface: Quad,
+    /// Separate analysis area on the same plane; `None` analyzes the corners themselves.
+    area: Option<Quad>,
     settings: Settings,
     end: i64,
     result: Option<Tracked>,
@@ -38,6 +40,7 @@ impl Default for Controls {
             source: None,
             active: None,
             surface: [[0.2, 0.2], [0.8, 0.2], [0.8, 0.8], [0.2, 0.8]],
+            area: None,
             settings: Settings::default(),
             end: 0,
             result: None,
@@ -143,36 +146,65 @@ impl Controls {
             && self.result.is_none()
             && self.correction_frame.is_none_or(|f| f == frame)
         {
-            for i in 0..4 {
-                let p = screen(self.surface[i]);
-                painter.rect_filled(
-                    egui::Rect::from_center_size(p, egui::vec2(8., 8.)),
-                    2.,
-                    egui::Color32::WHITE,
-                );
-                let response = ui.interact(
-                    egui::Rect::from_center_size(p, egui::vec2(20., 20.)).intersect(canvas),
-                    ui.id().with(("planar-corner", i)),
-                    egui::Sense::drag(),
-                );
-                if response.dragged()
-                    && let Some(pointer) = response.interact_pointer_pos()
-                {
-                    let value = (pointer - origin) / scale;
-                    let mut candidate = self.surface;
-                    candidate[i] = [
-                        f64::from(value.x.clamp(0., 1.)),
-                        f64::from(value.y.clamp(0., 1.)),
-                    ];
-                    if veylvik_document::planar::validate_quad(candidate).is_ok() {
-                        self.surface = candidate;
+            let drag = |quad: &mut Quad, key: &str, color: egui::Color32, hint: &str| {
+                for i in 0..4 {
+                    let p = screen(quad[i]);
+                    painter.rect_filled(
+                        egui::Rect::from_center_size(p, egui::vec2(8., 8.)),
+                        2.,
+                        color,
+                    );
+                    let response = ui.interact(
+                        egui::Rect::from_center_size(p, egui::vec2(20., 20.)).intersect(canvas),
+                        ui.id().with((key, i)),
+                        egui::Sense::drag(),
+                    );
+                    if response.dragged()
+                        && let Some(pointer) = response.interact_pointer_pos()
+                    {
+                        let value = (pointer - origin) / scale;
+                        let mut candidate = *quad;
+                        candidate[i] = [
+                            f64::from(value.x.clamp(0., 1.)),
+                            f64::from(value.y.clamp(0., 1.)),
+                        ];
+                        if veylvik_document::planar::validate_quad(candidate).is_ok() {
+                            *quad = candidate;
+                        }
                     }
+                    response.on_hover_text(hint);
                 }
-                response.on_hover_text("Drag to enclose the rigid surface to track");
+            };
+            if let Some(area) = &mut self.area {
+                for i in 0..4 {
+                    painter.line_segment(
+                        [screen(area[i]), screen(area[(i + 1) % 4])],
+                        egui::Stroke::new(1.5_f32, AREA),
+                    );
+                }
+                drag(
+                    area,
+                    "planar-area",
+                    AREA,
+                    "Drag to cover as much textured surface on the same plane as possible",
+                );
             }
+            let hint = if self.area.is_some() {
+                "Drag to place the corners the layer is pinned to; they may cover an empty part of the plane"
+            } else {
+                "Drag to enclose the rigid surface to track"
+            };
+            drag(
+                &mut self.surface,
+                "planar-corner",
+                egui::Color32::WHITE,
+                hint,
+            );
         }
     }
 }
+/// Analysis area overlay colour, distinct from the cyan corner pin.
+const AREA: egui::Color32 = egui::Color32::from_rgb(250, 190, 80);
 fn weak(sample: &Sample) -> bool {
     let accepted = sample.features.iter().filter(|f| f.accepted).count();
     accepted < 12 || accepted * 3 < sample.features.len() * 2 || sample.rms_pixels > 1.5
@@ -345,6 +377,16 @@ impl Studio {
                     ui.horizontal(|ui| {ui.label("Feature radius");ui.add(egui::DragValue::new(&mut self.planar.settings.patch_radius).range(3..=16).suffix(" px"));});
                     ui.horizontal(|ui| {ui.label("Search per level");ui.add(egui::DragValue::new(&mut self.planar.settings.search_radius).range(1..=48).suffix(" px"));});
                     ui.horizontal(|ui| {ui.label("Match tolerance");ui.add(egui::DragValue::new(&mut self.planar.settings.tolerance_pixels).range(0.1..=32.).speed(0.1).suffix(" px"));});
+                    let mut separate = self.planar.area.is_some();
+                    if ui.checkbox(&mut separate, "Separate tracking area")
+                        .on_hover_text("Analyze a larger textured area of the same plane (amber) than the corners the layer is pinned to (cyan). Corners can then sit on blank or partly hidden parts of the surface, and tracking lasts while any of the area stays in view.")
+                        .changed()
+                    {
+                        self.planar.area = separate.then(|| {
+                            let [cx, cy] = self.planar.surface.iter().fold([0., 0.], |a, p| [a[0] + p[0] / 4., a[1] + p[1] / 4.]);
+                            self.planar.surface.map(|[x, y]| [(cx + (x - cx) * 1.6).clamp(0., 1.), (cy + (y - cy) * 1.6).clamp(0., 1.)])
+                        });
+                    }
                     let mut reanchor = self.planar.settings.reanchor_below > 0;
                     if ui.checkbox(&mut reanchor, "Re-anchor when matches thin out")
                         .on_hover_text("Re-detect features on the latest good frame when fewer than 24 matches are accepted. Keeps walking and zooming shots tracked longer; each re-anchor can add slight drift.")
@@ -553,6 +595,11 @@ impl Studio {
                 .unwrap_or(self.planar.surface)
         };
         let settings = self.planar.settings;
+        // A section correction re-tracks the corrected corners themselves.
+        let region = self
+            .planar
+            .area
+            .filter(|_| self.planar.correction_frame.is_none());
         let live = Arc::new(Mutex::new(Live::default()));
         self.planar.live = live.clone();
         self.planar.live_sample = None;
@@ -594,6 +641,7 @@ impl Studio {
                     &plan,
                     &inputs,
                     surface,
+                    region,
                     [start, end],
                     rate,
                     settings,

@@ -11,6 +11,8 @@ type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 pub struct Request {
     pub source: NodeId,
     pub surface: Quad,
+    /// Optional area to analyze instead of the corners: any textured part of the same plane.
+    pub region: Option<Quad>,
     /// Composition frames; `start` is the reference frame, `end` may precede it.
     pub frames: [i64; 2],
     pub settings: Settings,
@@ -38,6 +40,13 @@ impl Request {
         if let Some(value) = args.get("tolerance") {
             settings.tolerance_pixels = value.as_f64().ok_or("tolerance must be a number")?;
         }
+        if let Some(value) = args.get("area_follows") {
+            settings.screen_area = match value.as_str() {
+                Some("surface") => false,
+                Some("screen") => true,
+                _ => return Err("area_follows must be \"surface\" or \"screen\"".into()),
+            };
+        }
         if let Some(value) = args.get("reanchor") {
             settings.reanchor_below = if value.as_bool().ok_or("reanchor must be boolean")? {
                 24
@@ -53,6 +62,11 @@ impl Request {
             surface: serde_json::from_value(args["surface"].clone()).map_err(|e| {
                 format!("surface must be four [x, y] corners in 0..1 coordinates: {e}")
             })?,
+            region: args
+                .get("region")
+                .map(|value| serde_json::from_value(value.clone()))
+                .transpose()
+                .map_err(|e| format!("region must be four [x, y] corners: {e}"))?,
             frames: [frame("start")?, frame("end")?],
             settings,
         })
@@ -90,6 +104,7 @@ pub fn run(
         &plan,
         &inputs,
         request.surface,
+        request.region,
         request.frames,
         doc.frame_rate,
         request.settings,

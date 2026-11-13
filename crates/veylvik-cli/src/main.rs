@@ -7,7 +7,7 @@ use std::path::Path;
 use veylvik_document::{Composition, Node, Operation, Time};
 use veylvik_render::{Plan, Region, RenderRequest};
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
-const USAGE: &str = "usage: veylvik open [FILE] [--control-dir DIRECTORY | --no-control] | demo FILE [--motion|--procedural] | import IMAGE.png|IMAGE.exr FILE | outline-text FONT TEXT NEW_FILE [OPTIONS] | collect FILE NEW_DIRECTORY | nodes | check FILE | render FILE OUTPUT.png|OUTPUT.exr [TICKS RATE] [--node UUID] [--crop X Y WIDTH HEIGHT] | render-video FILE OUTPUT.mp4 [OPTIONS] | render-sequence FILE DIRECTORY START END [--format png|exr] [--node UUID] [--crop X Y WIDTH HEIGHT] | track FILE NEW_FILE SOURCE_UUID START END \"X,Y X,Y X,Y X,Y\" | mcp FILE | mcp --studio [SOCKET|DIRECTORY]";
+const USAGE: &str = "usage: veylvik open [FILE] [--control-dir DIRECTORY | --no-control] | demo FILE [--motion|--procedural] | import IMAGE.png|IMAGE.exr FILE | outline-text FONT TEXT NEW_FILE [OPTIONS] | collect FILE NEW_DIRECTORY | nodes | check FILE | render FILE OUTPUT.png|OUTPUT.exr [TICKS RATE] [--node UUID] [--crop X Y WIDTH HEIGHT] | render-video FILE OUTPUT.mp4 [OPTIONS] | render-sequence FILE DIRECTORY START END [--format png|exr] [--node UUID] [--crop X Y WIDTH HEIGHT] | track FILE NEW_FILE SOURCE_UUID START END \"X,Y X,Y X,Y X,Y\" [\"AREA X,Y X,Y X,Y X,Y\"] [--screen-area] | mcp FILE | mcp --studio [SOCKET|DIRECTORY]";
 fn run() -> Result<()> {
     let args: Vec<String> = std::env::args().collect();
     match args.get(1).map(String::as_str) {
@@ -40,23 +40,40 @@ fn run() -> Result<()> {
             std::io::stdin().lock(),
             std::io::stdout().lock(),
         )?,
-        Some("track") if args.len() == 8 => {
-            // veylvik track FILE NEW_FILE SOURCE_UUID START END "x,y x,y x,y x,y"
+        Some("track") => {
+            let screen_area = args.iter().any(|a| a == "--screen-area");
+            let args: Vec<String> = args
+                .iter()
+                .filter(|a| *a != "--screen-area")
+                .cloned()
+                .collect();
+            if !matches!(args.len(), 8 | 9) {
+                return Err(USAGE.into());
+            }
+            // veylvik track FILE NEW_FILE SOURCE_UUID START END "x,y x,y x,y x,y" ["area x,y ..."]
             let (input, output) = (Path::new(&args[2]), Path::new(&args[3]));
             if output.exists() {
                 return Err("NEW_FILE already exists; choose a new path".into());
             }
-            let corners: Vec<[f64; 2]> = args[7]
-                .split_whitespace()
-                .map(|pair| {
-                    let (x, y) = pair.split_once(',').ok_or("corners are x,y pairs")?;
-                    Ok([x.parse()?, y.parse()?])
-                })
-                .collect::<Result<_>>()?;
-            let surface: [[f64; 2]; 4] = corners
-                .try_into()
-                .map_err(|_| "give exactly four corners")?;
-            let args_json = serde_json::json!({"source":args[4],"surface":surface,"start":args[5].parse::<i64>()?,"end":args[6].parse::<i64>()?});
+            let quad = |text: &str| -> Result<[[f64; 2]; 4]> {
+                let corners: Vec<[f64; 2]> = text
+                    .split_whitespace()
+                    .map(|pair| {
+                        let (x, y) = pair.split_once(',').ok_or("corners are x,y pairs")?;
+                        Ok([x.parse()?, y.parse()?])
+                    })
+                    .collect::<Result<_>>()?;
+                Ok(corners
+                    .try_into()
+                    .map_err(|_| "give exactly four corners")?)
+            };
+            let mut args_json = serde_json::json!({"source":args[4],"surface":quad(&args[7])?,"start":args[5].parse::<i64>()?,"end":args[6].parse::<i64>()?});
+            if let Some(region) = args.get(8) {
+                args_json["region"] = serde_json::json!(quad(region)?);
+            }
+            if screen_area {
+                args_json["area_follows"] = serde_json::json!("screen");
+            }
             let request = track::Request::from_json(&args_json)?;
             let mut document = veylvik_document::Document::new(Composition::load(input)?)?;
             let renderer = assets::runtime::renderer()?;

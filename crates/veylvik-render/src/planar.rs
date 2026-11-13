@@ -18,6 +18,10 @@ pub struct Settings {
     /// are accepted, so scale and viewpoint changes do not exhaust a fixed reference.
     /// Zero keeps the original reference for the whole range.
     pub reanchor_below: u32,
+    /// Keep the analysis area fixed on screen instead of moving it with the surface:
+    /// for floors, roads and other planes that keep filling the same part of the frame
+    /// while the camera moves, each re-anchor detects fresh texture there.
+    pub screen_area: bool,
 }
 impl Default for Settings {
     fn default() -> Self {
@@ -26,6 +30,7 @@ impl Default for Settings {
             search_radius: 16,
             tolerance_pixels: 2.,
             reanchor_below: 24,
+            screen_area: false,
         }
     }
 }
@@ -73,6 +78,7 @@ impl PlanarTracker {
         plan: &crate::Plan,
         inputs: &crate::ImageInputs,
         surface: Quad,
+        region: Option<Quad>,
         [start, end]: [i64; 2],
         rate: veylvik_document::Time,
         settings: Settings,
@@ -88,7 +94,10 @@ impl PlanarTracker {
         let reference_time = at(start)?;
         let mut reference = render(start)?;
         let mut levels = self.pyramid(renderer, &reference)?;
-        let mut points = self.detect(renderer, &reference, surface, settings)?;
+        if let Some(region) = region {
+            planar::validate_quad(region).map_err(|e| error(e.to_string()))?;
+        }
+        let mut points = self.detect(renderer, &reference, region.unwrap_or(surface), settings)?;
         let initial = self.track(
             renderer,
             &reference,
@@ -106,6 +115,7 @@ impl PlanarTracker {
         let mut data = planar::Track {
             reference_time,
             reference: surface,
+            region,
             samples: vec![first],
         };
         // Allow for the document's deeper pretty-JSON indentation.
@@ -118,10 +128,11 @@ impl PlanarTracker {
         if !observe(start, &reference, &data.samples[0]) {
             stop = Stop::Cancelled;
         }
-        // `anchor` is the surface as seen on the current reference; `motion` maps it onward.
+        // `anchor` is the corners and `area` the analyzed region, both as seen on the current reference.
         let (mut anchor, mut motion, mut anchors) = (surface, Homography::IDENTITY, 1);
+        let mut area = region.unwrap_or(surface);
         // The last accepted frame, kept so a failed frame can retry from a fresh anchor there.
-        let mut previous: Option<(Arc<GpuFrame>, Vec<GpuFrame>, Quad)> = None;
+        let mut previous: Option<(Arc<GpuFrame>, Vec<GpuFrame>, Quad, Quad)> = None;
         let step = if end > start { 1 } else { -1 };
         let mut frame = start;
         while stop == Stop::Complete && frame != end {
@@ -140,15 +151,26 @@ impl PlanarTracker {
             );
             if attempt.is_err()
                 && settings.reanchor_below > 0
-                && let Some((image, image_levels, corners)) = previous.take()
+                && let Some((image, image_levels, corners, seen)) = previous.take()
             {
-                let visible = corners.map(|[x, y]| [x.clamp(0.005, 0.995), y.clamp(0.005, 0.995)]);
+                let visible = if settings.screen_area {
+                    region.unwrap_or(surface)
+                } else {
+                    seen
+                }
+                .map(|[x, y]| [x.clamp(0.005, 0.995), y.clamp(0.005, 0.995)]);
                 if planar::validate_quad(visible).is_ok()
                     && let Ok(fresh) = self.detect(renderer, &image, visible, settings)
                     && fresh.len() >= 12
                 {
-                    (anchor, motion, points, levels, reference) =
-                        (corners, Homography::IDENTITY, fresh, image_levels, image);
+                    (anchor, area, motion, points, levels, reference) = (
+                        corners,
+                        visible,
+                        Homography::IDENTITY,
+                        fresh,
+                        image_levels,
+                        image,
+                    );
                     anchors += 1;
                     attempt = self.track_multiscale(
                         renderer,
@@ -182,6 +204,12 @@ impl PlanarTracker {
                     break;
                 }
             };
+            // The area may legitimately leave the image even while the corners remain valid.
+            let seen = found
+                .consensus
+                .motion
+                .transform_quad(area)
+                .unwrap_or(corners);
             motion = found.consensus.motion;
             let accepted = found.features.iter().filter(|f| f.accepted).count();
             let sample = planar::Sample {
@@ -200,20 +228,26 @@ impl PlanarTracker {
             }
             data.samples.push(sample);
             if accepted >= settings.reanchor_below as usize {
-                previous = Some((current, current_levels, corners));
+                previous = Some((current, current_levels, corners, seen));
                 continue;
             }
             {
                 // Detect inside the visible part of the surface; the anchor itself may
                 // extend past the frame edges. Keep the old reference if too little remains.
-                let visible = corners.map(|[x, y]| [x.clamp(0.005, 0.995), y.clamp(0.005, 0.995)]);
+                let visible = if settings.screen_area {
+                    region.unwrap_or(surface)
+                } else {
+                    seen
+                }
+                .map(|[x, y]| [x.clamp(0.005, 0.995), y.clamp(0.005, 0.995)]);
                 if planar::validate_quad(visible).is_ok()
                     && let Ok(fresh) = self.detect(renderer, &current, visible, settings)
                     && fresh.len() > accepted
                     && fresh.len() >= 12
                 {
-                    (anchor, motion, points, levels, reference) = (
+                    (anchor, area, motion, points, levels, reference) = (
                         corners,
+                        visible,
                         Homography::IDENTITY,
                         fresh,
                         current_levels,
@@ -221,7 +255,7 @@ impl PlanarTracker {
                     );
                     anchors += 1;
                 } else {
-                    previous = Some((current, current_levels, corners));
+                    previous = Some((current, current_levels, corners, seen));
                 }
             }
         }

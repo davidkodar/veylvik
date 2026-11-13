@@ -15,6 +15,7 @@ fn gpu_planar_detection_perspective_occlusion_and_flat_rejection() {
         search_radius: 12,
         tolerance_pixels: 1.5,
         reanchor_below: 0,
+        screen_area: false,
     };
     let (width, height) = (192_u32, 144_u32);
     let surface = [[0.12, 0.15], [0.85, 0.15], [0.85, 0.85], [0.12, 0.85]];
@@ -146,6 +147,7 @@ fn planar_warp_follows_stabilizes_and_invalidates_cached_motion() {
             data: Box::new(Track {
                 reference,
                 reference_time: Time::new(0, 1).unwrap(),
+                region: None,
                 samples: vec![
                     Sample {
                         time: Time::new(0, 1).unwrap(),
@@ -252,6 +254,7 @@ fn pyramid_recovers_large_motion_rotation_scale_and_odd_dimensions() {
         search_radius: 12,
         tolerance_pixels: 1.5,
         reanchor_below: 0,
+        screen_area: false,
     };
     let (width, height) = (513, 385);
     let surface = [[0.18, 0.22], [0.68, 0.22], [0.68, 0.78], [0.18, 0.78]];
