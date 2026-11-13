@@ -46,6 +46,7 @@ impl Studio {
                 if item(ui, "Import numbered sequence…", "", true) { self.import_media(self.graph.insertion_position(ui.ctx()), true); }
                 if item(ui, "Reload source images", "Ctrl+R", !self.draft_dirty) { self.reload_images(); }
                 ui.separator();
+                if item(ui, "Export video…", "", true) { self.video_export.open = true; }
                 if item(ui, "Export current preview…", "Ctrl+E", true) { self.export_frame(); }
                 if item(ui, "Export image sequence…", "Ctrl+Shift+E", true) { self.export_controls.open = true; }
                 ui.separator();

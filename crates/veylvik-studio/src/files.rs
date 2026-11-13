@@ -19,6 +19,7 @@ pub enum Choice {
     ImportSequence,
     Save,
     Export,
+    Video,
     Folder,
     Font,
 }
@@ -62,6 +63,7 @@ pub enum Completed {
     Saved(Saved),
     Exported(PathBuf),
     Sequence(serde_json::Value),
+    Video(veylvik_io::video_export::Outcome),
 }
 pub struct Tasks {
     sender: mpsc::SyncSender<Result<Completed, String>>,
@@ -129,6 +131,7 @@ pub fn select(choice: Choice, folder: &Path, name: &str) -> Result<Option<PathBu
             "PNG or OpenEXR image",
             "*.png",
         ),
+        Choice::Video => ("Export video", "MP4 video", "*.mp4"),
         Choice::Folder => ("Choose parent folder for image sequence", "Folders", "*"),
     };
     let filter = if matches!(choice, Choice::Font) {

@@ -6,6 +6,7 @@ pub mod import;
 pub mod presets;
 pub mod preview;
 pub mod video;
+pub mod video_export;
 pub use export::{FrameFormat, save_frame};
 pub use import::{load_exr, load_image};
 pub mod recovery;

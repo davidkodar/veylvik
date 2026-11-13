@@ -40,6 +40,7 @@ mod title_styles;
 mod tracking;
 mod transform_handles;
 mod vector_editor;
+mod video_export;
 mod viewer;
 use display::{Display, DisplayFrame, Paint, ViewSettings};
 use eframe::{egui, egui_wgpu};
@@ -175,6 +176,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 playback_frame: 0,
                 files: Tasks::new(cc.egui_ctx.clone()),
                 export_controls: sequence::Controls::default(),
+                video_export: video_export::Controls::default(),
                 tracking: tracking::Controls::default(),
                 outline_controls: text_outline::Controls::default(),
                 composition_controls: composition::Controls::default(),
@@ -243,6 +245,7 @@ struct Studio {
     playback_frame: i64,
     files: Tasks,
     export_controls: sequence::Controls,
+    video_export: video_export::Controls,
     tracking: tracking::Controls,
     outline_controls: text_outline::Controls,
     composition_controls: composition::Controls,
@@ -280,6 +283,7 @@ impl Studio {
         self.composition_controls = composition::Controls::default();
         self.media_import = None;
         self.export_controls = sequence::Controls::default();
+        self.video_export = video_export::Controls::default();
         if let Some(p) = &self.tracking.active {
             p.cancel.store(true, std::sync::atomic::Ordering::Relaxed);
         }
@@ -990,6 +994,54 @@ impl Studio {
         });
         self.file_started(result);
     }
+    fn export_video(&mut self, settings: veylvik_io::video_export::Settings, ctx: &egui::Context) {
+        use std::sync::atomic::Ordering;
+        if self.files.busy() || !self.apply_draft() {
+            return;
+        }
+        self.playing = false;
+        let document = self.project.document.snapshot().clone();
+        let inputs = self.project.inputs.clone();
+        let base = self.project.base.clone();
+        let renderer = self.renderer.clone();
+        let total = match settings.times(&document) {
+            Ok(t) => t.len() as u32,
+            Err(e) => {
+                self.fail(e);
+                return;
+            }
+        };
+        let progress = Arc::new(video_export::Job {
+            cancel: Default::default(),
+            progress: std::sync::Mutex::new(veylvik_io::video_export::Progress {
+                completed: 0,
+                total,
+                backend: "".into(),
+                phase: "Choose destination".into(),
+            }),
+        });
+        self.video_export.active = Some(progress.clone());
+        let context = ctx.clone();
+        let result = self.files.start(move || {
+            let Some(path) = files::select(Choice::Video, &base, "composition.mp4")? else {
+                return Ok(Completed::Cancelled);
+            };
+            veylvik_io::protect_inputs(&document, &base, &path).map_err(|e| e.to_string())?;
+            veylvik_io::video_export::render(&renderer, &document, &inputs, &path, &settings, |p| {
+                if let Ok(mut current) = progress.progress.lock() {
+                    *current = p;
+                }
+                context.request_repaint();
+                !progress.cancel.load(Ordering::Relaxed)
+            })
+            .map(Completed::Video)
+            .map_err(|e| e.to_string())
+        });
+        if result.is_err() {
+            self.video_export.active = None;
+        }
+        self.file_started(result);
+    }
     fn export_sequence(&mut self, settings: sequence::Settings, ctx: &egui::Context) {
         use std::sync::atomic::Ordering;
         if self.files.busy() || !self.apply_draft() {
@@ -1045,6 +1097,7 @@ impl Studio {
             return;
         };
         self.export_controls.active = None;
+        self.video_export.active = None;
         self.tracking.active = None;
         if self.outline_controls.pending {
             self.outline_controls.pending = false;
@@ -1184,6 +1237,23 @@ impl Studio {
                 if let Some(action) = self.after_save.take() {
                     self.leave_now(action, ctx);
                 }
+            }
+            Ok(Completed::Video(result)) => {
+                self.status = if result.cancelled {
+                    "Video export cancelled; no partial video published".into()
+                } else {
+                    format!(
+                        "Exported {} frames with {} to {}",
+                        result.frames,
+                        result.backend,
+                        result
+                            .path
+                            .as_ref()
+                            .map(|p| p.display().to_string())
+                            .unwrap_or_default()
+                    )
+                };
+                self.error = false;
             }
             Ok(Completed::Sequence(result)) => {
                 let manifest = &result["manifest"];
@@ -2307,6 +2377,7 @@ impl eframe::App for Studio {
             self.leave(Leave::Close, &ctx);
         }
         self.export_controls.progress(ui);
+        self.video_export.progress(ui);
         ui.add_enabled_ui(
             !self.files.busy() && !self.authoring_dialog_open() && self.confirm.is_none(),
             |ui| {
@@ -2781,6 +2852,14 @@ impl eframe::App for Studio {
             self.outline_text(request);
         }
         self.tracking_window(&ctx);
+        if let Some(settings) = self.video_export.show(
+            &ctx,
+            self.project.document.snapshot(),
+            !self.files.busy() && !self.authoring_dialog_open() && self.confirm.is_none(),
+        ) {
+            self.export_video(settings, &ctx);
+        }
+
         if let Some(settings) = self.export_controls.show(
             &ctx,
             self.project.document.snapshot().frame_rate,
