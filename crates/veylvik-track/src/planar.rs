@@ -131,15 +131,17 @@ impl PlanarTracker {
             levels: Vec<GpuFrame>,
             points: Vec<Point>,
             /// Corners and analyzed area as seen on this reference.
-            corners: Quad,
+            /// Motion from the original reference frame to this anchor's frame.
+            from_reference: Homography,
             area: Quad,
         }
-        // A candidate anchor on an accepted frame: image, levels, matte, corners, area.
+        // A candidate anchor on an accepted frame: image, levels, matte, motion from the
+        // reference, area.
         type Candidate = Box<(
             Arc<GpuFrame>,
             Vec<GpuFrame>,
             Option<Arc<GpuFrame>>,
-            Quad,
+            Homography,
             Quad,
         )>;
         // Returns the candidate unchanged when too little texture is visible there.
@@ -162,12 +164,12 @@ impl PlanarTracker {
                 });
                 match points {
                     Some(points) if points.len() >= minimum.max(12) => {
-                        let (image, levels, _, corners, _) = *candidate;
+                        let (image, levels, _, from_reference, _) = *candidate;
                         Ok(Anchor {
                             image,
                             levels,
                             points,
-                            corners,
+                            from_reference,
                             area: detect_in,
                         })
                     }
@@ -184,7 +186,7 @@ impl PlanarTracker {
             levels: self.pyramid(renderer, &image)?,
             image,
             points,
-            corners: surface,
+            from_reference: Homography::IDENTITY,
             area,
         };
         let initial = self.track_masked(
@@ -201,6 +203,7 @@ impl PlanarTracker {
             corners: surface,
             features: initial.features,
             rms_pixels: initial.consensus.rms_pixels,
+            motion: None,
         };
         let mut data = planar::Track {
             reference_time,
@@ -277,19 +280,30 @@ impl PlanarTracker {
             {
                 found.consensus.motion = aligned;
             }
-            let corners = match found.consensus.motion.transform_quad(anchor.corners) {
-                Ok(corners) => corners,
-                Err(e) => {
-                    stop = lost(&e);
-                    break;
+            let total = found.consensus.motion.compose(anchor.from_reference);
+            // Once part of the pinned surface passes behind the camera its corners no longer
+            // form a quad; keep tracking and store the motion, which renderers clip.
+            let (corners, stored_motion) = match total.transform_quad(surface) {
+                Ok(corners) => (corners, None),
+                Err(_) => {
+                    let last = data.samples.last().map_or(surface, |s| s.corners);
+                    let mut corners = last;
+                    for (corner, (&p, &fallback)) in
+                        corners.iter_mut().zip(surface.iter().zip(&last))
+                    {
+                        *corner = total
+                            .project(p)
+                            .map_or(fallback, |q| q.map(|v| v.clamp(-1e6, 1e6)));
+                    }
+                    (corners, Some(total))
                 }
             };
-            // The area may legitimately leave the image even while the corners remain valid.
+            // The area may legitimately leave the image while the surface is still tracked.
             let seen = found
                 .consensus
                 .motion
                 .transform_quad(anchor.area)
-                .unwrap_or(corners);
+                .unwrap_or(anchor.area);
             motion = found.consensus.motion;
             let accepted = found.features.iter().filter(|f| f.accepted).count();
             let sample = planar::Sample {
@@ -297,6 +311,7 @@ impl PlanarTracker {
                 corners,
                 features: thin(found.features),
                 rms_pixels: found.consensus.rms_pixels,
+                motion: stored_motion,
             };
             bytes += size(&sample);
             if bytes > max_bytes {
@@ -307,7 +322,7 @@ impl PlanarTracker {
                 stop = Stop::Cancelled;
             }
             data.samples.push(sample);
-            let candidate = Box::new((current, current_levels, current_matte, corners, seen));
+            let candidate = Box::new((current, current_levels, current_matte, total, seen));
             if accepted >= settings.reanchor_below as usize {
                 previous = Some(candidate);
             } else {

@@ -45,12 +45,14 @@ fn track_roundtrip_interpolation_and_invalid_times() {
                 corners: QUAD,
                 features: vec![],
                 rms_pixels: 0.,
+                motion: None,
             },
             Sample {
                 time: Time::new(2, 1).unwrap(),
                 corners: shifted,
                 features: vec![],
                 rms_pixels: 0.,
+                motion: None,
             },
         ],
     };
@@ -142,6 +144,7 @@ fn corrected_section_preserves_reference_other_frames_and_feature_basis() {
             corners: original.reference.map(|p| [p[0] + i as f64 * 0.01, p[1]]),
             features: vec![],
             rms_pixels: 0.,
+            motion: None,
         })
         .collect();
     let corrected = original.reference.map(|p| [p[0] + 0.05, p[1] + 0.02]);
@@ -164,6 +167,7 @@ fn corrected_section_preserves_reference_other_frames_and_feature_basis() {
                 accepted: true,
             }],
             rms_pixels: 0.2,
+            motion: None,
         });
     }
     let merged = original.splice(&section).unwrap();
@@ -197,4 +201,83 @@ fn corrected_section_preserves_reference_other_frames_and_feature_basis() {
     invalid.samples[0].corners[0] = invalid.samples[0].corners[1];
     assert!(original.splice(&invalid).is_err());
     original.validate().unwrap();
+}
+
+#[test]
+fn stored_motion_survives_saving_validation_interpolation_and_correction() {
+    let reference = QUAD;
+    let shifted = Homography {
+        matrix: [1., 0., 0.05, 0., 1., 0., 0., 0., 1.],
+    };
+    // A motion whose image of the reference corners crosses the horizon.
+    let crossing = Homography {
+        matrix: [1., 0., 0., 0., 1., 0., 0., -1.2, 1.],
+    };
+    assert!(crossing.transform_quad(reference).is_err());
+    let sample = |ticks, corners, motion| Sample {
+        time: Time::new(ticks, 24).unwrap(),
+        corners,
+        features: vec![],
+        rms_pixels: 0.,
+        motion,
+    };
+    let track = Track {
+        reference_time: Time::new(0, 24).unwrap(),
+        reference,
+        region: None,
+        samples: vec![
+            sample(0, reference, None),
+            sample(2, shifted.transform_quad(reference).unwrap(), None),
+            sample(
+                4,
+                [[0., 0.], [1e6, 0.], [-1e6, 1e6], [0., 1.]],
+                Some(crossing),
+            ),
+        ],
+    };
+    track.validate().unwrap();
+    let saved: Track = serde_json::from_value(serde_json::to_value(&track).unwrap()).unwrap();
+    assert!(
+        serde_json::to_value(&track.samples[0])
+            .unwrap()
+            .get("motion")
+            .is_none()
+    );
+    let at = |t| saved.motion_at(Time::new(t, 24).unwrap()).unwrap();
+    // Corner-only spans keep their interpolation; spans with stored motion use it.
+    close(at(1).project([0.5, 0.5]).unwrap(), [0.525, 0.5]);
+    let end = at(4);
+    close(
+        end.project([0.5, 0.2]).unwrap(),
+        crossing.project([0.5, 0.2]).unwrap(),
+    );
+    close(
+        at(10).project([0.5, 0.2]).unwrap(),
+        crossing.project([0.5, 0.2]).unwrap(),
+    );
+    at(3);
+    let mut bad = track.clone();
+    bad.samples[2].motion = Some(Homography { matrix: [0.; 9] });
+    assert!(bad.validate().is_err());
+    // A correction re-expresses stored motion in the track's own reference basis.
+    let section = Track {
+        reference_time: Time::new(2, 24).unwrap(),
+        reference: shifted.transform_quad(reference).unwrap(),
+        region: None,
+        samples: vec![sample(
+            4,
+            [[0., 0.], [1e6, 0.], [-1e6, 1e6], [0., 1.]],
+            Some(crossing),
+        )],
+    };
+    let merged = track.splice(&section).unwrap();
+    let expected = crossing.compose(shifted).project([0.5, 0.2]).unwrap();
+    close(
+        merged
+            .motion_at(Time::new(4, 24).unwrap())
+            .unwrap()
+            .project([0.5, 0.2])
+            .unwrap(),
+        expected,
+    );
 }

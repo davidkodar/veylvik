@@ -39,6 +39,7 @@ pub(super) fn build() -> Result<Scene> {
                         corners,
                         features: vec![],
                         rms_pixels: 0.,
+                        motion: None,
                     })
                     .collect(),
             }),

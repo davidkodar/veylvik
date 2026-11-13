@@ -64,6 +64,19 @@ impl RenderNode for veylvik_document::nodes::PlanarWarp {
             }
             p.values.copy_from_slice(&matrix[..4]);
             p.extra.copy_from_slice(&matrix[4..8]);
+            // The tracked area is in front of the camera by construction. Output pixels
+            // whose inverse projection has the opposite homogeneous sign see the plane
+            // behind the camera, where the layer must not appear (1: keep w > 0, 2: w < 0).
+            let area = data.region.unwrap_or(data.reference);
+            let centre = [0, 1].map(|axis| area.iter().map(|p| p[axis]).sum::<f64>() / 4.);
+            let visible = match mode {
+                veylvik_document::planar::WarpMode::Stabilize => Some(centre),
+                _ => forward.project(centre),
+            };
+            p.size_op[3] = visible.map_or(0, |[x, y]| {
+                let w = f64::from(matrix[6]) * x + f64::from(matrix[7]) * y + 1.;
+                if w > 0. { 1 } else { 2 }
+            });
         }
         Ok(())
     }

@@ -39,6 +39,7 @@ impl Default for Track {
                 corners: reference,
                 features: vec![],
                 rms_pixels: 0.,
+                motion: None,
             }],
         }
     }
@@ -194,9 +195,24 @@ pub struct Feature {
 #[serde(deny_unknown_fields)]
 pub struct Sample {
     pub time: Time,
+    /// Where the reference corners appear on this frame. When `motion` is present they
+    /// may be degenerate, because part of the pinned surface has passed behind the camera.
     pub corners: Quad,
     pub features: Vec<Feature>,
     pub rms_pixels: f64,
+    /// Reference-to-frame motion, stored when the pinned corners no longer form a valid
+    /// quad while the surface is still tracked. Renderers clip the part behind the camera.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub motion: Option<Homography>,
+}
+impl Sample {
+    /// The reference-to-frame motion of this sample.
+    pub fn motion(&self, reference: Quad) -> Result<Homography> {
+        match self.motion {
+            Some(motion) => Ok(motion),
+            None => Homography::between(reference, self.corners),
+        }
+    }
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -228,7 +244,24 @@ impl Track {
                 return fail("planar samples must have increasing times");
             }
             previous = Some(sample.time);
-            Homography::between(self.reference, sample.corners)?;
+            match sample.motion {
+                Some(motion) => {
+                    if motion.matrix.iter().any(|v| !v.is_finite()) || motion.inverse().is_none() {
+                        return fail("planar sample motion must be finite and invertible");
+                    }
+                    if sample
+                        .corners
+                        .iter()
+                        .flatten()
+                        .any(|v| !v.is_finite() || v.abs() > 1e6)
+                    {
+                        return fail("planar sample corners must be finite and bounded");
+                    }
+                }
+                None => {
+                    Homography::between(self.reference, sample.corners)?;
+                }
+            }
             if sample.features.len() > 256
                 || !sample.rms_pixels.is_finite()
                 || sample.rms_pixels < 0.
@@ -256,9 +289,14 @@ impl Track {
         self.validate()?;
         section.validate()?;
         let rebase = Homography::between(section.reference, self.reference)?;
+        // Motion stored relative to the section's reference frame, re-expressed from ours.
+        let unbase = rebase
+            .inverse()
+            .ok_or_else(|| crate::Error("Invalid correction reference".into()))?;
         let mut merged = self.clone();
         for sample in &section.samples {
             let mut sample = sample.clone();
+            sample.motion = sample.motion.map(|motion| motion.compose(unbase));
             for feature in &mut sample.features {
                 feature.reference = rebase
                     .project(feature.reference)
@@ -297,6 +335,13 @@ impl Track {
                 } else {
                     0.
                 };
+                if previous.motion.is_some() || sample.motion.is_some() {
+                    return blend(
+                        previous.motion(self.reference)?,
+                        sample.motion(self.reference)?,
+                        t,
+                    );
+                }
                 let mut q = previous.corners;
                 for (i, p) in q.iter_mut().enumerate() {
                     for (axis, v) in p.iter_mut().enumerate() {
@@ -307,8 +352,28 @@ impl Track {
             }
             previous = sample;
         }
-        Homography::between(self.reference, previous.corners)
+        previous.motion(self.reference)
     }
+}
+
+/// Interpolates two motions by their scale-normalized matrices, signs aligned so that a
+/// projective flip of scale never passes through zero.
+fn blend(a: Homography, b: Homography, t: f64) -> Result<Homography> {
+    let unit = |h: Homography| {
+        let norm = h.matrix.iter().map(|v| v * v).sum::<f64>().sqrt();
+        h.matrix.map(|v| v / norm)
+    };
+    let (a, mut b) = (unit(a), unit(b));
+    if a.iter().zip(&b).map(|(x, y)| x * y).sum::<f64>() < 0. {
+        b = b.map(|v| -v);
+    }
+    let motion = Homography {
+        matrix: std::array::from_fn(|i| a[i] + (b[i] - a[i]) * t),
+    };
+    if motion.matrix.iter().any(|v| !v.is_finite()) || motion.inverse().is_none() {
+        return fail("planar motion cannot be interpolated");
+    }
+    Ok(motion)
 }
 
 // Normalize both point clouds before solving the eight inhomogeneous equations.

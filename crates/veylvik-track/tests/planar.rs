@@ -229,12 +229,14 @@ fn planar_warp_follows_stabilizes_and_invalidates_cached_motion() {
                         corners: reference,
                         features: vec![],
                         rms_pixels: 0.,
+                        motion: None,
                     },
                     Sample {
                         time: Time::new(1, 1).unwrap(),
                         corners: reference.map(|[x, y]| [x + 0.125, y]),
                         features: vec![],
                         rms_pixels: 0.,
+                        motion: None,
                     },
                 ],
             }),
@@ -529,4 +531,84 @@ fn area_alignment_reaches_sub_tenth_pixel_through_brightness_change_and_occluder
             error(refined)
         );
     }
+}
+
+#[test]
+#[ignore = "requires Vulkan"]
+fn planar_warp_hides_the_part_of_a_layer_behind_the_camera() {
+    use veylvik_document::{
+        Node,
+        planar::{Homography, Sample, Track, WarpMode},
+    };
+    let renderer = Renderer::new().unwrap();
+    // Output pixel (0.5, 0.8) sees the layer point (0.5, 0.2) through a negative homogeneous
+    // coordinate: on one side of this motion's horizon that point is behind the camera.
+    let motion = Homography {
+        matrix: [-1.5, 2.5, 1.0, 0.0, 1.0, 1.0, 0.0, 2.5, 1.0],
+    };
+    let render = |area_centre: [f64; 2]| {
+        let mut doc = veylvik_document::blank(64, 64, Time::new(24, 1).unwrap()).unwrap();
+        let layer = doc.output;
+        doc.nodes.get_mut(&layer).unwrap().operation =
+            Operation::Solid(veylvik_document::nodes::Solid {
+                color: [1., 1., 1., 1.],
+            });
+        let [cx, cy] = area_centre;
+        let reference = [
+            [cx - 0.1, cy - 0.1],
+            [cx + 0.1, cy - 0.1],
+            [cx + 0.1, cy + 0.1],
+            [cx - 0.1, cy + 0.1],
+        ];
+        let corners = reference.map(|p| {
+            motion
+                .project(p)
+                .map_or([0., 0.], |q| q.map(|v| v.clamp(-1e6, 1e6)))
+        });
+        let sample = Sample {
+            time: Time::new(0, 1).unwrap(),
+            corners,
+            features: vec![],
+            rms_pixels: 0.,
+            motion: Some(motion),
+        };
+        let data = Track {
+            reference,
+            reference_time: Time::new(0, 1).unwrap(),
+            region: None,
+            samples: vec![sample],
+        };
+        data.validate().unwrap();
+        let track = Node::new(
+            "Track",
+            Operation::PlanarTrack(veylvik_document::nodes::PlanarTrack {
+                data: Box::new(data),
+            }),
+            &[("image", layer)],
+        );
+        let track_id = track.id;
+        doc.nodes.insert(track.id, track);
+        let warp = Node::new(
+            "Warp",
+            Operation::PlanarWarp(veylvik_document::nodes::PlanarWarp {
+                mode: WarpMode::Follow,
+            }),
+            &[("image", layer), ("track", track_id)],
+        );
+        doc.output = warp.id;
+        doc.nodes.insert(warp.id, warp);
+        let plan = Plan::compile(&doc).unwrap();
+        renderer
+            .render_frame(
+                &plan,
+                RenderRequest::full(Time::new(0, 1).unwrap()),
+                &ImageInputs::default(),
+            )
+            .unwrap()
+    };
+    let ghost = (0.8 * 64.) as usize * 64 + 32;
+    // Tracked area on the far side of the horizon: that pixel would be a mirrored ghost.
+    assert_eq!(render([-1., -1.]).pixels[ghost][3], 0.);
+    // Tracked area on that pixel's side: the layer is really there and stays visible.
+    assert!(render([0.5, 0.2]).pixels[ghost][3] > 0.99);
 }

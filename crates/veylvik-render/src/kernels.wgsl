@@ -696,7 +696,10 @@ fn planar_warp(@builtin(global_invocation_id) gid: vec3<u32>) {
     if !inside(gid) { return; }
     let uv = (vec2<f32>(gid.xy)+vec2<f32>(0.5))/vec2<f32>(p.size_op.xy);
     let w = p.extra.z*uv.x+p.extra.w*uv.y+1.0;
-    if abs(w)<0.000001 { result[index(gid)]=vec4<f32>(0.0);return; }
+    // Pixels looking at the plane behind the camera stay empty (size_op.w selects the side).
+    if abs(w)<0.000001 || (p.size_op.w==1u && w<0.0) || (p.size_op.w==2u && w>0.0) {
+        result[index(gid)]=vec4<f32>(0.0);return;
+    }
     let q = vec2<f32>(p.values.x*uv.x+p.values.y*uv.y+p.values.z,
                      p.values.w*uv.x+p.extra.x*uv.y+p.extra.y)/w;
     result[index(gid)] = bilinear(q*vec2<f32>(p.size_op.xy)-vec2<f32>(0.5));
