@@ -14,3 +14,16 @@ pub struct Colorize {
     pub low: [f32; 4],
     pub high: [f32; 4],
 }
+
+node!(Exposure, EXPOSURE, [stops]);
+node!(Colorize, COLORIZE, [], {
+    fn validate(&self) -> Result<()> {
+        if [self.low, self.high]
+            .iter()
+            .any(|color| color.iter().any(|v| !v.is_finite()) || !(0.0..=1.0).contains(&color[3]))
+        {
+            return fail("colorize needs finite RGB and alpha in [0,1] for both endpoints");
+        }
+        Ok(())
+    }
+});

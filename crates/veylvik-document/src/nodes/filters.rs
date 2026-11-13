@@ -36,3 +36,13 @@ pub struct Affine {
     pub pivot_x: Scalar,
     pub pivot_y: Scalar,
 }
+
+node!(Blur, BLUR, [radius]);
+node!(Morphology, MORPHOLOGY, [radius]);
+node!(Displace, DISPLACE, [x, y]);
+node!(Transform, TRANSFORM, [x, y]);
+node!(
+    Affine,
+    AFFINE,
+    [x, y, scale_x, scale_y, rotation, pivot_x, pivot_y]
+);

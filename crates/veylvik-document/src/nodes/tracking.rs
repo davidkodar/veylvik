@@ -13,3 +13,10 @@ pub struct PlanarTrack {
 pub struct PlanarWarp {
     pub mode: planar::WarpMode,
 }
+
+node!(PlanarTrack, PLANAR_TRACK, [], {
+    fn validate(&self) -> Result<()> {
+        self.data.validate()
+    }
+});
+node!(PlanarWarp, PLANAR_WARP, []);

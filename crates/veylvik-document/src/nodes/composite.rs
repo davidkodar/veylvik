@@ -37,3 +37,16 @@ pub struct SurfaceBlend {
     pub softness: Scalar,
     pub grain: Scalar,
 }
+
+node!(Merge, MERGE, []);
+node!(Blend, BLEND, [opacity]);
+node!(Mask, MASK, []);
+node!(CombineMask, COMBINE_MASK, []);
+node!(ChannelMask, CHANNEL_MASK, []);
+node!(
+    SurfaceBlend,
+    SURFACE_BLEND,
+    [
+        opacity, lighting, detail, wear, threshold, distortion, softness, grain
+    ]
+);

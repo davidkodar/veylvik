@@ -67,3 +67,30 @@ pub struct Ellipse {
     pub radius_y: Scalar,
     pub feather: Scalar,
 }
+
+node!(Solid, SOLID, [], {
+    fn validate(&self) -> Result<()> {
+        if self.color.iter().any(|v| !v.is_finite()) || !(0.0..=1.0).contains(&self.color[3]) {
+            return fail("solid needs finite RGB and alpha in [0,1]");
+        }
+        Ok(())
+    }
+});
+node!(Gradient, GRADIENT, [start_x, start_y, end_x, end_y]);
+node!(Noise, NOISE, [scale]);
+node!(
+    FractalNoise,
+    FRACTAL_NOISE,
+    [scale, octaves, roughness, evolution]
+);
+node!(
+    Fire,
+    FIRE,
+    [x, y, width, height, evolution, intensity, turbulence]
+);
+node!(
+    Atmosphere,
+    ATMOSPHERE,
+    [x, y, width, height, evolution, density, detail, lighting]
+);
+node!(Ellipse, ELLIPSE, [x, y, radius_x, radius_y, feather]);

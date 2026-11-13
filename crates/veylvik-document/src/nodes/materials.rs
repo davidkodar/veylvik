@@ -69,3 +69,40 @@ pub struct SurfaceReflection {
     pub offset_x: Scalar,
     pub offset_y: Scalar,
 }
+
+node!(
+    Material,
+    MATERIAL,
+    [scale, bevel, roughness, lighting, grain, emission]
+);
+node!(Patina, PATINA, [amount, dirt, scale, wear, scratches]);
+node!(
+    MetallicShine,
+    METALLIC_SHINE,
+    [x, y, width, angle, intensity]
+);
+node!(
+    SunGlints,
+    SUN_GLINTS,
+    [size, intensity, threshold, evolution, density, angle]
+);
+node!(
+    Glass,
+    GLASS,
+    [
+        bevel,
+        refraction,
+        roughness,
+        ior,
+        transmission,
+        tint,
+        dispersion
+    ]
+);
+node!(
+    SurfaceReflection,
+    SURFACE_REFLECTION,
+    [
+        bevel, curvature, roughness, strength, rotation, scale, offset_x, offset_y
+    ]
+);

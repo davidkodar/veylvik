@@ -8,3 +8,9 @@ use serde::{Deserialize, Serialize};
 pub struct Path {
     pub geometry: vector::PathMask,
 }
+
+node!(Path, PATH, [], {
+    fn validate(&self) -> Result<()> {
+        self.geometry.validate()
+    }
+});
