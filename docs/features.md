@@ -355,6 +355,7 @@ Opened with **Add → Effect library…**; searchable by name, description or ca
 
 Details: [Subject segmentation](subject-segmentation.md).
 
+- Three trackers: **EdgeTAM** (fastest, default), **SAM 2.1 Base+** and **SAM 2.1 Large** (more precise and consistent over time), chosen per selection in Studio or with `--model`.
 - **Select subject…** (Inspector or **Tools**): left-click the subject in the viewer, right-click or Alt-click to exclude; instant blue mask preview per click; **Undo point**, **Clear**.
 - **Track subject** with progress and **Stop** (keeps tracked frames); optional **Also track back to the start**; one undo step adds Subject matte and Subject cutout.
 - **Hair and soft edges** (with the ViTMatte model, default on when installed; `--no-matting` in the CLI): matting of an uncertain band around the tracked outline at native resolution, recovering hair shape, flyaway strands and soft contours; outside the band the matte stays as tracked; about 55 ms per frame for a full-length person at 1080 × 1920.

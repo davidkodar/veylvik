@@ -152,6 +152,8 @@ pub fn analyse(
         if done.contains(&frame) {
             continue;
         }
+        let mut mask = mask;
+        matte::normalise(&mut mask.logits);
         let mut alpha = if mask.present() {
             matte::alpha_crop(&mask.logits, width, height, rect)?
         } else {

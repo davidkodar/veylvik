@@ -10,8 +10,9 @@ Edge-band matting with a dedicated matting model, for fine hair, follows.
 ## In Studio
 
 1. Select the footage node and choose **Select subject…** in the Inspector, or
-   **Tools → Select subject…**. The first time, the window offers to install
-   the EdgeTAM model (65 MB).
+   **Tools → Select subject…**. Pick the **Model**: EdgeTAM is fastest, SAM 2.1
+   Base+ and Large are more precise. The window offers to install the chosen
+   model if needed.
 2. Click the subject in the viewer. Each click shows a blue preview mask within
    a fraction of a second. Right-click or Alt-click excludes an area. A few
    clicks spread over a person (head, body, legs) select them whole. **Undo
@@ -57,6 +58,8 @@ veylvik models uninstall edgetam    # remove the model's files
 | Model | Use | Download | Licence |
 | --- | --- | --- | --- |
 | `edgetam` | Click-to-mask and video tracking: about 30 ms per frame and 1.5 GB of graphics memory on an RTX 4080 | 65 MB | Apache-2.0 |
+| `sam2.1-base-plus` | Click-to-mask and video tracking with SAM 2.1 (Hiera Base+, half precision): more precise and more consistent over time than EdgeTAM; about 65 ms per frame and 2.9 GB | 183 MB | Apache-2.0 |
+| `sam2.1-large` | The same with Hiera Large, the most precise tracker here; about 80 ms per frame and 3.2 GB | 475 MB | Apache-2.0 |
 | `vitmatte` | Hair and soft edges: matting of the band around the tracked outline, about 55 ms per frame for a full-length person at 1080 × 1920 | 104 MB | Apache-2.0 weights; trained on research matting datasets |
 
 Every file is pinned to a fixed upstream revision, size and SHA-256. Files are
@@ -90,6 +93,8 @@ veylvik segment FILE NEW_FILE SOURCE_UUID FRAME END "X,Y X,Y,- ..." [--back-to F
   at least one marking the subject. A few points spread over the subject (head,
   body, legs) select a whole person more reliably than one.
 - An analysis covers up to 4096 frames.
+- `--model` picks the tracker: `edgetam` (default), `sam2.1-base-plus` or
+  `sam2.1-large`.
 - `--no-detail` skips the detail pass (see below) for about half the time.
 - Edge matting (see below) runs when the `vitmatte` model is installed and
   switched on; `--no-matting` skips it, and `--matting` requires it.
@@ -142,6 +147,17 @@ Frames where the model judges the subject absent are empty.
   ViTMatte's weights are Apache-2.0, but like practically every matting model
   it was trained on academic matting datasets (Composition-1k) whose terms
   are research-oriented; check them before commercial use.
+- **Confident interiors.** On the prompted frame, where the model has no
+  memory yet, its mask is often under-confident and would come out partly
+  transparent. Each frame's logits are therefore scaled, up to eight times, until
+  the median inside the subject is clearly opaque; confident frames are left
+  as they are, and the outline (logit zero) never moves.
+- **SAM 2.1.** The SAM 2.1 graphs have a fixed-size memory bank (seven frames
+  and sixteen object pointers). Until a shot has filled it, the prompted frame's
+  memory and pointer repeat into the unused slots; object pointers carry their
+  temporal positions as SAM 2.1 does. On the beach shot SAM 2.1 kept its reading
+  of the prompt consistent through the shot where EdgeTAM changed its mind about
+  the shoulder bag.
 - **Tracking.** EdgeTAM is SAM 2 with an efficient memory. The prompted frame
   conditions every later frame, together with the six most recent frames and up
   to sixteen object pointers. Tracking backward restarts from the prompted frame,

@@ -104,6 +104,24 @@ pub fn model_crop(
     }
     Ok(out)
 }
+/// Interior logit an opaque subject should reach: sigmoid(8) ≈ 0.9997.
+const CONFIDENT: f32 = 8.0;
+/// Scales an under-confident mask's logits so its interior (the median positive logit) reaches
+/// [`CONFIDENT`], up to eight times. Prompted frames, where the model has no memory yet, often
+/// come out this weak and would otherwise be see-through. Confident masks are left unchanged,
+/// and the outline (logit zero) never moves.
+pub fn normalise(logits: &mut [f32]) {
+    let mut positive: Vec<f32> = logits.iter().copied().filter(|v| *v > 0.0).collect();
+    if positive.len() < 16 {
+        return;
+    }
+    let middle = positive.len() / 2;
+    let (_, median, _) = positive.select_nth_unstable_by(middle, f32::total_cmp);
+    let gain = (CONFIDENT / *median).clamp(1.0, 8.0);
+    if gain > 1.0 {
+        logits.iter_mut().for_each(|v| *v *= gain);
+    }
+}
 /// Bilinearly resamples SIDE² logits to `width` × `height` (pixel centres aligned), then applies
 /// the sigmoid: the edge stays as smooth as the model's own confidence.
 pub fn alpha(logits: &[f32], width: usize, height: usize) -> Result<Vec<f32>> {
@@ -206,6 +224,24 @@ mod tests {
         let soft = row.iter().filter(|v| **v > 0.05 && **v < 0.95).count();
         assert!((1..=8).contains(&soft), "{soft}");
         assert!(row.windows(2).all(|p| p[0] <= p[1]));
+    }
+    #[test]
+    fn weak_masks_are_made_opaque_inside_without_moving_the_outline() {
+        // Interior at +2 (alpha 0.88), outline crossing zero, outside −2.
+        let mut logits: Vec<f32> = (0..SIDE * SIDE)
+            .map(|i| if i % SIDE < SIDE / 2 { 2.0 } else { -2.0 })
+            .collect();
+        normalise(&mut logits);
+        assert_eq!(logits[0], 8.0);
+        assert_eq!(logits[SIDE - 1], -8.0);
+        // Confident masks are untouched.
+        let mut strong = vec![20.0; SIDE * SIDE];
+        normalise(&mut strong);
+        assert_eq!(strong[0], 20.0);
+        // Very weak masks gain at most eight times.
+        let mut faint = vec![0.1; SIDE * SIDE];
+        normalise(&mut faint);
+        assert!((faint[0] - 0.8).abs() < 1e-6);
     }
     #[test]
     fn crops_sample_only_their_window_and_map_back_to_the_same_place() {

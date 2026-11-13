@@ -1,7 +1,8 @@
 //! EdgeTAM on ONNX Runtime CUDA, with the SAM 2 memory bank kept on the host: the prompted frame
 //! conditions every later one, alongside the six most recent frames and sixteen object pointers.
+use super::{floats, ort_error, pixels, prompt_tensors, session, shape_error, tokens};
 use crate::{Point, Result, SIDE, worker::Mask};
-use ndarray::{Array, Array1, Array4, ArrayD, Axis};
+use ndarray::{Array, Array1, ArrayD, Axis};
 use ort::{session::Session, value::Tensor};
 use std::{collections::VecDeque, path::Path};
 
@@ -15,39 +16,6 @@ const FEATURES: usize = 64;
 const MEAN: [f32; 3] = [0.485, 0.456, 0.406];
 const STD: [f32; 3] = [0.229, 0.224, 0.225];
 
-fn floats(path: &Path, count: usize) -> Result<Vec<f32>> {
-    let bytes = std::fs::read(path)?;
-    if bytes.len() != count * 4 {
-        return Err(format!("{} has an unexpected size", path.display()).into());
-    }
-    Ok(bytes
-        .as_chunks::<4>()
-        .0
-        .iter()
-        .map(|c| f32::from_le_bytes(*c))
-        .collect())
-}
-fn ort_error(e: ort::Error) -> crate::Error {
-    crate::Error::Message(format!("segmentation runtime: {e}"))
-}
-fn shape_error(e: ndarray::ShapeError) -> crate::Error {
-    crate::Error::Message(format!("segmentation tensor shape: {e}"))
-}
-/// [1,C,H,W] → [H·W,1,C], the token layout memory attention expects.
-fn tokens(map: &ArrayD<f32>) -> Result<ArrayD<f32>> {
-    let s = map.shape();
-    let (c, hw) = (s[1], s[2] * s[3]);
-    let flat = map
-        .view()
-        .into_shape_with_order((c, hw))
-        .map_err(shape_error)?;
-    flat.t()
-        .as_standard_layout()
-        .into_owned()
-        .into_shape_with_order((hw, 1, c))
-        .map(|a| a.into_dyn())
-        .map_err(shape_error)
-}
 struct Memory {
     tokens: Vec<f32>,
     pos: Vec<f32>,
@@ -65,25 +33,14 @@ pub struct Engine {
     /// Newest first.
     recent: VecDeque<Memory>,
 }
+impl super::Tracker for Engine {
+    fn frame(&mut self, rgb: &[u8], prompt: Option<&[Point]>) -> Result<Mask> {
+        Engine::frame(self, rgb, prompt)
+    }
+}
 impl Engine {
     pub fn load(dir: &Path) -> Result<Self> {
-        ort::init().commit();
-        let session = |name: &str| -> Result<Session> {
-            Session::builder()
-                .map_err(ort_error)?
-                .with_execution_providers([
-                    ort::execution_providers::CUDAExecutionProvider::default()
-                        .build()
-                        .error_on_failure(),
-                ])
-                .map_err(|e| ort_error(e.into()))?
-                .commit_from_file(dir.join(format!("{name}.onnx")))
-                .map_err(|e| {
-                    crate::Error::Message(format!(
-                        "cannot load {name} on CUDA (no CPU fallback): {e}"
-                    ))
-                })
-        };
+        let session = |name: &str| session(dir, name);
         Ok(Self {
             encoder: session("vision_encoder")?,
             decoder: session("mask_decoder")?,
@@ -100,9 +57,7 @@ impl Engine {
     }
     /// Segments a SIDE² sRGB frame. A prompt makes it the conditioning frame of a new track.
     pub fn frame(&mut self, rgb: &[u8], prompt: Option<&[Point]>) -> Result<Mask> {
-        let pixels: Array4<f32> = Array::from_shape_fn((1, 3, SIDE, SIDE), |(_, c, y, x)| {
-            (f32::from(rgb[(y * SIDE + x) * 3 + c]) / 255.0 - MEAN[c]) / STD[c]
-        });
+        let pixels = pixels(rgb, MEAN, STD);
         let encoded = self
             .encoder
             .run(ort::inputs!["pixel_values" => Tensor::from_array(pixels).map_err(ort_error)?])
@@ -115,7 +70,8 @@ impl Engine {
         };
         let (f0, f1, f2, pos2) = (get("feats0")?, get("feats1")?, get("feats2")?, get("pos2")?);
         drop(encoded);
-        let (conditioned, points, labels) = match prompt {
+        let (points, labels) = prompt_tensors(prompt)?;
+        let conditioned = match prompt {
             Some(points) => {
                 crate::validate_points(points)?;
                 self.conditioning = None;
@@ -130,27 +86,9 @@ impl Engine {
                 {
                     *v += self.no_memory[c];
                 }
-                let n = points.len();
-                let coords = points
-                    .iter()
-                    .flat_map(|p| [p.x * SIDE as f32, p.y * SIDE as f32])
-                    .collect();
-                let labels = points.iter().map(|p| i32::from(p.positive)).collect();
-                (
-                    features,
-                    Array::from_shape_vec((1, 1, n, 2), coords).map_err(shape_error)?,
-                    Array::from_shape_vec((1, 1, n), labels).map_err(shape_error)?,
-                )
+                features
             }
-            None => {
-                let conditioned = self.attend(&f2, &pos2)?;
-                // No clicks on tracked frames: one padding point.
-                (
-                    conditioned,
-                    Array::zeros((1, 1, 1, 2)),
-                    Array::from_elem((1, 1, 1), -1),
-                )
-            }
+            None => self.attend(&f2, &pos2)?,
         };
         let decoded = self
             .decoder

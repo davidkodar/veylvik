@@ -3,12 +3,10 @@
 pub mod analysis;
 pub mod edges;
 #[cfg(feature = "engine")]
-mod edgetam;
+mod engine;
 pub mod matte;
 pub mod models;
 pub mod protocol;
-#[cfg(feature = "engine")]
-mod vitmatte;
 pub mod worker;
 pub mod zoom;
 use serde::{Deserialize, Serialize};

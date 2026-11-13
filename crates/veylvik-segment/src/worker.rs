@@ -233,8 +233,8 @@ impl Drop for Worker {
 pub fn serve(input: impl std::io::Read, output: impl std::io::Write) -> Result<()> {
     let mut input = BufReader::new(input);
     let mut output = BufWriter::new(output);
-    let mut engine: Option<crate::edgetam::Engine> = None;
-    let mut matting: Option<(String, crate::vitmatte::Matting)> = None;
+    let mut engine: Option<Box<dyn crate::engine::Tracker>> = None;
+    let mut matting: Option<(String, crate::engine::vitmatte::Matting)> = None;
     while let Some((request, payload)) = protocol::read::<Request>(&mut input)? {
         let fail = |e: crate::Error| Reply {
             error: Some(e.to_string()),
@@ -248,7 +248,7 @@ pub fn serve(input: impl std::io::Read, output: impl std::io::Write) -> Result<(
                     if !crate::models::installed(model)? {
                         return Err(format!("{} is not installed", model.title).into());
                     }
-                    crate::edgetam::Engine::load(&crate::models::dir(model)?)
+                    crate::engine::load(model, &crate::models::dir(model)?)
                 }) {
                     Ok(loaded) => {
                         engine = Some(loaded);
@@ -285,7 +285,7 @@ pub fn serve(input: impl std::io::Read, output: impl std::io::Write) -> Result<(
                         }
                         matting = Some((
                             model.clone(),
-                            crate::vitmatte::Matting::load(&crate::models::dir(found)?)?,
+                            crate::engine::vitmatte::Matting::load(&crate::models::dir(found)?)?,
                         ));
                     }
                     let (_, session) = matting.as_mut().ok_or("matting model unavailable")?;

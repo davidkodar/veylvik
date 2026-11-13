@@ -1,32 +1,19 @@
 //! ViTMatte on ONNX Runtime CUDA: refines alpha inside a trimap's unknown band from the image,
 //! for hair and soft edges. Inputs are padded to a multiple of 32, as the model requires.
+use super::ort_error;
 use crate::Result;
 use ndarray::Array4;
 use ort::{session::Session, value::Tensor};
 use std::path::Path;
 
-fn ort_error(e: ort::Error) -> crate::Error {
-    crate::Error::Message(format!("matting runtime: {e}"))
-}
 pub struct Matting {
     session: Session,
 }
 impl Matting {
     pub fn load(dir: &Path) -> Result<Self> {
-        ort::init().commit();
-        let session = Session::builder()
-            .map_err(ort_error)?
-            .with_execution_providers([ort::execution_providers::CUDAExecutionProvider::default()
-                .build()
-                .error_on_failure()])
-            .map_err(|e| ort_error(e.into()))?
-            .commit_from_file(dir.join("model.onnx"))
-            .map_err(|e| {
-                crate::Error::Message(format!(
-                    "cannot load the matting model on CUDA (no CPU fallback): {e}"
-                ))
-            })?;
-        Ok(Self { session })
+        Ok(Self {
+            session: super::session(dir, "model")?,
+        })
     }
     /// `pixels` holds `width` × `height` RGBA bytes: sRGB colour, and the trimap in alpha
     /// (0 background, 128 unknown, 255 subject). Returns alpha in 0..1, row-major.

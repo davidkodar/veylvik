@@ -139,7 +139,162 @@ pub static VITMATTE: Model = Model {
         sha256: "bf28d2e0be2c073286e88d60ad649d7123da2749a2d99133fd1098d5887e0225",
     }],
 };
-pub static MODELS: &[&Model] = &[&EDGETAM, &VITMATTE];
+macro_rules! sam21_file {
+    ($repo:literal, $rev:literal, $path:literal, $name:literal, $size:expr, $sha:literal) => {
+        File {
+            name: $name,
+            url: concat!(
+                "https://huggingface.co/",
+                $repo,
+                "/resolve/",
+                $rev,
+                "/",
+                $path
+            ),
+            range: None,
+            size: $size,
+            sha256: $sha,
+        }
+    };
+}
+const SAM21_PROS: &[&str] = &[
+    "SAM 2.1 quality: the most precise click-to-mask and tracking here, best on difficult, small or thin subjects",
+    "The same memory-based tracking through occlusions as EdgeTAM",
+    "Apache-2.0 licence, runs entirely on this computer",
+];
+pub static SAM21_BASE: Model = Model {
+    id: "sam2.1-base-plus",
+    title: "SAM 2.1 Base+",
+    summary: "High-quality click-to-mask and video tracking (Meta's SAM 2.1, Hiera Base+), in half precision.",
+    licence: "Apache-2.0",
+    homepage: "https://huggingface.co/diffusionstudio/sam2.1-base-plus-video-onnx-fp16",
+    uses: "Subject masks where EdgeTAM is not precise enough: busy scenes, small or thin subjects.",
+    pros: SAM21_PROS,
+    cons: &[
+        "Slower than EdgeTAM; previews and tracking take longer",
+        "Larger download and more graphics memory",
+        "Needs an NVIDIA GPU with CUDA and cuDNN",
+    ],
+    speed: "≈65 ms per frame (RTX 4080), about twice EdgeTAM",
+    memory: "≈2.9 GB (measured on an RTX 4080)",
+    files: &[
+        sam21_file!(
+            "diffusionstudio/sam2.1-base-plus-video-onnx-fp16",
+            "386b83e09a774fe2782d86fd1b8cb5aaf718aa9d",
+            "onnx/vision_encoder.onnx",
+            "vision_encoder.onnx",
+            155_490_079,
+            "3cdc1e01c96f31e356b63a569676087deb1e85b08ef79d2edb8aec1fe9be19fc"
+        ),
+        sam21_file!(
+            "diffusionstudio/sam2.1-base-plus-video-onnx-fp16",
+            "386b83e09a774fe2782d86fd1b8cb5aaf718aa9d",
+            "onnx/mask_decoder.onnx",
+            "mask_decoder.onnx",
+            8_910_345,
+            "874459f8436730bc8f9c8808263a6d8c8065437da6858726a10c373b873b8c6f"
+        ),
+        sam21_file!(
+            "diffusionstudio/sam2.1-base-plus-video-onnx-fp16",
+            "386b83e09a774fe2782d86fd1b8cb5aaf718aa9d",
+            "onnx/memory_attention.onnx",
+            "memory_attention.onnx",
+            16_169_156,
+            "457232835ef18b7c658a3c8af9dffb4578ac4af433249840886f3ff399c15742"
+        ),
+        sam21_file!(
+            "diffusionstudio/sam2.1-base-plus-video-onnx-fp16",
+            "386b83e09a774fe2782d86fd1b8cb5aaf718aa9d",
+            "onnx/memory_encoder.onnx",
+            "memory_encoder.onnx",
+            2_807_648,
+            "9fad9ee8c08629033bc72a8ef0cce91fb5389a4a6c18a8ea733e685cc57c839f"
+        ),
+        sam21_file!(
+            "diffusionstudio/sam2.1-base-plus-video-onnx-fp16",
+            "386b83e09a774fe2782d86fd1b8cb5aaf718aa9d",
+            "onnx/pointer_tpos.onnx",
+            "pointer_tpos.onnx",
+            34_228,
+            "0f308871196f4312a4aec65ce62f99cb341cd4e7516fbf7bc13bc8d4d111bc14"
+        ),
+        sam21_file!(
+            "diffusionstudio/sam2.1-base-plus-video-onnx-fp16",
+            "386b83e09a774fe2782d86fd1b8cb5aaf718aa9d",
+            "constants.json",
+            "constants.json",
+            9_857,
+            "56f2a2e17741a630099113314e8a0b722fc04e48956320c02401c603acf0d3fb"
+        ),
+    ],
+};
+pub static SAM21_LARGE: Model = Model {
+    id: "sam2.1-large",
+    title: "SAM 2.1 Large",
+    summary: "The highest-quality click-to-mask and video tracking here (Meta's SAM 2.1, Hiera Large), in half precision.",
+    licence: "Apache-2.0",
+    homepage: "https://huggingface.co/diffusionstudio/sam2.1-large-video-onnx-fp16",
+    uses: "The hardest subject masks, when time matters less than precision.",
+    pros: SAM21_PROS,
+    cons: &[
+        "The slowest tracker here",
+        "Largest download and the most graphics memory",
+        "Needs an NVIDIA GPU with CUDA and cuDNN",
+    ],
+    speed: "≈80 ms per frame (RTX 4080)",
+    memory: "≈3.2 GB (measured on an RTX 4080)",
+    files: &[
+        sam21_file!(
+            "diffusionstudio/sam2.1-large-video-onnx-fp16",
+            "98dbd222d9b3f75d15fe63a5c2a22b0b0029eea1",
+            "onnx/vision_encoder.onnx",
+            "vision_encoder.onnx",
+            447_430_045,
+            "7e085aa57b605b73a264be74d8ca4772c30b07af914e3f146b05ad69c6f7aafe"
+        ),
+        sam21_file!(
+            "diffusionstudio/sam2.1-large-video-onnx-fp16",
+            "98dbd222d9b3f75d15fe63a5c2a22b0b0029eea1",
+            "onnx/mask_decoder.onnx",
+            "mask_decoder.onnx",
+            8_910_364,
+            "8e1d95f38f1f7e6227a0e9bf0fa32effd592bd93c039203631d0c75e5112d97d"
+        ),
+        sam21_file!(
+            "diffusionstudio/sam2.1-large-video-onnx-fp16",
+            "98dbd222d9b3f75d15fe63a5c2a22b0b0029eea1",
+            "onnx/memory_attention.onnx",
+            "memory_attention.onnx",
+            16_175_204,
+            "bf1a708c2ee94f5a2177933a2559f568a3f760e8a18abe392fd7ebca346b4727"
+        ),
+        sam21_file!(
+            "diffusionstudio/sam2.1-large-video-onnx-fp16",
+            "98dbd222d9b3f75d15fe63a5c2a22b0b0029eea1",
+            "onnx/memory_encoder.onnx",
+            "memory_encoder.onnx",
+            2_807_886,
+            "c809462a85e2354437e705a70bbb5a74f9194e28db7443dd69f68b8ae4f4047d"
+        ),
+        sam21_file!(
+            "diffusionstudio/sam2.1-large-video-onnx-fp16",
+            "98dbd222d9b3f75d15fe63a5c2a22b0b0029eea1",
+            "onnx/pointer_tpos.onnx",
+            "pointer_tpos.onnx",
+            34_228,
+            "d32d040ad52cc4507b2978af8c151869179e3195759801267b59443b1ac9dcf5"
+        ),
+        sam21_file!(
+            "diffusionstudio/sam2.1-large-video-onnx-fp16",
+            "98dbd222d9b3f75d15fe63a5c2a22b0b0029eea1",
+            "constants.json",
+            "constants.json",
+            9_752,
+            "87e2c0e431cc3390eadf20e9d5d454037d5355f7e771ba493cd5c2dfc7516fbb"
+        ),
+    ],
+};
+pub static MODELS: &[&Model] = &[&EDGETAM, &SAM21_BASE, &SAM21_LARGE, &VITMATTE];
 
 pub fn find(id: &str) -> Result<&'static Model> {
     MODELS

@@ -10,8 +10,8 @@ use veylvik_document::{Command, Node, NodeId, Operation, Time};
 use veylvik_render::{Plan, RenderRequest};
 use veylvik_segment::{Point, analysis, matte, models, worker::Worker};
 
-/// The model used for clicks and tracking.
-const MODEL: &str = "edgetam";
+/// Tracking models offered, fastest first; the first ready one is the default.
+const TRACKERS: [&str; 3] = ["edgetam", "sam2.1-base-plus", "sam2.1-large"];
 /// The model that refines the edge band.
 const MATTING: &str = "vitmatte";
 /// Longest side of the preview overlay, in pixels.
@@ -57,6 +57,8 @@ pub struct Controls {
     backward: bool,
     /// Second, zoomed pass for small parts.
     detail: bool,
+    /// Tracking model id, one of [`TRACKERS`].
+    model: &'static str,
     /// Edge-band matting for hair and soft edges, when the model is ready.
     matting: bool,
     show_mask: bool,
@@ -170,9 +172,9 @@ fn worker_exe() -> Result<PathBuf, String> {
         ))
     }
 }
-fn ensure(worker: &mut Option<Worker>) -> Result<&mut Worker, String> {
+fn ensure<'a>(worker: &'a mut Option<Worker>, model: &str) -> Result<&'a mut Worker, String> {
     if worker.is_none() {
-        *worker = Some(Worker::spawn(&worker_exe()?, MODEL).map_err(|e| e.to_string())?);
+        *worker = Some(Worker::spawn(&worker_exe()?, model).map_err(|e| e.to_string())?);
     }
     worker
         .as_mut()
@@ -199,7 +201,13 @@ impl Studio {
         self.subject.frame = self.project.frame;
         self.subject.end = i64::from(doc.frame_count) - 1;
         self.project.preview = self.subject.source;
-        self.models.status(MODEL);
+        self.models.status(TRACKERS[0]);
+        if self.subject.model.is_empty() {
+            self.subject.model = TRACKERS
+                .into_iter()
+                .find(|id| self.model_ready(id))
+                .unwrap_or(TRACKERS[0]);
+        }
         self.request_preview();
     }
     /// Releases the worker and its graphics memory. Never waits on the UI thread: a running job
@@ -210,7 +218,8 @@ impl Studio {
         self.subject.worker = Shared::default();
     }
     fn subject_ready(&mut self) -> bool {
-        self.model_ready(MODEL)
+        let model = self.subject.model;
+        self.model_ready(model)
     }
     fn model_ready(&mut self, id: &str) -> bool {
         self.models
@@ -247,6 +256,7 @@ impl Studio {
         };
         let (width, height, rate) = (doc.width as usize, doc.height as usize, doc.frame_rate);
         let (frame, points) = (self.subject.frame, self.subject.points.clone());
+        let model = self.subject.model;
         let (renderer, inputs, worker) = (
             self.renderer.clone(),
             self.project.inputs.clone(),
@@ -266,9 +276,10 @@ impl Studio {
                     let input = matte::model_frame(&rendered.pixels, width, height)
                         .map_err(|e| e.to_string())?;
                     let mut guard = worker.lock().map_err(|_| "worker lock poisoned")?;
-                    let mask = ensure(&mut guard)?
+                    let mut mask = ensure(&mut guard, model)?
                         .frame(&input, Some(&points))
                         .map_err(|e| e.to_string())?;
+                    matte::normalise(&mut mask.logits);
                     drop(guard);
                     let scale = PREVIEW_SIDE as f64 / width.max(height) as f64;
                     let (w, h) = (
@@ -374,6 +385,7 @@ impl Studio {
         };
         let dir = analysis::unique_dir(&parent, source);
         let (session, revision) = (self.project.session, self.project.document.revision());
+        let model = self.subject.model;
         let doc = doc.clone();
         let (renderer, inputs, worker) = (
             self.renderer.clone(),
@@ -386,7 +398,7 @@ impl Studio {
         let ctx = ctx.clone();
         let work = self.files.start(move || {
             let mut guard = worker.lock().map_err(|_| "worker lock poisoned")?;
-            let worker = ensure(&mut guard)?;
+            let worker = ensure(&mut guard, model)?;
             let outcome = analysis::analyse(
                 &renderer,
                 &plan,
@@ -581,8 +593,24 @@ impl Studio {
             return;
         }
         let ready = self.subject_ready();
-        let status = self.models.status(MODEL);
-        let installing = self.models.busy(MODEL);
+        let model_id = self.subject.model;
+        let status = self.models.status(model_id);
+        let installing = self.models.busy(model_id);
+        let model = models::find(model_id).ok();
+        let (title, size) = model.map_or(("the model", 0), |m| (m.title, m.bytes()));
+        let mut choose = None;
+        let choices: Vec<(&'static str, String)> = TRACKERS
+            .into_iter()
+            .map(|id| {
+                let title = models::find(id).map_or(id, |m| m.title);
+                let note = if self.model_ready(id) {
+                    ""
+                } else {
+                    " (not installed)"
+                };
+                (id, format!("{title}{note}"))
+            })
+            .collect();
         let mut install = false;
         let matting_ready = self.model_ready(MATTING);
         let matting_installing = self.models.busy(MATTING);
@@ -603,19 +631,34 @@ impl Studio {
             .collapsible(false)
             .show(ctx, |ui| {
                 ui.label(format!("Source: {source_label}"));
+                ui.horizontal(|ui| {
+                    ui.label("Model");
+                    let selected = choices.iter().find(|(id, _)| *id == model_id).map_or("", |(_, l)| l.as_str());
+                    egui::ComboBox::from_id_salt("subject-model")
+                        .selected_text(selected)
+                        .show_ui(ui, |ui| {
+                            for (id, label) in &choices {
+                                if ui.selectable_label(*id == model_id, label).clicked() && *id != model_id {
+                                    choose = Some(*id);
+                                }
+                            }
+                        })
+                        .response
+                        .on_hover_text("EdgeTAM is fastest. SAM 2.1 is more precise and more consistent over time, at about twice the time and graphics memory. Details in AI models.");
+                });
                 if !ready {
                     ui.add_space(4.0);
                     if status.is_some_and(|s| s.installed) {
-                        ui.label("EdgeTAM is switched off. Switch it on in AI models to select subjects.");
+                        ui.label(format!("{title} is switched off. Switch it on in AI models, or choose another model."));
                     } else {
-                        ui.label("Subject selection uses the EdgeTAM model. It runs on this computer; nothing is uploaded.");
+                        ui.label(format!("{title} is not installed. It runs on this computer; nothing is uploaded."));
                         if installing {
                             ui.horizontal(|ui| {
                                 ui.spinner();
                                 ui.label("Installing… (progress in AI models)");
                             });
                         } else if ui
-                            .button("Install EdgeTAM (65 MB)")
+                            .button(format!("Install {title} ({:.0} MB)", size as f64 / 1e6))
                             .on_hover_text("Download from Hugging Face and verify every file (Apache-2.0)")
                             .clicked()
                         {
@@ -735,8 +778,16 @@ impl Studio {
         if models {
             self.models.show_window();
         }
-        if install && let Ok(model) = models::find(MODEL) {
+        if install && let Some(model) = model {
             self.models.install(model, ctx);
+        }
+        if let Some(id) = choose {
+            // A different model needs a new worker; the old one exits when released.
+            self.subject.model = id;
+            self.subject.worker = Shared::default();
+            self.subject.preview = None;
+            self.subject.done = None;
+            self.preview_subject(ctx);
         }
         if install_matting && let Ok(model) = models::find(MATTING) {
             self.models.install(model, ctx);
