@@ -12,6 +12,7 @@ veylvik-control.workspace = true
 veylvik-document.workspace = true
 veylvik-render.workspace = true
 veylvik-track.workspace = true
+veylvik-segment = { workspace = true, features = ["engine"] }
 serde_json.workspace = true
 veylvik-io.workspace = true
 pathdiff = "0.2"

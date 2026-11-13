@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/veylvik-document", "crates/veylvik-render", "crates/veylvik-cli", "crates/veylvik-io", "crates/veylvik-studio", "crates/veylvik-control", "crates/veylvik-text", "crates/veylvik-decode", "crates/veylvik-interop", "crates/veylvik-track"]
+members = ["crates/veylvik-document", "crates/veylvik-render", "crates/veylvik-cli", "crates/veylvik-io", "crates/veylvik-studio", "crates/veylvik-control", "crates/veylvik-text", "crates/veylvik-decode", "crates/veylvik-interop", "crates/veylvik-track", "crates/veylvik-segment"]
 resolver = "3"
 
 [workspace.package]
@@ -24,6 +24,7 @@ veylvik-io = { path = "crates/veylvik-io" }
 veylvik-control = { path = "crates/veylvik-control" }
 veylvik-text = { path = "crates/veylvik-text" }
 veylvik-track = { path = "crates/veylvik-track" }
+veylvik-segment = { path = "crates/veylvik-segment" }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

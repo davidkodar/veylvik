@@ -38,6 +38,11 @@ working desktop portal backend. Remove the package with `sudo pacman -R veylvik`
 project files and recovery data remain in their original locations.
 
 Render time is exact `TICKS / RATE` seconds; `24 24` renders at one second.
+
+`veylvik segment` produces a tracked subject matte from a local AI model, and
+`veylvik models` installs, removes, enables and disables those models. Models
+are never bundled or downloaded without an explicit install. See
+[Subject segmentation](subject-segmentation.md).
 Commands return JSON on stdout, errors as JSON on stderr, and a nonzero exit
 status on failure. Rendering requires Vulkan; no silent CPU fallback occurs.
 

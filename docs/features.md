@@ -348,6 +348,18 @@ Opened with **Add → Effect library…**; searchable by name, description or ca
 - Up to three GPU pyramid levels plus full-resolution refinement; up to 4096 frames.
 - Headless: CLI `track` and MCP `track_surface` with motion, refine, back_to, occlusion, region, area_follows, radii, tolerance, reanchor.
 
+## Subject segmentation
+
+Details: [Subject segmentation](subject-segmentation.md).
+
+- Click-prompted subject mattes from a local AI model (EdgeTAM, Apache-2.0), tracked through the shot; about 30 ms per frame on an RTX 4080.
+- Points that mark or exclude areas (1–32); forward, backward or both directions from the prompted frame; up to 4096 frames.
+- Analyses the rendered source node at composition size, so placement, trims and timing are included.
+- Writes a 16-bit matte sequence (`.veyseq`) beside the project and adds a **Subject matte** Footage node.
+- Smooth edges: model logits are resampled before the sigmoid, never upsampled as a binary mask.
+- Model manager: explicit install with pinned revision, size and SHA-256; uninstall; enable and disable; each model lists its uses, pros, cons, speed, memory and licence.
+- Runs in an isolated worker process on CUDA, with no silent CPU fallback.
+
 ## Export
 
 - **Export current preview…** (Ctrl+E): PNG (SDR sRGB, straight alpha) or OpenEXR (32-bit float RGBA, linear Rec.709, premultiplied, ZIP16).
@@ -391,6 +403,8 @@ Opened with **Add → Effect library…**; searchable by name, description or ca
 - `render-sequence FILE DIRECTORY START END [--format png|exr] [--node] [--crop]`.
 - `render-video FILE OUTPUT.mp4 [--codec h264|hevc10] [--quality] [--size W H] [--fps N D] [--range A B] [--allow-software] [--no-audio] [--audio FILE] [--audio-gain DB]`.
 - `track FILE NEW_FILE SOURCE_UUID START END "corners" ["area"] [--screen-area] [--motion ...] [--no-refine] [--back-to FRAME]`.
+- `segment FILE NEW_FILE SOURCE_UUID FRAME END "x,y x,y,- ..." [--back-to FRAME] [--model ID]`: subject matte sequence and node.
+- `models [install|uninstall|enable|disable ID]`: AI model catalogue and installer.
 - `mcp FILE` (headless) and `mcp --studio [SOCKET|DIRECTORY]` (live relay).
 - JSON on stdout, JSON errors on stderr, non-zero exit on failure.
 

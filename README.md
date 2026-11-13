@@ -48,7 +48,7 @@ The [feature list](docs/features.md) covers everything Veylvik can do, area by a
 
 ## How it is built and tested
 
-Veylvik is written in Rust as a ten-crate workspace, with `unsafe` code forbidden throughout. Rendering compiles the graph into an immutable plan of compute passes and runs it on the GPU through wgpu and Vulkan. The editor is a native egui app that shows those frames from the same Vulkan device, with no copy back to the CPU.
+Veylvik is written in Rust as an eleven-crate workspace, with `unsafe` code forbidden throughout. Rendering compiles the graph into an immutable plan of compute passes and runs it on the GPU through wgpu and Vulkan. The editor is a native egui app that shows those frames from the same Vulkan device, with no copy back to the CPU.
 
 | Crate | Role |
 | --- | --- |
@@ -56,6 +56,7 @@ Veylvik is written in Rust as a ten-crate workspace, with `unsafe` code forbidde
 | `veylvik-render` | Plan compiler, WGSL kernels, vector coverage, frame cache and preview scheduling. |
 | `veylvik-text` | Font shaping, layout and editable outlines. |
 | `veylvik-track` | GPU point and planar tracking, built on the renderer's narrow compute interface. |
+| `veylvik-segment` | Subject mattes from local AI models, run in an isolated worker process, with a verified model installer. |
 | `veylvik-decode` | Hardware-first video decoding into GPU frames. |
 | `veylvik-interop` | Zero-copy hand-off of decoded and encoded video between CUDA, VA-API and Vulkan. |
 | `veylvik-io` | PNG and OpenEXR in and out, sequences, presets, recovery and collection. |
@@ -103,6 +104,7 @@ Read the [MCP reference](docs/reference.md#mcp) for the tools and command schema
 ## Roadmap
 
 - **Klipp integration:** use Veylvik compositions and effect presets inside [Klipp](https://github.com/davidkodar/klipp), the native video editor for Linux, using the project's size, frame rate and footage.
+- **Subject masks:** click a person in the viewer and track a clean matte through the shot (the headless analysis is in place), with GPU edge refinement and edge-band matting.
 - **Tracking:** smoothing and a forward-backward quality measure for planar tracks.
 - More generators, a general particle emitter, and nested groups.
 

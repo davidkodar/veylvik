@@ -1,13 +1,14 @@
 use veylvik_io as assets;
 mod mcp;
 mod outline;
+mod segment;
 mod track;
 mod video_export;
 use std::path::Path;
 use veylvik_document::{Composition, Node, Operation, Time};
 use veylvik_render::{Plan, Region, RenderRequest};
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
-const USAGE: &str = "usage: veylvik open [FILE] [--control-dir DIRECTORY | --no-control] | demo FILE [--motion|--procedural] | import IMAGE.png|IMAGE.exr FILE | outline-text FONT TEXT NEW_FILE [OPTIONS] | collect FILE NEW_DIRECTORY | nodes | check FILE | render FILE OUTPUT.png|OUTPUT.exr [TICKS RATE] [--node UUID] [--crop X Y WIDTH HEIGHT] | render-video FILE OUTPUT.mp4 [OPTIONS] | render-sequence FILE DIRECTORY START END [--format png|exr] [--node UUID] [--crop X Y WIDTH HEIGHT] | track FILE NEW_FILE SOURCE_UUID START END \"X,Y X,Y X,Y X,Y\" [\"AREA X,Y X,Y X,Y X,Y\"] [--screen-area] [--motion auto|perspective|affine|similarity|translation] [--no-refine] [--back-to FRAME] | mcp FILE | mcp --studio [SOCKET|DIRECTORY]";
+const USAGE: &str = "usage: veylvik open [FILE] [--control-dir DIRECTORY | --no-control] | demo FILE [--motion|--procedural] | import IMAGE.png|IMAGE.exr FILE | outline-text FONT TEXT NEW_FILE [OPTIONS] | collect FILE NEW_DIRECTORY | nodes | check FILE | render FILE OUTPUT.png|OUTPUT.exr [TICKS RATE] [--node UUID] [--crop X Y WIDTH HEIGHT] | render-video FILE OUTPUT.mp4 [OPTIONS] | render-sequence FILE DIRECTORY START END [--format png|exr] [--node UUID] [--crop X Y WIDTH HEIGHT] | track FILE NEW_FILE SOURCE_UUID START END \"X,Y X,Y X,Y X,Y\" [\"AREA X,Y X,Y X,Y X,Y\"] [--screen-area] [--motion auto|perspective|affine|similarity|translation] [--no-refine] [--back-to FRAME] | segment FILE NEW_FILE SOURCE_UUID FRAME END \"X,Y X,Y,- ...\" [--back-to FRAME] [--model ID] | models [install|uninstall|enable|disable ID] | mcp FILE | mcp --studio [SOCKET|DIRECTORY]";
 fn run() -> Result<()> {
     let args: Vec<String> = std::env::args().collect();
     match args.get(1).map(String::as_str) {
@@ -110,6 +111,66 @@ fn run() -> Result<()> {
                 &renderer,
                 document.snapshot(),
                 &assets::document_base(input)?,
+                &request,
+            )?;
+            document.apply(document.revision(), &commands)?;
+            document.snapshot().save(output)?;
+            report["node"] = serde_json::json!(node);
+            report["saved"] = serde_json::json!(output);
+            println!("{report}");
+        }
+        Some(veylvik_segment::worker::SUBCOMMAND) if args.len() == 2 => {
+            veylvik_segment::worker::serve(std::io::stdin().lock(), std::io::stdout().lock())?
+        }
+        Some("models") => segment::models_command(&args[2..])?,
+        Some("segment") => {
+            let mut back_to = None;
+            let mut model = None;
+            let mut positional = Vec::new();
+            let mut flags = args.iter();
+            while let Some(arg) = flags.next() {
+                match arg.as_str() {
+                    "--back-to" => {
+                        back_to = Some(
+                            flags
+                                .next()
+                                .ok_or("--back-to needs a frame")?
+                                .parse::<i64>()?,
+                        )
+                    }
+                    "--model" => model = Some(flags.next().ok_or("--model needs an id")?.clone()),
+                    _ => positional.push(arg.clone()),
+                }
+            }
+            let args = positional;
+            if args.len() != 8 {
+                return Err(USAGE.into());
+            }
+            // veylvik segment FILE NEW_FILE SOURCE_UUID FRAME END "x,y x,y,- ..."
+            let (input, output) = (Path::new(&args[2]), Path::new(&args[3]));
+            if output.exists() {
+                return Err("NEW_FILE already exists; choose a new path".into());
+            }
+            let mut args_json = serde_json::json!({"source": args[4], "frame": args[5].parse::<i64>()?,
+                "end": args[6].parse::<i64>()?, "points": segment::points(&args[7])?});
+            if let Some(frame) = back_to {
+                args_json["back_to"] = serde_json::json!(frame);
+            }
+            if let Some(model) = model {
+                args_json["model"] = serde_json::json!(model);
+            }
+            let request = segment::Request::from_json(&args_json)?;
+            let mut document = veylvik_document::Document::new(Composition::load(input)?)?;
+            let renderer = assets::runtime::renderer()?;
+            let project_dir = std::path::absolute(output)?
+                .parent()
+                .ok_or("NEW_FILE needs a directory")?
+                .to_path_buf();
+            let (node, commands, mut report) = segment::run(
+                &renderer,
+                document.snapshot(),
+                &assets::document_base(input)?,
+                &project_dir,
                 &request,
             )?;
             document.apply(document.revision(), &commands)?;
