@@ -135,8 +135,14 @@ impl Studio {
             ui.separator();
             // Reserve only the remaining space so long filenames never push menus offscreen.
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if self.control.is_some() {
-                    ui.weak("MCP").on_hover_text("Local live control is enabled for this editor session.");
+                if let Some(server) = &self.control {
+                    ui.weak("MCP").on_hover_text(format!(
+                        "Assistants can drive this editor through veylvik mcp --studio.\nListening on {}",
+                        server.path().display()
+                    ));
+                } else if let Some(error) = &self.control_error {
+                    ui.weak(egui::RichText::new("MCP").strikethrough())
+                        .on_hover_text(format!("Live control is unavailable: {error}"));
                 }
                 let unavailable = self.project.unavailable_assets().len();
                 if unavailable > 0 {

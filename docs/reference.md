@@ -865,20 +865,35 @@ external file edits are not live-synchronized. Save and render can replace the
 explicit destination path, except for a referenced input image. The MCP client should expose those actions for user
 review. Output currently returns the image path, not inline image content.
 
-To control the open native editor instead, start it with a new private endpoint
-directory, then point an MCP client's stdio command at the proxy:
+To control the open native editor instead, point an MCP client's stdio command at
+the relay. Studio listens by default, so no extra flags are needed:
 
 ```sh
-./target/release/veylvik open example.veylvik --control-dir /tmp/veylvik-live
-# MCP client command, while that editor remains open:
-./target/release/veylvik mcp --studio /tmp/veylvik-live
+./target/release/veylvik open example.veylvik
+# MCP client command; it can start before or after the editor:
+./target/release/veylvik mcp --studio
 ```
 
-Live control is opt-in and uses a local Unix socket, with directory permissions
-0700 and socket permissions 0600. Existing endpoint directories are refused.
-Normal editor shutdown removes its endpoint; after an abnormal exit, use a new
-directory or remove the stale endpoint yourself. One client connects at a time.
-The menu bar shows **MCP** when live control is enabled.
+Studio listens on `$XDG_RUNTIME_DIR/veylvik/control.sock`, or on the path in
+`VEYLVIK_CONTROL_SOCKET` when that is set. The directory is created with
+permissions 0700 and the socket with 0600; an existing directory is accepted only
+if you own it and nobody else can read it. A socket left behind by an editor that
+did not shut down cleanly is detected (nothing answers on it) and replaced, but a
+live one is never taken over: a second editor listens on `control-<PID>.sock` in
+the same directory, and the menu bar's **MCP** tooltip shows the path. Pass that
+path (or a directory containing `control.sock`) as `veylvik mcp --studio PATH`.
+`--control-dir DIRECTORY` puts the socket in another directory, and `--no-control`
+turns live control off for that session. Socket paths are limited to 107 bytes by
+Unix; a longer path is refused with an explanation. If the default socket cannot
+be opened, the editor still starts, without live control, and the struck-through
+**MCP** label explains why.
+
+The relay answers `initialize` and `tools/list` itself, so it can be registered
+permanently with an MCP client. Each tool call opens a fresh connection to the
+editor, which keeps the editor's single client slot free between calls and picks
+up a restarted editor automatically. When no editor is running, a call returns a
+tool error saying so; when another client holds the editor, the call gives up after
+five seconds and says the editor is busy.
 
 Live tools are `inspect`, `graph`, `get_node`, `nodes`, `diagnostics`, `apply`,
 `duplicate_branch`, `add_effect`, `undo`, `redo`, `preview`, and `preview_image`.

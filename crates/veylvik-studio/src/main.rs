@@ -65,17 +65,29 @@ fn main() {
 fn run() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<_> = std::env::args_os().skip(1).collect();
     let mut path = None;
+    // Live control is on by default at the runtime socket; --control-dir picks another
+    // directory and --no-control turns it off for this session.
     let mut control_directory = None;
+    let mut no_control = false;
     let mut index = 0;
     while index < args.len() {
-        if args[index] == "--control-dir" && control_directory.is_none() && index + 1 < args.len() {
+        if args[index] == "--control-dir"
+            && control_directory.is_none()
+            && !no_control
+            && index + 1 < args.len()
+        {
             control_directory = Some(PathBuf::from(&args[index + 1]));
             index += 2;
+        } else if args[index] == "--no-control" && control_directory.is_none() && !no_control {
+            no_control = true;
+            index += 1;
         } else if path.is_none() && !args[index].to_string_lossy().starts_with("--") {
             path = Some(PathBuf::from(&args[index]));
             index += 1;
         } else {
-            return Err("usage: veylvik-studio [FILE] [--control-dir NEW_DIRECTORY]".into());
+            return Err(
+                "usage: veylvik-studio [FILE] [--control-dir DIRECTORY | --no-control]".into(),
+            );
         }
     }
     let render_limits = veylvik_io::runtime::RenderLimits::from_env()?;
@@ -126,20 +138,34 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             })?;
             let display = Display::new(renderer.device(), state.target_format);
             let draft = project.document.snapshot().nodes[&project.selected].clone();
-            let control = if let Some(directory) = control_directory {
-                let context = cc.egui_ctx.clone();
-                Some(veylvik_control::ipc::Server::bind(
-                    &directory,
-                    control::catalog(),
-                    move || context.request_repaint(),
-                )?)
+            let context = cc.egui_ctx.clone();
+            let bind = |socket: &std::path::Path| {
+                veylvik_control::ipc::Server::bind(socket, control::catalog(), move || {
+                    context.request_repaint()
+                })
+            };
+            // An explicitly requested endpoint must work; the default one never blocks the editor.
+            let (control, control_error) = if no_control {
+                (None, None)
+            } else if let Some(directory) = control_directory {
+                (
+                    Some(bind(&directory.join(veylvik_control::ipc::SOCKET_NAME))?),
+                    None,
+                )
             } else {
-                None
+                match veylvik_control::ipc::default_socket().and_then(|socket| bind(&socket)) {
+                    Ok(server) => (Some(server), None),
+                    Err(error) => {
+                        eprintln!("Veylvik: live control unavailable: {error}");
+                        (None, Some(error.to_string()))
+                    }
+                }
             };
             let recovery =
                 recovery::Recovery::new(recovery::default_store()?, &project, cc.egui_ctx.clone());
             let mut app = Studio {
                 control,
+                control_error,
                 preview_images: None,
                 recovery,
                 project,
@@ -211,6 +237,8 @@ enum Leave {
 struct Studio {
     recovery: recovery::Recovery,
     control: Option<veylvik_control::ipc::Server>,
+    /// Why the default live-control socket could not be opened, shown on the menu bar.
+    control_error: Option<String>,
     preview_images: Option<preview_images::Worker>,
     project: Project,
     renderer: Arc<Renderer>,

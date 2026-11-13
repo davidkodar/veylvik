@@ -1,11 +1,12 @@
-//! Opt-in local transport. A private new directory owns one Unix socket.
+//! Local transport: one private Unix socket per editor, owned only by this user.
+//! A stale socket is reclaimed, a live one is never replaced or adopted.
 use crate::{MAX_MESSAGE_BYTES, Protocol, ToolOutput};
 use serde_json::{Value, json};
 use std::{
     fs,
     io::{self, BufRead, BufReader, Write},
     os::unix::{
-        fs::{DirBuilderExt, MetadataExt, PermissionsExt},
+        fs::{DirBuilderExt, FileTypeExt, MetadataExt},
         net::{UnixListener, UnixStream},
     },
     path::{Path, PathBuf},
@@ -15,9 +16,117 @@ use std::{
         mpsc,
     },
     thread::JoinHandle,
-    time::Duration,
+    time::{Duration, Instant},
 };
 pub const SOCKET_NAME: &str = "control.sock";
+/// `sun_path` holds 108 bytes including the terminating NUL.
+pub const MAX_SOCKET_PATH_BYTES: usize = 107;
+/// Overrides where Studio listens and where the relay connects.
+pub const SOCKET_ENV: &str = "VEYLVIK_CONTROL_SOCKET";
+/// `$VEYLVIK_CONTROL_SOCKET`, else `$XDG_RUNTIME_DIR/veylvik/control.sock`.
+/// There is no shared-temp fallback: without a runtime directory live control needs an explicit path.
+pub fn default_socket() -> io::Result<PathBuf> {
+    if let Some(path) = std::env::var_os(SOCKET_ENV).filter(|path| !path.is_empty()) {
+        return Ok(PathBuf::from(path));
+    }
+    let runtime = std::env::var_os("XDG_RUNTIME_DIR")
+        .map(PathBuf::from)
+        .filter(|dir| dir.is_absolute() && dir.is_dir())
+        .ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::NotFound,
+                format!("XDG_RUNTIME_DIR is not set; set {SOCKET_ENV} to a socket path"),
+            )
+        })?;
+    Ok(runtime.join("veylvik").join(SOCKET_NAME))
+}
+/// Accepts a socket path, or a directory holding `control.sock`.
+pub fn resolve_socket(path: &Path) -> PathBuf {
+    if path.is_dir() {
+        path.join(SOCKET_NAME)
+    } else {
+        path.to_path_buf()
+    }
+}
+fn check_length(path: &Path) -> io::Result<()> {
+    let length = path.as_os_str().len();
+    if length > MAX_SOCKET_PATH_BYTES {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!(
+                "control socket path {} is {length} bytes; Unix sockets allow at most {MAX_SOCKET_PATH_BYTES}. Use a shorter directory, such as one under $XDG_RUNTIME_DIR",
+                path.display()
+            ),
+        ));
+    }
+    Ok(())
+}
+fn current_uid() -> io::Result<u32> {
+    Ok(fs::metadata("/proc/self")?.uid())
+}
+/// Create the directory 0700, or accept an existing one only if this user owns it privately.
+/// Returns whether it was created here.
+fn private_directory(directory: &Path) -> io::Result<bool> {
+    match fs::DirBuilder::new().mode(0o700).create(directory) {
+        Ok(()) => return Ok(true),
+        Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {}
+        Err(error) => return Err(error),
+    }
+    let metadata = fs::symlink_metadata(directory)?;
+    if !metadata.is_dir() || metadata.uid() != current_uid()? || metadata.mode() & 0o077 != 0 {
+        return Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            format!(
+                "{} must be a directory owned by you with mode 0700",
+                directory.display()
+            ),
+        ));
+    }
+    Ok(false)
+}
+fn listening(path: &Path) -> bool {
+    UnixStream::connect(path).is_ok()
+}
+/// Bind `path`, replacing only a socket nobody answers on. If another editor is
+/// listening there, bind `control-<pid>.sock` beside it instead.
+fn claim(path: &Path) -> io::Result<(UnixListener, PathBuf)> {
+    check_length(path)?;
+    let path = if listening(path) {
+        let own = path.with_file_name(format!("control-{}.sock", std::process::id()));
+        check_length(&own)?;
+        if listening(&own) {
+            return Err(io::Error::new(
+                io::ErrorKind::AddrInUse,
+                format!("{} is already in use", own.display()),
+            ));
+        }
+        own
+    } else {
+        path.to_path_buf()
+    };
+    match fs::symlink_metadata(&path) {
+        Ok(metadata) if metadata.file_type().is_socket() => fs::remove_file(&path)?,
+        Ok(_) => {
+            return Err(io::Error::new(
+                io::ErrorKind::AlreadyExists,
+                format!(
+                    "{} exists and is not a socket; refusing to replace it",
+                    path.display()
+                ),
+            ));
+        }
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error),
+    }
+    // The private directory guards the moment before the socket's own mode is narrowed.
+    let listener = UnixListener::bind(&path)?;
+    use std::os::unix::fs::PermissionsExt;
+    if let Err(error) = fs::set_permissions(&path, fs::Permissions::from_mode(0o600)) {
+        let _ = fs::remove_file(&path);
+        return Err(error);
+    }
+    Ok((listener, path))
+}
 pub struct Request {
     pub name: String,
     pub arguments: Value,
@@ -35,21 +144,23 @@ pub struct Server {
     requests: mpsc::Receiver<Request>,
     stop: Arc<AtomicBool>,
     thread: Option<JoinHandle<()>>,
-    _endpoint: Endpoint,
+    endpoint: Endpoint,
 }
 struct Endpoint {
-    directory: PathBuf,
-    directory_id: (u64, u64),
-    socket_id: Option<(u64, u64)>,
+    socket: PathBuf,
+    socket_id: (u64, u64),
+    /// Set only when this server created the directory; it is removed again if left empty.
+    directory: Option<(PathBuf, (u64, u64))>,
 }
 impl Drop for Endpoint {
     fn drop(&mut self) {
-        let socket = self.directory.join(SOCKET_NAME);
-        if self.socket_id.is_some() && identity(&socket).ok() == self.socket_id {
-            let _ = fs::remove_file(socket);
+        if identity(&self.socket).ok() == Some(self.socket_id) {
+            let _ = fs::remove_file(&self.socket);
         }
-        if identity(&self.directory).ok() == Some(self.directory_id) {
-            let _ = fs::remove_dir(&self.directory);
+        if let Some((directory, id)) = &self.directory
+            && identity(directory).ok() == Some(*id)
+        {
+            let _ = fs::remove_dir(directory);
         }
     }
 }
@@ -58,25 +169,39 @@ fn identity(path: &Path) -> io::Result<(u64, u64)> {
     Ok((metadata.dev(), metadata.ino()))
 }
 impl Server {
-    /// Refuse existing directories. Never replace or adopt a pre-existing endpoint.
+    /// Listen on `socket` (see [`claim`]), creating its parent directory 0700 if needed.
     /// One client is served at a time; requests are dispatched to the host thread.
     pub fn bind(
-        directory: &Path,
+        socket: &Path,
         catalog: Value,
         wake: impl Fn() + Send + 'static,
     ) -> io::Result<Self> {
-        fs::DirBuilder::new().mode(0o700).create(directory)?;
-        let directory_id = identity(directory)?;
-        let directory = directory.canonicalize()?;
-        let mut endpoint = Endpoint {
-            directory,
-            directory_id,
-            socket_id: None,
+        let directory = socket
+            .parent()
+            .filter(|parent| !parent.as_os_str().is_empty())
+            .ok_or_else(|| {
+                io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "control socket needs a directory",
+                )
+            })?;
+        check_length(socket)?;
+        let created = private_directory(directory)?;
+        let (listener, socket) = match claim(socket) {
+            // Another editor may remove an empty directory it created between the check and the bind.
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                private_directory(directory)?;
+                claim(socket)?
+            }
+            result => result?,
         };
-        let socket = endpoint.directory.join(SOCKET_NAME);
-        let listener = UnixListener::bind(&socket)?;
-        endpoint.socket_id = Some(identity(&socket)?);
-        fs::set_permissions(&socket, fs::Permissions::from_mode(0o600))?;
+        let endpoint = Endpoint {
+            socket_id: identity(&socket)?,
+            directory: created
+                .then(|| identity(directory).map(|id| (directory.to_path_buf(), id)))
+                .transpose()?,
+            socket,
+        };
         listener.set_nonblocking(true)?;
         let (sender, requests) = mpsc::sync_channel(8);
         let stop = Arc::new(AtomicBool::new(false));
@@ -100,8 +225,12 @@ impl Server {
             requests,
             stop,
             thread: Some(thread),
-            _endpoint: endpoint,
+            endpoint,
         })
+    }
+    /// Where this editor actually listens, which differs from the request when another editor held it.
+    pub fn path(&self) -> &Path {
+        &self.endpoint.socket
     }
     pub fn try_recv(&self) -> Option<Request> {
         self.requests.try_recv().ok()
@@ -192,27 +321,176 @@ fn read_message(input: &mut impl BufRead, stop: &AtomicBool) -> io::Result<Optio
     }
 }
 
+/// How long a call waits for Studio to accept it; another client may be holding the session.
+const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(5);
+const CALL_TIMEOUT: Duration = Duration::from_secs(120);
+/// Stdio MCP server for the open editor. It answers the handshake and tool list itself, so an
+/// assistant can start it before Studio. Each tool call opens its own connection to the socket,
+/// so restarts are picked up and Studio's single client slot is free between calls.
+pub fn relay(socket: &Path, mut input: impl BufRead, mut output: impl Write) -> io::Result<()> {
+    let mut protocol = Protocol::default();
+    let stop = AtomicBool::new(false);
+    while let Some(bytes) = read_message(&mut input, &stop)? {
+        let response = match serde_json::from_slice::<Value>(&bytes) {
+            Ok(message)
+                if protocol.is_ready()
+                    && message["method"] == "tools/call"
+                    && message
+                        .get("id")
+                        .is_some_and(|id| id.is_string() || id.is_number()) =>
+            {
+                match call_studio(socket, &message) {
+                    Ok(reply) => {
+                        output.write_all(&reply)?;
+                        output.flush()?;
+                        continue;
+                    }
+                    Err(error) => Some(
+                        json!({"jsonrpc":"2.0","id":message["id"],"result":{"content":[{"type":"text","text":error}],"isError":true}}),
+                    ),
+                }
+            }
+            Ok(message) => protocol.handle_output(message, crate::live::catalog(), |_, _| {
+                Err("Veylvik Studio is not connected".into())
+            }),
+            Err(_) => Some(
+                json!({"jsonrpc":"2.0","id":null,"error":{"code":-32700,"message":"invalid JSON"}}),
+            ),
+        };
+        if let Some(response) = response {
+            serde_json::to_writer(&mut output, &response)?;
+            writeln!(output)?;
+            output.flush()?;
+        }
+    }
+    Ok(())
+}
+fn not_running(socket: &Path) -> String {
+    format!(
+        "Veylvik Studio is not running (nothing listens on {}). Start Studio and try again.",
+        socket.display()
+    )
+}
+/// One connection per call: handshake, forward the request unchanged, return Studio's reply line.
+fn call_studio(socket: &Path, message: &Value) -> Result<Vec<u8>, String> {
+    check_length(socket).map_err(|error| error.to_string())?;
+    let metadata = match fs::symlink_metadata(socket) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Err(not_running(socket)),
+        Err(error) => return Err(format!("{}: {error}", socket.display())),
+    };
+    let uid = current_uid().map_err(|error| error.to_string())?;
+    if !metadata.file_type().is_socket() || metadata.uid() != uid {
+        return Err(format!(
+            "{} is not a control socket owned by you; refusing to connect",
+            socket.display()
+        ));
+    }
+    let stream = UnixStream::connect(socket).map_err(|error| match error.kind() {
+        // A socket left behind by an editor that did not shut down cleanly.
+        io::ErrorKind::ConnectionRefused => not_running(socket),
+        _ => format!("cannot connect to {}: {error}", socket.display()),
+    })?;
+    let setup = |stream: &UnixStream| -> io::Result<(UnixStream, BufReader<UnixStream>)> {
+        stream.set_read_timeout(Some(Duration::from_millis(200)))?;
+        stream.set_write_timeout(Some(HANDSHAKE_TIMEOUT))?;
+        Ok((stream.try_clone()?, BufReader::new(stream.try_clone()?)))
+    };
+    let (mut writer, mut reader) = setup(&stream).map_err(|error| error.to_string())?;
+    let lost = |error: io::Error| format!("lost the connection to Veylvik Studio: {error}");
+    writeln!(
+        writer,
+        "{}",
+        json!({"jsonrpc":"2.0","id":"veylvik-relay","method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"veylvik-relay","version":env!("CARGO_PKG_VERSION")}}})
+    )
+    .map_err(lost)?;
+    match read_reply(&mut reader, Instant::now() + HANDSHAKE_TIMEOUT) {
+        Ok(_) => {}
+        Err(error) if error.kind() == io::ErrorKind::TimedOut => {
+            return Err(
+                "Veylvik Studio is busy with another MCP client; try again when it disconnects."
+                    .into(),
+            );
+        }
+        Err(error) => return Err(lost(error)),
+    }
+    writeln!(
+        writer,
+        "{}",
+        json!({"jsonrpc":"2.0","method":"notifications/initialized"})
+    )
+    .map_err(lost)?;
+    writeln!(writer, "{message}").map_err(lost)?;
+    read_reply(&mut reader, Instant::now() + CALL_TIMEOUT).map_err(|error| {
+        format!(
+            "{}; the call may not have completed, so inspect before retrying",
+            lost(error)
+        )
+    })
+}
+fn read_reply(input: &mut impl BufRead, deadline: Instant) -> io::Result<Vec<u8>> {
+    let mut bytes = Vec::new();
+    loop {
+        let limit = (MAX_MESSAGE_BYTES + 1 - bytes.len()) as u64;
+        match io::Read::take(&mut *input, limit).read_until(b'\n', &mut bytes) {
+            Ok(0) => return Err(io::ErrorKind::UnexpectedEof.into()),
+            Ok(_) if bytes.last() == Some(&b'\n') => return Ok(bytes),
+            Ok(_) if bytes.len() > MAX_MESSAGE_BYTES => {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "reply exceeds 4 MiB",
+                ));
+            }
+            Ok(_) => {}
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    io::ErrorKind::WouldBlock
+                        | io::ErrorKind::TimedOut
+                        | io::ErrorKind::Interrupted
+                ) =>
+            {
+                if Instant::now() >= deadline {
+                    return Err(io::ErrorKind::TimedOut.into());
+                }
+            }
+            Err(error) => return Err(error),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::os::unix::fs::PermissionsExt;
+    /// A fresh path per test, under the runtime directory: a build's scratch TMPDIR can exceed `sun_path`.
     fn directory() -> PathBuf {
-        std::env::temp_dir().join(format!(
+        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let base = std::env::var_os("XDG_RUNTIME_DIR")
+            .map(PathBuf::from)
+            .filter(|dir| dir.is_dir())
+            .unwrap_or_else(|| PathBuf::from("/tmp"));
+        let directory = base.join(format!(
             "veylvik-control-{}-{}",
             std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ))
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        ));
+        let _ = fs::remove_dir_all(&directory);
+        directory
     }
     #[test]
     fn private_transport_preserves_fragmented_messages_and_dispatches_on_host() {
         let directory = directory();
         let (wake, awakened) = mpsc::channel();
-        let server = Server::bind(&directory, json!({"tools":[]}), move || {
-            let _ = wake.send(());
-        })
+        let server = Server::bind(
+            &directory.join(SOCKET_NAME),
+            json!({"tools":[]}),
+            move || {
+                let _ = wake.send(());
+            },
+        )
         .unwrap();
+        assert_eq!(server.path(), directory.join(SOCKET_NAME));
         assert_eq!(
             fs::metadata(&directory).unwrap().permissions().mode() & 0o777,
             0o700
@@ -225,7 +503,13 @@ mod tests {
                 & 0o777,
             0o600
         );
-        assert!(Server::bind(&directory, json!({}), || {}).is_err());
+        // A second editor never takes over a live socket; it listens beside it.
+        let second = Server::bind(&directory.join(SOCKET_NAME), json!({}), || {}).unwrap();
+        assert_eq!(
+            second.path(),
+            directory.join(format!("control-{}.sock", std::process::id()))
+        );
+        drop(second);
         let path = directory.join(SOCKET_NAME);
         let client = std::thread::spawn(move || {
             let mut socket = UnixStream::connect(path).unwrap();
@@ -286,12 +570,124 @@ mod tests {
         let input = vec![b'x'; MAX_MESSAGE_BYTES + 2];
         assert!(read_message(&mut std::io::Cursor::new(input), &stop).is_err());
         let directory = directory();
-        let server = Server::bind(&directory, json!({"tools":[]}), || {}).unwrap();
         let socket = directory.join(SOCKET_NAME);
+        let server = Server::bind(&socket, json!({"tools":[]}), || {}).unwrap();
         fs::remove_file(&socket).unwrap();
         fs::write(&socket, b"replacement").unwrap();
         drop(server);
         assert_eq!(fs::read(&socket).unwrap(), b"replacement");
         fs::remove_dir_all(directory).unwrap();
+    }
+    #[test]
+    fn stale_sockets_are_reclaimed_but_other_files_and_shared_directories_are_refused() {
+        let directory = directory();
+        fs::DirBuilder::new()
+            .mode(0o700)
+            .create(&directory)
+            .unwrap();
+        let socket = directory.join(SOCKET_NAME);
+        // A crashed editor leaves its socket file with nobody listening.
+        drop(UnixListener::bind(&socket).unwrap());
+        assert!(UnixStream::connect(&socket).is_err());
+        let server = Server::bind(&socket, json!({}), || {}).unwrap();
+        assert_eq!(server.path(), socket);
+        assert!(UnixStream::connect(&socket).is_ok());
+        drop(server);
+        assert!(!socket.exists());
+        // The directory existed before, so it is kept.
+        assert!(directory.is_dir());
+        fs::write(&socket, b"not a socket").unwrap();
+        let error = Server::bind(&socket, json!({}), || {}).err().unwrap();
+        assert!(error.to_string().contains("not a socket"), "{error}");
+        assert_eq!(fs::read(&socket).unwrap(), b"not a socket");
+        fs::remove_file(&socket).unwrap();
+        fs::set_permissions(&directory, fs::Permissions::from_mode(0o755)).unwrap();
+        let error = Server::bind(&socket, json!({}), || {}).err().unwrap();
+        assert_eq!(error.kind(), io::ErrorKind::PermissionDenied);
+        fs::remove_dir_all(directory).unwrap();
+    }
+    #[test]
+    fn socket_paths_beyond_sun_path_are_explained() {
+        let long = PathBuf::from("/").join("d".repeat(120)).join(SOCKET_NAME);
+        let error = Server::bind(&long, json!({}), || {}).err().unwrap();
+        assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
+        assert!(error.to_string().contains("at most 107"), "{error}");
+        assert!(!long.parent().unwrap().exists());
+    }
+    #[test]
+    fn relay_lists_tools_without_studio_and_connects_per_call() {
+        let directory = directory();
+        let socket = directory.join(SOCKET_NAME);
+        let messages = |calls: &[u64]| {
+            let mut input = format!(
+                "{}\n{}\n{}\n",
+                json!({"jsonrpc":"2.0","id":1,"method":"initialize"}),
+                json!({"jsonrpc":"2.0","method":"notifications/initialized"}),
+                json!({"jsonrpc":"2.0","id":2,"method":"tools/list"})
+            );
+            for id in calls {
+                input += &format!(
+                    "{}\n",
+                    json!({"jsonrpc":"2.0","id":id,"method":"tools/call","params":{"name":"inspect","arguments":{}}})
+                );
+            }
+            input
+        };
+        let run = |input: String| -> Vec<Value> {
+            let mut output = Vec::new();
+            relay(&socket, input.as_bytes(), &mut output).unwrap();
+            String::from_utf8(output)
+                .unwrap()
+                .lines()
+                .map(|line| serde_json::from_str(line).unwrap())
+                .collect()
+        };
+        let offline = run(messages(&[3]));
+        assert_eq!(offline[0]["result"]["serverInfo"]["name"], "veylvik");
+        assert_eq!(&offline[1]["result"], crate::live::catalog());
+        assert_eq!(offline[2]["id"], 3);
+        assert_eq!(offline[2]["result"]["isError"], true);
+        assert!(
+            offline[2]["result"]["content"][0]["text"]
+                .as_str()
+                .unwrap()
+                .contains("not running")
+        );
+        let server = Server::bind(&socket, json!({"tools":[]}), || {}).unwrap();
+        let host = std::thread::spawn(move || {
+            for revision in [4, 5] {
+                let request = loop {
+                    if let Some(request) = server.try_recv() {
+                        break request;
+                    }
+                    std::thread::sleep(Duration::from_millis(5));
+                };
+                assert_eq!(request.name, "inspect");
+                request.respond(Ok(json!({"revision":revision})));
+            }
+            server
+        });
+        let online = run(messages(&[7, 8]));
+        assert_eq!(online[2]["id"], 7);
+        assert_eq!(online[2]["result"]["structuredContent"]["revision"], 4);
+        assert_eq!(online[3]["id"], 8);
+        assert_eq!(online[3]["result"]["structuredContent"]["revision"], 5);
+        let server = host.join().unwrap();
+        // Between calls the editor's single client slot is free for another client.
+        let mut other = UnixStream::connect(server.path()).unwrap();
+        other
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .unwrap();
+        writeln!(
+            other,
+            "{}",
+            json!({"jsonrpc":"2.0","id":1,"method":"initialize"})
+        )
+        .unwrap();
+        let mut line = String::new();
+        BufReader::new(other).read_line(&mut line).unwrap();
+        assert!(line.contains("protocolVersion"));
+        drop(server);
+        assert!(!directory.exists());
     }
 }

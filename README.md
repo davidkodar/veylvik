@@ -93,7 +93,7 @@ The toolchain is pinned to Rust 1.98.1 in `rust-toolchain.toml`. File dialogs us
 
 `veylvik mcp` exposes a project to any MCP-compatible assistant. It can inspect the graph, read the node catalogue with its schemas, apply atomic batches of edits with dry runs, insert presets, undo, and render frames or sequences. Every change is guarded by the document revision, and a batch becomes a single undo step.
 
-Start the editor with `--control-dir`, and `veylvik mcp --studio` drives the open editor live through a private local socket. Remote edits appear in the editor and share its undo history. **Live control is opt-in**, and the assistant you connect may use a local or cloud model depending on your MCP client.
+`veylvik mcp --studio` drives the open editor live through a private local socket that Studio opens in your runtime directory. Register it once with your MCP client and it finds the editor whenever it is running. Remote edits appear in the editor and share its undo history. Start Studio with `--no-control` to turn live control off, and keep in mind that the assistant you connect may use a local or cloud model depending on your MCP client.
 
 Read the [MCP reference](docs/reference.md#mcp) for the tools and command schema.
 

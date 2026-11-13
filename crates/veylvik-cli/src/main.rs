@@ -6,7 +6,7 @@ use std::path::Path;
 use veylvik_document::{Composition, Node, Operation, Time};
 use veylvik_render::{Plan, Region, RenderRequest};
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
-const USAGE: &str = "usage: veylvik open [FILE] [--control-dir NEW_DIRECTORY] | demo FILE [--motion|--procedural] | import IMAGE.png|IMAGE.exr FILE | outline-text FONT TEXT NEW_FILE [OPTIONS] | collect FILE NEW_DIRECTORY | nodes | check FILE | render FILE OUTPUT.png|OUTPUT.exr [TICKS RATE] [--node UUID] [--crop X Y WIDTH HEIGHT] | render-video FILE OUTPUT.mp4 [OPTIONS] | render-sequence FILE DIRECTORY START END [--format png|exr] [--node UUID] [--crop X Y WIDTH HEIGHT] | mcp FILE | mcp --studio DIRECTORY";
+const USAGE: &str = "usage: veylvik open [FILE] [--control-dir DIRECTORY | --no-control] | demo FILE [--motion|--procedural] | import IMAGE.png|IMAGE.exr FILE | outline-text FONT TEXT NEW_FILE [OPTIONS] | collect FILE NEW_DIRECTORY | nodes | check FILE | render FILE OUTPUT.png|OUTPUT.exr [TICKS RATE] [--node UUID] [--crop X Y WIDTH HEIGHT] | render-video FILE OUTPUT.mp4 [OPTIONS] | render-sequence FILE DIRECTORY START END [--format png|exr] [--node UUID] [--crop X Y WIDTH HEIGHT] | mcp FILE | mcp --studio [SOCKET|DIRECTORY]";
 fn run() -> Result<()> {
     let args: Vec<String> = std::env::args().collect();
     match args.get(1).map(String::as_str) {
@@ -22,16 +22,16 @@ fn run() -> Result<()> {
                 return Err("studio exited with an error".into());
             }
         }
-        Some("mcp") if args.len() == 4 && args[2] == "--studio" => {
-            use std::os::unix::net::UnixStream;
-            let mut stream =
-                UnixStream::connect(Path::new(&args[3]).join(veylvik_control::ipc::SOCKET_NAME))?;
-            let mut writer = stream.try_clone()?;
-            std::thread::spawn(move || {
-                let _ = relay(&mut std::io::stdin().lock(), &mut writer);
-                let _ = writer.shutdown(std::net::Shutdown::Write);
-            });
-            relay(&mut stream, &mut std::io::stdout().lock())?;
+        Some("mcp") if matches!(args.len(), 3 | 4) && args[2] == "--studio" => {
+            let socket = match args.get(3) {
+                Some(path) => veylvik_control::ipc::resolve_socket(Path::new(path)),
+                None => veylvik_control::ipc::default_socket()?,
+            };
+            veylvik_control::ipc::relay(
+                &socket,
+                std::io::stdin().lock(),
+                std::io::stdout().lock(),
+            )?;
         }
         Some("mcp") if args.len() == 3 => mcp::serve(
             Composition::load(Path::new(&args[2]))?,
@@ -238,21 +238,6 @@ fn render_options(
         region.validate(doc.width, doc.height)?;
     }
     Ok((output.unwrap_or(doc.output), request))
-}
-// RPC must flush each received chunk even when the next read waits indefinitely.
-fn relay(input: &mut impl std::io::Read, output: &mut impl std::io::Write) -> std::io::Result<()> {
-    let mut buffer = [0; 8192];
-    loop {
-        match input.read(&mut buffer) {
-            Ok(0) => return Ok(()),
-            Ok(count) => {
-                output.write_all(&buffer[..count])?;
-                output.flush()?;
-            }
-            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => {}
-            Err(error) => return Err(error),
-        }
-    }
 }
 fn main() {
     if let Err(e) = run() {

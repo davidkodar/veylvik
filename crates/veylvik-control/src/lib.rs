@@ -1,6 +1,7 @@
 //! Shared bounded MCP framing and lifecycle for headless and live hosts.
 #[cfg(unix)]
 pub mod ipc;
+pub mod live;
 use serde_json::{Value, json};
 use std::io::{BufRead, Write};
 pub const MAX_MESSAGE_BYTES: usize = 4 * 1024 * 1024;
@@ -40,6 +41,10 @@ pub struct Protocol {
     ready: bool,
 }
 impl Protocol {
+    /// The client has finished the initialize handshake.
+    pub fn is_ready(&self) -> bool {
+        self.ready
+    }
     pub fn handle(
         &mut self,
         message: Value,
