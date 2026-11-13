@@ -22,6 +22,18 @@ pub(super) fn frame(time: Time, fps: Time, count: u32) -> Option<i64> {
     i64::try_from((numerator + denominator / 2) / denominator).ok()
 }
 
+// Choose whole-frame intervals with enough room for readable labels at any duration.
+fn tick_step(count: u32, width: f32) -> u32 {
+    let target = (count.saturating_sub(1) as f64 / (width as f64 / 64.).max(1.)).max(1.);
+    let power = 10_f64.powf(target.log10().floor());
+    [1., 2., 5., 10.]
+        .into_iter()
+        .map(|m| (m * power) as u32)
+        .find(|s| f64::from(*s) >= target)
+        .unwrap_or(u32::MAX)
+        .max(1)
+}
+
 impl Keys {
     pub fn sync(&mut self, doc: &Composition, revision: u64, selected: NodeId) {
         if self.source == Some((revision, selected)) {
@@ -93,7 +105,7 @@ impl Keys {
             }
         }
         let (rect, response) = ui.allocate_exact_size(
-            egui::vec2(ui.available_width().max(40.0), 24.0),
+            egui::vec2(ui.available_width().max(40.0), 44.0),
             egui::Sense::click_and_drag(),
         );
         let rect = rect.shrink2(egui::vec2(4.0, 2.0));
@@ -101,17 +113,37 @@ impl Keys {
         let x = |frame: i64| rect.left() + frame as f32 / end * rect.width();
         let painter = ui.painter();
         painter.rect_filled(rect, 2.0, egui::Color32::from_rgb(28, 32, 40));
-        for tick in 0..=10 {
-            let at = rect.left() + rect.width() * tick as f32 / 10.0;
+        let step = tick_step(count, rect.width());
+        for frame in (0..count).step_by(step as usize) {
+            let at = x(i64::from(frame));
             painter.vline(
                 at,
-                rect.bottom() - 3.0..=rect.bottom(),
-                (1.0, egui::Color32::from_gray(75)),
+                rect.top() + 15.0..=rect.bottom(),
+                (1., egui::Color32::from_gray(65)),
             );
+            painter.text(
+                egui::pos2(at + 2., rect.top()),
+                egui::Align2::LEFT_TOP,
+                frame.to_string(),
+                egui::FontId::proportional(11.),
+                ui.visuals().weak_text_color(),
+            );
+            if step >= 5 {
+                for minor in 1..5 {
+                    let f = u64::from(frame) + u64::from(step) * minor / 5;
+                    if f < u64::from(count) {
+                        painter.vline(
+                            x(f as i64),
+                            rect.bottom() - 4. ..=rect.bottom(),
+                            (1., egui::Color32::from_gray(65)),
+                        );
+                    }
+                }
+            }
         }
         painter.hline(
             rect.x_range(),
-            rect.center().y,
+            rect.bottom() - 10.,
             (1.0, egui::Color32::from_gray(70)),
         );
         if (0..i64::from(count)).contains(&current) {
@@ -122,7 +154,7 @@ impl Keys {
         for frame in &self.frames {
             let at = x(*frame).round();
             if previous.is_none_or(|last: f32| at - last >= 6.0) || *frame == current {
-                let c = egui::pos2(at, rect.center().y);
+                let c = egui::pos2(at, rect.bottom() - 10.);
                 let colour = if *frame == current {
                     egui::Color32::from_rgb(239, 99, 109)
                 } else {
@@ -150,12 +182,21 @@ impl Keys {
                 .filter_map(|i| self.frames.get(i).copied())
                 .min_by_key(|f| f.abs_diff(target))
         });
-        if response.clicked() || response.dragged() {
-            seek = nearest;
+        if (response.clicked() || response.dragged())
+            && let Some(pointer) = response.interact_pointer_pos()
+        {
+            let target = ((pointer.x - rect.left()) / rect.width() * end)
+                .round()
+                .clamp(0., count.saturating_sub(1) as f32) as i64;
+            seek = Some(
+                nearest
+                    .filter(|f| (x(*f) - pointer.x).abs() <= 7.)
+                    .unwrap_or(target),
+            );
         }
         response.on_hover_text(match nearest {
             Some(frame) => format!("Selected node: {} keyed frames. Click to seek frame {frame}.\nApplied keys only; subframe keys use the nearest frame. Keys outside the composition are hidden.", self.frames.len()),
-            None => "No applied scalar keys inside this composition on the selected node.".into(),
+            None => "Frames · click or drag to scrub. Select an animated node to see its keyframes.".into(),
         });
         seek
     }
@@ -165,6 +206,14 @@ impl Keys {
 mod tests {
     use super::*;
     use veylvik_document::{Key, Node, Operation, Scalar};
+    #[test]
+    fn ruler_intervals_are_readable_whole_frames() {
+        assert_eq!(tick_step(96, 800.), 10);
+        assert_eq!(tick_step(96, 300.), 50);
+        assert_eq!(tick_step(1, 800.), 1);
+        assert_eq!(tick_step(10, 800.), 1);
+        assert!(tick_step(u32::MAX, 40.) > 0);
+    }
     #[test]
     fn rational_frames_and_bounds() {
         let fps = Time {

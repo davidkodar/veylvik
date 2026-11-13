@@ -27,3 +27,14 @@ Veylvik bundles Inter Regular and Semibold for its interface. Inter 4.1 is from
 https://github.com/rsms/inter and is distributed under the SIL Open Font License
 1.1, included alongside the font assets and in the installed package's licences.
 User text fonts remain independent of the interface font.
+
+Selected text has an outline box in the viewer. Drag its centre cross to move,
+its eight square handles to resize, or the round handle above it to rotate.
+Resizing keeps the opposite handle fixed. Hold Shift, or enable linked scale in
+Transform, to preserve proportions. Double-click the text to edit its wording.
+Layout-box editing remains a separate Text tools option for wrapping paragraphs.
+
+The keyframe strip uses labelled frame ticks that adapt to the available width
+and composition duration. Click or drag anywhere on the ruler to scrub; clicking
+near a keyframe snaps to it. The previous/next key buttons still navigate the
+selected node's applied keys.

@@ -151,6 +151,9 @@ pub fn show(
     operation: &mut Operation,
     time: Time,
 ) -> Result<bool> {
+    if matches!(operation, Operation::Text(_)) {
+        return crate::text_handles::show(ui, canvas, transform, image, operation, time);
+    }
     let geometry = Geometry::at(operation, image, time)?;
     let [ox, oy, sx, sy] = transform.0;
     let scale = egui::vec2(

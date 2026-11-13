@@ -42,6 +42,7 @@ mod showcase_gallery;
 mod subject;
 mod surface;
 mod text_effects;
+mod text_handles;
 mod text_outline;
 mod text_viewer;
 mod title_styles;
@@ -2868,6 +2869,7 @@ impl eframe::App for Studio {
                                     Ok(changed) => {
                                         if changed
                                             && self.text_viewer.snap
+                                            && ui.ctx().data(|d| d.get_temp::<bool>(egui::Id::new("text-box-moving")).unwrap_or(false))
                                             && matches!(
                                                 self.draft.operation,
                                                 Operation::Text(veylvik_document::nodes::Text { .. })
