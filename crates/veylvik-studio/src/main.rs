@@ -19,6 +19,7 @@ mod key_timeline;
 mod media_controls;
 mod media_import;
 mod menus;
+mod models_window;
 mod node_clipboard;
 mod node_finder;
 mod node_palette;
@@ -36,6 +37,7 @@ mod recovery;
 mod sequence;
 mod shape_animation;
 mod showcase_gallery;
+mod subject;
 mod surface;
 mod text_effects;
 mod text_outline;
@@ -210,6 +212,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 video_export: video_export::Controls::default(),
                 tracking: tracking::Controls::default(),
                 planar: planar::Controls::default(),
+                subject: subject::Controls::default(),
+                models: models_window::ModelsWindow::default(),
                 outline_controls: text_outline::Controls::default(),
                 composition_controls: composition::Controls::default(),
                 media_import: None,
@@ -284,6 +288,8 @@ struct Studio {
     video_export: video_export::Controls,
     tracking: tracking::Controls,
     planar: planar::Controls,
+    subject: subject::Controls,
+    models: models_window::ModelsWindow,
     outline_controls: text_outline::Controls,
     composition_controls: composition::Controls,
     media_import: Option<media_import::Pending>,
@@ -1230,12 +1236,14 @@ impl Studio {
         self.video_export.active = None;
         self.tracking.active = None;
         self.planar.active = None;
+        self.subject.active = None;
         if self.outline_controls.pending {
             self.outline_controls.pending = false;
             self.outline_controls.open = !matches!(&result, Ok(Completed::Outlined(_)));
         }
         match result {
             Ok(Completed::PlanarTracked(result)) => self.planar_completed(result),
+            Ok(Completed::Segmented(result)) => self.subject_completed(*result),
             Ok(Completed::Tracked(result)) => self.tracking_completed(result),
             Ok(Completed::Cancelled) => {
                 self.after_save = None;
@@ -1576,6 +1584,13 @@ impl Studio {
             .clicked()
         {
             self.begin_planar();
+        }
+        if ui
+            .button("Select subject…")
+            .on_hover_text("Click a person or object to cut it out, track it through the shot, replace the background or put layers behind it")
+            .clicked()
+        {
+            self.begin_subject();
         }
         ui.label(
             if matches!(
@@ -2630,7 +2645,7 @@ impl eframe::App for Studio {
                         );
                         if !self.text_viewer.active
                             && self.picking.is_none()
-                            && !self.tracking.open && !self.planar.open
+                            && !self.tracking.open && !self.planar.open && !self.subject.open
                             && !self.path_pen.active
                             && !(self.path_transform.active
                                 && matches!(self.draft.operation, Operation::Path(veylvik_document::nodes::Path { .. }))
@@ -2748,6 +2763,13 @@ impl eframe::App for Studio {
                         if self.planar.open && self.planar.source == self.project.preview && self.displayed_ticket == self.wanted {
                             self.planar.overlay(ui, canvas, transform, self.project.frame, self.project.document.snapshot().frame_rate);
                         }
+                        if self.subject.open
+                            && self.subject.source == self.project.preview
+                            && self.displayed_ticket == self.wanted
+                            && self.subject.overlay(ui, canvas, transform, self.project.frame)
+                        {
+                            self.preview_subject(&ctx);
+                        }
                         if self.tracking.open && self.tracking.source == self.project.preview && self.displayed_ticket == self.wanted {
                             self.tracking.overlay(ui, canvas, transform, image, self.project.frame, self.project.document.snapshot().frame_rate);
                         }
@@ -2757,7 +2779,7 @@ impl eframe::App for Studio {
                             .unwrap_or(self.project.document.snapshot().output);
                         if !self.playing
                             && self.picking.is_none()
-                            && !self.tracking.open && !self.planar.open
+                            && !self.tracking.open && !self.planar.open && !self.subject.open
                             && (self.displayed_ticket == self.wanted
                                 || matches!(
                                     self.draft.operation,
@@ -2949,6 +2971,8 @@ impl eframe::App for Studio {
         }
         self.tracking_window(&ctx);
         self.planar_window(&ctx);
+        self.subject_window(&ctx);
+        self.models.show(&ctx);
         if let Some(settings) = self.video_export.show(
             &ctx,
             self.project.document.snapshot(),

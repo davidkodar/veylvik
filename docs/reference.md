@@ -211,6 +211,10 @@ and explicit edits still replace obsolete requests. Render errors stop playback.
 **View exposure** adjusts only the display by −16 to +16 stops. **Alpha** shows
 coverage as grayscale, independent of exposure; **Reset view** restores normal
 color viewing. These controls do not change the document, history or exports.
+**Select subject…** (Inspector or **Tools**) cuts out a person or object from a few
+clicks in the viewer and tracks it through the shot; **Tools → AI models…** installs,
+removes, enables and describes the local models it uses. See
+[Subject segmentation](subject-segmentation.md).
 Scroll over the viewer to zoom around the pointer and drag to pan. **Fit** or
 a double-click centers the whole frame; **100%** maps one image pixel to one
 physical display pixel, including on scaled displays. Navigation changes only

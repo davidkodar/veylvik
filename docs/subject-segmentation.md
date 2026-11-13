@@ -5,10 +5,40 @@ shot by a local AI model. The analysis runs once, like planar tracking, and the
 result is an ordinary matte sequence that any node can use. Nothing leaves the
 computer.
 
-Available today: the `veylvik segment` command, the model manager, and the
-**Refine matte** node for the edge. The Studio workflow (clicking in the viewer,
-**Track subject**, and one-click background replacement) and edge-band matting
-with a dedicated matting model follow.
+Edge-band matting with a dedicated matting model, for fine hair, follows.
+
+## In Studio
+
+1. Select the footage node and choose **Select subject…** in the Inspector, or
+   **Tools → Select subject…**. The first time, the window offers to install
+   the EdgeTAM model (65 MB).
+2. Click the subject in the viewer. Each click shows a blue preview mask within
+   a fraction of a second. Right-click or Alt-click excludes an area. A few
+   clicks spread over a person (head, body, legs) select them whole. **Undo
+   point** and **Clear** step back. Points belong to the frame they were placed
+   on; clicking on another frame starts a new selection.
+3. Choose the frame to track to, optionally **Also track back to the start**,
+   and **Track subject**. Progress shows in the window; **Stop** keeps the
+   frames tracked so far.
+4. The analysis adds a **Subject matte** and a **Subject cutout** as one undo
+   step and shows the cutout. Then, with one click:
+   - **Keep subject** makes the cut-out subject the output.
+   - **Replace background** puts the subject over a new background colour; edit
+     it, or connect any image or footage in its place.
+   - **Put layers behind** adds a title between the shot and the subject, the
+     classic text-behind-the-person look; edit it or connect any other layer.
+
+The model runs in its own process while the window is open and is shut down
+when it closes, releasing its graphics memory. Mattes are stored beside a saved
+project, or in Veylvik's data folder for an unsaved one.
+
+## AI models window
+
+**Tools → AI models…** manages every local model. Each row shows what the
+model is for, its download size, licence and status, with one-click
+**Install** (with progress and **Cancel**), **Uninstall**, and **Enabled**.
+Hover over the info button for a summary, or click it for the pros, cons,
+speed, graphics memory and a link to the model's page.
 
 ## Models
 

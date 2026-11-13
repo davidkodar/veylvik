@@ -3920,6 +3920,7 @@ dependencies = [
  "veylvik-document",
  "veylvik-io",
  "veylvik-render",
+ "veylvik-segment",
  "veylvik-text",
  "veylvik-track",
  "wgpu",

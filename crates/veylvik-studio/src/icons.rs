@@ -11,11 +11,13 @@ pub enum Icon {
     Reset,
     Anchor,
     More,
+    Info,
 }
 pub struct Button {
     icon: Icon,
     label: String,
     selected: bool,
+    tooltip: bool,
 }
 impl Button {
     pub fn new(icon: Icon, label: impl Into<String>) -> Self {
@@ -23,7 +25,13 @@ impl Button {
             icon,
             label: label.into(),
             selected: false,
+            tooltip: true,
         }
+    }
+    /// Keeps the label for accessibility but leaves the hover tooltip to the caller.
+    pub fn without_tooltip(mut self) -> Self {
+        self.tooltip = false;
+        self
     }
     pub fn selected(mut self, selected: bool) -> Self {
         self.selected = selected;
@@ -49,6 +57,14 @@ impl Widget for Button {
             }
             Icon::Anchor => {
                 painter.circle_filled(c, 3.5, colour);
+            }
+            Icon::Info => {
+                painter.circle_stroke(c, 7.0, egui::Stroke::new(1.3_f32, colour));
+                painter.circle_filled(c + egui::vec2(0.0, -3.2), 1.1, colour);
+                painter.line_segment(
+                    [c + egui::vec2(0.0, -0.8), c + egui::vec2(0.0, 4.0)],
+                    (1.6, colour),
+                );
             }
             Icon::Reset => {
                 let points: Vec<_> = (0..=24)
@@ -89,7 +105,11 @@ impl Widget for Button {
                 }
             }
         }
-        response.on_hover_text(self.label)
+        if self.tooltip {
+            response.on_hover_text(self.label)
+        } else {
+            response
+        }
     }
 }
 
@@ -351,8 +371,23 @@ pub fn paint_wordmark_sheen(
 mod tests {
     #[test]
     fn interface_controls_do_not_depend_on_symbol_font_glyphs() {
-        for entry in std::fs::read_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/src")).unwrap() {
-            let path = entry.unwrap().path();
+        // Every source file, including feature folders such as `nodes/`.
+        let mut pending = vec![std::path::PathBuf::from(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/src"
+        ))];
+        let mut files = Vec::new();
+        while let Some(dir) = pending.pop() {
+            for entry in std::fs::read_dir(dir).unwrap() {
+                let path = entry.unwrap().path();
+                if path.is_dir() {
+                    pending.push(path);
+                } else {
+                    files.push(path);
+                }
+            }
+        }
+        for path in files {
             if path.extension().is_some_and(|ext| ext == "rs") {
                 let source = std::fs::read_to_string(&path).unwrap();
                 assert!(!source.chars().any(|c| matches!(c as u32,0x2190..=0x21ff|0x25a0..=0x27ff|0x2b00..=0x2bff|0x22ef)),"Use drawn icons instead of symbol glyphs in {}",path.display());

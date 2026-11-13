@@ -154,13 +154,7 @@ pub fn run(
     let inputs = crate::assets::load_inputs(&plan, base, renderer.budget_bytes)?;
     let exe = std::env::current_exe()?;
     let mut worker = Worker::spawn(&exe, model.id)?;
-    let folder = format!("Subject mattes/{}", &request.source.to_string()[..8]);
-    let mut dir = project_dir.join(&folder);
-    let mut n = 1;
-    while dir.exists() {
-        n += 1;
-        dir = project_dir.join(format!("{folder}-{n}"));
-    }
+    let dir = analysis::unique_dir(project_dir, request.source);
     let mut last = std::time::Instant::now();
     let outcome = analysis::analyse(
         renderer,

@@ -73,7 +73,7 @@ pub static EDGETAM: Model = Model {
         "Needs an NVIDIA GPU with CUDA and cuDNN",
     ],
     speed: "≈30 ms per frame (RTX 4080)",
-    memory: "≈1.5 GB of graphics memory (measured on an RTX 4080)",
+    memory: "≈1.5 GB (measured on an RTX 4080)",
     files: &[
         graph!(
             "vision_encoder.onnx",

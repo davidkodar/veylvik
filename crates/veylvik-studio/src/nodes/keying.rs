@@ -23,7 +23,7 @@ impl Inspect for veylvik_document::nodes::ChromaKey {
             crate::eyedropper::button(ui, cx, "key_color");
         });
         cx.dirty |= animation::color(ui, &mut self.key_color);
-        ui.weak("Pixels leaning towards the key colour's dominant channel become transparent. Raise Tolerance to remove more of an unevenly lit screen, Softness for gentler edges, and use Despill against coloured fringes. Check the matte with View → Show alpha.");
+        ui.weak("Pixels leaning towards the key colour's dominant channel become transparent. Raise Tolerance to remove more of an unevenly lit screen, Softness for gentler edges, and use Despill against coloured fringes. Check the matte with Show alpha in the View menu.");
     }
 }
 impl Inspect for veylvik_document::nodes::LumaKey {
@@ -33,6 +33,6 @@ impl Inspect for veylvik_document::nodes::LumaKey {
 }
 impl Inspect for veylvik_document::nodes::RefineMatte {
     fn inspect(&mut self, ui: &mut egui::Ui, _cx: &mut InspectCx<'_>) {
-        ui.weak("Connect the footage to Image and a coarse subject mask to Matte. Raise Radius when the matte misses hair or edges by more than a few pixels; raise Detail to follow finer features. Decontaminate removes the old background's colour from the edges. Check the result with View → Show alpha.");
+        ui.weak("Connect the footage to Image and a coarse subject mask to Matte. Raise Radius when the matte misses hair or edges by more than a few pixels; raise Detail to follow finer features. Decontaminate removes the old background's colour from the edges. Check the result with Show alpha in the View menu.");
     }
 }

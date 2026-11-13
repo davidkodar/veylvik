@@ -355,6 +355,10 @@ Opened with **Add → Effect library…**; searchable by name, description or ca
 
 Details: [Subject segmentation](subject-segmentation.md).
 
+- **Select subject…** (Inspector or **Tools**): left-click the subject in the viewer, right-click or Alt-click to exclude; instant blue mask preview per click; **Undo point**, **Clear**.
+- **Track subject** with progress and **Stop** (keeps tracked frames); optional **Also track back to the start**; one undo step adds Subject matte and Subject cutout.
+- One-click results: **Keep subject**, **Replace background** (new background colour, rewirable), **Put layers behind** (a title between shot and subject).
+- **Tools → AI models…**: every local model with size, licence and status; one-click **Install** with progress and **Cancel**, **Uninstall**, **Enabled**; info button with hover summary and click-through pros, cons, speed, graphics memory and model page.
 - Click-prompted subject mattes from a local AI model (EdgeTAM, Apache-2.0), tracked through the shot; about 30 ms per frame on an RTX 4080.
 - Points that mark or exclude areas (1–32); forward, backward or both directions from the prompted frame; up to 4096 frames.
 - Analyses the rendered source node at composition size, so placement, trims and timing are included.

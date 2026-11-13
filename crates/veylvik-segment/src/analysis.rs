@@ -50,6 +50,17 @@ pub fn schedule(request: &Request, frame_count: u32) -> Result<Vec<(i64, bool)>>
     }
     Ok(frames)
 }
+/// A new folder for one analysis: `<parent>/Subject mattes/<source id prefix>[-n]`.
+pub fn unique_dir(parent: &Path, source: NodeId) -> PathBuf {
+    let folder = format!("Subject mattes/{}", &source.to_string()[..8]);
+    let mut dir = parent.join(&folder);
+    let mut n = 1;
+    while dir.exists() {
+        n += 1;
+        dir = parent.join(format!("{folder}-{n}"));
+    }
+    dir
+}
 /// File name of composition frame `frame` in a matte directory.
 pub fn file_name(frame: i64) -> String {
     format!("matte_{frame:05}.png")

@@ -121,6 +121,15 @@ impl Studio {
                 ui.separator();
                 if ui.checkbox(&mut self.statistics, "Render statistics").clicked() { ui.close(); }
             });
+            ui.menu_button("Tools", |ui| {
+                if item(ui, "Select subject…", "", !self.files.busy()) {
+                    self.begin_subject();
+                }
+                ui.separator();
+                if item(ui, "AI models…", "", true) {
+                    self.models.show_window();
+                }
+            });
             ui.menu_button("Help", |ui| {
                 if item(ui, "Keyboard shortcuts", "?", true) { self.help = true; }
                 ui.separator();
