@@ -24,6 +24,8 @@ pub struct Controls {
     show_features: bool,
     saved: Option<NodeId>,
     edited: bool,
+    blend_surface: bool,
+    look: veylvik_document::surface::Look,
 }
 impl Default for Controls {
     fn default() -> Self {
@@ -40,6 +42,8 @@ impl Default for Controls {
             show_features: true,
             saved: None,
             edited: true,
+            blend_surface: true,
+            look: veylvik_document::surface::Look::Painted,
         }
     }
 }
@@ -258,6 +262,15 @@ impl Studio {
                     egui::ComboBox::from_id_salt("planar-target").selected_text(self.planar.target.and_then(|id|doc.nodes.get(&id)).map_or("Choose text, image or layer",|n|n.label.as_str())).show_ui(ui,|ui| {for node in doc.nodes.values() {ui.selectable_value(&mut self.planar.target,Some(node.id),&node.label);}});
                     egui::ComboBox::from_id_salt("planar-mode").selected_text(self.planar.mode.label()).show_ui(ui,|ui| {for mode in WarpMode::ALL {ui.selectable_value(&mut self.planar.mode,mode,mode.label());}});
                     ui.weak(match self.planar.mode {WarpMode::Follow=>"Position the layer on the reference frame first. Its placement follows the surface.",WarpMode::Fit=>"Maps the layer's entire canvas into the four surface corners.",WarpMode::Stabilize=>"Locks the tracked source surface to its reference position."});
+                    if self.planar.mode!=WarpMode::Stabilize {
+                        ui.checkbox(&mut self.planar.blend_surface,"Match surface appearance");
+                        if self.planar.blend_surface {
+                            egui::ComboBox::from_id_salt("surface-starting-look").selected_text(self.planar.look.label()).show_ui(ui,|ui| {
+                                for look in veylvik_document::surface::Look::ALL {ui.selectable_value(&mut self.planar.look,look,look.label());}
+                            });
+                            ui.weak("Creates editable lighting, texture, wear, softness and grain controls.");
+                        }
+                    }
                     if ui.add_enabled(self.planar.target.is_some() || self.planar.mode==WarpMode::Stabilize,egui::Button::new("Create tracked layer")).clicked() {attach=true;}
                 });
                 if !fresh {ui.colored_label(egui::Color32::LIGHT_RED,"Composition changed. Reopen the saved track or track again.");}
@@ -335,10 +348,17 @@ impl Studio {
             if self.planar.mode != WarpMode::Stabilize {
                 let merge = veylvik_document::Node::new(
                     "Layer on tracked surface",
-                    Operation::Merge {},
+                    if self.planar.blend_surface {
+                        self.planar.look.operation()
+                    } else {
+                        Operation::Merge {}
+                    },
                     &[("background", result.source), ("foreground", output)],
                 );
                 output = merge.id;
+                if self.planar.blend_surface {
+                    selected = merge.id;
+                }
                 commands.push(veylvik_document::Command::Put {
                     node: Box::new(merge),
                 });

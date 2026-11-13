@@ -136,7 +136,7 @@ fn animation_keeps_exact_seconds_and_defaults_across_frame_rates() {
 #[test]
 fn expanded_catalog_has_unique_discoverable_ids_and_editable_controls() {
     let mut ids = std::collections::BTreeSet::new();
-    assert_eq!(builtin::ALL.len(), 58);
+    assert_eq!(builtin::ALL.len(), 59);
     for entry in builtin::ALL {
         assert!(ids.insert(entry.id));
         assert!(builtin::CATEGORIES.contains(&builtin::category(entry.id)));
@@ -149,7 +149,7 @@ fn expanded_catalog_has_unique_discoverable_ids_and_editable_controls() {
         assert_eq!(
             preset.group.inputs.len(),
             match entry.id {
-                "surface_reflection" => 2,
+                "surface_reflection" | "surface_paint" => 2,
                 "clear_glass" | "frosted_glass_material" => 3,
                 _ => 1,
             }

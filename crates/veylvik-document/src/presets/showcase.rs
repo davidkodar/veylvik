@@ -1,5 +1,6 @@
 //! Portable, editable scenes built around the same presets offered by the library.
 mod art_direction;
+mod surface_paint;
 use crate::{
     Composition, Document, Key, Node, NodeId, NodePosition, Operation, Result, Scalar, Time,
     vector::{FillRule, PathCommand, PathMask},
@@ -118,6 +119,9 @@ fn title_text(word: &str) -> Operation {
 }
 
 pub fn build(id: &str) -> Result<Scene> {
+    if id == "surface_paint" {
+        return surface_paint::build();
+    }
     if matches!(super::builtin::category(id), "Materials" | "Atmosphere")
         || matches!(
             id,
@@ -305,7 +309,7 @@ mod tests {
             );
             if matches!(
                 entry.id,
-                "surface_reflection" | "clear_glass" | "frosted_glass_material"
+                "surface_paint" | "surface_reflection" | "clear_glass" | "frosted_glass_material"
             ) {
                 for input in group.inputs.values() {
                     let sources: std::collections::BTreeSet<_> = input

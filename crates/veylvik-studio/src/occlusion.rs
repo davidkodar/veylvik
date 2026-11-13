@@ -17,17 +17,26 @@ struct Pending {
 }
 impl super::Studio {
     pub(super) fn occlusion_controls(&mut self, ui: &mut egui::Ui) {
-        if matches!(self.draft.operation, Operation::Text { .. }) {
+        if matches!(
+            self.draft.operation,
+            Operation::Text { .. } | Operation::PlanarWarp { .. } | Operation::SurfaceBlend { .. }
+        ) {
             if ui
                 .button("Place behind object…")
                 .on_hover_text(
-                    "Outline a foreground object and place it over the text automatically",
+                    "Outline a foreground object and place it over the selected layer automatically",
                 )
                 .clicked()
                 && self.apply_draft()
             {
                 self.occlusion.open = true;
-                self.occlusion.source = None;
+                self.occlusion.source = match &self.draft.operation {
+                    Operation::SurfaceBlend { .. } => self.draft.inputs.get("background").copied(),
+                    Operation::PlanarWarp { .. } => self.draft.inputs.get("track")
+                        .and_then(|id| self.project.document.snapshot().nodes.get(id))
+                        .and_then(|n| n.inputs.get("image")).copied(),
+                    _ => None,
+                };
             }
         } else if let Some(setup) = occlusion::find(self.project.document.snapshot(), self.draft.id)
         {
@@ -91,7 +100,7 @@ impl super::Studio {
         let mut open = true;
         let mut start = false;
         let mut cancel = false;
-        let window = egui::Window::new("Place text behind object")
+        let window = egui::Window::new("Place layer behind object")
             .open(&mut open)
             .collapsible(false)
             .resizable(false)
@@ -109,7 +118,8 @@ impl super::Studio {
                 for node in &candidates {ui.selectable_value(&mut self.occlusion.source,Some(node.id),format!("{} · {}",node.label,node.operation.descriptor().label));}
             });
             if candidates.is_empty() {ui.weak("Import a foreground image first, then return here.");}
-            if !connected {ui.colored_label(egui::Color32::LIGHT_RED,"Connect this text to the composition output first.");}
+            if !connected {ui.colored_label(egui::Color32::LIGHT_RED,"Connect this layer to the composition output first.");}
+            ui.weak("For moving foreground objects, animate the outline. Surface tracking does not automatically segment objects.");
             ui.add_space(8.0);
             ui.horizontal(|ui| {
                 start=ui.add_enabled(connected && self.occlusion.source.is_some(),egui::Button::new("Draw foreground outline")).clicked();

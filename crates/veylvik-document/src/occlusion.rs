@@ -57,20 +57,16 @@ pub fn create(
 ) -> Result<(Setup, Vec<Command>)> {
     doc.validate()?;
     geometry.validate()?;
-    if !doc
-        .nodes
-        .get(&text)
-        .is_some_and(|n| matches!(n.operation, Operation::Text { .. }))
-    {
-        return fail("Select editable text first");
+    if !doc.nodes.contains_key(&text) {
+        return fail("Select an existing layer first");
     }
     if !depends_on(doc, doc.output, text) {
         return fail(
-            "Connect this text to the composition output before placing it behind an object",
+            "Connect this layer to the composition output before placing it behind an object",
         );
     }
     if !doc.nodes.contains_key(&source) || depends_on(doc, source, text) {
-        return fail("Choose a foreground layer that does not already contain this text");
+        return fail("Choose a foreground layer that does not already contain this layer");
     }
     let path = Node::new("Foreground outline", Operation::Path { geometry }, &[]);
     let grow = Node::new(
@@ -89,7 +85,7 @@ pub fn create(
         &[("image", source), ("mask", blur.id)],
     );
     let merge = Node::new(
-        "Text behind object",
+        "Layer behind object",
         Operation::Merge {},
         &[("background", doc.output), ("foreground", cutout.id)],
     );

@@ -27,6 +27,7 @@ pub use text::{TextAlignment, TextFont};
 pub mod media;
 pub mod planar;
 pub mod sequence;
+pub mod surface;
 pub mod tracking;
 pub mod vector;
 pub use blending::BlendMode;
@@ -50,6 +51,16 @@ pub use animation::{CompiledScalar, Handle, Interpolation, Key, Scalar, Segment,
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Operation {
+    SurfaceBlend {
+        opacity: Scalar,
+        lighting: Scalar,
+        detail: Scalar,
+        wear: Scalar,
+        threshold: Scalar,
+        distortion: Scalar,
+        softness: Scalar,
+        grain: Scalar,
+    },
     PlanarTrack {
         data: Box<planar::Track>,
     },
@@ -256,6 +267,7 @@ impl Operation {
 
     pub fn descriptor(&self) -> &'static registry::NodeType {
         match self {
+            Self::SurfaceBlend { .. } => &registry::SURFACE_BLEND,
             Self::PlanarTrack { .. } => &registry::PLANAR_TRACK,
             Self::PlanarWarp { .. } => &registry::PLANAR_WARP,
             Self::Text { .. } => &registry::TEXT,
@@ -294,6 +306,14 @@ impl Operation {
     }
     pub fn scalar(&self, name: &str) -> Option<&Scalar> {
         match (self, name) {
+            (Self::SurfaceBlend { grain, .. }, "grain") => Some(grain),
+            (Self::SurfaceBlend { softness, .. }, "softness") => Some(softness),
+            (Self::SurfaceBlend { distortion, .. }, "distortion") => Some(distortion),
+            (Self::SurfaceBlend { threshold, .. }, "threshold") => Some(threshold),
+            (Self::SurfaceBlend { wear, .. }, "wear") => Some(wear),
+            (Self::SurfaceBlend { detail, .. }, "detail") => Some(detail),
+            (Self::SurfaceBlend { lighting, .. }, "lighting") => Some(lighting),
+            (Self::SurfaceBlend { opacity, .. }, "opacity") => Some(opacity),
             (Self::Noise { scale, .. } | Self::FractalNoise { scale, .. }, "scale") => Some(scale),
             (Self::MetallicShine { x, .. }, "x") => Some(x),
             (Self::MetallicShine { y, .. }, "y") => Some(y),
@@ -385,6 +405,14 @@ impl Operation {
     }
     pub fn scalar_mut(&mut self, name: &str) -> Option<&mut Scalar> {
         match (self, name) {
+            (Self::SurfaceBlend { grain, .. }, "grain") => Some(grain),
+            (Self::SurfaceBlend { softness, .. }, "softness") => Some(softness),
+            (Self::SurfaceBlend { distortion, .. }, "distortion") => Some(distortion),
+            (Self::SurfaceBlend { threshold, .. }, "threshold") => Some(threshold),
+            (Self::SurfaceBlend { wear, .. }, "wear") => Some(wear),
+            (Self::SurfaceBlend { detail, .. }, "detail") => Some(detail),
+            (Self::SurfaceBlend { lighting, .. }, "lighting") => Some(lighting),
+            (Self::SurfaceBlend { opacity, .. }, "opacity") => Some(opacity),
             (Self::Noise { scale, .. } | Self::FractalNoise { scale, .. }, "scale") => Some(scale),
             (Self::MetallicShine { x, .. }, "x") => Some(x),
             (Self::MetallicShine { y, .. }, "y") => Some(y),

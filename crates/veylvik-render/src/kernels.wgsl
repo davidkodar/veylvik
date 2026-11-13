@@ -701,3 +701,64 @@ fn planar_warp(@builtin(global_invocation_id) gid: vec3<u32>) {
                      p.values.w*uv.x+p.extra.x*uv.y+p.extra.y)/w;
     result[index(gid)] = bilinear(q*vec2<f32>(p.size_op.xy)-vec2<f32>(0.5));
 }
+
+// Surface integration keeps the clean plate untouched outside the inserted layer.
+fn surface_rgb(pos:vec2<i32>)->vec3<f32> {
+    let q=clamp(pos,vec2<i32>(0),vec2<i32>(p.size_op.xy)-vec2<i32>(1));
+    let c=source[u32(q.y)*p.size_op.x+u32(q.x)];
+    if c.a<=0.000001 {return vec3<f32>(0.5);}
+    return max(c.rgb/c.a,vec3<f32>(0.0));
+}
+fn surface_luma(pos:vec2<i32>)->f32 {
+    return dot(surface_rgb(pos),vec3<f32>(0.2126,0.7152,0.0722));
+}
+fn surface_foreground_pixel(pos:vec2<i32>)->vec4<f32> {
+    if any(pos<vec2<i32>(0)) || any(pos>=vec2<i32>(p.size_op.xy)) {return vec4<f32>(0.0);}
+    return second[u32(pos.y)*p.size_op.x+u32(pos.x)];
+}
+fn surface_foreground(pos:vec2<f32>)->vec4<f32> {
+    if any(pos<vec2<f32>(-1.0)) || any(pos>vec2<f32>(p.size_op.xy)) {return vec4<f32>(0.0);}
+    let q=vec2<i32>(floor(pos));let f=fract(pos);
+    return mix(mix(surface_foreground_pixel(q),surface_foreground_pixel(q+vec2<i32>(1,0)),f.x),
+               mix(surface_foreground_pixel(q+vec2<i32>(0,1)),surface_foreground_pixel(q+vec2<i32>(1,1)),f.x),f.y);
+}
+@compute @workgroup_size(8,8)
+fn surface_blend(@builtin(global_invocation_id) gid:vec3<u32>) {
+    if !inside(gid) {return;}
+    let i=index(gid);let bg=source[i];
+    if p.values.x==0.0 {result[i]=bg;return;}
+    let q=vec2<i32>(gid.xy);let pos=vec2<f32>(gid.xy);
+    var mean=vec3<f32>(0.5);var local=0.5;
+    if p.values.y>0.0 || p.values.z>0.0 || p.values.w>0.0 || p.extra.y>0.0 {
+        // Scale the local texture window with composition dimensions.
+        let radius=max(2,i32(min(p.size_op.x,p.size_op.y)/180u));
+        mean=vec3<f32>(0.0);
+        for(var y=-1;y<=1;y++) {for(var x=-1;x<=1;x++) {mean+=surface_rgb(q+vec2<i32>(x,y)*radius);}}
+        mean/=9.0;local=surface_luma(q);
+    }
+    let average=max(dot(mean,vec3<f32>(0.2126,0.7152,0.0722)),0.02);
+    var delta=vec2<f32>(0.0);
+    if p.extra.y>0.0 {
+        delta=clamp(vec2<f32>(surface_luma(q+vec2<i32>(1,0))-surface_luma(q-vec2<i32>(1,0)),
+            surface_luma(q+vec2<i32>(0,1))-surface_luma(q-vec2<i32>(0,1)))/(2.0*average),vec2<f32>(-1.0),vec2<f32>(1.0))*p.extra.y*bg.a;
+    }
+    var fg=surface_foreground(pos+delta);
+    if p.extra.z>0.0 {
+        fg=vec4<f32>(0.0);
+        for(var y=-1;y<=1;y++) {for(var x=-1;x<=1;x++) {
+            let weight=select(1.0,2.0,x==0)*select(1.0,2.0,y==0);
+            fg+=surface_foreground(pos+delta+vec2<f32>(f32(x),f32(y))*p.extra.z)*weight/16.0;
+        }}
+    }
+    if fg.a<=0.0 {result[i]=bg;return;}
+    let illumination=mix(vec3<f32>(1.0),clamp(mean*2.0,vec3<f32>(0.0),vec3<f32>(4.0)),p.values.y*bg.a);
+    let texture=mix(1.0,clamp(local/average,0.0,2.0),p.values.z*bg.a);
+    let recess=clamp((average-local)/average,0.0,1.0);
+    let worn=smoothstep(p.extra.x,min(p.extra.x+0.12,1.001),recess)*p.values.w*bg.a;
+    fg=vec4<f32>(fg.rgb*illumination*texture,fg.a)*(p.values.x*(1.0-worn));
+    if p.extra.w>0.0 {
+        let n=f32(noise_hash(gid.x+gid.y*65537u+p.size_op.w*747796405u)&65535u)/65535.0-0.5;
+        fg=vec4<f32>(max(vec3<f32>(0.0),fg.rgb+vec3<f32>(n*p.extra.w*fg.a)),fg.a);
+    }
+    result[i]=fg+bg*(1.0-fg.a);
+}

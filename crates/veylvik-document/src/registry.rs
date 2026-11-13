@@ -576,6 +576,23 @@ pub static PLANAR_WARP: NodeType = NodeType {
     inputs: &["image", "track"],
     parameters: &[other("mode", ParameterKind::PlanarMode, "")],
 };
+pub static SURFACE_BLEND: NodeType = NodeType {
+    type_id: "surface_blend",
+    version: 1,
+    label: "Surface blend",
+    description: "Composite a premultiplied layer onto a surface using its local illumination, fine luminance detail, and dark recesses. Optional gradient displacement, edge softness and temporal grain run on GPU. This is image-based blending, not automatic object segmentation.",
+    inputs: &["background", "foreground"],
+    parameters: &[
+        scalar("opacity", "factor", 0.0, 1.0, 1.0),
+        scalar("lighting", "amount", 0.0, 1.0, 0.35),
+        scalar("detail", "amount", 0.0, 1.0, 0.5),
+        scalar("wear", "amount", 0.0, 1.0, 0.0),
+        scalar("threshold", "contrast", 0.0, 1.0, 0.3),
+        scalar("distortion", "pixels", 0.0, 16.0, 0.0),
+        scalar("softness", "pixels", 0.0, 8.0, 0.0),
+        scalar("grain", "amount", 0.0, 0.25, 0.0),
+    ],
+};
 pub static TYPES: &[&NodeType] = &[
     &SOLID,
     &NOISE,
@@ -593,6 +610,7 @@ pub static TYPES: &[&NodeType] = &[
     &TEXT,
     &PATH,
     &BLEND,
+    &SURFACE_BLEND,
     &DISPLACE,
     &FRACTAL_NOISE,
     &FIRE,

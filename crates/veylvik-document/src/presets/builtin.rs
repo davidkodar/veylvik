@@ -13,7 +13,12 @@ pub struct Builtin {
     pub label: &'static str,
     pub description: &'static str,
 }
-pub const ALL: [Builtin; 58] = [
+pub const ALL: [Builtin; 59] = [
+    Builtin {
+        id: "surface_paint",
+        label: "Paint on Surface",
+        description: "Blend a layer into a real surface with lighting, texture, dark-crack wear, subtle distortion and grain. Bind the clean surface and foreground separately.",
+    },
     Builtin {
         id: "oak_light",
         label: "Light Oak",
@@ -339,6 +344,35 @@ pub fn build(id: &str) -> Result<Preset> {
         controls: Vec::new(),
     };
     let output = match id {
+        "surface_paint" => {
+            let background = Node::new(
+                "Clean surface",
+                Operation::Solid {
+                    color: [0.5, 0.5, 0.5, 1.],
+                },
+                &[],
+            );
+            let plate = background.id;
+            b.doc.nodes.insert(plate, background);
+            let node = b.add(
+                "Paint integrated with surface",
+                crate::surface::Look::Weathered.operation(),
+                &[("background", plate), ("foreground", source)],
+            );
+            for (name, label) in [
+                ("opacity", "Opacity"),
+                ("lighting", "Surface lighting"),
+                ("detail", "Surface texture"),
+                ("wear", "Wear / cracks"),
+                ("threshold", "Dark-recess threshold"),
+                ("distortion", "Surface distortion"),
+                ("softness", "Match softness"),
+                ("grain", "Match grain"),
+            ] {
+                b.expose(node, name, label)?;
+            }
+            node
+        }
         id if appearance::material_kind(id).is_some() => appearance::build(id, &mut b, source)?,
         "surface_reflection"
         | "clear_glass"
@@ -570,6 +604,8 @@ pub fn build(id: &str) -> Result<Preset> {
     group.controls = b.controls.into_iter().collect();
     for input in group.inputs.values_mut() {
         input.label = match input.targets.first().map(|target| target.port.as_str()) {
+            Some("background") if id == "surface_paint" => "Clean surface",
+            Some("foreground") if id == "surface_paint" => "Text / image / effect",
             Some("reflection") => "Reflection scene",
             Some("background") if matches!(id, "clear_glass" | "frosted_glass_material") => {
                 "Background to refract"
@@ -603,8 +639,8 @@ pub fn category(id: &str) -> &'static str {
         | "light_sweep" | "soft_vignette" | "spotlight" | "prismatic_glow" | "neon_outline" => {
             "Light"
         }
-        "edge_engrave" | "duotone_print" | "silver_relief" | "ink_bleed" | "film_grain"
-        | "scanlines" | "hologram" => "Surface",
+        "surface_paint" | "edge_engrave" | "duotone_print" | "silver_relief" | "ink_bleed"
+        | "film_grain" | "scanlines" | "hologram" => "Surface",
         "frosted_glass" | "heat_haze" | "underwater" | "glitch_slices" | "liquid_shimmer" => {
             "Distortion"
         }

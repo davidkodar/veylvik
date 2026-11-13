@@ -69,7 +69,7 @@ pub fn automatic(doc: &Composition) -> Option<NodeId> {
         }
         if matches!(
             node.operation,
-            Operation::Merge {} | Operation::Blend { .. }
+            Operation::Merge {} | Operation::Blend { .. } | Operation::SurfaceBlend { .. }
         ) {
             composite = true;
             id = *node.inputs.get("background")?;

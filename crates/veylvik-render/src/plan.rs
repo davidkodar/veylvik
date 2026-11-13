@@ -27,6 +27,7 @@ pub enum Kernel {
     BlurVertical,
     Merge,
     Blend,
+    SurfaceBlend,
     Image,
     Affine,
     PlanarWarp,
@@ -38,7 +39,7 @@ pub enum Kernel {
     Gradient,
 }
 impl Kernel {
-    pub(crate) const ALL: [Self; 30] = [
+    pub(crate) const ALL: [Self; 31] = [
         Self::Text,
         Self::Solid,
         Self::Noise,
@@ -60,6 +61,7 @@ impl Kernel {
         Self::BlurVertical,
         Self::Merge,
         Self::Blend,
+        Self::SurfaceBlend,
         Self::Image,
         Self::Affine,
         Self::PlanarWarp,
@@ -93,6 +95,7 @@ impl Kernel {
             Self::BlurVertical => "blur_vertical",
             Self::Merge => "merge",
             Self::Blend => "blend",
+            Self::SurfaceBlend => "surface_blend",
             Self::Image => "image",
             Self::Affine => "affine",
             Self::PlanarWarp => "planar_warp",
@@ -250,6 +253,7 @@ impl Plan {
                 Operation::Transform { .. } => Kernel::Transform,
                 Operation::Merge {} => Kernel::Merge,
                 Operation::Blend { .. } => Kernel::Blend,
+                Operation::SurfaceBlend { .. } => Kernel::SurfaceBlend,
                 Operation::Affine { .. } => Kernel::Affine,
                 Operation::PlanarWarp { .. } => Kernel::PlanarWarp,
                 Operation::PlanarTrack { .. } => unreachable!("track aliases its source"),
@@ -508,6 +512,7 @@ fn shareable(operation: &Operation) -> bool {
             | Operation::Blur { .. }
             | Operation::Merge {}
             | Operation::Blend { .. }
+            | Operation::SurfaceBlend { .. }
             | Operation::Affine { .. }
             | Operation::Ellipse { .. }
             | Operation::ChannelMask { .. }

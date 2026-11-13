@@ -34,6 +34,7 @@ mod recovery;
 mod sequence;
 mod shape_animation;
 mod showcase_gallery;
+mod surface;
 mod text_effects;
 mod text_outline;
 mod text_viewer;
@@ -1417,6 +1418,7 @@ impl Studio {
         if self.effect_inspector(ui) {
             return;
         }
+        self.surface_controls(ui);
         self.occlusion_controls(ui);
         if ui
             .add_enabled(!self.files.busy(), egui::Button::new("Track motion…"))
@@ -1471,6 +1473,9 @@ impl Studio {
                 Err(error) => self.fail(error),
                 _ => {}
             },
+            Operation::SurfaceBlend { .. } => {
+                ui.weak("Lighting follows the surface; Detail transfers texture. Wear reveals dark cracks. All amounts can be animated.");
+            }
             Operation::PlanarTrack { data } => {
                 ui.label(format!("{} tracked frames", data.samples.len()));
                 ui.weak("Connect this node to a Planar warp's track input. The source image passes through unchanged.");
@@ -1680,7 +1685,21 @@ impl Studio {
                 break;
             }
             if let Some(value) = self.draft.operation.scalar_mut(parameter.name) {
-                let label = format!("{} ({})", parameter.name.replace('_', " "), parameter.unit);
+                let label = if kind.type_id == "surface_blend" {
+                    match parameter.name {
+                        "lighting" => "Lighting",
+                        "detail" => "Texture",
+                        "wear" => "Wear",
+                        "threshold" => "Crack cutoff",
+                        "distortion" => "Distort (px)",
+                        "softness" => "Softness (px)",
+                        "grain" => "Grain",
+                        _ => "Opacity",
+                    }
+                    .to_owned()
+                } else {
+                    format!("{} ({})", parameter.name.replace('_', " "), parameter.unit)
+                };
                 let changed = animation::scalar_with_default(
                     ui,
                     &label,

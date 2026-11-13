@@ -279,6 +279,25 @@ fn params(
         Operation::CombineMask { mode } => {
             p.size_op[3] = *mode as u32;
         }
+        Operation::SurfaceBlend { .. } => {
+            p.values = [
+                sample("opacity")?,
+                sample("lighting")?,
+                sample("detail")?,
+                sample("wear")?,
+            ];
+            p.extra = [
+                sample("threshold")?,
+                sample("distortion")?,
+                sample("softness")?,
+                sample("grain")?,
+            ];
+            // Grain is deterministic at a given render time, including repeated previews.
+            if p.extra[3] > 0. {
+                let ms = (time.seconds()? * 1000.).round() as i64;
+                p.size_op[3] = (ms as u64 ^ (ms as u64 >> 32)) as u32;
+            }
+        }
         Operation::Blend { mode, .. } => {
             p.size_op[3] = *mode as u32;
             p.values[0] = sample("opacity")?;

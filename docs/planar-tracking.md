@@ -60,8 +60,10 @@ The range is limited to 4096 frames and may stop sooner to preserve the project'
 16 MiB size budget with diagnostics. Outside the accepted range, the warp holds
 the nearest accepted surface; between samples it interpolates the corners.
 
-Dirt, lighting, foreground occlusion, displacement, blur and grain are separate
-compositing operations. Rejected feature matches diagnose tracking; they are not
+The **Match surface appearance** option creates a Surface blend node for
+lighting, texture, wear, displacement, softness and grain; see
+[surface blending](surface-blending.md). Foreground occlusion remains an editable
+outline workflow. Rejected feature matches diagnose tracking; they are not
 an occlusion mask and do not automatically transfer cracks or wear to a layer.
 
 Both operations, their data schema, and all three warp modes are exposed through
