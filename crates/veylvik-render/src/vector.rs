@@ -190,7 +190,14 @@ impl Renderer {
             region.validate(plan.width, plan.height)?;
         }
         for (node, curves) in plan.nodes.iter().zip(&plan.curves) {
-            crate::params(node, curves, plan.width, plan.height, request.time)?;
+            crate::params(
+                node,
+                &plan.nodes,
+                curves,
+                plan.width,
+                plan.height,
+                request.time,
+            )?;
         }
         let base = (if download {
             plan.working_bytes()

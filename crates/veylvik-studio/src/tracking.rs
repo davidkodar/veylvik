@@ -113,6 +113,7 @@ impl Studio {
             return;
         }
         self.playing = false;
+        self.planar.open = false;
         self.tracking = Controls {
             open: true,
             source: Some(self.project.selected),

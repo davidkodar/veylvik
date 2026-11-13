@@ -29,6 +29,7 @@ pub enum Kernel {
     Blend,
     Image,
     Affine,
+    PlanarWarp,
     Ellipse,
     Mask,
     CombineMask,
@@ -37,7 +38,7 @@ pub enum Kernel {
     Gradient,
 }
 impl Kernel {
-    pub(crate) const ALL: [Self; 29] = [
+    pub(crate) const ALL: [Self; 30] = [
         Self::Text,
         Self::Solid,
         Self::Noise,
@@ -61,6 +62,7 @@ impl Kernel {
         Self::Blend,
         Self::Image,
         Self::Affine,
+        Self::PlanarWarp,
         Self::Ellipse,
         Self::Mask,
         Self::CombineMask,
@@ -93,6 +95,7 @@ impl Kernel {
             Self::Blend => "blend",
             Self::Image => "image",
             Self::Affine => "affine",
+            Self::PlanarWarp => "planar_warp",
             Self::Ellipse => "ellipse",
             Self::ChannelMask => "channel_mask",
             Self::Colorize => "colorize",
@@ -248,6 +251,8 @@ impl Plan {
                 Operation::Merge {} => Kernel::Merge,
                 Operation::Blend { .. } => Kernel::Blend,
                 Operation::Affine { .. } => Kernel::Affine,
+                Operation::PlanarWarp { .. } => Kernel::PlanarWarp,
+                Operation::PlanarTrack { .. } => unreachable!("track aliases its source"),
                 Operation::Ellipse { .. } => Kernel::Ellipse,
                 Operation::ChannelMask { .. } => Kernel::ChannelMask,
                 Operation::Colorize { .. } => Kernel::Colorize,
@@ -472,6 +477,7 @@ impl Plan {
 fn identity(operation: &Operation) -> bool {
     let zero = |value: &Scalar| matches!(value,Scalar::Constant { value } if *value==0.0);
     match operation {
+        Operation::PlanarTrack { .. } => true,
         Operation::Exposure { stops } => zero(stops),
         Operation::Blur { radius } => zero(radius),
         Operation::Transform { x, y } => zero(x) && zero(y),

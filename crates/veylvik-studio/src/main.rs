@@ -26,6 +26,7 @@ mod path_edit;
 mod path_handles;
 mod path_pen;
 mod path_transform;
+mod planar;
 mod preset_library;
 mod preview_images;
 mod project;
@@ -178,6 +179,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 export_controls: sequence::Controls::default(),
                 video_export: video_export::Controls::default(),
                 tracking: tracking::Controls::default(),
+                planar: planar::Controls::default(),
                 outline_controls: text_outline::Controls::default(),
                 composition_controls: composition::Controls::default(),
                 media_import: None,
@@ -247,6 +249,7 @@ struct Studio {
     export_controls: sequence::Controls,
     video_export: video_export::Controls,
     tracking: tracking::Controls,
+    planar: planar::Controls,
     outline_controls: text_outline::Controls,
     composition_controls: composition::Controls,
     media_import: Option<media_import::Pending>,
@@ -288,6 +291,10 @@ impl Studio {
             p.cancel.store(true, std::sync::atomic::Ordering::Relaxed);
         }
         self.tracking = tracking::Controls::default();
+        if let Some(p) = &self.planar.active {
+            p.cancel.store(true, std::sync::atomic::Ordering::Relaxed);
+        }
+        self.planar = planar::Controls::default();
         self.occlusion = Default::default();
         self.project = project;
         self.graph = graph::Graph::default();
@@ -429,6 +436,14 @@ impl Studio {
             node_palette::Choice::Node(kind) => {
                 let doc = self.project.document.snapshot();
                 let operation = node_palette::operation(kind, doc.width, doc.height);
+                if matches!(
+                    operation,
+                    Operation::PlanarTrack { .. } | Operation::PlanarWarp { .. }
+                ) {
+                    self.begin_planar();
+                    return;
+                }
+
                 let added = if matches!(operation, Operation::Text { .. }) {
                     let mut text = Node::new("Text", operation, &[]);
                     text.position = Some(position);
@@ -1099,11 +1114,13 @@ impl Studio {
         self.export_controls.active = None;
         self.video_export.active = None;
         self.tracking.active = None;
+        self.planar.active = None;
         if self.outline_controls.pending {
             self.outline_controls.pending = false;
             self.outline_controls.open = !matches!(&result, Ok(Completed::Outlined(_)));
         }
         match result {
+            Ok(Completed::PlanarTracked(result)) => self.planar_completed(result),
             Ok(Completed::Tracked(result)) => self.tracking_completed(result),
             Ok(Completed::Cancelled) => {
                 self.after_save = None;
@@ -1410,6 +1427,13 @@ impl Studio {
         {
             self.begin_tracking();
         }
+        if ui
+            .button("Track surface…")
+            .on_hover_text("Track perspective motion and attach or stabilize any layer")
+            .clicked()
+        {
+            self.begin_planar();
+        }
         ui.label(if matches!(self.draft.operation, Operation::Text { .. }) {
             "Layer name"
         } else {
@@ -1447,6 +1471,20 @@ impl Studio {
                 Err(error) => self.fail(error),
                 _ => {}
             },
+            Operation::PlanarTrack { data } => {
+                ui.label(format!("{} tracked frames", data.samples.len()));
+                ui.weak("Connect this node to a Planar warp's track input. The source image passes through unchanged.");
+            }
+            Operation::PlanarWarp { mode } => {
+                egui::ComboBox::from_id_salt("planar-warp-mode")
+                    .selected_text(mode.label())
+                    .show_ui(ui, |ui| {
+                        for choice in veylvik_document::planar::WarpMode::ALL {
+                            self.draft_dirty |=
+                                ui.selectable_value(mode, choice, choice.label()).changed();
+                        }
+                    });
+            }
             Operation::Solid { color } => {
                 ui.label("Linear RGB and alpha");
                 self.draft_dirty |= animation::color(ui, color);
@@ -2555,7 +2593,7 @@ impl eframe::App for Studio {
                             egui::Sense::click_and_drag(),
                         );
                         if !self.text_viewer.active
-                            && !self.tracking.open
+                            && !self.tracking.open && !self.planar.open
                             && !self.path_pen.active
                             && !(self.path_transform.active
                                 && matches!(self.draft.operation, Operation::Path { .. })
@@ -2660,6 +2698,9 @@ impl eframe::App for Studio {
                             self.draft_dirty = true;
                             self.apply_draft();
                         }
+                        if self.planar.open && self.planar.source == self.project.preview && self.displayed_ticket == self.wanted {
+                            self.planar.overlay(ui, canvas, transform, self.project.frame, self.project.document.snapshot().frame_rate);
+                        }
                         if self.tracking.open && self.tracking.source == self.project.preview && self.displayed_ticket == self.wanted {
                             self.tracking.overlay(ui, canvas, transform, image, self.project.frame, self.project.document.snapshot().frame_rate);
                         }
@@ -2668,7 +2709,7 @@ impl eframe::App for Studio {
                             .preview
                             .unwrap_or(self.project.document.snapshot().output);
                         if !self.playing
-                            && !self.tracking.open
+                            && !self.tracking.open && !self.planar.open
                             && (self.displayed_ticket == self.wanted
                                 || matches!(
                                     self.draft.operation,
@@ -2859,6 +2900,7 @@ impl eframe::App for Studio {
             self.outline_text(request);
         }
         self.tracking_window(&ctx);
+        self.planar_window(&ctx);
         if let Some(settings) = self.video_export.show(
             &ctx,
             self.project.document.snapshot(),

@@ -6,6 +6,8 @@ pub const MAX_ASSET_NAME: usize = 4096;
 #[derive(Debug, Clone, Copy, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ParameterKind {
+    PlanarTrack,
+    PlanarMode,
     Scalar,
     Typography,
     MediaTiming,
@@ -42,6 +44,8 @@ pub struct Parameter {
 impl Parameter {
     fn default_value(&self) -> Value {
         match self.kind {
+            ParameterKind::PlanarTrack => json!(crate::planar::Track::default()),
+            ParameterKind::PlanarMode => json!(crate::planar::WarpMode::Follow),
             ParameterKind::MediaPlacement => json!(crate::media::Placement::default()),
             ParameterKind::MediaTiming => json!(crate::media::Timing::default()),
             ParameterKind::Typography => json!(crate::text::Typography::default()),
@@ -70,6 +74,10 @@ impl Parameter {
     }
     fn schema(&self) -> Value {
         match self.kind {
+            ParameterKind::PlanarTrack => crate::planar::schema(),
+            ParameterKind::PlanarMode => {
+                json!({"type":"string","enum":["follow","fit","stabilize"]})
+            }
             ParameterKind::Typography => crate::text::typography_schema(),
             ParameterKind::TextFeatures => json!({"type":"string","maxLength":256}),
             ParameterKind::TextContent => json!({"type":"string","maxLength":4096}),
@@ -548,6 +556,26 @@ pub static GRADIENT: NodeType = NodeType {
         scalar("end_y", "pixels", -1_000_000.0, 1_000_000.0, 0.0),
     ],
 };
+pub static PLANAR_TRACK: NodeType = NodeType {
+    type_id: "planar_track",
+    version: 1,
+    label: "Planar track",
+    description: "Reusable normalized surface motion and feature diagnostics. Image passes through unchanged. Connect its output to any Planar warp track input.",
+    inputs: &["image"],
+    parameters: &[other(
+        "data",
+        ParameterKind::PlanarTrack,
+        "normalized image coordinates",
+    )],
+};
+pub static PLANAR_WARP: NodeType = NodeType {
+    type_id: "planar_warp",
+    version: 1,
+    label: "Planar warp",
+    description: "GPU perspective sampling driven by a Planar track. Follow reference placement, fit the full image to the surface, or stabilize the tracked plane.",
+    inputs: &["image", "track"],
+    parameters: &[other("mode", ParameterKind::PlanarMode, "")],
+};
 pub static TYPES: &[&NodeType] = &[
     &SOLID,
     &NOISE,
@@ -558,6 +586,8 @@ pub static TYPES: &[&NodeType] = &[
     &IMAGE,
     &FOOTAGE,
     &AFFINE,
+    &PLANAR_TRACK,
+    &PLANAR_WARP,
     &ELLIPSE,
     &MASK,
     &TEXT,

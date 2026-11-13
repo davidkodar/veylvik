@@ -1,0 +1,513 @@
+//! Guided planar analysis with explicit, undoable publication of reusable motion.
+use crate::{Studio, files::Completed, sequence::Progress, viewer::ViewTransform};
+use eframe::egui;
+use std::sync::{Arc, atomic::Ordering};
+use veylvik_document::{
+    NodeId, Operation, Time,
+    planar::{Homography, Quad, Sample, Track, WarpMode},
+};
+use veylvik_render::{
+    Plan, RenderRequest,
+    planar::{PlanarTracker, Settings},
+};
+
+pub struct Controls {
+    pub open: bool,
+    pub source: Option<NodeId>,
+    pub active: Option<Arc<Progress>>,
+    surface: Quad,
+    settings: Settings,
+    end: i64,
+    result: Option<Tracked>,
+    target: Option<NodeId>,
+    mode: WarpMode,
+    show_features: bool,
+    saved: Option<NodeId>,
+    edited: bool,
+}
+impl Default for Controls {
+    fn default() -> Self {
+        Self {
+            open: false,
+            source: None,
+            active: None,
+            surface: [[0.2, 0.2], [0.8, 0.2], [0.8, 0.8], [0.2, 0.8]],
+            settings: Settings::default(),
+            end: 0,
+            result: None,
+            target: None,
+            mode: WarpMode::Follow,
+            show_features: true,
+            saved: None,
+            edited: true,
+        }
+    }
+}
+pub struct Tracked {
+    session: NodeId,
+    revision: u64,
+    source: NodeId,
+    data: Track,
+    message: String,
+}
+impl Controls {
+    pub fn overlay(
+        &mut self,
+        ui: &mut egui::Ui,
+        canvas: egui::Rect,
+        view: ViewTransform,
+        frame: i64,
+        rate: Time,
+    ) {
+        let [ox, oy, sx, sy] = view.0;
+        let origin = canvas.min + egui::vec2(canvas.width() * ox, canvas.height() * oy);
+        let scale = egui::vec2(canvas.width() * sx, canvas.height() * sy);
+        let screen =
+            |p: [f64; 2]| origin + egui::vec2(p[0] as f32 * scale.x, p[1] as f32 * scale.y);
+        let time = Time::at_frame(frame, rate).ok();
+        let sample = self.result.as_ref().and_then(|r| {
+            time.and_then(|t| {
+                r.data
+                    .samples
+                    .iter()
+                    .find(|s| s.time.compare(t).is_ok_and(|o| o.is_eq()))
+            })
+        });
+        let quad = sample
+            .map(|s| s.corners)
+            .or_else(|| {
+                self.result.as_ref().and_then(|r| {
+                    time.and_then(|t| r.data.motion_at(t).ok())
+                        .and_then(|h| h.transform_quad(r.data.reference).ok())
+                })
+            })
+            .unwrap_or(self.surface);
+        let painter = ui.painter().with_clip_rect(canvas);
+        for i in 0..4 {
+            painter.line_segment(
+                [screen(quad[i]), screen(quad[(i + 1) % 4])],
+                egui::Stroke::new(1.5_f32, egui::Color32::from_rgb(90, 210, 220)),
+            );
+        }
+        if self.show_features
+            && let Some(sample) = sample
+        {
+            for f in &sample.features {
+                let p = screen(f.position);
+                if f.accepted {
+                    painter.circle_stroke(
+                        p,
+                        3.,
+                        egui::Stroke::new(1.5_f32, egui::Color32::from_rgb(100, 230, 150)),
+                    );
+                } else {
+                    for sign in [-1., 1.] {
+                        painter.line_segment(
+                            [
+                                p + egui::vec2(-3., -3. * sign),
+                                p + egui::vec2(3., 3. * sign),
+                            ],
+                            egui::Stroke::new(1_f32, egui::Color32::from_rgb(240, 130, 100)),
+                        );
+                    }
+                }
+            }
+        }
+        if self.active.is_none() && self.result.is_none() {
+            for i in 0..4 {
+                let p = screen(self.surface[i]);
+                painter.rect_filled(
+                    egui::Rect::from_center_size(p, egui::vec2(8., 8.)),
+                    2.,
+                    egui::Color32::WHITE,
+                );
+                let response = ui.interact(
+                    egui::Rect::from_center_size(p, egui::vec2(20., 20.)).intersect(canvas),
+                    ui.id().with(("planar-corner", i)),
+                    egui::Sense::drag(),
+                );
+                if response.dragged()
+                    && let Some(pointer) = response.interact_pointer_pos()
+                {
+                    let value = (pointer - origin) / scale;
+                    let mut candidate = self.surface;
+                    candidate[i] = [
+                        f64::from(value.x.clamp(0., 1.)),
+                        f64::from(value.y.clamp(0., 1.)),
+                    ];
+                    if veylvik_document::planar::validate_quad(candidate).is_ok() {
+                        self.surface = candidate;
+                    }
+                }
+                response.on_hover_text("Drag to enclose the rigid surface to track");
+            }
+        }
+    }
+}
+impl Studio {
+    pub(super) fn begin_planar(&mut self) {
+        if !self.apply_draft() || self.files.busy() {
+            return;
+        }
+        self.playing = false;
+        self.tracking.open = false;
+        let doc = self.project.document.snapshot();
+        self.planar = Controls {
+            open: true,
+            source: Some(self.project.selected),
+            end: i64::from(doc.frame_count) - 1,
+            ..Default::default()
+        };
+        // Reopening a saved track displays its persisted diagnostics and offers
+        // new consumers without rerunning analysis.
+        let selected = &doc.nodes[&self.project.selected];
+        let track_node = if matches!(selected.operation, Operation::PlanarWarp { .. }) {
+            &doc.nodes[&selected.inputs["track"]]
+        } else {
+            selected
+        };
+        if let Operation::PlanarTrack { data } = &track_node.operation {
+            let source = track_node.inputs["image"];
+            self.planar.saved = Some(track_node.id);
+            self.planar.edited = false;
+            self.planar.source = Some(source);
+            self.planar.surface = data.reference;
+            self.planar.result = Some(Tracked {
+                session: self.project.session,
+                revision: self.project.document.revision(),
+                source,
+                data: (**data).clone(),
+                message: "Saved planar track".into(),
+            });
+        }
+        self.project.preview = self.planar.source;
+        self.request_preview();
+    }
+    pub(super) fn planar_completed(&mut self, result: Tracked) {
+        self.planar.active = None;
+        if result.session != self.project.session
+            || result.revision != self.project.document.revision()
+        {
+            self.fail("Composition changed during tracking; track again.");
+            return;
+        }
+        self.status = result.message.clone();
+        self.error = false;
+        self.planar.edited = true;
+        self.planar.result = Some(result);
+        self.planar.open = true;
+    }
+    pub(super) fn planar_window(&mut self, ctx: &egui::Context) {
+        if !self.planar.open {
+            return;
+        }
+        let mut open = true;
+        let mut track = false;
+        let mut save = false;
+        let mut attach = false;
+        let mut view = false;
+        let doc = self.project.document.snapshot();
+        egui::Window::new("Track surface").default_width(350.).default_pos(egui::pos2((ctx.content_rect().width()-370.).max(20.),100.)).open(&mut open).collapsible(false).show(ctx,|ui| {
+            ui.label("Choose a rigid surface and place its four corners in the viewer.");
+            ui.add_enabled_ui(self.planar.active.is_none(),|ui| {
+                let old=self.planar.source;
+                egui::ComboBox::from_id_salt("planar-source").selected_text(old.and_then(|id|doc.nodes.get(&id)).map_or("Source",|n|n.label.as_str())).show_ui(ui,|ui| {
+                    for node in doc.nodes.values() { if !matches!(node.operation,Operation::PlanarTrack {..}|Operation::PlanarWarp {..}) { ui.selectable_value(&mut self.planar.source,Some(node.id),&node.label); } }
+                });
+                if old!=self.planar.source {self.planar.result=None;view=true;}
+                if ui.button("View tracking source").clicked() {view=true;}
+                ui.checkbox(&mut self.planar.show_features,"Show feature matches");
+                ui.weak("Green circles: accepted. Coral crosses: rejected.");
+                ui.separator();
+                ui.horizontal(|ui| {ui.label(format!("Frame {} to",self.project.frame));ui.add(egui::DragValue::new(&mut self.planar.end).range(0..=i64::from(doc.frame_count)-1));});
+                ui.horizontal(|ui| {if ui.button("To start").clicked() {self.planar.end=0;}
+                    if ui.button("To end").clicked() {self.planar.end=i64::from(doc.frame_count)-1;}});
+                ui.collapsing("Tracking settings",|ui| {
+                    ui.horizontal(|ui| {ui.label("Feature radius");ui.add(egui::DragValue::new(&mut self.planar.settings.patch_radius).range(3..=16).suffix(" px"));});
+                    ui.horizontal(|ui| {ui.label("Search radius");ui.add(egui::DragValue::new(&mut self.planar.settings.search_radius).range(1..=48).suffix(" px"));});
+                    ui.horizontal(|ui| {ui.label("Match tolerance");ui.add(egui::DragValue::new(&mut self.planar.settings.tolerance_pixels).range(0.1..=32.).speed(0.1).suffix(" px"));});
+                });
+                if self.planar.result.is_some() && ui.button("Adjust region / track again").clicked() {
+                    if let Some(result)=&self.planar.result
+                        && let Ok(quad)=Time::at_frame(self.project.frame,doc.frame_rate)
+                            .and_then(|time|result.data.motion_at(time))
+                            .and_then(|h|h.transform_quad(result.data.reference)) {
+                            self.planar.surface=quad.map(|p|p.map(|v|v.clamp(0.,1.)));
+                            if veylvik_document::planar::validate_quad(self.planar.surface).is_err() { self.planar.surface=Controls::default().surface; }
+                    }
+                    self.planar.result=None;
+                }
+                let valid=self.planar.source.is_some() && self.project.frame.abs_diff(self.planar.end)<4096 && self.project.frame!=self.planar.end;
+                if ui.add_enabled(valid && !self.files.busy(),egui::Button::new("Track surface")).clicked() {track=true;}
+            });
+            if let Some(p)=&self.planar.active {
+                let n=p.completed.load(Ordering::Relaxed);let total=p.total.load(Ordering::Relaxed).max(1);
+                ui.add(egui::ProgressBar::new(n as f32/total as f32).text(format!("Tracking {n} / {total}")));
+                if ui.button("Cancel").clicked() {p.cancel.store(true,Ordering::Relaxed);}
+            }
+            if let Some(result)=&self.planar.result {
+                ui.separator();ui.label(&result.message);
+                let time=Time::at_frame(self.project.frame,doc.frame_rate).ok();
+                if let Some(s)=time.and_then(|t|result.data.samples.iter().find(|s|s.time.compare(t).is_ok_and(|o|o.is_eq()))) {
+                    ui.label(format!("{} / {} features accepted · {:.2} px error",s.features.iter().filter(|f|f.accepted).count(),s.features.len(),s.rms_pixels));
+                }
+                let fresh=result.session==self.project.session && result.revision==self.project.document.revision() && !self.draft_dirty;
+                ui.add_enabled_ui(fresh,|ui| {
+                    if ui.add_enabled(self.planar.edited,egui::Button::new(if self.planar.saved.is_some() {"Update reusable track"} else {"Save reusable track"})).clicked() {save=true;}
+                    ui.separator();
+                    egui::ComboBox::from_id_salt("planar-target").selected_text(self.planar.target.and_then(|id|doc.nodes.get(&id)).map_or("Choose text, image or layer",|n|n.label.as_str())).show_ui(ui,|ui| {for node in doc.nodes.values() {ui.selectable_value(&mut self.planar.target,Some(node.id),&node.label);}});
+                    egui::ComboBox::from_id_salt("planar-mode").selected_text(self.planar.mode.label()).show_ui(ui,|ui| {for mode in WarpMode::ALL {ui.selectable_value(&mut self.planar.mode,mode,mode.label());}});
+                    ui.weak(match self.planar.mode {WarpMode::Follow=>"Position the layer on the reference frame first. Its placement follows the surface.",WarpMode::Fit=>"Maps the layer's entire canvas into the four surface corners.",WarpMode::Stabilize=>"Locks the tracked source surface to its reference position."});
+                    if ui.add_enabled(self.planar.target.is_some() || self.planar.mode==WarpMode::Stabilize,egui::Button::new("Create tracked layer")).clicked() {attach=true;}
+                });
+                if !fresh {ui.colored_label(egui::Color32::LIGHT_RED,"Composition changed. Reopen the saved track or track again.");}
+                ui.weak("Save and Create are undoable. Tracking alone does not change your project.");
+            }
+        });
+        self.planar.open = open;
+        if !open && let Some(p) = &self.planar.active {
+            p.cancel.store(true, Ordering::Relaxed);
+        }
+        if view {
+            self.project.preview = self.planar.source;
+            self.request_preview();
+        }
+        if track {
+            self.run_planar(ctx);
+        }
+        if save || attach {
+            self.publish_planar(attach);
+        }
+    }
+    fn publish_planar(&mut self, attach: bool) {
+        let Some(result) = &self.planar.result else {
+            return;
+        };
+        let doc = self.project.document.snapshot();
+        let saved = if let Some(id) = self.planar.saved {
+            let mut commands = Vec::new();
+            if self.planar.edited {
+                let Some(mut node) = doc.nodes.get(&id).cloned() else {
+                    self.fail("Saved track no longer exists");
+                    return;
+                };
+                node.operation = Operation::PlanarTrack {
+                    data: Box::new(result.data.clone()),
+                };
+                node.inputs.insert("image".into(), result.source);
+                commands.push(veylvik_document::Command::Put {
+                    node: Box::new(node),
+                });
+            }
+            Ok((id, commands))
+        } else {
+            veylvik_document::planar::save(doc, result.source, result.data.clone())
+        };
+        let (track, mut commands) = match saved {
+            Ok(v) => v,
+            Err(e) => {
+                self.fail(e);
+                return;
+            }
+        };
+        let mut selected = track;
+        if attach {
+            let image = if self.planar.mode == WarpMode::Stabilize {
+                result.source
+            } else {
+                let Some(id) = self.planar.target else {
+                    return;
+                };
+                id
+            };
+            let warp = veylvik_document::Node::new(
+                self.planar.mode.label(),
+                Operation::PlanarWarp {
+                    mode: self.planar.mode,
+                },
+                &[("image", image), ("track", track)],
+            );
+            selected = warp.id;
+            let mut output = warp.id;
+            commands.push(veylvik_document::Command::Put {
+                node: Box::new(warp),
+            });
+            if self.planar.mode != WarpMode::Stabilize {
+                let merge = veylvik_document::Node::new(
+                    "Layer on tracked surface",
+                    Operation::Merge {},
+                    &[("background", result.source), ("foreground", output)],
+                );
+                output = merge.id;
+                commands.push(veylvik_document::Command::Put {
+                    node: Box::new(merge),
+                });
+            }
+            commands.push(veylvik_document::Command::Output { id: output });
+        }
+        match self.project.apply(&commands) {
+            Ok(()) => {
+                self.project.selected = selected;
+                self.project.preview = None;
+                self.planar.open = false;
+                self.planar.result = None;
+                self.refresh_draft();
+                self.request_preview();
+            }
+            Err(e) => self.fail(e),
+        }
+    }
+    fn run_planar(&mut self, ctx: &egui::Context) {
+        if !self.apply_draft() || self.files.busy() {
+            return;
+        }
+        let Some(source) = self.planar.source else {
+            return;
+        };
+        let plan = match Plan::compile_output(self.project.document.snapshot(), source) {
+            Ok(p) => p,
+            Err(e) => {
+                self.fail(e);
+                return;
+            }
+        };
+        let (session, revision) = (self.project.session, self.project.document.revision());
+        let (start, end, rate) = (
+            self.project.frame,
+            self.planar.end,
+            self.project.document.snapshot().frame_rate,
+        );
+        let (surface, settings) = (self.planar.surface, self.planar.settings);
+        let available_bytes = veylvik_document::limits::MAX_DOCUMENT_BYTES
+            .saturating_sub(
+                self.project
+                    .document
+                    .snapshot()
+                    .encoded_size()
+                    .unwrap_or(veylvik_document::limits::MAX_DOCUMENT_BYTES),
+            )
+            .saturating_sub(64 * 1024);
+        let renderer = self.renderer.clone();
+        let inputs = self.project.inputs.clone();
+        let ctx = ctx.clone();
+        let progress = Arc::new(Progress::default());
+        progress
+            .total
+            .store((start.abs_diff(end) + 1) as u32, Ordering::Relaxed);
+        let worker = progress.clone();
+        self.playing = false;
+        self.planar.result = None;
+        let work = self.files.start(move || {
+            let run = || -> Result<Tracked, Box<dyn std::error::Error>> {
+                let tracker = PlanarTracker::new(&renderer);
+                let reference_time = Time::at_frame(start, rate)?;
+                let reference = renderer.render_gpu_cached(
+                    &plan,
+                    RenderRequest::full(reference_time),
+                    &inputs,
+                )?;
+                let points = tracker.detect(&renderer, &reference, surface, settings)?;
+                let initial = tracker.track(
+                    &renderer,
+                    &reference,
+                    &reference,
+                    &points,
+                    Homography::IDENTITY,
+                    settings,
+                )?;
+                let mut data = Track {
+                    reference_time,
+                    reference: surface,
+                    samples: vec![Sample {
+                        time: reference_time,
+                        corners: surface,
+                        features: initial.features,
+                        rms_pixels: initial.consensus.rms_pixels,
+                    }],
+                };
+                // Include generous allowance for the document's deeper pretty-JSON
+                // indentation. Stop early rather than finish an unsavable analysis.
+                let mut diagnostic_bytes = serde_json::to_vec_pretty(&data)?.len() * 2;
+                if diagnostic_bytes > available_bytes {
+                    return Err("Not enough project space for tracking diagnostics".into());
+                }
+                let mut motion = Homography::IDENTITY;
+                let step = if end > start { 1 } else { -1 };
+                let mut frame = start;
+                let mut message = "Tracking complete".to_owned();
+                worker.completed.store(1, Ordering::Relaxed);
+                while frame != end {
+                    if worker.cancel.load(Ordering::Relaxed) {
+                        message = "Cancelled; accepted frames are available to save".into();
+                        break;
+                    }
+                    frame += step;
+                    let time = Time::at_frame(frame, rate)?;
+                    let current =
+                        renderer.render_gpu_cached(&plan, RenderRequest::full(time), &inputs)?;
+                    let found = match tracker
+                        .track(&renderer, &reference, &current, &points, motion, settings)
+                    {
+                        Ok(v) => v,
+                        Err(e) => {
+                            message = format!("Stopped at frame {frame}: {e}");
+                            break;
+                        }
+                    };
+                    // Refine patches using this frame's perspective estimate.
+                    let found = tracker
+                        .track(
+                            &renderer,
+                            &reference,
+                            &current,
+                            &points,
+                            found.consensus.motion,
+                            settings,
+                        )
+                        .unwrap_or(found);
+                    let corners = match found.consensus.motion.transform_quad(surface) {
+                        Ok(q) => q,
+                        Err(e) => {
+                            message = format!("Stopped at frame {frame}: {e}");
+                            break;
+                        }
+                    };
+                    motion = found.consensus.motion;
+                    let sample = Sample {
+                        time,
+                        corners,
+                        features: found.features,
+                        rms_pixels: found.consensus.rms_pixels,
+                    };
+                    diagnostic_bytes += serde_json::to_vec_pretty(&sample)?.len() * 2;
+                    if diagnostic_bytes > available_bytes {
+                        message = "Stopped before the project size limit; accepted frames remain available".into();
+                        break;
+                    }
+                    data.samples.push(sample);
+                    worker
+                        .completed
+                        .store(data.samples.len() as u32, Ordering::Relaxed);
+                    ctx.request_repaint();
+                }
+                data.samples.sort_by(|a, b| a.time.compare(b.time).unwrap());
+                data.validate()?;
+                message.push_str(&format!(" · {} frames", data.samples.len()));
+                Ok(Tracked {
+                    session,
+                    revision,
+                    source,
+                    data,
+                    message,
+                })
+            };
+            run()
+                .map(Completed::PlanarTracked)
+                .map_err(|e| e.to_string())
+        });
+        if work.is_ok() {
+            self.planar.active = Some(progress);
+        }
+        self.file_started(work);
+    }
+}

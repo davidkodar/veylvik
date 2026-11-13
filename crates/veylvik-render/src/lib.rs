@@ -9,6 +9,7 @@ pub use frame::{
 };
 mod encode;
 mod plan;
+pub mod planar;
 mod pool;
 mod scheduler;
 mod texture;
@@ -44,6 +45,7 @@ struct Params {
 }
 fn params(
     node: &Node,
+    nodes: &[Node],
     curves: &BTreeMap<&'static str, CompiledScalar>,
     width: u32,
     height: u32,
@@ -62,6 +64,39 @@ fn params(
         extra: [0.0; 4],
     };
     match &node.operation {
+        Operation::PlanarTrack { .. } => {}
+        Operation::PlanarWarp { mode } => {
+            let track = node
+                .inputs
+                .get("track")
+                .and_then(|id| nodes.iter().find(|n| n.id == *id))
+                .ok_or_else(|| error("Planar track missing"))?;
+            let Operation::PlanarTrack { data } = &track.operation else {
+                return Err(error("Invalid planar track input"));
+            };
+            let forward = data.motion_at(time)?;
+            let motion = match mode {
+                veylvik_document::planar::WarpMode::Follow => forward,
+                veylvik_document::planar::WarpMode::Fit => {
+                    forward.compose(veylvik_document::planar::Homography::between(
+                        [[0., 0.], [1., 0.], [1., 1.], [0., 1.]],
+                        data.reference,
+                    )?)
+                }
+                veylvik_document::planar::WarpMode::Stabilize => forward
+                    .inverse()
+                    .ok_or_else(|| error("Singular planar motion"))?,
+            };
+            let inverse = motion
+                .inverse()
+                .ok_or_else(|| error("Singular planar warp"))?;
+            let matrix = inverse.matrix.map(|v| (v / inverse.matrix[8]) as f32);
+            if matrix.iter().any(|v| !v.is_finite()) {
+                return Err(error("Invalid planar warp"));
+            }
+            p.values.copy_from_slice(&matrix[..4]);
+            p.extra.copy_from_slice(&matrix[4..8]);
+        }
         Operation::Solid { color } => {
             p.values = *color;
         }
@@ -524,7 +559,7 @@ impl Renderer {
             .nodes
             .iter()
             .zip(&plan.curves)
-            .map(|(n, curves)| params(n, curves, plan.width, plan.height, time))
+            .map(|(n, curves)| params(n, &plan.nodes, curves, plan.width, plan.height, time))
             .collect::<Result<_>>()?;
         for (node, p) in plan.nodes.iter().zip(&mut evaluated) {
             if let Some(asset) = node.operation.asset() {

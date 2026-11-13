@@ -25,6 +25,7 @@ pub enum Choice {
 }
 pub enum Completed {
     Tracked(crate::tracking::Tracked),
+    PlanarTracked(crate::planar::Tracked),
     PresetLibrary(veylvik_io::presets::Listing),
     PresetLoaded(Box<veylvik_document::presets::Preset>),
     Cancelled,

@@ -36,6 +36,7 @@ impl Key {
             words.extend([pass.kernel as u32, pass.output as u32]);
             let values = params(
                 &plan.nodes[pass.node],
+                &plan.nodes,
                 &plan.curves[pass.node],
                 plan.width,
                 plan.height,

@@ -25,6 +25,7 @@ pub mod schema;
 pub mod text;
 pub use text::{TextAlignment, TextFont};
 pub mod media;
+pub mod planar;
 pub mod sequence;
 pub mod tracking;
 pub mod vector;
@@ -49,6 +50,12 @@ pub use animation::{CompiledScalar, Handle, Interpolation, Key, Scalar, Segment,
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Operation {
+    PlanarTrack {
+        data: Box<planar::Track>,
+    },
+    PlanarWarp {
+        mode: planar::WarpMode,
+    },
     Text {
         content: String,
         font: Box<TextFont>,
@@ -249,6 +256,8 @@ impl Operation {
 
     pub fn descriptor(&self) -> &'static registry::NodeType {
         match self {
+            Self::PlanarTrack { .. } => &registry::PLANAR_TRACK,
+            Self::PlanarWarp { .. } => &registry::PLANAR_WARP,
             Self::Text { .. } => &registry::TEXT,
             Self::MetallicShine { .. } => &registry::METALLIC_SHINE,
             Self::SurfaceReflection { .. } => &registry::SURFACE_REFLECTION,
@@ -479,6 +488,7 @@ impl Operation {
             }
         }
         match self {
+            Self::PlanarTrack { data } => data.validate(),
             Self::Text {
                 content,
                 font,
@@ -653,6 +663,17 @@ impl Composition {
                     "{}: expected input ports {expected:?}, got {actual:?}",
                     node.label
                 ));
+            }
+            if matches!(node.operation, Operation::PlanarWarp { .. })
+                && !node
+                    .inputs
+                    .get("track")
+                    .and_then(|id| self.nodes.get(id))
+                    .is_some_and(|n| {
+                        matches!(n.operation, Operation::PlanarTrack { .. }) && !n.bypass
+                    })
+            {
+                return fail("Planar warp needs an enabled Planar track on its track input");
             }
             pending.insert(*id, node.inputs.len());
             for input in node.inputs.values() {
