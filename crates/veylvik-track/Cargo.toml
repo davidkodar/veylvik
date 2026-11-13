@@ -1,0 +1,16 @@
+[package]
+name = "veylvik-track"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+[dependencies]
+veylvik-document.workspace = true
+veylvik-render.workspace = true
+wgpu.workspace = true
+bytemuck.workspace = true
+thiserror.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+[lints]
+workspace = true

@@ -1,9 +1,7 @@
 use std::sync::Arc;
 use veylvik_document::{Operation, Time, planar::Homography};
-use veylvik_render::{
-    Image, ImageInputs, Plan, RenderRequest, Renderer,
-    planar::{PlanarTracker, Settings},
-};
+use veylvik_render::{Image, ImageInputs, Plan, RenderRequest, Renderer};
+use veylvik_track::planar::{PlanarTracker, Settings};
 
 #[test]
 #[ignore = "requires Vulkan"]

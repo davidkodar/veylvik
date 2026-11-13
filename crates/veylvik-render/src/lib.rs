@@ -7,13 +7,12 @@ pub use cache::CacheStats;
 pub use frame::{
     FrameSource, GpuFrame, Image, ImageInputs, Region, RenderRequest, RenderedFrame, SourceInfo,
 };
+pub mod compute;
 mod encode;
 mod plan;
-pub mod planar;
 mod pool;
 mod scheduler;
 mod texture;
-pub mod tracking;
 mod vector;
 mod video;
 pub use plan::{Kernel, PassInfo, Plan};

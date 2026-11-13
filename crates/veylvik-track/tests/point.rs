@@ -1,6 +1,7 @@
 use std::sync::Arc;
 use veylvik_document::{Operation, Time};
-use veylvik_render::{Image, ImageInputs, Plan, RenderRequest, Renderer, tracking::PointTracker};
+use veylvik_render::{Image, ImageInputs, Plan, RenderRequest, Renderer};
+use veylvik_track::point::PointTracker;
 #[test]
 #[ignore = "requires Vulkan"]
 fn gpu_tracking_finds_translation_rejects_flat_and_ambiguous_patches() {

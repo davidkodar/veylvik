@@ -2,10 +2,8 @@
 use serde_json::{Value, json};
 use std::path::Path;
 use veylvik_document::{Command, Composition, NodeId, Time, planar::Quad};
-use veylvik_render::{
-    Plan, Renderer,
-    planar::{PlanarTracker, Settings},
-};
+use veylvik_render::{Plan, Renderer};
+use veylvik_track::planar::{PlanarTracker, Settings};
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
 pub struct Request {
@@ -143,7 +141,7 @@ pub fn run(
     let worst = samples.iter().map(|s| s.rms_pixels).fold(0.0, f64::max);
     let report = json!({
         "frames": samples.len(), "first_frame": first, "last_frame": last,
-        "complete": range.stop == veylvik_render::planar::Stop::Complete,
+        "complete": range.stop == veylvik_track::planar::Stop::Complete,
         "message": range.stop.message(), "reanchored": range.anchors - 1,
         "worst_rms_pixels": worst,
     });

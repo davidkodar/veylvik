@@ -6,10 +6,8 @@ use veylvik_document::{
     NodeId, Operation, Time,
     planar::{Quad, Sample, Track, WarpMode},
 };
-use veylvik_render::{
-    Plan,
-    planar::{PlanarTracker, Settings},
-};
+use veylvik_render::Plan;
+use veylvik_track::planar::{PlanarTracker, Settings};
 
 pub struct Controls {
     pub open: bool,
@@ -684,7 +682,7 @@ impl Studio {
                     available_bytes,
                     &mut observe,
                 )?;
-                if let veylvik_render::planar::Stop::Lost { frame, .. } = range.stop
+                if let veylvik_track::planar::Stop::Lost { frame, .. } = range.stop
                     && let Ok(mut live) = live.lock()
                 {
                     live.lost = Some(frame);

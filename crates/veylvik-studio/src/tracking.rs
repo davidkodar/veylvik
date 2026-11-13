@@ -3,7 +3,8 @@ use crate::{Studio, files::Completed, sequence::Progress, viewer::ViewTransform}
 use eframe::egui;
 use std::sync::{Arc, atomic::Ordering};
 use veylvik_document::{NodeId, Operation, Time, tracking::Sample};
-use veylvik_render::{Plan, RenderRequest, tracking::PointTracker};
+use veylvik_render::{Plan, RenderRequest};
+use veylvik_track::point::PointTracker;
 #[derive(Default)]
 pub struct Controls {
     pub open: bool,

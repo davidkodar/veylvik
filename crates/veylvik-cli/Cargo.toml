@@ -11,6 +11,7 @@ path = "src/main.rs"
 veylvik-control.workspace = true
 veylvik-document.workspace = true
 veylvik-render.workspace = true
+veylvik-track.workspace = true
 serde_json.workspace = true
 veylvik-io.workspace = true
 pathdiff = "0.2"

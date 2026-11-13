@@ -1,13 +1,15 @@
 //! GPU planar feature detection and batched perspective-aware patch matching.
-use crate::{GpuFrame, Renderer, Result, error};
+use crate::estimate::{Consensus, estimate};
+use crate::{Result, error};
 use std::sync::Arc;
-use veylvik_document::planar::{self, Consensus, Feature, Homography, Point, Quad};
+use veylvik_document::planar::{self, Feature, Homography, Point, Quad};
+use veylvik_render::{GpuFrame, Renderer, compute::DeviceKey};
 
 pub struct PlanarTracker {
     detect: wgpu::ComputePipeline,
     correlate: wgpu::ComputePipeline,
     downsample: wgpu::ComputePipeline,
-    owner: Arc<crate::frame::DeviceIdentity>,
+    owner: DeviceKey,
 }
 #[derive(Debug, Clone, Copy)]
 pub struct Settings {
@@ -76,9 +78,9 @@ impl PlanarTracker {
     pub fn track_range(
         &self,
         renderer: &Renderer,
-        plan: &crate::Plan,
-        occlusion: Option<(&crate::Plan, &crate::ImageInputs)>,
-        inputs: &crate::ImageInputs,
+        plan: &veylvik_render::Plan,
+        occlusion: Option<(&veylvik_render::Plan, &veylvik_render::ImageInputs)>,
+        inputs: &veylvik_render::ImageInputs,
         surface: Quad,
         region: Option<Quad>,
         [start, end]: [i64; 2],
@@ -90,10 +92,15 @@ impl PlanarTracker {
         let at = |frame: i64| {
             veylvik_document::Time::at_frame(frame, rate).map_err(|e| error(e.to_string()))
         };
-        let render_with = |plan: &crate::Plan, inputs: &crate::ImageInputs, frame: i64| {
-            renderer.render_gpu_cached(plan, crate::RenderRequest::full(at(frame)?), inputs)
-        };
-        let render = |plan: &crate::Plan, frame: i64| render_with(plan, inputs, frame);
+        let render_with =
+            |plan: &veylvik_render::Plan, inputs: &veylvik_render::ImageInputs, frame: i64| {
+                Ok::<_, crate::Error>(renderer.render_gpu_cached(
+                    plan,
+                    veylvik_render::RenderRequest::full(at(frame)?),
+                    inputs,
+                )?)
+            };
+        let render = |plan: &veylvik_render::Plan, frame: i64| render_with(plan, inputs, frame);
         let matte = |frame: i64| {
             occlusion
                 .map(|(plan, inputs)| render_with(plan, inputs, frame))
@@ -297,14 +304,14 @@ impl PlanarTracker {
     }
     pub fn new(renderer: &Renderer) -> Self {
         let module = renderer
-            .device
+            .device()
             .create_shader_module(wgpu::ShaderModuleDescriptor {
                 label: Some("planar tracking"),
                 source: wgpu::ShaderSource::Wgsl(include_str!("planar.wgsl").into()),
             });
         let pipeline = |entry| {
             renderer
-                .device
+                .device()
                 .create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
                     label: Some(entry),
                     layout: None,
@@ -316,14 +323,14 @@ impl PlanarTracker {
         };
         let downsample_module =
             renderer
-                .device
+                .device()
                 .create_shader_module(wgpu::ShaderModuleDescriptor {
                     label: Some("planar pyramid"),
                     source: wgpu::ShaderSource::Wgsl(include_str!("planar_pyramid.wgsl").into()),
                 });
         let downsample =
             renderer
-                .device
+                .device()
                 .create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
                     label: Some("planar pyramid"),
                     layout: None,
@@ -336,7 +343,7 @@ impl PlanarTracker {
             downsample,
             detect: pipeline("detect"),
             correlate: pipeline("correlate"),
-            owner: renderer.owner.clone(),
+            owner: renderer.device_key(),
         }
     }
     /// Return up to 64 distributed corners in normalized image coordinates.
@@ -379,14 +386,14 @@ impl PlanarTracker {
         for v in values.as_chunks::<4>().0 {
             if v[2] > 0.0001
                 && points.iter().all(|p: &Point| {
-                    ((p[0] * f64::from(frame.width) - f64::from(v[0])).powi(2)
-                        + (p[1] * f64::from(frame.height) - f64::from(v[1])).powi(2))
+                    ((p[0] * f64::from(frame.width()) - f64::from(v[0])).powi(2)
+                        + (p[1] * f64::from(frame.height()) - f64::from(v[1])).powi(2))
                         >= f64::from(settings.patch_radius * 2).powi(2)
                 })
             {
                 points.push([
-                    (f64::from(v[0]) + 0.5) / f64::from(frame.width),
-                    (f64::from(v[1]) + 0.5) / f64::from(frame.height),
+                    (f64::from(v[0]) + 0.5) / f64::from(frame.width()),
+                    (f64::from(v[1]) + 0.5) / f64::from(frame.height()),
                 ]);
             }
         }
@@ -429,7 +436,7 @@ impl PlanarTracker {
         if !(6..=256).contains(&points.len()) {
             return Err(error("Planar tracking requires 6..256 features"));
         }
-        let size = [reference.width, reference.height];
+        let size = [reference.width(), reference.height()];
         let mut gpu_points = Vec::with_capacity(points.len());
         let mut origins = Vec::with_capacity(points.len());
         for p in points {
@@ -518,7 +525,7 @@ impl PlanarTracker {
                 accepted: false,
             });
         }
-        let consensus = planar::estimate(&features, size, settings.tolerance_pixels)
+        let consensus = estimate(&features, size, settings.tolerance_pixels)
             .map_err(|e| error(e.to_string()))?;
         for (f, &accepted) in features.iter_mut().zip(&consensus.accepted) {
             f.accepted = accepted;
@@ -535,79 +542,58 @@ impl PlanarTracker {
         let mut levels = Vec::new();
         for _ in 0..3 {
             let input = levels.last().unwrap_or(frame);
-            if input.width.min(input.height) < 64 {
+            if input.width().min(input.height()) < 64 {
                 break;
             }
-            let width = input.width / 2;
-            let height = input.height / 2;
-            let mut pool = renderer
-                .pool
-                .lock()
-                .map_err(|_| error("Tracking resource pool unavailable"))?;
-            if pool.failed {
-                return Err(error("Renderer unavailable after GPU failure"));
-            }
-            let mut resources = pool.frame(renderer.budget_bytes);
-            let uniform = resources.take(
-                &renderer.device,
-                16,
-                wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-                "pyramid size",
-            )?;
-            let output = resources.take(
-                &renderer.device,
-                u64::from(width) * u64::from(height) * 16,
-                wgpu::BufferUsages::STORAGE,
-                "planar pyramid",
-            )?;
-            renderer.queue.write_buffer(
-                &uniform,
-                0,
-                bytemuck::cast_slice(&[input.width, input.height, width, height]),
-            );
-            let bind = renderer
-                .device
-                .create_bind_group(&wgpu::BindGroupDescriptor {
-                    label: Some("planar pyramid"),
-                    layout: &self.downsample.get_bind_group_layout(0),
-                    entries: &[
-                        wgpu::BindGroupEntry {
-                            binding: 0,
-                            resource: uniform.as_entire_binding(),
-                        },
-                        wgpu::BindGroupEntry {
-                            binding: 1,
-                            resource: input.storage.buffer.as_entire_binding(),
-                        },
-                        wgpu::BindGroupEntry {
-                            binding: 2,
-                            resource: output.as_entire_binding(),
-                        },
-                    ],
-                });
-            let mut encoder = renderer.device.create_command_encoder(&Default::default());
-            {
-                let mut pass = encoder.begin_compute_pass(&Default::default());
-                pass.set_pipeline(&self.downsample);
-                pass.set_bind_group(0, &bind, &[]);
-                pass.dispatch_workgroups(width.div_ceil(8), height.div_ceil(8), 1);
-            }
-            resources.submitted();
-            renderer.wait(renderer.queue.submit([encoder.finish()]))?;
-            resources.completed();
-            levels.push(GpuFrame {
-                identity: crate::frame::next_identity()?,
-                storage: resources.pin(&output),
-                owner: renderer.owner.clone(),
-                region: crate::Region {
-                    x: 0,
-                    y: 0,
-                    width,
-                    height,
-                },
-                width,
-                height,
-            });
+            let width = input.width() / 2;
+            let height = input.height() / 2;
+            let level = renderer.compute(|scratch| {
+                let uniform = scratch.buffer(
+                    16,
+                    wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+                    "pyramid size",
+                )?;
+                let output = scratch.buffer(
+                    u64::from(width) * u64::from(height) * 16,
+                    wgpu::BufferUsages::STORAGE,
+                    "planar pyramid",
+                )?;
+                scratch.queue().write_buffer(
+                    &uniform,
+                    0,
+                    bytemuck::cast_slice(&[input.width(), input.height(), width, height]),
+                );
+                let bind = scratch
+                    .device()
+                    .create_bind_group(&wgpu::BindGroupDescriptor {
+                        label: Some("planar pyramid"),
+                        layout: &self.downsample.get_bind_group_layout(0),
+                        entries: &[
+                            wgpu::BindGroupEntry {
+                                binding: 0,
+                                resource: uniform.as_entire_binding(),
+                            },
+                            wgpu::BindGroupEntry {
+                                binding: 1,
+                                resource: input.buffer().as_entire_binding(),
+                            },
+                            wgpu::BindGroupEntry {
+                                binding: 2,
+                                resource: output.as_entire_binding(),
+                            },
+                        ],
+                    });
+                let mut encoder = scratch.device().create_command_encoder(&Default::default());
+                {
+                    let mut pass = encoder.begin_compute_pass(&Default::default());
+                    pass.set_pipeline(&self.downsample);
+                    pass.set_bind_group(0, &bind, &[]);
+                    pass.dispatch_workgroups(width.div_ceil(8), height.div_ceil(8), 1);
+                }
+                scratch.run(encoder)?;
+                scratch.frame(&output, width, height)
+            })?;
+            levels.push(level);
         }
         Ok(levels)
     }
@@ -663,11 +649,14 @@ impl PlanarTracker {
                 .iter()
                 .copied()
                 .filter(|p| {
-                    [a.width, a.height].iter().enumerate().all(|(axis, &size)| {
-                        let pixel = (p[axis] * f64::from(size) - 0.5).round();
-                        pixel >= f64::from(settings.patch_radius)
-                            && pixel + f64::from(settings.patch_radius) < f64::from(size)
-                    })
+                    [a.width(), a.height()]
+                        .iter()
+                        .enumerate()
+                        .all(|(axis, &size)| {
+                            let pixel = (p[axis] * f64::from(size) - 0.5).round();
+                            pixel >= f64::from(settings.patch_radius)
+                                && pixel + f64::from(settings.patch_radius) < f64::from(size)
+                        })
                 })
                 .collect();
             let coarse = Settings {
@@ -714,19 +703,19 @@ impl PlanarTracker {
         current: &GpuFrame,
         settings: Settings,
     ) -> Result<()> {
-        if !Arc::ptr_eq(&self.owner, &renderer.owner)
-            || !Arc::ptr_eq(&reference.owner, &renderer.owner)
-            || !Arc::ptr_eq(&current.owner, &renderer.owner)
+        if self.owner != renderer.device_key()
+            || !renderer.owns(reference)
+            || !renderer.owns(current)
         {
             return Err(error("Planar frames belong to another renderer"));
         }
-        if reference.region.x != 0
-            || reference.region.y != 0
-            || reference.region.width != reference.width
-            || reference.region.height != reference.height
-            || current.region != reference.region
-            || current.width != reference.width
-            || current.height != reference.height
+        if reference.region().x != 0
+            || reference.region().y != 0
+            || reference.region().width != reference.width()
+            || reference.region().height != reference.height()
+            || current.region() != reference.region()
+            || current.width() != reference.width()
+            || current.height() != reference.height()
         {
             return Err(error("Planar tracking requires matching uncropped frames"));
         }
@@ -752,108 +741,90 @@ impl PlanarTracker {
         occlusion: Option<&GpuFrame>,
     ) -> Result<Vec<f32>> {
         if let Some(matte) = occlusion
-            && (!Arc::ptr_eq(&matte.owner, &renderer.owner)
-                || matte.width != reference.width
-                || matte.height != reference.height)
+            && (!renderer.owns(matte)
+                || matte.width() != reference.width()
+                || matte.height() != reference.height())
         {
             return Err(error("Occlusion matte must match the tracked frames"));
         }
-        let mut pool = renderer
-            .pool
-            .lock()
-            .map_err(|_| error("Tracking resource pool unavailable"))?;
-        if pool.failed {
-            return Err(error("Renderer unavailable after GPU failure"));
-        }
-        let mut resources = pool.frame(renderer.budget_bytes);
-        let uniform = resources.take(
-            &renderer.device,
-            80,
-            wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-            "planar settings",
-        )?;
-        let points = resources.take(
-            &renderer.device,
-            (features.len() * 16) as u64,
-            wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
-            "planar features",
-        )?;
-        let bytes = u64::from(count) * 4;
-        let output = resources.take(
-            &renderer.device,
-            bytes,
-            wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
-            "planar scores",
-        )?;
-        let readback = resources.take(
-            &renderer.device,
-            bytes,
-            wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
-            "planar score readback",
-        )?;
-        renderer
-            .queue
-            .write_buffer(&uniform, 0, bytemuck::cast_slice(params));
-        renderer
-            .queue
-            .write_buffer(&points, 0, bytemuck::cast_slice(features));
-        // Auto layouts omit unused shader bindings for the detection entry point.
-        let empty = resources.take(
-            &renderer.device,
-            16,
-            wgpu::BufferUsages::STORAGE,
-            "planar empty occlusion",
-        )?;
-        let mut entries = vec![
-            wgpu::BindGroupEntry {
-                binding: 5,
-                resource: occlusion.map_or(empty.as_entire_binding(), |m| {
-                    m.storage.buffer.as_entire_binding()
-                }),
-            },
-            wgpu::BindGroupEntry {
-                binding: 0,
-                resource: uniform.as_entire_binding(),
-            },
-            wgpu::BindGroupEntry {
-                binding: 1,
-                resource: reference.storage.buffer.as_entire_binding(),
-            },
-            wgpu::BindGroupEntry {
-                binding: 3,
-                resource: output.as_entire_binding(),
-            },
-        ];
-        if std::ptr::eq(pipeline, &self.correlate) {
-            entries.push(wgpu::BindGroupEntry {
-                binding: 2,
-                resource: current.storage.buffer.as_entire_binding(),
-            });
-            entries.push(wgpu::BindGroupEntry {
-                binding: 4,
-                resource: points.as_entire_binding(),
-            });
-        }
-        let bind = renderer
-            .device
-            .create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some("planar tracking"),
-                layout: &pipeline.get_bind_group_layout(0),
-                entries: &entries,
-            });
-        let mut encoder = renderer.device.create_command_encoder(&Default::default());
-        {
-            let mut pass = encoder.begin_compute_pass(&Default::default());
-            pass.set_pipeline(pipeline);
-            pass.set_bind_group(0, &bind, &[]);
-            pass.dispatch_workgroups(dispatch[0], dispatch[1], 1);
-        }
-        encoder.copy_buffer_to_buffer(&output, 0, &readback, 0, bytes);
-        resources.submitted();
-        let submission = renderer.queue.submit([encoder.finish()]);
-        let result = renderer.map_values(&readback, submission)?;
-        resources.completed();
-        Ok(result)
+        Ok(renderer.compute(|scratch| {
+            let uniform = scratch.buffer(
+                80,
+                wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+                "planar settings",
+            )?;
+            let points = scratch.buffer(
+                (features.len() * 16) as u64,
+                wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+                "planar features",
+            )?;
+            let bytes = u64::from(count) * 4;
+            let output = scratch.buffer(
+                bytes,
+                wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
+                "planar scores",
+            )?;
+            let readback = scratch.buffer(
+                bytes,
+                wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+                "planar score readback",
+            )?;
+            scratch
+                .queue()
+                .write_buffer(&uniform, 0, bytemuck::cast_slice(params));
+            scratch
+                .queue()
+                .write_buffer(&points, 0, bytemuck::cast_slice(features));
+            // Auto layouts omit unused shader bindings for the detection entry point.
+            let empty =
+                scratch.buffer(16, wgpu::BufferUsages::STORAGE, "planar empty occlusion")?;
+            let mut entries = vec![
+                wgpu::BindGroupEntry {
+                    binding: 5,
+                    resource: occlusion.map_or(empty.as_entire_binding(), |m| {
+                        m.buffer().as_entire_binding()
+                    }),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: uniform.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: reference.buffer().as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: output.as_entire_binding(),
+                },
+            ];
+            if std::ptr::eq(pipeline, &self.correlate) {
+                entries.push(wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: current.buffer().as_entire_binding(),
+                });
+                entries.push(wgpu::BindGroupEntry {
+                    binding: 4,
+                    resource: points.as_entire_binding(),
+                });
+            }
+            let bind = scratch
+                .device()
+                .create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some("planar tracking"),
+                    layout: &pipeline.get_bind_group_layout(0),
+                    entries: &entries,
+                });
+            let mut encoder = scratch.device().create_command_encoder(&Default::default());
+            {
+                let mut pass = encoder.begin_compute_pass(&Default::default());
+                pass.set_pipeline(pipeline);
+                pass.set_bind_group(0, &bind, &[]);
+                pass.dispatch_workgroups(dispatch[0], dispatch[1], 1);
+            }
+            encoder.copy_buffer_to_buffer(&output, 0, &readback, 0, bytes);
+            scratch.read(encoder, &readback)
+        })?)
     }
 }
 fn parameters(
@@ -864,8 +835,8 @@ fn parameters(
 ) -> Result<[u32; 20]> {
     h.transform_quad([[0., 0.], [1., 0.], [1., 1.], [0., 1.]])
         .map_err(|e| error(e.to_string()))?;
-    let w = f64::from(frame.width);
-    let height = f64::from(frame.height);
+    let w = f64::from(frame.width());
+    let height = f64::from(frame.height());
     let scale = Homography {
         matrix: [w, 0., -0.5, 0., height, -0.5, 0., 0., 1.],
     };
@@ -880,8 +851,8 @@ fn parameters(
     }
     let mut params = [0; 20];
     params[..4].copy_from_slice(&[
-        frame.width,
-        frame.height,
+        frame.width(),
+        frame.height(),
         settings.patch_radius,
         settings.search_radius,
     ]);

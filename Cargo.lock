@@ -3733,6 +3733,7 @@ dependencies = [
  "veylvik-document",
  "veylvik-io",
  "veylvik-render",
+ "veylvik-track",
 ]
 
 [[package]]
@@ -3824,6 +3825,7 @@ dependencies = [
  "veylvik-io",
  "veylvik-render",
  "veylvik-text",
+ "veylvik-track",
  "wgpu",
 ]
 
@@ -3837,6 +3839,19 @@ dependencies = [
  "ttf-parser",
  "veylvik-document",
  "veylvik-render",
+]
+
+[[package]]
+name = "veylvik-track"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "veylvik-document",
+ "veylvik-render",
+ "wgpu",
 ]
 
 [[package]]
