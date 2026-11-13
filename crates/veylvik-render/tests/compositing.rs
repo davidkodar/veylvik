@@ -3,6 +3,7 @@ use veylvik_document::*;
 use veylvik_render::*;
 fn composition(nodes: Vec<Node>, output: NodeId) -> Composition {
     Composition {
+        display: Default::default(),
         groups: Default::default(),
         schema: 1,
         frame_count: 240,

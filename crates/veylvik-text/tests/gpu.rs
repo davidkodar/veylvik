@@ -29,6 +29,7 @@ fn shaped_outlines_feed_document_nodes_and_gpu_rasterization() {
         &[],
     );
     let document = Composition {
+        display: Default::default(),
         groups: Default::default(),
         schema: 1,
         frame_count: 240,

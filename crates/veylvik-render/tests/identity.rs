@@ -24,6 +24,7 @@ fn document() -> Composition {
         nodes.push(node);
     }
     Composition {
+        display: Default::default(),
         groups: Default::default(),
         schema: 1,
         frame_count: 240,

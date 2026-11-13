@@ -9,6 +9,14 @@ struct Vertex { @builtin(position) position: vec4<f32>, @location(0) uv: vec2<f3
 fn srgb(v: vec3<f32>) -> vec3<f32> {
     return select(1.055 * pow(v, vec3<f32>(1.0 / 2.4)) - vec3<f32>(0.055), 12.92 * v, v <= vec3<f32>(0.0031308));
 }
+// ACES 1.0 RRT + sRGB ODT, Stephen Hill's fit; mirrors veylvik_render::display::filmic.
+fn filmic(rgb: vec3<f32>) -> vec3<f32> {
+    let input = mat3x3<f32>(vec3<f32>(0.59719, 0.07600, 0.02840), vec3<f32>(0.35458, 0.90834, 0.13383), vec3<f32>(0.04823, 0.01566, 0.83777));
+    let output = mat3x3<f32>(vec3<f32>(1.60475, -0.10208, -0.00327), vec3<f32>(-0.53108, 1.10813, -0.07276), vec3<f32>(-0.07367, -0.00605, 1.07602));
+    let v = input * max(rgb, vec3<f32>(0.0));
+    let t = (v * (v + 0.0245786) - 0.000090537) / (v * (0.983729 * v + 0.4329510) + 0.238081);
+    return clamp(output * t, vec3<f32>(0.0), vec3<f32>(1.0));
+}
 fn sample_pixel(position: vec2<i32>) -> vec4<f32> {
     let local = vec2<u32>(clamp(position, vec2<i32>(0), vec2<i32>(params.region.zw) - vec2<i32>(1)));
     let xy = local + params.region.xy;
@@ -40,7 +48,10 @@ fn sample_pixel(position: vec2<i32>) -> vec4<f32> {
     }
     let gain = exp2(bitcast<f32>(params.size.w));
     var color = vec3<f32>(0.0);
-    if alpha > 0.0 { color = clamp(pixel.rgb * gain / alpha, vec3<f32>(0.0), vec3<f32>(1.0)) * alpha; }
+    if alpha > 0.0 {
+        if (params.size.z & 4u) != 0u { color = filmic(pixel.rgb * gain / alpha) * alpha; }
+        else { color = clamp(pixel.rgb * gain / alpha, vec3<f32>(0.0), vec3<f32>(1.0)) * alpha; }
+    }
     let grid = (u32(v.position.x) / 12u + u32(v.position.y) / 12u) % 2u;
     let checker = select(0.045, 0.075, grid == 0u);
     color += vec3<f32>(checker * (1.0 - alpha));

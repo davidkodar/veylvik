@@ -7,6 +7,14 @@ fn sample_at(q:vec2<f32>)->vec4<f32> {
  let lo=vec2<i32>(floor(q)); let f=fract(q);
  return mix(mix(pixel(lo.x,lo.y),pixel(lo.x+1,lo.y),f.x),mix(pixel(lo.x,lo.y+1),pixel(lo.x+1,lo.y+1),f.x),f.y);
 }
+// ACES 1.0 RRT + sRGB ODT, Stephen Hill's fit; mirrors veylvik_render::display::filmic.
+fn filmic(rgb:vec3<f32>)->vec3<f32> {
+ let input=mat3x3<f32>(vec3<f32>(0.59719,0.07600,0.02840),vec3<f32>(0.35458,0.90834,0.13383),vec3<f32>(0.04823,0.01566,0.83777));
+ let output=mat3x3<f32>(vec3<f32>(1.60475,-0.10208,-0.00327),vec3<f32>(-0.53108,1.10813,-0.07276),vec3<f32>(-0.07367,-0.00605,1.07602));
+ let v=input*max(rgb,vec3<f32>(0.0));
+ let t=(v*(v+0.0245786)-0.000090537)/(v*(0.983729*v+0.4329510)+0.238081);
+ return clamp(output*t,vec3<f32>(0.0),vec3<f32>(1.0));
+}
 fn rgb(x:u32,y:u32)->vec3<f32> {
  let scale=min(f32(p.size.z)/f32(p.size.x),f32(p.size.w)/f32(p.size.y));
  let offset=(vec2<f32>(p.size.zw)-vec2<f32>(p.size.xy)*scale)*0.5;
@@ -27,7 +35,10 @@ fn rgb(x:u32,y:u32)->vec3<f32> {
    c=sum/max(weight,0.00001);
   }
  }
- let linear=clamp(c.rgb+p.matte.rgb*(1.0-clamp(c.a,0.0,1.0)),vec3<f32>(0.0),vec3<f32>(1.0));
+ var colour=c.rgb;
+ // Filmic display transform (matte.w = 1) on unpremultiplied colour, before the matte.
+ if p.matte.w>0.5 && c.a>0.0 { let a=clamp(c.a,0.0,1.0); colour=filmic(c.rgb/a)*a; }
+ let linear=clamp(colour+p.matte.rgb*(1.0-clamp(c.a,0.0,1.0)),vec3<f32>(0.0),vec3<f32>(1.0));
  return select(1.099*pow(linear,vec3<f32>(0.45))-0.099,4.5*linear,linear<vec3<f32>(0.018));
 }
 fn channel(i:u32)->u32 {

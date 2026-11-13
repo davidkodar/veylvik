@@ -105,7 +105,8 @@ fn export(
             "frame-{completed:06}.{}",
             request.format.extension()
         ));
-        crate::export::save_frame_new(&path, region.width, region.height, &frame.pixels)?;
+        let pixels = crate::export::sdr_pixels(&path, &frame.pixels, document.display);
+        crate::export::save_frame_new(&path, region.width, region.height, &pixels)?;
         completed += 1;
     }
     manifest["completed"] = json!(completed);

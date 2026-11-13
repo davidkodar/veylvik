@@ -8,7 +8,9 @@ pub use frame::{
     FrameSource, GpuFrame, Image, ImageInputs, Region, RenderRequest, RenderedFrame, SourceInfo,
 };
 pub mod compute;
+pub mod display;
 mod encode;
+pub use encode::Look;
 mod nodes;
 mod plan;
 mod pool;

@@ -9,6 +9,8 @@ pub struct Settings {
     pub frame_count: u32,
     pub new: bool,
     pub scale_scene: bool,
+    /// SDR display transform for the viewer, PNG and video.
+    pub display: veylvik_document::media::DisplayTransform,
 }
 #[derive(Default)]
 pub struct Controls {
@@ -26,6 +28,7 @@ impl Controls {
                 frame_count: veylvik_document::DEFAULT_FRAME_COUNT,
                 new: true,
                 scale_scene: false,
+                display: Default::default(),
             }
         } else {
             Settings {
@@ -35,6 +38,7 @@ impl Controls {
                 frame_count: document.frame_count,
                 new: false,
                 scale_scene: false,
+                display: document.display,
             }
         });
     }
@@ -82,6 +86,19 @@ impl Controls {
                 ui.label("Frame rate denominator");
                 ui.add(egui::DragValue::new(&mut settings.frame_rate.rate).range(1..=u32::MAX));
                 ui.end_row();
+                if !settings.new {
+                    ui.label("Display");
+                    egui::ComboBox::from_id_salt("composition-display")
+                        .selected_text(settings.display.label())
+                        .show_ui(ui, |ui| {
+                            for display in veylvik_document::media::DisplayTransform::ALL {
+                                ui.selectable_value(&mut settings.display, display, display.label());
+                            }
+                        })
+                        .response
+                        .on_hover_text("How scene-linear light is shown in the viewer and written to PNG and video. Filmic rolls highlights off smoothly (ACES-style), which suits HDR and log footage; Standard clips at white. EXR always stays scene-linear.");
+                    ui.end_row();
+                }
             });
             ui.label(format!(
                 "{:.3} frames per second",
@@ -125,6 +142,7 @@ impl Settings {
             frame_count: doc.frame_count,
             new: false,
             scale_scene: false,
+            display: doc.display,
         }
     }
     pub fn commands(
@@ -165,6 +183,11 @@ impl Settings {
                 frame_count: self.frame_count,
             },
         ]);
+        if self.display != doc.display {
+            commands.push(Command::Display {
+                display: self.display,
+            });
+        }
         Ok(commands)
     }
 }

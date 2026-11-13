@@ -391,6 +391,13 @@ impl Studio {
         }
     }
 
+    /// The viewer's settings plus the composition's display transform.
+    fn effective_view(&self) -> display::ViewSettings {
+        display::ViewSettings {
+            filmic: !self.project.document.snapshot().display.is_standard(),
+            ..self.view
+        }
+    }
     fn fail(&mut self, error: impl ToString) {
         self.status = error.to_string();
         self.error = true;
@@ -1124,13 +1131,9 @@ impl Studio {
                 .render_gpu_cached(&plan, RenderRequest::full(time), &inputs)
                 .map_err(|e| e.to_string())?;
             let frame = renderer.read_frame(&gpu_frame).map_err(|e| e.to_string())?;
-            veylvik_io::save_frame(
-                &path,
-                frame.region.width,
-                frame.region.height,
-                &frame.pixels,
-            )
-            .map_err(|e| e.to_string())?;
+            let pixels = veylvik_io::export::sdr_pixels(&path, &frame.pixels, document.display);
+            veylvik_io::save_frame(&path, frame.region.width, frame.region.height, &pixels)
+                .map_err(|e| e.to_string())?;
             Ok(Completed::Exported(path))
         });
         self.file_started(result);
@@ -2352,7 +2355,7 @@ impl eframe::App for Studio {
                             self.displayed = Some(self.display.frame(
                                 &self.renderer,
                                 frame,
-                                self.view,
+                                self.effective_view(),
                                 viewer::ViewTransform::default(),
                             ));
                             self.displayed_ticket = Some(result.ticket);
@@ -2705,11 +2708,11 @@ impl eframe::App for Studio {
                                     * 100.0
                             ));
                         }
-                        if frame.settings != self.view || frame.transform != transform {
+                        if frame.settings != self.effective_view() || frame.transform != transform {
                             self.displayed = Some(self.display.frame(
                                 &self.renderer,
                                 frame.frame.clone(),
-                                self.view,
+                                self.effective_view(),
                                 transform,
                             ));
                         }

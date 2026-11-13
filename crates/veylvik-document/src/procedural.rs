@@ -252,6 +252,7 @@ pub fn procedural_demo() -> Composition {
         &[("image", output)],
     );
     Composition {
+        display: Default::default(),
         groups: Default::default(),
         schema: 1,
         frame_count: 144,

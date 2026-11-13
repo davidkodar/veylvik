@@ -8,6 +8,8 @@ use wgpu::util::DeviceExt;
 pub struct ViewSettings {
     pub exposure: f32,
     pub alpha: bool,
+    /// The composition's filmic display transform instead of clipping at white.
+    pub filmic: bool,
 }
 pub struct Display {
     pipeline: wgpu::RenderPipeline,
@@ -65,7 +67,9 @@ impl Display {
                 contents: bytemuck::cast_slice(&[
                     frame.width(),
                     frame.height(),
-                    u32::from(self.format.is_srgb()) | (u32::from(settings.alpha) << 1),
+                    u32::from(self.format.is_srgb())
+                        | (u32::from(settings.alpha) << 1)
+                        | (u32::from(settings.filmic) << 2),
                     exposure.to_bits(),
                     frame.region().x,
                     frame.region().y,
@@ -151,6 +155,7 @@ mod tests {
             &[],
         );
         let doc = Composition {
+            display: Default::default(),
             groups: Default::default(),
             schema: 1,
             frame_count: 240,
@@ -188,6 +193,7 @@ mod tests {
             &[],
         );
         let doc = Composition {
+            display: Default::default(),
             groups: Default::default(),
             schema: 1,
             frame_count: 240,
@@ -264,6 +270,7 @@ mod tests {
             &[],
         );
         let doc = Composition {
+            display: Default::default(),
             groups: Default::default(),
             schema: 1,
             frame_count: 240,
@@ -296,6 +303,7 @@ mod tests {
                     ViewSettings {
                         exposure,
                         alpha: false,
+                        filmic: false,
                     },
                 );
                 let green = if exposure == -2.0 { 0.1625 } else { 0.5375 };
@@ -317,6 +325,7 @@ mod tests {
                     ViewSettings {
                         exposure,
                         alpha: true,
+                        filmic: false,
                     },
                 );
                 for value in &actual[0][..3] {
@@ -342,6 +351,7 @@ mod tests {
             &[],
         );
         let doc = Composition {
+            display: Default::default(),
             groups: Default::default(),
             schema: 1,
             frame_count: 240,

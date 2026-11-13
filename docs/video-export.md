@@ -3,6 +3,8 @@
 Choose **File > Export video…** to export the composition output as an MP4.
 Choose H.264 for broad compatibility or HEVC 10-bit for smoother gradients on
 compatible players. Both are SDR Rec.709 without an alpha channel, with an AAC audio track (see Audio).
+The composition's display transform applies: Filmic rolls highlights off with an ACES-style
+curve, Standard clips at white (see the reference).
 
 The panel starts with the composition resolution, frame rate and entire frame
 range. Choose a size preset or enter even dimensions. The composition is fitted

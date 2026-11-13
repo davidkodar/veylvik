@@ -35,6 +35,20 @@ impl FrameFormat {
         }
     }
 }
+/// Pixels to write to `path`: an SDR target (PNG) gets the composition's display transform,
+/// while EXR stays scene-linear.
+pub fn sdr_pixels<'a>(
+    path: &Path,
+    pixels: &'a [[f32; 4]],
+    display: veylvik_document::media::DisplayTransform,
+) -> std::borrow::Cow<'a, [[f32; 4]]> {
+    match FrameFormat::from_path(path) {
+        Ok(FrameFormat::Png) if !display.is_standard() => {
+            std::borrow::Cow::Owned(veylvik_render::display::apply(display, pixels))
+        }
+        _ => std::borrow::Cow::Borrowed(pixels),
+    }
+}
 pub fn save_frame(path: &Path, width: u32, height: u32, pixels: &[[f32; 4]]) -> Result<()> {
     match FrameFormat::from_path(path)? {
         FrameFormat::Png => crate::save_png(path, width, height, pixels),

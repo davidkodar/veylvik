@@ -400,7 +400,8 @@ Details: [Subject segmentation](subject-segmentation.md).
 - **Collect project** (`veylvik collect`): copies images and supported video into `assets/` with relative paths (sequences not supported).
 - 16 MiB document size limit.
 - **File → New composition…** (Ctrl+N): width, height, frame count, exact frame-rate numerator/denominator.
-- **File → Composition settings…**: canvas, frame count, frame rate as one undo step, optional control scaling.
+- **File → Composition settings…**: canvas, frame count, frame rate as one undo step, optional control scaling; **Display** transform.
+- **Display transform**: **Standard** (clip at white) or **Filmic (ACES-style)**: smooth highlight roll-off for HDR and log footage in the viewer, PNG frames and sequences, MCP previews and MP4 export; EXR stays scene-linear; **View → Filmic display** toggle; MCP `display` command; one undo step.
 
 ## Automation
 

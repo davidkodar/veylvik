@@ -239,6 +239,9 @@ pub struct Composition {
     pub groups: BTreeMap<NodeId, groups::Group>,
     pub nodes: BTreeMap<NodeId, Node>,
     pub output: NodeId,
+    /// SDR display transform for the viewer, PNG and video; projects without it are Standard.
+    #[serde(default, skip_serializing_if = "media::DisplayTransform::is_standard")]
+    pub display: media::DisplayTransform,
 }
 impl Composition {
     /// Canonical pretty-printed JSON size, bounded without allocating the JSON.
@@ -465,6 +468,9 @@ pub enum Command {
     FrameCount {
         frame_count: u32,
     },
+    Display {
+        display: media::DisplayTransform,
+    },
 }
 
 /// A transparent composition with one editable background generator.
@@ -475,6 +481,7 @@ pub fn blank(width: u32, height: u32, frame_rate: Time) -> Result<Composition> {
         &[],
     );
     let composition = Composition {
+        display: Default::default(),
         groups: Default::default(),
         schema: 1,
         frame_count: DEFAULT_FRAME_COUNT,
@@ -543,6 +550,7 @@ pub fn demo() -> Composition {
         &[("background", background.id), ("foreground", transform.id)],
     );
     Composition {
+        display: Default::default(),
         groups: Default::default(),
         schema: 1,
         frame_count: DEFAULT_FRAME_COUNT,
@@ -681,6 +689,7 @@ pub fn motion_demo() -> Composition {
         &[("image", output)],
     );
     Composition {
+        display: Default::default(),
         groups: Default::default(),
         schema: 1,
         frame_count: 96,

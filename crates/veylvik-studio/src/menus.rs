@@ -115,6 +115,20 @@ impl Studio {
                 if item(ui, "Fit image", "", true) { self.navigation.fit(); }
                 if item(ui, "Actual pixels (100%)", "", true) { self.navigation.actual_size(); }
                 if ui.checkbox(&mut self.view.alpha, "Show alpha").clicked() { ui.close(); }
+                let mut filmic = !self.project.document.snapshot().display.is_standard();
+                if ui
+                    .checkbox(&mut filmic, "Filmic display (ACES-style)")
+                    .on_hover_text("Roll highlights off smoothly in the viewer, PNG and video instead of clipping at white. Saved with the composition; EXR stays scene-linear.")
+                    .clicked()
+                {
+                    use veylvik_document::media::DisplayTransform;
+                    let display = if filmic { DisplayTransform::Filmic } else { DisplayTransform::Standard };
+                    match self.project.apply(&[veylvik_document::Command::Display { display }]) {
+                        Ok(()) => self.request_preview(),
+                        Err(e) => self.fail(e),
+                    }
+                    ui.close();
+                }
                 if item(ui, "Reset display settings", "", true) { self.view = ViewSettings::default(); }
                 ui.separator();
                 if item(ui, if self.playing { "Pause" } else { "Play" }, "Space", true) { self.toggle_play(); }

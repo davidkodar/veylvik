@@ -592,6 +592,18 @@ when it no longer matches the requested frame.
 
 ## Composition and rendering
 
+**Display transform.** A composition's `display` setting decides how scene-linear light
+becomes SDR values in the viewer, in PNG frames and sequences, in MCP preview images and
+in exported video. **Standard** (the default) clips at white, which is exact for graphics
+made in display terms. **Filmic** applies an ACES-style tone curve (the ACES 1.0 reference
+rendering with the sRGB output transform, in Stephen Hill's fitted form): highlights roll
+off smoothly instead of clipping, which suits HDR and camera log footage. It also maps mid
+grey 0.18 to about 0.11 on screen, as ACES does, so footage usually wants a little
+exposure. The graph itself and EXR output always stay scene-linear; the transform is
+applied only at those SDR boundaries. Change it in **File → Composition settings…**, with
+**View → Filmic display (ACES-style)**, or with the `display` command over MCP; each change
+is one undo step, and projects without the setting are Standard.
+
 Projects are versioned JSON containing nodes with stable UUIDs, named input
 ports, and an output node. Validation, editing, and saving share a 16 MiB limit
 measured as canonical pretty-printed JSON, preventing edits from exceeding the

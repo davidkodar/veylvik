@@ -221,6 +221,7 @@ fn run() -> Result<()> {
                 &[],
             );
             let doc = Composition {
+                display: Default::default(),
                 groups: Default::default(),
                 schema: 1,
                 frame_count: 240,
@@ -336,11 +337,13 @@ fn run() -> Result<()> {
                 Path::new(&args[3]),
             )?;
             let frame = renderer.render_frame(&plan, request, &inputs)?;
+            let pixels =
+                assets::export::sdr_pixels(Path::new(&args[3]), &frame.pixels, doc.display);
             save_frame(
                 Path::new(&args[3]),
                 frame.region.width,
                 frame.region.height,
-                &frame.pixels,
+                &pixels,
             )?;
             println!(
                 "{}",

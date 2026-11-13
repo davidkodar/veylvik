@@ -94,10 +94,12 @@ impl Session {
             return Err("max_edge must be within 1..1024".into());
         }
         let (node, time, frame) = self.frame(args)?;
+        let pixels =
+            veylvik_render::display::apply(self.document.snapshot().display, &frame.pixels);
         let thumbnail = veylvik_io::preview::thumbnail(
             frame.region.width,
             frame.region.height,
-            &frame.pixels,
+            &pixels,
             max_edge as u32,
         )?;
         let metadata = json!({"revision":self.document.revision(),"node":node,"time":time,"width":thumbnail.width,"height":thumbnail.height,"source_region":frame.region,"encoding":"sRGB straight-alpha PNG","filter":"linear-premultiplied area"});
@@ -393,11 +395,13 @@ impl Session {
                     path(args)?,
                 )?;
                 let (_, _, frame) = self.frame(args)?;
+                let display = self.document.snapshot().display;
+                let pixels = crate::assets::export::sdr_pixels(path(args)?, &frame.pixels, display);
                 crate::save_frame(
                     path(args)?,
                     frame.region.width,
                     frame.region.height,
-                    &frame.pixels,
+                    &pixels,
                 )?;
                 Ok(
                     json!({"output":args["path"],"revision":self.document.revision(),"region":frame.region}),

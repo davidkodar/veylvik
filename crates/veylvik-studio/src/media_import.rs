@@ -98,6 +98,7 @@ impl Studio {
                     frame_rate: Time { ticks: 24, rate: 1 },
                     frame_count: veylvik_document::DEFAULT_FRAME_COUNT,
                     new: true,
+                    display: Default::default(),
                     scale_scene: false,
                 },
                 &info,

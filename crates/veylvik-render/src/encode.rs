@@ -25,6 +25,21 @@ pub(crate) fn pipeline(device: &wgpu::Device) -> wgpu::ComputePipeline {
         cache: None,
     })
 }
+/// How exported video looks: the matte composited under transparent areas, and the SDR
+/// display transform. A bare matte colour means the Standard transform.
+#[derive(Clone, Copy, Debug)]
+pub struct Look {
+    pub matte: [f32; 3],
+    pub display: veylvik_document::media::DisplayTransform,
+}
+impl From<[f32; 3]> for Look {
+    fn from(matte: [f32; 3]) -> Self {
+        Self {
+            matte,
+            display: Default::default(),
+        }
+    }
+}
 impl Renderer {
     /// Return compact NV12/P010 for the staged hardware-encoder bridge. All pixel
     /// arithmetic runs on Vulkan; linear RGBA is never read back by this path.
@@ -34,14 +49,14 @@ impl Renderer {
         width: u32,
         height: u32,
         ten_bit: bool,
-        matte: [f32; 3],
+        look: impl Into<Look>,
     ) -> Result<Vec<u8>> {
         self.prepare_video_planes(
             frame,
             width,
             height,
             ten_bit,
-            matte,
+            look.into(),
             Destination::Host(None),
         )
         .map(|p| p.bytes)
@@ -50,7 +65,7 @@ impl Renderer {
     pub fn encode_video_cuda(
         &self,
         frame: &GpuFrame,
-        matte: [f32; 3],
+        look: impl Into<Look>,
         destination: &mut veylvik_interop::CudaDestination<'_>,
     ) -> Result<()> {
         let [width, height] = destination.dimensions();
@@ -59,7 +74,7 @@ impl Renderer {
             width,
             height,
             destination.sample_bytes() == 2,
-            matte,
+            look.into(),
             Destination::Cuda(destination),
         )
         .map(|_| ())
@@ -70,7 +85,7 @@ impl Renderer {
         &self,
         frame: &GpuFrame,
         layout: DmaLayout,
-        matte: [f32; 3],
+        look: impl Into<Look>,
     ) -> Result<Vec<u8>> {
         layout.validate().map_err(error)?;
         self.prepare_video_planes(
@@ -78,7 +93,7 @@ impl Renderer {
             layout.width,
             layout.height,
             layout.ten_bit,
-            matte,
+            look.into(),
             Destination::Host(Some(layout)),
         )
         .map(|p| p.bytes)
@@ -89,7 +104,7 @@ impl Renderer {
         width: u32,
         height: u32,
         ten_bit: bool,
-        matte: [f32; 3],
+        look: impl Into<Look>,
         render_node: &std::path::Path,
     ) -> Result<std::sync::Arc<DmaFrame>> {
         let layout = DmaLayout::new(width, height, ten_bit).map_err(error)?;
@@ -98,7 +113,7 @@ impl Renderer {
             width,
             height,
             ten_bit,
-            matte,
+            look.into(),
             Destination::Dma(render_node, layout),
         )?
         .dma
@@ -111,9 +126,10 @@ impl Renderer {
         width: u32,
         height: u32,
         ten_bit: bool,
-        matte: [f32; 3],
+        look: Look,
         destination: Destination<'_, '_>,
     ) -> Result<Prepared> {
+        let matte = look.matte;
         if !self.owns_frame(frame)
             || frame.region.x != 0
             || frame.region.y != 0
@@ -204,7 +220,10 @@ impl Renderer {
                 width,
                 height,
             ]));
-            values.extend_from_slice(bytemuck::cast_slice(&[matte[0], matte[1], matte[2], 0.]));
+            let filmic = f32::from(u8::from(!look.display.is_standard()));
+            values.extend_from_slice(bytemuck::cast_slice(&[
+                matte[0], matte[1], matte[2], filmic,
+            ]));
             values.extend_from_slice(bytemuck::cast_slice(&[
                 if ten_bit { 10u32 } else { 8 },
                 layout.map_or(0, |l| l.pitch / if ten_bit { 2 } else { 1 }),

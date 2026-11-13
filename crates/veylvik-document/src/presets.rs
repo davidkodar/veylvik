@@ -102,6 +102,7 @@ impl Preset {
             nodes.insert(stub.id, stub);
         }
         Composition {
+            display: Default::default(),
             schema: 1,
             width: self.width,
             height: self.height,

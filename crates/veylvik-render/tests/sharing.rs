@@ -24,6 +24,7 @@ fn branches() -> (Composition, NodeId, NodeId) {
     let ids = (blur_a.id, blur_b.id);
     (
         Composition {
+            display: Default::default(),
             groups: Default::default(),
             schema: 1,
             frame_count: 240,

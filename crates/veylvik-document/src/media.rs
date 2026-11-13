@@ -240,3 +240,27 @@ impl InputColour {
         },"additionalProperties":false})
     }
 }
+
+/// How scene-linear light becomes SDR display values (viewer, PNG, video). EXR output and the
+/// graph itself always stay scene-linear.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DisplayTransform {
+    /// Values above 1 clip; exact for graphics made in display terms.
+    #[default]
+    Standard,
+    /// ACES-style filmic tone curve: highlights roll off smoothly, suited to HDR and log footage.
+    Filmic,
+}
+impl DisplayTransform {
+    pub const ALL: [Self; 2] = [Self::Standard, Self::Filmic];
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Standard => "Standard (clip at white)",
+            Self::Filmic => "Filmic (ACES-style)",
+        }
+    }
+    pub fn is_standard(&self) -> bool {
+        *self == Self::Standard
+    }
+}

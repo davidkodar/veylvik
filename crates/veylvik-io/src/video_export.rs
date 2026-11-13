@@ -56,8 +56,17 @@ pub struct Settings {
     pub matte: [f32; 3],
     #[serde(default)]
     pub audio: crate::export_audio::Audio,
+    /// The composition's SDR display transform; filled in by [`render`], never saved.
+    #[serde(skip)]
+    pub display: veylvik_document::media::DisplayTransform,
 }
 impl Settings {
+    fn look(&self) -> veylvik_render::Look {
+        veylvik_render::Look {
+            matte: self.matte,
+            display: self.display,
+        }
+    }
     pub fn for_document(doc: &Composition) -> Self {
         Self {
             width: doc.width,
@@ -70,6 +79,7 @@ impl Settings {
             allow_software: false,
             matte: [0.; 3],
             audio: Default::default(),
+            display: doc.display,
         }
     }
     pub fn times(&self, doc: &Composition) -> Result<Vec<Time>> {
@@ -462,6 +472,10 @@ pub fn render(
     settings: &Settings,
     mut progress: impl FnMut(Progress) -> bool,
 ) -> Result<Outcome> {
+    let settings = &Settings {
+        display: doc.display,
+        ..settings.clone()
+    };
     let times = settings.times(doc)?;
     if !path
         .extension()
@@ -556,7 +570,7 @@ pub fn render(
         settings.width,
         settings.height,
         settings.codec.ten_bit(),
-        settings.matte,
+        settings.look(),
     )?;
     drop(frame);
     let mut selected = None;
@@ -604,7 +618,7 @@ pub fn render(
                 settings.width,
                 settings.height,
                 settings.codec.ten_bit(),
-                settings.matte,
+                settings.look(),
             )?
         };
         if !encoder.push(bytes, &mut || notify(n as u32, backend.label(), "Encoding"))? {
@@ -813,7 +827,7 @@ fn prepare_native_frame(
         Backend::Nvenc => {
             let mut frame = encoder.frame()?;
             frame.fill(|destination| {
-                Ok(renderer.encode_video_cuda(source, settings.matte, destination)?)
+                Ok(renderer.encode_video_cuda(source, settings.look(), destination)?)
             })?;
             Ok(frame)
         }
@@ -822,7 +836,7 @@ fn prepare_native_frame(
             settings.width,
             settings.height,
             settings.codec.ten_bit(),
-            settings.matte,
+            settings.look(),
             node,
         )?),
         Backend::Software => Err("No direct GPU frame path for software encoder".into()),
