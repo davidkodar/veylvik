@@ -21,6 +21,7 @@ mod menus;
 mod node_clipboard;
 mod node_finder;
 mod node_palette;
+mod nodes;
 mod occlusion;
 mod path_edit;
 mod path_handles;
@@ -1503,6 +1504,18 @@ impl Studio {
             self.project.document.snapshot().width as f32,
             self.project.document.snapshot().height as f32,
         ];
+        let unavailable = self.project.unavailable_assets();
+        let mut cx = nodes::InspectCx {
+            time,
+            frame_rate: self.project.document.snapshot().frame_rate,
+            inputs: &self.project.inputs,
+            unavailable: &unavailable,
+            dirty: false,
+            text_changed: false,
+            replace_image: false,
+            preview_soon: false,
+            error: None,
+        };
         match &mut self.draft.operation {
             op @ Operation::Text(veylvik_document::nodes::Text { .. }) => {
                 let (changed, import) =
@@ -1511,206 +1524,27 @@ impl Studio {
                 text_changed |= changed;
                 import_font = import;
             }
-            Operation::Path(veylvik_document::nodes::Path { geometry }) => {
-                match shape_animation::edit(ui, geometry, time) {
-                    Ok(true) => {
-                        self.draft_dirty = true;
-                        self.text_preview_deadline
-                            .get_or_insert_with(|| Instant::now() + Duration::from_millis(32));
-                        ui.ctx().request_repaint_after(Duration::from_millis(32));
-                    }
-                    Err(error) => self.fail(error),
-                    _ => {}
-                }
+            op => {
+                veylvik_document::each_node!(op, node => nodes::Inspect::inspect(node, ui, &mut cx))
             }
-            Operation::SurfaceBlend(veylvik_document::nodes::SurfaceBlend { .. }) => {
-                ui.weak("Lighting follows the surface; Detail transfers texture. Wear reveals dark cracks. All amounts can be animated.");
-            }
-            Operation::PlanarTrack(veylvik_document::nodes::PlanarTrack { data }) => {
-                ui.label(format!("{} tracked frames", data.samples.len()));
-                ui.weak("Connect this node to a Planar warp's track input. The source image passes through unchanged.");
-            }
-            Operation::PlanarWarp(veylvik_document::nodes::PlanarWarp { mode }) => {
-                egui::ComboBox::from_id_salt("planar-warp-mode")
-                    .selected_text(mode.label())
-                    .show_ui(ui, |ui| {
-                        for choice in veylvik_document::planar::WarpMode::ALL {
-                            self.draft_dirty |=
-                                ui.selectable_value(mode, choice, choice.label()).changed();
-                        }
-                    });
-            }
-            Operation::Solid(veylvik_document::nodes::Solid { color }) => {
-                ui.label("Linear RGB and alpha");
-                self.draft_dirty |= animation::color(ui, color);
-            }
-            Operation::Colorize(veylvik_document::nodes::Colorize { low, high }) => {
-                ui.label("Map luminance to linear RGBA colors.");
-                ui.push_id("low", |ui| {
-                    ui.label("Shadows");
-                    self.draft_dirty |= animation::color(ui, low);
-                });
-                ui.push_id("high", |ui| {
-                    ui.label("Highlights");
-                    self.draft_dirty |= animation::color(ui, high);
-                });
-            }
-            Operation::Noise(veylvik_document::nodes::Noise { seed, .. })
-            | Operation::FractalNoise(veylvik_document::nodes::FractalNoise { seed, .. })
-            | Operation::Fire(veylvik_document::nodes::Fire { seed, .. }) => {
-                ui.horizontal(|ui| {
-                    ui.label("Seed");
-                    self.draft_dirty |= ui.add(egui::DragValue::new(seed)).changed();
-                });
-            }
-            Operation::Blend(veylvik_document::nodes::Blend { mode, .. }) => {
-                egui::ComboBox::from_id_salt("blend-mode")
-                    .selected_text(mode.label())
-                    .show_ui(ui, |ui| {
-                        for choice in veylvik_document::BlendMode::ALL {
-                            self.draft_dirty |=
-                                ui.selectable_value(mode, choice, choice.label()).changed();
-                        }
-                    });
-            }
-            Operation::Gradient(veylvik_document::nodes::Gradient { mode, .. }) => {
-                egui::ComboBox::from_id_salt("gradient-mode")
-                    .selected_text(mode.label())
-                    .show_ui(ui, |ui| {
-                        for choice in veylvik_document::GradientMode::ALL {
-                            self.draft_dirty |=
-                                ui.selectable_value(mode, choice, choice.label()).changed();
-                        }
-                    });
-                ui.label("Use Colorize for colors or Channel mask for coverage.");
-            }
-            Operation::CombineMask(veylvik_document::nodes::CombineMask { mode }) => {
-                egui::ComboBox::from_id_salt("mask-mode")
-                    .selected_text(mode.label())
-                    .show_ui(ui, |ui| {
-                        for choice in veylvik_document::MaskMode::ALL {
-                            self.draft_dirty |=
-                                ui.selectable_value(mode, choice, choice.label()).changed();
-                        }
-                    });
-                ui.label("Subtract removes other from mask; RGB is ignored.");
-            }
-            Operation::ChannelMask(veylvik_document::nodes::ChannelMask { channel }) => {
-                egui::ComboBox::from_id_salt("mask-channel")
-                    .selected_text(channel.label())
-                    .show_ui(ui, |ui| {
-                        for choice in veylvik_document::MaskChannel::ALL {
-                            self.draft_dirty |= ui
-                                .selectable_value(channel, choice, choice.label())
-                                .changed();
-                        }
-                    });
-                ui.label("Convert image content to mask coverage.");
-            }
-            Operation::Merge(veylvik_document::nodes::Merge {}) => {
-                ui.label("Foreground over background");
-            }
-            Operation::Mask(veylvik_document::nodes::Mask {}) => {
-                ui.label("Image multiplied by mask alpha");
-            }
-            Operation::SurfaceReflection(veylvik_document::nodes::SurfaceReflection {
-                kind,
-                ..
-            }) => {
-                egui::ComboBox::from_id_salt("reflection-kind")
-                    .selected_text(kind.label())
-                    .show_ui(ui, |ui| {
-                        for choice in veylvik_document::ReflectionKind::ALL {
-                            self.draft_dirty |=
-                                ui.selectable_value(kind, choice, choice.label()).changed();
-                        }
-                    });
-                ui.label("Connect any image or animated branch to Reflection.");
-            }
-            Operation::Glass(veylvik_document::nodes::Glass { .. }) => {
-                ui.label("Use isolated shape alpha and the scene behind it. Roughness makes frosted glass.");
-            }
-            Operation::SunGlints(veylvik_document::nodes::SunGlints { seed, .. }) => {
-                self.draft_dirty |= ui.add(egui::DragValue::new(seed).prefix("Seed ")).changed();
-            }
-            Operation::Patina(veylvik_document::nodes::Patina { kind, seed, .. }) => {
-                egui::ComboBox::from_id_salt("patina-kind")
-                    .selected_text(kind.label())
-                    .show_ui(ui, |ui| {
-                        for choice in veylvik_document::PatinaKind::ALL {
-                            self.draft_dirty |=
-                                ui.selectable_value(kind, choice, choice.label()).changed();
-                        }
-                    });
-                self.draft_dirty |= ui.add(egui::DragValue::new(seed).prefix("Seed ")).changed();
-            }
-            Operation::Material(veylvik_document::nodes::Material { kind, .. }) => {
-                egui::ComboBox::from_id_salt("Material-kind")
-                    .selected_text(kind.label())
-                    .show_ui(ui, |ui| {
-                        for choice in veylvik_document::MaterialKind::ALL {
-                            self.draft_dirty |=
-                                ui.selectable_value(kind, choice, choice.label()).changed();
-                        }
-                    });
-            }
-            Operation::Atmosphere(veylvik_document::nodes::Atmosphere { kind, seed, .. }) => {
-                self.draft_dirty |= ui.add(egui::DragValue::new(seed).prefix("Seed ")).changed();
-                egui::ComboBox::from_id_salt("Atmosphere-kind")
-                    .selected_text(kind.label())
-                    .show_ui(ui, |ui| {
-                        for choice in veylvik_document::AtmosphereKind::ALL {
-                            self.draft_dirty |=
-                                ui.selectable_value(kind, choice, choice.label()).changed();
-                        }
-                    });
-            }
-            Operation::MetallicShine(veylvik_document::nodes::MetallicShine { .. }) => {
-                ui.label("Apply to isolated text or a logo before adding a background.");
-                ui.label("Animate X/Y to sweep; alpha stays unchanged.");
-            }
-            Operation::Morphology(veylvik_document::nodes::Morphology { .. }) => {
-                ui.label("Positive radius grows alpha; negative shrinks it.");
-                ui.label("Square neighborhood, transparent borders, white mask output.");
-            }
-            Operation::Displace(veylvik_document::nodes::Displace { .. }) => {
-                ui.label("Map red drives X, green drives Y.");
-                ui.label("Mid-gray is neutral; alpha controls strength.");
-            }
-            Operation::Affine(veylvik_document::nodes::Affine { .. })
-            | Operation::Ellipse(veylvik_document::nodes::Ellipse { .. })
-            | Operation::Exposure(veylvik_document::nodes::Exposure { .. })
-            | Operation::Transform(veylvik_document::nodes::Transform { .. })
-            | Operation::Blur(veylvik_document::nodes::Blur { .. }) => {}
-            Operation::Footage(veylvik_document::nodes::Footage {
-                asset,
-                timing,
-                placement,
-            }) => {
-                ui.label(asset.as_str());
-                let changed = media_controls::edit(
-                    ui,
-                    timing,
-                    placement,
-                    self.project.inputs.info(asset),
-                    self.project.document.snapshot().frame_rate,
-                );
-                self.draft_dirty |= changed;
-                text_changed |= changed;
-                if let Some(reason) = self.project.unavailable_assets().get(asset.as_str()) {
-                    ui.colored_label(egui::Color32::LIGHT_RED, *reason);
-                }
-                replace_image = ui.button("Replace source…").clicked();
-            }
-            Operation::Image(veylvik_document::nodes::Image { asset }) => {
-                ui.label("Source image / sequence");
-                ui.label(asset.as_str());
-                ui.label("Images use native size and transparent padding.");
-                if let Some(reason) = self.project.unavailable_assets().get(asset.as_str()) {
-                    ui.colored_label(egui::Color32::LIGHT_RED, *reason);
-                }
-                replace_image = ui.button("Replace source…").clicked();
-            }
+        }
+        let nodes::InspectCx {
+            dirty,
+            text_changed: media_changed,
+            replace_image: replace,
+            preview_soon,
+            error,
+            ..
+        } = cx;
+        self.draft_dirty |= dirty;
+        text_changed |= media_changed;
+        replace_image |= replace;
+        if preview_soon {
+            self.text_preview_deadline
+                .get_or_insert_with(|| Instant::now() + Duration::from_millis(32));
+        }
+        if let Some(error) = error {
+            self.fail(error);
         }
         if self.draft.operation.asset().is_some() {
             if ui.button("Match composition to this media…").clicked() {
