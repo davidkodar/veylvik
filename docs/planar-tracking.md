@@ -69,7 +69,7 @@ Vulkan compute. Only feature coordinates and correlation scores return to the
 CPU for deterministic robust homography fitting; source pixels stay on the GPU.
 Coordinates are resolution-independent. Correlation thresholds reject flat or
 ambiguous patches; consensus rejects inconsistent motion. The detector distributes
-up to 64 features across the chosen region and requires at least six reliable
+up to 144 features (by default) across the chosen region and requires at least six reliable
 matches. Tracking stops if no dominant plane remains. The reference texture is
 fixed. Up to three area-filtered GPU pyramid levels search for larger motion,
 then full-resolution matching and a second refinement solve the final perspective.
@@ -109,6 +109,25 @@ strongly towards or away from the camera. Headless tools take `motion` with the 
 A track still ends when the pinned corners pass behind the camera, for example the near
 end of a wall the camera walks past. That is the geometry of the shot, not a tracker
 failure; keep the corners on the part of the surface that stays in front of the camera.
+
+## Both directions
+
+The ends of a shot are often its worst frames: motion blur, a surface barely in view.
+Pause on the clearest frame instead, place the corners there, and enable **Both
+directions**: the tracker runs from that reference towards the chosen end and also the
+other way to the clip's start (or end), joining both halves at the reference. On a
+handheld beach shot this more than doubled the tracked range compared with tracking
+from the first usable frame. The completion message reports each direction separately.
+Headless tools take `back_to` (or `--back-to FRAME`), an earlier frame to track back to.
+
+## Features
+
+Detection picks the strongest corner in each cell of a grid laid over the tracking
+area, so features cover the whole surface. The default 12 × 12 grid finds up to 144
+features; tracking settings accept 8 to 16 cells per side (64 to 256 features). Each
+saved frame keeps a representative subset of at most 96 matches for the viewer's
+diagnostics, so long tracks stay within the project size budget; the solve itself uses
+every match.
 
 ## Area refinement
 
@@ -178,7 +197,7 @@ frame. The result is written to a new project with one added Planar track node, 
 JSON report gives the tracked range, why it stopped, re-anchors and worst error.
 
 The headless MCP server exposes `track_surface` with the same inputs (`source`,
-`surface`, `start`, `end`) plus optional `motion`, `refine`, `occlusion`, `region`, `area_follows`,
+`surface`, `start`, `end`) plus optional `back_to`, `motion`, `refine`, `occlusion`, `region`, `area_follows`,
 `feature_radius`, `search_radius`, `tolerance` and `reanchor`. It adds the Planar track node as one undoable
 transaction; connect it to `planar_warp` nodes with `apply`. Both operations, their
 data schema, and all three warp modes are also exposed through the node catalog and

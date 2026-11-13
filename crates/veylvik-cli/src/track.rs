@@ -15,6 +15,8 @@ pub struct Request {
     pub region: Option<Quad>,
     /// Composition frames; `start` is the reference frame, `end` may precede it.
     pub frames: [i64; 2],
+    /// Also track backward from `start` to this earlier frame, joined at the reference.
+    pub back_to: Option<i64>,
     pub settings: Settings,
 }
 impl Request {
@@ -85,6 +87,7 @@ impl Request {
                 })
                 .transpose()?,
             frames: [frame("start")?, frame("end")?],
+            back_to: args.get("back_to").map(|_| frame("back_to")).transpose()?,
             settings,
         })
     }
@@ -107,6 +110,19 @@ pub fn run(
     if request.frames[0] == request.frames[1] {
         return Err("start and end must differ".into());
     }
+    if let Some(back) = request.back_to
+        && (back >= request.frames[0] || request.frames[1] < request.frames[0] || back > last)
+    {
+        return Err(
+            "back_to must precede start, and end must follow start, when tracking both ways".into(),
+        );
+    }
+    let first_frame = request
+        .back_to
+        .unwrap_or(request.frames[0].min(request.frames[1]));
+    if request.frames[0].max(request.frames[1]) - first_frame >= 4096 {
+        return Err("a tracking range is limited to 4096 frames".into());
+    }
     if request.frames[0].abs_diff(request.frames[1]) >= 4096 {
         return Err("a tracking range is limited to 4096 frames".into());
     }
@@ -127,14 +143,20 @@ pub fn run(
         .saturating_sub(doc.encoded_size()?)
         .saturating_sub(64 * 1024);
     let tracker = PlanarTracker::new(renderer);
-    let range = tracker.track_range(
+    let [start, end] = request.frames;
+    let ends = match request.back_to {
+        Some(back) => [back, start, end],
+        None if end > start => [start, start, end],
+        None => [end, start, start],
+    };
+    let range = tracker.track_both(
         renderer,
         &plan,
         occlusion.as_ref().map(|(plan, inputs)| (plan, inputs)),
         &inputs,
         request.surface,
         request.region,
-        request.frames,
+        ends,
         doc.frame_rate,
         request.settings,
         budget,
@@ -149,8 +171,14 @@ pub fn run(
     let worst = samples.iter().map(|s| s.rms_pixels).fold(0.0, f64::max);
     let report = json!({
         "frames": samples.len(), "first_frame": first, "last_frame": last,
-        "complete": range.stop == veylvik_track::planar::Stop::Complete,
-        "message": range.stop.message(), "reanchored": range.anchors - 1,
+        "complete": range.stop == veylvik_track::planar::Stop::Complete
+            && range.backward.as_ref().is_none_or(|b| *b == veylvik_track::planar::Stop::Complete),
+        "message": match &range.backward {
+            Some(back) if end > start => format!("forward: {}; backward: {}", range.stop.message(), back.message()),
+            Some(back) => back.message(),
+            None => range.stop.message(),
+        },
+        "reanchored": range.anchors - 1,
         "worst_rms_pixels": worst,
         "motion": request.settings.motion,
     });

@@ -2,6 +2,8 @@ struct Settings {
     size: vec2<u32>, radius: u32, search: u32,
     h0: vec4<f32>, h1: vec4<f32>,
     quad0: vec4<f32>, quad1: vec4<f32>,
+    // x: detection grid cells per side.
+    grid: vec4<u32>,
 }
 @group(0) @binding(0) var<uniform> settings: Settings;
 @group(0) @binding(1) var<storage, read> reference: array<vec4<f32>>;
@@ -44,11 +46,12 @@ fn inside_quad(p: vec2<f32>) -> bool {
 // bounds memory/work. No image readback and no dependence on text/materials.
 @compute @workgroup_size(64)
 fn detect(@builtin(global_invocation_id) id: vec3<u32>) {
-    if id.x >= 64u { return; }
+    let cells = settings.grid.x;
+    if id.x >= cells*cells { return; }
     var lo = min(min(corner(0u),corner(1u)),min(corner(2u),corner(3u)));
     var hi = max(max(corner(0u),corner(1u)),max(corner(2u),corner(3u)));
-    let cell = (hi-lo)/8.0;
-    let start = lo+vec2<f32>(f32(id.x%8u),f32(id.x/8u))*cell;
+    let cell = (hi-lo)/f32(cells);
+    let start = lo+vec2<f32>(f32(id.x%cells),f32(id.x/cells))*cell;
     let end = start+cell;
     let border = i32(settings.radius)+3;
     let lower = max(vec2<i32>(ceil(start)),vec2<i32>(border));

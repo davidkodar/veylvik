@@ -16,6 +16,7 @@ fn gpu_planar_detection_perspective_occlusion_and_flat_rejection() {
         screen_area: false,
         motion: veylvik_track::estimate::Motion::Perspective,
         refine: false,
+        grid: 8,
     };
     let (width, height) = (192_u32, 144_u32);
     let surface = [[0.12, 0.15], [0.85, 0.15], [0.85, 0.85], [0.12, 0.85]];
@@ -334,6 +335,7 @@ fn pyramid_recovers_large_motion_rotation_scale_and_odd_dimensions() {
         screen_area: false,
         motion: veylvik_track::estimate::Motion::Perspective,
         refine: false,
+        grid: 8,
     };
     let (width, height) = (513, 385);
     let surface = [[0.18, 0.22], [0.68, 0.22], [0.68, 0.78], [0.18, 0.78]];

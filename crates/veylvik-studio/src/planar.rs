@@ -18,6 +18,8 @@ pub struct Controls {
     area: Option<Quad>,
     /// Node whose alpha marks foreground objects the tracker ignores.
     occlusion: Option<NodeId>,
+    /// Also track the other way from the reference frame, to the clip's start or end.
+    both: bool,
     settings: Settings,
     end: i64,
     result: Option<Tracked>,
@@ -42,6 +44,7 @@ impl Default for Controls {
             surface: [[0.2, 0.2], [0.8, 0.2], [0.8, 0.8], [0.2, 0.8]],
             area: None,
             occlusion: None,
+            both: false,
             settings: Settings::default(),
             end: 0,
             result: None,
@@ -422,6 +425,8 @@ impl Studio {
                     }
                     ui.checkbox(&mut self.planar.settings.refine, "Refine with area alignment")
                         .on_hover_text("After feature matching, align every pixel of the tracking area directly on the GPU, including brightness changes. Steadier on blurred or low-contrast surfaces; kept only when it clearly improves the match.");
+                    ui.checkbox(&mut self.planar.both, "Both directions")
+                        .on_hover_text("Track from this frame towards the chosen end and also the other way to the clip's start or end, joined here. Pick the clearest frame of the shot as the reference.");
                     let mut reanchor = self.planar.settings.reanchor_below > 0;
                     if ui.checkbox(&mut reanchor, "Re-anchor when matches thin out")
                         .on_hover_text("Re-detect features on the latest good frame when fewer than 24 matches are accepted. Keeps walking and zooming shots tracked longer; each re-anchor can add slight drift.")
@@ -644,6 +649,14 @@ impl Studio {
                 .unwrap_or(self.planar.surface)
         };
         let settings = self.planar.settings;
+        let both = self.planar.both && self.planar.correction_frame.is_none();
+        let last_frame = i64::from(
+            self.project
+                .document
+                .snapshot()
+                .frame_count
+                .saturating_sub(1),
+        );
         // A section correction re-tracks the corrected corners themselves.
         let region = self
             .planar
@@ -666,9 +679,12 @@ impl Studio {
         let inputs = self.project.inputs.clone();
         let ctx = ctx.clone();
         let progress = Arc::new(Progress::default());
-        progress
-            .total
-            .store((start.abs_diff(end) + 1) as u32, Ordering::Relaxed);
+        let span = match (both, end > start) {
+            (true, true) => end + 1,
+            (true, false) => last_frame - end + 1,
+            _ => start.abs_diff(end) as i64 + 1,
+        };
+        progress.total.store(span.max(1) as u32, Ordering::Relaxed);
         let worker = progress.clone();
         self.playing = false;
         self.planar.result = None;
@@ -685,14 +701,20 @@ impl Studio {
                         ctx.request_repaint();
                         !worker.cancel.load(Ordering::Relaxed)
                     };
-                let range = tracker.track_range(
+                let ends = match (both, end > start) {
+                    (true, true) => [0, start, end],
+                    (true, false) => [end, start, last_frame],
+                    (false, true) => [start, start, end],
+                    (false, false) => [end, start, start],
+                };
+                let range = tracker.track_both(
                     &renderer,
                     &plan,
                     occlusion.as_ref().map(|plan| (plan, &inputs)),
                     &inputs,
                     surface,
                     region,
-                    [start, end],
+                    ends,
                     rate,
                     settings,
                     available_bytes,
@@ -704,7 +726,24 @@ impl Studio {
                     live.lost = Some(frame);
                 }
                 let mut data = range.data;
-                let mut message = range.stop.message();
+                let mut message = match &range.backward {
+                    Some(back) if end > start => {
+                        format!(
+                            "Forward: {}; backward: {}",
+                            range.stop.message(),
+                            back.message()
+                        )
+                    }
+                    Some(back) if both => {
+                        format!(
+                            "Backward: {}; forward: {}",
+                            back.message(),
+                            range.stop.message()
+                        )
+                    }
+                    Some(back) => back.message(),
+                    None => range.stop.message(),
+                };
                 if range.anchors > 1 {
                     message.push_str(&format!(" · re-anchored {} times", range.anchors - 1));
                 }

@@ -30,6 +30,8 @@ pub struct Settings {
     /// After feature matching, align every pixel of the area directly (perspective and affine
     /// models). Sub-pixel stability on blurred or low-texture surfaces.
     pub refine: bool,
+    /// Detection grid cells per side (8–16): one feature per cell, so up to 64–256 features.
+    pub grid: u32,
 }
 impl Default for Settings {
     fn default() -> Self {
@@ -41,6 +43,7 @@ impl Default for Settings {
             screen_area: false,
             motion: Motion::Auto,
             refine: true,
+            grid: 12,
         }
     }
 }
@@ -66,7 +69,10 @@ impl Stop {
 }
 pub struct Range {
     pub data: planar::Track,
+    /// Why the forward (or only) direction ended.
     pub stop: Stop,
+    /// Why the backward direction ended, when tracking both ways from a middle reference.
+    pub backward: Option<Stop>,
     /// References used, including the first; more than one means the tracker re-anchored.
     pub anchors: u32,
 }
@@ -289,7 +295,7 @@ impl PlanarTracker {
             let sample = planar::Sample {
                 time: at(frame)?,
                 corners,
-                features: found.features,
+                features: thin(found.features),
                 rms_pixels: found.consensus.rms_pixels,
             };
             bytes += size(&sample);
@@ -322,6 +328,7 @@ impl PlanarTracker {
         Ok(Range {
             data,
             stop,
+            backward: None,
             anchors,
         })
     }
@@ -370,6 +377,66 @@ impl PlanarTracker {
             owner: renderer.device_key(),
         }
     }
+    /// Tracks from the `reference` frame forward to `forward_to` and backward to `back_to`,
+    /// joining both at the reference, so a clear middle frame can anchor a whole shot.
+    /// Either end may equal the reference to track one way only.
+    #[allow(clippy::too_many_arguments)]
+    pub fn track_both(
+        &self,
+        renderer: &Renderer,
+        plan: &veylvik_render::Plan,
+        occlusion: Option<(&veylvik_render::Plan, &veylvik_render::ImageInputs)>,
+        inputs: &veylvik_render::ImageInputs,
+        surface: Quad,
+        region: Option<Quad>,
+        [back_to, reference, forward_to]: [i64; 3],
+        rate: veylvik_document::Time,
+        settings: Settings,
+        max_bytes: usize,
+        observe: &mut Observer<'_>,
+    ) -> Result<Range> {
+        if back_to > reference || forward_to < reference || back_to == forward_to {
+            return Err(error("Track ends must surround the reference frame"));
+        }
+        let one_way = |ends: [i64; 2], budget: usize, observe: &mut Observer<'_>| {
+            self.track_range(
+                renderer, plan, occlusion, inputs, surface, region, ends, rate, settings, budget,
+                observe,
+            )
+        };
+        if back_to == reference {
+            return one_way([reference, forward_to], max_bytes, observe);
+        }
+        if forward_to == reference {
+            let mut only = one_way([reference, back_to], max_bytes, observe)?;
+            only.backward = Some(std::mem::replace(&mut only.stop, Stop::Complete));
+            return Ok(only);
+        }
+        let forward = one_way([reference, forward_to], max_bytes, observe)?;
+        let used = serde_json::to_vec_pretty(&forward.data).map_or(max_bytes, |v| v.len() * 2);
+        let mut backward = one_way(
+            [reference, back_to],
+            max_bytes.saturating_sub(used),
+            observe,
+        )?;
+        // Both directions start with the same reference sample; keep one.
+        backward.data.samples.retain(|s| {
+            s.time
+                .compare(forward.data.reference_time)
+                .is_ok_and(|o| o.is_ne())
+        });
+        let mut data = forward.data;
+        data.samples.extend(backward.data.samples);
+        data.samples
+            .sort_by(|a, b| a.time.compare(b.time).expect("frame times are comparable"));
+        data.validate()?;
+        Ok(Range {
+            data,
+            stop: forward.stop,
+            backward: Some(backward.stop),
+            anchors: forward.anchors + backward.anchors - 1,
+        })
+    }
     /// Polishes a feature solution by aligning every pixel of `area` (on `reference`) directly;
     /// `None` when that does not clearly improve the match. Exposed for tests and tools.
     #[allow(clippy::too_many_arguments)]
@@ -394,7 +461,7 @@ impl PlanarTracker {
             6.,
         )
     }
-    /// Return up to 64 distributed corners in normalized image coordinates.
+    /// Return up to `grid²` distributed corners in normalized image coordinates.
     pub fn detect(
         &self,
         renderer: &Renderer,
@@ -426,8 +493,8 @@ impl PlanarTracker {
             &self.detect,
             &params,
             &[[0.; 4]],
-            256,
-            [1, 1],
+            settings.grid * settings.grid * 4,
+            [(settings.grid * settings.grid).div_ceil(64), 1],
             occlusion,
         )?;
         let mut points = Vec::new();
@@ -770,6 +837,7 @@ impl PlanarTracker {
         if !(3..=16).contains(&settings.patch_radius)
             || !(1..=48).contains(&settings.search_radius)
             || !(0.1..=32.).contains(&settings.tolerance_pixels)
+            || !(8..=16).contains(&settings.grid)
         {
             return Err(error("Invalid planar tracking settings"));
         }
@@ -782,7 +850,7 @@ impl PlanarTracker {
         reference: &GpuFrame,
         current: &GpuFrame,
         pipeline: &wgpu::ComputePipeline,
-        params: &[u32; 20],
+        params: &[u32; 24],
         features: &[[f32; 4]],
         count: u32,
         dispatch: [u32; 2],
@@ -797,7 +865,7 @@ impl PlanarTracker {
         }
         Ok(renderer.compute(|scratch| {
             let uniform = scratch.buffer(
-                80,
+                96,
                 wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
                 "planar settings",
             )?;
@@ -880,7 +948,7 @@ fn parameters(
     h: Homography,
     quad: Quad,
     settings: Settings,
-) -> Result<[u32; 20]> {
+) -> Result<[u32; 24]> {
     h.transform_quad([[0., 0.], [1., 0.], [1., 1.], [0., 1.]])
         .map_err(|e| error(e.to_string()))?;
     let w = f64::from(frame.width());
@@ -897,7 +965,7 @@ fn parameters(
     if matrix.iter().any(|v| !v.is_finite()) {
         return Err(error("Invalid planar prediction"));
     }
-    let mut params = [0; 20];
+    let mut params = [0; 24];
     params[..4].copy_from_slice(&[
         frame.width(),
         frame.height(),
@@ -907,10 +975,11 @@ fn parameters(
     for (dst, v) in params[4..12].iter_mut().zip(matrix) {
         *dst = v.to_bits();
     }
-    for (dst, p) in params[12..].as_chunks_mut::<2>().0.iter_mut().zip(quad) {
+    for (dst, p) in params[12..20].as_chunks_mut::<2>().0.iter_mut().zip(quad) {
         dst[0] = ((p[0] * w) as f32).to_bits();
         dst[1] = ((p[1] * height) as f32).to_bits();
     }
+    params[20] = settings.grid;
     Ok(params)
 }
 
@@ -923,4 +992,28 @@ mod erased {
             serde_json::to_vec_pretty(self).map_or(usize::MAX / 4, |v| v.len())
         }
     }
+}
+
+/// Saved diagnostics per frame: every rejected match up to a third of the budget, then
+/// accepted matches spread evenly, so overlays stay representative and projects small.
+fn thin(features: Vec<Feature>) -> Vec<Feature> {
+    const KEEP: usize = 96;
+    if features.len() <= KEEP {
+        return features;
+    }
+    let (accepted, rejected): (Vec<_>, Vec<_>) = features.into_iter().partition(|f| f.accepted);
+    let rejected_kept = rejected.len().min(KEEP / 3);
+    let accepted_kept = (KEEP - rejected_kept).min(accepted.len());
+    let spread = |items: Vec<Feature>, keep: usize| -> Vec<Feature> {
+        let n = items.len();
+        items
+            .into_iter()
+            .enumerate()
+            .filter(|(i, _)| keep > 0 && (i * keep) / n != ((i + 1) * keep) / n)
+            .map(|(_, f)| f)
+            .collect()
+    };
+    let mut kept = spread(accepted, accepted_kept);
+    kept.extend(spread(rejected, rejected_kept));
+    kept
 }
