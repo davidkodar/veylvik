@@ -4,10 +4,10 @@ use eframe::egui;
 use std::sync::{Arc, Mutex, atomic::Ordering};
 use veylvik_document::{
     NodeId, Operation, Time,
-    planar::{Homography, Quad, Sample, Track, WarpMode},
+    planar::{Quad, Sample, Track, WarpMode},
 };
 use veylvik_render::{
-    Plan, RenderRequest,
+    Plan,
     planar::{PlanarTracker, Settings},
 };
 
@@ -345,6 +345,13 @@ impl Studio {
                     ui.horizontal(|ui| {ui.label("Feature radius");ui.add(egui::DragValue::new(&mut self.planar.settings.patch_radius).range(3..=16).suffix(" px"));});
                     ui.horizontal(|ui| {ui.label("Search per level");ui.add(egui::DragValue::new(&mut self.planar.settings.search_radius).range(1..=48).suffix(" px"));});
                     ui.horizontal(|ui| {ui.label("Match tolerance");ui.add(egui::DragValue::new(&mut self.planar.settings.tolerance_pixels).range(0.1..=32.).speed(0.1).suffix(" px"));});
+                    let mut reanchor = self.planar.settings.reanchor_below > 0;
+                    if ui.checkbox(&mut reanchor, "Re-anchor when matches thin out")
+                        .on_hover_text("Re-detect features on the latest good frame when fewer than 24 matches are accepted. Keeps walking and zooming shots tracked longer; each re-anchor can add slight drift.")
+                        .changed()
+                    {
+                        self.planar.settings.reanchor_below = if reanchor { 24 } else { 0 };
+                    }
                 });
                 if self.planar.result.is_some() && ui.button("Correct corners / retrack section").clicked() {
                     if let Some(result)=&self.planar.result
@@ -572,100 +579,40 @@ impl Studio {
         let work = self.files.start(move || {
             let run = || -> Result<Tracked, Box<dyn std::error::Error>> {
                 let tracker = PlanarTracker::new(&renderer);
-                let reference_time = Time::at_frame(start, rate)?;
-                let reference = renderer.render_gpu_cached(
-                    &plan,
-                    RenderRequest::full(reference_time),
-                    &inputs,
-                )?;
-                let reference_levels=tracker.pyramid(&renderer,&reference)?;
-                let points = tracker.detect(&renderer, &reference, surface, settings)?;
-                let initial = tracker.track(
+                let mut observe =
+                    |frame: i64, image: &Arc<veylvik_render::GpuFrame>, sample: &Sample| {
+                        if let Ok(mut live) = live.lock() {
+                            live.quality.push((sample.time, weak(sample)));
+                            live.latest = Some((frame, image.clone(), sample.clone()));
+                        }
+                        worker.completed.fetch_add(1, Ordering::Relaxed);
+                        ctx.request_repaint();
+                        !worker.cancel.load(Ordering::Relaxed)
+                    };
+                let range = tracker.track_range(
                     &renderer,
-                    &reference,
-                    &reference,
-                    &points,
-                    Homography::IDENTITY,
+                    &plan,
+                    &inputs,
+                    surface,
+                    [start, end],
+                    rate,
                     settings,
+                    available_bytes,
+                    &mut observe,
                 )?;
-                let mut data = Track {
-                    reference_time,
-                    reference: surface,
-                    samples: vec![Sample {
-                        time: reference_time,
-                        corners: surface,
-                        features: initial.features,
-                        rms_pixels: initial.consensus.rms_pixels,
-                    }],
-                };
-                // Include generous allowance for the document's deeper pretty-JSON
-                // indentation. Stop early rather than finish an unsavable analysis.
-                let mut diagnostic_bytes = serde_json::to_vec_pretty(&data)?.len() * 2;
-                if diagnostic_bytes > available_bytes {
-                    return Err("Not enough project space for tracking diagnostics".into());
+                if let veylvik_render::planar::Stop::Lost { frame, .. } = range.stop
+                    && let Ok(mut live) = live.lock()
+                {
+                    live.lost = Some(frame);
                 }
-                let mut motion = Homography::IDENTITY;
-                let step = if end > start { 1 } else { -1 };
-                let mut frame = start;
-                let mut message = "Tracking complete".to_owned();
-                worker.completed.store(1, Ordering::Relaxed);
-                if let Ok(mut live)=live.lock() {
-                    live.quality.push((reference_time,weak(&data.samples[0])));
-                    live.latest=Some((start,reference.clone(),data.samples[0].clone()));
+                let mut data = range.data;
+                let mut message = range.stop.message();
+                if range.anchors > 1 {
+                    message.push_str(&format!(" · re-anchored {} times", range.anchors - 1));
                 }
-                ctx.request_repaint();
-                while frame != end {
-                    if worker.cancel.load(Ordering::Relaxed) {
-                        message = "Cancelled; accepted frames are available to save".into();
-                        break;
-                    }
-                    frame += step;
-                    let time = Time::at_frame(frame, rate)?;
-                    let current =
-                        renderer.render_gpu_cached(&plan, RenderRequest::full(time), &inputs)?;
-                    let current_levels=tracker.pyramid(&renderer,&current)?;
-                    let found = match tracker.track_multiscale(&renderer,&reference,&current,&reference_levels,&current_levels,&points,motion,settings) {
-                        Ok(v)=>v,
-                        Err(e)=> {
-                            message=format!("Stopped at frame {frame}: {e}");
-                            if let Ok(mut live)=live.lock() {live.lost=Some(frame);}
-                            break;
-                        }
-                    };
-                    let corners = match found.consensus.motion.transform_quad(surface) {
-                        Ok(q) => q,
-                        Err(e) => {
-                            message = format!("Stopped at frame {frame}: {e}");
-                            break;
-                        }
-                    };
-                    motion = found.consensus.motion;
-                    let sample = Sample {
-                        time,
-                        corners,
-                        features: found.features,
-                        rms_pixels: found.consensus.rms_pixels,
-                    };
-                    diagnostic_bytes += serde_json::to_vec_pretty(&sample)?.len() * 2;
-                    if diagnostic_bytes > available_bytes {
-                        message = "Stopped before the project size limit; accepted frames remain available".into();
-                        break;
-                    }
-                    if let Ok(mut live)=live.lock() {
-                        live.quality.push((time,weak(&sample)));
-                        live.latest=Some((frame,current.clone(),sample.clone()));
-                    }
-                    data.samples.push(sample);
-                    worker
-                        .completed
-                        .store(data.samples.len() as u32, Ordering::Relaxed);
-                    ctx.request_repaint();
-                }
-                data.samples.sort_by(|a, b| a.time.compare(b.time).unwrap());
-                data.validate()?;
                 message.push_str(&format!(" · {} analyzed frames", data.samples.len()));
-                if let Some(base)=&base {
-                    data=base.data.splice(&data)?;
+                if let Some(base) = &base {
+                    data = base.data.splice(&data)?;
                     message.push_str("; other sections preserved");
                 }
                 Ok(Tracked {

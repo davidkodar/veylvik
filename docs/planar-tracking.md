@@ -91,6 +91,37 @@ lighting, texture, wear, displacement, softness and grain; see
 outline workflow. Rejected feature matches diagnose tracking; they are not
 an occlusion mask and do not automatically transfer cracks or wear to a layer.
 
-Both operations, their data schema, and all three warp modes are exposed through
-the node catalog and existing MCP editing commands. Analysis currently starts in
-the Studio workflow; there is no dedicated headless tracking tool yet.
+## Re-anchoring
+
+The reference texture is fixed per anchor. On walking, zooming or turning shots the
+surface changes scale and angle until too few patches match. With **Re-anchor when
+matches thin out** (on by default in Tracking settings), the tracker re-detects
+features on the latest accepted frame once fewer than 24 matches are accepted, and
+continues from that frame. If a frame still fails, it retries once from a fresh
+anchor on the previous accepted frame before stopping. Corners may leave the image;
+detection then uses the visible part of the surface. Each anchor can add slight
+drift, so inspect long tracks; turn the option off for the original single-reference
+behaviour. Tracking still stops when the surface crosses behind the camera or too
+little of it remains in view. The completion message reports how many times the
+track re-anchored.
+
+## Headless tracking
+
+The same analysis runs without Studio. From the command line:
+
+```sh
+veylvik track scene.veylvik tracked.veylvik SOURCE_UUID 160 300 "0.08,0.64 0.92,0.64 0.98,0.90 0.02,0.90"
+```
+
+`SOURCE_UUID` is the footage or image branch to analyze; frames are composition
+frames, the first being the reference (an end before the start tracks backward); the
+four corners are 0..1 composition coordinates in perimeter order on the reference
+frame. The result is written to a new project with one added Planar track node, and a
+JSON report gives the tracked range, why it stopped, re-anchors and worst error.
+
+The headless MCP server exposes `track_surface` with the same inputs (`source`,
+`surface`, `start`, `end`) plus optional `feature_radius`, `search_radius`,
+`tolerance` and `reanchor`. It adds the Planar track node as one undoable
+transaction; connect it to `planar_warp` nodes with `apply`. Both operations, their
+data schema, and all three warp modes are also exposed through the node catalog and
+the existing MCP editing commands.

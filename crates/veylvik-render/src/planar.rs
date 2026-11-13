@@ -14,6 +14,10 @@ pub struct Settings {
     pub patch_radius: u32,
     pub search_radius: u32,
     pub tolerance_pixels: f64,
+    /// Re-detect features on the latest accepted frame when fewer than this many matches
+    /// are accepted, so scale and viewpoint changes do not exhaust a fixed reference.
+    /// Zero keeps the original reference for the whole range.
+    pub reanchor_below: u32,
 }
 impl Default for Settings {
     fn default() -> Self {
@@ -21,15 +25,215 @@ impl Default for Settings {
             patch_radius: 6,
             search_radius: 16,
             tolerance_pixels: 2.,
+            reanchor_below: 24,
         }
     }
 }
+/// Why a range analysis ended before its last frame, if it did.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Stop {
+    Complete,
+    Cancelled,
+    Lost { frame: i64, reason: String },
+    SizeLimit { frame: i64 },
+}
+impl Stop {
+    pub fn message(&self) -> String {
+        match self {
+            Self::Complete => "Tracking complete".into(),
+            Self::Cancelled => "Cancelled; accepted frames are available to save".into(),
+            Self::Lost { frame, reason } => format!("Stopped at frame {frame}: {reason}"),
+            Self::SizeLimit { .. } => {
+                "Stopped before the project size limit; accepted frames remain available".into()
+            }
+        }
+    }
+}
+pub struct Range {
+    pub data: planar::Track,
+    pub stop: Stop,
+    /// References used, including the first; more than one means the tracker re-anchored.
+    pub anchors: u32,
+}
+/// Called after every accepted frame with its index and pixels; return false to cancel.
+pub type Observer<'a> = dyn FnMut(i64, &Arc<GpuFrame>, &planar::Sample) -> bool + 'a;
 pub struct TrackedPlane {
     pub consensus: Consensus,
     /// Includes rejected matches, for diagnostic viewer overlays.
     pub features: Vec<Feature>,
 }
 impl PlanarTracker {
+    /// Track `surface` from `start` (its reference frame) towards `end`, in either direction,
+    /// on the rendered output of `plan`. Accepted frames are kept when the track is lost or
+    /// cancelled; `max_bytes` bounds the encoded diagnostics so the result stays savable.
+    #[allow(clippy::too_many_arguments)]
+    pub fn track_range(
+        &self,
+        renderer: &Renderer,
+        plan: &crate::Plan,
+        inputs: &crate::ImageInputs,
+        surface: Quad,
+        [start, end]: [i64; 2],
+        rate: veylvik_document::Time,
+        settings: Settings,
+        max_bytes: usize,
+        observe: &mut Observer<'_>,
+    ) -> Result<Range> {
+        let at = |frame: i64| {
+            veylvik_document::Time::at_frame(frame, rate).map_err(|e| error(e.to_string()))
+        };
+        let render = |frame: i64| {
+            renderer.render_gpu_cached(plan, crate::RenderRequest::full(at(frame)?), inputs)
+        };
+        let reference_time = at(start)?;
+        let mut reference = render(start)?;
+        let mut levels = self.pyramid(renderer, &reference)?;
+        let mut points = self.detect(renderer, &reference, surface, settings)?;
+        let initial = self.track(
+            renderer,
+            &reference,
+            &reference,
+            &points,
+            Homography::IDENTITY,
+            settings,
+        )?;
+        let first = planar::Sample {
+            time: reference_time,
+            corners: surface,
+            features: initial.features,
+            rms_pixels: initial.consensus.rms_pixels,
+        };
+        let mut data = planar::Track {
+            reference_time,
+            reference: surface,
+            samples: vec![first],
+        };
+        // Allow for the document's deeper pretty-JSON indentation.
+        let size = |value: &dyn erased::Encode| value.encoded_len() * 2;
+        let mut bytes = size(&data);
+        if bytes > max_bytes {
+            return Err(error("Not enough project space for tracking diagnostics"));
+        }
+        let mut stop = Stop::Complete;
+        if !observe(start, &reference, &data.samples[0]) {
+            stop = Stop::Cancelled;
+        }
+        // `anchor` is the surface as seen on the current reference; `motion` maps it onward.
+        let (mut anchor, mut motion, mut anchors) = (surface, Homography::IDENTITY, 1);
+        // The last accepted frame, kept so a failed frame can retry from a fresh anchor there.
+        let mut previous: Option<(Arc<GpuFrame>, Vec<GpuFrame>, Quad)> = None;
+        let step = if end > start { 1 } else { -1 };
+        let mut frame = start;
+        while stop == Stop::Complete && frame != end {
+            frame += step;
+            let current = render(frame)?;
+            let current_levels = self.pyramid(renderer, &current)?;
+            let mut attempt = self.track_multiscale(
+                renderer,
+                &reference,
+                &current,
+                &levels,
+                &current_levels,
+                &points,
+                motion,
+                settings,
+            );
+            if attempt.is_err()
+                && settings.reanchor_below > 0
+                && let Some((image, image_levels, corners)) = previous.take()
+            {
+                let visible = corners.map(|[x, y]| [x.clamp(0.005, 0.995), y.clamp(0.005, 0.995)]);
+                if planar::validate_quad(visible).is_ok()
+                    && let Ok(fresh) = self.detect(renderer, &image, visible, settings)
+                    && fresh.len() >= 12
+                {
+                    (anchor, motion, points, levels, reference) =
+                        (corners, Homography::IDENTITY, fresh, image_levels, image);
+                    anchors += 1;
+                    attempt = self.track_multiscale(
+                        renderer,
+                        &reference,
+                        &current,
+                        &levels,
+                        &current_levels,
+                        &points,
+                        motion,
+                        settings,
+                    );
+                }
+            }
+            let found = match attempt {
+                Ok(found) => found,
+                Err(e) => {
+                    stop = Stop::Lost {
+                        frame,
+                        reason: e.to_string(),
+                    };
+                    break;
+                }
+            };
+            let corners = match found.consensus.motion.transform_quad(anchor) {
+                Ok(corners) => corners,
+                Err(e) => {
+                    stop = Stop::Lost {
+                        frame,
+                        reason: e.to_string(),
+                    };
+                    break;
+                }
+            };
+            motion = found.consensus.motion;
+            let accepted = found.features.iter().filter(|f| f.accepted).count();
+            let sample = planar::Sample {
+                time: at(frame)?,
+                corners,
+                features: found.features,
+                rms_pixels: found.consensus.rms_pixels,
+            };
+            bytes += size(&sample);
+            if bytes > max_bytes {
+                stop = Stop::SizeLimit { frame };
+                break;
+            }
+            if !observe(frame, &current, &sample) {
+                stop = Stop::Cancelled;
+            }
+            data.samples.push(sample);
+            if accepted >= settings.reanchor_below as usize {
+                previous = Some((current, current_levels, corners));
+                continue;
+            }
+            {
+                // Detect inside the visible part of the surface; the anchor itself may
+                // extend past the frame edges. Keep the old reference if too little remains.
+                let visible = corners.map(|[x, y]| [x.clamp(0.005, 0.995), y.clamp(0.005, 0.995)]);
+                if planar::validate_quad(visible).is_ok()
+                    && let Ok(fresh) = self.detect(renderer, &current, visible, settings)
+                    && fresh.len() > accepted
+                    && fresh.len() >= 12
+                {
+                    (anchor, motion, points, levels, reference) = (
+                        corners,
+                        Homography::IDENTITY,
+                        fresh,
+                        current_levels,
+                        current,
+                    );
+                    anchors += 1;
+                } else {
+                    previous = Some((current, current_levels, corners));
+                }
+            }
+        }
+        data.samples
+            .sort_by(|a, b| a.time.compare(b.time).expect("frame times are comparable"));
+        data.validate().map_err(|e| error(e.to_string()))?;
+        Ok(Range {
+            data,
+            stop,
+            anchors,
+        })
+    }
     pub fn new(renderer: &Renderer) -> Self {
         let module = renderer
             .device
@@ -547,4 +751,15 @@ fn parameters(
         dst[1] = ((p[1] * height) as f32).to_bits();
     }
     Ok(params)
+}
+
+mod erased {
+    pub trait Encode {
+        fn encoded_len(&self) -> usize;
+    }
+    impl<T: serde::Serialize> Encode for T {
+        fn encoded_len(&self) -> usize {
+            serde_json::to_vec_pretty(self).map_or(usize::MAX / 4, |v| v.len())
+        }
+    }
 }

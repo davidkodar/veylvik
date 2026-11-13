@@ -1,12 +1,13 @@
 use veylvik_io as assets;
 mod mcp;
 mod outline;
+mod track;
 mod video_export;
 use std::path::Path;
 use veylvik_document::{Composition, Node, Operation, Time};
 use veylvik_render::{Plan, Region, RenderRequest};
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
-const USAGE: &str = "usage: veylvik open [FILE] [--control-dir DIRECTORY | --no-control] | demo FILE [--motion|--procedural] | import IMAGE.png|IMAGE.exr FILE | outline-text FONT TEXT NEW_FILE [OPTIONS] | collect FILE NEW_DIRECTORY | nodes | check FILE | render FILE OUTPUT.png|OUTPUT.exr [TICKS RATE] [--node UUID] [--crop X Y WIDTH HEIGHT] | render-video FILE OUTPUT.mp4 [OPTIONS] | render-sequence FILE DIRECTORY START END [--format png|exr] [--node UUID] [--crop X Y WIDTH HEIGHT] | mcp FILE | mcp --studio [SOCKET|DIRECTORY]";
+const USAGE: &str = "usage: veylvik open [FILE] [--control-dir DIRECTORY | --no-control] | demo FILE [--motion|--procedural] | import IMAGE.png|IMAGE.exr FILE | outline-text FONT TEXT NEW_FILE [OPTIONS] | collect FILE NEW_DIRECTORY | nodes | check FILE | render FILE OUTPUT.png|OUTPUT.exr [TICKS RATE] [--node UUID] [--crop X Y WIDTH HEIGHT] | render-video FILE OUTPUT.mp4 [OPTIONS] | render-sequence FILE DIRECTORY START END [--format png|exr] [--node UUID] [--crop X Y WIDTH HEIGHT] | track FILE NEW_FILE SOURCE_UUID START END \"X,Y X,Y X,Y X,Y\" | mcp FILE | mcp --studio [SOCKET|DIRECTORY]";
 fn run() -> Result<()> {
     let args: Vec<String> = std::env::args().collect();
     match args.get(1).map(String::as_str) {
@@ -39,6 +40,38 @@ fn run() -> Result<()> {
             std::io::stdin().lock(),
             std::io::stdout().lock(),
         )?,
+        Some("track") if args.len() == 8 => {
+            // veylvik track FILE NEW_FILE SOURCE_UUID START END "x,y x,y x,y x,y"
+            let (input, output) = (Path::new(&args[2]), Path::new(&args[3]));
+            if output.exists() {
+                return Err("NEW_FILE already exists; choose a new path".into());
+            }
+            let corners: Vec<[f64; 2]> = args[7]
+                .split_whitespace()
+                .map(|pair| {
+                    let (x, y) = pair.split_once(',').ok_or("corners are x,y pairs")?;
+                    Ok([x.parse()?, y.parse()?])
+                })
+                .collect::<Result<_>>()?;
+            let surface: [[f64; 2]; 4] = corners
+                .try_into()
+                .map_err(|_| "give exactly four corners")?;
+            let args_json = serde_json::json!({"source":args[4],"surface":surface,"start":args[5].parse::<i64>()?,"end":args[6].parse::<i64>()?});
+            let request = track::Request::from_json(&args_json)?;
+            let mut document = veylvik_document::Document::new(Composition::load(input)?)?;
+            let renderer = assets::runtime::renderer()?;
+            let (node, commands, mut report) = track::run(
+                &renderer,
+                document.snapshot(),
+                &assets::document_base(input)?,
+                &request,
+            )?;
+            document.apply(document.revision(), &commands)?;
+            document.snapshot().save(output)?;
+            report["node"] = serde_json::json!(node);
+            report["saved"] = serde_json::json!(output);
+            println!("{report}");
+        }
         Some("render-video") => video_export::run(&args[2..])?,
         Some("outline-text") => outline::run(&args[2..])?,
         Some("nodes") if args.len() == 2 => println!("{}", veylvik_document::registry::catalog()),
