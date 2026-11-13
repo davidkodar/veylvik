@@ -70,7 +70,10 @@ impl Picking {
                 i.pointer.primary_released(),
             )
         });
-        if let Some(p) = pointer.filter(|p| canvas.contains(*p)) {
+        // Windows over the viewer keep their own clicks.
+        if let Some(p) = pointer
+            .filter(|p| canvas.contains(*p) && ui.ctx().layer_id_at(*p) == Some(ui.layer_id()))
+        {
             ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
             for (a, b) in [
                 (egui::vec2(-9., 0.), egui::vec2(-3., 0.)),

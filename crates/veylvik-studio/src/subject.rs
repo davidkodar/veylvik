@@ -123,7 +123,10 @@ impl Controls {
                 i.modifiers.alt,
             )
         });
-        let Some(p) = pointer.filter(|p| canvas.contains(*p)) else {
+        // Windows over the viewer (this one included) keep their own clicks.
+        let Some(p) = pointer
+            .filter(|p| canvas.contains(*p) && ui.ctx().layer_id_at(*p) == Some(ui.layer_id()))
+        else {
             return false;
         };
         ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
