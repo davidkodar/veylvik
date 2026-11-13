@@ -1,5 +1,7 @@
 //! Editable vector text.
 #[allow(unused_imports)]
+use crate::registry::{NodeType, Parameter, ParameterKind, other, scalar};
+#[allow(unused_imports)]
 use crate::*;
 use serde::{Deserialize, Serialize};
 
@@ -30,6 +32,43 @@ pub struct Text {
     pub features: String,
     pub color: [f32; 4],
 }
+
+pub static TEXT: NodeType = NodeType {
+    type_id: "text",
+    version: 1,
+    label: "Text",
+    description: "Editable vector text with portable bundled or embedded fonts. Multiline alignment, tracking, line spacing and animated size/position. White alpha source for any material or colour. Explicit LTR/RTL per line; no automatic mixed-script bidi or fallback.",
+    inputs: &[],
+    parameters: &[
+        other("content", ParameterKind::TextContent, "text"),
+        other("font", ParameterKind::TextFont, "font"),
+        other("alignment", ParameterKind::TextAlignment, "alignment"),
+        other("rtl", ParameterKind::Boolean, "direction"),
+        other("language", ParameterKind::TextLanguage, "language"),
+        scalar("size", "pixels", 1.0, 1024.0, 160.0),
+        scalar("x", "pixels", -32768.0, 32768.0, 480.0),
+        scalar("y", "pixels", -32768.0, 32768.0, 320.0),
+        scalar("tracking", "pixels", -128.0, 512.0, 0.0),
+        scalar("line_height", "factor", 0.1, 4.0, 1.25),
+        scalar("rotation", "degrees", -36000.0, 36000.0, 0.0),
+        scalar("scale_x", "factor", -100.0, 100.0, 1.0),
+        scalar("scale_y", "factor", -100.0, 100.0, 1.0),
+        scalar("wrap_width", "pixels", 0.0, 8192.0, 0.0),
+        scalar("box_height", "pixels", 0.0, 8192.0, 0.0),
+        scalar("padding", "pixels", 0.0, 4096.0, 0.0),
+        other(
+            "typography",
+            ParameterKind::Typography,
+            "text layout and animation",
+        ),
+        other("underline", ParameterKind::Boolean, "style"),
+        other("features", ParameterKind::TextFeatures, "OpenType"),
+        Parameter {
+            default: 1.0,
+            ..other("color", ParameterKind::Color, "linear RGBA")
+        },
+    ],
+};
 
 node!(
     Text,

@@ -1,5 +1,7 @@
 //! Still images and footage read from project assets.
 #[allow(unused_imports)]
+use crate::registry::{NodeType, Parameter, ParameterKind, other, scalar};
+#[allow(unused_imports)]
 use crate::*;
 use serde::{Deserialize, Serialize};
 
@@ -16,6 +18,27 @@ pub struct Footage {
     #[serde(default)]
     pub placement: media::Placement,
 }
+
+pub static IMAGE: NodeType = NodeType {
+    type_id: "image",
+    version: 1,
+    label: "Image",
+    description: "Host-supplied linear premultiplied image at native size, top-left anchored, cropped or padded to the composition.",
+    inputs: &[],
+    parameters: &[other("asset", ParameterKind::Asset, "asset key")],
+};
+pub static FOOTAGE: NodeType = NodeType {
+    type_id: "footage",
+    version: 1,
+    label: "Footage",
+    description: "Time-aware video or image sequence, with exact source in/out and timeline placement. Outside the clip is transparent; pixels retain native dimensions.",
+    inputs: &[],
+    parameters: &[
+        other("asset", ParameterKind::Asset, "asset key"),
+        other("timing", ParameterKind::MediaTiming, "seconds"),
+        other("placement", ParameterKind::MediaPlacement, ""),
+    ],
+};
 
 node!(Image, IMAGE, [], {
     fn validate(&self) -> Result<()> {

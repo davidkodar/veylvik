@@ -28,7 +28,7 @@ macro_rules! node {
     ($ty:ident, $descriptor:ident, [$($field:ident),*] $(, { $($extra:tt)* })?) => {
         impl super::NodeOp for $ty {
             fn descriptor(&self) -> &'static crate::registry::NodeType {
-                &crate::registry::$descriptor
+                &$descriptor
             }
             #[allow(unused_variables)]
             fn scalar(&self, name: &str) -> Option<&crate::Scalar> {
