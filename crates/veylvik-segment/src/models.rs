@@ -111,7 +111,35 @@ pub static EDGETAM: Model = Model {
         },
     ],
 };
-pub static MODELS: &[&Model] = &[&EDGETAM];
+pub static VITMATTE: Model = Model {
+    id: "vitmatte",
+    title: "ViTMatte",
+    summary: "Image matting for hair and soft edges: refines the band around a tracked subject's outline from the image itself.",
+    licence: "Apache-2.0",
+    homepage: "https://huggingface.co/hustvl/vitmatte-small-composition-1k",
+    uses: "Hair and soft edges for subject masks: strands, fur and motion blur along the outline.",
+    pros: &[
+        "Recovers fine hair and semi-transparent edges that segmentation models cannot",
+        "Works on any subject, guided by the tracked outline",
+        "Only the edge band is processed, so the rest of the matte stays exactly as tracked",
+        "Apache-2.0 weights, runs entirely on this computer",
+    ],
+    cons: &[
+        "Trained on academic matting datasets (Composition-1k) whose terms are research-oriented; check them before commercial use",
+        "Adds time to every analysed frame",
+        "Needs an NVIDIA GPU with CUDA and cuDNN",
+    ],
+    speed: "≈55 ms per frame for a full-length person at 1080 × 1920 (RTX 4080)",
+    memory: "≈0.5 GB more for a full-length person at 1080 × 1920; more for large subjects",
+    files: &[File {
+        name: "model.onnx",
+        url: "https://huggingface.co/Xenova/vitmatte-small-composition-1k/resolve/6bc1297f6140f055a227b6d2cfe8c093281f35d2/onnx/model.onnx",
+        range: None,
+        size: 103_885_865,
+        sha256: "bf28d2e0be2c073286e88d60ad649d7123da2749a2d99133fd1098d5887e0225",
+    }],
+};
+pub static MODELS: &[&Model] = &[&EDGETAM, &VITMATTE];
 
 pub fn find(id: &str) -> Result<&'static Model> {
     MODELS

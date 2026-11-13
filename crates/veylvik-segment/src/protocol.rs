@@ -19,6 +19,13 @@ pub enum Request {
     Frame {
         prompt: Option<Vec<Point>>,
     },
+    /// Mattes the payload: `width` × `height` RGBA bytes with the trimap in alpha. Loads the
+    /// matting model on first use; replies with f32 alpha.
+    Matte {
+        model: String,
+        width: u32,
+        height: u32,
+    },
     Quit,
 }
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

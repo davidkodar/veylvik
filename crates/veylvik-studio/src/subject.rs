@@ -12,6 +12,8 @@ use veylvik_segment::{Point, analysis, matte, models, worker::Worker};
 
 /// The model used for clicks and tracking.
 const MODEL: &str = "edgetam";
+/// The model that refines the edge band.
+const MATTING: &str = "vitmatte";
 /// Longest side of the preview overlay, in pixels.
 const PREVIEW_SIDE: usize = 960;
 type Shared = Arc<Mutex<Option<Worker>>>;
@@ -55,6 +57,8 @@ pub struct Controls {
     backward: bool,
     /// Second, zoomed pass for small parts.
     detail: bool,
+    /// Edge-band matting for hair and soft edges, when the model is ready.
+    matting: bool,
     show_mask: bool,
     worker: Shared,
     preview: Option<Preview>,
@@ -186,6 +190,8 @@ impl Studio {
         self.subject.open = true;
         self.subject.show_mask = true;
         self.subject.detail = true;
+        self.subject.matting = true;
+        self.models.status(MATTING);
         self.subject.points.clear();
         self.subject.preview = None;
         self.subject.done = None;
@@ -204,8 +210,11 @@ impl Studio {
         self.subject.worker = Shared::default();
     }
     fn subject_ready(&mut self) -> bool {
+        self.model_ready(MODEL)
+    }
+    fn model_ready(&mut self, id: &str) -> bool {
         self.models
-            .status(MODEL)
+            .status(id)
             .is_some_and(|s| s.installed && s.enabled)
     }
     /// Renders the prompted frame and asks the worker for its matte, off the UI thread.
@@ -326,6 +335,7 @@ impl Studio {
         let Some(source) = self.subject.source else {
             return;
         };
+        let use_matting = self.subject.matting && self.model_ready(MATTING);
         let doc = self.project.document.snapshot();
         let plan = match Plan::compile_output(doc, source) {
             Ok(plan) => plan,
@@ -342,6 +352,7 @@ impl Studio {
                 && self.subject.end >= self.subject.frame)
                 .then_some(0),
             detail: self.subject.detail,
+            matting: use_matting.then_some(MATTING),
         };
         let total = match analysis::schedule(&request, doc.frame_count) {
             Ok(schedule) => schedule.len() * if request.detail { 2 } else { 1 },
@@ -444,7 +455,7 @@ impl Studio {
         });
         self.subject.message = Some((
             format!(
-                "{}Tracked frames {}–{} ({} frames, {:.0} ms each){}{}.",
+                "{}Tracked frames {}–{} ({} frames, {:.0} ms each){}{}{}.",
                 if o.cancelled { "Stopped early. " } else { "" },
                 o.first_frame,
                 o.last_frame,
@@ -457,7 +468,15 @@ impl Studio {
                 },
                 o.zoom
                     .map(|z| format!("; detail pass at {z:.1}× zoom"))
-                    .unwrap_or_default()
+                    .unwrap_or_default(),
+                if o.matting.is_some() {
+                    format!(
+                        "; hair and soft edges matted ({:.0} ms a frame)",
+                        o.matting_milliseconds
+                    )
+                } else {
+                    String::new()
+                }
             ),
             false,
         ));
@@ -565,6 +584,9 @@ impl Studio {
         let status = self.models.status(MODEL);
         let installing = self.models.busy(MODEL);
         let mut install = false;
+        let matting_ready = self.model_ready(MATTING);
+        let matting_installing = self.models.busy(MATTING);
+        let mut install_matting = false;
         let mut open = true;
         let (mut track, mut cancel, mut result, mut changed, mut models) =
             (false, false, None, false, false);
@@ -661,6 +683,18 @@ impl Studio {
                         self.subject.frame > 0,
                         egui::Checkbox::new(&mut self.subject.backward, "Also track back to the start"),
                     );
+                    ui.horizontal(|ui| {
+                        ui.add_enabled(
+                            matting_ready,
+                            egui::Checkbox::new(&mut self.subject.matting, "Hair and soft edges"),
+                        )
+                        .on_hover_text("Refine the band around the outline with the ViTMatte matting model, for hair, fur and motion blur");
+                        if !matting_ready && !matting_installing && ui.button("Install ViTMatte (104 MB)").clicked() {
+                            install_matting = true;
+                        } else if matting_installing {
+                            ui.spinner();
+                        }
+                    });
                     ui.checkbox(&mut self.subject.detail, "Detail pass for small parts")
                         .on_hover_text("Track a second time, zoomed in on the subject, so feet, hands and hair get more model pixels. About twice the analysis time; skipped automatically when the subject already fills the frame.");
                     let can = !self.subject.points.is_empty()
@@ -702,6 +736,9 @@ impl Studio {
             self.models.show_window();
         }
         if install && let Ok(model) = models::find(MODEL) {
+            self.models.install(model, ctx);
+        }
+        if install_matting && let Ok(model) = models::find(MATTING) {
             self.models.install(model, ctx);
         }
         if changed {

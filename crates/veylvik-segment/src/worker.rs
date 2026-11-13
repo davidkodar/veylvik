@@ -183,6 +183,33 @@ impl Worker {
             score: reply.score.unwrap_or(f32::NEG_INFINITY),
         })
     }
+    /// Refines alpha with `model` (a matting model) inside the trimap carried in `pixels`.
+    pub fn matte(
+        &mut self,
+        model: &str,
+        pixels: &[u8],
+        width: usize,
+        height: usize,
+    ) -> Result<Vec<f32>> {
+        if pixels.len() != width * height * 4 {
+            return Err("matting input does not match its size".into());
+        }
+        let request = Request::Matte {
+            model: model.to_owned(),
+            width: u32::try_from(width).map_err(|_| "matting input too wide")?,
+            height: u32::try_from(height).map_err(|_| "matting input too tall")?,
+        };
+        let (_, payload) = self.call(&request, pixels, LOAD_TIMEOUT)?;
+        if payload.len() != width * height * 4 {
+            return Err("the segmentation worker returned a malformed matte".into());
+        }
+        Ok(payload
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .map(|c| f32::from_le_bytes(*c))
+            .collect())
+    }
     fn stop(&mut self) {
         if let Some(input) = self.input.as_mut() {
             let _ = protocol::write(input, &Request::Quit, &[]);
@@ -207,6 +234,7 @@ pub fn serve(input: impl std::io::Read, output: impl std::io::Write) -> Result<(
     let mut input = BufReader::new(input);
     let mut output = BufWriter::new(output);
     let mut engine: Option<crate::edgetam::Engine> = None;
+    let mut matting: Option<(String, crate::vitmatte::Matting)> = None;
     while let Some((request, payload)) = protocol::read::<Request>(&mut input)? {
         let fail = |e: crate::Error| Reply {
             error: Some(e.to_string()),
@@ -233,6 +261,48 @@ pub fn serve(input: impl std::io::Read, output: impl std::io::Write) -> Result<(
                     Err(e) => fail(e),
                 };
                 protocol::write(&mut output, &reply, &[])?;
+            }
+            Request::Matte {
+                model,
+                width,
+                height,
+            } => {
+                let (width, height) = (width as usize, height as usize);
+                let result = (|| -> crate::Result<Vec<f32>> {
+                    if width.max(height) > crate::edges::MAX_SIDE
+                        || payload.len() != width * height * 4
+                    {
+                        return Err("matting input does not match its size".into());
+                    }
+                    if matting.as_ref().is_none_or(|(id, _)| *id != model) {
+                        let found = crate::models::find(&model)?;
+                        if !crate::models::ready(found)? {
+                            return Err(format!(
+                                "{} is not installed or is switched off",
+                                found.title
+                            )
+                            .into());
+                        }
+                        matting = Some((
+                            model.clone(),
+                            crate::vitmatte::Matting::load(&crate::models::dir(found)?)?,
+                        ));
+                    }
+                    let (_, session) = matting.as_mut().ok_or("matting model unavailable")?;
+                    session.matte(&payload, width, height)
+                })();
+                match result {
+                    Ok(alpha) => {
+                        let bytes: Vec<u8> = alpha.iter().flat_map(|v| v.to_le_bytes()).collect();
+                        let reply = Reply {
+                            error: None,
+                            score: None,
+                            device: None,
+                        };
+                        protocol::write(&mut output, &reply, &bytes)?;
+                    }
+                    Err(e) => protocol::write(&mut output, &fail(e), &[])?,
+                }
             }
             Request::Frame { prompt } => {
                 let result = match engine.as_mut() {

@@ -1,6 +1,6 @@
 //! Subject analysis: renders the source node frame by frame, has the worker segment and track it,
 //! and writes the matte as a PNG16 sequence with a `.veyseq` manifest. Runs once, like tracking.
-use crate::{Point, Result, matte, worker::Worker, zoom};
+use crate::{Point, Result, edges, matte, worker::Worker, zoom};
 use serde::Serialize;
 use std::{
     collections::BTreeMap,
@@ -19,6 +19,8 @@ pub struct Request {
     pub back_to: Option<i64>,
     /// Run a second, zoomed pass around the subject for small parts (feet, hands, hair).
     pub detail: bool,
+    /// Matting model that refines the edge band (hair, soft edges), if any.
+    pub matting: Option<&'static str>,
 }
 #[derive(Debug, Serialize)]
 pub struct Outcome {
@@ -32,6 +34,9 @@ pub struct Outcome {
     pub cancelled: bool,
     /// Linear detail gain of the zoomed pass, or `None` when it was not used.
     pub zoom: Option<f64>,
+    /// Matting model used on the edge band, and its time per frame.
+    pub matting: Option<&'static str>,
+    pub matting_milliseconds: f64,
 }
 /// The frames to analyse, each with whether it carries the prompt, in processing order.
 pub fn schedule(request: &Request, frame_count: u32) -> Result<Vec<(i64, bool)>> {
@@ -129,13 +134,15 @@ pub fn analyse(
         .map(|r| ((fw / (r[2] - r[0])) * (fh / (r[3] - r[1]))).sqrt());
     let offset = schedule.len() * (passes - 1);
     let (mut done, mut absent, mut cancelled) = (Vec::new(), 0, false);
+    let mut matting_time = 0.0;
     for (index, &(frame, prompted)) in schedule.iter().enumerate() {
         if !progress(offset + index, total) {
             cancelled = true;
             break;
         }
         let rect = windows.as_ref().map_or(full, |w| w[&frame]);
-        let input = matte::model_crop(&render(frame)?, width, height, rect)?;
+        let pixels = render(frame)?;
+        let input = matte::model_crop(&pixels, width, height, rect)?;
         let points = match &windows {
             Some(_) => zoom::map_points(&request.points, rect, fw, fh),
             None => request.points.clone(),
@@ -145,12 +152,24 @@ pub fn analyse(
         if done.contains(&frame) {
             continue;
         }
-        let alpha = if mask.present() {
+        let mut alpha = if mask.present() {
             matte::alpha_crop(&mask.logits, width, height, rect)?
         } else {
             absent += 1;
             vec![0.0; width * height]
         };
+        if let Some(model) = request.matting
+            && let Some(band) = edges::band(&alpha, width)
+            && let Some(crop) = edges::crop(&alpha, width, height, band * 2 + 16)
+        {
+            let started = std::time::Instant::now();
+            let trimap = edges::trimap(&alpha, width, crop, band);
+            let srgb = matte::srgb_pixels(&pixels);
+            let (bytes, w, h) = edges::input(&srgb, width, crop, &trimap);
+            let matted = worker.matte(model, &bytes, w, h)?;
+            edges::merge(&mut alpha, width, crop, &trimap, &matted, w, h)?;
+            matting_time += started.elapsed().as_secs_f64();
+        }
         matte::write_png(&dir.join(file_name(frame)), doc.width, doc.height, &alpha)?;
         done.push(frame);
     }
@@ -189,6 +208,8 @@ pub fn analyse(
         milliseconds_per_frame: started.elapsed().as_secs_f64() * 1000.0 / done.len() as f64,
         cancelled,
         zoom: gain,
+        matting: request.matting,
+        matting_milliseconds: matting_time * 1000.0 / done.len() as f64,
     })
 }
 /// Nodes an analysis adds: the matte sequence, and the refined cutout of the source.
@@ -253,6 +274,7 @@ mod tests {
             frames,
             back_to,
             detail: true,
+            matting: None,
         }
     }
     #[test]

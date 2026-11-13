@@ -85,6 +85,8 @@ pub fn points(text: &str) -> Result<Vec<Point>> {
 pub struct Request {
     pub source: NodeId,
     pub analysis: analysis::Request,
+    /// Edge matting: `None` uses the matting model when it is installed and switched on.
+    pub matting: Option<bool>,
     pub model: String,
 }
 impl Request {
@@ -114,7 +116,12 @@ impl Request {
                     None => true,
                     Some(v) => v.as_bool().ok_or("detail must be boolean")?,
                 },
+                matting: None,
             },
+            matting: args
+                .get("matting")
+                .map(|v| v.as_bool().ok_or("matting must be boolean"))
+                .transpose()?,
             model: args
                 .get("model")
                 .and_then(Value::as_str)
@@ -154,6 +161,26 @@ pub fn run(
         .into());
     }
     analysis::schedule(&request.analysis, doc.frame_count)?;
+    let matting = &models::VITMATTE;
+    let use_matting = match request.matting {
+        Some(false) => false,
+        None => models::ready(matting)?,
+        Some(true) if models::ready(matting)? => true,
+        Some(true) => {
+            return Err(format!(
+                "{} is not installed or is switched off; run `veylvik models install {}`",
+                matting.title, matting.id
+            )
+            .into());
+        }
+    };
+    let analysis_request = analysis::Request {
+        points: request.analysis.points.clone(),
+        frames: request.analysis.frames,
+        back_to: request.analysis.back_to,
+        detail: request.analysis.detail,
+        matting: use_matting.then_some(matting.id),
+    };
     let plan = Plan::compile_output(doc, request.source)?;
     let inputs = crate::assets::load_inputs(&plan, base, renderer.budget_bytes)?;
     let exe = std::env::current_exe()?;
@@ -165,7 +192,7 @@ pub fn run(
         &plan,
         &inputs,
         doc,
-        &request.analysis,
+        &analysis_request,
         &mut worker,
         &dir,
         &mut |done, total| {

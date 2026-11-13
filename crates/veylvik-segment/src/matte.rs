@@ -35,6 +35,17 @@ fn srgb(linear: f32) -> u8 {
     };
     (v * 255.0 + 0.5) as u8
 }
+/// Straight sRGB bytes of scene-linear premultiplied pixels, for models.
+pub fn srgb_pixels(pixels: &[[f32; 4]]) -> Vec<[u8; 3]> {
+    pixels
+        .iter()
+        .map(|p| {
+            let a = p[3].clamp(0.0, 1.0);
+            let s = |c: f32| srgb(if a > 1e-6 { c / a } else { 0.0 });
+            [s(p[0]), s(p[1]), s(p[2])]
+        })
+        .collect()
+}
 /// Area-averages scene-linear premultiplied `pixels` (`width` × `height`, as seen over black) to
 /// SIDE² in linear light, then encodes sRGB bytes: models are trained on display-referred images.
 pub fn model_frame(pixels: &[[f32; 4]], width: usize, height: usize) -> Result<Vec<u8>> {

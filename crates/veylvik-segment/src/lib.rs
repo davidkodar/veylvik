@@ -1,11 +1,14 @@
 //! Subject segmentation: click-prompted, memory-tracked mattes from local models that run in an
 //! isolated worker process, so a GPU or runtime fault can never take down the host.
 pub mod analysis;
+pub mod edges;
 #[cfg(feature = "engine")]
 mod edgetam;
 pub mod matte;
 pub mod models;
 pub mod protocol;
+#[cfg(feature = "engine")]
+mod vitmatte;
 pub mod worker;
 pub mod zoom;
 use serde::{Deserialize, Serialize};

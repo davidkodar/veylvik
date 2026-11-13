@@ -18,7 +18,8 @@ Edge-band matting with a dedicated matting model, for fine hair, follows.
    point** and **Clear** step back. Points belong to the frame they were placed
    on; clicking on another frame starts a new selection.
 3. Choose the frame to track to, optionally **Also track back to the start**,
-   keep **Detail pass for small parts** on for feet, hands and hair, and
+   keep **Detail pass for small parts** on for feet and hands and **Hair and
+   soft edges** on (it offers to install ViTMatte, 104 MB, if needed), and
    **Track subject**. Progress shows in the window; **Stop** keeps the
    frames tracked so far.
 4. The analysis adds a **Subject matte** and a **Subject cutout** as one undo
@@ -56,6 +57,7 @@ veylvik models uninstall edgetam    # remove the model's files
 | Model | Use | Download | Licence |
 | --- | --- | --- | --- |
 | `edgetam` | Click-to-mask and video tracking: about 30 ms per frame and 1.5 GB of graphics memory on an RTX 4080 | 65 MB | Apache-2.0 |
+| `vitmatte` | Hair and soft edges: matting of the band around the tracked outline, about 55 ms per frame for a full-length person at 1080 × 1920 | 104 MB | Apache-2.0 weights; trained on research matting datasets |
 
 Every file is pinned to a fixed upstream revision, size and SHA-256. Files are
 fetched by `curl` over HTTPS only, verified, and only then renamed into place;
@@ -74,7 +76,7 @@ loads `/usr/lib/libonnxruntime.so`, or the library named by `ORT_DYLIB_PATH`.
 ## Running an analysis
 
 ```sh
-veylvik segment FILE NEW_FILE SOURCE_UUID FRAME END "X,Y X,Y,- ..." [--back-to FRAME] [--model ID] [--no-detail]
+veylvik segment FILE NEW_FILE SOURCE_UUID FRAME END "X,Y X,Y,- ..." [--back-to FRAME] [--model ID] [--no-detail] [--matting|--no-matting]
 ```
 
 - `SOURCE_UUID` is the node whose image is analysed, usually a Footage node.
@@ -89,6 +91,8 @@ veylvik segment FILE NEW_FILE SOURCE_UUID FRAME END "X,Y X,Y,- ..." [--back-to F
   body, legs) select a whole person more reliably than one.
 - An analysis covers up to 4096 frames.
 - `--no-detail` skips the detail pass (see below) for about half the time.
+- Edge matting (see below) runs when the `vitmatte` model is installed and
+  switched on; `--no-matting` skips it, and `--matting` requires it.
 
 The mattes are written next to `NEW_FILE` in
 `Subject mattes/<source id>/matte_NNNNN.png`, with a `subject.veyseq` manifest
@@ -126,6 +130,18 @@ Frames where the model judges the subject absent are empty.
   ground sticking to feet. The pass is skipped when the subject already fills
   most of the frame (less than 1.3 times the detail to gain). It roughly doubles
   the analysis time; the report gives the zoom used.
+- **Hair and soft edges.** Segmentation models draw a smooth outline, which
+  loses flyaway hair, fur and motion blur. With ViTMatte installed, each frame's
+  tracked matte becomes a trimap: surely subject, surely background, and an
+  uncertain band around the outline about 2% of the subject's diagonal wide
+  (6 to 48 pixels), plus wherever the matte is already soft. ViTMatte resolves
+  only that band, from the image at native resolution (crops larger than
+  1536 pixels are scaled down for it), and everything outside the band stays
+  exactly as tracked. On the beach shot the bun gains its real shape and
+  flyaway strands, and the ears and neck follow their real contours.
+  ViTMatte's weights are Apache-2.0, but like practically every matting model
+  it was trained on academic matting datasets (Composition-1k) whose terms
+  are research-oriented; check them before commercial use.
 - **Tracking.** EdgeTAM is SAM 2 with an efficient memory. The prompted frame
   conditions every later frame, together with the six most recent frames and up
   to sixteen object pointers. Tracking backward restarts from the prompted frame,

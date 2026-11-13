@@ -357,6 +357,7 @@ Details: [Subject segmentation](subject-segmentation.md).
 
 - **Select subject…** (Inspector or **Tools**): left-click the subject in the viewer, right-click or Alt-click to exclude; instant blue mask preview per click; **Undo point**, **Clear**.
 - **Track subject** with progress and **Stop** (keeps tracked frames); optional **Also track back to the start**; one undo step adds Subject matte and Subject cutout.
+- **Hair and soft edges** (with the ViTMatte model, default on when installed; `--no-matting` in the CLI): matting of an uncertain band around the tracked outline at native resolution, recovering hair shape, flyaway strands and soft contours; outside the band the matte stays as tracked; about 55 ms per frame for a full-length person at 1080 × 1920.
 - **Detail pass for small parts** (default on, `--no-detail` in the CLI): a second, zoomed tracking pass around the subject at one constant scale, about 2.5 times the detail on a full-length portrait shot; completes feet, toes and fingers; skipped automatically when the subject fills the frame.
 - One-click results: **Keep subject**, **Replace background** (new background colour, rewirable), **Put layers behind** (a title between shot and subject).
 - **Tools → AI models…**: every local model with size, licence and status; one-click **Install** with progress and **Cancel**, **Uninstall**, **Enabled**; info button with hover summary and click-through pros, cons, speed, graphics memory and model page.
@@ -411,7 +412,7 @@ Details: [Subject segmentation](subject-segmentation.md).
 - `render-sequence FILE DIRECTORY START END [--format png|exr] [--node] [--crop]`.
 - `render-video FILE OUTPUT.mp4 [--codec h264|hevc10] [--quality] [--size W H] [--fps N D] [--range A B] [--allow-software] [--no-audio] [--audio FILE] [--audio-gain DB]`.
 - `track FILE NEW_FILE SOURCE_UUID START END "corners" ["area"] [--screen-area] [--motion ...] [--no-refine] [--back-to FRAME]`.
-- `segment FILE NEW_FILE SOURCE_UUID FRAME END "x,y x,y,- ..." [--back-to FRAME] [--model ID] [--no-detail]`: subject matte sequence and node.
+- `segment FILE NEW_FILE SOURCE_UUID FRAME END "x,y x,y,- ..." [--back-to FRAME] [--model ID] [--no-detail] [--matting|--no-matting]`: subject matte sequence and node.
 - `models [install|uninstall|enable|disable ID]`: AI model catalogue and installer.
 - `mcp FILE` (headless) and `mcp --studio [SOCKET|DIRECTORY]` (live relay).
 - JSON on stdout, JSON errors on stderr, non-zero exit on failure.
