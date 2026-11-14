@@ -30,7 +30,10 @@ pub struct Outcome {
     /// Frames where the model judged the subject absent (empty matte).
     pub absent: usize,
     pub manifest: PathBuf,
+    /// Wall time per output frame across every pass, decoding, matting and writing.
     pub milliseconds_per_frame: f64,
+    /// Tracking passes over the shot: 2 when the zoomed detail pass ran.
+    pub passes: u32,
     pub cancelled: bool,
     /// Linear detail gain of the zoomed pass, or `None` when it was not used.
     pub zoom: Option<f64>,
@@ -208,6 +211,7 @@ pub fn analyse(
         absent,
         manifest,
         milliseconds_per_frame: started.elapsed().as_secs_f64() * 1000.0 / done.len() as f64,
+        passes: if gain.is_some() { 2 } else { 1 },
         cancelled,
         zoom: gain,
         matting: request.matting,

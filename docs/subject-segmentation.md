@@ -72,6 +72,12 @@ veylvik models uninstall edgetam    # remove the model's files
 | `sam2.1-large` | The same with Hiera Large, the most precise tracker here; about 80 ms per frame and 3.2 GB | 475 MB | Apache-2.0 |
 | `vitmatte` | Hair and soft edges: matting of the band around the tracked outline, about 55 ms per frame for a full-length person at 1080 × 1920 | 104 MB | Apache-2.0 weights; trained on research matting datasets |
 
+Times are per tracking pass. With detail on (the default), every frame is
+tracked twice, a full pass and a zoomed pass, and matting is added once. The
+report's `milliseconds_per_frame` covers all of that plus decoding and writing,
+and `passes` says how many tracking passes ran. For example, SAM 2.1 Large with
+detail and matting measured about 330 ms per frame on a 1080 × 1920 shot.
+
 Every file is pinned to a fixed upstream revision, size and SHA-256. Files are
 fetched by `curl` over HTTPS only, verified, and only then renamed into place;
 a failed or cancelled download installs nothing. Models live in
