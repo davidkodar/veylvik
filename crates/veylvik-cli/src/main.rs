@@ -168,8 +168,8 @@ fn run() -> Result<()> {
             if let Some(matting) = matting {
                 args_json["matting"] = serde_json::json!(matting);
             }
-            let request = segment::Request::from_json(&args_json)?;
             let mut document = veylvik_document::Document::new(Composition::load(input)?)?;
+            let request = segment::Request::from_json(&args_json, document.snapshot().frame_count)?;
             let renderer = assets::runtime::renderer()?;
             let project_dir = std::path::absolute(output)?
                 .parent()

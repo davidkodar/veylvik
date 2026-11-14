@@ -90,7 +90,8 @@ pub struct Request {
     pub model: String,
 }
 impl Request {
-    pub fn from_json(args: &Value) -> Result<Self> {
+    /// `end` defaults to the composition's last frame, so a prompt tracks through the shot.
+    pub fn from_json(args: &Value, frame_count: u32) -> Result<Self> {
         let frame = |name: &str| -> Result<i64> {
             args[name]
                 .as_i64()
@@ -108,8 +109,10 @@ impl Request {
                 points,
                 frames: [
                     frame("frame")?,
-                    args.get("end")
-                        .map_or_else(|| frame("frame"), |_| frame("end"))?,
+                    match args.get("end") {
+                        Some(_) => frame("end")?,
+                        None => i64::from(frame_count.max(1) - 1),
+                    },
                 ],
                 back_to: args.get("back_to").map(|_| frame("back_to")).transpose()?,
                 detail: match args.get("detail") {
