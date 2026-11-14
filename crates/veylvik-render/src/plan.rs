@@ -20,6 +20,7 @@ pub enum Kernel {
     Material,
     Condensation,
     Patina,
+    GlintSeeds,
     SunGlints,
     Glass,
     SurfaceReflection,
@@ -64,7 +65,7 @@ pub enum Kernel {
     Lut,
 }
 impl Kernel {
-    pub(crate) const ALL: [Self; 56] = [
+    pub(crate) const ALL: [Self; 57] = [
         Self::ToAcescg,
         Self::FromAcescg,
         Self::Text,
@@ -79,6 +80,7 @@ impl Kernel {
         Self::Material,
         Self::Condensation,
         Self::Patina,
+        Self::GlintSeeds,
         Self::SunGlints,
         Self::Glass,
         Self::SurfaceReflection,
@@ -136,6 +138,7 @@ impl Kernel {
             Self::Material => "material",
             Self::Condensation => "condensation",
             Self::Patina => "patina",
+            Self::GlintSeeds => "glint_seeds",
             Self::SunGlints => "sun_glints",
             Self::Glass => "glass",
             Self::SurfaceReflection => "surface_reflection",

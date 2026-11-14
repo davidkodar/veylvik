@@ -123,7 +123,7 @@ fn showcase_scenes_have_visible_effects_motion_and_seamless_endpoints() {
         let middle = renderer.render(&after, sample).unwrap();
         let end = renderer.render(&after, Time::new(4, 1).unwrap()).unwrap();
         let untreated = renderer.render(&before, sample).unwrap();
-        assert_eq!(start, end, "{} loop seam", entry.id);
+        assert!(start == end, "{} loop seam", entry.id);
         assert_ne!(start, middle, "{} has no motion", entry.id);
         let changed = middle
             .iter()

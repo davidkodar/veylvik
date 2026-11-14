@@ -772,6 +772,14 @@ impl Renderer {
                 pass.set_pipeline(&self.pipelines[&scheduled.kernel]);
                 pass.set_bind_group(0, &bind, &[]);
                 match scheduled.kernel {
+                    Kernel::GlintSeeds => {
+                        let cell = (p.values[0] * 2.).max(8.).ceil() as u32;
+                        pass.dispatch_workgroups(
+                            plan.width.div_ceil(cell),
+                            plan.height.div_ceil(cell),
+                            1,
+                        );
+                    }
                     Kernel::BlurHorizontal => {
                         pass.dispatch_workgroups(plan.width.div_ceil(64), plan.height, 1)
                     }

@@ -206,3 +206,72 @@ fn patina_styles_preserve_coverage_and_zero_amounts_restore_clean_surface() {
         assert_eq!(original, render(&r, &doc, &inputs));
     }
 }
+
+#[test]
+#[ignore = "requires Vulkan"]
+fn polished_gold_showcase_keeps_visible_glints_after_antialiasing() {
+    let r = Renderer::new().unwrap();
+    let scene = presets::showcase::build("sun_glints").unwrap();
+    let before = Plan::compile_output(&scene.composition, scene.before).unwrap();
+    let after = Plan::compile(&scene.composition).unwrap();
+    let time = Time::new(2, 1).unwrap();
+    let base = r.render(&before, time).unwrap();
+    let lit = r.render(&after, time).unwrap();
+    let bright = base
+        .iter()
+        .filter(|p| p[0] * 0.2126 + p[1] * 0.7152 + p[2] * 0.0722 >= 0.55)
+        .count();
+    let changed = lit
+        .iter()
+        .zip(&base)
+        .filter(|(a, b)| (0..3).any(|i| (a[i] - b[i]).abs() > 0.01))
+        .count();
+    assert!(
+        changed > 300,
+        "Only {changed} glint pixels despite {bright} eligible highlights"
+    );
+}
+
+#[test]
+#[ignore = "requires Vulkan"]
+fn glints_find_single_pixel_highlights_in_partial_cells_and_respect_threshold() {
+    let r = Renderer::new().unwrap();
+    for size in [1., 18., 512.] {
+        let (mut doc, mut inputs, _) =
+            scene(Operation::SunGlints(veylvik_document::nodes::SunGlints {
+                seed: 193,
+                size: size.into(),
+                intensity: 3.0.into(),
+                threshold: 1.0.into(),
+                evolution: 0.0.into(),
+                density: 1.0.into(),
+                angle: 15.0.into(),
+            }));
+        let mut pixels = vec![[0.; 4]; 96 * 64];
+        pixels[96 * 64 - 1] = [2., 2., 2., 0.5];
+        inputs.insert(
+            "shape",
+            Arc::new(Image::new(96, 64, pixels.clone()).unwrap()),
+        );
+        let mut visible = false;
+        for evolution in [0., 1., 2., 3.] {
+            set(&mut doc, "evolution", evolution);
+            let frame = render(&r, &doc, &inputs);
+            visible |= frame != pixels;
+            assert!(
+                frame
+                    .iter()
+                    .all(|p| p.iter().all(|v| v.is_finite()) && (0.0..=1.).contains(&p[3]))
+            );
+        }
+        assert!(visible, "Missed an isolated edge highlight at size {size}");
+        set(&mut doc, "threshold", 3.);
+        assert_eq!(render(&r, &doc, &inputs), pixels);
+        inputs.insert(
+            "shape",
+            Arc::new(Image::new(96, 64, vec![[0.; 4]; 96 * 64]).unwrap()),
+        );
+        set(&mut doc, "threshold", 0.);
+        assert_eq!(render(&r, &doc, &inputs), vec![[0.; 4]; 96 * 64]);
+    }
+}

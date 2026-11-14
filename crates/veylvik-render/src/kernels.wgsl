@@ -858,21 +858,53 @@ fn glass(@builtin(global_invocation_id) gid:vec3<u32>) {
 fn glint_random(cell:vec2<i32>,salt:u32)->f32 {
     return f32(noise_hash(bitcast<u32>(cell.x)*747796405u+bitcast<u32>(cell.y)*2891336453u+p.size_op.w+salt)&65535u)/65535.0;
 }
+// One cooperative group per cell visits every source pixel, so narrow antialiased
+// reflections are not lost to a random point test. Only this compact cell grid is read.
+var<workgroup> glint_candidates:array<vec4<f32>,64>;
+@compute @workgroup_size(64)
+fn glint_seeds(@builtin(workgroup_id) group:vec3<u32>, @builtin(local_invocation_index) lane:u32) {
+    let side=u32(ceil(max(8.,p.values.x*2.)));
+    let origin=group.xy*side;
+    let extent=min(vec2<u32>(side),p.size_op.xy-origin);
+    var best=vec4<f32>(0.,0.,-1.,0.);
+    let enabled=p.values.y>0. && glint_random(vec2<i32>(group.xy),31u)<p.extra.x;
+    if enabled {
+        for(var j=lane;j<extent.x*extent.y;j+=64u) {
+            let pixel=origin+vec2<u32>(j%extent.x,j/extent.x);
+            let hit=source[pixel.y*p.size_op.x+pixel.x];
+            let luminance=dot(hit.rgb,vec3<f32>(0.2126,0.7152,0.0722));
+            // Seed only breaks near ties; brightness determines the highlight.
+            let score=luminance*(0.995+0.005*glint_random(vec2<i32>(pixel),79u));
+            if hit.a>=0.1 && luminance>=p.values.z && score>best.z {
+                best=vec4<f32>(vec2<f32>(pixel),score,hit.a);
+            }
+        }
+    }
+    glint_candidates[lane]=best;
+    workgroupBarrier();
+    for(var stride=32u;stride>0u;stride/=2u) {
+        if lane<stride && glint_candidates[lane+stride].z>glint_candidates[lane].z {
+            glint_candidates[lane]=glint_candidates[lane+stride];
+        }
+        workgroupBarrier();
+    }
+    if lane==0u {result[group.y*p.size_op.x+group.x]=glint_candidates[0];}
+}
 @compute @workgroup_size(8,8)
 fn sun_glints(@builtin(global_invocation_id) gid:vec3<u32>) {
     if !inside(gid) {return;}
     let i=index(gid);let original=source[i];
     if p.values.y==0.0 || p.extra.x==0.0 {result[i]=original;return;}
-    let cell_size=max(8.0,p.values.x*2.0);
+    let cell_size=ceil(max(8.0,p.values.x*2.0));
     let cell=vec2<i32>(floor(vec2<f32>(gid.xy)/cell_size));
     var light=0.0;
     for(var y=-1;y<=1;y++) { for(var x=-1;x<=1;x++) {
         let candidate=cell+vec2<i32>(x,y);
-        if glint_random(candidate,31u)>=p.extra.x {continue;}
-        let point=(vec2<f32>(candidate)+vec2<f32>(glint_random(candidate,79u),glint_random(candidate,149u)))*cell_size;
-        let hit=sample_source(i32(round(point.x)),i32(round(point.y)));
-        let luminance=dot(hit.rgb,vec3<f32>(0.2126,0.7152,0.0722));
-        if hit.a<0.1 || luminance<p.values.z {continue;}
+        let cells=vec2<i32>(ceil(vec2<f32>(p.size_op.xy)/cell_size));
+        if any(candidate<vec2<i32>(0)) || any(candidate>=cells) {continue;}
+        let highlight=second[u32(candidate.y)*p.size_op.x+u32(candidate.x)];
+        if highlight.z<0. {continue;}
+        let point=highlight.xy;
         let pulse=pow(max(0.0,sin(p.values.w*1.570796327+glint_random(candidate,257u)*6.2831853)),8.0);
         let delta=(vec2<f32>(gid.xy)-point)/p.values.x;
         let c=cos(p.extra.y);let s=sin(p.extra.y);
@@ -880,7 +912,7 @@ fn sun_glints(@builtin(global_invocation_id) gid:vec3<u32>) {
         let taper=pow(max(0.0,1.0-length(q)),2.0);
         let spikes=(exp(-q.x*80.0)+exp(-q.y*80.0))*taper;
         let core=exp(-dot(q,q)*220.0);
-        light+=(spikes+core)*pulse*hit.a*p.values.y;
+        light+=(spikes+core)*pulse*highlight.w*p.values.y;
     }}
     let alpha=1.0-(1.0-original.a)*exp(-light*0.35);
     result[i]=vec4<f32>(original.rgb+vec3<f32>(1.0,0.96,0.85)*light,alpha);

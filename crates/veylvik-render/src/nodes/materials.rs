@@ -117,7 +117,20 @@ impl RenderNode for veylvik_document::nodes::MetallicShine {
 }
 impl RenderNode for veylvik_document::nodes::SunGlints {
     fn passes(&self) -> Passes {
-        Passes::One(Kernel::SunGlints)
+        Passes::Chain(&[
+            super::Step {
+                kernel: Kernel::GlintSeeds,
+                inputs: [super::From::Port(0), super::From::None, super::From::None],
+            },
+            super::Step {
+                kernel: Kernel::SunGlints,
+                inputs: [
+                    super::From::Port(0),
+                    super::From::Step(0),
+                    super::From::None,
+                ],
+            },
+        ])
     }
     fn shareable(&self) -> bool {
         true

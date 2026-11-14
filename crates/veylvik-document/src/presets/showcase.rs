@@ -291,6 +291,29 @@ pub fn build(id: &str) -> Result<Scene> {
         }),
         &[("image", art)],
     );
+    if id == "shutter_motion" {
+        // The shutter samples outside [0,4]; continue the periodic source animation
+        // there instead of letting endpoint clamping create a seam in the exposure.
+        let motion = &mut doc.nodes.get_mut(&art).unwrap().operation;
+        for name in ["x", "y", "scale_x", "scale_y"] {
+            if let Some(keys) = motion.scalar_mut(name).and_then(Scalar::keys_mut) {
+                let original = keys.clone();
+                for period in [-1, 1] {
+                    keys.extend(original.iter().cloned().map(|mut key| {
+                        key.time.ticks += period * 4 * i64::from(key.time.rate);
+                        key
+                    }));
+                }
+                keys.sort_by(|a, b| {
+                    a.time
+                        .seconds()
+                        .unwrap()
+                        .total_cmp(&b.time.seconds().unwrap())
+                });
+                keys.dedup_by(|a, b| a.time.seconds().unwrap() == b.time.seconds().unwrap());
+            }
+        }
+    }
     let art = if id == "neon_outline" {
         add(
             &mut doc,
