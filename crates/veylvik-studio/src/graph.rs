@@ -2,7 +2,12 @@
 use eframe::egui::{self, Color32, Pos2, Rect, Vec2};
 use std::collections::BTreeMap;
 use veylvik_document::{Composition, NodeId, NodePosition};
-const NODE_SIZE: Vec2 = egui::vec2(160.0, 60.0);
+#[path = "graph_presentation.rs"]
+mod presentation;
+pub(super) const NODE_SIZE: Vec2 = egui::vec2(200.0, 108.0);
+fn input_y(index: usize, count: usize) -> f32 {
+    56.0 + (NODE_SIZE.y - 60.0) * (index + 1) as f32 / (count + 1) as f32
+}
 pub enum NodeAction {
     MatchMedia,
     Preview,
@@ -202,15 +207,24 @@ impl Graph {
                     Some(VisualNode {
                         id: n.id,
                         label: g.label.clone(),
-                        subtitle: format!(
-                            "{}Effect · {} nodes",
-                            if reachable.contains(&g.output) {
-                                ""
-                            } else {
-                                "Unused · "
-                            },
-                            g.members.len()
-                        ),
+                        subtitle: if g.members.len() == 1 {
+                            presentation::summary(
+                                n,
+                                &g.label,
+                                reachable.contains(&n.id),
+                                n.id == doc.output,
+                            )
+                        } else {
+                            format!(
+                                "{}Effect · {} nodes",
+                                if reachable.contains(&g.output) {
+                                    ""
+                                } else {
+                                    "Unused · "
+                                },
+                                g.members.len()
+                            )
+                        },
                         group: Some(g.id),
                         inputs: g
                             .inputs
@@ -222,13 +236,12 @@ impl Graph {
                     Some(VisualNode {
                         id: n.id,
                         label: n.label.clone(),
-                        subtitle: if !reachable.contains(&n.id) {
-                            format!("Unused · {}", n.operation.descriptor().label)
-                        } else if n.id == doc.output {
-                            "Composition output".into()
-                        } else {
-                            n.operation.descriptor().label.into()
-                        },
+                        subtitle: presentation::summary(
+                            n,
+                            &n.label,
+                            reachable.contains(&n.id),
+                            n.id == doc.output,
+                        ),
                         group: None,
                         inputs: n
                             .operation
@@ -330,18 +343,20 @@ impl Graph {
     ) -> veylvik_document::Result<()> {
         self.sync(doc, revision);
         let count = effect.nodes.len();
-        let anchor = anchor
-            .map(|p| egui::pos2(p.x, p.y))
-            .unwrap_or(self.positions[&input] + egui::vec2(195.0 * count as f32, 0.0));
+        let anchor = anchor.map(|p| egui::pos2(p.x, p.y)).unwrap_or(
+            self.positions[&input] + egui::vec2((NODE_SIZE.x + 35.0) * count as f32, 0.0),
+        );
         let anchor = egui::pos2(
             anchor.x.clamp(
-                -1_000_000.0 + 195.0 * count.saturating_sub(1) as f32,
+                -1_000_000.0 + (NODE_SIZE.x + 35.0) * count.saturating_sub(1) as f32,
                 1_000_000.0,
             ),
             anchor.y.clamp(-1_000_000.0, 1_000_000.0),
         );
         let base: Vec<_> = (0..count)
-            .map(|index| anchor - egui::vec2(195.0 * (count - index - 1) as f32, 0.0))
+            .map(|index| {
+                anchor - egui::vec2((NODE_SIZE.x + 35.0) * (count - index - 1) as f32, 0.0)
+            })
             .collect();
         let bounds = base.iter().fold(Rect::NOTHING, |rect, p| {
             rect.union(Rect::from_min_size(*p, NODE_SIZE))
@@ -610,7 +625,7 @@ impl Graph {
                 .iter()
                 .any(|rect| rect.intersects(Rect::from_min_size(p, NODE_SIZE)))
             {
-                p.y += 100.0;
+                p.y += NODE_SIZE.y + 40.0;
             }
             p.x = p.x.clamp(-1_000_000.0, 1_000_000.0);
             p.y = p.y.clamp(-1_000_000.0, 1_000_000.0);
@@ -854,10 +869,10 @@ impl Graph {
             let origin = canvas.min + self.pan + self.positions[&node.id].to_vec2() * self.zoom;
             sockets.push((
                 Socket::Output(node.id),
-                origin + egui::vec2(160.0, 30.0) * self.zoom,
+                origin + egui::vec2(NODE_SIZE.x, 80.0) * self.zoom,
             ));
             for (index, _) in node.inputs.iter().enumerate() {
-                let y = 60.0 * (index + 1) as f32 / (node.inputs.len() + 1) as f32;
+                let y = input_y(index, node.inputs.len());
                 sockets.push((
                     Socket::Input(node.id, index),
                     origin + egui::vec2(0.0, y) * self.zoom,
@@ -872,14 +887,12 @@ impl Graph {
             for (index, (_, source)) in node.inputs.iter().enumerate() {
                 let from = canvas.min
                     + self.pan
-                    + (self.positions[source].to_vec2() + egui::vec2(160.0, 30.0)) * self.zoom;
+                    + (self.positions[source].to_vec2() + egui::vec2(NODE_SIZE.x, 80.0))
+                        * self.zoom;
                 let to = canvas.min
                     + self.pan
                     + (self.positions[&node.id].to_vec2()
-                        + egui::vec2(
-                            0.0,
-                            60.0 * (index + 1) as f32 / (node.inputs.len() + 1) as f32,
-                        ))
+                        + egui::vec2(0.0, input_y(index, node.inputs.len())))
                         * self.zoom;
                 let highlighted =
                     self.selection.contains(&node.id) || self.selection.contains(source);
@@ -991,7 +1004,7 @@ impl Graph {
                     ui.id().with(node.id),
                     egui::Sense::click_and_drag(),
                 )
-                .on_hover_text(&node.label);
+                .on_hover_text(format!("{}\n{}", node.label, node.subtitle));
             if response.secondary_clicked() {
                 if !self.selection.contains(&node.id) {
                     self.selection.clear();
@@ -1190,20 +1203,55 @@ impl Graph {
                 egui::StrokeKind::Inside,
             );
             let text = painter.with_clip_rect(rect.shrink(5.0 * self.zoom));
-            text.text(
-                rect.min + egui::vec2(10.0, 15.0) * self.zoom,
-                egui::Align2::LEFT_CENTER,
+            presentation::icon(
+                &text,
+                &doc.nodes[&node.id].operation,
+                node.group.is_some(),
+                rect.min + egui::vec2(18.0, 19.0) * self.zoom,
+                self.zoom,
+                Color32::from_gray(215),
+            );
+            presentation::line(
+                &text,
+                rect.min + egui::vec2(33.0, 19.0) * self.zoom,
+                (NODE_SIZE.x - 46.0) * self.zoom,
                 &node.label,
-                egui::FontId::proportional(13.0 * self.zoom),
+                (13.0 * self.zoom).max(9.0),
                 Color32::WHITE,
             );
-            text.text(
-                rect.min + egui::vec2(10.0, 41.0) * self.zoom,
-                egui::Align2::LEFT_CENTER,
-                &node.subtitle,
-                egui::FontId::proportional(11.0 * self.zoom),
-                Color32::from_gray(160),
-            );
+            if self.zoom >= 0.72 {
+                text.line_segment(
+                    [
+                        rect.min + egui::vec2(1.0, 34.0) * self.zoom,
+                        rect.min + egui::vec2(NODE_SIZE.x - 1.0, 34.0) * self.zoom,
+                    ],
+                    (1.0, Color32::from_gray(61)),
+                );
+                presentation::line(
+                    &text,
+                    rect.min + egui::vec2(10.0, 46.0) * self.zoom,
+                    (NODE_SIZE.x - 20.0) * self.zoom,
+                    &node.subtitle,
+                    11.0 * self.zoom,
+                    Color32::from_gray(175),
+                );
+            }
+            if self.zoom >= 0.9 {
+                for (index, (key, _)) in node.inputs.iter().enumerate() {
+                    let label = node.group.map_or_else(
+                        || presentation::port_label(key),
+                        |id| doc.groups[&id].inputs[key].label.clone(),
+                    );
+                    presentation::line(
+                        &text,
+                        rect.min + egui::vec2(11.0, input_y(index, node.inputs.len())) * self.zoom,
+                        (NODE_SIZE.x - 24.0) * self.zoom,
+                        &label,
+                        11.0 * self.zoom,
+                        Color32::from_gray(190),
+                    );
+                }
+            }
         }
         let pointer = ui.input(|input| input.pointer.hover_pos());
         let radius = (8.0 * self.zoom).max(5.0);
@@ -1227,13 +1275,14 @@ impl Graph {
                 ui.id().with(socket),
             )
             .on_hover_text(match socket {
-                Socket::Output(_) => "Output",
+                Socket::Output(_) => "Output".to_owned(),
                 Socket::Input(id, index) => {
                     let node = nodes.iter().find(|n| n.id == *id).unwrap();
                     let key = &node.inputs[*index].0;
-                    node.group.map_or(key.as_str(), |id| {
-                        doc.groups[&id].inputs[key].label.as_str()
-                    })
+                    node.group.map_or_else(
+                        || presentation::port_label(key),
+                        |id| doc.groups[&id].inputs[key].label.clone(),
+                    )
                 }
             });
             if hit.drag_started() {
@@ -1465,7 +1514,7 @@ impl Graph {
                     *id,
                     node.position
                         .map(|p| egui::pos2(p.x, p.y))
-                        .unwrap_or(egui::pos2(index as f32 * 220.0, 0.0)),
+                        .unwrap_or(egui::pos2(index as f32 * (NODE_SIZE.x + 60.0), 0.0)),
                 )
             })
             .collect();
@@ -1895,8 +1944,8 @@ mod tests {
             (actions, graph.canvas.unwrap().min)
         };
         let (_, origin) = run(vec![]);
-        let from = origin + egui::vec2(185.0, 140.0);
-        let to = origin + egui::vec2(400.0, 80.0);
+        let from = origin + egui::vec2(25.0 + NODE_SIZE.x, 110.0 + 80.0);
+        let to = origin + egui::vec2(400.0, 50.0 + input_y(0, 1));
         run(vec![egui::Event::PointerMoved(from)]);
         run(vec![
             egui::Event::PointerButton {
@@ -2067,7 +2116,7 @@ mod arrangement_tests {
         );
         assert_eq!(
             graph.automatic[&output].x - graph.automatic[&source].x,
-            220.0
+            NODE_SIZE.x + 60.0
         );
         graph.selection.insert(output);
         assert_eq!(
@@ -2076,7 +2125,7 @@ mod arrangement_tests {
         );
         graph.expand(group);
         graph.sync(&doc, 0);
-        assert!(graph.automatic[&output].x - graph.automatic[&source].x > 220.0);
+        assert!(graph.automatic[&output].x - graph.automatic[&source].x > NODE_SIZE.x + 60.0);
         doc.nodes.get_mut(&source).unwrap().position = Some(NodePosition { x: 900.0, y: 700.0 });
         graph.sync(&doc, 1);
         graph.pinned.insert(source);

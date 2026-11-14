@@ -1,5 +1,5 @@
 //! Deterministic branch-aware layout of the graph the user actually sees.
-use super::graph::VisualNode;
+use super::graph::{NODE_SIZE, VisualNode};
 use eframe::egui::{self, Pos2};
 use std::collections::{BTreeMap, BTreeSet};
 use veylvik_document::NodeId;
@@ -95,10 +95,15 @@ pub(super) fn arrange(nodes: &[VisualNode], output: NodeId) -> BTreeMap<NodeId, 
             row.insert(id, chosen);
             result.insert(
                 id,
-                egui::pos2(25.0 + column as f32 * 220.0, base_y + chosen as f32 * 100.0),
+                egui::pos2(
+                    25.0 + column as f32 * (NODE_SIZE.x + 60.0),
+                    base_y + chosen as f32 * (NODE_SIZE.y + 40.0),
+                ),
             );
         }
-        base_y += row.values().copied().max().unwrap_or(0) as f32 * 100.0 + 180.0;
+        base_y += row.values().copied().max().unwrap_or(0) as f32 * (NODE_SIZE.y + 40.0)
+            + NODE_SIZE.y
+            + 120.0;
     }
     result
 }
@@ -116,16 +121,16 @@ pub(super) fn adapt(positions: &mut BTreeMap<NodeId, Pos2>, size: egui::Vec2) {
         .map(|p| p.y - 20.0)
         .fold(0.0_f32, f32::max);
     let ratio = (size.x - 30.0) / (size.y - 30.0);
-    let current = (max_x + 160.0) / (max_y + 60.0);
+    let current = (max_x + NODE_SIZE.x) / (max_y + NODE_SIZE.y);
     let (sx, sy) = if ratio > current {
         (
-            ((ratio * (max_y * 0.8 + 60.0) - 160.0) / max_x.max(1.0)).clamp(1.0, 2.5),
+            ((ratio * (max_y * 0.8 + NODE_SIZE.y) - NODE_SIZE.x) / max_x.max(1.0)).clamp(1.0, 2.5),
             0.8,
         )
     } else {
         (
             1.0,
-            (((max_x + 160.0) / ratio - 60.0) / max_y.max(1.0)).clamp(0.8, 2.5),
+            (((max_x + NODE_SIZE.x) / ratio - NODE_SIZE.y) / max_y.max(1.0)).clamp(0.8, 2.5),
         )
     };
     for p in positions.values_mut() {
@@ -184,9 +189,9 @@ mod tests {
             node(ids[6], "Unused effect", &[ids[5]]),
         ];
         let layout = arrange(&nodes, ids[4]);
-        assert_eq!(layout[&ids[4]].x - layout[&ids[0]].x, 220.0);
+        assert_eq!(layout[&ids[4]].x - layout[&ids[0]].x, NODE_SIZE.x + 60.0);
         assert_eq!(layout[&ids[1]].y, layout[&ids[3]].y);
-        assert!(layout[&ids[5]].y > layout[&ids[4]].y + 60.0);
+        assert!(layout[&ids[5]].y > layout[&ids[4]].y + NODE_SIZE.y);
         for n in &nodes {
             for (_, source) in &n.inputs {
                 assert!(layout[source].x < layout[&n.id].x);
@@ -195,7 +200,7 @@ mod tests {
         for (a, p) in &layout {
             for (b, q) in &layout {
                 if a != b {
-                    assert!((p.x - q.x).abs() >= 160.0 || (p.y - q.y).abs() >= 60.0);
+                    assert!((p.x - q.x).abs() >= NODE_SIZE.x || (p.y - q.y).abs() >= NODE_SIZE.y);
                 }
             }
         }
