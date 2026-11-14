@@ -137,10 +137,10 @@ fn condensation(@builtin(global_invocation_id) gid:vec3<u32>) {
             let sliding=layer==1u && particle_random(seed+97u)<0.3;
             let phase=fract(fract(p.extra.x/4.0)+particle_random(seed+101u));
             var visibility=1.0;
-            if sliding {
+            if sliding && p.extra.y>0.0 {
                 center.y+=(phase-0.5)*cell_size*p.extra.y;
                 center.x+=sin(phase*6.283+jitter.x*6.283)*size*0.4*p.extra.y;
-                visibility=mix(1.0,smoothstep(0.0,0.12,phase)*(1.0-smoothstep(0.88,1.0,phase)),p.extra.y);
+                visibility=smoothstep(0.0,0.12,phase)*(1.0-smoothstep(0.88,1.0,phase));
             }
             let radius=size*(0.45+0.55*particle_random(seed+31u));
             let q=(point-center)/vec2<f32>(radius,radius*1.14);
