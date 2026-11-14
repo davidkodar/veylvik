@@ -5,6 +5,8 @@ mod environment_bake;
 mod material_preview;
 pub use material_preview::material_preview_revision;
 mod shadow_lighting;
+mod shutter;
+pub use shutter::Shutter;
 mod studio_lighting;
 pub use diagnostics::Diagnostics;
 mod frame;
@@ -93,6 +95,7 @@ pub struct Renderer {
     texture_pipeline: wgpu::ComputePipeline,
     video_pipeline: wgpu::ComputePipeline,
     encode_pipeline: wgpu::ComputePipeline,
+    shutter_pipeline: wgpu::ComputePipeline,
     vector_backend: Mutex<Option<vector::Backend>>,
     vector_cache: Mutex<cache::FrameCache<vector::Key>>,
     pub vector_cache_limit_bytes: u64,
@@ -291,6 +294,7 @@ impl Renderer {
         let texture_pipeline = texture::pipeline(&device);
         let video_pipeline = video::pipeline(&device);
         let encode_pipeline = encode::pipeline(&device);
+        let shutter_pipeline = shutter::pipeline(&device);
         if let Some(e) = pollster::block_on(scope.pop()) {
             return Err(error(e));
         }
@@ -306,6 +310,7 @@ impl Renderer {
             texture_pipeline,
             video_pipeline,
             encode_pipeline,
+            shutter_pipeline,
             vector_backend: Mutex::new(None),
             vector_cache: Mutex::new(cache::FrameCache::default()),
             vector_cache_limit_bytes: 32 * 1024 * 1024,

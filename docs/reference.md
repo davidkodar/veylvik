@@ -1556,3 +1556,17 @@ outline and line to the origin. Drag moves X/Y; inspector controls retain Z, siz
 rotation. Off-screen markers stay at the viewer edge. Closing the lighting section or
 unchecking **Show light guides in viewer** hides them. Environment rotation remains
 separate, with no invented markers for photographic highlights.
+
+### Renderer shutter sampling API
+
+`Renderer::render_gpu_shutter` evaluates a compiled output at 1–32 stratified
+subframe times and averages scene-linear premultiplied RGBA32F on the GPU.
+`Shutter` specifies angle (0–360 degrees), midpoint phase (-0.5–0.5 frames),
+sample count and rational frame rate. Offset rounding is limited to nanoseconds;
+absolute timestamps retain rational arithmetic. The caller can select a branch
+with `Plan::compile_output`. Footage is requested at each sample time; there is no
+optical-flow interpolation. The API does not yet expose a Studio motion-blur node.
+
+A cancellation callback is checked between samples; cancellation returns `None`,
+never a partial frame. One sample and one accumulator are retained, both within
+the renderer budget. Temporal outputs do not enter the ordinary frame cache.
