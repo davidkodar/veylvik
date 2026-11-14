@@ -67,6 +67,25 @@ impl crate::Studio {
                         action = Some(("remove".into(), index));
                     }
                 });
+                // Keep the lighting toggle visible on the effect itself, not buried
+                // inside the scalar-only controls editor.
+                let doc = self.project.document.snapshot();
+                let shadow_id = doc.groups.values().find(|g| g.output == *id)
+                    .and_then(|g| g.members.iter().find(|member| matches!(doc.nodes[member].operation, Operation::Shadow(_))).copied())
+                    .or_else(|| matches!(node.operation, Operation::Shadow(_)).then_some(*id));
+                if let Some(shadow_id) = shadow_id {
+                    let mut target = self.text_edits.get(&shadow_id).unwrap_or(&doc.nodes[&shadow_id]).clone();
+                    if let Operation::Shadow(shadow) = &mut target.operation
+                        && shadow_controls(ui, shadow) {
+                            if shadow_id == *id { node = target; changed = true; }
+                            else { self.text_edits.insert(shadow_id, target); self.draft_dirty = true; self.queue_draft_preview(ui.ctx()); }
+                    }
+                } else if text_style::legacy_shadow_nodes(doc, *id).is_some() {
+                    ui.weak("This shadow uses the original manual offset setup.");
+                    if ui.button("Enable light-following shadow").on_hover_text("Upgrade this shadow in one undo step. Keeps strength and softness; replaces manual offsets with light direction. Enable area lights on the material first.").clicked() {
+                        action = Some(("upgrade_shadow".into(), index));
+                    }
+                }
                 ui.collapsing("Controls", |ui| {
                     if let Some(group) = self
                         .project
@@ -79,6 +98,9 @@ impl crate::Studio {
                     {
                         if let Ok(time) = self.project.time() {
                             for control in group.controls.values() {
+                                if matches!(self.project.document.snapshot().nodes[&control.node].operation, Operation::Shadow(_))
+                                    && (control.parameter == "follow_lighting" || (control.parameter == "light" && matches!(self.text_edits.get(&control.node).unwrap_or(&self.project.document.snapshot().nodes[&control.node]).operation.scalar("light"), Some(veylvik_document::Scalar::Constant { .. })))) { continue; }
+
                                 let mut target = self
                                     .text_edits
                                     .get(&control.node)
@@ -123,6 +145,8 @@ impl crate::Studio {
                         }
                     } else if let Ok(time) = self.project.time() {
                         for spec in node.operation.descriptor().parameters {
+                            if spec.name == "light" && matches!(&node.operation, Operation::Shadow(s) if matches!(s.light, veylvik_document::Scalar::Constant { .. })) { continue; }
+
                             if let Some(value) = node.operation.scalar_mut(spec.name) {
                                 changed |= crate::animation::scalar(
                                     ui,
@@ -151,6 +175,7 @@ impl crate::Studio {
             let result = match action.as_str() {
                 "up" => text_style::swap(doc, self.draft.id, index - 1),
                 "down" => text_style::swap(doc, self.draft.id, index),
+                "upgrade_shadow" => text_style::upgrade_shadow(doc, chain[index]),
                 "remove" => text_style::remove_effect(doc, self.draft.id, chain[index]),
                 kind => {
                     let source = chain.last().copied().unwrap_or_else(|| {
@@ -222,4 +247,18 @@ impl crate::Studio {
             }
         }
     }
+}
+
+/// Shared between the text effect entry and the standalone shadow inspector.
+pub(crate) fn shadow_controls(
+    ui: &mut egui::Ui,
+    shadow: &mut veylvik_document::nodes::Shadow,
+) -> bool {
+    let mut changed=ui.checkbox(&mut shadow.follow_lighting,"Follow scene lighting")
+        .on_hover_text("Use the enabled area lights on the material feeding this shadow. Changes to those lights also change the shadow.").changed();
+    if shadow.follow_lighting {
+        changed |= crate::light_guides::source_selector(ui, &mut shadow.light);
+        ui.weak("Enable area lights in Material / Studio lighting. Environment reflections alone do not cast shadows.");
+    }
+    changed
 }

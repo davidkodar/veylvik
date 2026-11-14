@@ -224,6 +224,21 @@ impl Studio {
             return false;
         };
         ui.heading(&group.label);
+        if veylvik_document::presets::text_style::legacy_shadow_nodes(
+            self.project.document.snapshot(),
+            group.output,
+        )
+        .is_some()
+        {
+            ui.weak("Original manual shadow");
+            if ui.button("Enable light-following shadow").on_hover_text("Upgrade in one undo step; keeps strength and softness, replaces manual offsets with light direction.").clicked() && self.apply_draft() {
+                match veylvik_document::presets::text_style::upgrade_shadow(self.project.document.snapshot(),group.output).and_then(|commands|self.project.apply(&commands).map(|_|()).map_err(|error|veylvik_document::Error(error.to_string()))) {
+                    Ok(())=> {self.refresh_draft();self.request_preview();}, Err(error)=>self.fail(error),
+                }
+                return true;
+            }
+        }
+
         ui.weak(format!("Reusable effect · {} nodes", group.members.len()));
         // A material starter is a single-node group. Keep its finish accessible
         // without requiring users to open the group first.

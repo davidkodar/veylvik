@@ -27,11 +27,6 @@ impl Inspect for veylvik_document::nodes::Affine {}
 
 impl Inspect for veylvik_document::nodes::Shadow {
     fn inspect(&mut self, ui: &mut egui::Ui, cx: &mut InspectCx<'_>) {
-        cx.dirty |= ui.checkbox(&mut self.follow_lighting, "Follow scene lighting")
-            .on_hover_text("Project shadows using enabled area lights from the material connected to Lighting.").changed();
-        if self.follow_lighting {
-            cx.dirty |= crate::light_guides::source_selector(ui, &mut self.light);
-            ui.weak("Enable area lights on the connected material. Environment reflections alone do not cast shadows.").on_hover_text("Distance lifts the object above a flat receiving plane. X/Y and softness remain fine adjustments.");
-        }
+        cx.dirty |= crate::text_effects::shadow_controls(ui, self);
     }
 }

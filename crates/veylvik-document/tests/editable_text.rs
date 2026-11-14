@@ -469,3 +469,89 @@ fn repeated_gradient_application_reuses_its_nodes_and_preserves_effects() {
         presets::text_style::fill_source(owner.snapshot(), id).unwrap()
     );
 }
+
+#[test]
+fn legacy_shadow_upgrade_preserves_wiring_and_is_one_undo_step() {
+    use presets::text_style;
+    let mut doc = blank(64, 64, Time::new(24, 1).unwrap()).unwrap();
+    let source = doc.output;
+    let alpha = Node::new(
+        "alpha",
+        Operation::ChannelMask(nodes::ChannelMask {
+            channel: MaskChannel::Alpha,
+        }),
+        &[("image", source)],
+    );
+    let tint = Node::new(
+        "tint",
+        Operation::Colorize(nodes::Colorize {
+            low: [0.; 4],
+            high: [0., 0., 0., 0.7],
+        }),
+        &[("image", alpha.id)],
+    );
+    let offset = Node::new(
+        "offset",
+        Operation::Transform(nodes::Transform {
+            x: 8.0.into(),
+            y: 12.0.into(),
+        }),
+        &[("image", tint.id)],
+    );
+    let blur = Node::new(
+        "blur",
+        Operation::Blur(nodes::Blur { radius: 5.0.into() }),
+        &[("image", offset.id)],
+    );
+    let merge = Node::new(
+        "merge",
+        Operation::Merge(nodes::Merge {}),
+        &[("background", blur.id), ("foreground", source)],
+    );
+    let output = merge.id;
+    let shadow_id = blur.id;
+    let members = [alpha, tint, offset, blur, merge];
+    let ids = members.iter().map(|n| n.id).collect();
+    for n in members {
+        doc.nodes.insert(n.id, n);
+    }
+    doc.output = output;
+    let group = groups::Group::capture(&doc, ids, output, "My shadow").unwrap();
+    let gid = group.id;
+    doc.groups.insert(gid, group);
+    let before = serde_json::to_value(&doc).unwrap();
+    let mut owner = Document::new(doc).unwrap();
+    assert!(text_style::legacy_shadow_nodes(owner.snapshot(), output).is_some());
+    let commands = text_style::upgrade_shadow(owner.snapshot(), output).unwrap();
+    owner.apply(0, &commands).unwrap();
+    let after = owner.snapshot();
+    assert_eq!(after.output, output);
+    assert_eq!(after.groups[&gid].members.len(), 2);
+    assert_eq!(after.nodes.len(), 3);
+    assert_eq!(after.nodes[&shadow_id].inputs["lighting"], source);
+    let Operation::Shadow(s) = &after.nodes[&shadow_id].operation else {
+        panic!()
+    };
+    assert!(s.follow_lighting);
+    assert_eq!(s.strength.at(Time::new(0, 1).unwrap()).unwrap(), 0.7);
+    assert_eq!(s.softness.at(Time::new(0, 1).unwrap()).unwrap(), 5.);
+    assert!(
+        after.groups[&gid]
+            .controls
+            .values()
+            .any(|c| c.parameter == "follow_lighting")
+    );
+    assert_eq!(owner.history().undo_steps, 1);
+    owner.undo(owner.revision()).unwrap();
+    assert_eq!(serde_json::to_value(owner.snapshot()).unwrap(), before);
+    // Never remove a legacy internal node used by another branch.
+    let mut shared = owner.snapshot().clone();
+    let ids = text_style::legacy_shadow_nodes(&shared, output).unwrap();
+    let consumer = Node::new(
+        "shared",
+        Operation::Exposure(nodes::Exposure { stops: 0.0.into() }),
+        &[("image", ids[0])],
+    );
+    shared.nodes.insert(consumer.id, consumer);
+    assert!(text_style::upgrade_shadow(&shared, output).is_err());
+}

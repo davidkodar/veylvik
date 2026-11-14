@@ -386,3 +386,102 @@ pub fn fill_source(doc: &Composition, text: NodeId) -> Result<Option<NodeId>> {
     let layer = input_layer(doc, text)?;
     Ok((layer != text).then(|| doc.nodes[&layer].inputs["image"]))
 }
+
+/// Recognise the original five-node text shadow without relying on labels.
+pub fn legacy_shadow_nodes(doc: &Composition, output: NodeId) -> Option<[NodeId; 5]> {
+    let group = doc
+        .groups
+        .values()
+        .find(|g| g.output == output && g.members.len() == 5)?;
+    let merge = doc.nodes.get(&output)?;
+    if !matches!(merge.operation, Operation::Merge(_)) {
+        return None;
+    }
+    let blur = doc.nodes.get(merge.inputs.get("background")?)?;
+    let offset = doc.nodes.get(blur.inputs.get("image")?)?;
+    let tint = doc.nodes.get(offset.inputs.get("image")?)?;
+    let alpha = doc.nodes.get(tint.inputs.get("image")?)?;
+    if !matches!(blur.operation, Operation::Blur(_))
+        || !matches!(offset.operation, Operation::Transform(_))
+        || !matches!(&tint.operation, Operation::Colorize(c) if c.low == [0.0;4] && c.high[..3] == [0.0;3])
+        || !matches!(&alpha.operation, Operation::ChannelMask(c) if matches!(c.channel, crate::MaskChannel::Alpha))
+        || alpha.inputs.get("image") != merge.inputs.get("foreground")
+    {
+        return None;
+    }
+    let ids = [alpha.id, tint.id, offset.id, blur.id, merge.id];
+    ids.iter()
+        .all(|id| group.members.contains(id))
+        .then_some(ids)
+}
+/// Explicit, undoable migration. Keep the output identity and its downstream wiring.
+pub fn upgrade_shadow(doc: &Composition, output: NodeId) -> Result<Vec<Command>> {
+    let [alpha, tint, offset, blur, _] = legacy_shadow_nodes(doc, output)
+        .ok_or_else(|| crate::Error("This is not an original text shadow group".into()))?;
+    let removed = [alpha, tint, offset];
+    let group = doc.groups.values().find(|g| g.output == output).unwrap();
+    if doc
+        .nodes
+        .values()
+        .any(|n| !group.members.contains(&n.id) && n.inputs.values().any(|id| removed.contains(id)))
+    {
+        return fail(
+            "This shadow shares internal nodes. Keep it and add a separate light-following shadow instead.",
+        );
+    }
+    let Operation::Blur(old_blur) = &doc.nodes[&blur].operation else {
+        unreachable!()
+    };
+    let Operation::Colorize(old_tint) = &doc.nodes[&tint].operation else {
+        unreachable!()
+    };
+    let source = doc.nodes[&output].inputs["foreground"];
+    let mut shadow = doc.nodes[&blur].clone();
+    shadow.label = "Shadow".into();
+    shadow.operation = Operation::Shadow(crate::nodes::Shadow {
+        follow_lighting: true,
+        distance: 20.0.into(),
+        softness: old_blur.radius.clone(),
+        strength: old_tint.high[3].into(),
+        x: 0.0.into(),
+        y: 0.0.into(),
+        light: 0.0.into(),
+    });
+    shadow.inputs = [("image".into(), source), ("lighting".into(), source)].into();
+    let mut candidate = doc.clone();
+    candidate.groups.remove(&group.id);
+    for id in removed {
+        candidate.nodes.remove(&id);
+    }
+    candidate.nodes.insert(blur, shadow.clone());
+    let mut replacement =
+        crate::groups::Group::capture(&candidate, [blur, output].into(), output, &group.label)?;
+    replacement.id = group.id;
+    for spec in shadow.operation.descriptor().parameters {
+        replacement.controls.insert(
+            spec.name.into(),
+            crate::groups::Control::new(
+                &candidate,
+                blur,
+                spec.name,
+                &if spec.name == "follow_lighting" {
+                    "Follow scene lighting".into()
+                } else {
+                    format!("Shadow · {}", spec.name.replace('_', " "))
+                },
+            )?,
+        );
+    }
+    let mut commands = vec![
+        Command::Ungroup { id: group.id },
+        Command::Put {
+            node: Box::new(shadow),
+        },
+    ];
+    commands.extend(removed.into_iter().map(|id| Command::Remove { id }));
+    commands.push(Command::PutGroup {
+        group: Box::new(replacement),
+    });
+    crate::Document::new(doc.clone())?.prepare(0, &commands)?;
+    Ok(commands)
+}

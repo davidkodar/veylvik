@@ -1539,8 +1539,12 @@ input supplies its area lights; breadth-first traversal follows input-name order
 resolve ties. Connect Lighting directly to a material for unambiguous control.
 Light 0 uses all enabled emitters; 1–8 chooses one. Lights behind the receiver or with
 zero intensity contribute nothing. An HDR environment has no positional emitters and
-does not generate a directional shadow. Existing offset/blur shadow groups keep their
-original behaviour; adding a new shadow exposes the new controls.
+does not generate a directional shadow. In the text inspector, use **Style → Attached effects → Text shadow → Follow scene
+lighting**; the checkbox is visible even with Controls collapsed. Existing offset/blur
+shadow groups retain their original behaviour until **Enable light-following shadow**
+is clicked in the text Style tab or group inspector. That one-step undoable upgrade
+keeps the output identity, strength and softness, resets manual offsets, and connects
+the same material branch for lighting. Shared internal nodes are protected from removal.
 
 Distance is object separation from a flat receiving plane in pixels. The renderer
 samples rectangular emitters with a deterministic 32-sample pattern and uses a local
