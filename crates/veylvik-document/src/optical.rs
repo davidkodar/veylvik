@@ -96,7 +96,7 @@ pub struct StudioRig {
     pub lights: Vec<AreaLight>,
 }
 fn default_environment() -> f32 {
-    1.0
+    0.65
 }
 fn default_environment_rotation() -> f32 {
     -45.0
@@ -143,7 +143,9 @@ impl Default for StudioRig {
             .into_iter()
             .enumerate()
             .map(|(index, mut light)| {
-                light.enabled = index <= 1;
+                // The photographic studio already contains the key and fill.
+                // Extra cards are opt-in; stacking them made solid white patches.
+                light.enabled = false;
                 if index == 1 {
                     light.intensity = 1.2;
                 }

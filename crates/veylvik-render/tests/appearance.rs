@@ -492,3 +492,26 @@ fn studio_environment_rotation_changes_reflections_and_zero_disables_them() {
         assert_eq!(p[..3], [0.; 3]);
     }
 }
+
+#[test]
+#[ignore = "requires Vulkan"]
+fn brushed_aluminium_changes_directional_reflections_without_changing_silhouette() {
+    let renderer = Renderer::new().unwrap();
+    let smooth = renderer
+        .material_swatch(MaterialKind::Aluminium, 0.28, 0.0)
+        .unwrap();
+    let brushed = renderer
+        .material_swatch(MaterialKind::Aluminium, 0.28, 0.65)
+        .unwrap();
+    let mut difference = 0.0;
+    for (a, b) in smooth.iter().zip(&brushed) {
+        assert!(b.iter().all(|v| v.is_finite()));
+        assert_eq!(a[3], b[3]);
+        difference += (a[0] - b[0]).abs();
+    }
+    assert!(difference / brushed.len() as f32 > 0.01);
+    let extreme = renderer
+        .material_swatch(MaterialKind::Aluminium, 0.03, 1.0)
+        .unwrap();
+    assert!(extreme.iter().flatten().all(|v| v.is_finite()));
+}

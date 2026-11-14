@@ -40,7 +40,7 @@ pub fn build(id: &str, b: &mut Builder, source: NodeId) -> Result<NodeId> {
                     MaterialKind::Gold => 0.18,
                     MaterialKind::Silver => 0.18,
                     MaterialKind::Bronze => 0.28,
-                    MaterialKind::Aluminium => 0.42,
+                    MaterialKind::Aluminium => 0.28,
                     MaterialKind::Phosphor | MaterialKind::Marble => 0.15,
                     _ => 0.7,
                 })
