@@ -31,6 +31,7 @@ pub fn build(id: &str, b: &mut Builder, source: NodeId) -> Result<NodeId> {
         let node = b.add(
             "Surface grain, bevel and reflection",
             Operation::Material(crate::nodes::Material {
+                brushing: Default::default(),
                 optics: None,
                 studio: Default::default(),
                 kind,
@@ -39,7 +40,7 @@ pub fn build(id: &str, b: &mut Builder, source: NodeId) -> Result<NodeId> {
                 roughness: (match kind {
                     MaterialKind::Gold => 0.18,
                     MaterialKind::Silver => 0.18,
-                    MaterialKind::Bronze => 0.28,
+                    MaterialKind::Bronze => 0.38,
                     MaterialKind::Aluminium => 0.28,
                     MaterialKind::Phosphor | MaterialKind::Marble => 0.15,
                     _ => 0.7,
@@ -55,7 +56,12 @@ pub fn build(id: &str, b: &mut Builder, source: NodeId) -> Result<NodeId> {
                         })
                         .collect(),
                 },
-                grain: (if (kind as u32) < 2 { 0.25 } else { 0.65 }).into(),
+                grain: (match kind {
+                    MaterialKind::Gold | MaterialKind::Silver => 0.25,
+                    MaterialKind::Bronze => 0.35,
+                    _ => 0.65,
+                })
+                .into(),
                 emission: 1.0.into(),
             }),
             &[("image", source)],

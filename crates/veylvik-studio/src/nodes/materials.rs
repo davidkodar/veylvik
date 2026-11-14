@@ -17,6 +17,7 @@ impl Inspect for veylvik_document::nodes::Material {
                     }
                 });
         }
+        cx.dirty |= finish_controls(ui, self);
         cx.dirty |= lighting_controls(ui, self);
     }
 }
@@ -138,4 +139,38 @@ fn light_slider(
             .changed()
     })
     .inner
+}
+
+pub(crate) fn finish_controls(
+    ui: &mut egui::Ui,
+    material: &mut veylvik_document::nodes::Material,
+) -> bool {
+    use veylvik_document::optical::{Brushing, MetalFinish};
+    if !material.kind.optics().metallic {
+        return false;
+    }
+    let mut changed = false;
+    let selected = material.finish();
+    ui.horizontal(|ui| {
+        ui.label("Finish");
+        egui::ComboBox::from_id_salt("metal-finish")
+            .selected_text(selected.map_or("Custom", MetalFinish::label))
+            .show_ui(ui, |ui| {
+                for finish in MetalFinish::ALL {
+                    if ui.selectable_label(selected == Some(finish), finish.label()).clicked() {
+                        material.apply_finish(finish);
+                        changed = true;
+                    }
+                }
+            }).response.on_hover_text("Set roughness, grain and brushing together. Replaces any roughness/grain keyframes; keeps lighting, bevel and optical response.");
+    });
+    let mut brushed = material.is_brushed();
+    if ui.checkbox(&mut brushed, "Directional brushing")
+        .on_hover_text("Stretch reflections along the brushed surface. Grain controls the surface detail; roughness controls reflection softness.")
+        .changed() {
+        material.brushing = if brushed { Brushing::Directional } else { Brushing::Smooth };
+        changed = true;
+    }
+    ui.weak("Fine-tune roughness and grain below. Tarnish and dirt are separate effects.");
+    changed
 }

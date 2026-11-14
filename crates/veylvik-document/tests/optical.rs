@@ -62,3 +62,69 @@ fn legacy_studio_rig_loads_environment_defaults_and_rejects_nonfinite_settings()
     rig.environment_rotation = f32::NAN;
     assert!(rig.validate().is_err());
 }
+
+#[test]
+fn metal_finishes_roundtrip_and_preserve_authored_lighting() {
+    use veylvik_document::optical::MetalFinish;
+    for kind in [
+        MaterialKind::Gold,
+        MaterialKind::Silver,
+        MaterialKind::Bronze,
+        MaterialKind::Aluminium,
+    ] {
+        let mut op: Operation = serde_json::from_value(
+            veylvik_document::registry::TYPES
+                .iter()
+                .find(|n| n.type_id == "material")
+                .unwrap()
+                .default_operation(),
+        )
+        .unwrap();
+        let Operation::Material(ref mut material) = op else {
+            panic!()
+        };
+        material.kind = kind;
+        material.studio.environment_rotation = 72.;
+        material.bevel = 17.0.into();
+        for finish in MetalFinish::ALL {
+            material.apply_finish(finish);
+            assert_eq!(material.finish(), Some(finish));
+            assert_eq!(material.studio.environment_rotation, 72.);
+            assert_eq!(
+                material
+                    .bevel
+                    .at(veylvik_document::Time::new(0, 1).unwrap())
+                    .unwrap(),
+                17.
+            );
+            let copy: veylvik_document::nodes::Material =
+                serde_json::from_value(serde_json::to_value(&material).unwrap()).unwrap();
+            assert_eq!(copy.finish(), Some(finish));
+        }
+        material.roughness = 0.123.into();
+        assert_eq!(material.finish(), None);
+    }
+}
+
+#[test]
+fn legacy_aluminium_keeps_brushing_and_all_metals_have_named_starters() {
+    for id in ["gold_text", "silver_text", "bronze_text", "aluminium_text"] {
+        let preset = veylvik_document::presets::builtin::build(id).unwrap();
+        let material = preset
+            .nodes
+            .values()
+            .find_map(|n| {
+                if let Operation::Material(m) = &n.operation {
+                    Some(m)
+                } else {
+                    None
+                }
+            })
+            .unwrap();
+        assert!(material.finish().is_some());
+        let mut old = serde_json::to_value(material).unwrap();
+        old.as_object_mut().unwrap().remove("brushing");
+        let restored: veylvik_document::nodes::Material = serde_json::from_value(old).unwrap();
+        assert_eq!(restored.is_brushed(), id == "aluminium_text");
+    }
+}

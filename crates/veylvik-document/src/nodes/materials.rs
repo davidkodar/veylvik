@@ -9,6 +9,8 @@ use serde::{Deserialize, Serialize};
 #[serde(deny_unknown_fields)]
 pub struct Material {
     #[serde(default)]
+    pub brushing: crate::optical::Brushing,
+    #[serde(default)]
     pub studio: crate::optical::StudioRig,
     /// None uses the material family’s optical defaults.
     #[serde(default)]
@@ -85,6 +87,7 @@ pub static MATERIAL: NodeType = NodeType {
     inputs: &["image"],
     parameters: &[
         other("kind", ParameterKind::MaterialKind, "material"),
+        other("brushing", ParameterKind::Brushing, "surface finish"),
         other("studio", ParameterKind::StudioRig, "lighting rig"),
         other("optics", ParameterKind::SurfaceOptics, "optical response"),
         scalar("scale", "pixels", 1.0, 8192.0, 180.0),

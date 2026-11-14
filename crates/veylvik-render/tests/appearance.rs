@@ -85,6 +85,7 @@ fn materials_are_distinct_finite_and_preserve_partial_alpha() {
         let node = Node::new(
             "surface",
             Operation::Material(veylvik_document::nodes::Material {
+                brushing: Default::default(),
                 optics: None,
                 studio: Default::default(),
                 kind,
@@ -514,4 +515,72 @@ fn brushed_aluminium_changes_directional_reflections_without_changing_silhouette
         .material_swatch(MaterialKind::Aluminium, 0.03, 1.0)
         .unwrap();
     assert!(extreme.iter().flatten().all(|v| v.is_finite()));
+}
+
+#[test]
+#[ignore = "requires Vulkan"]
+fn every_metal_finish_renders_and_brushing_is_independent_of_metal_kind() {
+    use veylvik_document::optical::{Brushing, MetalFinish};
+    let renderer = Renderer::new().unwrap();
+    let (mut doc, inputs, source) = source();
+    let op: Operation = serde_json::from_value(
+        registry::TYPES
+            .iter()
+            .find(|n| n.type_id == "material")
+            .unwrap()
+            .default_operation(),
+    )
+    .unwrap();
+    let node = Node::new("finish", op, &[("image", doc.output)]);
+    doc.output = node.id;
+    doc.nodes.insert(node.id, node);
+    for kind in [
+        MaterialKind::Gold,
+        MaterialKind::Silver,
+        MaterialKind::Bronze,
+        MaterialKind::Aluminium,
+    ] {
+        for finish in MetalFinish::ALL {
+            let Operation::Material(m) = &mut doc.nodes.get_mut(&doc.output).unwrap().operation
+            else {
+                panic!()
+            };
+            m.kind = kind;
+            m.apply_finish(finish);
+            let pixels = renderer
+                .render_frame(
+                    &Plan::compile(&doc).unwrap(),
+                    RenderRequest::full(Time::new(0, 1).unwrap()),
+                    &inputs,
+                )
+                .unwrap()
+                .pixels;
+            for (pixel, original) in pixels.iter().zip(&source) {
+                assert!(pixel.iter().all(|v| v.is_finite()));
+                assert_eq!(pixel[3], original[3]);
+            }
+            if finish == MetalFinish::Brushed {
+                let Operation::Material(m) = &mut doc.nodes.get_mut(&doc.output).unwrap().operation
+                else {
+                    panic!()
+                };
+                m.brushing = Brushing::Smooth;
+                let smooth = renderer
+                    .render_frame(
+                        &Plan::compile(&doc).unwrap(),
+                        RenderRequest::full(Time::new(0, 1).unwrap()),
+                        &inputs,
+                    )
+                    .unwrap()
+                    .pixels;
+                assert!(
+                    pixels
+                        .iter()
+                        .zip(smooth)
+                        .any(|(a, b)| (a[0] - b[0]).abs() > 0.001),
+                    "brushing changes reflections for {kind:?}"
+                );
+            }
+        }
+    }
 }

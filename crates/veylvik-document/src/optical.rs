@@ -194,3 +194,79 @@ impl StudioRig {
                     "size":vector(2,0.01,100.),"colour":vector(3,0.,1.),"intensity":{"type":"number","minimum":0,"maximum":100}}}}}})
     }
 }
+
+/// Auto preserves the finish of documents created before explicit metal finishes.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Brushing {
+    #[default]
+    Auto,
+    Smooth,
+    Directional,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MetalFinish {
+    Polished,
+    Satin,
+    Matte,
+    Brushed,
+}
+impl MetalFinish {
+    pub const ALL: [Self; 4] = [Self::Polished, Self::Satin, Self::Matte, Self::Brushed];
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Polished => "Polished",
+            Self::Satin => "Satin",
+            Self::Matte => "Matte",
+            Self::Brushed => "Brushed",
+        }
+    }
+    pub fn settings(self) -> (f32, f32, Brushing) {
+        match self {
+            Self::Polished => (0.18, 0.25, Brushing::Smooth),
+            Self::Satin => (0.38, 0.35, Brushing::Smooth),
+            Self::Matte => (0.7, 0.45, Brushing::Smooth),
+            Self::Brushed => (0.28, 0.65, Brushing::Directional),
+        }
+    }
+}
+impl crate::nodes::Material {
+    pub fn is_brushed(&self) -> bool {
+        self.kind.optics().metallic
+            && match self.brushing {
+                Brushing::Auto => self.kind == crate::MaterialKind::Aluminium,
+                Brushing::Smooth => false,
+                Brushing::Directional => true,
+            }
+    }
+    /// Finish recipes change only roughness, grain and directional brushing.
+    /// Geometry, optical response and authored lighting remain independent.
+    pub fn apply_finish(&mut self, finish: MetalFinish) {
+        if !self.kind.optics().metallic {
+            return;
+        }
+        let (roughness, grain, brushing) = finish.settings();
+        self.roughness = roughness.into();
+        self.grain = grain.into();
+        self.brushing = brushing;
+    }
+    pub fn finish(&self) -> Option<MetalFinish> {
+        if !self.kind.optics().metallic {
+            return None;
+        }
+        let (
+            crate::Scalar::Constant { value: roughness },
+            crate::Scalar::Constant { value: grain },
+        ) = (&self.roughness, &self.grain)
+        else {
+            return None;
+        };
+        MetalFinish::ALL.into_iter().find(|finish| {
+            let (r, g, b) = finish.settings();
+            (roughness - r).abs() < 0.0001
+                && (grain - g).abs() < 0.0001
+                && self.is_brushed() == (b == Brushing::Directional)
+        })
+    }
+}

@@ -111,22 +111,22 @@ pub const ALL: [Builtin; 59] = [
     },
     Builtin {
         id: "gold_text",
-        label: "Polished Gold",
+        label: "Gold",
         description: "Rich gold with studio reflections, fine surface grain and beveled edges.",
     },
     Builtin {
         id: "silver_text",
-        label: "Polished Silver",
+        label: "Silver",
         description: "Cool silver with bright reflections and polished bevels.",
     },
     Builtin {
         id: "aluminium_text",
-        label: "Brushed Aluminium",
+        label: "Aluminium",
         description: "Satin aluminium with directional brushed grain and broad reflections.",
     },
     Builtin {
         id: "bronze_text",
-        label: "Aged Bronze",
+        label: "Bronze",
         description: "Warm bronze reflections with subtle mottled oxidation.",
     },
     Builtin {

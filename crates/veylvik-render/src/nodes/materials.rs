@@ -36,7 +36,12 @@ impl RenderNode for veylvik_document::nodes::Material {
                 sample("roughness")?,
                 sample("lighting")?.rem_euclid(1.0),
             ];
-            p.extra = [sample("grain")?, sample("emission")?, 0.0, 0.0];
+            p.extra = [
+                sample("grain")?,
+                sample("emission")?,
+                0.0,
+                f32::from(self.is_brushed()),
+            ];
         }
         Ok(())
     }

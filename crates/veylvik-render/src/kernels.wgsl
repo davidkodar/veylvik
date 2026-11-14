@@ -583,7 +583,7 @@ fn studio_surface(uv:vec2<f32>, normal:vec3<f32>,albedo:vec3<f32>)->vec3<f32> {
     let fine_y=fire_noise(texture_position*140.0+vec3<f32>(4.1,9.2,0.7),191u)-0.5;
     let texture=fire_fbm(texture_position*19.0+vec3<f32>(1.0),257u);
     var bump=vec3<f32>(fine,fine_y,0.0)*0.012*p.extra.x;
-    if kind==2u {
+    if p.extra.w>0.5 {
         let brush=fire_noise(vec3<f32>(uv.x*3.0,uv.y*min(500.0,p.values.x*0.65),0.0),71u)-0.5;
         // Brush grooves vary across the grain, not along it. Project the
         // slope onto the surface so the engraving wraps around the sphere.
@@ -591,7 +591,7 @@ fn studio_surface(uv:vec2<f32>, normal:vec3<f32>,albedo:vec3<f32>)->vec3<f32> {
         bump=across*brush*0.22*p.extra.x;
     }
     var n=normalize(normal+bump);
-    if kind==2u {
+    if p.extra.w>0.5 {
         // Real-time anisotropic IBL approximation (Filament bent reflection
         // normal): brush direction shapes the lobe instead of blurring it
         // equally in every direction. Use the same frame for area lights.
@@ -602,7 +602,7 @@ fn studio_surface(uv:vec2<f32>, normal:vec3<f32>,albedo:vec3<f32>)->vec3<f32> {
         let anisotropic_normal=normalize(projected_view+n*0.00001);
         n=normalize(mix(n,anisotropic_normal,clamp(p.extra.x*1.1,0.0,0.85)));
     }
-    let rough=clamp(p.values.z+(texture-0.5)*p.extra.x*select(select(0.06,0.14,kind==3u),0.03,kind==2u),0.03,1.0);
+    let rough=clamp(p.values.z+(texture-0.5)*p.extra.x*select(select(0.06,0.14,kind==3u),0.03,p.extra.w>0.5),0.03,1.0);
     let f0=studio.optics.rgb;
     let nv=max(dot(n,v),0.0001);
     var tangent=v-n*dot(n,v);

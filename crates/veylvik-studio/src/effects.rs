@@ -199,6 +199,30 @@ impl Studio {
         };
         ui.heading(&group.label);
         ui.weak(format!("Reusable effect · {} nodes", group.members.len()));
+        // A material starter is a single-node group. Keep its finish accessible
+        // without requiring users to open the group first.
+        if group.members.len() == 1 {
+            let mut node = self.project.document.snapshot().nodes[&group.output].clone();
+            if let veylvik_document::Operation::Material(material) = &mut node.operation {
+                let changed = ui
+                    .add_enabled_ui(!self.draft_dirty, |ui| {
+                        crate::nodes::finish_controls(ui, material)
+                    })
+                    .inner;
+                if changed {
+                    match self.project.apply(&[Command::Put {
+                        node: Box::new(node),
+                    }]) {
+                        Ok(()) => {
+                            self.refresh_draft();
+                            self.request_preview();
+                        }
+                        Err(error) => self.fail(error),
+                    }
+                }
+            }
+        }
+
         for (key, input) in &group.inputs {
             let edit_key = (group.id, key.clone());
             let doc = self.project.document.snapshot();

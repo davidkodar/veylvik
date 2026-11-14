@@ -936,6 +936,9 @@ impl crate::Studio {
                     .unwrap_or(&self.project.document.snapshot().nodes[&id])
                     .clone();
                 let mut edited = false;
+                if let Operation::Material(material) = &mut node.operation {
+                    edited |= crate::nodes::finish_controls(ui, material);
+                }
                 if let Ok(time) = self.project.time() {
                     for spec in node.operation.descriptor().parameters {
                         if node.operation.scalar(spec.name).is_some() {

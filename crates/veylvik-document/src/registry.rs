@@ -6,6 +6,7 @@ pub const MAX_ASSET_NAME: usize = 4096;
 #[derive(Debug, Clone, Copy, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ParameterKind {
+    Brushing,
     StudioRig,
     SurfaceOptics,
     PlanarTrack,
@@ -49,6 +50,7 @@ pub struct Parameter {
 impl Parameter {
     fn default_value(&self) -> Value {
         match self.kind {
+            ParameterKind::Brushing => json!(crate::optical::Brushing::default()),
             ParameterKind::StudioRig => json!(crate::optical::StudioRig::default()),
             ParameterKind::SurfaceOptics => json!(null),
             ParameterKind::PlanarTrack => json!(crate::planar::Track::default()),
@@ -84,6 +86,9 @@ impl Parameter {
     }
     fn schema(&self) -> Value {
         match self.kind {
+            ParameterKind::Brushing => {
+                json!({"type":"string","enum":["auto","smooth","directional"]})
+            }
             ParameterKind::StudioRig => crate::optical::StudioRig::schema(),
             ParameterKind::SurfaceOptics => {
                 json!({"anyOf":[{"type":"null"},crate::optical::SurfaceOptics::schema()]})
