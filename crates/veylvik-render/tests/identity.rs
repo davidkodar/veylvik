@@ -24,6 +24,8 @@ fn document() -> Composition {
         nodes.push(node);
     }
     Composition {
+        ocio: Default::default(),
+        working_space: Default::default(),
         display: Default::default(),
         groups: Default::default(),
         schema: 1,

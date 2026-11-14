@@ -94,3 +94,127 @@ fn space(ui: &mut egui::Ui, id: &str, colour: &mut veylvik_document::media::Inpu
         });
     changed
 }
+
+impl Inspect for veylvik_document::nodes::Ocio {
+    fn inspect(&mut self, ui: &mut egui::Ui, cx: &mut InspectCx<'_>) {
+        cx.dirty |= ocio_controls(ui, &mut self.transform, cx.inputs);
+    }
+}
+pub(crate) fn ocio_controls(
+    ui: &mut egui::Ui,
+    t: &mut veylvik_document::color_management::OcioTransform,
+    inputs: &veylvik_render::ImageInputs,
+) -> bool {
+    let mut changed = false;
+
+    ui.label("OpenColorIO configuration");
+    changed |= ui
+        .text_edit_singleline(&mut t.config)
+        .on_hover_text("OCIO URI or configuration file relative to the project")
+        .changed();
+    let path = inputs.resolve_config(&t.config);
+    // Config menus are only rebuilt when their path changes, not on mouse movement.
+    let id = ui.make_persistent_id(("ocio-menus", &path));
+    type Menus = std::result::Result<(Vec<String>, Vec<(String, Vec<String>)>), String>;
+    let menus: Menus = ui.ctx().data_mut(|data| {
+        data.get_temp::<Menus>(id).unwrap_or_else(|| {
+            let result = (|| {
+                let c = veylvik_color::Config::load(&path)?;
+                let displays = c
+                    .displays()?
+                    .into_iter()
+                    .map(|d| {
+                        let views = c.views(&d)?;
+                        Ok((d, views))
+                    })
+                    .collect::<std::result::Result<Vec<_>, String>>()?;
+                Ok((c.spaces()?, displays))
+            })();
+            data.insert_temp(id, result.clone());
+            result
+        })
+    });
+    if ui.button("Reload configuration").clicked() {
+        ui.ctx().data_mut(|data| data.remove::<Menus>(id));
+        changed = true;
+    }
+    match menus {
+        Ok((spaces, displays)) => {
+            fn choice(
+                ui: &mut egui::Ui,
+                label: &str,
+                value: &mut String,
+                options: impl IntoIterator<Item = String>,
+            ) -> bool {
+                let mut changed = false;
+                egui::ComboBox::from_id_salt(label)
+                    .selected_text(value.as_str())
+                    .width(210.)
+                    .show_ui(ui, |ui| {
+                        for option in options {
+                            changed |= ui.selectable_value(value, option.clone(), option).changed();
+                        }
+                    });
+                changed
+            }
+            ui.label("Source space");
+            changed |= choice(ui, "ocio-source", &mut t.source, spaces.clone());
+            let mut view_mode = !t.display.is_empty();
+            if ui
+                .checkbox(&mut view_mode, "Display / view transform")
+                .changed()
+            {
+                changed = true;
+                if view_mode {
+                    ui.label("Linear output space");
+                    changed |= choice(ui, "ocio-linear-output", &mut t.destination, spaces.clone());
+                    if let Some((d, v)) = displays.first() {
+                        t.display = d.clone();
+                        t.view = v.first().cloned().unwrap_or_default();
+                    }
+                } else {
+                    t.display.clear();
+                    t.view.clear();
+                }
+            }
+            if view_mode {
+                ui.label("Linear output space");
+                changed |= choice(ui, "ocio-linear-output", &mut t.destination, spaces.clone());
+                ui.label("Display");
+                if choice(
+                    ui,
+                    "ocio-display",
+                    &mut t.display,
+                    displays.iter().map(|d| d.0.clone()),
+                ) {
+                    changed = true;
+                    t.view = displays
+                        .iter()
+                        .find(|d| d.0 == t.display)
+                        .and_then(|d| d.1.first())
+                        .cloned()
+                        .unwrap_or_default();
+                }
+                ui.label("View");
+                changed |= choice(
+                    ui,
+                    "ocio-view",
+                    &mut t.view,
+                    displays
+                        .iter()
+                        .find(|d| d.0 == t.display)
+                        .map(|d| d.1.clone())
+                        .unwrap_or_default(),
+                );
+            } else {
+                ui.label("Destination space");
+                changed |= choice(ui, "ocio-destination", &mut t.destination, spaces);
+            }
+        }
+        Err(error) => {
+            ui.colored_label(egui::Color32::LIGHT_RED, error);
+        }
+    }
+    ui.weak("Keep custom configurations together with their LUT files.").on_hover_text("Source space describes the incoming pixels. ACEScg is a working space; AgX is a display view supplied by its configuration. Display views are converted back to the selected linear output space before viewer encoding.");
+    changed
+}

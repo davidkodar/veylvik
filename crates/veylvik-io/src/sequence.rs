@@ -92,7 +92,7 @@ fn export(
     while completed < total && progress(completed, total) {
         let frame_index = i64::try_from(request.frames.start as i128 + completed as i128)?;
         let time = Time::at_frame(frame_index, request.frames.frame_rate)?;
-        let frame = renderer.render_gpu_cached(
+        let frame = renderer.render_gpu_export(
             &plan,
             RenderRequest {
                 time,
@@ -105,7 +105,7 @@ fn export(
             "frame-{completed:06}.{}",
             request.format.extension()
         ));
-        let pixels = crate::export::sdr_pixels(&path, &frame.pixels, document.display);
+        let pixels = crate::export::sdr_pixels(&path, &frame.pixels, document.output_display());
         crate::export::save_frame_new(&path, region.width, region.height, &pixels)?;
         completed += 1;
     }

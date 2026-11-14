@@ -6,6 +6,7 @@ pub const MAX_ASSET_NAME: usize = 4096;
 #[derive(Debug, Clone, Copy, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ParameterKind {
+    OcioTransform,
     Brushing,
     StudioRig,
     SurfaceOptics,
@@ -50,6 +51,9 @@ pub struct Parameter {
 impl Parameter {
     fn default_value(&self) -> Value {
         match self.kind {
+            ParameterKind::OcioTransform => {
+                json!(crate::color_management::OcioTransform::default())
+            }
             ParameterKind::Brushing => json!(crate::optical::Brushing::default()),
             ParameterKind::StudioRig => json!(crate::optical::StudioRig::default()),
             ParameterKind::SurfaceOptics => json!(null),
@@ -86,6 +90,7 @@ impl Parameter {
     }
     fn schema(&self) -> Value {
         match self.kind {
+            ParameterKind::OcioTransform => crate::color_management::OcioTransform::schema(),
             ParameterKind::Brushing => {
                 json!({"type":"string","enum":["auto","smooth","directional"]})
             }
@@ -207,8 +212,8 @@ pub use crate::nodes::{
     AFFINE, ATMOSPHERE, BLEND, BLUR, CHANNEL_MASK, CHROMA_KEY, COLOR_CORRECT, COLORIZE,
     COMBINE_MASK, CONDENSATION, DISPLACE, DRIP, DUST, ELLIPSE, EXPOSURE, FADE, FIRE, FOOTAGE,
     FRACTAL_NOISE, GLASS, GRADIENT, IMAGE, LUMA_KEY, LUT, MASK, MATERIAL, MERGE, METALLIC_SHINE,
-    MORPHOLOGY, MOTION_BLUR, NOISE, PATH, PATINA, PLANAR_TRACK, PLANAR_WARP, REFINE_MATTE, SOLID,
-    SUN_GLINTS, SURFACE_BLEND, SURFACE_REFLECTION, TEXT, TIME_REMAP, TRANSFORM,
+    MORPHOLOGY, MOTION_BLUR, NOISE, OCIO, PATH, PATINA, PLANAR_TRACK, PLANAR_WARP, REFINE_MATTE,
+    SOLID, SUN_GLINTS, SURFACE_BLEND, SURFACE_REFLECTION, TEXT, TIME_REMAP, TRANSFORM,
 };
 pub static TYPES: &[&NodeType] = &[
     &SOLID,
@@ -224,6 +229,7 @@ pub static TYPES: &[&NodeType] = &[
     &FOOTAGE,
     &MOTION_BLUR,
     &TIME_REMAP,
+    &OCIO,
     &AFFINE,
     &PLANAR_TRACK,
     &PLANAR_WARP,

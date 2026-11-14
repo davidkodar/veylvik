@@ -68,6 +68,8 @@ pub fn run(args: &[String]) -> Result<()> {
         &[],
     );
     let document = Composition {
+        ocio: Default::default(),
+        working_space: Default::default(),
         display: Default::default(),
         groups: Default::default(),
         schema: 1,

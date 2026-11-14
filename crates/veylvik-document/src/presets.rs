@@ -81,6 +81,9 @@ impl Preset {
         }) {
             return fail("Expose image sources as effect inputs before saving a portable preset");
         }
+        if self.nodes.values().any(|node| matches!(&node.operation,Operation::Ocio(node) if !node.transform.config.starts_with("ocio://"))) {
+            return fail("Portable effects require a built-in OCIO configuration; keep custom configuration files with the project");
+        }
         let mut nodes = self.nodes.clone();
         for input in self.group.inputs.values() {
             let mut stub = Node::new(
@@ -102,6 +105,8 @@ impl Preset {
             nodes.insert(stub.id, stub);
         }
         Composition {
+            ocio: Default::default(),
+            working_space: Default::default(),
             display: Default::default(),
             schema: 1,
             width: self.width,

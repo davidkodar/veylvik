@@ -20,6 +20,8 @@ pub fn command() -> Value {
         {"type":"object","properties":{"command":{"const":"place"},"id":{"type":"string","format":"uuid"},"position":position()},"required":["command","id","position"],"additionalProperties":false}
     ]});
     schema["oneOf"].as_array_mut().unwrap().extend([
+        json!({"type":"object","properties":{"command":{"const":"working_space"},"space":{"enum":["linear_rec709","acescg"]}},"required":["command","space"],"additionalProperties":false}),
+        json!({"type":"object","properties":{"command":{"const":"ocio_views"},"settings":crate::color_management::OcioViews::schema()},"required":["command","settings"],"additionalProperties":false}),
         json!({"type":"object","properties":{"command":{"const":"put_group"},"group":group()},"required":["command","group"],"additionalProperties":false}),
         json!({"type":"object","properties":{"command":{"const":"ungroup"},"id":{"type":"string","format":"uuid"}},"required":["command","id"],"additionalProperties":false}),
         json!({"type":"object","properties":{"command":{"const":"set_control"},"id":{"type":"string","format":"uuid"},"control":{"type":"string"},"value":{}},"required":["command","id","control","value"],"additionalProperties":false,"description":"Edit the real parameter referenced by a group control. Scalar values accept the same animated curves as set_parameter."}),

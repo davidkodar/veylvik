@@ -6,6 +6,8 @@ use veylvik_document::{CompiledScalar, Composition, Node, NodeId, Operation};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Kernel {
+    ToAcescg,
+    FromAcescg,
     Text,
     Solid,
     Noise,
@@ -62,7 +64,9 @@ pub enum Kernel {
     Lut,
 }
 impl Kernel {
-    pub(crate) const ALL: [Self; 54] = [
+    pub(crate) const ALL: [Self; 56] = [
+        Self::ToAcescg,
+        Self::FromAcescg,
         Self::Text,
         Self::Solid,
         Self::Noise,
@@ -120,6 +124,8 @@ impl Kernel {
     ];
     pub(crate) fn entry(self) -> &'static str {
         match self {
+            Self::ToAcescg => "to_acescg",
+            Self::FromAcescg => "from_acescg",
             Self::Text => "text_image",
             Self::Solid => "solid",
             Self::Fire => "fire",
@@ -204,8 +210,10 @@ pub(crate) struct TemporalBranch {
     pub key: String,
 }
 pub struct Plan {
+    pub(crate) ocio: veylvik_document::color_management::OcioViews,
     pub(crate) temporal: Vec<TemporalBranch>,
     pub(crate) frame_rate: veylvik_document::Time,
+    working_space: veylvik_document::color_management::WorkingSpace,
     root: NodeId,
     pub(crate) width: u32,
     pub(crate) height: u32,
@@ -285,7 +293,7 @@ impl Plan {
                     .ok_or_else(|| error("Temporal graph expansion exceeds 16384 nodes"))?;
                 if matches!(
                     node.operation,
-                    Operation::MotionBlur(_) | Operation::TimeRemap(_)
+                    Operation::MotionBlur(_) | Operation::TimeRemap(_) | Operation::Ocio(_)
                 ) {
                     let key = format!("\0temporal:{}", node.id);
                     temporal.push(TemporalBranch {
@@ -310,7 +318,7 @@ impl Plan {
                 todo.push((id, true));
                 if matches!(
                     node.operation,
-                    Operation::MotionBlur(_) | Operation::TimeRemap(_)
+                    Operation::MotionBlur(_) | Operation::TimeRemap(_) | Operation::Ocio(_)
                 ) {
                     continue;
                 }
@@ -321,11 +329,41 @@ impl Plan {
         }
         let mut passes = Vec::new();
         let mut outputs = BTreeMap::new();
+        let mut domains = BTreeMap::new();
         let mut shared = BTreeMap::new();
         for (index, node) in nodes.iter().enumerate() {
+            let aces = composition.working_space
+                == veylvik_document::color_management::WorkingSpace::Acescg
+                && matches!(
+                    node.operation,
+                    Operation::Merge(_)
+                        | Operation::Blend(_)
+                        | Operation::Exposure(_)
+                        | Operation::ColorCorrect(_)
+                        | Operation::Blur(_)
+                        | Operation::Transform(_)
+                        | Operation::Affine(_)
+                );
+            domains.insert(node.id, aces);
             let mut inputs = [Input::Empty, Input::Empty, Input::Empty];
             for (i, port) in node.operation.inputs().iter().enumerate() {
-                inputs[i] = Input::Value(outputs[&node.inputs[*port]]);
+                let source = node.inputs[*port];
+                let mut value = outputs[&source];
+                if domains[&source] != aces {
+                    let converted = passes.len();
+                    passes.push(Pass {
+                        node: index,
+                        kernel: if aces {
+                            Kernel::ToAcescg
+                        } else {
+                            Kernel::FromAcescg
+                        },
+                        inputs: [Input::Value(value), Input::Empty, Input::Empty],
+                        output: converted,
+                    });
+                    value = converted;
+                }
+                inputs[i] = Input::Value(value);
             }
             // Preserve authored nodes, but alias exact constant identity effects
             // before lifetime assignment so they need no dispatch or image slot.
@@ -443,7 +481,20 @@ impl Plan {
                 shared.insert(key, value);
             }
         }
-        let final_value = outputs[&output];
+        let mut final_value = outputs[&output];
+        // Public frame I/O stays scene-linear Rec.709; internal compositing/grades
+        // may use AP1. Procedural materials and keyed colours retain their authored
+        // Rec.709 processing domain and receive explicit boundary conversions.
+        if domains[&output] {
+            let converted = passes.len();
+            passes.push(Pass {
+                node: nodes.len() - 1,
+                kernel: Kernel::FromAcescg,
+                inputs: [Input::Value(final_value), Input::Empty, Input::Empty],
+                output: converted,
+            });
+            final_value = converted;
+        }
         let mut uses = vec![0usize; passes.len()];
         for pass in &passes {
             for input in &pass.inputs {
@@ -493,8 +544,10 @@ impl Plan {
             })
             .collect::<std::result::Result<Vec<_>, _>>()?;
         Ok(Self {
+            ocio: composition.ocio.clone(),
             temporal,
             frame_rate: composition.frame_rate,
+            working_space: composition.working_space,
             root: output,
             curves,
             width: composition.width,
@@ -545,7 +598,10 @@ impl Plan {
     }
     pub fn matches_composition(&self, composition: &Composition, output: NodeId) -> Result<bool> {
         composition.validate()?;
-        if !self.temporal.is_empty()
+        if serde_json::to_vec(&self.ocio).map_err(error)?
+            != serde_json::to_vec(&composition.ocio).map_err(error)?
+            || self.working_space != composition.working_space
+            || !self.temporal.is_empty()
             || self.root != output
             || self.width != composition.width
             || self.height != composition.height

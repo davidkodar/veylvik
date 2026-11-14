@@ -147,6 +147,7 @@ impl Project {
         Ok(plan)
     }
     fn load_available_inputs(&mut self) {
+        self.inputs.set_base_directory(self.base.clone());
         let mut remaining = 256 * 1024 * 1024;
         for node in self.document.snapshot().nodes.values() {
             if let Some(asset) = node.operation.asset()
@@ -407,6 +408,7 @@ pub fn load_inputs(
 ) -> Result<ImageInputs> {
     // Preserve sources retained for undo/redo; only current nodes read from disk.
     let mut inputs = previous.clone();
+    inputs.set_base_directory(base);
     let mut seen = std::collections::BTreeSet::new();
     const BUDGET: u64 = 256 * 1024 * 1024;
     for node in composition.nodes.values() {

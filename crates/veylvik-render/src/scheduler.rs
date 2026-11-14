@@ -52,10 +52,11 @@ impl PreviewScheduler {
                     if renderer.is_none() {
                         renderer = Some(Renderer::new()?);
                     }
-                    renderer
-                        .as_ref()
-                        .unwrap()
-                        .render_frame(&job.plan, job.request, &job.inputs)
+                    let renderer = renderer.as_ref().unwrap();
+                    let frame =
+                        Arc::new(renderer.render_gpu(&job.plan, job.request, &job.inputs)?);
+                    let frame = renderer.apply_ocio_view(&job.plan, &job.inputs, frame)?;
+                    renderer.read_frame(&frame)
                 })();
                 let resources = renderer.as_ref().and_then(|r| r.resource_stats().ok());
                 // A timed-out/lost device must not receive more submissions.
@@ -102,6 +103,8 @@ impl PreviewScheduler<Arc<GpuFrame>> {
                                 .ok_or_else(|| error("Preview superseded"))
                         })
                 };
+                let frame =
+                    frame.and_then(|frame| renderer.apply_ocio_view(&job.plan, &job.inputs, frame));
                 PreviewResult {
                     ticket: PreviewTicket {
                         generation,

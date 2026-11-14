@@ -39,6 +39,8 @@ fn channel_masks_preserve_coverage_and_convert_hdr_without_alpha_division() {
             &[("image", image.id)],
         );
         let doc = Composition {
+            ocio: Default::default(),
+            working_space: Default::default(),
             display: Default::default(),
             groups: Default::default(),
             schema: 1,

@@ -25,6 +25,7 @@ pub use gradient::GradientMode;
 pub mod schema;
 pub mod text;
 pub use text::{TextAlignment, TextFont};
+pub mod color_management;
 pub mod media;
 pub mod planar;
 pub mod sequence;
@@ -93,6 +94,7 @@ macro_rules! each_node {
             $crate::Operation::Footage($node) => $body,
             $crate::Operation::MotionBlur($node) => $body,
             $crate::Operation::TimeRemap($node) => $body,
+            $crate::Operation::Ocio($node) => $body,
             $crate::Operation::Affine($node) => $body,
             $crate::Operation::Ellipse($node) => $body,
             $crate::Operation::Mask($node) => $body,
@@ -144,6 +146,7 @@ pub enum Operation {
     Footage(nodes::Footage),
     MotionBlur(nodes::MotionBlur),
     TimeRemap(nodes::TimeRemap),
+    Ocio(nodes::Ocio),
     Affine(nodes::Affine),
     Ellipse(nodes::Ellipse),
     Mask(nodes::Mask),
@@ -242,6 +245,16 @@ fn default_frame_count() -> u32 {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Composition {
+    #[serde(
+        default,
+        skip_serializing_if = "color_management::OcioViews::is_default"
+    )]
+    pub ocio: color_management::OcioViews,
+    #[serde(
+        default,
+        skip_serializing_if = "color_management::WorkingSpace::is_default"
+    )]
+    pub working_space: color_management::WorkingSpace,
     pub schema: u32,
     pub width: u32,
     pub height: u32,
@@ -257,6 +270,42 @@ pub struct Composition {
     pub display: media::DisplayTransform,
 }
 impl Composition {
+    pub fn ocio_transforms(&self) -> impl Iterator<Item = &color_management::OcioTransform> {
+        self.nodes
+            .values()
+            .filter_map(|node| {
+                if let Operation::Ocio(node) = &node.operation {
+                    Some(&node.transform)
+                } else {
+                    None
+                }
+            })
+            .chain(self.ocio.view.iter())
+            .chain(self.ocio.output.iter())
+    }
+    pub fn ocio_transforms_mut(
+        &mut self,
+    ) -> impl Iterator<Item = &mut color_management::OcioTransform> {
+        self.nodes
+            .values_mut()
+            .filter_map(|node| {
+                if let Operation::Ocio(node) = &mut node.operation {
+                    Some(&mut node.transform)
+                } else {
+                    None
+                }
+            })
+            .chain(self.ocio.view.iter_mut())
+            .chain(self.ocio.output.iter_mut())
+    }
+
+    pub fn output_display(&self) -> media::DisplayTransform {
+        if self.ocio.output.is_some() {
+            media::DisplayTransform::Standard
+        } else {
+            self.display
+        }
+    }
     /// Canonical pretty-printed JSON size, bounded without allocating the JSON.
     pub fn encoded_size(&self) -> Result<usize> {
         limits::encoded_size(self)
@@ -264,6 +313,7 @@ impl Composition {
 
     /// Validates the entire document, including disconnected nodes, without recursion.
     pub fn validate(&self) -> Result<Vec<NodeId>> {
+        self.ocio.validate()?;
         if self.schema != 1 {
             return fail("unsupported composition schema");
         }
@@ -481,6 +531,12 @@ pub enum Command {
     FrameCount {
         frame_count: u32,
     },
+    OcioViews {
+        settings: color_management::OcioViews,
+    },
+    WorkingSpace {
+        space: color_management::WorkingSpace,
+    },
     Display {
         display: media::DisplayTransform,
     },
@@ -494,6 +550,8 @@ pub fn blank(width: u32, height: u32, frame_rate: Time) -> Result<Composition> {
         &[],
     );
     let composition = Composition {
+        ocio: Default::default(),
+        working_space: Default::default(),
         display: Default::default(),
         groups: Default::default(),
         schema: 1,
@@ -563,6 +621,8 @@ pub fn demo() -> Composition {
         &[("background", background.id), ("foreground", transform.id)],
     );
     Composition {
+        ocio: Default::default(),
+        working_space: Default::default(),
         display: Default::default(),
         groups: Default::default(),
         schema: 1,
@@ -702,6 +762,8 @@ pub fn motion_demo() -> Composition {
         &[("image", output)],
     );
     Composition {
+        ocio: Default::default(),
+        working_space: Default::default(),
         display: Default::default(),
         groups: Default::default(),
         schema: 1,

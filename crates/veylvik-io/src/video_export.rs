@@ -79,7 +79,7 @@ impl Settings {
             allow_software: false,
             matte: [0.; 3],
             audio: Default::default(),
-            display: doc.display,
+            display: doc.output_display(),
         }
     }
     pub fn times(&self, doc: &Composition) -> Result<Vec<Time>> {
@@ -473,7 +473,7 @@ pub fn render(
     mut progress: impl FnMut(Progress) -> bool,
 ) -> Result<Outcome> {
     let settings = &Settings {
-        display: doc.display,
+        display: doc.output_display(),
         ..settings.clone()
     };
     let times = settings.times(doc)?;
@@ -519,7 +519,7 @@ pub fn render(
     }
     let soundtrack = Soundtrack::prepare(doc, settings, &times)?;
     let plan = Plan::compile(doc)?;
-    let frame = renderer.render_gpu_cached(&plan, RenderRequest::full(times[0]), inputs)?;
+    let frame = renderer.render_gpu_export(&plan, RenderRequest::full(times[0]), inputs)?;
     // Probe the complete native encode/handoff/mux path before choosing it.
     // A failed probe can use the established staged path. Once real encoding
     // starts, any error aborts; it never silently restarts with another backend.
@@ -612,7 +612,7 @@ pub fn render(
         let bytes = if let Some(first) = first.take() {
             first
         } else {
-            let frame = renderer.render_gpu_cached(&plan, RenderRequest::full(*time), inputs)?;
+            let frame = renderer.render_gpu_export(&plan, RenderRequest::full(*time), inputs)?;
             renderer.encode_video_planes(
                 &frame,
                 settings.width,
@@ -781,7 +781,7 @@ fn render_direct(
         }
         let source = match first.take() {
             Some(frame) => frame,
-            None => renderer.render_gpu_cached(plan, RenderRequest::full(*time), inputs)?,
+            None => renderer.render_gpu_export(plan, RenderRequest::full(*time), inputs)?,
         };
         let frame = prepare_native_frame(renderer, &encoder, backend, &source, settings)?;
         encoder.send(frame)?;

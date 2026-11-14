@@ -221,6 +221,8 @@ fn run() -> Result<()> {
                 &[],
             );
             let doc = Composition {
+                ocio: Default::default(),
+                working_space: Default::default(),
                 display: Default::default(),
                 groups: Default::default(),
                 schema: 1,
@@ -336,9 +338,12 @@ fn run() -> Result<()> {
                 &assets::document_base(Path::new(&args[2]))?,
                 Path::new(&args[3]),
             )?;
-            let frame = renderer.render_frame(&plan, request, &inputs)?;
-            let pixels =
-                assets::export::sdr_pixels(Path::new(&args[3]), &frame.pixels, doc.display);
+            let frame = renderer.render_frame_export(&plan, request, &inputs)?;
+            let pixels = assets::export::sdr_pixels(
+                Path::new(&args[3]),
+                &frame.pixels,
+                doc.output_display(),
+            );
             save_frame(
                 Path::new(&args[3]),
                 frame.region.width,

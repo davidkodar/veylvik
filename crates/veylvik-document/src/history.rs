@@ -189,6 +189,8 @@ impl Document {
                 }
                 Command::FrameRate { frame_rate } => next.frame_rate = *frame_rate,
                 Command::FrameCount { frame_count } => next.frame_count = *frame_count,
+                Command::OcioViews { settings } => next.ocio = settings.clone(),
+                Command::WorkingSpace { space } => next.working_space = *space,
                 Command::Display { display } => next.display = *display,
                 Command::Output { id } => next.output = *id,
                 Command::Place { id, position } => {

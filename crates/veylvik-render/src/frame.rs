@@ -128,8 +128,19 @@ pub struct ImageInputs(
     BTreeMap<String, Arc<Image>>,
     BTreeMap<String, Arc<GpuFrame>>,
     BTreeMap<String, Arc<dyn FrameSource>>,
+    std::path::PathBuf,
 );
 impl ImageInputs {
+    pub fn set_base_directory(&mut self, base: impl Into<std::path::PathBuf>) {
+        self.3 = base.into();
+    }
+    pub fn resolve_config(&self, config: &str) -> String {
+        if config.starts_with("ocio://") {
+            config.to_owned()
+        } else {
+            self.3.join(config).to_string_lossy().into_owned()
+        }
+    }
     /// Declared CPU pixel bytes, counting shared images once.
     pub fn byte_size(&self) -> u64 {
         let mut seen = std::collections::BTreeSet::new();

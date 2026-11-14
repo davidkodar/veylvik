@@ -2,6 +2,7 @@ mod about;
 mod animation;
 mod animation_editor;
 mod asset_browser;
+mod color_controls;
 mod composition;
 mod control;
 mod curve_preview;
@@ -408,7 +409,8 @@ impl Studio {
     /// The viewer's settings plus the composition's display transform.
     fn effective_view(&self) -> display::ViewSettings {
         display::ViewSettings {
-            filmic: !self.project.document.snapshot().display.is_standard(),
+            filmic: self.project.document.snapshot().ocio.view.is_none()
+                && !self.project.document.snapshot().display.is_standard(),
             ..self.view
         }
     }
@@ -1124,10 +1126,11 @@ impl Studio {
             veylvik_io::FrameFormat::from_path(&path).map_err(|e| e.to_string())?;
             veylvik_io::protect_inputs(&document, &base, &path).map_err(|e| e.to_string())?;
             let gpu_frame = renderer
-                .render_gpu_cached(&plan, RenderRequest::full(time), &inputs)
+                .render_gpu_export(&plan, RenderRequest::full(time), &inputs)
                 .map_err(|e| e.to_string())?;
             let frame = renderer.read_frame(&gpu_frame).map_err(|e| e.to_string())?;
-            let pixels = veylvik_io::export::sdr_pixels(&path, &frame.pixels, document.display);
+            let pixels =
+                veylvik_io::export::sdr_pixels(&path, &frame.pixels, document.output_display());
             veylvik_io::save_frame(&path, frame.region.width, frame.region.height, &pixels)
                 .map_err(|e| e.to_string())?;
             Ok(Completed::Exported(path))
@@ -3054,6 +3057,17 @@ impl eframe::App for Studio {
         self.media_import_dialog(&ctx);
         self.occlusion_dialog(&ctx);
         self.dialogs(&ctx);
+        if let Some(settings) =
+            color_controls::show(&ctx, self.project.session, &self.project.inputs)
+        {
+            match self
+                .project
+                .apply(&[veylvik_document::Command::OcioViews { settings }])
+            {
+                Ok(()) => self.request_preview(),
+                Err(e) => self.fail(e),
+            }
+        }
         if let Some(settings) = self.composition_controls.show(&ctx) {
             self.apply_composition_settings(settings, &ctx);
         }

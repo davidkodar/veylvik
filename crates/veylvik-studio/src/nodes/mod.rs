@@ -30,6 +30,7 @@ pub(crate) trait Inspect {
 }
 
 mod color;
+pub(crate) use color::ocio_controls;
 mod composite;
 mod filters;
 mod generators;

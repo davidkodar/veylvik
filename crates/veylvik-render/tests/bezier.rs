@@ -45,6 +45,8 @@ fn bezier_exposure_and_mixed_hold_match_analytic_values_and_cache_updates() {
     );
     let id = output.id;
     let mut doc = Composition {
+        ocio: Default::default(),
+        working_space: Default::default(),
         display: Default::default(),
         groups: Default::default(),
         schema: 1,

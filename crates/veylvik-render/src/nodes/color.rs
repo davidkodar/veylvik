@@ -130,3 +130,5 @@ impl RenderNode for veylvik_document::nodes::Lut {
         Ok(())
     }
 }
+
+impl RenderNode for veylvik_document::nodes::Ocio {}

@@ -139,6 +139,7 @@ pub fn load_inputs(plan: &Plan, base: &Path, budget: u64) -> Result<ImageInputs>
         )
     })?;
     let mut inputs = ImageInputs::default();
+    inputs.set_base_directory(base);
     for key in plan.required_assets() {
         let image =
             footage::load(&base.join(key), remaining).map_err(|e| format!("image {key}: {e}"))?;
@@ -178,6 +179,15 @@ pub fn save_tracked(
                 .to_owned();
         }
     }
+    for transform in saved.ocio_transforms_mut() {
+        if !transform.config.starts_with("ocio://") && Path::new(&transform.config).is_relative() {
+            transform.config = pathdiff::diff_paths(base.join(&transform.config), &parent)
+                .ok_or("cannot rebase OCIO configuration")?
+                .to_str()
+                .ok_or("OCIO path is not UTF-8")?
+                .to_owned();
+        }
+    }
     saved.validate()?;
     let bytes = serde_json::to_vec_pretty(&saved)?;
     if bytes.len() > veylvik_document::limits::MAX_DOCUMENT_BYTES {
@@ -211,6 +221,40 @@ pub fn protect_inputs(composition: &Composition, base: &Path, destination: &Path
                 .ok_or("destination needs a filename")?,
         ),
     );
+    for transform in composition.ocio_transforms() {
+        if transform.config.starts_with("ocio://") {
+            continue;
+        }
+        let input = base.join(&transform.config);
+        let resolved = input.canonicalize().unwrap_or_else(|_| {
+            input
+                .parent()
+                .and_then(|p| p.canonicalize().ok())
+                .and_then(|p| input.file_name().map(|n| p.join(n)))
+                .unwrap_or(input.clone())
+        });
+        if resolved == target {
+            return Err("destination would replace an OCIO configuration".into());
+        }
+        if input.exists() {
+            let config = veylvik_color::Config::load(&input.to_string_lossy())
+                .map_err(|e| format!("OCIO dependencies: {e}"))?;
+            let processor = config
+                .processor(
+                    &transform.source,
+                    &transform.destination,
+                    &transform.display,
+                    &transform.view,
+                )
+                .map_err(|e| format!("OCIO dependencies: {e}"))?;
+            for file in processor.files() {
+                let path = input.parent().unwrap_or(base).join(file);
+                if path.canonicalize().unwrap_or(path) == target {
+                    return Err("destination would replace an OCIO LUT".into());
+                }
+            }
+        }
+    }
     for node in composition.nodes.values() {
         if let Some(asset) = node.operation.asset() {
             let input = base.join(asset);
@@ -356,6 +400,8 @@ mod tests {
             &[],
         );
         let doc = Composition {
+            ocio: Default::default(),
+            working_space: Default::default(),
             display: Default::default(),
             groups: Default::default(),
             schema: 1,

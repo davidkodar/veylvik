@@ -2,6 +2,8 @@ use veylvik_document::*;
 use veylvik_render::*;
 fn composition(nodes: Vec<Node>, output: NodeId) -> Composition {
     Composition {
+        ocio: Default::default(),
+        working_space: Default::default(),
         display: Default::default(),
         groups: Default::default(),
         schema: 1,

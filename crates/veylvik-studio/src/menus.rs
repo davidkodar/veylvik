@@ -119,6 +119,18 @@ impl Studio {
                 if item(ui, "Fit image", "", true) { self.navigation.fit(); }
                 if item(ui, "Actual pixels (100%)", "", true) { self.navigation.actual_size(); }
                 if ui.checkbox(&mut self.view.alpha, "Show alpha").clicked() { ui.close(); }
+                if item(ui,"Colour management…","",true) {crate::color_controls::open(ui.ctx(),self.project.session,&self.project.document.snapshot().ocio);}
+                ui.menu_button("Working colour space", |ui| {
+                    use veylvik_document::color_management::WorkingSpace;
+                    let current=self.project.document.snapshot().working_space;
+                    for (space,label) in [(WorkingSpace::LinearRec709,"Linear Rec.709"),(WorkingSpace::Acescg,"ACEScg (AP1)")] {
+                        if ui.selectable_label(current==space,label).clicked() && current!=space {
+                            match self.project.apply(&[veylvik_document::Command::WorkingSpace {space}]) {Ok(())=>self.request_preview(),Err(e)=>self.fail(e)}
+                            ui.close();
+                        }
+                    }
+                    ui.weak("Compositing and grading use this space. Materials retain their authored colour domain; output remains linear Rec.709 for the viewer and existing exports.");
+                });
                 let mut filmic = !self.project.document.snapshot().display.is_standard();
                 if ui
                     .checkbox(&mut filmic, "Filmic display (ACES-style)")
@@ -212,6 +224,7 @@ pub(crate) const ADD_MENU: [(&str, &[&registry::NodeType]); 8] = [
             &registry::EXPOSURE,
             &registry::COLOR_CORRECT,
             &registry::LUT,
+            &registry::OCIO,
             &registry::COLORIZE,
             &registry::BLUR,
             &registry::MOTION_BLUR,

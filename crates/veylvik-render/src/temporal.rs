@@ -79,6 +79,18 @@ impl Renderer {
                     let time = remap.source_at(request.time)?;
                     self.temporal_frame(&branch.plan, RenderRequest::full(time), inputs, work)?
                 }
+                Operation::Ocio(node) => {
+                    let Some(frame) = self.temporal_frame(
+                        &branch.plan,
+                        RenderRequest::full(request.time),
+                        inputs,
+                        work,
+                    )?
+                    else {
+                        return Ok(None);
+                    };
+                    Some(self.ocio_transform(&node.transform, inputs, &frame)?)
+                }
                 _ => unreachable!("compiled temporal boundary"),
             };
             let Some(frame) = frame else {

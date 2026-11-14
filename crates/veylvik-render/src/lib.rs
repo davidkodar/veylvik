@@ -4,6 +4,7 @@ mod diagnostics;
 mod environment_bake;
 mod material_preview;
 pub use material_preview::material_preview_revision;
+pub mod ocio;
 mod shadow_lighting;
 mod shutter;
 mod temporal;
@@ -102,6 +103,7 @@ pub struct Renderer {
     pub vector_cache_limit_bytes: u64,
     pool: Mutex<pool::Pool>,
     cache: Mutex<cache::FrameCache>,
+    ocio_cache: Mutex<std::collections::VecDeque<ocio::CachedProcessor>>,
     pub cache_limit_bytes: u64,
     owner: Arc<frame::DeviceIdentity>,
     pub pool_limit_bytes: u64,
@@ -146,6 +148,7 @@ impl Renderer {
             source: wgpu::ShaderSource::Wgsl(
                 concat!(
                     include_str!("kernels.wgsl"),
+                    include_str!("working_space.wgsl"),
                     include_str!("matte.wgsl"),
                     include_str!("lut.wgsl"),
                     include_str!("shadow.wgsl"),
@@ -318,6 +321,7 @@ impl Renderer {
             vector_cache_limit_bytes: 32 * 1024 * 1024,
             pool: Mutex::new(pool::Pool::default()),
             cache: Mutex::new(cache::FrameCache::default()),
+            ocio_cache: Mutex::new(Default::default()),
             cache_limit_bytes: 64 * 1024 * 1024,
             owner: Arc::new(frame::DeviceIdentity),
             pool_limit_bytes: 128 * 1024 * 1024,

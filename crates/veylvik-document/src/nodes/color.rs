@@ -131,3 +131,22 @@ node!(Lut, LUT, [mix], {
         Some(&mut self.asset)
     }
 });
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Ocio {
+    pub transform: crate::color_management::OcioTransform,
+}
+pub static OCIO: NodeType = NodeType {
+    type_id: "ocio",
+    version: 1,
+    label: "OCIO colour transform",
+    description: "Full-float GPU OpenColorIO transform, including config LUTs. Explicit source/destination or display/view. Unpremultiplies before conversion and restores alpha. Colour-space names describe these pixels; connect transforms deliberately and avoid applying a display transform twice.",
+    inputs: &["image"],
+    parameters: &[other("transform", ParameterKind::OcioTransform, "")],
+};
+node!(Ocio, OCIO, [], {
+    fn validate(&self) -> Result<()> {
+        self.transform.validate()
+    }
+});

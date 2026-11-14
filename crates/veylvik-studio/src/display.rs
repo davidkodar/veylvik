@@ -157,6 +157,8 @@ mod tests {
             &[],
         );
         let doc = Composition {
+            ocio: Default::default(),
+            working_space: Default::default(),
             display: Default::default(),
             groups: Default::default(),
             schema: 1,
@@ -195,6 +197,8 @@ mod tests {
             &[],
         );
         let doc = Composition {
+            ocio: Default::default(),
+            working_space: Default::default(),
             display: Default::default(),
             groups: Default::default(),
             schema: 1,
@@ -272,6 +276,8 @@ mod tests {
             &[],
         );
         let doc = Composition {
+            ocio: Default::default(),
+            working_space: Default::default(),
             display: Default::default(),
             groups: Default::default(),
             schema: 1,
@@ -355,6 +361,8 @@ mod tests {
             &[],
         );
         let doc = Composition {
+            ocio: Default::default(),
+            working_space: Default::default(),
             display: Default::default(),
             groups: Default::default(),
             schema: 1,

@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 [dependencies]
+veylvik-color = { path = "../veylvik-color" }
 half = "2"
 veylvik-interop = { path = "../veylvik-interop" }
 veylvik-document.workspace = true

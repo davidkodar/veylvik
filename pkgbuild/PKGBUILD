@@ -6,7 +6,7 @@ pkgdesc='Vulkan compositor and animation editor with a headless CLI and MCP inte
 arch=('x86_64' 'aarch64')
 url='https://github.com/davidkodar/veylvik'
 license=('GPL-3.0-only')
-depends=('ffmpeg' 'fontconfig' 'glibc' 'gcc-libs' 'vulkan-icd-loader' 'vulkan-driver' 'libx11' 'libxcursor' 'libxi' 'libxrandr' 'libxkbcommon' 'wayland' 'xdg-desktop-portal' 'desktop-file-utils' 'shared-mime-info' 'hicolor-icon-theme')
+depends=('opencolorio>=2.5' 'ffmpeg' 'fontconfig' 'glibc' 'gcc-libs' 'vulkan-icd-loader' 'vulkan-driver' 'libx11' 'libxcursor' 'libxi' 'libxrandr' 'libxkbcommon' 'wayland' 'xdg-desktop-portal' 'desktop-file-utils' 'shared-mime-info' 'hicolor-icon-theme')
 makedepends=('rust' 'clang' 'pkgconf' 'desktop-file-utils')
 optdepends=('xdg-desktop-portal-gtk: GTK file picker backend when no desktop backend is configured')
 options=('!debug' '!lto')

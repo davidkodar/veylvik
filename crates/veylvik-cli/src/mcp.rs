@@ -93,9 +93,15 @@ impl Session {
         if !(1..=veylvik_io::preview::MAX_PREVIEW_EDGE as u64).contains(&max_edge) {
             return Err("max_edge must be within 1..1024".into());
         }
-        let (node, time, frame) = self.frame(args)?;
-        let pixels =
-            veylvik_render::display::apply(self.document.snapshot().display, &frame.pixels);
+        let (node, time, frame) = self.frame(args, true)?;
+        let pixels = veylvik_render::display::apply(
+            if self.document.snapshot().ocio.view.is_some() {
+                veylvik_document::media::DisplayTransform::Standard
+            } else {
+                self.document.snapshot().display
+            },
+            &frame.pixels,
+        );
         let thumbnail = veylvik_io::preview::thumbnail(
             frame.region.width,
             frame.region.height,
@@ -108,6 +114,7 @@ impl Session {
     fn frame(
         &mut self,
         args: &Value,
+        preview: bool,
     ) -> Result<(
         veylvik_document::NodeId,
         Time,
@@ -138,7 +145,13 @@ impl Session {
         }
         let renderer = self.renderer.as_ref().unwrap();
         let inputs = crate::assets::load_inputs(&plan, &self.asset_base, renderer.budget_bytes)?;
-        let frame = renderer.render_frame(&plan, RenderRequest { time, region }, &inputs)?;
+        let frame = if preview {
+            let frame =
+                renderer.render_gpu_cached(&plan, RenderRequest { time, region }, &inputs)?;
+            renderer.read_frame(renderer.apply_ocio_view(&plan, &inputs, frame)?.as_ref())?
+        } else {
+            renderer.render_frame_export(&plan, RenderRequest { time, region }, &inputs)?
+        };
         Ok((output, time, frame))
     }
     fn call(&mut self, name: &str, args: &Value) -> Result<Value> {
@@ -394,8 +407,8 @@ impl Session {
                     &self.asset_base,
                     path(args)?,
                 )?;
-                let (_, _, frame) = self.frame(args)?;
-                let display = self.document.snapshot().display;
+                let (_, _, frame) = self.frame(args, false)?;
+                let display = self.document.snapshot().output_display();
                 let pixels = crate::assets::export::sdr_pixels(path(args)?, &frame.pixels, display);
                 crate::save_frame(
                     path(args)?,
