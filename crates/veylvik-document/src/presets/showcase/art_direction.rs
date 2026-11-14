@@ -588,19 +588,11 @@ pub(super) fn build(id: &str) -> Result<Scene> {
         id,
         "condensation" | "fireflies" | "liquid_shimmer" | "wet_drips" | "water_drips"
     );
-    if liquid {
+    // Clear water is only visible through what it bends and reflects, so water_drips
+    // keeps the studio environment behind it, like the glass showcases.
+    if liquid && id != "water_drips" {
         bg = a.solid("Neutral preview background", [0.025, 0.025, 0.025, 1.0]);
         a.doc.nodes.get_mut(&bg).unwrap().scene_background = true;
-        if id == "water_drips" {
-            let gradient = a.gradient("Neutral refraction backdrop", 0.0, 540.0);
-            bg = a.tint(
-                "Neutral grey backdrop",
-                gradient,
-                [0.035, 0.035, 0.035, 1.0],
-                [0.24, 0.24, 0.24, 1.0],
-            );
-            a.doc.nodes.get_mut(&bg).unwrap().scene_background = true;
-        }
     }
     let preset_id = if matches!(id, "fireflies" | "liquid_shimmer") {
         "wet_drips"

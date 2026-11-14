@@ -402,7 +402,9 @@ fn fire(@builtin(global_invocation_id) gid:vec3<u32>) {
     if uv.x<=0.0 || uv.x>=1.0 || uv.y<0.0 || uv.y>=1.15 || p.extra.y==0.0 {
         result[index(gid)]=vec4<f32>(0.0);return;
     }
-    let edge=smoothstep(0.0,0.08,uv.x)*(1.0-smoothstep(0.92,1.0,uv.x));
+    // Flames shorten and thin over the outer fifth of each side, so the volume ends
+    // like a burning line instead of a cut-off box even where it is dense.
+    let edge=smoothstep(0.0,0.2,min(uv.x,1.0-uv.x));
     let time=fract(p.extra.x/4.0)*4.0;
     let fuel_patch=fire_noise(vec3<f32>(uv.x*9.0,0.0,0.3),p.size_op.w+193u);
     let base=smoothstep(0.0,0.07,uv.y);
@@ -420,9 +422,9 @@ fn fire(@builtin(global_invocation_id) gid:vec3<u32>) {
         let pos=vec3<f32>(uv.x*15.0+bend*p.extra.z*(1.0+uv.y*4.0),rise,z*1.4);
         let coarse=fire_noise(pos,p.size_op.w);
         let detail=fire_fbm(pos*2.0,p.size_op.w+17u);
-        let fuel=0.69+fuel_patch*0.13-uv.y*0.64;
+        let fuel=(0.69+fuel_patch*0.13)*mix(0.3,1.0,edge)-uv.y*0.64;
         let body=max(fuel-coarse*0.72-detail*0.28,0.0);
-        let density=body*edge*base*depth*taper;
+        let density=body*sqrt(edge)*base*depth*taper;
         let alpha=1.0-exp(-density*3.2);
         let heat=clamp(body*2.4+(1.0-uv.y)*0.18,0.0,1.0);
         let warm=mix(vec3<f32>(0.55,0.009,0.0002),vec3<f32>(1.8,0.24,0.008),smoothstep(0.08,0.48,heat));

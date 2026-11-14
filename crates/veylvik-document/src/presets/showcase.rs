@@ -385,6 +385,16 @@ pub fn build(id: &str) -> Result<Scene> {
     } else {
         before
     };
+    // Authored at 960x540 and mapped up, so every showcase opens at full HD.
+    super::resolution::map_graph(
+        &mut composition.nodes,
+        &mut composition.groups,
+        [960, 540],
+        [1920, 1080],
+        super::resolution::Sizing::Fit,
+    )?;
+    composition.width = 1920;
+    composition.height = 1080;
     composition.validate()?;
     Ok(Scene {
         composition,
