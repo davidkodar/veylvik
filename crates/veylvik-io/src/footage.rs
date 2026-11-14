@@ -77,8 +77,12 @@ pub struct Sequence {
     stamps: Vec<(u64, std::time::SystemTime)>,
     rate: Time,
     size: (u32, u32),
-    budget: u64,
-    cache: Mutex<VecDeque<(usize, Arc<Image>)>>,
+    /// Owner id of this sequence's frames in `host_cache`.
+    owner: u64,
+    /// Frames this sequence holds in the shared host cache, oldest first (at most 2).
+    cache: Mutex<VecDeque<usize>>,
+    /// Largest single frame the caller accepted when opening.
+    frame_limit: u64,
 }
 impl Sequence {
     pub fn open(path: &Path, budget: u64) -> Result<Self> {
@@ -176,21 +180,37 @@ impl Sequence {
             budget.min(crate::MAX_IMAGE_BYTES),
         )?);
         let size = (first.width(), first.height());
-        let budget = (first.byte_size() * 2).min(budget);
-        Ok(Self {
+        let owner = crate::host_cache::owner();
+        let sequence = Self {
             files,
             stamps,
             rate,
             size,
-            budget,
-            cache: Mutex::new(VecDeque::from([(0, first)])),
-        })
+            owner,
+            cache: Mutex::new(VecDeque::from([0])),
+            frame_limit: budget.min(crate::MAX_IMAGE_BYTES),
+        };
+        crate::host_cache::put(sequence.key(0), first.clone(), first.byte_size());
+        Ok(sequence)
+    }
+    fn key(&self, index: usize) -> crate::host_cache::Key {
+        crate::host_cache::Key {
+            owner: self.owner,
+            kind: 0,
+            index,
+            variant: 0,
+        }
     }
     fn index(&self, time: Time) -> Result<usize> {
         time.seconds()?;
         let value = (i128::from(time.ticks) * i128::from(self.rate.ticks))
             .div_euclid(i128::from(time.rate) * i128::from(self.rate.rate));
         Ok(value.clamp(0, self.files.len() as i128 - 1) as usize)
+    }
+}
+impl Drop for Sequence {
+    fn drop(&mut self) {
+        crate::host_cache::forget(self.owner, None);
     }
 }
 impl FrameSource for Sequence {
@@ -207,8 +227,9 @@ impl FrameSource for Sequence {
             description: "Image sequence".into(),
         })
     }
+    /// Frames live in the shared `host_cache`, bounded there for all sources together.
     fn byte_budget(&self) -> u64 {
-        self.budget
+        0
     }
     fn frame(&self, time: Time) -> veylvik_render::Result<Arc<Image>> {
         let work = || -> Result<Arc<Image>> {
@@ -223,23 +244,12 @@ impl FrameSource for Sequence {
                     "Sequence frame changed on disk; reload sources before continuing".into(),
                 );
             }
-            if let Some(i) = cache.iter().position(|(n, _)| *n == index) {
-                let item = cache.remove(i).unwrap();
-                let image = item.1.clone();
-                cache.push_back(item);
+            if cache.contains(&index)
+                && let Some(image) = crate::host_cache::get::<Image>(self.key(index))
+            {
                 return Ok(image);
             }
-            // Evict before decode; no unbounded accumulation across a long shot.
-            while cache.len() as u64 * u64::from(self.size.0) * u64::from(self.size.1) * 16
-                + u64::from(self.size.0) * u64::from(self.size.1) * 16
-                > self.budget
-            {
-                cache.pop_front();
-            }
-            let image = Arc::new(crate::load_image(
-                &self.files[index],
-                self.budget.min(crate::MAX_IMAGE_BYTES),
-            )?);
+            let image = Arc::new(crate::load_image(&self.files[index], self.frame_limit)?);
             let after = std::fs::metadata(&self.files[index])?;
             if (after.len(), after.modified()?) != self.stamps[index] {
                 return Err("Sequence frame changed during decoding; reload sources".into());
@@ -247,7 +257,15 @@ impl FrameSource for Sequence {
             if (image.width(), image.height()) != self.size {
                 return Err("All sequence frames must have identical dimensions".into());
             }
-            cache.push_back((index, image.clone()));
+            // At most two frames per sequence; the shared cache bounds all sources together.
+            cache.retain(|n| *n != index);
+            while cache.len() >= 2 {
+                if let Some(old) = cache.pop_front() {
+                    crate::host_cache::remove(self.key(old));
+                }
+            }
+            crate::host_cache::put(self.key(index), image.clone(), image.byte_size());
+            cache.push_back(index);
             Ok(image)
         };
         work().map_err(|e| veylvik_render::Error::Message(e.to_string()))
@@ -375,7 +393,11 @@ mod tests {
         let path = dir.join("shot.veyseq");
         std::fs::write(&path, r#"{"schema":1,"frame_rate":{"ticks":24000,"rate":1001},"files":["0.png","1.png","2.png"]}"#).unwrap();
         let sequence = Sequence::open(&path, 32).unwrap();
-        assert_eq!(sequence.byte_budget(), 32);
+        assert_eq!(
+            sequence.byte_budget(),
+            0,
+            "frames are accounted in host_cache"
+        );
         let zero = sequence.frame(Time::new(-1, 1).unwrap()).unwrap();
         assert_eq!(zero.pixels()[0], [1.0, 0.0, 0.0, 1.0]);
         assert!(Arc::ptr_eq(

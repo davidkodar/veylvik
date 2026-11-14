@@ -638,12 +638,16 @@ view when nodes or pane dimensions change. It is a session-only view mode and
 resizing creates no document edits. Dragging a node turns it off and saves the
 visible arrangement together with that move as one undo step. Manual placements
 remain available while Auto arrange is off. Source images load when the
-project opens or an image is imported, within a 256 MiB host image budget.
+project opens or an image is imported. The host budget is 1/16 of physical RAM,
+clamped to 256 MiB–2 GiB. Still images count against it in full. Video and image
+sequences reserve nothing when they open: their decoded frames share one
+least-recently-used host cache with that limit, at most two frames per clip, so
+a project can hold any number of clips. A clip's frames are released when it closes.
 **Reload images** (Ctrl+R) reads all current sources in the background and refreshes
 preview after every file succeeds. A failed reload retains all previous inputs;
 fix the source and retry. Reload pauses playback and requires a clean inspector
 draft, but does not edit the composition or history. Each replacement snapshot
-has the same 256 MiB bound; the old snapshot remains resident while it loads.
+has the same bound; the old snapshot remains resident while it loads.
 Loaded sources retained for undo/redo also count toward that bound and survive
 reloads. Reopening the project releases sources from discarded editor history.
 An Image node's **Replace source…** button chooses a new PNG or OpenEXR file in

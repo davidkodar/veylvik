@@ -123,7 +123,9 @@ impl Placement {
 
 /// How a video's code values become scene light: its transfer curve and its gamut. `Auto`
 /// follows the file's colour tags; camera log footage is usually untagged and needs a choice.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Hash,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum Curve {
     #[default]
@@ -139,7 +141,9 @@ pub enum Curve {
     Logc4,
     Vlog,
 }
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Hash,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum Gamut {
     #[default]
@@ -220,7 +224,9 @@ impl Gamut {
         }
     }
 }
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Hash,
+)]
 #[serde(deny_unknown_fields)]
 pub struct InputColour {
     #[serde(default)]

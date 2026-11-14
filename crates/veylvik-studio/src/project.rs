@@ -148,7 +148,7 @@ impl Project {
     }
     fn load_available_inputs(&mut self) {
         self.inputs.set_base_directory(self.base.clone());
-        let mut remaining = 256 * 1024 * 1024;
+        let mut remaining = veylvik_io::runtime::source_budget();
         for node in self.document.snapshot().nodes.values() {
             if let Some(asset) = node.operation.asset()
                 && !self.inputs.contains_key(asset)
@@ -442,22 +442,24 @@ pub fn load_inputs(
     let mut inputs = previous.clone();
     inputs.set_base_directory(base);
     let mut seen = std::collections::BTreeSet::new();
-    const BUDGET: u64 = 256 * 1024 * 1024;
+    let budget = veylvik_io::runtime::source_budget();
     for node in composition.nodes.values() {
         if let Some(asset) = node.operation.asset()
             && seen.insert(asset)
         {
             let replaced = inputs.source_budget(asset);
-            let remaining = BUDGET.saturating_sub(inputs.byte_size().saturating_sub(replaced));
+            let remaining = budget.saturating_sub(inputs.byte_size().saturating_sub(replaced));
             let image =
                 veylvik_io::footage::load(&base.join(asset), remaining.min(128 * 1024 * 1024))
                     .map_err(|error| format!("Image {asset}: {error}"))?;
             image.insert(&mut inputs, asset);
             // Aliased keys may still retain the replaced allocation.
-            if inputs.byte_size() > BUDGET {
-                return Err(
-                    "Reloaded and retained images exceed the 256 MiB host image budget".into(),
-                );
+            if inputs.byte_size() > budget {
+                return Err(format!(
+                    "Reloaded and retained images exceed the {} MiB host image budget",
+                    budget / (1024 * 1024)
+                )
+                .into());
             }
         }
     }

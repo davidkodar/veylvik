@@ -54,6 +54,26 @@ impl RenderLimits {
     }
 }
 /// Construct the headless renderer after validating the environment setting.
+/// Host memory the editor may retain for decoded footage across all sources: 1/16 of
+/// physical RAM, clamped to 256 MiB..2 GiB (256 MiB when RAM size is unknown).
+pub fn source_budget() -> u64 {
+    static BUDGET: std::sync::OnceLock<u64> = std::sync::OnceLock::new();
+    *BUDGET.get_or_init(|| {
+        let total = std::fs::read_to_string("/proc/meminfo")
+            .ok()
+            .and_then(|text| mem_total_bytes(&text));
+        source_budget_for(total)
+    })
+}
+fn mem_total_bytes(meminfo: &str) -> Option<u64> {
+    let line = meminfo.lines().find(|line| line.starts_with("MemTotal:"))?;
+    let mut fields = line.split_whitespace().skip(1);
+    let kib: u64 = fields.next()?.parse().ok()?;
+    (fields.next() == Some("kB")).then(|| kib.saturating_mul(1024))
+}
+fn source_budget_for(total: Option<u64>) -> u64 {
+    total.map_or(256 * MIB, |total| (total / 16).clamp(256 * MIB, 2048 * MIB))
+}
 pub fn renderer() -> Result<Renderer> {
     let limits = RenderLimits::from_env()?;
     let mut renderer = Renderer::new()?;
@@ -118,5 +138,15 @@ mod tests {
         assert_eq!(stats.idle_limit_bytes, 128 * MIB);
         assert_eq!(stats.frame_cache_limit_bytes, 64 * MIB);
         assert_eq!(stats.vector_cache_limit_bytes, 32 * MIB);
+    }
+    #[test]
+    fn source_budget_scales_with_ram_within_bounds() {
+        let info = "MemTotal:       32768000 kB\nMemFree: 1 kB\n";
+        assert_eq!(mem_total_bytes(info), Some(32_768_000 * 1024));
+        assert_eq!(mem_total_bytes("MemTotal: 12 MB\n"), None);
+        assert_eq!(source_budget_for(None), 256 * MIB);
+        assert_eq!(source_budget_for(Some(2048 * MIB)), 256 * MIB);
+        assert_eq!(source_budget_for(Some(16384 * MIB)), 1024 * MIB);
+        assert_eq!(source_budget_for(Some(128 * 1024 * MIB)), 2048 * MIB);
     }
 }

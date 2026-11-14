@@ -21,10 +21,12 @@ use veylvik_render::{GpuFrame, Renderer, VideoEncoding, VideoFormat};
 /// The last converted frame: index, requested size (None for full size), input colour.
 type Converted = (usize, Option<[u32; 2]>, InputColour, Arc<GpuFrame>);
 struct State {
-    cache: VecDeque<(usize, InputColour, Arc<Image>)>,
+    /// Converted host images this source holds in the shared host cache (at most 2).
+    cache: VecDeque<(usize, InputColour)>,
     decoder: Option<Session>,
     backend: Backend,
-    raw: VecDeque<(usize, Decoded)>,
+    /// Decoded frames this source holds in the shared host cache (at most 2).
+    raw: VecDeque<usize>,
     gpu: Option<Converted>,
     fallback: String,
     gpu_conversions: u64,
@@ -64,7 +66,8 @@ pub struct Video {
     tags: (u32, u32),
     /// Transforms for Footage nodes that override the tags, most recent last.
     overrides: Mutex<Vec<(InputColour, Arc<colour::Transform>)>>,
-    budget: u64,
+    /// Owner id of this source's entries in `host_cache`.
+    owner: u64,
     state: Mutex<State>,
     report: Mutex<DecodeDiagnostics>,
 }
@@ -364,7 +367,7 @@ impl Video {
             colour,
             tags: (primaries, transfer),
             overrides: Mutex::new(Vec::new()),
-            budget: (frame_bytes * 2).min(budget),
+            owner: crate::host_cache::owner(),
             report: Mutex::new(DecodeDiagnostics {
                 backend: "Opening".into(),
                 hardware: false,
@@ -498,7 +501,7 @@ impl Video {
                     Ok((decoder, bytes)) => {
                         state.backend = backend;
                         state.decoder = Some(decoder);
-                        state.raw.push_back((0, bytes));
+                        self.keep_raw(&mut state, 0, &bytes);
                         self.publish(&state);
                         return Ok(());
                     }
@@ -519,7 +522,7 @@ impl Video {
         let mut decoder = self.decoder(0, &Backend::Software)?;
         let bytes = decoder.read(&self.timestamps)?;
         state.decoder = Some(decoder);
-        state.raw.push_back((0, bytes));
+        self.keep_raw(&mut state, 0, &bytes);
         self.publish(&state);
         Ok(())
     }
@@ -527,8 +530,13 @@ impl Video {
         if stamp(&self.path)? != self.stamp {
             return Err("Video changed on disk; reload sources before continuing".into());
         }
-        let bytes = if let Some((_, bytes)) = state.raw.iter().find(|(n, _)| *n == index) {
-            bytes.clone()
+        let cached = state
+            .raw
+            .contains(&index)
+            .then(|| crate::host_cache::get::<Decoded>(self.raw_key(index)))
+            .flatten();
+        let bytes = if let Some(bytes) = cached {
+            (*bytes).clone()
         } else {
             let attempt = (|| {
                 // Native sessions discard skipped frames on the GPU and seek
@@ -563,8 +571,8 @@ impl Video {
                     state.backend = Backend::Software;
                     state.fallback = "hardware decoder failed during playback".into();
                     self.publish(state);
-                    state.raw.clear();
-                    state.cache.clear();
+                    self.clear_raw(state);
+                    self.clear_images(state);
                     state.gpu = None;
                     let mut decoder = self.decoder(index, &state.backend)?;
                     let bytes = decoder.read(&self.timestamps)?;
@@ -576,15 +584,7 @@ impl Video {
                 state.decoder = None;
                 return Err("Video changed during decoding; reload sources".into());
             }
-            while state.raw.len() >= 2
-                || state.raw.iter().map(|(_, b)| b.byte_len()).sum::<u64>() + bytes.byte_len()
-                    > self.budget
-            {
-                if state.raw.pop_front().is_none() {
-                    break;
-                }
-            }
-            state.raw.push_back((index, bytes.clone()));
+            self.keep_raw(state, index, &bytes);
             bytes
         };
         let mut encoding = self.encoding;
@@ -597,12 +597,64 @@ impl Video {
         Ok((bytes, encoding))
     }
 }
+const RAW: u8 = 0;
+const IMAGE: u8 = 1;
+impl Video {
+    fn raw_key(&self, index: usize) -> crate::host_cache::Key {
+        crate::host_cache::Key {
+            owner: self.owner,
+            kind: RAW,
+            index,
+            variant: 0,
+        }
+    }
+    fn image_key(&self, index: usize, input: InputColour) -> crate::host_cache::Key {
+        use std::hash::{Hash, Hasher};
+        let mut hash = std::collections::hash_map::DefaultHasher::new();
+        input.hash(&mut hash);
+        crate::host_cache::Key {
+            owner: self.owner,
+            kind: IMAGE,
+            index,
+            variant: hash.finish(),
+        }
+    }
+    /// Retain a decoded frame in the shared cache, keeping at most two per source.
+    fn keep_raw(&self, state: &mut State, index: usize, bytes: &Decoded) {
+        state.raw.retain(|n| *n != index);
+        while state.raw.len() >= 2 {
+            if let Some(old) = state.raw.pop_front() {
+                crate::host_cache::remove(self.raw_key(old));
+            }
+        }
+        crate::host_cache::put(
+            self.raw_key(index),
+            Arc::new(bytes.clone()),
+            bytes.byte_len(),
+        );
+        state.raw.push_back(index);
+    }
+    fn clear_raw(&self, state: &mut State) {
+        state.raw.clear();
+        crate::host_cache::forget(self.owner, Some(RAW));
+    }
+    fn clear_images(&self, state: &mut State) {
+        state.cache.clear();
+        crate::host_cache::forget(self.owner, Some(IMAGE));
+    }
+}
+impl Drop for Video {
+    fn drop(&mut self) {
+        crate::host_cache::forget(self.owner, None);
+    }
+}
 impl FrameSource for Video {
     fn cache_dependencies(&self) -> Option<Vec<PathBuf>> {
         Some(vec![self.path.clone()])
     }
+    /// Frames live in the shared `host_cache`, bounded there for all sources together.
     fn byte_budget(&self) -> u64 {
-        self.budget
+        0
     }
     fn info(&self) -> Option<SourceInfo> {
         let mut info = self.info.clone();
@@ -674,7 +726,7 @@ impl FrameSource for Video {
             {
                 return Ok(frame.clone());
             }
-            state.cache.clear();
+            self.clear_images(&mut state);
             state.gpu = None;
             let (bytes, mut encoding) = self.decoded(&mut state, index)?;
             encoding.primaries = transform.matrix;
@@ -733,12 +785,10 @@ impl FrameSource for Video {
             }
             let index = self.index(time)?;
             let mut state = self.state.lock().map_err(|_| "Video decoder unavailable")?;
-            if let Some((_, _, image)) = state
-                .cache
-                .iter()
-                .find(|(n, colour, _)| *n == index && *colour == input)
+            if state.cache.contains(&(index, input))
+                && let Some(image) = crate::host_cache::get::<Image>(self.image_key(index, input))
             {
-                return Ok(image.clone());
+                return Ok(image);
             }
             state.gpu = None;
             let (bytes, mut encoding) = self.decoded(&mut state, index)?;
@@ -750,12 +800,19 @@ impl FrameSource for Video {
             let bytes = bytes.stage()?;
             let pixels = transform.decoded_pixels(&bytes, encoding);
             let image = Arc::new(Image::new(self.info.width, self.info.height, pixels)?);
-            state.raw.clear();
-            let size = image.byte_size();
-            while (state.cache.len() as u64 + 1) * size > self.budget {
-                state.cache.pop_front();
+            self.clear_raw(&mut state);
+            state.cache.retain(|entry| *entry != (index, input));
+            while state.cache.len() >= 2 {
+                if let Some((n, colour)) = state.cache.pop_front() {
+                    crate::host_cache::remove(self.image_key(n, colour));
+                }
             }
-            state.cache.push_back((index, input, image.clone()));
+            crate::host_cache::put(
+                self.image_key(index, input),
+                image.clone(),
+                image.byte_size(),
+            );
+            state.cache.push_back((index, input));
             self.publish(&state);
             Ok(image)
         };

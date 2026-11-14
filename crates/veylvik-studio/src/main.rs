@@ -1046,7 +1046,7 @@ impl Studio {
             let path = path.canonicalize().map_err(|error| error.to_string())?;
             let asset = path.to_str().ok_or("Image path is not UTF-8")?;
             let replaced_bytes = inputs.source_budget(asset);
-            let budget = (256u64 * 1024 * 1024)
+            let budget = veylvik_io::runtime::source_budget()
                 .saturating_sub(inputs.byte_size() - replaced_bytes)
                 .min(128 * 1024 * 1024);
             let image =
@@ -1084,7 +1084,7 @@ impl Studio {
         let session = self.project.session;
         let revision = self.project.document.revision();
         let rate = self.project.document.snapshot().frame_rate;
-        let budget = (256u64 * 1024 * 1024)
+        let budget = veylvik_io::runtime::source_budget()
             .saturating_sub(self.project.inputs.byte_size())
             .min(128 * 1024 * 1024);
         let result = self.files.start(move || {

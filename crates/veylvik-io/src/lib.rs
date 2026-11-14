@@ -3,6 +3,7 @@ pub mod collect;
 pub mod export;
 pub mod export_audio;
 pub mod footage;
+pub mod host_cache;
 pub mod import;
 pub mod lut;
 pub mod presets;
