@@ -2024,13 +2024,41 @@ impl Studio {
                 self.step_frame(1);
             }
             let mut frame = self.project.frame;
+            // Reserve the project-wide digit count, rather than the current
+            // frame's width. Keep the same bounds while typing and dragging.
+            let digits = count.to_string().len().max(4);
+            let number_font = ui.style().drag_value_text_style.resolve(ui.style());
+            let prefix_font = egui::TextStyle::Button.resolve(ui.style());
+            let colour = ui.visuals().text_color();
+            let digit_width = ('0'..='9')
+                .map(|digit| {
+                    ui.painter()
+                        .layout_no_wrap(digit.to_string(), number_font.clone(), colour)
+                        .size()
+                        .x
+                })
+                .fold(0.0_f32, f32::max);
+            let prefix_width = ui
+                .painter()
+                .layout_no_wrap("Frame ".into(), prefix_font, colour)
+                .size()
+                .x;
+            let frame_width = prefix_width
+                + digit_width * digits as f32
+                + 2.0 * ui.spacing().button_padding.x
+                + 4.0;
             let changed = ui
-                .add(
-                    egui::DragValue::new(&mut frame)
-                        .range(0..=end_frame)
-                        .prefix("Frame "),
-                )
-                .changed();
+                .scope(|ui| {
+                    ui.spacing_mut().interact_size.x = frame_width;
+                    ui.add(
+                        egui::DragValue::new(&mut frame)
+                            .range(0..=end_frame)
+                            .prefix("Frame "),
+                    )
+                    .on_hover_text("Current frame: drag to scrub or click to type a frame number")
+                    .changed()
+                })
+                .inner;
             if changed && self.apply_draft() {
                 self.project.frame = frame;
                 self.playing = false;
