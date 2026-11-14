@@ -4,6 +4,7 @@ mod diagnostics;
 mod environment_bake;
 mod material_preview;
 pub use material_preview::material_preview_revision;
+pub mod flow;
 pub mod ocio;
 mod shadow_lighting;
 mod shutter;
@@ -103,6 +104,7 @@ pub struct Renderer {
     pub vector_cache_limit_bytes: u64,
     pool: Mutex<pool::Pool>,
     cache: Mutex<cache::FrameCache>,
+    flow_engine: Mutex<Option<Arc<flow::Engine>>>,
     ocio_cache: Mutex<std::collections::VecDeque<ocio::CachedProcessor>>,
     pub cache_limit_bytes: u64,
     owner: Arc<frame::DeviceIdentity>,
@@ -322,6 +324,7 @@ impl Renderer {
             pool: Mutex::new(pool::Pool::default()),
             cache: Mutex::new(cache::FrameCache::default()),
             ocio_cache: Mutex::new(Default::default()),
+            flow_engine: Mutex::new(None),
             cache_limit_bytes: 64 * 1024 * 1024,
             owner: Arc::new(frame::DeviceIdentity),
             pool_limit_bytes: 128 * 1024 * 1024,
@@ -534,8 +537,9 @@ impl Renderer {
             unreachable!()
         };
         Ok(GpuFrame {
+            flow_report: None,
             identity: frame::next_identity()?,
-            storage,
+            storage: Arc::new(storage),
             owner: self.owner.clone(),
             region,
             width: plan.width,
@@ -601,6 +605,14 @@ impl Renderer {
             .stats())
     }
     pub fn clear_frame_cache(&self) -> Result<()> {
+        if let Some(engine) = self
+            .flow_engine
+            .lock()
+            .map_err(|_| error("flow engine poisoned"))?
+            .as_ref()
+        {
+            engine.clear_cache()?;
+        }
         self.cache
             .lock()
             .map_err(|_| error("frame cache poisoned"))?

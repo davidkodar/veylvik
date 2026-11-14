@@ -249,9 +249,41 @@ impl Project {
     }
     pub fn add_at(
         &mut self,
-        operation: Operation,
+        mut operation: Operation,
         position: Option<veylvik_document::NodePosition>,
     ) -> Result<NodeId> {
+        if let Operation::OpticalFlow(flow) = &mut operation {
+            let doc = self.document.snapshot();
+            let mut pending = vec![self.selected];
+            let mut visited = std::collections::BTreeSet::new();
+            let mut rates = Vec::new();
+            while let Some(id) = pending.pop() {
+                if !visited.insert(id) {
+                    continue;
+                }
+                if let Some(node) = doc.nodes.get(&id) {
+                    if let Operation::Footage(clip) = &node.operation
+                        && let Some(rate) = self
+                            .inputs
+                            .info(&clip.asset)
+                            .and_then(|info| info.frame_rate)
+                    {
+                        rates.push(rate);
+                    }
+                    pending.extend(node.inputs.values().copied());
+                }
+            }
+            flow.source_rate = rates
+                .first()
+                .copied()
+                .filter(|first| {
+                    rates.iter().all(|rate| {
+                        i128::from(rate.ticks) * i128::from(first.rate)
+                            == i128::from(first.ticks) * i128::from(rate.rate)
+                    })
+                })
+                .unwrap_or(doc.frame_rate);
+        }
         let ports: Vec<_> = operation
             .inputs()
             .iter()

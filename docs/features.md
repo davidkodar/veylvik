@@ -257,7 +257,9 @@ Opened with **Add → Effect library…**; searchable by name, description or ca
 - **Underwater**: slow broad refraction and blue-green tint.
 - **Glitch Slices**: horizontal slices shifting sideways in a repeatable glitch.
 
-### Motion (3)
+### Motion (5)
+- **Shutter Motion Blur**: branch-local fractional-time exposure, separate preview/final quality.
+- **Smooth Slow Motion**: GPU optical-flow retiming with source cadence, confidence diagnostics and conservative fallback.
 - **Chromatic Echo**: opposing cyan and rose echoes drift around the source.
 - **Radial Echo**: expanding copies form a graphic tunnel.
 - **Orbit Echo**: two tinted ghost images orbit the source.

@@ -382,9 +382,11 @@ pub struct RenderedFrame {
 /// Retain this handle until all GPU consumers have completed their submissions.
 /// Dropping it releases its allocation; it is never recycled as an intermediate.
 /// A crop describes a view into the full-size buffer, not a packed allocation.
+#[derive(Clone)]
 pub struct GpuFrame {
+    pub(crate) flow_report: Option<crate::flow::FlowReport>,
     pub(crate) identity: u64,
-    pub(crate) storage: crate::pool::PinnedBuffer,
+    pub(crate) storage: Arc<crate::pool::PinnedBuffer>,
     pub(crate) owner: Arc<DeviceIdentity>,
     pub(crate) region: Region,
     pub(crate) width: u32,
@@ -392,6 +394,9 @@ pub struct GpuFrame {
 }
 pub(crate) struct DeviceIdentity;
 impl GpuFrame {
+    pub fn flow_report(&self) -> Option<crate::flow::FlowReport> {
+        self.flow_report
+    }
     pub fn region(&self) -> Region {
         self.region
     }

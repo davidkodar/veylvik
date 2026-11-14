@@ -233,7 +233,18 @@ pub fn build(id: &str) -> Result<Scene> {
         &mut doc,
         "Artwork motion",
         Operation::Affine(crate::nodes::Affine {
-            x: if id == "shutter_motion" {
+            x: if id == "smooth_slow_motion" {
+                Scalar::Smooth {
+                    keys: [(0, 0.), (12, -170.), (24, 0.), (36, 170.), (48, 0.)]
+                        .into_iter()
+                        .map(|(ticks, value)| Key {
+                            time: Time { ticks, rate: 24 },
+                            value,
+                            segment: None,
+                        })
+                        .collect(),
+                }
+            } else if id == "shutter_motion" {
                 Scalar::Linear {
                     keys: [
                         (0, 0.),
@@ -255,9 +266,21 @@ pub fn build(id: &str) -> Result<Scene> {
             } else {
                 0.0.into()
             },
-            y: cycle(9.0, -9.0),
-            scale_x: cycle(0.94, 1.04),
-            scale_y: cycle(0.94, 1.04),
+            y: if id == "smooth_slow_motion" {
+                0.0.into()
+            } else {
+                cycle(9.0, -9.0)
+            },
+            scale_x: if id == "smooth_slow_motion" {
+                1.0.into()
+            } else {
+                cycle(0.94, 1.04)
+            },
+            scale_y: if id == "smooth_slow_motion" {
+                1.0.into()
+            } else {
+                cycle(0.94, 1.04)
+            },
             rotation: if emblem { cycle(-6.0, 6.0) } else { 0.0.into() },
             pivot_x: 480.0.into(),
             pivot_y: 270.0.into(),
@@ -291,6 +314,33 @@ pub fn build(id: &str) -> Result<Scene> {
     let document = Document::new(doc)?;
     let mut composition = document.prepare(0, &instance.commands)?;
     composition.output = instance.output;
+    let before = if id == "smooth_slow_motion" {
+        for node in composition.nodes.values_mut() {
+            if let Operation::OpticalFlow(flow) = &mut node.operation {
+                flow.source_rate = Time::new(12, 1)?;
+            }
+        }
+        // Compare the same half-speed timestamps with nearest-source hold frames.
+        add(
+            &mut composition,
+            "Before: nearest source frames at half speed",
+            Operation::TimeRemap(crate::nodes::TimeRemap {
+                rate: 0.0.into(),
+                source_time: Scalar::Step {
+                    keys: (0..=96)
+                        .map(|ticks| Key {
+                            time: Time { ticks, rate: 24 },
+                            value: ((ticks as f32 / 4.).round()) / 12.,
+                            segment: None,
+                        })
+                        .collect(),
+                },
+            }),
+            &[("image", before)],
+        )
+    } else {
+        before
+    };
     composition.validate()?;
     Ok(Scene {
         composition,
@@ -390,6 +440,8 @@ mod tests {
                         || super::super::builtin::category(entry.id) == "Materials"
                     {
                         doc.nodes[&scene.before].inputs["foreground"]
+                    } else if entry.id == "smooth_slow_motion" {
+                        doc.nodes[&scene.before].inputs["image"]
                     } else {
                         scene.before
                     }

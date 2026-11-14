@@ -13,7 +13,12 @@ pub struct Builtin {
     pub label: &'static str,
     pub description: &'static str,
 }
-pub const ALL: [Builtin; 63] = [
+pub const ALL: [Builtin; 64] = [
+    Builtin {
+        id: "smooth_slow_motion",
+        label: "Smooth Slow Motion",
+        description: "Half-speed GPU optical flow with confidence rejection. Set Source frame rate to the clip cadence; inspect unreliable areas using Show confidence. Preview analysis is reduced, output remains full resolution.",
+    },
     Builtin {
         id: "shutter_motion",
         label: "Shutter Motion Blur",
@@ -364,6 +369,23 @@ pub fn build(id: &str) -> Result<Preset> {
         controls: Vec::new(),
     };
     let output = match id {
+        "smooth_slow_motion" => {
+            let operation =
+                serde_json::from_value(crate::registry::OPTICAL_FLOW.default_operation())
+                    .map_err(|e| crate::Error(e.to_string()))?;
+            let node = b.add("Optical flow retime", operation, &[("image", source)]);
+            for (name, label) in [
+                ("rate", "Playback speed"),
+                ("source_time", "Source offset"),
+                ("confidence", "Confidence threshold"),
+                ("source_rate", "Source frame rate"),
+                ("quality", "Analysis quality"),
+                ("diagnostic", "Show confidence (also in export)"),
+            ] {
+                b.expose(node, name, label)?;
+            }
+            node
+        }
         "shutter_motion" => {
             let node = b.add(
                 "Shutter motion blur",
@@ -704,7 +726,7 @@ pub const CATEGORIES: [&str; 8] = [
 ];
 pub fn category(id: &str) -> &'static str {
     match id {
-        "shutter_motion" => "Motion",
+        "shutter_motion" | "smooth_slow_motion" => "Motion",
         id if appearance::material_kind(id).is_some() => "Materials",
         "sun_glints" | "metallic_shine" | "soft_bloom" | "anamorphic_streaks" | "dream_focus"
         | "light_sweep" | "soft_vignette" | "spotlight" | "prismatic_glow" | "neon_outline" => {

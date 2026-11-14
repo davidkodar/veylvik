@@ -169,6 +169,7 @@ impl OcioProcessor {
             }
             let mut frame = scratch.frame(&output, input.width, input.height)?;
             frame.region = input.region;
+            frame.flow_report = input.flow_report;
             Ok(frame)
         })
     }

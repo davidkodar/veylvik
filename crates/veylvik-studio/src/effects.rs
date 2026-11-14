@@ -353,6 +353,41 @@ impl Studio {
                         );
                         value = serde_json::to_value(scalar).unwrap();
                     }
+                    ParameterKind::FrameRate => {
+                        ui.label(&control.label);
+                        let mut rate: veylvik_document::Time =
+                            serde_json::from_value(value.clone()).unwrap();
+                        ui.horizontal(|ui| {
+                            changed |= ui
+                                .add(egui::DragValue::new(&mut rate.ticks).range(1..=1_000_000))
+                                .on_hover_text("Source frame-rate numerator")
+                                .changed();
+                            ui.label("/");
+                            changed |= ui
+                                .add(egui::DragValue::new(&mut rate.rate).range(1..=1_000_000))
+                                .on_hover_text("Source frame-rate denominator; e.g. 24000 / 1001")
+                                .changed();
+                        });
+                        value = serde_json::to_value(rate).unwrap();
+                    }
+                    ParameterKind::FlowQuality => {
+                        use veylvik_document::nodes::FlowQuality;
+                        ui.label(&control.label);
+                        let mut quality: FlowQuality =
+                            serde_json::from_value(value.clone()).unwrap();
+                        egui::ComboBox::from_id_salt("flow-quality")
+                            .selected_text(format!("{quality:?}"))
+                            .show_ui(ui, |ui| {
+                                for q in
+                                    [FlowQuality::Fast, FlowQuality::Balanced, FlowQuality::Fine]
+                                {
+                                    changed |= ui
+                                        .selectable_value(&mut quality, q, format!("{q:?}"))
+                                        .changed();
+                                }
+                            });
+                        value = serde_json::to_value(quality).unwrap();
+                    }
                     ParameterKind::Boolean => {
                         let mut enabled = value.as_bool().unwrap_or(false);
                         changed = ui.checkbox(&mut enabled, &control.label).changed();

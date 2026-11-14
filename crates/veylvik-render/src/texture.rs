@@ -266,8 +266,9 @@ impl Renderer {
                 return Err(error("texture contains invalid alpha or non-finite pixels"));
             }
             Ok(GpuFrame {
+                flow_report: None,
                 identity: frame::next_identity()?,
-                storage: resources.pin(&output),
+                storage: std::sync::Arc::new(resources.pin(&output)),
                 owner: self.owner.clone(),
                 width,
                 height,

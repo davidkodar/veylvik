@@ -83,8 +83,9 @@ impl Scratch<'_, '_> {
             return Err(error("frame buffer size does not match its dimensions"));
         }
         Ok(GpuFrame {
+            flow_report: None,
             identity: crate::frame::next_identity()?,
-            storage: self.buffers.pin(buffer),
+            storage: Arc::new(self.buffers.pin(buffer)),
             owner: self.renderer.owner.clone(),
             region: Region {
                 x: 0,

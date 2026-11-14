@@ -5,6 +5,8 @@ use veylvik_document::Operation;
 struct Work<'a> {
     remaining: u32,
     preview: bool,
+    cache_sources: bool,
+    report: Option<crate::flow::FlowReport>,
     cancelled: &'a mut dyn FnMut() -> bool,
 }
 impl Renderer {
@@ -18,16 +20,18 @@ impl Renderer {
         preview: bool,
         mut cancelled: impl FnMut() -> bool,
     ) -> Result<Option<GpuFrame>> {
-        self.temporal_frame(
-            plan,
-            request,
-            inputs,
-            &mut Work {
-                remaining: 256,
-                preview,
-                cancelled: &mut cancelled,
-            },
-        )
+        let mut work = Work {
+            remaining: 256,
+            preview,
+            cache_sources: false,
+            report: None,
+            cancelled: &mut cancelled,
+        };
+        let mut frame = self.temporal_frame(plan, request, inputs, &mut work)?;
+        if let Some(frame) = &mut frame {
+            frame.flow_report = work.report;
+        }
+        Ok(frame)
     }
     fn temporal_frame(
         &self,
@@ -45,6 +49,10 @@ impl Renderer {
             ));
         }
         work.remaining -= 1;
+        if work.cache_sources && plan.temporal.is_empty() {
+            let frame = self.render_gpu_cached(plan, request, inputs)?;
+            return Ok((!(work.cancelled)()).then(|| frame.as_ref().clone()));
+        }
         let mut resolved = inputs.clone();
         for branch in &plan.temporal {
             let frame = match &branch.operation {
@@ -78,6 +86,61 @@ impl Renderer {
                 Operation::TimeRemap(remap) => {
                     let time = remap.source_at(request.time)?;
                     self.temporal_frame(&branch.plan, RenderRequest::full(time), inputs, work)?
+                }
+                Operation::OpticalFlow(flow) => {
+                    let (first, second, fraction) = flow.source_pair(request.time)?;
+                    let previous = work.cache_sources;
+                    work.cache_sources = true;
+                    let a = self.temporal_frame(
+                        &branch.plan,
+                        RenderRequest::full(first),
+                        inputs,
+                        work,
+                    )?;
+                    let b = if fraction == 0. && !flow.diagnostic {
+                        None
+                    } else {
+                        self.temporal_frame(
+                            &branch.plan,
+                            RenderRequest::full(second),
+                            inputs,
+                            work,
+                        )?
+                    };
+                    work.cache_sources = previous;
+                    let Some(a) = a else {
+                        return Ok(None);
+                    };
+                    if fraction == 0. && !flow.diagnostic {
+                        Some(a)
+                    } else {
+                        let Some(b) = b else {
+                            return Ok(None);
+                        };
+                        use veylvik_document::nodes::FlowQuality;
+                        let edge = match (flow.quality, work.preview) {
+                            (FlowQuality::Fast, _) => 512,
+                            (FlowQuality::Balanced, true) => 768,
+                            (FlowQuality::Fine, true) => 1024,
+                            (FlowQuality::Balanced, false) => 1024,
+                            (FlowQuality::Fine, false) => 1536,
+                        };
+                        let frame = self.interpolate_flow(
+                            &a,
+                            &b,
+                            crate::flow::FlowSettings {
+                                fraction,
+                                analysis_edge: edge,
+                                confidence: flow.confidence.at(request.time)?,
+                                diagnostic: flow.diagnostic,
+                            },
+                            &mut *work.cancelled,
+                        )?;
+                        if let Some(report) = frame.as_ref().and_then(|frame| frame.flow_report) {
+                            work.report = Some(report);
+                        }
+                        frame
+                    }
                 }
                 Operation::Ocio(node) => {
                     let Some(frame) = self.temporal_frame(

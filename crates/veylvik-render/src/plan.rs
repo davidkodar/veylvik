@@ -293,7 +293,10 @@ impl Plan {
                     .ok_or_else(|| error("Temporal graph expansion exceeds 16384 nodes"))?;
                 if matches!(
                     node.operation,
-                    Operation::MotionBlur(_) | Operation::TimeRemap(_) | Operation::Ocio(_)
+                    Operation::MotionBlur(_)
+                        | Operation::TimeRemap(_)
+                        | Operation::Ocio(_)
+                        | Operation::OpticalFlow(_)
                 ) {
                     let key = format!("\0temporal:{}", node.id);
                     temporal.push(TemporalBranch {
@@ -318,7 +321,10 @@ impl Plan {
                 todo.push((id, true));
                 if matches!(
                     node.operation,
-                    Operation::MotionBlur(_) | Operation::TimeRemap(_) | Operation::Ocio(_)
+                    Operation::MotionBlur(_)
+                        | Operation::TimeRemap(_)
+                        | Operation::Ocio(_)
+                        | Operation::OpticalFlow(_)
                 ) {
                     continue;
                 }

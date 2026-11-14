@@ -162,3 +162,78 @@ impl TimeRemap {
         )?)
     }
 }
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FlowQuality {
+    Fast,
+    #[default]
+    Balanced,
+    Fine,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OpticalFlow {
+    pub rate: Scalar,
+    pub source_time: Scalar,
+    pub source_rate: Time,
+    pub confidence: Scalar,
+    pub quality: FlowQuality,
+    pub diagnostic: bool,
+}
+pub static OPTICAL_FLOW: NodeType = NodeType {
+    type_id: "optical_flow",
+    version: 1,
+    label: "Optical flow retime",
+    description: "Retimes an upstream image branch using GPU bidirectional pyramidal optical flow. Source rate must match the original clip cadence. Forward/backward consistency rejects uncertain or occluded regions, which use the nearest source frame; major cuts also fall back. Confidence view shows reliable regions in green. Reduced analysis resolution in preview; output retains full composition dimensions. No audio retiming or vector motion blur.",
+    inputs: &["image"],
+    parameters: &[
+        scalar("rate", "factor", -100.0, 100.0, 0.5),
+        scalar("source_time", "seconds", -86400.0, 86400.0, 0.0),
+        other("source_rate", ParameterKind::FrameRate, "fps"),
+        scalar("confidence", "factor", 0.01, 1.0, 0.15),
+        other("quality", ParameterKind::FlowQuality, ""),
+        other("diagnostic", ParameterKind::Boolean, ""),
+    ],
+};
+node!(
+    OpticalFlow,
+    OPTICAL_FLOW,
+    [rate, source_time, confidence],
+    {
+        fn validate(&self) -> Result<()> {
+            if !(1.0..=1000.0).contains(&self.source_rate.seconds()?) {
+                return fail("Optical flow source frame rate must be 1..1000 fps");
+            }
+            Ok(())
+        }
+    }
+);
+impl OpticalFlow {
+    pub fn source_pair(&self, time: Time) -> Result<(Time, Time, f32)> {
+        let mapped = TimeRemap {
+            rate: self.rate.clone(),
+            source_time: self.source_time.clone(),
+        }
+        .source_at(time)?;
+        let num = i128::from(mapped.ticks) * i128::from(self.source_rate.ticks);
+        let den = i128::from(mapped.rate) * i128::from(self.source_rate.rate);
+        if den <= 0 || self.source_rate.ticks <= 0 {
+            return fail("Invalid source frame rate");
+        }
+        let frame = i64::try_from(num.div_euclid(den))
+            .map_err(|_| crate::Error("Source frame index overflow".into()))?;
+        let first = Time::at_frame(frame, self.source_rate)?;
+        let second = Time::at_frame(
+            frame
+                .checked_add(1)
+                .ok_or_else(|| crate::Error("Source frame index overflow".into()))?,
+            self.source_rate,
+        )?;
+        Ok((
+            first,
+            second,
+            (num.rem_euclid(den) as f64 / den as f64) as f32,
+        ))
+    }
+}

@@ -1590,3 +1590,15 @@ samples before exposure/display conversion, in linear premultiplied colour. At 1
 and higher zoom it retains the normal bilinear reconstruction. **Fast view** disables
 footprint filtering without modifying the composition or exports. Antialiasing cannot
 recover detail missing from a low-resolution composition enlarged beyond 100%.
+
+## Temporal effects and colour management
+
+**Motion blur** samples its upstream branch at fractional times on Vulkan. Place it after animated transforms/warps and before merging a background. Shutter angle and phase are animatable; preview/final sample counts are separate, capped at 32. Nested temporal evaluation is limited to 256 evaluations per request and eight boundary levels. Superseded previews cancel between samples. Existing camera blur is not removed.
+
+**Time remap** evaluates `source seconds = timeline seconds × rate + source time`. Negative rate reverses; zero freezes. Set rate to zero and keyframe Source time for explicit speed ramps. These image nodes do not retime audio. Clip trims and out-of-range transparency still apply.
+
+**Optical flow retime** evaluates adjacent source-cadence frames and interpolates using bidirectional pyramidal Lucas–Kanade motion fields on Vulkan. When adding a node, a single consistent upstream clip cadence is detected, otherwise composition cadence is used. Set Source frame rate explicitly for mixed-rate or already-retimed branches. Fast/Balanced/Fine cap final analysis at 512/1024/1536 pixels on the long edge; Balanced/Fine preview caps are 768/1024. The output retains full composition resolution. Confidence combines image texture, residual and forward/backward agreement; occluded or unreliable areas fall back to the nearest source, and major detected cuts fall back completely. Show confidence renders a green/red diagnostic **into the node output, including export**. A bounded one-pair motion-field cache supports repeated interpolation. Textureless regions, complex deformation, large motion or illumination changes can still fail; this is not learned optical flow or vector motion blur.
+
+**Colour management** under View separates preview and output OCIO transforms. Preview never changes exported pixels; enabled output transforms affect all exports, including EXR. An OCIO node supplies explicit branch conversions. Configurations can be built-in `ocio://` URIs or local config files with their LUTs. Native OpenColorIO 2.5 generates the GPU transform; unsupported dynamic uniforms fail explicitly. Config/LUT changes invalidate cached processors. External assets must accompany custom configurations; portable presets reject external config references.
+
+The default working domain is linear Rec.709. ACEScg project mode converts compositing, grading and spatial passes to AP1 with D60 adaptation; materials keep their authored Rec.709 interpretation through explicit boundaries. Public frames and EXR remain linear Rec.709 unless an explicit output transform changes them. AgX requires a config that supplies it, such as Blender's; it is a view transform, not a working colour space.

@@ -6,6 +6,8 @@ pub const MAX_ASSET_NAME: usize = 4096;
 #[derive(Debug, Clone, Copy, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ParameterKind {
+    FrameRate,
+    FlowQuality,
     OcioTransform,
     Brushing,
     StudioRig,
@@ -51,6 +53,8 @@ pub struct Parameter {
 impl Parameter {
     fn default_value(&self) -> Value {
         match self.kind {
+            ParameterKind::FrameRate => json!(crate::Time { ticks: 24, rate: 1 }),
+            ParameterKind::FlowQuality => json!(crate::nodes::FlowQuality::Balanced),
             ParameterKind::OcioTransform => {
                 json!(crate::color_management::OcioTransform::default())
             }
@@ -90,6 +94,12 @@ impl Parameter {
     }
     fn schema(&self) -> Value {
         match self.kind {
+            ParameterKind::FrameRate => {
+                json!({"type":"object","properties":{"ticks":{"type":"integer","minimum":1},"rate":{"type":"integer","minimum":1}},"required":["ticks","rate"],"additionalProperties":false})
+            }
+            ParameterKind::FlowQuality => {
+                json!({"type":"string","enum":["fast","balanced","fine"]})
+            }
             ParameterKind::OcioTransform => crate::color_management::OcioTransform::schema(),
             ParameterKind::Brushing => {
                 json!({"type":"string","enum":["auto","smooth","directional"]})
@@ -212,8 +222,9 @@ pub use crate::nodes::{
     AFFINE, ATMOSPHERE, BLEND, BLUR, CHANNEL_MASK, CHROMA_KEY, COLOR_CORRECT, COLORIZE,
     COMBINE_MASK, CONDENSATION, DISPLACE, DRIP, DUST, ELLIPSE, EXPOSURE, FADE, FIRE, FOOTAGE,
     FRACTAL_NOISE, GLASS, GRADIENT, IMAGE, LUMA_KEY, LUT, MASK, MATERIAL, MERGE, METALLIC_SHINE,
-    MORPHOLOGY, MOTION_BLUR, NOISE, OCIO, PATH, PATINA, PLANAR_TRACK, PLANAR_WARP, REFINE_MATTE,
-    SOLID, SUN_GLINTS, SURFACE_BLEND, SURFACE_REFLECTION, TEXT, TIME_REMAP, TRANSFORM,
+    MORPHOLOGY, MOTION_BLUR, NOISE, OCIO, OPTICAL_FLOW, PATH, PATINA, PLANAR_TRACK, PLANAR_WARP,
+    REFINE_MATTE, SOLID, SUN_GLINTS, SURFACE_BLEND, SURFACE_REFLECTION, TEXT, TIME_REMAP,
+    TRANSFORM,
 };
 pub static TYPES: &[&NodeType] = &[
     &SOLID,
@@ -229,6 +240,7 @@ pub static TYPES: &[&NodeType] = &[
     &FOOTAGE,
     &MOTION_BLUR,
     &TIME_REMAP,
+    &OPTICAL_FLOW,
     &OCIO,
     &AFFINE,
     &PLANAR_TRACK,

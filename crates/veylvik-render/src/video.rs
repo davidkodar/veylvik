@@ -278,8 +278,9 @@ impl Renderer {
                 .map_err(error)?;
             resources.completed();
             Ok(GpuFrame {
+                flow_report: None,
                 identity: frame::next_identity()?,
-                storage: resources.pin(&out),
+                storage: std::sync::Arc::new(resources.pin(&out)),
                 owner: self.owner.clone(),
                 width,
                 height,

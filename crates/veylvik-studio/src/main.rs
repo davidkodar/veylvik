@@ -2448,6 +2448,7 @@ impl eframe::App for Studio {
                     self.preview_pending = false;
                     match result.frame {
                         Ok(frame) => {
+                            let flow_report = frame.flow_report();
                             self.displayed = Some(self.display.frame(
                                 &self.renderer,
                                 frame,
@@ -2458,7 +2459,18 @@ impl eframe::App for Studio {
                             self.displayed_time = Some(result.request.time);
                             if !self.error && !self.files.busy() {
                                 self.last_render_ms = Some(result.elapsed.as_secs_f64() * 1000.);
-                                self.status = if self.playing { "Playing" } else { "Ready" }.into();
+                                self.status = if let Some(report) = flow_report {
+                                    if report.scene_cut {
+                                        "Flow: cut detected, using source frame".into()
+                                    } else {
+                                        format!(
+                                            "Flow: {:3.0}% source fallback",
+                                            report.fallback_fraction * 100.
+                                        )
+                                    }
+                                } else {
+                                    if self.playing { "Playing" } else { "Ready" }.into()
+                                };
                             }
                         }
                         Err(e) => {

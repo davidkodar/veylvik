@@ -125,3 +125,50 @@ impl Inspect for veylvik_document::nodes::TimeRemap {
         ui.weak("Only this image branch is retimed. Audio is unchanged; footage keeps its trim and transparent boundaries.");
     }
 }
+
+impl Inspect for veylvik_document::nodes::OpticalFlow {
+    fn inspect(&mut self, ui: &mut egui::Ui, cx: &mut InspectCx<'_>) {
+        use veylvik_document::nodes::FlowQuality;
+        ui.weak("Smooth slow motion between source frames. Uncertain regions use the nearest frame; audio is unchanged.");
+        ui.label("Source frame rate");
+        ui.horizontal(|ui| {
+            cx.dirty |= ui
+                .add(egui::DragValue::new(&mut self.source_rate.ticks).range(1..=1_000_000))
+                .on_hover_text("Original clip frame-rate numerator")
+                .changed();
+            ui.label("/");
+            cx.dirty |= ui
+                .add(egui::DragValue::new(&mut self.source_rate.rate).range(1..=1_000_000))
+                .on_hover_text("Original clip frame-rate denominator; e.g. 24000 / 1001")
+                .changed();
+            if ui
+                .button("Use composition")
+                .on_hover_text("Use the project frame rate as the source cadence")
+                .clicked()
+            {
+                self.source_rate = cx.frame_rate;
+                cx.dirty = true;
+            }
+        });
+        ui.label("Analysis quality");
+        egui::ComboBox::from_id_salt("flow-quality")
+            .selected_text(match self.quality {
+                FlowQuality::Fast => "Fast",
+                FlowQuality::Balanced => "Balanced",
+                FlowQuality::Fine => "Fine",
+            })
+            .show_ui(ui, |ui| {
+                for (value, label) in [
+                    (FlowQuality::Fast, "Fast"),
+                    (FlowQuality::Balanced, "Balanced"),
+                    (FlowQuality::Fine, "Fine"),
+                ] {
+                    cx.dirty |= ui
+                        .selectable_value(&mut self.quality, value, label)
+                        .changed();
+                }
+            });
+        cx.dirty|=ui.checkbox(&mut self.diagnostic,"Show confidence").on_hover_text("Green is reliable; red uses source-frame fallback. This changes the node output, including export.").changed();
+        ui.weak("Preview uses reduced analysis resolution. Output keeps the full project resolution. Increase confidence to reject more uncertain motion.");
+    }
+}

@@ -11,3 +11,5 @@ impl RenderNode for veylvik_document::nodes::Footage {}
 
 impl RenderNode for veylvik_document::nodes::MotionBlur {}
 impl RenderNode for veylvik_document::nodes::TimeRemap {}
+
+impl RenderNode for veylvik_document::nodes::OpticalFlow {}
