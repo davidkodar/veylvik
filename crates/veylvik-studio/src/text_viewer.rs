@@ -13,6 +13,12 @@ pub struct Editor {
     cached: Option<(Vec<u8>, [f32; 4])>,
 }
 impl Editor {
+    pub fn open(&mut self, id: NodeId) {
+        self.selected = Some(id);
+        self.active = true;
+        self.focus = true;
+    }
+
     pub fn toggle(&mut self, id: NodeId) {
         self.selected = Some(id);
         self.active = !self.active;
@@ -327,29 +333,113 @@ impl Editor {
     }
 }
 
-/// Hit-test editable source contours only where their source coordinates remain valid.
-pub fn pick(doc: &veylvik_document::Composition, time: Time, point: [f32; 2]) -> Option<NodeId> {
-    doc.nodes
-        .values()
-        .filter(|n| {
-            matches!(
-                n.operation,
-                Operation::Text(veylvik_document::nodes::Text { .. })
-            ) && crate::editable_text::handles_in_scene(doc, n.id)
-        })
-        .filter_map(|node| {
-            let mut op = node.operation.clone();
-            if let Operation::Text(veylvik_document::nodes::Text { typography, .. }) = &mut op {
-                typography.motion = veylvik_document::text::TextMotion::None;
+/// Walk back from the displayed output, mapping the click through each spatial
+/// transform. Source coordinates alone cannot select animated template titles.
+pub fn pick(
+    doc: &veylvik_document::Composition,
+    root: NodeId,
+    time: Time,
+    point: [f32; 2],
+) -> Option<NodeId> {
+    let mut pending = vec![(root, point)];
+    let mut visited = std::collections::BTreeSet::new();
+    let mut best: Option<(NodeId, f32)> = None;
+    while let Some((id, mut p)) = pending.pop() {
+        if !visited.insert((id, p[0].to_bits(), p[1].to_bits())) {
+            continue;
+        }
+        let node = doc.nodes.get(&id)?;
+        let sample = |name| node.operation.scalar(name).and_then(|s| s.at(time).ok());
+        match &node.operation {
+            Operation::Text(_) => {
+                let mut op = node.operation.clone();
+                if let Operation::Text(t) = &mut op {
+                    t.typography.motion = veylvik_document::text::TextMotion::None;
+                }
+                if let Ok(path) = veylvik_text::outline(&op, time) {
+                    let b = veylvik_text::bounds(&path);
+                    let area = (b[2] - b[0]) * (b[3] - b[1]);
+                    if p[0] >= b[0] - 6.
+                        && p[0] <= b[2] + 6.
+                        && p[1] >= b[1] - 6.
+                        && p[1] <= b[3] + 6.
+                        && best.is_none_or(|(_, old)| area < old)
+                    {
+                        best = Some((id, area));
+                    }
+                }
+                continue;
             }
-            let path = veylvik_text::outline(&op, time).ok()?;
-            let b = veylvik_text::bounds(&path);
-            (point[0] >= b[0] - 6.0
-                && point[0] <= b[2] + 6.0
-                && point[1] >= b[1] - 6.0
-                && point[1] <= b[3] + 6.0)
-                .then_some((node.id, (b[2] - b[0]) * (b[3] - b[1])))
-        })
-        .min_by(|a, b| a.1.total_cmp(&b.1))
-        .map(|(id, _)| id)
+            Operation::Transform(_) => {
+                p[0] -= sample("x")?;
+                p[1] -= sample("y")?;
+            }
+            Operation::Affine(_) => {
+                let (sx, sy) = (sample("scale_x")?, sample("scale_y")?);
+                if sx.abs() < 1e-6 || sy.abs() < 1e-6 {
+                    continue;
+                }
+                let (px, py) = (sample("pivot_x")?, sample("pivot_y")?);
+                let (sin, cos) = sample("rotation")?.to_radians().sin_cos();
+                let (x, y) = (p[0] - px - sample("x")?, p[1] - py - sample("y")?);
+                p = [
+                    px + (x * cos + y * sin) / sx,
+                    py + (-x * sin + y * cos) / sy,
+                ];
+            }
+            // These need the rendered displacement/warp to invert reliably.
+            Operation::Displace(_) | Operation::PlanarWarp(_) => continue,
+            _ => {}
+        }
+        for (port, input) in &node.inputs {
+            if port != "map" {
+                pending.push((*input, p));
+            }
+        }
+    }
+    best.map(|(id, _)| id)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn transformed_template_text_is_pickable_at_its_displayed_position() {
+        let mut doc = veylvik_document::presets::showcase::build("neon_outline")
+            .unwrap()
+            .composition;
+        let text = doc
+            .nodes
+            .values()
+            .find(|n| matches!(n.operation, Operation::Text(_)))
+            .unwrap()
+            .clone();
+        let time = Time::new(2, 1).unwrap();
+        let b = veylvik_text::bounds(&veylvik_text::outline(&text.operation, time).unwrap());
+        let center = [(b[0] + b[2]) * 0.5, (b[1] + b[3]) * 0.5];
+        doc.nodes.clear();
+        doc.nodes.insert(text.id, text.clone());
+        let transform = veylvik_document::Node::new(
+            "Animated title",
+            Operation::Affine(veylvik_document::nodes::Affine {
+                x: 700.0.into(),
+                y: 200.0.into(),
+                scale_x: (-0.5).into(),
+                scale_y: 1.5.into(),
+                rotation: 90.0.into(),
+                pivot_x: center[0].into(),
+                pivot_y: center[1].into(),
+            }),
+            &[("image", text.id)],
+        );
+        doc.output = transform.id;
+        doc.nodes.insert(transform.id, transform);
+        assert!(!crate::editable_text::handles_in_scene(&doc, text.id));
+        assert_eq!(
+            pick(&doc, doc.output, time, [center[0] + 700., center[1] + 200.]),
+            Some(text.id)
+        );
+        assert_eq!(pick(&doc, doc.output, time, center), None);
+        assert_eq!(pick(&doc, text.id, time, center), Some(text.id));
+    }
 }

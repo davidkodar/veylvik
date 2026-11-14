@@ -2672,6 +2672,21 @@ impl eframe::App for Studio {
                             ui.available_size().max(egui::vec2(1.0, 1.0)),
                             egui::Sense::click_and_drag(),
                         );
+                        let before_navigation = self.navigation.transform(canvas, image, ctx.pixels_per_point());
+                        let text_hit = if response.clicked()
+                            && !self.text_viewer.active && self.picking.is_none()
+                            && !self.tracking.open && !self.planar.open && !self.subject.open && !self.path_pen.active {
+                            response.interact_pointer_pos().and_then(|pointer| {
+                                let [ox,oy,sx,sy]=before_navigation.0;
+                                let local=pointer-canvas.min-egui::vec2(canvas.width()*ox,canvas.height()*oy);
+                                self.project.time().ok().and_then(|time| text_viewer::pick(self.project.document.snapshot(),self.project.preview.unwrap_or(self.project.document.snapshot().output),time,[local.x/(canvas.width()*sx/image.x),local.y/(canvas.height()*sy/image.y)]))
+                            })
+                        } else {None};
+                        if let Some(id)=text_hit
+                            && (id==self.draft.id || self.can_change_selection()) {
+                            if id!=self.draft.id { self.project.selected=id; self.refresh_draft(); }
+                            if response.double_clicked() { self.playing=false; self.text_viewer.open(id); }
+                        }
                         if !self.text_viewer.active
                             && self.picking.is_none()
                             && !self.tracking.open && !self.planar.open && !self.subject.open
@@ -2687,29 +2702,6 @@ impl eframe::App for Studio {
                         let transform =
                             self.navigation
                                 .transform(canvas, image, ctx.pixels_per_point());
-                        if response.clicked()
-                            && !self.text_viewer.active
-                            && self.project.preview.is_none()
-                            && let Some(pointer) = response.interact_pointer_pos()
-                            && let Ok(time) = self.project.time()
-                        {
-                            let [ox, oy, sx, sy] = transform.0;
-                            let local = pointer
-                                - canvas.min
-                                - egui::vec2(canvas.width() * ox, canvas.height() * oy);
-                            let point = [
-                                local.x / (canvas.width() * sx / image.x),
-                                local.y / (canvas.height() * sy / image.y),
-                            ];
-                            if let Some(id) =
-                                text_viewer::pick(self.project.document.snapshot(), time, point)
-                                && id != self.draft.id
-                                && self.can_change_selection()
-                            {
-                                self.project.selected = id;
-                                self.refresh_draft();
-                            }
-                        }
                         // egui keeps an open tooltip while the pointer stays inside the
                         // widget, even under a window opened later; require the viewer to
                         // be the top layer so dialogs over it never carry its hint.
@@ -2815,7 +2807,7 @@ impl eframe::App for Studio {
                                     self.draft.operation,
                                     Operation::Text(veylvik_document::nodes::Text { .. }) | Operation::Path(veylvik_document::nodes::Path { .. })
                                 ))
-                            && (root == self.draft.id
+                            && (self.text_viewer.active || root == self.draft.id
                                 || veylvik_document::occlusion::find(
                                     self.project.document.snapshot(),
                                     self.draft.id,
@@ -2862,7 +2854,8 @@ impl eframe::App for Studio {
                             if !transform_mask
                                 && !self.path_pen.active
                                 && (!is_text
-                                    || (!self.text_viewer.active && !self.text_viewer.layout))
+                                    || (!self.text_viewer.active && !self.text_viewer.layout
+                                        && (root == self.draft.id || editable_text::handles_in_scene(self.project.document.snapshot(),self.draft.id))))
                             {
                                 match handles::show(
                                     ui,
