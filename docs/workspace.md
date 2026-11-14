@@ -40,10 +40,20 @@ rotation, or Shift for exact 15-degree increments. Double-click the text to edit
 its wording.
 Layout-box editing remains a separate Text tools option for wrapping paragraphs.
 
-The keyframe strip uses labelled frame ticks that adapt to the available width
-and composition duration. Click or drag anywhere on the ruler to scrub; clicking
-near a keyframe snaps to it. The previous/next key buttons still navigate the
-selected node's applied keys.
+The frame ruler uses labelled ticks that adapt to the available width and
+composition duration. Its scope defaults to **Layer**, including connected effects
+and group members up to composition merge boundaries. Choose **Selected** for one
+node or **All** for every node. Inspector draft keys appear immediately; pause and
+finish/apply the edit before retiming. Previous/next key buttons follow this scope.
+
+Click a diamond to select it and seek; drag empty space to scrub. A number beside
+a diamond indicates several parameter keys at that frame. Hover to see their
+nodes, parameters and values. Drag a diamond to move those keys together, Shift-click
+to select several frames, or Alt-drag to duplicate. Delete removes selected keys
+only while the ruler has keyboard focus. Right-click to duplicate at the playhead,
+delete, or open a node in Animation. Retime gestures preview through the renderer
+and commit as one undo step on release; Escape cancels. Collisions are rejected
+without overwriting existing keys, and subframe spacing is preserved.
 
 Auto-arrange is enabled by default and adapts the node canvas to its available
 space. Manually moving a node switches it off so your arrangement stays yours.

@@ -1,11 +1,82 @@
 //! Cached navigation over the applied scalar keys of one node.
 use eframe::egui;
-use veylvik_document::{Composition, NodeId, Time};
+use std::collections::{BTreeMap, BTreeSet};
+use veylvik_document::{Command, Composition, Node, NodeId, Operation, Time};
+mod editing;
 
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+pub enum Scope {
+    Selected,
+    #[default]
+    Layer,
+    All,
+}
+#[derive(Clone)]
+struct Mark {
+    node: NodeId,
+    parameter: String,
+    index: usize,
+    hint: String,
+}
+pub enum Action {
+    Seek(i64),
+    Commit(Vec<Command>),
+    Preview,
+    Open(NodeId),
+    Error(String),
+}
 #[derive(Default)]
 pub struct Keys {
-    source: Option<(u64, NodeId)>,
+    source: Option<(u64, NodeId, Scope, Vec<u8>)>,
+    pub scope: Scope,
     frames: Vec<i64>,
+    marks: BTreeMap<i64, Vec<Mark>>,
+    selected: BTreeSet<i64>,
+    drag: Option<editing::Drag>,
+    preview: Option<Vec<Command>>,
+    error: Option<String>,
+    focus: Option<egui::Id>,
+}
+
+fn layer_nodes(doc: &Composition, selected: NodeId, scope: Scope) -> BTreeSet<NodeId> {
+    if scope == Scope::All {
+        return doc.nodes.keys().copied().collect();
+    }
+    let mut ids = BTreeSet::from([selected]);
+    if scope == Scope::Selected {
+        return ids;
+    }
+    let mut pending = vec![selected];
+    while let Some(id) = pending.pop() {
+        let mut candidates = Vec::new();
+        for g in doc.groups.values().filter(|g| g.members.contains(&id)) {
+            candidates.extend(g.members.iter().copied());
+        }
+        if let Some(n) = doc.nodes.get(&id) {
+            if !matches!(n.operation, Operation::Merge(_)) {
+                candidates.extend(n.inputs.values().copied().filter(|id| {
+                    doc.nodes
+                        .get(id)
+                        .is_some_and(|n| !matches!(n.operation, Operation::Merge(_)))
+                }));
+            }
+            candidates.extend(
+                doc.nodes
+                    .values()
+                    .filter(|n| {
+                        !matches!(n.operation, Operation::Merge(_))
+                            && n.inputs.values().any(|source| *source == id)
+                    })
+                    .map(|n| n.id),
+            );
+        }
+        for next in candidates {
+            if ids.insert(next) {
+                pending.push(next);
+            }
+        }
+    }
+    ids
 }
 
 // Round to the nearest output frame, with exact integer arithmetic. Keys outside
@@ -35,34 +106,101 @@ fn tick_step(count: u32, width: f32) -> u32 {
 }
 
 impl Keys {
+    #[cfg(test)]
     pub fn sync(&mut self, doc: &Composition, revision: u64, selected: NodeId) {
-        if self.source == Some((revision, selected)) {
+        self.scope = Scope::Selected;
+        self.sync_live(doc, revision, selected, &[]);
+    }
+    pub fn sync_live(
+        &mut self,
+        doc: &Composition,
+        revision: u64,
+        selected: NodeId,
+        drafts: &[Node],
+    ) {
+        let signature = serde_json::to_vec(drafts).unwrap_or_default();
+        let source = (revision, selected, self.scope, signature);
+        if self.source.as_ref() == Some(&source) {
             return;
         }
-        self.source = Some((revision, selected));
-        self.frames.clear();
-        if let Some(node) = doc.nodes.get(&selected) {
-            if let veylvik_document::Operation::Path(veylvik_document::nodes::Path { geometry }) =
-                &node.operation
-            {
-                self.frames.extend(
-                    geometry
-                        .keys
-                        .iter()
-                        .filter_map(|key| frame(key.time, doc.frame_rate, doc.frame_count)),
-                );
+        let scope_changed = self
+            .source
+            .as_ref()
+            .is_some_and(|s| s.1 != selected || s.2 != self.scope);
+        self.source = Some(source);
+        self.drag = None;
+        self.preview = None;
+        if scope_changed {
+            self.selected.clear();
+        }
+        self.marks.clear();
+        for id in layer_nodes(doc, selected, self.scope) {
+            let Some(node) = drafts
+                .iter()
+                .find(|n| n.id == id)
+                .or_else(|| doc.nodes.get(&id))
+            else {
+                continue;
+            };
+            if let Operation::Path(veylvik_document::nodes::Path { geometry }) = &node.operation {
+                for (index, key) in geometry.keys.iter().enumerate() {
+                    if let Some(f) = frame(key.time, doc.frame_rate, doc.frame_count) {
+                        self.marks.entry(f).or_default().push(Mark {
+                            node: id,
+                            parameter: "geometry".into(),
+                            index,
+                            hint: format!("{} · Shape", node.label),
+                        });
+                    }
+                }
             }
             for parameter in node.operation.descriptor().parameters {
                 if let Some(keys) = node.operation.scalar(parameter.name).and_then(|s| s.keys()) {
-                    self.frames.extend(
-                        keys.iter()
-                            .filter_map(|key| frame(key.time, doc.frame_rate, doc.frame_count)),
-                    );
+                    for (index, key) in keys.iter().enumerate() {
+                        if let Some(f) = frame(key.time, doc.frame_rate, doc.frame_count) {
+                            self.marks.entry(f).or_default().push(Mark {
+                                node: id,
+                                parameter: parameter.name.into(),
+                                index,
+                                hint: format!(
+                                    "{} · {} = {:.3}",
+                                    node.label, parameter.name, key.value
+                                ),
+                            });
+                        }
+                    }
                 }
             }
         }
-        self.frames.sort_unstable();
-        self.frames.dedup();
+        self.frames = self.marks.keys().copied().collect();
+        self.selected.retain(|f| self.marks.contains_key(f));
+    }
+    pub fn scope_controls(&mut self, ui: &mut egui::Ui) {
+        egui::ComboBox::from_id_salt("ruler-scope")
+            .width(90.)
+            .selected_text(match self.scope {
+                Scope::Selected => "Selected",
+                Scope::Layer => "Layer",
+                Scope::All => "All",
+            })
+            .show_ui(ui, |ui| {
+                ui.selectable_value(&mut self.scope, Scope::Selected, "Selected node");
+                ui.selectable_value(&mut self.scope, Scope::Layer, "Layer + effects");
+                ui.selectable_value(&mut self.scope, Scope::All, "All nodes");
+            })
+            .response
+            .on_hover_text(
+                "Keyframe scope: one node, its connected layer and effects, or all nodes",
+            );
+    }
+    pub fn preview_commands(&self) -> Option<&[Command]> {
+        self.preview.as_deref()
+    }
+    pub fn has_focus(&self, ctx: &egui::Context) -> bool {
+        self.focus.is_some_and(|id| ctx.memory(|m| m.has_focus(id)))
+    }
+    pub fn dragging(&self) -> bool {
+        self.drag.is_some()
     }
 
     pub fn adjacent(&self, current: i64, forward: bool) -> Option<i64> {
@@ -78,9 +216,20 @@ impl Keys {
         }
     }
 
-    pub fn show(&self, ui: &mut egui::Ui, current: i64, count: u32) -> Option<i64> {
+    pub fn show(
+        &mut self,
+        ui: &mut egui::Ui,
+        current: i64,
+        doc: &Composition,
+        editable: bool,
+    ) -> Vec<Action> {
+        let count = doc.frame_count;
+        let mut actions = Vec::new();
         let mut seek = None;
-        ui.weak(format!("{} keys", self.frames.len()));
+        ui.weak(format!(
+            "{} keys",
+            self.marks.values().map(Vec::len).sum::<usize>()
+        )).on_hover_text(if editable {"Keys in the chosen scope; stacked diamonds move all keys at that frame together."} else {"Includes inspector edits. Finish or apply edits and pause playback before dragging keys."});
         for (forward, label, hint) in [
             (false, "Prev key", "Alt+Left"),
             (true, "Next key", "Alt+Right"),
@@ -108,6 +257,14 @@ impl Keys {
             egui::vec2(ui.available_width().max(40.0), 44.0),
             egui::Sense::click_and_drag(),
         );
+        self.focus = Some(response.id);
+        response.widget_info(|| {
+            egui::WidgetInfo::labeled(
+                egui::WidgetType::Other,
+                ui.is_enabled(),
+                "Frame ruler and keyframes",
+            )
+        });
         let rect = rect.shrink2(egui::vec2(4.0, 2.0));
         let end = count.saturating_sub(1).max(1) as f32;
         let x = |frame: i64| rect.left() + frame as f32 / end * rect.width();
@@ -152,10 +309,17 @@ impl Keys {
         // Bound marker density without losing the current-key highlight.
         let mut previous = None;
         for frame in &self.frames {
-            let at = x(*frame).round();
+            let shown_frame = if self.selected.contains(frame) {
+                frame + self.drag.as_ref().map_or(0, |d| d.offset)
+            } else {
+                *frame
+            };
+            let at = x(shown_frame).round();
             if previous.is_none_or(|last: f32| at - last >= 6.0) || *frame == current {
                 let c = egui::pos2(at, rect.bottom() - 10.);
-                let colour = if *frame == current {
+                let colour = if self.selected.contains(frame) {
+                    crate::design::ACCENT
+                } else if *frame == current {
                     egui::Color32::from_rgb(239, 99, 109)
                 } else {
                     egui::Color32::from_rgb(210, 165, 90)
@@ -170,6 +334,15 @@ impl Keys {
                     colour,
                     egui::Stroke::NONE,
                 ));
+                if self.marks[frame].len() > 1 {
+                    painter.text(
+                        c + egui::vec2(7., -9.),
+                        egui::Align2::LEFT_BOTTOM,
+                        self.marks[frame].len().to_string(),
+                        egui::FontId::proportional(10.),
+                        colour,
+                    );
+                }
                 previous = Some(at);
             }
         }
@@ -182,23 +355,54 @@ impl Keys {
                 .filter_map(|i| self.frames.get(i).copied())
                 .min_by_key(|f| f.abs_diff(target))
         });
+        let hit = nearest.filter(|f| {
+            response.hover_pos().is_some_and(|p| {
+                (x(*f) - p.x).abs() <= 7. && (p.y - (rect.bottom() - 10.)).abs() <= 12.
+            })
+        });
+        self.interact(
+            ui,
+            &response,
+            hit,
+            rect,
+            end,
+            doc,
+            current,
+            editable,
+            &mut actions,
+        );
         if (response.clicked() || response.dragged())
+            && hit.is_none()
+            && !self.dragging()
             && let Some(pointer) = response.interact_pointer_pos()
         {
-            let target = ((pointer.x - rect.left()) / rect.width() * end)
-                .round()
-                .clamp(0., count.saturating_sub(1) as f32) as i64;
             seek = Some(
-                nearest
-                    .filter(|f| (x(*f) - pointer.x).abs() <= 7.)
-                    .unwrap_or(target),
+                ((pointer.x - rect.left()) / rect.width() * end)
+                    .round()
+                    .clamp(0., count.saturating_sub(1) as f32) as i64,
             );
         }
-        response.on_hover_text(match nearest {
-            Some(frame) => format!("Selected node: {} keyed frames. Click to seek frame {frame}.\nApplied keys only; subframe keys use the nearest frame. Keys outside the composition are hidden.", self.frames.len()),
-            None => "Frames · click or drag to scrub. Select an animated node to see its keyframes.".into(),
-        });
-        seek
+        let hint = if let Some(f) = hit {
+            let lines = self.marks[&f]
+                .iter()
+                .map(|m| m.hint.as_str())
+                .collect::<Vec<_>>()
+                .join("\n");
+            format!(
+                "Frame {f} · {:.3} s · {} keys\n{lines}\nClick to select and seek; drag to retime together. Shift: multiple; Alt-drag: copy. Right-click for actions.",
+                f as f64 * doc.frame_rate.rate as f64 / doc.frame_rate.ticks as f64,
+                self.marks[&f].len()
+            )
+        } else {
+            "Frames · click or drag empty space to scrub. Diamonds show keys for the chosen scope."
+                .into()
+        };
+        response.on_hover_text(hint);
+        if let Some(frame) = seek {
+            actions.push(Action::Seek(frame));
+        }
+
+        actions
     }
 }
 

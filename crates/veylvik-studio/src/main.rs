@@ -626,7 +626,16 @@ impl Studio {
             scheduler.cancel()?;
             Ok::<_, Box<dyn std::error::Error>>(scheduler.submit(
                 self.project.document.revision(),
-                if self.draft_dirty
+                if let Some(commands) = self.key_timeline.preview_commands() {
+                    let doc = self
+                        .project
+                        .document
+                        .prepare(self.project.document.revision(), commands)?;
+                    std::sync::Arc::new(veylvik_render::Plan::compile_output(
+                        &doc,
+                        self.project.preview.unwrap_or(doc.output),
+                    )?)
+                } else if self.draft_dirty
                     && matches!(
                         self.draft.operation,
                         Operation::Text(veylvik_document::nodes::Text { .. })
@@ -1893,10 +1902,41 @@ impl Studio {
         }
     }
     fn sync_key_timeline(&mut self) {
-        self.key_timeline.sync(
+        let mut drafts = Vec::new();
+        if self.draft_dirty {
+            drafts.push(self.draft.clone());
+            drafts.extend(self.text_edits.values().cloned());
+            for ((id, control), value) in &self.effects.edits {
+                if let Some(control) = self
+                    .project
+                    .document
+                    .snapshot()
+                    .groups
+                    .get(id)
+                    .and_then(|g| g.controls.get(control))
+                    && let Ok(scalar) =
+                        serde_json::from_value::<veylvik_document::Scalar>(value.clone())
+                {
+                    let index = drafts
+                        .iter()
+                        .position(|n| n.id == control.node)
+                        .unwrap_or_else(|| {
+                            drafts.push(
+                                self.project.document.snapshot().nodes[&control.node].clone(),
+                            );
+                            drafts.len() - 1
+                        });
+                    if let Some(target) = drafts[index].operation.scalar_mut(&control.parameter) {
+                        *target = scalar;
+                    }
+                }
+            }
+        }
+        self.key_timeline.sync_live(
             self.project.document.snapshot(),
             self.project.document.revision(),
             self.project.selected,
+            &drafts,
         );
     }
     fn seek_key(&mut self, forward: bool) {
@@ -1999,16 +2039,49 @@ impl Studio {
             ui.label(format!("of {count} frames"));
             let fps = self.project.document.snapshot().frame_rate;
             ui.weak(format!("{} / {} fps", fps.ticks, fps.rate));
+            self.key_timeline.scope_controls(ui);
         });
-        ui.horizontal(|ui| {
-            if let Some(frame) = self.key_timeline.show(ui, self.project.frame, count)
-                && self.apply_draft()
-            {
-                self.project.frame = frame;
-                self.playing = false;
-                self.request_preview();
+        self.sync_key_timeline();
+        let actions = ui
+            .horizontal(|ui| {
+                self.key_timeline.show(
+                    ui,
+                    self.project.frame,
+                    self.project.document.snapshot(),
+                    !self.draft_dirty && !self.playing,
+                )
+            })
+            .inner;
+        for action in actions {
+            match action {
+                key_timeline::Action::Seek(frame) => {
+                    if self.apply_draft() {
+                        self.project.frame = frame;
+                        self.playing = false;
+                        self.request_preview();
+                    }
+                }
+                key_timeline::Action::Commit(commands) => match self.project.apply(&commands) {
+                    Ok(()) => {
+                        self.refresh_draft();
+                        self.request_preview();
+                    }
+                    Err(e) => {
+                        self.request_preview();
+                        self.fail(e);
+                    }
+                },
+                key_timeline::Action::Preview => self.request_preview(),
+                key_timeline::Action::Open(id) => {
+                    if self.can_change_selection() {
+                        self.project.selected = id;
+                        self.refresh_draft();
+                        self.animation_editor.visible = true;
+                    }
+                }
+                key_timeline::Action::Error(error) => self.fail(error),
             }
-        });
+        }
         self.planar_quality(ui);
     }
     fn animation_workspace(&mut self, ui: &mut egui::Ui) {
@@ -2428,8 +2501,11 @@ impl eframe::App for Studio {
         if !self.files.busy()
             && !self.authoring_dialog_open()
             && self.confirm.is_none()
-            && (!ctx.egui_wants_keyboard_input() || self.animation_editor.has_focus(&ctx))
+            && (!ctx.egui_wants_keyboard_input()
+                || self.animation_editor.has_focus(&ctx)
+                || self.key_timeline.has_focus(&ctx))
             && !self.animation_editor.dragging()
+            && !self.key_timeline.dragging()
         {
             if ctx.input_mut(|i| {
                 i.consume_key(egui::Modifiers::CTRL | egui::Modifiers::SHIFT, egui::Key::S)
