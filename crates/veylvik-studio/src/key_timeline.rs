@@ -269,14 +269,14 @@ impl Keys {
         let end = count.saturating_sub(1).max(1) as f32;
         let x = |frame: i64| rect.left() + frame as f32 / end * rect.width();
         let painter = ui.painter();
-        painter.rect_filled(rect, 2.0, egui::Color32::from_rgb(28, 32, 40));
+        painter.rect_filled(rect, 2.0, crate::theme::palette(ui.ctx()).canvas);
         let step = tick_step(count, rect.width());
         for frame in (0..count).step_by(step as usize) {
             let at = x(i64::from(frame));
             painter.vline(
                 at,
                 rect.top() + 15.0..=rect.bottom(),
-                (1., egui::Color32::from_gray(65)),
+                (1., crate::theme::palette(ui.ctx()).border),
             );
             painter.text(
                 egui::pos2(at + 2., rect.top()),
@@ -292,7 +292,7 @@ impl Keys {
                         painter.vline(
                             x(f as i64),
                             rect.bottom() - 4. ..=rect.bottom(),
-                            (1., egui::Color32::from_gray(65)),
+                            (1., crate::theme::palette(ui.ctx()).border),
                         );
                     }
                 }
@@ -301,7 +301,7 @@ impl Keys {
         painter.hline(
             rect.x_range(),
             rect.bottom() - 10.,
-            (1.0, egui::Color32::from_gray(70)),
+            (1.0, crate::theme::palette(ui.ctx()).border),
         );
         if (0..i64::from(count)).contains(&current) {
             painter.vline(x(current), rect.y_range(), (1.0, ui.visuals().text_color()));
@@ -318,7 +318,7 @@ impl Keys {
             if previous.is_none_or(|last: f32| at - last >= 6.0) || *frame == current {
                 let c = egui::pos2(at, rect.bottom() - 10.);
                 let colour = if self.selected.contains(frame) {
-                    crate::design::ACCENT
+                    crate::design::accent(ui.ctx())
                 } else if *frame == current {
                     egui::Color32::from_rgb(239, 99, 109)
                 } else {

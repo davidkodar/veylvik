@@ -198,7 +198,7 @@ impl Editor {
             ui.scope_builder(egui::UiBuilder::new().max_rect(rect), |ui| {
                 egui::Frame::new()
                     .fill(Color32::from_rgba_unmultiplied(18, 20, 25, 240))
-                    .stroke(Stroke::new(1.0_f32, crate::design::ACCENT))
+                    .stroke(Stroke::new(1.0_f32, crate::design::accent(ui.ctx())))
                     .inner_margin(6.0)
                     .show(ui, |ui| {
                         ui.horizontal(|ui| {
@@ -295,14 +295,14 @@ impl Editor {
                 ];
                 painter.add(egui::Shape::line(
                     corners.map(map).to_vec(),
-                    Stroke::new(1.0_f32, crate::design::ACCENT),
+                    Stroke::new(1.0_f32, crate::design::accent(ui.ctx())),
                 ));
                 let corner = egui::vec2(
                     if a[0] > 0.5 { 0.0 } else { 1.0 },
                     if a[1] > 0.5 { 0.0 } else { 1.0 },
                 );
                 let handle = map(egui::vec2(left + w * corner.x, top + h * corner.y));
-                painter.circle_filled(handle, 5.0, crate::design::ACCENT);
+                painter.circle_filled(handle, 5.0, crate::design::accent(ui.ctx()));
                 let response = crate::handles::interact(
                     ui,
                     Rect::from_center_size(handle, Vec2::splat(16.0)).intersect(canvas),

@@ -207,6 +207,32 @@ the file; adding a LUT from the Add menu opens the chooser straight away. The `.
 file is a project asset like an image, so save-as, recovery, missing-media repair and
 reloading treat it the same way.
 
+## Preferences
+
+Open **Edit → Preferences** or **Ctrl+,**. Settings are per user, stored atomically in
+`$XDG_CONFIG_HOME/veylvik/preferences.json` (fallback `~/.config/veylvik/preferences.json`).
+They do not modify the composition or its undo history. Apply saves; Cancel discards
+changes, including the live theme preview. Each section has its own reset.
+
+- **Playback:** optionally start from frame zero every time Play/Space starts playback.
+  Pausing keeps the current frame visible. Looping defaults on and can also be toggled
+  with the timeline loop button. Without looping, playback stops at the final frame;
+  starting again from that frame starts at zero.
+- **Appearance:** Dark (default), Light, Midnight Blue, Evergreen, or Follow system /
+  Omarchy. Omarchy's active `colors.toml` is read from its state directory, with the
+  legacy configuration path supported. Other desktops use their portal colour-scheme
+  preference; unavailable settings fall back to Dark. Changes are polled every two
+  seconds, without changing desktop configuration. Theme previews immediately;
+  interface scale (75–200%) applies on Apply. These settings do not affect renders.
+- **Workspace:** automatic arrangement for new/opened graphs. Changing this preference
+  also updates the current graph; applying an unrelated preference preserves manual placement.
+- **Performance:** animated library hover previews, default fast viewer filtering,
+  and GPU buffer budget (64–16384 MiB, default 2048). The budget requires restart and
+  covers renderer buffers, not total driver memory. `VEYLVIK_GPU_BUDGET_MIB` overrides
+  it. CLI render budgets remain environment-controlled. Fast filtering never affects export.
+- **Recovery:** enable recovery copies and choose a 10–300 second interval. Disabling
+  pauses future writes; existing copies remain available under File → Recover unsaved work.
+
 ## Native editor
 
 ```sh

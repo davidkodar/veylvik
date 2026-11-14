@@ -34,6 +34,7 @@ mod path_handles;
 mod path_pen;
 mod path_transform;
 mod planar;
+mod preferences;
 mod preset_library;
 mod preview_images;
 mod project;
@@ -48,6 +49,7 @@ mod text_effects;
 mod text_handles;
 mod text_outline;
 mod text_viewer;
+mod theme;
 mod title_styles;
 mod tracking;
 mod transform_handles;
@@ -100,7 +102,10 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             );
         }
     }
-    let render_limits = veylvik_io::runtime::RenderLimits::from_env()?;
+    let preferences = preferences::Preferences::new();
+    let render_limits = veylvik_io::runtime::RenderLimits::from_env_with_default(
+        preferences.values.gpu_budget_mib,
+    )?;
     let project = Project::open(path.as_deref())?;
     let (instance, adapter, device, queue) = pollster::block_on(veylvik_render::create_gpu())?;
     let setup = egui_wgpu::WgpuSetupExisting {
@@ -176,6 +181,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             let recovery =
                 recovery::Recovery::new(recovery::default_store()?, &project, cc.egui_ctx.clone());
             let mut app = Studio {
+                preferences,
+                system_theme: theme::System::default(),
                 control,
                 control_error,
                 picking: None,
@@ -237,6 +244,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 theme_checked: Instant::now() - Duration::from_secs(10),
                 accent: egui::Color32::from_rgb(255, 214, 10),
             };
+            app.apply_preferences(None, &cc.egui_ctx);
             app.request_preview();
             Ok(Box::new(app))
         }),
@@ -253,6 +261,8 @@ enum Leave {
     Close,
 }
 struct Studio {
+    preferences: preferences::Preferences,
+    system_theme: theme::System,
     recovery: recovery::Recovery,
     control: Option<veylvik_control::ipc::Server>,
     /// Why the default live-control socket could not be opened, shown on the menu bar.
@@ -318,7 +328,8 @@ struct Studio {
 }
 impl Studio {
     fn authoring_dialog_open(&self) -> bool {
-        self.library.open
+        self.preferences.open
+            || self.library.open
             || self.browser.choosing()
             || self.occlusion.open
             || self.effects.open
@@ -333,6 +344,8 @@ impl Studio {
         let recovery = recovery::Recovery::new(self.recovery.store.clone(), &project, ctx.clone());
         self.recovery.finish(true);
         self.recovery = recovery;
+        self.recovery.enabled = self.preferences.values.recovery_enabled;
+        self.recovery.interval = Duration::from_secs(self.preferences.values.recovery_seconds);
         self.outline_controls = text_outline::Controls::default();
         self.node_palette = node_palette::Controls::default();
         self.node_finder = node_finder::Controls::default();
@@ -353,6 +366,8 @@ impl Studio {
         self.occlusion = Default::default();
         self.project = project;
         self.graph = graph::Graph::default();
+        self.graph
+            .set_auto_arrange(self.preferences.values.auto_arrange);
         self.effects = effects::Controls::default();
         self.library = preset_library::Library::default();
         self.navigation.fit();
@@ -1461,12 +1476,38 @@ impl Studio {
         }
     }
     fn theme(&mut self, ctx: &egui::Context) {
-        if self.theme_checked.elapsed() < Duration::from_secs(2) {
-            return;
+        let palette = self.system_theme.resolve(self.preferences.theme(), ctx);
+        if palette != theme::palette(ctx)
+            || self.theme_checked.elapsed() > Duration::from_secs(3600)
+        {
+            ctx.data_mut(|d| d.insert_temp(egui::Id::new("veylvik-palette"), palette));
+            design::apply(ctx);
+            self.theme_checked = Instant::now();
         }
-        self.theme_checked = Instant::now();
-        self.accent = design::ACCENT;
-        design::apply(ctx);
+        self.accent = palette.accent;
+    }
+    fn apply_preferences(&mut self, before: Option<&preferences::Values>, ctx: &egui::Context) {
+        let p = &self.preferences.values;
+        if before.is_none_or(|b| b.auto_arrange != p.auto_arrange) {
+            self.graph.set_auto_arrange(p.auto_arrange);
+        }
+        if before.is_none_or(|b| b.fast_view != p.fast_view) {
+            self.view.fast_filter = p.fast_view;
+        }
+        self.recovery.enabled = p.recovery_enabled;
+        self.recovery.interval = Duration::from_secs(p.recovery_seconds);
+        ctx.set_zoom_factor(p.scale);
+        ctx.data_mut(|d| {
+            d.insert_temp(egui::Id::new("animate-library-previews"), p.hover_previews)
+        });
+        self.theme(ctx);
+    }
+    fn open_preferences(&mut self) {
+        self.playing = false;
+        if !self.error {
+            self.status = "Paused".into();
+        }
+        self.preferences.begin();
     }
 
     fn inspector_actions(&mut self, ui: &mut egui::Ui) {
@@ -1981,6 +2022,19 @@ impl Studio {
                 self.toggle_play();
             }
             if ui
+                .add(
+                    icons::Button::new(icons::Icon::Loop, "Loop playback")
+                        .selected(self.preferences.values.loop_playback),
+                )
+                .on_hover_text("Loop playback · saved in Preferences")
+                .clicked()
+            {
+                self.preferences.values.loop_playback = !self.preferences.values.loop_playback;
+                if let Err(error) = self.preferences.persist() {
+                    self.fail(error);
+                }
+            }
+            if ui
                 .add(crate::icons::Button::new(
                     crate::icons::Icon::PreviousFrame,
                     "Previous frame",
@@ -2168,6 +2222,17 @@ impl Studio {
         }
         self.path_pen.cancel();
         self.playing = !self.playing;
+        if self.playing
+            && (self.preferences.values.restart_playback
+                || self.project.frame
+                    >= i64::from(self.project.document.snapshot().frame_count) - 1)
+        {
+            self.project.frame = 0;
+            self.request_preview();
+        }
+        if !self.error {
+            self.status = if self.playing { "Playing" } else { "Paused" }.into();
+        }
         self.playback = Instant::now();
         self.playback_frame = self.project.frame;
     }
@@ -2336,6 +2401,11 @@ impl Studio {
         self.draft.position = self.project.document.snapshot().nodes[&self.draft.id].position;
     }
     fn dialogs(&mut self, ctx: &egui::Context) {
+        let before = self.preferences.values.clone();
+        if self.preferences.show(ctx, &self.system_theme.label) {
+            self.apply_preferences(Some(&before), ctx);
+        }
+        self.theme(ctx);
         self.effect_dialog(ctx);
         self.preset_library(ctx);
         self.library_drop_options(ctx);
@@ -2403,6 +2473,14 @@ impl eframe::App for Studio {
     fn ui(&mut self, ui: &mut egui::Ui, _: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
         self.theme(&ctx);
+        // eframe creates the root UI before our live palette update.
+        ui.set_style(ctx.global_style());
+        if ctx.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, egui::Key::Comma))
+            && self.confirm.is_none()
+            && !self.preferences.open
+        {
+            self.open_preferences();
+        }
         self.path_pen.shortcuts(&ctx);
         self.occlusion_tick();
         self.poll_files(&ctx);
@@ -2493,12 +2571,23 @@ impl eframe::App for Studio {
             let elapsed =
                 (self.playback.elapsed().as_secs_f64() * fps.ticks as f64 / fps.rate as f64) as i64;
             let count = i64::from(self.project.document.snapshot().frame_count);
-            let frame = (self.playback_frame.rem_euclid(count) + elapsed.rem_euclid(count)) % count;
+            let (frame, finished) = preferences::playback_frame(
+                self.playback_frame,
+                elapsed,
+                count as u32,
+                self.preferences.values.loop_playback,
+            );
             // Playback must let an active frame finish before submitting again.
             // Explicit edits and scrubbing still replace obsolete work immediately.
             if frame != self.project.frame && !self.preview_pending {
                 self.project.frame = frame;
                 self.request_preview();
+            }
+            if finished && !self.preview_pending {
+                self.playing = false;
+                if !self.error {
+                    self.status = "Ready".into();
+                }
             }
             ctx.request_repaint_after(Duration::from_millis(16));
         }
@@ -2603,7 +2692,7 @@ impl eframe::App for Studio {
                 egui::Panel::bottom("status").show_inside(ui, |ui| self.status_bar(ui));
                 self.asset_browser(ui);
                 if self.inspector_visible {
-                egui::Panel::right("inspector").frame(design::panel())
+                egui::Panel::right("inspector").frame(design::panel(ui.ctx()))
                     .default_size(414.0)
                     .min_size(340.0)
                     .resizable(true)
@@ -2628,11 +2717,11 @@ impl eframe::App for Studio {
                             .show(ui, |ui| self.inspector(ui));
                     });
                 } else {
-                    egui::Panel::right("inspector-tool-rail").exact_size(76.).frame(design::panel()).show_inside(ui,|ui| {
+                    egui::Panel::right("inspector-tool-rail").exact_size(76.).frame(design::panel(ui.ctx())).show_inside(ui,|ui| {
                         if ui.add(icons::Button::new(icons::Icon::Inspector,"Inspector").caption()).clicked() {self.inspector_visible=true;}
                     });
                 }
-                egui::Panel::bottom("graph").frame(design::panel())
+                egui::Panel::bottom("graph").frame(design::panel(ui.ctx()))
                     .default_size(300.0)
                     .min_size(130.0)
                     .resizable(true)
@@ -2647,7 +2736,7 @@ impl eframe::App for Studio {
                             self.graph(ui);
                         }
                     });
-                egui::CentralPanel::default().frame(design::panel()).show_inside(ui, |ui| {
+                egui::CentralPanel::default().frame(design::panel(ui.ctx())).show_inside(ui, |ui| {
                     ui.horizontal_wrapped(|ui| {
                         ui.heading("Viewer");
                         if matches!(self.draft.operation, Operation::Text(veylvik_document::nodes::Text { .. })) {
@@ -2713,7 +2802,7 @@ impl eframe::App for Studio {
                             self.navigation.actual_size();
                         }
                         if ui.button("Reset view").clicked() {
-                            self.view = ViewSettings::default();
+                            self.view = ViewSettings {fast_filter:self.preferences.values.fast_view,..Default::default()};
                         }
                     });
                     if self.occlusion_pending() {

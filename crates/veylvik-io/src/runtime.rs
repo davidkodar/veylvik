@@ -13,6 +13,13 @@ impl RenderLimits {
     pub fn from_env() -> Result<Self> {
         Self::parse(std::env::var_os(VARIABLE).as_deref())
     }
+    /// Desktop preference fallback; an explicit environment value retains precedence.
+    pub fn from_env_with_default(mib: u64) -> Result<Self> {
+        match std::env::var_os(VARIABLE) {
+            Some(value) => Self::parse(Some(&value)),
+            None => Self::parse(Some(OsStr::new(&mib.to_string()))),
+        }
+    }
     fn parse(value: Option<&OsStr>) -> Result<Self> {
         let mib = match value {
             None => 2048,

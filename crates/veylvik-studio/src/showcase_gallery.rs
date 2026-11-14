@@ -284,7 +284,15 @@ impl Gallery {
         if !ui.is_rect_visible(rect) {
             return response;
         }
-        if let Some(frame) = self.hover_frame(id, ui.input(|i| i.time), response.hovered()) {
+        if let Some(frame) = self.hover_frame(
+            id,
+            ui.input(|i| i.time),
+            response.hovered()
+                && ui
+                    .ctx()
+                    .data(|d| d.get_temp::<bool>(egui::Id::new("animate-library-previews")))
+                    .unwrap_or(true),
+        ) {
             if self
                 .hover_texture
                 .as_ref()

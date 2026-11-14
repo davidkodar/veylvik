@@ -12,6 +12,7 @@ pub enum Icon {
     AlignRight,
     Play,
     Pause,
+    Loop,
     Left,
     Right,
     Up,
@@ -202,6 +203,17 @@ impl Widget for Button {
                     [c + egui::vec2(0.0, -0.8), c + egui::vec2(0.0, 4.0)],
                     (1.6, colour),
                 );
+            }
+            Icon::Loop => {
+                let stroke = egui::Stroke::new(1.5_f32, colour);
+                painter.line_segment([c + egui::vec2(-6., -4.), c + egui::vec2(6., -4.)], stroke);
+                painter.line_segment([c + egui::vec2(6., -4.), c + egui::vec2(6., 2.)], stroke);
+                painter.line_segment([c + egui::vec2(6., 4.), c + egui::vec2(-6., 4.)], stroke);
+                painter.line_segment([c + egui::vec2(-6., 4.), c + egui::vec2(-6., -2.)], stroke);
+                painter.line_segment([c + egui::vec2(2., -7.), c + egui::vec2(6., -4.)], stroke);
+                painter.line_segment([c + egui::vec2(2., -1.), c + egui::vec2(6., -4.)], stroke);
+                painter.line_segment([c + egui::vec2(-2., 1.), c + egui::vec2(-6., 4.)], stroke);
+                painter.line_segment([c + egui::vec2(-2., 7.), c + egui::vec2(-6., 4.)], stroke);
             }
             Icon::Reset => {
                 let points: Vec<_> = (0..=24)

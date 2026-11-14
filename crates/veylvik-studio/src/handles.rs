@@ -123,7 +123,7 @@ pub fn show(
     );
     let origin = canvas.min + egui::vec2(canvas.width() * ox, canvas.height() * oy);
     let painter = ui.painter().with_clip_rect(canvas);
-    let color = crate::design::ACCENT;
+    let color = crate::design::accent(ui.ctx());
     let ellipse = |center: Pos2, radii: Vec2| {
         let outline: Vec<Pos2> = (0..=96)
             .map(|i| {

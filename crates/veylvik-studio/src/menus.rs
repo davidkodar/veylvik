@@ -77,6 +77,8 @@ impl Studio {
                 if item(ui, "Set selected node as output", "", ready) { self.set_selected_output(); }
                 ui.separator();
                 if item(ui, "Find node…", "Ctrl+F", ready) { self.open_node_finder(); }
+                ui.separator();
+                if item(ui,"Preferences…","Ctrl+,",true) {self.open_preferences();}
             });
             ui.menu_button("Add", |ui| {
                 let ready = !self.draft_dirty && !self.graph.dragging() && !self.animation_editor.dragging();
@@ -145,7 +147,7 @@ impl Studio {
                     }
                     ui.close();
                 }
-                if item(ui, "Reset display settings", "", true) { self.view = ViewSettings::default(); }
+                if item(ui, "Reset display settings", "", true) { self.view = ViewSettings {fast_filter:self.preferences.values.fast_view,..Default::default()}; }
                 ui.separator();
                 if item(ui, if self.playing { "Pause" } else { "Play" }, "Space", true) { self.toggle_play(); }
                 ui.separator();
@@ -168,7 +170,7 @@ impl Studio {
             ui.separator();
             // Reserve only the remaining space so long filenames never push menus offscreen.
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.add(egui::Button::new("Render").fill(egui::Color32::from_rgb(110,66,174))).clicked() {self.video_export.open=true;}
+                if ui.add(egui::Button::new(egui::RichText::new("Render").color(crate::theme::ink(crate::theme::palette(ui.ctx()).selection))).fill(crate::theme::palette(ui.ctx()).selection)).clicked() {self.video_export.open=true;}
 
                 let unavailable = self.project.unavailable_assets().len();
                 if unavailable > 0 {

@@ -1,9 +1,14 @@
 //! Shared visual language for the editing workspace.
 use eframe::egui::{self, Color32};
-pub const ACCENT: Color32 = Color32::from_rgb(167, 106, 238);
-pub const PANEL: Color32 = Color32::from_rgb(32, 35, 41);
-pub const CANVAS: Color32 = Color32::from_rgb(18, 20, 25);
-pub const BORDER: Color32 = Color32::from_rgb(62, 67, 78);
+pub fn accent(ctx: &egui::Context) -> Color32 {
+    crate::theme::palette(ctx).accent
+}
+pub fn canvas(ctx: &egui::Context) -> Color32 {
+    crate::theme::palette(ctx).canvas
+}
+pub fn border(ctx: &egui::Context) -> Color32 {
+    crate::theme::palette(ctx).border
+}
 pub fn install_fonts(ctx: &egui::Context) {
     ctx.set_fonts(font_definitions());
 }
@@ -31,39 +36,44 @@ pub fn font_definitions() -> egui::FontDefinitions {
 }
 pub fn apply(ctx: &egui::Context) {
     let mut style = (*ctx.global_style()).clone();
-    style.visuals = egui::Visuals::dark();
-    style.visuals.panel_fill = CANVAS;
-    style.visuals.handle_shape = egui::style::HandleShape::Circle;
-    style.visuals.slider_trailing_fill = true;
-    style.spacing.slider_rail_height = 4.;
-    style.visuals.window_fill = PANEL;
-    style.visuals.extreme_bg_color = CANVAS;
-    style.visuals.faint_bg_color = Color32::from_rgb(35, 38, 45);
-    style.visuals.override_text_color = Some(Color32::from_rgb(226, 228, 235));
-    style.visuals.selection.bg_fill = Color32::from_rgb(99, 59, 153);
-    style.visuals.selection.stroke = egui::Stroke::new(1_f32, ACCENT);
+    let palette = crate::theme::palette(ctx);
+    ctx.set_theme(if palette.dark {
+        egui::Theme::Dark
+    } else {
+        egui::Theme::Light
+    });
+    style.visuals = if palette.dark {
+        egui::Visuals::dark()
+    } else {
+        egui::Visuals::light()
+    };
+    style.visuals.panel_fill = palette.canvas;
+    style.visuals.window_fill = palette.panel;
+    style.visuals.extreme_bg_color = palette.canvas;
+    style.visuals.faint_bg_color = crate::theme::mix(palette.panel, palette.text, 0.025);
+    style.visuals.override_text_color = None;
+    style.visuals.weak_text_color = Some(palette.muted);
+    style.visuals.selection.bg_fill = palette.selection;
+    style.visuals.selection.stroke = egui::Stroke::new(1_f32, crate::theme::ink(palette.selection));
+    style.visuals.hyperlink_color = palette.accent;
+    style.visuals.window_stroke = egui::Stroke::new(1_f32, palette.border);
     style.visuals.window_corner_radius = egui::CornerRadius::same(8);
-    for w in [
-        &mut style.visuals.widgets.inactive,
-        &mut style.visuals.widgets.hovered,
-        &mut style.visuals.widgets.active,
-        &mut style.visuals.widgets.open,
-        &mut style.visuals.widgets.noninteractive,
+    style.visuals.slider_trailing_fill = true;
+    style.visuals.handle_shape = egui::style::HandleShape::Circle;
+    style.spacing.slider_rail_height = 4.;
+    for (widget, amount) in [
+        (&mut style.visuals.widgets.noninteractive, 0.),
+        (&mut style.visuals.widgets.inactive, 0.025),
+        (&mut style.visuals.widgets.hovered, 0.09),
+        (&mut style.visuals.widgets.active, 0.15),
+        (&mut style.visuals.widgets.open, 0.09),
     ] {
-        w.corner_radius = egui::CornerRadius::same(5);
-        w.bg_stroke = egui::Stroke::new(1_f32, BORDER);
-        w.fg_stroke = egui::Stroke::new(1_f32, Color32::from_rgb(226, 228, 235));
+        widget.corner_radius = egui::CornerRadius::same(5);
+        widget.bg_fill = crate::theme::mix(palette.panel, palette.text, amount);
+        widget.weak_bg_fill = widget.bg_fill;
+        widget.bg_stroke = egui::Stroke::new(1_f32, palette.border);
+        widget.fg_stroke = egui::Stroke::new(1_f32, palette.text);
     }
-    style.visuals.widgets.inactive.bg_fill = Color32::from_rgb(39, 43, 51);
-    style.visuals.widgets.inactive.weak_bg_fill = Color32::from_rgb(35, 39, 46);
-    style.visuals.widgets.hovered.bg_fill = Color32::from_rgb(53, 57, 68);
-    style.visuals.widgets.hovered.weak_bg_fill = Color32::from_rgb(47, 51, 62);
-    style.visuals.widgets.hovered.bg_stroke =
-        egui::Stroke::new(1_f32, Color32::from_rgb(116, 99, 145));
-    style.visuals.widgets.active.bg_fill = Color32::from_rgb(110, 66, 174);
-    style.visuals.widgets.active.weak_bg_fill = Color32::from_rgb(77, 49, 116);
-    style.visuals.widgets.active.bg_stroke = egui::Stroke::new(1_f32, ACCENT);
-    style.visuals.widgets.noninteractive.bg_stroke = egui::Stroke::new(1_f32, BORDER);
     style.spacing.item_spacing = egui::vec2(8., 8.);
     style.spacing.button_padding = egui::vec2(9., 5.);
     style.spacing.interact_size = egui::vec2(32., 28.);
@@ -94,7 +104,7 @@ pub fn tab(ui: &mut egui::Ui, label: &str, selected: bool) -> egui::Response {
         let r = response.rect;
         ui.painter().line_segment(
             [r.left_bottom(), r.right_bottom()],
-            egui::Stroke::new(2_f32, ACCENT),
+            egui::Stroke::new(2_f32, accent(ui.ctx())),
         );
     }
     response
@@ -105,13 +115,14 @@ pub fn slider(
     value: &mut f32,
     range: std::ops::RangeInclusive<f32>,
 ) -> egui::Response {
+    let accent = accent(ui.ctx());
     ui.scope(|ui| {
         ui.spacing_mut().interact_size.y = 16.;
         let visuals = ui.visuals_mut();
-        visuals.widgets.inactive.bg_fill = ACCENT;
+        visuals.widgets.inactive.bg_fill = accent;
         visuals.widgets.inactive.bg_stroke = egui::Stroke::NONE;
         visuals.widgets.inactive.fg_stroke = egui::Stroke::NONE;
-        visuals.widgets.hovered.bg_fill = Color32::from_rgb(190, 147, 245);
+        visuals.widgets.hovered.bg_fill = accent.gamma_multiply(1.1);
         ui.add(
             egui::Slider::new(value, range)
                 .show_value(false)
@@ -121,9 +132,9 @@ pub fn slider(
     .inner
 }
 
-pub fn panel() -> egui::Frame {
+pub fn panel(ctx: &egui::Context) -> egui::Frame {
     egui::Frame::new()
-        .fill(PANEL)
+        .fill(crate::theme::palette(ctx).panel)
         .inner_margin(8.)
         .outer_margin(3.)
         .corner_radius(7.)

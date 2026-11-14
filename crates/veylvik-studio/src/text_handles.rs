@@ -174,7 +174,7 @@ pub fn show(
     let origin = canvas.min + egui::vec2(canvas.width() * ox, canvas.height() * oy);
     let screen = |p: Vec2| origin + (pivot + rotate(p * scales, angle)) * zoom;
     let painter = ui.painter().with_clip_rect(canvas);
-    let stroke = Stroke::new(1.0_f32, crate::design::ACCENT);
+    let stroke = Stroke::new(1.0_f32, crate::design::accent(ui.ctx()));
     let corners = [
         local.left_top(),
         local.right_top(),
@@ -292,7 +292,7 @@ pub fn show(
             egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), hint)
         });
         if index == 8 {
-            painter.circle_filled(point, 4., crate::design::CANVAS);
+            painter.circle_filled(point, 4., crate::design::canvas(ui.ctx()));
             painter.circle_stroke(point, 4., stroke);
         } else if index == 9 {
             painter.line_segment(

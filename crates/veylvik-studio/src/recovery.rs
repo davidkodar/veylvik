@@ -106,6 +106,8 @@ impl Drop for Worker {
     }
 }
 pub struct Recovery {
+    pub enabled: bool,
+    pub interval: Duration,
     pub store: Store,
     pub open: bool,
     entries: Vec<Entry>,
@@ -136,6 +138,8 @@ impl Recovery {
         };
         let error = failure.or(error);
         Self {
+            enabled: true,
+            interval: Duration::from_secs(10),
             store,
             open: entries.iter().any(|entry| {
                 entry.id != project.session && Some(entry.id) != project.recovery_origin
@@ -171,8 +175,9 @@ impl Recovery {
             self.last_revision = None;
         } else {
             self.clean = false;
-            if self.last_revision != Some(project.document.revision())
-                && self.last_request.elapsed() >= Duration::from_secs(10)
+            if self.enabled
+                && self.last_revision != Some(project.document.revision())
+                && self.last_request.elapsed() >= self.interval
             {
                 worker.submit(Action::Save(
                     Box::new(project.document.snapshot().clone()),

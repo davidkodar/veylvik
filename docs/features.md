@@ -34,6 +34,16 @@ Everything Veylvik can do today, area by area. Veylvik is a native Rust node com
 - Optional node role strips and wires with a role-colour legend; selected connections brighter; unused nodes labelled.
 - Node positions saved with the project; each drag is one undo step.
 
+## Preferences and appearance
+
+- **Edit → Preferences** (`Ctrl+,`): Playback, Appearance, Workspace, Performance and Recovery sections, with Apply, Cancel and per-section reset.
+- Restart from frame zero on Play/Space, or resume from the paused frame. Loop toggle on the timeline; with looping off playback stops on the final frame.
+- Dark, Light, Midnight Blue and Evergreen palettes; **Follow system / Omarchy** reads the active Omarchy palette or the desktop portal light/dark preference and updates while running.
+- Immediate theme preview with Cancel restoring the saved theme; interface scale from 75% to 200% applies on Apply. Display themes never affect rendered pixels.
+- Defaults for automatic node arrangement, animated library hover previews and fast viewer filtering.
+- Renderer GPU buffer budget (restart required, environment override retained); recovery enable/disable and 10–300 second interval.
+- Settings persist per user in `$XDG_CONFIG_HOME/veylvik/preferences.json` (normally `~/.config/veylvik/preferences.json`), independently of projects and undo history.
+
 ## Viewer
 
 - GPU-resident frames on the same Vulkan device as the UI, no CPU copy.
@@ -406,7 +416,7 @@ Details: [Subject segmentation](subject-segmentation.md).
 - Save/export refuse to overwrite input images.
 - Undo/redo: 64 snapshots, 128 MiB; every transaction atomic.
 - Recovery dialog offers **Discard** for a stale copy or confirmed **Discard all**; active editor sessions and saved projects are protected.
-- Crash recovery copies of applied edits every ten seconds in `$XDG_STATE_HOME/veylvik/recovery`; **File → Recover unsaved work…**.
+- Crash recovery copies of applied edits at the configured interval (ten seconds by default) in `$XDG_STATE_HOME/veylvik/recovery`; **File → Recover unsaved work…**.
 - Unsaved-changes prompts on close, open and new.
 - Missing media: projects still open, unavailable sources marked in the menu bar and inspector, repair via Replace source / Reload.
 - **Collect project** (`veylvik collect`): copies images and supported video into `assets/` with relative paths (sequences not supported).
@@ -471,7 +481,7 @@ Details: [Subject segmentation](subject-segmentation.md).
 - Linux, Wayland and X11; headless commands need no display.
 - Primary target x86_64 Arch/Omarchy; aarch64 supported by the package recipe.
 - `bin/package` builds an Arch package: `veylvik`, `veylvik-studio`, launcher entry, SVG icon, **Open with Veylvik** for `.veylvik`.
-- Desktop portal file dialogs; follows the Omarchy accent colour.
+- Desktop portal file dialogs; optional live system/Omarchy appearance.
 - Rust 1.98.1 pinned; application/document/render code forbids `unsafe`; native media, interop and OCIO boundaries are isolated; GPL-3.0-only.
 
 ### Curated material recipes

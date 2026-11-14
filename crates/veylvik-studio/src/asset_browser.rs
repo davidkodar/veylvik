@@ -104,7 +104,7 @@ impl Studio {
         if !self.browser.visible {
             egui::Panel::left("library-tool-rail")
                 .exact_size(76.)
-                .frame(design::panel())
+                .frame(design::panel(ui.ctx()))
                 .show_inside(ui, |ui| {
                     for (tab, icon, label) in [
                         (Tab::Effects, icons::Icon::Effects, "Effects"),
@@ -134,7 +134,7 @@ impl Studio {
         let mut example = None;
         let mut import = false;
         let mut media = None;
-        egui::Panel::left("asset-library").frame(design::panel()).default_size(326.).min_size(230.).max_size(420.).resizable(true).show_inside(ui,|ui| {
+        egui::Panel::left("asset-library").frame(design::panel(ui.ctx())).default_size(326.).min_size(230.).max_size(420.).resizable(true).show_inside(ui,|ui| {
             ui.horizontal(|ui| {
                 ui.heading("Library");
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center),|ui| {
@@ -189,12 +189,12 @@ impl Studio {
                                             let image=image::load_from_memory(bytes).expect("bundled material sample").to_rgba8();
                                             ui.ctx().load_texture(entry.id,egui::ColorImage::from_rgba_unmultiplied([image.width() as usize,image.height() as usize],image.as_raw()),egui::TextureOptions::LINEAR)
                                         });
-                                        ui.painter().rect_filled(rect,6.,design::CANVAS);
+                                        ui.painter().rect_filled(rect,6.,design::canvas(ui.ctx()));
                                         ui.painter().image(texture.id(),rect.shrink(3.),egui::Rect::from_min_max(egui::Pos2::ZERO,egui::pos2(1.,1.)),egui::Color32::WHITE);
                                     }
                                     response
                                 } else {self.browser.gallery.tile(ui,entry.id,width)};
-                                if response.hovered() || self.browser.selected==Some(entry.id) {ui.painter().rect_stroke(response.rect,6.,egui::Stroke::new(1.5_f32,if self.browser.selected==Some(entry.id) {design::ACCENT} else {design::BORDER}),egui::StrokeKind::Inside);}
+                                if response.hovered() || self.browser.selected==Some(entry.id) {ui.painter().rect_stroke(response.rect,6.,egui::Stroke::new(1.5_f32,if self.browser.selected==Some(entry.id) {design::accent(ui.ctx())} else {design::border(ui.ctx())}),egui::StrokeKind::Inside);}
                                 let title=ui.add_sized([width,26.],egui::Button::new(label(entry)).frame(false).sense(egui::Sense::click_and_drag()));
                                 let payload=LibraryDrag{id:entry.id,template:self.browser.tab==Tab::Templates};
                                 for response in [&response,&title] {response.dnd_set_drag_payload(payload);}
@@ -211,7 +211,7 @@ impl Studio {
                 if let Some(entry)=selected {
                     ui.strong(label(entry));
                     if self.browser.tab==Tab::Materials && matches!(self.draft.operation,Operation::Text(_)) {
-                        if ui.add_sized([ui.available_width(),30.],egui::Button::new("Apply to selected text").fill(egui::Color32::from_rgb(110,66,174))).clicked() {apply=Some(entry.id);}
+                        if ui.add_sized([ui.available_width(),30.],egui::Button::new(egui::RichText::new("Apply to selected text").color(crate::theme::ink(crate::theme::palette(ui.ctx()).selection))).fill(crate::theme::palette(ui.ctx()).selection)).clicked() {apply=Some(entry.id);}
                     } else if ui.button("Apply to composition…").clicked() {details=Some(entry.id);}
                     ui.horizontal_wrapped(|ui| {
                         if ui.button("Try example").clicked() {example=Some(entry.id);}
@@ -296,7 +296,7 @@ impl Studio {
                 };
                 ui.label("Material fill");
                 egui::Frame::new()
-                    .fill(design::CANVAS)
+                    .fill(design::canvas(ui.ctx()))
                     .corner_radius(5.)
                     .inner_margin(8.)
                     .show(ui, |ui| {
@@ -376,7 +376,13 @@ fn usage_options(ui: &mut egui::Ui, item: LibraryDrag, can_fill_text: bool) -> O
     let mut action = None;
     if builtin::is_material(item.id) {
         if ui
-            .add_enabled(can_fill_text, egui::Button::new("Apply to selected text"))
+            .add_enabled(
+                can_fill_text,
+                egui::Button::new(
+                    egui::RichText::new("Apply to selected text")
+                        .color(crate::theme::ink(crate::theme::palette(ui.ctx()).selection)),
+                ),
+            )
             .clicked()
         {
             action = Some(Use::Text);
@@ -488,7 +494,7 @@ impl Studio {
             painter.rect_stroke(
                 rect.shrink(3.),
                 5.,
-                egui::Stroke::new(2.0_f32, design::ACCENT),
+                egui::Stroke::new(2.0_f32, design::accent(ui.ctx())),
                 egui::StrokeKind::Inside,
             );
             painter.text(
@@ -496,7 +502,7 @@ impl Studio {
                 egui::Align2::CENTER_TOP,
                 "Drop to choose placement",
                 egui::FontId::proportional(14.),
-                design::ACCENT,
+                design::accent(ui.ctx()),
             );
             if ui.input(|i| i.pointer.primary_released()) {
                 egui::DragAndDrop::clear_payload(ui.ctx());

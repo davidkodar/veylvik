@@ -166,6 +166,12 @@ impl Default for Graph {
     }
 }
 impl Graph {
+    pub fn set_auto_arrange(&mut self, enabled: bool) {
+        self.auto_arrange = enabled;
+        self.auto_view = None;
+        self.revision = None;
+    }
+
     pub(super) fn canvas_rect(&self) -> Option<Rect> {
         self.canvas
     }
@@ -702,7 +708,7 @@ impl Graph {
             ui.heading("Nodes");
             if self.selection.len()>1 { ui.weak(format!("{} selected",self.selection.len())); }
             if ui
-                .add(egui::Button::new("Add node").fill(egui::Color32::from_rgb(110,66,174)))
+                .add(egui::Button::new(egui::RichText::new("Add node").color(crate::theme::ink(crate::theme::palette(ui.ctx()).selection))).fill(crate::theme::palette(ui.ctx()).selection))
                 .on_hover_text("Search and add a node (Tab)")
                 .clicked()
             {
@@ -843,7 +849,7 @@ impl Graph {
             }
         }
         let painter = ui.painter().with_clip_rect(canvas);
-        painter.rect_filled(canvas, 0.0, crate::design::CANVAS);
+        painter.rect_filled(canvas, 0.0, crate::design::canvas(ui.ctx()));
         let spacing = (32.0 * self.zoom).max(10.0);
         let offset = egui::vec2(
             self.pan.x.rem_euclid(spacing),
@@ -853,7 +859,11 @@ impl Graph {
         while y < canvas.bottom() {
             let mut x = canvas.left() + offset.x;
             while x < canvas.right() {
-                painter.circle_filled(egui::pos2(x, y), 0.6, Color32::from_gray(43));
+                painter.circle_filled(
+                    egui::pos2(x, y),
+                    0.6,
+                    crate::theme::palette(ui.ctx()).border,
+                );
                 x += spacing;
             }
             y += spacing;
@@ -1163,7 +1173,7 @@ impl Graph {
             }
             let active = node.id == selected;
             let selected = self.selection.contains(&node.id);
-            painter.rect_filled(rect, 5.0, Color32::from_rgb(34, 38, 46));
+            painter.rect_filled(rect, 5.0, crate::theme::palette(ui.ctx()).panel);
             if self.role_colours {
                 let colour = node.role_colour(doc);
                 painter.rect_filled(
@@ -1176,7 +1186,7 @@ impl Graph {
                 painter.circle_filled(
                     rect.right_top() + egui::vec2(-8.0, 9.0) * self.zoom,
                     3.0 * self.zoom,
-                    Color32::WHITE,
+                    ui.visuals().text_color(),
                 );
             }
             painter.rect_stroke(
@@ -1197,7 +1207,7 @@ impl Graph {
                             accent.gamma_multiply(0.75)
                         }
                     } else {
-                        Color32::from_gray(65)
+                        crate::theme::palette(ui.ctx()).border
                     },
                 ),
                 egui::StrokeKind::Inside,
@@ -1209,7 +1219,7 @@ impl Graph {
                 node.group.is_some(),
                 rect.min + egui::vec2(18.0, 19.0) * self.zoom,
                 self.zoom,
-                Color32::from_gray(215),
+                ui.visuals().text_color(),
             );
             presentation::line(
                 &text,
@@ -1217,7 +1227,7 @@ impl Graph {
                 (NODE_SIZE.x - 46.0) * self.zoom,
                 &node.label,
                 (13.0 * self.zoom).max(9.0),
-                Color32::WHITE,
+                ui.visuals().text_color(),
             );
             if self.zoom >= 0.72 {
                 text.line_segment(
@@ -1225,7 +1235,7 @@ impl Graph {
                         rect.min + egui::vec2(1.0, 34.0) * self.zoom,
                         rect.min + egui::vec2(NODE_SIZE.x - 1.0, 34.0) * self.zoom,
                     ],
-                    (1.0, Color32::from_gray(61)),
+                    (1.0, crate::theme::palette(ui.ctx()).border),
                 );
                 presentation::line(
                     &text,
@@ -1233,7 +1243,7 @@ impl Graph {
                     (NODE_SIZE.x - 20.0) * self.zoom,
                     &node.subtitle,
                     11.0 * self.zoom,
-                    Color32::from_gray(175),
+                    ui.visuals().weak_text_color(),
                 );
             }
             if self.zoom >= 0.9 {
@@ -1248,7 +1258,7 @@ impl Graph {
                         (NODE_SIZE.x - 24.0) * self.zoom,
                         &label,
                         11.0 * self.zoom,
-                        Color32::from_gray(190),
+                        ui.visuals().weak_text_color(),
                     );
                 }
             }

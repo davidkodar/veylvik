@@ -24,7 +24,7 @@ impl Studio {
                 let (label,tip)=if let Some(server)=&self.control {
                     ("MCP ready",format!("Live control server is listening on {}.\nThis indicates availability, not an active client connection.",server.path().display()))
                 }else if let Some(error)=&self.control_error {("MCP unavailable",error.clone())}else{("MCP off","Live control is disabled for this session.".into())};
-                ui.add_sized([112.,22.],egui::Label::new(egui::RichText::new(label).color(if self.control.is_some(){egui::Color32::from_rgb(111,197,174)}else{ui.visuals().weak_text_color()})).truncate()).on_hover_text(tip);
+                ui.add_sized([112.,22.],egui::Label::new(egui::RichText::new(label).color(if self.control.is_some(){if ui.visuals().dark_mode {egui::Color32::from_rgb(111,197,174)}else{egui::Color32::from_rgb(25,100,75)}}else{ui.visuals().weak_text_color()})).truncate()).on_hover_text(tip);
                 if wide {
                     ui.separator();
                     let doc=self.project.document.snapshot();
