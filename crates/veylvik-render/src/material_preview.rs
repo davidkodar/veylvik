@@ -57,15 +57,35 @@ impl Renderer {
         )?;
         let params = Params {
             size_op: [256, 256, 0, kind as u32],
-            values: [80., 32., roughness, 0.08],
+            values: [80., 32., roughness, 0.],
             extra: [grain, 1., 1., 0.],
         };
         self.queue
             .write_buffer(&uniform, 0, bytemuck::bytes_of(&params));
+        use wgpu::util::DeviceExt;
+        let lighting = self
+            .device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Sample lighting"),
+                contents: bytemuck::bytes_of(&crate::studio_lighting::Lighting::new(
+                    kind,
+                    None,
+                    &Default::default(),
+                )),
+                usage: wgpu::BufferUsages::UNIFORM,
+            });
         let bind = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("material preview"),
             layout: &pipeline.get_bind_group_layout(0),
             entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 5,
+                    resource: self.ltc.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 6,
+                    resource: lighting.as_entire_binding(),
+                },
                 wgpu::BindGroupEntry {
                     binding: 0,
                     resource: uniform.as_entire_binding(),

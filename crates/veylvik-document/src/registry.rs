@@ -6,6 +6,8 @@ pub const MAX_ASSET_NAME: usize = 4096;
 #[derive(Debug, Clone, Copy, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ParameterKind {
+    StudioRig,
+    SurfaceOptics,
     PlanarTrack,
     PlanarMode,
     Scalar,
@@ -47,6 +49,8 @@ pub struct Parameter {
 impl Parameter {
     fn default_value(&self) -> Value {
         match self.kind {
+            ParameterKind::StudioRig => json!(crate::optical::StudioRig::default()),
+            ParameterKind::SurfaceOptics => json!(null),
             ParameterKind::PlanarTrack => json!(crate::planar::Track::default()),
             ParameterKind::PlanarMode => json!(crate::planar::WarpMode::Follow),
             ParameterKind::MediaPlacement => json!(crate::media::Placement::default()),
@@ -80,6 +84,10 @@ impl Parameter {
     }
     fn schema(&self) -> Value {
         match self.kind {
+            ParameterKind::StudioRig => crate::optical::StudioRig::schema(),
+            ParameterKind::SurfaceOptics => {
+                json!({"anyOf":[{"type":"null"},crate::optical::SurfaceOptics::schema()]})
+            }
             ParameterKind::PlanarTrack => crate::planar::schema(),
             ParameterKind::PlanarMode => {
                 json!({"type":"string","enum":["follow","fit","stabilize"]})

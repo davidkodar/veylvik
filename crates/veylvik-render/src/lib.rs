@@ -2,6 +2,7 @@
 mod cache;
 mod diagnostics;
 mod material_preview;
+mod studio_lighting;
 pub use diagnostics::Diagnostics;
 mod frame;
 pub use cache::CacheStats;
@@ -82,6 +83,8 @@ pub struct Renderer {
     queue: wgpu::Queue,
     pipelines: BTreeMap<Kernel, wgpu::ComputePipeline>,
     layout: wgpu::BindGroupLayout,
+    ltc: wgpu::Buffer,
+    default_lighting: wgpu::Buffer,
     validation_pipeline: wgpu::ComputePipeline,
     texture_pipeline: wgpu::ComputePipeline,
     video_pipeline: wgpu::ComputePipeline,
@@ -141,9 +144,44 @@ impl Renderer {
                 .into(),
             ),
         });
+        use wgpu::util::DeviceExt;
+        let ltc = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Fitted GGX LTC tables"),
+            contents: include_bytes!("../assets/ltc/ggx.bin"),
+            usage: wgpu::BufferUsages::STORAGE,
+        });
+        let default_lighting = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Default studio lighting"),
+            contents: bytemuck::bytes_of(&studio_lighting::Lighting::new(
+                veylvik_document::MaterialKind::Gold,
+                None,
+                &Default::default(),
+            )),
+            usage: wgpu::BufferUsages::UNIFORM,
+        });
         let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("composition buffers"),
             entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 6,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: std::num::NonZeroU64::new(544),
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 5,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: std::num::NonZeroU64::new(131072),
+                    },
+                    count: None,
+                },
                 wgpu::BindGroupLayoutEntry {
                     binding: 0,
                     visibility: wgpu::ShaderStages::COMPUTE,
@@ -241,6 +279,8 @@ impl Renderer {
             queue,
             pipelines,
             layout,
+            ltc,
+            default_lighting,
             validation_pipeline,
             texture_pipeline,
             video_pipeline,
@@ -593,6 +633,27 @@ impl Renderer {
                 "parameters",
             )?;
             self.queue.write_buffer(&uniform, 0, bytemuck::bytes_of(p));
+            let lighting = if let veylvik_document::Operation::Material(material) = &node.operation
+            {
+                let buffer = resources.take(
+                    &self.device,
+                    544,
+                    wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+                    "Studio lighting",
+                )?;
+                self.queue.write_buffer(
+                    &buffer,
+                    0,
+                    bytemuck::bytes_of(&studio_lighting::Lighting::new(
+                        material.kind,
+                        material.optics,
+                        &material.studio,
+                    )),
+                );
+                buffer
+            } else {
+                self.default_lighting.clone()
+            };
             let output = &buffers[scheduled.output];
             let input = |index: usize| -> &wgpu::Buffer {
                 match &scheduled.inputs[index] {
@@ -606,6 +667,14 @@ impl Renderer {
                 label: Some(&node.label),
                 layout: &self.layout,
                 entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 5,
+                        resource: self.ltc.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 6,
+                        resource: lighting.as_entire_binding(),
+                    },
                     wgpu::BindGroupEntry {
                         binding: 0,
                         resource: uniform.as_entire_binding(),

@@ -8,6 +8,11 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Material {
+    #[serde(default)]
+    pub studio: crate::optical::StudioRig,
+    /// None uses the material family’s optical defaults.
+    #[serde(default)]
+    pub optics: Option<crate::optical::SurfaceOptics>,
     pub kind: MaterialKind,
     pub scale: Scalar,
     pub bevel: Scalar,
@@ -80,6 +85,8 @@ pub static MATERIAL: NodeType = NodeType {
     inputs: &["image"],
     parameters: &[
         other("kind", ParameterKind::MaterialKind, "material"),
+        other("studio", ParameterKind::StudioRig, "lighting rig"),
+        other("optics", ParameterKind::SurfaceOptics, "optical response"),
         scalar("scale", "pixels", 1.0, 8192.0, 180.0),
         scalar("bevel", "pixels", 0.0, 256.0, 4.0),
         scalar("roughness", "factor", 0.0, 1.0, 0.15),
@@ -172,7 +179,16 @@ pub static SURFACE_REFLECTION: NodeType = NodeType {
 node!(
     Material,
     MATERIAL,
-    [scale, bevel, roughness, lighting, grain, emission]
+    [scale, bevel, roughness, lighting, grain, emission],
+    {
+        fn validate(&self) -> Result<()> {
+            self.studio.validate()?;
+            if let Some(optics) = self.optics {
+                optics.validate()?;
+            }
+            Ok(())
+        }
+    }
 );
 node!(Patina, PATINA, [amount, dirt, scale, wear, scratches]);
 node!(

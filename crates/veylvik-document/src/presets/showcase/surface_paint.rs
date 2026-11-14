@@ -11,6 +11,8 @@ pub(super) fn build() -> Result<Scene> {
         &mut doc,
         "Brick wall",
         Operation::Material(crate::nodes::Material {
+            optics: None,
+            studio: Default::default(),
             kind: crate::MaterialKind::BrickRed,
             scale: 150.0.into(),
             bevel: 3.0.into(),

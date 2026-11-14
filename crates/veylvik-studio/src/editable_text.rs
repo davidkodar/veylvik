@@ -950,6 +950,9 @@ impl crate::Studio {
                         }
                     }
                 }
+                if let Operation::Material(material) = &mut node.operation {
+                    edited |= crate::nodes::lighting_controls(ui, material);
+                }
                 if edited {
                     self.text_edits.insert(id, node);
                     self.draft_dirty = true;

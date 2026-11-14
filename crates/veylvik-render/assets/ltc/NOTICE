@@ -1,0 +1,9 @@
+GGX fitted LTC tables from https://github.com/selfshadow/ltc_code
+Revision: 31e5e96b54f98f33098f8503003119ba2231a1c6
+Source: fit/results/ltc.js, g_ltc_1 followed by g_ltc_2, little-endian float32.
+
+Real-Time Polygonal-Light Shading with Linearly Transformed Cosines.
+Eric Heitz, Jonathan Dupuy, Stephen Hill and David Neubelt.
+ACM Transactions on Graphics (SIGGRAPH 2016) 35(4), 2016.
+https://eheitzresearch.wordpress.com/415-2/
+See LICENSE for redistribution terms.

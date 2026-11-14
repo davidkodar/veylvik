@@ -34,6 +34,7 @@ mod filters;
 mod generators;
 mod keying;
 mod materials;
+pub(crate) use materials::lighting_controls;
 mod media;
 mod text;
 mod tracking;

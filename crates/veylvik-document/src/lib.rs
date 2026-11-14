@@ -18,6 +18,7 @@ pub use channels::MaskChannel;
 mod masks;
 pub use masks::MaskMode;
 mod appearance;
+pub mod optical;
 pub use appearance::{AtmosphereKind, MaterialKind, PatinaKind, ReflectionKind};
 mod gradient;
 pub use gradient::GradientMode;

@@ -17,6 +17,7 @@ impl Inspect for veylvik_document::nodes::Material {
                     }
                 });
         }
+        cx.dirty |= lighting_controls(ui, self);
     }
 }
 impl Inspect for veylvik_document::nodes::Patina {
@@ -73,4 +74,66 @@ impl Inspect for veylvik_document::nodes::SurfaceReflection {
             ui.label("Connect any image or animated branch to Reflection.");
         }
     }
+}
+
+pub(crate) fn lighting_controls(
+    ui: &mut egui::Ui,
+    material: &mut veylvik_document::nodes::Material,
+) -> bool {
+    use veylvik_document::optical::{AreaLight, MAX_STUDIO_LIGHTS, StudioRig};
+    let mut changed = false;
+    ui.push_id("surface-lighting",|ui| {
+        ui.collapsing("Surface response",|ui| {
+            let defaults=material.kind.optics();
+            ui.weak(if defaults.metallic {"Conductor: coloured reflections, no diffuse colour."}else{"Dielectric: diffuse colour and neutral surface reflections."});
+            let mut custom=material.optics.is_some();
+            if ui.checkbox(&mut custom,"Custom optical response").changed() {
+                material.optics=custom.then_some(defaults);changed=true;
+            }
+            if let Some(optics)=material.optics.as_mut() {
+                changed|=ui.checkbox(&mut optics.metallic,"Metallic").changed();
+                if optics.metallic {
+                    ui.label("Reflection colour (linear RGB)");
+                    changed|=ui.color_edit_button_rgb(&mut optics.reflectance).changed();
+                }else{changed|=light_slider(ui,"Refractive index",&mut optics.ior,1.0..=3.0);}
+            } else {ui.label(format!("Normal-incidence reflectance: {:.1}%",defaults.f0()[1]*100.));}
+        });
+        ui.collapsing("Studio lighting",|ui| {
+            ui.weak("Area lights reflect in the surface. Position and size use scene units; rotations use degrees.");
+            changed|=light_slider(ui,"Ambient",&mut material.studio.ambient,0.0..=16.0);
+            let mut remove=None;
+            for (index,light) in material.studio.lights.iter_mut().enumerate() {
+                ui.push_id(index,|ui| {
+                    ui.collapsing(format!("Light {}",index+1),|ui| {
+                        changed|=ui.checkbox(&mut light.enabled,"Enabled").changed();
+                        changed|=ui.color_edit_button_rgb(&mut light.colour).on_hover_text("Emitter colour in linear RGB").changed();
+                        changed|=light_slider(ui,"Intensity",&mut light.intensity,0.0..=100.0);
+                        for (label,value) in ["X","Y","Z"].into_iter().zip(&mut light.position) { changed|=light_slider(ui,label,value,-100.0..=100.0); }
+                        for (label,value) in ["Rotate X","Rotate Y","Rotate Z"].into_iter().zip(&mut light.rotation) { changed|=light_slider(ui,label,value,-360.0..=360.0); }
+                        for (label,value) in ["Width","Height"].into_iter().zip(&mut light.size) { changed|=light_slider(ui,label,value,0.01..=100.0); }
+                        if ui.button("Remove light").clicked(){remove=Some(index);}
+                    });
+                });
+            }
+            if let Some(index)=remove{material.studio.lights.remove(index);changed=true;}
+            if ui.add_enabled(material.studio.lights.len()<MAX_STUDIO_LIGHTS,egui::Button::new("Add area light")).clicked(){material.studio.lights.push(AreaLight::default());changed=true;}
+            if ui.button("Reset studio lighting").on_hover_text("Restore the default photographic studio rig").clicked(){material.studio=StudioRig::default();changed=true;}
+        });
+    });
+    changed
+}
+fn light_slider(
+    ui: &mut egui::Ui,
+    label: &str,
+    value: &mut f32,
+    range: std::ops::RangeInclusive<f32>,
+) -> bool {
+    ui.label(label);
+    ui.scope(|ui| {
+        ui.spacing_mut().slider_width = (ui.available_width() - 75.0).clamp(30.0, 180.0);
+        ui.add(egui::Slider::new(value, range))
+            .on_hover_text(label)
+            .changed()
+    })
+    .inner
 }

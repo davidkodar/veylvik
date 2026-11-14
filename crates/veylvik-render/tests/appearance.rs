@@ -85,6 +85,8 @@ fn materials_are_distinct_finite_and_preserve_partial_alpha() {
         let node = Node::new(
             "surface",
             Operation::Material(veylvik_document::nodes::Material {
+                optics: None,
+                studio: Default::default(),
                 kind,
                 scale: 90.0.into(),
                 bevel: 4.0.into(),
@@ -330,5 +332,84 @@ fn polished_metal_has_hdr_highlights_and_roughness_softens_them() {
             polished.iter().any(|p| p[3] > 0.99 && p[0] < 0.15),
             "dark reflections provide metal contrast"
         );
+    }
+}
+
+#[test]
+#[ignore = "requires Vulkan"]
+fn area_lights_and_optics_control_radiance_without_changing_coverage() {
+    let renderer = Renderer::new().unwrap();
+    let (mut doc, inputs, original) = source();
+    let material: Operation = serde_json::from_value(
+        veylvik_document::registry::TYPES
+            .iter()
+            .find(|d| d.type_id == "material")
+            .unwrap()
+            .default_operation(),
+    )
+    .unwrap();
+    let node = Node::new("lit material", material, &[("image", doc.output)]);
+    doc.output = node.id;
+    doc.nodes.insert(node.id, node);
+    let render = |doc: &Composition| {
+        renderer
+            .render_frame(
+                &Plan::compile(doc).unwrap(),
+                RenderRequest::full(Time::new(0, 1).unwrap()),
+                &inputs,
+            )
+            .unwrap()
+            .pixels
+    };
+    for kind in [
+        MaterialKind::Gold,
+        MaterialKind::LeatherBrown,
+        MaterialKind::OakLight,
+    ] {
+        let Operation::Material(m) = &mut doc.nodes.get_mut(&doc.output).unwrap().operation else {
+            panic!()
+        };
+        m.kind = kind;
+        m.studio = Default::default();
+        m.studio.ambient = 0.;
+        m.studio.lights = vec![veylvik_document::optical::AreaLight {
+            position: [0., 0., 4.],
+            rotation: [0.; 3],
+            size: [8., 8.],
+            ..Default::default()
+        }];
+        let lit = render(&doc);
+        assert!(lit.iter().any(|p| p[0] > 0.01));
+        let Operation::Material(m) = &mut doc.nodes.get_mut(&doc.output).unwrap().operation else {
+            panic!()
+        };
+        m.studio.lights[0].intensity *= 2.;
+        let brighter = render(&doc);
+        for (a, b) in lit.iter().zip(&brighter) {
+            for c in 0..3 {
+                assert!((a[c] * 2. - b[c]).abs() < 1e-4);
+            }
+        }
+        let Operation::Material(m) = &mut doc.nodes.get_mut(&doc.output).unwrap().operation else {
+            panic!()
+        };
+        m.optics = Some(veylvik_document::optical::SurfaceOptics {
+            metallic: true,
+            reflectance: [0.; 3],
+            ior: 1.,
+        });
+        let no_reflection = render(&doc);
+        let energy = |frame: &Vec<[f32; 4]>| frame.iter().map(|p| p[0] + p[1] + p[2]).sum::<f32>();
+        assert!(energy(&no_reflection) < energy(&brighter) * 0.5);
+        let Operation::Material(m) = &mut doc.nodes.get_mut(&doc.output).unwrap().operation else {
+            panic!()
+        };
+        m.optics = None;
+        m.studio.lights[0].enabled = false;
+        let dark = render(&doc);
+        for (p, source) in dark.iter().zip(&original) {
+            assert_eq!(p[3], source[3]);
+            assert_eq!(&p[..3], &[0.; 3]);
+        }
     }
 }
