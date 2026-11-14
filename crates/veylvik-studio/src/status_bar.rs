@@ -31,7 +31,12 @@ impl Studio {
                     let fps=doc.frame_rate.ticks as f64/doc.frame_rate.rate as f64;
                     ui.add_sized([180.,22.],egui::Label::new(format!("{} × {} · {:.2} fps",doc.width,doc.height,fps)).truncate()).on_hover_text("Composition resolution and frame rate");
                 }
-                let message=if self.files.busy(){"File operation in progress…"}else if self.preview_pending{"Rendering preview…"}else{&self.status};
+                // Only a render that holds the viewer up for a noticeable time is named, so playback
+                // and quick scrubs (one render per frame) keep a steady message instead of flickering.
+                const SLOW:std::time::Duration=std::time::Duration::from_millis(250);
+                let slow=self.preview_pending&&self.preview_started.is_some_and(|t|t.elapsed()>=SLOW);
+                if self.preview_pending&&!slow {ui.ctx().request_repaint_after(SLOW);}
+                let message=if self.files.busy(){"File operation in progress…"}else if slow{"Rendering preview…"}else{&self.status};
                 ui.add_sized([ui.available_width().max(0.),22.],egui::Label::new(egui::RichText::new(message).color(if self.error {egui::Color32::LIGHT_RED}else{ui.visuals().weak_text_color()})).truncate()).on_hover_text(message);
             });
         });

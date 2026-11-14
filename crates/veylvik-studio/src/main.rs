@@ -200,6 +200,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 displayed_ticket: None,
                 wanted: None,
                 preview_pending: false,
+                preview_started: None,
                 displayed_time: None,
                 draft,
                 draft_dirty: false,
@@ -283,6 +284,8 @@ struct Studio {
     displayed_ticket: Option<PreviewTicket>,
     wanted: Option<PreviewTicket>,
     preview_pending: bool,
+    /// When the pending preview was submitted; the status bar names slow renders only.
+    preview_started: Option<Instant>,
     displayed_time: Option<veylvik_document::Time>,
     draft: Node,
     draft_dirty: bool,
@@ -683,8 +686,14 @@ impl Studio {
         match result {
             Ok(ticket) => {
                 self.wanted = Some(ticket);
+                if !self.preview_pending {
+                    self.preview_started = Some(Instant::now());
+                }
                 self.preview_pending = true;
-                self.status = "Rendering…".into();
+                // Per-frame renders during playback must not make the status line flicker.
+                if !self.playing {
+                    self.status = "Rendering…".into();
+                }
                 self.error = false;
             }
             Err(e) => {
