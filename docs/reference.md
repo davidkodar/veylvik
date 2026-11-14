@@ -732,9 +732,10 @@ the key range they hold the nearest endpoint. Input boundaries are transparent
 black. Image dimensions are 1–8192 per axis, subject to GPU limits and budget.
 Affine transforms scale around the pivot, rotate clockwise, then translate;
 integer coordinates address pixel centers. Negative scales flip the image and
-scale magnitudes below 0.000001 produce transparent output. Ellipse feather uses
-normalized radial distance scaled by the smaller radius, with a minimum one-pixel
-transition; it is not an exact signed-distance feather on noncircular ellipses.
+scale magnitudes below 0.000001 produce transparent output. Ellipse feather is
+the width in pixels of the soft edge, centred on the outline (half inside, half
+outside) and at least 1 pixel. It is measured along the smaller radius, so it is
+not an exact signed-distance feather on noncircular ellipses.
 Zero ellipse radius produces transparent output. All these scalar controls can
 be animated, and their registry supplies both inspector bounds and MCP schemas.
 

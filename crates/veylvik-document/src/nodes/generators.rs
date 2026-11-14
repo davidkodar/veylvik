@@ -157,7 +157,7 @@ pub static ELLIPSE: NodeType = NodeType {
     type_id: "ellipse",
     version: 1,
     label: "Ellipse mask",
-    description: "White premultiplied ellipse coverage. Feather uses normalized radial distance scaled by the smaller radius, with at least a one-pixel transition. Zero radius is transparent.",
+    description: "White premultiplied ellipse coverage. Feather is the width in pixels of the soft edge, centred on the outline (half inside, half outside), at least 1 pixel; it is measured along the smaller radius, so long thin ellipses soften unevenly. Zero radius is transparent.",
     inputs: &[],
     parameters: &[
         scalar("x", "pixels", -1_000_000.0, 1_000_000.0, 320.0),
