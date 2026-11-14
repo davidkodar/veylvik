@@ -2,6 +2,7 @@
 mod cache;
 mod diagnostics;
 mod material_preview;
+pub use material_preview::material_preview_revision;
 mod studio_lighting;
 pub use diagnostics::Diagnostics;
 mod frame;

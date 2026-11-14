@@ -12,10 +12,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let filter = std::env::args().nth(2);
     let still = std::env::args().nth(3).as_deref() == Some("--still");
     for entry in builtin::ALL {
-        if filter.as_deref().is_some_and(|id| id != entry.id) {
+        if filter
+            .as_deref()
+            .is_some_and(|id| id != "--materials" && id != entry.id)
+        {
             continue;
         }
         let scene = showcase::build(entry.id)?;
+        if filter.as_deref() == Some("--materials")
+            && !scene
+                .composition
+                .nodes
+                .values()
+                .any(|node| matches!(node.operation, veylvik_document::Operation::Material(_)))
+        {
+            continue;
+        }
         for (label, node) in [
             ("before", scene.before),
             ("after", scene.composition.output),
@@ -47,6 +59,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             atlas.save(output.join(format!("{}-{label}.png", entry.id)))?;
             println!("Rendered {} {label}", entry.id);
         }
+    }
+    if filter.as_deref() == Some("--materials") && !still {
+        std::fs::write(
+            output.join("material-render-version.txt"),
+            format!("{}\n", veylvik_render::material_preview_revision()),
+        )?;
     }
     Ok(())
 }

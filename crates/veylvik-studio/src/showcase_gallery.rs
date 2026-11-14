@@ -336,6 +336,19 @@ impl Gallery {
 #[cfg(test)]
 mod tests {
     #[test]
+    fn material_library_matches_current_shader_and_defaults() {
+        assert_eq!(
+            include_str!("../assets/showcase/material-render-version.txt").trim(),
+            veylvik_render::material_preview_revision(),
+            "Regenerate showcase_previews --materials"
+        );
+        assert_eq!(
+            include_str!("../assets/materials/render-version.txt").trim(),
+            veylvik_render::material_preview_revision(),
+            "Regenerate material_swatches and affected showcase_previews before rebuilding the app"
+        );
+    }
+    #[test]
     fn hover_playback_is_exclusive_loops_and_resets_on_exit() {
         let mut gallery = super::Gallery::default();
         assert_eq!(gallery.hover_frame("heat_haze", 0., true), Some(24));

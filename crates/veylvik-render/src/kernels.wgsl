@@ -562,11 +562,11 @@ fn studio_surface(uv:vec2<f32>, normal:vec3<f32>,albedo:vec3<f32>)->vec3<f32> {
     let texture=fire_fbm(texture_position*19.0+vec3<f32>(1.0),257u);
     var bump=vec3<f32>(fine,fine_y,0.0)*0.06*p.extra.x;
     if kind==2u {
-        let brush=fire_noise(vec3<f32>(uv.x*3.0,uv.y*500.0,0.0),71u)-0.5;
+        let brush=fire_noise(vec3<f32>(uv.x*3.0,uv.y*min(500.0,p.values.x*0.65),0.0),71u)-0.5;
         bump=vec3<f32>(0.0,brush*0.065,0.0)*p.extra.x;
     }
     let n=normalize(normal+bump);
-    let rough=clamp(p.values.z+(texture-0.5)*p.extra.x*select(0.35,0.5,kind==3u),0.03,1.0);
+    let rough=clamp(p.values.z+(texture-0.5)*p.extra.x*select(select(0.35,0.5,kind==3u),0.03,kind==2u),0.03,1.0);
     let f0=studio.optics.rgb;
     let nv=max(dot(n,v),0.0001);
     var tangent=v-n*dot(n,v);

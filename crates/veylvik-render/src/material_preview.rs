@@ -110,3 +110,38 @@ impl Renderer {
         Ok(values)
     }
 }
+
+/// Asset provenance for the material library. Changes to shading, GPU packing,
+/// sample geometry or authored defaults require regenerated library previews.
+pub fn material_preview_revision() -> String {
+    let mut hash = 0xcbf29ce484222325_u64;
+    let mut feed = |bytes: &[u8]| {
+        for &byte in bytes {
+            hash = (hash ^ u64::from(byte)).wrapping_mul(0x100000001b3);
+        }
+    };
+    feed(include_bytes!("kernels.wgsl"));
+    feed(include_bytes!("material_preview.rs"));
+    feed(include_bytes!("studio_lighting.rs"));
+    feed(include_bytes!("../assets/ltc/ggx.bin"));
+    for kind in veylvik_document::MaterialKind::ALL {
+        feed(&serde_json::to_vec(&kind.optics()).expect("finite optical defaults"));
+    }
+    feed(
+        &serde_json::to_vec(&veylvik_document::optical::StudioRig::default())
+            .expect("finite studio defaults"),
+    );
+    for entry in veylvik_document::presets::builtin::ALL
+        .iter()
+        .filter(|e| veylvik_document::presets::builtin::is_material(e.id))
+    {
+        let preset =
+            veylvik_document::presets::builtin::build(entry.id).expect("valid built-in material");
+        for node in preset.nodes.values() {
+            if let veylvik_document::Operation::Material(material) = &node.operation {
+                feed(&serde_json::to_vec(material).expect("finite built-in material"));
+            }
+        }
+    }
+    format!("{hash:016x}")
+}

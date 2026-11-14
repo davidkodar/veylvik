@@ -36,12 +36,13 @@ pub fn build(id: &str, b: &mut Builder, source: NodeId) -> Result<NodeId> {
                 kind,
                 scale: 180.0.into(),
                 bevel: 5.0.into(),
-                roughness: (if kind == MaterialKind::Aluminium {
-                    0.65
-                } else if kind as u32 >= 5 && kind != MaterialKind::Marble {
-                    0.7
-                } else {
-                    0.15
+                roughness: (match kind {
+                    MaterialKind::Gold => 0.28,
+                    MaterialKind::Silver => 0.25,
+                    MaterialKind::Bronze => 0.35,
+                    MaterialKind::Aluminium => 0.42,
+                    MaterialKind::Phosphor | MaterialKind::Marble => 0.15,
+                    _ => 0.7,
                 })
                 .into(),
                 lighting: Scalar::Smooth {

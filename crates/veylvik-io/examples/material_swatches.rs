@@ -105,5 +105,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         )?;
         println!("Rendered {}", entry.id);
     }
+    std::fs::write(
+        output.join("render-version.txt"),
+        format!("{}\n", veylvik_render::material_preview_revision()),
+    )?;
     Ok(())
 }
