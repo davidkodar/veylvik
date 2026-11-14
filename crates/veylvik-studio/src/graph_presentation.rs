@@ -18,7 +18,9 @@ pub(super) fn summary(node: &Node, name: &str, reachable: bool, output: bool) ->
             }
         }
         Operation::Material(material) => {
-            if material.kind.optics().metallic {
+            if material.optics.is_some() {
+                "Custom optics · Material".into()
+            } else if material.kind.optics().metallic {
                 format!(
                     "{} · {}",
                     material.kind.label(),

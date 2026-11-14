@@ -110,6 +110,7 @@ fn dust_is_sparse_non_emissive_periodic_and_scrubbable() {
 fn revised_effect_examples_loop_and_move_after_resolution_adaptation() {
     let renderer = Renderer::new().unwrap();
     for id in [
+        "condensation",
         "dust_motes",
         "embers",
         "fireflies",
@@ -142,4 +143,115 @@ fn revised_effect_examples_loop_and_move_after_resolution_adaptation() {
             "{id}: invalid pixels"
         );
     }
+}
+
+#[test]
+#[ignore = "requires Vulkan"]
+fn condensation_keeps_substrate_alpha_and_obeys_amount_and_upstream_lighting() {
+    let renderer = Renderer::new().unwrap();
+    let mut doc = blank(160, 100, Time::new(24, 1).unwrap()).unwrap();
+    let source = doc.output;
+    doc.nodes.get_mut(&source).unwrap().operation = Operation::Ellipse(nodes::Ellipse {
+        x: 80.0.into(),
+        y: 50.0.into(),
+        radius_x: 60.0.into(),
+        radius_y: 35.0.into(),
+        feather: 2.0.into(),
+    });
+    let mut material: Operation =
+        serde_json::from_value(registry::MATERIAL.default_operation()).unwrap();
+    if let Operation::Material(m) = &mut material {
+        m.kind = MaterialKind::Gold;
+    }
+    let material = Node::new("gold", material, &[("image", source)]);
+    let material_id = material.id;
+    doc.output = material_id;
+    doc.nodes.insert(material_id, material);
+    let dry = render(&renderer, &doc);
+    let coating = Node::new(
+        "condensation",
+        Operation::Condensation(nodes::Condensation {
+            dispersion: 0.012.into(),
+            seed: 731,
+            amount: 0.7.into(),
+            size: 2.0.into(),
+            density: 0.7.into(),
+            haze: 0.2.into(),
+            evolution: 0.0.into(),
+            trails: 0.6.into(),
+        }),
+        &[("image", material_id)],
+    );
+    doc.output = coating.id;
+    doc.nodes.insert(coating.id, coating);
+    let wet = render(&renderer, &doc);
+    assert_ne!(wet, dry);
+    assert!(
+        wet.iter()
+            .zip(&dry)
+            .all(|(wet, dry)| wet[3] == dry[3] && wet.iter().all(|v| v.is_finite()))
+    );
+    *doc.nodes
+        .get_mut(&doc.output)
+        .unwrap()
+        .operation
+        .scalar_mut("amount")
+        .unwrap() = 0.0.into();
+    assert_eq!(dry, render(&renderer, &doc));
+    *doc.nodes
+        .get_mut(&doc.output)
+        .unwrap()
+        .operation
+        .scalar_mut("amount")
+        .unwrap() = 0.7.into();
+    if let Operation::Material(m) = &mut doc.nodes.get_mut(&material_id).unwrap().operation {
+        m.studio.environment = 0.0;
+        m.studio.ambient = 0.0;
+        m.studio.lights.clear();
+    }
+    let unlit = render(&renderer, &doc);
+    assert!(
+        unlit
+            .iter()
+            .all(|p| p[..3].iter().all(|v| v.abs() < 0.00001)),
+        "wet coating invented light on an unlit material"
+    );
+}
+
+#[test]
+#[ignore = "requires Vulkan"]
+fn green_drip_template_really_changes_to_gold_after_the_mask_stage() {
+    let renderer = Renderer::new().unwrap();
+    let mut doc = presets::showcase::build("fireflies").unwrap().composition;
+    let from = [doc.width, doc.height];
+    presets::resolution::map_graph(
+        &mut doc.nodes,
+        &mut doc.groups,
+        from,
+        [480, 270],
+        presets::resolution::Sizing::Fit,
+    )
+    .unwrap();
+    doc.width = 480;
+    doc.height = 270;
+    let original = render(&renderer, &doc);
+    let text = doc
+        .nodes
+        .values()
+        .find(|n| matches!(n.operation, Operation::Text(_)))
+        .unwrap()
+        .id;
+    let commands = presets::text_style::apply(&doc, text, Some("gold_text"), None).unwrap();
+    let styled = Document::new(doc).unwrap().prepare(0, &commands).unwrap();
+    let gold = render(&renderer, &styled);
+    assert!(
+        gold.iter()
+            .zip(&original)
+            .filter(|(a, b)| (a[0] - b[0]).abs() > 0.02)
+            .count()
+            > 500
+    );
+    assert_eq!(gold[0], original[0]);
+    assert_eq!(gold[0][0], gold[0][1]);
+    assert_eq!(gold[0][1], gold[0][2]);
 }

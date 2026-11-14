@@ -302,7 +302,7 @@ impl Studio {
                     .show(ui, |ui| {
                         ui.set_min_width((ui.available_width() - 16.).max(0.));
                         ui.horizontal(|ui| {
-                            if let Some(bytes) = swatch(key) {
+                            if let Some(bytes) = swatch(key).filter(|_| material.optics.is_none()) {
                                 let texture =
                                     self.browser.textures.entry(key).or_insert_with(|| {
                                         let image = image::load_from_memory(bytes)
@@ -319,7 +319,11 @@ impl Studio {
                                     });
                                 ui.image((texture.id(), egui::vec2(32., 32.)));
                             }
-                            ui.strong(format!("{:?}", material.kind));
+                            ui.strong(if material.optics.is_some() {
+                                "Custom optical surface"
+                            } else {
+                                material.kind.label()
+                            });
                             ui.with_layout(
                                 egui::Layout::right_to_left(egui::Align::Center),
                                 |ui| {

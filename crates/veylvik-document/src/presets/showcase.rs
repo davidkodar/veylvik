@@ -18,7 +18,7 @@ pub fn title(id: &str) -> &'static str {
         "liquid_shimmer" => "Pink melt",
         "embers" => "Gilded inferno",
         "metallic_shine" => "Polished gold",
-        "fireflies" => "Toxic nectar",
+        "fireflies" => "Green liquid",
         "dust_motes" => "Sands of time",
         "snowfall" => "Deep freeze",
         "starfield" => "Nova ignition",
@@ -37,7 +37,7 @@ pub fn description(id: &str) -> &'static str {
             "A floating geometric emblem catches cyan and rose light. Edit its motion and light spill."
         }
         "liquid_shimmer" => {
-            "Glossy pink lettering stretches into hanging drips, falling droplets and a liquid pool."
+            "Glossy pink lettering forms hanging drips and falling droplets against a neutral background."
         }
         "metallic_shine" => {
             "A narrow warm-white specular reflection travels across gold lettering. Edit its position keys, angle, width and brightness; alpha remains untouched."
@@ -46,7 +46,7 @@ pub fn description(id: &str) -> &'static str {
             "Reflective gold lettering burns above a smoky reflection. Layered turbulent fire rises behind the title while embers rise."
         }
         "fireflies" => {
-            "Glossy green lettering drips into luminous nectar, surrounded by drifting fireflies."
+            "Green wet liquid follows editable lettering and drips against a neutral background."
         }
         "dust_motes" => {
             "Grainy sandstone lettering stands over a wind-carved dune with suspended golden dust."
@@ -125,7 +125,8 @@ pub fn build(id: &str) -> Result<Scene> {
     if matches!(super::builtin::category(id), "Materials" | "Atmosphere")
         || matches!(
             id,
-            "wet_drips"
+            "condensation"
+                | "wet_drips"
                 | "water_drips"
                 | "metallic_shine"
                 | "sun_glints"
@@ -294,11 +295,27 @@ mod tests {
             let group = doc
                 .groups
                 .values()
-                .find(|g| g.label == entry.label)
+                .find(|g| {
+                    g.label
+                        == if matches!(entry.id, "fireflies" | "liquid_shimmer") {
+                            "Wet Ink Drips"
+                        } else {
+                            entry.label
+                        }
+                })
                 .unwrap();
-            assert_eq!(group.label, entry.label);
-            if matches!(entry.id, "wet_drips" | "water_drips")
-                || entry.id == "metallic_shine"
+            assert_eq!(
+                group.label,
+                if matches!(entry.id, "fireflies" | "liquid_shimmer") {
+                    "Wet Ink Drips"
+                } else {
+                    entry.label
+                }
+            );
+            if matches!(
+                entry.id,
+                "condensation" | "fireflies" | "liquid_shimmer" | "wet_drips" | "water_drips"
+            ) || entry.id == "metallic_shine"
                 || entry.id == "sun_glints"
                 || super::super::builtin::category(entry.id) == "Materials"
             {
@@ -308,7 +325,16 @@ mod tests {
             }
             assert_eq!(
                 group.members.len(),
-                super::super::builtin::build(entry.id).unwrap().nodes.len()
+                super::super::builtin::build(
+                    if matches!(entry.id, "fireflies" | "liquid_shimmer") {
+                        "wet_drips"
+                    } else {
+                        entry.id
+                    }
+                )
+                .unwrap()
+                .nodes
+                .len()
             );
             if matches!(
                 entry.id,
@@ -331,8 +357,14 @@ mod tests {
             }
             assert!(group.inputs.values().flat_map(|i| &i.targets).all(
                 |p| doc.nodes[&p.node].inputs[&p.port]
-                    == if matches!(entry.id, "wet_drips" | "water_drips")
-                        || entry.id == "metallic_shine"
+                    == if matches!(
+                        entry.id,
+                        "condensation"
+                            | "fireflies"
+                            | "liquid_shimmer"
+                            | "wet_drips"
+                            | "water_drips"
+                    ) || entry.id == "metallic_shine"
                         || entry.id == "sun_glints"
                         || super::super::builtin::category(entry.id) == "Materials"
                     {

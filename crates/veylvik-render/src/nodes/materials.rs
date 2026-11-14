@@ -228,3 +228,33 @@ impl RenderNode for veylvik_document::nodes::SurfaceReflection {
         Ok(())
     }
 }
+
+impl RenderNode for veylvik_document::nodes::Condensation {
+    fn passes(&self) -> Passes {
+        Passes::One(Kernel::Condensation)
+    }
+    fn shareable(&self) -> bool {
+        true
+    }
+    fn params(
+        &self,
+        _cx: &Cx<'_>,
+        sample: &dyn Fn(&str) -> Result<f32>,
+        p: &mut Params,
+    ) -> Result<()> {
+        p.size_op[3] = self.seed;
+        p.values = [
+            sample("amount")?,
+            sample("size")?,
+            sample("density")?,
+            sample("haze")?,
+        ];
+        p.extra = [
+            sample("evolution")?,
+            sample("trails")?,
+            sample("dispersion")?,
+            0.0,
+        ];
+        Ok(())
+    }
+}

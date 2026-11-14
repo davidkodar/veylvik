@@ -66,6 +66,8 @@ fn bytes(id: &str, before: bool) -> &'static [u8] {
         ("surface_reflection", true) => {
             include_bytes!("../assets/showcase/surface_reflection-before.png")
         }
+        ("condensation", false) => include_bytes!("../assets/showcase/condensation-after.png"),
+        ("condensation", true) => include_bytes!("../assets/showcase/condensation-before.png"),
         ("wet_drips", false) => include_bytes!("../assets/showcase/wet_drips-after.png"),
         ("wet_drips", true) => include_bytes!("../assets/showcase/wet_drips-before.png"),
         ("water_drips", false) => include_bytes!("../assets/showcase/water_drips-after.png"),

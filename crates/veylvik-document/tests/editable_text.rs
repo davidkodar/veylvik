@@ -555,3 +555,57 @@ fn legacy_shadow_upgrade_preserves_wiring_and_is_one_undo_step() {
     shared.nodes.insert(consumer.id, consumer);
     assert!(text_style::upgrade_shadow(&shared, output).is_err());
 }
+
+#[test]
+fn drip_templates_are_neutral_and_surface_selection_styles_the_complete_silhouette() {
+    for id in ["fireflies", "liquid_shimmer", "wet_drips"] {
+        let doc = showcase::build(id).unwrap().composition;
+        assert!(!doc.nodes.values().any(|n| matches!(
+            n.operation,
+            Operation::Ellipse(_) | Operation::Atmosphere(_)
+        )));
+        let text = doc
+            .nodes
+            .values()
+            .find(|n| matches!(n.operation, Operation::Text(_)))
+            .unwrap()
+            .id;
+        let material = presets::text_style::current(&doc, text).unwrap().unwrap();
+        let commands = presets::text_style::apply(&doc, text, Some("gold_text"), None).unwrap();
+        let mut owner = Document::new(doc.clone()).unwrap();
+        owner.apply(0, &commands).unwrap();
+        let styled = owner.snapshot();
+        assert_eq!(styled.nodes.len(), doc.nodes.len());
+        assert!(
+            matches!(&styled.nodes[&material].operation,Operation::Material(m) if m.kind==MaterialKind::Gold && m.optics.is_none())
+        );
+        let mut input = styled.nodes[&material].inputs["image"];
+        if matches!(styled.nodes[&input].operation, Operation::Colorize(_)) {
+            input = styled.nodes[&input].inputs["image"];
+        }
+        assert!(matches!(styled.nodes[&input].operation, Operation::Drip(_)));
+        assert!(
+            styled
+                .nodes
+                .values()
+                .any(|n| n.inputs.get("image") == Some(&material)
+                    && matches!(n.operation, Operation::Transform(_)))
+        );
+        assert_eq!(
+            presets::text_style::current(styled, text).unwrap(),
+            Some(material)
+        );
+        let again = presets::text_style::apply(styled, text, Some("bronze_text"), None).unwrap();
+        assert!(
+            Document::new(styled.clone())
+                .unwrap()
+                .prepare(0, &again)
+                .is_ok()
+        );
+        owner.undo(1).unwrap();
+        assert_eq!(
+            serde_json::to_value(owner.snapshot()).unwrap(),
+            serde_json::to_value(doc).unwrap()
+        );
+    }
+}

@@ -16,6 +16,7 @@ pub enum Kernel {
     Drip,
     Atmosphere,
     Material,
+    Condensation,
     Patina,
     SunGlints,
     Glass,
@@ -61,7 +62,7 @@ pub enum Kernel {
     Lut,
 }
 impl Kernel {
-    pub(crate) const ALL: [Self; 53] = [
+    pub(crate) const ALL: [Self; 54] = [
         Self::Text,
         Self::Solid,
         Self::Noise,
@@ -72,6 +73,7 @@ impl Kernel {
         Self::Drip,
         Self::Atmosphere,
         Self::Material,
+        Self::Condensation,
         Self::Patina,
         Self::SunGlints,
         Self::Glass,
@@ -126,6 +128,7 @@ impl Kernel {
             Self::Drip => "drip",
             Self::Atmosphere => "atmosphere",
             Self::Material => "material",
+            Self::Condensation => "condensation",
             Self::Patina => "patina",
             Self::SunGlints => "sun_glints",
             Self::Glass => "glass",

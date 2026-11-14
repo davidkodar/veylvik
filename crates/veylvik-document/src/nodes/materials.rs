@@ -234,3 +234,39 @@ node!(
         bevel, curvature, roughness, strength, rotation, scale, offset_x, offset_y
     ]
 );
+
+/// A water coating over an existing surface; coverage and the substrate survive.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Condensation {
+    pub dispersion: Scalar,
+    pub seed: u32,
+    pub amount: Scalar,
+    pub size: Scalar,
+    pub density: Scalar,
+    pub haze: Scalar,
+    pub evolution: Scalar,
+    pub trails: Scalar,
+}
+pub static CONDENSATION: NodeType = NodeType {
+    type_id: "condensation",
+    version: 1,
+    label: "Condensation",
+    description: "Water beads, fine moisture and subtle sliding trails over the input surface. Preserves its alpha and material, refracts its image locally, and inherits the nearest upstream material lighting. Uses a studio environment when none exists. Stateless procedural 2.5D coating, not a fluid simulation.",
+    inputs: &["image"],
+    parameters: &[
+        other("seed", ParameterKind::Seed, "seed"),
+        scalar("amount", "factor", 0.0, 1.0, 0.7),
+        scalar("size", "pixels", 1.0, 128.0, 4.0),
+        scalar("density", "factor", 0.0, 1.0, 0.55),
+        scalar("haze", "factor", 0.0, 1.0, 0.18),
+        scalar("dispersion", "factor", 0.0, 0.2, 0.012),
+        scalar("evolution", "seconds", -10000.0, 10000.0, 0.0),
+        scalar("trails", "factor", 0.0, 1.0, 0.2),
+    ],
+};
+node!(
+    Condensation,
+    CONDENSATION,
+    [amount, size, density, haze, evolution, trails, dispersion]
+);

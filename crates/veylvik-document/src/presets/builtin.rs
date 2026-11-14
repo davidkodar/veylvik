@@ -13,7 +13,7 @@ pub struct Builtin {
     pub label: &'static str,
     pub description: &'static str,
 }
-pub const ALL: [Builtin; 61] = [
+pub const ALL: [Builtin; 62] = [
     Builtin {
         id: "surface_paint",
         label: "Paint on Surface",
@@ -88,6 +88,11 @@ pub const ALL: [Builtin; 61] = [
         id: "surface_reflection",
         label: "Surface Reflection",
         description: "Reflect animated clouds, another object or an image in a metallic surface. Bind the surface and reflection scene separately.",
+    },
+    Builtin {
+        id: "condensation",
+        label: "Condensation",
+        description: "Water beads, fine surface moisture and subtle sliding trails over any image, material or animated fill. Keeps the original surface and follows its material lighting.",
     },
     Builtin {
         id: "wet_drips",
@@ -384,7 +389,8 @@ pub fn build(id: &str) -> Result<Preset> {
             node
         }
         id if appearance::material_kind(id).is_some() => appearance::build(id, &mut b, source)?,
-        "wet_drips"
+        "condensation"
+        | "wet_drips"
         | "water_drips"
         | "surface_reflection"
         | "clear_glass"
@@ -687,7 +693,8 @@ pub fn category(id: &str) -> &'static str {
         "gold_text" | "silver_text" | "aluminium_text" | "bronze_text" | "phosphor_text"
         | "wood_text" => "Materials",
         "light_smoke" | "dense_smoke" | "fog_layer" | "drifting_fog" | "clouds" => "Atmosphere",
-        "wet_drips"
+        "condensation"
+        | "wet_drips"
         | "water_drips"
         | "surface_reflection"
         | "clear_glass"

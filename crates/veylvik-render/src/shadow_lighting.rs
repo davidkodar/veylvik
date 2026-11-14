@@ -27,6 +27,37 @@ pub(crate) fn for_node(
     time: veylvik_document::Time,
 ) -> crate::Result<Option<Lighting>> {
     use veylvik_document::Operation;
+    if matches!(node.operation, Operation::Condensation(_)) {
+        let mut upstream = node.clone();
+        upstream
+            .inputs
+            .insert("lighting".into(), node.inputs["image"]);
+        let material = material(&upstream, nodes);
+        let fallback = veylvik_document::optical::StudioRig::default();
+        let rig = material.map_or(&fallback, |m| &m.studio);
+        let mut lighting = Lighting::new(
+            veylvik_document::MaterialKind::Silver,
+            Some(veylvik_document::optical::SurfaceOptics {
+                metallic: false,
+                reflectance: [0.02; 3],
+                ior: 1.333,
+            }),
+            rig,
+        );
+        if let Some(m) = material {
+            let angle = m.lighting.at(time)? * std::f32::consts::TAU;
+            let (s, c) = angle.sin_cos();
+            lighting.environment[3] += angle;
+            for light in &mut lighting.lights {
+                for v in &mut light[..3] {
+                    let (x, z) = (v[0], v[2]);
+                    v[0] = c * x + s * z;
+                    v[2] = -s * x + c * z;
+                }
+            }
+        }
+        return Ok(Some(lighting));
+    }
     let m = match &node.operation {
         Operation::Material(m) => Some(m),
         Operation::Shadow(s) if s.follow_lighting => material(node, nodes),

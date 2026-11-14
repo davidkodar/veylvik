@@ -227,6 +227,9 @@ pub fn operation(kind: &NodeType, width: u32, height: u32) -> Operation {
         Operation::Patina(veylvik_document::nodes::Patina { scale, .. }) => {
             *scale = (width as f32 * 110.0 / 960.0).clamp(1.0, 8192.0).into();
         }
+        Operation::Condensation(veylvik_document::nodes::Condensation { size, .. }) => {
+            *size = (height as f32 * 3.2 / 540.0).clamp(1.0, 128.0).into();
+        }
         Operation::Drip(veylvik_document::nodes::Drip {
             spacing,
             length,

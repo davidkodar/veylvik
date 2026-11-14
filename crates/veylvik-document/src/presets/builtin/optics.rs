@@ -25,6 +25,7 @@ fn loop_value(a: f32, b: f32) -> Scalar {
 }
 pub fn build(id: &str, b: &mut Builder, source: NodeId) -> Result<NodeId> {
     match id {
+        "condensation" => condensation(b, source),
         "wet_drips" | "water_drips" => {
             let shape = b.add(
                 "Liquid attached to input silhouette",
@@ -65,13 +66,14 @@ pub fn build(id: &str, b: &mut Builder, source: NodeId) -> Result<NodeId> {
                         ior: 1.333.into(),
                         transmission: 0.99.into(),
                         tint: 0.0.into(),
-                        dispersion: 0.0.into(),
+                        dispersion: 0.012.into(),
                     }),
                     &[("image", shape), ("background", background)],
                 );
                 for (p, l) in [
                     ("refraction", "Refraction"),
                     ("ior", "Liquid IOR"),
+                    ("dispersion", "Dispersion"),
                     ("tint", "Absorption"),
                 ] {
                     b.expose(water, p, l)?;
@@ -105,7 +107,9 @@ pub fn build(id: &str, b: &mut Builder, source: NodeId) -> Result<NodeId> {
             );
             b.expose(reflection, "roughness", "Surface roughness")?;
             b.expose(reflection, "bevel", "Surface rounding")?;
-            Ok(b.blend(surface, reflection, BlendMode::Add, 1.0.into()))
+            b.expose(reflection, "lighting", "Reflection rotation")?;
+            let wet = b.blend(surface, reflection, BlendMode::Add, 1.0.into());
+            condensation(b, wet)
         }
 
         "surface_reflection" => {
@@ -231,4 +235,42 @@ pub fn build(id: &str, b: &mut Builder, source: NodeId) -> Result<NodeId> {
         }
         _ => Err(crate::Error("unknown optics preset".into())),
     }
+}
+
+fn condensation(b: &mut Builder, source: NodeId) -> Result<NodeId> {
+    let coating = b.add(
+        "Water beads and sliding trails",
+        Operation::Condensation(crate::nodes::Condensation {
+            dispersion: 0.012.into(),
+            seed: 731,
+            amount: 0.65.into(),
+            size: 3.2.into(),
+            density: 0.55.into(),
+            haze: 0.14.into(),
+            trails: 0.35.into(),
+            evolution: Scalar::Linear {
+                keys: [(0, 0.0), (4, 4.0)]
+                    .into_iter()
+                    .map(|(ticks, value)| Key {
+                        time: Time { ticks, rate: 1 },
+                        value,
+                        segment: None,
+                    })
+                    .collect(),
+            },
+        }),
+        &[("image", source)],
+    );
+    for (p, l) in [
+        ("amount", "Surface wetness"),
+        ("size", "Bead size"),
+        ("density", "Bead density"),
+        ("haze", "Fine moisture"),
+        ("dispersion", "Bead dispersion"),
+        ("trails", "Sliding trails"),
+        ("evolution", "Surface movement"),
+    ] {
+        b.expose(coating, p, l)?;
+    }
+    Ok(coating)
 }

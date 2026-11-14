@@ -3,13 +3,36 @@ use super::{background, builtin, connect_after};
 use crate::{Command, Composition, Node, NodeId, NodePosition, Operation, Result, fail};
 fn input_layer(doc: &Composition, text: NodeId) -> Result<NodeId> {
     let reachable = background::reachable(doc);
+    // Shape processing must precede styling: a material before Drip is reduced
+    // back to coverage and disappears. Follow the unique liquid silhouette.
+    let drips: Vec<_> = doc
+        .nodes
+        .values()
+        .filter(|n| {
+            reachable.contains(&n.id)
+                && matches!(n.operation, Operation::Drip(_))
+                && n.inputs.get("image") == Some(&text)
+        })
+        .map(|n| n.id)
+        .collect();
+    if drips.len() > 1 {
+        return fail("This text feeds several liquid shapes. Select a branch to style it.");
+    }
+    let text = drips.first().copied().unwrap_or(text);
     let fills: Vec<_> = doc
         .nodes
         .values()
         .filter(|n| {
             reachable.contains(&n.id)
-                && matches!(n.operation, Operation::Mask(crate::nodes::Mask { .. }))
-                && n.inputs.get("mask") == Some(&text)
+                && ((matches!(n.operation, Operation::Mask(crate::nodes::Mask { .. }))
+                    && n.inputs.get("mask") == Some(&text))
+                    || (matches!(n.operation, Operation::Colorize(_))
+                        && n.inputs.get("image") == Some(&text)
+                        && doc.nodes.values().any(|m| {
+                            reachable.contains(&m.id)
+                                && matches!(m.operation, Operation::Material(_))
+                                && m.inputs.get("image") == Some(&n.id)
+                        })))
         })
         .map(|n| n.id)
         .collect();
@@ -83,13 +106,57 @@ pub fn apply(
         else {
             unreachable!()
         };
-        if let Operation::Material(crate::nodes::Material { kind, .. }) = &mut node.operation {
+        if let Operation::Material(crate::nodes::Material { kind, optics, .. }) =
+            &mut node.operation
+        {
             *kind = new_kind;
+            *optics = None;
         }
         node.label = format!("Text · {}", preset.group.label);
         let mut commands = vec![Command::Put {
-            node: Box::new(node),
+            node: Box::new(node.clone()),
         }];
+        // Wet looks combine pigment with a dielectric reflection pass. Once a
+        // full surface material is selected, it replaces that pigment rather
+        // than being additively tinted by it. Keep the output/group identity.
+        let liquid = matches!(doc.nodes[&text].operation, Operation::Drip(_))
+            || doc.nodes[&text]
+                .inputs
+                .get("mask")
+                .is_some_and(|id| matches!(doc.nodes[id].operation, Operation::Drip(_)));
+        for mix in doc
+            .nodes
+            .values()
+            .filter(|n| n.inputs.get("foreground") == Some(&id))
+        {
+            if let Operation::Blend(blend) = &mix.operation
+                && liquid
+                && blend.mode == crate::BlendMode::Add
+                && mix.inputs.get("background").is_some_and(|bg| {
+                    *bg == text
+                        || doc.nodes.get(bg).is_some_and(|n| {
+                            matches!(n.operation, Operation::Colorize(_))
+                                && n.inputs.get("image") == Some(&text)
+                        })
+                })
+            {
+                // Keep the pigment node feeding the material so captured
+                // groups and their public colour control remain valid.
+                node.inputs.insert("image".into(), mix.inputs["background"]);
+                commands.push(Command::Put {
+                    node: Box::new(node.clone()),
+                });
+                let mut mix = mix.clone();
+                mix.operation = Operation::Transform(crate::nodes::Transform {
+                    x: 0.0.into(),
+                    y: 0.0.into(),
+                });
+                mix.inputs = [("image".to_owned(), id)].into();
+                commands.push(Command::Put {
+                    node: Box::new(mix),
+                });
+            }
+        }
         if let Some(group) = doc
             .groups
             .values()

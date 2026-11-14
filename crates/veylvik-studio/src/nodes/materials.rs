@@ -7,15 +7,26 @@ use eframe::egui;
 
 impl Inspect for veylvik_document::nodes::Material {
     fn inspect(&mut self, ui: &mut egui::Ui, cx: &mut InspectCx<'_>) {
+        let custom_optics = self.optics.is_some();
+        let mut reset_optics = false;
         let veylvik_document::nodes::Material { kind, .. } = self;
         {
             egui::ComboBox::from_id_salt("Material-kind")
-                .selected_text(kind.label())
+                .selected_text(if custom_optics {
+                    "Custom optical surface"
+                } else {
+                    kind.label()
+                })
                 .show_ui(ui, |ui| {
                     for choice in veylvik_document::MaterialKind::ALL {
-                        cx.dirty |= ui.selectable_value(kind, choice, choice.label()).changed();
+                        let response = ui.selectable_value(kind, choice, choice.label());
+                        cx.dirty |= response.changed();
+                        reset_optics |= response.clicked();
                     }
                 });
+        }
+        if reset_optics && self.optics.take().is_some() {
+            cx.dirty = true;
         }
         cx.dirty |= finish_controls(ui, self);
         cx.dirty |= lighting_controls(ui, self, cx.node_id);
@@ -177,4 +188,14 @@ pub(crate) fn finish_controls(
     }
     ui.weak("Fine-tune roughness and grain below. Tarnish and dirt are separate effects.");
     changed
+}
+
+impl Inspect for veylvik_document::nodes::Condensation {
+    fn inspect(&mut self, ui: &mut egui::Ui, cx: &mut InspectCx<'_>) {
+        ui.horizontal(|ui| {
+            ui.label("Seed");
+            cx.dirty |= ui.add(egui::DragValue::new(&mut self.seed)).changed();
+        });
+        ui.weak("Uses upstream material lighting, or the default studio. Keeps the input surface and transparency.");
+    }
 }

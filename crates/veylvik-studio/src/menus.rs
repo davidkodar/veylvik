@@ -230,6 +230,7 @@ pub(crate) const ADD_MENU: [(&str, &[&registry::NodeType]); 8] = [
         "Materials and light",
         &[
             &registry::MATERIAL,
+            &registry::CONDENSATION,
             &registry::PATINA,
             &registry::GLASS,
             &registry::SURFACE_REFLECTION,

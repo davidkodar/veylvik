@@ -301,92 +301,6 @@ fn gold_fire(a: &mut Art, bg: NodeId, with_fire: bool) -> Result<NodeId> {
     let reflection = a.blur(reflection, 2.0);
     Ok(a.plus("Smoky reflected light", face, reflection, 0.10))
 }
-fn dripping(a: &mut Art, bg: NodeId, pink: bool) -> NodeId {
-    let letters = a.text("DRIP");
-    let bg = a.atmosphere(
-        bg,
-        if pink {
-            [0.16, 0.005, 0.16, 1.0]
-        } else {
-            [0.012, 0.1, 0.03, 1.0]
-        },
-        480.0,
-        340.0,
-        350.0,
-        120.0,
-    );
-    let mask = a.node(
-        "Surface-tension drips from text",
-        Operation::Drip(crate::nodes::Drip {
-            seed: 821,
-            evolution: Scalar::Linear {
-                keys: vec![
-                    Key {
-                        time: Time { ticks: 0, rate: 1 },
-                        value: 0.0,
-                        segment: None,
-                    },
-                    Key {
-                        time: Time { ticks: 4, rate: 1 },
-                        value: 4.0,
-                        segment: None,
-                    },
-                ],
-            },
-            spacing: 43.0.into(),
-            length: 140.0.into(),
-            radius: 5.5.into(),
-        }),
-        &[("image", letters)],
-    );
-    let dark = if pink {
-        [0.19, 0.003, 0.035, 1.0]
-    } else {
-        [0.025, 0.12, 0.006, 1.0]
-    };
-    let ink = a.palette(
-        "Liquid pigment",
-        180.0,
-        410.0,
-        [dark[0] * 0.45, dark[1] * 0.45, dark[2] * 0.45, 1.0],
-        dark,
-    );
-    let pigment = a.mask("Pigmented liquid coverage", ink, mask);
-    let face = a.node(
-        "Wet dielectric surface",
-        Operation::Material(crate::nodes::Material {
-            smooth_edges: true,
-            brushing: Default::default(),
-            studio: Default::default(),
-            optics: Some(crate::optical::SurfaceOptics {
-                metallic: false,
-                reflectance: [0.04; 3],
-                ior: 1.46,
-            }),
-            kind: crate::MaterialKind::Silver,
-            scale: 180.0.into(),
-            bevel: 5.0.into(),
-            roughness: 0.16.into(),
-            lighting: 0.0.into(),
-            grain: 0.0.into(),
-            emission: 1.0.into(),
-        }),
-        &[("image", pigment)],
-    );
-    let face = a.plus("Pigment beneath wet reflections", pigment, face, 1.0);
-    let bg = a.over("Liquid title", bg, face);
-    let puddle = a.ellipse(
-        "Liquid pool",
-        480.0.into(),
-        465.0.into(),
-        cycle(245.0, 275.0),
-        12.0.into(),
-        8.0,
-    );
-    let ink = a.solid("Pool tint", dark);
-    let puddle = a.mask("Glossy floor pool", ink, puddle);
-    a.plus("Pool under drips", bg, puddle, 0.35)
-}
 fn sand(a: &mut Art, bg: NodeId) -> NodeId {
     let mask = a.text("DUST");
     let noise = a.noise(3.5, 47);
@@ -571,7 +485,7 @@ pub(super) fn build(id: &str) -> Result<Scene> {
     let optics = matches!(
         id,
         "surface_reflection"
-            | "water_drips"
+            | "condensation"
             | "clear_glass"
             | "frosted_glass_material"
             | "sun_glints"
@@ -613,6 +527,10 @@ pub(super) fn build(id: &str) -> Result<Scene> {
         bg
     };
     let before = match id {
+        "condensation" => {
+            let letters = a.text("WET");
+            a.mask("Animated sky inside letters", environment, letters)
+        }
         "surface_reflection" | "sun_glints" | "metal_patina" => {
             let mask = a.text("GOLD");
             a.node(
@@ -653,8 +571,7 @@ pub(super) fn build(id: &str) -> Result<Scene> {
         id if super::super::builtin::category(id) == "Atmosphere" => atmosphere_plate(&mut a, id),
         "embers" => gold_fire(&mut a, bg, true)?,
         "metallic_shine" => gold_fire(&mut a, bg, false)?,
-        "fireflies" => dripping(&mut a, bg, false),
-        "liquid_shimmer" => dripping(&mut a, bg, true),
+        "fireflies" | "liquid_shimmer" => a.text("DRIP"),
         "dust_motes" => sand(&mut a, bg),
         "snowfall" => winter(&mut a, bg),
         "starfield" => nova(&mut a, bg),
@@ -667,7 +584,40 @@ pub(super) fn build(id: &str) -> Result<Scene> {
     };
     a.doc.nodes.get_mut(&backdrop).unwrap().scene_background = true;
     a.doc.output = before;
-    let preset = super::super::builtin::build(id)?;
+    let liquid = matches!(
+        id,
+        "condensation" | "fireflies" | "liquid_shimmer" | "wet_drips" | "water_drips"
+    );
+    if liquid {
+        bg = a.solid("Neutral preview background", [0.025, 0.025, 0.025, 1.0]);
+        a.doc.nodes.get_mut(&bg).unwrap().scene_background = true;
+        if id == "water_drips" {
+            let gradient = a.gradient("Neutral refraction backdrop", 0.0, 540.0);
+            bg = a.tint(
+                "Neutral grey backdrop",
+                gradient,
+                [0.035, 0.035, 0.035, 1.0],
+                [0.24, 0.24, 0.24, 1.0],
+            );
+            a.doc.nodes.get_mut(&bg).unwrap().scene_background = true;
+        }
+    }
+    let preset_id = if matches!(id, "fireflies" | "liquid_shimmer") {
+        "wet_drips"
+    } else {
+        id
+    };
+    let mut preset = super::super::builtin::build(preset_id)?;
+    if id == "fireflies" {
+        for node in preset.nodes.values_mut() {
+            if let Operation::Colorize(tint) = &mut node.operation {
+                tint.high = [0.025, 0.12, 0.006, 1.0];
+            }
+        }
+        if let Some(control) = preset.group.controls.get_mut("liquid_colour") {
+            control.default = serde_json::json!([0.025, 0.12, 0.006, 1.0]);
+        }
+    }
     let instance = preset.instantiate(
         &a.doc,
         &preset
@@ -688,7 +638,7 @@ pub(super) fn build(id: &str) -> Result<Scene> {
     let document = Document::new(a.doc)?;
     let mut composition = document.prepare(0, &instance.commands)?;
     composition.output = instance.output;
-    let before = if matches!(id, "wet_drips" | "water_drips")
+    let before = if liquid
         || id == "metallic_shine"
         || id == "sun_glints"
         || super::super::builtin::category(id) == "Materials"
