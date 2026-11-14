@@ -343,7 +343,11 @@ impl Preferences {
                     if ui.button("Cancel").clicked() {
                         close = true;
                     }
-                    ui.weak("Saved for this user, independent of projects.");
+                    ui.weak(if self.draft != self.values {
+                        "Unsaved changes · click Apply to save."
+                    } else {
+                        "Settings are saved for this user, independent of projects."
+                    });
                 });
             });
         self.open = open && !close;
