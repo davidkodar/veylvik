@@ -218,8 +218,8 @@ changes, including the live theme preview. Each section has its own reset.
   Pausing keeps the current frame visible. Looping defaults on and can also be toggled
   with the timeline loop button. Without looping, playback stops at the final frame;
   starting again from that frame starts at zero.
-- **Appearance:** Dark (default), Light, Midnight Blue, Evergreen, or Follow system /
-  Omarchy. Omarchy's active `colors.toml` is read from its state directory, with the
+- **Appearance:** Dark (default), Light, Midnight Blue, Evergreen, or Follow system.
+  Omarchy's active `colors.toml` is read from its state directory, with the
   legacy configuration path supported. Other desktops use their portal colour-scheme
   preference; unavailable settings fall back to Dark. Changes are polled every two
   seconds, without changing desktop configuration. Theme previews immediately;
@@ -553,8 +553,8 @@ finishes.
 | Q | Close |
 | ? | Show shortcuts |
 
-The editor follows the current Omarchy accent, with a fallback when Omarchy is
-absent. Node positions are saved with the project; each drag is one undo step.
+With **Follow system** enabled, the editor automatically detects the active Omarchy
+palette or the desktop light/dark preference. Node positions are saved with the project; each drag is one undo step.
 **Duplicate node** (Ctrl+D) copies the selected node with its animation and input
 connections, selects the copy, and creates one undo step. The composition output
 stays unchanged. Apply or revert inspector drafts before duplicating.

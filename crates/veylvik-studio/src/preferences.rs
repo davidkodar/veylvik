@@ -25,7 +25,7 @@ impl Theme {
     ];
     pub fn label(self) -> &'static str {
         match self {
-            Self::System => "Follow system / Omarchy",
+            Self::System => "Follow system",
             Self::Dark => "Dark",
             Self::Light => "Light",
             Self::Blue => "Midnight Blue",

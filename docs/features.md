@@ -38,7 +38,7 @@ Everything Veylvik can do today, area by area. Veylvik is a native Rust node com
 
 - **Edit → Preferences** (`Ctrl+,`): Playback, Appearance, Workspace, Performance and Recovery sections, with Apply, Cancel and per-section reset.
 - Restart from frame zero on Play/Space, or resume from the paused frame. Loop toggle on the timeline; with looping off playback stops on the final frame.
-- Dark, Light, Midnight Blue and Evergreen palettes; **Follow system / Omarchy** reads the active Omarchy palette or the desktop portal light/dark preference and updates while running.
+- Dark, Light, Midnight Blue and Evergreen palettes; **Follow system** reads the active Omarchy palette or the desktop portal light/dark preference and updates while running.
 - Immediate theme preview with Cancel restoring the saved theme; interface scale from 75% to 200% applies on Apply. Display themes never affect rendered pixels.
 - Defaults for automatic node arrangement, animated library hover previews and fast viewer filtering.
 - Renderer GPU buffer budget (restart required, environment override retained); recovery enable/disable and 10–300 second interval.
