@@ -142,20 +142,13 @@ pub fn scalar_with_default(
                 let mut edited = false;
                 if ui.available_width() > 220. {
                     ui.spacing_mut().slider_width = (ui.available_width()
-                        - 72.
+                        - crate::design::NUMBER_WIDTH
                         - (if default.is_some() { 5. } else { 4. }) * 25.
                         - 6.)
                         .max(24.);
                     edited |= crate::design::slider(ui, &mut value, range.clone()).changed();
                 }
-                edited |= ui
-                    .add_sized(
-                        [64., 26.],
-                        egui::DragValue::new(&mut value)
-                            .speed(0.1)
-                            .range(range.clone()),
-                    )
-                    .changed();
+                edited |= crate::design::number(ui, &mut value, range.clone()).changed();
                 if edited {
                     changed |= crate::handles::edit(
                         scalar,

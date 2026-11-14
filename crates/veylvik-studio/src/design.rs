@@ -128,3 +128,35 @@ pub fn panel() -> egui::Frame {
         .outer_margin(3.)
         .corner_radius(7.)
 }
+
+/// DragValue uses an intrinsic-width button and an expanding text editor.
+/// Give it a clipped child UI so long/negative values cannot resize its parent.
+pub const NUMBER_WIDTH: f32 = 80.;
+pub fn number(
+    ui: &mut egui::Ui,
+    value: &mut f32,
+    range: std::ops::RangeInclusive<f32>,
+) -> egui::Response {
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(NUMBER_WIDTH, 26.), egui::Sense::hover());
+    let mut field = ui.new_child(
+        egui::UiBuilder::new()
+            .max_rect(rect)
+            .layout(egui::Layout::left_to_right(egui::Align::Center)),
+    );
+    field.set_clip_rect(rect.intersect(ui.clip_rect()));
+    field.spacing_mut().button_padding.x = 2.;
+    field
+        .style_mut()
+        .text_styles
+        .insert(egui::TextStyle::Monospace, egui::FontId::monospace(12.));
+    let hint = value.to_string();
+    field
+        .add_sized(
+            rect.size(),
+            egui::DragValue::new(value)
+                .speed(0.1)
+                .range(range)
+                .max_decimals(3),
+        )
+        .on_hover_text(hint)
+}

@@ -2,6 +2,39 @@
 use eframe::egui::{self, Color32, Rect, Stroke, Vec2};
 use veylvik_document::{Operation, Result, Time};
 
+fn snapped_rotation(angle: f32, alt: bool, shift: bool) -> f32 {
+    if alt {
+        return angle;
+    }
+    if shift {
+        return (angle / 15.).round() * 15.;
+    }
+    let nearest = (angle / 45.).round() * 45.;
+    if (angle - nearest).abs() <= 3. {
+        nearest
+    } else {
+        angle
+    }
+}
+
+/// Retain unquantized movement so small pointer deltas can escape a snap zone.
+pub(super) fn rotation_drag(response: &egui::Response, angle: f32, delta: f32) -> f32 {
+    let key = response.id.with("raw-rotation");
+    let start = response.drag_started() || response.ctx.input(|i| i.pointer.primary_pressed());
+    let raw = response.ctx.data_mut(|d| {
+        let raw = if start {
+            angle
+        } else {
+            d.get_temp::<f32>(key).unwrap_or(angle)
+        } + delta;
+        d.insert_temp(key, raw);
+        raw
+    });
+    response
+        .ctx
+        .input(|i| snapped_rotation(raw, i.modifiers.alt, i.modifiers.shift))
+}
+
 struct Geometry {
     center: Vec2,
     pivot: Vec2,
@@ -206,7 +239,7 @@ pub fn show(
         painter.line_segment([center, rotate], stroke);
         points.push((
             rotate,
-            "Drag around the pivot to rotate clockwise. Apply commits; Revert discards.",
+            "Rotate · snaps near 45-degree angles · Alt: free · Shift: 15-degree steps",
         ));
     }
     let mut changed = false;
@@ -216,8 +249,18 @@ pub fn show(
             continue;
         }
         let response = crate::handles::interact(ui, hit, ui.id().with(("transform_handle", index)))
-            .on_hover_cursor(egui::CursorIcon::Grab)
             .on_hover_text(hint);
+        if response.hovered() || response.dragged() {
+            if index == 3 {
+                crate::text_handles::rotation_cursor(ui);
+            } else {
+                ui.ctx().set_cursor_icon(match index {
+                    0 => egui::CursorIcon::Move,
+                    1 | 2 => crate::text_handles::resize_cursor(point - center),
+                    _ => egui::CursorIcon::Crosshair,
+                });
+            }
+        }
         if index == 3 {
             painter.rect_filled(Rect::from_center_size(point, Vec2::splat(9.0)), 0.0, color);
         } else {
@@ -229,6 +272,11 @@ pub fn show(
             && delta != Vec2::ZERO
             && let Some(pointer) = response.interact_pointer_pos()
         {
+            let before_angle = if index == 3 {
+                operation.scalar("rotation").unwrap().at(time)?
+            } else {
+                0.
+            };
             move_handle(
                 operation,
                 index,
@@ -237,7 +285,16 @@ pub fn show(
                 image,
                 time,
             )?;
+            if index == 3 {
+                let current = operation.scalar("rotation").unwrap().at(time)?;
+                let target = rotation_drag(&response, before_angle, current - before_angle);
+                edit(operation, "rotation", target - current, time)?;
+            }
             changed = true;
+        }
+        if response.drag_stopped() {
+            ui.ctx()
+                .data_mut(|d| d.remove::<f32>(response.id.with("raw-rotation")));
         }
     }
     Ok(changed)
@@ -257,6 +314,24 @@ mod tests {
             pivot_x: 10.0.into(),
             pivot_y: 20.0.into(),
         })
+    }
+    #[test]
+    fn rotation_snaps_near_common_angles_with_precision_and_bypass() {
+        for (raw, want) in [
+            (2., 0.),
+            (43., 45.),
+            (88., 90.),
+            (-44., -45.),
+            (359., 360.),
+            (723., 720.),
+            (20., 20.),
+        ] {
+            assert_eq!(snapped_rotation(raw, false, false), want);
+            assert_eq!(snapped_rotation(raw, true, false), raw);
+        }
+        assert_eq!(snapped_rotation(22., false, true), 15.);
+        assert_eq!(snapped_rotation(23., false, true), 30.);
+        assert_eq!(snapped_rotation(4., false, false), 4.);
     }
     #[test]
     fn geometry_and_axis_drags_match_forward_affine_with_negative_scales() {

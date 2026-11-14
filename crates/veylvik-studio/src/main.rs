@@ -39,6 +39,7 @@ mod recovery;
 mod sequence;
 mod shape_animation;
 mod showcase_gallery;
+mod status_bar;
 mod subject;
 mod surface;
 mod text_effects;
@@ -210,6 +211,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 key_timeline: key_timeline::Keys::default(),
                 animation_editor: animation_editor::Editor::default(),
                 status: String::new(),
+                last_render_ms: None,
                 error: false,
                 playing: false,
                 playback: Instant::now(),
@@ -288,6 +290,7 @@ struct Studio {
     key_timeline: key_timeline::Keys,
     animation_editor: animation_editor::Editor,
     status: String,
+    last_render_ms: Option<f64>,
     error: bool,
     playing: bool,
     playback: Instant,
@@ -2382,11 +2385,8 @@ impl eframe::App for Studio {
                             self.displayed_ticket = Some(result.ticket);
                             self.displayed_time = Some(result.request.time);
                             if !self.error && !self.files.busy() {
-                                self.status = format!(
-                                    "{:.1} ms · {}",
-                                    result.elapsed.as_secs_f64() * 1000.0,
-                                    self.renderer.adapter.name
-                                );
+                                self.last_render_ms = Some(result.elapsed.as_secs_f64() * 1000.);
+                                self.status = if self.playing { "Playing" } else { "Ready" }.into();
                             }
                         }
                         Err(e) => {
@@ -2513,22 +2513,7 @@ impl eframe::App for Studio {
             !self.files.busy() && !self.authoring_dialog_open() && self.confirm.is_none(),
             |ui| {
                 egui::Panel::top("menu_bar").show_inside(ui, |ui| self.menu_bar(ui));
-                egui::Panel::bottom("status").show_inside(ui, |ui| {
-                    if self.files.busy() {
-                        ui.horizontal(|ui| {
-                            ui.spinner();
-                            ui.label("File operation in progress…");
-                        });
-                    }
-                    ui.colored_label(
-                        if self.error {
-                            egui::Color32::LIGHT_RED
-                        } else {
-                            egui::Color32::from_gray(165)
-                        },
-                        &self.status,
-                    );
-                });
+                egui::Panel::bottom("status").show_inside(ui, |ui| self.status_bar(ui));
                 self.asset_browser(ui);
                 if self.inspector_visible {
                 egui::Panel::right("inspector").frame(design::panel())
@@ -2731,7 +2716,7 @@ impl eframe::App for Studio {
                         let viewer_on_top = ctx
                             .pointer_hover_pos()
                             .is_some_and(|pos| ctx.layer_id_at(pos) == Some(response.layer_id));
-                        if viewer_on_top {
+                        if viewer_on_top && !matches!(self.draft.operation, Operation::Text(_)) {
                             response.on_hover_text(format!(
                                 "{:.0}% · scroll to zoom · drag to pan · double-click to fit",
                                 self.navigation.scale(canvas, image, ctx.pixels_per_point())

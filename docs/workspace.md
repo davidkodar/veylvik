@@ -34,7 +34,10 @@ User text fonts remain independent of the interface font.
 Selected text has an outline box in the viewer. Drag its centre cross to move,
 its eight square handles to resize, or the round handle above it to rotate.
 Resizing keeps the opposite handle fixed. Hold Shift, or enable linked scale in
-Transform, to preserve proportions. Double-click the text to edit its wording.
+Transform, to preserve proportions. Rotation gently snaps within three degrees
+of horizontal, vertical and diagonal (45-degree) angles. Hold Alt for free
+rotation, or Shift for exact 15-degree increments. Double-click the text to edit
+its wording.
 Layout-box editing remains a separate Text tools option for wrapping paragraphs.
 
 The keyframe strip uses labelled frame ticks that adapt to the available width

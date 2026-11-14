@@ -71,6 +71,42 @@ fn rotate(v: Vec2, angle: f32) -> Vec2 {
     egui::vec2(c * v.x - s * v.y, s * v.x + c * v.y)
 }
 
+/// Quantize the visible direction, including rotation, mirroring and viewer scaling.
+pub(super) fn resize_cursor(direction: Vec2) -> egui::CursorIcon {
+    let sector = (direction.y.atan2(direction.x).to_degrees() / 45.).round() as i32;
+    match sector.rem_euclid(4) {
+        0 => egui::CursorIcon::ResizeHorizontal,
+        1 => egui::CursorIcon::ResizeNwSe,
+        2 => egui::CursorIcon::ResizeVertical,
+        _ => egui::CursorIcon::ResizeNeSw,
+    }
+}
+
+pub(super) fn rotation_cursor(ui: &egui::Ui) {
+    if let Some(pointer) = ui.input(|i| i.pointer.hover_pos()) {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::None);
+        let painter = ui.ctx().layer_painter(egui::LayerId::new(
+            egui::Order::Tooltip,
+            ui.id().with("rotate-cursor"),
+        ));
+        let center = pointer + egui::vec2(11., 11.);
+        let points: Vec<_> = (0..=24)
+            .map(|i| {
+                let a = (-140. + i as f32 * 270. / 24.).to_radians();
+                center + egui::vec2(a.cos(), a.sin()) * 9.
+            })
+            .collect();
+        let tip = *points.last().unwrap();
+        for (width, color) in [(4.0_f32, Color32::BLACK), (2.0_f32, Color32::WHITE)] {
+            painter.add(egui::Shape::line(points.clone(), Stroke::new(width, color)));
+            painter.add(egui::Shape::line(
+                vec![tip + egui::vec2(-1., -6.), tip, tip + egui::vec2(6., -1.)],
+                Stroke::new(width, color),
+            ));
+        }
+    }
+}
+
 /// Resize around the opposite handle, preserving its image-space position.
 fn resize(
     op: &mut Operation,
@@ -171,6 +207,51 @@ pub fn show(
         egui::vec2(-1., 0.),
     ];
     let mut changed = false;
+    // A narrow hit region follows the rotated border, never its empty interior.
+    let border_id = ui.id().with("text-box-border");
+    let pointer = ui.input(|i| {
+        if i.pointer.primary_pressed() {
+            i.pointer.press_origin()
+        } else {
+            i.pointer.hover_pos()
+        }
+    });
+    let border_hit = pointer.filter(|p| {
+        canvas.contains(*p)
+            && corners.windows(2).any(|edge| {
+                let a = screen(edge[0].to_vec2());
+                let b = screen(edge[1].to_vec2());
+                let span = b - a;
+                let t = ((*p - a).dot(span) / span.length_sq().max(0.001)).clamp(0., 1.);
+                p.distance(a + span * t) <= 5.
+            })
+            && !handles.iter().any(|h| {
+                let point = screen(local.center().to_vec2() + *h * local.size() * 0.5);
+                Rect::from_center_size(point, Vec2::splat(20.)).contains(*p)
+            })
+            && p.distance(rotation) > 12.
+            && p.distance(center) > 12.
+    });
+    let hit = border_hit.map_or(Rect::NOTHING, |p| {
+        Rect::from_center_size(p, Vec2::splat(10.)).intersect(canvas)
+    });
+    let border = crate::handles::interact(ui, hit, border_id)
+        .on_hover_text("Move text · drag the border to reposition the whole text layer");
+    if border.hovered() || border.dragged() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::Move);
+    }
+    if border.dragged() {
+        let delta = crate::handles::drag_delta(&border) / zoom;
+        if delta != Vec2::ZERO {
+            let mut next = op.clone();
+            set(&mut next, "x", pivot.x + delta.x, time)?;
+            set(&mut next, "y", pivot.y + delta.y, time)?;
+            *op = next;
+            changed = true;
+            ui.ctx()
+                .data_mut(|d| d.insert_temp(egui::Id::new("text-box-moving"), true));
+        }
+    }
     // Move from the centre cross; the interior remains available for double-click text editing.
     for (index, handle) in handles.into_iter().chain([Vec2::ZERO; 2]).enumerate() {
         let point = if index < 8 {
@@ -185,15 +266,28 @@ pub fn show(
             continue;
         }
         let hint = if index == 8 {
-            "Rotate text"
+            "Rotate text · snaps near 45-degree angles · Alt: free · Shift: 15-degree steps"
         } else if index == 9 {
             "Move text"
         } else {
             "Resize text · opposite handle stays fixed · Shift preserves proportions"
         };
         let response = crate::handles::interact(ui, hit, ui.id().with(("text-box-handle", index)))
-            .on_hover_text(hint)
-            .on_hover_cursor(egui::CursorIcon::Grab);
+            .on_hover_text(hint);
+        let cursor = if index < 8 {
+            resize_cursor(rotate(handle * scales, angle) * zoom)
+        } else if index == 9 {
+            egui::CursorIcon::Move
+        } else {
+            egui::CursorIcon::Crosshair
+        };
+        if response.hovered() || response.dragged() {
+            if index == 8 {
+                rotation_cursor(ui);
+            } else {
+                ui.ctx().set_cursor_icon(cursor);
+            }
+        }
         response.widget_info(|| {
             egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), hint)
         });
@@ -241,18 +335,18 @@ pub fn show(
                 let after = (pointer - origin) / zoom - pivot;
                 let before = after - delta;
                 if before.length_sq() > 1. && after.length_sq() > 1. {
-                    set(
-                        op,
-                        "rotation",
-                        angle
-                            + (before.x * after.y - before.y * after.x)
-                                .atan2(before.dot(after))
-                                .to_degrees(),
-                        time,
-                    )?;
+                    let delta = (before.x * after.y - before.y * after.x)
+                        .atan2(before.dot(after))
+                        .to_degrees();
+                    let target = crate::transform_handles::rotation_drag(&response, angle, delta);
+                    set(op, "rotation", target, time)?;
                 }
             }
             changed = true;
+        }
+        if response.drag_stopped() {
+            ui.ctx()
+                .data_mut(|d| d.remove::<f32>(response.id.with("raw-rotation")));
         }
     }
     Ok(changed)

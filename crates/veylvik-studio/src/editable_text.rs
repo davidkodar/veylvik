@@ -46,9 +46,9 @@ fn parameter(
             });
             if let Ok(mut current)=value.at(time) {
                 let before=current;
-                ui.spacing_mut().slider_width=(ui.available_width()-184.).max(24.);
+                ui.spacing_mut().slider_width=(ui.available_width()-crate::design::NUMBER_WIDTH-4.*25.-6.).max(24.);
                 let slider=crate::design::slider(ui,&mut current,range);
-                let number=ui.add_sized([64.,26.],egui::DragValue::new(&mut current).speed(0.1).range(spec.min.unwrap()..=spec.max.unwrap()));
+                let number=crate::design::number(ui,&mut current,spec.min.unwrap()..=spec.max.unwrap());
                 if slider.changed() || number.changed() {
                     match crate::handles::edit(value,time,current-before,spec.min.unwrap(),spec.max.unwrap()) {
                         Ok(())=>changed=true,Err(e)=>{ui.colored_label(egui::Color32::LIGHT_RED,e.to_string());}
@@ -1158,6 +1158,8 @@ mod tests {
             .unwrap()
             .operation;
         for frame in 0..40 {
+            *text.scalar_mut("x").unwrap() =
+                [-32768.125_f32, -12345.678, 32767.999, 0.][frame as usize % 4].into();
             let _ = ctx.run_ui(
                 egui::RawInput {
                     screen_rect: Some(egui::Rect::from_min_size(
@@ -1178,6 +1180,22 @@ mod tests {
                         .show_inside(ui, |ui| {
                             header(ui, &mut text);
                             egui::ScrollArea::vertical().show(ui, |ui| {
+                                parameter(
+                                    ui,
+                                    &mut text,
+                                    "x",
+                                    "Position X",
+                                    -32768. ..=32768.,
+                                    Time::new(0, 1).unwrap(),
+                                );
+                                crate::animation::scalar_with_default(
+                                    ui,
+                                    "Shine X",
+                                    text.scalar_mut("x").unwrap(),
+                                    -32768. ..=32768.,
+                                    Time::new(0, 1).unwrap(),
+                                    Some(0.),
+                                );
                                 fonts.choose(ui, &mut font);
                                 controls(
                                     ui,

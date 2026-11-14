@@ -158,15 +158,6 @@ impl Studio {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui.add(egui::Button::new("Render").fill(egui::Color32::from_rgb(110,66,174))).clicked() {self.video_export.open=true;}
 
-                if let Some(server) = &self.control {
-                    ui.weak("MCP").on_hover_text(format!(
-                        "Assistants can drive this editor through veylvik mcp --studio.\nListening on {}",
-                        server.path().display()
-                    ));
-                } else if let Some(error) = &self.control_error {
-                    ui.weak(egui::RichText::new("MCP").strikethrough())
-                        .on_hover_text(format!("Live control is unavailable: {error}"));
-                }
                 let unavailable = self.project.unavailable_assets().len();
                 if unavailable > 0 {
                     ui.colored_label(egui::Color32::LIGHT_RED, format!("{unavailable} unavailable"))
