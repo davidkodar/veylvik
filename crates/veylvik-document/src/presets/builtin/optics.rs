@@ -59,9 +59,11 @@ pub fn build(id: &str, b: &mut Builder, source: NodeId) -> Result<NodeId> {
                 let background = external(b, "Background to refract");
                 let water = b.add(
                     "Water refraction",
+                    // Beads are domed across the whole stroke, so the profile spans it
+                    // and every stroke lenses the background, not just a thin rim.
                     Operation::Glass(crate::nodes::Glass {
-                        bevel: 5.0.into(),
-                        refraction: 24.0.into(),
+                        bevel: 12.0.into(),
+                        refraction: 30.0.into(),
                         roughness: 0.0.into(),
                         ior: 1.333.into(),
                         transmission: 0.99.into(),
@@ -97,7 +99,7 @@ pub fn build(id: &str, b: &mut Builder, source: NodeId) -> Result<NodeId> {
                     }),
                     kind: crate::MaterialKind::Silver,
                     scale: 180.0.into(),
-                    bevel: 5.0.into(),
+                    bevel: if id == "water_drips" { 12.0 } else { 5.0 }.into(),
                     roughness: 0.12.into(),
                     lighting: 0.0.into(),
                     grain: 0.0.into(),
