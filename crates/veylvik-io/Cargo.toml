@@ -13,7 +13,7 @@ veylvik-render.workspace = true
 png = "0.18"
 pathdiff = "0.2"
 serde_json.workspace = true
-image.workspace = true
+image = { workspace = true, features = ["hdr"] }
 exr = { version = "=1.74.2", default-features = false }
 [lints]
 workspace = true

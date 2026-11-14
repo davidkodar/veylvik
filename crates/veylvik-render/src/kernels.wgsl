@@ -8,6 +8,7 @@ struct Params { size_op: vec4<u32>, values: vec4<f32>, extra: vec4<f32> }
 struct StudioLight { center:vec4<f32>, u:vec4<f32>, v:vec4<f32>, colour:vec4<f32> }
 struct StudioLighting { optics:vec4<f32>, environment:vec4<f32>, lights:array<StudioLight,8> }
 @group(0) @binding(6) var<uniform> studio:StudioLighting;
+@group(0) @binding(7) var<storage,read> environment_map:array<vec4<f32>>;
 fn inside(gid:vec3<u32>)->bool { return gid.x<p.size_op.x && gid.y<p.size_op.y; }
 fn index(gid:vec3<u32>)->u32 { return gid.y*p.size_op.x+gid.x; }
 fn sample_source(x:i32,y:i32)->vec4<f32> {
@@ -550,23 +551,44 @@ fn ltc_rect(position:vec3<f32>,basis:mat3x3<f32>,center:vec3<f32>,u:vec3<f32>,v:
     }
     return max(0.0,sum)/6.2831853;
 }
+// The environment contains nine GGX-filtered levels and a diffuse irradiance/pi layer.
+fn environment_layer(direction:vec3<f32>,layer:u32)->vec3<f32> {
+    let d=normalize(vec3<f32>(direction.x,-direction.y,direction.z));
+    let uv=vec2<f32>(atan2(d.z,d.x)/6.2831853+0.5,acos(clamp(d.y,-1.0,1.0))/3.14159265);
+    var size=vec2<u32>(1024u,512u)>>vec2<u32>(layer);
+    if layer==9u {size=vec2<u32>(64u,32u);}
+    var offset=0u;
+    for(var i=0u;i<layer;i++) {let extent=vec2<u32>(1024u,512u)>>vec2<u32>(i);offset+=extent.x*extent.y;}
+    let q=uv*vec2<f32>(size)-vec2<f32>(0.5);let lo=vec2<i32>(floor(q));let f=fract(q);
+    let x0=u32((lo.x+i32(size.x))%i32(size.x));let x1=(x0+1u)%size.x;
+    let y0=u32(clamp(lo.y,0,i32(size.y)-1));let y1=u32(clamp(lo.y+1,0,i32(size.y)-1));
+    return mix(mix(environment_map[offset+y0*size.x+x0].rgb,environment_map[offset+y0*size.x+x1].rgb,f.x),
+        mix(environment_map[offset+y1*size.x+x0].rgb,environment_map[offset+y1*size.x+x1].rgb,f.x),f.y);
+}
+fn environment_specular(direction:vec3<f32>,rough:f32)->vec3<f32> {
+    let level=clamp(rough,0.0,1.0)*8.0;let lo=u32(floor(level));
+    return mix(environment_layer(direction,lo),environment_layer(direction,min(lo+1u,8u)),fract(level));
+}
 fn studio_surface(uv:vec2<f32>, normal:vec3<f32>,albedo:vec3<f32>)->vec3<f32> {
     let kind=p.size_op.w;
     // Lighting coordinates follow canvas proportions, independent of texture scale.
     var position=vec3<f32>((uv*p.values.x-vec2<f32>(p.size_op.xy)*0.5)/(f32(p.size_op.y)*0.5),0.0);
     let texture_position=vec3<f32>(uv,0.0);
     if p.extra.z>0.5 {position=normal;}
-    let v=normalize(vec3<f32>(0.0,0.0,6.0)-position);
+    var v=normalize(vec3<f32>(0.0,0.0,6.0)-position);
+    // The swatch is an orthographic sphere; a perspective view vector would
+    // shade part of its back-facing hemisphere and exaggerate the bright rim.
+    if p.extra.z>0.5 {v=vec3<f32>(0.0,0.0,1.0);}
     let fine=fire_noise(texture_position*140.0+vec3<f32>(0.4,1.3,2.7),71u)-0.5;
     let fine_y=fire_noise(texture_position*140.0+vec3<f32>(4.1,9.2,0.7),191u)-0.5;
     let texture=fire_fbm(texture_position*19.0+vec3<f32>(1.0),257u);
-    var bump=vec3<f32>(fine,fine_y,0.0)*0.06*p.extra.x;
+    var bump=vec3<f32>(fine,fine_y,0.0)*0.012*p.extra.x;
     if kind==2u {
         let brush=fire_noise(vec3<f32>(uv.x*3.0,uv.y*min(500.0,p.values.x*0.65),0.0),71u)-0.5;
         bump=vec3<f32>(0.0,brush*0.065,0.0)*p.extra.x;
     }
     let n=normalize(normal+bump);
-    let rough=clamp(p.values.z+(texture-0.5)*p.extra.x*select(select(0.35,0.5,kind==3u),0.03,kind==2u),0.03,1.0);
+    let rough=clamp(p.values.z+(texture-0.5)*p.extra.x*select(select(0.06,0.14,kind==3u),0.03,kind==2u),0.03,1.0);
     let f0=studio.optics.rgb;
     let nv=max(dot(n,v),0.0001);
     var tangent=v-n*dot(n,v);
@@ -582,12 +604,18 @@ fn studio_surface(uv:vec2<f32>, normal:vec3<f32>,albedo:vec3<f32>)->vec3<f32> {
     let reflected=f0*amplitude.x+(vec3<f32>(1.0)-f0)*amplitude.y;
     var radiance=vec3<f32>(studio.environment.x);
     var diffuse=vec3<f32>(studio.environment.x);
+    if studio.environment.z>0.0 {
+        let ec=cos(studio.environment.w);let es=sin(studio.environment.w);
+        let environment_rotation=mat3x3<f32>(vec3<f32>(ec,0.0,es),vec3<f32>(0.0,1.0,0.0),vec3<f32>(-es,0.0,ec));
+        radiance+=environment_specular(environment_rotation*rotation*reflect(-v,n),rough)*studio.environment.z;
+        if studio.optics.w<0.5 {diffuse+=environment_layer(environment_rotation*rotation*n,9u)*studio.environment.z;}
+    }
     let diffuse_basis=frame*transpose(rotation);
     for(var i=0u;i<min(u32(studio.environment.y),8u);i++) {
         let light=studio.lights[i];
         if light.center.w>0.0 {
             radiance+=light.colour.rgb*light.center.w*ltc_rect(origin,basis,light.center.xyz,light.u.xyz,light.v.xyz);
-            diffuse+=light.colour.rgb*light.center.w*ltc_rect(origin,diffuse_basis,light.center.xyz,light.u.xyz,light.v.xyz);
+            if studio.optics.w<0.5 {diffuse+=light.colour.rgb*light.center.w*ltc_rect(origin,diffuse_basis,light.center.xyz,light.u.xyz,light.v.xyz);}
         }
     }
     return reflected*radiance+(1.0-studio.optics.w)*(vec3<f32>(1.0)-reflected)*albedo*diffuse;

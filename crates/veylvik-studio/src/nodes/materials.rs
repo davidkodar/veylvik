@@ -100,6 +100,8 @@ pub(crate) fn lighting_controls(
         });
         ui.collapsing("Studio lighting",|ui| {
             ui.weak("Area lights reflect in the surface. Position and size use scene units; rotations use degrees.");
+            changed|=light_slider(ui,"Studio environment",&mut material.studio.environment,0.0..=16.0);
+            changed|=light_slider(ui,"Environment rotation",&mut material.studio.environment_rotation,-360.0..=360.0);
             changed|=light_slider(ui,"Ambient",&mut material.studio.ambient,0.0..=16.0);
             let mut remove=None;
             for (index,light) in material.studio.lights.iter_mut().enumerate() {

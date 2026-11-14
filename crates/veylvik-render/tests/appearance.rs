@@ -372,6 +372,7 @@ fn area_lights_and_optics_control_radiance_without_changing_coverage() {
         m.kind = kind;
         m.studio = Default::default();
         m.studio.ambient = 0.;
+        m.studio.environment = 0.;
         m.studio.lights = vec![veylvik_document::optical::AreaLight {
             position: [0., 0., 4.],
             rotation: [0.; 3],
@@ -411,5 +412,83 @@ fn area_lights_and_optics_control_radiance_without_changing_coverage() {
             assert_eq!(p[3], source[3]);
             assert_eq!(&p[..3], &[0.; 3]);
         }
+    }
+}
+
+#[test]
+#[ignore = "requires Vulkan"]
+fn environment_prefilter_preserves_constant_radiance() {
+    let renderer = Renderer::new().unwrap();
+    let source = vec![[2.0, 1.0, 0.5, 1.0]; 32 * 16];
+    let result = renderer
+        .prefilter_environment(32, 16, &source, false)
+        .unwrap();
+    assert_eq!(result.len(), 701096);
+    for p in &result {
+        for c in 0..4 {
+            assert!((p[c] - source[0][c]).abs() < 0.003, "{p:?}");
+        }
+    }
+    let neutral = renderer
+        .prefilter_environment(32, 16, &source, true)
+        .unwrap();
+    for p in &neutral {
+        assert!((p[0] - p[1]).abs() < 1e-6 && (p[1] - p[2]).abs() < 1e-6);
+    }
+    assert!(renderer.prefilter_environment(32, 16, &[], false).is_err());
+}
+
+#[test]
+#[ignore = "requires Vulkan"]
+fn studio_environment_rotation_changes_reflections_and_zero_disables_them() {
+    let renderer = Renderer::new().unwrap();
+    let (mut doc, inputs, source) = source();
+    let material: Operation = serde_json::from_value(
+        veylvik_document::registry::TYPES
+            .iter()
+            .find(|d| d.type_id == "material")
+            .unwrap()
+            .default_operation(),
+    )
+    .unwrap();
+    let node = Node::new("environment", material, &[("image", doc.output)]);
+    doc.output = node.id;
+    doc.nodes.insert(node.id, node);
+    let render = |doc: &Composition| {
+        renderer
+            .render_frame(
+                &Plan::compile(doc).unwrap(),
+                RenderRequest::full(Time::new(0, 1).unwrap()),
+                &inputs,
+            )
+            .unwrap()
+            .pixels
+    };
+    let Operation::Material(m) = &mut doc.nodes.get_mut(&doc.output).unwrap().operation else {
+        panic!()
+    };
+    m.studio.lights.clear();
+    m.studio.ambient = 0.;
+    m.studio.environment = 1.;
+    let before = render(&doc);
+    let Operation::Material(m) = &mut doc.nodes.get_mut(&doc.output).unwrap().operation else {
+        panic!()
+    };
+    m.studio.environment_rotation += 90.;
+    let rotated = render(&doc);
+    assert!(
+        before
+            .iter()
+            .zip(&rotated)
+            .any(|(a, b)| (a[0] - b[0]).abs() > 0.02)
+    );
+    let Operation::Material(m) = &mut doc.nodes.get_mut(&doc.output).unwrap().operation else {
+        panic!()
+    };
+    m.studio.environment = 0.;
+    let dark = render(&doc);
+    for (p, s) in dark.iter().zip(&source) {
+        assert_eq!(p[3], s[3]);
+        assert_eq!(p[..3], [0.; 3]);
     }
 }

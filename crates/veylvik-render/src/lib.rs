@@ -1,6 +1,7 @@
 //! Whole-frame GPU execution. No window, document mutation, or timeline dependency.
 mod cache;
 mod diagnostics;
+mod environment_bake;
 mod material_preview;
 pub use material_preview::material_preview_revision;
 mod studio_lighting;
@@ -85,6 +86,7 @@ pub struct Renderer {
     pipelines: BTreeMap<Kernel, wgpu::ComputePipeline>,
     layout: wgpu::BindGroupLayout,
     ltc: wgpu::Buffer,
+    studio_environment: wgpu::Buffer,
     default_lighting: wgpu::Buffer,
     validation_pipeline: wgpu::ComputePipeline,
     texture_pipeline: wgpu::ComputePipeline,
@@ -151,6 +153,11 @@ impl Renderer {
             contents: include_bytes!("../assets/ltc/ggx.bin"),
             usage: wgpu::BufferUsages::STORAGE,
         });
+        let studio_environment = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Prefiltered HDR studio"),
+            contents: include_bytes!("../assets/studio/filtered.bin"),
+            usage: wgpu::BufferUsages::STORAGE,
+        });
         let default_lighting = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Default studio lighting"),
             contents: bytemuck::bytes_of(&studio_lighting::Lighting::new(
@@ -163,6 +170,16 @@ impl Renderer {
         let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("composition buffers"),
             entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 7,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: std::num::NonZeroU64::new(701096 * 16),
+                    },
+                    count: None,
+                },
                 wgpu::BindGroupLayoutEntry {
                     binding: 6,
                     visibility: wgpu::ShaderStages::COMPUTE,
@@ -281,6 +298,7 @@ impl Renderer {
             pipelines,
             layout,
             ltc,
+            studio_environment,
             default_lighting,
             validation_pipeline,
             texture_pipeline,
@@ -668,6 +686,10 @@ impl Renderer {
                 label: Some(&node.label),
                 layout: &self.layout,
                 entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 7,
+                        resource: self.studio_environment.as_entire_binding(),
+                    },
                     wgpu::BindGroupEntry {
                         binding: 5,
                         resource: self.ltc.as_entire_binding(),

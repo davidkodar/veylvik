@@ -87,15 +87,34 @@ impl Default for AreaLight {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct StudioRig {
+    /// Intensity of the prefiltered studio environment, separate from extra emitters.
+    #[serde(default = "default_environment")]
+    pub environment: f32,
+    #[serde(default = "default_environment_rotation")]
+    pub environment_rotation: f32,
     pub ambient: f32,
     pub lights: Vec<AreaLight>,
+}
+fn default_environment() -> f32 {
+    1.0
+}
+fn default_environment_rotation() -> f32 {
+    -45.0
 }
 impl Default for StudioRig {
     fn default() -> Self {
         Self {
-            ambient: 0.045,
+            environment: default_environment(),
+            environment_rotation: default_environment_rotation(),
+            ambient: 0.0,
             lights: vec![
-                AreaLight::default(),
+                AreaLight {
+                    position: [-3.0, -0.7, -1.0],
+                    rotation: [0.0, -105.0, 0.0],
+                    size: [1.5, 4.0],
+                    intensity: 1.2,
+                    ..AreaLight::default()
+                },
                 AreaLight {
                     position: [3., -0.3, 1.5],
                     rotation: [0., 50., 0.],
@@ -120,7 +139,17 @@ impl Default for StudioRig {
                     intensity: 0.45,
                     ..AreaLight::default()
                 },
-            ],
+            ]
+            .into_iter()
+            .enumerate()
+            .map(|(index, mut light)| {
+                light.enabled = index <= 1;
+                if index == 1 {
+                    light.intensity = 1.2;
+                }
+                light
+            })
+            .collect(),
         }
     }
 }
@@ -129,7 +158,11 @@ impl StudioRig {
         fn within(v: f32, lo: f32, hi: f32) -> bool {
             v.is_finite() && (lo..=hi).contains(&v)
         }
-        if !within(self.ambient, 0., 16.) || self.lights.len() > MAX_STUDIO_LIGHTS {
+        if !within(self.environment_rotation, -360., 360.)
+            || !within(self.environment, 0., 16.)
+            || !within(self.ambient, 0., 16.)
+            || self.lights.len() > MAX_STUDIO_LIGHTS
+        {
             return crate::fail("Studio lighting supports up to eight lights and ambient 0–16");
         }
         for l in &self.lights {
@@ -149,7 +182,9 @@ impl StudioRig {
     pub fn schema() -> serde_json::Value {
         use serde_json::json;
         let vector = |n, lo, hi| json!({"type":"array","minItems":n,"maxItems":n,"items":{"type":"number","minimum":lo,"maximum":hi}});
-        json!({"type":"object","additionalProperties":false,"required":["ambient","lights"],"properties":{
+        json!({"type":"object","additionalProperties":false,"required":["environment","environment_rotation","ambient","lights"],"properties":{
+            "environment":{"type":"number","minimum":0,"maximum":16},
+            "environment_rotation":{"type":"number","minimum":-360,"maximum":360},
             "ambient":{"type":"number","minimum":0,"maximum":16},
             "lights":{"type":"array","maxItems":MAX_STUDIO_LIGHTS,"items":{"type":"object","additionalProperties":false,
                 "required":["enabled","position","rotation","size","colour","intensity"],"properties":{

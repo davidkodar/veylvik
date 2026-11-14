@@ -3877,6 +3877,7 @@ name = "veylvik-render"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
+ "half",
  "pollster",
  "serde",
  "serde_json",

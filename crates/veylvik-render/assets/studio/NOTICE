@@ -1,0 +1,17 @@
+Ferndale Studio 09 — Dimitrios Savva (photography), Jarod Guest (processing) / Poly Haven
+https://polyhaven.com/a/ferndale_studio_09
+Licensed CC0 1.0: https://creativecommons.org/publicdomain/zero/1.0/
+Poly Haven permits redistribution, including in commercial software:
+https://polyhaven.com/license
+
+Source: https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/ferndale_studio_09_1k.hdr
+Source SHA-256: d23f07c2cbe711d78c1e8842acea2e5c72a764778aafb98d2edb355337021e31
+
+filtered.bin is a derived, luminance-neutral product studio: nine GGX roughness
+levels (1024 x 512 down to 4 x 2) followed by 64 x 32 diffuse irradiance
+divided by pi, packed RGBA float32 (little endian). Filtering and neutralisation run on Vulkan; the original HDR
+is retained so this asset can be reproduced:
+
+cargo run --offline -p veylvik-io --example environment_map -- \
+  crates/veylvik-render/assets/studio/ferndale_studio_09_1k.hdr \
+  crates/veylvik-render/assets/studio/filtered.bin --neutral

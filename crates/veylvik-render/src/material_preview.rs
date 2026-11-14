@@ -79,6 +79,10 @@ impl Renderer {
             layout: &pipeline.get_bind_group_layout(0),
             entries: &[
                 wgpu::BindGroupEntry {
+                    binding: 7,
+                    resource: self.studio_environment.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
                     binding: 5,
                     resource: self.ltc.as_entire_binding(),
                 },
@@ -124,6 +128,7 @@ pub fn material_preview_revision() -> String {
     feed(include_bytes!("material_preview.rs"));
     feed(include_bytes!("studio_lighting.rs"));
     feed(include_bytes!("../assets/ltc/ggx.bin"));
+    feed(include_bytes!("../assets/studio/filtered.bin"));
     for kind in veylvik_document::MaterialKind::ALL {
         feed(&serde_json::to_vec(&kind.optics()).expect("finite optical defaults"));
     }

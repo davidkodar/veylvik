@@ -47,3 +47,18 @@ fn optical_defaults_and_invalid_rigs() {
     let restored: StudioRig = serde_json::from_str(&serde_json::to_string(&rig).unwrap()).unwrap();
     assert_eq!(rig, restored);
 }
+
+#[test]
+fn legacy_studio_rig_loads_environment_defaults_and_rejects_nonfinite_settings() {
+    let mut value = serde_json::to_value(StudioRig::default()).unwrap();
+    value.as_object_mut().unwrap().remove("environment");
+    value
+        .as_object_mut()
+        .unwrap()
+        .remove("environment_rotation");
+    let mut rig: StudioRig = serde_json::from_value(value).unwrap();
+    assert_eq!(rig.environment, StudioRig::default().environment);
+    rig.validate().unwrap();
+    rig.environment_rotation = f32::NAN;
+    assert!(rig.validate().is_err());
+}

@@ -37,9 +37,9 @@ pub fn build(id: &str, b: &mut Builder, source: NodeId) -> Result<NodeId> {
                 scale: 180.0.into(),
                 bevel: 5.0.into(),
                 roughness: (match kind {
-                    MaterialKind::Gold => 0.28,
-                    MaterialKind::Silver => 0.25,
-                    MaterialKind::Bronze => 0.35,
+                    MaterialKind::Gold => 0.18,
+                    MaterialKind::Silver => 0.18,
+                    MaterialKind::Bronze => 0.28,
                     MaterialKind::Aluminium => 0.42,
                     MaterialKind::Phosphor | MaterialKind::Marble => 0.15,
                     _ => 0.7,
@@ -55,7 +55,7 @@ pub fn build(id: &str, b: &mut Builder, source: NodeId) -> Result<NodeId> {
                         })
                         .collect(),
                 },
-                grain: 0.65.into(),
+                grain: (if (kind as u32) < 2 { 0.25 } else { 0.65 }).into(),
                 emission: 1.0.into(),
             }),
             &[("image", source)],

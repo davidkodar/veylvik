@@ -16,7 +16,12 @@ impl Lighting {
         let f0 = optics.f0();
         let mut result = Self {
             optics: [f0[0], f0[1], f0[2], if optics.metallic { 1. } else { 0. }],
-            environment: [rig.ambient, rig.lights.len().min(8) as f32, 0., 0.],
+            environment: [
+                rig.ambient,
+                rig.lights.len().min(8) as f32,
+                rig.environment,
+                rig.environment_rotation.to_radians(),
+            ],
             lights: [[[0.; 4]; 4]; 8],
         };
         for (output, light) in result.lights.iter_mut().zip(&rig.lights) {
