@@ -8,6 +8,7 @@ use wgpu::util::DeviceExt;
 pub struct ViewSettings {
     pub exposure: f32,
     pub alpha: bool,
+    pub fast_filter: bool,
     /// The composition's filmic display transform instead of clipping at white.
     pub filmic: bool,
 }
@@ -69,7 +70,8 @@ impl Display {
                     frame.height(),
                     u32::from(self.format.is_srgb())
                         | (u32::from(settings.alpha) << 1)
-                        | (u32::from(settings.filmic) << 2),
+                        | (u32::from(settings.filmic) << 2)
+                        | (u32::from(settings.fast_filter) << 3),
                     exposure.to_bits(),
                     frame.region().x,
                     frame.region().y,
@@ -303,6 +305,7 @@ mod tests {
                     ViewSettings {
                         exposure,
                         alpha: false,
+                        fast_filter: false,
                         filmic: false,
                     },
                 );
@@ -325,6 +328,7 @@ mod tests {
                     ViewSettings {
                         exposure,
                         alpha: true,
+                        fast_filter: false,
                         filmic: false,
                     },
                 );
@@ -418,6 +422,68 @@ mod tests {
                 assert!(a.abs_diff(b) <= 1, "{actual:?}");
             }
         }
+    }
+    #[test]
+    #[ignore = "requires Vulkan"]
+    fn viewer_downscale_integrates_the_pixel_footprint_by_default() {
+        let renderer = Renderer::new().unwrap();
+        let mut doc = veylvik_document::blank(12, 12, Time::new(24, 1).unwrap()).unwrap();
+        doc.nodes.get_mut(&doc.output).unwrap().operation =
+            Operation::Image(veylvik_document::nodes::Image {
+                asset: "stripes".into(),
+            });
+        let mut inputs = veylvik_render::ImageInputs::default();
+        inputs.insert(
+            "stripes",
+            veylvik_render::Image::new(
+                12,
+                12,
+                (0..144)
+                    .map(|i| {
+                        if i % 3 == 1 {
+                            [1.; 4]
+                        } else {
+                            [0., 0., 0., 1.]
+                        }
+                    })
+                    .collect(),
+            )
+            .unwrap()
+            .into(),
+        );
+        let frame = Arc::new(
+            renderer
+                .render_gpu(
+                    &Plan::compile(&doc).unwrap(),
+                    RenderRequest::full(Time::new(0, 1).unwrap()),
+                    &inputs,
+                )
+                .unwrap(),
+        );
+        let aa = paint(
+            &renderer,
+            frame.clone(),
+            4,
+            4,
+            wgpu::TextureFormat::Rgba8Unorm,
+        );
+        let fast = paint_with_settings(
+            &renderer,
+            frame,
+            4,
+            4,
+            wgpu::TextureFormat::Rgba8Unorm,
+            ViewSettings {
+                fast_filter: true,
+                ..Default::default()
+            },
+        );
+        let expected = veylvik_render::to_srgba8(&[[1. / 3., 1. / 3., 1. / 3., 1.]])[0];
+        assert!(aa.iter().all(|p| p[0].abs_diff(expected) <= 1), "{aa:?}");
+        assert!(
+            fast.iter().all(|p| p[0] == 255),
+            "legacy bilinear misses the stripe footprint: {fast:?}"
+        );
     }
     fn paint(
         renderer: &Renderer,

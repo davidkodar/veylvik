@@ -688,7 +688,25 @@ fn material(@builtin(global_invocation_id) gid:vec3<u32>) {
         }
     }
     let n=normalize(vec3<f32>(slope*1.6,1.0));
-    let color=material_colour(uv,n);
+    var color=material_colour(uv,n);
+    if p.extra.z>=0.0 && p.values.y>0.0 {
+        let position=vec2<f32>(gid.xy);
+        let filtered_normal=smooth_bevel_normal(position,p.values.y);
+        color=material_colour(uv,filtered_normal);
+        // Shade the subpixel footprint where the bevel bends. Keep the original
+        // coverage, so antialiasing never expands the silhouette or adds a halo.
+        if filtered_normal.z<0.9999 {
+            color=vec3<f32>(0.0);
+            var total=0.0;
+            for(var y=0;y<2;y++) {for(var x=0;x<2;x++) {
+                let offset=vec2<f32>(f32(x),f32(y))*0.5-vec2<f32>(0.25);
+                let weight=bilinear(position+offset).a;
+                color+=material_colour((position+offset)/p.values.x,smooth_bevel_normal(position+offset,p.values.y))*weight;
+                total+=weight;
+            }}
+            color/=max(total,0.000001);
+        }
+    }
     result[i]=vec4<f32>(color*coverage,coverage);
 }
 fn atmosphere_field(q:vec3<f32>,kind:u32)->f32 {
@@ -962,4 +980,18 @@ fn surface_blend(@builtin(global_invocation_id) gid:vec3<u32>) {
         fg=vec4<f32>(max(vec3<f32>(0.0),fg.rgb+vec3<f32>(n*p.extra.w*fg.a)),fg.a);
     }
     result[i]=fg+bg*(1.0-fg.a);
+}
+
+// Separable Gaussian derivative evaluated continuously in two dimensions.
+// Unlike integer cross taps, this does not quantize the bevel into pixel rings.
+fn smooth_bevel_normal(pos:vec2<f32>,radius:f32)->vec3<f32> {
+    let weights=array<f32,5>(1.0,4.0,6.0,4.0,1.0);
+    let derivative=array<f32,5>(-1.0,-2.0,0.0,2.0,1.0);
+    let step=max(radius*0.35,0.5);
+    var slope=vec2<f32>(0.0);
+    for(var y=0;y<5;y++) {for(var x=0;x<5;x++) {
+        let a=bilinear(pos+vec2<f32>(f32(x-2),f32(y-2))*step).a;
+        slope-=a*vec2<f32>(derivative[x]*weights[y],weights[x]*derivative[y])/32.0;
+    }}
+    return normalize(vec3<f32>(slope*1.6,1.0));
 }

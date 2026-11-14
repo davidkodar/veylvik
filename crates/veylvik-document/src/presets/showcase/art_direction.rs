@@ -233,6 +233,7 @@ fn gold_fire(a: &mut Art, bg: NodeId, with_fire: bool) -> Result<NodeId> {
     let face = a.node(
         "Polished gold studio reflections",
         Operation::Material(crate::nodes::Material {
+            smooth_edges: true,
             brushing: Default::default(),
             optics: None,
             studio: Default::default(),
@@ -646,6 +647,7 @@ pub(super) fn build(id: &str) -> Result<Scene> {
             a.node(
                 "Polished base material",
                 Operation::Material(crate::nodes::Material {
+                    smooth_edges: true,
                     brushing: Default::default(),
                     optics: None,
                     studio: Default::default(),

@@ -39,7 +39,7 @@ impl RenderNode for veylvik_document::nodes::Material {
             p.extra = [
                 sample("grain")?,
                 sample("emission")?,
-                0.0,
+                if self.smooth_edges { 0.0 } else { -1.0 },
                 f32::from(self.is_brushed()),
             ];
         }

@@ -202,7 +202,8 @@ Everything Veylvik can do today, area by area. Veylvik is a native Rust node com
 ## Materials and surfaces
 
 - **Text surface** (`material`) kinds: gold, silver, aluminium, bronze, phosphor, wood, light oak, dark oak, marble, light brick, red brick, concrete, paper, aged paper, red/brown/tan/dark/black leather (19).
-- Text surface controls: scale, bevel, roughness, lighting, grain, emission.
+- Text surface controls: scale, bevel, roughness, lighting, grain, emission. **Smooth bevel highlights** is enabled by default, including older material nodes; continuous two-dimensional bevel normals and subpixel shading reduce stepped metallic highlights without altering alpha coverage. Disable it under **Surface response** for legacy shading.
+- The viewer antialiases downscaled images in linear premultiplied colour by default. **Fast view** opts into basic bilinear filtering for previews only.
 - Gold, Silver, Bronze and Aluminium each offer **Polished**, **Satin**, **Matte** and **Brushed** finishes in the material inspector, collapsed material group, and text **Style → Material** controls. Recipes set roughness, grain and brushing without changing lighting or bevel; manual adjustments show **Custom**. Choosing a recipe replaces roughness/grain keyframes.
 - **Directional brushing** works across all four metals and can be switched independently of roughness. Older projects preserve their existing aluminium brushing.
 - Shared GPU material lighting: filtered HDR studio environment with strength/rotation, up to eight editable rectangular area lights, and conductor reflectance or dielectric IOR. **Reset studio lighting** adopts the default rig; additional light cards are opt-in.

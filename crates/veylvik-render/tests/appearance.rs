@@ -85,6 +85,7 @@ fn materials_are_distinct_finite_and_preserve_partial_alpha() {
         let node = Node::new(
             "surface",
             Operation::Material(veylvik_document::nodes::Material {
+                smooth_edges: true,
                 brushing: Default::default(),
                 optics: None,
                 studio: Default::default(),

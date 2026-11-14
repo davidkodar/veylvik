@@ -65,7 +65,7 @@ impl Parameter {
             ParameterKind::TextFont => json!(crate::TextFont::default()),
             ParameterKind::TextAlignment => json!(crate::TextAlignment::Center),
             ParameterKind::TextLanguage => json!(""),
-            ParameterKind::Boolean => json!(false),
+            ParameterKind::Boolean => json!(self.default != 0.0),
             ParameterKind::Scalar => json!({"kind":"constant","value":self.default}),
             ParameterKind::MaterialKind => json!(crate::MaterialKind::Gold),
             ParameterKind::AtmosphereKind => json!(crate::AtmosphereKind::Smoke),

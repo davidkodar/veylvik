@@ -26,17 +26,20 @@ fn sample_pixel(position: vec2<i32>) -> vec4<f32> {
     // Filter scene-linear premultiplied samples before applying the display
     // transform. Clamp to the crop, so neighboring storage pixels never bleed.
     let uv = (v.uv - params.view.xy) / params.view.zw;
+    let position = uv * vec2<f32>(params.region.zw) - vec2<f32>(0.5);
+    let footprint=max(abs(dpdx(position))+abs(dpdy(position)),vec2<f32>(1.0));
     if any(uv < vec2<f32>(0.0)) || any(uv > vec2<f32>(1.0)) {
         var background = vec3<f32>(24.0,27.0,33.0) / 255.0;
         if (params.size.z & 1u) != 0u { background = pow((background + vec3<f32>(0.055)) / 1.055, vec3<f32>(2.4)); }
         return vec4<f32>(background,1.0);
     }
-    let position = uv * vec2<f32>(params.region.zw) - vec2<f32>(0.5);
-    let base = vec2<i32>(floor(position));
-    let weight = fract(position);
-    let top = mix(sample_pixel(base), sample_pixel(base + vec2<i32>(1,0)), weight.x);
-    let bottom = mix(sample_pixel(base + vec2<i32>(0,1)), sample_pixel(base + vec2<i32>(1,1)), weight.x);
-    let pixel = mix(top, bottom, weight.y);
+    let count=select(vec2<u32>(clamp(ceil(footprint),vec2<f32>(1.0),vec2<f32>(8.0))),vec2<u32>(1u),(params.size.z & 8u)!=0u);
+    var pixel=vec4<f32>(0.0);
+    for(var y=0u;y<count.y;y++) {for(var x=0u;x<count.x;x++) {
+        let offset=(vec2<f32>(f32(x)+0.5,f32(y)+0.5)/vec2<f32>(count)-vec2<f32>(0.5))*footprint;
+        pixel+=filtered_pixel(position+offset);
+    }}
+    pixel/=f32(count.x*count.y);
     let alpha = clamp(pixel.a, 0.0, 1.0);
     if (params.size.z & 2u) != 0u {
         // Coverage is displayed directly as gray, independent of exposure.
@@ -57,4 +60,11 @@ fn sample_pixel(position: vec2<i32>) -> vec4<f32> {
     color += vec3<f32>(checker * (1.0 - alpha));
     if (params.size.z & 1u) == 0u { color = srgb(color); }
     return vec4<f32>(color, 1.0);
+}
+
+fn filtered_pixel(position:vec2<f32>)->vec4<f32> {
+    let base=vec2<i32>(floor(position));let weight=fract(position);
+    let top=mix(sample_pixel(base),sample_pixel(base+vec2<i32>(1,0)),weight.x);
+    let bottom=mix(sample_pixel(base+vec2<i32>(0,1)),sample_pixel(base+vec2<i32>(1,1)),weight.x);
+    return mix(top,bottom,weight.y);
 }

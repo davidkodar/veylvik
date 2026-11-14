@@ -86,6 +86,7 @@ pub(crate) fn lighting_controls(
     let mut changed = false;
     ui.push_id("surface-lighting",|ui| {
         ui.collapsing("Surface response",|ui| {
+            changed |= ui.checkbox(&mut material.smooth_edges,"Smooth bevel highlights").on_hover_text("Antialias surface normals and specular highlights on the GPU. Enabled by default; disable for legacy shading or faster previews.").changed();
             let defaults=material.kind.optics();
             ui.weak(if defaults.metallic {"Conductor: coloured reflections, no diffuse colour."}else{"Dielectric: diffuse colour and neutral surface reflections."});
             let mut custom=material.optics.is_some();

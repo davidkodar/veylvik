@@ -8,6 +8,8 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Material {
+    #[serde(default = "smooth_edges_default")]
+    pub smooth_edges: bool,
     #[serde(default)]
     pub brushing: crate::optical::Brushing,
     #[serde(default)]
@@ -79,6 +81,10 @@ pub struct SurfaceReflection {
     pub offset_y: Scalar,
 }
 
+fn smooth_edges_default() -> bool {
+    true
+}
+
 pub static MATERIAL: NodeType = NodeType {
     type_id: "material",
     version: 1,
@@ -86,6 +92,10 @@ pub static MATERIAL: NodeType = NodeType {
     description: "Procedural gold, silver, brushed aluminium, bronze, phosphor, wood, light/dark oak, marble, light/red brick, rough concrete, clean/weathered paper and five leather colours from image alpha. Surface grain, edge bevel and studio reflections; source RGB is replaced and alpha preserved. Not a 3D mesh or spectral renderer.",
     inputs: &["image"],
     parameters: &[
+        Parameter {
+            default: 1.0,
+            ..other("smooth_edges", ParameterKind::Boolean, "quality")
+        },
         other("kind", ParameterKind::MaterialKind, "material"),
         other("brushing", ParameterKind::Brushing, "surface finish"),
         other("studio", ParameterKind::StudioRig, "lighting rig"),

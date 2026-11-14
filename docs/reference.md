@@ -1570,3 +1570,19 @@ optical-flow interpolation. The API does not yet expose a Studio motion-blur nod
 A cancellation callback is checked between samples; cancellation returns `None`,
 never a partial frame. One sample and one accumulator are retained, both within
 the renderer budget. Temporal outputs do not enter the ordinary frame cache.
+
+
+### Material-edge and viewer antialiasing
+
+Material nodes default `smooth_edges` to true, including documents where the field
+is absent. **Surface response → Smooth bevel highlights** switches between continuous
+Gaussian-derivative normals with coverage-weighted subpixel shading and the legacy
+integer-tap bevel. Source alpha is preserved exactly; this does not blur or enlarge
+the text silhouette. The material setting is saved and applies to exports as well
+as previews. Smoothing changes the bevel's reflection profile and adds GPU work.
+
+Viewer minification integrates the source-pixel footprint with up to 8 × 8 bilinear
+samples before exposure/display conversion, in linear premultiplied colour. At 100%
+and higher zoom it retains the normal bilinear reconstruction. **Fast view** disables
+footprint filtering without modifying the composition or exports. Antialiasing cannot
+recover detail missing from a low-resolution composition enlarged beyond 100%.

@@ -2677,6 +2677,7 @@ impl eframe::App for Studio {
                         ui.separator();
                         ui.checkbox(&mut self.view.alpha, "Alpha")
                             .on_hover_text("Inspect coverage without changing the composition");
+                        ui.checkbox(&mut self.view.fast_filter, "Fast view").on_hover_text("Basic bilinear filtering instead of antialiased downscaling. Off by default; does not change exports.");
                         ui.add_enabled_ui(!self.view.alpha, |ui| {
                             ui.label("View exposure");
                             ui.add(

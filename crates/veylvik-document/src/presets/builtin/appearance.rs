@@ -31,6 +31,7 @@ pub fn build(id: &str, b: &mut Builder, source: NodeId) -> Result<NodeId> {
         let node = b.add(
             "Surface grain, bevel and reflection",
             Operation::Material(crate::nodes::Material {
+                smooth_edges: true,
                 brushing: Default::default(),
                 optics: None,
                 studio: Default::default(),
