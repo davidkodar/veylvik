@@ -124,6 +124,11 @@ impl Store {
         }
         Ok(composition)
     }
+    /// Explicitly discard a stale recovery copy, never a running session's work.
+    pub fn discard(&self, id: NodeId) -> Result<()> {
+        let _lease = self.claim(id)?;
+        self.remove(id)
+    }
     pub fn remove(&self, id: NodeId) -> Result<()> {
         match std::fs::remove_file(self.path(id)) {
             Ok(()) => {}
@@ -181,5 +186,36 @@ impl Store {
         }
         entries.sort_by_key(|entry| std::cmp::Reverse(entry.modified));
         Ok(entries)
+    }
+}
+
+#[cfg(test)]
+mod discard_tests {
+    use super::*;
+    #[test]
+    fn discard_removes_stale_copy_but_protects_active_session_and_saved_project() {
+        let root = std::env::temp_dir().join(format!("veylvik-discard-{}", NodeId::new_v4()));
+        let store = Store::new(root.join("recovery"));
+        let stale = NodeId::new_v4();
+        let active = NodeId::new_v4();
+        let document = veylvik_document::demo();
+        store.write(stale, &document, &root).unwrap();
+        let saved = root.join("saved.veylvik");
+        std::fs::write(&saved, b"saved project stays intact").unwrap();
+        let lease = store.claim(active).unwrap();
+        store.write(active, &document, &root).unwrap();
+        assert!(store.discard(active).is_err());
+        assert!(store.path(active).exists());
+        store.discard(stale).unwrap();
+        assert!(!store.path(stale).exists());
+        assert_eq!(
+            std::fs::read(&saved).unwrap(),
+            b"saved project stays intact"
+        );
+        drop(lease);
+        assert_eq!(store.list().unwrap().len(), 1);
+        store.discard(active).unwrap();
+        assert!(store.list().unwrap().is_empty());
+        std::fs::remove_dir_all(root).unwrap();
     }
 }

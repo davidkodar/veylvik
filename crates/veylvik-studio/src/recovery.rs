@@ -113,6 +113,7 @@ pub struct Recovery {
     id: NodeId,
     origin: Option<NodeId>,
     clean: bool,
+    confirm_discard_all: bool,
     last_revision: Option<u64>,
     last_request: Instant,
     error: Option<String>,
@@ -144,6 +145,7 @@ impl Recovery {
             id: project.session,
             origin: project.recovery_origin,
             clean: true,
+            confirm_discard_all: false,
             last_revision: None,
             last_request: Instant::now(),
             error,
@@ -193,24 +195,63 @@ impl Recovery {
             worker.finish(clean);
         }
     }
+    fn discard_entries(&mut self, ids: &[NodeId]) {
+        self.error = None;
+        for &id in ids {
+            if id == self.id || Some(id) == self.origin {
+                continue;
+            }
+            if let Err(error) = self.store.discard(id) {
+                self.error = Some(format!("Could not discard recovery copy: {error}"));
+            }
+        }
+        self.confirm_discard_all = false;
+        self.refresh();
+        if self
+            .entries
+            .iter()
+            .all(|entry| entry.id == self.id || Some(entry.id) == self.origin)
+            && self.error.is_none()
+        {
+            self.open = false;
+        }
+    }
     pub fn show(&mut self, ctx: &egui::Context, enabled: bool) -> Option<NodeId> {
         let mut restore = None;
+        let mut discard = Vec::new();
         if self.open {
-            egui::Window::new("Recover unsaved work").open(&mut self.open).show(ctx,|ui|{
-                ui.label("Recovery copies open as unsaved compositions. Save as a project after restoring.");
-                ui.weak("Only applied edits are recovered; image files must still be available.");
-                if let Some(error)=&self.error{ui.colored_label(egui::Color32::LIGHT_RED,error);}
-                let mut any=false;
-                for entry in self.entries.iter().filter(|entry|entry.id!=self.id && Some(entry.id)!=self.origin) {
-                    any=true;
-                    ui.horizontal(|ui|{
-                        let age=entry.modified.elapsed().unwrap_or_default().as_secs()/60;
-                        ui.label(format!("{} · {age} min ago",&entry.id.to_string()[..8]));
-                        if ui.add_enabled(enabled,egui::Button::new("Restore")).clicked(){restore=Some(entry.id);}
+            egui::Window::new("Recover unsaved work").open(&mut self.open).show(ctx, |ui| {
+                ui.label("Restore an unsaved composition or discard copies you no longer need.");
+                ui.weak("Discarding recovery copies does not delete saved projects.");
+                if let Some(error) = &self.error { ui.colored_label(egui::Color32::LIGHT_RED, error); }
+                let entries: Vec<_> = self.entries.iter().filter(|entry| entry.id != self.id && Some(entry.id) != self.origin).collect();
+                for entry in &entries {
+                    ui.push_id(entry.id, |ui| {
+                        ui.horizontal(|ui| {
+                            let age = entry.modified.elapsed().unwrap_or_default().as_secs() / 60;
+                            ui.label(format!("{} · {age} min ago", &entry.id.to_string()[..8]));
+                            if ui.add_enabled(enabled, egui::Button::new("Restore")).clicked() { restore = Some(entry.id); }
+                            if ui.add_enabled(enabled, egui::Button::new("Discard")).on_hover_text("Delete this unsaved recovery copy; keep saved project files").clicked() { discard.push(entry.id); }
+                        });
                     });
                 }
-                if !any{ui.label("No previous recovery copies.");}
+                if entries.is_empty() { ui.label("No previous recovery copies."); }
+                if entries.len() > 1 {
+                    ui.separator();
+                    if self.confirm_discard_all {
+                        ui.label(format!("Discard all {} listed recovery copies?", entries.len()));
+                        ui.horizontal(|ui| {
+                            if ui.button("Keep copies").clicked() { self.confirm_discard_all = false; }
+                            if ui.add_enabled(enabled, egui::Button::new("Discard all copies")).clicked() { discard.extend(entries.iter().map(|entry| entry.id)); }
+                        });
+                    } else if ui.add_enabled(enabled, egui::Button::new("Discard all…")).clicked() { self.confirm_discard_all = true; }
+                }
             });
+        } else {
+            self.confirm_discard_all = false;
+        }
+        if !discard.is_empty() {
+            self.discard_entries(&discard);
         }
         restore
     }
@@ -230,6 +271,33 @@ pub fn default_store() -> Result<Store, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn discarding_listed_copies_prevents_next_launch_prompt() {
+        let root =
+            std::env::temp_dir().join(format!("veylvik-discard-dialog-{}", NodeId::new_v4()));
+        let store = Store::new(root.clone());
+        let ids = [NodeId::new_v4(), NodeId::new_v4()];
+        for id in ids {
+            store.write(id, &veylvik_document::demo(), &root).unwrap();
+        }
+        let project = Project::open(None).unwrap();
+        let mut recovery = Recovery::new(store.clone(), &project, egui::Context::default());
+        assert!(recovery.open);
+        recovery.discard_entries(&ids[..1]);
+        assert_eq!(recovery.entries.len(), 1);
+        assert!(recovery.open);
+        recovery.discard_entries(&ids[1..]);
+        assert!(recovery.entries.is_empty());
+        assert!(!recovery.open);
+        recovery.finish(true);
+        drop(recovery);
+        let mut next = Recovery::new(store, &project, egui::Context::default());
+        assert!(!next.open);
+        next.finish(true);
+        drop(next);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
     #[test]
     fn unavailable_recovery_storage_does_not_prevent_project_editing() {
         let blocked =
