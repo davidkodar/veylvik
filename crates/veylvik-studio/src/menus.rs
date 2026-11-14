@@ -214,6 +214,8 @@ pub(crate) const ADD_MENU: [(&str, &[&registry::NodeType]); 8] = [
             &registry::LUT,
             &registry::COLORIZE,
             &registry::BLUR,
+            &registry::MOTION_BLUR,
+            &registry::TIME_REMAP,
         ],
     ),
     (

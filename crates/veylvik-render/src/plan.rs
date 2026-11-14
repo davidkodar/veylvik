@@ -198,7 +198,14 @@ pub struct PassInfo {
     pub output_slot: usize,
 }
 /// Immutable device-independent execution plan. UI layout never participates.
+pub(crate) struct TemporalBranch {
+    pub operation: Operation,
+    pub plan: Box<Plan>,
+    pub key: String,
+}
 pub struct Plan {
+    pub(crate) temporal: Vec<TemporalBranch>,
+    pub(crate) frame_rate: veylvik_document::Time,
     root: NodeId,
     pub(crate) width: u32,
     pub(crate) height: u32,
@@ -214,6 +221,17 @@ impl Plan {
     }
     pub fn compile_output(composition: &Composition, output: NodeId) -> Result<Self> {
         composition.validate()?;
+        Self::compile_branch(composition, output, 0, &mut 16384)
+    }
+    fn compile_branch(
+        composition: &Composition,
+        output: NodeId,
+        depth: usize,
+        remaining: &mut usize,
+    ) -> Result<Self> {
+        if depth > 8 {
+            return Err(error("Temporal nesting exceeds 8 branches"));
+        }
         if !composition.nodes.contains_key(&output) {
             return Err(error("requested output node is missing"));
         }
@@ -258,12 +276,44 @@ impl Plan {
         let mut visited = BTreeSet::new();
         let mut todo = vec![(output, false)];
         let mut nodes = Vec::new();
+        let mut temporal = Vec::new();
         while let Some((id, expanded)) = todo.pop() {
             let node = &composition.nodes[&id];
             if expanded {
-                nodes.push(node.clone());
+                *remaining = remaining
+                    .checked_sub(1)
+                    .ok_or_else(|| error("Temporal graph expansion exceeds 16384 nodes"))?;
+                if matches!(
+                    node.operation,
+                    Operation::MotionBlur(_) | Operation::TimeRemap(_)
+                ) {
+                    let key = format!("\0temporal:{}", node.id);
+                    temporal.push(TemporalBranch {
+                        operation: node.operation.clone(),
+                        plan: Box::new(Self::compile_branch(
+                            composition,
+                            node.inputs["image"],
+                            depth + 1,
+                            remaining,
+                        )?),
+                        key: key.clone(),
+                    });
+                    let mut replacement = node.clone();
+                    replacement.operation =
+                        Operation::Image(veylvik_document::nodes::Image { asset: key });
+                    replacement.inputs.clear();
+                    nodes.push(replacement);
+                } else {
+                    nodes.push(node.clone());
+                }
             } else if visited.insert(id) {
                 todo.push((id, true));
+                if matches!(
+                    node.operation,
+                    Operation::MotionBlur(_) | Operation::TimeRemap(_)
+                ) {
+                    continue;
+                }
                 for port in node.operation.inputs().iter().rev() {
                     todo.push((node.inputs[*port], false));
                 }
@@ -443,6 +493,8 @@ impl Plan {
             })
             .collect::<std::result::Result<Vec<_>, _>>()?;
         Ok(Self {
+            temporal,
+            frame_rate: composition.frame_rate,
             root: output,
             curves,
             width: composition.width,
@@ -493,7 +545,8 @@ impl Plan {
     }
     pub fn matches_composition(&self, composition: &Composition, output: NodeId) -> Result<bool> {
         composition.validate()?;
-        if self.root != output
+        if !self.temporal.is_empty()
+            || self.root != output
             || self.width != composition.width
             || self.height != composition.height
         {
@@ -531,6 +584,8 @@ impl Plan {
         self.nodes
             .iter()
             .filter_map(|n| n.operation.asset())
+            .filter(|key| !key.starts_with('\0'))
+            .chain(self.temporal.iter().flat_map(|b| b.plan.required_assets()))
             .collect()
     }
     pub fn image_slots(&self) -> usize {

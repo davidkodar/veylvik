@@ -73,38 +73,7 @@ impl Renderer {
         shutter: Shutter,
         mut cancelled: impl FnMut() -> bool,
     ) -> Result<Option<GpuFrame>> {
-        let times = shutter.sample_times(request.time)?;
-        let region = request.region.unwrap_or(Region {
-            x: 0,
-            y: 0,
-            width: plan.width,
-            height: plan.height,
-        });
-        region.validate(plan.width, plan.height)?;
-        if cancelled() {
-            return Ok(None);
-        }
-        if times.len() == 1 {
-            let frame = self.render_gpu(
-                plan,
-                RenderRequest {
-                    time: times[0],
-                    region: request.region,
-                },
-                inputs,
-            )?;
-            return Ok((!cancelled()).then_some(frame));
-        }
-        let mut output = self.compute(|scratch| {
-            let buffer = scratch.buffer(
-                u64::from(plan.width) * u64::from(plan.height) * 16,
-                wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
-                "Shutter accumulator",
-            )?;
-            scratch.frame(&buffer, plan.width, plan.height)
-        })?;
-        let weight = 1.0 / times.len() as f32;
-        for (index, time) in times.into_iter().enumerate() {
+        self.sample_shutter(plan, request, shutter, |time| {
             if cancelled() {
                 return Ok(None);
             }
@@ -116,9 +85,40 @@ impl Renderer {
                 },
                 inputs,
             )?;
-            if cancelled() {
+            Ok((!cancelled()).then_some(frame))
+        })
+    }
+    pub(crate) fn sample_shutter(
+        &self,
+        plan: &Plan,
+        request: RenderRequest,
+        shutter: Shutter,
+        mut sample: impl FnMut(Time) -> Result<Option<GpuFrame>>,
+    ) -> Result<Option<GpuFrame>> {
+        let times = shutter.sample_times(request.time)?;
+        let region = request.region.unwrap_or(Region {
+            x: 0,
+            y: 0,
+            width: plan.width,
+            height: plan.height,
+        });
+        region.validate(plan.width, plan.height)?;
+        if times.len() == 1 {
+            return sample(times[0]);
+        }
+        let mut output = self.compute(|scratch| {
+            let buffer = scratch.buffer(
+                u64::from(plan.width) * u64::from(plan.height) * 16,
+                wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
+                "Shutter accumulator",
+            )?;
+            scratch.frame(&buffer, plan.width, plan.height)
+        })?;
+        let weight = 1.0 / times.len() as f32;
+        for (index, time) in times.into_iter().enumerate() {
+            let Some(frame) = sample(time)? else {
                 return Ok(None);
-            }
+            };
             self.compute(|scratch| {
                 let uniform = scratch.buffer(
                     16,
@@ -174,7 +174,7 @@ impl Renderer {
             })?;
         }
         output.region = region;
-        Ok((!cancelled()).then_some(output))
+        Ok(Some(output))
     }
 }
 #[cfg(test)]

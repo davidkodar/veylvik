@@ -88,10 +88,20 @@ impl PreviewScheduler<Arc<GpuFrame>> {
         renderer: Arc<Renderer>,
         wake: impl Fn() + Send + 'static,
     ) -> Result<Self> {
-        let worker = LatestWorker::new(
-            move |generation, job: Job| {
+        let worker = LatestWorker::new_cancellable(
+            move |generation, job: Job, cancelled| {
                 let start = Instant::now();
-                let frame = renderer.render_gpu_cached(&job.plan, job.request, &job.inputs);
+                let frame = if job.plan.temporal.is_empty() {
+                    renderer.render_gpu_cached(&job.plan, job.request, &job.inputs)
+                } else {
+                    renderer
+                        .render_gpu_temporal(&job.plan, job.request, &job.inputs, true, cancelled)
+                        .and_then(|frame| {
+                            frame
+                                .map(Arc::new)
+                                .ok_or_else(|| error("Preview superseded"))
+                        })
+                };
                 PreviewResult {
                     ticket: PreviewTicket {
                         generation,
@@ -155,6 +165,12 @@ impl<I: Send + 'static, O: Send + 'static> LatestWorker<I, O> {
         mut render: impl FnMut(u64, I) -> O + Send + 'static,
         wake: impl Fn() + Send + 'static,
     ) -> Result<Self> {
+        Self::new_cancellable(move |generation, input, _| render(generation, input), wake)
+    }
+    fn new_cancellable(
+        mut render: impl FnMut(u64, I, &mut dyn FnMut() -> bool) -> O + Send + 'static,
+        wake: impl Fn() + Send + 'static,
+    ) -> Result<Self> {
         let shared = Arc::new(Shared {
             state: Mutex::new(State {
                 generation: 0,
@@ -182,7 +198,10 @@ impl<I: Send + 'static, O: Send + 'static> LatestWorker<I, O> {
                             }
                             lock.pending.take().unwrap()
                         };
-                        let output = render(generation, input);
+                        let output = render(generation, input, &mut || {
+                            let lock = state.state.lock().unwrap_or_else(|e| e.into_inner());
+                            lock.closed || lock.generation != generation
+                        });
                         let published = {
                             let mut lock = state.state.lock().unwrap_or_else(|e| e.into_inner());
                             if !lock.closed && lock.generation == generation {

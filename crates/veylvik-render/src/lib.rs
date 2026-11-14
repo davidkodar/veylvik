@@ -6,6 +6,7 @@ mod material_preview;
 pub use material_preview::material_preview_revision;
 mod shadow_lighting;
 mod shutter;
+mod temporal;
 pub use shutter::Shutter;
 mod studio_lighting;
 pub use diagnostics::Diagnostics;
@@ -492,6 +493,9 @@ impl Renderer {
         request: RenderRequest,
         inputs: &ImageInputs,
     ) -> Result<RenderedFrame> {
+        if !plan.temporal.is_empty() {
+            return self.read_frame(&self.render_gpu(plan, request, inputs)?);
+        }
         let resolved = inputs.resolve_on(plan, request.time, Some(self))?;
         let inputs = &resolved;
         let (Executed::Cpu(full), region) = self.execute(plan, request, inputs, true)? else {
@@ -502,6 +506,19 @@ impl Renderer {
     /// Evaluate without any pixel readback. Held outputs count against the budget
     /// of later renders until their handles are dropped.
     pub fn render_gpu(
+        &self,
+        plan: &Plan,
+        request: RenderRequest,
+        inputs: &ImageInputs,
+    ) -> Result<GpuFrame> {
+        if !plan.temporal.is_empty() {
+            return self
+                .render_gpu_temporal(plan, request, inputs, false, || false)?
+                .ok_or_else(|| error("render cancelled"));
+        }
+        self.render_gpu_resolved(plan, request, inputs)
+    }
+    fn render_gpu_resolved(
         &self,
         plan: &Plan,
         request: RenderRequest,
@@ -530,6 +547,9 @@ impl Renderer {
         request: RenderRequest,
         inputs: &ImageInputs,
     ) -> Result<Arc<GpuFrame>> {
+        if !plan.temporal.is_empty() {
+            return self.render_gpu(plan, request, inputs).map(Arc::new);
+        }
         let resolved = inputs.resolve_on(plan, request.time, Some(self))?;
         let inputs = &resolved;
         let source_bytes = self.source_bytes(plan, inputs)?;

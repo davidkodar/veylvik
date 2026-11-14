@@ -8,3 +8,6 @@ use veylvik_document::{Operation, Scalar};
 
 impl RenderNode for veylvik_document::nodes::Image {}
 impl RenderNode for veylvik_document::nodes::Footage {}
+
+impl RenderNode for veylvik_document::nodes::MotionBlur {}
+impl RenderNode for veylvik_document::nodes::TimeRemap {}

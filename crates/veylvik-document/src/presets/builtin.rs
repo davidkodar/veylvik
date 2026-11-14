@@ -13,7 +13,12 @@ pub struct Builtin {
     pub label: &'static str,
     pub description: &'static str,
 }
-pub const ALL: [Builtin; 62] = [
+pub const ALL: [Builtin; 63] = [
+    Builtin {
+        id: "shutter_motion",
+        label: "Shutter Motion Blur",
+        description: "Photographic exposure on an animated branch. Four preview samples, sixteen final samples, editable shutter angle. Place after motion and before merging the background.",
+    },
     Builtin {
         id: "surface_paint",
         label: "Paint on Surface",
@@ -359,6 +364,27 @@ pub fn build(id: &str) -> Result<Preset> {
         controls: Vec::new(),
     };
     let output = match id {
+        "shutter_motion" => {
+            let node = b.add(
+                "Shutter motion blur",
+                Operation::MotionBlur(crate::nodes::MotionBlur {
+                    angle: 180.0.into(),
+                    phase: 0.0.into(),
+                    preview_samples: 4.0.into(),
+                    final_samples: 16.0.into(),
+                }),
+                &[("image", source)],
+            );
+            for (name, label) in [
+                ("angle", "Shutter angle"),
+                ("phase", "Shutter phase"),
+                ("preview_samples", "Preview samples"),
+                ("final_samples", "Final samples"),
+            ] {
+                b.expose(node, name, label)?;
+            }
+            node
+        }
         "surface_paint" => {
             let background = Node::new(
                 "Clean surface",
@@ -678,6 +704,7 @@ pub const CATEGORIES: [&str; 8] = [
 ];
 pub fn category(id: &str) -> &'static str {
     match id {
+        "shutter_motion" => "Motion",
         id if appearance::material_kind(id).is_some() => "Materials",
         "sun_glints" | "metallic_shine" | "soft_bloom" | "anamorphic_streaks" | "dream_focus"
         | "light_sweep" | "soft_vignette" | "spotlight" | "prismatic_glow" | "neon_outline" => {

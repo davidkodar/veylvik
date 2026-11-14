@@ -32,6 +32,8 @@ impl Default for Gallery {
 }
 fn bytes(id: &str, before: bool) -> &'static [u8] {
     match (id, before) {
+        ("shutter_motion", false) => include_bytes!("../assets/showcase/shutter_motion-after.png"),
+        ("shutter_motion", true) => include_bytes!("../assets/showcase/shutter_motion-before.png"),
         ("surface_paint", false) => include_bytes!("../assets/showcase/surface_paint-after.png"),
         ("surface_paint", true) => include_bytes!("../assets/showcase/surface_paint-before.png"),
         ("oak_light", false) => include_bytes!("../assets/showcase/oak_light-after.png"),

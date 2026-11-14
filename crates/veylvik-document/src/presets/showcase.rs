@@ -233,7 +233,28 @@ pub fn build(id: &str) -> Result<Scene> {
         &mut doc,
         "Artwork motion",
         Operation::Affine(crate::nodes::Affine {
-            x: 0.0.into(),
+            x: if id == "shutter_motion" {
+                Scalar::Linear {
+                    keys: [
+                        (0, 0.),
+                        (18, -180.),
+                        (30, 180.),
+                        (48, 0.),
+                        (66, -180.),
+                        (78, 180.),
+                        (96, 0.),
+                    ]
+                    .into_iter()
+                    .map(|(frame, value)| crate::Key {
+                        time: Time::new(frame, 24).unwrap(),
+                        value,
+                        segment: None,
+                    })
+                    .collect(),
+                }
+            } else {
+                0.0.into()
+            },
             y: cycle(9.0, -9.0),
             scale_x: cycle(0.94, 1.04),
             scale_y: cycle(0.94, 1.04),
