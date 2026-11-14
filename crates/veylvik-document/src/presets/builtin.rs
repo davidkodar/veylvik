@@ -3,6 +3,7 @@ use super::Preset;
 mod appearance;
 mod extended;
 mod optics;
+mod recipes;
 use crate::{
     BlendMode, Composition, Key, MaskChannel, Node, NodeId, Operation, Result, Scalar, Time,
     groups::{Control, Group},
@@ -13,7 +14,22 @@ pub struct Builtin {
     pub label: &'static str,
     pub description: &'static str,
 }
-pub const ALL: [Builtin; 64] = [
+pub const ALL: [Builtin; 67] = [
+    Builtin {
+        id: "weathered_bronze",
+        label: "Weathered Bronze",
+        description: "Satin bronze with uneven tarnish, dirt and cleaner worn edges. Apply to text or any transparent silhouette; every surface and weathering control stays editable.",
+    },
+    Builtin {
+        id: "brushed_light_sweep",
+        label: "Brushed Light Sweep",
+        description: "Directional brushed aluminium with a travelling specular reflection. Edit the finish, sweep position and light strength in one reusable recipe.",
+    },
+    Builtin {
+        id: "sky_lit_gold",
+        label: "Sky-lit Gold",
+        description: "Polished gold reflects an animated blue sky and clouds alongside its studio lighting. Open the group to replace the reflection scene with your own objects or media.",
+    },
     Builtin {
         id: "smooth_slow_motion",
         label: "Smooth Slow Motion",
@@ -369,6 +385,7 @@ pub fn build(id: &str) -> Result<Preset> {
         controls: Vec::new(),
     };
     let output = match id {
+        id if is_recipe(id) => recipes::build(id, &mut b, source)?,
         "smooth_slow_motion" => {
             let operation =
                 serde_json::from_value(crate::registry::OPTICAL_FLOW.default_operation())
@@ -726,6 +743,7 @@ pub const CATEGORIES: [&str; 8] = [
 ];
 pub fn category(id: &str) -> &'static str {
     match id {
+        id if is_recipe(id) => "Surface",
         "shutter_motion" | "smooth_slow_motion" => "Motion",
         id if appearance::material_kind(id).is_some() => "Materials",
         "sun_glints" | "metallic_shine" | "soft_bloom" | "anamorphic_streaks" | "dream_focus"
@@ -879,5 +897,12 @@ pub(super) fn material_surface(
         &Default::default(),
         position,
         super::resolution::Sizing::Fit,
+    )
+}
+
+pub fn is_recipe(id: &str) -> bool {
+    matches!(
+        id,
+        "weathered_bronze" | "brushed_light_sweep" | "sky_lit_gold"
     )
 }

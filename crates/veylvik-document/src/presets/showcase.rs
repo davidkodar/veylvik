@@ -159,7 +159,11 @@ pub fn build(id: &str) -> Result<Scene> {
         &mut doc,
         "Midnight background",
         Operation::Solid(crate::nodes::Solid {
-            color: [0.002, 0.004, 0.012, 1.0],
+            color: if super::builtin::is_recipe(id) {
+                [0.008, 0.008, 0.008, 1.]
+            } else {
+                [0.002, 0.004, 0.012, 1.0]
+            },
         }),
         &[],
     );
@@ -235,7 +239,7 @@ pub fn build(id: &str) -> Result<Scene> {
         Operation::Affine(crate::nodes::Affine {
             x: if id == "smooth_slow_motion" {
                 Scalar::Smooth {
-                    keys: [(0, 0.), (12, -170.), (24, 0.), (36, 170.), (48, 0.)]
+                    keys: [(0, -170.), (24, 170.), (48, -170.)]
                         .into_iter()
                         .map(|(ticks, value)| Key {
                             time: Time { ticks, rate: 24 },
@@ -308,12 +312,29 @@ pub fn build(id: &str) -> Result<Scene> {
     doc.output = before;
     let instance = preset.instantiate(
         &doc,
-        &[("input_1".into(), before)].into(),
+        &[(
+            "input_1".into(),
+            if super::builtin::is_recipe(id) {
+                art
+            } else {
+                before
+            },
+        )]
+        .into(),
         Some(NodePosition { x: 0.0, y: 500.0 }),
     )?;
     let document = Document::new(doc)?;
     let mut composition = document.prepare(0, &instance.commands)?;
-    composition.output = instance.output;
+    composition.output = if super::builtin::is_recipe(id) {
+        add(
+            &mut composition,
+            "Material title over neutral background",
+            Operation::Merge(crate::nodes::Merge {}),
+            &[("background", background), ("foreground", instance.output)],
+        )
+    } else {
+        instance.output
+    };
     let before = if id == "smooth_slow_motion" {
         for node in composition.nodes.values_mut() {
             if let Operation::OpticalFlow(flow) = &mut node.operation {
@@ -389,6 +410,7 @@ mod tests {
             ) || entry.id == "metallic_shine"
                 || entry.id == "sun_glints"
                 || super::super::builtin::category(entry.id) == "Materials"
+                || super::super::builtin::is_recipe(entry.id)
             {
                 assert_eq!(doc.nodes[&doc.output].inputs["foreground"], group.output);
             } else {
@@ -438,6 +460,7 @@ mod tests {
                     ) || entry.id == "metallic_shine"
                         || entry.id == "sun_glints"
                         || super::super::builtin::category(entry.id) == "Materials"
+                        || super::super::builtin::is_recipe(entry.id)
                     {
                         doc.nodes[&scene.before].inputs["foreground"]
                     } else if entry.id == "smooth_slow_motion" {

@@ -32,6 +32,20 @@ impl Default for Gallery {
 }
 fn bytes(id: &str, before: bool) -> &'static [u8] {
     match (id, before) {
+        ("weathered_bronze", false) => {
+            include_bytes!("../assets/showcase/weathered_bronze-after.png")
+        }
+        ("weathered_bronze", true) => {
+            include_bytes!("../assets/showcase/weathered_bronze-before.png")
+        }
+        ("brushed_light_sweep", false) => {
+            include_bytes!("../assets/showcase/brushed_light_sweep-after.png")
+        }
+        ("brushed_light_sweep", true) => {
+            include_bytes!("../assets/showcase/brushed_light_sweep-before.png")
+        }
+        ("sky_lit_gold", false) => include_bytes!("../assets/showcase/sky_lit_gold-after.png"),
+        ("sky_lit_gold", true) => include_bytes!("../assets/showcase/sky_lit_gold-before.png"),
         ("smooth_slow_motion", false) => {
             include_bytes!("../assets/showcase/smooth_slow_motion-after.png")
         }

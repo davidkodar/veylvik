@@ -413,6 +413,8 @@ Details: [Subject segmentation](subject-segmentation.md).
 - 16 MiB document size limit.
 - **File → New composition…** (Ctrl+N): width, height, frame count, exact frame-rate numerator/denominator.
 - **File → Composition settings…**: canvas, frame count, frame rate as one undo step, optional control scaling; **Display** transform.
+- **OCIO colour management**: independent GPU preview/output transforms, explicit branch conversion node, built-in or local OCIO 2.5 configurations and resolved LUT dependencies. Preview never bakes into export; explicitly enabled output conversion also affects EXR. AgX requires a supplied configuration such as Blender’s.
+- **Working colour space**: linear Rec.709 or ACEScg for compositing/grading/spatial passes; material colour interpretation and public frames remain Rec.709 through explicit conversions.
 - **Display transform**: **Standard** (clip at white) or **Filmic (ACES-style)**: smooth highlight roll-off for HDR and log footage in the viewer, PNG frames and sequences, MCP previews and MP4 export; EXR stays scene-linear; **View → Filmic display** toggle; MCP `display` command; one undo step.
 
 ## Automation
@@ -470,4 +472,11 @@ Details: [Subject segmentation](subject-segmentation.md).
 - Primary target x86_64 Arch/Omarchy; aarch64 supported by the package recipe.
 - `bin/package` builds an Arch package: `veylvik`, `veylvik-studio`, launcher entry, SVG icon, **Open with Veylvik** for `.veylvik`.
 - Desktop portal file dialogs; follows the Omarchy accent colour.
-- Rust 1.98.1 pinned; `unsafe` forbidden; GPL-3.0-only.
+- Rust 1.98.1 pinned; application/document/render code forbids `unsafe`; native media, interop and OCIO boundaries are isolated; GPL-3.0-only.
+
+### Curated material recipes
+- **Weathered Bronze**: satin bronze with editable patina, dirt and worn edges.
+- **Brushed Light Sweep**: directional aluminium with a travelling reflection.
+- **Sky-lit Gold**: studio-lit gold with animated cloud reflections and an editable reflection graph.
+
+These recipes accept text or any transparent silhouette. Their examples use neutral backgrounds; materials and effects remain separate editable nodes.

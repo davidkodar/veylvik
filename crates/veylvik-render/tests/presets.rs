@@ -115,9 +115,14 @@ fn showcase_scenes_have_visible_effects_motion_and_seamless_endpoints() {
         let after = Plan::compile(&scene.composition).unwrap();
         let before = Plan::compile_output(&scene.composition, scene.before).unwrap();
         let start = renderer.render(&after, Time::new(0, 1).unwrap()).unwrap();
-        let middle = renderer.render(&after, Time::new(2, 1).unwrap()).unwrap();
+        let sample = if entry.id == "smooth_slow_motion" {
+            Time::new(37, 24).unwrap()
+        } else {
+            Time::new(2, 1).unwrap()
+        };
+        let middle = renderer.render(&after, sample).unwrap();
         let end = renderer.render(&after, Time::new(4, 1).unwrap()).unwrap();
-        let untreated = renderer.render(&before, Time::new(2, 1).unwrap()).unwrap();
+        let untreated = renderer.render(&before, sample).unwrap();
         assert_eq!(start, end, "{} loop seam", entry.id);
         assert_ne!(start, middle, "{} has no motion", entry.id);
         let changed = middle
@@ -168,5 +173,39 @@ fn particles_emit_on_transparency_and_render_deterministically_after_seeking() {
             entry.id
         );
         assert!(a.iter().all(|p| p[3] >= 0.0 && p[3] <= 1.0));
+    }
+}
+
+#[test]
+#[ignore = "requires Vulkan"]
+fn curated_recipes_and_flow_demo_loop_and_remain_visible() {
+    let renderer = Renderer::new().unwrap();
+    for id in [
+        "weathered_bronze",
+        "brushed_light_sweep",
+        "sky_lit_gold",
+        "smooth_slow_motion",
+    ] {
+        let scene = presets::showcase::build(id).unwrap();
+        let plan = Plan::compile(&scene.composition).unwrap();
+        let before = Plan::compile_output(&scene.composition, scene.before).unwrap();
+        let sample = Time::new(37, 24).unwrap();
+        let start = renderer.render(&plan, Time::new(0, 1).unwrap()).unwrap();
+        let middle = renderer.render(&plan, sample).unwrap();
+        let end = renderer.render(&plan, Time::new(4, 1).unwrap()).unwrap();
+        let plain = renderer.render(&before, sample).unwrap();
+        assert_eq!(start, end, "{id} loop seam");
+        assert_ne!(start, middle, "{id} did not animate");
+        let changed = middle
+            .iter()
+            .zip(&plain)
+            .filter(|(a, b)| (0..3).any(|i| (a[i] - b[i]).abs() > 0.01))
+            .count();
+        assert!(changed > 500, "{id}: only {changed} changed pixels");
+        assert!(
+            middle
+                .iter()
+                .all(|p| p.iter().all(|v| v.is_finite()) && (p[3] - 1.).abs() < 1e-6)
+        );
     }
 }
