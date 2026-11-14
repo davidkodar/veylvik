@@ -7,7 +7,9 @@ Everything Veylvik can do today, area by area. Veylvik is a native Rust node com
 - Connect nodes by dragging between output and input sockets, in either direction; Escape or dropping on empty space cancels.
 - Each accepted rewire is one undo step; invalid connections fail atomically.
 - Named inputs are also editable in the inspector.
-- **Add node** button, **Add → Search nodes…** or **Tab**: searchable picker over all 36 node types, recipes and text outlines (by name or description); Up/Down, Enter to add, Escape cancels.
+- Node cards use vector icons, editable name headers, text excerpts and material/finish summaries. Input captions include **Background** and **Foreground** on merges. Captions and summaries hide progressively at smaller zoom levels; full names remain available on hover.
+- Category strips remain distinct from selection outlines, and long names truncate within the card.
+- **Add node** button, **Add → Search nodes…** or **Tab**: searchable picker over all registered node types, recipes and text outlines (by name or description); Up/Down, Enter to add, Escape cancels.
 - New effects connect to the selected node; procedural nodes appear where the picker opened.
 - Gradient endpoints and shape defaults follow the composition size.
 - **Add** menu submenus: Generators (Solid, Noise, Fractal noise, Gradient, Procedural fire, Smoke, fog and clouds); Masks and shapes (Ellipse mask, Path mask, Channel mask, Grow/shrink mask, Combine masks); Transform and distort (Affine transform, Transform, Displace); Colour and filters (Exposure, Colour correct, Colorize, Blur); Compositing (Merge, Blend, Fade, Apply mask, Surface blend); Materials and light (Text surface, Tarnish and dirt, Glass surface, Surface reflection, Sun glints, Metallic shine); Keying (Chroma key, Luma key); Tracking (Planar track, Planar warp). Every node type is in exactly one submenu or has its own entry.
@@ -201,6 +203,10 @@ Everything Veylvik can do today, area by area. Veylvik is a native Rust node com
 
 - **Text surface** (`material`) kinds: gold, silver, aluminium, bronze, phosphor, wood, light oak, dark oak, marble, light brick, red brick, concrete, paper, aged paper, red/brown/tan/dark/black leather (19).
 - Text surface controls: scale, bevel, roughness, lighting, grain, emission.
+- Gold, Silver, Bronze and Aluminium each offer **Polished**, **Satin**, **Matte** and **Brushed** finishes in the material inspector, collapsed material group, and text **Style → Material** controls. Recipes set roughness, grain and brushing without changing lighting or bevel; manual adjustments show **Custom**. Choosing a recipe replaces roughness/grain keyframes.
+- **Directional brushing** works across all four metals and can be switched independently of roughness. Older projects preserve their existing aluminium brushing.
+- Shared GPU material lighting: filtered HDR studio environment with strength/rotation, up to eight editable rectangular area lights, and conductor reflectance or dielectric IOR. **Reset studio lighting** adopts the default rig; additional light cards are opt-in.
+- Material library spheres and composition surfaces share the shader. Flat text faces reflect differently from curved spheres; bevel, roughness and lighting angle affect the result.
 - **Tarnish and dirt** (`patina`): tarnish, verdigris or rust; amount, dirt, scale, wear, scratches, seed.
 - **Glass surface**: clear or frosted; bevel, refraction, roughness, IOR, transmission, tint, dispersion; separate background input.
 - **Surface reflection**: metal or glass; bevel, curvature, roughness, strength, rotation, scale, X/Y offset; separate reflection input (any image or animated branch).
@@ -394,6 +400,7 @@ Details: [Subject segmentation](subject-segmentation.md).
 - Atomic saves that detect changed or deleted files on disk before replacing.
 - Save/export refuse to overwrite input images.
 - Undo/redo: 64 snapshots, 128 MiB; every transaction atomic.
+- Recovery dialog offers **Discard** for a stale copy or confirmed **Discard all**; active editor sessions and saved projects are protected.
 - Crash recovery copies of applied edits every ten seconds in `$XDG_STATE_HOME/veylvik/recovery`; **File → Recover unsaved work…**.
 - Unsaved-changes prompts on close, open and new.
 - Missing media: projects still open, unavailable sources marked in the menu bar and inspector, repair via Replace source / Reload.

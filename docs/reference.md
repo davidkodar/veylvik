@@ -309,7 +309,7 @@ The expanded set includes:
 - **Distortion:** Frosted Glass, Heat Haze, Underwater and Glitch Slices (plus Liquid Shimmer).
 - **Motion:** Chromatic Echo, Radial Echo and Orbit Echo.
 - **Particles:** Dust Motes, Fireflies, Embers, Snowfall and Starfield.
-- **Materials:** Polished Gold, Polished Silver, Brushed Aluminium, Aged Bronze,
+- **Materials:** Gold, Silver, Aluminium, Bronze,
   Phosphor, Carved Wood, Light/Dark Oak, White Marble, Light/Red Brick,
   Rough Concrete, Clean/Weathered Paper, and Red/Brown/Tan/Dark/Black Leather.
   Surface Reflection, Clear Glass, Frosted Glass Material and Metal Patina add
@@ -331,12 +331,30 @@ The optional node field `scene_background` records backdrop intent in saved scen
 and is also available through MCP's node schema.
 
 Apply a material to an isolated text/logo image or a white shape mask. **Text surface**
-replaces RGB using the source alpha: polished metals reflect a procedural studio with broad light shapes, narrow HDR
-highlights, dark reflections and alpha-derived bevel normals. Roughness softens
-the reflections, aluminium adds directional brushing, bronze adds
-mottling, wood combines warped growth rings and fine fibers, and phosphor emits
-textured green light. Texture scale, bevel, roughness, grain and reflection motion
-are editable; the Phosphor preset adds adjustable bloom.
+replaces RGB using the source alpha. Metals reflect a filtered HDR studio environment
+and optional rectangular area lights, using alpha-derived bevel normals on text and
+shapes. Library spheres use the same material shader with spherical normals; a flat
+text face will not reflect the studio in the same way as the sphere.
+
+For gold, silver, bronze and aluminium, **Finish** offers **Polished**, **Satin**,
+**Matte** and **Brushed**. Find it in the material node inspector, on a collapsed
+single-material group, or under text **Style → Material**. A finish sets roughness,
+grain and directional brushing; it preserves bevel, optical response and lighting.
+It replaces any roughness/grain animation with constants and undoes as one edit.
+Manual settings or animated roughness/grain show **Custom**. **Directional brushing**
+can also be toggled separately on any metal. Tarnish and dirt remain separate effects.
+
+**Studio lighting** exposes environment strength and rotation, ambient illumination,
+and up to eight rectangular lights with position, rotation, size, colour and intensity.
+The default uses the photographic HDR environment with additional cards disabled.
+**Reset studio lighting** applies that default to an existing material. **Surface
+response** exposes optional conductor reflection colour or dielectric refractive index.
+The studio environment is prefiltered offline on Vulkan and sampled by GPU shaders
+at runtime. This is 2.5D image-based shading, not scene ray tracing or cast-shadow simulation.
+
+Texture scale, bevel, roughness, grain and reflection motion remain editable. Wood
+combines warped growth rings and fine fibres; phosphor emits textured green light,
+and its preset adds adjustable bloom.
 
 Oak has elongated pores and growth rings; marble has warped mineral veins;
 bricks have staggered joints and recessed mortar; concrete has pits and aggregate;
@@ -1182,7 +1200,9 @@ No recovery copy replaces a project or an original image. Image paths become
 absolute in the copy so recovery does not depend on the old project directory.
 
 After an interrupted session, the recovery dialog offers available copies;
-**File → Recover unsaved work…** reopens that list. Running editor sessions are excluded using OS
+**File → Recover unsaved work…** reopens that list. **Discard** removes an unwanted
+stale copy; **Discard all** asks for confirmation before clearing available stale
+copies. Neither action deletes saved projects or active sessions. Running editor sessions are excluded using OS
 file locks, which release automatically on a crash. A restored composition is
 unsaved and uses Save As. Saving or explicitly discarding it removes its recovery
 copies. Failed restores leave the copy intact. Other sessions' copies are

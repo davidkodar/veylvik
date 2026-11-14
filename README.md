@@ -9,11 +9,11 @@
 
 [Reference](docs/reference.md) · [Build from source](#try-veylvik) · [MCP](#automation-and-assistants)
 
-Build shots from nodes, animate every value with keyframes and curves, mask and grade in scene-linear HDR, and render on the GPU through Vulkan. Drive it from the editor, the command line, or an MCP-compatible assistant.
+Build shots from nodes, animate parameters with keyframes and curves, mask and grade in scene-linear HDR, and render on the GPU through Vulkan. Drive it from the editor, the command line, or an MCP-compatible assistant.
 
 **Early development · Vulkan GPU required · Arch package or source · GPL-3.0-only**
 
-Veylvik is young, but it already works end to end: compose a graph, animate it, preview it live on the GPU, and export HDR frames and sequences. Keep copies of work you care about, because the project format can still change. No release has been published yet; build it from source or as a local Arch package.
+Veylvik is young, but it already works end to end: compose a graph, animate it, preview it live on the GPU, and export HDR frames and sequences. Keep copies of work you care about, because the project format can still change. Build it from source or as a local Arch package.
 
 [![Veylvik Studio with the Gilded inferno scene in the viewer: gold lettering under procedural fire with embers and a floor reflection, the node graph that builds it, and the Embers effect controls in the inspector](assets/readme/studio.webp)](assets/readme/studio.webp)
 
@@ -34,37 +34,42 @@ Veylvik is young, but it already works end to end: compose a graph, animate it, 
 
 ## Compose, animate, deliver
 
-- **Node graph:** connect generators, effects, masks and merges by dragging between sockets. Search and add nodes with <kbd>Tab</kbd>, find existing ones with <kbd>Ctrl</kbd>+<kbd>F</kbd>, box-select, copy and paste across projects, duplicate whole branches, and let auto-arrange keep the graph readable. Preview any node without changing the output.
-- **Animation:** every scalar can be keyed at exact rational times with linear, hold, ease, auto-smooth or Bézier interpolation. A curve workspace lets you edit keys and tangents directly, and keyframe markers on the timeline navigate the selected node.
+- **Node graph:** connect generators, effects, masks and merges by dragging between sockets. Search and add nodes with <kbd>Tab</kbd>, find existing ones with <kbd>Ctrl</kbd>+<kbd>F</kbd>, box-select, copy and paste across projects, duplicate whole branches, and let auto-arrange keep the graph readable. Preview any node without changing the output. Cards have vector icons, text excerpts or material/finish summaries, category strips and labelled inputs; detail reduces as you zoom out.
+- **Animation:** every scalar can be keyed at exact rational times with linear, hold, ease, auto-smooth or Bézier interpolation. A curve workspace lets you edit keys and tangents directly, and keyframe markers on the timeline navigate the selected node. Frame stepping and a stable-width frame counter support precise scrubbing.
 - **Masks:** draw vector masks with a pen tool straight in the viewer, edit points and topology, transform the whole shape, and animate it frame by frame. Grow, shrink, feather, combine and convert channels into mattes. Guided occlusion lets you place a title behind foreground objects without wiring anything.
 - **Subject masks:** click a person or object in the viewer and get a clean matte tracked through the shot by a local AI model (EdgeTAM or SAM 2.1), with a zoomed detail pass for feet and hands, ViTMatte matting for hair, and edge decontamination. One click replaces the background, keeps the subject, or puts a title behind it. Models install from an AI models manager and run on your own GPU; nothing is uploaded.
 - **Tracking and keying:** GPU planar tracking that pins layers to surfaces through occlusions, camera moves and both directions, point tracking, and colour-difference chroma and luma keyers with despill and an eyedropper.
 - **Text and titles:** GPU-rendered editable text with a searchable library of system and personal fonts, layout, styling and animation tools, and outlines, glows and surface materials connected as ordinary effects.
-- **Looks and materials:** 59 starter effects in a searchable library. They include glows, streaks, distortions, echoes and particle overlays; procedural metals, wood, marble, brick, paper and leather; glass and reflections; procedural fire; and smoke, fog and clouds. Every starter is an editable group with public controls, and they scale to any resolution, up to native UHD.
+- **Looks and materials:** 59 starter effects in a searchable, categorised library with animated hover previews, drag-and-drop, double-click actions and context menus. They include glows, streaks, distortions, echoes and particle overlays; procedural metals, wood, marble, brick, paper and leather; glass and reflections; procedural fire; and smoke, fog and clouds. Every starter is an editable group with public controls, and they scale to any resolution, up to native UHD.
+- **Metal finishes and lighting:** choose Gold, Silver, Bronze or Aluminium, then Polished, Satin, Matte or Brushed. Roughness, grain and directional brushing remain editable, with a Custom state for manual adjustments. A filtered HDR studio supplies default reflections; environment strength/rotation, up to eight optional area lights, and the material’s optical response are editable. Tarnish and dirt are separate effects. These are GPU-shaded 2.5D surfaces, not ray-traced 3D objects.
 - **Effect groups and presets:** collapse nodes into reusable effects with named controls and inputs, save them to your library, and share them as portable `.veyfx` files.
-- **Colour:** processing in scene-linear Rec.709 with premultiplied alpha and no clamping, so HDR highlights and negative values survive the whole graph. HDR video in PQ or HLG (iPhone HDR) imports directly, and camera log footage (Apple Log, Sony S-Log3, ARRI LogC3/LogC4, Panasonic V-Log) decodes to scene light with its camera gamut. Camera and creative `.cube` LUTs apply in scene-linear light with their input and output spaces declared, and an ACES-style filmic display transform rolls HDR highlights off smoothly in the viewer, PNG and video. The viewer has exposure and alpha views, and a colour picker that never rewrites your HDR values.
-- **Deliver:** export the current frame or a whole range as SDR PNG or lossless 32-bit float OpenEXR, or encode an MP4 on the GPU (NVENC) with the footage's sound and optional music mixed in. Sequence export writes a manifest that only marks itself complete once every frame is on disk.
-- **Work safely:** atomic saves that check for changes on disk before replacing a file, bounded undo history, crash recovery copies, missing-media repair, and **Collect project** to gather a project and its images into one portable folder.
+- **Colour:** floating-point processing in scene-linear Rec.709 with premultiplied alpha. SDR display/export transforms are separate from the scene-linear graph and EXR output. HDR video in PQ or HLG (iPhone HDR) imports directly, and camera log footage (Apple Log, Sony S-Log3, ARRI LogC3/LogC4, Panasonic V-Log) decodes to scene light with its camera gamut. Camera and creative `.cube` LUTs apply in scene-linear light with their input and output spaces declared, and an ACES-style filmic display transform rolls HDR highlights off smoothly in the viewer, PNG and video. The viewer has exposure and alpha views, and a colour picker that never rewrites your HDR values.
+- **Deliver:** export the current frame or a whole range as SDR PNG or lossless 32-bit float OpenEXR, or encode an MP4 using NVIDIA NVENC or Intel/AMD VA-API, including the footage's sound and optional music. Software encoding is an explicit opt-in if hardware is unavailable. Sequence export writes a manifest that only marks itself complete once every frame is on disk.
+- **Work safely:** atomic saves that check for changes on disk before replacing a file, bounded undo history, crash recovery copies with individual or bulk discard controls, missing-media repair, and **Collect project** to gather a project and its images into one portable folder.
 
 The [feature list](docs/features.md) covers everything Veylvik can do, area by area, and the [reference](docs/reference.md) documents every node, limit and command in detail.
 
 ## How it is built and tested
 
-Veylvik is written in Rust as an eleven-crate workspace, with `unsafe` code forbidden throughout. Rendering compiles the graph into an immutable plan of compute passes and runs it on the GPU through wgpu and Vulkan. The editor is a native egui app that shows those frames from the same Vulkan device, with no copy back to the CPU.
+Veylvik is written in Rust as an eleven-crate workspace. Application, document and rendering crates forbid `unsafe`; native FFmpeg and GPU-handle access is isolated in `veylvik-decode` and `veylvik-interop`, with explicit unsafe-operation and safety-comment checks. Rendering compiles the graph into an immutable plan of compute passes and runs it on the GPU through wgpu and Vulkan. The editor is a native egui app that shows those frames from the same Vulkan device, without copying the preview frame back to the CPU. Document editing, font shaping and orchestration run on the CPU; composition kernels, material shading and vector coverage run on Vulkan. Export and diagnostic readbacks are separate from the live viewer path.
 
 | Crate | Role |
 | --- | --- |
 | `veylvik-document` | Project format, exact time, curves, node registry, atomic edits and undo. No GPU. |
-| `veylvik-render` | Plan compiler, WGSL kernels, vector coverage, frame cache and preview scheduling. |
-| `veylvik-text` | Font shaping, layout and editable outlines. |
+| `veylvik-render` | Immutable render plans, WGSL kernels, vector coverage, material lighting, HDR environment filtering and GPU frame cache. |
+| `veylvik-text` | CPU font shaping and layout, producing editable outlines for GPU coverage. |
 | `veylvik-track` | GPU point and planar tracking, built on the renderer's narrow compute interface. |
 | `veylvik-segment` | Subject mattes from local AI models, run in an isolated worker process, with a verified model installer. |
 | `veylvik-decode` | Hardware-first video decoding into GPU frames. |
-| `veylvik-interop` | Zero-copy hand-off of decoded and encoded video between CUDA, VA-API and Vulkan. |
+| `veylvik-interop` | Native CUDA/Vulkan and VA-API/DMA-BUF interoperability boundaries for video frames. |
 | `veylvik-io` | PNG and OpenEXR in and out, sequences, presets, recovery and collection. |
 | `veylvik-control` | MCP framing and the private local socket for live control. |
 | `veylvik-cli` | The `veylvik` command and MCP server. |
-| `veylvik-studio` | The native editor. |
+| `veylvik-studio` | Native egui editor, inspectors, graph presentation, playback and asynchronous preview coordination. |
+
+Hardware video paths are probed at runtime and report fallback reasons. NVIDIA direct GPU transfer is supported; the Intel/AMD DMA-BUF path is implemented but remains experimental pending validation on those devices. Hardware decoding and rendering are separate: unsupported decode/interop paths may use a reported software or RAM-staged fallback, while composition rendering still requires Vulkan.
+
+Material presets store the same editable node parameters exposed through the registry and MCP. Lighting is shared between composition rendering and library samples. The bundled HDR studio is filtered offline on Vulkan; runtime shaders sample its roughness levels, and preview fingerprints detect stale library assets after shading changes.
 
 - **Hundreds of automated tests** cover the document model, animation, presets, text, the editor's logic and the renderer.
 - **Vulkan tests** render real frames on a software or hardware adapter and check the pixels. They are kept separate, so document and control tests also run on machines without graphics.
