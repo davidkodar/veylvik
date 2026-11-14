@@ -726,6 +726,9 @@ fn gpu_preview_scheduler_shares_device_and_releases_cancelled_outputs() {
     rx.recv_timeout(Duration::from_secs(30)).unwrap();
     scheduler.cancel().unwrap();
     assert!(scheduler.try_take().unwrap().is_none());
+    // Completed frames stay in the playback cache for repeat playback; clearing it
+    // must release every GPU byte the scheduler held.
+    scheduler.playback_cache().clear();
     renderer.clear_frame_cache().unwrap();
     assert_eq!(renderer.resource_stats().unwrap().held_bytes, 0);
 }

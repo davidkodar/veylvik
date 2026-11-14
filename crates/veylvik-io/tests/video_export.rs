@@ -392,9 +392,13 @@ fn dma_plane_padding_matches_compact_gpu_output() {
 #[test]
 #[ignore = "pending AMD/Intel validation; set VEYLVIK_TEST_VAAPI_DEVICE to the matching render node"]
 fn vaapi_dma_import_encode_and_retention_on_real_hardware() {
-    let node = PathBuf::from(std::env::var_os("VEYLVIK_TEST_VAAPI_DEVICE").expect(
-        "Set VEYLVIK_TEST_VAAPI_DEVICE=/dev/dri/renderD128 to the Vulkan adapter's AMD/Intel node",
-    ));
+    // Opt-in: the full Vulkan suite must pass on machines without an AMD/Intel GPU.
+    let Some(node) = std::env::var_os("VEYLVIK_TEST_VAAPI_DEVICE").map(PathBuf::from) else {
+        eprintln!(
+            "skipped: set VEYLVIK_TEST_VAAPI_DEVICE=/dev/dri/renderD128 to the Vulkan adapter's AMD/Intel node"
+        );
+        return;
+    };
     let dir = Scratch::new();
     let renderer = Renderer::new().unwrap();
     let doc = veylvik_document::motion_demo();
