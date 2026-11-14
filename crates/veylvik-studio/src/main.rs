@@ -34,6 +34,7 @@ mod path_handles;
 mod path_pen;
 mod path_transform;
 mod planar;
+mod playback;
 mod preferences;
 mod preset_library;
 mod preview_images;
@@ -181,6 +182,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             let recovery =
                 recovery::Recovery::new(recovery::default_store()?, &project, cc.egui_ctx.clone());
             let mut app = Studio {
+                playback_controls: playback::Playback::default(),
                 preferences,
                 system_theme: theme::System::default(),
                 control,
@@ -261,6 +263,7 @@ enum Leave {
     Close,
 }
 struct Studio {
+    playback_controls: playback::Playback,
     preferences: preferences::Preferences,
     system_theme: theme::System,
     recovery: recovery::Recovery,
@@ -365,6 +368,11 @@ impl Studio {
         self.planar = planar::Controls::default();
         self.occlusion = Default::default();
         self.project = project;
+        self.playback_controls = playback::Playback::default();
+        if let Some(scheduler) = &self.scheduler {
+            scheduler.playback_cache().set_resolution(1);
+            scheduler.playback_cache().clear();
+        }
         self.graph = graph::Graph::default();
         self.graph
             .set_auto_arrange(self.preferences.values.auto_arrange);
@@ -634,9 +642,32 @@ impl Studio {
         ctx.request_repaint_after(deadline.saturating_duration_since(Instant::now()));
     }
     fn request_preview(&mut self) {
+        self.playback_controls.warming = None;
+        self.request_preview_inner();
+    }
+    fn request_preview_inner(&mut self) {
         self.wanted = None;
         self.preview_pending = false;
         let result = (|| {
+            let output = self
+                .project
+                .preview
+                .unwrap_or(self.project.document.snapshot().output);
+            let plan = if let Some(commands) = self.key_timeline.preview_commands() {
+                let doc = self
+                    .project
+                    .document
+                    .prepare(self.project.document.revision(), commands)?;
+                std::sync::Arc::new(veylvik_render::Plan::compile_output(&doc, output)?)
+            } else if self.draft_dirty {
+                let doc = self
+                    .project
+                    .document
+                    .prepare(self.project.document.revision(), &self.draft_commands())?;
+                std::sync::Arc::new(veylvik_render::Plan::compile_output(&doc, output)?)
+            } else {
+                self.project.plan()?
+            };
             let scheduler = self
                 .scheduler
                 .as_ref()
@@ -644,27 +675,7 @@ impl Studio {
             scheduler.cancel()?;
             Ok::<_, Box<dyn std::error::Error>>(scheduler.submit(
                 self.project.document.revision(),
-                if let Some(commands) = self.key_timeline.preview_commands() {
-                    let doc = self
-                        .project
-                        .document
-                        .prepare(self.project.document.revision(), commands)?;
-                    std::sync::Arc::new(veylvik_render::Plan::compile_output(
-                        &doc,
-                        self.project.preview.unwrap_or(doc.output),
-                    )?)
-                } else if self.draft_dirty {
-                    let doc = self
-                        .project
-                        .document
-                        .prepare(self.project.document.revision(), &self.draft_commands())?;
-                    std::sync::Arc::new(veylvik_render::Plan::compile_output(
-                        &doc,
-                        self.project.preview.unwrap_or(doc.output),
-                    )?)
-                } else {
-                    self.project.plan()?
-                },
+                plan,
                 RenderRequest::full(self.project.time()?),
                 self.project.inputs.clone(),
             )?)
@@ -1111,6 +1122,11 @@ impl Studio {
         self.file_started(result);
     }
     fn export_frame(&mut self) {
+        self.playback_controls.warming = None;
+        if let Some(s) = &self.scheduler {
+            s.playback_cache().clear();
+        }
+
         if self.files.busy() || !self.apply_draft() {
             return;
         }
@@ -1157,6 +1173,11 @@ impl Studio {
         mut settings: veylvik_io::video_export::Settings,
         ctx: &egui::Context,
     ) {
+        self.playback_controls.warming = None;
+        if let Some(s) = &self.scheduler {
+            s.playback_cache().clear();
+        }
+
         use std::sync::atomic::Ordering;
         if self.files.busy() || !self.apply_draft() {
             return;
@@ -1206,6 +1227,11 @@ impl Studio {
         self.file_started(result);
     }
     fn export_sequence(&mut self, settings: sequence::Settings, ctx: &egui::Context) {
+        self.playback_controls.warming = None;
+        if let Some(s) = &self.scheduler {
+            s.playback_cache().clear();
+        }
+
         use std::sync::atomic::Ordering;
         if self.files.busy() || !self.apply_draft() {
             return;
@@ -1496,11 +1522,33 @@ impl Studio {
         }
         self.recovery.enabled = p.recovery_enabled;
         self.recovery.interval = Duration::from_secs(p.recovery_seconds);
+        if let Some(scheduler) = &self.scheduler {
+            let directory = std::env::var_os("XDG_CACHE_HOME")
+                .map(std::path::PathBuf::from)
+                .or_else(|| {
+                    std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join(".cache"))
+                })
+                .map(|p| p.join("veylvik/playback"));
+            scheduler
+                .playback_cache()
+                .configure(veylvik_render::playback::Settings {
+                    divisor: self.playback_controls.divisor(),
+                    gpu_bytes: p.playback_gpu_mib * 1024 * 1024,
+                    disk_bytes: p.playback_disk_mib * 1024 * 1024,
+                    directory,
+                });
+        }
         ctx.set_zoom_factor(p.scale);
         ctx.data_mut(|d| {
             d.insert_temp(egui::Id::new("animate-library-previews"), p.hover_previews)
         });
+        let cache_changed = before.is_some_and(|b| {
+            b.playback_gpu_mib != p.playback_gpu_mib || b.playback_disk_mib != p.playback_disk_mib
+        });
         self.theme(ctx);
+        if cache_changed {
+            self.request_preview();
+        }
     }
     fn open_preferences(&mut self) {
         self.playing = false;
@@ -2100,7 +2148,44 @@ impl Studio {
             ui.weak(format!("{} / {} fps", fps.ticks, fps.rate));
             self.key_timeline.scope_controls(ui);
         });
+        self.playback_toolbar(ui);
         self.sync_key_timeline();
+        let cache = self
+            .scheduler
+            .as_ref()
+            .map(|s| s.playback_cache().status())
+            .unwrap_or_default();
+        self.key_timeline.playback_range = self
+            .playback_controls
+            .enabled
+            .then(|| self.playback_controls.range(count));
+        self.key_timeline.cached_gpu = cache
+            .gpu_frames
+            .iter()
+            .filter_map(|t| {
+                key_timeline::frame(*t, self.project.document.snapshot().frame_rate, count)
+            })
+            .collect();
+        self.key_timeline.cached_disk = cache
+            .disk_frames
+            .iter()
+            .filter_map(|t| {
+                key_timeline::frame(*t, self.project.document.snapshot().frame_rate, count)
+            })
+            .collect();
+        let doc = self.project.document.snapshot();
+        if cache.revision != self.project.document.revision()
+            || cache.output != self.project.preview.unwrap_or(doc.output)
+            || cache.size
+                != [
+                    doc.width.div_ceil(self.playback_controls.divisor()),
+                    doc.height.div_ceil(self.playback_controls.divisor()),
+                ]
+            || self.draft_dirty
+        {
+            self.key_timeline.cached_gpu.clear();
+            self.key_timeline.cached_disk.clear();
+        }
         let actions = ui
             .horizontal(|ui| {
                 self.key_timeline.show(
@@ -2222,12 +2307,16 @@ impl Studio {
         }
         self.path_pen.cancel();
         self.playing = !self.playing;
+        self.playback_controls.warming = None;
+        let range = self
+            .playback_controls
+            .range(self.project.document.snapshot().frame_count);
         if self.playing
             && (self.preferences.values.restart_playback
-                || self.project.frame
-                    >= i64::from(self.project.document.snapshot().frame_count) - 1)
+                || self.project.frame < range.0
+                || self.project.frame >= range.1)
         {
-            self.project.frame = 0;
+            self.project.frame = range.0;
             self.request_preview();
         }
         if !self.error {
@@ -2565,16 +2654,43 @@ impl eframe::App for Studio {
                 _ => {}
             }
         }
+        if let Some(warm) = self.playback_controls.warming {
+            if self.error {
+                self.playback_controls.warming = None;
+            } else if !self.preview_pending {
+                if self.project.frame < warm.end {
+                    self.project.frame += 1;
+                    self.request_preview_inner();
+                } else {
+                    self.project.frame = warm.restore.clamp(
+                        0,
+                        i64::from(
+                            self.project
+                                .document
+                                .snapshot()
+                                .frame_count
+                                .saturating_sub(1),
+                        ),
+                    );
+                    self.request_preview();
+                }
+            }
+            if self.playback_controls.warming.is_some() {
+                self.status = format!("Caching frame {} / {}", self.project.frame, warm.end);
+            }
+        }
         self.poll_planar_preview();
         if self.playing {
             let fps = self.project.document.snapshot().frame_rate;
             let elapsed =
                 (self.playback.elapsed().as_secs_f64() * fps.ticks as f64 / fps.rate as f64) as i64;
-            let count = i64::from(self.project.document.snapshot().frame_count);
-            let (frame, finished) = preferences::playback_frame(
+            let range = self
+                .playback_controls
+                .range(self.project.document.snapshot().frame_count);
+            let (frame, finished) = playback::frame(
                 self.playback_frame,
                 elapsed,
-                count as u32,
+                range,
                 self.preferences.values.loop_playback,
             );
             // Playback must let an active frame finish before submitting again.
@@ -2664,6 +2780,22 @@ impl eframe::App for Studio {
                 if ctx.input_mut(|i| i.consume_key(egui::Modifiers::ALT, key)) {
                     self.seek_key(forward);
                 }
+            }
+            if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::I)) {
+                self.playing = false;
+                self.playback_controls.warming = None;
+                self.playback_controls.set_in(
+                    self.project.frame,
+                    self.project.document.snapshot().frame_count,
+                );
+            }
+            if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::O)) {
+                self.playing = false;
+                self.playback_controls.warming = None;
+                self.playback_controls.set_out(
+                    self.project.frame,
+                    self.project.document.snapshot().frame_count,
+                );
             }
             if ctx.input(|i| i.key_pressed(egui::Key::Space)) {
                 self.toggle_play();
@@ -2842,8 +2974,8 @@ impl eframe::App for Studio {
                     }
                     if let Some(frame) = self.displayed.clone() {
                         let image = egui::vec2(
-                            frame.frame.region().width as f32,
-                            frame.frame.region().height as f32,
+                            self.project.document.snapshot().width as f32,
+                            self.project.document.snapshot().height as f32,
                         );
                         let (canvas, response) = ui.allocate_exact_size(
                             ui.available_size().max(egui::vec2(1.0, 1.0)),

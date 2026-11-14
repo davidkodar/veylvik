@@ -37,7 +37,7 @@ Everything Veylvik can do today, area by area. Veylvik is a native Rust node com
 ## Preferences and appearance
 
 - **Edit → Preferences** (`Ctrl+,`): Playback, Appearance, Workspace, Performance and Recovery sections, with Apply, Cancel and per-section reset.
-- Restart from frame zero on Play/Space, or resume from the paused frame. Loop toggle on the timeline; with looping off playback stops on the final frame.
+- Restart from the playback range’s first frame on Play/Space, or resume from the paused frame. Loop toggle on the timeline; with looping off playback stops on the final frame.
 - Dark, Light, Midnight Blue and Evergreen palettes; **Follow system** reads the active Omarchy palette or the desktop portal light/dark preference and updates while running.
 - Immediate theme preview with Cancel restoring the saved theme; interface scale from 75% to 200% applies on Apply. Display themes never affect rendered pixels.
 - Defaults for automatic node arrangement, animated library hover previews and fast viewer filtering.
@@ -46,7 +46,9 @@ Everything Veylvik can do today, area by area. Veylvik is a native Rust node com
 
 ## Viewer
 
-- GPU-resident frames on the same Vulkan device as the UI, no CPU copy.
+- GPU-resident display on the same Vulkan device as the UI; optional disk caching performs pixel transfers.
+- Inclusive In/Out playback ranges, I/O shortcuts, range caching, GPU/disk cache indicators and adjustable cache budgets.
+- Full/Half/Quarter completed preview sizes reduce retained memory; effects still evaluate at project resolution and exports remain unchanged.
 - Scroll to zoom around the pointer, drag to pan; **Fit** or double-click centres the frame; **100%** / **Actual pixels (100%)** maps one image pixel to one physical pixel.
 - Displays dimensions and zoom; integer zoom aligns to physical pixels.
 - **View exposure** −16 to +16 stops (display only).

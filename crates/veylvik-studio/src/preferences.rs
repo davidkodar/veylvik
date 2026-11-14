@@ -44,6 +44,8 @@ pub struct Values {
     pub hover_previews: bool,
     pub fast_view: bool,
     pub gpu_budget_mib: u64,
+    pub playback_gpu_mib: u64,
+    pub playback_disk_mib: u64,
     pub recovery_enabled: bool,
     pub recovery_seconds: u64,
 }
@@ -58,6 +60,8 @@ impl Default for Values {
             hover_previews: true,
             fast_view: false,
             gpu_budget_mib: 2048,
+            playback_gpu_mib: 512,
+            playback_disk_mib: 0,
             recovery_enabled: true,
             recovery_seconds: 10,
         }
@@ -67,6 +71,8 @@ impl Values {
     fn validate(&self) -> Result<(), String> {
         if !self.scale.is_finite()
             || !(0.75..=2.).contains(&self.scale)
+            || self.playback_gpu_mib > 8192
+            || self.playback_disk_mib > 65536
             || !(64..=16384).contains(&self.gpu_budget_mib)
             || !(10..=300).contains(&self.recovery_seconds)
         {
@@ -182,6 +188,8 @@ impl Preferences {
                 self.draft.hover_previews = d.hover_previews;
                 self.draft.fast_view = d.fast_view;
                 self.draft.gpu_budget_mib = d.gpu_budget_mib;
+                self.draft.playback_gpu_mib = d.playback_gpu_mib;
+                self.draft.playback_disk_mib = d.playback_disk_mib;
             }
             _ => {
                 self.draft.recovery_enabled = d.recovery_enabled;
@@ -198,10 +206,10 @@ impl Preferences {
                     "Start playback from the beginning",
                 )
                 .on_hover_text(
-                    "Space and Play restart at frame 0. Pausing keeps the current frame visible.",
+                    "Space and Play restart at the playback range’s first frame. Pausing keeps the current frame visible.",
                 );
                 ui.checkbox(&mut self.draft.loop_playback, "Loop playback");
-                ui.weak("With looping off, playback stops on the final frame. Starting again at the end restarts from frame 0.");
+                ui.weak("With looping off, playback stops on the final frame. Starting again at the end restarts from the playback range’s first frame.");
                 ui.separator();
                 ui.label("Space: play / pause");
                 ui.label("Left / Right: step one frame");
@@ -252,6 +260,17 @@ impl Preferences {
                 );
                 ui.weak("Budget changes require restart. VEYLVIK_GPU_BUDGET_MIB overrides this setting. The budget covers renderer buffers, not total driver or UI memory.");
                 ui.weak("Composition effects remain GPU-rendered. Shutter sampling and optical-flow quality are controlled on their respective nodes.");
+                ui.separator();
+                ui.label("Playback cache");
+                ui.add(
+                    egui::Slider::new(&mut self.draft.playback_gpu_mib, 0..=8192)
+                        .text("GPU cache (MiB)"),
+                );
+                ui.add(
+                    egui::Slider::new(&mut self.draft.playback_disk_mib, 0..=65536)
+                        .text("Disk cache (MiB)"),
+                );
+                ui.weak("Zero disables that cache. GPU cache uses at most half the renderer budget and yields memory to rendering. Disk cache is lossless, session-only, and requires GPU readback/upload on the preview worker. It never renders effects on the CPU. Changes apply without restart.");
             }
             _ => {
                 ui.heading("Recovery copies");
@@ -355,26 +374,9 @@ impl Preferences {
     }
 }
 
-/// Pure transport logic, shared with tests. Saturation prevents large elapsed-time overflow.
-pub fn playback_frame(start: i64, elapsed: i64, count: u32, looping: bool) -> (i64, bool) {
-    let count = i64::from(count.max(1));
-    let position = start.clamp(0, count - 1).saturating_add(elapsed.max(0));
-    if looping {
-        (position % count, false)
-    } else {
-        (position.min(count - 1), position >= count - 1)
-    }
-}
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[test]
-    fn transport_ends_or_loops_predictably() {
-        assert_eq!(playback_frame(8, 4, 10, true), (2, false));
-        assert_eq!(playback_frame(8, 4, 10, false), (9, true));
-        assert_eq!(playback_frame(0, 0, 1, false), (0, true));
-        assert_eq!(playback_frame(0, i64::MAX, 24, false), (23, true));
-    }
     #[test]
     fn preferences_roundtrip_defaults_and_reject_invalid_files() {
         let dir = std::env::temp_dir().join(format!(

@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 [dependencies]
+flate2 = "1.1.11"
 veylvik-color = { path = "../veylvik-color" }
 half = "2"
 veylvik-interop = { path = "../veylvik-interop" }

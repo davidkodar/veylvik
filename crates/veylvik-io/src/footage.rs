@@ -194,6 +194,9 @@ impl Sequence {
     }
 }
 impl FrameSource for Sequence {
+    fn cache_dependencies(&self) -> Option<Vec<PathBuf>> {
+        Some(self.files.clone())
+    }
     fn info(&self) -> Option<veylvik_render::SourceInfo> {
         Some(veylvik_render::SourceInfo {
             width: self.size.0,

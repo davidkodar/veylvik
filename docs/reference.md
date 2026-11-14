@@ -214,10 +214,10 @@ Open **Edit → Preferences** or **Ctrl+,**. Settings are per user, stored atomi
 They do not modify the composition or its undo history. Apply saves; Cancel discards
 changes, including the live theme preview. Each section has its own reset.
 
-- **Playback:** optionally start from frame zero every time Play/Space starts playback.
+- **Playback:** optionally start from the playback range’s first frame every time Play/Space starts playback.
   Pausing keeps the current frame visible. Looping defaults on and can also be toggled
   with the timeline loop button. Without looping, playback stops at the final frame;
-  starting again from that frame starts at zero.
+  starting again from that frame starts at the range’s first frame.
 - **Appearance:** Dark (default), Light, Midnight Blue, Evergreen, or Follow system.
   Omarchy's active `colors.toml` is read from its state directory, with the
   legacy configuration path supported. Other desktops use their portal colour-scheme
@@ -250,6 +250,35 @@ The viewer consumes GPU-resident frames on the same Vulkan device as the UI.
 Playback lets each requested preview finish, then skips ahead to the current
 clock time if rendering is slower than the composition frame rate. Scrubbing
 and explicit edits still replace obsolete requests. Render errors stop playback.
+The timeline’s **Range**, **In** and **Out** controls limit playback to an inclusive
+frame range. **I** and **O** set its boundaries at the playhead when no text field is
+focused. Range settings belong to the current session; they do not change export
+ranges or the composition. **Cache range** renders up to 10,000 frames sequentially,
+then restores the playhead. Stop caching, seeking or editing interrupts it.
+
+Completed previews have a separate playback cache, including temporal effects and
+the preview colour transform. Preferences → Performance sets GPU retention (default
+512 MiB, capped at half the renderer budget) and optional disk retention (default
+zero/off). Memory pressure evicts frames; a range larger than the budget will only
+be partly retained. At most 4,096 frame entries are retained. Green ruler marks
+indicate GPU frames, blue marks disk frames; the count reports unique cached frames
+in the range. The reset icon clears playback cache ownership.
+
+**Preview: Full / Half / Quarter** changes the size of completed frames retained and
+displayed. Effects still evaluate at full project resolution before GPU reduction;
+this saves cache memory but does not reduce first-frame effect evaluation cost.
+Project coordinates, text layout and export resolution are unchanged.
+
+Optional disk caching transfers pixels from/to the GPU and compresses lossless
+RGBA32F data on the preview worker. It uses session directories beneath
+`$XDG_CACHE_HOME/veylvik/playback` (fallback `~/.cache/veylvik/playback`), removed on
+normal shutdown; recognized directories from dead processes are cleaned on the next
+disk-cache session. It is not a persistent project cache. Cache failures fall back
+to rendering and appear as a Cache notice. Plan/output/source changes invalidate
+retention; external footage and OCIO dependency metadata are checked every two
+seconds. Reload still images after changing their files. Custom frame sources must
+supply cache dependencies to opt in. Exports release playback GPU retention first.
+
 **View exposure** adjusts only the display by −16 to +16 stops. **Alpha** shows
 coverage as grayscale, independent of exposure; **Reset view** restores normal
 color viewing. These controls do not change the document, history or exports.
@@ -1110,7 +1139,7 @@ buffers can be reused. A bounded pool retains up to 128 MiB of idle buffers by
 default, within the render budget. Buffers return to the pool only after GPU
 completion and readback unmapping. `Renderer::resource_stats` reports allocations,
 reuse, evictions, and declared resident bytes; `trim_resources` releases idle
-buffers. `render_gpu_cached` and the GPU preview scheduler additionally retain
+buffers. `render_gpu_cached` additionally retains
 completed output in a 64 MiB, at-most-16-frame LRU cache. Exact keys include
 compiled dependencies, evaluated parameter bits, crop, and immutable source
 identities. Label edits, unreachable nodes, and times evaluating to the same

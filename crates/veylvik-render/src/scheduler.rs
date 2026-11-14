@@ -21,6 +21,31 @@ struct Job {
     request: RenderRequest,
     inputs: ImageInputs,
 }
+fn render_gpu_job(
+    renderer: &Renderer,
+    job: &Job,
+    divisor: u32,
+    cancelled: &mut dyn FnMut() -> bool,
+) -> Result<Arc<GpuFrame>> {
+    let frame = if job.plan.temporal.is_empty() {
+        renderer
+            .render_gpu(&job.plan, job.request, &job.inputs)
+            .map(Arc::new)
+    } else {
+        renderer
+            .render_gpu_temporal(&job.plan, job.request, &job.inputs, true, cancelled)
+            .and_then(|f| f.map(Arc::new).ok_or_else(|| error("Preview superseded")))
+    }?;
+    let frame = renderer.apply_ocio_view(&job.plan, &job.inputs, frame)?;
+    renderer.reduce_preview(
+        frame,
+        if job.request.region.is_some() {
+            1
+        } else {
+            divisor
+        },
+    )
+}
 /// Completion for the newest request only. Time includes initialization if needed.
 pub struct PreviewResult<F = RenderedFrame> {
     pub ticket: PreviewTicket,
@@ -36,6 +61,7 @@ pub struct PreviewResult<F = RenderedFrame> {
 /// plans are immutable snapshots; document mutation stays with the caller.
 pub struct PreviewScheduler<F = RenderedFrame> {
     worker: LatestWorker<Job, PreviewResult<F>>,
+    playback: crate::playback::Control,
 }
 impl PreviewScheduler {
     pub fn new() -> Result<Self> {
@@ -79,7 +105,10 @@ impl PreviewScheduler {
             },
             wake,
         )?;
-        Ok(Self { worker })
+        Ok(Self {
+            worker,
+            playback: crate::playback::Control::default(),
+        })
     }
 }
 /// Preview worker producing GPU-resident output on a host-owned renderer/device.
@@ -89,22 +118,39 @@ impl PreviewScheduler<Arc<GpuFrame>> {
         renderer: Arc<Renderer>,
         wake: impl Fn() + Send + 'static,
     ) -> Result<Self> {
+        let playback = crate::playback::Control::default();
+        let mut cache = crate::playback::Store::new(playback.clone());
         let worker = LatestWorker::new_cancellable(
             move |generation, job: Job, cancelled| {
                 let start = Instant::now();
-                let frame = if job.plan.temporal.is_empty() {
-                    renderer.render_gpu_cached(&job.plan, job.request, &job.inputs)
-                } else {
-                    renderer
-                        .render_gpu_temporal(&job.plan, job.request, &job.inputs, true, cancelled)
-                        .and_then(|frame| {
-                            frame
-                                .map(Arc::new)
-                                .ok_or_else(|| error("Preview superseded"))
-                        })
-                };
-                let frame =
-                    frame.and_then(|frame| renderer.apply_ocio_view(&job.plan, &job.inputs, frame));
+                let frame = (|| {
+                    cache.prepare(&job.plan, &job.inputs)?;
+                    if job.request.region.is_none()
+                        && let Some(frame) = cache.lookup(&renderer, job.request.time)?
+                    {
+                        return Ok(frame);
+                    }
+                    cache.make_room(
+                        &renderer,
+                        job.plan
+                            .gpu_working_bytes()
+                            .saturating_add(job.inputs.byte_size()),
+                    )?;
+                    let mut frame = render_gpu_job(&renderer, &job, cache.divisor(), cancelled);
+                    if frame
+                        .as_ref()
+                        .is_err_and(|e| e.to_string().contains("budget"))
+                    {
+                        cache.release_gpu();
+                        frame = render_gpu_job(&renderer, &job, cache.divisor(), cancelled);
+                    }
+                    let frame = frame?;
+                    if job.request.region.is_none() {
+                        cache.insert(&renderer, job.request.time, frame.clone(), cancelled);
+                    }
+                    Ok(frame)
+                })();
+                cache.publish(job.revision);
                 PreviewResult {
                     ticket: PreviewTicket {
                         generation,
@@ -118,10 +164,13 @@ impl PreviewScheduler<Arc<GpuFrame>> {
             },
             wake,
         )?;
-        Ok(Self { worker })
+        Ok(Self { worker, playback })
     }
 }
 impl<F: Send + 'static> PreviewScheduler<F> {
+    pub fn playback_cache(&self) -> crate::playback::Control {
+        self.playback.clone()
+    }
     pub fn submit(
         &self,
         revision: u64,
@@ -390,5 +439,55 @@ mod failure_tests {
     fn dropping_idle_worker_joins_it() {
         let worker = LatestWorker::new(|_, value: u32| value, || {}).unwrap();
         drop(worker);
+    }
+}
+
+#[cfg(test)]
+mod playback_tests {
+    use super::*;
+    use veylvik_document::Time;
+    #[test]
+    #[ignore = "requires Vulkan"]
+    fn gpu_scheduler_reuses_frames_and_invalidates_resolution_and_plan() {
+        let renderer = Arc::new(Renderer::new().unwrap());
+        let scheduler = GpuPreviewScheduler::with_renderer(renderer, || {}).unwrap();
+        let control = scheduler.playback_cache();
+        let make_plan = || {
+            Arc::new(
+                Plan::compile(&veylvik_document::blank(32, 16, Time::new(24, 1).unwrap()).unwrap())
+                    .unwrap(),
+            )
+        };
+        let plan = make_plan();
+        let request = RenderRequest::full(Time::new(0, 1).unwrap());
+        let render = |plan: Arc<Plan>| {
+            let ticket = scheduler
+                .submit(7, plan, request, ImageInputs::default())
+                .unwrap();
+            let deadline = Instant::now() + Duration::from_secs(20);
+            loop {
+                if let Some(result) = scheduler.try_take().unwrap() {
+                    assert_eq!(result.ticket, ticket);
+                    return result.frame.unwrap();
+                }
+                assert!(Instant::now() < deadline, "preview timed out");
+                thread::sleep(Duration::from_millis(5));
+            }
+        };
+        let first = render(plan.clone());
+        let second = render(plan.clone());
+        assert!(Arc::ptr_eq(&first, &second));
+        assert_eq!(control.status().hits, 1);
+        control.set_resolution(2);
+        let half = render(plan.clone());
+        assert!(!Arc::ptr_eq(&first, &half));
+        assert_eq!(control.status().size, [16, 8]);
+        assert_eq!(control.status().hits, 0);
+        render(plan);
+        assert_eq!(control.status().hits, 1);
+        render(make_plan());
+        assert_eq!(control.status().hits, 0);
+        scheduler.cancel().unwrap();
+        assert!(scheduler.try_take().unwrap().is_none());
     }
 }

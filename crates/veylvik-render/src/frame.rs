@@ -120,6 +120,10 @@ pub trait FrameSource: Send + Sync {
         let _ = colour;
         self.frame(time)
     }
+    /// Files whose changes invalidate a playback frame. Unknown/custom sources opt out.
+    fn cache_dependencies(&self) -> Option<Vec<std::path::PathBuf>> {
+        None
+    }
     fn byte_budget(&self) -> u64;
 }
 /// The host supplies immutable images; a later render can supply new content under the same key.
@@ -131,6 +135,32 @@ pub struct ImageInputs(
     std::path::PathBuf,
 );
 impl ImageInputs {
+    pub(crate) fn same_sources(&self, other: &Self) -> bool {
+        self.3 == other.3
+            && self.0.len() == other.0.len()
+            && self.1.len() == other.1.len()
+            && self.2.len() == other.2.len()
+            && self
+                .0
+                .iter()
+                .all(|(k, v)| other.0.get(k).is_some_and(|w| Arc::ptr_eq(v, w)))
+            && self
+                .1
+                .iter()
+                .all(|(k, v)| other.1.get(k).is_some_and(|w| Arc::ptr_eq(v, w)))
+            && self
+                .2
+                .iter()
+                .all(|(k, v)| other.2.get(k).is_some_and(|w| Arc::ptr_eq(v, w)))
+    }
+    pub(crate) fn playback_dependencies(&self) -> Option<Vec<std::path::PathBuf>> {
+        let mut paths = Vec::new();
+        for source in self.2.values() {
+            paths.extend(source.cache_dependencies()?);
+        }
+        Some(paths)
+    }
+
     pub fn set_base_directory(&mut self, base: impl Into<std::path::PathBuf>) {
         self.3 = base.into();
     }

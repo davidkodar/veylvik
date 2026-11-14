@@ -27,6 +27,9 @@ pub enum Action {
 }
 #[derive(Default)]
 pub struct Keys {
+    pub playback_range: Option<(i64, i64)>,
+    pub cached_gpu: Vec<i64>,
+    pub cached_disk: Vec<i64>,
     source: Option<(u64, NodeId, Scope, Vec<u8>)>,
     pub scope: Scope,
     frames: Vec<i64>,
@@ -270,6 +273,39 @@ impl Keys {
         let x = |frame: i64| rect.left() + frame as f32 / end * rect.width();
         let painter = ui.painter();
         painter.rect_filled(rect, 2.0, crate::theme::palette(ui.ctx()).canvas);
+        if let Some((first, last)) = self.playback_range {
+            painter.rect_filled(
+                egui::Rect::from_min_max(
+                    egui::pos2(x(first), rect.top()),
+                    egui::pos2(x(last).max(x(first) + 2.), rect.bottom()),
+                ),
+                0.,
+                crate::design::accent(ui.ctx()).gamma_multiply(0.16),
+            );
+            for at in [x(first), x(last)] {
+                painter.vline(at, rect.y_range(), (2_f32, crate::design::accent(ui.ctx())));
+            }
+        }
+        for (frames, colour, y) in [
+            (
+                &self.cached_disk,
+                egui::Color32::from_rgb(85, 150, 230),
+                rect.bottom() - 1.,
+            ),
+            (
+                &self.cached_gpu,
+                egui::Color32::from_rgb(55, 190, 140),
+                rect.bottom() - 4.,
+            ),
+        ] {
+            for f in frames {
+                painter.hline(
+                    x(*f)..=x((*f + 1).min(i64::from(count - 1))).max(x(*f) + 1.),
+                    y,
+                    (2_f32, colour),
+                );
+            }
+        }
         let step = tick_step(count, rect.width());
         for frame in (0..count).step_by(step as usize) {
             let at = x(i64::from(frame));

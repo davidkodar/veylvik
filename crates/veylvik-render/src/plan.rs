@@ -227,6 +227,9 @@ pub struct Plan {
     pub(crate) slot_count: usize,
 }
 impl Plan {
+    pub fn output_node(&self) -> NodeId {
+        self.root
+    }
     pub fn compile(composition: &Composition) -> Result<Self> {
         Self::compile_output(composition, composition.output)
     }

@@ -598,6 +598,9 @@ impl Video {
     }
 }
 impl FrameSource for Video {
+    fn cache_dependencies(&self) -> Option<Vec<PathBuf>> {
+        Some(vec![self.path.clone()])
+    }
     fn byte_budget(&self) -> u64 {
         self.budget
     }

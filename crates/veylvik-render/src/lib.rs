@@ -23,7 +23,9 @@ mod encode;
 pub use encode::Look;
 mod nodes;
 mod plan;
+pub mod playback;
 mod pool;
+mod preview_scale;
 mod scheduler;
 mod texture;
 mod vector;
@@ -99,6 +101,7 @@ pub struct Renderer {
     video_pipeline: wgpu::ComputePipeline,
     encode_pipeline: wgpu::ComputePipeline,
     shutter_pipeline: wgpu::ComputePipeline,
+    preview_pipeline: wgpu::ComputePipeline,
     vector_backend: Mutex<Option<vector::Backend>>,
     vector_cache: Mutex<cache::FrameCache<vector::Key>>,
     pub vector_cache_limit_bytes: u64,
@@ -302,6 +305,7 @@ impl Renderer {
         let video_pipeline = video::pipeline(&device);
         let encode_pipeline = encode::pipeline(&device);
         let shutter_pipeline = shutter::pipeline(&device);
+        let preview_pipeline = preview_scale::pipeline(&device);
         if let Some(e) = pollster::block_on(scope.pop()) {
             return Err(error(e));
         }
@@ -318,6 +322,7 @@ impl Renderer {
             video_pipeline,
             encode_pipeline,
             shutter_pipeline,
+            preview_pipeline,
             vector_backend: Mutex::new(None),
             vector_cache: Mutex::new(cache::FrameCache::default()),
             vector_cache_limit_bytes: 32 * 1024 * 1024,
