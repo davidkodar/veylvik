@@ -18,6 +18,7 @@ mod graph_layout;
 mod handles;
 mod icons;
 mod key_timeline;
+mod light_guides;
 mod media_controls;
 mod media_import;
 mod menus;
@@ -1588,6 +1589,7 @@ impl Studio {
         ];
         let unavailable = self.project.unavailable_assets();
         let mut cx = nodes::InspectCx {
+            node_id: self.draft.id,
             time,
             frame_rate: self.project.document.snapshot().frame_rate,
             inputs: &self.project.inputs,
@@ -1684,6 +1686,11 @@ impl Studio {
                 Operation::Text(veylvik_document::nodes::Text { .. })
             ) {
                 break;
+            }
+            if parameter.name == "light"
+                && matches!(&self.draft.operation, Operation::Shadow(s) if matches!(s.light, veylvik_document::Scalar::Constant { .. }))
+            {
+                continue;
             }
             if let Some(value) = self.draft.operation.scalar_mut(parameter.name) {
                 let label = if kind.type_id == "surface_blend" {
@@ -2396,6 +2403,7 @@ impl eframe::App for Studio {
         self.path_pen.shortcuts(&ctx);
         self.occlusion_tick();
         self.poll_files(&ctx);
+        light_guides::begin_frame(&ctx);
         self.fonts.poll(&ctx);
         if self.draft_dirty
             && self
@@ -2737,7 +2745,7 @@ impl eframe::App for Studio {
                             egui::Sense::click_and_drag(),
                         );
                         let before_navigation = self.navigation.transform(canvas, image, ctx.pixels_per_point());
-                        let text_hit = if response.clicked()
+                        let text_hit = if !light_guides::active(&ctx) && response.clicked()
                             && !self.text_viewer.active && self.picking.is_none()
                             && !self.tracking.open && !self.planar.open && !self.subject.open && !self.path_pen.active {
                             response.interact_pointer_pos().and_then(|pointer| {
@@ -2752,6 +2760,7 @@ impl eframe::App for Studio {
                             if response.double_clicked() { self.playing=false; self.text_viewer.open(id); }
                         }
                         if !self.text_viewer.active
+                            && !light_guides::active(&ctx)
                             && self.picking.is_none()
                             && !self.tracking.open && !self.planar.open && !self.subject.open
                             && !self.path_pen.active
@@ -2793,6 +2802,7 @@ impl eframe::App for Studio {
                                 Paint(self.displayed.as_ref().unwrap().clone()),
                             ),
                         );
+                        self.light_overlay(ui, canvas, transform, image);
                         let label = format!(
                             "{} × {} · {:.0}%",
                             image.x as u32,
@@ -2864,6 +2874,7 @@ impl eframe::App for Studio {
                             .preview
                             .unwrap_or(self.project.document.snapshot().output);
                         if !self.playing
+                            && !light_guides::active(&ctx)
                             && self.picking.is_none()
                             && !self.tracking.open && !self.planar.open && !self.subject.open
                             && (self.displayed_ticket == self.wanted

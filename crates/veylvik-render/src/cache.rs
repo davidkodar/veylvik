@@ -43,6 +43,11 @@ impl Key {
                 request.time,
             )?;
             words.extend_from_slice(bytemuck::cast_slice(std::slice::from_ref(&values)));
+            if let Some(lighting) =
+                crate::shadow_lighting::for_node(&plan.nodes[pass.node], &plan.nodes, request.time)?
+            {
+                words.extend_from_slice(bytemuck::cast_slice(std::slice::from_ref(&lighting)));
+            }
             for input in &pass.inputs {
                 match input {
                     Input::Empty => words.extend([0, 0, 0]),

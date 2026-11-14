@@ -250,41 +250,26 @@ pub fn remove_effect(doc: &Composition, text: NodeId, id: NodeId) -> Result<Vec<
 }
 
 pub fn shadow(doc: &Composition, source: NodeId) -> Result<Vec<Command>> {
-    let alpha = Node::new(
-        "Shadow alpha",
-        Operation::ChannelMask(crate::nodes::ChannelMask {
-            channel: crate::MaskChannel::Alpha,
-        }),
-        &[("image", source)],
-    );
-    let tint = Node::new(
-        "Shadow colour",
-        Operation::Colorize(crate::nodes::Colorize {
-            low: [0.0; 4],
-            high: [0.0, 0.0, 0.0, 0.65],
-        }),
-        &[("image", alpha.id)],
-    );
-    let offset = Node::new(
-        "Shadow offset",
-        Operation::Transform(crate::nodes::Transform {
+    let shadow = Node::new(
+        "Shadow",
+        Operation::Shadow(crate::nodes::Shadow {
+            follow_lighting: false,
+            distance: 20.0.into(),
+            softness: 8.0.into(),
+            strength: 0.65.into(),
             x: 8.0.into(),
             y: 12.0.into(),
+            light: 0.0.into(),
         }),
-        &[("image", tint.id)],
-    );
-    let blur = Node::new(
-        "Shadow softness",
-        Operation::Blur(crate::nodes::Blur { radius: 8.0.into() }),
-        &[("image", offset.id)],
+        &[("image", source), ("lighting", source)],
     );
     let merge = Node::new(
         "Shadow behind text",
         Operation::Merge(crate::nodes::Merge {}),
-        &[("background", blur.id), ("foreground", source)],
+        &[("background", shadow.id), ("foreground", source)],
     );
     let output = merge.id;
-    let nodes = [alpha, tint, offset, blur, merge];
+    let nodes = [shadow, merge];
     let mut candidate = doc.clone();
     for node in &nodes {
         candidate.nodes.insert(node.id, node.clone());
@@ -297,14 +282,18 @@ pub fn shadow(doc: &Composition, source: NodeId) -> Result<Vec<Command>> {
     )?;
     for node in &nodes {
         for spec in node.operation.descriptor().parameters {
-            if node.operation.scalar(spec.name).is_some() {
+            if node.operation.scalar(spec.name).is_some() || spec.name == "follow_lighting" {
                 group.controls.insert(
                     format!("{}_{}", node.id, spec.name),
                     crate::groups::Control::new(
                         &candidate,
                         node.id,
                         spec.name,
-                        &format!("{} · {}", node.label, spec.name),
+                        &if spec.name == "follow_lighting" {
+                            "Follow scene lighting".into()
+                        } else {
+                            format!("{} · {}", node.label, spec.name.replace('_', " "))
+                        },
                     )?,
                 );
             }

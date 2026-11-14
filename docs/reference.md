@@ -350,7 +350,7 @@ The default uses the photographic HDR environment with additional cards disabled
 **Reset studio lighting** applies that default to an existing material. **Surface
 response** exposes optional conductor reflection colour or dielectric refractive index.
 The studio environment is prefiltered offline on Vulkan and sampled by GPU shaders
-at runtime. This is 2.5D image-based shading, not scene ray tracing or cast-shadow simulation.
+at runtime. This is 2.5D image-based shading, not scene ray tracing. The separate Shadow node provides a flat receiving-plane approximation.
 
 Texture scale, bevel, roughness, grain and reflection motion remain editable. Wood
 combines warped growth rings and fine fibres; phosphor emits textured green light,
@@ -638,6 +638,7 @@ includes retained history statistics. Supported operations:
 | Noise | none | Seed and cell size, 1–8192 pixels |
 | Gradient | none | Animated start/end coordinates, linear or radial grayscale ramp |
 | Metallic shine | image | Alpha-preserving specular streak; animated position, width, angle and brightness |
+| Shadow | image, lighting | Shadow-only premultiplied output; manual offset or enabled material area lights; merge behind the source |
 | Text surface | image | Nineteen procedural materials; bevel, grain, texture scale, roughness and lighting |
 | Smoke, fog and clouds | none | Five transparent atmospheric volume styles with editable density and motion |
 | Procedural fire | none | Layered turbulent flame emission; seed, position, size, evolution, intensity and turbulence |
@@ -1528,3 +1529,30 @@ cargo run -p veylvik-io --example showcase_previews -- crates/veylvik-studio/ass
 
 Gallery textures load only for visible cards and use a six-atlas cache (about 64 MiB
 of pixel data), independent of the number of effects in the library.
+
+
+### Lighting-driven shadows and viewer guides
+
+New text **Shadow** actions create a Shadow node followed by a merge. **Follow scene
+lighting** defaults off. When enabled, the nearest upstream Material on the Lighting
+input supplies its area lights; breadth-first traversal follows input-name order to
+resolve ties. Connect Lighting directly to a material for unambiguous control.
+Light 0 uses all enabled emitters; 1–8 chooses one. Lights behind the receiver or with
+zero intensity contribute nothing. An HDR environment has no positional emitters and
+does not generate a directional shadow. Existing offset/blur shadow groups keep their
+original behaviour; adding a new shadow exposes the new controls.
+
+Distance is object separation from a flat receiving plane in pixels. The renderer
+samples rectangular emitters with a deterministic 32-sample pattern and uses a local
+parallel-light projection. Larger emitters and greater separation broaden the shadow;
+X/Y, additional softness and strength remain artistic adjustments. Multiple emitters
+contribute intensity/colour-luminance-weighted coverage. This is not geometric ray
+tracing, depth reconstruction or shadow reception on arbitrary 3D objects.
+
+Opening **Studio lighting** shows optional editor-only light guides. Their diagram
+uses the viewer centre as the rig origin and one eighth of the fitted image's shorter
+side per scene unit. Enabled lights have vector handles; the selected emitter has an
+outline and line to the origin. Drag moves X/Y; inspector controls retain Z, size and
+rotation. Off-screen markers stay at the viewer edge. Closing the lighting section or
+unchecking **Show light guides in viewer** hides them. Environment rotation remains
+separate, with no invented markers for photographic highlights.

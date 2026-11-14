@@ -954,7 +954,7 @@ impl crate::Studio {
                     }
                 }
                 if let Operation::Material(material) = &mut node.operation {
-                    edited |= crate::nodes::lighting_controls(ui, material);
+                    edited |= crate::nodes::lighting_controls(ui, material, id);
                 }
                 if edited {
                     self.text_edits.insert(id, node);

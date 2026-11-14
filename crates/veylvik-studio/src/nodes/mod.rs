@@ -5,6 +5,7 @@ use veylvik_document::Time;
 
 /// What a node's inspector may read, and what it reports back to the editor.
 pub(crate) struct InspectCx<'a> {
+    pub node_id: veylvik_document::NodeId,
     pub time: Time,
     pub frame_rate: Time,
     pub inputs: &'a veylvik_render::ImageInputs,

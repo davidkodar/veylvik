@@ -18,7 +18,7 @@ impl Inspect for veylvik_document::nodes::Material {
                 });
         }
         cx.dirty |= finish_controls(ui, self);
-        cx.dirty |= lighting_controls(ui, self);
+        cx.dirty |= lighting_controls(ui, self, cx.node_id);
     }
 }
 impl Inspect for veylvik_document::nodes::Patina {
@@ -80,6 +80,7 @@ impl Inspect for veylvik_document::nodes::SurfaceReflection {
 pub(crate) fn lighting_controls(
     ui: &mut egui::Ui,
     material: &mut veylvik_document::nodes::Material,
+    node_id: veylvik_document::NodeId,
 ) -> bool {
     use veylvik_document::optical::{AreaLight, MAX_STUDIO_LIGHTS, StudioRig};
     let mut changed = false;
@@ -100,6 +101,7 @@ pub(crate) fn lighting_controls(
             } else {ui.label(format!("Normal-incidence reflectance: {:.1}%",defaults.f0()[1]*100.));}
         });
         ui.collapsing("Studio lighting",|ui| {
+            crate::light_guides::controls(ui,node_id);
             ui.weak("Area lights reflect in the surface. Position and size use scene units; rotations use degrees.");
             changed|=light_slider(ui,"Studio environment",&mut material.studio.environment,0.0..=16.0);
             changed|=light_slider(ui,"Environment rotation",&mut material.studio.environment_rotation,-360.0..=360.0);
@@ -107,7 +109,8 @@ pub(crate) fn lighting_controls(
             let mut remove=None;
             for (index,light) in material.studio.lights.iter_mut().enumerate() {
                 ui.push_id(index,|ui| {
-                    ui.collapsing(format!("Light {}",index+1),|ui| {
+                    ui.collapsing(crate::light_guides::label(index),|ui| {
+                        crate::light_guides::select(ui,index);
                         changed|=ui.checkbox(&mut light.enabled,"Enabled").changed();
                         changed|=ui.color_edit_button_rgb(&mut light.colour).on_hover_text("Emitter colour in linear RGB").changed();
                         changed|=light_slider(ui,"Intensity",&mut light.intensity,0.0..=100.0);

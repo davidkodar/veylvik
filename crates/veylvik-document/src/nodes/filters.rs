@@ -109,3 +109,35 @@ node!(
     AFFINE,
     [x, y, scale_x, scale_y, rotation, pivot_x, pivot_y]
 );
+
+/// Flat receiving-plane shadow. Lighting is resolved from the lighting input branch.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Shadow {
+    #[serde(default)]
+    pub follow_lighting: bool,
+    pub distance: Scalar,
+    pub softness: Scalar,
+    pub strength: Scalar,
+    pub x: Scalar,
+    pub y: Scalar,
+    /// Zero selects all enabled area lights; 1–8 selects a particular emitter.
+    pub light: Scalar,
+}
+pub static SHADOW: NodeType = NodeType {
+    type_id: "shadow",
+    version: 1,
+    label: "Shadow",
+    description: "Black premultiplied shadow on a flat receiving plane. Manual offset or area-light projection from the nearest material in the lighting input. Environment reflections do not cast directional shadows. Outputs shadow only; merge behind the original image.",
+    inputs: &["image", "lighting"],
+    parameters: &[
+        other("follow_lighting", ParameterKind::Boolean, "lighting"),
+        scalar("distance", "pixels", 0., 2000., 20.),
+        scalar("softness", "pixels", 0., 256., 8.),
+        scalar("strength", "factor", 0., 1., 0.65),
+        scalar("x", "pixels", -8192., 8192., 8.),
+        scalar("y", "pixels", -8192., 8192., 12.),
+        scalar("light", "light index (0 = all)", 0., 8., 0.),
+    ],
+};
+node!(Shadow, SHADOW, [distance, softness, strength, x, y, light]);

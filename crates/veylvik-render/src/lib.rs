@@ -4,6 +4,7 @@ mod diagnostics;
 mod environment_bake;
 mod material_preview;
 pub use material_preview::material_preview_revision;
+mod shadow_lighting;
 mod studio_lighting;
 pub use diagnostics::Diagnostics;
 mod frame;
@@ -142,7 +143,8 @@ impl Renderer {
                 concat!(
                     include_str!("kernels.wgsl"),
                     include_str!("matte.wgsl"),
-                    include_str!("lut.wgsl")
+                    include_str!("lut.wgsl"),
+                    include_str!("shadow.wgsl")
                 )
                 .into(),
             ),
@@ -459,7 +461,14 @@ impl Renderer {
         }
         let validation = self.device.push_error_scope(wgpu::ErrorFilter::Validation);
         let allocation = self.device.push_error_scope(wgpu::ErrorFilter::OutOfMemory);
-        let result = self.encode_and_read(plan, &evaluated, inputs, &vectors, &mut pool, download);
+        let result = self.encode_and_read(
+            plan,
+            (&evaluated, request.time),
+            inputs,
+            &vectors,
+            &mut pool,
+            download,
+        );
         let allocation_error = pollster::block_on(allocation.pop());
         let validation_error = pollster::block_on(validation.pop());
         if let Some(e) = allocation_error.or(validation_error) {
@@ -581,7 +590,7 @@ impl Renderer {
     fn encode_and_read(
         &self,
         plan: &Plan,
-        evaluated: &[Params],
+        (evaluated, time): (&[Params], veylvik_document::Time),
         inputs: &ImageInputs,
         vectors: &BTreeMap<usize, Arc<GpuFrame>>,
         pool: &mut pool::Pool,
@@ -652,27 +661,20 @@ impl Renderer {
                 "parameters",
             )?;
             self.queue.write_buffer(&uniform, 0, bytemuck::bytes_of(p));
-            let lighting = if let veylvik_document::Operation::Material(material) = &node.operation
-            {
-                let buffer = resources.take(
-                    &self.device,
-                    544,
-                    wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-                    "Studio lighting",
-                )?;
-                self.queue.write_buffer(
-                    &buffer,
-                    0,
-                    bytemuck::bytes_of(&studio_lighting::Lighting::new(
-                        material.kind,
-                        material.optics,
-                        &material.studio,
-                    )),
-                );
-                buffer
-            } else {
-                self.default_lighting.clone()
-            };
+            let lighting =
+                if let Some(lighting_data) = shadow_lighting::for_node(node, &plan.nodes, time)? {
+                    let buffer = resources.take(
+                        &self.device,
+                        544,
+                        wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+                        "Studio lighting",
+                    )?;
+                    self.queue
+                        .write_buffer(&buffer, 0, bytemuck::bytes_of(&lighting_data));
+                    buffer
+                } else {
+                    self.default_lighting.clone()
+                };
             let output = &buffers[scheduled.output];
             let input = |index: usize| -> &wgpu::Buffer {
                 match &scheduled.inputs[index] {

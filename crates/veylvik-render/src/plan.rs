@@ -27,6 +27,7 @@ pub enum Kernel {
     Displace,
     MorphologyHorizontal,
     MorphologyVertical,
+    Shadow,
     BlurHorizontal,
     BlurVertical,
     Merge,
@@ -57,7 +58,7 @@ pub enum Kernel {
     Lut,
 }
 impl Kernel {
-    pub(crate) const ALL: [Self; 49] = [
+    pub(crate) const ALL: [Self; 50] = [
         Self::Text,
         Self::Solid,
         Self::Noise,
@@ -79,6 +80,7 @@ impl Kernel {
         Self::Displace,
         Self::MorphologyHorizontal,
         Self::MorphologyVertical,
+        Self::Shadow,
         Self::BlurHorizontal,
         Self::BlurVertical,
         Self::Merge,
@@ -131,6 +133,7 @@ impl Kernel {
             Self::Transform => "transform",
             Self::MorphologyHorizontal => "morphology_horizontal",
             Self::MorphologyVertical => "morphology_vertical",
+            Self::Shadow => "shadow",
             Self::BlurHorizontal => "blur_horizontal",
             Self::BlurVertical => "blur_vertical",
             Self::Merge => "merge",

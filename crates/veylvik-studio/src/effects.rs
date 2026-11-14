@@ -309,6 +309,17 @@ impl Studio {
                 match descriptor.kind {
                     ParameterKind::Scalar => {
                         let mut scalar = serde_json::from_value(value.clone()).unwrap();
+                        if control.parameter == "light"
+                            && matches!(
+                                self.project.document.snapshot().nodes[&control.node].operation,
+                                veylvik_document::Operation::Shadow(_)
+                            )
+                            && matches!(scalar, veylvik_document::Scalar::Constant { .. })
+                        {
+                            changed = crate::light_guides::source_selector(ui, &mut scalar);
+                            value = serde_json::to_value(scalar).unwrap();
+                            return;
+                        }
                         let [min, max] = control
                             .range
                             .unwrap_or([descriptor.min.unwrap(), descriptor.max.unwrap()]);
@@ -326,6 +337,11 @@ impl Studio {
                             default,
                         );
                         value = serde_json::to_value(scalar).unwrap();
+                    }
+                    ParameterKind::Boolean => {
+                        let mut enabled = value.as_bool().unwrap_or(false);
+                        changed = ui.checkbox(&mut enabled, &control.label).changed();
+                        value = enabled.into();
                     }
                     ParameterKind::Color => {
                         ui.label(&control.label);

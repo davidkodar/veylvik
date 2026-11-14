@@ -167,3 +167,29 @@ impl RenderNode for veylvik_document::nodes::Affine {
         Ok(())
     }
 }
+
+impl RenderNode for veylvik_document::nodes::Shadow {
+    fn passes(&self) -> Passes {
+        Passes::One(Kernel::Shadow)
+    }
+    fn params(
+        &self,
+        _cx: &Cx<'_>,
+        sample: &dyn Fn(&str) -> Result<f32>,
+        p: &mut Params,
+    ) -> Result<()> {
+        p.values = [
+            sample("x")?,
+            sample("y")?,
+            sample("softness")?,
+            sample("strength")?,
+        ];
+        p.extra = [
+            sample("distance")?,
+            f32::from(self.follow_lighting),
+            sample("light")?.round(),
+            0.,
+        ];
+        Ok(())
+    }
+}
