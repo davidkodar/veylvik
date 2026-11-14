@@ -3,6 +3,7 @@ mod colour;
 mod hardware;
 pub(crate) mod process;
 mod session;
+mod sessions;
 use crate::Result;
 use hardware::Backend;
 pub use hardware::DecodePolicy;
@@ -68,7 +69,8 @@ pub struct Video {
     overrides: Mutex<Vec<(InputColour, Arc<colour::Transform>)>>,
     /// Owner id of this source's entries in `host_cache`.
     owner: u64,
-    state: Mutex<State>,
+    /// Shared with `sessions`, which may close this clip's decoder while it is idle.
+    state: Arc<Mutex<State>>,
     report: Mutex<DecodeDiagnostics>,
 }
 pub fn is_video(path: &Path) -> bool {
@@ -382,7 +384,7 @@ impl Video {
                 gpu_conversions: 0,
                 cpu_realizations: 0,
             }),
-            state: Mutex::new(State {
+            state: Arc::new(Mutex::new(State {
                 cache: VecDeque::new(),
                 decoder: None,
                 backend: Backend::Software,
@@ -395,7 +397,7 @@ impl Video {
                 staged_frames: 0,
                 direct_gpu_transfers: 0,
                 interop_fallback: String::new(),
-            }),
+            })),
         };
         // Fail at import for unavailable decoders/colour transforms, not at first playback.
         video.initialize(candidates)?;
@@ -502,6 +504,7 @@ impl Video {
                         state.backend = backend;
                         state.decoder = Some(decoder);
                         self.keep_raw(&mut state, 0, &bytes);
+                        sessions::touch(self.owner, &self.state);
                         self.publish(&state);
                         return Ok(());
                     }
@@ -523,6 +526,7 @@ impl Video {
         let bytes = decoder.read(&self.timestamps)?;
         state.decoder = Some(decoder);
         self.keep_raw(&mut state, 0, &bytes);
+        sessions::touch(self.owner, &self.state);
         self.publish(&state);
         Ok(())
     }
@@ -585,6 +589,7 @@ impl Video {
                 return Err("Video changed during decoding; reload sources".into());
             }
             self.keep_raw(state, index, &bytes);
+            sessions::touch(self.owner, &self.state);
             bytes
         };
         let mut encoding = self.encoding;
@@ -598,6 +603,10 @@ impl Video {
     }
 }
 const RAW: u8 = 0;
+/// Video decoders open across all clips; at most `sessions::MAX_OPEN` stay open.
+pub fn open_decoders() -> usize {
+    sessions::open_count()
+}
 const IMAGE: u8 = 1;
 impl Video {
     fn raw_key(&self, index: usize) -> crate::host_cache::Key {
