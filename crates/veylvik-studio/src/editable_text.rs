@@ -841,7 +841,7 @@ impl crate::Studio {
                 if changed {
                     self.text_edits.insert(id, node.clone());
                     self.draft_dirty = true;
-                    self.queue_text_preview(ui.ctx());
+                    self.queue_draft_preview(ui.ctx());
                 }
                 if let Some(gradient) = node.inputs.get("image").copied() {
                     let mut source = self
@@ -870,7 +870,7 @@ impl crate::Studio {
                                 if changed {
                                     self.text_edits.insert(gradient, source);
                                     self.draft_dirty = true;
-                                    self.queue_text_preview(ui.ctx());
+                                    self.queue_draft_preview(ui.ctx());
                                 }
                             }
                         });
@@ -959,7 +959,7 @@ impl crate::Studio {
                 if edited {
                     self.text_edits.insert(id, node);
                     self.draft_dirty = true;
-                    self.queue_text_preview(ui.ctx());
+                    self.queue_draft_preview(ui.ctx());
                 }
             }
             if let Some(style) = style {
@@ -1015,7 +1015,7 @@ impl crate::Studio {
             if changed {
                 self.draft_dirty = true;
                 self.playing = false;
-                self.queue_text_preview(ui.ctx());
+                self.queue_draft_preview(ui.ctx());
             }
         }
         if mode == 3 {

@@ -22,6 +22,32 @@ pub struct Controls {
     pub connections: BTreeMap<(NodeId, String), NodeId>,
 }
 impl Controls {
+    /// Shared by live draft previews and the eventual atomic commit.
+    pub fn commands(&self) -> Option<Vec<Command>> {
+        if self.edits.is_empty() && self.connections.is_empty() {
+            return None;
+        }
+        Some(
+            self.edits
+                .iter()
+                .map(|((id, control), value)| Command::SetControl {
+                    id: *id,
+                    control: control.clone(),
+                    value: value.clone(),
+                })
+                .chain(
+                    self.connections
+                        .iter()
+                        .map(|((id, input), source)| Command::ConnectGroup {
+                            id: *id,
+                            input: input.clone(),
+                            source: *source,
+                        }),
+                )
+                .collect(),
+        )
+    }
+
     fn begin(
         &mut self,
         doc: &Composition,
@@ -256,6 +282,7 @@ impl Studio {
                 });
             if source != before {
                 self.effects.connections.insert(edit_key, source);
+                self.queue_draft_preview(ui.ctx());
                 self.draft_dirty = true;
                 self.playing = false;
             }
@@ -339,6 +366,7 @@ impl Studio {
             });
             if changed {
                 self.effects.edits.insert(edit_key, value);
+                self.queue_draft_preview(ui.ctx());
                 self.draft_dirty = true;
                 self.playing = false;
             }
@@ -397,5 +425,66 @@ impl Studio {
             },
             Err(error) => self.fail(error),
         }
+    }
+}
+
+#[cfg(test)]
+mod live_preview_tests {
+    use super::*;
+    use veylvik_document::{Document, Operation, Scalar, Time, presets::builtin};
+
+    #[test]
+    fn group_draft_changes_preview_without_history_and_commits_as_one_edit() {
+        let mut owner =
+            Document::new(veylvik_document::blank(64, 64, Time::new(24, 1).unwrap()).unwrap())
+                .unwrap();
+        let preset = builtin::build("gold_text").unwrap();
+        let bindings = preset
+            .group
+            .inputs
+            .keys()
+            .map(|key| (key.clone(), owner.snapshot().output))
+            .collect();
+        let instance = preset
+            .instantiate(owner.snapshot(), &bindings, None)
+            .unwrap();
+        owner.apply(0, &instance.commands).unwrap();
+        let group = &owner.snapshot().groups[&instance.group];
+        let (control, target) = group
+            .controls
+            .iter()
+            .find(|(_, c)| c.parameter == "roughness")
+            .unwrap();
+        let target = target.node;
+        let control = control.clone();
+        let revision = owner.revision();
+        let steps = owner.history().undo_steps;
+        let original = serde_json::to_value(owner.snapshot()).unwrap();
+        let mut edits = Controls::default();
+        assert!(edits.commands().is_none());
+        for roughness in [0.3, 0.6, 0.9] {
+            edits.edits.insert(
+                (instance.group, control.clone()),
+                serde_json::to_value(Scalar::from(roughness)).unwrap(),
+            );
+            let preview = owner.prepare(revision, &edits.commands().unwrap()).unwrap();
+            let Operation::Material(m) = &preview.nodes[&target].operation else {
+                panic!()
+            };
+            assert_eq!(m.roughness.at(Time::new(0, 1).unwrap()).unwrap(), roughness);
+            assert_eq!(owner.revision(), revision);
+            assert_eq!(owner.history().undo_steps, steps);
+            assert_eq!(serde_json::to_value(owner.snapshot()).unwrap(), original);
+        }
+        let commands = edits.commands().unwrap();
+        let preview = owner.prepare(revision, &commands).unwrap();
+        owner.apply(revision, &commands).unwrap();
+        assert_eq!(
+            serde_json::to_value(owner.snapshot()).unwrap(),
+            serde_json::to_value(preview).unwrap()
+        );
+        assert_eq!(owner.history().undo_steps, steps + 1);
+        owner.undo(owner.revision()).unwrap();
+        assert_eq!(serde_json::to_value(owner.snapshot()).unwrap(), original);
     }
 }

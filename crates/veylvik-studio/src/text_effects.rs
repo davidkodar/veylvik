@@ -117,7 +117,7 @@ impl crate::Studio {
                                 if edited {
                                     self.text_edits.insert(control.node, target);
                                     self.draft_dirty = true;
-                                    self.queue_text_preview(ui.ctx());
+                                    self.queue_draft_preview(ui.ctx());
                                 }
                             }
                         }
@@ -139,7 +139,7 @@ impl crate::Studio {
             if changed {
                 self.text_edits.insert(*id, node);
                 self.draft_dirty = true;
-                self.queue_text_preview(ui.ctx());
+                self.queue_draft_preview(ui.ctx());
             }
         }
         ui.weak("Shared branches remain available in the node editor.");

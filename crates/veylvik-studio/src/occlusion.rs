@@ -68,7 +68,7 @@ impl super::Studio {
                     {
                         self.text_edits.insert(id, node);
                         self.draft_dirty = true;
-                        self.text_preview_deadline.get_or_insert_with(|| {
+                        self.draft_preview_deadline.get_or_insert_with(|| {
                             std::time::Instant::now() + std::time::Duration::from_millis(32)
                         });
                         ui.ctx()

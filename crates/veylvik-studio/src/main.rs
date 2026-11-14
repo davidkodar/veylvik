@@ -192,9 +192,9 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 displayed_time: None,
                 draft,
                 draft_dirty: false,
-                text_preview_deadline: None,
+                draft_preview_deadline: None,
                 text_edits: Default::default(),
-                text_commit_deadline: None,
+                draft_commit_deadline: None,
                 fonts: font_browser::Browser::new(&cc.egui_ctx),
                 text_viewer: Default::default(),
                 path_pen: Default::default(),
@@ -271,8 +271,8 @@ struct Studio {
     displayed_time: Option<veylvik_document::Time>,
     draft: Node,
     draft_dirty: bool,
-    text_preview_deadline: Option<Instant>,
-    text_commit_deadline: Option<Instant>,
+    draft_preview_deadline: Option<Instant>,
+    draft_commit_deadline: Option<Instant>,
     text_edits: std::collections::BTreeMap<veylvik_document::NodeId, Node>,
     fonts: font_browser::Browser,
     text_viewer: text_viewer::Editor,
@@ -418,8 +418,8 @@ impl Studio {
     fn refresh_draft(&mut self) {
         self.path_transform.reset_gesture();
         self.path_pen.cancel();
-        self.text_preview_deadline = None;
-        self.text_commit_deadline = None;
+        self.draft_preview_deadline = None;
+        self.draft_commit_deadline = None;
         self.text_edits.clear();
         self.effects.edits.clear();
         self.effects.connections.clear();
@@ -608,10 +608,10 @@ impl Studio {
             Err(error) => self.fail(error),
         }
     }
-    fn queue_text_preview(&mut self, ctx: &egui::Context) {
-        self.text_commit_deadline = Some(Instant::now() + Duration::from_millis(300));
+    fn queue_draft_preview(&mut self, ctx: &egui::Context) {
+        self.draft_commit_deadline = Some(Instant::now() + Duration::from_millis(300));
         let deadline = self
-            .text_preview_deadline
+            .draft_preview_deadline
             .get_or_insert_with(|| Instant::now() + Duration::from_millis(32));
         ctx.request_repaint_after(deadline.saturating_duration_since(Instant::now()));
     }
@@ -635,18 +635,11 @@ impl Studio {
                         &doc,
                         self.project.preview.unwrap_or(doc.output),
                     )?)
-                } else if self.draft_dirty
-                    && matches!(
-                        self.draft.operation,
-                        Operation::Text(veylvik_document::nodes::Text { .. })
-                            | Operation::Path(veylvik_document::nodes::Path { .. })
-                            | Operation::Footage(veylvik_document::nodes::Footage { .. })
-                    )
-                {
+                } else if self.draft_dirty {
                     let doc = self
                         .project
                         .document
-                        .prepare(self.project.document.revision(), &self.text_commands())?;
+                        .prepare(self.project.document.revision(), &self.draft_commands())?;
                     std::sync::Arc::new(veylvik_render::Plan::compile_output(
                         &doc,
                         self.project.preview.unwrap_or(doc.output),
@@ -671,41 +664,21 @@ impl Studio {
             }
         }
     }
-    fn text_commands(&self) -> Vec<Command> {
-        std::iter::once(&self.draft)
-            .chain(self.text_edits.values())
-            .map(|n| Command::Put {
-                node: Box::new(n.clone()),
-            })
-            .collect()
+    fn draft_commands(&self) -> Vec<Command> {
+        self.effects.commands().unwrap_or_else(|| {
+            std::iter::once(&self.draft)
+                .chain(self.text_edits.values())
+                .map(|n| Command::Put {
+                    node: Box::new(n.clone()),
+                })
+                .collect()
+        })
     }
     fn apply_draft(&mut self) -> bool {
         if !self.draft_dirty {
             return true;
         }
-        let commands = if self.effects.edits.is_empty() && self.effects.connections.is_empty() {
-            self.text_commands()
-        } else {
-            self.effects
-                .edits
-                .iter()
-                .map(|((id, control), value)| Command::SetControl {
-                    id: *id,
-                    control: control.clone(),
-                    value: value.clone(),
-                })
-                .chain(
-                    self.effects
-                        .connections
-                        .iter()
-                        .map(|((id, input), source)| Command::ConnectGroup {
-                            id: *id,
-                            input: input.clone(),
-                            source: *source,
-                        }),
-                )
-                .collect()
-        };
+        let commands = self.draft_commands();
         match self.project.apply(&commands) {
             Ok(()) => {
                 self.refresh_draft();
@@ -1675,7 +1648,7 @@ impl Studio {
         }
         replace_image |= replace;
         if preview_soon {
-            self.text_preview_deadline
+            self.draft_preview_deadline
                 .get_or_insert_with(|| Instant::now() + Duration::from_millis(32));
         }
         if let Some(error) = error {
@@ -1744,14 +1717,8 @@ impl Studio {
                 text_changed |= changed;
             }
         }
-        if text_changed
-            && matches!(
-                self.draft.operation,
-                Operation::Text(veylvik_document::nodes::Text { .. })
-                    | Operation::Footage(veylvik_document::nodes::Footage { .. })
-            )
-        {
-            self.queue_text_preview(ui.ctx());
+        if text_changed || dirty {
+            self.queue_draft_preview(ui.ctx());
         }
         if let Some(selection) = import_font {
             self.import_text_font(selection);
@@ -2432,25 +2399,18 @@ impl eframe::App for Studio {
         self.fonts.poll(&ctx);
         if self.draft_dirty
             && self
-                .text_commit_deadline
+                .draft_commit_deadline
                 .is_some_and(|t| Instant::now() >= t)
             && !ctx.egui_wants_keyboard_input()
             && !ctx.input(|i| i.pointer.any_down())
         {
-            self.text_commit_deadline = None;
+            self.draft_commit_deadline = None;
             self.apply_draft();
         }
-        if let Some(deadline) = self.text_preview_deadline {
+        if let Some(deadline) = self.draft_preview_deadline {
             if Instant::now() >= deadline && !self.preview_pending {
-                self.text_preview_deadline = None;
-                if self.draft_dirty
-                    && matches!(
-                        self.draft.operation,
-                        Operation::Text(veylvik_document::nodes::Text { .. })
-                            | Operation::Path(veylvik_document::nodes::Path { .. })
-                            | Operation::Footage(veylvik_document::nodes::Footage { .. })
-                    )
-                {
+                self.draft_preview_deadline = None;
+                if self.draft_dirty {
                     self.request_preview();
                 }
             } else {
@@ -2638,7 +2598,7 @@ impl eframe::App for Studio {
                         {
                             self.draft_dirty = true;
                             self.playing = false;
-                            self.queue_text_preview(ui.ctx());
+                            self.queue_draft_preview(ui.ctx());
                         }
                         egui::ScrollArea::vertical()
                             .id_salt(("inspector-body", editable_text::body_id(ui)))
@@ -2695,7 +2655,7 @@ impl eframe::App for Studio {
                                     (self.project.document.snapshot().height as f32 * 0.4).into();
                                 typography.anchor = Some([0.5, 0.5]);
                                 self.draft_dirty = true;
-                                self.queue_text_preview(ui.ctx());
+                                self.queue_draft_preview(ui.ctx());
                             }
                             ui.checkbox(&mut self.text_viewer.guides, "Safe guides");
                             ui.checkbox(&mut self.text_viewer.snap, "Snap");
@@ -2939,7 +2899,7 @@ impl eframe::App for Studio {
                                 )
                             {
                                 self.draft_dirty = true;
-                                self.queue_text_preview(ui.ctx());
+                                self.queue_draft_preview(ui.ctx());
                             }
                             let transform_mask = self.path_transform.active
                                 && matches!(self.draft.operation, Operation::Path(veylvik_document::nodes::Path { .. }));
@@ -2948,7 +2908,7 @@ impl eframe::App for Studio {
                                 match self.path_transform.show_at(ui,canvas,transform,image,geometry,time) {
                                     Ok(true) => {
                                         self.draft_dirty = true;
-                                        self.text_preview_deadline.get_or_insert_with(|| Instant::now()+Duration::from_millis(32));
+                                        self.draft_preview_deadline.get_or_insert_with(|| Instant::now()+Duration::from_millis(32));
                                         ui.ctx().request_repaint_after(Duration::from_millis(32));
                                     },
                                     Err(error) => self.fail(error),
@@ -3006,7 +2966,7 @@ impl eframe::App for Studio {
                                                 Operation::Path(veylvik_document::nodes::Path { .. })
                                             )
                                         {
-                                            self.text_preview_deadline.get_or_insert_with(|| {
+                                            self.draft_preview_deadline.get_or_insert_with(|| {
                                                 Instant::now() + Duration::from_millis(32)
                                             });
                                             ui.ctx()
@@ -3018,7 +2978,7 @@ impl eframe::App for Studio {
                                                 Operation::Text(veylvik_document::nodes::Text { .. })
                                             )
                                         {
-                                            self.queue_text_preview(ui.ctx());
+                                            self.queue_draft_preview(ui.ctx());
                                         }
                                     }
                                     Err(error) => self.fail(error),
