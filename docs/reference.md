@@ -331,8 +331,9 @@ The optional node field `scene_background` records backdrop intent in saved scen
 and is also available through MCP's node schema.
 
 Apply a material to an isolated text/logo image or a white shape mask. **Text surface**
-replaces RGB using the source alpha: polished metals use studio reflection bands and
-alpha-derived bevel normals, aluminium adds directional brushing, bronze adds
+replaces RGB using the source alpha: polished metals reflect a procedural studio with broad light shapes, narrow HDR
+highlights, dark reflections and alpha-derived bevel normals. Roughness softens
+the reflections, aluminium adds directional brushing, bronze adds
 mottling, wood combines warped growth rings and fine fibers, and phosphor emits
 textured green light. Texture scale, bevel, roughness, grain and reflection motion
 are editable; the Phosphor preset adds adjustable bloom.

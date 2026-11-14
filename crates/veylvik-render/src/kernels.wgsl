@@ -523,26 +523,65 @@ fn detailed_surface(uv:vec2<f32>, n:vec3<f32>, kind:u32)->vec3<f32> {
 // Alpha-derived bevel normals and a procedural studio environment. Metal tint
 // is reflected radiance; wood has diffuse grain, phosphor has emissive granules.
 // Shared surface evaluation for authored shapes and library sample geometry.
-fn material_colour(uv:vec2<f32>,n:vec3<f32>)->vec3<f32> {
-    let fine=fire_noise(vec3<f32>(uv*130.0,0.3),191u)-0.5;
-    let brushed=fire_noise(vec3<f32>(uv.x*0.6,uv.y*240.0,1.1),71u)-0.5;
-    let micro=select(fine*0.025,brushed*0.55,p.size_op.w==2u)*p.extra.x;
-    let phase=uv.y*0.7+n.y*0.26+n.x*0.13+p.values.w;
-    let band=fract(phase);
-    let rough=p.values.z;
-    let horizon=0.025+1.1*pow(abs(2.0*band-1.0),2.0+rough*2.0);
-    let softbox=exp(-pow((band-0.26)/(0.025+rough*0.14),2.0))*2.0;
-    let rim=pow(max(dot(n,normalize(vec3<f32>(-0.6,-0.8,0.6))),0.0),8.0)*2.4;
-    var tint=vec3<f32>(1.0,0.57,0.14);
-    if p.size_op.w==1u {tint=vec3<f32>(0.95,0.97,1.0);}
-    if p.size_op.w==2u {tint=vec3<f32>(0.72,0.79,0.86);}
-    if p.size_op.w==3u {tint=vec3<f32>(0.72,0.32,0.12);}
-    var color=tint*max(0.015,horizon+softbox+rim+micro);
-    if p.size_op.w==2u {color=tint*max(0.06,0.26+horizon*0.55+softbox*0.4+rim*0.7+micro);}
-    if p.size_op.w==3u {
+// Analytic area lights in a dark studio. Reflection directions, not a repeating
+// colour ramp, determine the shape of the highlights on both text and spheres.
+fn studio_box(ray:vec3<f32>, center:vec3<f32>, width:f32, height:f32, rough:f32)->f32 {
+    let forward=normalize(center);
+    let right=normalize(cross(vec3<f32>(0.0,1.0,0.0),forward));
+    let up=cross(forward,right);
+    let facing=dot(ray,forward);
+    let q=vec2<f32>(dot(ray,right),dot(ray,up))/max(0.1,facing);
+    let edge=0.012+rough*0.48;
+    let d=q/(vec2<f32>(width,height)+vec2<f32>(edge));
+    return exp(-dot(d,d)*1.7)*smoothstep(0.05,0.3,facing);
+}
+fn studio_metal(uv:vec2<f32>, normal:vec3<f32>)->vec3<f32> {
+    let kind=p.size_op.w;
+    let rough=clamp(p.values.z,0.015,1.0);
+    let angle=p.values.w*6.2831853;
+    let grain_uv=select(vec2<f32>(uv.x*1.8+uv.y*0.8,uv.y*190.0-uv.x*120.0),vec2<f32>(uv.x*0.6,uv.y*240.0),kind==2u);
+    let grain=fire_noise(vec3<f32>(grain_uv,0.7),191u)-0.5;
+    let micro=fire_noise(vec3<f32>(uv*160.0,0.4),71u)-0.5;
+    let brush=select(0.025,0.07,kind==2u)*p.extra.x;
+    let n=normalize(normal+vec3<f32>(grain*brush,micro*brush*0.3,0.0));
+    // A finite camera makes planar faces pick up different parts of the studio.
+    // Library spheres use the same lights with an orthographic camera.
+    var view=normalize(vec3<f32>((uv.x-2.5)*0.28,(uv.y-1.5)*1.1,1.0));
+    if p.extra.z>0.5 {view=vec3<f32>(0.0,0.0,1.0);}
+    let r=reflect(-view,n);
+    let turned=vec3<f32>(r.x*cos(angle)-r.z*sin(angle),r.y,r.x*sin(angle)+r.z*cos(angle));
+    let ray=vec3<f32>(turned.x*0.852-turned.y*0.523,turned.x*0.523+turned.y*0.852,turned.z);
+    let key=studio_box(ray,vec3<f32>(-0.45,-0.55,1.0),0.24,0.62,rough);
+    let strip=studio_box(ray,vec3<f32>(0.5,0.25,1.0),0.06,0.85,rough);
+    let top=studio_box(ray,vec3<f32>(0.1,-1.0,0.35),0.8,0.12,rough);
+    let fill=studio_box(ray,vec3<f32>(0.65,0.1,0.7),0.42,0.3,rough);
+    let ambient=0.06+0.18*pow(max(ray.z,0.0),4.0)+0.11*pow(max(0.0,ray.y*0.5+0.5),2.0)+0.1*pow(max(0.0,-ray.x*0.5+0.5),3.0);
+    let edge_light=studio_box(ray,vec3<f32>(-1.0,0.1,-0.35),0.22,0.8,rough)+studio_box(ray,vec3<f32>(0.2,0.8,-0.55),0.65,0.18,rough);
+    var tint=vec3<f32>(1.0,0.60,0.18);
+    if kind==1u {tint=vec3<f32>(0.94,0.97,1.0);}
+    if kind==2u {tint=vec3<f32>(0.76,0.83,0.9);}
+    if kind==3u {tint=vec3<f32>(0.76,0.36,0.14);}
+    let fresnel=tint+(vec3<f32>(1.0)-tint)*pow(1.0-clamp(dot(n,view),0.0,1.0),5.0);
+    let radiance=vec3<f32>(edge_light*1.8+ambient)+vec3<f32>(1.0,0.94,0.82)*key*2.3+vec3<f32>(0.8,0.9,1.0)*strip*2.8+vec3<f32>(1.0,0.88,0.68)*top*2.0+vec3<f32>(0.75,0.85,1.0)*fill*0.65;
+    // Fine directional polishing marks modulate reflections, never the alpha.
+    let texture=1.0+p.extra.x*(grain*select(0.24,0.5,kind==2u)+micro*0.035);
+    let balanced=radiance/(vec3<f32>(1.0)+radiance*0.55);
+    var color=fresnel*mix(balanced,vec3<f32>(0.4)+balanced*0.2,rough*rough*0.65)*texture;
+    if kind==3u {
         let patina=fire_fbm(vec3<f32>(uv*4.0,0.5),257u);
-        color*=max(0.15,1.0-p.extra.x*smoothstep(0.56,0.8,patina)*0.65);
+        color*=1.0-p.extra.x*smoothstep(0.56,0.8,patina)*0.5;
     }
+    let streak=exp(-pow((ray.x+ray.y*0.6+0.18)/(0.018+rough*0.1),2.0))*exp(-pow((ray.y+0.25)/0.5,2.0))*max(0.0,ray.z);
+    let hotspots=pow(key,12.0)*7.0+pow(strip,16.0)*5.0+pow(top,8.0)*4.0+streak*2.4;
+    let bevel_light=pow(max(dot(n,normalize(vec3<f32>(-0.55,-0.65,0.55))),0.0),24.0)*3.0;
+    color+=fresnel*(hotspots+bevel_light)*pow(1.0-rough,3.0);
+    return color;
+}
+fn material_colour(uv:vec2<f32>,n:vec3<f32>)->vec3<f32> {
+    if p.size_op.w<=3u {return studio_metal(uv,n);}
+    let rough=p.values.z;
+    let rim=pow(max(dot(n,normalize(vec3<f32>(-0.6,-0.8,0.6))),0.0),8.0)*2.4;
+    var color=vec3<f32>(0.0);
     if p.size_op.w==4u {
         let phosphor=0.8+p.extra.x*0.45*(fire_noise(vec3<f32>(uv*150.0,0.0),431u)-0.5);
         let pulse=0.92+0.08*cos(p.values.w*6.2831853);
@@ -573,7 +612,7 @@ fn material_swatch(@builtin(global_invocation_id) gid:vec3<u32>) {
     if coverage==0.0 {result[index(gid)]=vec4<f32>(0.0);return;}
     let n=vec3<f32>(xy,sqrt(max(0.0,1.0-dot(xy,xy))));
     let uv=vec2<f32>(atan2(n.x,max(0.001,n.z)),asin(clamp(n.y,-1.0,1.0)))*0.9+vec2<f32>(1.2,0.7);
-    let color=material_colour(uv,n)*(0.3+0.7*n.z);
+    let color=material_colour(uv,n)*select(0.3+0.7*n.z,1.0,p.size_op.w<=3u);
     result[index(gid)]=vec4<f32>(color*coverage,coverage);
 }
 @compute @workgroup_size(8,8)

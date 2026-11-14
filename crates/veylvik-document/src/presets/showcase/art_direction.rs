@@ -230,30 +230,19 @@ fn outline(a: &mut Art, mask: NodeId, dx: f32, dy: f32, color: [f32; 4]) -> Node
 fn gold_fire(a: &mut Art, bg: NodeId, with_fire: bool) -> Result<NodeId> {
     let mask = a.text("GOLD");
     let bg = a.atmosphere(bg, [0.12, 0.012, 0.001, 1.0], 480.0, 300.0, 320.0, 130.0);
-    // Two gradients meet at a sharp polished-metal reflection band.
-    let top = a.palette(
-        "Gold upper reflection",
-        200.0,
-        270.0,
-        [1.5, 0.7, 0.12, 1.0],
-        [0.12, 0.028, 0.002, 1.0],
+    let face = a.node(
+        "Polished gold studio reflections",
+        Operation::Material(crate::nodes::Material {
+            kind: crate::MaterialKind::Gold,
+            scale: 180.0.into(),
+            bevel: 5.0.into(),
+            roughness: 0.15.into(),
+            lighting: cycle(0.0, 0.12),
+            grain: 0.65.into(),
+            emission: 1.0.into(),
+        }),
+        &[("image", mask)],
     );
-    let bottom = a.palette(
-        "Gold lower reflection",
-        270.0,
-        340.0,
-        [2.8, 1.7, 0.42, 1.0],
-        [0.38, 0.11, 0.006, 1.0],
-    );
-    let mut commands = vec![];
-    polygon(
-        &mut commands,
-        &[[0.0, 270.0], [960.0, 270.0], [960.0, 540.0], [0.0, 540.0]],
-    );
-    let lower = a.path("Metal reflection boundary", commands);
-    let bottom = a.mask("Lower gold band", bottom, lower);
-    let gold = a.over("Reflective gold", top, bottom);
-    let face = a.material(mask, gold);
     let mut extrusion = a.solid("Transparent depth", [0.0; 4]);
     let bronze = a.solid("Bronze sides", [0.16, 0.045, 0.003, 1.0]);
     let side = a.mask("Metal side face", bronze, mask);

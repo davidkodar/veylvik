@@ -298,3 +298,37 @@ fn library_spheres_are_finite_antialiased_and_material_specific() {
             .is_err()
     );
 }
+
+#[test]
+#[ignore = "requires Vulkan"]
+fn polished_metal_has_hdr_highlights_and_roughness_softens_them() {
+    let renderer = Renderer::new().unwrap();
+    for kind in [
+        MaterialKind::Gold,
+        MaterialKind::Silver,
+        MaterialKind::Aluminium,
+        MaterialKind::Bronze,
+    ] {
+        let polished = renderer.material_swatch(kind, 0.08, 0.65).unwrap();
+        let rough = renderer.material_swatch(kind, 0.85, 0.65).unwrap();
+        let peak = |pixels: &[[f32; 4]]| {
+            pixels
+                .iter()
+                .filter(|p| p[3] > 0.99)
+                .map(|p| p[0].max(p[1]).max(p[2]))
+                .fold(0.0_f32, f32::max)
+        };
+        assert!(
+            peak(&polished) > 1.0,
+            "polished metal retains HDR highlights"
+        );
+        assert!(
+            peak(&rough) < peak(&polished),
+            "roughness softens specular peaks"
+        );
+        assert!(
+            polished.iter().any(|p| p[3] > 0.99 && p[0] < 0.15),
+            "dark reflections provide metal contrast"
+        );
+    }
+}

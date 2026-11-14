@@ -58,7 +58,7 @@ impl Renderer {
         let params = Params {
             size_op: [256, 256, 0, kind as u32],
             values: [80., 32., roughness, 0.08],
-            extra: [grain, 1., 0., 0.],
+            extra: [grain, 1., 1., 0.],
         };
         self.queue
             .write_buffer(&uniform, 0, bytemuck::bytes_of(&params));
