@@ -191,23 +191,6 @@ impl Art {
         self.mask("Material inside lettering", palette, mask)
     }
 }
-fn wave(a: f32, b: f32, phase: usize) -> Scalar {
-    Scalar::Smooth {
-        keys: (0..=8)
-            .map(|i| {
-                let t = ((i + phase) % 8) as f32 / 8.0;
-                Key {
-                    time: Time {
-                        ticks: i as i64,
-                        rate: 2,
-                    },
-                    value: a + (b - a) * (0.5 - 0.5 * (t * std::f32::consts::TAU).cos()),
-                    segment: None,
-                }
-            })
-            .collect(),
-    }
-}
 fn outline(a: &mut Art, mask: NodeId, dx: f32, dy: f32, color: [f32; 4]) -> NodeId {
     let shifted = a.node(
         "Bevel offset",
@@ -280,9 +263,9 @@ fn gold_fire(a: &mut Art, bg: NodeId, with_fire: bool) -> Result<NodeId> {
         Operation::Fire(crate::nodes::Fire {
             seed: 297,
             x: 480.0.into(),
-            y: 285.0.into(),
+            y: 340.0.into(),
             width: 660.0.into(),
-            height: 245.0.into(),
+            height: 295.0.into(),
             evolution: Scalar::Linear {
                 keys: vec![
                     Key {
@@ -332,78 +315,65 @@ fn dripping(a: &mut Art, bg: NodeId, pink: bool) -> NodeId {
         350.0,
         120.0,
     );
-    let mut mask = letters;
-    // Roots lie on the actual lower strokes of D, R, I and P.
-    for (i, x) in [
-        180.0, 206.0, 275.0, 338.0, 374.0, 438.0, 501.0, 540.0, 596.0, 660.0, 674.0,
-    ]
-    .into_iter()
-    .enumerate()
-    {
-        let root = 330.0;
-        let extent = 32.0 + (i % 3) as f32 * 12.0;
-        let shape = a.ellipse(
-            "Viscous hanging drip",
-            x.into(),
-            wave(root + 8.0, root + extent, i),
-            (6.0 + (i % 3) as f32 * 2.0).into(),
-            wave(8.0, extent, i),
-            2.0,
-        );
-        mask = a.over("Liquid stretched from lettering", mask, shape);
-        let phase = i * 19 % 96;
-        let u = |f: usize| ((f + phase) % 96) as f32 / 96.0;
-        let sampled = |f: &dyn Fn(usize) -> f32| Scalar::Linear {
-            keys: (0..=96)
-                .map(|frame| Key {
-                    time: Time {
-                        ticks: frame as i64,
-                        rate: 24,
+    let mask = a.node(
+        "Surface-tension drips from text",
+        Operation::Drip(crate::nodes::Drip {
+            seed: 821,
+            evolution: Scalar::Linear {
+                keys: vec![
+                    Key {
+                        time: Time { ticks: 0, rate: 1 },
+                        value: 0.0,
+                        segment: None,
                     },
-                    value: f(frame % 96),
-                    segment: None,
-                })
-                .collect(),
-        };
-        let drop = a.ellipse(
-            "Falling droplet",
-            x.into(),
-            sampled(&|f| root + 28.0 + u(f) * u(f) * (460.0 - root - 28.0)),
-            (5.0 + (i % 2) as f32).into(),
-            sampled(&|f| 6.0 + 5.0 * u(f)),
-            2.0,
-        );
-        let fade = sampled(&|f| (u(f) / 0.1).min((1.0 - u(f)) / 0.12).clamp(0.0, 1.0));
-        mask = a.node(
-            "Droplet lifetime",
-            Operation::Blend(crate::nodes::Blend {
-                mode: BlendMode::Normal,
-                opacity: fade,
-            }),
-            &[("background", mask), ("foreground", drop)],
-        );
-    }
-    let noise = a.noise(36.0, 821);
-    let mask = a.displace("Liquid surface tension", mask, noise, 4.0, 3.0);
-    let (dark, light) = if pink {
-        ([0.15, 0.001, 0.025, 1.0], [2.0, 0.12, 0.65, 1.0])
-    } else {
-        ([0.008, 0.12, 0.008, 1.0], [0.6, 1.4, 0.04, 1.0])
-    };
-    let ink = a.palette("Glossy liquid material", 185.0, 400.0, light, dark);
-    let face = a.material(mask, ink);
-    let edge = outline(
-        a,
-        mask,
-        -3.0,
-        -2.0,
-        if pink {
-            [2.0, 0.6, 1.2, 1.0]
-        } else {
-            [1.5, 2.0, 0.4, 1.0]
-        },
+                    Key {
+                        time: Time { ticks: 4, rate: 1 },
+                        value: 4.0,
+                        segment: None,
+                    },
+                ],
+            },
+            spacing: 43.0.into(),
+            length: 140.0.into(),
+            radius: 5.5.into(),
+        }),
+        &[("image", letters)],
     );
-    let face = a.plus("Wet specular rim", face, edge, 0.8);
+    let dark = if pink {
+        [0.19, 0.003, 0.035, 1.0]
+    } else {
+        [0.025, 0.12, 0.006, 1.0]
+    };
+    let ink = a.palette(
+        "Liquid pigment",
+        180.0,
+        410.0,
+        [dark[0] * 0.45, dark[1] * 0.45, dark[2] * 0.45, 1.0],
+        dark,
+    );
+    let pigment = a.mask("Pigmented liquid coverage", ink, mask);
+    let face = a.node(
+        "Wet dielectric surface",
+        Operation::Material(crate::nodes::Material {
+            smooth_edges: true,
+            brushing: Default::default(),
+            studio: Default::default(),
+            optics: Some(crate::optical::SurfaceOptics {
+                metallic: false,
+                reflectance: [0.04; 3],
+                ior: 1.46,
+            }),
+            kind: crate::MaterialKind::Silver,
+            scale: 180.0.into(),
+            bevel: 5.0.into(),
+            roughness: 0.16.into(),
+            lighting: 0.0.into(),
+            grain: 0.0.into(),
+            emission: 1.0.into(),
+        }),
+        &[("image", pigment)],
+    );
+    let face = a.plus("Pigment beneath wet reflections", pigment, face, 1.0);
     let bg = a.over("Liquid title", bg, face);
     let puddle = a.ellipse(
         "Liquid pool",
@@ -415,7 +385,7 @@ fn dripping(a: &mut Art, bg: NodeId, pink: bool) -> NodeId {
     );
     let ink = a.solid("Pool tint", dark);
     let puddle = a.mask("Glossy floor pool", ink, puddle);
-    a.plus("Pool under drips", bg, puddle, 0.6)
+    a.plus("Pool under drips", bg, puddle, 0.35)
 }
 fn sand(a: &mut Art, bg: NodeId) -> NodeId {
     let mask = a.text("DUST");
@@ -601,6 +571,7 @@ pub(super) fn build(id: &str) -> Result<Scene> {
     let optics = matches!(
         id,
         "surface_reflection"
+            | "water_drips"
             | "clear_glass"
             | "frosted_glass_material"
             | "sun_glints"
@@ -666,7 +637,7 @@ pub(super) fn build(id: &str) -> Result<Scene> {
                 &[("image", mask)],
             )
         }
-        "clear_glass" | "frosted_glass_material" => {
+        "wet_drips" | "water_drips" | "clear_glass" | "frosted_glass_material" => {
             bg = environment;
             a.text("NOVA")
         }
@@ -717,7 +688,8 @@ pub(super) fn build(id: &str) -> Result<Scene> {
     let document = Document::new(a.doc)?;
     let mut composition = document.prepare(0, &instance.commands)?;
     composition.output = instance.output;
-    let before = if id == "metallic_shine"
+    let before = if matches!(id, "wet_drips" | "water_drips")
+        || id == "metallic_shine"
         || id == "sun_glints"
         || super::super::builtin::category(id) == "Materials"
     {
@@ -740,35 +712,20 @@ pub(super) fn build(id: &str) -> Result<Scene> {
 mod tests {
     use super::*;
     #[test]
-    fn droplets_fall_and_hide_the_loop_reset() {
+    fn drips_follow_editable_text_instead_of_fixed_coordinates() {
         let scene = build("liquid_shimmer").unwrap();
         let doc = &scene.composition;
-        let drop = doc
+        let drip = doc
             .nodes
             .values()
-            .find(|n| match &n.operation {
-                Operation::Ellipse(crate::nodes::Ellipse { x, .. }) => {
-                    n.label == "Falling droplet" && x.at(Time::new(0, 1).unwrap()).unwrap() == 180.0
-                }
-                _ => false,
-            })
+            .find(|n| matches!(n.operation, Operation::Drip(_)))
             .unwrap();
-        let Operation::Ellipse(crate::nodes::Ellipse { y, .. }) = &drop.operation else {
-            unreachable!()
-        };
-        let at = |frame| y.at(Time::new(frame, 24).unwrap()).unwrap();
-        assert!(at(1) < at(48) && at(48) < at(80));
-        assert_eq!(at(0), at(96));
-        let lifetime = doc
-            .nodes
-            .values()
-            .find(|n| n.label == "Droplet lifetime" && n.inputs.get("foreground") == Some(&drop.id))
-            .unwrap();
-        let Operation::Blend(crate::nodes::Blend { opacity, .. }) = &lifetime.operation else {
-            unreachable!()
-        };
-        assert_eq!(opacity.at(Time::new(0, 1).unwrap()).unwrap(), 0.0);
-        assert_eq!(opacity.at(Time::new(4, 1).unwrap()).unwrap(), 0.0);
-        assert_eq!(opacity.at(Time::new(2, 1).unwrap()).unwrap(), 1.0);
+        assert!(matches!(
+            doc.nodes[&drip.inputs["image"]].operation,
+            Operation::Text(_)
+        ));
+        let evolution = drip.operation.scalar("evolution").unwrap();
+        assert_eq!(evolution.at(Time::new(0, 1).unwrap()).unwrap(), 0.0);
+        assert_eq!(evolution.at(Time::new(4, 1).unwrap()).unwrap(), 4.0);
     }
 }

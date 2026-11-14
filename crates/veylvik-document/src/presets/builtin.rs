@@ -13,7 +13,7 @@ pub struct Builtin {
     pub label: &'static str,
     pub description: &'static str,
 }
-pub const ALL: [Builtin; 59] = [
+pub const ALL: [Builtin; 61] = [
     Builtin {
         id: "surface_paint",
         label: "Paint on Surface",
@@ -88,6 +88,16 @@ pub const ALL: [Builtin; 59] = [
         id: "surface_reflection",
         label: "Surface Reflection",
         description: "Reflect animated clouds, another object or an image in a metallic surface. Bind the surface and reflection scene separately.",
+    },
+    Builtin {
+        id: "wet_drips",
+        label: "Wet Ink Drips",
+        description: "Wet coloured liquid grows and drips from any text or cutout silhouette. Adjustable colour, drop size, spacing and surface roughness.",
+    },
+    Builtin {
+        id: "water_drips",
+        label: "Clear Water Drips",
+        description: "Clear water drips from a text or cutout silhouette, refracting an explicitly connected background with wet surface reflections.",
     },
     Builtin {
         id: "clear_glass",
@@ -374,7 +384,9 @@ pub fn build(id: &str) -> Result<Preset> {
             node
         }
         id if appearance::material_kind(id).is_some() => appearance::build(id, &mut b, source)?,
-        "surface_reflection"
+        "wet_drips"
+        | "water_drips"
+        | "surface_reflection"
         | "clear_glass"
         | "frosted_glass_material"
         | "sun_glints"
@@ -611,10 +623,14 @@ pub fn build(id: &str) -> Result<Preset> {
             Some("background") if id == "surface_paint" => "Clean surface",
             Some("foreground") if id == "surface_paint" => "Text / image / effect",
             Some("reflection") => "Reflection scene",
-            Some("background") if matches!(id, "clear_glass" | "frosted_glass_material") => {
+            Some("background")
+                if matches!(id, "clear_glass" | "frosted_glass_material" | "water_drips") =>
+            {
                 "Background to refract"
             }
-            Some("image") if matches!(id, "clear_glass" | "frosted_glass_material") => {
+            Some("image")
+                if matches!(id, "clear_glass" | "frosted_glass_material" | "water_drips") =>
+            {
                 "Shape / text"
             }
             _ => "Image",
@@ -671,9 +687,12 @@ pub fn category(id: &str) -> &'static str {
         "gold_text" | "silver_text" | "aluminium_text" | "bronze_text" | "phosphor_text"
         | "wood_text" => "Materials",
         "light_smoke" | "dense_smoke" | "fog_layer" | "drifting_fog" | "clouds" => "Atmosphere",
-        "surface_reflection" | "clear_glass" | "frosted_glass_material" | "metal_patina" => {
-            "Materials"
-        }
+        "wet_drips"
+        | "water_drips"
+        | "surface_reflection"
+        | "clear_glass"
+        | "frosted_glass_material"
+        | "metal_patina" => "Materials",
         _ => "All",
     }
 }

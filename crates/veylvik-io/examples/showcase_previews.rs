@@ -10,7 +10,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     std::fs::create_dir_all(&output)?;
     let renderer = Renderer::new()?;
     let filter = std::env::args().nth(2);
-    let still = std::env::args().nth(3).as_deref() == Some("--still");
+    let mode = std::env::args().nth(3);
+    let still = mode.as_deref() == Some("--still");
     for entry in builtin::ALL {
         if filter
             .as_deref()
@@ -26,6 +27,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .values()
                 .any(|node| matches!(node.operation, veylvik_document::Operation::Material(_)))
         {
+            continue;
+        }
+        if mode.as_deref() == Some("--scene") {
+            scene
+                .composition
+                .save(&output.join(format!("{}.veylvik", entry.id)))?;
             continue;
         }
         for (label, node) in [

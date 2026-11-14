@@ -25,6 +25,89 @@ fn loop_value(a: f32, b: f32) -> Scalar {
 }
 pub fn build(id: &str, b: &mut Builder, source: NodeId) -> Result<NodeId> {
     match id {
+        "wet_drips" | "water_drips" => {
+            let shape = b.add(
+                "Liquid attached to input silhouette",
+                Operation::Drip(crate::nodes::Drip {
+                    seed: 821,
+                    evolution: Scalar::Linear {
+                        keys: [(0, 0.0), (4, 4.0)]
+                            .into_iter()
+                            .map(|(ticks, value)| Key {
+                                time: Time { ticks, rate: 1 },
+                                value,
+                                segment: None,
+                            })
+                            .collect(),
+                    },
+                    spacing: 43.0.into(),
+                    length: 140.0.into(),
+                    radius: 5.5.into(),
+                }),
+                &[("image", source)],
+            );
+            for (p, l) in [
+                ("evolution", "Liquid evolution"),
+                ("spacing", "Drip spacing"),
+                ("length", "Fall distance"),
+                ("radius", "Drop size"),
+            ] {
+                b.expose(shape, p, l)?;
+            }
+            let surface = if id == "water_drips" {
+                let background = external(b, "Background to refract");
+                let water = b.add(
+                    "Water refraction",
+                    Operation::Glass(crate::nodes::Glass {
+                        bevel: 5.0.into(),
+                        refraction: 24.0.into(),
+                        roughness: 0.0.into(),
+                        ior: 1.333.into(),
+                        transmission: 0.99.into(),
+                        tint: 0.0.into(),
+                        dispersion: 0.0.into(),
+                    }),
+                    &[("image", shape), ("background", background)],
+                );
+                for (p, l) in [
+                    ("refraction", "Refraction"),
+                    ("ior", "Liquid IOR"),
+                    ("tint", "Absorption"),
+                ] {
+                    b.expose(water, p, l)?;
+                }
+                water
+            } else {
+                let tint = b.tint(shape, [0.0; 4], [0.19, 0.003, 0.035, 1.0]);
+                b.expose(tint, "high", "Liquid colour")?;
+                tint
+            };
+            let reflection = b.add(
+                "Wet surface reflections",
+                Operation::Material(crate::nodes::Material {
+                    smooth_edges: true,
+                    brushing: Default::default(),
+                    studio: Default::default(),
+                    optics: Some(crate::optical::SurfaceOptics {
+                        metallic: false,
+                        reflectance: [0.04; 3],
+                        ior: if id == "water_drips" { 1.333 } else { 1.46 },
+                    }),
+                    kind: crate::MaterialKind::Silver,
+                    scale: 180.0.into(),
+                    bevel: 5.0.into(),
+                    roughness: 0.12.into(),
+                    lighting: 0.0.into(),
+                    grain: 0.0.into(),
+                    emission: 1.0.into(),
+                }),
+                &[("image", shape)],
+            );
+            b.expose(reflection, "roughness", "Surface roughness")?;
+            b.expose(reflection, "bevel", "Surface rounding")?;
+            Ok(b.blend(surface, reflection, BlendMode::Add, 1.0.into()))
+        }
+
         "surface_reflection" => {
             let environment = external(b, "Reflection scene");
             let node = b.add(

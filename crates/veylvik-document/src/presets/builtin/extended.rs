@@ -51,14 +51,20 @@ impl Builder {
             &[("image", image)],
         )
     }
-    fn tint(&mut self, image: NodeId, low: [f32; 4], high: [f32; 4]) -> NodeId {
+    pub(super) fn tint(&mut self, image: NodeId, low: [f32; 4], high: [f32; 4]) -> NodeId {
         self.add(
             "Palette",
             Operation::Colorize(crate::nodes::Colorize { low, high }),
             &[("image", image)],
         )
     }
-    fn blend(&mut self, bg: NodeId, fg: NodeId, mode: BlendMode, opacity: Scalar) -> NodeId {
+    pub(super) fn blend(
+        &mut self,
+        bg: NodeId,
+        fg: NodeId,
+        mode: BlendMode,
+        opacity: Scalar,
+    ) -> NodeId {
         self.add(
             "Layer mix",
             Operation::Blend(crate::nodes::Blend { mode, opacity }),
@@ -428,6 +434,44 @@ pub(super) fn build(id: &str, b: &mut Builder, source: NodeId) -> Result<NodeId>
     Ok(out)
 }
 fn particles(id: &str, b: &mut Builder, source: NodeId) -> Result<NodeId> {
+    if id == "dust_motes" {
+        let dust = b.add(
+            "Depth-layered airborne dust",
+            Operation::Dust(crate::nodes::Dust {
+                seed: 47,
+                evolution: Scalar::Linear {
+                    keys: vec![
+                        Key {
+                            time: Time { ticks: 0, rate: 1 },
+                            value: 0.0,
+                            segment: None,
+                        },
+                        Key {
+                            time: Time { ticks: 4, rate: 1 },
+                            value: 4.0,
+                            segment: None,
+                        },
+                    ],
+                },
+                density: 0.72.into(),
+                size: 1.25.into(),
+                drift: 1.0.into(),
+            }),
+            &[],
+        );
+        for (parameter, label) in [
+            ("density", "Dust density"),
+            ("size", "Particle size"),
+            ("drift", "Air movement"),
+            ("evolution", "Evolution"),
+        ] {
+            b.expose(dust, parameter, label)?;
+        }
+        let out = b.blend(source, dust, BlendMode::Normal, 1.0.into());
+        b.mix_control(out)?;
+        return Ok(out);
+    }
+
     let mut layer = b.add(
         "Transparent particle layer",
         Operation::Solid(crate::nodes::Solid { color: [0.0; 4] }),
@@ -453,7 +497,7 @@ fn particles(id: &str, b: &mut Builder, source: NodeId) -> Result<NodeId> {
         let radius = match id {
             "dust_motes" => 4.0 + (i % 3) as f32 * 2.0,
             "snowfall" => 2.5 + (i % 3) as f32,
-            "embers" => 2.0,
+            "embers" => 0.45 + (i % 4) as f32 * 0.24,
             _ => 2.5,
         };
         let dot = b.add(
@@ -462,7 +506,7 @@ fn particles(id: &str, b: &mut Builder, source: NodeId) -> Result<NodeId> {
                 x,
                 y,
                 radius_x: radius.into(),
-                radius_y: (if id == "embers" { radius * 2.5 } else { radius }).into(),
+                radius_y: (if id == "embers" { radius * 2.0 } else { radius }).into(),
                 feather: (radius * 0.8).into(),
             }),
             &[],
@@ -484,11 +528,16 @@ fn particles(id: &str, b: &mut Builder, source: NodeId) -> Result<NodeId> {
     };
     let tinted = b.tint(layer, [0.0; 4], color);
     b.expose(tinted, "high", "Particle color")?;
-    let halo = b.blur(tinted, if id == "fireflies" { 9.0 } else { 4.0 });
+    let halo = b.blur(tinted, if id == "fireflies" { 9.0 } else { 1.5 });
     b.expose(halo, "radius", "Glow spread")?;
     let halo = b.blur(halo, 4.0);
     let halo = b.blur(halo, 2.0);
-    let glow = b.blend(tinted, halo, BlendMode::Add, 1.0.into());
+    let glow = b.blend(
+        tinted,
+        halo,
+        BlendMode::Add,
+        (if id == "embers" { 0.18 } else { 1.0 }).into(),
+    );
     b.expose(glow, "opacity", "Glow strength")?;
     let out = b.blend(source, glow, BlendMode::Add, 1.0.into());
     b.mix_control(out)?;

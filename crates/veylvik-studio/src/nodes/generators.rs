@@ -81,3 +81,21 @@ impl Inspect for veylvik_document::nodes::Atmosphere {
     }
 }
 impl Inspect for veylvik_document::nodes::Ellipse {}
+
+impl Inspect for veylvik_document::nodes::Dust {
+    fn inspect(&mut self, ui: &mut egui::Ui, cx: &mut InspectCx<'_>) {
+        ui.horizontal(|ui| {
+            ui.label("Seed");
+            cx.dirty |= ui.add(egui::DragValue::new(&mut self.seed)).changed();
+        });
+    }
+}
+
+impl Inspect for veylvik_document::nodes::Drip {
+    fn inspect(&mut self, ui: &mut egui::Ui, cx: &mut InspectCx<'_>) {
+        ui.horizontal(|ui| {
+            ui.label("Seed");
+            cx.dirty |= ui.add(egui::DragValue::new(&mut self.seed)).changed();
+        });
+    }
+}

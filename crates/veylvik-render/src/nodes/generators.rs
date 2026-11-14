@@ -245,3 +245,64 @@ impl RenderNode for veylvik_document::nodes::Ellipse {
         Ok(())
     }
 }
+
+impl RenderNode for veylvik_document::nodes::Dust {
+    fn passes(&self) -> Passes {
+        Passes::One(Kernel::Dust)
+    }
+    fn shareable(&self) -> bool {
+        true
+    }
+    fn params(
+        &self,
+        _cx: &Cx<'_>,
+        sample: &dyn Fn(&str) -> Result<f32>,
+        p: &mut Params,
+    ) -> Result<()> {
+        p.size_op[3] = self.seed;
+        p.values = [
+            sample("evolution")?,
+            sample("density")?,
+            sample("size")?,
+            sample("drift")?,
+        ];
+        Ok(())
+    }
+}
+
+impl RenderNode for veylvik_document::nodes::Drip {
+    fn passes(&self) -> Passes {
+        Passes::Chain(&[
+            super::Step {
+                kernel: Kernel::DripRoots,
+                inputs: [super::From::Port(0), super::From::None, super::From::None],
+            },
+            super::Step {
+                kernel: Kernel::Drip,
+                inputs: [
+                    super::From::Port(0),
+                    super::From::Step(0),
+                    super::From::None,
+                ],
+            },
+        ])
+    }
+    fn shareable(&self) -> bool {
+        true
+    }
+    fn params(
+        &self,
+        _cx: &Cx<'_>,
+        sample: &dyn Fn(&str) -> Result<f32>,
+        p: &mut Params,
+    ) -> Result<()> {
+        p.size_op[3] = self.seed;
+        p.values = [
+            sample("evolution")?,
+            sample("spacing")?,
+            sample("length")?,
+            sample("radius")?,
+        ];
+        Ok(())
+    }
+}

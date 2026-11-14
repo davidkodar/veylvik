@@ -194,3 +194,53 @@ node!(
     [x, y, width, height, evolution, density, detail, lighting]
 );
 node!(Ellipse, ELLIPSE, [x, y, radius_x, radius_y, feather]);
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Dust {
+    pub seed: u32,
+    pub evolution: Scalar,
+    pub density: Scalar,
+    pub size: Scalar,
+    pub drift: Scalar,
+}
+pub static DUST: NodeType = NodeType {
+    type_id: "dust",
+    version: 1,
+    label: "Airborne dust",
+    description: "Depth-layered, softly lit airborne dust with coherent drift and depth of field. Animate evolution to move the particles. Stateless; four-second loop.",
+    inputs: &[],
+    parameters: &[
+        other("seed", ParameterKind::Seed, "seed"),
+        scalar("evolution", "seconds", -10000.0, 10000.0, 0.0),
+        scalar("density", "factor", 0.0, 1.0, 0.65),
+        scalar("size", "pixels", 0.1, 32.0, 1.2),
+        scalar("drift", "factor", 0.0, 5.0, 1.0),
+    ],
+};
+node!(Dust, DUST, [evolution, density, size, drift]);
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Drip {
+    pub seed: u32,
+    pub evolution: Scalar,
+    pub spacing: Scalar,
+    pub length: Scalar,
+    pub radius: Scalar,
+}
+pub static DRIP: NodeType = NodeType {
+    type_id: "drip",
+    version: 1,
+    label: "Liquid drips",
+    description: "Liquid coverage extends from the lowest opaque edge of each seeded source column. Growing necks pinch off into gravity-driven droplets. Outputs a white alpha mask for material or colour fill; animate evolution. Stateless four-second loop.",
+    inputs: &["image"],
+    parameters: &[
+        other("seed", ParameterKind::Seed, "seed"),
+        scalar("evolution", "seconds", -10000.0, 10000.0, 0.0),
+        scalar("spacing", "pixels", 8.0, 1024.0, 48.0),
+        scalar("length", "pixels", 0.0, 8192.0, 140.0),
+        scalar("radius", "pixels", 1.0, 256.0, 5.0),
+    ],
+};
+node!(Drip, DRIP, [evolution, spacing, length, radius]);

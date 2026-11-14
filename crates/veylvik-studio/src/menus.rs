@@ -187,6 +187,8 @@ pub(crate) const ADD_MENU: [(&str, &[&registry::NodeType]); 8] = [
             &registry::FRACTAL_NOISE,
             &registry::GRADIENT,
             &registry::FIRE,
+            &registry::DUST,
+            &registry::DRIP,
             &registry::ATMOSPHERE,
         ],
     ),

@@ -227,6 +227,20 @@ pub fn operation(kind: &NodeType, width: u32, height: u32) -> Operation {
         Operation::Patina(veylvik_document::nodes::Patina { scale, .. }) => {
             *scale = (width as f32 * 110.0 / 960.0).clamp(1.0, 8192.0).into();
         }
+        Operation::Drip(veylvik_document::nodes::Drip {
+            spacing,
+            length,
+            radius,
+            ..
+        }) => {
+            let scale = height as f32 / 540.0;
+            *spacing = (43.0 * scale).clamp(8.0, 1024.0).into();
+            *length = (140.0 * scale).min(8192.0).into();
+            *radius = (5.5 * scale).clamp(1.0, 256.0).into();
+        }
+        Operation::Dust(veylvik_document::nodes::Dust { size, .. }) => {
+            *size = (1.25 * height as f32 / 540.0).clamp(0.1, 32.0).into();
+        }
         Operation::Fire(veylvik_document::nodes::Fire {
             x,
             y,

@@ -403,22 +403,30 @@ fn fire(@builtin(global_invocation_id) gid:vec3<u32>) {
         result[index(gid)]=vec4<f32>(0.0);return;
     }
     let edge=smoothstep(0.0,0.08,uv.x)*(1.0-smoothstep(0.92,1.0,uv.x));
-    let base=smoothstep(0.0,0.055,uv.y);
+    let time=fract(p.extra.x/4.0)*4.0;
+    let fuel_patch=fire_noise(vec3<f32>(uv.x*9.0,0.0,0.3),p.size_op.w+193u);
+    let base=smoothstep(0.0,0.07,uv.y);
+    let taper=1.0-smoothstep(0.85,1.12,uv.y);
     var rgb=vec3<f32>(0.0);var transmittance=1.0;
     // Emission/absorption through eight turbulent depth slices. Each slice
     // contributes a different thin sheet, avoiding a solid silhouette fill.
     for(var slice=0u;slice<8u;slice++) {
         let z=(f32(slice)+0.5)/8.0*2.0-1.0;
         let depth=1.0-z*z;
-        let warp=fire_noise(vec3<f32>(uv.x*7.0,uv.y*2.5-p.extra.x*2.0,z*1.7),p.size_op.w+83u)-0.5;
-        let pos=vec3<f32>(uv.x*18.0+warp*p.extra.z*4.0*uv.y,uv.y*5.5-p.extra.x*2.0,z*2.0);
-        let n=fire_fbm(pos,p.size_op.w);
-        let fuel=0.74-uv.y*0.63;
-        let density=max(fuel-n,0.0)*edge*base*depth;
-        let alpha=1.0-exp(-density*4.5);
-        let heat=clamp(density*3.0+(1.0-uv.y)*0.27,0.0,1.0);
-        let warm=mix(vec3<f32>(0.9,0.018,0.0008),vec3<f32>(1.2,0.23,0.009),smoothstep(0.05,0.5,heat));
-        let color=mix(warm,vec3<f32>(1.9,1.1,0.3),smoothstep(0.5,0.95,heat));
+        // Buoyant advection stretches structures vertically. Large eddies bend
+        // the tongues; small scales tear their edges rather than filling a cloud.
+        let rise=uv.y*3.2-time*2.0;
+        let bend=fire_noise(vec3<f32>(uv.x*5.0,uv.y*1.7-time*2.0,z),p.size_op.w+83u)-0.5;
+        let pos=vec3<f32>(uv.x*15.0+bend*p.extra.z*(1.0+uv.y*4.0),rise,z*1.4);
+        let coarse=fire_noise(pos,p.size_op.w);
+        let detail=fire_fbm(pos*2.0,p.size_op.w+17u);
+        let fuel=0.69+fuel_patch*0.13-uv.y*0.64;
+        let body=max(fuel-coarse*0.72-detail*0.28,0.0);
+        let density=body*edge*base*depth*taper;
+        let alpha=1.0-exp(-density*3.2);
+        let heat=clamp(body*2.4+(1.0-uv.y)*0.18,0.0,1.0);
+        let warm=mix(vec3<f32>(0.55,0.009,0.0002),vec3<f32>(1.8,0.24,0.008),smoothstep(0.08,0.48,heat));
+        let color=mix(warm,vec3<f32>(2.5,1.5,0.45),smoothstep(0.48,0.9,heat));
         rgb+=transmittance*alpha*color*p.extra.y;
         transmittance*=1.0-alpha;
     }
