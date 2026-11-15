@@ -468,7 +468,16 @@ dielectric gloss with a faint orange-peel texture; roughness runs from enamel to
 rubber), **car paint** (paint and flake colours; flakes tilt the clear coat so
 highlights sparkle), **carbon fibre** (a 2×2 twill whose sheen follows the tow
 direction) and **holographic foil** (a white mirror tinted by a rainbow that shifts
-with surface angle and position and drifts with Reflection motion). Four animated recipes loop over four seconds as editable groups: **Chrome Shine
+with surface angle and position and drifts with Reflection motion). The **Image texture** family takes its colour from the material's optional **Texture**
+input: any image, logo or footage, sampled where it lies in the frame (so footage
+plays inside text; transform the texture upstream to place or tile it). It is lit,
+bevelled and reflective like any material; the texture's own detail tilts the
+normal a little, scaled by Grain, and Roughness sets its gloss. A pack pass stores the
+texture's straight colour beside the bevel height, so a textured material that also
+reflects the shot still reads three images. Without a texture the surface is
+black. Separate normal and roughness maps are not yet read.
+
+Four animated recipes loop over four seconds as editable groups: **Chrome Shine
 Sweep** (a shine travels across mirror chrome), **Glint Reveal** (rose-gold glints
 flare, hold and fade), **Heat to Embers** (brushed steel glows from deep red to
 white-hot with an ember halo, then cools; Heat, Glow and Glow spread are keyable)

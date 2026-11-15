@@ -988,3 +988,77 @@ fn every_catalogue_look_renders_finite_and_distinct() {
         seen.push(pixels);
     }
 }
+
+#[test]
+#[ignore = "requires Vulkan"]
+fn an_image_texture_colours_the_surface_and_keeps_its_shape() {
+    let renderer = Renderer::new().unwrap();
+    let (mut doc, mut inputs, _) = source();
+    let coverage = doc.output;
+    // Left half red, right half blue.
+    let texture: Vec<_> = (0..96 * 64)
+        .map(|i| {
+            if i % 96 < 56 {
+                [0.8, 0.05, 0.05, 1.0]
+            } else {
+                [0.05, 0.05, 0.8, 1.0]
+            }
+        })
+        .collect();
+    inputs.insert("texture", Arc::new(Image::new(96, 64, texture).unwrap()));
+    let image = Node::new(
+        "Texture",
+        Operation::Image(nodes::Image {
+            asset: "texture".into(),
+        }),
+        &[],
+    );
+    let mut m = veylvik_document::presets::material::Source::Builtin("gloss_red_plastic")
+        .material()
+        .unwrap();
+    m.kind = MaterialKind::Texture;
+    m.colours = None;
+    m.lighting = 0.0.into();
+    let textured = Node::new(
+        "m",
+        Operation::Material(m.clone()),
+        &[("image", coverage), ("texture", image.id)],
+    );
+    let bare = Node::new("bare", Operation::Material(m), &[("image", coverage)]);
+    doc.nodes.insert(image.id, image);
+    let render = |d: &Composition| {
+        renderer
+            .render_frame(
+                &Plan::compile(d).unwrap(),
+                RenderRequest::full(Time::new(0, 1).unwrap()),
+                &inputs,
+            )
+            .unwrap()
+            .pixels
+    };
+    let mut with = doc.clone();
+    with.output = textured.id;
+    with.nodes.insert(textured.id, textured);
+    let pixels = render(&with);
+    let (left, right) = (pixels[32 * 96 + 30], pixels[32 * 96 + 80]);
+    assert!(
+        left[0] > left[2] * 2.0 && right[2] > right[0] * 2.0,
+        "{left:?} {right:?}"
+    );
+    assert!(
+        pixels
+            .iter()
+            .zip(&inputs.get("coverage").unwrap().pixels().to_vec())
+            .all(|(p, c)| (p[3] - c[3]).abs() < 1e-5)
+    );
+    doc.output = bare.id;
+    doc.nodes.insert(bare.id, bare);
+    assert!(
+        render(&doc).iter().all(|p| p.iter().all(|v| v.is_finite())),
+        "no texture connected is still valid"
+    );
+    // The library swatch of a family that draws its own pattern still renders.
+    renderer
+        .material_swatch(MaterialKind::Gold, 0.2, 0.3)
+        .unwrap();
+}

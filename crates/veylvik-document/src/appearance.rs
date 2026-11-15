@@ -27,9 +27,10 @@ pub enum MaterialKind {
     CarPaint = 20,
     CarbonFibre = 21,
     Holographic = 22,
+    Texture = 23,
 }
 impl MaterialKind {
-    pub const ALL: [Self; 23] = [
+    pub const ALL: [Self; 24] = [
         Self::Gold,
         Self::Silver,
         Self::Aluminium,
@@ -53,6 +54,7 @@ impl MaterialKind {
         Self::CarPaint,
         Self::CarbonFibre,
         Self::Holographic,
+        Self::Texture,
     ];
     pub fn label(self) -> &'static str {
         match self {
@@ -79,6 +81,7 @@ impl MaterialKind {
             Self::CarPaint => "Car Paint",
             Self::CarbonFibre => "Carbon Fibre",
             Self::Holographic => "Holographic Foil",
+            Self::Texture => "Image Texture",
         }
     }
 }

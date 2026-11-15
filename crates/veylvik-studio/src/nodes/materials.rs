@@ -29,6 +29,9 @@ impl Inspect for veylvik_document::nodes::Material {
         if reset_optics && (self.optics.take().is_some() | self.colours.take().is_some()) {
             cx.dirty = true;
         }
+        if self.kind == veylvik_document::MaterialKind::Texture && !cx.textured {
+            ui.weak("Connect an image, logo or footage to the Texture input (port list below); it becomes the lit, bevelled surface.");
+        }
         cx.dirty |= colour_controls(ui, self);
         ui.horizontal_wrapped(|ui| {
             if cx.environment {

@@ -203,6 +203,11 @@ impl Renderer {
                     binding: 4,
                     resource: no_shot.as_entire_binding(),
                 },
+                // Nor a texture: the sphere shades families that draw their own pattern.
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: no_shot.as_entire_binding(),
+                },
             ],
         });
         let mut encoder = self.device.create_command_encoder(&Default::default());

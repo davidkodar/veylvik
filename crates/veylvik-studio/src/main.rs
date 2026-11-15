@@ -1653,6 +1653,7 @@ impl Studio {
             replace_image: false,
             save_material: false,
             environment: self.draft.inputs.contains_key("environment"),
+            textured: self.draft.inputs.contains_key("texture"),
             reflect_shot: None,
             lit_by: lit_by.as_deref(),
             share_lights: None,

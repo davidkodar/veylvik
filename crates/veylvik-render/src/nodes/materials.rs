@@ -10,32 +10,92 @@ use veylvik_document::{Operation, Scalar};
 impl RenderNode for veylvik_document::nodes::LightRig {}
 impl RenderNode for veylvik_document::nodes::Material {
     fn passes_for(&self, node: &veylvik_document::Node) -> Passes {
-        if !node.inputs.contains_key("environment") {
-            return self.passes();
+        // Optional inputs add work only when connected: the shot becomes a roughness
+        // pyramid, and a texture is packed beside the bevel height (rgb + a).
+        match (
+            node.inputs.contains_key("environment"),
+            node.inputs.contains_key("texture"),
+        ) {
+            (false, false) => self.passes(),
+            (true, false) => Passes::Chain(&[
+                super::Step {
+                    kernel: Kernel::BevelHeightHorizontal,
+                    inputs: [super::From::Port(0), super::From::None, super::From::None],
+                },
+                super::Step {
+                    kernel: Kernel::BevelHeightVertical,
+                    inputs: [super::From::Step(0), super::From::None, super::From::None],
+                },
+                super::Step {
+                    kernel: Kernel::EnvironmentPyramid,
+                    inputs: [super::From::Port(1), super::From::None, super::From::None],
+                },
+                super::Step {
+                    kernel: Kernel::Material,
+                    inputs: [
+                        super::From::Port(0),
+                        super::From::Step(1),
+                        super::From::Step(2),
+                    ],
+                },
+            ]),
+            (false, true) => Passes::Chain(&[
+                super::Step {
+                    kernel: Kernel::BevelHeightHorizontal,
+                    inputs: [super::From::Port(0), super::From::None, super::From::None],
+                },
+                super::Step {
+                    kernel: Kernel::BevelHeightVertical,
+                    inputs: [super::From::Step(0), super::From::None, super::From::None],
+                },
+                super::Step {
+                    kernel: Kernel::TexturePack,
+                    inputs: [
+                        super::From::Step(1),
+                        super::From::Port(2),
+                        super::From::None,
+                    ],
+                },
+                super::Step {
+                    kernel: Kernel::Material,
+                    inputs: [
+                        super::From::Port(0),
+                        super::From::Step(2),
+                        super::From::None,
+                    ],
+                },
+            ]),
+            (true, true) => Passes::Chain(&[
+                super::Step {
+                    kernel: Kernel::BevelHeightHorizontal,
+                    inputs: [super::From::Port(0), super::From::None, super::From::None],
+                },
+                super::Step {
+                    kernel: Kernel::BevelHeightVertical,
+                    inputs: [super::From::Step(0), super::From::None, super::From::None],
+                },
+                super::Step {
+                    kernel: Kernel::TexturePack,
+                    inputs: [
+                        super::From::Step(1),
+                        super::From::Port(2),
+                        super::From::None,
+                    ],
+                },
+                super::Step {
+                    kernel: Kernel::EnvironmentPyramid,
+                    inputs: [super::From::Port(1), super::From::None, super::From::None],
+                },
+                super::Step {
+                    kernel: Kernel::Material,
+                    inputs: [
+                        super::From::Port(0),
+                        super::From::Step(2),
+                        super::From::Step(3),
+                    ],
+                },
+            ]),
         }
-        // The shot is filtered into a roughness pyramid that the shading reads.
-        Passes::Chain(&[
-            super::Step {
-                kernel: Kernel::BevelHeightHorizontal,
-                inputs: [super::From::Port(0), super::From::None, super::From::None],
-            },
-            super::Step {
-                kernel: Kernel::BevelHeightVertical,
-                inputs: [super::From::Step(0), super::From::None, super::From::None],
-            },
-            super::Step {
-                kernel: Kernel::EnvironmentPyramid,
-                inputs: [super::From::Port(1), super::From::None, super::From::None],
-            },
-            super::Step {
-                kernel: Kernel::Material,
-                inputs: [
-                    super::From::Port(0),
-                    super::From::Step(1),
-                    super::From::Step(2),
-                ],
-            },
-        ])
     }
     fn passes(&self) -> Passes {
         // A smooth height field first; the material shades its gradient as the bevel.

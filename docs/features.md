@@ -221,6 +221,7 @@ Everything Veylvik can do today, area by area. Veylvik is a native Rust node com
 ## Materials and surfaces
 
 - **Text surface** (`material`) families: gold, silver, aluminium, bronze, phosphor, wood, light oak, dark oak, marble, light brick, red brick, concrete, paper, aged paper, red/brown/tan/dark/black leather, glossy plastic, car paint (metallic flakes under a clear coat), carbon fibre (twill weave) and holographic foil (23).
+- **Image texture** surface: put any image, logo or footage on a material's optional Texture input to light, bevel and reflect it like a material (footage plays inside text).
 - **Animated material recipes**: Chrome Shine Sweep, Glint Reveal, Heat to Embers and Rust Spreading loop over four seconds with their keys exposed as group controls.
 - **Material library**: 44 looks in Metal, Glossy, Natural and Leather: the 19 family starters plus copper, rose gold, chrome, black chrome, brushed steel, anodised blue/red/purple, holographic foil, gloss red and matte white plastic, blue enamel, black rubber, blue/red/graphite car paint, carbon fibre, black and green marble, walnut, ebony, painted white brick, navy and green leather and kraft paper. Looks are data (family, colours, optics, finish); applying one to styled text brings its whole finish.
 - **Colours**: repaint any patterned surface (grain, veins, mortar and bricks, stains, leather, glow) with up to three colours; existing projects keep the original colours.

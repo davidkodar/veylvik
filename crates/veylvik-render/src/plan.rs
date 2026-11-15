@@ -45,6 +45,7 @@ pub enum Kernel {
     EnvironmentPyramid,
     FrostHorizontal,
     FrostVertical,
+    TexturePack,
     Merge,
     Blend,
     SurfaceBlend,
@@ -73,7 +74,7 @@ pub enum Kernel {
     Lut,
 }
 impl Kernel {
-    pub(crate) const ALL: [Self; 65] = [
+    pub(crate) const ALL: [Self; 66] = [
         Self::ToAcescg,
         Self::FromAcescg,
         Self::Text,
@@ -113,6 +114,7 @@ impl Kernel {
         Self::EnvironmentPyramid,
         Self::FrostHorizontal,
         Self::FrostVertical,
+        Self::TexturePack,
         Self::Merge,
         Self::Blend,
         Self::SurfaceBlend,
@@ -181,6 +183,7 @@ impl Kernel {
             Self::EnvironmentPyramid => "environment_pyramid",
             Self::FrostHorizontal => "frost_horizontal",
             Self::FrostVertical => "frost_vertical",
+            Self::TexturePack => "texture_pack",
             Self::Merge => "merge",
             Self::Blend => "blend",
             Self::SurfaceBlend => "surface_blend",

@@ -826,6 +826,16 @@ fn material_colour(uv:vec2<f32>,n:vec3<f32>)->vec3<f32> {
         color*=max(0.1,1.0+p.extra.x*((fibers-0.5)*0.45-pores_dark*0.6));
         color=studio_surface(uv,n,color);
     }
+    if p.size_op.w==23u {
+        // Image texture: colour from the packed texture at this pixel; its own
+        // detail tilts the normal a little, scaled by Grain.
+        let pixel=uv*p.values.x;
+        let albedo=second_bilinear(pixel).rgb;
+        let l=vec3<f32>(0.2126,0.7152,0.0722);
+        let dx=dot(second_bilinear(pixel+vec2<f32>(1.0,0.0)).rgb-second_bilinear(pixel-vec2<f32>(1.0,0.0)).rgb,l);
+        let dy=dot(second_bilinear(pixel+vec2<f32>(0.0,1.0)).rgb-second_bilinear(pixel-vec2<f32>(0.0,1.0)).rgb,l);
+        return studio_surface(uv,normalize(n+vec3<f32>(-dx,-dy,0.0)*p.extra.x*0.5),albedo);
+    }
     if p.size_op.w==22u {
         // Holographic foil: a white mirror tinted by a rainbow that shifts with the
         // surface angle and position, and drifts with Reflection motion.
@@ -1213,6 +1223,14 @@ fn bevel_height_axis(gid:vec3<u32>,axis:vec2<i32>)->vec4<f32> {
         total+=clamp(sample_source(q.x,q.y).a,0.0,1.0)*w;weights+=w;
     }
     return vec4<f32>(total/weights);
+}
+// Image texture: the texture's straight colour beside the bevel height (alpha), so a
+// material reads both from one input.
+@compute @workgroup_size(8,8)
+fn texture_pack(@builtin(global_invocation_id) gid:vec3<u32>) {
+    if !inside(gid) {return;}
+    let i=index(gid);let t=second[i];
+    result[i]=vec4<f32>(max(t.rgb/max(t.a,0.0001),vec3<f32>(0.0))*step(0.0001,t.a),source[i].a);
 }
 @compute @workgroup_size(8,8)
 fn bevel_height_horizontal(@builtin(global_invocation_id) gid:vec3<u32>) {

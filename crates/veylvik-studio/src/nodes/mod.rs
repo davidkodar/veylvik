@@ -20,6 +20,8 @@ pub(crate) struct InspectCx<'a> {
     pub save_material: bool,
     /// The node's optional Environment input is connected.
     pub environment: bool,
+    /// The node's optional Texture input is connected.
+    pub textured: bool,
     /// Connect (true) or disconnect (false) the shot as the material's surroundings.
     pub reflect_shot: Option<bool>,
     /// Label of the Light rig connected to the node's Lights input.

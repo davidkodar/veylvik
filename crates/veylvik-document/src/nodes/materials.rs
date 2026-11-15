@@ -100,9 +100,9 @@ pub static MATERIAL: NodeType = NodeType {
     type_id: "material",
     version: 1,
     label: "Text surface",
-    description: "Procedural gold, silver, brushed aluminium, bronze, phosphor, wood, light/dark oak, marble, light/red brick, rough concrete, clean/weathered paper and five leather colours from image alpha. Surface grain, edge bevel and studio reflections; source RGB is replaced and alpha preserved. Connect footage to the optional Environment input to reflect the shot instead of the studio: roughness blurs it and dielectrics take their diffuse light from it. Not a 3D mesh or spectral renderer.",
-    inputs: &["image", "environment", "lights"],
-    optional: &["environment", "lights"],
+    description: "Procedural gold, silver, brushed aluminium, bronze, phosphor, wood, light/dark oak, marble, light/red brick, rough concrete, clean/weathered paper and five leather colours from image alpha. Surface grain, edge bevel and studio reflections; source RGB is replaced and alpha preserved. With the Image texture surface, an image, logo or footage on the optional Texture input becomes the surface colour, lit and bevelled like any material. Connect footage to the optional Environment input to reflect the shot instead of the studio: roughness blurs it and dielectrics take their diffuse light from it. Not a 3D mesh or spectral renderer.",
+    inputs: &["image", "environment", "texture", "lights"],
+    optional: &["environment", "texture", "lights"],
     output: PortKind::Image,
     parameters: &[
         Parameter {

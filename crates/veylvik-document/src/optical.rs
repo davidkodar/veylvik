@@ -83,7 +83,7 @@ impl MaterialKind {
     pub fn colour_roles(self) -> &'static [&'static str] {
         use MaterialKind::*;
         match self {
-            Gold | Silver | Aluminium | Bronze | Holographic => &[],
+            Gold | Silver | Aluminium | Bronze | Holographic | Texture => &[],
             Plastic => &["Colour"],
             CarPaint => &["Paint", "Flakes"],
             CarbonFibre => &["Weave", "Sheen"],
@@ -103,7 +103,9 @@ impl MaterialKind {
         const DARK_OAK: [f32; 3] = [0.32, 0.23, 0.16];
         let tint = |c: [f32; 3], t: [f32; 3]| [c[0] * t[0], c[1] * t[1], c[2] * t[2]];
         let (a, b, c) = match self {
-            Gold | Silver | Aluminium | Bronze | Holographic => ([0.0; 3], [0.0; 3], [0.0; 3]),
+            Gold | Silver | Aluminium | Bronze | Holographic | Texture => {
+                ([0.0; 3], [0.0; 3], [0.0; 3])
+            }
             Plastic => ([0.6, 0.05, 0.04], [0.0; 3], [0.0; 3]),
             CarPaint => ([0.02, 0.05, 0.25], [0.6, 0.7, 0.9], [0.0; 3]),
             CarbonFibre => ([0.01, 0.01, 0.012], [0.3, 0.3, 0.32], [0.0; 3]),
