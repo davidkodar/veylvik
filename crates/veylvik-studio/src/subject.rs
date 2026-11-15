@@ -71,6 +71,28 @@ pub struct Controls {
     done: Option<Done>,
 }
 impl Controls {
+    /// Set up the window as a user would for `request`, for a live MCP segmentation.
+    pub(crate) fn configure_live(
+        &mut self,
+        request: &veylvik_segment::request::Request,
+    ) -> Result<(), String> {
+        let model = TRACKERS
+            .into_iter()
+            .find(|m| *m == request.model)
+            .ok_or("model must be edgetam, sam2.1-base-plus or sam2.1-large")?;
+        self.open = true;
+        self.source = Some(request.source);
+        self.points = request.analysis.points.clone();
+        self.frame = request.analysis.frames[0];
+        self.end = request.analysis.frames[1];
+        self.backward = request.analysis.back_to.is_some();
+        self.detail = request.analysis.detail;
+        self.model = model;
+        self.matting = request.matting.unwrap_or(true);
+        self.preview = None;
+        self.done = None;
+        Ok(())
+    }
     /// Places points on left click (subject) and right or Alt click (exclude), and draws the
     /// preview matte and the points. Returns true when the points changed.
     pub fn overlay(
@@ -342,7 +364,7 @@ impl Studio {
             self.preview_subject(ctx);
         }
     }
-    fn track_subject(&mut self, ctx: &egui::Context) {
+    pub(crate) fn track_subject(&mut self, ctx: &egui::Context) {
         if !self.apply_draft() || self.files.busy() {
             return;
         }
@@ -440,6 +462,7 @@ impl Studio {
             || result.revision != self.project.document.revision()
         {
             self.fail("Composition changed during subject tracking; track again.");
+            self.finish_live_job("segment_subject", Err(self.status.clone()));
             return;
         }
         let Some(asset) = result.manifest.to_str().map(str::to_owned) else {
@@ -498,6 +521,8 @@ impl Studio {
         self.status = "Subject tracked: Subject matte and Subject cutout added".into();
         self.error = false;
         self.project.selected = added.cutout;
+        let report = serde_json::json!({"cutout": added.cutout, "first_frame": o.first_frame, "last_frame": o.last_frame, "frames": o.frames, "absent": o.absent, "cancelled": o.cancelled, "passes": o.passes, "milliseconds_per_frame": o.milliseconds_per_frame});
+        self.finish_live_job("segment_subject", Ok(report));
         self.project.preview = Some(added.cutout);
         self.subject.show_mask = false;
         self.refresh_draft();

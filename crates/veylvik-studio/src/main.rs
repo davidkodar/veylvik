@@ -20,6 +20,7 @@ mod handles;
 mod icons;
 mod key_timeline;
 mod light_guides;
+mod live_jobs;
 mod media_controls;
 mod media_import;
 mod menus;
@@ -233,6 +234,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 video_export: video_export::Controls::default(),
                 tracking: tracking::Controls::default(),
                 planar: planar::Controls::default(),
+                live_job: None,
                 subject: subject::Controls::default(),
                 models: models_window::ModelsWindow::default(),
                 outline_controls: text_outline::Controls::default(),
@@ -318,6 +320,7 @@ struct Studio {
     video_export: video_export::Controls,
     tracking: tracking::Controls,
     planar: planar::Controls,
+    live_job: Option<live_jobs::LiveJob>,
     subject: subject::Controls,
     models: models_window::ModelsWindow,
     outline_controls: text_outline::Controls,

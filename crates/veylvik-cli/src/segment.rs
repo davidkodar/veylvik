@@ -82,57 +82,7 @@ pub fn points(text: &str) -> Result<Vec<Point>> {
         })
         .collect()
 }
-pub struct Request {
-    pub source: NodeId,
-    pub analysis: analysis::Request,
-    /// Edge matting: `None` uses the matting model when it is installed and switched on.
-    pub matting: Option<bool>,
-    pub model: String,
-}
-impl Request {
-    /// `end` defaults to the composition's last frame, so a prompt tracks through the shot.
-    pub fn from_json(args: &Value, frame_count: u32) -> Result<Self> {
-        let frame = |name: &str| -> Result<i64> {
-            args[name]
-                .as_i64()
-                .ok_or_else(|| format!("{name} must be a frame number").into())
-        };
-        let points: Vec<Point> = serde_json::from_value(args["points"].clone()).map_err(|e| {
-            format!("points must be [{{\"x\":0..1,\"y\":0..1,\"positive\":true}}, ...]: {e}")
-        })?;
-        Ok(Self {
-            source: args["source"]
-                .as_str()
-                .ok_or("source must be a node UUID")?
-                .parse()?,
-            analysis: analysis::Request {
-                points,
-                frames: [
-                    frame("frame")?,
-                    match args.get("end") {
-                        Some(_) => frame("end")?,
-                        None => i64::from(frame_count.max(1) - 1),
-                    },
-                ],
-                back_to: args.get("back_to").map(|_| frame("back_to")).transpose()?,
-                detail: match args.get("detail") {
-                    None => true,
-                    Some(v) => v.as_bool().ok_or("detail must be boolean")?,
-                },
-                matting: None,
-            },
-            matting: args
-                .get("matting")
-                .map(|v| v.as_bool().ok_or("matting must be boolean"))
-                .transpose()?,
-            model: args
-                .get("model")
-                .and_then(Value::as_str)
-                .unwrap_or("edgetam")
-                .to_owned(),
-        })
-    }
-}
+pub use veylvik_segment::request::Request;
 /// Segments on `doc`, writing the mattes under `project_dir`; returns the matte node, the
 /// commands that add it and the refined cutout, and a report.
 pub fn run(

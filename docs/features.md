@@ -376,6 +376,7 @@ Opened with **Add → Effect library…**; searchable by name, description or ca
 - **Match surface appearance** creates a Surface blend with a starting look.
 - Up to three GPU pyramid levels plus full-resolution refinement; up to 4096 frames.
 - Headless: CLI `track` and MCP `track_surface` with motion, refine, back_to, occlusion, region, area_follows, radii, tolerance, reanchor.
+- Live: `track_surface` drives the open Studio's Track surface window; progress and the result are reported by `inspect` (`job`).
 
 ## Subject segmentation
 
@@ -396,6 +397,7 @@ Details: [Subject segmentation](subject-segmentation.md).
 - Model manager: explicit install with pinned revision, size and SHA-256; uninstall; enable and disable; each model lists its uses, pros, cons, speed, memory and licence.
 - Runs in an isolated worker process on CUDA, with no silent CPU fallback.
 - Headless: CLI `segment` and MCP `segment_subject` with points, frame range, back_to, model, detail and matting.
+- Live: `segment_subject` drives the open Studio's Select subject window, reported by `inspect` (`job`).
 
 ## Export
 

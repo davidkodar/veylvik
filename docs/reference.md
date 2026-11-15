@@ -1084,8 +1084,17 @@ five seconds and says the editor is busy.
 
 Live tools are `inspect`, `graph`, `get_node`, `nodes`, `diagnostics`, `apply`,
 `duplicate_branch`, `add_effect`, `get_preset`, `insert_preset`, `undo`, `redo`,
-`preview`, `preview_image`, `new_project`, `open_project`, `new_from_media` and
-`import_media`.
+`preview`, `preview_image`, `new_project`, `open_project`, `new_from_media`,
+`import_media`, `track_surface` and `segment_subject`.
+
+`track_surface` and `segment_subject` take the same arguments as the headless tools
+(parsed by the same code), plus `session` and `revision`, and run in the open editor's
+Track surface or Select subject window, so the user watches the progress. They return
+`started`; `inspect` then reports `job` with the tool, `status` (`running` with
+`progress.completed`/`total`, `done` with `result`, or `failed` with `error`, including
+cancellation). A finished track is saved as a reusable Planar track node and a finished
+segmentation adds Subject matte and Subject cutout, each one undo step. Live `back_to`
+must be 0: the editor tracks backward to the first frame. One job runs at a time.
 
 `new_project` replaces the open project with an empty composition (`width`, `height`,
 optional `frame_rate` as `{ticks, rate}` and `frame_count`) and returns its session.

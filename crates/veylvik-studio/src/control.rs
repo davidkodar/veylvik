@@ -46,6 +46,11 @@ pub fn call(
             json!({"initialized":true,"adapter":studio.renderer.adapter.name,"snapshot":studio.renderer.try_diagnostics()?,"preview_rendering":studio.preview_pending,"playback_cache":studio.scheduler.as_ref().map(|s|s.playback_cache().status())}),
         );
     }
+    match name {
+        "track_surface" => return studio.live_track_surface(args, ctx),
+        "segment_subject" => return studio.live_segment_subject(args, ctx),
+        _ => {}
+    }
     let project = &studio.project;
     if name == "inspect" {
         let summary = args
@@ -54,6 +59,7 @@ pub fn call(
             .transpose()?
             .unwrap_or(false);
         let mut result = json!({"session":project.session,"revision":project.document.revision(),"history":project.document.history(),"selected":project.selected,"preview":{"node":project.preview.unwrap_or(project.document.snapshot().output),"frame":project.frame,"displayed_time":studio.displayed_time,"rendering":studio.preview_pending,"playing":studio.playing},"viewer":{"exposure":studio.view.exposure,"alpha":studio.view.alpha,"scale":studio.navigation.manual_scale(),"pan":studio.navigation.pan()},"unavailable_assets":project.unavailable_assets(),"inspector_draft":studio.draft_dirty,"busy":studio.files.busy() || studio.authoring_dialog_open() || (studio.graph.dragging() || studio.animation_editor.dragging()),"status":studio.status,"error":studio.error});
+        result["job"] = studio.live_job_report();
         result["playback"] = json!({"range":studio.playback_controls.range(project.document.snapshot().frame_count),"range_enabled":studio.playback_controls.enabled,"preview_divisor":studio.playback_controls.divisor(),"caching":studio.playback_controls.warming.is_some(),"cache":studio.scheduler.as_ref().map(|s|s.playback_cache().status())});
         if summary {
             result["summary"] = veylvik_document::inspection::summary(project.document.snapshot());
@@ -265,7 +271,7 @@ fn read_graph(document: &veylvik_document::Composition, name: &str, args: &Value
     }
 }
 
-fn identity(project: &crate::project::Project, args: &Value) -> Result<(NodeId, u64)> {
+pub(crate) fn identity(project: &crate::project::Project, args: &Value) -> Result<(NodeId, u64)> {
     let session: NodeId = args["session"]
         .as_str()
         .ok_or("session must be a UUID")?

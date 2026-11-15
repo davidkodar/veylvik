@@ -7,6 +7,7 @@ mod engine;
 pub mod matte;
 pub mod models;
 pub mod protocol;
+pub mod request;
 pub mod worker;
 pub mod zoom;
 use serde::{Deserialize, Serialize};

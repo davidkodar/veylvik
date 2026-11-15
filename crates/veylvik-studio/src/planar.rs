@@ -34,6 +34,8 @@ pub struct Controls {
     correction_frame: Option<i64>,
     live: Arc<Mutex<Live>>,
     live_sample: Option<Sample>,
+    /// Started over live MCP: save the reusable track as soon as analysis completes.
+    publish_live: bool,
 }
 impl Default for Controls {
     fn default() -> Self {
@@ -59,6 +61,7 @@ impl Default for Controls {
             correction_frame: None,
             live: Arc::new(Mutex::new(Live::default())),
             live_sample: None,
+            publish_live: false,
         }
     }
 }
@@ -78,6 +81,21 @@ pub struct Tracked {
     message: String,
 }
 impl Controls {
+    /// Set up the window as a user would for `request`, for a live MCP track.
+    pub(crate) fn configure_live(&mut self, request: &veylvik_track::request::Request) {
+        *self = Self {
+            open: true,
+            source: Some(request.source),
+            surface: request.surface,
+            area: request.region,
+            occlusion: request.occlusion,
+            both: request.back_to.is_some(),
+            settings: request.settings,
+            end: request.frames[1],
+            publish_live: true,
+            ..Default::default()
+        };
+    }
     pub fn overlay(
         &mut self,
         ui: &mut egui::Ui,
@@ -345,12 +363,24 @@ impl Studio {
             || result.revision != self.project.document.revision()
         {
             self.fail("Composition changed during tracking; track again.");
+            self.finish_live_job("track_surface", Err(self.status.clone()));
             return;
         }
         self.status = result.message.clone();
         self.error = false;
         self.planar.edited = true;
+        let message = result.message.clone();
         self.planar.result = Some(result);
+        if std::mem::take(&mut self.planar.publish_live) {
+            self.publish_planar(false);
+            let outcome = if self.error {
+                Err(self.status.clone())
+            } else {
+                Ok(serde_json::json!({"node": self.project.selected, "message": message}))
+            };
+            self.finish_live_job("track_surface", outcome);
+            return;
+        }
         self.planar.base = None;
         self.planar.correction_frame = None;
         self.planar.open = true;
@@ -589,7 +619,7 @@ impl Studio {
             Err(e) => self.fail(e),
         }
     }
-    fn run_planar(&mut self, ctx: &egui::Context) {
+    pub(crate) fn run_planar(&mut self, ctx: &egui::Context) {
         if !self.apply_draft() || self.files.busy() {
             return;
         }

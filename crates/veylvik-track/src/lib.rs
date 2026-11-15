@@ -3,6 +3,7 @@ pub mod estimate;
 pub mod planar;
 pub mod point;
 mod refine;
+pub mod request;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
