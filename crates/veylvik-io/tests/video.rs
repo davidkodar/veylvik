@@ -540,3 +540,41 @@ fn bridge_budget_failure_stages_hardware_and_recovers_on_later_frames() {
     assert_eq!(recovered.direct_gpu_transfers, 1);
     assert!(recovered.interop_fallback.is_empty());
 }
+
+#[test]
+#[ignore = "requires FFmpeg with libx265 and zscale"]
+fn software_decode_of_10_bit_limited_range_is_exact() {
+    use veylvik_io::video::{DecodePolicy, Video};
+    let dir = Scratch::new();
+    let path = dir.0.join("flat10.mkv");
+    assert!(
+        Command::new("ffmpeg")
+            .args(["-v", "error", "-f", "lavfi", "-i"])
+            .arg("color=c=black:s=64x64:d=0.1,format=yuv420p10le,geq=lum=716:cb=512:cr=512")
+            .args([
+                "-c:v",
+                "libx265",
+                "-x265-params",
+                "log-level=error:lossless=1"
+            ])
+            .args([
+                "-pix_fmt",
+                "yuv420p10le",
+                "-color_range",
+                "tv",
+                "-colorspace",
+                "bt709"
+            ])
+            .args(["-color_primaries", "bt709", "-color_trc", "bt709"])
+            .arg(&path)
+            .status()
+            .unwrap()
+            .success()
+    );
+    let video = Video::open_with_policy(&path, 8 * 1024 * 1024, DecodePolicy::Software).unwrap();
+    let p = video.frame(Time::new(0, 1).unwrap()).unwrap().pixels()[64 * 32 + 32];
+    // (716 - 64) / 876 encoded, decoded by the BT.709 transfer; swscale read 0.5509 here.
+    for c in &p[..3] {
+        assert!((c - 0.5555).abs() < 0.0005, "{p:?}");
+    }
+}

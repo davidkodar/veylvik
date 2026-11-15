@@ -286,18 +286,20 @@ impl Video {
             "limited"
         };
         let matrix_name = match matrix {
-            0 => "bt709",
-            1 => "bt709",
+            _ if rgb => "gbr",
+            0 | 1 => "709",
             4 => "fcc",
-            5 | 6 => "bt601",
+            5 => "470bg",
+            6 => "170m",
             7 => "smpte240m",
-            9 | 10 => "bt2020",
+            9 | 10 => "2020_ncl",
             _ => unreachable!(),
         };
-        // swscale performs only YUV matrix/range conversion here. Transfer and
-        // primaries are explicit Rust transforms; no float-format negotiation.
+        // zimg performs only the YUV matrix and range conversion here, in float precision
+        // (swscale's 10-bit path read about 0.4% low). Transfer and primaries are explicit
+        // Rust transforms; the format steps only repack planes into RGBA.
         let filter = format!(
-            "scale=in_color_matrix={matrix_name}:out_color_matrix={matrix_name}:in_range={range}:out_range=full,format=rgba64le{rotate}"
+            "zscale=min={matrix_name}:m={matrix_name}:rin={range}:r=full,format=gbrap16le,format=rgba64le{rotate}"
         );
         let colour = colour::Transform::new(primaries, transfer)?;
         let (kr, kb) = match matrix {
