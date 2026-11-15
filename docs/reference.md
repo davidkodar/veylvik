@@ -747,8 +747,16 @@ The compiler validates the entire graph, prunes unreachable nodes, and assigns
 explicit compute passes and reusable image-buffer slots by last use. It visits
 input branches in depth-first port order, keeping independent layers close to
 their consumers instead of scheduling by UUID. Traversal is iterative for deep
-graphs; this is a deterministic heuristic, not a minimum-memory optimizer. Box blur
-lowers to horizontal and vertical passes, with transparent boundaries. The
+graphs; this is a deterministic heuristic, not a minimum-memory optimizer. Blur
+(box or gaussian filter; gaussian uses sigma = radius / 3 so the radius stays the
+visible reach) lowers to horizontal and vertical passes, with transparent boundaries.
+Lens blur boosts colour above its luminance threshold by 1 + highlights × (luminance −
+threshold), then gathers over a disc on a golden-angle spiral of up to 400 samples;
+when the disc is larger than the sample count, the image is first box-filtered to the
+widest spiral gap, so even a single-pixel light spreads into a solid, evenly lit disc.
+Discs up to about 11 px gather every pixel exactly. Material bevels are the gradient of
+the coverage blurred with a gaussian (sigma = 0.35 × bevel) in two passes before
+shading, so corners and acute vertices stay round. The
 horizontal pass shares 64-pixel rows and their halo in 2 KiB of workgroup memory;
 radii up to two pixels use direct sampling. Summation order stays unchanged.
 Intermediate pixels stay on the GPU;

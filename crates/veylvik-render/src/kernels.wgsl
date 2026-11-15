@@ -1090,14 +1090,31 @@ fn surface_blend(@builtin(global_invocation_id) gid:vec3<u32>) {
 
 // Separable Gaussian derivative evaluated continuously in two dimensions.
 // Unlike integer cross taps, this does not quantize the bevel into pixel rings.
+// The bevel is the gradient of a smooth height field: coverage blurred with a gaussian
+// (sigma = 0.35 x bevel) in the bevel_height passes, read from `second`. A dense field
+// keeps corners and acute vertices round instead of terraced or saw-toothed, with the
+// same depth and strength as the former 5x5 binomial derivative at that spacing.
 fn smooth_bevel_normal(pos:vec2<f32>,radius:f32)->vec3<f32> {
-    let weights=array<f32,5>(1.0,4.0,6.0,4.0,1.0);
-    let derivative=array<f32,5>(-1.0,-2.0,0.0,2.0,1.0);
     let step=max(radius*0.35,0.5);
-    var slope=vec2<f32>(0.0);
-    for(var y=0;y<5;y++) {for(var x=0;x<5;x++) {
-        let a=bilinear(pos+vec2<f32>(f32(x-2),f32(y-2))*step).a;
-        slope-=a*vec2<f32>(derivative[x]*weights[y],weights[x]*derivative[y])/32.0;
-    }}
+    let dx=second_bilinear(pos+vec2<f32>(1.0,0.0)).a-second_bilinear(pos-vec2<f32>(1.0,0.0)).a;
+    let dy=second_bilinear(pos+vec2<f32>(0.0,1.0)).a-second_bilinear(pos-vec2<f32>(0.0,1.0)).a;
+    let slope=-vec2<f32>(dx,dy)*2.0*step;
     return normalize(vec3<f32>(slope*1.6,1.0));
+}
+fn bevel_height_axis(gid:vec3<u32>,axis:vec2<i32>)->vec4<f32> {
+    let sigma=max(p.values.y*0.35,0.5);let reach=i32(ceil(sigma*3.0));
+    var total=0.0;var weights=0.0;
+    for(var o=-reach;o<=reach;o++) {
+        let q=vec2<i32>(gid.xy)+axis*o;let w=exp(-f32(o*o)/(2.0*sigma*sigma));
+        total+=clamp(sample_source(q.x,q.y).a,0.0,1.0)*w;weights+=w;
+    }
+    return vec4<f32>(total/weights);
+}
+@compute @workgroup_size(8,8)
+fn bevel_height_horizontal(@builtin(global_invocation_id) gid:vec3<u32>) {
+    if !inside(gid) {return;} result[index(gid)]=bevel_height_axis(gid,vec2<i32>(1,0));
+}
+@compute @workgroup_size(8,8)
+fn bevel_height_vertical(@builtin(global_invocation_id) gid:vec3<u32>) {
+    if !inside(gid) {return;} result[index(gid)]=bevel_height_axis(gid,vec2<i32>(0,1));
 }
