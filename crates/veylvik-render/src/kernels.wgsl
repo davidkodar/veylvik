@@ -6,7 +6,7 @@ struct Params { size_op: vec4<u32>, values: vec4<f32>, extra: vec4<f32> }
 @group(0) @binding(4) var<storage, read> third: array<vec4<f32>>;
 @group(0) @binding(5) var<storage, read> ltc: array<vec4<f32>>;
 struct StudioLight { center:vec4<f32>, u:vec4<f32>, v:vec4<f32>, colour:vec4<f32> }
-struct StudioLighting { optics:vec4<f32>, environment:vec4<f32>, lights:array<StudioLight,8> }
+struct StudioLighting { optics:vec4<f32>, environment:vec4<f32>, lights:array<StudioLight,8>, palette:array<vec4<f32>,3> }
 @group(0) @binding(6) var<uniform> studio:StudioLighting;
 @group(0) @binding(7) var<storage,read> environment_map:array<vec4<f32>>;
 fn inside(gid:vec3<u32>)->bool { return gid.x<p.size_op.x && gid.y<p.size_op.y; }
@@ -525,15 +525,14 @@ fn surface_sample(uv:vec2<f32>, kind:u32)->vec4<f32> {
         let pores=pow(max(0.0,1.0-fiber*1.8),3.0);
         let latewood=pow(rings,9.0);
         let tone=clamp(0.78-0.32*latewood-0.25*pores+(coarse-0.5)*0.5,0.0,1.0);
-        color=mix(vec3<f32>(0.16,0.065,0.018),vec3<f32>(0.69,0.46,0.23),tone);
-        if kind==7u {color*=vec3<f32>(0.32,0.23,0.16);}
+        color=mix(studio.palette[0].rgb,studio.palette[1].rgb,tone);
         height=0.12*latewood-0.25*pores+fiber*0.03;
     } else if kind==8u {
         let warp=vec2<f32>(coarse,fire_fbm(vec3<f32>(uv*2.2,5.1),193u));
         let veins=abs(sin((uv.x+uv.y*0.6+warp.x*1.7)*8.0+warp.y*7.0));
         let vein=1.0-smoothstep(0.015,0.14,veins);
         let branches=1.0-smoothstep(0.015,0.05,abs(sin((uv.y-uv.x+warp.y)*21.0)));
-        color=mix(vec3<f32>(0.78,0.77,0.71),vec3<f32>(0.15,0.18,0.19),vein*0.72+branches*0.09);
+        color=mix(studio.palette[0].rgb,studio.palette[1].rgb,vein*0.72+branches*0.09);
         color*=0.88+coarse*0.18; height=fine*0.005;
     } else if kind==9u || kind==10u {
         let row=floor(uv.y*3.0); let q=vec2<f32>(uv.x*1.5+fract(row*0.5),uv.y*3.0);
@@ -541,24 +540,23 @@ fn surface_sample(uv:vec2<f32>, kind:u32)->vec4<f32> {
         let edge=min(min(f.x,1.0-f.x)*2.0,min(f.y,1.0-f.y));
         let brick=smoothstep(0.035,0.075,edge+(fine-0.5)*0.012);
         let variation=fire_noise(vec3<f32>(cell*7.0,0.5),173u);
-        var base=mix(vec3<f32>(0.22,0.035,0.012),vec3<f32>(0.55,0.17,0.055),variation);
-        if kind==9u {base=mix(vec3<f32>(0.42,0.36,0.24),vec3<f32>(0.75,0.67,0.49),variation);}
+        var base=mix(studio.palette[1].rgb,studio.palette[2].rgb,variation);
         base*=0.72+0.5*coarse+0.16*(fine-0.5);
-        color=mix(vec3<f32>(0.28,0.26,0.22)*(0.85+fine*0.25),base,brick);
+        color=mix(studio.palette[0].rgb*(0.85+fine*0.25),base,brick);
         height=brick*0.5+brick*(coarse*0.12+fine*0.04);
     } else if kind==11u {
         let aggregate=fire_noise(vec3<f32>(uv*38.0,0.3),937u);
         let pits=1.0-smoothstep(0.19,0.30,aggregate);
-        color=vec3<f32>(0.37,0.36,0.33)*(0.7+coarse*0.5+fine*0.12-pits*0.38);
+        color=studio.palette[0].rgb*(0.7+coarse*0.5+fine*0.12-pits*0.38);
         height=coarse*0.45+aggregate*0.09-pits*0.18;
     } else if kind==12u || kind==13u {
         let fibers=fire_noise(vec3<f32>(uv.x*160.0,uv.y*35.0,0.3),811u);
-        color=vec3<f32>(0.88,0.865,0.82)*(0.96+fibers*0.06);
+        color=studio.palette[0].rgb*(0.96+fibers*0.06);
         height=fibers*0.018+fine*0.009;
         if kind==13u {
             let stain=smoothstep(0.43,0.72,coarse);
             let crease=exp(-pow(sin(uv.x*4.2+sin(uv.y*1.8)*0.45)*45.0,2.0));
-            color=mix(vec3<f32>(0.64,0.49,0.28),vec3<f32>(0.26,0.13,0.045),stain*0.65);
+            color=mix(studio.palette[0].rgb,studio.palette[1].rgb,stain*0.65);
             color*=0.94+fibers*0.1-crease*0.22;
             height+=coarse*0.12-crease*0.055;
         }
@@ -573,11 +571,7 @@ fn surface_sample(uv:vec2<f32>, kind:u32)->vec4<f32> {
             if distance<first {second=first;first=distance;} else {second=min(second,distance);}
         }}
         let groove=1.0-smoothstep(0.015,0.13,second-first);
-        var base=vec3<f32>(0.25,0.012,0.018);
-        if kind==15u {base=vec3<f32>(0.19,0.064,0.022);}
-        if kind==16u {base=vec3<f32>(0.52,0.29,0.12);}
-        if kind==17u {base=vec3<f32>(0.055,0.018,0.008);}
-        if kind==18u {base=vec3<f32>(0.008,0.009,0.012);}
+        let base=studio.palette[0].rgb;
         color=base*(0.8+coarse*0.36-groove*0.22+fine*0.08);
         height=(1.0-groove)*0.018+coarse*0.035+fine*0.004;
     }
@@ -716,7 +710,7 @@ fn material_colour(uv:vec2<f32>,n:vec3<f32>)->vec3<f32> {
     if p.size_op.w==4u {
         let phosphor=0.8+p.extra.x*0.45*(fire_noise(vec3<f32>(uv*150.0,0.0),431u)-0.5);
         let pulse=0.92+0.08*cos(p.values.w*6.2831853);
-        color=vec3<f32>(0.12,1.9,0.38)*phosphor*p.extra.y*pulse+vec3<f32>(rim*0.08);
+        color=studio.palette[0].rgb*1.9*phosphor*p.extra.y*pulse+vec3<f32>(rim*0.08);
     }
     if p.size_op.w==5u {
         let warp=fire_fbm(vec3<f32>(uv.x*0.7,uv.y*2.0,0.5),617u);
@@ -724,7 +718,7 @@ fn material_colour(uv:vec2<f32>,n:vec3<f32>)->vec3<f32> {
         let rings=0.5+0.5*sin(uv.y*80.0+warp*50.0+exp(-knot*1.4)*25.0);
         let pores=fire_noise(vec3<f32>(uv.x*7.0,uv.y*220.0,0.0),313u);
         let grain=clamp(mix(0.5,0.75-0.55*pow(rings,6.0)+0.12*pores,p.extra.x),0.0,1.0);
-        color=mix(vec3<f32>(0.065,0.017,0.004),vec3<f32>(0.5,0.22,0.065),grain);
+        color=mix(studio.palette[0].rgb,studio.palette[1].rgb,grain);
         let fibers=fire_noise(vec3<f32>(uv.x*5.0,uv.y*180.0+warp*15.0,0.0),733u);
         let pores_dark=pow(max(0.0,1.0-fibers*2.0),3.0);
         color*=max(0.1,1.0+p.extra.x*((fibers-0.5)*0.45-pores_dark*0.6));

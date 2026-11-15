@@ -9,7 +9,102 @@ impl Renderer {
         roughness: f32,
         grain: f32,
     ) -> Result<Vec<[f32; 4]>> {
-        if !roughness.is_finite() || !grain.is_finite() {
+        self.sphere(
+            crate::studio_lighting::Lighting::new(kind, None, None, &Default::default()),
+            kind,
+            [roughness, grain, 1.],
+            kind == veylvik_document::MaterialKind::Aluminium,
+        )
+    }
+    /// A 256px library sample of any material, as the library shows it:
+    /// metals, glow and leather on a sphere, patterned surfaces on a bevelled
+    /// tile. Animated values are sampled at time zero. Premultiplied, linear.
+    pub fn material_sample(
+        &self,
+        material: &veylvik_document::nodes::Material,
+    ) -> Result<Vec<[f32; 4]>> {
+        use veylvik_document::{MaterialKind::*, Operation, Time};
+        let zero = Time::new(0, 1)?;
+        let at = |s: &veylvik_document::Scalar| s.at(zero);
+        if matches!(
+            material.kind,
+            Gold | Silver
+                | Aluminium
+                | Bronze
+                | Phosphor
+                | LeatherRed
+                | LeatherBrown
+                | LeatherTan
+                | LeatherDark
+                | LeatherBlack
+        ) {
+            return self.sphere(
+                crate::studio_lighting::Lighting::material(material),
+                material.kind,
+                [
+                    at(&material.roughness)?,
+                    at(&material.grain)?,
+                    at(&material.emission)?,
+                ],
+                material.is_brushed(),
+            );
+        }
+        let side = 256_u32;
+        let mut operation = material.clone();
+        operation.scale = 80.0.into();
+        operation.bevel = 32.0.into();
+        operation.lighting = 0.08.into();
+        let mut doc = veylvik_document::blank(side, side, Time::new(24, 1)?)?;
+        let source = doc.output;
+        doc.nodes.get_mut(&source).unwrap().operation =
+            Operation::Image(veylvik_document::nodes::Image {
+                asset: "sample".into(),
+            });
+        let node = veylvik_document::Node::new(
+            "Material sample",
+            Operation::Material(operation),
+            &[("image", source)],
+        );
+        doc.output = node.id;
+        doc.nodes.insert(node.id, node);
+        // A rounded tile; its alpha ramp supplies the bevel normals.
+        let tile: Vec<[f32; 4]> = (0..side * side)
+            .map(|i| {
+                let x = (i % side) as f32 + 0.5;
+                let y = (i / side) as f32 + 0.5;
+                let a = ((x - 20.).min(236. - x).min(y - 20.).min(236. - y) / 12.).clamp(0., 1.);
+                [a; 4]
+            })
+            .collect();
+        let mut inputs = crate::ImageInputs::default();
+        inputs.insert(
+            "sample",
+            std::sync::Arc::new(crate::Image::new(side, side, tile.clone())?),
+        );
+        let mut rendered = self
+            .render_frame(
+                &crate::Plan::compile(&doc)?,
+                crate::RenderRequest::full(zero),
+                &inputs,
+            )?
+            .pixels;
+        // Present the shaded colour on an opaque sample with the silhouette's AA.
+        for (pixel, mask) in rendered.iter_mut().zip(&tile) {
+            if mask[3] <= 0.0001 {
+                *pixel = [0.; 4];
+            }
+            pixel[3] = mask[3];
+        }
+        Ok(rendered)
+    }
+    fn sphere(
+        &self,
+        lighting: crate::studio_lighting::Lighting,
+        kind: veylvik_document::MaterialKind,
+        [roughness, grain, emission]: [f32; 3],
+        brushed: bool,
+    ) -> Result<Vec<[f32; 4]>> {
+        if !roughness.is_finite() || !grain.is_finite() || !emission.is_finite() {
             return Err(error("Invalid material sample"));
         }
         let module = self
@@ -58,12 +153,7 @@ impl Renderer {
         let params = Params {
             size_op: [256, 256, 0, kind as u32],
             values: [80., 32., roughness, 0.],
-            extra: [
-                grain,
-                1.,
-                1.,
-                f32::from(kind == veylvik_document::MaterialKind::Aluminium),
-            ],
+            extra: [grain, emission, 1., f32::from(brushed)],
         };
         self.queue
             .write_buffer(&uniform, 0, bytemuck::bytes_of(&params));
@@ -72,11 +162,7 @@ impl Renderer {
             .device
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("Sample lighting"),
-                contents: bytemuck::bytes_of(&crate::studio_lighting::Lighting::new(
-                    kind,
-                    None,
-                    &Default::default(),
-                )),
+                contents: bytemuck::bytes_of(&lighting),
                 usage: wgpu::BufferUsages::UNIFORM,
             });
         let bind = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -136,6 +222,7 @@ pub fn material_preview_revision() -> String {
     feed(include_bytes!("../assets/studio/filtered.bin"));
     for kind in veylvik_document::MaterialKind::ALL {
         feed(&serde_json::to_vec(&kind.optics()).expect("finite optical defaults"));
+        feed(&serde_json::to_vec(&kind.palette()).expect("finite palette defaults"));
     }
     feed(
         &serde_json::to_vec(&veylvik_document::optical::StudioRig::default())

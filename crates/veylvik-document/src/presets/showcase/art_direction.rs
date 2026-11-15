@@ -221,6 +221,7 @@ fn gold_fire(a: &mut Art, bg: NodeId, with_fire: bool) -> Result<NodeId> {
         Operation::Material(crate::nodes::Material {
             smooth_edges: true,
             brushing: Default::default(),
+            colours: None,
             optics: None,
             studio: Default::default(),
             kind: crate::MaterialKind::Gold,
@@ -541,6 +542,7 @@ pub(super) fn build(id: &str) -> Result<Scene> {
                 Operation::Material(crate::nodes::Material {
                     smooth_edges: true,
                     brushing: Default::default(),
+                    colours: None,
                     optics: None,
                     studio: Default::default(),
                     kind: if id == "metal_patina" {

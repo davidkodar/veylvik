@@ -17,6 +17,9 @@ pub struct Material {
     /// None uses the material family’s optical defaults.
     #[serde(default)]
     pub optics: Option<crate::optical::SurfaceOptics>,
+    /// None uses the material family’s own pattern colours.
+    #[serde(default)]
+    pub colours: Option<crate::optical::Palette>,
     pub kind: MaterialKind,
     pub scale: Scalar,
     pub bevel: Scalar,
@@ -100,6 +103,7 @@ pub static MATERIAL: NodeType = NodeType {
         other("brushing", ParameterKind::Brushing, "surface finish"),
         other("studio", ParameterKind::StudioRig, "lighting rig"),
         other("optics", ParameterKind::SurfaceOptics, "optical response"),
+        other("colours", ParameterKind::Palette, "pattern colours"),
         scalar("scale", "pixels", 1.0, 8192.0, 180.0),
         scalar("bevel", "pixels", 0.0, 256.0, 4.0),
         scalar("roughness", "factor", 0.0, 1.0, 0.15),
@@ -198,6 +202,9 @@ node!(
             self.studio.validate()?;
             if let Some(optics) = self.optics {
                 optics.validate()?;
+            }
+            if let Some(colours) = &self.colours {
+                crate::optical::validate_palette(colours)?;
             }
             Ok(())
         }

@@ -94,12 +94,13 @@ pub fn automatic(doc: &Composition) -> Option<NodeId> {
     None
 }
 
-pub fn insert(
-    id: &str,
+pub fn insert<'a>(
+    id: impl Into<super::material::Source<'a>>,
     doc: &Composition,
     placement: Placement,
     position: Option<NodePosition>,
 ) -> Result<super::Instance> {
+    let id = id.into();
     if placement == Placement::Behind {
         return super::builtin::material_layer(id, doc, false, position);
     }

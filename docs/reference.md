@@ -463,6 +463,28 @@ and optional rectangular area lights, using alpha-derived bevel normals on text 
 shapes. Library spheres use the same material shader with spherical normals; a flat
 text face will not reflect the studio in the same way as the sphere.
 
+**Colours** repaint a patterned surface without changing its pattern: wood and oak
+have dark and light grain, marble stone and veins, brick mortar plus dark and light
+brick, concrete, paper and leather one colour each, weathered paper light and dark
+stains, phosphor its glow. Metals take their colour from the optical response
+instead. Colours are linear Rec.709, 0–1, stored as the node's `colours` (three RGB
+triples; `null` keeps the surface's own colours, so older projects render exactly as
+before); **Reset colours** returns to them, and choosing another surface resets them
+because its colour roles differ.
+
+**Save as my material…** (material inspector, or **Save…** under text Appearance)
+keeps the whole look — surface, colours, finish, optics and lighting rig — under a
+name in **Library → Materials → My materials**. Saved materials are `.veymat` files
+in `$XDG_DATA_HOME/veylvik/materials` (normally `~/.local/share/veylvik/materials`),
+at most 1 MiB each and 512 listed; unreadable files are reported, not hidden. Their
+swatches render on the GPU in the background. Applying one to text that already has
+a material replaces the surface, colours, finish, optics and lighting but keeps the
+layer's texture scale, bevel and reflection motion; a built-in changes only the
+surface family and resets custom colours. Saved materials also work as backgrounds
+and foreground layers, can be renamed or deleted (projects keep their own copy), and
+any material can be starred; **Favourites** lists starred built-in and saved
+materials (`favourites.json` in the same folder).
+
 For gold, silver, bronze and aluminium, **Finish** offers **Polished**, **Satin**,
 **Matte** and **Brushed**. Find it in the material node inspector, on a collapsed
 single-material group, or under text **Style → Material**. A finish sets roughness,

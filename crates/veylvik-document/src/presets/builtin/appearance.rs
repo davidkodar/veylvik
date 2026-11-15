@@ -26,13 +26,14 @@ pub fn material_kind(id: &str) -> Option<MaterialKind> {
     }
 }
 pub fn build(id: &str, b: &mut Builder, source: NodeId) -> Result<NodeId> {
-    let material = material_kind(id);
-    if let Some(kind) = material {
-        let node = b.add(
-            "Surface grain, bevel and reflection",
-            Operation::Material(crate::nodes::Material {
+    if let Some(kind) = material_kind(id) {
+        return surface(
+            b,
+            source,
+            crate::nodes::Material {
                 smooth_edges: true,
                 brushing: Default::default(),
+                colours: None,
                 optics: None,
                 studio: Default::default(),
                 kind,
@@ -64,43 +65,8 @@ pub fn build(id: &str, b: &mut Builder, source: NodeId) -> Result<NodeId> {
                 })
                 .into(),
                 emission: 1.0.into(),
-            }),
-            &[("image", source)],
+            },
         );
-        for (p, l) in [
-            ("scale", "Texture scale"),
-            ("bevel", "Bevel width"),
-            ("roughness", "Roughness"),
-            ("lighting", "Reflection motion"),
-            ("grain", "Grain strength"),
-        ] {
-            if p != "roughness" || kind != MaterialKind::Phosphor {
-                b.expose(node, p, l)?;
-            }
-        }
-        if kind == MaterialKind::Phosphor {
-            b.expose(node, "emission", "Phosphor emission")?;
-            let halo = b.add(
-                "Phosphor bloom",
-                Operation::Blur(crate::nodes::Blur {
-                    radius: 8.0.into(),
-                    filter: Default::default(),
-                }),
-                &[("image", node)],
-            );
-            let out = b.add(
-                "Emissive glow",
-                Operation::Blend(crate::nodes::Blend {
-                    mode: BlendMode::Add,
-                    opacity: 0.5.into(),
-                }),
-                &[("background", node), ("foreground", halo)],
-            );
-            b.expose(halo, "radius", "Glow spread")?;
-            b.expose(out, "opacity", "Glow strength")?;
-            return Ok(out);
-        }
-        return Ok(node);
     }
     let (kind, width, height, y, density) = match id {
         "light_smoke" => (AtmosphereKind::Smoke, 650.0, 470.0, 510.0, 1.7),
@@ -152,4 +118,52 @@ pub fn build(id: &str, b: &mut Builder, source: NodeId) -> Result<NodeId> {
         Operation::Merge(crate::nodes::Merge {}),
         &[("background", source), ("foreground", volume)],
     ))
+}
+
+/// A material node with its public controls; glowing phosphor adds its bloom.
+pub(in crate::presets) fn surface(
+    b: &mut Builder,
+    source: NodeId,
+    material: crate::nodes::Material,
+) -> Result<NodeId> {
+    let kind = material.kind;
+    let node = b.add(
+        "Surface grain, bevel and reflection",
+        Operation::Material(material),
+        &[("image", source)],
+    );
+    for (p, l) in [
+        ("scale", "Texture scale"),
+        ("bevel", "Bevel width"),
+        ("roughness", "Roughness"),
+        ("lighting", "Reflection motion"),
+        ("grain", "Grain strength"),
+    ] {
+        if p != "roughness" || kind != MaterialKind::Phosphor {
+            b.expose(node, p, l)?;
+        }
+    }
+    if kind == MaterialKind::Phosphor {
+        b.expose(node, "emission", "Phosphor emission")?;
+        let halo = b.add(
+            "Phosphor bloom",
+            Operation::Blur(crate::nodes::Blur {
+                radius: 8.0.into(),
+                filter: Default::default(),
+            }),
+            &[("image", node)],
+        );
+        let out = b.add(
+            "Emissive glow",
+            Operation::Blend(crate::nodes::Blend {
+                mode: BlendMode::Add,
+                opacity: 0.5.into(),
+            }),
+            &[("background", node), ("foreground", halo)],
+        );
+        b.expose(halo, "radius", "Glow spread")?;
+        b.expose(out, "opacity", "Glow strength")?;
+        return Ok(out);
+    }
+    Ok(node)
 }

@@ -6,6 +6,7 @@ pub mod footage;
 pub mod host_cache;
 pub mod import;
 pub mod lut;
+pub mod materials;
 pub mod presets;
 pub mod preview;
 pub mod relink;

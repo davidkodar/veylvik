@@ -13,6 +13,7 @@ pub enum ParameterKind {
     Brushing,
     StudioRig,
     SurfaceOptics,
+    Palette,
     PlanarTrack,
     PlanarMode,
     Scalar,
@@ -63,6 +64,7 @@ impl Parameter {
             ParameterKind::Brushing => json!(crate::optical::Brushing::default()),
             ParameterKind::StudioRig => json!(crate::optical::StudioRig::default()),
             ParameterKind::SurfaceOptics => json!(null),
+            ParameterKind::Palette => json!(null),
             ParameterKind::PlanarTrack => json!(crate::planar::Track::default()),
             ParameterKind::PlanarMode => json!(crate::planar::WarpMode::Follow),
             ParameterKind::MediaPlacement => json!(crate::media::Placement::default()),
@@ -113,6 +115,7 @@ impl Parameter {
             ParameterKind::SurfaceOptics => {
                 json!({"anyOf":[{"type":"null"},crate::optical::SurfaceOptics::schema()]})
             }
+            ParameterKind::Palette => crate::optical::palette_schema(),
             ParameterKind::PlanarTrack => crate::planar::schema(),
             ParameterKind::PlanarMode => {
                 json!({"type":"string","enum":["follow","fit","stabilize"]})

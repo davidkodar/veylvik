@@ -87,6 +87,7 @@ fn materials_are_distinct_finite_and_preserve_partial_alpha() {
             Operation::Material(veylvik_document::nodes::Material {
                 smooth_edges: true,
                 brushing: Default::default(),
+                colours: None,
                 optics: None,
                 studio: Default::default(),
                 kind,
@@ -584,4 +585,39 @@ fn every_metal_finish_renders_and_brushing_is_independent_of_metal_kind() {
             }
         }
     }
+}
+
+#[test]
+#[ignore = "requires Vulkan"]
+fn material_colours_repaint_the_pattern_and_default_to_the_family() {
+    let renderer = Renderer::new().unwrap();
+    let preset = veylvik_document::presets::builtin::build("marble").unwrap();
+    let mut marble = preset
+        .nodes
+        .values()
+        .find_map(|n| match &n.operation {
+            Operation::Material(m) => Some(m.clone()),
+            _ => None,
+        })
+        .unwrap();
+    let family = renderer.material_sample(&marble).unwrap();
+    marble.colours = Some(MaterialKind::Marble.palette());
+    assert_eq!(renderer.material_sample(&marble).unwrap(), family);
+    // Black marble with gold veins: same pattern, new colours.
+    marble.colours = Some([[0.02, 0.02, 0.025], [0.8, 0.55, 0.15], [0.; 3]]);
+    let black = renderer.material_sample(&marble).unwrap();
+    let mean = |p: &[[f32; 4]]| p.iter().map(|v| v[0] + v[1] + v[2]).sum::<f32>() / p.len() as f32;
+    assert!(mean(&black) < mean(&family) * 0.5);
+    assert!(black.iter().all(|p| p.iter().all(|v| v.is_finite())));
+    marble.colours = Some([[2.0, 0., 0.], [0.; 3], [0.; 3]]);
+    assert!(
+        veylvik_document::Document::new({
+            let mut doc = blank(8, 8, Time::new(24, 1).unwrap()).unwrap();
+            let node = Node::new("m", Operation::Material(marble), &[("image", doc.output)]);
+            doc.output = node.id;
+            doc.nodes.insert(node.id, node);
+            doc
+        })
+        .is_err()
+    );
 }

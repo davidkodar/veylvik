@@ -148,7 +148,7 @@ fn text_style_replaces_material_without_stacking_and_keeps_connections_and_histo
         .unwrap(),
         serde_json::to_value(Some(before)).unwrap()
     );
-    let commands = text_style::apply(owner.snapshot(), id, None, None).unwrap();
+    let commands = text_style::apply(owner.snapshot(), id, None::<&str>, None).unwrap();
     owner.apply(2, &commands).unwrap();
     assert_eq!(owner.snapshot().output, id);
     assert_eq!(text_style::current(owner.snapshot(), id).unwrap(), None);

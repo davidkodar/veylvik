@@ -178,6 +178,7 @@ impl Renderer {
             contents: bytemuck::bytes_of(&studio_lighting::Lighting::new(
                 veylvik_document::MaterialKind::Gold,
                 None,
+                None,
                 &Default::default(),
             )),
             usage: wgpu::BufferUsages::UNIFORM,
@@ -201,7 +202,7 @@ impl Renderer {
                     ty: wgpu::BindingType::Buffer {
                         ty: wgpu::BufferBindingType::Uniform,
                         has_dynamic_offset: false,
-                        min_binding_size: std::num::NonZeroU64::new(544),
+                        min_binding_size: std::num::NonZeroU64::new(studio_lighting::SIZE),
                     },
                     count: None,
                 },
@@ -712,7 +713,7 @@ impl Renderer {
                 if let Some(lighting_data) = shadow_lighting::for_node(node, &plan.nodes, time)? {
                     let buffer = resources.take(
                         &self.device,
-                        544,
+                        studio_lighting::SIZE,
                         wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
                         "Studio lighting",
                     )?;

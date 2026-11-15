@@ -64,10 +64,10 @@ pub fn current(doc: &Composition, text: NodeId) -> Result<Option<NodeId>> {
     }
     Ok(materials.first().copied())
 }
-pub fn apply(
+pub fn apply<'a>(
     doc: &Composition,
     text: NodeId,
-    style: Option<&str>,
+    style: Option<impl Into<super::material::Source<'a>>>,
     position: Option<NodePosition>,
 ) -> Result<Vec<Command>> {
     if !doc
@@ -85,11 +85,15 @@ pub fn apply(
             None => Ok(vec![]),
         };
     };
-    if !builtin::is_material(style) {
+    let style = style.into();
+    if let super::material::Source::Builtin(id) = style
+        && !builtin::is_material(id)
+    {
         return fail("Choose a surface material");
     }
-    let preset =
-        builtin::build(style)?.adapted(doc.width, doc.height, super::resolution::Sizing::Fit)?;
+    let preset = style
+        .preset()?
+        .adapted(doc.width, doc.height, super::resolution::Sizing::Fit)?;
     let material = preset
         .nodes
         .values()
@@ -102,15 +106,11 @@ pub fn apply(
         .unwrap();
     if let Some(id) = current {
         let mut node = doc.nodes[&id].clone();
-        let Operation::Material(crate::nodes::Material { kind: new_kind, .. }) = material.operation
-        else {
+        let Operation::Material(with) = &material.operation else {
             unreachable!()
         };
-        if let Operation::Material(crate::nodes::Material { kind, optics, .. }) =
-            &mut node.operation
-        {
-            *kind = new_kind;
-            *optics = None;
+        if let Operation::Material(target) = &mut node.operation {
+            super::material::restyle(target, style, with);
         }
         node.label = format!("Text · {}", preset.group.label);
         let mut commands = vec![Command::Put {
@@ -193,7 +193,7 @@ pub fn output(doc: &Composition, text: NodeId) -> Result<NodeId> {
 }
 /// Image fill replaces a surface and reuses an existing fill node, in one undo step.
 pub fn fill(doc: &Composition, text: NodeId, image: NodeId) -> Result<(NodeId, Vec<Command>)> {
-    let mut commands = apply(doc, text, None, None)?;
+    let mut commands = apply(doc, text, None::<&str>, None)?;
     let owner = crate::Document::new(doc.clone())?;
     let plain = if commands.is_empty() {
         doc.clone()
@@ -379,7 +379,7 @@ pub fn shadow(doc: &Composition, source: NodeId) -> Result<Vec<Command>> {
 }
 
 pub fn plain(doc: &Composition, text: NodeId) -> Result<Vec<Command>> {
-    let mut commands = apply(doc, text, None, None)?;
+    let mut commands = apply(doc, text, None::<&str>, None)?;
     let owner = crate::Document::new(doc.clone())?;
     let candidate = if commands.is_empty() {
         doc.clone()

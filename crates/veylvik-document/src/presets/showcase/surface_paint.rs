@@ -13,6 +13,7 @@ pub(super) fn build() -> Result<Scene> {
         Operation::Material(crate::nodes::Material {
             smooth_edges: true,
             brushing: Default::default(),
+            colours: None,
             optics: None,
             studio: Default::default(),
             kind: crate::MaterialKind::BrickRed,

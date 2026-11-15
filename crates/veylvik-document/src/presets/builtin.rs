@@ -1,6 +1,6 @@
 //! Editable starter effects; the library and automation use the same factories.
 use super::Preset;
-mod appearance;
+pub(in crate::presets) mod appearance;
 mod extended;
 mod optics;
 mod recipes;
@@ -351,7 +351,7 @@ pub const ALL: [Builtin; 67] = [
         description: "Twinkling points radiate from the center in a looping star flight.",
     },
 ];
-struct Builder {
+pub(in crate::presets) struct Builder {
     doc: Composition,
     members: std::collections::BTreeSet<NodeId>,
     controls: Vec<(String, Control)>,
@@ -371,19 +371,38 @@ impl Builder {
         Ok(())
     }
 }
+fn builder() -> Result<(Builder, NodeId)> {
+    let mut doc = crate::blank(960, 540, Time::new(24, 1)?)?;
+    doc.frame_count = 96;
+    let source = doc.output;
+    Ok((
+        Builder {
+            doc,
+            members: Default::default(),
+            controls: Vec::new(),
+        },
+        source,
+    ))
+}
+/// A one-material effect, as the library applies a saved or built-in material.
+pub fn material_preset(label: &str, material: &crate::nodes::Material) -> Result<Preset> {
+    let (mut b, source) = builder()?;
+    let output = appearance::surface(&mut b, source, material.clone())?;
+    let mut group = Group::capture(&b.doc, b.members, output, label)?;
+    group.controls = b.controls.into_iter().collect();
+    for input in group.inputs.values_mut() {
+        input.label = "Image".into();
+    }
+    let group_id = group.id;
+    b.doc.groups.insert(group_id, group);
+    Preset::capture(&b.doc, group_id)
+}
 pub fn build(id: &str) -> Result<Preset> {
     let builtin = ALL
         .iter()
         .find(|b| b.id == id)
         .ok_or_else(|| crate::Error("unknown starter effect".into()))?;
-    let mut doc = crate::blank(960, 540, Time::new(24, 1)?)?;
-    doc.frame_count = 96;
-    let source = doc.output;
-    let mut b = Builder {
-        doc,
-        members: Default::default(),
-        controls: Vec::new(),
-    };
+    let (mut b, source) = builder()?;
     let output = match id {
         id if is_recipe(id) => recipes::build(id, &mut b, source)?,
         "smooth_slow_motion" => {
@@ -826,8 +845,8 @@ pub fn is_material(id: &str) -> bool {
 
 /// Insert a self-contained material and composite it around the current output.
 /// All commands form one transaction; the previous graph remains editable.
-pub fn material_layer(
-    id: &str,
+pub fn material_layer<'a>(
+    id: impl Into<super::material::Source<'a>>,
     doc: &crate::Composition,
     foreground: bool,
     position: Option<crate::NodePosition>,
@@ -860,18 +879,13 @@ pub fn material_layer(
     Ok(instance)
 }
 
-pub(super) fn material_surface(
-    id: &str,
+pub(super) fn material_surface<'a>(
+    id: impl Into<super::material::Source<'a>>,
     doc: &crate::Composition,
     foreground: bool,
     position: Option<crate::NodePosition>,
 ) -> Result<super::Instance> {
-    if !is_material(id) {
-        return Err(crate::Error(
-            "This effect is not a full-frame material".into(),
-        ));
-    }
-    let mut preset = build(id)?;
+    let mut preset = id.into().preset()?;
     let source = Node::new(
         "Full-frame surface",
         Operation::Solid(crate::nodes::Solid { color: [1.0; 4] }),

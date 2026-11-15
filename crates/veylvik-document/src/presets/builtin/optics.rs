@@ -92,6 +92,7 @@ pub fn build(id: &str, b: &mut Builder, source: NodeId) -> Result<NodeId> {
                     smooth_edges: true,
                     brushing: Default::default(),
                     studio: Default::default(),
+                    colours: None,
                     optics: Some(crate::optical::SurfaceOptics {
                         metallic: false,
                         reflectance: [0.04; 3],

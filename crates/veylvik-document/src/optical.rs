@@ -59,6 +59,76 @@ impl MaterialKind {
     }
 }
 
+/// Pattern colours in linear Rec.709, 0–1. Each family gives them its own roles
+/// (`MaterialKind::colour_roles`); unused entries are ignored.
+pub type Palette = [[f32; 3]; 3];
+pub fn validate_palette(palette: &Palette) -> crate::Result<()> {
+    if palette
+        .iter()
+        .flatten()
+        .any(|v| !v.is_finite() || !(0.0..=1.0).contains(v))
+    {
+        return crate::fail("Material colours must be finite linear RGB 0–1");
+    }
+    Ok(())
+}
+pub fn palette_schema() -> serde_json::Value {
+    let colour = serde_json::json!({"type":"array","minItems":3,"maxItems":3,"items":{"type":"number","minimum":0,"maximum":1}});
+    serde_json::json!({"anyOf":[{"type":"null"},{"type":"array","minItems":3,"maxItems":3,"items":colour}]})
+}
+impl MaterialKind {
+    /// What each palette entry colours. Metals have none: their colour is the
+    /// reflectance in `SurfaceOptics`.
+    pub fn colour_roles(self) -> &'static [&'static str] {
+        use MaterialKind::*;
+        match self {
+            Gold | Silver | Aluminium | Bronze => &[],
+            Phosphor => &["Glow"],
+            Wood | OakLight | OakDark => &["Dark grain", "Light grain"],
+            Marble => &["Stone", "Veins"],
+            BrickLight | BrickRed => &["Mortar", "Dark brick", "Light brick"],
+            Concrete => &["Concrete"],
+            Paper => &["Paper"],
+            AgedPaper => &["Light stain", "Dark stain"],
+            LeatherRed | LeatherBrown | LeatherTan | LeatherDark | LeatherBlack => &["Leather"],
+        }
+    }
+    /// The family's own colours, used when a material has no palette.
+    pub fn palette(self) -> Palette {
+        use MaterialKind::*;
+        const DARK_OAK: [f32; 3] = [0.32, 0.23, 0.16];
+        let tint = |c: [f32; 3], t: [f32; 3]| [c[0] * t[0], c[1] * t[1], c[2] * t[2]];
+        let (a, b, c) = match self {
+            Gold | Silver | Aluminium | Bronze => ([0.0; 3], [0.0; 3], [0.0; 3]),
+            // Glow is scaled by 1.9 in the shader so the stored colour stays 0–1.
+            Phosphor => ([0.12 / 1.9, 1.0, 0.2], [0.0; 3], [0.0; 3]),
+            Wood => ([0.065, 0.017, 0.004], [0.5, 0.22, 0.065], [0.0; 3]),
+            OakLight => ([0.16, 0.065, 0.018], [0.69, 0.46, 0.23], [0.0; 3]),
+            OakDark => (
+                tint([0.16, 0.065, 0.018], DARK_OAK),
+                tint([0.69, 0.46, 0.23], DARK_OAK),
+                [0.0; 3],
+            ),
+            Marble => ([0.78, 0.77, 0.71], [0.15, 0.18, 0.19], [0.0; 3]),
+            BrickLight => ([0.28, 0.26, 0.22], [0.42, 0.36, 0.24], [0.75, 0.67, 0.49]),
+            BrickRed => (
+                [0.28, 0.26, 0.22],
+                [0.22, 0.035, 0.012],
+                [0.55, 0.17, 0.055],
+            ),
+            Concrete => ([0.37, 0.36, 0.33], [0.0; 3], [0.0; 3]),
+            Paper => ([0.88, 0.865, 0.82], [0.0; 3], [0.0; 3]),
+            AgedPaper => ([0.64, 0.49, 0.28], [0.26, 0.13, 0.045], [0.0; 3]),
+            LeatherRed => ([0.25, 0.012, 0.018], [0.0; 3], [0.0; 3]),
+            LeatherBrown => ([0.19, 0.064, 0.022], [0.0; 3], [0.0; 3]),
+            LeatherTan => ([0.52, 0.29, 0.12], [0.0; 3], [0.0; 3]),
+            LeatherDark => ([0.055, 0.018, 0.008], [0.0; 3], [0.0; 3]),
+            LeatherBlack => ([0.008, 0.009, 0.012], [0.0; 3], [0.0; 3]),
+        };
+        [a, b, c]
+    }
+}
+
 pub const MAX_STUDIO_LIGHTS: usize = 8;
 /// A rectangular emitter; scene units are relative to the preview sphere radius.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

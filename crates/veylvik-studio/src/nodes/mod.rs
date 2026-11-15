@@ -16,6 +16,8 @@ pub(crate) struct InspectCx<'a> {
     pub text_changed: bool,
     /// The user asked to choose a new source file.
     pub replace_image: bool,
+    /// The user asked to save this material to My materials.
+    pub save_material: bool,
     /// Refresh the viewer preview soon, for continuous edits such as path dragging.
     pub preview_soon: bool,
     pub error: Option<String>,

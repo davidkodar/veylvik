@@ -1,7 +1,7 @@
 //! GPU layout shared by library samples and composition material nodes.
 use veylvik_document::{
     MaterialKind,
-    optical::{StudioRig, SurfaceOptics},
+    optical::{Palette, StudioRig, SurfaceOptics},
 };
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
@@ -9,9 +9,22 @@ pub(crate) struct Lighting {
     pub optics: [f32; 4],
     pub environment: [f32; 4],
     pub lights: [[[f32; 4]; 4]; 8],
+    /// Pattern colours; the family decides what each one paints.
+    pub palette: [[f32; 4]; 3],
 }
+/// Uniform size, shared by the bind group layout and per-node buffers.
+pub(crate) const SIZE: u64 = std::mem::size_of::<Lighting>() as u64;
 impl Lighting {
-    pub fn new(kind: MaterialKind, optics: Option<SurfaceOptics>, rig: &StudioRig) -> Self {
+    pub fn material(m: &veylvik_document::nodes::Material) -> Self {
+        Self::new(m.kind, m.optics, m.colours, &m.studio)
+    }
+    pub fn new(
+        kind: MaterialKind,
+        optics: Option<SurfaceOptics>,
+        colours: Option<Palette>,
+        rig: &StudioRig,
+    ) -> Self {
+        let palette = colours.unwrap_or_else(|| kind.palette());
         let optics = optics.unwrap_or_else(|| kind.optics());
         let f0 = optics.f0();
         let mut result = Self {
@@ -23,6 +36,7 @@ impl Lighting {
                 rig.environment_rotation.to_radians(),
             ],
             lights: [[[0.; 4]; 4]; 8],
+            palette: palette.map(|[r, g, b]| [r, g, b, 0.]),
         };
         for (output, light) in result.lights.iter_mut().zip(&rig.lights) {
             let rotate = |[x, y, z]: [f32; 3]| {

@@ -42,6 +42,7 @@ pub(crate) fn for_node(
                 reflectance: [0.02; 3],
                 ior: 1.333,
             }),
+            None,
             rig,
         );
         if let Some(m) = material {
@@ -66,7 +67,7 @@ pub(crate) fn for_node(
     let Some(m) = m else {
         return Ok(None);
     };
-    let mut lighting = Lighting::new(m.kind, m.optics, &m.studio);
+    let mut lighting = Lighting::material(m);
     if matches!(node.operation, Operation::Shadow(_)) {
         // Match the material's rotation of the light frame (inverse Y rotation).
         let (s, c) = (m.lighting.at(time)? * std::f32::consts::TAU).sin_cos();

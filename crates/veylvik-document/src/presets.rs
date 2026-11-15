@@ -2,6 +2,7 @@
 //! files contain no filesystem dependencies or application/session state.
 pub mod background;
 pub mod builtin;
+pub mod material;
 pub mod resolution;
 pub mod showcase;
 pub mod text_style;

@@ -25,12 +25,59 @@ impl Inspect for veylvik_document::nodes::Material {
                     }
                 });
         }
-        if reset_optics && self.optics.take().is_some() {
+        // Another family has other colour roles, so its own colours apply.
+        if reset_optics && (self.optics.take().is_some() | self.colours.take().is_some()) {
             cx.dirty = true;
         }
+        cx.dirty |= colour_controls(ui, self);
         cx.dirty |= finish_controls(ui, self);
         cx.dirty |= lighting_controls(ui, self, cx.node_id);
+        ui.add_space(4.);
+        cx.save_material |= ui
+            .button("Save as my material…")
+            .on_hover_text("Keep this surface, its colours, finish and lighting in My materials in the Library")
+            .clicked();
     }
+}
+/// Pattern colours with their family roles, edited in display (sRGB) terms.
+pub(crate) fn colour_controls(
+    ui: &mut egui::Ui,
+    material: &mut veylvik_document::nodes::Material,
+) -> bool {
+    let roles = material.kind.colour_roles();
+    if roles.is_empty() {
+        return false;
+    }
+    let (mut changed, mut reset) = (false, false);
+    let defaults = material.kind.palette();
+    let mut palette = material.colours.unwrap_or(defaults);
+    ui.horizontal_wrapped(|ui| {
+        for (role, colour) in roles.iter().zip(&mut palette) {
+            let mut shown = colour.map(egui::ecolor::gamma_from_linear);
+            ui.label(*role);
+            if ui
+                .color_edit_button_rgb(&mut shown)
+                .on_hover_text(format!("{role} colour"))
+                .changed()
+            {
+                *colour = shown.map(|v| egui::ecolor::linear_from_gamma(v).clamp(0., 1.));
+                changed = true;
+            }
+        }
+        reset = material.colours.is_some()
+            && ui
+                .small_button("Reset colours")
+                .on_hover_text("Use this surface’s own colours")
+                .clicked();
+    });
+    if reset {
+        material.colours = None;
+        return true;
+    }
+    if changed {
+        material.colours = (palette != defaults).then_some(palette);
+    }
+    changed
 }
 impl Inspect for veylvik_document::nodes::Patina {
     fn inspect(&mut self, ui: &mut egui::Ui, cx: &mut InspectCx<'_>) {

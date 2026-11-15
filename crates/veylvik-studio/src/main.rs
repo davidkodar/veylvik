@@ -23,6 +23,7 @@ mod icons;
 mod key_timeline;
 mod light_guides;
 mod live_jobs;
+mod material_library;
 mod media_controls;
 mod media_import;
 mod menus;
@@ -246,6 +247,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 planar: planar::Controls::default(),
                 live_job: None,
                 audio: Default::default(),
+                materials: Default::default(),
                 subject: subject::Controls::default(),
                 models: models_window::ModelsWindow::default(),
                 outline_controls: text_outline::Controls::default(),
@@ -338,6 +340,7 @@ struct Studio {
     planar: planar::Controls,
     live_job: Option<live_jobs::LiveJob>,
     audio: audio_preview::AudioPreview,
+    materials: material_library::Library,
     subject: subject::Controls,
     models: models_window::ModelsWindow,
     outline_controls: text_outline::Controls,
@@ -1639,6 +1642,7 @@ impl Studio {
             dirty: false,
             text_changed: false,
             replace_image: false,
+            save_material: false,
             preview_soon: false,
             error: None,
             picking: self
@@ -1664,11 +1668,16 @@ impl Studio {
             dirty,
             text_changed: media_changed,
             replace_image: replace,
+            save_material,
             preview_soon,
             error,
             pick,
             ..
         } = cx;
+        if save_material && let Operation::Material(material) = &self.draft.operation {
+            let label = self.draft.label.trim_start_matches("Text · ").to_owned();
+            self.materials.save(&label, material);
+        }
         if let Some(field) = pick {
             // A second press on the active field cancels, like Esc.
             let active = self
@@ -2451,6 +2460,10 @@ impl Studio {
         self.effect_dialog(ctx);
         self.preset_library(ctx);
         self.library_drop_options(ctx);
+        self.materials.dialogs(ctx);
+        if let Some(e) = self.materials.error.take() {
+            self.fail(e);
+        }
         if let Some(action) = self.confirm {
             egui::Window::new("Unsaved changes")
                 .collapsible(false)
@@ -2543,6 +2556,7 @@ impl eframe::App for Studio {
             }
         }
         self.audio_tick();
+        self.materials.poll(&ctx);
         light_guides::begin_frame(&ctx);
         self.fonts.poll(&ctx);
         if self.draft_dirty
