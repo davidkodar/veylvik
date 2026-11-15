@@ -43,6 +43,7 @@ mod preset_library;
 mod preview_images;
 mod project;
 mod recovery;
+mod scopes;
 mod sequence;
 mod shape_animation;
 mod showcase_gallery;
@@ -200,6 +201,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 view: ViewSettings::default(),
                 navigation: viewer::Navigation::default(),
                 comparison: Default::default(),
+                scopes: scopes::Scopes::new(&state.device, &state.queue, state.target_format),
                 displayed: None,
                 displayed_ticket: None,
                 wanted: None,
@@ -287,6 +289,7 @@ struct Studio {
     view: ViewSettings,
     navigation: viewer::Navigation,
     comparison: comparison::Comparison,
+    scopes: scopes::Scopes,
     displayed: Option<Arc<DisplayFrame>>,
     displayed_ticket: Option<PreviewTicket>,
     wanted: Option<PreviewTicket>,
@@ -392,6 +395,7 @@ impl Studio {
         self.library = preset_library::Library::default();
         self.navigation.fit();
         self.comparison = Default::default();
+        self.scopes.clear();
         self.displayed = None;
         self.displayed_ticket = None;
         self.displayed_time = None;
@@ -2961,6 +2965,7 @@ impl eframe::App for Studio {
                         }
                     });
                     self.comparison_toolbar(ui);
+                    self.scopes_panel(ui);
                     if self.occlusion_pending() {
                         ui.horizontal_wrapped(|ui| {
                             ui.strong("Outline foreground object");
@@ -3004,7 +3009,7 @@ impl eframe::App for Studio {
                             self.project.document.snapshot().height as f32,
                         );
                         let (canvas, response) = ui.allocate_exact_size(
-                            ui.available_size().max(egui::vec2(1.0, 1.0)),
+                            (ui.available_size() - egui::vec2(0.0, if self.scopes.visible { 6.0 } else { 0.0 })).max(egui::vec2(1.0, 1.0)),
                             egui::Sense::click_and_drag(),
                         );
                         let before_navigation = self.navigation.transform(canvas, image, ctx.pixels_per_point());

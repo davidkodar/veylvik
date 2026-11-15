@@ -29,6 +29,9 @@ pub struct Comparison {
     navigation: Navigation,
 }
 impl Comparison {
+    pub fn source(&self) -> Option<Arc<DisplayFrame>> {
+        self.reference.clone()
+    }
     pub fn status(&self) -> serde_json::Value {
         serde_json::json!({"captured":self.reference.is_some(),"mode":match self.mode {Mode::Off=>"off",Mode::Wipe=>"wipe",Mode::SideBySide=>"side_by_side"},"reference":self.label,"size":self.size,"swapped":self.swapped,"divider":self.divider.unwrap_or(0.5),"scale":self.navigation.manual_scale(),"pan":self.navigation.pan()})
     }
@@ -45,6 +48,7 @@ impl Comparison {
 impl Studio {
     pub(super) fn comparison_toolbar(&mut self, ui: &mut egui::Ui) {
         ui.horizontal_wrapped(|ui| {
+            ui.toggle_value(&mut self.scopes.visible,"Scopes").on_hover_text("Show or hide colour scopes: individual plots or Four-up");
             let ready = self.displayed.is_some() && self.displayed_ticket == self.wanted && !self.preview_pending && !self.draft_dirty;
             if ui.add_enabled(ready, egui::Button::new(if self.comparison.reference.is_some() {"Replace A"} else {"Capture A"}))
                 .on_hover_text("Keep this completed preview as a GPU reference. B remains live. Reference includes its preview colour transform; it is not saved in the project.").clicked() {
@@ -79,7 +83,8 @@ impl Studio {
             return;
         };
         let (canvas, _) = ui.allocate_exact_size(
-            ui.available_size().max(egui::vec2(1., 1.)),
+            (ui.available_size() - egui::vec2(0.0, if self.scopes.visible { 6.0 } else { 0.0 }))
+                .max(egui::vec2(1., 1.)),
             egui::Sense::hover(),
         );
         let side = self.comparison.mode == Mode::SideBySide;

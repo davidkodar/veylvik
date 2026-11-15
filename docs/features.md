@@ -46,6 +46,8 @@ Everything Veylvik can do today, area by area. Veylvik is a native Rust node com
 
 ## Viewer
 
+- GPU colour scopes: RGB histogram, luma waveform, RGB parade and Cb/Cr vectorscope, individually or in a resizable **Four-up** panel. Double-click to expand/restore, choose live B or captured A, and adjust trace intensity. Display-referred full-range sRGB, with explicit sampling and stale-preview labels.
+
 - **Capture A** retains a completed GPU preview as a session reference; compare with live B using a draggable wipe or side-by-side view, swap sides, replace or clear A. Shared navigation and exposure/alpha controls; comparison is view-only and never affects exports.
 
 - GPU-resident display on the same Vulkan device as the UI; optional disk caching performs pixel transfers.

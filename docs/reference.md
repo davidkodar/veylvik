@@ -297,7 +297,36 @@ turn comparison off to manipulate objects in the viewer. Capture is disabled whi
 the preview is stale or an inspector draft is unapplied. A retains its capture-time
 preview resolution and OCIO transform; B uses the current transform. Comparison
 does not change exports or project history. One reference frame retains GPU memory
-until cleared; no CPU pixel copy is needed. General colour scopes are not yet present.
+until cleared; no CPU pixel copy is needed. Colour scopes are described below.
+
+**Scopes** toggles a resizable panel with **Four-up** (default), Histogram, Waveform,
+RGB parade and Vectorscope. Double-click a plot to expand it or return to Four-up.
+Choose **B: live** or **A: reference**; A requires Capture A. Trace intensity only
+changes drawing, never image pixels. Hiding the panel releases its retained result
+and stops scope calculation. Scopes do not change project history or exports.
+
+The measurement domain is **Display RGB, full range**: the completed preview's OCIO
+transform, viewer exposure, filmic/clamped display transform, then sRGB encoding.
+Colour is unpremultiplied; fully transparent and non-finite pixels are excluded.
+Viewer zoom, checkerboard, guides and Alpha mode are not measured. This is not a
+scene-linear/HDR exposure scope or a legal-range broadcast compliance check.
+A retains its captured colour transform; shared viewer exposure affects A and B.
+
+Each source is sampled on a deterministic grid of at most 512 × 512 points, visibly
+labelled. Half/Quarter preview settings therefore also affect the measured source.
+Histogram uses 256 RGB bins; waveform/parade/vectorscope use 128 × 128 bins per
+trace. Waveform uses Rec.709 coefficients on encoded RGB. Vectorscope uses Cb/Cr,
+with full-saturation RGB/CMY target boxes. End bins include display-clipped values.
+Histogram height is relative trace density; waveform/parade vertical scales are
+0–1 RGB/luma levels. Trace density is normalised per plot; sparse traces use
+nonlinear brightness and the vectorscope trace is widened for readability.
+These sampled scopes can miss isolated pixels; they are not exhaustive clipping
+or gamut validation. Stale live previews are labelled until the new render arrives.
+
+Accumulation and drawing run on the GPU, shared across the four plots, without
+pixel readback. Scope buffers use about 324 KiB per retained result, separate from
+renderer working buffers. A source frame remains retained until that result is
+replaced or hidden.
 
 **View exposure** adjusts only the display by −16 to +16 stops. **Alpha** shows
 coverage as grayscale, independent of exposure; **Reset view** restores normal
