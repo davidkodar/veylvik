@@ -160,16 +160,23 @@ fn mask(@builtin(global_invocation_id) gid:vec3<u32>) {
 }
 // Box weights are all 1; gaussian (values.y = 1) uses sigma = radius / 3, so the
 // radius stays the visible reach of the blur for both filters.
-fn blur_weight(offset:i32,radius:i32)->f32 {
-    if p.values.y<0.5 {return 1.0;}
+fn blur_weight(offset:i32,radius:i32,gaussian:bool)->f32 {
+    if !gaussian {return 1.0;}
     let sigma=max(f32(radius)/3.0,0.5);
     return exp(-f32(offset*offset)/(2.0*sigma*sigma));
 }
-fn blur_axis(gid:vec3<u32>,axis:vec2<i32>)->vec4<f32> {
-    let radius=i32(round(p.values.x));var total=vec4<f32>(0.0);var weights=0.0;
+// Blur treats the outside as transparent; frost extends the edge pixels instead,
+// so a full-frame background stays opaque up to the frame edge.
+fn blur_tap(x:i32,y:i32,extend:bool)->vec4<f32> {
+    if !extend {return sample_source(x,y);}
+    let q=clamp(vec2<i32>(x,y),vec2<i32>(0),vec2<i32>(p.size_op.xy)-vec2<i32>(1));
+    return source[u32(q.y)*p.size_op.x+u32(q.x)];
+}
+fn blur_axis(gid:vec3<u32>,axis:vec2<i32>,radius:i32,gaussian:bool,extend:bool)->vec4<f32> {
+    var total=vec4<f32>(0.0);var weights=0.0;
     for (var offset=-radius;offset<=radius;offset++) {
-        let pos=vec2<i32>(gid.xy)+axis*offset;let w=blur_weight(offset,radius);
-        total+=sample_source(pos.x,pos.y)*w;weights+=w;
+        let pos=vec2<i32>(gid.xy)+axis*offset;let w=blur_weight(offset,radius,gaussian);
+        total+=blur_tap(pos.x,pos.y,extend)*w;weights+=w;
     }
     return total/weights;
 }
@@ -177,20 +184,32 @@ fn blur_axis(gid:vec3<u32>,axis:vec2<i32>)->vec4<f32> {
 var<workgroup> blur_row:array<vec4<f32>,576>;
 @compute @workgroup_size(64,1)
 fn blur_horizontal(@builtin(global_invocation_id) gid:vec3<u32>,@builtin(local_invocation_id) lid:vec3<u32>) {
-    let radius=u32(round(p.values.x));
+    blur_row_pass(gid,lid,u32(round(p.values.x)),p.values.y>=0.5,false);
+}
+// Frosted glass blurs its background with a gaussian whose reach is the roughness.
+@compute @workgroup_size(64,1)
+fn frost_horizontal(@builtin(global_invocation_id) gid:vec3<u32>,@builtin(local_invocation_id) lid:vec3<u32>) {
+    blur_row_pass(gid,lid,u32(round(clamp(p.values.z,0.0,256.0))),true,true);
+}
+@compute @workgroup_size(8,8)
+fn frost_vertical(@builtin(global_invocation_id) gid:vec3<u32>) {
+    if !inside(gid) {return;}
+    result[index(gid)]=blur_axis(gid,vec2<i32>(0,1),i32(round(clamp(p.values.z,0.0,256.0))),true,true);
+}
+fn blur_row_pass(gid:vec3<u32>,lid:vec3<u32>,radius:u32,gaussian:bool,extend:bool) {
     if radius<=2u {
-        if inside(gid) {result[index(gid)]=blur_axis(gid,vec2<i32>(1,0));}
+        if inside(gid) {result[index(gid)]=blur_axis(gid,vec2<i32>(1,0),i32(radius),gaussian,extend);}
         return;
     }
     let origin=i32(gid.x-lid.x)-i32(radius);
     for(var item=lid.x;item<64u+2u*radius;item+=64u) {
-        blur_row[item]=sample_source(origin+i32(item),i32(gid.y));
+        blur_row[item]=blur_tap(origin+i32(item),i32(gid.y),extend);
     }
     workgroupBarrier();
     if !inside(gid) {return;}
     var total=vec4<f32>(0.0);var weights=0.0;
     for(var tap=0u;tap<=2u*radius;tap++) {
-        let w=blur_weight(i32(tap)-i32(radius),i32(radius));
+        let w=blur_weight(i32(tap)-i32(radius),i32(radius),gaussian);
         total+=blur_row[lid.x+tap]*w;weights+=w;
     }
     result[index(gid)]=total/weights;
@@ -250,7 +269,7 @@ fn lens_blur(@builtin(global_invocation_id) gid:vec3<u32>) {
 }
 @compute @workgroup_size(8,8)
 fn blur_vertical(@builtin(global_invocation_id) gid:vec3<u32>) {
-    if !inside(gid) {return;} result[index(gid)]=blur_axis(gid,vec2<i32>(0,1));
+    if !inside(gid) {return;} result[index(gid)]=blur_axis(gid,vec2<i32>(0,1),i32(round(p.values.x)),p.values.y>=0.5,false);
 }
 @compute @workgroup_size(8,8)
 fn merge(@builtin(global_invocation_id) gid:vec3<u32>) {
@@ -962,11 +981,12 @@ fn glass(@builtin(global_invocation_id) gid:vec3<u32>) {
     let n=bevel_normal(vec2<i32>(gid.xy),p.values.x);
     let pos=vec2<f32>(gid.xy);
     let displacement=-n.xy*p.values.y*(1.0-1.0/p.values.w);
-    let center=reflected_sample(pos+displacement,p.values.z);
+    // The background arrives already frosted (gaussian, reach = roughness).
+    let center=second_bilinear(pos+displacement);
     var color=center.rgb;
     if p.extra.z>0.0 {
-        color.r=reflected_sample(pos+displacement*(1.0+p.extra.z),p.values.z).r;
-        color.b=reflected_sample(pos+displacement*(1.0-p.extra.z),p.values.z).b;
+        color.r=second_bilinear(pos+displacement*(1.0+p.extra.z)).r;
+        color.b=second_bilinear(pos+displacement*(1.0-p.extra.z)).b;
     }
     let f0=pow((p.values.w-1.0)/(p.values.w+1.0),2.0);
     let fresnel=f0+(1.0-f0)*pow(1.0-n.z,5.0);

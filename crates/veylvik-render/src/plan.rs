@@ -43,6 +43,8 @@ pub enum Kernel {
     BevelHeightHorizontal,
     BevelHeightVertical,
     EnvironmentPyramid,
+    FrostHorizontal,
+    FrostVertical,
     Merge,
     Blend,
     SurfaceBlend,
@@ -71,7 +73,7 @@ pub enum Kernel {
     Lut,
 }
 impl Kernel {
-    pub(crate) const ALL: [Self; 63] = [
+    pub(crate) const ALL: [Self; 65] = [
         Self::ToAcescg,
         Self::FromAcescg,
         Self::Text,
@@ -109,6 +111,8 @@ impl Kernel {
         Self::BevelHeightHorizontal,
         Self::BevelHeightVertical,
         Self::EnvironmentPyramid,
+        Self::FrostHorizontal,
+        Self::FrostVertical,
         Self::Merge,
         Self::Blend,
         Self::SurfaceBlend,
@@ -175,6 +179,8 @@ impl Kernel {
             Self::BevelHeightHorizontal => "bevel_height_horizontal",
             Self::BevelHeightVertical => "bevel_height_vertical",
             Self::EnvironmentPyramid => "environment_pyramid",
+            Self::FrostHorizontal => "frost_horizontal",
+            Self::FrostVertical => "frost_vertical",
             Self::Merge => "merge",
             Self::Blend => "blend",
             Self::SurfaceBlend => "surface_blend",

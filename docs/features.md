@@ -234,7 +234,7 @@ Everything Veylvik can do today, area by area. Veylvik is a native Rust node com
 - **Shadow** offers manual offsets or **Follow scene lighting**, reading the nearest material on its Lighting branch. Choose one or all enabled area lights, receiving-plane distance, softness and strength. Text Style exposes this checkbox directly on the attached shadow entry. Original offset/blur shadows offer **Enable light-following shadow**, an undoable upgrade that keeps downstream wiring. Existing groups are unchanged until upgraded. Environment highlights alone do not cast shadows.
 - Material library spheres and composition surfaces share the shader. Flat text faces reflect differently from curved spheres; bevel, roughness and lighting angle affect the result.
 - **Tarnish and dirt** (`patina`): tarnish, verdigris or rust; amount, dirt, scale, wear, scratches, seed.
-- **Glass surface**: clear or frosted; bevel, refraction, roughness, IOR, transmission, tint, dispersion; separate background input.
+- **Glass surface**: clear or frosted; bevel, refraction, roughness, IOR, transmission, tint, dispersion; separate background input. Frosting is a smooth gaussian blur of the background (reach = roughness, up to 256 px), grain-free at any strength.
 - **Surface reflection**: metal or glass; bevel, curvature, roughness, strength, rotation, scale, X/Y offset; separate reflection input (any image or animated branch).
 - **Sun glints**: seed, size, intensity, threshold, evolution, density, angle.
 - **Metallic shine**: alpha-preserving specular sweep; X/Y, width, angle, intensity.

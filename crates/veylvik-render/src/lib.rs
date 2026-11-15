@@ -786,7 +786,8 @@ impl Renderer {
                             1,
                         );
                     }
-                    Kernel::BlurHorizontal => {
+                    // One 64-pixel row segment per workgroup.
+                    Kernel::BlurHorizontal | Kernel::FrostHorizontal => {
                         pass.dispatch_workgroups(plan.width.div_ceil(64), plan.height, 1)
                     }
                     _ => {

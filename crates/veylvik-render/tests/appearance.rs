@@ -685,3 +685,67 @@ fn connected_shot_colours_reflections_and_shot_zero_is_the_studio() {
         studio.iter().map(|p| p[3]).collect::<Vec<_>>()
     );
 }
+
+#[test]
+#[ignore = "requires Vulkan"]
+fn frosted_glass_is_smooth_and_keeps_the_frame_opaque() {
+    let renderer = Renderer::new().unwrap();
+    let (mut doc, mut inputs, _) = source();
+    let checker: Vec<_> = (0..96 * 64)
+        .map(|i| {
+            let v = if (i % 96 / 2 + i / 96 / 2) % 2 == 0 {
+                1.0
+            } else {
+                0.0
+            };
+            [v, v, v, 1.0]
+        })
+        .collect();
+    inputs.insert("checker", Arc::new(Image::new(96, 64, checker).unwrap()));
+    let background = Node::new(
+        "Checker",
+        Operation::Image(nodes::Image {
+            asset: "checker".into(),
+        }),
+        &[],
+    );
+    let glass = Node::new(
+        "Frost",
+        serde_json::from_value(serde_json::json!({
+            "type":"glass","bevel":{"kind":"constant","value":2.0},
+            "refraction":{"kind":"constant","value":0.0},"roughness":{"kind":"constant","value":12.0},
+            "ior":{"kind":"constant","value":1.5},"transmission":{"kind":"constant","value":1.0},
+            "tint":{"kind":"constant","value":0.0},"dispersion":{"kind":"constant","value":0.0}}))
+        .unwrap(),
+        &[("image", doc.output), ("background", background.id)],
+    );
+    doc.output = glass.id;
+    doc.nodes.insert(background.id, background);
+    doc.nodes.insert(glass.id, glass);
+    let pixels = renderer
+        .render_frame(
+            &Plan::compile(&doc).unwrap(),
+            RenderRequest::full(Time::new(0, 1).unwrap()),
+            &inputs,
+        )
+        .unwrap()
+        .pixels;
+    // Fully covered interior, including the frame edge: opaque and nearly flat grey
+    // although the 2-pixel checker underneath alternates between 0 and 1.
+    for y in 0..64 {
+        for x in 24..96 {
+            let p = pixels[y * 96 + x];
+            assert!((p[3] - 1.0).abs() < 1e-4, "alpha at {x},{y} is {}", p[3]);
+            // Bevel highlights sit within a few pixels of the canvas edge.
+            if (6..58).contains(&y) && x + 1 < 90 {
+                let q = pixels[y * 96 + x + 1];
+                assert!(
+                    (p[0] - q[0]).abs() < 0.02,
+                    "grain at {x},{y}: {} vs {}",
+                    p[0],
+                    q[0]
+                );
+            }
+        }
+    }
+}

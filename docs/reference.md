@@ -539,7 +539,10 @@ including animated clouds or any other image branch. Curvature, mapping, rotatio
 roughness and strength are editable. This is image-based 2.5D reflection, not scene
 ray tracing. **Clear Glass** and **Frosted Glass Material** expose separate shape,
 background-to-refract and reflection inputs. Composite the glass result over that
-same background; frosting diffuses its details. **Sun Glints** adds deterministic,
+same background. Frosting blurs that background with a smooth two-pass gaussian
+whose reach is the glass Roughness in pixels (up to 256), extending the frame's edge
+pixels so a full-frame background stays opaque; refraction and dispersion then
+sample the frosted image. **Sun Glints** adds deterministic,
 animated star-like highlights at bright surface points; threshold, density, size,
 angle and intensity control them. **Metal Patina** independently adds tarnish,
 verdigris or rust, dirt, edge wear and scratches; set amounts to zero for clean metal.

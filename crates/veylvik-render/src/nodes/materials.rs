@@ -212,7 +212,25 @@ impl RenderNode for veylvik_document::nodes::SunGlints {
 }
 impl RenderNode for veylvik_document::nodes::Glass {
     fn passes(&self) -> Passes {
-        Passes::One(Kernel::Glass)
+        // Frost the background first (separable gaussian), then refract it.
+        Passes::Chain(&[
+            super::Step {
+                kernel: Kernel::FrostHorizontal,
+                inputs: [super::From::Port(1), super::From::None, super::From::None],
+            },
+            super::Step {
+                kernel: Kernel::FrostVertical,
+                inputs: [super::From::Step(0), super::From::None, super::From::None],
+            },
+            super::Step {
+                kernel: Kernel::Glass,
+                inputs: [
+                    super::From::Port(0),
+                    super::From::Step(1),
+                    super::From::None,
+                ],
+            },
+        ])
     }
     fn shareable(&self) -> bool {
         true
