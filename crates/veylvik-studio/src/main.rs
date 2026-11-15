@@ -4,6 +4,7 @@ mod animation_editor;
 mod asset_browser;
 mod audio_preview;
 mod color_controls;
+mod comparison;
 mod composition;
 mod control;
 mod curve_preview;
@@ -198,6 +199,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 display,
                 view: ViewSettings::default(),
                 navigation: viewer::Navigation::default(),
+                comparison: Default::default(),
                 displayed: None,
                 displayed_ticket: None,
                 wanted: None,
@@ -284,6 +286,7 @@ struct Studio {
     display: Display,
     view: ViewSettings,
     navigation: viewer::Navigation,
+    comparison: comparison::Comparison,
     displayed: Option<Arc<DisplayFrame>>,
     displayed_ticket: Option<PreviewTicket>,
     wanted: Option<PreviewTicket>,
@@ -388,6 +391,7 @@ impl Studio {
         self.effects = effects::Controls::default();
         self.library = preset_library::Library::default();
         self.navigation.fit();
+        self.comparison = Default::default();
         self.displayed = None;
         self.displayed_ticket = None;
         self.displayed_time = None;
@@ -2942,6 +2946,7 @@ impl eframe::App for Studio {
                         });
                         if ui.button("Fit").clicked() {
                             self.navigation.fit();
+                            self.comparison.fit();
                         }
                         if ui
                             .button("100%")
@@ -2949,11 +2954,13 @@ impl eframe::App for Studio {
                             .clicked()
                         {
                             self.navigation.actual_size();
+                            self.comparison.actual_size();
                         }
                         if ui.button("Reset view").clicked() {
                             self.view = ViewSettings {fast_filter:self.preferences.values.fast_view,..Default::default()};
                         }
                     });
+                    self.comparison_toolbar(ui);
                     if self.occlusion_pending() {
                         ui.horizontal_wrapped(|ui| {
                             ui.strong("Outline foreground object");
@@ -2989,7 +2996,9 @@ impl eframe::App for Studio {
                             }
                         });
                     }
-                    if let Some(frame) = self.displayed.clone() {
+                    if self.comparison.active() {
+                        self.comparison_view(ui);
+                    } else if let Some(frame) = self.displayed.clone() {
                         let image = egui::vec2(
                             self.project.document.snapshot().width as f32,
                             self.project.document.snapshot().height as f32,

@@ -287,6 +287,18 @@ retention; external footage and OCIO dependency metadata are checked every two
 seconds. Reload still images after changing their files. Custom frame sources must
 supply cache dependencies to opt in. Exports release playback GPU retention first.
 
+**Capture A** holds the completed preview on the GPU as a session-only reference.
+Choose **Compare: Wipe** (drag the divider; double-click it to centre) or
+**Side by side**. A stays frozen while B follows edits, node selection and playback.
+**Swap A/B** swaps sides, **Replace A** captures a new completed result, and **Clear A**
+releases the reference. Off retains A for later comparison. Opening another project
+clears it. Comparison uses shared zoom/pan, Fit/100%, exposure, alpha and filtering;
+turn comparison off to manipulate objects in the viewer. Capture is disabled while
+the preview is stale or an inspector draft is unapplied. A retains its capture-time
+preview resolution and OCIO transform; B uses the current transform. Comparison
+does not change exports or project history. One reference frame retains GPU memory
+until cleared; no CPU pixel copy is needed. General colour scopes are not yet present.
+
 **View exposure** adjusts only the display by −16 to +16 stops. **Alpha** shows
 coverage as grayscale, independent of exposure; **Reset view** restores normal
 color viewing. These controls do not change the document, history or exports.

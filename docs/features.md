@@ -46,6 +46,8 @@ Everything Veylvik can do today, area by area. Veylvik is a native Rust node com
 
 ## Viewer
 
+- **Capture A** retains a completed GPU preview as a session reference; compare with live B using a draggable wipe or side-by-side view, swap sides, replace or clear A. Shared navigation and exposure/alpha controls; comparison is view-only and never affects exports.
+
 - GPU-resident display on the same Vulkan device as the UI; optional disk caching performs pixel transfers.
 - Inclusive In/Out playback ranges, I/O shortcuts, range caching, GPU/disk cache indicators and adjustable cache budgets.
 - Full/Half/Quarter completed preview sizes reduce retained memory; effects still evaluate at project resolution and exports remain unchanged.
