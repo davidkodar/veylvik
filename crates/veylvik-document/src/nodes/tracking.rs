@@ -22,6 +22,7 @@ pub static PLANAR_TRACK: NodeType = NodeType {
     label: "Planar track",
     description: "Reusable normalized surface motion and feature diagnostics. Image passes through unchanged. Connect its output to any Planar warp track input.",
     inputs: &["image"],
+    optional: &[],
     parameters: &[other(
         "data",
         ParameterKind::PlanarTrack,
@@ -34,6 +35,7 @@ pub static PLANAR_WARP: NodeType = NodeType {
     label: "Planar warp",
     description: "GPU perspective sampling driven by a Planar track. Follow reference placement, fit the full image to the surface, or stabilize the tracked plane.",
     inputs: &["image", "track"],
+    optional: &[],
     parameters: &[other("mode", ParameterKind::PlanarMode, "")],
 };
 

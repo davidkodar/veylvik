@@ -30,6 +30,24 @@ impl Inspect for veylvik_document::nodes::Material {
             cx.dirty = true;
         }
         cx.dirty |= colour_controls(ui, self);
+        ui.horizontal_wrapped(|ui| {
+            if cx.environment {
+                ui.label("Reflects the shot");
+                if ui
+                    .small_button("Use studio")
+                    .on_hover_text("Disconnect the Environment input and reflect the studio again")
+                    .clicked()
+                {
+                    cx.reflect_shot = Some(false);
+                }
+            } else if ui
+                .button("Reflect the shot")
+                .on_hover_text("Use the footage behind this layer as its surroundings: reflections, blur by roughness and diffuse light come from the shot. Shot reflection then blends it with the studio.")
+                .clicked()
+            {
+                cx.reflect_shot = Some(true);
+            }
+        });
         cx.dirty |= finish_controls(ui, self);
         cx.dirty |= lighting_controls(ui, self, cx.node_id);
         ui.add_space(4.);

@@ -97,6 +97,7 @@ fn materials_are_distinct_finite_and_preserve_partial_alpha() {
                 lighting: 0.0.into(),
                 grain: 0.6.into(),
                 emission: 1.0.into(),
+                shot: 1.0.into(),
             }),
             &[("image", input)],
         );
@@ -619,5 +620,68 @@ fn material_colours_repaint_the_pattern_and_default_to_the_family() {
             doc
         })
         .is_err()
+    );
+}
+
+#[test]
+#[ignore = "requires Vulkan"]
+fn connected_shot_colours_reflections_and_shot_zero_is_the_studio() {
+    let renderer = Renderer::new().unwrap();
+    let (doc, inputs, _) = source();
+    let coverage = doc.output;
+    let plate = Node::new(
+        "Red shot",
+        Operation::Solid(nodes::Solid {
+            color: [0.9, 0.05, 0.02, 1.0],
+        }),
+        &[],
+    );
+    let preset = veylvik_document::presets::builtin::build("silver_text").unwrap();
+    let mut silver = preset
+        .nodes
+        .values()
+        .find_map(|n| match &n.operation {
+            Operation::Material(m) => Some(m.clone()),
+            _ => None,
+        })
+        .unwrap();
+    silver.lighting = 0.0.into();
+    let render = |silver: &nodes::Material, environment: bool| {
+        let mut ports = vec![("image", coverage)];
+        if environment {
+            ports.push(("environment", plate.id));
+        }
+        let node = Node::new("m", Operation::Material(silver.clone()), &ports);
+        let mut d = doc.clone();
+        d.nodes.insert(plate.id, plate.clone());
+        d.output = node.id;
+        d.nodes.insert(node.id, node);
+        renderer
+            .render_frame(
+                &Plan::compile(&d).unwrap(),
+                RenderRequest::full(Time::new(0, 1).unwrap()),
+                &inputs,
+            )
+            .unwrap()
+            .pixels
+    };
+    let studio = render(&silver, false);
+    silver.shot = 0.0.into();
+    assert_eq!(
+        render(&silver, true),
+        studio,
+        "shot 0 keeps the studio look"
+    );
+    silver.shot = 1.0.into();
+    let shot = render(&silver, true);
+    let redness = |p: &[[f32; 4]]| p.iter().map(|v| v[0] - v[2]).sum::<f32>();
+    assert!(
+        redness(&shot) > redness(&studio) + 1.0,
+        "the red shot tints the chrome"
+    );
+    assert!(shot.iter().all(|p| p.iter().all(|v| v.is_finite())));
+    assert_eq!(
+        shot.iter().map(|p| p[3]).collect::<Vec<_>>(),
+        studio.iter().map(|p| p[3]).collect::<Vec<_>>()
     );
 }

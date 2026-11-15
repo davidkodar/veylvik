@@ -224,6 +224,26 @@ impl Project {
         }])?;
         Ok(true)
     }
+    /// Unlink an optional input; required ports always stay connected.
+    pub fn disconnect(&mut self, target: NodeId, port: &str) -> Result<bool> {
+        let mut node = self
+            .document
+            .snapshot()
+            .nodes
+            .get(&target)
+            .ok_or("target node does not exist")?
+            .clone();
+        if !node.operation.descriptor().is_optional(port) {
+            return Err("only optional inputs can be disconnected".into());
+        }
+        if node.inputs.remove(port).is_none() {
+            return Ok(false);
+        }
+        self.apply(&[Command::Put {
+            node: Box::new(node),
+        }])?;
+        Ok(true)
+    }
     pub fn undo(&mut self, redo: bool) -> Result<()> {
         let revision = self.document.revision();
         if redo {
@@ -284,10 +304,11 @@ impl Project {
                 })
                 .unwrap_or(doc.frame_rate);
         }
+        // Optional ports start unconnected.
         let ports: Vec<_> = operation
-            .inputs()
-            .iter()
-            .map(|port| (*port, self.selected))
+            .descriptor()
+            .required()
+            .map(|port| (port, self.selected))
             .collect();
         let mut node = Node::new(operation.descriptor().label, operation.clone(), &ports);
         node.position = position;

@@ -42,6 +42,7 @@ pub enum Kernel {
     LensBlur,
     BevelHeightHorizontal,
     BevelHeightVertical,
+    EnvironmentPyramid,
     Merge,
     Blend,
     SurfaceBlend,
@@ -70,7 +71,7 @@ pub enum Kernel {
     Lut,
 }
 impl Kernel {
-    pub(crate) const ALL: [Self; 62] = [
+    pub(crate) const ALL: [Self; 63] = [
         Self::ToAcescg,
         Self::FromAcescg,
         Self::Text,
@@ -107,6 +108,7 @@ impl Kernel {
         Self::LensBlur,
         Self::BevelHeightHorizontal,
         Self::BevelHeightVertical,
+        Self::EnvironmentPyramid,
         Self::Merge,
         Self::Blend,
         Self::SurfaceBlend,
@@ -172,6 +174,7 @@ impl Kernel {
             Self::LensBlur => "lens_blur",
             Self::BevelHeightHorizontal => "bevel_height_horizontal",
             Self::BevelHeightVertical => "bevel_height_vertical",
+            Self::EnvironmentPyramid => "environment_pyramid",
             Self::Merge => "merge",
             Self::Blend => "blend",
             Self::SurfaceBlend => "surface_blend",
@@ -280,8 +283,15 @@ impl Plan {
                         .copied()
                         .collect();
                     (external.len() == 1).then(|| *external.first().unwrap())
-                } else if node.inputs.len() == 1 {
-                    node.inputs.values().next().copied()
+                } else if let [port] = node
+                    .operation
+                    .descriptor()
+                    .required()
+                    .collect::<Vec<_>>()
+                    .as_slice()
+                {
+                    // Optional inputs such as a reflection source do not pass through.
+                    node.inputs.get(*port).copied()
                 } else {
                     None
                 };
@@ -350,7 +360,9 @@ impl Plan {
                     continue;
                 }
                 for port in node.operation.inputs().iter().rev() {
-                    todo.push((node.inputs[*port], false));
+                    if let Some(source) = node.inputs.get(*port) {
+                        todo.push((*source, false));
+                    }
                 }
             }
         }
@@ -375,7 +387,10 @@ impl Plan {
             domains.insert(node.id, aces);
             let mut inputs = [Input::Empty, Input::Empty, Input::Empty];
             for (i, port) in node.operation.inputs().iter().enumerate() {
-                let source = node.inputs[*port];
+                // An unconnected optional port stays an empty input.
+                let Some(&source) = node.inputs.get(*port) else {
+                    continue;
+                };
                 let mut value = outputs[&source];
                 if domains[&source] != aces {
                     let converted = passes.len();
@@ -421,7 +436,7 @@ impl Plan {
                 outputs.insert(node.id, *value);
                 continue;
             }
-            let kernel = match veylvik_document::each_node!(&node.operation, n => crate::nodes::RenderNode::passes(n))
+            let kernel = match veylvik_document::each_node!(&node.operation, n => crate::nodes::RenderNode::passes_for(n, node))
             {
                 crate::nodes::Passes::One(kernel) => {
                     // A node that reads a file (such as a LUT) gets it on its next free input.

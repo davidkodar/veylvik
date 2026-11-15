@@ -23,6 +23,7 @@ pub(super) fn build() -> Result<Scene> {
             lighting: 0.0.into(),
             grain: 0.8.into(),
             emission: 1.0.into(),
+            shot: 1.0.into(),
         }),
         &[("image", white)],
     );

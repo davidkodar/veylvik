@@ -52,6 +52,11 @@ pub enum Action {
         port: String,
         group: bool,
     },
+    /// Unlink an optional input port.
+    Disconnect {
+        target: NodeId,
+        port: String,
+    },
 }
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 enum Socket {
@@ -68,7 +73,8 @@ pub(super) struct VisualNode {
     pub(super) label: String,
     pub(super) subtitle: String,
     pub(super) group: Option<NodeId>,
-    pub(super) inputs: Vec<(String, NodeId)>,
+    /// Ports in socket order; optional ports may be unconnected.
+    pub(super) inputs: Vec<(String, Option<NodeId>)>,
 }
 impl VisualNode {
     fn role_colour(&self, doc: &Composition) -> Color32 {
@@ -235,7 +241,7 @@ impl Graph {
                         inputs: g
                             .inputs
                             .keys()
-                            .map(|name| (name.clone(), source(g.source(doc, name).unwrap())))
+                            .map(|name| (name.clone(), Some(source(g.source(doc, name).unwrap()))))
                             .collect(),
                     })
                 } else {
@@ -253,7 +259,9 @@ impl Graph {
                             .operation
                             .inputs()
                             .iter()
-                            .map(|port| (port.to_string(), source(n.inputs[*port])))
+                            .map(|port| {
+                                (port.to_string(), n.inputs.get(*port).map(|id| source(*id)))
+                            })
                             .collect(),
                     })
                 }
@@ -590,7 +598,7 @@ impl Graph {
                 if scope.insert(id)
                     && let Some(n) = by_id.get(&id)
                 {
-                    pending.extend(n.inputs.iter().map(|(_, id)| *id));
+                    pending.extend(n.inputs.iter().filter_map(|(_, id)| *id));
                 }
             }
             for group in doc.groups.values() {
@@ -895,6 +903,9 @@ impl Graph {
             .collect();
         for node in &nodes {
             for (index, (_, source)) in node.inputs.iter().enumerate() {
+                let Some(source) = source.as_ref() else {
+                    continue;
+                };
                 let from = canvas.min
                     + self.pan
                     + (self.positions[source].to_vec2() + egui::vec2(NODE_SIZE.x, 80.0))
@@ -1042,7 +1053,7 @@ impl Graph {
                     self.rename_focus=true;
                     ui.close();
                 }
-                let bypass_allowed=doc.nodes[&node.id].operation.inputs().len()==1 && node.group.is_none_or(|id| doc.groups[&id].members.len()==1);
+                let bypass_allowed=doc.nodes[&node.id].operation.descriptor().required().count()==1 && node.group.is_none_or(|id| doc.groups[&id].members.len()==1);
                 if ui.add_enabled(bypass_allowed,egui::Button::new(if doc.nodes[&node.id].bypass { "Enable node" } else { "Bypass node" })).on_hover_text("Bypass is available for single-input nodes. Open compound groups to edit their nodes.").clicked() {
                     actions.push(Action::Node { id:node.id,action:NodeAction::Bypass }); ui.close();
                 }
@@ -1289,25 +1300,42 @@ impl Graph {
                 Socket::Input(id, index) => {
                     let node = nodes.iter().find(|n| n.id == *id).unwrap();
                     let key = &node.inputs[*index].0;
-                    node.group.map_or_else(
+                    let optional = node.group.is_none()
+                        && doc.nodes[id].operation.descriptor().is_optional(key);
+                    let label = node.group.map_or_else(
                         || presentation::port_label(key),
                         |id| doc.groups[&id].inputs[key].label.clone(),
-                    )
+                    );
+                    match (optional, node.inputs[*index].1.is_some()) {
+                        (true, true) => {
+                            format!("{label} (optional) · drag the link away to disconnect")
+                        }
+                        (true, false) => format!("{label} (optional) · drag an output here"),
+                        _ => label,
+                    }
                 }
             });
             if hit.drag_started() {
                 self.wire = Some(*socket);
                 self.drag = None;
             }
-            painter.circle_filled(
-                *position,
-                (4.0 * self.zoom).max(2.5),
-                if hovered == Some(*socket) || self.wire == Some(*socket) {
-                    accent
-                } else {
-                    Color32::from_gray(180)
-                },
-            );
+            let colour = if hovered == Some(*socket) || self.wire == Some(*socket) {
+                accent
+            } else {
+                Color32::from_gray(180)
+            };
+            let open = matches!(socket, Socket::Input(id, index)
+                if nodes.iter().find(|n| n.id == *id).is_some_and(|n| n.inputs[*index].1.is_none()));
+            if open {
+                // An unconnected optional port is drawn hollow.
+                painter.circle_stroke(
+                    *position,
+                    (4.0 * self.zoom).max(2.5),
+                    egui::Stroke::new(1.5_f32, colour),
+                );
+            } else {
+                painter.circle_filled(*position, (4.0 * self.zoom).max(2.5), colour);
+            }
         }
         let wiring = self.wire.is_some();
         if ui.input(|input| input.key_pressed(egui::Key::Escape)) || !ui.is_enabled() {
@@ -1342,6 +1370,21 @@ impl Graph {
                         target: node.group.unwrap_or(target),
                         port: node.inputs[index].0.clone(),
                         group: node.group.is_some(),
+                    });
+                } else if let Socket::Input(target, index) = from
+                    && hovered.is_none()
+                    && let Some(node) = nodes.iter().find(|n| n.id == target)
+                    && node.group.is_none()
+                    && node.inputs[index].1.is_some()
+                    && doc.nodes[&target]
+                        .operation
+                        .descriptor()
+                        .is_optional(&node.inputs[index].0)
+                {
+                    // Dragging an optional link off its socket removes it.
+                    actions.push(Action::Disconnect {
+                        target,
+                        port: node.inputs[index].0.clone(),
                     });
                 }
                 self.wire = None;

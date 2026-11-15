@@ -637,6 +637,56 @@ fn environment_specular(direction:vec3<f32>,rough:f32)->vec3<f32> {
     let level=clamp(rough,0.0,1.0)*8.0;let lo=u32(floor(level));
     return mix(environment_layer(direction,lo),environment_layer(direction,min(lo+1u,8u)),fract(level));
 }
+// The shot as an environment: six box-filtered levels from half resolution down,
+// packed in one canvas-sized buffer. Roughness picks the level, so a rough surface
+// reflects a blurred shot and a polished one a sharp, half-resolution one.
+fn pyramid_size(level:u32)->vec2<u32> {
+    let s=1u<<level;
+    return max(vec2<u32>(1u),(p.size_op.xy+vec2<u32>(s-1u))/s);
+}
+fn pyramid_offset(level:u32)->u32 {
+    var offset=0u;
+    for(var k=1u;k<level;k++) {let z=pyramid_size(k);offset+=z.x*z.y;}
+    return offset;
+}
+@compute @workgroup_size(8,8)
+fn environment_pyramid(@builtin(global_invocation_id) gid:vec3<u32>) {
+    if !inside(gid) {return;}
+    var i=index(gid);
+    for(var k=1u;k<=6u;k++) {
+        let z=pyramid_size(k);
+        if i<z.x*z.y {
+            let s=1u<<k;
+            let lo=vec2<u32>(i%z.x,i/z.x)*s;
+            let hi=min(lo+vec2<u32>(s),p.size_op.xy);
+            var total=vec4<f32>(0.0);
+            for(var y=lo.y;y<hi.y;y++) {for(var x=lo.x;x<hi.x;x++) {total+=source[y*p.size_op.x+x];}}
+            result[index(gid)]=total/f32((hi.x-lo.x)*(hi.y-lo.y));
+            return;
+        }
+        i-=z.x*z.y;
+    }
+}
+fn shot_level(uv:vec2<f32>,level:u32)->vec3<f32> {
+    let z=pyramid_size(level);let offset=pyramid_offset(level);
+    let q=clamp(uv*vec2<f32>(z)-vec2<f32>(0.5),vec2<f32>(0.0),vec2<f32>(z)-vec2<f32>(1.0));
+    let a=vec2<u32>(floor(q));let b=min(a+vec2<u32>(1u),z-vec2<u32>(1u));let f=fract(q);
+    return mix(mix(third[offset+a.y*z.x+a.x].rgb,third[offset+a.y*z.x+b.x].rgb,f.x),
+        mix(third[offset+b.y*z.x+a.x].rgb,third[offset+b.y*z.x+b.x].rgb,f.x),f.y);
+}
+fn mirror_repeat(t:vec2<f32>)->vec2<f32> {
+    let f=fract(t*0.5)*2.0;
+    return select(f,vec2<f32>(2.0)-f,f>vec2<f32>(1.0));
+}
+// The shot stands in for the world behind the camera: mirrored about the surface's
+// own screen position and pushed along the reflected direction, so bevels and
+// curved faces pick up the surrounding footage. Reflection motion slides it.
+fn shot_environment(screen:vec2<f32>,direction:vec3<f32>,rough:f32)->vec3<f32> {
+    let uv=mirror_repeat(vec2<f32>(1.0-screen.x+p.values.w,screen.y)+vec2<f32>(-direction.x,direction.y)*0.35);
+    let level=1.0+clamp(rough,0.0,1.0)*5.0;
+    let lo=u32(floor(level));
+    return mix(shot_level(uv,lo),shot_level(uv,min(lo+1u,6u)),fract(level));
+}
 fn studio_surface(uv:vec2<f32>, normal:vec3<f32>,albedo:vec3<f32>)->vec3<f32> {
     let kind=p.size_op.w;
     // Lighting coordinates follow canvas proportions, independent of texture scale.
@@ -686,11 +736,22 @@ fn studio_surface(uv:vec2<f32>, normal:vec3<f32>,albedo:vec3<f32>)->vec3<f32> {
     let reflected=f0*amplitude.x+(vec3<f32>(1.0)-f0)*amplitude.y;
     var radiance=vec3<f32>(studio.environment.x);
     var diffuse=vec3<f32>(studio.environment.x);
+    // Shot mixes the studio's reflections with the connected footage (0 = studio only).
+    let shot=select(0.0,studio.palette[0].w,p.size_op.z==1u);
+    let studio_part=radiance;let studio_diffuse=diffuse;
     if studio.environment.z>0.0 {
         let ec=cos(studio.environment.w);let es=sin(studio.environment.w);
         let environment_rotation=mat3x3<f32>(vec3<f32>(ec,0.0,es),vec3<f32>(0.0,1.0,0.0),vec3<f32>(-es,0.0,ec));
         radiance+=environment_specular(environment_rotation*rotation*reflect(-v,n),rough)*studio.environment.z;
         if studio.optics.w<0.5 {diffuse+=environment_layer(environment_rotation*rotation*n,9u)*studio.environment.z;}
+    }
+    if shot>0.0 && studio.environment.z>0.0 {
+        // Environment strength 0.65 (the studio default) shows the shot at its own brightness.
+        let gain=studio.environment.z/0.65;
+        let screen=uv*p.values.x/vec2<f32>(p.size_op.xy);
+        let reflected_shot=studio_part+shot_environment(screen,reflect(-v,n),rough)*gain;
+        radiance=mix(radiance,reflected_shot,shot);
+        if studio.optics.w<0.5 {diffuse=mix(diffuse,studio_diffuse+shot_environment(screen,n,1.0)*gain,shot);}
     }
     let diffuse_basis=frame*transpose(rotation);
     for(var i=0u;i<min(u32(studio.environment.y),8u);i++) {

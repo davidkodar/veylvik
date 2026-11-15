@@ -1643,6 +1643,8 @@ impl Studio {
             text_changed: false,
             replace_image: false,
             save_material: false,
+            environment: self.draft.inputs.contains_key("environment"),
+            reflect_shot: None,
             preview_soon: false,
             error: None,
             picking: self
@@ -1669,11 +1671,34 @@ impl Studio {
             text_changed: media_changed,
             replace_image: replace,
             save_material,
+            reflect_shot,
             preview_soon,
             error,
             pick,
             ..
         } = cx;
+        match reflect_shot {
+            Some(true) => {
+                // The backdrop the material sits on becomes its surroundings.
+                let doc = self.project.document.snapshot();
+                match veylvik_document::presets::background::automatic(doc)
+                    .filter(|id| *id != self.draft.id)
+                {
+                    Some(backdrop) => {
+                        self.draft.inputs.insert("environment".into(), backdrop);
+                        self.draft_dirty = true;
+                    }
+                    None => self.fail(
+                        "No single backdrop found. Pick the shot in the Environment input below.",
+                    ),
+                }
+            }
+            Some(false) => {
+                self.draft.inputs.remove("environment");
+                self.draft_dirty = true;
+            }
+            None => {}
+        }
         if save_material && let Operation::Material(material) = &self.draft.operation {
             let label = self.draft.label.trim_start_matches("Text · ").to_owned();
             self.materials.save(&label, material);
@@ -1743,8 +1768,16 @@ impl Studio {
             {
                 continue;
             }
+            if kind.type_id == "material"
+                && parameter.name == "shot"
+                && !self.draft.inputs.contains_key("environment")
+            {
+                continue;
+            }
             if let Some(value) = self.draft.operation.scalar_mut(parameter.name) {
-                let label = if kind.type_id == "surface_blend" {
+                let label = if kind.type_id == "material" && parameter.name == "shot" {
+                    "Shot reflection".to_owned()
+                } else if kind.type_id == "surface_blend" {
                     match parameter.name {
                         "lighting" => "Lighting",
                         "detail" => "Texture",
@@ -1795,27 +1828,43 @@ impl Studio {
             ui.weak("A downstream effect moves this text. Use Preview selected for source-position handles.");
         }
         ui.separator();
-        for port in self.draft.operation.inputs() {
-            let selected = self.draft.inputs.get_mut(*port).unwrap();
-            let label = self
-                .project
-                .document
-                .snapshot()
-                .nodes
-                .get(selected)
-                .map(|n| n.label.as_str())
-                .unwrap_or("Missing");
+        let descriptor = self.draft.operation.descriptor();
+        for port in descriptor.inputs {
+            let optional = descriptor.is_optional(port);
+            let mut current = self.draft.inputs.get(*port).copied();
+            let label = current
+                .and_then(|id| self.project.document.snapshot().nodes.get(&id))
+                .map_or(if optional { "None" } else { "Missing" }, |n| {
+                    n.label.as_str()
+                })
+                .to_owned();
+            let before = current;
             egui::ComboBox::from_id_salt(("port", port))
-                .selected_text(format!("{port}: {label}"))
+                .selected_text(format!(
+                    "{port}{}: {label}",
+                    if optional { " (optional)" } else { "" }
+                ))
                 .show_ui(ui, |ui| {
+                    if optional {
+                        ui.selectable_value(&mut current, None, "None");
+                    }
                     for node in self.project.document.snapshot().nodes.values() {
                         if node.id != self.draft.id {
-                            self.draft_dirty |= ui
-                                .selectable_value(selected, node.id, &node.label)
-                                .changed();
+                            ui.selectable_value(&mut current, Some(node.id), &node.label);
                         }
                     }
                 });
+            if current != before {
+                match current {
+                    Some(id) => {
+                        self.draft.inputs.insert((*port).to_owned(), id);
+                    }
+                    None => {
+                        self.draft.inputs.remove(*port);
+                    }
+                }
+                self.draft_dirty = true;
+            }
         }
         ui.separator();
         ui.horizontal_wrapped(|ui| {
@@ -2395,6 +2444,18 @@ impl Studio {
                         if preview {
                             self.project.preview = Some(id);
                             self.request_preview();
+                        }
+                    }
+                }
+                graph::Action::Disconnect { target, port } => {
+                    if self.can_change_selection() {
+                        match self.project.disconnect(target, &port) {
+                            Ok(true) => {
+                                self.refresh_draft();
+                                self.request_preview();
+                            }
+                            Ok(false) => {}
+                            Err(error) => self.fail(error),
                         }
                     }
                 }

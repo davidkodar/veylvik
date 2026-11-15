@@ -27,6 +27,10 @@ pub struct Material {
     pub lighting: Scalar,
     pub grain: Scalar,
     pub emission: Scalar,
+    /// How much of the reflection comes from the connected shot rather than the
+    /// studio; unused without an Environment input.
+    #[serde(default = "shot_default")]
+    pub shot: Scalar,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -87,13 +91,18 @@ pub struct SurfaceReflection {
 fn smooth_edges_default() -> bool {
     true
 }
+/// Studio highlights carrying the shot's colours; 1 is a pure mirror of the shot.
+fn shot_default() -> Scalar {
+    0.6.into()
+}
 
 pub static MATERIAL: NodeType = NodeType {
     type_id: "material",
     version: 1,
     label: "Text surface",
-    description: "Procedural gold, silver, brushed aluminium, bronze, phosphor, wood, light/dark oak, marble, light/red brick, rough concrete, clean/weathered paper and five leather colours from image alpha. Surface grain, edge bevel and studio reflections; source RGB is replaced and alpha preserved. Not a 3D mesh or spectral renderer.",
-    inputs: &["image"],
+    description: "Procedural gold, silver, brushed aluminium, bronze, phosphor, wood, light/dark oak, marble, light/red brick, rough concrete, clean/weathered paper and five leather colours from image alpha. Surface grain, edge bevel and studio reflections; source RGB is replaced and alpha preserved. Connect footage to the optional Environment input to reflect the shot instead of the studio: roughness blurs it and dielectrics take their diffuse light from it. Not a 3D mesh or spectral renderer.",
+    inputs: &["image", "environment"],
+    optional: &["environment"],
     parameters: &[
         Parameter {
             default: 1.0,
@@ -110,6 +119,7 @@ pub static MATERIAL: NodeType = NodeType {
         scalar("lighting", "cycles", -10000.0, 10000.0, 0.0),
         scalar("grain", "factor", 0.0, 2.0, 0.4),
         scalar("emission", "factor", 0.0, 16.0, 1.0),
+        scalar("shot", "factor", 0.0, 1.0, 0.6),
     ],
 };
 pub static PATINA: NodeType = NodeType {
@@ -118,6 +128,7 @@ pub static PATINA: NodeType = NodeType {
     label: "Tarnish and dirt",
     description: "Optional patchy tarnish, copper/bronze verdigris or iron-like rust with separate dirt and scratches. Preserves source alpha. Apply after reflections to dull dirty areas, then add glints if desired.",
     inputs: &["image"],
+    optional: &[],
     parameters: &[
         other("kind", ParameterKind::PatinaKind, "weathering"),
         other("seed", ParameterKind::Seed, "integer"),
@@ -134,6 +145,7 @@ pub static METALLIC_SHINE: NodeType = NodeType {
     label: "Metallic shine",
     description: "A warm-white specular streak with a sharp core and soft shoulder. Preserves source alpha exactly. Apply to isolated text or a logo before compositing the background; animate X/Y to sweep. Angle is the streak normal in degrees (zero makes a vertical streak).",
     inputs: &["image"],
+    optional: &[],
     parameters: &[
         scalar("x", "pixels", -32768.0, 32768.0, 480.0),
         scalar("y", "pixels", -32768.0, 32768.0, 270.0),
@@ -148,6 +160,7 @@ pub static SUN_GLINTS: NodeType = NodeType {
     label: "Sun glints",
     description: "Small animated star-like specular flashes anchored to bright source pixels. Deterministic seed and four-unit evolution loop; glints can extend beyond source coverage. Threshold and density select highlights.",
     inputs: &["image"],
+    optional: &[],
     parameters: &[
         other("seed", ParameterKind::Seed, "integer"),
         scalar("size", "pixels", 1.0, 512.0, 18.0),
@@ -164,6 +177,7 @@ pub static GLASS: NodeType = NodeType {
     label: "Glass surface",
     description: "Clear or frosted glass from image alpha and an explicit background image. Bevel normals refract the background; roughness diffuses it, tint absorbs light and dispersion separates wavelengths. Composite this cutout over the same background; add Surface reflection for an independent reflected scene.",
     inputs: &["image", "background"],
+    optional: &[],
     parameters: &[
         scalar("bevel", "pixels", 0.0, 256.0, 6.0),
         scalar("refraction", "pixels", 0.0, 256.0, 18.0),
@@ -180,6 +194,7 @@ pub static SURFACE_REFLECTION: NodeType = NodeType {
     label: "Surface reflection",
     description: "Reflect a second image or animated branch in a metal/glass surface. Alpha-derived bevel normals warp the reflection; roughness softens it. Metal uses the surface tint, glass uses Fresnel weighting. Image-based 2.5D mapping, not scene ray tracing.",
     inputs: &["image", "reflection"],
+    optional: &[],
     parameters: &[
         other("kind", ParameterKind::ReflectionKind, "surface"),
         scalar("bevel", "pixels", 0.0, 256.0, 5.0),
@@ -196,7 +211,7 @@ pub static SURFACE_REFLECTION: NodeType = NodeType {
 node!(
     Material,
     MATERIAL,
-    [scale, bevel, roughness, lighting, grain, emission],
+    [scale, bevel, roughness, lighting, grain, emission, shot],
     {
         fn validate(&self) -> Result<()> {
             self.studio.validate()?;
@@ -261,6 +276,7 @@ pub static CONDENSATION: NodeType = NodeType {
     label: "Condensation",
     description: "Water beads, fine moisture and subtle sliding trails over the input surface. Preserves its alpha and material, refracts its image locally, and inherits the nearest upstream material lighting. Uses a studio environment when none exists. Stateless procedural 2.5D coating, not a fluid simulation.",
     inputs: &["image"],
+    optional: &[],
     parameters: &[
         other("seed", ParameterKind::Seed, "seed"),
         scalar("amount", "factor", 0.0, 1.0, 0.7),

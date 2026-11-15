@@ -15,8 +15,11 @@ pub(crate) struct Lighting {
 /// Uniform size, shared by the bind group layout and per-node buffers.
 pub(crate) const SIZE: u64 = std::mem::size_of::<Lighting>() as u64;
 impl Lighting {
-    pub fn material(m: &veylvik_document::nodes::Material) -> Self {
-        Self::new(m.kind, m.optics, m.colours, &m.studio)
+    /// `shot` is the material's Shot mix at the frame time (palette[0].w).
+    pub fn material(m: &veylvik_document::nodes::Material, shot: f32) -> Self {
+        let mut lighting = Self::new(m.kind, m.optics, m.colours, &m.studio);
+        lighting.palette[0][3] = shot.clamp(0.0, 1.0);
+        lighting
     }
     pub fn new(
         kind: MaterialKind,

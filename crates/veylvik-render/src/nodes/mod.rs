@@ -39,6 +39,11 @@ pub(crate) trait RenderNode {
     fn passes(&self) -> Passes {
         Passes::Special
     }
+    /// Passes for this node's wiring; nodes with optional inputs can skip work
+    /// for an unconnected port.
+    fn passes_for(&self, _node: &Node) -> Passes {
+        self.passes()
+    }
     /// Fills kernel uniforms; `sample` evaluates a registered scalar at the frame time.
     fn params(
         &self,

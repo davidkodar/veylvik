@@ -39,6 +39,7 @@ pub static CHROMA_KEY: NodeType = NodeType {
     label: "Chroma key",
     description: "Make a green, blue or other coloured backdrop transparent with a colour-difference key: how strongly a pixel leans towards Key colour's dominant channel (for green, green minus the larger of red and blue), relative to the pixel's own brightness and compared with the key, so shadowed and HDR parts of the screen key alike and the screen need not match Key colour exactly. Pixels leaning at least 1 − Tolerance as much as the key become transparent; over a further Softness they fade back to opaque. Skin, greys and colours without that bias stay opaque, and near-black pixels are kept. Despill limits the key's channel in what remains to the average of the other two, removing coloured fringes and bounce light. Output is premultiplied; input alpha is preserved.",
     inputs: &["image"],
+    optional: &[],
     parameters: &[
         other("key_color", ParameterKind::KeyColor, "linear RGB"),
         scalar("tolerance", "amount", 0.0, 1.0, 0.5),
@@ -52,6 +53,7 @@ pub static LUMA_KEY: NodeType = NodeType {
     label: "Luma key",
     description: "Make pixels transparent by Rec.709 luminance: fully transparent at or below Low, fully opaque at or above High, with a linear ramp between. Set Low above High to key out bright areas instead. Scene-linear values above 1 work for HDR keys. Output is premultiplied; input alpha is preserved.",
     inputs: &["image"],
+    optional: &[],
     parameters: &[
         scalar("low", "luminance", 0.0, 64.0, 0.02),
         scalar("high", "luminance", 0.0, 64.0, 0.1),
@@ -64,6 +66,7 @@ pub static REFINE_MATTE: NodeType = NodeType {
     label: "Refine matte",
     description: "Cut out a subject with a refined edge: Image is the footage, Matte a coarse mask of the subject (its alpha), such as a Subject matte from segmentation. Within Radius pixels of the matte's edge, each pixel's opacity is re-estimated from where its colour lies between the nearby subject and background colours, snapping the edge to the image and recovering hair and fine detail; higher Detail also refines where subject and background colours are closer. Decontaminate re-estimates the subject's colour at semi-transparent edges, removing the old background's colour so no halo shows over a new background. Refinement never weakens what the matte is sure of: its confident interior stays opaque, and changes fade out within about one Radius of its edge. Output is the premultiplied subject.",
     inputs: &["image", "matte"],
+    optional: &[],
     parameters: &[
         scalar("radius", "pixels", 1.0, 64.0, 6.0),
         scalar("detail", "amount", 0.0, 1.0, 0.7),

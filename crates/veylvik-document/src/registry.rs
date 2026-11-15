@@ -204,10 +204,21 @@ pub struct NodeType {
     pub version: u32,
     pub label: &'static str,
     pub description: &'static str,
+    /// Every input port, in socket order.
     pub inputs: &'static [&'static str],
+    /// Ports among `inputs` that may stay unconnected; the node then behaves as
+    /// it did before the port existed.
+    pub optional: &'static [&'static str],
     pub parameters: &'static [Parameter],
 }
 impl NodeType {
+    pub fn is_optional(&self, port: &str) -> bool {
+        self.optional.contains(&port)
+    }
+    /// Ports that must be connected.
+    pub fn required(&self) -> impl Iterator<Item = &'static str> + '_ {
+        self.inputs.iter().copied().filter(|p| !self.is_optional(p))
+    }
     pub fn default_operation(&self) -> Value {
         let mut value = json!({"type":self.type_id});
         for param in self.parameters {

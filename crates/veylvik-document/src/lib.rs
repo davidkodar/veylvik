@@ -347,12 +347,14 @@ impl Composition {
             if let Some(position) = node.position {
                 position.validate()?;
             }
-            let expected: BTreeSet<_> = node.operation.inputs().iter().copied().collect();
+            let descriptor = node.operation.descriptor();
+            let ports: BTreeSet<_> = descriptor.inputs.iter().copied().collect();
+            let required: BTreeSet<_> = descriptor.required().collect();
             let actual: BTreeSet<_> = node.inputs.keys().map(String::as_str).collect();
-            if expected != actual {
+            if !actual.is_subset(&ports) || !required.is_subset(&actual) {
                 return fail(format!(
-                    "{}: expected input ports {expected:?}, got {actual:?}",
-                    node.label
+                    "{}: expected input ports {required:?} (optional {:?}), got {actual:?}",
+                    node.label, descriptor.optional
                 ));
             }
             if matches!(

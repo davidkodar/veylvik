@@ -29,6 +29,7 @@ pub static IMAGE: NodeType = NodeType {
     label: "Image",
     description: "Host-supplied linear premultiplied image at native size, top-left anchored, cropped or padded to the composition.",
     inputs: &[],
+    optional: &[],
     parameters: &[other("asset", ParameterKind::Asset, "asset key")],
 };
 pub static FOOTAGE: NodeType = NodeType {
@@ -37,6 +38,7 @@ pub static FOOTAGE: NodeType = NodeType {
     label: "Footage",
     description: "Time-aware video or image sequence, with exact source in/out and timeline placement. Outside the clip is transparent; pixels retain native dimensions. colour overrides a video's colour tags: curve (auto, rec709, srgb, linear, pq, hlg, apple_log, slog3, logc3, logc4, vlog) and gamut (auto, rec709, rec2020, p3_d65, s_gamut3, s_gamut3_cine, arri_wide_gamut3, arri_wide_gamut4, v_gamut); camera log footage is usually untagged and needs its curve and gamut set.",
     inputs: &[],
+    optional: &[],
     parameters: &[
         other("asset", ParameterKind::Asset, "asset key"),
         other("timing", ParameterKind::MediaTiming, "seconds"),
@@ -105,6 +107,7 @@ pub static MOTION_BLUR: NodeType = NodeType {
     label: "Motion blur",
     description: "GPU shutter sampling of this upstream branch only. Place after animated transforms or warps. Footage may already contain exposure blur. Preview and final sample counts are separate; nested temporal work is bounded.",
     inputs: &["image"],
+    optional: &[],
     parameters: &[
         scalar("angle", "degrees", 0.0, 360.0, 180.0),
         scalar("phase", "frames", -0.5, 0.5, 0.0),
@@ -118,6 +121,7 @@ pub static TIME_REMAP: NodeType = NodeType {
     label: "Time remap",
     description: "Retimes this upstream branch only. Source seconds = timeline seconds times rate plus source_time. Rate 0 freezes at source_time; negative rate reverses. For speed ramps set rate to zero and animate source_time (its slope is speed). Footage retains its own trim and transparent boundaries. Does not retime audio or synthesize intermediate footage frames.",
     inputs: &["image"],
+    optional: &[],
     parameters: &[
         scalar("rate", "factor", -100.0, 100.0, 1.0),
         scalar("source_time", "seconds", -86400.0, 86400.0, 0.0),
@@ -187,6 +191,7 @@ pub static OPTICAL_FLOW: NodeType = NodeType {
     label: "Optical flow retime",
     description: "Retimes an upstream image branch using GPU bidirectional pyramidal optical flow. Source rate must match the original clip cadence. Forward/backward consistency rejects uncertain or occluded regions, which use the nearest source frame; major cuts also fall back. Confidence view shows reliable regions in green. Reduced analysis resolution in preview; output retains full composition dimensions. No audio retiming or vector motion blur.",
     inputs: &["image"],
+    optional: &[],
     parameters: &[
         scalar("rate", "factor", -100.0, 100.0, 0.5),
         scalar("source_time", "seconds", -86400.0, 86400.0, 0.0),

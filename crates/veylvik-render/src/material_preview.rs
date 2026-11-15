@@ -39,7 +39,7 @@ impl Renderer {
                 | LeatherBlack
         ) {
             return self.sphere(
-                crate::studio_lighting::Lighting::material(material),
+                crate::studio_lighting::Lighting::material(material, 0.0),
                 material.kind,
                 [
                     at(&material.roughness)?,
@@ -165,6 +165,12 @@ impl Renderer {
                 contents: bytemuck::bytes_of(&lighting),
                 usage: wgpu::BufferUsages::UNIFORM,
             });
+        let no_shot = self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Sample without a shot"),
+            size: 16,
+            usage: wgpu::BufferUsages::STORAGE,
+            mapped_at_creation: false,
+        });
         let bind = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("material preview"),
             layout: &pipeline.get_bind_group_layout(0),
@@ -188,6 +194,11 @@ impl Renderer {
                 wgpu::BindGroupEntry {
                     binding: 3,
                     resource: output.as_entire_binding(),
+                },
+                // The library sample never reads the shot; the slot still needs a buffer.
+                wgpu::BindGroupEntry {
+                    binding: 4,
+                    resource: no_shot.as_entire_binding(),
                 },
             ],
         });

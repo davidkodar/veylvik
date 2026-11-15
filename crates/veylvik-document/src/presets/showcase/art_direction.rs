@@ -231,6 +231,7 @@ fn gold_fire(a: &mut Art, bg: NodeId, with_fire: bool) -> Result<NodeId> {
             lighting: cycle(0.0, 0.12),
             grain: 0.65.into(),
             emission: 1.0.into(),
+            shot: 1.0.into(),
         }),
         &[("image", mask)],
     );
@@ -556,6 +557,7 @@ pub(super) fn build(id: &str) -> Result<Scene> {
                     lighting: cycle(0.0, 0.12),
                     grain: 0.35.into(),
                     emission: 1.0.into(),
+                    shot: 1.0.into(),
                 }),
                 &[("image", mask)],
             )

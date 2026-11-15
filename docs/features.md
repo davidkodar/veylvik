@@ -222,6 +222,8 @@ Everything Veylvik can do today, area by area. Veylvik is a native Rust node com
 
 - **Text surface** (`material`) kinds: gold, silver, aluminium, bronze, phosphor, wood, light oak, dark oak, marble, light brick, red brick, concrete, paper, aged paper, red/brown/tan/dark/black leather (19).
 - **Colours**: repaint any patterned surface (grain, veins, mortar and bricks, stains, leather, glow) with up to three colours; existing projects keep the original colours.
+- **Reflect the shot**: connect the footage as the material's optional Environment so chrome, gold and glossy surfaces reflect the shot (blurred by roughness) and matte ones take its light; **Shot reflection** blends it with the studio (default 0.6).
+- Optional node inputs: hollow sockets in the graph, drag a link off to disconnect, **None** in the inspector port list.
 - **Save as my material…** stores the whole look under a name; **Library → Materials** has **Favourites** (star any material) and **My materials** with live GPU swatches, rename and delete. Saved materials apply to text, as backgrounds and as foreground layers.
 - Text surface controls: scale, bevel, roughness, lighting, grain, emission. **Smooth bevel highlights** is enabled by default, including older material nodes; continuous two-dimensional bevel normals and subpixel shading reduce stepped metallic highlights without altering alpha coverage. Disable it under **Surface response** for legacy shading.
 - The viewer antialiases downscaled images in linear premultiplied colour by default. **Fast view** opts into basic bilinear filtering for previews only.

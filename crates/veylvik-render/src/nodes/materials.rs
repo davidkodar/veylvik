@@ -7,6 +7,34 @@ use crate::{Kernel, Params, Result, error};
 use veylvik_document::{Operation, Scalar};
 
 impl RenderNode for veylvik_document::nodes::Material {
+    fn passes_for(&self, node: &veylvik_document::Node) -> Passes {
+        if !node.inputs.contains_key("environment") {
+            return self.passes();
+        }
+        // The shot is filtered into a roughness pyramid that the shading reads.
+        Passes::Chain(&[
+            super::Step {
+                kernel: Kernel::BevelHeightHorizontal,
+                inputs: [super::From::Port(0), super::From::None, super::From::None],
+            },
+            super::Step {
+                kernel: Kernel::BevelHeightVertical,
+                inputs: [super::From::Step(0), super::From::None, super::From::None],
+            },
+            super::Step {
+                kernel: Kernel::EnvironmentPyramid,
+                inputs: [super::From::Port(1), super::From::None, super::From::None],
+            },
+            super::Step {
+                kernel: Kernel::Material,
+                inputs: [
+                    super::From::Port(0),
+                    super::From::Step(1),
+                    super::From::Step(2),
+                ],
+            },
+        ])
+    }
     fn passes(&self) -> Passes {
         // A smooth height field first; the material shades its gradient as the bevel.
         Passes::Chain(&[
@@ -47,6 +75,7 @@ impl RenderNode for veylvik_document::nodes::Material {
         } = *cx;
         let veylvik_document::nodes::Material { kind, .. } = self;
         {
+            p.size_op[2] = u32::from(node.inputs.contains_key("environment"));
             p.size_op[3] = *kind as u32;
             p.values = [
                 sample("scale")?,

@@ -7,7 +7,7 @@ pub(super) fn arrange(nodes: &[VisualNode], output: NodeId) -> BTreeMap<NodeId, 
     let by_id: BTreeMap<_, _> = nodes.iter().map(|n| (n.id, n)).collect();
     let mut consumers = BTreeMap::<NodeId, Vec<NodeId>>::new();
     for node in nodes {
-        for (_, source) in &node.inputs {
+        for source in node.inputs.iter().filter_map(|(_, s)| s.as_ref()) {
             if by_id.contains_key(source) {
                 consumers.entry(*source).or_default().push(node.id);
             }
@@ -29,7 +29,7 @@ pub(super) fn arrange(nodes: &[VisualNode], output: NodeId) -> BTreeMap<NodeId, 
     while let Some(id) = ready.pop() {
         let rank = ranks.get(&id).copied().unwrap_or(0usize);
         ranks.entry(id).or_insert(rank);
-        for (_, source) in &by_id[&id].inputs {
+        for source in by_id[&id].inputs.iter().filter_map(|(_, s)| s.as_ref()) {
             if let Some(count) = pending.get_mut(source) {
                 ranks
                     .entry(*source)
@@ -61,7 +61,12 @@ pub(super) fn arrange(nodes: &[VisualNode], output: NodeId) -> BTreeMap<NodeId, 
                 post.push(id);
             } else if visited.insert(id) {
                 todo.push((id, true));
-                for (_, source) in by_id[&id].inputs.iter().rev() {
+                for source in by_id[&id]
+                    .inputs
+                    .iter()
+                    .rev()
+                    .filter_map(|(_, s)| s.as_ref())
+                {
                     if by_id.contains_key(source) {
                         todo.push((*source, false));
                     }
@@ -76,7 +81,7 @@ pub(super) fn arrange(nodes: &[VisualNode], output: NodeId) -> BTreeMap<NodeId, 
             let mut inputs: Vec<_> = by_id[&id]
                 .inputs
                 .iter()
-                .filter_map(|(_, source)| row.get(source).copied())
+                .filter_map(|(_, source)| source.as_ref().and_then(|s| row.get(s).copied()))
                 .collect();
             inputs.sort_unstable();
             let preferred = if inputs.is_empty() {
@@ -151,7 +156,7 @@ mod tests {
             inputs: inputs
                 .iter()
                 .enumerate()
-                .map(|(i, id)| (i.to_string(), *id))
+                .map(|(i, id)| (i.to_string(), Some(*id)))
                 .collect(),
         }
     }
@@ -193,7 +198,7 @@ mod tests {
         assert_eq!(layout[&ids[1]].y, layout[&ids[3]].y);
         assert!(layout[&ids[5]].y > layout[&ids[4]].y + NODE_SIZE.y);
         for n in &nodes {
-            for (_, source) in &n.inputs {
+            for source in n.inputs.iter().filter_map(|(_, s)| s.as_ref()) {
                 assert!(layout[source].x < layout[&n.id].x);
             }
         }

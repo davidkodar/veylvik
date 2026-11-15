@@ -105,6 +105,7 @@ pub fn build(id: &str, b: &mut Builder, source: NodeId) -> Result<NodeId> {
                     lighting: 0.0.into(),
                     grain: 0.0.into(),
                     emission: 1.0.into(),
+                    shot: 1.0.into(),
                 }),
                 &[("image", shape)],
             );

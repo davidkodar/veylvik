@@ -18,6 +18,10 @@ pub(crate) struct InspectCx<'a> {
     pub replace_image: bool,
     /// The user asked to save this material to My materials.
     pub save_material: bool,
+    /// The node's optional Environment input is connected.
+    pub environment: bool,
+    /// Connect (true) or disconnect (false) the shot as the material's surroundings.
+    pub reflect_shot: Option<bool>,
     /// Refresh the viewer preview soon, for continuous edits such as path dragging.
     pub preview_soon: bool,
     pub error: Option<String>,

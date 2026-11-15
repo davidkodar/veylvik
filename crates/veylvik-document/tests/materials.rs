@@ -117,3 +117,49 @@ fn saved_material_works_as_a_background_or_foreground_layer() {
     assert!(found);
     assert!(material::Source::Builtin("blur").preset().is_err());
 }
+
+#[test]
+fn optional_inputs_may_stay_unconnected_but_required_ones_may_not() {
+    let mut doc = demo();
+    let shot = doc.output;
+    let text = Node::new(
+        "Title",
+        serde_json::from_value(registry::TEXT.default_operation()).unwrap(),
+        &[],
+    );
+    let material = material::Source::Builtin("silver_text").material().unwrap();
+    let plain = Node::new(
+        "Silver",
+        Operation::Material(material.clone()),
+        &[("image", text.id)],
+    );
+    let reflecting = Node::new(
+        "Silver in shot",
+        Operation::Material(material.clone()),
+        &[("image", text.id), ("environment", shot)],
+    );
+    let unknown = Node::new(
+        "Bad",
+        Operation::Material(material.clone()),
+        &[("image", text.id), ("mask", shot)],
+    );
+    let missing = Node::new(
+        "Bad",
+        Operation::Material(material),
+        &[("environment", shot)],
+    );
+    assert!(registry::MATERIAL.is_optional("environment"));
+    assert_eq!(registry::MATERIAL.required().collect::<Vec<_>>(), ["image"]);
+    doc.nodes.insert(text.id, text);
+    for (node, ok) in [
+        (plain, true),
+        (reflecting, true),
+        (unknown, false),
+        (missing, false),
+    ] {
+        let mut candidate = doc.clone();
+        candidate.output = node.id;
+        candidate.nodes.insert(node.id, node);
+        assert_eq!(Document::new(candidate).is_ok(), ok);
+    }
+}

@@ -74,6 +74,7 @@ pub static BLUR: NodeType = NodeType {
     label: "Blur",
     description: "Blur within radius pixels (rounded to an integer); transparent borders. Filter box averages equally (fast; bright points turn square), gaussian falls off smoothly (sigma = radius / 3) for a round, lens-like softness.",
     inputs: &["image"],
+    optional: &[],
     parameters: &[
         scalar("radius", "pixels", 0.0, 256.0, 4.0),
         other("filter", ParameterKind::BlurFilter, ""),
@@ -85,6 +86,7 @@ pub static LENS_BLUR: NodeType = NodeType {
     label: "Lens blur",
     description: "Out-of-focus lens blur: every pixel spreads evenly over a disc of radius pixels, so lights become round bokeh, even single-pixel ones (large discs are prefiltered to the sample spacing). Highlights boosts colour brighter than threshold (scene-linear luminance) by 1 + highlights x (luminance - threshold) before blurring, so lights bloom into bright discs instead of fading. Premultiplied colour and alpha blur together; transparent borders. Animate radius for a rack focus.",
     inputs: &["image"],
+    optional: &[],
     parameters: &[
         scalar("radius", "pixels", 0.0, 128.0, 12.0),
         scalar("highlights", "gain", 0.0, 16.0, 2.0),
@@ -97,6 +99,7 @@ pub static MORPHOLOGY: NodeType = NodeType {
     label: "Grow/shrink mask",
     description: "Expand alpha with a positive radius (dilation), contract with a negative radius (erosion). Uses a square neighborhood and transparent borders. Radius rounds to the nearest integer, half away from zero. Outputs a white premultiplied mask, including at radius zero; source RGB is ignored.",
     inputs: &["image"],
+    optional: &[],
     parameters: &[scalar("radius", "pixels", -256.0, 256.0, 2.0)],
 };
 pub static DISPLACE: NodeType = NodeType {
@@ -105,6 +108,7 @@ pub static DISPLACE: NodeType = NodeType {
     label: "Displace",
     description: "Map red/green displace image horizontally/vertically. Straight map 0.5 is neutral, 0/1 give negative/positive strength; map alpha attenuates displacement. Map channels clamp to [0,1] before alpha weighting. Bilinear premultiplied sampling with transparent borders.",
     inputs: &["image", "map"],
+    optional: &[],
     parameters: &[
         scalar("x", "pixels", -8192.0, 8192.0, 20.0),
         scalar("y", "pixels", -8192.0, 8192.0, 20.0),
@@ -116,6 +120,7 @@ pub static TRANSFORM: NodeType = NodeType {
     label: "Transform",
     description: "Bilinear translation with transparent borders.",
     inputs: &["image"],
+    optional: &[],
     parameters: &[
         scalar("x", "pixels", -1_000_000.0, 1_000_000.0, 0.0),
         scalar("y", "pixels", -1_000_000.0, 1_000_000.0, 0.0),
@@ -127,6 +132,7 @@ pub static AFFINE: NodeType = NodeType {
     label: "Affine transform",
     description: "Scale around a pixel-space pivot, rotate clockwise, then translate; bilinear sampling and transparent borders. Scale magnitude below 0.000001 produces transparent output.",
     inputs: &["image"],
+    optional: &[],
     parameters: &[
         scalar("x", "pixels", -1_000_000.0, 1_000_000.0, 0.0),
         scalar("y", "pixels", -1_000_000.0, 1_000_000.0, 0.0),
@@ -175,6 +181,7 @@ pub static SHADOW: NodeType = NodeType {
     label: "Shadow",
     description: "Black premultiplied shadow on a flat receiving plane. Manual offset or area-light projection from the nearest material in the lighting input. Environment reflections do not cast directional shadows. Outputs shadow only; merge behind the original image.",
     inputs: &["image", "lighting"],
+    optional: &[],
     parameters: &[
         other("follow_lighting", ParameterKind::Boolean, "lighting"),
         scalar("distance", "pixels", 0., 2000., 20.),

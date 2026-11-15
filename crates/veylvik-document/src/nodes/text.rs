@@ -39,6 +39,7 @@ pub static TEXT: NodeType = NodeType {
     label: "Text",
     description: "Editable vector text with portable bundled or embedded fonts. Multiline alignment, tracking, line spacing and animated size/position. White alpha source for any material or colour. Explicit LTR/RTL per line; no automatic mixed-script bidi or fallback.",
     inputs: &[],
+    optional: &[],
     parameters: &[
         other("content", ParameterKind::TextContent, "text"),
         other("font", ParameterKind::TextFont, "font"),

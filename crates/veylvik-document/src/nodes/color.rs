@@ -36,6 +36,7 @@ pub static EXPOSURE: NodeType = NodeType {
     label: "Exposure",
     description: "Multiply RGB by two to the power of stops; preserve alpha.",
     inputs: &["image"],
+    optional: &[],
     parameters: &[scalar("stops", "stops", -32.0, 32.0, 0.0)],
 };
 pub static COLORIZE: NodeType = NodeType {
@@ -44,6 +45,7 @@ pub static COLORIZE: NodeType = NodeType {
     label: "Colorize",
     description: "Map clamped straight Rec.709 luminance to two scene-linear RGBA colors. Interpolate premultiplied endpoints, then multiply by input coverage. Transparent input stays transparent; HDR and negative endpoint colors are preserved.",
     inputs: &["image"],
+    optional: &[],
     parameters: &[
         other("low", ParameterKind::Color, "linear RGBA"),
         Parameter {
@@ -59,6 +61,7 @@ pub static COLOR_CORRECT: NodeType = NodeType {
     label: "Colour correct",
     description: "Grade scene-linear colour in order: white balance (temperature warms or cools, tint shifts magenta or green), lift and gain (offset and multiply), contrast around 18% grey, gamma, then saturation with Rec.709 luminance. Works on unpremultiplied colour, keeps alpha, and does not clamp HDR values; negative values keep their sign through contrast and gamma. Defaults leave the image unchanged.",
     inputs: &["image"],
+    optional: &[],
     parameters: &[
         scalar("temperature", "amount", -1.0, 1.0, 0.0),
         scalar("tint", "amount", -1.0, 1.0, 0.0),
@@ -106,6 +109,7 @@ pub static LUT: NodeType = NodeType {
     label: "LUT",
     description: "Apply a 3D .cube LUT (up to 65³, with DOMAIN_MIN/MAX) to scene-linear colour. Input names the encoding the LUT expects and Output what it produces, each a curve (rec709, srgb, linear, pq, hlg, apple_log, slog3, logc3, logc4, vlog) and gamut (rec709, rec2020, p3_d65, s_gamut3, s_gamut3_cine, arri_wide_gamut3, arri_wide_gamut4, v_gamut); auto means Rec.709. Colour is encoded into the input space, looked up with trilinear interpolation and decoded from the output space back to scene-linear Rec.709. A camera LUT such as S-Log3/S-Gamut3.Cine to Rec.709 takes input slog3 with s_gamut3_cine and output rec709; a creative look made for Rec.709 video takes rec709 both ways. Mix blends with the original. Works on unpremultiplied colour and keeps alpha.",
     inputs: &["image"],
+    optional: &[],
     parameters: &[
         other("asset", ParameterKind::Asset, ".cube file"),
         scalar("mix", "amount", 0.0, 1.0, 1.0),
@@ -143,6 +147,7 @@ pub static OCIO: NodeType = NodeType {
     label: "OCIO colour transform",
     description: "Full-float GPU OpenColorIO transform, including config LUTs. Explicit source/destination or display/view. Unpremultiplies before conversion and restores alpha. Colour-space names describe these pixels; connect transforms deliberately and avoid applying a display transform twice.",
     inputs: &["image"],
+    optional: &[],
     parameters: &[other("transform", ParameterKind::OcioTransform, "")],
 };
 node!(Ocio, OCIO, [], {

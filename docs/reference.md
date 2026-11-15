@@ -472,6 +472,28 @@ triples; `null` keeps the surface's own colours, so older projects render exactl
 before); **Reset colours** returns to them, and choosing another surface resets them
 because its colour roles differ.
 
+**Reflect the shot** (material inspector) connects the footage behind the layer to
+the material's optional **Environment** input, so the surface sits in the shot
+instead of a studio: metals reflect the footage with their own colour and Fresnel
+response, roughness picks a blurred copy (a six-level box pyramid from half
+resolution down, blended between levels), and dielectrics such as wood or leather
+take their diffuse light from the shot's average colour. The shot stands in for the
+world behind the camera: it is mirrored about the layer's position and shifted along
+the reflected direction, so bevels pick up surrounding footage, and Reflection
+motion slides it. **Shot reflection** (0–1, default 0.6) blends the studio's
+reflections with the shot's; 1 is a pure mirror of the footage, which can vanish
+into an evenly lit plate, and 0 is the studio look exactly. Environment strength
+0.65 (the default) shows the shot at its own brightness. **Use studio** disconnects
+it. Area lights still add their highlights. This is image-based 2.5D shading, not
+ray tracing.
+
+Some node inputs are **optional**: they may stay unconnected and the node then
+behaves exactly as before the port existed (the Material's Environment is the
+first). The node catalog lists them under `optional`. In the graph an unconnected
+optional socket is drawn hollow; drag an output onto it to connect and drag its link
+off the socket to disconnect; the inspector's port list offers **None**. Bypass
+passes the single required input through.
+
 **Save as my material…** (material inspector, or **Save…** under text Appearance)
 keeps the whole look — surface, colours, finish, optics and lighting rig — under a
 name in **Library → Materials → My materials**. Saved materials are `.veymat` files
