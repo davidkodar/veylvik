@@ -67,7 +67,10 @@ impl Recipe {
                 let blur = add(
                     "blur",
                     "Glow blur",
-                    Operation::Blur(crate::nodes::Blur { radius: 8.0.into() }),
+                    Operation::Blur(crate::nodes::Blur {
+                        radius: 8.0.into(),
+                        filter: Default::default(),
+                    }),
                     &[("image", input)],
                 );
                 let bright = add(

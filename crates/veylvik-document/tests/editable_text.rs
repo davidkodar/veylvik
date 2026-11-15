@@ -500,7 +500,10 @@ fn legacy_shadow_upgrade_preserves_wiring_and_is_one_undo_step() {
     );
     let blur = Node::new(
         "blur",
-        Operation::Blur(nodes::Blur { radius: 5.0.into() }),
+        Operation::Blur(nodes::Blur {
+            radius: 5.0.into(),
+            filter: Default::default(),
+        }),
         &[("image", offset.id)],
     );
     let merge = Node::new(

@@ -15,7 +15,10 @@ fn blur_matches_reference_across_row_tiles_partial_edges_and_radius_paths() {
             });
         let blur = Node::new(
             "Blur",
-            Operation::Blur(veylvik_document::nodes::Blur { radius: 1.0.into() }),
+            Operation::Blur(veylvik_document::nodes::Blur {
+                radius: 1.0.into(),
+                filter: Default::default(),
+            }),
             &[("image", image)],
         );
         doc.output = blur.id;
@@ -40,6 +43,7 @@ fn blur_matches_reference_across_row_tiles_partial_edges_and_radius_paths() {
             doc.nodes.get_mut(&doc.output).unwrap().operation =
                 Operation::Blur(veylvik_document::nodes::Blur {
                     radius: radius.into(),
+                    filter: Default::default(),
                 });
             let frame = renderer
                 .render_frame(

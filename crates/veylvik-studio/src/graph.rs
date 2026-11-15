@@ -1922,7 +1922,10 @@ mod tests {
         doc.nodes.insert(source.id, source);
         let mut effect = Node::new(
             "Blur",
-            Operation::Blur(veylvik_document::nodes::Blur { radius: 4.0.into() }),
+            Operation::Blur(veylvik_document::nodes::Blur {
+                radius: 4.0.into(),
+                filter: Default::default(),
+            }),
             &[("image", original)],
         );
         effect.position = Some(NodePosition { x: 400.0, y: 50.0 });

@@ -37,6 +37,9 @@ pub enum Kernel {
     Shadow,
     BlurHorizontal,
     BlurVertical,
+    LensPrefilterHorizontal,
+    LensPrefilterVertical,
+    LensBlur,
     Merge,
     Blend,
     SurfaceBlend,
@@ -65,7 +68,7 @@ pub enum Kernel {
     Lut,
 }
 impl Kernel {
-    pub(crate) const ALL: [Self; 57] = [
+    pub(crate) const ALL: [Self; 60] = [
         Self::ToAcescg,
         Self::FromAcescg,
         Self::Text,
@@ -97,6 +100,9 @@ impl Kernel {
         Self::Shadow,
         Self::BlurHorizontal,
         Self::BlurVertical,
+        Self::LensPrefilterHorizontal,
+        Self::LensPrefilterVertical,
+        Self::LensBlur,
         Self::Merge,
         Self::Blend,
         Self::SurfaceBlend,
@@ -157,6 +163,9 @@ impl Kernel {
             Self::Shadow => "shadow",
             Self::BlurHorizontal => "blur_horizontal",
             Self::BlurVertical => "blur_vertical",
+            Self::LensPrefilterHorizontal => "lens_prefilter_horizontal",
+            Self::LensPrefilterVertical => "lens_prefilter_vertical",
+            Self::LensBlur => "lens_blur",
             Self::Merge => "merge",
             Self::Blend => "blend",
             Self::SurfaceBlend => "surface_blend",
@@ -353,6 +362,7 @@ impl Plan {
                         | Operation::Exposure(_)
                         | Operation::ColorCorrect(_)
                         | Operation::Blur(_)
+                        | Operation::LensBlur(_)
                         | Operation::Transform(_)
                         | Operation::Affine(_)
                 );

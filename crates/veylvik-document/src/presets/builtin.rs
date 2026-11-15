@@ -484,6 +484,7 @@ pub fn build(id: &str) -> Result<Preset> {
                 "Light spread",
                 Operation::Blur(crate::nodes::Blur {
                     radius: 12.0.into(),
+                    filter: Default::default(),
                 }),
                 &[("image", source)],
             );
@@ -582,7 +583,10 @@ pub fn build(id: &str) -> Result<Preset> {
             );
             let halo = b.add(
                 "Halo spread",
-                Operation::Blur(crate::nodes::Blur { radius: 8.0.into() }),
+                Operation::Blur(crate::nodes::Blur {
+                    radius: 8.0.into(),
+                    filter: Default::default(),
+                }),
                 &[("image", core)],
             );
             let boost = b.add(
@@ -659,7 +663,10 @@ pub fn build(id: &str) -> Result<Preset> {
             );
             let feather = b.add(
                 "Edge transition",
-                Operation::Blur(crate::nodes::Blur { radius: 4.0.into() }),
+                Operation::Blur(crate::nodes::Blur {
+                    radius: 4.0.into(),
+                    filter: Default::default(),
+                }),
                 &[("image", inset)],
             );
             let field = b.add(

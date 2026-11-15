@@ -5,10 +5,39 @@ use crate::registry::{NodeType, Parameter, ParameterKind, other, scalar};
 use crate::*;
 use serde::{Deserialize, Serialize};
 
+/// How Blur spreads each pixel over its radius.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BlurFilter {
+    /// Equal weights: fastest, but bright points become squares.
+    #[default]
+    Box,
+    /// Gaussian falloff (sigma = radius / 3): smooth and round, like a soft lens.
+    Gaussian,
+}
+impl BlurFilter {
+    pub const ALL: [Self; 2] = [Self::Box, Self::Gaussian];
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Box => "Box",
+            Self::Gaussian => "Gaussian",
+        }
+    }
+}
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Blur {
     pub radius: Scalar,
+    /// Projects saved before the filter existed are box blurs.
+    #[serde(default)]
+    pub filter: BlurFilter,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LensBlur {
+    pub radius: Scalar,
+    pub highlights: Scalar,
+    pub threshold: Scalar,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -43,9 +72,24 @@ pub static BLUR: NodeType = NodeType {
     type_id: "blur",
     version: 1,
     label: "Blur",
-    description: "Box blur, radius rounded to an integer; transparent borders.",
+    description: "Blur within radius pixels (rounded to an integer); transparent borders. Filter box averages equally (fast; bright points turn square), gaussian falls off smoothly (sigma = radius / 3) for a round, lens-like softness.",
     inputs: &["image"],
-    parameters: &[scalar("radius", "pixels", 0.0, 256.0, 4.0)],
+    parameters: &[
+        scalar("radius", "pixels", 0.0, 256.0, 4.0),
+        other("filter", ParameterKind::BlurFilter, ""),
+    ],
+};
+pub static LENS_BLUR: NodeType = NodeType {
+    type_id: "lens_blur",
+    version: 1,
+    label: "Lens blur",
+    description: "Out-of-focus lens blur: every pixel spreads evenly over a disc of radius pixels, so lights become round bokeh, even single-pixel ones (large discs are prefiltered to the sample spacing). Highlights boosts colour brighter than threshold (scene-linear luminance) by 1 + highlights x (luminance - threshold) before blurring, so lights bloom into bright discs instead of fading. Premultiplied colour and alpha blur together; transparent borders. Animate radius for a rack focus.",
+    inputs: &["image"],
+    parameters: &[
+        scalar("radius", "pixels", 0.0, 128.0, 12.0),
+        scalar("highlights", "gain", 0.0, 16.0, 2.0),
+        scalar("threshold", "luminance", 0.0, 64.0, 0.8),
+    ],
 };
 pub static MORPHOLOGY: NodeType = NodeType {
     type_id: "morphology",
@@ -101,6 +145,7 @@ pub static AFFINE: NodeType = NodeType {
 };
 
 node!(Blur, BLUR, [radius]);
+node!(LensBlur, LENS_BLUR, [radius, highlights, threshold]);
 node!(Morphology, MORPHOLOGY, [radius]);
 node!(Displace, DISPLACE, [x, y]);
 node!(Transform, TRANSFORM, [x, y]);

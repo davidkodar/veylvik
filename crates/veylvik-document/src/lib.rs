@@ -82,6 +82,7 @@ macro_rules! each_node {
             $crate::Operation::Transform($node) => $body,
             $crate::Operation::Displace($node) => $body,
             $crate::Operation::Morphology($node) => $body,
+            $crate::Operation::LensBlur($node) => $body,
             $crate::Operation::Blur($node) => $body,
             $crate::Operation::Shadow($node) => $body,
             $crate::Operation::Merge($node) => $body,
@@ -135,6 +136,7 @@ pub enum Operation {
     Transform(nodes::Transform),
     Displace(nodes::Displace),
     Morphology(nodes::Morphology),
+    LensBlur(nodes::LensBlur),
     Blur(nodes::Blur),
     Shadow(nodes::Shadow),
     Merge(nodes::Merge),
@@ -606,7 +608,10 @@ pub fn demo() -> Composition {
     );
     let blur = Node::new(
         "Soft glow",
-        Operation::Blur(crate::nodes::Blur { radius: 4.0.into() }),
+        Operation::Blur(crate::nodes::Blur {
+            radius: 4.0.into(),
+            filter: Default::default(),
+        }),
         &[("image", exposure.id)],
     );
     let transform = Node::new(

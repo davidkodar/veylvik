@@ -173,6 +173,7 @@ fn out_of_range_animated_values_fail_before_commit() {
                     },
                 ],
             },
+            filter: Default::default(),
         }),
         &[("image", doc.snapshot().output)],
     );

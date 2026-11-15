@@ -5,7 +5,29 @@ use super::{Inspect, InspectCx};
 use crate::{animation, media_controls, shape_animation};
 use eframe::egui;
 
-impl Inspect for veylvik_document::nodes::Blur {}
+impl Inspect for veylvik_document::nodes::Blur {
+    fn inspect(&mut self, ui: &mut egui::Ui, cx: &mut InspectCx<'_>) {
+        ui.horizontal(|ui| {
+            ui.label("Filter");
+            egui::ComboBox::from_id_salt("blur-filter")
+                .selected_text(self.filter.label())
+                .show_ui(ui, |ui| {
+                    for choice in veylvik_document::nodes::BlurFilter::ALL {
+                        cx.dirty |= ui
+                            .selectable_value(&mut self.filter, choice, choice.label())
+                            .changed();
+                    }
+                });
+        });
+        ui.label("Gaussian is smooth and round; box is fastest but squares bright points.");
+    }
+}
+impl Inspect for veylvik_document::nodes::LensBlur {
+    fn inspect(&mut self, ui: &mut egui::Ui, _cx: &mut InspectCx<'_>) {
+        ui.label("Round bokeh: lights brighter than Threshold bloom into discs.");
+        ui.label("Animate Radius for a rack focus.");
+    }
+}
 impl Inspect for veylvik_document::nodes::Morphology {
     fn inspect(&mut self, ui: &mut egui::Ui, _cx: &mut InspectCx<'_>) {
         {

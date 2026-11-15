@@ -259,7 +259,10 @@ fn boundaries_reject_leaks_orphans_overlaps_and_invalid_defaults() {
     d.groups.remove(&group.id);
     let leak = Node::new(
         "leak",
-        Operation::Blur(veylvik_document::nodes::Blur { radius: 1.0.into() }),
+        Operation::Blur(veylvik_document::nodes::Blur {
+            radius: 1.0.into(),
+            filter: Default::default(),
+        }),
         &[("image", bright)],
     );
     d.nodes.insert(leak.id, leak);

@@ -52,7 +52,10 @@ impl Art {
     fn blur(&mut self, image: NodeId, r: f32) -> NodeId {
         self.node(
             "Soft diffusion",
-            Operation::Blur(crate::nodes::Blur { radius: r.into() }),
+            Operation::Blur(crate::nodes::Blur {
+                radius: r.into(),
+                filter: Default::default(),
+            }),
             &[("image", image)],
         )
     }

@@ -17,7 +17,10 @@ fn document() -> Composition {
             x: 0.0.into(),
             y: 0.0.into(),
         }),
-        Operation::Blur(veylvik_document::nodes::Blur { radius: 0.0.into() }),
+        Operation::Blur(veylvik_document::nodes::Blur {
+            radius: 0.0.into(),
+            filter: Default::default(),
+        }),
     ] {
         let node = Node::new("identity", operation, &[("image", output)]);
         output = node.id;
@@ -66,6 +69,7 @@ fn constant_identity_effects_alias_sources_before_slot_assignment() {
                 },
             ],
         },
+        filter: Default::default(),
     });
     assert_eq!(Plan::compile(&doc).unwrap().pass_count(), 3);
     // Aliases used by both ports must retain the source through the merge pass.

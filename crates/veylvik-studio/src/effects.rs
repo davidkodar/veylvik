@@ -388,6 +388,21 @@ impl Studio {
                             });
                         value = serde_json::to_value(quality).unwrap();
                     }
+                    ParameterKind::BlurFilter => {
+                        use veylvik_document::nodes::BlurFilter;
+                        ui.label(&control.label);
+                        let mut filter: BlurFilter =
+                            serde_json::from_value(value.clone()).unwrap_or_default();
+                        egui::ComboBox::from_id_salt(("blur-filter", &control.label))
+                            .selected_text(filter.label())
+                            .show_ui(ui, |ui| {
+                                for f in BlurFilter::ALL {
+                                    changed |=
+                                        ui.selectable_value(&mut filter, f, f.label()).changed();
+                                }
+                            });
+                        value = serde_json::to_value(filter).unwrap();
+                    }
                     ParameterKind::Boolean => {
                         let mut enabled = value.as_bool().unwrap_or(false);
                         changed = ui.checkbox(&mut enabled, &control.label).changed();

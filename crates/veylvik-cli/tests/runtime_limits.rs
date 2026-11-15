@@ -14,7 +14,10 @@ fn cli_and_headless_mcp_honor_host_budget_and_cpu_inspection_stays_available() {
         });
     let blur = Node::new(
         "Blur",
-        Operation::Blur(veylvik_document::nodes::Blur { radius: 1.0.into() }),
+        Operation::Blur(veylvik_document::nodes::Blur {
+            radius: 1.0.into(),
+            filter: Default::default(),
+        }),
         &[("image", doc.output)],
     );
     doc.output = blur.id;

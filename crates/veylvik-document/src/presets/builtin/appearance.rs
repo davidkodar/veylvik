@@ -82,7 +82,10 @@ pub fn build(id: &str, b: &mut Builder, source: NodeId) -> Result<NodeId> {
             b.expose(node, "emission", "Phosphor emission")?;
             let halo = b.add(
                 "Phosphor bloom",
-                Operation::Blur(crate::nodes::Blur { radius: 8.0.into() }),
+                Operation::Blur(crate::nodes::Blur {
+                    radius: 8.0.into(),
+                    filter: Default::default(),
+                }),
                 &[("image", node)],
             );
             let out = b.add(

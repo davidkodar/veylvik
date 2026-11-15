@@ -158,12 +158,20 @@ fn mask(@builtin(global_invocation_id) gid:vec3<u32>) {
     if !inside(gid) {return;}
     let i=index(gid);result[i]=source[i]*clamp(second[i].a,0.0,1.0);
 }
+// Box weights are all 1; gaussian (values.y = 1) uses sigma = radius / 3, so the
+// radius stays the visible reach of the blur for both filters.
+fn blur_weight(offset:i32,radius:i32)->f32 {
+    if p.values.y<0.5 {return 1.0;}
+    let sigma=max(f32(radius)/3.0,0.5);
+    return exp(-f32(offset*offset)/(2.0*sigma*sigma));
+}
 fn blur_axis(gid:vec3<u32>,axis:vec2<i32>)->vec4<f32> {
-    let radius=i32(round(p.values.x));var total=vec4<f32>(0.0);
+    let radius=i32(round(p.values.x));var total=vec4<f32>(0.0);var weights=0.0;
     for (var offset=-radius;offset<=radius;offset++) {
-        let pos=vec2<i32>(gid.xy)+axis*offset;total+=sample_source(pos.x,pos.y);
+        let pos=vec2<i32>(gid.xy)+axis*offset;let w=blur_weight(offset,radius);
+        total+=sample_source(pos.x,pos.y)*w;weights+=w;
     }
-    return total/f32(radius*2+1);
+    return total/weights;
 }
 // A 64-pixel row plus a 256-pixel halo at either end (9 KiB).
 var<workgroup> blur_row:array<vec4<f32>,576>;
@@ -180,9 +188,65 @@ fn blur_horizontal(@builtin(global_invocation_id) gid:vec3<u32>,@builtin(local_i
     }
     workgroupBarrier();
     if !inside(gid) {return;}
+    var total=vec4<f32>(0.0);var weights=0.0;
+    for(var tap=0u;tap<=2u*radius;tap++) {
+        let w=blur_weight(i32(tap)-i32(radius),i32(radius));
+        total+=blur_row[lid.x+tap]*w;weights+=w;
+    }
+    result[index(gid)]=total/weights;
+}
+// Lens blur in three passes sharing values (radius, highlight boost, threshold).
+// N samples cover the disc on a golden-angle spiral; when N is below the disc area the
+// image is first box-filtered to the sample spacing, so even a one-pixel light spreads
+// into a solid, evenly lit disc instead of a speckled one.
+fn lens_samples(radius:f32)->u32 {return u32(clamp(ceil(3.14159265*radius*radius),1.0,400.0));}
+fn lens_prefilter(radius:f32)->i32 {
+    let area=3.14159265*radius*radius;let count=f32(lens_samples(radius));
+    if count>=area {return 0;}
+    // Spiral gaps reach about 1.5x the mean spacing; the box must bridge the widest.
+    return i32(ceil(sqrt(area/count)*0.75));
+}
+// Highlights above threshold (scene-linear luminance) gain energy, so lights bloom.
+fn lens_boosted(c:vec4<f32>)->vec4<f32> {
+    let l=dot(max(c.rgb,vec3<f32>(0.0)),vec3<f32>(0.2126,0.7152,0.0722));
+    return vec4<f32>(c.rgb*(1.0+p.values.y*max(l-p.values.z,0.0)),c.a);
+}
+@compute @workgroup_size(8,8)
+fn lens_prefilter_horizontal(@builtin(global_invocation_id) gid:vec3<u32>) {
+    if !inside(gid) {return;}
+    let s=lens_prefilter(max(p.values.x,0.0));var total=vec4<f32>(0.0);
+    for(var o=-s;o<=s;o++) {total+=lens_boosted(sample_source(i32(gid.x)+o,i32(gid.y)));}
+    result[index(gid)]=total/f32(2*s+1);
+}
+@compute @workgroup_size(8,8)
+fn lens_prefilter_vertical(@builtin(global_invocation_id) gid:vec3<u32>) {
+    if !inside(gid) {return;}
+    let s=lens_prefilter(max(p.values.x,0.0));var total=vec4<f32>(0.0);
+    for(var o=-s;o<=s;o++) {total+=sample_source(i32(gid.x),i32(gid.y)+o);}
+    result[index(gid)]=total/f32(2*s+1);
+}
+@compute @workgroup_size(8,8)
+fn lens_blur(@builtin(global_invocation_id) gid:vec3<u32>) {
+    if !inside(gid) {return;}
+    let radius=max(p.values.x,0.0);
+    let count=lens_samples(radius);
     var total=vec4<f32>(0.0);
-    for(var tap=0u;tap<=2u*radius;tap++) {total+=blur_row[lid.x+tap];}
-    result[index(gid)]=total/f32(radius*2u+1u);
+    if count<=1u {result[index(gid)]=sample_source(i32(gid.x),i32(gid.y));return;}
+    if f32(count)>=3.14159265*radius*radius {
+        // Small discs: every pixel inside the disc, exactly once.
+        let r=i32(ceil(radius));var n=0.0;
+        for(var dy=-r;dy<=r;dy++) {for(var dx=-r;dx<=r;dx++) {
+            if f32(dx*dx+dy*dy)<=radius*radius {total+=sample_source(i32(gid.x)+dx,i32(gid.y)+dy);n+=1.0;}
+        }}
+        result[index(gid)]=total/n;return;
+    }
+    for(var n=0u;n<count;n++) {
+        let r=radius*sqrt((f32(n)+0.5)/f32(count));
+        let a=f32(n)*2.39996323;
+        let q=vec2<f32>(gid.xy)+vec2<f32>(cos(a),sin(a))*r;
+        total+=sample_source(i32(round(q.x)),i32(round(q.y)));
+    }
+    result[index(gid)]=total/f32(count);
 }
 @compute @workgroup_size(8,8)
 fn blur_vertical(@builtin(global_invocation_id) gid:vec3<u32>) {

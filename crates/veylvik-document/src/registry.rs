@@ -8,6 +8,7 @@ pub const MAX_ASSET_NAME: usize = 4096;
 pub enum ParameterKind {
     FrameRate,
     FlowQuality,
+    BlurFilter,
     OcioTransform,
     Brushing,
     StudioRig,
@@ -55,6 +56,7 @@ impl Parameter {
         match self.kind {
             ParameterKind::FrameRate => json!(crate::Time { ticks: 24, rate: 1 }),
             ParameterKind::FlowQuality => json!(crate::nodes::FlowQuality::Balanced),
+            ParameterKind::BlurFilter => json!(crate::nodes::BlurFilter::Box),
             ParameterKind::OcioTransform => {
                 json!(crate::color_management::OcioTransform::default())
             }
@@ -99,6 +101,9 @@ impl Parameter {
             }
             ParameterKind::FlowQuality => {
                 json!({"type":"string","enum":["fast","balanced","fine"]})
+            }
+            ParameterKind::BlurFilter => {
+                json!({"type":"string","enum":crate::nodes::BlurFilter::ALL})
             }
             ParameterKind::OcioTransform => crate::color_management::OcioTransform::schema(),
             ParameterKind::Brushing => {
@@ -221,10 +226,10 @@ impl NodeType {
 pub use crate::nodes::{
     AFFINE, ATMOSPHERE, BLEND, BLUR, CHANNEL_MASK, CHROMA_KEY, COLOR_CORRECT, COLORIZE,
     COMBINE_MASK, CONDENSATION, DISPLACE, DRIP, DUST, ELLIPSE, EXPOSURE, FADE, FIRE, FOOTAGE,
-    FRACTAL_NOISE, GLASS, GRADIENT, IMAGE, LUMA_KEY, LUT, MASK, MATERIAL, MERGE, METALLIC_SHINE,
-    MORPHOLOGY, MOTION_BLUR, NOISE, OCIO, OPTICAL_FLOW, PATH, PATINA, PLANAR_TRACK, PLANAR_WARP,
-    REFINE_MATTE, SOLID, SUN_GLINTS, SURFACE_BLEND, SURFACE_REFLECTION, TEXT, TIME_REMAP,
-    TRANSFORM,
+    FRACTAL_NOISE, GLASS, GRADIENT, IMAGE, LENS_BLUR, LUMA_KEY, LUT, MASK, MATERIAL, MERGE,
+    METALLIC_SHINE, MORPHOLOGY, MOTION_BLUR, NOISE, OCIO, OPTICAL_FLOW, PATH, PATINA, PLANAR_TRACK,
+    PLANAR_WARP, REFINE_MATTE, SOLID, SUN_GLINTS, SURFACE_BLEND, SURFACE_REFLECTION, TEXT,
+    TIME_REMAP, TRANSFORM,
 };
 pub static TYPES: &[&NodeType] = &[
     &SOLID,
@@ -234,6 +239,7 @@ pub static TYPES: &[&NodeType] = &[
     &LUT,
     &TRANSFORM,
     &BLUR,
+    &LENS_BLUR,
     &crate::nodes::SHADOW,
     &MERGE,
     &IMAGE,

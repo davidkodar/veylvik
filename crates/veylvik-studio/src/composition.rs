@@ -211,9 +211,10 @@ mod tests {
         document.apply(document.revision(), &commands).unwrap();
         assert_eq!(document.history().undo_steps, 1);
         for (id, node) in &doc.nodes {
-            if let Operation::Blur(veylvik_document::nodes::Blur { radius }) = &node.operation {
-                let Operation::Blur(veylvik_document::nodes::Blur { radius: changed }) =
-                    &document.snapshot().nodes[id].operation
+            if let Operation::Blur(veylvik_document::nodes::Blur { radius, .. }) = &node.operation {
+                let Operation::Blur(veylvik_document::nodes::Blur {
+                    radius: changed, ..
+                }) = &document.snapshot().nodes[id].operation
                 else {
                     panic!()
                 };

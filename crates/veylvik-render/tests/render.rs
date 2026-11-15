@@ -123,7 +123,10 @@ fn gpu_matches_analytic_references_and_enforces_budget() {
     assert_eq!(pixels[1][3], 1.0);
     let blur = Node::new(
         "blur",
-        Operation::Blur(veylvik_document::nodes::Blur { radius: 1.0.into() }),
+        Operation::Blur(veylvik_document::nodes::Blur {
+            radius: 1.0.into(),
+            filter: Default::default(),
+        }),
         &[("image", id)],
     );
     doc.output = blur.id;
@@ -283,7 +286,10 @@ fn gpu_image_injection_preview_and_crop_match_full_frame() {
     );
     let blur = Node::new(
         "blur",
-        Operation::Blur(veylvik_document::nodes::Blur { radius: 1.0.into() }),
+        Operation::Blur(veylvik_document::nodes::Blur {
+            radius: 1.0.into(),
+            filter: Default::default(),
+        }),
         &[("image", merge.id)],
     );
     let preview = first.id;
@@ -391,7 +397,10 @@ fn lowered_blur_preserves_fanout_and_never_aliases_inputs() {
     );
     let blur = Node::new(
         "blur",
-        Operation::Blur(veylvik_document::nodes::Blur { radius: 3.0.into() }),
+        Operation::Blur(veylvik_document::nodes::Blur {
+            radius: 3.0.into(),
+            filter: Default::default(),
+        }),
         &[("image", source.id)],
     );
     let merge = Node::new(
@@ -435,7 +444,10 @@ fn separable_blur_matches_direct_reference_and_pool_is_bounded() {
     );
     let blur = Node::new(
         "blur",
-        Operation::Blur(veylvik_document::nodes::Blur { radius: 0.0.into() }),
+        Operation::Blur(veylvik_document::nodes::Blur {
+            radius: 0.0.into(),
+            filter: Default::default(),
+        }),
         &[("image", source.id)],
     );
     let id = blur.id;
@@ -457,6 +469,7 @@ fn separable_blur_matches_direct_reference_and_pool_is_bounded() {
         doc.nodes.get_mut(&id).unwrap().operation =
             Operation::Blur(veylvik_document::nodes::Blur {
                 radius: radius.into(),
+                filter: Default::default(),
             });
         let plan = Plan::compile(&doc).unwrap();
         renderer.budget_bytes = plan.working_bytes() + 91 * 16;
@@ -1155,4 +1168,123 @@ fn gpu_frame_inputs_preserve_crops_ownership_cache_and_budget() {
             .pixels[0],
         [0.0, 0.0, 0.0, 1.0]
     );
+}
+
+/// Render `operation` over a single one-pixel light at the centre of a size x size frame.
+fn render_point(operation: Operation, size: u32, light: f32) -> Vec<[f32; 4]> {
+    use std::sync::Arc;
+    let source = Node::new(
+        "image",
+        Operation::Image(veylvik_document::nodes::Image {
+            asset: "plate".into(),
+        }),
+        &[],
+    );
+    let node = Node::new("filter", operation, &[("image", source.id)]);
+    let id = node.id;
+    let mut doc = composition(vec![source, node], id);
+    doc.width = size;
+    doc.height = size;
+    let mut pixels = vec![[0.0f32; 4]; (size * size) as usize];
+    let centre = (size / 2 * size + size / 2) as usize;
+    pixels[centre] = [light, light, light, 1.0];
+    let mut inputs = ImageInputs::default();
+    inputs.insert("plate", Arc::new(Image::new(size, size, pixels).unwrap()));
+    let renderer = Renderer::new().unwrap();
+    let plan = Plan::compile(&doc).unwrap();
+    renderer
+        .render_frame(
+            &plan,
+            RenderRequest::full(Time::new(0, 1).unwrap()),
+            &inputs,
+        )
+        .unwrap()
+        .pixels
+}
+
+#[test]
+#[ignore = "requires Vulkan"]
+fn gaussian_blur_is_round_symmetric_and_conserves_energy() {
+    let out = render_point(
+        Operation::Blur(veylvik_document::nodes::Blur {
+            radius: 9.0.into(),
+            filter: veylvik_document::nodes::BlurFilter::Gaussian,
+        }),
+        41,
+        1.0,
+    );
+    let at = |x: i32, y: i32| out[((20 + y) * 41 + 20 + x) as usize][0];
+    let energy: f32 = out.iter().map(|p| p[0]).sum();
+    assert!((energy - 1.0).abs() < 1e-4, "energy {energy}");
+    for d in 1..=9 {
+        assert!((at(d, 0) - at(-d, 0)).abs() < 1e-7 && (at(0, d) - at(d, 0)).abs() < 1e-7);
+        assert!(at(d, 0) < at(d - 1, 0), "falls off from the centre");
+    }
+    // Separable gaussian: the diagonal follows the product of the axes.
+    assert!((at(3, 3) * at(0, 0) - at(3, 0) * at(0, 3)).abs() < 1e-7);
+    assert_eq!(at(10, 0), 0.0, "reach is the radius");
+}
+
+#[test]
+#[ignore = "requires Vulkan"]
+fn lens_blur_spreads_a_point_light_into_a_solid_disc() {
+    for (radius, size) in [(8.0f32, 41u32), (30.0, 81)] {
+        let out = render_point(
+            Operation::LensBlur(veylvik_document::nodes::LensBlur {
+                radius: radius.into(),
+                highlights: 0.0.into(),
+                threshold: 1.0.into(),
+            }),
+            size,
+            1.0,
+        );
+        let c = (size / 2) as i32;
+        let energy: f32 = out.iter().map(|p| p[0]).sum();
+        assert!(
+            (energy - 1.0).abs() < 0.02,
+            "radius {radius}: energy {energy}"
+        );
+        let (mut inside, mut lit, mut outside) = (0, 0, 0.0f32);
+        for y in 0..size as i32 {
+            for x in 0..size as i32 {
+                let d = (((x - c).pow(2) + (y - c).pow(2)) as f32).sqrt();
+                let v = out[(y * size as i32 + x) as usize][0];
+                if d <= radius - 3.0 {
+                    inside += 1;
+                    lit += usize::from(v > 0.0);
+                } else if d > radius + 4.0 {
+                    outside = outside.max(v);
+                }
+            }
+        }
+        assert_eq!(
+            lit, inside,
+            "radius {radius}: the disc is solid, not speckled"
+        );
+        assert_eq!(outside, 0.0, "radius {radius}: nothing beyond the disc");
+        // Even disc: the centre is no brighter than the average over the disc.
+        let mean = 1.0 / (std::f32::consts::PI * radius * radius);
+        let centre = out[(c * size as i32 + c) as usize][0];
+        assert!(
+            centre < mean * 2.0,
+            "radius {radius}: centre {centre} vs mean {mean}"
+        );
+    }
+    // Highlights add energy only above the threshold.
+    let lens = |light: f32| {
+        render_point(
+            Operation::LensBlur(veylvik_document::nodes::LensBlur {
+                radius: 8.0.into(),
+                highlights: 2.0.into(),
+                threshold: 1.0.into(),
+            }),
+            41,
+            light,
+        )
+        .iter()
+        .map(|p| p[0])
+        .sum::<f32>()
+    };
+    assert!((lens(0.5) - 0.5).abs() < 0.01);
+    assert!((lens(3.0) - 3.0 * (1.0 + 2.0 * 2.0)).abs() < 0.1);
 }

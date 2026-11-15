@@ -15,7 +15,7 @@ impl RenderNode for veylvik_document::nodes::Blur {
     }
     fn identity(&self) -> bool {
         let zero = |value: &Scalar| matches!(value, Scalar::Constant { value } if *value == 0.0);
-        let veylvik_document::nodes::Blur { radius } = self;
+        let veylvik_document::nodes::Blur { radius, .. } = self;
         zero(radius)
     }
     #[allow(unused_variables)]
@@ -34,7 +34,49 @@ impl RenderNode for veylvik_document::nodes::Blur {
         } = *cx;
         {
             p.values[0] = sample("radius")?;
+            p.values[1] = match self.filter {
+                veylvik_document::nodes::BlurFilter::Box => 0.0,
+                veylvik_document::nodes::BlurFilter::Gaussian => 1.0,
+            };
         }
+        Ok(())
+    }
+}
+impl RenderNode for veylvik_document::nodes::LensBlur {
+    fn passes(&self) -> Passes {
+        use super::{From, Step};
+        // Boost and prefilter to the sample spacing, then gather over the disc.
+        static STEPS: [Step; 3] = [
+            Step {
+                kernel: Kernel::LensPrefilterHorizontal,
+                inputs: [From::Port(0), From::None, From::None],
+            },
+            Step {
+                kernel: Kernel::LensPrefilterVertical,
+                inputs: [From::Step(0), From::None, From::None],
+            },
+            Step {
+                kernel: Kernel::LensBlur,
+                inputs: [From::Step(1), From::None, From::None],
+            },
+        ];
+        Passes::Chain(&STEPS)
+    }
+    fn shareable(&self) -> bool {
+        true
+    }
+    fn identity(&self) -> bool {
+        matches!(self.radius, Scalar::Constant { value } if value < 0.5)
+    }
+    fn params(
+        &self,
+        _cx: &Cx<'_>,
+        sample: &dyn Fn(&str) -> Result<f32>,
+        p: &mut Params,
+    ) -> Result<()> {
+        p.values[0] = sample("radius")?;
+        p.values[1] = sample("highlights")?;
+        p.values[2] = sample("threshold")?;
         Ok(())
     }
 }

@@ -80,7 +80,10 @@ pub fn create(
     );
     let blur = Node::new(
         "Foreground edge softness",
-        Operation::Blur(crate::nodes::Blur { radius: 0.0.into() }),
+        Operation::Blur(crate::nodes::Blur {
+            radius: 0.0.into(),
+            filter: Default::default(),
+        }),
         &[("image", grow.id)],
     );
     let cutout = Node::new(

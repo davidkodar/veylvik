@@ -42,6 +42,7 @@ impl Scene {
                 &format!("{label} blur {pass}"),
                 Operation::Blur(crate::nodes::Blur {
                     radius: (radius * 0.6).into(),
+                    filter: Default::default(),
                 }),
                 &[("image", blur)],
             );

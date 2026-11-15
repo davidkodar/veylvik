@@ -12,7 +12,10 @@ fn branches() -> (Composition, NodeId, NodeId) {
     let b = Node::new("B", a.operation.clone(), &[]);
     let blur_a = Node::new(
         "soft A",
-        Operation::Blur(veylvik_document::nodes::Blur { radius: 2.0.into() }),
+        Operation::Blur(veylvik_document::nodes::Blur {
+            radius: 2.0.into(),
+            filter: Default::default(),
+        }),
         &[("image", a.id)],
     );
     let blur_b = Node::new("soft B", blur_a.operation.clone(), &[("image", b.id)]);
@@ -82,6 +85,7 @@ fn equivalent_branches_share_passes_without_merging_distinct_inputs_or_curves() 
                 },
             ],
         },
+        filter: Default::default(),
     });
     assert_eq!(Plan::compile(&doc).unwrap().pass_count(), 6);
     doc.nodes.get_mut(&a).unwrap().operation = doc.nodes[&b].operation.clone();
@@ -113,8 +117,10 @@ fn duplicated_branches_match_explicit_sharing_and_keep_output_immutable() {
         .unwrap()
         .inputs
         .insert("foreground".into(), b);
-    doc.nodes.get_mut(&b).unwrap().operation =
-        Operation::Blur(veylvik_document::nodes::Blur { radius: 3.0.into() });
+    doc.nodes.get_mut(&b).unwrap().operation = Operation::Blur(veylvik_document::nodes::Blur {
+        radius: 3.0.into(),
+        filter: Default::default(),
+    });
     let changed = renderer
         .render_gpu_cached(&Plan::compile(&doc).unwrap(), request, &inputs)
         .unwrap();

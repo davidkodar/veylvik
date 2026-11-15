@@ -47,6 +47,7 @@ impl Builder {
             "Diffusion",
             Operation::Blur(crate::nodes::Blur {
                 radius: radius.into(),
+                filter: Default::default(),
             }),
             &[("image", image)],
         )
