@@ -233,3 +233,45 @@ fn a_light_rig_track_must_be_a_planar_track() {
     let error = Document::new(doc).err().unwrap().to_string();
     assert!(error.contains("Planar track"), "{error}");
 }
+
+#[test]
+fn every_catalogue_look_builds_validates_and_applies_its_whole_look() {
+    use presets::catalogue::ENTRIES;
+    let mut ids = std::collections::BTreeSet::new();
+    for entry in &ENTRIES {
+        assert!(ids.insert(entry.id), "duplicate {}", entry.id);
+        assert!(
+            builtin::ALL.iter().all(|b| b.id != entry.id),
+            "{} shadows a starter",
+            entry.id
+        );
+        assert!(["Metal", "Glossy", "Natural", "Leather"].contains(&material::category(entry.id)));
+        assert!(builtin::is_material(entry.id));
+        let preset = builtin::build(entry.id).unwrap();
+        preset.validate().unwrap();
+        material::Saved::new(entry.label, &entry.material()).unwrap();
+    }
+    assert!(
+        ENTRIES.len() + 19 >= 40,
+        "at least 40 materials in the library"
+    );
+    // Applying a look to styled text brings its finish, unlike a family built-in.
+    let (mut owner, id) = titled();
+    owner
+        .apply(
+            0,
+            &text_style::apply(owner.snapshot(), id, Some("gold_text"), None).unwrap(),
+        )
+        .unwrap();
+    owner
+        .apply(
+            1,
+            &text_style::apply(owner.snapshot(), id, Some("chrome"), None).unwrap(),
+        )
+        .unwrap();
+    let node = text_style::current(owner.snapshot(), id).unwrap().unwrap();
+    let chrome = material_of(owner.snapshot(), node);
+    assert_eq!(chrome.kind, MaterialKind::Silver);
+    assert_eq!(chrome.roughness.at(Time::new(0, 1).unwrap()).unwrap(), 0.04);
+    assert!(chrome.optics.is_some_and(|o| o.metallic));
+}

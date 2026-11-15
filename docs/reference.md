@@ -424,7 +424,7 @@ input names, defaults and controls save with the composition. Nested groups are 
 **Add → Effect library…** opens searchable starter and saved effects. The bundled
 **Prismatic Glow** adds cyan/rose light spill; **Neon Outline** adds luminous
 contours; **Liquid Shimmer** adds a smooth four-second flow loop with protected
-frame edges. The library contains **59 starter effects**, searchable by name,
+frame edges. The library contains **71 starter effects**, searchable by name,
 description or category, with category counts in the left sidebar and a search field above the results. Every starter remains an editable group with public controls.
 
 The expanded set includes:
@@ -462,6 +462,21 @@ replaces RGB using the source alpha. Metals reflect a filtered HDR studio enviro
 and optional rectangular area lights, using alpha-derived bevel normals on text and
 shapes. Library spheres use the same material shader with spherical normals; a flat
 text face will not reflect the studio in the same way as the sphere.
+
+Besides the 19 original families there are glossy **plastic** (one colour under a
+dielectric gloss with a faint orange-peel texture; roughness runs from enamel to
+rubber), **car paint** (paint and flake colours; flakes tilt the clear coat so
+highlights sparkle), **carbon fibre** (a 2×2 twill whose sheen follows the tow
+direction) and **holographic foil** (a white mirror tinted by a rainbow that shifts
+with surface angle and position and drifts with Reflection motion). Four animated recipes loop over four seconds as editable groups: **Chrome Shine
+Sweep** (a shine travels across mirror chrome), **Glint Reveal** (rose-gold glints
+flare, hold and fade), **Heat to Embers** (brushed steel glows from deep red to
+white-hot with an ember halo, then cools; Heat, Glow and Glow spread are keyable)
+and **Rust Spreading** (rust patches grow over steel and recede). The library's
+catalogue adds 25 looks built from these families as data (family, colours,
+reflectance, roughness, grain, brushing); their swatches render on the GPU like
+saved materials, and applying one to styled text brings its whole finish, while a
+family starter still changes only the family.
 
 **Colours** repaint a patterned surface without changing its pattern: wood and oak
 have dark and light grain, marble stone and veins, brick mortar plus dark and light

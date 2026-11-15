@@ -94,15 +94,19 @@ impl Source<'_> {
     }
 }
 
-/// Restyle an existing material with another one. A built-in changes only the
-/// surface family, so the user's finish and lighting stay; a saved material is
-/// the user's whole look and brings its finish, optics and lighting rig. Size,
+/// Restyle an existing material with another one. A family built-in changes only
+/// the surface family, so the user's finish and lighting stay; a catalogue look or a
+/// saved material is a whole look and brings its finish, optics and lighting rig. Size,
 /// bevel and reflection motion belong to the layer and always stay.
 pub fn restyle(target: &mut Material, source: Source<'_>, with: &Material) {
     target.kind = with.kind;
     target.optics = with.optics;
     target.colours = with.colours;
-    if let Source::Saved(_) = source {
+    let whole_look = match source {
+        Source::Saved(_) => true,
+        Source::Builtin(id) => super::catalogue::get(id).is_some(),
+    };
+    if whole_look {
         target.smooth_edges = with.smooth_edges;
         target.brushing = with.brushing;
         target.studio = with.studio.clone();
@@ -114,6 +118,9 @@ pub fn restyle(target: &mut Material, source: Source<'_>, with: &Material) {
 
 /// Library groups for built-in materials.
 pub fn category(id: &str) -> &'static str {
+    if let Some(entry) = super::catalogue::get(id) {
+        return entry.category;
+    }
     if matches!(
         id,
         "gold_text" | "silver_text" | "aluminium_text" | "bronze_text"

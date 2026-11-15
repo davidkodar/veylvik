@@ -49,10 +49,11 @@ impl MaterialKind {
             Silver => [0.97, 0.96, 0.92],
             Aluminium => [0.91, 0.92, 0.92],
             Bronze => [0.78, 0.38, 0.16],
+            Holographic => [0.95, 0.95, 0.95],
             _ => [0.04; 3],
         };
         SurfaceOptics {
-            metallic: matches!(self, Gold | Silver | Aluminium | Bronze),
+            metallic: matches!(self, Gold | Silver | Aluminium | Bronze | Holographic),
             reflectance,
             ior: 1.5,
         }
@@ -82,7 +83,10 @@ impl MaterialKind {
     pub fn colour_roles(self) -> &'static [&'static str] {
         use MaterialKind::*;
         match self {
-            Gold | Silver | Aluminium | Bronze => &[],
+            Gold | Silver | Aluminium | Bronze | Holographic => &[],
+            Plastic => &["Colour"],
+            CarPaint => &["Paint", "Flakes"],
+            CarbonFibre => &["Weave", "Sheen"],
             Phosphor => &["Glow"],
             Wood | OakLight | OakDark => &["Dark grain", "Light grain"],
             Marble => &["Stone", "Veins"],
@@ -99,7 +103,10 @@ impl MaterialKind {
         const DARK_OAK: [f32; 3] = [0.32, 0.23, 0.16];
         let tint = |c: [f32; 3], t: [f32; 3]| [c[0] * t[0], c[1] * t[1], c[2] * t[2]];
         let (a, b, c) = match self {
-            Gold | Silver | Aluminium | Bronze => ([0.0; 3], [0.0; 3], [0.0; 3]),
+            Gold | Silver | Aluminium | Bronze | Holographic => ([0.0; 3], [0.0; 3], [0.0; 3]),
+            Plastic => ([0.6, 0.05, 0.04], [0.0; 3], [0.0; 3]),
+            CarPaint => ([0.02, 0.05, 0.25], [0.6, 0.7, 0.9], [0.0; 3]),
+            CarbonFibre => ([0.01, 0.01, 0.012], [0.3, 0.3, 0.32], [0.0; 3]),
             // Glow is scaled by 1.9 in the shader so the stored colour stays 0–1.
             Phosphor => ([0.12 / 1.9, 1.0, 0.2], [0.0; 3], [0.0; 3]),
             Wood => ([0.065, 0.017, 0.004], [0.5, 0.22, 0.065], [0.0; 3]),

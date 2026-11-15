@@ -1,6 +1,9 @@
 //! Curated combinations of ordinary material, weathering and reflection nodes.
 use super::*;
 pub fn build(id: &str, b: &mut Builder, source: NodeId) -> Result<NodeId> {
+    if let Some(output) = super::animated::build(id, b, source)? {
+        return Ok(output);
+    }
     let family = match id {
         "weathered_bronze" => "bronze_text",
         "brushed_light_sweep" => "aluminium_text",

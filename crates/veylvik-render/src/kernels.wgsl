@@ -579,6 +579,28 @@ fn surface_sample(uv:vec2<f32>, kind:u32)->vec4<f32> {
             color*=0.94+fibers*0.1-crease*0.22;
             height+=coarse*0.12-crease*0.055;
         }
+    } else if kind==19u {
+        // Moulded plastic: one colour, a faint orange-peel texture under the gloss.
+        color=studio.palette[0].rgb;
+        height=fine*0.003;
+    } else if kind==20u {
+        // Car paint: base coat with metallic flakes that each tilt the clear coat a
+        // little, so highlights break into sparkle.
+        let q=uv*180.0;let cell=floor(q);
+        let flake=fire_noise(vec3<f32>(cell*3.1,0.7),557u);
+        let lit=smoothstep(0.78,0.86,flake);
+        color=mix(studio.palette[0].rgb,studio.palette[1].rgb,lit*0.18);
+        height=lit*(fire_noise(vec3<f32>(cell*7.3,2.1),941u)-0.5)*0.006;
+    } else if kind==21u {
+        // 2x2 twill: tows alternate direction, so the sheen colour follows the weave.
+        let q=uv*10.0;let cell=floor(q);let f=fract(q);
+        let warp=(i32(cell.x)+i32(cell.y))%2==0;
+        let along=select(f.y,f.x,warp);
+        let across=select(f.x,f.y,warp);
+        let tow=pow(sin(across*3.14159265),0.6);
+        let fibres=fire_noise(vec3<f32>(select(vec2<f32>(q.x*40.0,q.y*2.0),vec2<f32>(q.x*2.0,q.y*40.0),warp),0.4),313u);
+        color=mix(studio.palette[0].rgb,studio.palette[1].rgb,tow*(0.55+0.45*fibres)*select(0.6,1.0,warp));
+        height=tow*0.02+(fibres-0.5)*0.002+along*0.0;
     } else {
         // Jittered Voronoi cells produce irregular leather pebbles rather than a grid.
         let q=uv*78.0;let cell=floor(q);let f=fract(q);
@@ -803,6 +825,13 @@ fn material_colour(uv:vec2<f32>,n:vec3<f32>)->vec3<f32> {
         let pores_dark=pow(max(0.0,1.0-fibers*2.0),3.0);
         color*=max(0.1,1.0+p.extra.x*((fibers-0.5)*0.45-pores_dark*0.6));
         color=studio_surface(uv,n,color);
+    }
+    if p.size_op.w==22u {
+        // Holographic foil: a white mirror tinted by a rainbow that shifts with the
+        // surface angle and position, and drifts with Reflection motion.
+        let hue=fract(dot(n.xy,vec2<f32>(0.9,0.6))*1.5+(uv.x+uv.y)*0.15+p.values.w);
+        let rainbow=vec3<f32>(0.55)+0.45*cos(6.2831853*(vec3<f32>(hue)+vec3<f32>(0.0,0.33,0.67)));
+        return studio_surface(uv,n,vec3<f32>(0.0))*rainbow;
     }
     if p.size_op.w>=6u {color=detailed_surface(uv,n,p.size_op.w);}
     return color;

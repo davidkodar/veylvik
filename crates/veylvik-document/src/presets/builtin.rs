@@ -1,5 +1,6 @@
 //! Editable starter effects; the library and automation use the same factories.
 use super::Preset;
+mod animated;
 pub(in crate::presets) mod appearance;
 mod extended;
 mod optics;
@@ -14,7 +15,7 @@ pub struct Builtin {
     pub label: &'static str,
     pub description: &'static str,
 }
-pub const ALL: [Builtin; 67] = [
+pub const ALL: [Builtin; 71] = [
     Builtin {
         id: "weathered_bronze",
         label: "Weathered Bronze",
@@ -29,6 +30,26 @@ pub const ALL: [Builtin; 67] = [
         id: "sky_lit_gold",
         label: "Sky-lit Gold",
         description: "Polished gold reflects an animated blue sky and clouds alongside its studio lighting. Open the group to replace the reflection scene with your own objects or media.",
+    },
+    Builtin {
+        id: "chrome_shine_sweep",
+        label: "Chrome Shine Sweep",
+        description: "Mirror chrome with a bright shine sweeping across it. Retime the sweep, its width and strength from the group controls.",
+    },
+    Builtin {
+        id: "glint_reveal",
+        label: "Glint Reveal",
+        description: "Rose gold whose sparkling glints flare up, hold and fade. Edit glint strength, density and size.",
+    },
+    Builtin {
+        id: "heat_to_embers",
+        label: "Heat to Embers",
+        description: "Brushed steel that heats to a deep-red-to-white glow with an ember halo and cools again. Heat, Glow and Glow spread stay keyable.",
+    },
+    Builtin {
+        id: "rust_spreading",
+        label: "Rust Spreading",
+        description: "Rust patches grow over brushed steel and recede. Edit rust amount, dirt and patch size.",
     },
     Builtin {
         id: "smooth_slow_motion",
@@ -398,6 +419,9 @@ pub fn material_preset(label: &str, material: &crate::nodes::Material) -> Result
     Preset::capture(&b.doc, group_id)
 }
 pub fn build(id: &str) -> Result<Preset> {
+    if let Some(entry) = super::catalogue::get(id) {
+        return material_preset(entry.label, &entry.material());
+    }
     let builtin = ALL
         .iter()
         .find(|b| b.id == id)
@@ -840,7 +864,7 @@ pub(crate) fn sun_glints() -> Operation {
 
 /// True for reusable surface presets that can shade an opaque full-frame source.
 pub fn is_material(id: &str) -> bool {
-    appearance::material_kind(id).is_some()
+    appearance::material_kind(id).is_some() || super::catalogue::get(id).is_some()
 }
 
 /// Insert a self-contained material and composite it around the current output.
@@ -925,5 +949,5 @@ pub fn is_recipe(id: &str) -> bool {
     matches!(
         id,
         "weathered_bronze" | "brushed_light_sweep" | "sky_lit_gold"
-    )
+    ) || animated::IDS.contains(&id)
 }

@@ -960,3 +960,31 @@ fn a_light_following_a_track_relights_over_time_without_decoding_the_footage() {
     };
     assert!(side(&start, false) / side(&start, true) > side(&end, false) / side(&end, true));
 }
+
+#[test]
+#[ignore = "requires Vulkan"]
+fn every_catalogue_look_renders_finite_and_distinct() {
+    let renderer = Renderer::new().unwrap();
+    let mut seen: Vec<Vec<[f32; 4]>> = Vec::new();
+    for entry in &veylvik_document::presets::catalogue::ENTRIES {
+        let pixels = renderer.material_sample(&entry.material()).unwrap();
+        assert!(
+            pixels.iter().all(|p| p.iter().all(|v| v.is_finite())),
+            "{}",
+            entry.id
+        );
+        assert!(
+            pixels
+                .iter()
+                .any(|p| p[3] > 0.5 && p[0] + p[1] + p[2] > 0.001),
+            "{} is blank",
+            entry.id
+        );
+        assert!(
+            !seen.contains(&pixels),
+            "{} looks like another entry",
+            entry.id
+        );
+        seen.push(pixels);
+    }
+}

@@ -184,6 +184,10 @@ fn curated_recipes_and_flow_demo_loop_and_remain_visible() {
         "weathered_bronze",
         "brushed_light_sweep",
         "sky_lit_gold",
+        "chrome_shine_sweep",
+        "glint_reveal",
+        "heat_to_embers",
+        "rust_spreading",
         "smooth_slow_motion",
     ] {
         let scene = presets::showcase::build(id).unwrap();

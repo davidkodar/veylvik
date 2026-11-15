@@ -90,7 +90,7 @@ fn swatch(id: &str) -> Option<&'static [u8]> {
         "leather_black"
     )
 }
-use veylvik_document::presets::material::category;
+use veylvik_document::presets::{catalogue::get as catalogue, material::category};
 fn label(entry: builtin::Builtin) -> String {
     entry
         .label
@@ -153,7 +153,7 @@ impl Studio {
             ui.add_space(5.);
             ui.add(egui::TextEdit::singleline(&mut self.browser.query).hint_text("Search library…").desired_width(f32::INFINITY).margin(egui::vec2(9.,7.)));
             if self.browser.tab==Tab::Materials {
-                ui.horizontal_wrapped(|ui| {for name in ["All","Favourites","My materials","Metal","Natural","Leather"] {ui.selectable_value(&mut self.browser.category,name.into(),name);}});
+                ui.horizontal_wrapped(|ui| {for name in ["All","Favourites","My materials","Metal","Glossy","Natural","Leather"] {ui.selectable_value(&mut self.browser.category,name.into(),name);}});
             }
             ui.add_space(4.);
             let query=self.browser.query.to_lowercase();
@@ -171,7 +171,7 @@ impl Studio {
                 });
             } else {
                 let materials_tab=self.browser.tab==Tab::Materials;
-                let selected=self.browser.selected.and_then(|id|builtin::ALL.iter().find(|e|e.id==id).copied());
+                let selected=self.browser.selected.and_then(|id|builtin::ALL.iter().find(|e|e.id==id).copied().or_else(||catalogue(id).map(|e|e.builtin())));
                 let selected_saved=self.browser.selected_saved.as_ref().filter(|_|materials_tab).and_then(|key|self.materials.entries.iter().position(|e|e.key()==*key));
                 let reserve=if selected.is_some()||selected_saved.is_some() {145.} else {38.};
                 egui::ScrollArea::vertical().id_salt("library-cards").max_height((ui.available_height()-reserve).max(80.)).show(ui,|ui| {
@@ -183,7 +183,8 @@ impl Studio {
                             (shown!="Favourites"||favourite(&e.key())) && e.saved.label.to_lowercase().contains(&query)
                         }).map(|(i,_)|Card::Saved(i)));
                     }
-                    let mut entries:Vec<_>=builtin::ALL.iter().copied().filter(|e| {
+                    let looks=veylvik_document::presets::catalogue::ENTRIES.iter().map(|e|e.builtin()).filter(|_|materials_tab);
+                    let mut entries:Vec<_>=builtin::ALL.iter().copied().chain(looks).filter(|e| {
                         let kind=match self.browser.tab {Tab::Materials=>builtin::is_material(e.id),Tab::Effects=>!builtin::is_material(e.id),_=>true};
                         kind && (!materials_tab || shown=="All" || (shown=="Favourites" && favourite(&format!("builtin:{}",e.id))) || category(e.id)==shown)
                             && format!("{} {}",e.label,e.description).to_lowercase().contains(&query)
@@ -207,11 +208,12 @@ impl Studio {
                                     Card::Saved(i)=>{let e=&self.materials.entries[i];(e.key(),e.saved.label.clone(),format!("My material · {}",e.saved.material.kind.label()),selected_saved==Some(i))}
                                 };
                                 let response=match card {
-                                    Card::Builtin(entry) if !materials_tab || swatch(entry.id).is_none() => self.browser.gallery.tile(ui,entry.id,width),
+                                    Card::Builtin(entry) if !materials_tab || (swatch(entry.id).is_none() && catalogue(entry.id).is_none()) => self.browser.gallery.tile(ui,entry.id,width),
                                     _ => {
                                         let (rect,response)=ui.allocate_exact_size(egui::vec2(width,width),egui::Sense::click_and_drag());
                                         if ui.is_rect_visible(rect) {
                                             let texture=match card {
+                                                Card::Builtin(entry) if catalogue(entry.id).is_some()=>{let material=catalogue(entry.id).unwrap().material();self.materials.swatch_of(ui.ctx(),&self.renderer,format!("builtin:{}",entry.id),&material)}
                                                 Card::Builtin(entry)=>Some(self.browser.textures.entry(entry.id).or_insert_with(|| {
                                                     let image=image::load_from_memory(swatch(entry.id).unwrap()).expect("bundled material sample").to_rgba8();
                                                     ui.ctx().load_texture(entry.id,egui::ColorImage::from_rgba_unmultiplied([image.width() as usize,image.height() as usize],image.as_raw()),egui::TextureOptions::LINEAR)
@@ -282,10 +284,16 @@ impl Studio {
                     ui.strong(label(entry));
                     if self.browser.tab==Tab::Materials && matches!(self.draft.operation,Operation::Text(_)) {
                         if ui.add_sized([ui.available_width(),30.],egui::Button::new(egui::RichText::new("Apply to selected text").color(crate::theme::ink(crate::theme::palette(ui.ctx()).selection))).fill(crate::theme::palette(ui.ctx()).selection)).clicked() {apply=Some(entry.id);}
-                    } else if ui.button("Apply to composition…").clicked() {details=Some(entry.id);}
+                    } else if catalogue(entry.id).is_none() && ui.button("Apply to composition…").clicked() {details=Some(entry.id);}
+                    let payload=LibraryDrag{id:entry.id,template:false,saved:None};
                     ui.horizontal_wrapped(|ui| {
-                        if ui.button("Try example").clicked() {example=Some(entry.id);}
-                        if ui.button("More options…").clicked() {details=Some(entry.id);}
+                        if catalogue(entry.id).is_some() {
+                            if ui.button("Use as background").clicked() {use_action=Some((payload,Use::Background));}
+                            if ui.button("Use as foreground").clicked() {use_action=Some((payload,Use::Foreground));}
+                        } else {
+                            if ui.button("Try example").clicked() {example=Some(entry.id);}
+                            if ui.button("More options…").clicked() {details=Some(entry.id);}
+                        }
                     });
                 } else {ui.weak("Select an item to preview or apply it.");}
             }
@@ -470,7 +478,8 @@ impl Studio {
 
 fn usage_options(ui: &mut egui::Ui, item: LibraryDrag, can_fill_text: bool) -> Option<Use> {
     let mut action = None;
-    if item.saved.is_some() || builtin::is_material(item.id) {
+    let look = item.saved.is_some() || catalogue(item.id).is_some();
+    if look || builtin::is_material(item.id) {
         if ui
             .add_enabled(
                 can_fill_text,
@@ -489,7 +498,8 @@ fn usage_options(ui: &mut egui::Ui, item: LibraryDrag, can_fill_text: bool) -> O
         if ui.button("Use as foreground").clicked() {
             action = Some(Use::Foreground);
         }
-        if item.saved.is_some() {
+        // Saved and catalogue looks have no starter scene or effect configuration.
+        if look {
             return action;
         }
         ui.separator();
@@ -531,7 +541,9 @@ impl Studio {
             Some(saved) => veylvik_document::presets::material::Source::Saved(saved),
             None => item.id.into(),
         };
-        if saved.is_some() && matches!(action, Use::Example | Use::Configure) {
+        if (saved.is_some() || catalogue(item.id).is_some())
+            && matches!(action, Use::Example | Use::Configure)
+        {
             return;
         }
         match action {
@@ -643,6 +655,8 @@ impl Studio {
                     ui.heading(&entry.saved.label);
                 } else if let Some(entry) = builtin::ALL.iter().find(|e| e.id == item.id) {
                     ui.heading(label(*entry));
+                } else if let Some(entry) = catalogue(item.id) {
+                    ui.heading(entry.label);
                 }
                 ui.label(format!("Selected layer: {}", self.draft.label));
                 action =

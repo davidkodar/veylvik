@@ -98,7 +98,9 @@ impl Library {
                     self.favourites = loaded.favourites;
                     self.warnings = loaded.warnings;
                     let keys: BTreeSet<_> = self.entries.iter().map(Entry::key).collect();
-                    self.swatches.retain(|k, _| keys.contains(k));
+                    // Built-in looks keep their swatches; saved ones may be gone.
+                    self.swatches
+                        .retain(|k, _| k.starts_with("builtin:") || keys.contains(k));
                 }
                 Err(e) => self.error = Some(e),
             }
@@ -132,8 +134,17 @@ impl Library {
         renderer: &Arc<veylvik_render::Renderer>,
         entry: &Entry,
     ) -> Option<egui::TextureId> {
-        let key = entry.key();
-        let version = serde_json::to_string(&entry.saved.material).unwrap_or_default();
+        self.swatch_of(ctx, renderer, entry.key(), &entry.saved.material)
+    }
+    /// A GPU swatch for any material, cached under `key` until the material changes.
+    pub fn swatch_of(
+        &mut self,
+        ctx: &egui::Context,
+        renderer: &Arc<veylvik_render::Renderer>,
+        key: String,
+        material: &Material,
+    ) -> Option<egui::TextureId> {
+        let version = serde_json::to_string(material).unwrap_or_default();
         if let Some((_, receive)) = self.rendering.get(&key)
             && let Ok(result) = receive.try_recv()
         {
@@ -145,15 +156,14 @@ impl Library {
                     let texture = ctx.load_texture(&key, image, egui::TextureOptions::LINEAR);
                     self.swatches.insert(key.clone(), (rendered, texture));
                 }
-                Err(e) => self.warnings.push(format!("{}: {e}", entry.saved.label)),
+                Err(e) => self.warnings.push(format!("{key}: {e}")),
             }
         }
         let current = self.swatches.get(&key);
         let stale = current.is_none_or(|(v, _)| *v != version);
         if stale && !self.rendering.contains_key(&key) && self.rendering.len() < PARALLEL_SWATCHES {
             let (send, receive) = mpsc::channel();
-            let (renderer, material, ctx) =
-                (renderer.clone(), entry.saved.material.clone(), ctx.clone());
+            let (renderer, material, ctx) = (renderer.clone(), material.clone(), ctx.clone());
             std::thread::spawn(move || {
                 let _ = send.send(
                     renderer

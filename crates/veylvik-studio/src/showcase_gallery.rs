@@ -44,6 +44,18 @@ fn bytes(id: &str, before: bool) -> &'static [u8] {
         ("brushed_light_sweep", true) => {
             include_bytes!("../assets/showcase/brushed_light_sweep-before.png")
         }
+        ("chrome_shine_sweep", false) => {
+            include_bytes!("../assets/showcase/chrome_shine_sweep-after.png")
+        }
+        ("chrome_shine_sweep", true) => {
+            include_bytes!("../assets/showcase/chrome_shine_sweep-before.png")
+        }
+        ("glint_reveal", false) => include_bytes!("../assets/showcase/glint_reveal-after.png"),
+        ("glint_reveal", true) => include_bytes!("../assets/showcase/glint_reveal-before.png"),
+        ("heat_to_embers", false) => include_bytes!("../assets/showcase/heat_to_embers-after.png"),
+        ("heat_to_embers", true) => include_bytes!("../assets/showcase/heat_to_embers-before.png"),
+        ("rust_spreading", false) => include_bytes!("../assets/showcase/rust_spreading-after.png"),
+        ("rust_spreading", true) => include_bytes!("../assets/showcase/rust_spreading-before.png"),
         ("sky_lit_gold", false) => include_bytes!("../assets/showcase/sky_lit_gold-after.png"),
         ("sky_lit_gold", true) => include_bytes!("../assets/showcase/sky_lit_gold-before.png"),
         ("smooth_slow_motion", false) => {

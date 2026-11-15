@@ -37,6 +37,9 @@ impl Renderer {
                 | LeatherTan
                 | LeatherDark
                 | LeatherBlack
+                | Plastic
+                | CarPaint
+                | Holographic
         ) {
             return self.sphere(
                 crate::studio_lighting::Lighting::material(material, 0.0),
