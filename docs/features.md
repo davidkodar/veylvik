@@ -4,6 +4,8 @@ Everything Veylvik can do today, area by area. Veylvik is a native Rust node com
 
 ## Node graph editing
 
+- Hide/show the node/animation editor independently of playback and the ruler; reopen from Nodes/Animation or View with its previous height restored.
+
 - Connect nodes by dragging between output and input sockets, in either direction; Escape or dropping on empty space cancels.
 - Each accepted rewire is one undo step; invalid connections fail atomically.
 - Named inputs are also editable in the inspector.
@@ -46,7 +48,7 @@ Everything Veylvik can do today, area by area. Veylvik is a native Rust node com
 
 ## Viewer
 
-- GPU colour scopes: RGB histogram, luma waveform, RGB parade and Cb/Cr vectorscope, individually or in a resizable **Four-up** panel. Double-click to expand/restore, choose live B or captured A, and adjust trace intensity. Display-referred full-range sRGB, with explicit sampling and stale-preview labels.
+- GPU colour scopes with Klipp-aligned 10-bit traces, scale units, density rendering, low-pass measurement and 75% vectorscope targets: RGB histogram, luma waveform, RGB parade and Cb/Cr vectorscope, individually or in a resizable **Four-up** panel. Double-click to expand/restore, choose live B or captured A, and adjust trace intensity. Display-referred full-range sRGB, with explicit sampling and stale-preview labels.
 
 - **Capture A** retains a completed GPU preview as a session reference; compare with live B using a draggable wipe or side-by-side view, swap sides, replace or clear A. Shared navigation and exposure/alpha controls; comparison is view-only and never affects exports.
 

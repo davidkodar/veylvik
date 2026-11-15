@@ -109,6 +109,9 @@ impl Studio {
                 }
             });
             ui.menu_button("View", |ui| {
+                let mut show_editor=!self.node_editor_hidden;
+                if ui.checkbox(&mut show_editor,"Node / animation editor").changed() {self.node_editor_hidden = !show_editor;}
+
                 ui.checkbox(&mut self.browser.visible, "Library panel");
                 ui.checkbox(&mut self.inspector_visible, "Inspector panel");
                 if item(ui, "Preview selected node", "", true) {

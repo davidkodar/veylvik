@@ -201,6 +201,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 view: ViewSettings::default(),
                 navigation: viewer::Navigation::default(),
                 comparison: Default::default(),
+                node_editor_hidden: false,
                 scopes: scopes::Scopes::new(&state.device, &state.queue, state.target_format),
                 displayed: None,
                 displayed_ticket: None,
@@ -290,6 +291,7 @@ struct Studio {
     navigation: viewer::Navigation,
     comparison: comparison::Comparison,
     scopes: scopes::Scopes,
+    node_editor_hidden: bool,
     displayed: Option<Arc<DisplayFrame>>,
     displayed_ticket: Option<PreviewTicket>,
     wanted: Option<PreviewTicket>,
@@ -2076,8 +2078,10 @@ impl Studio {
         let end_frame = (i64::from(count) - 1).max(self.project.frame);
         ui.horizontal_wrapped(|ui| {
             ui.add_enabled_ui(!self.animation_editor.dragging(), |ui| {
-                ui.selectable_value(&mut self.animation_editor.visible, false, "Nodes");
-                ui.selectable_value(&mut self.animation_editor.visible, true, "Animation");
+                if ui.selectable_label(!self.node_editor_hidden && !self.animation_editor.visible, "Nodes").clicked() {self.node_editor_hidden=false;self.animation_editor.visible=false;}
+                if ui.selectable_label(!self.node_editor_hidden && self.animation_editor.visible, "Animation").clicked() {self.node_editor_hidden=false;self.animation_editor.visible=true;}
+                if ui.button(if self.node_editor_hidden {"Show editor"} else {"Hide editor"}).on_hover_text("Collapse the node/animation editor while retaining playback controls and the time ruler").clicked() {self.node_editor_hidden = !self.node_editor_hidden;}
+
             });
             if ui
                 .add(icons::Button::new(
@@ -2878,19 +2882,19 @@ impl eframe::App for Studio {
                         if ui.add(icons::Button::new(icons::Icon::Inspector,"Inspector").caption()).clicked() {self.inspector_visible=true;}
                     });
                 }
-                egui::Panel::bottom("graph").frame(design::panel(ui.ctx()))
-                    .default_size(300.0)
-                    .min_size(130.0)
-                    .resizable(true)
+                let editor_hidden_at_start=self.node_editor_hidden;
+                (if editor_hidden_at_start {
+                    egui::Panel::bottom("transport-only").exact_size(126.0).resizable(false)
+                } else {
+                    egui::Panel::bottom("graph").default_size(300.0).min_size(130.0).resizable(true)
+                }).frame(design::panel(ui.ctx()))
                     .show_inside(ui, |ui| {
                         ui.add_enabled_ui(!self.animation_editor.dragging(), |ui| {
                             self.timeline(ui)
                         });
-                        ui.separator();
-                        if self.animation_editor.visible {
-                            self.animation_workspace(ui);
-                        } else {
-                            self.graph(ui);
+                        if !editor_hidden_at_start {
+                            ui.separator();
+                            if self.animation_editor.visible {self.animation_workspace(ui);} else {self.graph(ui);}
                         }
                     });
                 egui::CentralPanel::default().frame(design::panel(ui.ctx())).show_inside(ui, |ui| {

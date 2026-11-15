@@ -299,6 +299,11 @@ preview resolution and OCIO transform; B uses the current transform. Comparison
 does not change exports or project history. One reference frame retains GPU memory
 until cleared; no CPU pixel copy is needed. Colour scopes are described below.
 
+**Hide editor** on the transport row collapses the node/animation canvas while
+keeping playback and the time ruler visible. **Show editor**, **Nodes**, or
+**Animation** reopens it at its previous height. **View → Node / animation editor**
+provides the same toggle. This is session layout state and does not modify the project.
+
 **Scopes** toggles a resizable panel with **Four-up** (default), Histogram, Waveform,
 RGB parade and Vectorscope. Double-click a plot to expand it or return to Four-up.
 Choose **B: live** or **A: reference**; A requires Capture A. Trace intensity only
@@ -312,21 +317,39 @@ Viewer zoom, checkerboard, guides and Alpha mode are not measured. This is not a
 scene-linear/HDR exposure scope or a legal-range broadcast compliance check.
 A retains its captured colour transform; shared viewer exposure affects A and B.
 
-Each source is sampled on a deterministic grid of at most 512 × 512 points, visibly
-labelled. Half/Quarter preview settings therefore also affect the measured source.
-Histogram uses 256 RGB bins; waveform/parade/vectorscope use 128 × 128 bins per
-trace. Waveform uses Rec.709 coefficients on encoded RGB. Vectorscope uses Cb/Cr,
-with full-saturation RGB/CMY target boxes. End bins include display-clipped values.
-Histogram height is relative trace density; waveform/parade vertical scales are
-0–1 RGB/luma levels. Trace density is normalised per plot; sparse traces use
-nonlinear brightness and the vectorscope trace is widened for readability.
-These sampled scopes can miss isolated pixels; they are not exhaustive clipping
-or gamut validation. Stale live previews are labelled until the new render arrives.
+Scope presentation follows Klipp's conventions: 1024 levels, waveform columns
+matched to the panel's physical width (256–4096), fractional level splats, and
+source-column coverage. Four-up uses one row in wide panels and a 2 × 2 grid in
+taller panels. Vectorscope measurement uses a 2048 × 2048 chroma grid, 75% RGB/CMY
+targets, a hue ring and a 123-degree skin-tone reference. Scope drawing integrates
+the bins covered by each screen pixel rather than stretching a small raster.
 
-Accumulation and drawing run on the GPU, shared across the four plots, without
-pixel readback. Scope buffers use about 324 KiB per retained result, separate from
-renderer working buffers. A source frame remains retained until that result is
-replaced or hidden.
+**10-bit**, **%**, and **IRE** scales use the same code mapping as Klipp. The trace
+always spans 0–1023; IRE maps code 64 to 0 and code 940 to 100, with those reference
+lines marked. Full-range endpoints therefore read about −7.3 and 109.5 IRE. These
+markings do not convert the full-range signal to legal range.
+
+Waveform/parade brightness follows a saturating density curve; sparse samples stay
+dim and dense traces approach white. **Trace** uses Klipp's geometric intensity
+scale: 0.5 is normal, 0 is six times dimmer, 1 six times brighter. **Low pass** (on by
+default) applies a source-size-scaled Gaussian only to waveform/parade measurement.
+Histogram/vector always measure original pixels. The histogram has a logarithmic
+count axis, subdued fills, bright channel contours, four-code smoothing, and scale
+normalisation that excludes endpoint clipping spikes.
+
+Paused previews measure every source pixel up to a 16-million-sample safety limit.
+Playback uses automatic power-of-two sampling while retaining at least roughly two
+million samples when the source has that many; smaller previews are measured whole.
+Measurements refresh at most about 15 times per second during playback, immediately
+when paused or settings change. The current sample dimensions are visible. Preview
+Half/Quarter settings affect the source; sampled scopes can miss isolated pixels.
+The source remains display-referred, not a raw scene-linear/HDR exposure instrument.
+
+Accumulation and drawing stay on Veylvik's shared GPU device without pixel readback.
+The bounded scope grid uses roughly 20–80 MiB depending on waveform width, outside
+the renderer working-buffer budget. Hiding scopes releases the retained result.
+There is no runtime or build dependency on Klipp; measurement and presentation
+conventions are aligned with its scope implementation.
 
 **View exposure** adjusts only the display by −16 to +16 stops. **Alpha** shows
 coverage as grayscale, independent of exposure; **Reset view** restores normal
@@ -1218,7 +1241,7 @@ values can reuse output. Changed sources and parameters invalidate it. Cache
 retention counts toward the render budget and yields to memory pressure.
 `cache_stats` reports hits/misses/evictions; `clear_frame_cache` releases cache
 ownership. Direct CPU renders and intermediate node results are not cached. There is
-no plug-in loader, simulation, or Klipp adapter in this version. No Klipp source is copied or linked.
+no plug-in loader, simulation, or Klipp adapter in this version. Scope measurement and presentation conventions are aligned with Klipp; no Klipp crate is linked.
 
 ### Displacement maps
 
