@@ -86,6 +86,26 @@ impl crate::Studio {
                 .unwrap()
                 .clone()
         };
+        // Following lights sit on the rig's tracked point; their X/Y are an offset.
+        let base = node
+            .inputs
+            .get("track")
+            .filter(|_| matches!(node.operation, Operation::LightRig(_)))
+            .and_then(|track| self.project.document.snapshot().nodes.get(track))
+            .and_then(|n| match &n.operation {
+                Operation::PlanarTrack(track) => Some(track.data.clone()),
+                _ => None,
+            })
+            .zip(self.project.time().ok())
+            .and_then(|(track, time)| {
+                veylvik_document::optical::tracked_point(&track, time)
+                    .ok()
+                    .flatten()
+            })
+            .map(|point| {
+                let doc = self.project.document.snapshot();
+                veylvik_document::optical::scene_point(point, doc.width, doc.height)
+            });
         let studio = match &mut node.operation {
             Operation::Material(m) => &mut m.studio,
             Operation::LightRig(rig) => &mut rig.studio,
@@ -118,7 +138,18 @@ impl crate::Studio {
             .enumerate()
             .filter(|(_, l)| l.enabled)
         {
-            let actual = origin + Vec2::new(light.position[0], light.position[1]) * scale;
+            let offset = base.filter(|_| light.follow).unwrap_or([0.0; 2]);
+            let at = [
+                light.position[0] + offset[0],
+                light.position[1] + offset[1],
+                light.position[2],
+            ];
+            let rotation = if light.follow && base.is_some() {
+                veylvik_document::optical::aim(at)
+            } else {
+                light.rotation
+            };
+            let actual = origin + Vec2::new(at[0], at[1]) * scale;
             let bounds = canvas.shrink(22.0);
             let center = actual.clamp(bounds.min, bounds.max);
             let offscreen = actual.distance(center) > 1.0;
@@ -129,8 +160,13 @@ impl crate::Studio {
             )
             .on_hover_cursor(egui::CursorIcon::Move)
             .on_hover_text(format!(
-                "{}{} · drag to move X/Y; Z sets depth in the inspector",
+                "{}{}{} · drag to move X/Y; Z sets depth in the inspector",
                 label(index),
+                if light.follow && base.is_some() {
+                    " · follows the track"
+                } else {
+                    ""
+                },
                 if offscreen { " (outside view)" } else { "" }
             ));
             if response.clicked() || response.drag_started() {
@@ -155,11 +191,11 @@ impl crate::Studio {
                 );
                 if !offscreen {
                     let rotate = |[x, y, z]: [f32; 3]| {
-                        let (a, b) = light.rotation[0].to_radians().sin_cos();
+                        let (a, b) = rotation[0].to_radians().sin_cos();
                         let (y, z) = (y * b - z * a, y * a + z * b);
-                        let (a, b) = light.rotation[1].to_radians().sin_cos();
+                        let (a, b) = rotation[1].to_radians().sin_cos();
                         let (x, _z) = (x * b + z * a, -x * a + z * b);
-                        let (a, b) = light.rotation[2].to_radians().sin_cos();
+                        let (a, b) = rotation[2].to_radians().sin_cos();
                         Vec2::new(x * b - y * a, x * a + y * b) * scale
                     };
                     let u = rotate([light.size[0] * 0.5, 0.0, 0.0]);

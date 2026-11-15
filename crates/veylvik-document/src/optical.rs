@@ -141,6 +141,10 @@ pub struct AreaLight {
     pub size: [f32; 2],
     pub colour: [f32; 3],
     pub intensity: f32,
+    /// Ride on the rig's planar track: X/Y become an offset from the tracked point
+    /// and the light keeps aiming at the subject.
+    #[serde(default)]
+    pub follow: bool,
 }
 impl Default for AreaLight {
     fn default() -> Self {
@@ -151,6 +155,7 @@ impl Default for AreaLight {
             size: [3.0, 4.5],
             colour: [1., 0.96, 0.89],
             intensity: 4.,
+            follow: false,
         }
     }
 }
@@ -261,7 +266,8 @@ impl StudioRig {
             "lights":{"type":"array","maxItems":MAX_STUDIO_LIGHTS,"items":{"type":"object","additionalProperties":false,
                 "required":["enabled","position","rotation","size","colour","intensity"],"properties":{
                     "enabled":{"type":"boolean"},"position":vector(3,-100.,100.),"rotation":vector(3,-360.,360.),
-                    "size":vector(2,0.01,100.),"colour":vector(3,0.,1.),"intensity":{"type":"number","minimum":0,"maximum":100}}}}}})
+                    "size":vector(2,0.01,100.),"colour":vector(3,0.,1.),"intensity":{"type":"number","minimum":0,"maximum":100},
+                    "follow":{"type":"boolean"}}}}}})
     }
 }
 
@@ -430,25 +436,14 @@ impl StudioRig {
     /// Image space maps to scene units like the viewer guides: an eighth of the
     /// shorter side per unit around the frame centre.
     pub fn match_shot(&mut self, shot: &ShotLight, width: u32, height: u32) {
-        let unit = width.min(height).max(1) as f32 / 8.0;
         let directional = shot.contrast >= 1.3;
         let (x, y) = if directional {
-            (
-                ((shot.position[0] - width as f32 * 0.5) / unit).clamp(-6.0, 6.0),
-                ((shot.position[1] - height as f32 * 0.5) / unit).clamp(-6.0, 6.0),
-            )
+            let [x, y] = scene_point(shot.position, width, height);
+            (x.clamp(-6.0, 6.0), y.clamp(-6.0, 6.0))
         } else {
             (0.0, -3.0)
         };
         let position = [x, y, 2.5];
-        // Area lights emit along their rotated +Z; aim it at the subject at the origin.
-        let length = (x * x + y * y + 2.5 * 2.5).sqrt();
-        let d = position.map(|v| v / length);
-        let rotation = [
-            (-d[1]).asin().to_degrees(),
-            d[0].atan2(d[2]).to_degrees(),
-            0.0,
-        ];
         while self.lights.len() < 2 {
             self.lights.push(AreaLight {
                 enabled: false,
@@ -457,8 +452,9 @@ impl StudioRig {
         }
         let key = &mut self.lights[1];
         key.enabled = true;
+        key.follow = false;
         key.position = position;
-        key.rotation = rotation;
+        key.rotation = aim(position);
         key.colour = shot.colour;
         key.intensity = if directional {
             (1.2 * shot.contrast.min(10.0)).clamp(1.2, 12.0)
@@ -466,5 +462,71 @@ impl StudioRig {
             1.2
         };
         self.environment = (0.65 * shot.mean / 0.18).clamp(0.05, 4.0);
+    }
+}
+
+/// Rotation (degrees, X then Y) that turns an area light at `position` to face the
+/// subject at the origin; area lights emit along their rotated +Z.
+pub fn aim(position: [f32; 3]) -> [f32; 3] {
+    let length = position
+        .iter()
+        .map(|v| v * v)
+        .sum::<f32>()
+        .sqrt()
+        .max(1.0e-6);
+    let d = position.map(|v| v / length);
+    [
+        (-d[1]).asin().to_degrees(),
+        d[0].atan2(d[2]).to_degrees(),
+        0.0,
+    ]
+}
+/// Pixel to scene units, as the viewer guides draw lights: an eighth of the shorter
+/// side per unit around the frame centre.
+pub fn scene_point(pixel: [f32; 2], width: u32, height: u32) -> [f32; 2] {
+    let unit = width.min(height).max(1) as f32 / 8.0;
+    [
+        (pixel[0] - width as f32 * 0.5) / unit,
+        (pixel[1] - height as f32 * 0.5) / unit,
+    ]
+}
+/// Where a planar track carries the centre of its reference quad at `time`, in pixels.
+pub fn tracked_point(
+    track: &crate::planar::Track,
+    time: crate::Time,
+) -> crate::Result<Option<[f32; 2]>> {
+    let centre = track
+        .reference
+        .iter()
+        .fold([0.0, 0.0], |a, p| [a[0] + p[0] * 0.25, a[1] + p[1] * 0.25]);
+    Ok(track
+        .motion_at(time)?
+        .project(centre)
+        .map(|[x, y]| [x as f32, y as f32]))
+}
+impl StudioRig {
+    /// The rig at `time` with following lights moved onto the tracked point plus
+    /// their offset, turned to face the subject. Without a track it is unchanged.
+    pub fn followed(
+        &self,
+        track: Option<&crate::planar::Track>,
+        time: crate::Time,
+        width: u32,
+        height: u32,
+    ) -> crate::Result<Self> {
+        let mut rig = self.clone();
+        let Some(track) = track.filter(|_| rig.lights.iter().any(|l| l.follow)) else {
+            return Ok(rig);
+        };
+        let Some(point) = tracked_point(track, time)? else {
+            return Ok(rig);
+        };
+        let base = scene_point(point, width, height);
+        for light in rig.lights.iter_mut().filter(|l| l.follow) {
+            light.position[0] = (base[0] + light.position[0]).clamp(-100.0, 100.0);
+            light.position[1] = (base[1] + light.position[1]).clamp(-100.0, 100.0);
+            light.rotation = aim(light.position);
+        }
+        Ok(rig)
     }
 }

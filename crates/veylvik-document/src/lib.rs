@@ -396,6 +396,15 @@ impl Composition {
             {
                 return fail("Planar warp needs an enabled Planar track on its track input");
             }
+            if let (Operation::LightRig(_), Some(track)) =
+                (&node.operation, node.inputs.get("track"))
+                && !self
+                    .nodes
+                    .get(track)
+                    .is_some_and(|n| matches!(n.operation, Operation::PlanarTrack(_)) && !n.bypass)
+            {
+                return fail("A Light rig's track input takes an enabled Planar track");
+            }
             pending.insert(*id, node.inputs.len());
             for input in node.inputs.values() {
                 if !self.nodes.contains_key(input) {

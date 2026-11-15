@@ -28,6 +28,8 @@ pub(crate) struct InspectCx<'a> {
     pub share_lights: Option<bool>,
     /// Light this rig from the shot behind it.
     pub match_shot: bool,
+    /// The node's optional Track input is connected (a Light rig on a planar track).
+    pub tracked: bool,
     /// Refresh the viewer preview soon, for continuous edits such as path dragging.
     pub preview_soon: bool,
     pub error: Option<String>,

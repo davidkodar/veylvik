@@ -108,7 +108,13 @@ impl Inspect for veylvik_document::nodes::LightRig {
     fn inspect(&mut self, ui: &mut egui::Ui, cx: &mut InspectCx<'_>) {
         ui.label("Connect this rig to the Lights input of any Text surface. Moving a light updates every surface it lights and the shadows that follow them.");
         ui.push_id("light-rig", |ui| {
-            cx.dirty |= rig_controls(ui, &mut self.studio, cx.node_id, &mut cx.match_shot);
+            cx.dirty |= rig_controls(
+                ui,
+                &mut self.studio,
+                cx.node_id,
+                &mut cx.match_shot,
+                cx.tracked,
+            );
         });
     }
 }
@@ -174,6 +180,7 @@ pub(crate) fn rig_controls(
     rig: &mut veylvik_document::optical::StudioRig,
     node_id: veylvik_document::NodeId,
     match_shot: &mut bool,
+    tracked: bool,
 ) -> bool {
     use veylvik_document::optical::{AreaLight, MAX_STUDIO_LIGHTS, StudioRig};
     let mut changed = false;
@@ -197,6 +204,17 @@ pub(crate) fn rig_controls(
             ui.collapsing(crate::light_guides::label(index), |ui| {
                 crate::light_guides::select(ui, index);
                 changed |= ui.checkbox(&mut light.enabled, "Enabled").changed();
+                if tracked {
+                    let before = light.follow;
+                    changed |= ui
+                        .checkbox(&mut light.follow, "Follow the track")
+                        .on_hover_text("Ride on the rig's tracked point and keep aiming at the subject. X/Y become an offset from the point (set to zero when turned on); drag the light in the viewer to adjust it.")
+                        .changed();
+                    if light.follow && !before {
+                        light.position[0] = 0.0;
+                        light.position[1] = 0.0;
+                    }
+                }
                 changed |= ui
                     .color_edit_button_rgb(&mut light.colour)
                     .on_hover_text("Emitter colour in linear RGB")
@@ -276,7 +294,7 @@ pub(crate) fn lighting_controls(
                 ui.weak("Select that Light rig node to move its lights; every surface it lights follows.");
                 if ui.button("Use own lights").on_hover_text("Disconnect the shared rig and light this surface with its own lights again").clicked() {*share=Some(false);}
             } else {
-                changed|=rig_controls(ui,&mut material.studio,node_id,match_shot);
+                changed|=rig_controls(ui,&mut material.studio,node_id,match_shot,false);
                 if ui.button("Share these lights").on_hover_text("Move these lights into a Light rig node that other surfaces can use too").clicked() {*share=Some(true);}
             }
         });

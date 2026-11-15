@@ -206,3 +206,30 @@ fn light_rigs_only_connect_to_lights_inputs_and_never_render() {
     rig_output.output = rig.id;
     assert!(Document::new(rig_output).is_err());
 }
+
+#[test]
+fn a_light_rig_track_must_be_a_planar_track() {
+    let mut doc = demo();
+    let image = doc.output;
+    let rig = Node::new(
+        "Rig",
+        Operation::LightRig(nodes::LightRig::default()),
+        &[("track", image)],
+    );
+    let text = Node::new(
+        "Title",
+        serde_json::from_value(registry::TEXT.default_operation()).unwrap(),
+        &[],
+    );
+    let material = Node::new(
+        "Gold",
+        Operation::Material(material::Source::Builtin("gold_text").material().unwrap()),
+        &[("image", text.id), ("lights", rig.id)],
+    );
+    doc.output = material.id;
+    for n in [rig, text, material] {
+        doc.nodes.insert(n.id, n);
+    }
+    let error = Document::new(doc).err().unwrap().to_string();
+    assert!(error.contains("Planar track"), "{error}");
+}

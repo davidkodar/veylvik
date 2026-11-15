@@ -872,3 +872,91 @@ fn a_key_light_matched_to_the_shot_faces_and_lights_the_surface() {
         );
     }
 }
+
+#[test]
+#[ignore = "requires Vulkan"]
+fn a_light_following_a_track_relights_over_time_without_decoding_the_footage() {
+    use veylvik_document::planar::{Sample, Track};
+    let renderer = Renderer::new().unwrap();
+    let (mut doc, inputs, _) = source();
+    let coverage = doc.output;
+    let quad = |x: f64| [[x, 10.0], [x + 10.0, 10.0], [x + 10.0, 20.0], [x, 20.0]];
+    let sample = |ticks: i64, x: f64| Sample {
+        time: Time { ticks, rate: 24 },
+        corners: quad(x),
+        features: vec![],
+        rms_pixels: 0.0,
+        motion: None,
+    };
+    // Footage that is never supplied: rendering the title must not need it.
+    let footage = Node::new(
+        "Unused footage",
+        Operation::Image(nodes::Image {
+            asset: "missing.png".into(),
+        }),
+        &[],
+    );
+    let track = Node::new(
+        "Lamp track",
+        Operation::PlanarTrack(nodes::PlanarTrack {
+            data: Box::new(Track {
+                reference_time: Time { ticks: 0, rate: 24 },
+                reference: quad(2.0),
+                region: None,
+                samples: vec![sample(0, 2.0), sample(24, 84.0)],
+            }),
+        }),
+        &[("image", footage.id)],
+    );
+    let mut studio = veylvik_document::optical::StudioRig {
+        environment: 0.0,
+        ..Default::default()
+    };
+    studio.lights[1].enabled = true;
+    studio.lights[1].follow = true;
+    studio.lights[1].position = [0.0, 0.0, 1.0];
+    studio.lights[1].intensity = 20.0;
+    let rig = Node::new(
+        "Rig",
+        Operation::LightRig(nodes::LightRig { studio }),
+        &[("track", track.id)],
+    );
+    let mut silver = veylvik_document::presets::material::Source::Builtin("silver_text")
+        .material()
+        .unwrap();
+    silver.lighting = 0.0.into();
+    let material = Node::new(
+        "m",
+        Operation::Material(silver),
+        &[("image", coverage), ("lights", rig.id)],
+    );
+    doc.output = material.id;
+    for n in [footage, track, rig, material] {
+        doc.nodes.insert(n.id, n);
+    }
+    let plan = Plan::compile(&doc).unwrap();
+    assert!(
+        !plan.required_assets().contains("missing.png"),
+        "the track's footage is data only"
+    );
+    let frame = |ticks| {
+        renderer
+            .render_frame(
+                &plan,
+                RenderRequest::full(Time::new(ticks, 24).unwrap()),
+                &inputs,
+            )
+            .unwrap()
+            .pixels
+    };
+    let (start, end) = (frame(0), frame(24));
+    // The light moves from the left to the right of the frame: so does the bright side.
+    let side = |p: &[[f32; 4]], right: bool| {
+        p.iter()
+            .enumerate()
+            .filter(|(i, _)| (i % 96 >= 56) == right && i % 96 >= 16)
+            .map(|(_, v)| v[0])
+            .sum::<f32>()
+    };
+    assert!(side(&start, false) / side(&start, true) > side(&end, false) / side(&end, true));
+}

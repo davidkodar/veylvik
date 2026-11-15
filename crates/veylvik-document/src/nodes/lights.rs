@@ -18,9 +18,9 @@ pub static LIGHT_RIG: NodeType = NodeType {
     type_id: "light_rig",
     version: 1,
     label: "Light rig",
-    description: "Shared lighting: the studio environment, ambient light and up to eight area lights. Connect it to the Lights input of any number of Text surface nodes; moving a light updates every surface and the shadows that follow them. Produces no image; its output only connects to Lights inputs.",
-    inputs: &[],
-    optional: &[],
+    description: "Shared lighting: the studio environment, ambient light and up to eight area lights. Connect it to the Lights input of any number of Text surface nodes; moving a light updates every surface and the shadows that follow them. Produces no image; its output only connects to Lights inputs. Connect a Planar track to the optional Track input and lights set to follow ride on the tracked point.",
+    inputs: &["track"],
+    optional: &["track"],
     output: PortKind::Lights,
     parameters: &[other("studio", ParameterKind::StudioRig, "lighting rig")],
 };

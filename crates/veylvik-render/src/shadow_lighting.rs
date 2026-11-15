@@ -1,23 +1,39 @@
 use crate::studio_lighting::Lighting;
-/// The rig that lights a material: its connected Light rig, else its own.
-fn rig<'a>(
-    material: &'a veylvik_document::Node,
-    nodes: &'a [veylvik_document::Node],
-) -> Option<&'a veylvik_document::optical::StudioRig> {
-    let veylvik_document::Operation::Material(m) = &material.operation else {
-        return None;
+/// The rig that lights a material at `time`: its connected Light rig (with following
+/// lights carried by the rig's planar track), else its own.
+fn rig(
+    material: &veylvik_document::Node,
+    plan: &crate::Plan,
+    time: veylvik_document::Time,
+) -> crate::Result<Option<veylvik_document::optical::StudioRig>> {
+    use veylvik_document::Operation;
+    let Operation::Material(m) = &material.operation else {
+        return Ok(None);
     };
-    Some(
-        match material
-            .inputs
-            .get("lights")
-            .and_then(|id| nodes.iter().find(|n| n.id == *id))
-            .map(|n| &n.operation)
-        {
-            Some(veylvik_document::Operation::LightRig(rig)) => &rig.studio,
-            _ => &m.studio,
-        },
-    )
+    let Some(rig) = material
+        .inputs
+        .get("lights")
+        .and_then(|id| plan.nodes.iter().find(|n| n.id == *id))
+    else {
+        return Ok(Some(m.studio.clone()));
+    };
+    let Operation::LightRig(light) = &rig.operation else {
+        return Ok(Some(m.studio.clone()));
+    };
+    let track = rig
+        .inputs
+        .get("track")
+        .and_then(|id| plan.light_data.iter().find(|n| n.id == *id))
+        .and_then(|n| match &n.operation {
+            Operation::PlanarTrack(track) => Some(&*track.data),
+            _ => None,
+        });
+    Ok(Some(light.studio.followed(
+        track,
+        time,
+        plan.width,
+        plan.height,
+    )?))
 }
 /// Nearest upstream material node, with deterministic breadth-first traversal.
 pub(crate) fn material<'a>(
@@ -43,9 +59,10 @@ pub(crate) fn material<'a>(
 }
 pub(crate) fn for_node(
     node: &veylvik_document::Node,
-    nodes: &[veylvik_document::Node],
+    plan: &crate::Plan,
     time: veylvik_document::Time,
 ) -> crate::Result<Option<Lighting>> {
+    let nodes = &plan.nodes;
     use veylvik_document::Operation;
     if matches!(node.operation, Operation::Condensation(_)) {
         let mut upstream = node.clone();
@@ -53,8 +70,10 @@ pub(crate) fn for_node(
             .inputs
             .insert("lighting".into(), node.inputs["image"]);
         let found = material(&upstream, nodes);
-        let fallback = veylvik_document::optical::StudioRig::default();
-        let rig = found.and_then(|n| rig(n, nodes)).unwrap_or(&fallback);
+        let rig = match found {
+            Some(n) => rig(n, plan, time)?.unwrap_or_default(),
+            None => veylvik_document::optical::StudioRig::default(),
+        };
         let material = found.and_then(|n| match &n.operation {
             Operation::Material(m) => Some(m),
             _ => None,
@@ -67,7 +86,7 @@ pub(crate) fn for_node(
                 ior: 1.333,
             }),
             None,
-            rig,
+            &rig,
         );
         if let Some(m) = material {
             let angle = m.lighting.at(time)? * std::f32::consts::TAU;
@@ -91,8 +110,8 @@ pub(crate) fn for_node(
     let Some((source, Operation::Material(m))) = source.map(|n| (n, &n.operation)) else {
         return Ok(None);
     };
-    let studio = rig(source, nodes).unwrap_or(&m.studio);
-    let mut lighting = Lighting::new(m.kind, m.optics, m.colours, studio);
+    let studio = rig(source, plan, time)?.unwrap_or_else(|| m.studio.clone());
+    let mut lighting = Lighting::new(m.kind, m.optics, m.colours, &studio);
     lighting.palette[0][3] = m.shot.at(time)?.clamp(0.0, 1.0);
     if matches!(node.operation, Operation::Shadow(_)) {
         // Match the material's rotation of the light frame (inverse Y rotation).

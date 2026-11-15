@@ -245,6 +245,8 @@ pub struct Plan {
     pub(crate) width: u32,
     pub(crate) height: u32,
     pub(crate) nodes: Vec<Node>,
+    /// Inputs of light rigs (planar tracks) read as data; never rendered.
+    pub(crate) light_data: Vec<Node>,
     pub(crate) curves: Vec<BTreeMap<&'static str, CompiledScalar>>,
     pub(crate) passes: Vec<Pass>,
     pub(crate) output_slot: usize,
@@ -328,6 +330,7 @@ impl Plan {
         let mut visited = BTreeSet::new();
         let mut todo = vec![(output, false)];
         let mut nodes = Vec::new();
+        let mut light_data: Vec<Node> = Vec::new();
         let mut temporal = Vec::new();
         while let Some((id, expanded)) = todo.pop() {
             let node = &composition.nodes[&id];
@@ -370,6 +373,18 @@ impl Plan {
                         | Operation::Ocio(_)
                         | Operation::OpticalFlow(_)
                 ) {
+                    continue;
+                }
+                // A rig's inputs only carry data for its lights, so their sources
+                // (such as footage under a planar track) are never decoded for it.
+                if node.operation.descriptor().output
+                    == veylvik_document::registry::PortKind::Lights
+                {
+                    for source in node.inputs.values() {
+                        if !light_data.iter().any(|n| n.id == *source) {
+                            light_data.push(composition.nodes[source].clone());
+                        }
+                    }
                     continue;
                 }
                 for port in node.operation.inputs().iter().rev() {
@@ -624,6 +639,7 @@ impl Plan {
             width: composition.width,
             height: composition.height,
             nodes,
+            light_data,
             passes,
             output_slot: slots[final_value],
             slot_count,
@@ -679,7 +695,7 @@ impl Plan {
         {
             return Ok(false);
         }
-        for before in &self.nodes {
+        for before in self.nodes.iter().chain(&self.light_data) {
             let Some(after) = composition.nodes.get(&before.id) else {
                 return Ok(false);
             };

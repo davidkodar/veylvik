@@ -44,7 +44,7 @@ impl Key {
             )?;
             words.extend_from_slice(bytemuck::cast_slice(std::slice::from_ref(&values)));
             if let Some(lighting) =
-                crate::shadow_lighting::for_node(&plan.nodes[pass.node], &plan.nodes, request.time)?
+                crate::shadow_lighting::for_node(&plan.nodes[pass.node], plan, request.time)?
             {
                 words.extend_from_slice(bytemuck::cast_slice(std::slice::from_ref(&lighting)));
             }

@@ -1657,6 +1657,7 @@ impl Studio {
             lit_by: lit_by.as_deref(),
             share_lights: None,
             match_shot: false,
+            tracked: self.draft.inputs.contains_key("track"),
             preview_soon: false,
             error: None,
             picking: self

@@ -168,3 +168,78 @@ fn shot_light_finds_the_bright_side_and_its_colour() {
     assert!((rig.environment - 0.65).abs() < 0.01);
     assert!(ShotLight::analyse(&vec![[0.0; 4]; (w * h) as usize], w, h).is_none());
 }
+
+fn moving_track() -> veylvik_document::planar::Track {
+    use veylvik_document::planar::{Sample, Track};
+    let quad = |x: f64| [[x, 20.0], [x + 20.0, 20.0], [x + 20.0, 40.0], [x, 40.0]];
+    let sample = |ticks: i64, x: f64| Sample {
+        time: veylvik_document::Time { ticks, rate: 24 },
+        corners: quad(x),
+        features: vec![],
+        rms_pixels: 0.0,
+        motion: None,
+    };
+    Track {
+        reference_time: veylvik_document::Time { ticks: 0, rate: 24 },
+        reference: quad(10.0),
+        region: None,
+        samples: vec![sample(0, 10.0), sample(24, 150.0)],
+    }
+}
+
+#[test]
+fn following_lights_ride_the_track_and_keep_aiming_at_the_subject() {
+    use veylvik_document::optical::{StudioRig, aim, scene_point};
+    let track = moving_track();
+    track.validate().unwrap();
+    let mut rig = StudioRig::default();
+    rig.lights[1].enabled = true;
+    rig.lights[1].follow = true;
+    rig.lights[1].position = [0.5, 0.0, 2.0];
+    let fixed = rig.lights[0].clone();
+    let at = |ticks| {
+        rig.followed(
+            Some(&track),
+            veylvik_document::Time { ticks, rate: 24 },
+            192,
+            108,
+        )
+        .unwrap()
+    };
+    let (start, end) = (at(0), at(24));
+    // Start: tracked centre (20, 30); end: (160, 30); each plus the 0.5-unit offset.
+    let expect = |x| {
+        let p = scene_point([x, 30.0], 192, 108);
+        [p[0] + 0.5, p[1], 2.0]
+    };
+    for (rig, x) in [(&start, 20.0), (&end, 160.0)] {
+        let light = &rig.lights[1];
+        for (a, b) in light.position.iter().zip(expect(x)) {
+            assert!(
+                (a - b).abs() < 1e-3,
+                "{:?} vs {:?}",
+                light.position,
+                expect(x)
+            );
+        }
+        assert_eq!(light.rotation, aim(light.position));
+        assert_eq!(
+            rig.lights[0].position, fixed.position,
+            "non-following lights stay put"
+        );
+    }
+    assert!(end.lights[1].position[0] > start.lights[1].position[0]);
+    // Without a track nothing moves.
+    let still = rig
+        .followed(
+            None,
+            veylvik_document::Time {
+                ticks: 24,
+                rate: 24,
+            },
+            192,
+            108,
+        )
+        .unwrap();
+    assert_eq!(still.lights[1].position, rig.lights[1].position);
+}

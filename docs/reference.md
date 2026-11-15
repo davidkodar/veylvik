@@ -499,6 +499,15 @@ material inspector, **Share these lights** moves the surface's lights into a new
 Light rig and connects it (one undo step); **Use own lights** disconnects the rig and
 keeps its current lights on the surface, so the look does not jump.
 
+A Light rig's optional **Track** input takes an enabled Planar track. Lights with
+**Follow the track** then ride on the tracked point (the centre of the track's
+reference quad carried by its motion, in the same scene units as the viewer guides)
+plus their own X/Y offset, which is set to zero when following is turned on, and
+they turn every frame to keep aiming at the subject. Dragging such a light in the
+viewer edits its offset. The rig reads the track as data only, so footage under the
+track is not decoded to light a title. Track a lamp, a window or the sun through a
+shot and its light moves with it.
+
 **Match the shot** (Light rig, or a surface's own lights) renders the shot behind
 the surface at the playhead in the background: the surface's Environment input, else
 an Environment of any surface the rig lights, else the composition's backdrop. It

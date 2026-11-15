@@ -709,20 +709,20 @@ impl Renderer {
                 "parameters",
             )?;
             self.queue.write_buffer(&uniform, 0, bytemuck::bytes_of(p));
-            let lighting =
-                if let Some(lighting_data) = shadow_lighting::for_node(node, &plan.nodes, time)? {
-                    let buffer = resources.take(
-                        &self.device,
-                        studio_lighting::SIZE,
-                        wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-                        "Studio lighting",
-                    )?;
-                    self.queue
-                        .write_buffer(&buffer, 0, bytemuck::bytes_of(&lighting_data));
-                    buffer
-                } else {
-                    self.default_lighting.clone()
-                };
+            let lighting = if let Some(lighting_data) = shadow_lighting::for_node(node, plan, time)?
+            {
+                let buffer = resources.take(
+                    &self.device,
+                    studio_lighting::SIZE,
+                    wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+                    "Studio lighting",
+                )?;
+                self.queue
+                    .write_buffer(&buffer, 0, bytemuck::bytes_of(&lighting_data));
+                buffer
+            } else {
+                self.default_lighting.clone()
+            };
             let output = &buffers[scheduled.output];
             let input = |index: usize| -> &wgpu::Buffer {
                 match &scheduled.inputs[index] {
