@@ -622,12 +622,13 @@ fn render(
             Ok(complete)
         }
         Output::Video(settings) => {
+            let settings = video_settings(settings, &job.base);
             let result = veylvik_io::video_export::render(
                 renderer,
                 &job.document,
                 &inputs,
                 &job.path,
-                settings,
+                &settings,
                 |p| update(p.completed, p.total, format!("{} · {}", p.phase, p.backend)),
             )
             .map_err(|e| e.to_string())?;
@@ -653,6 +654,18 @@ fn render(
     }
 }
 
+// Host-only audio paths are skipped by Settings serialization. Rebind them for every
+// render, including jobs loaded after a restart in another working directory.
+fn video_settings(
+    settings: &veylvik_io::video_export::Settings,
+    base: &std::path::Path,
+) -> veylvik_io::video_export::Settings {
+    let mut settings = settings.clone();
+    settings.audio.base = Some(base.to_path_buf());
+    settings.audio.music = settings.audio.music.as_ref().map(|p| base.join(p));
+    settings
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -675,6 +688,19 @@ mod tests {
             output,
         )
         .unwrap()
+    }
+    #[test]
+    fn restored_video_resolves_audio_against_captured_project_directory() {
+        let dir = temp();
+        let job = fixture(&dir, "audio");
+        let mut settings = veylvik_io::video_export::Settings::for_document(&job.document);
+        settings.audio.base = Some(dir.clone());
+        settings.audio.music = Some("music.wav".into());
+        let restored = serde_json::from_slice(&serde_json::to_vec(&settings).unwrap()).unwrap();
+        let resolved = video_settings(&restored, &dir);
+        assert_eq!(resolved.audio.base, Some(dir.clone()));
+        assert_eq!(resolved.audio.music, Some(dir.join("music.wav")));
+        std::fs::remove_dir_all(dir).unwrap();
     }
     #[test]
     fn durable_snapshots_order_interruption_and_exclusive_ownership() {
