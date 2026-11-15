@@ -48,6 +48,7 @@ impl Studio {
                 if item(ui, "Import numbered sequence…", "", true) { self.import_media(self.graph.insertion_position(ui.ctx()), true); }
                 if item(ui, "Reload source images", "Ctrl+R", !self.draft_dirty) { self.reload_images(); }
                 ui.separator();
+                if item(ui, "Render queue…", "", true) { self.render_queue.open = true; }
                 if item(ui, "Export video…", "", true) { self.video_export.open = true; }
                 if item(ui, "Export current preview…", "Ctrl+E", true) { self.export_frame(); }
                 if item(ui, "Export image sequence…", "Ctrl+Shift+E", true) { self.export_controls.open = true; }
@@ -173,7 +174,7 @@ impl Studio {
             ui.separator();
             // Reserve only the remaining space so long filenames never push menus offscreen.
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.add(egui::Button::new(egui::RichText::new("Render").color(crate::theme::ink(crate::theme::palette(ui.ctx()).selection))).fill(crate::theme::palette(ui.ctx()).selection)).clicked() {self.video_export.open=true;}
+                if ui.add(egui::Button::new(egui::RichText::new("Render").color(crate::theme::ink(crate::theme::palette(ui.ctx()).selection))).fill(crate::theme::palette(ui.ctx()).selection)).clicked() {self.render_queue.open=true;}
 
                 let unavailable = self.project.unavailable_assets().len();
                 if unavailable > 0 {

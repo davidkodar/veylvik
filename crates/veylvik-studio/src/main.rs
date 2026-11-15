@@ -43,6 +43,7 @@ mod preset_library;
 mod preview_images;
 mod project;
 mod recovery;
+mod render_queue;
 mod scopes;
 mod sequence;
 mod shape_animation;
@@ -238,6 +239,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 files: Tasks::new(cc.egui_ctx.clone()),
                 export_controls: sequence::Controls::default(),
                 video_export: video_export::Controls::default(),
+                render_queue: render_queue::Queue::new(),
                 tracking: tracking::Controls::default(),
                 planar: planar::Controls::default(),
                 live_job: None,
@@ -328,6 +330,7 @@ struct Studio {
     files: Tasks,
     export_controls: sequence::Controls,
     video_export: video_export::Controls,
+    render_queue: render_queue::Queue,
     tracking: tracking::Controls,
     planar: planar::Controls,
     live_job: Option<live_jobs::LiveJob>,
@@ -816,6 +819,12 @@ impl Studio {
         }
     }
     fn leave(&mut self, action: Leave, ctx: &egui::Context) {
+        if matches!(action, Leave::Close) && self.render_queue.busy() {
+            self.render_queue.open = true;
+            self.render_queue.pause();
+            self.fail("A queued render is active. Pause the queue and finish or cancel the current job before quitting.");
+            return;
+        }
         if self.authoring_dialog_open() {
             self.fail("Finish or close the current authoring dialog first.");
             return;
@@ -1147,22 +1156,9 @@ impl Studio {
         self.file_started(result);
     }
     fn export_frame(&mut self) {
-        self.playback_controls.warming = None;
-        if let Some(s) = &self.scheduler {
-            s.playback_cache().clear();
-        }
-
         if self.files.busy() || !self.apply_draft() {
             return;
         }
-        self.playing = false;
-        let plan = match self.project.plan() {
-            Ok(plan) => plan,
-            Err(e) => {
-                self.fail(e);
-                return;
-            }
-        };
         let time = match self.project.time() {
             Ok(time) => time,
             Err(e) => {
@@ -1170,148 +1166,99 @@ impl Studio {
                 return;
             }
         };
-        let document = self.project.document.snapshot().clone();
-        let base = self.project.base.clone();
-        let inputs = self.project.inputs.clone();
-        let renderer = self.renderer.clone();
-        let name = format!("frame-{:06}.png", self.project.frame);
-        let result = self.files.start(move || {
-            let Some(path) = files::select(Choice::Export, &base, &name)? else {
-                return Ok(Completed::Cancelled);
-            };
-            veylvik_io::FrameFormat::from_path(&path).map_err(|e| e.to_string())?;
-            veylvik_io::protect_inputs(&document, &base, &path).map_err(|e| e.to_string())?;
-            let gpu_frame = renderer
-                .render_gpu_export(&plan, RenderRequest::full(time), &inputs)
-                .map_err(|e| e.to_string())?;
-            let frame = renderer.read_frame(&gpu_frame).map_err(|e| e.to_string())?;
-            let pixels =
-                veylvik_io::export::sdr_pixels(&path, &frame.pixels, document.output_display());
-            veylvik_io::save_frame(&path, frame.region.width, frame.region.height, &pixels)
-                .map_err(|e| e.to_string())?;
-            Ok(Completed::Exported(path))
-        });
-        self.file_started(result);
+        self.queue_export(
+            render_queue::Output::Frame {
+                time,
+                output: self
+                    .project
+                    .preview
+                    .unwrap_or(self.project.document.snapshot().output),
+            },
+            format!("frame-{:06}.png", self.project.frame),
+        );
     }
     fn export_video(
         &mut self,
         mut settings: veylvik_io::video_export::Settings,
-        ctx: &egui::Context,
+        _: &egui::Context,
     ) {
-        self.playback_controls.warming = None;
-        if let Some(s) = &self.scheduler {
-            s.playback_cache().clear();
-        }
-
-        use std::sync::atomic::Ordering;
+        settings.audio.base = Some(self.project.base.clone());
+        self.queue_export(
+            render_queue::Output::Video(Box::new(settings)),
+            "composition.mp4".into(),
+        );
+    }
+    fn export_sequence(&mut self, settings: sequence::Settings, _: &egui::Context) {
+        self.queue_export(
+            render_queue::Output::Sequence {
+                frames: settings.frames,
+                format: settings.format,
+                output: self
+                    .project
+                    .preview
+                    .unwrap_or(self.project.document.snapshot().output),
+            },
+            settings.name,
+        );
+    }
+    fn queue_export(&mut self, output: render_queue::Output, filename: String) {
         if self.files.busy() || !self.apply_draft() {
             return;
         }
-        self.playing = false;
         let document = self.project.document.snapshot().clone();
-        let inputs = self.project.inputs.clone();
         let base = self.project.base.clone();
-        settings.audio.base = Some(base.clone());
-        let renderer = self.renderer.clone();
-        let total = match settings.times(&document) {
-            Ok(t) => t.len() as u32,
-            Err(e) => {
-                self.fail(e);
-                return;
-            }
-        };
-        let progress = Arc::new(video_export::Job {
-            cancel: Default::default(),
-            progress: std::sync::Mutex::new(veylvik_io::video_export::Progress {
-                completed: 0,
-                total,
-                backend: "".into(),
-                phase: "Choose destination".into(),
-            }),
-        });
-        self.video_export.active = Some(progress.clone());
-        let context = ctx.clone();
+        let name = self
+            .project
+            .path
+            .as_ref()
+            .and_then(|p| p.file_stem())
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "Untitled composition".into());
         let result = self.files.start(move || {
-            let Some(path) = files::select(Choice::Video, &base, "composition.mp4")? else {
+            let Some(mut path) = files::select(output.choice(), &base, &filename)? else {
                 return Ok(Completed::Cancelled);
             };
-            veylvik_io::protect_inputs(&document, &base, &path).map_err(|e| e.to_string())?;
-            veylvik_io::video_export::render(&renderer, &document, &inputs, &path, &settings, |p| {
-                if let Ok(mut current) = progress.progress.lock() {
-                    *current = p;
-                }
-                context.request_repaint();
-                !progress.cancel.load(Ordering::Relaxed)
-            })
-            .map(Completed::Video)
-            .map_err(|e| e.to_string())
+            if matches!(output, render_queue::Output::Sequence { .. }) {
+                path = path.join(filename);
+            }
+            render_queue::Job::prepare(name, document, base, path, output)
+                .map(|j| Completed::Queued(Box::new(j)))
         });
-        if result.is_err() {
-            self.video_export.active = None;
-        }
         self.file_started(result);
     }
-    fn export_sequence(&mut self, settings: sequence::Settings, ctx: &egui::Context) {
-        self.playback_controls.warming = None;
-        if let Some(s) = &self.scheduler {
-            s.playback_cache().clear();
-        }
-
-        use std::sync::atomic::Ordering;
-        if self.files.busy() || !self.apply_draft() {
+    fn retry_render(&mut self, mut job: render_queue::Job) {
+        if self.files.busy() {
+            self.fail("Finish the file selection first.");
             return;
         }
-        self.playing = false;
-        let document = self.project.document.snapshot().clone();
-        let inputs = self.project.inputs.clone();
-        let base = self.project.base.clone();
-        let renderer = self.renderer.clone();
-        let request = veylvik_io::sequence::SequenceRequest {
-            format: settings.format,
-            frames: settings.frames,
-            output: self.project.preview.unwrap_or(document.output),
-            region: None,
-        };
-        let progress = Arc::new(sequence::Progress::default());
-        progress
-            .total
-            .store(settings.frames.count().unwrap(), Ordering::Relaxed);
-        self.export_controls.active = Some(progress.clone());
-        let context = ctx.clone();
         let result = self.files.start(move || {
-            let Some(parent) = files::select(Choice::Folder, &base, "")? else {
+            let filename = job
+                .path
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .into_owned();
+            let folder = job.path.parent().unwrap_or(&job.base);
+            let Some(mut path) = files::select(job.output.choice(), folder, &filename)? else {
                 return Ok(Completed::Cancelled);
             };
-            if progress.cancel.load(Ordering::Relaxed) {
-                return Ok(Completed::Cancelled);
+            if matches!(job.output, render_queue::Output::Sequence { .. }) {
+                // A fresh subdirectory preserves partial frames from previous attempts.
+                path = path.join(format!(
+                    "{}-{}",
+                    filename,
+                    veylvik_document::NodeId::new_v4()
+                ));
             }
-            veylvik_io::sequence::render_sequence_with_inputs(
-                &renderer,
-                &document,
-                &inputs,
-                &parent.join(settings.name),
-                request,
-                |completed, total| {
-                    progress.completed.store(completed, Ordering::Relaxed);
-                    progress.total.store(total, Ordering::Relaxed);
-                    context.request_repaint();
-                    !progress.cancel.load(Ordering::Relaxed)
-                },
-            )
-            .map(Completed::Sequence)
-            .map_err(|e| e.to_string())
+            job.retry_to(path)?;
+            Ok(Completed::Queued(Box::new(job)))
         });
-        if result.is_err() {
-            self.export_controls.active = None;
-        }
         self.file_started(result);
     }
     fn poll_files(&mut self, ctx: &egui::Context) {
         let Some(result) = self.files.poll() else {
             return;
         };
-        self.export_controls.active = None;
-        self.video_export.active = None;
         self.tracking.active = None;
         self.planar.active = None;
         self.subject.active = None;
@@ -1481,41 +1428,13 @@ impl Studio {
                     self.leave_now(action, ctx);
                 }
             }
-            Ok(Completed::Video(result)) => {
-                self.status = if result.cancelled {
-                    "Video export cancelled; no partial video published".into()
-                } else {
-                    format!(
-                        "Exported {} frames with {} ({}) to {}",
-                        result.frames,
-                        result.backend,
-                        if result.host_staging {
-                            "RAM staging"
-                        } else if result.experimental_interop {
-                            "GPU transfer · experimental DMA-BUF"
-                        } else {
-                            "GPU transfer"
-                        },
-                        result
-                            .path
-                            .as_ref()
-                            .map(|p| p.display().to_string())
-                            .unwrap_or_default()
-                    )
-                };
-                self.error = false;
-            }
-            Ok(Completed::Sequence(result)) => {
-                let manifest = &result["manifest"];
-                self.status = format!(
-                    "Sequence {}: {} / {} frames in {}",
-                    manifest["status"].as_str().unwrap_or("finished"),
-                    manifest["completed"],
-                    manifest["count"],
-                    result["directory"].as_str().unwrap_or("export folder")
-                );
-                self.error = false;
-            }
+            Ok(Completed::Queued(job)) => match self.render_queue.add(*job) {
+                Ok(()) => {
+                    self.status = "Added snapshot to render queue".into();
+                    self.error = false;
+                }
+                Err(e) => self.fail(e),
+            },
             Ok(Completed::Exported(path)) => {
                 self.status = format!("Exported {}", path.display());
                 self.error = false;
@@ -2601,6 +2520,21 @@ impl eframe::App for Studio {
         self.path_pen.shortcuts(&ctx);
         self.occlusion_tick();
         self.poll_files(&ctx);
+        if self.render_queue.will_start() {
+            self.playback_controls.warming = None;
+            if let Some(s) = &self.scheduler {
+                s.playback_cache().clear();
+            }
+        }
+        self.render_queue.tick(&self.renderer, &ctx);
+        if let Some(action) = self.render_queue.show(&ctx) {
+            match action {
+                render_queue::Action::Frame => self.export_frame(),
+                render_queue::Action::Video => self.video_export.open = true,
+                render_queue::Action::Sequence => self.export_controls.open = true,
+                render_queue::Action::Retry(job) => self.retry_render(*job),
+            }
+        }
         self.audio_tick();
         light_guides::begin_frame(&ctx);
         self.fonts.poll(&ctx);
@@ -2844,8 +2778,6 @@ impl eframe::App for Studio {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
             self.leave(Leave::Close, &ctx);
         }
-        self.export_controls.progress(ui);
-        self.video_export.progress(ui);
         ui.add_enabled_ui(
             !self.files.busy() && !self.authoring_dialog_open() && self.confirm.is_none(),
             |ui| {

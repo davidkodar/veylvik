@@ -69,8 +69,7 @@ pub enum Completed {
     },
     Saved(Saved),
     Exported(PathBuf),
-    Sequence(serde_json::Value),
-    Video(veylvik_io::video_export::Outcome),
+    Queued(Box<crate::render_queue::Job>),
 }
 pub struct Tasks {
     sender: mpsc::SyncSender<Result<Completed, String>>,

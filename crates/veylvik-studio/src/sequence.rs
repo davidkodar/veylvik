@@ -1,16 +1,14 @@
 //! Export settings and thread-safe progress for one background sequence render.
 use eframe::egui;
-use std::sync::{
-    Arc,
-    atomic::{AtomicBool, AtomicU32, Ordering},
-};
-use veylvik_document::{Time, sequence::FrameRange};
+use std::sync::atomic::{AtomicBool, AtomicU32};
+/// Shared progress for tracking and segmentation workers.
 #[derive(Default)]
 pub struct Progress {
     pub completed: AtomicU32,
     pub total: AtomicU32,
     pub cancel: AtomicBool,
 }
+use veylvik_document::{Time, sequence::FrameRange};
 pub struct Settings {
     pub frames: FrameRange,
     pub format: veylvik_io::FrameFormat,
@@ -23,7 +21,6 @@ pub struct Controls {
     start: i64,
     end: i64,
     name: String,
-    pub active: Option<Arc<Progress>>,
 }
 impl Default for Controls {
     fn default() -> Self {
@@ -34,7 +31,6 @@ impl Default for Controls {
             start: 0,
             end: 95,
             name: "frames".into(),
-            active: None,
         }
     }
 }
@@ -70,7 +66,7 @@ impl Controls {
                         Ok(frames) => { ui.label(format!("{} frames · {} / {} fps", frames.count().unwrap(), rate.ticks, rate.rate)); }
                         Err(error) => { ui.colored_label(egui::Color32::LIGHT_RED, error); }
                     }
-                    if ui.add_enabled(result.is_ok(), egui::Button::new("Choose parent folder and export…")).clicked() {
+                    if ui.add_enabled(result.is_ok(), egui::Button::new("Choose parent folder and queue…")).clicked() {
                         settings = Some(Settings { format:self.format,frames: result.unwrap(), name: self.name.clone() });
                     }
                 });
@@ -79,23 +75,8 @@ impl Controls {
         self.open = open && settings.is_none();
         settings
     }
-    pub fn progress(&self, ui: &mut egui::Ui) {
-        if let Some(progress) = &self.active {
-            let completed = progress.completed.load(Ordering::Relaxed);
-            let total = progress.total.load(Ordering::Relaxed);
-            egui::Panel::top("sequence_progress").show_inside(ui, |ui| {
-                ui.horizontal(|ui| {
-                    ui.add(egui::ProgressBar::new(completed as f32 / total.max(1) as f32).desired_width(280.0).text(format!("Exporting {completed} / {total} frames")));
-                    if progress.cancel.load(Ordering::Relaxed) {
-                        ui.label("Cancelling after the current frame; close the folder picker if it is open.");
-                    } else if ui.button("Cancel export").clicked() {
-                        progress.cancel.store(true, Ordering::Relaxed);
-                    }
-                });
-            });
-        }
-    }
 }
+
 fn validate(start: i64, end: i64, rate: Time, name: &str) -> Result<FrameRange, String> {
     if name.trim().is_empty() || matches!(name, "." | "..") || name.contains(['/', '\\', '\0']) {
         return Err("Use a single new folder name, without path separators.".into());

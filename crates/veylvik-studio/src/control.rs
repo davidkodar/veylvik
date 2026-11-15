@@ -62,6 +62,7 @@ pub fn call(
         result["job"] = studio.live_job_report();
         result["comparison"] = studio.comparison.status();
         result["scopes"] = studio.scopes.status();
+        result["render_queue"] = studio.render_queue.status();
         result["node_editor_visible"] = json!(!studio.node_editor_hidden);
         result["playback"] = json!({"range":studio.playback_controls.range(project.document.snapshot().frame_count),"range_enabled":studio.playback_controls.enabled,"preview_divisor":studio.playback_controls.divisor(),"caching":studio.playback_controls.warming.is_some(),"cache":studio.scheduler.as_ref().map(|s|s.playback_cache().status())});
         if summary {

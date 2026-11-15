@@ -1,20 +1,11 @@
-//! Video export UI; an immutable composition snapshot renders on the file worker.
+//! Video settings for immutable render-queue snapshots.
 use eframe::egui;
-use std::sync::{
-    Arc, Mutex,
-    atomic::{AtomicBool, Ordering},
-};
 use veylvik_document::{Composition, Time};
-use veylvik_io::video_export::{Codec, Progress, Quality, Settings};
-pub struct Job {
-    pub cancel: AtomicBool,
-    pub progress: Mutex<Progress>,
-}
+use veylvik_io::video_export::{Codec, Quality, Settings};
 #[derive(Default)]
 pub struct Controls {
     pub open: bool,
     settings: Option<Settings>,
-    pub active: Option<Arc<Job>>,
 }
 impl Controls {
     pub fn show(
@@ -44,28 +35,8 @@ impl Controls {
         self.open = open && result.is_none();
         result
     }
-    pub fn progress(&self, ui: &mut egui::Ui) {
-        if let Some(job) = &self.active
-            && let Ok(p) = job.progress.lock()
-        {
-            egui::Panel::top("video-export-progress").show_inside(ui, |ui| {
-                ui.horizontal(|ui| {
-                    ui.add(
-                        egui::ProgressBar::new(p.completed as f32 / p.total.max(1) as f32)
-                            .desired_width(260.)
-                            .text(format!("Video {} / {}", p.completed, p.total)),
-                    );
-                    if job.cancel.load(Ordering::Relaxed) {
-                        ui.label("Cancelling… Close the file picker if open.");
-                    } else if ui.button("Cancel export").clicked() {
-                        job.cancel.store(true, Ordering::Relaxed);
-                    }
-                    ui.label(format!("{} · {}", p.phase, p.backend));
-                });
-            });
-        }
-    }
 }
+
 fn rate_option(ui: &mut egui::Ui, current: &mut Time, value: Time, label: &str) {
     let selected = current
         .checked_sub(value)
@@ -237,7 +208,7 @@ fn settings_panel(ui: &mut egui::Ui, s: &mut Settings, doc: &Composition) -> Opt
     let export = ui
         .add_enabled(
             valid.is_ok(),
-            egui::Button::new("Choose destination and export…").min_size(egui::vec2(250., 32.)),
+            egui::Button::new("Choose destination and queue…").min_size(egui::vec2(250., 32.)),
         )
         .clicked();
     ui.weak("Choose a new .mp4 filename. Existing files are never replaced.");

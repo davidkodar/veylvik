@@ -9,7 +9,7 @@ fn timing(ms: Option<f64>) -> String {
     }
 }
 impl Studio {
-    pub(super) fn status_bar(&self, ui: &mut egui::Ui) {
+    pub(super) fn status_bar(&mut self, ui: &mut egui::Ui) {
         let wide = ui.available_width() > 1100.;
         ui.horizontal(|ui| {
             ui.set_min_height(22.);
@@ -25,6 +25,10 @@ impl Studio {
                     ("MCP ready",format!("Live control server is listening on {}.\nThis indicates availability, not an active client connection.",server.path().display()))
                 }else if let Some(error)=&self.control_error {("MCP unavailable",error.clone())}else{("MCP off","Live control is disabled for this session.".into())};
                 ui.add_sized([112.,22.],egui::Label::new(egui::RichText::new(label).color(if self.control.is_some(){if ui.visuals().dark_mode {egui::Color32::from_rgb(111,197,174)}else{egui::Color32::from_rgb(25,100,75)}}else{ui.visuals().weak_text_color()})).truncate()).on_hover_text(tip);
+                if self.render_queue.busy() || self.render_queue.pending() > 0 {
+                    let label = if self.render_queue.busy() { "Queue: rendering".to_owned() } else { format!("Queue: {} pending", self.render_queue.pending()) };
+                    if ui.add_sized([140.,22.],egui::Button::new(label)).on_hover_text("Open render queue, progress and cancellation").clicked() { self.render_queue.open = true; }
+                }
                 if wide {
                     ui.separator();
                     let doc=self.project.document.snapshot();

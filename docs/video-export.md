@@ -1,6 +1,7 @@
 # Export video
 
-Choose **File > Export video…** to export the composition output as an MP4.
+Choose **File > Export video…** to configure an MP4 job, choose a new destination,
+then click **Start queue** in the render queue. The **Render** button opens the queue.
 Choose H.264 for broad compatibility or HEVC 10-bit for smoother gradients on
 compatible players. Both are SDR Rec.709 without an alpha channel, with an AAC audio track (see Audio).
 The composition's display transform applies: Filmic rolls highlights off with an ACES-style
@@ -22,7 +23,7 @@ NVIDIA NVENC first, then supported Intel/AMD VA-API devices. Software encoding
 is disabled unless **Allow software encoding if hardware is unavailable** is
 checked. Export failures never silently restart on the CPU.
 
-Progress identifies the encoder in use. **Cancel export** discards the partial
+Progress identifies the encoder in use. **Cancel job** discards the partial
 file. Choose a new filename: existing files are never replaced, and the final
 MP4 is published only after encoding finishes successfully. Export takes a
 snapshot of the composition; it does not add an undo step.
@@ -142,3 +143,36 @@ Afterward, test native Studio export and cancellation, watch for corruption,
 and confirm `host_staging: false`, nonzero `direct_gpu_transfers`, and zero
 `staged_frames` in CLI/MCP output. Keep this path marked experimental until
 actual AMD and Intel results have been reviewed.
+
+## Persistent render queue
+
+**Render** or **File > Render queue…** opens the queue. Add video, image sequence
+or current-preview still jobs. Each captures the composition, embedded fonts,
+output node, frame/time range and export settings when added. You can switch
+projects and keep editing while jobs render sequentially on the shared GPU.
+Preview playback can slow down while the GPU is exporting.
+
+Use **Start queue**, **Pause after current**, **Cancel job**, and **Move earlier /
+Move later** to manage work. Cancel pending jobs or remove them before rendering.
+Per-job progress reports frames, elapsed time, encoder and errors. The status bar
+reopens the queue even when its window is hidden. **Clear completed** removes job
+records, not exported files. **Retry to…** keeps the original snapshot and selects
+a fresh destination; sequence retries use a new uniquely named subfolder and
+preserve earlier partial frames. Failed jobs do not prevent later jobs rendering.
+
+Jobs persist in `$XDG_STATE_HOME/veylvik/render-queue.json` (normally
+`~/.local/state/veylvik/render-queue.json`), separate from project history. The
+queue reopens paused; jobs active at an unexpected exit become **Interrupted**
+and require explicit retry. Only one running Veylvik instance owns this queue.
+Normal quitting requires finishing or cancelling the current render. The queue
+is limited to 64 jobs and 64 MiB of saved snapshots; remove finished records to
+free capacity.
+
+External media, sequence frames, music and OCIO dependencies stay at their source
+paths rather than being copied into the queue. Their size and modification time
+are checked before rendering and retry; missing or changed files fail the job.
+Keep sources unchanged while a render runs. To use edited media, enqueue a new
+snapshot. This is not a portable project archive or a render farm. Queued outputs
+never overwrite existing files or folders, including still frames. A cancelled
+sequence retains completed frames and its incomplete manifest; a cancelled video
+does not publish a partial MP4.
