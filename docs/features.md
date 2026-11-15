@@ -342,7 +342,7 @@ Opened with **Add → Effect library…**; searchable by name, description or ca
 - PNG input: 8/16-bit RGB, RGBA, greyscale, palettes; sRGB or untagged; 64 MiB file / 128 MiB decoded limits.
 - OpenEXR input: single-part scanline RGBA half/float, Raw/RLE/ZIP1/ZIP16, Rec.709/D65.
 - **Reload source images** (Ctrl+R) in the background; failures retain previous inputs.
-- Footage audio is not played in preview yet.
+- **Playback sound**: footage audio is mixed like export and plays with the playhead; choose the output device and volume in Preferences → Audio, which also shows the device in use.
 
 ## Point tracking
 

@@ -218,6 +218,14 @@ changes, including the live theme preview. Each section has its own reset.
   Pausing keeps the current frame visible. Looping defaults on and can also be toggled
   with the timeline loop button. Without looping, playback stops at the final frame;
   starting again from that frame starts at the range’s first frame.
+- **Audio:** play footage sound during playback (default on), the output device and the
+  volume (0–200%). **System default** follows PipeWire's (or the sound server's) choice
+  and is recommended; the list also offers PipeWire, PulseAudio and JACK, then hardware
+  outputs by card name, marked *direct* because they bypass the sound server. ALSA
+  plumbing (rate converters, up/downmixers) is hidden. **In use** shows the open device,
+  its rate, channels and sample format and the backend (for example *ALSA via
+  PipeWire*), or why there is no sound. A missing device stays silent rather than
+  switching elsewhere. The device list is read in the background.
 - **Appearance:** Dark (default), Light, Midnight Blue, Evergreen, or Follow system.
   Omarchy's active `colors.toml` is read from its state directory, with the
   legacy configuration path supported. Other desktops use their portal colour-scheme

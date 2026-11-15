@@ -2,6 +2,7 @@ mod about;
 mod animation;
 mod animation_editor;
 mod asset_browser;
+mod audio_preview;
 mod color_controls;
 mod composition;
 mod control;
@@ -235,6 +236,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 tracking: tracking::Controls::default(),
                 planar: planar::Controls::default(),
                 live_job: None,
+                audio: Default::default(),
                 subject: subject::Controls::default(),
                 models: models_window::ModelsWindow::default(),
                 outline_controls: text_outline::Controls::default(),
@@ -321,6 +323,7 @@ struct Studio {
     tracking: tracking::Controls,
     planar: planar::Controls,
     live_job: Option<live_jobs::LiveJob>,
+    audio: audio_preview::AudioPreview,
     subject: subject::Controls,
     models: models_window::ModelsWindow,
     outline_controls: text_outline::Controls,
@@ -2503,6 +2506,7 @@ impl Studio {
     }
     fn dialogs(&mut self, ctx: &egui::Context) {
         let before = self.preferences.values.clone();
+        self.preferences.audio_status = self.audio.status();
         if self.preferences.show(ctx, &self.system_theme.label) {
             self.apply_preferences(Some(&before), ctx);
         }
@@ -2585,6 +2589,7 @@ impl eframe::App for Studio {
         self.path_pen.shortcuts(&ctx);
         self.occlusion_tick();
         self.poll_files(&ctx);
+        self.audio_tick();
         light_guides::begin_frame(&ctx);
         self.fonts.poll(&ctx);
         if self.draft_dirty

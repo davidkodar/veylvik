@@ -13,6 +13,7 @@ veylvik-text.workspace = true
 veylvik-render.workspace = true
 veylvik-track.workspace = true
 veylvik-segment.workspace = true
+veylvik-audio.workspace = true
 veylvik-io.workspace = true
 wgpu.workspace = true
 bytemuck.workspace = true

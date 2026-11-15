@@ -48,6 +48,12 @@ pub struct Values {
     pub playback_disk_mib: u64,
     pub recovery_enabled: bool,
     pub recovery_seconds: u64,
+    /// Play the composition's sound during playback.
+    pub audio_enabled: bool,
+    /// Output device by name; `None` follows the system default (PipeWire's choice).
+    pub audio_device: Option<String>,
+    /// Playback gain, 0..=2 (1 = as recorded).
+    pub audio_volume: f32,
 }
 impl Default for Values {
     fn default() -> Self {
@@ -64,6 +70,9 @@ impl Default for Values {
             playback_disk_mib: 0,
             recovery_enabled: true,
             recovery_seconds: 10,
+            audio_enabled: true,
+            audio_device: None,
+            audio_volume: 1.,
         }
     }
 }
@@ -75,6 +84,8 @@ impl Values {
             || self.playback_disk_mib > 65536
             || !(64..=16384).contains(&self.gpu_budget_mib)
             || !(10..=300).contains(&self.recovery_seconds)
+            || !(0.0..=2.0).contains(&self.audio_volume)
+            || self.audio_device.as_ref().is_some_and(|d| d.len() > 512)
         {
             return Err("Preferences contain out-of-range values".into());
         }
@@ -134,6 +145,12 @@ pub struct Preferences {
     section: usize,
     path: Option<PathBuf>,
     error: Option<String>,
+    /// Output devices, read when the Audio section opens (enumeration can take a moment).
+    audio_devices: Option<Vec<veylvik_audio::Device>>,
+    /// A device scan in progress; ALSA enumeration stays off the UI thread.
+    audio_scan: Option<std::sync::mpsc::Receiver<Vec<veylvik_audio::Device>>>,
+    /// The device in use, set by the editor each frame.
+    pub audio_status: String,
 }
 impl Preferences {
     pub fn new() -> Self {
@@ -151,6 +168,9 @@ impl Preferences {
             section: 0,
             path,
             error,
+            audio_devices: None,
+            audio_scan: None,
+            audio_status: String::new(),
         }
     }
     pub fn begin(&mut self) {
@@ -191,14 +211,109 @@ impl Preferences {
                 self.draft.playback_gpu_mib = d.playback_gpu_mib;
                 self.draft.playback_disk_mib = d.playback_disk_mib;
             }
+            5 => {
+                self.draft.audio_enabled = d.audio_enabled;
+                self.draft.audio_device = d.audio_device;
+                self.draft.audio_volume = d.audio_volume;
+            }
             _ => {
                 self.draft.recovery_enabled = d.recovery_enabled;
                 self.draft.recovery_seconds = d.recovery_seconds;
             }
         }
     }
+    fn audio_ui(&mut self, ui: &mut egui::Ui) {
+        ui.heading("Audio");
+        ui.checkbox(&mut self.draft.audio_enabled, "Play sound during playback")
+            .on_hover_text(
+                "Footage sound is mixed exactly like video export and follows the playhead.",
+            );
+        if let Some(scan) = &self.audio_scan
+            && let Ok(found) = scan.try_recv()
+        {
+            self.audio_devices = Some(found);
+            self.audio_scan = None;
+        }
+        if self.audio_devices.is_none() && self.audio_scan.is_none() {
+            let (tx, rx) = std::sync::mpsc::channel();
+            let ctx = ui.ctx().clone();
+            let _ = std::thread::Builder::new()
+                .name("audio-devices".into())
+                .spawn(move || {
+                    let _ = tx.send(veylvik_audio::devices());
+                    ctx.request_repaint();
+                });
+            self.audio_scan = Some(rx);
+        }
+        let scanning = self.audio_devices.is_none();
+        let devices = self.audio_devices.clone().unwrap_or_default();
+        ui.horizontal(|ui| {
+            ui.label("Output device");
+            let selected = match &self.draft.audio_device {
+                None => "System default".to_owned(),
+                Some(name) => devices
+                    .iter()
+                    .find(|d| &d.name == name)
+                    .map_or(name.clone(), |d| d.label.clone()),
+            };
+            egui::ComboBox::from_id_salt("audio-device")
+                .selected_text(selected)
+                .width(300.)
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(&mut self.draft.audio_device, None, "System default")
+                        .on_hover_text("Follow the system's output, as set in PipeWire or your sound settings. Recommended.");
+                    for device in devices.iter() {
+                        let tip = if device.direct {
+                            format!("{} · opens the hardware directly, bypassing PipeWire; other apps may lose sound on it while Veylvik plays", device.detail)
+                        } else {
+                            device.detail.clone()
+                        };
+                        ui.selectable_value(
+                            &mut self.draft.audio_device,
+                            Some(device.name.clone()),
+                            &device.label,
+                        )
+                        .on_hover_text(tip);
+                    }
+                });
+        });
+        if scanning {
+            ui.weak("Looking for devices…");
+        }
+        let missing = !scanning
+            && self
+                .draft
+                .audio_device
+                .as_ref()
+                .is_some_and(|name| !devices.iter().any(|d| &d.name == name));
+        if missing {
+            ui.colored_label(
+                ui.visuals().warn_fg_color,
+                "This device is not connected; playback stays silent until it returns.",
+            );
+        }
+        if ui.small_button("Refresh devices").clicked() {
+            self.audio_devices = None;
+        }
+        ui.horizontal(|ui| {
+            ui.label("Volume");
+            ui.add(
+                egui::Slider::new(&mut self.draft.audio_volume, 0.0..=2.0)
+                    .custom_formatter(|v, _| format!("{:.0}%", v * 100.)),
+            );
+        });
+        ui.separator();
+        ui.label("In use");
+        ui.weak(if self.audio_status.is_empty() {
+            "Not opened yet; it opens on first playback."
+        } else {
+            self.audio_status.as_str()
+        });
+        ui.weak(format!("Audio system: {}", veylvik_audio::backend()));
+    }
     fn section_ui(&mut self, ui: &mut egui::Ui, source: &str) {
         match self.section {
+            5 => self.audio_ui(ui),
             0 => {
                 ui.heading("Playback");
                 ui.checkbox(
@@ -313,17 +428,16 @@ impl Preferences {
                     |ui| {
                         ui.vertical(|ui| {
                             ui.set_width(145.);
+                            // Indices are stable section ids; the list order is what users see.
                             for (i, label) in [
-                                "Playback",
-                                "Appearance",
-                                "Workspace",
-                                "Performance",
-                                "Recovery",
-                            ]
-                            .iter()
-                            .enumerate()
-                            {
-                                ui.selectable_value(&mut self.section, i, *label);
+                                (0, "Playback"),
+                                (5, "Audio"),
+                                (1, "Appearance"),
+                                (2, "Workspace"),
+                                (3, "Performance"),
+                                (4, "Recovery"),
+                            ] {
+                                ui.selectable_value(&mut self.section, i, label);
                             }
                         });
                         ui.separator();
