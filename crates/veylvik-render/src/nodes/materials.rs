@@ -6,6 +6,8 @@ use crate::{Kernel, Params, Result, error};
 #[allow(unused_imports)]
 use veylvik_document::{Operation, Scalar};
 
+/// Read by the surfaces it lights; never dispatched.
+impl RenderNode for veylvik_document::nodes::LightRig {}
 impl RenderNode for veylvik_document::nodes::Material {
     fn passes_for(&self, node: &veylvik_document::Node) -> Passes {
         if !node.inputs.contains_key("environment") {

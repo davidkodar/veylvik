@@ -198,6 +198,14 @@ pub(crate) const fn other(
         default: 0.0,
     }
 }
+/// What a port carries. Images flow between effects; light rigs only reach
+/// Lights inputs and never render as images.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PortKind {
+    Image,
+    Lights,
+}
 #[derive(Debug, Serialize)]
 pub struct NodeType {
     pub type_id: &'static str,
@@ -209,9 +217,19 @@ pub struct NodeType {
     /// Ports among `inputs` that may stay unconnected; the node then behaves as
     /// it did before the port existed.
     pub optional: &'static [&'static str],
+    /// What the node's output carries.
+    pub output: PortKind,
     pub parameters: &'static [Parameter],
 }
 impl NodeType {
+    /// What an input port accepts: the port named `lights` takes a light rig.
+    pub fn port_kind(&self, port: &str) -> PortKind {
+        if port == "lights" {
+            PortKind::Lights
+        } else {
+            PortKind::Image
+        }
+    }
     pub fn is_optional(&self, port: &str) -> bool {
         self.optional.contains(&port)
     }
@@ -240,10 +258,10 @@ impl NodeType {
 pub use crate::nodes::{
     AFFINE, ATMOSPHERE, BLEND, BLUR, CHANNEL_MASK, CHROMA_KEY, COLOR_CORRECT, COLORIZE,
     COMBINE_MASK, CONDENSATION, DISPLACE, DRIP, DUST, ELLIPSE, EXPOSURE, FADE, FIRE, FOOTAGE,
-    FRACTAL_NOISE, GLASS, GRADIENT, IMAGE, LENS_BLUR, LUMA_KEY, LUT, MASK, MATERIAL, MERGE,
-    METALLIC_SHINE, MORPHOLOGY, MOTION_BLUR, NOISE, OCIO, OPTICAL_FLOW, PATH, PATINA, PLANAR_TRACK,
-    PLANAR_WARP, REFINE_MATTE, SOLID, SUN_GLINTS, SURFACE_BLEND, SURFACE_REFLECTION, TEXT,
-    TIME_REMAP, TRANSFORM,
+    FRACTAL_NOISE, GLASS, GRADIENT, IMAGE, LENS_BLUR, LIGHT_RIG, LUMA_KEY, LUT, MASK, MATERIAL,
+    MERGE, METALLIC_SHINE, MORPHOLOGY, MOTION_BLUR, NOISE, OCIO, OPTICAL_FLOW, PATH, PATINA,
+    PLANAR_TRACK, PLANAR_WARP, REFINE_MATTE, SOLID, SUN_GLINTS, SURFACE_BLEND, SURFACE_REFLECTION,
+    TEXT, TIME_REMAP, TRANSFORM,
 };
 pub static TYPES: &[&NodeType] = &[
     &SOLID,
@@ -254,6 +272,7 @@ pub static TYPES: &[&NodeType] = &[
     &TRANSFORM,
     &BLUR,
     &LENS_BLUR,
+    &LIGHT_RIG,
     &crate::nodes::SHADOW,
     &MERGE,
     &IMAGE,

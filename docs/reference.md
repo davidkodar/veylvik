@@ -487,6 +487,32 @@ into an evenly lit plate, and 0 is the studio look exactly. Environment strength
 it. Area lights still add their highlights. This is image-based 2.5D shading, not
 ray tracing.
 
+A **Light rig** node holds lights as a shared object: the studio environment, its
+rotation, ambient light and up to eight area lights. It produces no image; its output
+only connects to a **Lights** input (port kinds are checked, so a rig cannot feed an
+image input and cannot be the composition output, and viewing it explains that).
+A Text surface's optional **Lights** input replaces the surface's own rig with the
+connected one, so several titles share one set of lights: moving a light, in the
+inspector or by dragging its guide in the viewer, relights every connected surface
+and the light-following shadows and condensation coatings that read them. In the
+material inspector, **Share these lights** moves the surface's lights into a new
+Light rig and connects it (one undo step); **Use own lights** disconnects the rig and
+keeps its current lights on the surface, so the look does not jump.
+
+**Match the shot** (Light rig, or a surface's own lights) renders the shot behind
+the surface at the playhead in the background: the surface's Environment input, else
+an Environment of any surface the rig lights, else the composition's backdrop. It
+analyses that frame on a coarse grid (at most 96 cells wide): the brightest 5% of
+cells, weighted by how far they exceed that level, give the light's position and
+colour, and their luminance over the frame's mean gives its contrast. The key light
+(the rig's second card, as in the default rig) moves there (an eighth of the shorter
+side per scene unit around the frame centre, 2.5 units in front), turns to face the
+subject, takes the light's colour (normalised to its strongest channel) and an
+intensity that grows with the contrast (1.2–12). The environment scales to the
+shot's brightness (0.65 at a mean of 0.18). Soft, even light (contrast below 1.3)
+keeps a soft key above instead of guessing a direction. The result is ordinary
+editable values in one undo step; a black frame is reported, not applied.
+
 Some node inputs are **optional**: they may stay unconnected and the node then
 behaves exactly as before the port existed (the Material's Environment is the
 first). The node catalog lists them under `optional`. In the graph an unconnected

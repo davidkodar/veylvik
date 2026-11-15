@@ -749,3 +749,126 @@ fn frosted_glass_is_smooth_and_keeps_the_frame_opaque() {
         }
     }
 }
+
+#[test]
+#[ignore = "requires Vulkan"]
+fn a_shared_light_rig_lights_every_surface_like_their_own_lights() {
+    let renderer = Renderer::new().unwrap();
+    let (doc, inputs, _) = source();
+    let coverage = doc.output;
+    let preset = veylvik_document::presets::builtin::build("gold_text").unwrap();
+    let mut gold = preset
+        .nodes
+        .values()
+        .find_map(|n| match &n.operation {
+            Operation::Material(m) => Some(m.clone()),
+            _ => None,
+        })
+        .unwrap();
+    gold.lighting = 0.0.into();
+    let mut studio = veylvik_document::optical::StudioRig::default();
+    studio.lights[1].enabled = true;
+    studio.lights[1].intensity = 6.0;
+    let render = |own: &veylvik_document::optical::StudioRig,
+                  rig: Option<&veylvik_document::optical::StudioRig>| {
+        let mut d = doc.clone();
+        let mut material = gold.clone();
+        material.studio = own.clone();
+        let mut ports = vec![("image", coverage)];
+        let light = Node::new(
+            "Rig",
+            Operation::LightRig(nodes::LightRig {
+                studio: rig.cloned().unwrap_or_default(),
+            }),
+            &[],
+        );
+        if rig.is_some() {
+            ports.push(("lights", light.id));
+            d.nodes.insert(light.id, light);
+        }
+        let node = Node::new("m", Operation::Material(material), &ports);
+        d.output = node.id;
+        d.nodes.insert(node.id, node);
+        renderer
+            .render_frame(
+                &Plan::compile(&d).unwrap(),
+                RenderRequest::full(Time::new(0, 1).unwrap()),
+                &inputs,
+            )
+            .unwrap()
+            .pixels
+    };
+    let own = render(&studio, None);
+    // The rig replaces the surface's own (default) lights entirely.
+    let shared = render(
+        &veylvik_document::optical::StudioRig::default(),
+        Some(&studio),
+    );
+    assert_eq!(shared, own);
+    let mut brighter = studio.clone();
+    brighter.lights[1].intensity = 12.0;
+    let relit = render(
+        &veylvik_document::optical::StudioRig::default(),
+        Some(&brighter),
+    );
+    let sum = |p: &[[f32; 4]]| p.iter().map(|v| v[0] + v[1] + v[2]).sum::<f32>();
+    assert!(
+        sum(&relit) > sum(&shared) * 1.01,
+        "moving the rig's light relights the surface"
+    );
+}
+
+#[test]
+#[ignore = "requires Vulkan"]
+fn a_key_light_matched_to_the_shot_faces_and_lights_the_surface() {
+    use veylvik_document::optical::{ShotLight, StudioRig};
+    let renderer = Renderer::new().unwrap();
+    let (doc, inputs, _) = source();
+    let coverage = doc.output;
+    let mut silver = veylvik_document::presets::material::Source::Builtin("silver_text")
+        .material()
+        .unwrap();
+    silver.lighting = 0.0.into();
+    let render = |studio: StudioRig| {
+        let mut d = doc.clone();
+        let mut m = silver.clone();
+        m.studio = studio;
+        let node = Node::new("m", Operation::Material(m), &[("image", coverage)]);
+        d.output = node.id;
+        d.nodes.insert(node.id, node);
+        renderer
+            .render_frame(
+                &Plan::compile(&d).unwrap(),
+                RenderRequest::full(Time::new(0, 1).unwrap()),
+                &inputs,
+            )
+            .unwrap()
+            .pixels
+    };
+    let (w, h) = (96, 64);
+    for sun in [[80.0, 10.0], [15.0, 55.0]] {
+        let shot: Vec<[f32; 4]> = (0..w * h)
+            .map(|i| {
+                let (x, y) = ((i % w) as f32, (i / w) as f32);
+                if (x - sun[0]).hypot(y - sun[1]) < 6.0 {
+                    [6.0, 5.0, 4.0, 1.0]
+                } else {
+                    [0.05; 4]
+                }
+            })
+            .collect();
+        let mut matched = StudioRig::default();
+        matched.match_shot(
+            &ShotLight::analyse(&shot, w as u32, h as u32).unwrap(),
+            w as u32,
+            h as u32,
+        );
+        let mut dark = matched.clone();
+        dark.lights[1].enabled = false;
+        let sum = |p: &[[f32; 4]]| p.iter().map(|v| v[0] + v[1] + v[2]).sum::<f32>();
+        assert!(
+            sum(&render(matched)) > sum(&render(dark)) * 1.02,
+            "the key light at {sun:?} lights the surface"
+        );
+    }
+}

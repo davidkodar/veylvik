@@ -333,3 +333,48 @@ pub(crate) fn paint_star(
         egui::Stroke::new(1.2_f32, colour),
     ));
 }
+
+impl crate::Studio {
+    /// Move the selected material's lights into a new Light rig node and connect it,
+    /// as one undo step, so other surfaces can share the same lights.
+    pub(crate) fn share_material_lights(&mut self) {
+        use veylvik_document::{Command, Node, Operation, nodes::LightRig};
+        if !self.apply_draft() {
+            return;
+        }
+        let doc = self.project.document.snapshot();
+        let Some(mut material) = doc.nodes.get(&self.project.selected).cloned() else {
+            return;
+        };
+        let Operation::Material(m) = &material.operation else {
+            return;
+        };
+        let mut rig = Node::new(
+            "Light rig",
+            Operation::LightRig(LightRig {
+                studio: m.studio.clone(),
+            }),
+            &[],
+        );
+        rig.position = material.position.map(|p| veylvik_document::NodePosition {
+            x: p.x - 260.0,
+            y: p.y + 140.0,
+        });
+        material.inputs.insert("lights".into(), rig.id);
+        let commands = [
+            Command::Put {
+                node: Box::new(rig),
+            },
+            Command::Put {
+                node: Box::new(material),
+            },
+        ];
+        match self.project.apply(&commands) {
+            Ok(()) => {
+                self.refresh_draft();
+                self.request_preview();
+            }
+            Err(e) => self.fail(e.to_string()),
+        }
+    }
+}

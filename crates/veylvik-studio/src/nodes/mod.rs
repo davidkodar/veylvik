@@ -22,6 +22,12 @@ pub(crate) struct InspectCx<'a> {
     pub environment: bool,
     /// Connect (true) or disconnect (false) the shot as the material's surroundings.
     pub reflect_shot: Option<bool>,
+    /// Label of the Light rig connected to the node's Lights input.
+    pub lit_by: Option<&'a str>,
+    /// Move the material's lights into a shared rig (true) or go back to its own (false).
+    pub share_lights: Option<bool>,
+    /// Light this rig from the shot behind it.
+    pub match_shot: bool,
     /// Refresh the viewer preview soon, for continuous edits such as path dragging.
     pub preview_soon: bool,
     pub error: Option<String>,

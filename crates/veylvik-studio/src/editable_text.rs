@@ -953,13 +953,53 @@ impl crate::Studio {
                         }
                     }
                 }
+                let lit_by = node
+                    .inputs
+                    .get("lights")
+                    .and_then(|rig| self.project.document.snapshot().nodes.get(rig))
+                    .map(|n| n.label.clone());
+                let mut share = None;
+                let mut match_shot = false;
                 if let Operation::Material(material) = &mut node.operation {
-                    edited |= crate::nodes::lighting_controls(ui, material, id);
+                    edited |= crate::nodes::lighting_controls(
+                        ui,
+                        material,
+                        id,
+                        lit_by.as_deref(),
+                        &mut share,
+                        &mut match_shot,
+                    );
                 }
                 if edited {
                     self.text_edits.insert(id, node);
                     self.draft_dirty = true;
                     self.queue_draft_preview(ui.ctx());
+                }
+                if match_shot && self.apply_draft() {
+                    self.project.selected = id;
+                    self.refresh_draft();
+                    self.match_shot(ui.ctx());
+                }
+                if share.is_some() && self.apply_draft() {
+                    // Sharing and unsharing act on the material node itself.
+                    self.project.selected = id;
+                    self.refresh_draft();
+                    if share == Some(true) {
+                        self.share_material_lights();
+                    } else if let Some(rig) = self.draft.inputs.remove("lights") {
+                        if let (Some(Operation::LightRig(r)), Operation::Material(m)) = (
+                            self.project
+                                .document
+                                .snapshot()
+                                .nodes
+                                .get(&rig)
+                                .map(|n| &n.operation),
+                            &mut self.draft.operation,
+                        ) {
+                            m.studio = r.studio.clone();
+                        }
+                        self.draft_dirty = true;
+                    }
                 }
             }
             if let Some(style) = style {

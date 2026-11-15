@@ -1,6 +1,6 @@
 //! Saved planar tracks and the warps that consume them.
 #[allow(unused_imports)]
-use crate::registry::{NodeType, Parameter, ParameterKind, other, scalar};
+use crate::registry::{NodeType, Parameter, ParameterKind, PortKind, other, scalar};
 #[allow(unused_imports)]
 use crate::*;
 use serde::{Deserialize, Serialize};
@@ -23,6 +23,7 @@ pub static PLANAR_TRACK: NodeType = NodeType {
     description: "Reusable normalized surface motion and feature diagnostics. Image passes through unchanged. Connect its output to any Planar warp track input.",
     inputs: &["image"],
     optional: &[],
+    output: PortKind::Image,
     parameters: &[other(
         "data",
         ParameterKind::PlanarTrack,
@@ -36,6 +37,7 @@ pub static PLANAR_WARP: NodeType = NodeType {
     description: "GPU perspective sampling driven by a Planar track. Follow reference placement, fit the full image to the surface, or stabilize the tracked plane.",
     inputs: &["image", "track"],
     optional: &[],
+    output: PortKind::Image,
     parameters: &[other("mode", ParameterKind::PlanarMode, "")],
 };
 

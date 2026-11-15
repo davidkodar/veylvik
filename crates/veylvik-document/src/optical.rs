@@ -340,3 +340,131 @@ impl crate::nodes::Material {
         })
     }
 }
+
+/// Where a shot's light comes from, measured from one rendered frame.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ShotLight {
+    /// Centroid of the brightest part of the frame, in pixels.
+    pub position: [f32; 2],
+    /// Its colour, normalised so the strongest channel is 1.
+    pub colour: [f32; 3],
+    /// Brightest-region luminance over mean luminance; near 1 means flat light.
+    pub contrast: f32,
+    /// Mean scene-linear luminance of the frame.
+    pub mean: f32,
+}
+impl ShotLight {
+    /// Analyse premultiplied linear pixels on a coarse grid (at most 96 cells wide).
+    /// The brightest 5% of cells, weighted by how far they exceed that threshold,
+    /// give the light's position and colour. None for an empty or black frame.
+    pub fn analyse(pixels: &[[f32; 4]], width: u32, height: u32) -> Option<Self> {
+        let (w, h) = (width as usize, height as usize);
+        if w == 0 || h == 0 || pixels.len() != w * h {
+            return None;
+        }
+        let gw = w.min(96);
+        let gh = (h * gw / w).max(1);
+        let mut cells = Vec::with_capacity(gw * gh);
+        for gy in 0..gh {
+            for gx in 0..gw {
+                let (x0, x1) = (gx * w / gw, ((gx + 1) * w / gw).max(gx * w / gw + 1));
+                let (y0, y1) = (gy * h / gh, ((gy + 1) * h / gh).max(gy * h / gh + 1));
+                let mut sum = [0.0f64; 3];
+                for y in y0..y1 {
+                    for p in &pixels[y * w + x0..y * w + x1] {
+                        for c in 0..3 {
+                            sum[c] += f64::from(p[c].max(0.0)).min(1.0e4);
+                        }
+                    }
+                }
+                let n = ((x1 - x0) * (y1 - y0)) as f64;
+                let rgb = sum.map(|v| (v / n) as f32);
+                let centre = [(x0 + x1) as f32 * 0.5, (y0 + y1) as f32 * 0.5];
+                cells.push((rgb, luminance(rgb), centre));
+            }
+        }
+        let mean = cells.iter().map(|c| c.1).sum::<f32>() / cells.len() as f32;
+        if !mean.is_finite() || mean <= 1.0e-6 {
+            return None;
+        }
+        let mut sorted: Vec<f32> = cells.iter().map(|c| c.1).collect();
+        sorted.sort_by(f32::total_cmp);
+        let threshold = sorted[(sorted.len() * 95 / 100).min(sorted.len() - 1)];
+        let (mut weight, mut position, mut colour, mut bright) =
+            (0.0f32, [0.0f32; 2], [0.0f32; 3], 0.0f32);
+        for (rgb, l, centre) in &cells {
+            if *l >= threshold {
+                let w = (l - threshold) + 1.0e-4;
+                weight += w;
+                for i in 0..2 {
+                    position[i] += centre[i] * w;
+                }
+                for i in 0..3 {
+                    colour[i] += rgb[i] * w;
+                }
+                bright += l * w;
+            }
+        }
+        let position = position.map(|v| v / weight);
+        let peak = colour.iter().copied().fold(0.0f32, f32::max);
+        let colour = if peak > 0.0 {
+            colour.map(|v| (v / peak).clamp(0.0, 1.0))
+        } else {
+            [1.0; 3]
+        };
+        Some(Self {
+            position,
+            colour,
+            contrast: bright / weight / mean,
+            mean,
+        })
+    }
+}
+fn luminance(rgb: [f32; 3]) -> f32 {
+    0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2]
+}
+impl StudioRig {
+    /// Place the key light (the second card, as in the default rig) where the shot's
+    /// light comes from, facing the subject, in the shot's light colour, and scale the
+    /// environment to the shot's brightness. Flat light keeps a soft key above.
+    /// Image space maps to scene units like the viewer guides: an eighth of the
+    /// shorter side per unit around the frame centre.
+    pub fn match_shot(&mut self, shot: &ShotLight, width: u32, height: u32) {
+        let unit = width.min(height).max(1) as f32 / 8.0;
+        let directional = shot.contrast >= 1.3;
+        let (x, y) = if directional {
+            (
+                ((shot.position[0] - width as f32 * 0.5) / unit).clamp(-6.0, 6.0),
+                ((shot.position[1] - height as f32 * 0.5) / unit).clamp(-6.0, 6.0),
+            )
+        } else {
+            (0.0, -3.0)
+        };
+        let position = [x, y, 2.5];
+        // Area lights emit along their rotated +Z; aim it at the subject at the origin.
+        let length = (x * x + y * y + 2.5 * 2.5).sqrt();
+        let d = position.map(|v| v / length);
+        let rotation = [
+            (-d[1]).asin().to_degrees(),
+            d[0].atan2(d[2]).to_degrees(),
+            0.0,
+        ];
+        while self.lights.len() < 2 {
+            self.lights.push(AreaLight {
+                enabled: false,
+                ..AreaLight::default()
+            });
+        }
+        let key = &mut self.lights[1];
+        key.enabled = true;
+        key.position = position;
+        key.rotation = rotation;
+        key.colour = shot.colour;
+        key.intensity = if directional {
+            (1.2 * shot.contrast.min(10.0)).clamp(1.2, 12.0)
+        } else {
+            1.2
+        };
+        self.environment = (0.65 * shot.mean / 0.18).clamp(0.05, 4.0);
+    }
+}

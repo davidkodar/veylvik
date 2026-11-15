@@ -1,6 +1,6 @@
 //! Layering, blending and mask combination of two or more images.
 #[allow(unused_imports)]
-use crate::registry::{NodeType, Parameter, ParameterKind, other, scalar};
+use crate::registry::{NodeType, Parameter, ParameterKind, PortKind, other, scalar};
 #[allow(unused_imports)]
 use crate::*;
 use serde::{Deserialize, Serialize};
@@ -129,6 +129,7 @@ pub static FADE: NodeType = NodeType {
     description: "Show a layer only while it is on screen: from Start until End (or the end of the composition), fading linearly in and out over the given lengths, multiplied by an animatable Opacity. Premultiplied colour and alpha scale together. A layer faded fully out is not rendered or decoded.",
     inputs: &["image"],
     optional: &[],
+    output: PortKind::Image,
     parameters: &[
         scalar("opacity", "factor", 0.0, 1.0, 1.0),
         other("timing", ParameterKind::FadeTiming, "seconds"),
@@ -141,6 +142,7 @@ pub static MERGE: NodeType = NodeType {
     description: "Premultiplied foreground over background.",
     inputs: &["background", "foreground"],
     optional: &[],
+    output: PortKind::Image,
     parameters: &[],
 };
 pub static BLEND: NodeType = NodeType {
@@ -150,6 +152,7 @@ pub static BLEND: NodeType = NodeType {
     description: "Scene-linear blending with source-over alpha and animated foreground opacity. RGB is not clamped; Add sums premultiplied RGB with union alpha.",
     inputs: &["background", "foreground"],
     optional: &[],
+    output: PortKind::Image,
     parameters: &[
         other("mode", ParameterKind::BlendMode, "blend mode"),
         scalar("opacity", "factor", 0.0, 1.0, 1.0),
@@ -162,6 +165,7 @@ pub static MASK: NodeType = NodeType {
     description: "Multiply all premultiplied image channels by mask alpha; mask RGB is ignored.",
     inputs: &["image", "mask"],
     optional: &[],
+    output: PortKind::Image,
     parameters: &[],
 };
 pub static COMBINE_MASK: NodeType = NodeType {
@@ -171,6 +175,7 @@ pub static COMBINE_MASK: NodeType = NodeType {
     description: "Combine input alpha into a white premultiplied mask. For alpha a from mask and b from other: union a+b-a*b, intersect a*b, subtract a*(1-b), exclude a*(1-b)+b*(1-a). Input RGB is ignored; soft edges remain fractional.",
     inputs: &["mask", "other"],
     optional: &[],
+    output: PortKind::Image,
     parameters: &[other("mode", ParameterKind::MaskMode, "coverage operation")],
 };
 pub static CHANNEL_MASK: NodeType = NodeType {
@@ -180,6 +185,7 @@ pub static CHANNEL_MASK: NodeType = NodeType {
     description: "Convert premultiplied red, green, blue, alpha or linear Rec.709 luminance to white mask coverage. Coverage clamps to [0, source alpha], preserving transparent boundaries without division by alpha.",
     inputs: &["image"],
     optional: &[],
+    output: PortKind::Image,
     parameters: &[other("channel", ParameterKind::MaskChannel, "channel")],
 };
 pub static SURFACE_BLEND: NodeType = NodeType {
@@ -189,6 +195,7 @@ pub static SURFACE_BLEND: NodeType = NodeType {
     description: "Composite a premultiplied layer onto a surface using its local illumination, fine luminance detail, and dark recesses. Optional gradient displacement, edge softness and temporal grain run on GPU. This is image-based blending, not automatic object segmentation.",
     inputs: &["background", "foreground"],
     optional: &[],
+    output: PortKind::Image,
     parameters: &[
         scalar("opacity", "factor", 0.0, 1.0, 1.0),
         scalar("lighting", "amount", 0.0, 1.0, 0.35),

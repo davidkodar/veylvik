@@ -49,7 +49,14 @@ impl Inspect for veylvik_document::nodes::Material {
             }
         });
         cx.dirty |= finish_controls(ui, self);
-        cx.dirty |= lighting_controls(ui, self, cx.node_id);
+        cx.dirty |= lighting_controls(
+            ui,
+            self,
+            cx.node_id,
+            cx.lit_by,
+            &mut cx.share_lights,
+            &mut cx.match_shot,
+        );
         ui.add_space(4.);
         cx.save_material |= ui
             .button("Save as my material…")
@@ -96,6 +103,14 @@ pub(crate) fn colour_controls(
         material.colours = (palette != defaults).then_some(palette);
     }
     changed
+}
+impl Inspect for veylvik_document::nodes::LightRig {
+    fn inspect(&mut self, ui: &mut egui::Ui, cx: &mut InspectCx<'_>) {
+        ui.label("Connect this rig to the Lights input of any Text surface. Moving a light updates every surface it lights and the shadows that follow them.");
+        ui.push_id("light-rig", |ui| {
+            cx.dirty |= rig_controls(ui, &mut self.studio, cx.node_id, &mut cx.match_shot);
+        });
+    }
 }
 impl Inspect for veylvik_document::nodes::Patina {
     fn inspect(&mut self, ui: &mut egui::Ui, cx: &mut InspectCx<'_>) {
@@ -153,12 +168,90 @@ impl Inspect for veylvik_document::nodes::SurfaceReflection {
     }
 }
 
+/// Environment, ambient and area lights of one rig, from a material or a Light rig.
+pub(crate) fn rig_controls(
+    ui: &mut egui::Ui,
+    rig: &mut veylvik_document::optical::StudioRig,
+    node_id: veylvik_document::NodeId,
+    match_shot: &mut bool,
+) -> bool {
+    use veylvik_document::optical::{AreaLight, MAX_STUDIO_LIGHTS, StudioRig};
+    let mut changed = false;
+    *match_shot |= ui
+        .button("Match the shot")
+        .on_hover_text("Place the key light where the footage's light comes from, in its colour, and set the environment to the shot's brightness. Uses the frame at the playhead; everything stays editable.")
+        .clicked();
+    crate::light_guides::controls(ui, node_id);
+    ui.weak("Area lights reflect in the surface. Position and size use scene units; rotations use degrees.");
+    changed |= light_slider(ui, "Studio environment", &mut rig.environment, 0.0..=16.0);
+    changed |= light_slider(
+        ui,
+        "Environment rotation",
+        &mut rig.environment_rotation,
+        -360.0..=360.0,
+    );
+    changed |= light_slider(ui, "Ambient", &mut rig.ambient, 0.0..=16.0);
+    let mut remove = None;
+    for (index, light) in rig.lights.iter_mut().enumerate() {
+        ui.push_id(index, |ui| {
+            ui.collapsing(crate::light_guides::label(index), |ui| {
+                crate::light_guides::select(ui, index);
+                changed |= ui.checkbox(&mut light.enabled, "Enabled").changed();
+                changed |= ui
+                    .color_edit_button_rgb(&mut light.colour)
+                    .on_hover_text("Emitter colour in linear RGB")
+                    .changed();
+                changed |= light_slider(ui, "Intensity", &mut light.intensity, 0.0..=100.0);
+                for (label, value) in ["X", "Y", "Z"].into_iter().zip(&mut light.position) {
+                    changed |= light_slider(ui, label, value, -100.0..=100.0);
+                }
+                for (label, value) in ["Rotate X", "Rotate Y", "Rotate Z"]
+                    .into_iter()
+                    .zip(&mut light.rotation)
+                {
+                    changed |= light_slider(ui, label, value, -360.0..=360.0);
+                }
+                for (label, value) in ["Width", "Height"].into_iter().zip(&mut light.size) {
+                    changed |= light_slider(ui, label, value, 0.01..=100.0);
+                }
+                if ui.button("Remove light").clicked() {
+                    remove = Some(index);
+                }
+            });
+        });
+    }
+    if let Some(index) = remove {
+        rig.lights.remove(index);
+        changed = true;
+    }
+    if ui
+        .add_enabled(
+            rig.lights.len() < MAX_STUDIO_LIGHTS,
+            egui::Button::new("Add area light"),
+        )
+        .clicked()
+    {
+        rig.lights.push(AreaLight::default());
+        changed = true;
+    }
+    if ui
+        .button("Reset studio lighting")
+        .on_hover_text("Restore the default photographic studio rig")
+        .clicked()
+    {
+        *rig = StudioRig::default();
+        changed = true;
+    }
+    changed
+}
 pub(crate) fn lighting_controls(
     ui: &mut egui::Ui,
     material: &mut veylvik_document::nodes::Material,
     node_id: veylvik_document::NodeId,
+    lit_by: Option<&str>,
+    share: &mut Option<bool>,
+    match_shot: &mut bool,
 ) -> bool {
-    use veylvik_document::optical::{AreaLight, MAX_STUDIO_LIGHTS, StudioRig};
     let mut changed = false;
     ui.push_id("surface-lighting",|ui| {
         ui.collapsing("Surface response",|ui| {
@@ -178,29 +271,14 @@ pub(crate) fn lighting_controls(
             } else {ui.label(format!("Normal-incidence reflectance: {:.1}%",defaults.f0()[1]*100.));}
         });
         ui.collapsing("Studio lighting",|ui| {
-            crate::light_guides::controls(ui,node_id);
-            ui.weak("Area lights reflect in the surface. Position and size use scene units; rotations use degrees.");
-            changed|=light_slider(ui,"Studio environment",&mut material.studio.environment,0.0..=16.0);
-            changed|=light_slider(ui,"Environment rotation",&mut material.studio.environment_rotation,-360.0..=360.0);
-            changed|=light_slider(ui,"Ambient",&mut material.studio.ambient,0.0..=16.0);
-            let mut remove=None;
-            for (index,light) in material.studio.lights.iter_mut().enumerate() {
-                ui.push_id(index,|ui| {
-                    ui.collapsing(crate::light_guides::label(index),|ui| {
-                        crate::light_guides::select(ui,index);
-                        changed|=ui.checkbox(&mut light.enabled,"Enabled").changed();
-                        changed|=ui.color_edit_button_rgb(&mut light.colour).on_hover_text("Emitter colour in linear RGB").changed();
-                        changed|=light_slider(ui,"Intensity",&mut light.intensity,0.0..=100.0);
-                        for (label,value) in ["X","Y","Z"].into_iter().zip(&mut light.position) { changed|=light_slider(ui,label,value,-100.0..=100.0); }
-                        for (label,value) in ["Rotate X","Rotate Y","Rotate Z"].into_iter().zip(&mut light.rotation) { changed|=light_slider(ui,label,value,-360.0..=360.0); }
-                        for (label,value) in ["Width","Height"].into_iter().zip(&mut light.size) { changed|=light_slider(ui,label,value,0.01..=100.0); }
-                        if ui.button("Remove light").clicked(){remove=Some(index);}
-                    });
-                });
+            if let Some(name)=lit_by {
+                ui.label(format!("Lit by the shared rig “{name}”."));
+                ui.weak("Select that Light rig node to move its lights; every surface it lights follows.");
+                if ui.button("Use own lights").on_hover_text("Disconnect the shared rig and light this surface with its own lights again").clicked() {*share=Some(false);}
+            } else {
+                changed|=rig_controls(ui,&mut material.studio,node_id,match_shot);
+                if ui.button("Share these lights").on_hover_text("Move these lights into a Light rig node that other surfaces can use too").clicked() {*share=Some(true);}
             }
-            if let Some(index)=remove{material.studio.lights.remove(index);changed=true;}
-            if ui.add_enabled(material.studio.lights.len()<MAX_STUDIO_LIGHTS,egui::Button::new("Add area light")).clicked(){material.studio.lights.push(AreaLight::default());changed=true;}
-            if ui.button("Reset studio lighting").on_hover_text("Restore the default photographic studio rig").clicked(){material.studio=StudioRig::default();changed=true;}
         });
     });
     changed

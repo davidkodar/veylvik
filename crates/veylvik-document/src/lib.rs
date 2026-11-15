@@ -83,6 +83,7 @@ macro_rules! each_node {
             $crate::Operation::Displace($node) => $body,
             $crate::Operation::Morphology($node) => $body,
             $crate::Operation::LensBlur($node) => $body,
+            $crate::Operation::LightRig($node) => $body,
             $crate::Operation::Blur($node) => $body,
             $crate::Operation::Shadow($node) => $body,
             $crate::Operation::Merge($node) => $body,
@@ -137,6 +138,7 @@ pub enum Operation {
     Displace(nodes::Displace),
     Morphology(nodes::Morphology),
     LensBlur(nodes::LensBlur),
+    LightRig(nodes::LightRig),
     Blur(nodes::Blur),
     Shadow(nodes::Shadow),
     Merge(nodes::Merge),
@@ -336,6 +338,9 @@ impl Composition {
         if !self.nodes.contains_key(&self.output) {
             return fail("output node is missing");
         }
+        if self.nodes[&self.output].operation.descriptor().output != registry::PortKind::Image {
+            return fail("The output must be an image; a Light rig only lights surfaces");
+        }
         self.encoded_size()?;
         let mut pending = BTreeMap::new();
         let mut consumers: BTreeMap<NodeId, Vec<NodeId>> = BTreeMap::new();
@@ -356,6 +361,24 @@ impl Composition {
                     "{}: expected input ports {required:?} (optional {:?}), got {actual:?}",
                     node.label, descriptor.optional
                 ));
+            }
+            for (port, source) in &node.inputs {
+                let kind = descriptor.port_kind(port);
+                if self
+                    .nodes
+                    .get(source)
+                    .is_some_and(|s| s.operation.descriptor().output != kind)
+                {
+                    return fail(match kind {
+                        registry::PortKind::Lights => {
+                            format!("{}: the {port} input takes a Light rig", node.label)
+                        }
+                        registry::PortKind::Image => format!(
+                            "{}: a Light rig only connects to a Lights input, not {port}",
+                            node.label
+                        ),
+                    });
+                }
             }
             if matches!(
                 node.operation,

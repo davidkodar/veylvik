@@ -1,6 +1,6 @@
 //! Nodes that synthesize images without inputs.
 #[allow(unused_imports)]
-use crate::registry::{NodeType, Parameter, ParameterKind, other, scalar};
+use crate::registry::{NodeType, Parameter, ParameterKind, PortKind, other, scalar};
 #[allow(unused_imports)]
 use crate::*;
 use serde::{Deserialize, Serialize};
@@ -77,6 +77,7 @@ pub static SOLID: NodeType = NodeType {
     description: "Straight scene-linear Rec.709 colour, converted to premultiplied pixels.",
     inputs: &[],
     optional: &[],
+    output: PortKind::Image,
     parameters: &[other("color", ParameterKind::Color, "linear RGBA")],
 };
 pub static GRADIENT: NodeType = NodeType {
@@ -86,6 +87,7 @@ pub static GRADIENT: NodeType = NodeType {
     description: "Opaque grayscale ramp clamped to [0,1]. Linear projects from start to end; radial uses start as center and the endpoint distance as radius. Distances below 0.000001 pixels produce black. Connect Colorize for colors or Channel mask for alpha coverage.",
     inputs: &[],
     optional: &[],
+    output: PortKind::Image,
     parameters: &[
         other("mode", ParameterKind::GradientMode, "gradient mode"),
         scalar("start_x", "pixels", -1_000_000.0, 1_000_000.0, 0.0),
@@ -101,6 +103,7 @@ pub static NOISE: NodeType = NodeType {
     description: "Deterministic cell noise with a seed.",
     inputs: &[],
     optional: &[],
+    output: PortKind::Image,
     parameters: &[
         other("seed", ParameterKind::Seed, "integer"),
         scalar("scale", "pixels", 1.0, 8192.0, 18.0),
@@ -113,6 +116,7 @@ pub static FRACTAL_NOISE: NodeType = NodeType {
     description: "Opaque grayscale fractal value noise with quintic interpolation. Scale sets the first octave cell size; octaves round to an integer, roughness controls successive amplitude, evolution moves through a continuous third dimension. Deterministic for a seed and parameter values.",
     inputs: &[],
     optional: &[],
+    output: PortKind::Image,
     parameters: &[
         other("seed", ParameterKind::Seed, "integer"),
         scalar("scale", "pixels", 1.0, 8192.0, 128.0),
@@ -128,6 +132,7 @@ pub static FIRE: NodeType = NodeType {
     description: "Layered emitting fire volume with rising periodic turbulence and temperature variation. Transparent background; evolution advances upward and repeats every four units. Stateless, not a fluid simulation.",
     inputs: &[],
     optional: &[],
+    output: PortKind::Image,
     parameters: &[
         other("seed", ParameterKind::Seed, "seed"),
         scalar("x", "pixels", -32768.0, 32768.0, 480.0),
@@ -146,6 +151,7 @@ pub static ATMOSPHERE: NodeType = NodeType {
     description: "Layered procedural density with turbulent advection, absorption and directional shading. Transparent smoke plumes, soot, fog layers, drifting banks and clouds. Evolution repeats every four units; deterministic approximation, not fluid simulation.",
     inputs: &[],
     optional: &[],
+    output: PortKind::Image,
     parameters: &[
         other("kind", ParameterKind::AtmosphereKind, "atmosphere"),
         other("seed", ParameterKind::Seed, "integer"),
@@ -166,6 +172,7 @@ pub static ELLIPSE: NodeType = NodeType {
     description: "White premultiplied ellipse coverage. Feather is the width in pixels of the soft edge, centred on the outline (half inside, half outside), at least 1 pixel; it is measured along the smaller radius, so long thin ellipses soften unevenly. Zero radius is transparent.",
     inputs: &[],
     optional: &[],
+    output: PortKind::Image,
     parameters: &[
         scalar("x", "pixels", -1_000_000.0, 1_000_000.0, 320.0),
         scalar("y", "pixels", -1_000_000.0, 1_000_000.0, 180.0),
@@ -218,6 +225,7 @@ pub static DUST: NodeType = NodeType {
     description: "Depth-layered, softly lit airborne dust with coherent drift and depth of field. Animate evolution to move the particles. Stateless; four-second loop.",
     inputs: &[],
     optional: &[],
+    output: PortKind::Image,
     parameters: &[
         other("seed", ParameterKind::Seed, "seed"),
         scalar("evolution", "seconds", -10000.0, 10000.0, 0.0),
@@ -244,6 +252,7 @@ pub static DRIP: NodeType = NodeType {
     description: "Liquid coverage extends from the lowest opaque edge of each seeded source column. Growing necks pinch off into gravity-driven droplets. Outputs a white alpha mask for material or colour fill; animate evolution. Stateless four-second loop.",
     inputs: &["image"],
     optional: &[],
+    output: PortKind::Image,
     parameters: &[
         other("seed", ParameterKind::Seed, "seed"),
         scalar("evolution", "seconds", -10000.0, 10000.0, 0.0),

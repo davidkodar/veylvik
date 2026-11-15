@@ -1,6 +1,6 @@
 //! Editable vector text.
 #[allow(unused_imports)]
-use crate::registry::{NodeType, Parameter, ParameterKind, other, scalar};
+use crate::registry::{NodeType, Parameter, ParameterKind, PortKind, other, scalar};
 #[allow(unused_imports)]
 use crate::*;
 use serde::{Deserialize, Serialize};
@@ -40,6 +40,7 @@ pub static TEXT: NodeType = NodeType {
     description: "Editable vector text with portable bundled or embedded fonts. Multiline alignment, tracking, line spacing and animated size/position. White alpha source for any material or colour. Explicit LTR/RTL per line; no automatic mixed-script bidi or fallback.",
     inputs: &[],
     optional: &[],
+    output: PortKind::Image,
     parameters: &[
         other("content", ParameterKind::TextContent, "text"),
         other("font", ParameterKind::TextFont, "font"),

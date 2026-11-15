@@ -1,6 +1,6 @@
 //! Vector path masks.
 #[allow(unused_imports)]
-use crate::registry::{NodeType, Parameter, ParameterKind, other, scalar};
+use crate::registry::{NodeType, Parameter, ParameterKind, PortKind, other, scalar};
 #[allow(unused_imports)]
 use crate::*;
 use serde::{Deserialize, Serialize};
@@ -18,6 +18,7 @@ pub static PATH: NodeType = NodeType {
     description: "Closed vector contours rasterized into an antialiased white alpha mask. Optional geometry.keys animate matching points with linear interpolation; point counts and segment types must match at every key.",
     inputs: &[],
     optional: &[],
+    output: PortKind::Image,
     parameters: &[other("geometry", ParameterKind::Path, "pixels")],
 };
 

@@ -49,6 +49,7 @@ mod render_queue;
 mod scopes;
 mod sequence;
 mod shape_animation;
+mod shot_light;
 mod showcase_gallery;
 mod status_bar;
 mod subject;
@@ -248,6 +249,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 live_job: None,
                 audio: Default::default(),
                 materials: Default::default(),
+                shot_light: Default::default(),
                 subject: subject::Controls::default(),
                 models: models_window::ModelsWindow::default(),
                 outline_controls: text_outline::Controls::default(),
@@ -341,6 +343,7 @@ struct Studio {
     live_job: Option<live_jobs::LiveJob>,
     audio: audio_preview::AudioPreview,
     materials: material_library::Library,
+    shot_light: shot_light::Pending,
     subject: subject::Controls,
     models: models_window::ModelsWindow,
     outline_controls: text_outline::Controls,
@@ -1633,6 +1636,12 @@ impl Studio {
             self.project.document.snapshot().height as f32,
         ];
         let unavailable = self.project.unavailable_assets();
+        let lit_by = self
+            .draft
+            .inputs
+            .get("lights")
+            .and_then(|id| self.project.document.snapshot().nodes.get(id))
+            .map(|n| n.label.clone());
         let mut cx = nodes::InspectCx {
             node_id: self.draft.id,
             time,
@@ -1645,6 +1654,9 @@ impl Studio {
             save_material: false,
             environment: self.draft.inputs.contains_key("environment"),
             reflect_shot: None,
+            lit_by: lit_by.as_deref(),
+            share_lights: None,
+            match_shot: false,
             preview_soon: false,
             error: None,
             picking: self
@@ -1672,11 +1684,36 @@ impl Studio {
             replace_image: replace,
             save_material,
             reflect_shot,
+            share_lights,
+            match_shot,
             preview_soon,
             error,
             pick,
             ..
         } = cx;
+        if match_shot {
+            self.match_shot(ui.ctx());
+        }
+        match share_lights {
+            Some(true) => self.share_material_lights(),
+            Some(false) => {
+                // Keep the look: the surface takes over the rig's current lights.
+                let rig = self
+                    .draft
+                    .inputs
+                    .remove("lights")
+                    .and_then(|id| self.project.document.snapshot().nodes.get(&id))
+                    .and_then(|n| match &n.operation {
+                        Operation::LightRig(rig) => Some(rig.studio.clone()),
+                        _ => None,
+                    });
+                if let (Some(studio), Operation::Material(m)) = (rig, &mut self.draft.operation) {
+                    m.studio = studio;
+                }
+                self.draft_dirty = true;
+            }
+            None => {}
+        }
         match reflect_shot {
             Some(true) => {
                 // The backdrop the material sits on becomes its surroundings.
@@ -2618,6 +2655,7 @@ impl eframe::App for Studio {
         }
         self.audio_tick();
         self.materials.poll(&ctx);
+        self.shot_light_tick();
         light_guides::begin_frame(&ctx);
         self.fonts.poll(&ctx);
         if self.draft_dirty

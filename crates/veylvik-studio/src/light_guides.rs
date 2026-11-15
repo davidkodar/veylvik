@@ -86,8 +86,10 @@ impl crate::Studio {
                 .unwrap()
                 .clone()
         };
-        let Operation::Material(m) = &mut node.operation else {
-            return;
+        let studio = match &mut node.operation {
+            Operation::Material(m) => &mut m.studio,
+            Operation::LightRig(rig) => &mut rig.studio,
+            _ => return,
         };
         let [ox, oy, sx, sy] = transform.0;
         let origin = canvas.min
@@ -110,8 +112,7 @@ impl crate::Studio {
             Color32::from_gray(190),
         );
         let mut changed = false;
-        for (index, light) in m
-            .studio
+        for (index, light) in studio
             .lights
             .iter_mut()
             .enumerate()

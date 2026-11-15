@@ -273,6 +273,13 @@ impl Plan {
         if !composition.nodes.contains_key(&output) {
             return Err(error("requested output node is missing"));
         }
+        if composition.nodes[&output].operation.descriptor().output
+            != veylvik_document::registry::PortKind::Image
+        {
+            return Err(error(
+                "A Light rig has no image of its own; view a surface it lights",
+            ));
+        }
         // Resolve bypasses before traversal, so disabled compound effects dispatch no work.
         let mut effective = None;
         if composition.nodes.values().any(|node| node.bypass) {
@@ -391,8 +398,17 @@ impl Plan {
                         | Operation::Affine(_)
                 );
             domains.insert(node.id, aces);
+            // A light rig is read by the surfaces it lights; it has no pass or image.
+            if node.operation.descriptor().output == veylvik_document::registry::PortKind::Lights {
+                continue;
+            }
             let mut inputs = [Input::Empty, Input::Empty, Input::Empty];
             for (i, port) in node.operation.inputs().iter().enumerate() {
+                if node.operation.descriptor().port_kind(port)
+                    == veylvik_document::registry::PortKind::Lights
+                {
+                    continue;
+                }
                 // An unconnected optional port stays an empty input.
                 let Some(&source) = node.inputs.get(*port) else {
                     continue;
@@ -426,8 +442,14 @@ impl Plan {
             // Collision-free structural keys are built once at compile time.
             // Labels, UUIDs and layout do not affect pure operation results.
             let key = if shareable(&node.operation) {
+                let mut bytes = serde_json::to_vec(&node.operation).map_err(error)?;
+                // Surfaces lit by different rigs are different results.
+                if let Some(rig) = node.inputs.get("lights") {
+                    let rig = nodes.iter().find(|n| n.id == *rig).map(|n| &n.operation);
+                    bytes.extend(serde_json::to_vec(&rig).map_err(error)?);
+                }
                 Some((
-                    serde_json::to_vec(&node.operation).map_err(error)?,
+                    bytes,
                     inputs.each_ref().map(|input| match input {
                         Input::Value(value) => Some(*value),
                         _ => None,

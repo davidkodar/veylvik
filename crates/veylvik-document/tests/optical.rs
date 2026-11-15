@@ -128,3 +128,43 @@ fn legacy_aluminium_keeps_brushing_and_all_metals_have_named_starters() {
         assert_eq!(restored.is_brushed(), id == "aluminium_text");
     }
 }
+
+#[test]
+fn shot_light_finds_the_bright_side_and_its_colour() {
+    use veylvik_document::optical::{ShotLight, StudioRig};
+    let (w, h) = (192u32, 108u32);
+    // Dim blue-grey frame with a warm sun near the top right.
+    let pixels: Vec<[f32; 4]> = (0..w * h)
+        .map(|i| {
+            let (x, y) = ((i % w) as f32, (i / w) as f32);
+            if ((x - 160.0).powi(2) + (y - 20.0).powi(2)).sqrt() < 10.0 {
+                [8.0, 5.0, 2.0, 1.0]
+            } else {
+                [0.05, 0.06, 0.08, 1.0]
+            }
+        })
+        .collect();
+    let shot = ShotLight::analyse(&pixels, w, h).unwrap();
+    assert!((shot.position[0] - 160.0).abs() < 8.0 && (shot.position[1] - 20.0).abs() < 8.0);
+    assert!(
+        shot.colour[0] == 1.0 && shot.colour[2] < 0.4,
+        "warm sun: {:?}",
+        shot.colour
+    );
+    assert!(shot.contrast > 5.0);
+    let mut rig = StudioRig::default();
+    rig.match_shot(&shot, w, h);
+    let key = &rig.lights[1];
+    assert!(
+        key.enabled && key.position[0] > 0.0 && key.position[1] < 0.0,
+        "up and right"
+    );
+    rig.validate().unwrap();
+    // Flat grey: a soft key above, environment follows brightness.
+    let flat = vec![[0.18, 0.18, 0.18, 1.0]; (w * h) as usize];
+    let shot = ShotLight::analyse(&flat, w, h).unwrap();
+    rig.match_shot(&shot, w, h);
+    assert_eq!(rig.lights[1].position, [0.0, -3.0, 2.5]);
+    assert!((rig.environment - 0.65).abs() < 0.01);
+    assert!(ShotLight::analyse(&vec![[0.0; 4]; (w * h) as usize], w, h).is_none());
+}

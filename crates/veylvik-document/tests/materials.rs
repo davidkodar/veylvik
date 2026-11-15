@@ -163,3 +163,46 @@ fn optional_inputs_may_stay_unconnected_but_required_ones_may_not() {
         assert_eq!(Document::new(candidate).is_ok(), ok);
     }
 }
+
+#[test]
+fn light_rigs_only_connect_to_lights_inputs_and_never_render() {
+    let mut doc = demo();
+    let text = Node::new(
+        "Title",
+        serde_json::from_value(registry::TEXT.default_operation()).unwrap(),
+        &[],
+    );
+    let rig = Node::new(
+        "Key light",
+        Operation::LightRig(nodes::LightRig::default()),
+        &[],
+    );
+    let material = material::Source::Builtin("gold_text").material().unwrap();
+    let lit = Node::new(
+        "Gold",
+        Operation::Material(material.clone()),
+        &[("image", text.id), ("lights", rig.id)],
+    );
+    let wrong_way = Node::new(
+        "Gold",
+        Operation::Material(material.clone()),
+        &[("image", rig.id)],
+    );
+    let image_as_lights = Node::new(
+        "Gold",
+        Operation::Material(material),
+        &[("image", text.id), ("lights", text.id)],
+    );
+    assert_eq!(registry::LIGHT_RIG.output, registry::PortKind::Lights);
+    doc.nodes.insert(text.id, text);
+    doc.nodes.insert(rig.id, rig.clone());
+    for (node, ok) in [(lit, true), (wrong_way, false), (image_as_lights, false)] {
+        let mut candidate = doc.clone();
+        candidate.output = node.id;
+        candidate.nodes.insert(node.id, node);
+        assert_eq!(Document::new(candidate).is_ok(), ok);
+    }
+    let mut rig_output = doc;
+    rig_output.output = rig.id;
+    assert!(Document::new(rig_output).is_err());
+}
