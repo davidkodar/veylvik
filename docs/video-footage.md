@@ -138,9 +138,9 @@ process timeout. Long shots may need splitting. Changes on disk require source
 reload instead of silently mixing old and new frames.
 
 Save-as, recovery and cross-project clipboard operations preserve asset paths.
-Project collection copies supported video files within the existing 64 MiB
-per-file / 1 GiB total collection limits. Image-sequence collection remains
-unsupported; keep its manifest and frame directory together.
+Project collection streams supported video and includes image-sequence frames,
+with a 1 TiB total / 100,000 dependency-file limit. Use **File > Project files…**
+to collect, verify or relink sources. Existing decoder limits still apply.
 
 ## Decode size and hidden layers
 

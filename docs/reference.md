@@ -1646,26 +1646,49 @@ all use the same bounded normalized-time evaluator.
 Edits use revision-checked `set_parameter` transactions, also available through
 MCP; no separate animation format or renderer is involved.
 
-To move or archive an editable project with its images, collect it into a new
-folder:
+To move or archive an editable project, choose **File > Project files…** and
+**Choose parent and collect…**, or use the CLI:
 
 ```sh
 veylvik collect scene.veylvik portable-scene
+veylvik verify-collection portable-scene
 veylvik open portable-scene/project.veylvik
 ```
 
-Collection copies every image referenced by the document, including disconnected
-nodes, into `assets/` and writes relative references in `project.veylvik`. Node
-IDs, connections, settings and animation remain unchanged. Canonical file aliases
-share a copy; encoded PNG and EXR bytes are preserved and validated before the
-project is published. Text outlines already live inside the document and need no
-font files. The original project and assets are unchanged.
+Collection includes every referenced still, video, LUT and image-sequence frame,
+including disconnected nodes. It preserves source bytes, deduplicates canonical
+aliases and writes relative references. Sequence manifests are normalized to
+portable `.veyseq` lists. Fonts are bundled or embedded in the project already;
+text outlines, tracking curves and other document data travel with it.
 
-The destination must not exist. Collection reads the files currently on disk,
-not an open editor’s cached images. Missing or invalid images fail collection;
-normal failures remove the files created by that attempt. An interrupted process
-may leave an incomplete folder. Limits are 64 MiB per encoded image, 128 MiB per
-decoded image, and 1 GiB of total encoded image data. No Vulkan device is needed.
+Custom OCIO conversions become lossless resolved CTF transforms with local OCIO
+configs. They retain the used conversion (including resolved external LUTs and
+context), not the original config's full colour-space/display catalogue. Builtin
+OCIO config identities remain version-pinned. This is not an approximate LUT bake.
+
+The collector streams large video files, reports progress and supports cancellation.
+The destination must not exist. Missing/invalid sources fail collection; normal
+failure/cancellation removes only the new collection. A process crash can leave an
+incomplete folder. Original files and the current project stay unchanged. Limits
+are 1 TiB / 100,000 dependency files; existing media decoder limits still apply.
+Rendered outputs, render-queue jobs/music and application caches are not project
+assets and are not included.
+
+`collection.json` stores relative paths, sizes and SHA-256 hashes, including the
+project. Verification rereads the copies and checks that every project file
+reference resolves inside the collection, including sequence frames and colour
+LUTs. It never falls back to originals. Editing a collected project or media makes
+its saved verification hashes stale; collect it again for a new verified archive.
+
+**Project files** also offers **Search folder…** and **Locate…** for unavailable
+media and custom OCIO configs. The unavailable-media indicator opens this window.
+Search proposes same-name files without following symlink directories, bounded to
+100,000 entries / 32 levels. A unique match to a collection's SHA-256 is preselected;
+name-only suggestions and ties require your choice. It does not yet implement
+Klipp's reel/timecode/transcode matching for ordinary Veylvik projects, which do
+not store that identity metadata. Review paths and click **Relink selected sources**.
+Validation precedes one undoable transaction updating all uses, preserving node
+IDs, connections, timing and animation. Project changes invalidate an old search.
 
 Bundled library previews are generated from the editable showcase factories using
 the Vulkan renderer (48 frames at 12 fps, downsampled to 320 × 180). Regenerate

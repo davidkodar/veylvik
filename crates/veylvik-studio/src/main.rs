@@ -38,6 +38,7 @@ mod path_pen;
 mod path_transform;
 mod planar;
 mod playback;
+mod portable;
 mod preferences;
 mod preset_library;
 mod preview_images;
@@ -240,6 +241,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 export_controls: sequence::Controls::default(),
                 video_export: video_export::Controls::default(),
                 render_queue: render_queue::Queue::new(),
+                portable: Default::default(),
                 tracking: tracking::Controls::default(),
                 planar: planar::Controls::default(),
                 live_job: None,
@@ -331,6 +333,7 @@ struct Studio {
     export_controls: sequence::Controls,
     video_export: video_export::Controls,
     render_queue: render_queue::Queue,
+    portable: portable::Controls,
     tracking: tracking::Controls,
     planar: planar::Controls,
     live_job: Option<live_jobs::LiveJob>,
@@ -364,6 +367,7 @@ impl Studio {
             || self.node_finder.open
     }
     fn open_project(&mut self, project: Project, ctx: &egui::Context) {
+        self.portable = portable::Controls::default();
         let recovery = recovery::Recovery::new(self.recovery.store.clone(), &project, ctx.clone());
         self.recovery.finish(true);
         self.recovery = recovery;
@@ -1259,6 +1263,7 @@ impl Studio {
         let Some(result) = self.files.poll() else {
             return;
         };
+        self.portable_poll_finished(result.as_ref().err().map(String::as_str));
         self.tracking.active = None;
         self.planar.active = None;
         self.subject.active = None;
@@ -1267,6 +1272,7 @@ impl Studio {
             self.outline_controls.open = !matches!(&result, Ok(Completed::Outlined(_)));
         }
         match result {
+            Ok(Completed::Portable(result)) => self.portable_finished(*result),
             Ok(Completed::PlanarTracked(result)) => self.planar_completed(result),
             Ok(Completed::Segmented(result)) => self.subject_completed(*result),
             Ok(Completed::Tracked(result)) => self.tracking_completed(result),
@@ -2520,6 +2526,7 @@ impl eframe::App for Studio {
         self.path_pen.shortcuts(&ctx);
         self.occlusion_tick();
         self.poll_files(&ctx);
+        self.portable_window(&ctx);
         if self.render_queue.will_start() {
             self.playback_controls.warming = None;
             if let Some(s) = &self.scheduler {

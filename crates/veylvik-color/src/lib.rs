@@ -33,6 +33,7 @@ unsafe extern "C" {
         display: *const c_char,
         view: *const c_char,
     ) -> *mut c_void;
+    fn vv_ocio_portable(program: *mut c_void, config: i32) -> *const c_char;
     fn vv_ocio_program_free(program: *mut c_void);
     fn vv_ocio_shader(program: *mut c_void) -> *const c_char;
     fn vv_ocio_files(program: *mut c_void) -> i32;
@@ -138,6 +139,21 @@ impl Config {
     }
 }
 impl Program {
+    /// A minimal OCIO config and lossless CTF containing this resolved processor.
+    /// External LUTs and context variables are resolved, not sampled or approximated.
+    pub fn portable(&self) -> Result<(String, String)> {
+        let read = |kind| {
+            // The wrapper owns the string until its next call on this thread; copy immediately.
+            let ptr = unsafe { vv_ocio_portable(self.0.as_ptr(), kind) };
+            if ptr.is_null() {
+                Err(last_error())
+            } else {
+                Ok(unsafe { string(ptr) })
+            }
+        };
+        Ok((read(1)?, read(0)?))
+    }
+
     pub fn files(&self) -> Vec<String> {
         let count = unsafe { vv_ocio_files(self.0.as_ptr()) };
         (0..count)

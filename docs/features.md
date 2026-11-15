@@ -430,7 +430,7 @@ Details: [Subject segmentation](subject-segmentation.md).
 - Crash recovery copies of applied edits at the configured interval (ten seconds by default) in `$XDG_STATE_HOME/veylvik/recovery`; **File → Recover unsaved work…**.
 - Unsaved-changes prompts on close, open and new.
 - Missing media: projects still open, unavailable sources marked in the menu bar and inspector, repair via Replace source / Reload.
-- **Collect project** (`veylvik collect`): copies images and supported video into `assets/` with relative paths (sequences not supported).
+- **Project files:** collect images, video, sequences, LUTs and lossless resolved OCIO conversions with relative paths, streamed copying, cancellation and SHA-256 verification. Fonts and tracking data travel in the project. Folder search / Locate proposes relinks; unique collected-content matches preselect, ambiguous and name-only matches require a choice. Batch relink is one undoable transaction.
 - 16 MiB document size limit.
 - **File → New composition…** (Ctrl+N): width, height, frame count, exact frame-rate numerator/denominator.
 - **File → Composition settings…**: canvas, frame count, frame rate as one undo step, optional control scaling; **Display** transform.
@@ -445,7 +445,7 @@ Details: [Subject segmentation](subject-segmentation.md).
 - `demo FILE [--motion|--procedural]`: write an example project.
 - `import IMAGE.png|IMAGE.exr FILE`: create a project from an image.
 - `outline-text FONT TEXT NEW_FILE [--size --origin --canvas --align --line-height --rtl --language --font-index]`.
-- `collect FILE NEW_DIRECTORY`.
+- `collect FILE NEW_DIRECTORY`; `verify-collection DIRECTORY`.
 - `nodes`: node catalogue as JSON.
 - `check FILE`: validate graph and assets, report working/source bytes.
 - `render FILE OUTPUT.png|.exr [TICKS RATE] [--node UUID] [--crop X Y W H]`.

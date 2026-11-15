@@ -21,6 +21,8 @@ pub enum Choice {
     Export,
     Video,
     Folder,
+    Directory,
+    Source,
     Font,
     Lut,
 }
@@ -69,6 +71,7 @@ pub enum Completed {
     },
     Saved(Saved),
     Exported(PathBuf),
+    Portable(Box<crate::portable::Finished>),
     Queued(Box<crate::render_queue::Job>),
 }
 pub struct Tasks {
@@ -139,6 +142,8 @@ pub fn select(choice: Choice, folder: &Path, name: &str) -> Result<Option<PathBu
             "*.png",
         ),
         Choice::Video => ("Export video", "MP4 video", "*.mp4"),
+        Choice::Directory => ("Choose folder", "Folders", "*"),
+        Choice::Source => ("Locate source", "Source files", "*"),
         Choice::Folder => ("Choose parent folder for image sequence", "Folders", "*"),
     };
     let filter = if matches!(choice, Choice::Font) {
@@ -172,6 +177,8 @@ pub fn select(choice: Choice, folder: &Path, name: &str) -> Result<Option<PathBu
                 | Choice::PresetOpen
                 | Choice::Import
                 | Choice::Folder
+                | Choice::Directory
+                | Choice::Source
                 | Choice::Font
                 | Choice::Lut
         ) {
@@ -179,7 +186,7 @@ pub fn select(choice: Choice, folder: &Path, name: &str) -> Result<Option<PathBu
                 .title(title)
                 .modal(true)
                 .multiple(false)
-                .directory(matches!(choice, Choice::Folder))
+                .directory(matches!(choice, Choice::Folder | Choice::Directory))
                 .current_folder(folder)?
                 .filter(filter)
                 .send()

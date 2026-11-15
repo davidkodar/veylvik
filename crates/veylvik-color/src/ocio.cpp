@@ -3,11 +3,12 @@
 #include <exception>
 #include <cstdint>
 #include <vector>
+#include <sstream>
 namespace O = OCIO_NAMESPACE;
 namespace {
 thread_local std::string last_error;
 struct Config { O::ConstConfigRcPtr value; };
-struct Program { O::ConstCPUProcessorRcPtr cpu; O::GpuShaderDescRcPtr gpu; std::vector<std::string> files; };
+struct Program { O::ConstConfigRcPtr config; O::ConstProcessorRcPtr processor; O::ConstCPUProcessorRcPtr cpu; O::GpuShaderDescRcPtr gpu; std::vector<std::string> files; };
 }
 extern "C" {
 const char* vv_ocio_error() { return last_error.c_str(); }
@@ -50,8 +51,32 @@ void* vv_ocio_program(void* ptr,const char* source,const char* destination,const
         std::vector<std::string> files;
         const auto metadata=p->getProcessorMetadata();
         for(int i=0;i<metadata->getNumFiles();++i) files.emplace_back(c->getCurrentContext()->resolveFileLocation(metadata->getFile(i)));
-        return new Program{p->getDefaultCPUProcessor(),gpu,std::move(files)};
+        return new Program{c,p,p->getDefaultCPUProcessor(),gpu,std::move(files)};
     }catch(const std::exception& e){last_error=e.what();return nullptr;}
+}
+// Resolve all file/context references into a lossless CTF, never an approximate bake.
+const char* vv_ocio_portable(void* ptr, int config) {
+    try {
+        thread_local std::string result;
+        auto p=static_cast<Program*>(ptr);
+        std::ostringstream stream;
+        if(config) {
+            auto c=O::Config::Create(); c->setMajorVersion(2); c->setMinorVersion(0); c->setSearchPath(".");
+            auto input=O::ColorSpace::Create(O::REFERENCE_SPACE_SCENE); input->setName("Input");
+            auto output=O::ColorSpace::Create(O::REFERENCE_SPACE_SCENE); output->setName("Output");
+            auto file=O::FileTransform::Create(); file->setSrc("transform.ctf");
+            output->setTransform(file,O::COLORSPACE_DIR_FROM_REFERENCE);
+            c->addColorSpace(input); c->addColorSpace(output); c->setRole(O::ROLE_DEFAULT,"Input");
+            c->addDisplayView("Portable","Output","Output",""); c->serialize(stream);
+        } else {
+            const char* format=nullptr;
+            for(int i=0;i<O::GroupTransform::GetNumWriteFormats();++i)
+                if(std::string(O::GroupTransform::GetFormatExtensionByIndex(i))=="ctf") format=O::GroupTransform::GetFormatNameByIndex(i);
+            if(!format) throw std::runtime_error("This OCIO build cannot write lossless CTF transforms");
+            p->processor->createGroupTransform()->write(p->config,format,stream);
+        }
+        result=stream.str(); return result.c_str();
+    } catch(const std::exception& e) {last_error=e.what();return nullptr;}
 }
 void vv_ocio_program_free(void* ptr){delete static_cast<Program*>(ptr);}
 const char* vv_ocio_shader(void* ptr){return static_cast<Program*>(ptr)->gpu->getShaderText();}

@@ -48,6 +48,7 @@ impl Studio {
                 if item(ui, "Import numbered sequence…", "", true) { self.import_media(self.graph.insertion_position(ui.ctx()), true); }
                 if item(ui, "Reload source images", "Ctrl+R", !self.draft_dirty) { self.reload_images(); }
                 ui.separator();
+                if item(ui, "Project files…", "", true) { self.portable.open = true; }
                 if item(ui, "Render queue…", "", true) { self.render_queue.open = true; }
                 if item(ui, "Export video…", "", true) { self.video_export.open = true; }
                 if item(ui, "Export current preview…", "Ctrl+E", true) { self.export_frame(); }
@@ -177,10 +178,8 @@ impl Studio {
                 if ui.add(egui::Button::new(egui::RichText::new("Render").color(crate::theme::ink(crate::theme::palette(ui.ctx()).selection))).fill(crate::theme::palette(ui.ctx()).selection)).clicked() {self.render_queue.open=true;}
 
                 let unavailable = self.project.unavailable_assets().len();
-                if unavailable > 0 {
-                    ui.colored_label(egui::Color32::LIGHT_RED, format!("{unavailable} unavailable"))
-                        .on_hover_text("Select an Image node to replace its source, or use File > Reload source images after repairing the files.");
-                }
+                if unavailable > 0 && ui.button(egui::RichText::new(format!("{unavailable} unavailable")).color(egui::Color32::LIGHT_RED))
+                        .on_hover_text("Open Project files to locate or relink missing media").clicked() { self.portable.open = true; }
                 let name = self.project.path.as_ref().and_then(|p| p.file_name())
                     .map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "Untitled".into());
                 let title = if self.project.dirty() || self.draft_dirty { format!("{name} •") } else { name };

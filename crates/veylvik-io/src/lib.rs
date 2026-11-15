@@ -8,6 +8,7 @@ pub mod import;
 pub mod lut;
 pub mod presets;
 pub mod preview;
+pub mod relink;
 pub mod video;
 pub mod video_export;
 pub use export::{FrameFormat, save_frame};

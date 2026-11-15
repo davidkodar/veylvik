@@ -4053,6 +4053,7 @@ dependencies = [
  "png",
  "serde",
  "serde_json",
+ "sha2",
  "veylvik-color",
  "veylvik-decode",
  "veylvik-document",

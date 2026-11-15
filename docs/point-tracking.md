@@ -21,8 +21,8 @@ runs off the interface thread; compositing and effects remain on Vulkan.
 
 Direct video import is available through **File > Import media…**; see
 [Video footage](video-footage.md) for formats, timing controls and decoding limits.
-Project collection currently rejects sequence assets; copy the sequence directory
-with its manifest manually.
+Project collection includes sequence frames and rewrites their manifest with portable
+relative paths; use **File > Project files…**.
 
 ## Track a feature
 
