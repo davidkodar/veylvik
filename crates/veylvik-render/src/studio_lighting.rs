@@ -27,6 +27,7 @@ impl Lighting {
         colours: Option<Palette>,
         rig: &StudioRig,
     ) -> Self {
+        let custom = colours.is_some();
         let palette = colours.unwrap_or_else(|| kind.palette());
         let optics = optics.unwrap_or_else(|| kind.optics());
         let f0 = optics.f0();
@@ -41,6 +42,9 @@ impl Lighting {
             lights: [[[0.; 4]; 4]; 8],
             palette: palette.map(|[r, g, b]| [r, g, b, 0.]),
         };
+        // Recoloured looks (palette[2].w) may shade differently from the family's
+        // original colours, which must keep rendering as they always have.
+        result.palette[2][3] = f32::from(custom);
         for (output, light) in result.lights.iter_mut().zip(&rig.lights) {
             let rotate = |[x, y, z]: [f32; 3]| {
                 let (sx, cx) = light.rotation[0].to_radians().sin_cos();

@@ -245,7 +245,10 @@ fn every_catalogue_look_builds_validates_and_applies_its_whole_look() {
             "{} shadows a starter",
             entry.id
         );
-        assert!(["Metal", "Glossy", "Natural", "Leather"].contains(&material::category(entry.id)));
+        assert!(
+            ["Metal", "Glossy", "Glass", "Neon", "Natural", "Leather"]
+                .contains(&material::category(entry.id))
+        );
         assert!(builtin::is_material(entry.id));
         let preset = builtin::build(entry.id).unwrap();
         preset.validate().unwrap();
@@ -274,4 +277,73 @@ fn every_catalogue_look_builds_validates_and_applies_its_whole_look() {
     assert_eq!(chrome.kind, MaterialKind::Silver);
     assert_eq!(chrome.roughness.at(Time::new(0, 1).unwrap()).unwrap(), 0.04);
     assert!(chrome.optics.is_some_and(|o| o.metallic));
+}
+
+#[test]
+fn a_glass_look_on_text_sees_the_backdrop() {
+    let (mut owner, id) = titled();
+    let backdrop = presets::background::automatic(owner.snapshot());
+    owner
+        .apply(
+            0,
+            &text_style::apply(owner.snapshot(), id, Some("glass_frosted"), None).unwrap(),
+        )
+        .unwrap();
+    let node = text_style::current(owner.snapshot(), id).unwrap().unwrap();
+    let glass = &owner.snapshot().nodes[&node];
+    assert_eq!(
+        material_of(owner.snapshot(), node).kind,
+        MaterialKind::Glass
+    );
+    assert_eq!(glass.inputs.get("environment").copied(), backdrop);
+}
+
+#[test]
+fn neon_on_text_brings_its_glow_and_other_looks_remove_it() {
+    let (mut owner, id) = titled();
+    let glows = |doc: &Composition| {
+        doc.nodes
+            .values()
+            .filter(|n| n.label.starts_with("Neon glow"))
+            .count()
+    };
+    owner
+        .apply(
+            0,
+            &text_style::apply(owner.snapshot(), id, Some("neon_pink"), None).unwrap(),
+        )
+        .unwrap();
+    assert_eq!(glows(owner.snapshot()), 2, "blur and additive blend");
+    let material = text_style::current(owner.snapshot(), id).unwrap().unwrap();
+    // Whatever consumed the text now sees the glowing surface.
+    assert!(
+        owner
+            .snapshot()
+            .nodes
+            .values()
+            .any(|n| n.label == "Neon glow" && n.inputs.get("background") == Some(&material))
+    );
+    // Applying neon again does not stack a second glow.
+    owner
+        .apply(
+            1,
+            &text_style::apply(owner.snapshot(), id, Some("neon_blue"), None).unwrap(),
+        )
+        .unwrap();
+    assert_eq!(glows(owner.snapshot()), 2);
+    owner
+        .apply(
+            2,
+            &text_style::apply(owner.snapshot(), id, Some("gold_text"), None).unwrap(),
+        )
+        .unwrap();
+    assert_eq!(
+        glows(owner.snapshot()),
+        0,
+        "a non-glowing look drops the bloom"
+    );
+    assert_eq!(
+        text_style::current(owner.snapshot(), id).unwrap(),
+        Some(material)
+    );
 }

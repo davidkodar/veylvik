@@ -12,10 +12,42 @@ impl RenderNode for veylvik_document::nodes::Material {
     fn passes_for(&self, node: &veylvik_document::Node) -> Passes {
         // Optional inputs add work only when connected: the shot becomes a roughness
         // pyramid, and a texture is packed beside the bevel height (rgb + a).
-        match (
-            node.inputs.contains_key("environment"),
-            node.inputs.contains_key("texture"),
-        ) {
+        let environment = node.inputs.contains_key("environment");
+        if self.kind == veylvik_document::MaterialKind::Glass && environment {
+            // Glass reads the shot twice: full resolution beside the bevel height for
+            // clear glass, and as a roughness pyramid for frosted glass.
+            return Passes::Chain(&[
+                super::Step {
+                    kernel: Kernel::BevelHeightHorizontal,
+                    inputs: [super::From::Port(0), super::From::None, super::From::None],
+                },
+                super::Step {
+                    kernel: Kernel::BevelHeightVertical,
+                    inputs: [super::From::Step(0), super::From::None, super::From::None],
+                },
+                super::Step {
+                    kernel: Kernel::TexturePack,
+                    inputs: [
+                        super::From::Step(1),
+                        super::From::Port(1),
+                        super::From::None,
+                    ],
+                },
+                super::Step {
+                    kernel: Kernel::EnvironmentPyramid,
+                    inputs: [super::From::Port(1), super::From::None, super::From::None],
+                },
+                super::Step {
+                    kernel: Kernel::Material,
+                    inputs: [
+                        super::From::Port(0),
+                        super::From::Step(2),
+                        super::From::Step(3),
+                    ],
+                },
+            ]);
+        }
+        match (environment, node.inputs.contains_key("texture")) {
             (false, false) => self.passes(),
             (true, false) => Passes::Chain(&[
                 super::Step {

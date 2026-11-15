@@ -1062,3 +1062,42 @@ fn an_image_texture_colours_the_surface_and_keeps_its_shape() {
         .material_swatch(MaterialKind::Gold, 0.2, 0.3)
         .unwrap();
 }
+
+#[test]
+#[ignore = "requires Vulkan"]
+fn glass_shows_the_shot_through_it_tinted() {
+    let renderer = Renderer::new().unwrap();
+    let (mut doc, inputs, _) = source();
+    let coverage = doc.output;
+    let shot = Node::new(
+        "Green shot",
+        Operation::Solid(nodes::Solid {
+            color: [0.05, 0.6, 0.1, 1.0],
+        }),
+        &[],
+    );
+    let ruby = veylvik_document::presets::catalogue::get("glass_clear")
+        .unwrap()
+        .material();
+    let glass = Node::new(
+        "Glass",
+        Operation::Material(ruby),
+        &[("image", coverage), ("environment", shot.id)],
+    );
+    doc.output = glass.id;
+    doc.nodes.insert(shot.id, shot);
+    doc.nodes.insert(glass.id, glass);
+    let pixels = renderer
+        .render_frame(
+            &Plan::compile(&doc).unwrap(),
+            RenderRequest::full(Time::new(0, 1).unwrap()),
+            &inputs,
+        )
+        .unwrap()
+        .pixels;
+    let p = pixels[32 * 96 + 60];
+    assert!(
+        p[1] > p[0] * 2.0 && p[1] > 0.3,
+        "clear glass passes the green shot: {p:?}"
+    );
+}

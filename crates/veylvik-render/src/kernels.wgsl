@@ -601,6 +601,32 @@ fn surface_sample(uv:vec2<f32>, kind:u32)->vec4<f32> {
         let fibres=fire_noise(vec3<f32>(select(vec2<f32>(q.x*40.0,q.y*2.0),vec2<f32>(q.x*2.0,q.y*40.0),warp),0.4),313u);
         color=mix(studio.palette[0].rgb,studio.palette[1].rgb,tow*(0.55+0.45*fibres)*select(0.6,1.0,warp));
         height=tow*0.02+(fibres-0.5)*0.002+along*0.0;
+    } else if kind==25u {
+        // Liquid metal: broad, slow swells that ripple as Reflection motion animates.
+        let t=p.values.w*6.2831853;
+        // One smooth noise layer: broad molten blobs, no crinkle.
+        let swell=fire_noise(vec3<f32>(uv*2.6+vec2<f32>(sin(t),cos(t))*0.25,t*0.3),881u);
+        color=vec3<f32>(0.0);
+        height=swell*0.9;
+    } else if kind==26u {
+        color=studio.palette[0].rgb*(0.97+fine*0.04);
+        height=fine*0.002;
+    } else if kind==27u {
+        // Slate: thin cleft layers along one direction, broken by coarse noise.
+        let layer=fire_fbm(vec3<f32>(uv.x*0.6,uv.y*9.0+coarse*2.0,0.9),421u);
+        let flake=smoothstep(0.35,0.75,layer);
+        color=mix(studio.palette[0].rgb,studio.palette[1].rgb,flake)*(0.9+fine*0.2);
+        height=flake*0.08+coarse*0.05+fine*0.01;
+    } else if kind==28u {
+        // Plain weave: warp and weft threads pass over and under alternately.
+        // 2/1 twill: each row shifts by one thread, so the weave runs diagonally.
+        let q=uv*48.0;let cell=floor(q);let f=fract(q);
+        let warp=((i32(cell.x)-i32(cell.y))%3+3)%3!=0;
+        let across=select(f.y,f.x,warp);
+        let thread=pow(sin(across*3.14159265),1.2);
+        let fibres=fire_noise(vec3<f32>(select(vec2<f32>(q.x*12.0,q.y),vec2<f32>(q.x,q.y*12.0),warp),0.2),977u);
+        color=select(studio.palette[1].rgb,studio.palette[0].rgb,warp)*(0.35+0.65*thread)*(0.8+0.4*fibres);
+        height=thread*0.035+(fibres-0.5)*0.006;
     } else {
         // Jittered Voronoi cells produce irregular leather pebbles rather than a grid.
         let q=uv*78.0;let cell=floor(q);let f=fract(q);
@@ -805,6 +831,44 @@ fn studio_surface(uv:vec2<f32>, normal:vec3<f32>,albedo:vec3<f32>)->vec3<f32> {
     return reflected*radiance+(1.0-studio.optics.w)*(vec3<f32>(1.0)-reflected)*albedo*diffuse;
 
 }
+// Glass: the shot behind, bent by the bevel and tinted, plus studio reflections.
+// The full-resolution shot sits in the packed bevel buffer (rgb) and its roughness
+// pyramid in the third input, so clear glass is sharp and frosted glass is smooth.
+// Needs the Environment input; without it only the reflections remain.
+fn glass_refracted(pixel:vec2<f32>,rough:f32)->vec3<f32> {
+    let screen=pixel/vec2<f32>(p.size_op.xy);
+    let level=clamp(rough,0.0,1.0)*6.0;
+    if level<1.0 {return mix(second_bilinear(pixel).rgb,shot_level(screen,1u),level);}
+    let lo=u32(floor(level));
+    return mix(shot_level(screen,lo),shot_level(screen,min(lo+1u,6u)),fract(level));
+}
+fn glass_surface(uv:vec2<f32>,n:vec3<f32>)->vec3<f32> {
+    let reflections=studio_surface(uv,n,vec3<f32>(0.0));
+    if p.size_op.z!=1u {return reflections;}
+    let f0=studio.optics.g;
+    let ior=(1.0+sqrt(f0))/max(1.0-sqrt(f0),0.0001);
+    let pixel=uv*p.values.x;
+    // Stronger bevels and denser materials bend the background further.
+    let bend=-n.xy*p.values.y*6.0*(1.0-1.0/ior);
+    let rough=p.values.z;
+    var through=glass_refracted(pixel+bend,rough);
+    // Dense stones split colour at the edges.
+    let spread=max(ior-1.6,0.0)*0.6;
+    if spread>0.0 {
+        through.r=glass_refracted(pixel+bend*(1.0+spread),rough).r;
+        through.b=glass_refracted(pixel+bend*(1.0-spread),rough).b;
+    }
+    let screen=pixel/vec2<f32>(p.size_op.xy);
+    // Frosting scatters light: a milky lift towards the shot's average colour.
+    through=mix(through,shot_level(screen,6u)*1.05+vec3<f32>(0.05),clamp(rough,0.0,1.0)*0.45);
+    // Thick, steep edges absorb and reflect more: a darker band that defines the shape.
+    let edge=1.0-clamp(n.z,0.0,1.0);
+    through*=mix(1.0,0.45,pow(edge,1.3));
+    let fresnel=f0+(1.0-f0)*pow(edge,5.0);
+    // The rims also mirror the scene around them, not only the studio.
+    let scene=shot_environment(screen,reflect(vec3<f32>(0.0,0.0,-1.0),n),rough)*(studio.environment.z/0.65);
+    return through*studio.palette[0].rgb*(1.0-fresnel)+reflections+scene*(fresnel+edge*0.35);
+}
 fn material_colour(uv:vec2<f32>,n:vec3<f32>)->vec3<f32> {
     if p.size_op.w<=3u {return studio_surface(uv,n,vec3<f32>(0.0));}
     let rim=pow(max(dot(n,normalize(vec3<f32>(-0.6,-0.8,0.6))),0.0),8.0)*2.4;
@@ -812,7 +876,16 @@ fn material_colour(uv:vec2<f32>,n:vec3<f32>)->vec3<f32> {
     if p.size_op.w==4u {
         let phosphor=0.8+p.extra.x*0.45*(fire_noise(vec3<f32>(uv*150.0,0.0),431u)-0.5);
         let pulse=0.92+0.08*cos(p.values.w*6.2831853);
-        color=studio.palette[0].rgb*1.9*phosphor*p.extra.y*pulse+vec3<f32>(rim*0.08);
+        // A tube glows white-hot along its core and saturated towards its edges.
+        let glow=studio.palette[0].rgb*1.9;
+        let core=smoothstep(0.55,1.0,second_bilinear(uv*p.values.x).a);
+        let hot=vec3<f32>(max(glow.r,max(glow.g,glow.b)));
+        // Keep the tube saturated: the core only warms towards white, and the level
+        // stays near display white so the colour survives; the bloom carries the glow.
+        color=mix(glow,hot,0.18*core)*phosphor*p.extra.y*pulse*(0.45+0.25*core)+vec3<f32>(rim*0.08);
+        // The original green phosphor keeps its flat glow; only recoloured neon
+        // tubes use the saturated core shading.
+        if studio.palette[2].w<0.5 {color=glow*phosphor*p.extra.y*pulse+vec3<f32>(rim*0.08);}
     }
     if p.size_op.w==5u {
         let warp=fire_fbm(vec3<f32>(uv.x*0.7,uv.y*2.0,0.5),617u);
@@ -825,6 +898,24 @@ fn material_colour(uv:vec2<f32>,n:vec3<f32>)->vec3<f32> {
         let pores_dark=pow(max(0.0,1.0-fibers*2.0),3.0);
         color*=max(0.1,1.0+p.extra.x*((fibers-0.5)*0.45-pores_dark*0.6));
         color=studio_surface(uv,n,color);
+    }
+    if p.size_op.w==24u {return glass_surface(uv,n);}
+    if p.size_op.w==25u {return detailed_surface(uv,n,25u);}
+    if p.size_op.w==28u {
+        // Fabric catches light at grazing angles, strongest on velvet's pile.
+        let sheen=pow(1.0-clamp(n.z,0.0,1.0),2.0);
+        return detailed_surface(uv,n,28u)+studio.palette[0].rgb*sheen*0.6;
+    }
+    if p.size_op.w==26u {
+        // Pearl: a pale dielectric whose sheen shifts colour with the viewing angle.
+        let base=detailed_surface(uv,n,26u);
+        let angle=1.0-clamp(n.z,0.0,1.0);
+        // The film's thickness swirls across the face, so the colours flow over it.
+        let swirl=fire_fbm(vec3<f32>(uv*2.5,0.3),733u)*2.0;
+        let film=vec3<f32>(0.6)+0.4*cos(6.2831853*(vec3<f32>(angle*1.6+swirl)+vec3<f32>(0.0,0.33,0.67)));
+        // The film also adds its own colour, so a dark body (oil slick) still shows it.
+        let sheen=film*studio.palette[1].rgb;
+        return base*mix(vec3<f32>(1.0),sheen*1.4,0.25*angle+0.18)+sheen*(0.1+0.35*angle*angle);
     }
     if p.size_op.w==23u {
         // Image texture: colour from the packed texture at this pixel; its own

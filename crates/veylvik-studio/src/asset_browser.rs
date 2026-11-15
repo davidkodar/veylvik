@@ -153,7 +153,7 @@ impl Studio {
             ui.add_space(5.);
             ui.add(egui::TextEdit::singleline(&mut self.browser.query).hint_text("Search library…").desired_width(f32::INFINITY).margin(egui::vec2(9.,7.)));
             if self.browser.tab==Tab::Materials {
-                ui.horizontal_wrapped(|ui| {for name in ["All","Favourites","My materials","Metal","Glossy","Natural","Leather"] {ui.selectable_value(&mut self.browser.category,name.into(),name);}});
+                ui.horizontal_wrapped(|ui| {for name in ["All","Favourites","My materials","Metal","Glossy","Glass","Neon","Natural","Leather"] {ui.selectable_value(&mut self.browser.category,name.into(),name);}});
             }
             ui.add_space(4.);
             let query=self.browser.query.to_lowercase();

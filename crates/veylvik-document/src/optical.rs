@@ -50,10 +50,14 @@ impl MaterialKind {
             Aluminium => [0.91, 0.92, 0.92],
             Bronze => [0.78, 0.38, 0.16],
             Holographic => [0.95, 0.95, 0.95],
+            LiquidMetal => [0.9, 0.91, 0.92],
             _ => [0.04; 3],
         };
         SurfaceOptics {
-            metallic: matches!(self, Gold | Silver | Aluminium | Bronze | Holographic),
+            metallic: matches!(
+                self,
+                Gold | Silver | Aluminium | Bronze | Holographic | LiquidMetal
+            ),
             reflectance,
             ior: 1.5,
         }
@@ -83,7 +87,11 @@ impl MaterialKind {
     pub fn colour_roles(self) -> &'static [&'static str] {
         use MaterialKind::*;
         match self {
-            Gold | Silver | Aluminium | Bronze | Holographic | Texture => &[],
+            Gold | Silver | Aluminium | Bronze | Holographic | Texture | LiquidMetal => &[],
+            Glass => &["Tint"],
+            Pearl => &["Body", "Sheen"],
+            Slate => &["Dark layer", "Light layer"],
+            Fabric => &["Warp", "Weft"],
             Plastic => &["Colour"],
             CarPaint => &["Paint", "Flakes"],
             CarbonFibre => &["Weave", "Sheen"],
@@ -103,9 +111,13 @@ impl MaterialKind {
         const DARK_OAK: [f32; 3] = [0.32, 0.23, 0.16];
         let tint = |c: [f32; 3], t: [f32; 3]| [c[0] * t[0], c[1] * t[1], c[2] * t[2]];
         let (a, b, c) = match self {
-            Gold | Silver | Aluminium | Bronze | Holographic | Texture => {
+            Gold | Silver | Aluminium | Bronze | Holographic | Texture | LiquidMetal => {
                 ([0.0; 3], [0.0; 3], [0.0; 3])
             }
+            Glass => ([0.95, 0.97, 0.98], [0.0; 3], [0.0; 3]),
+            Pearl => ([0.82, 0.8, 0.76], [0.95, 0.85, 1.0], [0.0; 3]),
+            Slate => ([0.06, 0.065, 0.07], [0.16, 0.17, 0.18], [0.0; 3]),
+            Fabric => ([0.05, 0.12, 0.3], [0.55, 0.55, 0.52], [0.0; 3]),
             Plastic => ([0.6, 0.05, 0.04], [0.0; 3], [0.0; 3]),
             CarPaint => ([0.02, 0.05, 0.25], [0.6, 0.7, 0.9], [0.0; 3]),
             CarbonFibre => ([0.01, 0.01, 0.012], [0.3, 0.3, 0.32], [0.0; 3]),

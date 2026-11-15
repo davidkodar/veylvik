@@ -40,6 +40,8 @@ impl Renderer {
                 | Plastic
                 | CarPaint
                 | Holographic
+                | LiquidMetal
+                | Pearl
         ) {
             return self.sphere(
                 crate::studio_lighting::Lighting::material(material, 0.0),
@@ -70,6 +72,30 @@ impl Renderer {
         );
         doc.output = node.id;
         doc.nodes.insert(node.id, node);
+        // Glass needs something behind it to bend: a checkerboard it refracts.
+        let glass = material.kind == Glass;
+        let checker: Vec<[f32; 4]> = (0..side * side)
+            .map(|i| {
+                let on = ((i % side) / 32 + (i / side) / 32).is_multiple_of(2);
+                let v = if on { 0.55 } else { 0.08 };
+                [v, v, v, 1.0]
+            })
+            .collect();
+        if glass {
+            let behind = veylvik_document::Node::new(
+                "Checkerboard",
+                Operation::Image(veylvik_document::nodes::Image {
+                    asset: "behind".into(),
+                }),
+                &[],
+            );
+            doc.nodes
+                .get_mut(&doc.output)
+                .unwrap()
+                .inputs
+                .insert("environment".into(), behind.id);
+            doc.nodes.insert(behind.id, behind);
+        }
         // A rounded tile; its alpha ramp supplies the bevel normals.
         let tile: Vec<[f32; 4]> = (0..side * side)
             .map(|i| {
@@ -84,6 +110,12 @@ impl Renderer {
             "sample",
             std::sync::Arc::new(crate::Image::new(side, side, tile.clone())?),
         );
+        if glass {
+            inputs.insert(
+                "behind",
+                std::sync::Arc::new(crate::Image::new(side, side, checker.clone())?),
+            );
+        }
         let mut rendered = self
             .render_frame(
                 &crate::Plan::compile(&doc)?,
@@ -92,7 +124,15 @@ impl Renderer {
             )?
             .pixels;
         // Present the shaded colour on an opaque sample with the silhouette's AA.
-        for (pixel, mask) in rendered.iter_mut().zip(&tile) {
+        for ((pixel, mask), behind) in rendered.iter_mut().zip(&tile).zip(&checker) {
+            if glass {
+                // Show the glass over the checkerboard it bends.
+                for c in 0..3 {
+                    pixel[c] += behind[c] * (1.0 - mask[3]);
+                }
+                pixel[3] = 1.0;
+                continue;
+            }
             if mask[3] <= 0.0001 {
                 *pixel = [0.; 4];
             }

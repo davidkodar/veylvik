@@ -64,7 +64,104 @@ pub fn current(doc: &Composition, text: NodeId) -> Result<Option<NodeId>> {
     }
     Ok(materials.first().copied())
 }
+/// Style text with a material, as one transaction. Glowing looks (neon, phosphor)
+/// also get a soft bloom after the surface; other looks remove it again.
 pub fn apply<'a>(
+    doc: &Composition,
+    text: NodeId,
+    style: Option<impl Into<super::material::Source<'a>>>,
+    position: Option<NodePosition>,
+) -> Result<Vec<Command>> {
+    let mut commands = apply_surface(doc, text, style, position)?;
+    if commands.is_empty() {
+        return Ok(commands);
+    }
+    let styled = crate::Document::new(doc.clone())?.prepare(0, &commands)?;
+    if let Some(material) = current(&styled, text)? {
+        commands.extend(neon_glow(&styled, material)?);
+    }
+    Ok(commands)
+}
+const GLOW: &str = "Neon glow";
+const GLOW_BLUR: &str = "Neon glow spread";
+/// Add or remove the bloom after a material so it matches whether the look glows.
+fn neon_glow(doc: &Composition, material: NodeId) -> Result<Vec<Command>> {
+    let glows = matches!(
+        &doc.nodes[&material].operation,
+        Operation::Material(m) if m.kind == crate::MaterialKind::Phosphor
+    );
+    let existing = doc
+        .nodes
+        .values()
+        .find(|n| n.label == GLOW && n.inputs.get("background") == Some(&material));
+    match (glows, existing) {
+        (true, None) => {
+            let halo = Node::new(
+                GLOW_BLUR,
+                Operation::Blur(crate::nodes::Blur {
+                    radius: 14.0.into(),
+                    filter: crate::nodes::BlurFilter::Gaussian,
+                }),
+                &[("image", material)],
+            );
+            let mut out = Node::new(
+                GLOW,
+                Operation::Blend(crate::nodes::Blend {
+                    mode: crate::BlendMode::Add,
+                    opacity: 0.8.into(),
+                }),
+                &[("background", material), ("foreground", halo.id)],
+            );
+            out.position = doc.nodes[&material].position.map(|p| NodePosition {
+                x: p.x + 240.0,
+                y: p.y,
+            });
+            let out_id = out.id;
+            connect_after(
+                doc,
+                material,
+                out_id,
+                vec![
+                    Command::Put {
+                        node: Box::new(halo),
+                    },
+                    Command::Put {
+                        node: Box::new(out),
+                    },
+                ],
+            )
+        }
+        (false, Some(glow)) => {
+            // Hand the glow's consumers back to the surface, then drop the glow.
+            let mut commands = Vec::new();
+            for node in doc.nodes.values() {
+                if node.inputs.values().any(|id| *id == glow.id) {
+                    let mut node = node.clone();
+                    for source in node.inputs.values_mut() {
+                        if *source == glow.id {
+                            *source = material;
+                        }
+                    }
+                    commands.push(Command::Put {
+                        node: Box::new(node),
+                    });
+                }
+            }
+            if doc.output == glow.id {
+                commands.push(Command::Output { id: material });
+            }
+            commands.push(Command::Remove { id: glow.id });
+            if let Some(halo) = glow.inputs.get("foreground")
+                && doc.nodes.get(halo).is_some_and(|n| n.label == GLOW_BLUR)
+            {
+                commands.push(Command::Remove { id: *halo });
+            }
+            Ok(commands)
+        }
+        _ => Ok(Vec::new()),
+    }
+}
+fn apply_surface<'a>(
     doc: &Composition,
     text: NodeId,
     style: Option<impl Into<super::material::Source<'a>>>,
@@ -112,6 +209,7 @@ pub fn apply<'a>(
         if let Operation::Material(target) = &mut node.operation {
             super::material::restyle(target, style, with);
         }
+        see_through(doc, &mut node);
         node.label = format!("Text · {}", preset.group.label);
         let mut commands = vec![Command::Put {
             node: Box::new(node.clone()),
@@ -177,6 +275,7 @@ pub fn apply<'a>(
         &[("image", text)],
     );
     node.position = position;
+    see_through(doc, &mut node);
     connect_after(
         doc,
         text,
@@ -551,4 +650,16 @@ pub fn upgrade_shadow(doc: &Composition, output: NodeId) -> Result<Vec<Command>>
     });
     crate::Document::new(doc.clone())?.prepare(0, &commands)?;
     Ok(commands)
+}
+
+/// Glass bends the shot behind it, so a glass look on text gets the composition's
+/// backdrop as its Environment when it has none yet.
+fn see_through(doc: &Composition, node: &mut Node) {
+    if let Operation::Material(m) = &node.operation
+        && m.kind == crate::MaterialKind::Glass
+        && !node.inputs.contains_key("environment")
+        && let Some(backdrop) = background::automatic(doc).filter(|id| *id != node.id)
+    {
+        node.inputs.insert("environment".into(), backdrop);
+    }
 }

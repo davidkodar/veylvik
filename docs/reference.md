@@ -468,7 +468,22 @@ dielectric gloss with a faint orange-peel texture; roughness runs from enamel to
 rubber), **car paint** (paint and flake colours; flakes tilt the clear coat so
 highlights sparkle), **carbon fibre** (a 2×2 twill whose sheen follows the tow
 direction) and **holographic foil** (a white mirror tinted by a rainbow that shifts
-with surface angle and position and drifts with Reflection motion). The **Image texture** family takes its colour from the material's optional **Texture**
+with surface angle and position and drifts with Reflection motion). **Glass** is a see-through family: with the shot on its Environment input it shows
+what is behind it, bent by the bevel according to its refractive index (from the
+look's optics: glass 1.5, ice 1.31, emerald 1.58, ruby and sapphire 1.77, diamond
+2.42), tinted by its colour and weighted by Fresnel, with studio reflections and reflections of the
+scene itself along the rims; thick, steep edges darken, and frosting adds a milky lift.
+Clear glass reads the shot at full resolution; Roughness frosts it through the
+shot's roughness levels; dense stones split colour at their edges. Applying a glass
+look to text connects the composition's backdrop automatically. **Liquid metal**
+swells and ripples as Reflection motion plays; **Pearl** adds an angle-dependent
+thin-film sheen (a dark body gives an oil slick); **Slate** draws cleft layers;
+**Woven fabric** a plain weave of warp and weft colours. Neon looks are glowing
+phosphor recoloured: saturated tubes whose core warms towards white. Applied to text,
+a glowing look adds a Neon glow (a gaussian blur added back over the surface) after
+the material, and any other look removes it again.
+
+The **Image texture** family takes its colour from the material's optional **Texture**
 input: any image, logo or footage, sampled where it lies in the frame (so footage
 plays inside text; transform the texture upstream to place or tile it). It is lit,
 bevelled and reflective like any material; the texture's own detail tilts the
@@ -482,7 +497,7 @@ Sweep** (a shine travels across mirror chrome), **Glint Reveal** (rose-gold glin
 flare, hold and fade), **Heat to Embers** (brushed steel glows from deep red to
 white-hot with an ember halo, then cools; Heat, Glow and Glow spread are keyable)
 and **Rust Spreading** (rust patches grow over steel and recede). The library's
-catalogue adds 25 looks built from these families as data (family, colours,
+catalogue adds 48 looks built from these families as data (family, colours,
 reflectance, roughness, grain, brushing); their swatches render on the GPU like
 saved materials, and applying one to styled text brings its whole finish, while a
 family starter still changes only the family.
