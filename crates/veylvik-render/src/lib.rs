@@ -40,6 +40,14 @@ pub const MATERIAL_WGSL: &str = concat!(
 );
 /// Size of the `studio` lighting uniform in `MATERIAL_WGSL`.
 pub const MATERIAL_LIGHTING_BYTES: u64 = studio_lighting::SIZE;
+/// How a scene's environment changes a material's studio: its strength (set
+/// outright, or scaling the material's own) and an extra turn in radians.
+#[derive(Debug, Clone, Copy)]
+pub struct EnvironmentOverride {
+    pub strength: f32,
+    pub absolute: bool,
+    pub rotation: f32,
+}
 /// The kernel parameters (`p`) and studio lighting (`studio`) a material reads at
 /// `time` on a `width` x `height` canvas, as bytes for `MATERIAL_WGSL` uniforms.
 pub fn material_uniforms(
@@ -47,6 +55,7 @@ pub fn material_uniforms(
     width: u32,
     height: u32,
     time: Time,
+    environment: Option<EnvironmentOverride>,
 ) -> Result<(Vec<u8>, Vec<u8>)> {
     let node = Node::new("look", Operation::Material(material.clone()), &[]);
     let sample = |name: &str| -> Result<f32> {
@@ -74,12 +83,20 @@ pub fn material_uniforms(
         .as_ref()
         .map(|c| veylvik_document::optical::palette_at(c, time))
         .transpose()?;
-    let lighting = studio_lighting::Lighting::new(
+    let mut lighting = studio_lighting::Lighting::new(
         material.kind,
         material.optics,
         colours,
         &material.studio.at(time)?,
     );
+    if let Some(e) = environment {
+        lighting.environment[2] = if e.absolute {
+            e.strength
+        } else {
+            lighting.environment[2] * e.strength
+        };
+        lighting.environment[3] += e.rotation;
+    }
     Ok((
         bytemuck::bytes_of(&p).to_vec(),
         bytemuck::bytes_of(&lighting).to_vec(),

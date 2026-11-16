@@ -338,3 +338,88 @@ fn the_preview_scheduler_shows_the_free_view_not_a_cached_frame() {
     // And the plain frame is still the plain frame afterwards.
     assert_eq!(show(None), plain);
 }
+
+#[test]
+#[ignore = "requires Vulkan"]
+fn an_environment_lights_reflects_and_fills_the_backdrop() {
+    let renderer = renderer();
+    let mut doc = blank(W, H, Time::new(24, 1).unwrap()).unwrap();
+    // A panorama: the left half warm, the right half cool.
+    let panorama: Vec<[f32; 4]> = (0..W * H)
+        .map(|i| {
+            if i % W < W / 2 {
+                [0.9, 0.3, 0.1, 1.0]
+            } else {
+                [0.1, 0.3, 0.9, 1.0]
+            }
+        })
+        .collect();
+    let mut inputs = ImageInputs::default();
+    inputs.insert("sky", Arc::new(Image::new(W, H, panorama).unwrap()));
+    let sky = add(
+        &mut doc,
+        Operation::Image(nodes::Image {
+            asset: "sky".into(),
+        }),
+        &[],
+    );
+    let mut environment = op(&ENVIRONMENT_3D);
+    if let Operation::Environment3d(e) = &mut environment {
+        e.background = true;
+    }
+    let environment = add(&mut doc, environment, &[("image", sky)]);
+    let mut ball = op(&SHAPE_3D);
+    if let Operation::Shape3d(s) = &mut ball {
+        s.kind = ShapeKind::Sphere;
+        s.size_x = 50.0.into();
+        s.size_y = 50.0.into();
+        s.size_z = 50.0.into();
+        s.colour = [0.95; 3].into();
+        s.metallic = 1.0.into();
+        s.roughness = 0.1.into();
+    }
+    let ball = add(&mut doc, ball, &[]);
+    let merged = add(
+        &mut doc,
+        op(&MERGE_SCENES),
+        &[("scene", ball), ("scene_2", environment)],
+    );
+    let render_node = add(&mut doc, op(&RENDER_SCENE), &[("scene", merged)]);
+    doc.output = render_node;
+    let at = |p: &[[f32; 4]], x: u32, y: u32| p[(y * W + x) as usize];
+    let out = render(&renderer, &doc, &inputs);
+    // The backdrop is opaque and shows the panorama.
+    let corner = at(&out, 2, 2);
+    assert!(corner[3] > 0.999, "{corner:?}");
+    assert!(
+        out.iter()
+            .all(|p| p[3] > 0.999 && p.iter().all(|v| v.is_finite()))
+    );
+    // A mirror ball reflects both colours of the panorama.
+    let ball_pixels: Vec<_> = (30..60)
+        .flat_map(|y| (65..95).map(move |x| (x, y)))
+        .map(|(x, y)| at(&out, x, y))
+        .collect();
+    assert!(
+        ball_pixels.iter().any(|p| p[0] > p[2] * 1.5)
+            && ball_pixels.iter().any(|p| p[2] > p[0] * 1.5)
+    );
+    // Turning the environment half a turn swaps what the backdrop shows.
+    let set = |doc: &mut Composition, f: &dyn Fn(&mut nodes::Environment3d)| {
+        if let Operation::Environment3d(e) = &mut doc.nodes.get_mut(&environment).unwrap().operation
+        {
+            f(e);
+        }
+    };
+    set(&mut doc, &|e| e.rotation = 180.0.into());
+    let turned = render(&renderer, &doc, &inputs);
+    let (a, b) = (at(&out, 2, H / 2), at(&turned, 2, H / 2));
+    assert!((a[0] > a[2]) != (b[0] > b[2]), "{a:?} vs {b:?}");
+    // Intensity zero: no environment light on the ball, no backdrop light either.
+    set(&mut doc, &|e| e.intensity = 0.0.into());
+    let dark = render(&renderer, &doc, &inputs);
+    assert!(
+        dark.iter().all(|p| p[0] + p[1] + p[2] < 1e-3),
+        "nothing lights the scene"
+    );
+}

@@ -84,11 +84,24 @@ impl Light {
         d.map(|v| v / l)
     }
 }
+/// What surrounds the scene: an image panorama (by its source node) or the studio.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Environment {
+    pub node: NodeId,
+    pub image: Option<NodeId>,
+    pub intensity: f32,
+    /// Degrees about the vertical.
+    pub rotation: f32,
+    pub background: bool,
+    pub blur: f32,
+}
 #[derive(Debug, Clone, Default)]
 pub struct Scene {
     pub objects: Vec<Object>,
     pub cameras: Vec<Camera>,
     pub lights: Vec<Light>,
+    /// The first Environment in the scene.
+    pub environment: Option<Environment>,
 }
 fn fail<T>(message: impl Into<String>) -> Result<T> {
     Err(Error(message.into()))
@@ -298,6 +311,7 @@ fn node(doc: &Graph<'_>, id: NodeId, time: Time, depth: usize) -> Result<Scene> 
                     scene.objects.extend(part.objects);
                     scene.cameras.extend(part.cameras);
                     scene.lights.extend(part.lights);
+                    scene.environment = scene.environment.or(part.environment);
                 }
             }
         }
@@ -333,6 +347,16 @@ fn node(doc: &Graph<'_>, id: NodeId, time: Time, depth: usize) -> Result<Scene> 
             cone: l.cone.at(time)?.clamp(1.0, 179.0),
             softness: l.softness.at(time)?.clamp(0.0, 1.0),
         }),
+        Operation::Environment3d(e) => {
+            scene.environment = Some(Environment {
+                node: id,
+                image: input("image"),
+                intensity: e.intensity.at(time)?.max(0.0),
+                rotation: e.rotation.at(time)?,
+                background: e.background,
+                blur: e.blur.at(time)?.clamp(0.0, 1.0),
+            })
+        }
         _ => return fail(format!("{} is not a 3D scene node", n.label)),
     }
     Ok(scene)

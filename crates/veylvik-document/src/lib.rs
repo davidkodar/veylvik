@@ -98,6 +98,7 @@ macro_rules! each_node {
             $crate::Operation::Camera3d($node) => $body,
             $crate::Operation::Light3d($node) => $body,
             $crate::Operation::RenderScene($node) => $body,
+            $crate::Operation::Environment3d($node) => $body,
             $crate::Operation::Merge($node) => $body,
             $crate::Operation::Blend($node) => $body,
             $crate::Operation::Fade($node) => $body,
@@ -168,6 +169,8 @@ pub enum Operation {
     #[serde(rename = "light_3d")]
     Light3d(nodes::Light3d),
     RenderScene(nodes::RenderScene),
+    #[serde(rename = "environment_3d")]
+    Environment3d(nodes::Environment3d),
     Merge(nodes::Merge),
     Blend(nodes::Blend),
     Fade(nodes::Fade),

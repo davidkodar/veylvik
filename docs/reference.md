@@ -1294,6 +1294,18 @@ and `colour`.
   the defaults at 1080p); placement moves and turns it from there.
 - **Light**: point, spot (cone and softness) or sun, pointing along −z before
   rotation.
+- **Environment**: what surrounds the scene. The image on its optional Image input
+  is a panorama (equirectangular; an HDR or EXR sky, any image or footage) that
+  lights and reflects in everything; without one the built-in studio is used.
+  **Intensity** scales it (a panorama at 1 is used as is; the studio at 1 is the
+  default rig's strength), **Rotation** turns it about the vertical, and
+  **Background** also fills the sky behind the objects, softened by **Blur**. The
+  first Environment in a scene is used. The panorama is converted on the GPU into
+  the studio environment's own layout (a 1024 × 512 level and eight halvings, each
+  a 2 × 2 average, plus the 64 × 32 diffuse layer), so plain surfaces and every
+  library look light and reflect from it unchanged; the image wraps around
+  horizontally and its alpha is divided out. An Image node placed with Fit
+  letterboxes a non-16:9 panorama, so stretch it to the frame for a full sky.
 - **Render scene**: films a scene as an image with camera 1, 2, … in node order, or
   0 for the home view.
 

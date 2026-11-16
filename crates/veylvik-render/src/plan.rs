@@ -611,7 +611,8 @@ impl Plan {
                         Kernel::Image
                     }
                     Operation::RenderScene(_) => {
-                        // Every image card's picture, in Rec.709, alive until the scene draws.
+                        // Every image card's and environment's picture, in Rec.709, alive
+                        // until the scene draws.
                         let mut pending: Vec<NodeId> = node.inputs.values().copied().collect();
                         let mut seen = BTreeSet::new();
                         while let Some(id) = pending.pop() {
@@ -621,8 +622,10 @@ impl Plan {
                             let Some(n) = composition.nodes.get(&id) else {
                                 continue;
                             };
-                            if let (Operation::ImageCard(_), Some(&source)) =
-                                (&n.operation, n.inputs.get("image"))
+                            if let (
+                                Operation::ImageCard(_) | Operation::Environment3d(_),
+                                Some(&source),
+                            ) = (&n.operation, n.inputs.get("image"))
                                 && !cards.iter().any(|(s, _)| *s == source)
                                 && let Some(&value) = outputs.get(&source)
                             {

@@ -338,6 +338,32 @@ node!(Light3d, LIGHT_3D, [intensity, cone, softness], {
     }
 });
 
+/// What surrounds a scene: lighting, reflections and an optional backdrop.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Environment3d {
+    pub intensity: Scalar,
+    pub rotation: Scalar,
+    pub background: bool,
+    pub blur: Scalar,
+}
+pub static ENVIRONMENT_3D: NodeType = NodeType {
+    type_id: "environment_3d",
+    version: 1,
+    label: "Environment",
+    description: "Lights a 3D scene and fills its reflections from all around: the image on the optional Image input as a panorama (equirectangular, for example an HDR or EXR sky; any image or footage works), or the built-in studio without one. Intensity scales it and Rotation turns it (degrees about the vertical). With Background on it also fills the sky behind the objects, softened by Blur. The first Environment in a scene is used.",
+    inputs: &["image"],
+    optional: &["image"],
+    output: PortKind::Scene,
+    parameters: &[
+        scalar("intensity", "factor", 0.0, 64.0, 1.0),
+        scalar("rotation", "degrees", -3600.0, 3600.0, 0.0),
+        other("background", ParameterKind::Boolean, "show as backdrop"),
+        scalar("blur", "factor", 0.0, 1.0, 0.0),
+    ],
+};
+node!(Environment3d, ENVIRONMENT_3D, [intensity, rotation, blur]);
+
 /// Renders a scene back into the 2D graph.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

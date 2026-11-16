@@ -61,6 +61,22 @@ pub struct Engine {
     card: wgpu::RenderPipeline,
     copy: wgpu::ComputePipeline,
     meshes: Mutex<(HashMap<String, GpuMesh>, u64)>,
+    /// Panorama to studio-layout conversion.
+    resample: wgpu::ComputePipeline,
+    reduce: wgpu::ComputePipeline,
+    irradiance: wgpu::ComputePipeline,
+    /// The converted panorama, reused between frames.
+    panorama: Mutex<Option<wgpu::Buffer>>,
+    sky: wgpu::RenderPipeline,
+}
+/// Texels in the studio environment layout (nine levels and the diffuse layer).
+const ENVIRONMENT_TEXELS: u64 = 701_096;
+#[repr(C)]
+#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+struct SkyUniform {
+    camera: [[f32; 4]; 4],
+    view: [f32; 4],
+    more: [f32; 4],
 }
 fn error(message: impl ToString) -> veylvik_render::Error {
     veylvik_render::Error::Message(message.to_string())
@@ -292,7 +308,76 @@ impl Engine {
             compilation_options: Default::default(),
             cache: None,
         });
+        let env_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("3D environment"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("env.wgsl").into()),
+        });
+        let compute = |entry: &str| {
+            device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                label: Some(entry),
+                layout: None,
+                module: &env_module,
+                entry_point: Some(entry),
+                compilation_options: Default::default(),
+                cache: None,
+            })
+        };
+        let (resample, reduce, irradiance) = (
+            compute("resample"),
+            compute("reduce"),
+            compute("irradiance"),
+        );
+        let sky_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("3D sky"),
+            source: wgpu::ShaderSource::Wgsl(
+                format!(
+                    "{}{}",
+                    include_str!("sky.wgsl"),
+                    veylvik_render::ENVIRONMENT_WGSL
+                )
+                .into(),
+            ),
+        });
+        let sky = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("3D sky"),
+            layout: None,
+            vertex: wgpu::VertexState {
+                module: &sky_module,
+                entry_point: Some("sky_vertex"),
+                compilation_options: Default::default(),
+                buffers: &[],
+            },
+            primitive: wgpu::PrimitiveState::default(),
+            depth_stencil: Some(wgpu::DepthStencilState {
+                format: DEPTH,
+                depth_write_enabled: Some(false),
+                depth_compare: Some(wgpu::CompareFunction::Always),
+                stencil: Default::default(),
+                bias: Default::default(),
+            }),
+            multisample: wgpu::MultisampleState {
+                count: SAMPLES,
+                ..Default::default()
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &sky_module,
+                entry_point: Some("sky_fragment"),
+                compilation_options: Default::default(),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: COLOUR,
+                    blend: None,
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+            }),
+            multiview_mask: None,
+            cache: None,
+        });
         Self {
+            resample,
+            reduce,
+            irradiance,
+            panorama: Mutex::new(None),
+            sky,
             layout,
             material_layout,
             look_layout,
@@ -302,6 +387,75 @@ impl Engine {
             copy,
             meshes: Mutex::new((HashMap::new(), 0)),
         }
+    }
+    /// Convert a premultiplied panorama of `width` x `height` into the studio
+    /// environment layout, on `encoder`; returns the buffer to light with.
+    fn panorama(
+        &self,
+        device: &wgpu::Device,
+        encoder: &mut wgpu::CommandEncoder,
+        image: &wgpu::Buffer,
+        width: u32,
+        height: u32,
+    ) -> Result<wgpu::Buffer> {
+        let target = {
+            let mut slot = self
+                .panorama
+                .lock()
+                .map_err(|_| error("panorama lock poisoned"))?;
+            slot.get_or_insert_with(|| {
+                device.create_buffer(&wgpu::BufferDescriptor {
+                    label: Some("3D panorama"),
+                    size: ENVIRONMENT_TEXELS * 16,
+                    usage: wgpu::BufferUsages::STORAGE,
+                    mapped_at_creation: false,
+                })
+            })
+            .clone()
+        };
+        let params = |level: u32| {
+            device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("panorama level"),
+                contents: bytemuck::cast_slice(&[width, height, level, 0u32]),
+                usage: wgpu::BufferUsages::UNIFORM,
+            })
+        };
+        let mut run = |pipeline: &wgpu::ComputePipeline,
+                       bindings: &[(u32, &wgpu::Buffer)],
+                       size: (u32, u32)| {
+            let entries: Vec<wgpu::BindGroupEntry> = bindings
+                .iter()
+                .map(|(binding, buffer)| wgpu::BindGroupEntry {
+                    binding: *binding,
+                    resource: buffer.as_entire_binding(),
+                })
+                .collect();
+            let bind = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("panorama"),
+                layout: &pipeline.get_bind_group_layout(0),
+                entries: &entries,
+            });
+            let mut pass = encoder.begin_compute_pass(&Default::default());
+            pass.set_pipeline(pipeline);
+            pass.set_bind_group(0, &bind, &[]);
+            pass.dispatch_workgroups(size.0.div_ceil(8), size.1.div_ceil(8), 1);
+        };
+        let first = params(0);
+        run(
+            &self.resample,
+            &[(0, &first), (1, image), (2, &target)],
+            (1024, 512),
+        );
+        for level in 1..=8u32 {
+            let p = params(level);
+            run(
+                &self.reduce,
+                &[(0, &p), (2, &target)],
+                ((1024 >> level).max(1), (512 >> level).max(1)),
+            );
+        }
+        run(&self.irradiance, &[(2, &target)], (64, 32));
+        Ok(target)
     }
     /// Upload (or reuse) the mesh of an object; meshes are keyed by their geometry.
     fn mesh(
@@ -508,6 +662,28 @@ impl SceneRenderer for Engine {
                 std::cmp::Ordering::Equal
             })
         });
+        // The scene's environment: a converted panorama, or the studio, with its
+        // strength and turn for plain surfaces, looks and the backdrop.
+        let surround = scene.environment;
+        let panorama = match surround.and_then(|e| e.image) {
+            Some(source) => match images.iter().find(|(id, _)| *id == source) {
+                Some((_, image)) => Some(self.panorama(device, encoder, image, width, height)?),
+                None => None,
+            },
+            None => None,
+        };
+        let environment = panorama.as_ref().unwrap_or(environment);
+        let strength = match surround {
+            Some(e) if panorama.is_some() => e.intensity,
+            Some(e) => ENVIRONMENT * e.intensity,
+            None => ENVIRONMENT,
+        };
+        let turn = surround.map_or(0.0, |e| e.rotation.to_radians());
+        let look_environment = surround.map(|e| veylvik_render::EnvironmentOverride {
+            strength: e.intensity,
+            absolute: panorama.is_some(),
+            rotation: e.rotation.to_radians(),
+        });
         let view = math::rigid_inverse(&camera.world);
         let mut draws = Vec::new();
         let mut looks = Vec::new();
@@ -518,7 +694,7 @@ impl SceneRenderer for Engine {
             }
             if let Some(look) = &object.surface.look {
                 let (params, lighting) =
-                    veylvik_render::material_uniforms(look, width, height, time)?;
+                    veylvik_render::material_uniforms(look, width, height, time, look_environment)?;
                 let buffer = |label, bytes: &[u8], usage| {
                     device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                         label: Some(label),
@@ -605,7 +781,7 @@ impl SceneRenderer for Engine {
                     width as f32,
                     height as f32,
                 ],
-                counts: [lights.len() as f32, ENVIRONMENT, 0.0, 0.0],
+                counts: [lights.len() as f32, strength, turn, 0.0],
             };
             let uniform = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("3D object"),
@@ -636,6 +812,37 @@ impl SceneRenderer for Engine {
             });
             draws.push((pipeline, bind, vertices, indices, count));
         }
+        let sky = surround.filter(|e| e.background).map(|e| {
+            let uniform = SkyUniform {
+                camera: columns(&camera.world),
+                view: [
+                    width as f32,
+                    height as f32,
+                    veylvik_scene::home_distance(width, camera.focal_length, camera.sensor_width),
+                    strength,
+                ],
+                more: [turn, e.blur * 8.0, 0.0, 0.0],
+            };
+            let uniform = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("3D sky"),
+                contents: bytemuck::bytes_of(&uniform),
+                usage: wgpu::BufferUsages::UNIFORM,
+            });
+            device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("3D sky"),
+                layout: &self.sky.get_bind_group_layout(0),
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: uniform.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: environment.as_entire_binding(),
+                    },
+                ],
+            })
+        });
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("3D scene"),
@@ -660,6 +867,11 @@ impl SceneRenderer for Engine {
                 occlusion_query_set: None,
                 multiview_mask: None,
             });
+            if let Some(sky) = &sky {
+                pass.set_pipeline(&self.sky);
+                pass.set_bind_group(0, sky, &[]);
+                pass.draw(0..3, 0..1);
+            }
             pass.set_pipeline(&self.look);
             for (material, object, vertices, indices, count) in &looks {
                 pass.set_bind_group(0, material, &[]);

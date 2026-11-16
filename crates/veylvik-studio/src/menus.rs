@@ -263,6 +263,7 @@ pub(crate) const ADD_MENU: [(&str, &[&registry::NodeType]); 10] = [
             &registry::MERGE_SCENES,
             &registry::CAMERA_3D,
             &registry::LIGHT_3D,
+            &registry::ENVIRONMENT_3D,
             &registry::RENDER_SCENE,
         ],
     ),

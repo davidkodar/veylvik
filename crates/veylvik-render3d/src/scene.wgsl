@@ -8,7 +8,7 @@ struct Object {
     surface: vec4<f32>,
     // metallic, unlit (1), image width, image height
     params: vec4<f32>,
-    // light count, environment strength
+    // light count, environment strength, environment turn (radians), unused
     counts: vec4<f32>,
 }
 struct Light {
@@ -49,6 +49,12 @@ fn smith(nv: f32, nl: f32, a: f32) -> f32 {
     let k = a * 0.5;
     return (nv / (nv * (1.0 - k) + k)) * (nl / (nl * (1.0 - k) + k));
 }
+// The environment turned about the vertical by the scene's rotation.
+fn turned(d: vec3<f32>) -> vec3<f32> {
+    let c = cos(object.counts.z);
+    let s = sin(object.counts.z);
+    return vec3<f32>(c * d.x - s * d.z, d.y, s * d.x + c * d.z);
+}
 @fragment
 fn lit(in: Varying) -> @location(0) vec4<f32> {
     let v = normalize(object.camera.xyz - in.world);
@@ -65,8 +71,8 @@ fn lit(in: Varying) -> @location(0) vec4<f32> {
     // The same prefiltered studio that lights 2D materials.
     let fresnel = f0 + (max(vec3<f32>(1.0 - rough), f0) - f0) * pow(1.0 - nv, 5.0);
     let strength = object.counts.y;
-    var colour = environment_specular(n, 1.0) * diffuse * strength
-        + environment_specular(reflect(-v, n), rough) * fresnel * strength;
+    var colour = environment_specular(turned(n), 1.0) * diffuse * strength
+        + environment_specular(turned(reflect(-v, n)), rough) * fresnel * strength;
     for (var i = 0u; i < u32(object.counts.x); i++) {
         let light = lights[i];
         var l = -light.direction.xyz;

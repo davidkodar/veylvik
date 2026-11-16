@@ -10,3 +10,4 @@ impl RenderNode for MergeScenes {}
 impl RenderNode for Camera3d {}
 impl RenderNode for Light3d {}
 impl RenderNode for RenderScene {}
+impl RenderNode for Environment3d {}
