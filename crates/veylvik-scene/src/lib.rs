@@ -4,8 +4,10 @@
 //! "Home" is the frame centre at depth 0; positions are offsets from where each node
 //! naturally sits. The home camera sees exactly the 2D frame at depth 0.
 pub mod math;
+mod shot;
 mod view;
 use math::{Mat4, mul, rotate, scale, translate};
+pub use shot::{ShotMatch, match_shot, shining, source_in_frame};
 use veylvik_document::{
     Composition, Error, NodeId, Operation, Time,
     nodes::{LightKind, Placement, ShapeKind},

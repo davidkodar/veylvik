@@ -57,6 +57,14 @@ impl Projector {
             self.canvas.min.y + self.canvas.height() * (oy + sy * pixel[1] / self.height as f32),
         )
     }
+    /// The frame pixel under a canvas position (the inverse of `to_canvas`).
+    pub(crate) fn to_pixel(&self, at: Pos2) -> [f32; 2] {
+        let [ox, oy, sx, sy] = self.transform;
+        [
+            ((at.x - self.canvas.min.x) / self.canvas.width() - ox) / sx * self.width as f32,
+            ((at.y - self.canvas.min.y) / self.canvas.height() - oy) / sy * self.height as f32,
+        ]
+    }
     pub(crate) fn point(&self, p: [f32; 3]) -> Option<Pos2> {
         self.camera
             .project(p, self.width, self.height)
@@ -598,6 +606,9 @@ impl Studio {
             }
         }
         self.draw_gizmo(&ctx, &painter, &p, &scene);
+        if self.scene_light_pick(&ctx, &painter, &p, response) {
+            return;
+        }
         if self.scene_focus(&ctx, &painter, &p, &scene, response) {
             return;
         }

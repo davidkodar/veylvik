@@ -1401,6 +1401,21 @@ and `colour`.
   Rough), the frames, tracks, points and lens, with notes for tripod shots, an
   unmeasured lens and a missing ground. **Add a test cube** stands a cube on the
   ground with a sun so it casts a shadow, to check that 3D stays put.
+- **Match the shot (3D)** (3D toolbar): renders the footage behind the viewed 3D
+  render at the playhead (the background of a Merge over it, else the scene's
+  Environment image, else the composition's backdrop) off the UI thread and aims
+  a sun from it, as one undo step. A light source seen in the frame (the
+  brightest 0.5% of a coarse grid within 2% of the peak, in the upper half) is a
+  sun beyond the subject along the camera's ray through it, at least 25 degrees
+  up; otherwise the light comes from the bright side of the frame (the brightest
+  5%), a little in front of the subject, at least 15 degrees up; flat light
+  (contrast under 1.3) gives a soft sun from above. The sun takes the shot's
+  light colour, an intensity from its contrast (2.5–6 for a seen source,
+  1.5–6 otherwise, 1 for flat light) and shadows on; the scene's Environment
+  takes 0.65 × mean / 0.18 (0.05–4). It sets the selected light, else the
+  scene's first light, else adds a Shot light to the scene's Merge scenes.
+  **Pick light** instead takes a click on the light in the frame (a sun, lamp
+  or window) as that source.
 - **Render scene**: films a scene as an image with camera 1, 2, … in node order, or
   0 for the home view.
 
