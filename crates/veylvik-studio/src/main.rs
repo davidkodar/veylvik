@@ -49,11 +49,13 @@ mod render_queue;
 mod scene_focus;
 mod scene_gizmo;
 mod scene_guides;
+mod scene_points;
 mod scopes;
 mod sequence;
 mod shape_animation;
 mod shot_light;
 mod showcase_gallery;
+mod solve_camera;
 mod status_bar;
 mod subject;
 mod surface;
@@ -252,6 +254,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 portable: Default::default(),
                 tracking: tracking::Controls::default(),
                 planar: planar::Controls::default(),
+                solve: solve_camera::Controls::default(),
                 live_job: None,
                 audio: Default::default(),
                 materials: Default::default(),
@@ -348,6 +351,7 @@ struct Studio {
     portable: portable::Controls,
     tracking: tracking::Controls,
     planar: planar::Controls,
+    solve: solve_camera::Controls,
     live_job: Option<live_jobs::LiveJob>,
     audio: audio_preview::AudioPreview,
     materials: material_library::Library,
@@ -1284,6 +1288,7 @@ impl Studio {
         self.tracking.active = None;
         self.planar.active = None;
         self.subject.active = None;
+        self.solve.active = None;
         if self.outline_controls.pending {
             self.outline_controls.pending = false;
             self.outline_controls.open = !matches!(&result, Ok(Completed::Outlined(_)));
@@ -1291,6 +1296,7 @@ impl Studio {
         match result {
             Ok(Completed::Portable(result)) => self.portable_finished(*result),
             Ok(Completed::PlanarTracked(result)) => self.planar_completed(result),
+            Ok(Completed::CameraSolved(result)) => self.camera_solved(*result),
             Ok(Completed::Segmented(result)) => self.subject_completed(*result),
             Ok(Completed::Tracked(result)) => self.tracking_completed(result),
             Ok(Completed::Cancelled) => {
@@ -1990,6 +1996,13 @@ impl Studio {
             .clicked()
         {
             self.begin_planar();
+        }
+        if ui
+            .button("Solve camera…")
+            .on_hover_text("Find the real camera of this footage so 3D objects stay put in the shot")
+            .clicked()
+        {
+            self.begin_solve_camera();
         }
         if ui
             .button("Select subject…")
@@ -3460,6 +3473,7 @@ impl eframe::App for Studio {
         }
         self.tracking_window(&ctx);
         self.planar_window(&ctx);
+        self.solve_camera_window(&ctx);
         self.subject_window(&ctx);
         self.models.show(&ctx);
         if let Some(settings) = self.video_export.show(

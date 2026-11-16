@@ -4194,6 +4194,7 @@ dependencies = [
  "veylvik-render3d",
  "veylvik-scene",
  "veylvik-segment",
+ "veylvik-solve",
  "veylvik-text",
  "veylvik-track",
  "wgpu",

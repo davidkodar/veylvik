@@ -1381,6 +1381,26 @@ and `colour`.
   distance, so units match 2D pixels there. The report gives frames solved,
   tracks, points, rms and worst-frame error in pixels (under 0.5 is a good
   solve), the focal length and the new nodes.
+- **Point cloud**: points in 3D (offsets from the frame centre at depth 0, at most
+  20000) that draw nothing in renders; a camera solve adds its points as
+  **Solved points**. In Studio the viewer shows them as dots (Guides > Points).
+  Hovering a dot with a 3D shape or image card selected offers **Put … here**: a
+  click moves it there (an upright shape rests its base on the point), as one
+  undo step. **Surface** in the 3D toolbar switches clicks to choosing points;
+  with three or more, **Ground here** moves the scene's shadow catcher onto the
+  least-squares plane through them (facing the camera) and **New surface** adds
+  another shadow catcher there, merged next to the point cloud, so tables and
+  walls catch shadows too.
+- **Solve camera window** (Layer tools > Solve camera…): solves the selected
+  footage in the background over a chosen frame range, with the lens found
+  automatically or given (focal length and sensor width in millimetres), showing
+  progress (following features, then solving) and Cancel. When it finishes the
+  nodes are added as one undo step (if the project did not change meanwhile),
+  the viewer shows 3D over footage, and the window gives a verdict on the average
+  error (Excellent under 0.3 pixels, Good under 0.6, Usable under 1, otherwise
+  Rough), the frames, tracks, points and lens, with notes for tripod shots, an
+  unmeasured lens and a missing ground. **Add a test cube** stands a cube on the
+  ground with a sun so it casts a shadow, to check that 3D stays put.
 - **Render scene**: films a scene as an image with camera 1, 2, … in node order, or
   0 for the home view.
 

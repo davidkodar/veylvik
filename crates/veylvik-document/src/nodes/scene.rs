@@ -399,6 +399,42 @@ pub static ENVIRONMENT_3D: NodeType = NodeType {
 };
 node!(Environment3d, ENVIRONMENT_3D, [intensity, rotation, blur]);
 
+/// Points in 3D, such as those a camera solve finds in footage: guides in the viewer for
+/// placing objects, drawing nothing in renders.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PointCloud {
+    #[serde(default)]
+    pub points: Vec<[f32; 3]>,
+}
+pub const MAX_CLOUD_POINTS: usize = 20_000;
+pub static POINT_CLOUD: NodeType = NodeType {
+    type_id: "point_cloud",
+    version: 1,
+    label: "Point cloud",
+    description: "Points in 3D, offsets from the frame centre at depth 0 like other 3D placements, such as the features a camera solve finds in the footage. They draw nothing in renders; the viewer shows them as guides to put objects on. At most 20000. Outputs a scene.",
+    inputs: &[],
+    optional: &[],
+    output: PortKind::Scene,
+    parameters: &[other("points", ParameterKind::Points3, "3D points")],
+};
+node!(PointCloud, POINT_CLOUD, [], {
+    fn validate(&self) -> Result<()> {
+        if self.points.len() > MAX_CLOUD_POINTS {
+            return fail("A point cloud holds at most 20000 points");
+        }
+        if self
+            .points
+            .iter()
+            .flatten()
+            .any(|v| !v.is_finite() || v.abs() > 1.0e7)
+        {
+            return fail("Point cloud points must be finite and within 10 million units");
+        }
+        Ok(())
+    }
+});
+
 /// Renders a scene back into the 2D graph.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

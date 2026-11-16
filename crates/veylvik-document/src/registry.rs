@@ -48,6 +48,8 @@ pub enum ParameterKind {
     Look,
     /// Another node by id, or null.
     NodeRef,
+    /// A list of [x, y, z] points.
+    Points3,
 }
 #[derive(Debug, Clone, Copy, Serialize)]
 pub struct Parameter {
@@ -106,6 +108,7 @@ impl Parameter {
             ParameterKind::ShapeKind => json!(crate::nodes::ShapeKind::default()),
             ParameterKind::LightKind => json!(crate::nodes::LightKind::default()),
             ParameterKind::Look | ParameterKind::NodeRef => json!(null),
+            ParameterKind::Points3 => json!([]),
         }
     }
     fn schema(&self) -> Value {
@@ -138,6 +141,9 @@ impl Parameter {
             }
             ParameterKind::Look => {
                 json!({"anyOf":[{"type":"null"},{"type":"object","description":"A Text surface (material) definition: the parameters of a material node without its type."}]})
+            }
+            ParameterKind::Points3 => {
+                json!({"type":"array","maxItems":crate::nodes::MAX_CLOUD_POINTS,"items":{"type":"array","minItems":3,"maxItems":3,"items":{"type":"number"}}})
             }
             ParameterKind::NodeRef => {
                 json!({"anyOf":[{"type":"null"},{"type":"string","format":"uuid"}]})
@@ -285,8 +291,8 @@ pub use crate::nodes::{
     FIRE, FOOTAGE, FRACTAL_NOISE, GLASS, GRADIENT, IMAGE, IMAGE_CARD, LENS_BLUR, LIGHT_3D,
     LIGHT_RIG, LUMA_KEY, LUT, MASK, MATERIAL, MATERIAL_LAYERS, MERGE, MERGE_SCENES, METALLIC_SHINE,
     MORPHOLOGY, MOTION_BLUR, NOISE, OCIO, OPTICAL_FLOW, PATH, PATINA, PLANAR_TRACK, PLANAR_WARP,
-    REFINE_MATTE, RENDER_SCENE, SHAPE_3D, SOLID, SUN_GLINTS, SURFACE_BLEND, SURFACE_REFLECTION,
-    TEXT, TEXT_3D, TIME_REMAP, TRANSFORM, TRANSFORM_3D,
+    POINT_CLOUD, REFINE_MATTE, RENDER_SCENE, SHAPE_3D, SOLID, SUN_GLINTS, SURFACE_BLEND,
+    SURFACE_REFLECTION, TEXT, TEXT_3D, TIME_REMAP, TRANSFORM, TRANSFORM_3D,
 };
 pub static TYPES: &[&NodeType] = &[
     &SOLID,
@@ -309,6 +315,7 @@ pub static TYPES: &[&NodeType] = &[
     &crate::nodes::LIGHT_3D,
     &crate::nodes::RENDER_SCENE,
     &crate::nodes::ENVIRONMENT_3D,
+    &crate::nodes::POINT_CLOUD,
     &MERGE,
     &IMAGE,
     &FOOTAGE,

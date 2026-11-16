@@ -108,15 +108,31 @@ pub fn analyse(
 /// The dominant plane below the first camera: (normal towards the cameras, a point
 /// on it, the points on it), when enough points lie on one.
 fn ground(solved: &Solved, first: &Pose) -> Option<(V3, V3, Vec<V3>)> {
-    let points: Vec<V3> = solved.points.iter().flatten().copied().collect();
-    if points.len() < 30 || solved.nodal {
+    if solved.nodal {
         return None;
     }
     let eye = first.centre();
     let up = mat_vec(&transpose(&first.r), [0.0, -1.0, 0.0]);
-    let mut depths: Vec<f64> = points.iter().map(|p| first.apply(*p)[2]).collect();
+    let mut depths: Vec<f64> = solved
+        .points
+        .iter()
+        .flatten()
+        .map(|p| first.apply(*p)[2])
+        .collect();
     depths.sort_by(f64::total_cmp);
-    let tolerance = depths[depths.len() / 2] * 0.01;
+    let median = *depths.get(depths.len() / 2)?;
+    // Distant background (little parallax, uncertain depth) is never the ground.
+    let points: Vec<V3> = solved
+        .points
+        .iter()
+        .flatten()
+        .copied()
+        .filter(|p| (0.0..median * 50.0).contains(&first.apply(*p)[2]))
+        .collect();
+    if points.len() < 30 {
+        return None;
+    }
+    let tolerance = median * 0.01;
     let mut rng = Rng::new(0x9e0);
     let mut best: Option<(usize, V3, V3)> = None;
     for _ in 0..400 {
@@ -300,7 +316,7 @@ pub fn scene(doc: &Composition, request: &Request, outcome: &Outcome) -> Result<
             .iter()
             .map(|p| (p[0] - c[0]).hypot(p[2] - c[2]))
             .fold(0.0, f64::max);
-        let extent = (spread * 3.0).max(w * 4.0) as f32;
+        let extent = (spread * 3.0).max(w * 4.0).min(100_000.0) as f32;
         let Operation::Shape3d(mut plane) = default_of(&nodes::SHAPE_3D)? else {
             return Err(error("shape default"));
         };
@@ -322,6 +338,39 @@ pub fn scene(doc: &Composition, request: &Request, outcome: &Outcome) -> Result<
             node: Box::new(plane),
         });
     }
+    // The solved points, as guides for placing objects.
+    let cloud: Vec<[f32; 3]> = solved
+        .points
+        .iter()
+        .flatten()
+        .map(|p| {
+            let v = place(*p);
+            [
+                (v[0] - w * 0.5) as f32,
+                (v[1] - h * 0.5) as f32,
+                v[2] as f32,
+            ]
+        })
+        // Points near infinity (distant background with no parallax) are no help as guides.
+        .filter(|p| p.iter().all(|v| v.is_finite() && v.abs() < 1.0e6))
+        .take(nodes::MAX_CLOUD_POINTS)
+        .collect();
+    let cloud = Node::new(
+        "Solved points",
+        Operation::PointCloud(nodes::PointCloud { points: cloud }),
+        &[],
+    );
+    parts.push((
+        if parts.len() == 1 {
+            "scene_2"
+        } else {
+            "scene_3"
+        },
+        cloud.id,
+    ));
+    commands.push(Command::Put {
+        node: Box::new(cloud),
+    });
     let merged = Node::new(
         "Solved scene",
         Operation::MergeScenes(MergeScenes {}),

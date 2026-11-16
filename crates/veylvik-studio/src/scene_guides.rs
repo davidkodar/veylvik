@@ -11,6 +11,7 @@ struct Show {
     frame: bool,
     paths: bool,
     selection: bool,
+    points: bool,
 }
 impl Default for Show {
     fn default() -> Self {
@@ -20,6 +21,7 @@ impl Default for Show {
             frame: true,
             paths: true,
             selection: true,
+            points: true,
         }
     }
 }
@@ -111,6 +113,7 @@ impl Studio {
             ui.checkbox(&mut s.frame, "2D frame, floor grid and axes");
             ui.checkbox(&mut s.paths, "Camera paths");
             ui.checkbox(&mut s.selection, "Selected object");
+            ui.checkbox(&mut s.points, "Points (from a camera solve)");
         });
         ctx.data_mut(|d| d.insert_temp(egui::Id::new("scene-guides"), s));
         let doc = self.project.document.snapshot();
@@ -596,6 +599,9 @@ impl Studio {
         }
         self.draw_gizmo(&ctx, &painter, &p, &scene);
         if self.scene_focus(&ctx, &painter, &p, &scene, response) {
+            return;
+        }
+        if s.points && self.scene_points(&painter, &p, &scene, response) {
             return;
         }
         // Hover names a guide; a click selects its node.

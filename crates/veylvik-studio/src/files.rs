@@ -31,6 +31,7 @@ pub enum Completed {
     Picked(crate::eyedropper::Sampled),
     Tracked(crate::tracking::Tracked),
     PlanarTracked(crate::planar::Tracked),
+    CameraSolved(Box<crate::solve_camera::Solved>),
     Segmented(Box<crate::subject::Segmented>),
     PresetLibrary(veylvik_io::presets::Listing),
     PresetLoaded(Box<veylvik_document::presets::Preset>),

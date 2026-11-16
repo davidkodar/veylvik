@@ -206,6 +206,12 @@ impl Inspect for Light3d {
         cx.dirty |= placement(ui, &mut self.placement, cx);
     }
 }
+impl Inspect for PointCloud {
+    fn inspect(&mut self, ui: &mut egui::Ui, _cx: &mut InspectCx<'_>) {
+        ui.label(format!("{} points", self.points.len()));
+        ui.weak("Shown as dots in the 3D viewer. Select a 3D object and click a dot to put the object there.");
+    }
+}
 impl Inspect for Environment3d {
     fn inspect(&mut self, ui: &mut egui::Ui, cx: &mut InspectCx<'_>) {
         ui.weak("Connect a panorama (an HDR or EXR sky, any image or footage) to light and reflect in the scene; without one the studio is used.");

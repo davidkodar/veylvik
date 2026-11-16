@@ -310,3 +310,52 @@ fn tracks_rendered_footage_and_solves_its_camera() {
     );
     assert!(n > 500 && rms < 0.4, "scene reprojection {rms} over {n}");
 }
+
+#[test]
+fn far_background_points_stay_out_of_the_point_cloud() {
+    // A solve whose points include one at near infinity (distant sky, no parallax).
+    let doc = blank(W, H, Time::new(24, 1).unwrap()).unwrap();
+    let mut points: Vec<Option<V3>> = (0..40)
+        .map(|i| Some([(i % 8) as f64 - 4.0, 1.0, 6.0 + (i / 8) as f64]))
+        .collect();
+    points.push(Some([0.0, 0.0, 1.0e12]));
+    let pose = |x: f64| Pose {
+        r: IDENTITY,
+        t: [-x, 0.0, 0.0],
+    };
+    let solved = veylvik_solve::Solved {
+        poses: vec![Some(pose(0.0)), Some(pose(0.1)), Some(pose(0.2))],
+        points,
+        focal: 900.0,
+        rms: 0.2,
+        frame_error: vec![Some(0.2); 3],
+        nodal: false,
+        focal_measured: true,
+        keyframes: vec![0, 1, 2],
+    };
+    let request = veylvik_track::camera::Request {
+        source: doc.output,
+        frames: [0, 2],
+        focal_length: None,
+        sensor_width: 36.0,
+    };
+    let outcome = veylvik_track::camera::Outcome {
+        solved,
+        tracks: 41,
+        width: W,
+        height: H,
+    };
+    let built = veylvik_track::camera::scene(&doc, &request, &outcome).unwrap();
+    let mut project = Document::new(doc).unwrap();
+    project.apply(project.revision(), &built.commands).unwrap();
+    let cloud = project
+        .snapshot()
+        .nodes
+        .values()
+        .find_map(|n| match &n.operation {
+            Operation::PointCloud(c) => Some(c.points.len()),
+            _ => None,
+        })
+        .unwrap();
+    assert_eq!(cloud, 40);
+}

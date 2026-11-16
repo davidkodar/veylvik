@@ -111,6 +111,8 @@ pub struct Scene {
     pub lights: Vec<Light>,
     /// The first Environment in the scene.
     pub environment: Option<Environment>,
+    /// Guide points (Point cloud nodes) in the world, by node.
+    pub points: Vec<(NodeId, [f32; 3])>,
 }
 fn fail<T>(message: impl Into<String>) -> Result<T> {
     Err(Error(message.into()))
@@ -223,6 +225,9 @@ impl Scene {
         }
         for l in &mut self.lights {
             l.world = mul(m, &l.world);
+        }
+        for (_, p) in &mut self.points {
+            *p = math::point(m, *p);
         }
         self
     }
@@ -366,6 +371,7 @@ fn node(doc: &Graph<'_>, id: NodeId, time: Time, depth: usize) -> Result<Scene> 
                     scene.cameras.extend(part.cameras);
                     scene.lights.extend(part.lights);
                     scene.environment = scene.environment.or(part.environment);
+                    scene.points.extend(part.points);
                 }
             }
         }
@@ -415,6 +421,11 @@ fn node(doc: &Graph<'_>, id: NodeId, time: Time, depth: usize) -> Result<Scene> 
                 blur: e.blur.at(time)?.clamp(0.0, 1.0),
             })
         }
+        Operation::PointCloud(c) => scene.points.extend(
+            c.points
+                .iter()
+                .map(|p| (id, [centre[0] + p[0], centre[1] + p[1], centre[2] + p[2]])),
+        ),
         _ => return fail(format!("{} is not a 3D scene node", n.label)),
     }
     Ok(scene)
