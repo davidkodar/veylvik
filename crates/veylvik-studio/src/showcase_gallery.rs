@@ -56,6 +56,10 @@ fn bytes(id: &str, before: bool) -> &'static [u8] {
         ("heat_to_embers", true) => include_bytes!("../assets/showcase/heat_to_embers-before.png"),
         ("rust_spreading", false) => include_bytes!("../assets/showcase/rust_spreading-after.png"),
         ("rust_spreading", true) => include_bytes!("../assets/showcase/rust_spreading-before.png"),
+        ("paper_burn", false) => include_bytes!("../assets/showcase/paper_burn-after.png"),
+        ("paper_burn", true) => include_bytes!("../assets/showcase/paper_burn-before.png"),
+        ("wet_to_dry", false) => include_bytes!("../assets/showcase/wet_to_dry-after.png"),
+        ("wet_to_dry", true) => include_bytes!("../assets/showcase/wet_to_dry-before.png"),
         ("sky_lit_gold", false) => include_bytes!("../assets/showcase/sky_lit_gold-after.png"),
         ("sky_lit_gold", true) => include_bytes!("../assets/showcase/sky_lit_gold-before.png"),
         ("smooth_slow_motion", false) => {

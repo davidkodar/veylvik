@@ -15,7 +15,7 @@ pub struct Builtin {
     pub label: &'static str,
     pub description: &'static str,
 }
-pub const ALL: [Builtin; 71] = [
+pub const ALL: [Builtin; 73] = [
     Builtin {
         id: "weathered_bronze",
         label: "Weathered Bronze",
@@ -45,6 +45,16 @@ pub const ALL: [Builtin; 71] = [
         id: "heat_to_embers",
         label: "Heat to Embers",
         description: "Brushed steel that heats to a deep-red-to-white glow with an ember halo and cools again. Heat, Glow and Glow spread stay keyable.",
+    },
+    Builtin {
+        id: "paper_burn",
+        label: "Paper Burn",
+        description: "Paper burns away along a ragged front: a charred band and a glowing ember line lead the edge. One Burn progress control moves it; also edit the pattern size and ember glow.",
+    },
+    Builtin {
+        id: "wet_to_dry",
+        label: "Wet to Dry",
+        description: "Sandstone that starts dark, glossy and beaded with water and dries to matte. Gloss, darkening and water are keyable.",
     },
     Builtin {
         id: "rust_spreading",

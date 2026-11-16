@@ -91,8 +91,10 @@ fn starter_effects_render_identically_after_portable_round_trip_and_shimmer_anim
                 .unwrap();
             assert_eq!(a.pixels, renderer.read_frame(&b).unwrap().pixels);
             assert!(a.pixels.iter().flatten().all(|v| v.is_finite()));
+            // Paper Burn removes the burnt paper by design; every other starter
+            // must keep an opaque frame opaque.
             assert!(
-                a.pixels.iter().all(|p| (p[3] - 1.0).abs() < 1e-6),
+                starter.id == "paper_burn" || a.pixels.iter().all(|p| (p[3] - 1.0).abs() < 1e-6),
                 "{} exposed frame edges",
                 starter.id
             );
@@ -188,6 +190,8 @@ fn curated_recipes_and_flow_demo_loop_and_remain_visible() {
         "glint_reveal",
         "heat_to_embers",
         "rust_spreading",
+        "paper_burn",
+        "wet_to_dry",
         "smooth_slow_motion",
     ] {
         let scene = presets::showcase::build(id).unwrap();

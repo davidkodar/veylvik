@@ -424,7 +424,7 @@ input names, defaults and controls save with the composition. Nested groups are 
 **Add → Effect library…** opens searchable starter and saved effects. The bundled
 **Prismatic Glow** adds cyan/rose light spill; **Neon Outline** adds luminous
 contours; **Liquid Shimmer** adds a smooth four-second flow loop with protected
-frame edges. The library contains **71 starter effects**, searchable by name,
+frame edges. The library contains **73 starter effects**, searchable by name,
 description or category, with category counts in the left sidebar and a search field above the results. Every starter remains an editable group with public controls.
 
 The expanded set includes:
@@ -492,11 +492,15 @@ texture's straight colour beside the bevel height, so a textured material that a
 reflects the shot still reads three images. Without a texture the surface is
 black. Separate normal and roughness maps are not yet read.
 
-Four animated recipes loop over four seconds as editable groups: **Chrome Shine
+Six animated recipes loop over four seconds as editable groups: **Chrome Shine
 Sweep** (a shine travels across mirror chrome), **Glint Reveal** (rose-gold glints
 flare, hold and fade), **Heat to Embers** (brushed steel glows from deep red to
 white-hot with an ember halo, then cools; Heat, Glow and Glow spread are keyable)
-and **Rust Spreading** (rust patches grow over steel and recede). The library's
+**Rust Spreading** (rust patches grow over steel and recede),
+**Paper Burn** (embossed paper burns away along a ragged noise front, with a charred
+band and a glowing ember line on the edge; one Burn progress control scales the noise
+so every band moves together) and **Wet to Dry** (sandstone that starts dark, glossy
+and beaded with water and dries matte). The library's
 catalogue adds 48 looks built from these families as data (family, colours,
 reflectance, roughness, grain, brushing); their swatches render on the GPU like
 saved materials, and applying one to styled text brings its whole finish, while a
