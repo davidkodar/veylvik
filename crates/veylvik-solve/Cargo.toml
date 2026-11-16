@@ -1,0 +1,10 @@
+[package]
+name = "veylvik-solve"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Camera solving for Veylvik: a moving camera, its lens and a point cloud from 2D feature tracks."
+[dependencies]
+[lints]
+workspace = true

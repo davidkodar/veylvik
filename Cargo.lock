@@ -4170,6 +4170,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "veylvik-solve"
+version = "0.1.0"
+
+[[package]]
 name = "veylvik-studio"
 version = "0.1.0"
 dependencies = [
