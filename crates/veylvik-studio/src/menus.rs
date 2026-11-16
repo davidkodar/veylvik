@@ -259,6 +259,7 @@ pub(crate) const ADD_MENU: [(&str, &[&registry::NodeType]); 9] = [
             &registry::MATERIAL,
             &registry::CONDENSATION,
             &registry::PATINA,
+            &registry::MATERIAL_LAYERS,
             &registry::GLASS,
             &registry::SURFACE_REFLECTION,
             &registry::SUN_GLINTS,

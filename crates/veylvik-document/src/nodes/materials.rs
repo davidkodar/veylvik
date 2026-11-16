@@ -47,6 +47,18 @@ fn one() -> Scalar {
 fn height_depth_default() -> Scalar {
     4.0.into()
 }
+/// Two rendered materials of one shape, the over layer shown through a mask and worn
+/// away along the shape's edges (most at corners), like chipped paint.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MaterialLayers {
+    pub seed: u32,
+    pub mix: Scalar,
+    pub edge_wear: Scalar,
+    pub wear_width: Scalar,
+    pub breakup: Scalar,
+    pub noise_size: Scalar,
+}
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Patina {
@@ -154,6 +166,23 @@ pub static MATERIAL: NodeType = NodeType {
         scalar("shot", "factor", 0.0, 1.0, 0.6),
         scalar("normal_strength", "factor", 0.0, 4.0, 1.0),
         scalar("height_depth", "pixels", 0.0, 64.0, 4.0),
+    ],
+};
+pub static MATERIAL_LAYERS: NodeType = NodeType {
+    type_id: "material_layers",
+    version: 1,
+    label: "Layered material",
+    description: "Layers two materials of the same shape: the Over material shows where the optional Mask's alpha is (everywhere without a mask), scaled by Mix, and Edge wear wears it away along the Under input's edges to reveal the Under material, most at corners, broken up by noise. Connect two Text surface (or any) renders of one title, for example red paint over steel. Coverage comes from the inputs; output alpha blends like the colour.",
+    inputs: &["under", "over", "mask"],
+    optional: &["mask"],
+    output: PortKind::Image,
+    parameters: &[
+        other("seed", ParameterKind::Seed, "integer"),
+        scalar("mix", "factor", 0.0, 1.0, 1.0),
+        scalar("edge_wear", "factor", 0.0, 1.0, 0.5),
+        scalar("wear_width", "pixels", 0.0, 128.0, 8.0),
+        scalar("breakup", "factor", 0.0, 1.0, 0.6),
+        scalar("noise_size", "pixels", 1.0, 4096.0, 40.0),
     ],
 };
 pub static PATINA: NodeType = NodeType {
@@ -275,6 +304,11 @@ node!(
     }
 );
 node!(Patina, PATINA, [amount, dirt, scale, wear, scratches]);
+node!(
+    MaterialLayers,
+    MATERIAL_LAYERS,
+    [mix, edge_wear, wear_width, breakup, noise_size]
+);
 node!(
     MetallicShine,
     METALLIC_SHINE,

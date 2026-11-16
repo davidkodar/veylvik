@@ -157,7 +157,8 @@ impl Renderer {
                     include_str!("matte.wgsl"),
                     include_str!("lut.wgsl"),
                     include_str!("shadow.wgsl"),
-                    include_str!("particles.wgsl")
+                    include_str!("particles.wgsl"),
+                    include_str!("material_layers.wgsl")
                 )
                 .into(),
             ),

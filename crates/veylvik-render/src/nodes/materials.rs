@@ -144,6 +144,49 @@ impl RenderNode for veylvik_document::nodes::Material {
         Ok(())
     }
 }
+impl RenderNode for veylvik_document::nodes::MaterialLayers {
+    fn passes(&self) -> Passes {
+        use super::{From, Step};
+        // The under shape's alpha, blurred over the wear width (the bevel height
+        // passes), measures how near each pixel is to an edge or corner.
+        Passes::chain(&[
+            Step {
+                kernel: Kernel::BevelHeightHorizontal,
+                inputs: [From::Port(0), From::None, From::None, From::None],
+            },
+            Step {
+                kernel: Kernel::BevelHeightVertical,
+                inputs: [From::Step(0), From::None, From::None, From::None],
+            },
+            Step {
+                kernel: Kernel::MaterialLayers,
+                inputs: [From::Port(0), From::Port(1), From::Port(2), From::Step(1)],
+            },
+        ])
+    }
+    fn shareable(&self) -> bool {
+        true
+    }
+    fn params(
+        &self,
+        cx: &Cx<'_>,
+        sample: &dyn Fn(&str) -> Result<f32>,
+        p: &mut Params,
+    ) -> Result<()> {
+        p.size_op[2] = self.seed;
+        p.size_op[3] = u32::from(cx.node.inputs.contains_key("mask"));
+        // The height passes blur with sigma = 0.35 * values.y; the wear reaches about
+        // its width inward, deeper where breakup noise lets it.
+        p.values = [
+            sample("mix")?,
+            sample("wear_width")? / 0.35,
+            sample("edge_wear")?,
+            sample("noise_size")?,
+        ];
+        p.extra[0] = sample("breakup")?;
+        Ok(())
+    }
+}
 impl RenderNode for veylvik_document::nodes::Patina {
     fn passes(&self) -> Passes {
         Passes::One(Kernel::Patina)

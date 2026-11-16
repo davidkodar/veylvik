@@ -1376,3 +1376,96 @@ fn a_normal_map_and_the_height_map_it_came_from_shade_alike() {
     assert!(rms(&raised, &mapped) < 0.005, "{}", rms(&raised, &mapped));
     assert!(rms(&raised, &flipped) > 0.05, "{}", rms(&raised, &flipped));
 }
+
+#[test]
+#[ignore = "requires Vulkan"]
+fn layered_materials_mask_and_wear_from_the_edges() {
+    let renderer = Renderer::new().unwrap();
+    let (w, h) = (96u32, 64u32);
+    let solid = |c: [f32; 4]| Operation::Solid(nodes::Solid { color: c });
+    let mut doc = blank(w, h, Time::new(24, 1).unwrap()).unwrap();
+    // A 64x40 opaque block; Under is blue, Over is red, both with its shape.
+    let block: Vec<[f32; 4]> = (0..w * h)
+        .map(|i| {
+            let (x, y) = (i % w, i / w);
+            if (16..80).contains(&x) && (12..52).contains(&y) {
+                [1.0; 4]
+            } else {
+                [0.0; 4]
+            }
+        })
+        .collect();
+    let left: Vec<[f32; 4]> = (0..w * h)
+        .map(|i| if i % w < 48 { [1.0; 4] } else { [0.0; 4] })
+        .collect();
+    let mut inputs = ImageInputs::default();
+    inputs.insert("block", Arc::new(Image::new(w, h, block).unwrap()));
+    inputs.insert("left", Arc::new(Image::new(w, h, left).unwrap()));
+    let image = |key: &str| {
+        Node::new(
+            key,
+            Operation::Image(nodes::Image { asset: key.into() }),
+            &[],
+        )
+    };
+    let (shape, half) = (image("block"), image("left"));
+    let (blue, red) = (
+        Node::new("blue", solid([0.0, 0.0, 1.0, 1.0]), &[]),
+        Node::new("red", solid([1.0, 0.0, 0.0, 1.0]), &[]),
+    );
+    let cut = |label: &str, colour: &Node| {
+        Node::new(
+            label,
+            Operation::Mask(nodes::Mask {}),
+            &[("image", colour.id), ("mask", shape.id)],
+        )
+    };
+    let (under, over) = (cut("under", &blue), cut("over", &red));
+    for n in [&shape, &half, &blue, &red, &under, &over] {
+        doc.nodes.insert(n.id, n.clone());
+    }
+    let render = |layers: nodes::MaterialLayers, mask: bool| {
+        let mut d = doc.clone();
+        let mut ports = vec![("under", under.id), ("over", over.id)];
+        if mask {
+            ports.push(("mask", half.id));
+        }
+        let node = Node::new("layers", Operation::MaterialLayers(layers), &ports);
+        d.output = node.id;
+        d.nodes.insert(node.id, node);
+        renderer
+            .render_frame(
+                &Plan::compile(&d).unwrap(),
+                RenderRequest::full(Time::new(0, 1).unwrap()),
+                &inputs,
+            )
+            .unwrap()
+            .pixels
+    };
+    let layers = |mix: f32, wear: f32| nodes::MaterialLayers {
+        seed: 3,
+        mix: mix.into(),
+        edge_wear: wear.into(),
+        wear_width: 6.0.into(),
+        breakup: 0.0.into(),
+        noise_size: 30.0.into(),
+    };
+    let at = |p: &[[f32; 4]], x: u32, y: u32| p[(y * w + x) as usize];
+    let centre = (48, 32);
+    // Over everywhere without wear; Under at mix 0; the mask keeps Over on the left.
+    let full = render(layers(1.0, 0.0), false);
+    assert!(at(&full, 20, 14)[0] > 0.99 && at(&full, centre.0, centre.1)[0] > 0.99);
+    assert!(at(&render(layers(0.0, 0.0), false), 40, 30)[2] > 0.99);
+    let masked = render(layers(1.0, 0.0), true);
+    assert!(at(&masked, 30, 32)[0] > 0.99 && at(&masked, 70, 32)[2] > 0.99);
+    // Full wear reveals Under at the edges and corners, never deep inside.
+    let worn = render(layers(1.0, 1.0), false);
+    assert!(at(&worn, 16, 12)[2] > 0.9, "corner {:?}", at(&worn, 16, 12));
+    assert!(at(&worn, 16, 32)[2] > 0.9, "edge {:?}", at(&worn, 16, 32));
+    assert!(at(&worn, centre.0, centre.1)[0] > 0.99);
+    // Coverage is the shape's: nothing outside, opaque inside.
+    for p in [&full, &worn, &masked] {
+        assert_eq!(at(p, 4, 4)[3], 0.0);
+        assert!((at(p, centre.0, centre.1)[3] - 1.0).abs() < 1e-6);
+    }
+}

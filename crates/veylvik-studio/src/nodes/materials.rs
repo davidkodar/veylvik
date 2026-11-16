@@ -182,6 +182,14 @@ impl Inspect for veylvik_document::nodes::MetallicShine {
         }
     }
 }
+impl Inspect for veylvik_document::nodes::MaterialLayers {
+    fn inspect(&mut self, ui: &mut egui::Ui, cx: &mut InspectCx<'_>) {
+        ui.weak("Connect two materials of the same shape: Under (for example steel) and Over (for example paint). Edge wear chips Over away along edges and corners; a Mask limits where Over is.");
+        cx.dirty |= ui
+            .add(egui::DragValue::new(&mut self.seed).prefix("Seed "))
+            .changed();
+    }
+}
 impl Inspect for veylvik_document::nodes::SunGlints {
     fn inspect(&mut self, ui: &mut egui::Ui, cx: &mut InspectCx<'_>) {
         let veylvik_document::nodes::SunGlints { seed, .. } = self;

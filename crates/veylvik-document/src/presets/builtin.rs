@@ -15,7 +15,7 @@ pub struct Builtin {
     pub label: &'static str,
     pub description: &'static str,
 }
-pub const ALL: [Builtin; 73] = [
+pub const ALL: [Builtin; 74] = [
     Builtin {
         id: "weathered_bronze",
         label: "Weathered Bronze",
@@ -55,6 +55,11 @@ pub const ALL: [Builtin; 73] = [
         id: "wet_to_dry",
         label: "Wet to Dry",
         description: "Sandstone that starts dark, glossy and beaded with water and dries to matte. Gloss, darkening and water are keyable.",
+    },
+    Builtin {
+        id: "chipping_paint",
+        label: "Chipping Paint",
+        description: "Red car paint over brushed steel that chips away along the edges and corners and comes back. Built on the Layered material node; edge wear, wear width and breakup are editable, and either material can be swapped.",
     },
     Builtin {
         id: "rust_spreading",

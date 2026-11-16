@@ -424,7 +424,7 @@ input names, defaults and controls save with the composition. Nested groups are 
 **Add → Effect library…** opens searchable starter and saved effects. The bundled
 **Prismatic Glow** adds cyan/rose light spill; **Neon Outline** adds luminous
 contours; **Liquid Shimmer** adds a smooth four-second flow loop with protected
-frame edges. The library contains **73 starter effects**, searchable by name,
+frame edges. The library contains **74 starter effects**, searchable by name,
 description or category, with category counts in the left sidebar and a search field above the results. Every starter remains an editable group with public controls.
 
 The expanded set includes:
@@ -516,11 +516,25 @@ roughness, height) that the material reads as a fourth image. Map controls appea
 the inspector once their map is connected. Nodes may have up to eight input ports;
 a pass binds four images.
 
-Six animated recipes loop over four seconds as editable groups: **Chrome Shine
+**Layered material** (`material_layers`) layers two materials of one shape: connect
+two renders of the same title to **Under** (for example brushed steel) and **Over**
+(for example red car paint). Over shows where the optional **Mask** input's alpha is
+(everywhere without one), scaled by **Mix**. **Edge wear** wears Over away along the
+Under input's edges to reveal Under: the shape's alpha blurred over **Wear width**
+pixels measures how near each pixel is to an edge, and corners (where it falls
+lowest) wear first. **Breakup** lets fractal noise of **Noise size** pixels and a
+**Seed** carry chips further in and roughen their borders, and the paint's
+thickness shades the bare surface just inside each chip. Wear 0 is clean paint;
+light wear chips edges and corners; heavy wear leaves paint mainly in the middle of
+strokes. Output colour and alpha mix like the inputs, so both should share a shape.
+
+Seven animated recipes loop over four seconds as editable groups: **Chrome Shine
 Sweep** (a shine travels across mirror chrome), **Glint Reveal** (rose-gold glints
 flare, hold and fade), **Heat to Embers** (brushed steel glows from deep red to
 white-hot with an ember halo, then cools; Heat, Glow and Glow spread are keyable)
-**Rust Spreading** (rust patches grow over steel and recede),
+**Rust Spreading** (rust patches grow over steel and recede), **Chipping Paint** (red
+car paint chips off brushed steel from the edges and comes back, through Layered
+material),
 **Paper Burn** (embossed paper burns away along a ragged noise front, with a charred
 band and a glowing ember line on the edge; one Burn progress control scales the noise
 so every band moves together) and **Wet to Dry** (sandstone that starts dark, glossy

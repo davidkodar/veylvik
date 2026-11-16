@@ -192,6 +192,7 @@ fn curated_recipes_and_flow_demo_loop_and_remain_visible() {
         "rust_spreading",
         "paper_burn",
         "wet_to_dry",
+        "chipping_paint",
         "smooth_slow_motion",
     ] {
         let scene = presets::showcase::build(id).unwrap();

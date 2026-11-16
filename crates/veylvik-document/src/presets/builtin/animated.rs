@@ -2,13 +2,14 @@
 use super::*;
 use crate::MaskMode;
 
-pub const IDS: [&str; 6] = [
+pub const IDS: [&str; 7] = [
     "chrome_shine_sweep",
     "glint_reveal",
     "heat_to_embers",
     "rust_spreading",
     "paper_burn",
     "wet_to_dry",
+    "chipping_paint",
 ];
 
 /// Keys at whole seconds; the first and last values match so the loop is seamless.
@@ -138,6 +139,26 @@ pub fn build(id: &str, b: &mut Builder, source: NodeId) -> Result<Option<NodeId>
             rust
         }
         "paper_burn" => paper_burn(b, source)?,
+        "chipping_paint" => {
+            let steel = look(b, source, "brushed_steel")?;
+            let paint = look(b, source, "car_paint_red")?;
+            let layers = b.add(
+                "Paint chipping off steel",
+                Operation::MaterialLayers(crate::nodes::MaterialLayers {
+                    seed: 13,
+                    mix: 1.0.into(),
+                    edge_wear: keyed(true, &[(0, 0.1), (2, 0.9), (4, 0.1)]),
+                    wear_width: 8.0.into(),
+                    breakup: 0.8.into(),
+                    noise_size: 40.0.into(),
+                }),
+                &[("under", steel), ("over", paint)],
+            );
+            b.expose(layers, "edge_wear", "Edge wear")?;
+            b.expose(layers, "wear_width", "Wear width")?;
+            b.expose(layers, "breakup", "Breakup")?;
+            layers
+        }
         "wet_to_dry" => {
             let stone = look(b, source, "sandstone")?;
             // Wet stone is darker and glossy, beaded with water; it dries matte.

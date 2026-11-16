@@ -60,6 +60,8 @@ fn bytes(id: &str, before: bool) -> &'static [u8] {
         ("paper_burn", true) => include_bytes!("../assets/showcase/paper_burn-before.png"),
         ("wet_to_dry", false) => include_bytes!("../assets/showcase/wet_to_dry-after.png"),
         ("wet_to_dry", true) => include_bytes!("../assets/showcase/wet_to_dry-before.png"),
+        ("chipping_paint", false) => include_bytes!("../assets/showcase/chipping_paint-after.png"),
+        ("chipping_paint", true) => include_bytes!("../assets/showcase/chipping_paint-before.png"),
         ("sky_lit_gold", false) => include_bytes!("../assets/showcase/sky_lit_gold-after.png"),
         ("sky_lit_gold", true) => include_bytes!("../assets/showcase/sky_lit_gold-before.png"),
         ("smooth_slow_motion", false) => {

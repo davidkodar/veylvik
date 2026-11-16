@@ -224,6 +224,14 @@ pub fn operation(kind: &NodeType, width: u32, height: u32) -> Operation {
         Operation::SunGlints(veylvik_document::nodes::SunGlints { size, .. }) => {
             *size = (width as f32 * 0.01875).clamp(1.0, 512.0).into();
         }
+        Operation::MaterialLayers(veylvik_document::nodes::MaterialLayers {
+            wear_width,
+            noise_size,
+            ..
+        }) => {
+            *wear_width = (width as f32 / 120.0).clamp(1.0, 128.0).into();
+            *noise_size = (width as f32 / 24.0).clamp(1.0, 4096.0).into();
+        }
         Operation::Patina(veylvik_document::nodes::Patina { scale, .. }) => {
             *scale = (width as f32 * 110.0 / 960.0).clamp(1.0, 8192.0).into();
         }
@@ -298,10 +306,12 @@ mod tests {
         assert!(matches!(entries("TEXT")[0].choice, Choice::Node(kind) if kind.type_id=="text"));
         assert!(matches!(entries("outline text")[0].choice, Choice::Text));
         assert_eq!(entries("fractal NOI")[0].id, "fractal_noise");
+        // Names rank first; nodes with a noise control (Layered material) follow.
         assert_eq!(
             entries("noise")
                 .iter()
                 .map(|entry| entry.id)
+                .take(2)
                 .collect::<Vec<_>>(),
             ["noise", "fractal_noise"]
         );
