@@ -43,6 +43,7 @@ pub struct Browser {
     category: String,
     selected: Option<&'static str>,
     selected_saved: Option<String>,
+    on_text: bool,
     textures: BTreeMap<&'static str, egui::TextureHandle>,
     gallery: crate::showcase_gallery::Gallery,
 }
@@ -61,6 +62,7 @@ impl Default for Browser {
             category: "All".into(),
             selected: None,
             selected_saved: None,
+            on_text: true,
             textures: Default::default(),
             gallery: Default::default(),
         }
@@ -154,6 +156,9 @@ impl Studio {
             ui.add(egui::TextEdit::singleline(&mut self.browser.query).hint_text("Search library…").desired_width(f32::INFINITY).margin(egui::vec2(9.,7.)));
             if self.browser.tab==Tab::Materials {
                 ui.horizontal_wrapped(|ui| {for name in ["All","Favourites","My materials","Metal","Glossy","Glass","Neon","Natural","Leather"] {ui.selectable_value(&mut self.browser.category,name.into(),name);}});
+                if can_fill_text {
+                    ui.checkbox(&mut self.browser.on_text,"Show on my text").on_hover_text("Preview every material on the selected text's own words and font instead of a sample");
+                }
             }
             ui.add_space(4.);
             let query=self.browser.query.to_lowercase();
@@ -212,17 +217,27 @@ impl Studio {
                                     _ => {
                                         let (rect,response)=ui.allocate_exact_size(egui::vec2(width,width),egui::Sense::click_and_drag());
                                         if ui.is_rect_visible(rect) {
-                                            let texture=match card {
+                                            let words=match &self.draft.operation {Operation::Text(t) if self.browser.on_text => Some(t), _ => None};
+                                            let texture=if let Some(words)=words {
+                                                // Your own words in this material.
+                                                let (card_key,material)=match card {
+                                                    Card::Builtin(entry)=>(format!("builtin:{}",entry.id),self.materials.builtin_material(entry.id)),
+                                                    Card::Saved(i)=>(self.materials.entries[i].key(),Some(self.materials.entries[i].saved.material.clone())),
+                                                };
+                                                let text_key=crate::material_library::text_key(words);
+                                                material.and_then(|m|self.materials.text_swatch(ui.ctx(),&self.renderer,&card_key,words,text_key,&m))
+                                            } else {match card {
                                                 Card::Builtin(entry) if catalogue(entry.id).is_some()=>{let material=catalogue(entry.id).unwrap().material();self.materials.swatch_of(ui.ctx(),&self.renderer,format!("builtin:{}",entry.id),&material)}
                                                 Card::Builtin(entry)=>Some(self.browser.textures.entry(entry.id).or_insert_with(|| {
                                                     let image=image::load_from_memory(swatch(entry.id).unwrap()).expect("bundled material sample").to_rgba8();
                                                     ui.ctx().load_texture(entry.id,egui::ColorImage::from_rgba_unmultiplied([image.width() as usize,image.height() as usize],image.as_raw()),egui::TextureOptions::LINEAR)
                                                 }).id()),
                                                 Card::Saved(i)=>{let entry=self.materials.entries[i].clone();self.materials.swatch(ui.ctx(),&self.renderer,&entry)}
-                                            };
+                                            }};
+                                            let picture=if words.is_some() {egui::Rect::from_center_size(rect.center(),egui::vec2(rect.width()-6.,(rect.width()-6.)*0.5))} else {rect.shrink(3.)};
                                             ui.painter().rect_filled(rect,6.,design::canvas(ui.ctx()));
                                             match texture {
-                                                Some(texture)=>{ui.painter().image(texture,rect.shrink(3.),egui::Rect::from_min_max(egui::Pos2::ZERO,egui::pos2(1.,1.)),egui::Color32::WHITE);}
+                                                Some(texture)=>{ui.painter().image(texture,picture,egui::Rect::from_min_max(egui::Pos2::ZERO,egui::pos2(1.,1.)),egui::Color32::WHITE);}
                                                 None=>{egui::Spinner::new().paint_at(ui,egui::Rect::from_center_size(rect.center(),egui::vec2(18.,18.)));}
                                             }
                                         }

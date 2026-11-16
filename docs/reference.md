@@ -572,6 +572,12 @@ optional socket is drawn hollow; drag an output onto it to connect and drag its 
 off the socket to disconnect; the inspector's port list offers **None**. Bypass
 passes the single required input through.
 
+With a text layer selected, **Show on my text** (on by default) previews every card in
+the Materials tab on that text's own first line and font, frozen and centred, instead
+of a sphere or tile; glass is shown over a checkerboard it bends. The previews render
+on the GPU two at a time in the background and stay cached until the words, font or
+material change.
+
 **Save as my material…** (material inspector, or **Save…** under text Appearance)
 keeps the whole look — surface, colours, finish, optics and lighting rig — under a
 name in **Library → Materials → My materials**. Saved materials are `.veymat` files

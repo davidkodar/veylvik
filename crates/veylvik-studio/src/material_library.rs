@@ -33,6 +33,8 @@ pub(crate) enum Dialog {
 }
 /// A change to the materials folder, run off the UI thread.
 type Job = dyn FnOnce(&std::path::Path) -> Result<(), String> + Send;
+/// A swatch render, built only when it is about to run.
+type Render = Box<dyn FnOnce() -> Result<Vec<[f32; 4]>, String> + Send>;
 type Swatch = mpsc::Receiver<Result<Vec<[f32; 4]>, String>>;
 #[derive(Default)]
 pub(crate) struct Library {
@@ -46,6 +48,7 @@ pub(crate) struct Library {
     /// Texture and the material JSON it was rendered from.
     swatches: HashMap<String, (String, egui::TextureHandle)>,
     rendering: HashMap<String, (String, Swatch)>,
+    builtin: HashMap<String, Material>,
 }
 
 fn load() -> Result<Loaded, String> {
@@ -99,8 +102,9 @@ impl Library {
                     self.warnings = loaded.warnings;
                     let keys: BTreeSet<_> = self.entries.iter().map(Entry::key).collect();
                     // Built-in looks keep their swatches; saved ones may be gone.
-                    self.swatches
-                        .retain(|k, _| k.starts_with("builtin:") || keys.contains(k));
+                    self.swatches.retain(|k, _| {
+                        k.starts_with("builtin:") || k.starts_with("text:") || keys.contains(k)
+                    });
                 }
                 Err(e) => self.error = Some(e),
             }
@@ -145,14 +149,54 @@ impl Library {
         material: &Material,
     ) -> Option<egui::TextureId> {
         let version = serde_json::to_string(material).unwrap_or_default();
+        self.swatch_with(ctx, key, version, [256, 256], || {
+            let (renderer, material) = (renderer.clone(), material.clone());
+            Box::new(move || {
+                renderer
+                    .material_sample(&material)
+                    .map_err(|e| e.to_string())
+            })
+        })
+    }
+    /// The user's text in a material, cached until the text or the material changes.
+    pub fn text_swatch(
+        &mut self,
+        ctx: &egui::Context,
+        renderer: &Arc<veylvik_render::Renderer>,
+        card: &str,
+        text: &veylvik_document::nodes::Text,
+        text_key: u64,
+        material: &Material,
+    ) -> Option<egui::TextureId> {
+        let version = format!(
+            "{text_key}:{}",
+            serde_json::to_string(material).unwrap_or_default()
+        );
+        self.swatch_with(ctx, format!("text:{card}"), version, [256, 128], || {
+            // Cloned only when a render starts: the text may carry an embedded font.
+            let (renderer, text, material) = (renderer.clone(), text.clone(), material.clone());
+            Box::new(move || {
+                renderer
+                    .material_on_text(&text, &material)
+                    .map_err(|e| e.to_string())
+            })
+        })
+    }
+    fn swatch_with(
+        &mut self,
+        ctx: &egui::Context,
+        key: String,
+        version: String,
+        size: [usize; 2],
+        job: impl FnOnce() -> Render,
+    ) -> Option<egui::TextureId> {
         if let Some((_, receive)) = self.rendering.get(&key)
             && let Ok(result) = receive.try_recv()
         {
             let (rendered, _) = self.rendering.remove(&key).unwrap();
             match result {
                 Ok(pixels) => {
-                    let image =
-                        egui::ColorImage::from_rgba_unmultiplied([256, 256], &srgb(&pixels));
+                    let image = egui::ColorImage::from_rgba_unmultiplied(size, &srgb(&pixels));
                     let texture = ctx.load_texture(&key, image, egui::TextureOptions::LINEAR);
                     self.swatches.insert(key.clone(), (rendered, texture));
                 }
@@ -163,18 +207,25 @@ impl Library {
         let stale = current.is_none_or(|(v, _)| *v != version);
         if stale && !self.rendering.contains_key(&key) && self.rendering.len() < PARALLEL_SWATCHES {
             let (send, receive) = mpsc::channel();
-            let (renderer, material, ctx) = (renderer.clone(), material.clone(), ctx.clone());
+            let (ctx, job) = (ctx.clone(), job());
             std::thread::spawn(move || {
-                let _ = send.send(
-                    renderer
-                        .material_sample(&material)
-                        .map_err(|e| e.to_string()),
-                );
+                let _ = send.send(job());
                 ctx.request_repaint();
             });
             self.rendering.insert(key.clone(), (version, receive));
         }
         current.map(|(_, t)| t.id())
+    }
+    /// A built-in look's material, built once.
+    pub fn builtin_material(&mut self, id: &str) -> Option<Material> {
+        if let Some(m) = self.builtin.get(id) {
+            return Some(m.clone());
+        }
+        let m = veylvik_document::presets::material::Source::Builtin(id)
+            .material()
+            .ok()?;
+        self.builtin.insert(id.to_owned(), m.clone());
+        Some(m)
     }
 
     /// Save, rename and delete dialogs. Changes happen in the background.
@@ -387,4 +438,18 @@ impl crate::Studio {
             Err(e) => self.fail(e.to_string()),
         }
     }
+}
+
+/// A cheap identity for a text layer's preview: its words and font, not the font data.
+pub(crate) fn text_key(text: &veylvik_document::nodes::Text) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    text.content.hash(&mut h);
+    match &*text.font {
+        veylvik_document::TextFont::Embedded { name, index, data } => {
+            (name, index, data.len()).hash(&mut h)
+        }
+        other => format!("{other:?}").hash(&mut h),
+    }
+    h.finish()
 }

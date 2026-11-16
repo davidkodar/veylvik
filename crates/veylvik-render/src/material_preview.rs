@@ -140,6 +140,97 @@ impl Renderer {
         }
         Ok(rendered)
     }
+    /// The user's own words in a material: a 256x128 preview of `text` (first line,
+    /// its font, centred, motion frozen) shaded by `material`. Glass gets a neutral
+    /// checkerboard to bend and is shown over it. Premultiplied linear.
+    pub fn material_on_text(
+        &self,
+        text: &veylvik_document::nodes::Text,
+        material: &veylvik_document::nodes::Material,
+    ) -> Result<Vec<[f32; 4]>> {
+        use veylvik_document::{MaterialKind, Node, Operation, Time, text::Typography};
+        let (width, height) = (256_u32, 128_u32);
+        let zero = Time::new(0, 1)?;
+        let line: String = text
+            .content
+            .lines()
+            .find(|l| !l.trim().is_empty())
+            .unwrap_or("Aa")
+            .chars()
+            .take(24)
+            .collect();
+        let chars = line.chars().count().max(2) as f32;
+        let mut words = text.clone();
+        words.content = line;
+        // Fit the line's width roughly, then cap so short words do not overflow.
+        words.size = (230.0 / (chars * 0.62)).clamp(18.0, 84.0).into();
+        words.x = (width as f32 * 0.5).into();
+        words.y = (height as f32 * 0.5).into();
+        words.alignment = veylvik_document::TextAlignment::Center;
+        words.rotation = 0.0.into();
+        words.scale_x = 1.0.into();
+        words.scale_y = 1.0.into();
+        words.wrap_width = 0.0.into();
+        words.box_height = 0.0.into();
+        words.tracking = 0.0.into();
+        words.color = [1.0; 4];
+        words.typography = Box::new(Typography {
+            spans: Vec::new(),
+            anchor: Some([0.5, 0.5]),
+            vertical: veylvik_document::text::Vertical::Middle,
+            ..Typography::default()
+        });
+        let mut doc = veylvik_document::blank(width, height, Time::new(24, 1)?)?;
+        let words = Node::new("Words", Operation::Text(words), &[]);
+        let mut ports = vec![("image", words.id)];
+        let glass = material.kind == MaterialKind::Glass;
+        let checker: Vec<[f32; 4]> = (0..width * height)
+            .map(|i| {
+                let on = ((i % width) / 16 + (i / width) / 16).is_multiple_of(2);
+                let v = if on { 0.45 } else { 0.1 };
+                [v, v, v, 1.0]
+            })
+            .collect();
+        let behind = Node::new(
+            "Checkerboard",
+            Operation::Image(veylvik_document::nodes::Image {
+                asset: "behind".into(),
+            }),
+            &[],
+        );
+        if glass {
+            ports.push(("environment", behind.id));
+        }
+        let mut surface = material.clone();
+        surface.lighting = 0.08.into();
+        let node = Node::new("Material", Operation::Material(surface), &ports);
+        doc.output = node.id;
+        doc.nodes.insert(words.id, words);
+        doc.nodes.insert(behind.id, behind);
+        doc.nodes.insert(node.id, node);
+        let mut inputs = crate::ImageInputs::default();
+        inputs.insert(
+            "behind",
+            std::sync::Arc::new(crate::Image::new(width, height, checker.clone())?),
+        );
+        let mut pixels = self
+            .render_frame(
+                &crate::Plan::compile(&doc)?,
+                crate::RenderRequest::full(zero),
+                &inputs,
+            )?
+            .pixels;
+        if glass {
+            for (pixel, behind) in pixels.iter_mut().zip(&checker) {
+                let cover = pixel[3];
+                for c in 0..3 {
+                    pixel[c] += behind[c] * (1.0 - cover);
+                }
+                pixel[3] = 1.0;
+            }
+        }
+        Ok(pixels)
+    }
     fn sphere(
         &self,
         lighting: crate::studio_lighting::Lighting,

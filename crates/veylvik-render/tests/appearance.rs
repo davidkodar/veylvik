@@ -1101,3 +1101,40 @@ fn glass_shows_the_shot_through_it_tinted() {
         "clear glass passes the green shot: {p:?}"
     );
 }
+
+#[test]
+#[ignore = "requires Vulkan"]
+fn materials_preview_on_the_users_own_words() {
+    let renderer = Renderer::new().unwrap();
+    let mut text: Operation = serde_json::from_value(registry::TEXT.default_operation()).unwrap();
+    let Operation::Text(t) = &mut text else {
+        panic!()
+    };
+    t.content = "\nHello world\nsecond line".into();
+    for id in ["gold_text", "glass_clear", "denim"] {
+        let m = veylvik_document::presets::material::Source::Builtin(id)
+            .material()
+            .unwrap();
+        let pixels = renderer.material_on_text(t, &m).unwrap();
+        assert_eq!(pixels.len(), 256 * 128);
+        assert!(pixels.iter().all(|p| p.iter().all(|v| v.is_finite())));
+        let inked = pixels.iter().filter(|p| p[3] > 0.5).count();
+        if id == "glass_clear" {
+            assert_eq!(inked, pixels.len(), "glass is shown over its checkerboard");
+        } else {
+            assert!(
+                inked > 1500 && inked < 256 * 128 / 2,
+                "{id}: the words, centred: {inked}"
+            );
+            // Ink sits around the centre, not against an edge.
+            let ink_x = pixels
+                .iter()
+                .enumerate()
+                .filter(|(_, p)| p[3] > 0.5)
+                .map(|(i, _)| (i % 256) as f32)
+                .sum::<f32>()
+                / inked as f32;
+            assert!((ink_x - 128.0).abs() < 20.0, "{id} centred: {ink_x}");
+        }
+    }
+}
