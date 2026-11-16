@@ -232,3 +232,100 @@ fn primitives_are_closed_solids_of_the_expected_volume() {
             < 300_000
     );
 }
+
+#[test]
+fn bevels_round_or_chamfer_the_edges_and_stay_closed() {
+    use veylvik_mesh::{Bevel, extrude_bevelled};
+    let box_ = square(0.0, 0.0, 20.0, true);
+    let solid = |width, round| {
+        extrude_bevelled(&box_, FillRule::NonZero, 10.0, 0.1, Bevel { width, round }).unwrap()
+    };
+    let sharp = check(&solid(0.0, false)).0.abs();
+    assert!((sharp - 4000.0).abs() < 0.5);
+    for (round, removed_per_edge) in [
+        (false, 2.0 * 2.0 / 2.0),
+        (true, 4.0 * (1.0 - std::f32::consts::FRAC_PI_4)),
+    ] {
+        let mesh = solid(2.0, round);
+        assert!(watertight(&mesh), "round {round}");
+        let (volume, consistent) = check(&mesh);
+        assert!(consistent, "round {round} faces its normals");
+        // Two rims of 80 pixels lose the bevel's cross-section (corners aside).
+        let expected = 4000.0 - 2.0 * 80.0 * removed_per_edge;
+        assert!(
+            (volume.abs() - expected).abs() < 25.0,
+            "round {round}: {volume} vs {expected}"
+        );
+        // The bevel faces lean outwards and towards the cap.
+        assert!(
+            mesh.vertices
+                .iter()
+                .any(|v| v.normal[2] > 0.3 && v.normal[0].abs() + v.normal[1].abs() > 0.3)
+        );
+    }
+    // The bevel never eats more than half the depth.
+    let thin = extrude_bevelled(
+        &box_,
+        FillRule::NonZero,
+        2.0,
+        0.1,
+        Bevel {
+            width: 50.0,
+            round: true,
+        },
+    )
+    .unwrap();
+    assert!(watertight(&thin));
+    assert!(
+        extrude_bevelled(
+            &box_,
+            FillRule::NonZero,
+            2.0,
+            0.1,
+            Bevel {
+                width: f32::NAN,
+                round: true
+            }
+        )
+        .is_err()
+    );
+}
+
+#[test]
+fn bevelled_text_stays_consistent() {
+    use veylvik_mesh::{Bevel, extrude_bevelled};
+    let mut text: veylvik_document::Operation =
+        serde_json::from_value(veylvik_document::registry::TEXT.default_operation()).unwrap();
+    let veylvik_document::Operation::Text(t) = &mut text else {
+        panic!()
+    };
+    t.content = "Bo".into();
+    t.size = 160.0.into();
+    let outline = veylvik_text::outline(&text, veylvik_document::Time::new(0, 1).unwrap()).unwrap();
+    let flat = extrude_bevelled(
+        &outline.commands,
+        outline.fill_rule,
+        30.0,
+        0.25,
+        Bevel::NONE,
+    )
+    .unwrap();
+    let mesh = extrude_bevelled(
+        &outline.commands,
+        outline.fill_rule,
+        30.0,
+        0.25,
+        Bevel {
+            width: 3.0,
+            round: true,
+        },
+    )
+    .unwrap();
+    let (volume, consistent) = check(&mesh);
+    assert!(consistent);
+    let full = check(&flat).0.abs();
+    assert!(
+        volume.abs() < full && volume.abs() > full * 0.8,
+        "{volume} vs {full}"
+    );
+}

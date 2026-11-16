@@ -4,7 +4,7 @@
 //! Positions are offsets from where an object naturally sits (the frame centre at
 //! depth 0, or a title's own place), so a fresh object lines up with the 2D layer.
 #[allow(unused_imports)]
-use crate::registry::{NodeType, ParameterKind, PortKind, other, scalar};
+use crate::registry::{NodeType, Parameter, ParameterKind, PortKind, other, scalar};
 #[allow(unused_imports)]
 use crate::*;
 use serde::{Deserialize, Serialize};
@@ -59,6 +59,12 @@ fn validate_look(look: &Option<Box<crate::nodes::Material>>) -> Result<()> {
         Operation::Material((**look).clone()).validate()?;
     }
     Ok(())
+}
+fn zero() -> Scalar {
+    0.0.into()
+}
+fn yes() -> bool {
+    true
 }
 fn grey() -> Track3 {
     [0.6, 0.6, 0.6].into()
@@ -149,6 +155,12 @@ node!(
 #[serde(deny_unknown_fields)]
 pub struct Text3d {
     pub depth: Scalar,
+    /// Rounded or chamfered front and back edges, in pixels (at most half the
+    /// depth). Projects from before bevels keep square edges.
+    #[serde(default = "zero")]
+    pub bevel: Scalar,
+    #[serde(default = "yes")]
+    pub round_bevel: bool,
     #[serde(default)]
     pub placement: Placement,
     #[serde(default = "grey")]
@@ -164,12 +176,21 @@ pub static TEXT_3D: NodeType = NodeType {
     type_id: "text_3d",
     version: 1,
     label: "3D text",
-    description: "Extrudes the Text or Path node on its Outline input into a solid Depth pixels deep, front face where the 2D layer sits, centred in depth. Placement turns and moves it about its own centre; colour (linear RGB), roughness and metallic shade it, unless a Look (any library material) is set, which shades it like the 2D title. Outputs a scene.",
+    description: "Extrudes the Text or Path node on its Outline input into a solid Depth pixels deep, front face where the 2D layer sits, centred in depth, with a Bevel (pixels, rounded or chamfered) on its front and back edges so metals catch highlights. Placement turns and moves it about its own centre; colour (linear RGB), roughness and metallic shade it, unless a Look (any library material) is set, which shades it like the 2D title. Outputs a scene.",
     inputs: &["outline"],
     optional: &[],
     output: PortKind::Scene,
     parameters: &[
         scalar("depth", "pixels", 0.0, 1.0e4, 40.0),
+        scalar("bevel", "pixels", 0.0, 500.0, 6.0),
+        Parameter {
+            default: 1.0,
+            ..other(
+                "round_bevel",
+                ParameterKind::Boolean,
+                "rounded or chamfered",
+            )
+        },
         other("placement", ParameterKind::Placement, "transform"),
         other("colour", ParameterKind::Colour3, "linear RGB"),
         scalar("roughness", "factor", 0.0, 1.0, 0.35),
@@ -177,7 +198,7 @@ pub static TEXT_3D: NodeType = NodeType {
         other("look", ParameterKind::Look, "library material"),
     ],
 };
-node!(Text3d, TEXT_3D, [depth, roughness, metallic], {
+node!(Text3d, TEXT_3D, [depth, bevel, roughness, metallic], {
     fn validate(&self) -> Result<()> {
         self.placement.validate()?;
         validate_look(&self.look)?;

@@ -100,7 +100,7 @@ fn tint(colour: [f32; 3]) -> Color32 {
 pub(crate) fn bounds(geometry: &Geometry) -> ([f32; 3], [f32; 3]) {
     match geometry {
         Geometry::Shape { size, .. } => (size.map(|v| -v * 0.5), size.map(|v| v * 0.5)),
-        Geometry::Text { outline, depth } => {
+        Geometry::Text { outline, depth, .. } => {
             let [x0, y0, x1, y1] = veylvik_text::bounds(outline);
             ([x0, y0, -depth * 0.5], [x1, y1, depth * 0.5])
         }

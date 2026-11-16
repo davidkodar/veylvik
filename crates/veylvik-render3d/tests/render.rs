@@ -184,6 +184,8 @@ fn a_3d_title_with_a_look_matches_the_2d_title_face_on() {
     let mut title = op(&TEXT_3D);
     if let Operation::Text3d(t) = &mut title {
         t.depth = 20.0.into();
+        // Flat faces, like the 2D title without its bevel.
+        t.bevel = 0.0.into();
         t.look = Some(Box::new(gold));
     }
     let title = add(&mut doc, title, &[("outline", text)]);

@@ -28,7 +28,12 @@ pub enum Geometry {
         segments: u32,
     },
     /// An outline in composition pixels, extruded `depth` deep about z = 0.
-    Text { outline: PathMask, depth: f32 },
+    Text {
+        outline: PathMask,
+        depth: f32,
+        bevel: f32,
+        round: bool,
+    },
     /// A card the size of the frame showing the image of node `image`.
     Card { image: NodeId, size: [f32; 2] },
 }
@@ -249,6 +254,8 @@ fn node(doc: &Graph<'_>, id: NodeId, time: Time, depth: usize) -> Result<Scene> 
                 geometry: Geometry::Text {
                     outline,
                     depth: t.depth.at(time)?.max(0.0),
+                    bevel: t.bevel.at(time)?.max(0.0),
+                    round: t.round_bevel,
                 },
                 world,
                 surface: Surface {
@@ -351,11 +358,20 @@ pub fn mesh(object: &Object) -> Result<Mesh> {
             *size,
             *segments,
         ),
-        Geometry::Text { outline, depth } => veylvik_mesh::extrude(
+        Geometry::Text {
+            outline,
+            depth,
+            bevel,
+            round,
+        } => veylvik_mesh::extrude_bevelled(
             &outline.commands,
             outline.fill_rule,
             *depth,
             OUTLINE_TOLERANCE,
+            veylvik_mesh::Bevel {
+                width: *bevel,
+                round: *round,
+            },
         ),
         Geometry::Card { size, .. } => {
             veylvik_mesh::primitive(P::Plane, [size[0], size[1], 0.0], 3)

@@ -1277,6 +1277,14 @@ and `colour`.
   detail (segments, 3–256), colour, roughness and metallic.
 - **3D text**: extrudes the Text or Path node on its Outline input Depth pixels
   deep, front face where the 2D layer sits, turning about its own centre.
+  **Bevel** (pixels, at most half the depth) rounds the front and back edges in four
+  steps, or chamfers them at 45 degrees with **Round bevel** off: each outline is
+  inset along its corner miters (stretched up to four times at sharp corners), the
+  caps are triangulated from the innermost ring so faces, bevels and walls meet
+  without gaps, and bevel normals stay smooth across gentle curves and crisp at
+  corners, so metal titles catch highlights on their edges. New 3D text starts
+  with a 6-pixel round bevel; projects saved before bevels keep square edges.
+  Very thin strokes can fold under a bevel wider than half their width.
 - **Image card**: any image on a flat card that covers the frame at depth 0.
 - **3D transform**: moves, turns and scales a whole scene (cameras and lights too)
   about the frame centre. Bypassed, it passes its scene through.

@@ -116,6 +116,12 @@ impl Inspect for Shape3d {
 impl Inspect for Text3d {
     fn inspect(&mut self, ui: &mut egui::Ui, cx: &mut InspectCx<'_>) {
         ui.weak("Extrudes the Text or Path on its Outline input; Depth sets how deep.");
+        cx.dirty |= ui
+            .checkbox(&mut self.round_bevel, "Round bevel")
+            .on_hover_text(
+                "Rounded edges catch soft highlights; untick for a crisp 45-degree chamfer",
+            )
+            .changed();
         cx.dirty |= look(ui, &mut self.look, cx);
         if self.look.is_none() {
             cx.dirty |= crate::animation::colour_track(ui, "Colour", &mut self.colour, cx.time);
