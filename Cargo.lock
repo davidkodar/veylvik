@@ -4130,6 +4130,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "veylvik-scene"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "veylvik-document",
+ "veylvik-mesh",
+ "veylvik-text",
+]
+
+[[package]]
 name = "veylvik-segment"
 version = "0.1.0"
 dependencies = [

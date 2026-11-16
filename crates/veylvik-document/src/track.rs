@@ -322,8 +322,9 @@ pub fn set_scalar_at(scalar: &mut Scalar, time: Time, value: f32) -> Result<()> 
 }
 
 /// A keyable property inside a node's structured values, addressed by a path:
-/// `colours.0`..`colours.2` on a Text surface, and `studio.lights.N.position`,
-/// `.rotation`, `.colour` or `.intensity` on a Text surface or Light rig.
+/// `colours.0`..`colours.2` on a Text surface; `studio.lights.N.position`,
+/// `.rotation`, `.colour` or `.intensity` on a Text surface or Light rig; and
+/// `placement.position`, `.rotation`, `.scale` and `colour` on 3D scene nodes.
 pub enum Property<'a> {
     Vector(&'a mut Track3),
     Number(&'a mut Scalar),
@@ -332,6 +333,25 @@ impl crate::Operation {
     /// Every keyed colour, vector or light intensity with its key times.
     pub fn keyed_properties(&self) -> Vec<(String, Vec<Time>)> {
         let mut found = Vec::new();
+        let mut scene = self.clone();
+        if let (Some(placement), colour) = scene.scene_parts_mut() {
+            for (path, track) in [
+                ("placement.position", &placement.position),
+                ("placement.rotation", &placement.rotation),
+                ("placement.scale", &placement.scale),
+            ]
+            .into_iter()
+            .chain(colour.map(|c| ("colour", &*c)))
+            {
+                if track.is_animated() {
+                    found.push((
+                        path.to_owned(),
+                        track.keys().iter().map(|k| k.time).collect(),
+                    ));
+                }
+            }
+            return found;
+        }
         let studio = match self {
             crate::Operation::Material(m) => {
                 for (i, colour) in m.colours.iter().flatten().enumerate() {
@@ -369,8 +389,45 @@ impl crate::Operation {
         }
         found
     }
+    fn is_scene_node(&self) -> bool {
+        use crate::Operation as O;
+        matches!(
+            self,
+            O::Shape3d(_)
+                | O::Text3d(_)
+                | O::Light3d(_)
+                | O::ImageCard(_)
+                | O::Transform3d(_)
+                | O::Camera3d(_)
+        )
+    }
+    /// Placement and colour of 3D scene nodes.
+    fn scene_parts_mut(&mut self) -> (Option<&mut crate::nodes::Placement>, Option<&mut Track3>) {
+        use crate::Operation as O;
+        match self {
+            O::Shape3d(n) => (Some(&mut n.placement), Some(&mut n.colour)),
+            O::Text3d(n) => (Some(&mut n.placement), Some(&mut n.colour)),
+            O::Light3d(n) => (Some(&mut n.placement), Some(&mut n.colour)),
+            O::ImageCard(n) => (Some(&mut n.placement), None),
+            O::Transform3d(n) => (Some(&mut n.placement), None),
+            O::Camera3d(n) => (Some(&mut n.placement), None),
+            _ => (None, None),
+        }
+    }
     pub fn property_mut(&mut self, path: &str) -> Option<Property<'_>> {
         let parts: Vec<&str> = path.split('.').collect();
+        if self.is_scene_node() {
+            let (Some(placement), colour) = self.scene_parts_mut() else {
+                return None;
+            };
+            return match parts[..] {
+                ["placement", "position"] => Some(Property::Vector(&mut placement.position)),
+                ["placement", "rotation"] => Some(Property::Vector(&mut placement.rotation)),
+                ["placement", "scale"] => Some(Property::Vector(&mut placement.scale)),
+                ["colour"] => colour.map(Property::Vector),
+                _ => None,
+            };
+        }
         let studio = match self {
             crate::Operation::Material(m) => {
                 if let ["colours", index] = parts[..] {
@@ -398,4 +455,20 @@ impl crate::Operation {
             _ => return None,
         })
     }
+}
+
+/// Every value a track takes at its keys (or its constant).
+pub fn values(track: &Track3) -> impl Iterator<Item = [f32; 3]> + '_ {
+    let constant = track.constant();
+    constant
+        .into_iter()
+        .chain(track.keys().iter().map(|k| k.value))
+}
+/// JSON schema of a track whose channels stay within `lo..=hi`.
+pub fn schema(lo: f32, hi: f32) -> serde_json::Value {
+    let vector = serde_json::json!({"type":"array","minItems":3,"maxItems":3,"items":{"type":"number","minimum":lo,"maximum":hi}});
+    serde_json::json!({"oneOf":[vector,{"type":"object","additionalProperties":false,"required":["interpolation","keys"],"properties":{
+        "interpolation":{"enum":["linear","step","smooth","monotone"]},
+        "keys":{"type":"array","minItems":1,"maxItems":crate::animation::MAX_KEYS,"items":{"type":"object","additionalProperties":false,
+            "required":["time","value"],"properties":{"time":crate::registry::time_schema(),"value":vector}}}}}]})
 }

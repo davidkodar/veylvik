@@ -90,6 +90,14 @@ macro_rules! each_node {
             $crate::Operation::Blur($node) => $body,
             $crate::Operation::Shadow($node) => $body,
             $crate::Operation::ContactShadow($node) => $body,
+            $crate::Operation::Shape3d($node) => $body,
+            $crate::Operation::Text3d($node) => $body,
+            $crate::Operation::ImageCard($node) => $body,
+            $crate::Operation::Transform3d($node) => $body,
+            $crate::Operation::MergeScenes($node) => $body,
+            $crate::Operation::Camera3d($node) => $body,
+            $crate::Operation::Light3d($node) => $body,
+            $crate::Operation::RenderScene($node) => $body,
             $crate::Operation::Merge($node) => $body,
             $crate::Operation::Blend($node) => $body,
             $crate::Operation::Fade($node) => $body,
@@ -147,6 +155,19 @@ pub enum Operation {
     Blur(nodes::Blur),
     Shadow(nodes::Shadow),
     ContactShadow(nodes::ContactShadow),
+    #[serde(rename = "shape_3d")]
+    Shape3d(nodes::Shape3d),
+    #[serde(rename = "text_3d")]
+    Text3d(nodes::Text3d),
+    ImageCard(nodes::ImageCard),
+    #[serde(rename = "transform_3d")]
+    Transform3d(nodes::Transform3d),
+    MergeScenes(nodes::MergeScenes),
+    #[serde(rename = "camera_3d")]
+    Camera3d(nodes::Camera3d),
+    #[serde(rename = "light_3d")]
+    Light3d(nodes::Light3d),
+    RenderScene(nodes::RenderScene),
     Merge(nodes::Merge),
     Blend(nodes::Blend),
     Fade(nodes::Fade),
@@ -379,8 +400,12 @@ impl Composition {
                         registry::PortKind::Lights => {
                             format!("{}: the {port} input takes a Light rig", node.label)
                         }
+                        registry::PortKind::Scene => format!(
+                            "{}: the {port} input takes a 3D scene (an object, camera, light, 3D transform or Merge scenes)",
+                            node.label
+                        ),
                         registry::PortKind::Image => format!(
-                            "{}: a Light rig only connects to a Lights input, not {port}",
+                            "{}: the {port} input takes an image, not a light rig or 3D scene",
                             node.label
                         ),
                     });
@@ -401,6 +426,15 @@ impl Composition {
                 })
             {
                 return fail("Planar warp needs an enabled Planar track on its track input");
+            }
+            if let (Operation::Text3d(_), Some(outline)) =
+                (&node.operation, node.inputs.get("outline"))
+                && !self
+                    .nodes
+                    .get(outline)
+                    .is_some_and(|n| matches!(n.operation, Operation::Text(_) | Operation::Path(_)))
+            {
+                return fail("3D text extrudes a Text or Path node on its Outline input");
             }
             if let (Operation::LightRig(_), Some(track)) =
                 (&node.operation, node.inputs.get("track"))

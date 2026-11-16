@@ -191,3 +191,44 @@ fn real_text_extrudes_and_bad_input_is_refused() {
         .is_err()
     );
 }
+
+#[test]
+fn primitives_are_closed_solids_of_the_expected_volume() {
+    use veylvik_mesh::{Primitive, primitive};
+    let pi = std::f32::consts::PI;
+    for (kind, size, expected) in [
+        (Primitive::Cube, [10.0, 20.0, 30.0], 6000.0),
+        (
+            Primitive::Sphere,
+            [20.0, 20.0, 20.0],
+            4.0 / 3.0 * pi * 1000.0,
+        ),
+        (Primitive::Cylinder, [20.0, 10.0, 20.0], pi * 100.0 * 10.0),
+        (Primitive::Cone, [20.0, 10.0, 20.0], pi * 100.0 * 10.0 / 3.0),
+        (
+            Primitive::Torus,
+            [40.0, 40.0, 10.0],
+            2.0 * pi * pi * 15.0 * 25.0,
+        ),
+    ] {
+        let mesh = primitive(kind, size, 128).unwrap();
+        let (volume, consistent) = check(&mesh);
+        assert!(consistent, "{kind:?} faces its normals");
+        assert!(
+            (volume.abs() - expected).abs() / expected < 0.01,
+            "{kind:?}: {volume} vs {expected}"
+        );
+    }
+    let plane = primitive(Primitive::Plane, [10.0, 10.0, 0.0], 3).unwrap();
+    assert_eq!((plane.vertices.len(), plane.indices.len()), (4, 6));
+    assert!(plane.vertices.iter().all(|v| v.normal == [0.0, 0.0, 1.0]));
+    assert!(primitive(Primitive::Cube, [f32::NAN, 1.0, 1.0], 3).is_err());
+    // Segments are clamped, so huge requests stay bounded.
+    assert!(
+        primitive(Primitive::Sphere, [1.0; 3], 1_000_000)
+            .unwrap()
+            .indices
+            .len()
+            < 300_000
+    );
+}

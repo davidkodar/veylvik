@@ -195,7 +195,7 @@ impl Studio {
 
 /// Add menu submenus. Every registered node type appears here, except media and text,
 /// which have their own Add entries (a test keeps this complete as nodes are added).
-pub(crate) const ADD_MENU: [(&str, &[&registry::NodeType]); 9] = [
+pub(crate) const ADD_MENU: [(&str, &[&registry::NodeType]); 10] = [
     (
         "Generators",
         &[
@@ -251,6 +251,19 @@ pub(crate) const ADD_MENU: [(&str, &[&registry::NodeType]); 9] = [
             &registry::FADE,
             &registry::MASK,
             &registry::SURFACE_BLEND,
+        ],
+    ),
+    (
+        "3D",
+        &[
+            &registry::SHAPE_3D,
+            &registry::TEXT_3D,
+            &registry::IMAGE_CARD,
+            &registry::TRANSFORM_3D,
+            &registry::MERGE_SCENES,
+            &registry::CAMERA_3D,
+            &registry::LIGHT_3D,
+            &registry::RENDER_SCENE,
         ],
     ),
     (

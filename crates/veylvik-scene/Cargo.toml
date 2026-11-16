@@ -1,0 +1,16 @@
+[package]
+name = "veylvik-scene"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Evaluates Veylvik 3D scene graphs at a frame: objects, cameras, lights, transforms and projection."
+[dependencies]
+veylvik-document.workspace = true
+veylvik-text.workspace = true
+veylvik-mesh.workspace = true
+[dev-dependencies]
+serde_json.workspace = true
+serde.workspace = true
+[lints]
+workspace = true

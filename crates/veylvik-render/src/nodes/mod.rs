@@ -88,6 +88,7 @@ mod generators;
 mod keying;
 mod materials;
 mod media;
+mod scene;
 mod text;
 mod tracking;
 mod vector;

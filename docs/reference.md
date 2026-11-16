@@ -1261,6 +1261,41 @@ are limited to 64 MiB and each decoded float image to 128 MiB, also subject to t
 remaining render budget. Images are reloaded for each request; there is no stale
 image cache. Input orientation metadata is not applied.
 
+## 3D scenes (in progress)
+
+3D scenes travel through the same node graph on **Scene** ports (sockets named
+`scene` or `scene_N`; validation rejects images there and scenes on image ports).
+The frame is the composition's: x right and y down in pixels, z towards the viewer.
+Every position is an offset from where a node naturally sits, the frame centre at
+depth 0 or a title's own place, so a fresh 3D object lines up with its 2D layer.
+Placement (position, rotation in degrees applied about X, then Y, then Z, and
+scale) and colours are tracks, keyable as whole vectors through the inspector or
+`set_track_key` with `placement.position`, `placement.rotation`, `placement.scale`
+and `colour`.
+
+- **3D shape**: cube, sphere, plane, cylinder, cone or torus, sized in pixels, with
+  detail (segments, 3–256), colour, roughness and metallic.
+- **3D text**: extrudes the Text or Path node on its Outline input Depth pixels
+  deep, front face where the 2D layer sits, turning about its own centre.
+- **Image card**: any image on a flat card that covers the frame at depth 0.
+- **3D transform**: moves, turns and scales a whole scene (cameras and lights too)
+  about the frame centre. Bypassed, it passes its scene through.
+- **Merge scenes**: combines up to eight scenes.
+- **Camera**: untouched, it frames the composition exactly at depth 0, at the
+  distance its focal length and sensor width imply (1920 × 50 / 36 = 2667 pixels for
+  the defaults at 1080p); placement moves and turns it from there.
+- **Light**: point, spot (cone and softness) or sun, pointing along −z before
+  rotation.
+- **Render scene**: films a scene as an image with camera 1, 2, … in node order, or
+  0 for the home view.
+
+`veylvik-mesh` builds the geometry (extruded outlines and primitives, watertight
+and bounded); `veylvik-scene` evaluates a scene graph at a frame into objects,
+cameras and lights with world matrices, and projects points through cameras.
+Rendering scenes is the next stage: until then Render scene reports that the 3D
+renderer is not in this build, and viewing a scene node explains that it has no
+image of its own.
+
 ## MCP
 
 Launch a session against a saved composition:

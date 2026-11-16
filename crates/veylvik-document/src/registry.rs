@@ -41,6 +41,10 @@ pub enum ParameterKind {
     MaterialKind,
     PatinaKind,
     ReflectionKind,
+    Placement,
+    Colour3,
+    ShapeKind,
+    LightKind,
 }
 #[derive(Debug, Clone, Copy, Serialize)]
 pub struct Parameter {
@@ -94,6 +98,10 @@ impl Parameter {
             ParameterKind::Path => {
                 serde_json::to_value(crate::vector::PathMask::default()).unwrap()
             }
+            ParameterKind::Placement => json!(crate::nodes::Placement::default()),
+            ParameterKind::Colour3 => json!([0.6_f32, 0.6_f32, 0.6_f32]),
+            ParameterKind::ShapeKind => json!(crate::nodes::ShapeKind::default()),
+            ParameterKind::LightKind => json!(crate::nodes::LightKind::default()),
         }
     }
     fn schema(&self) -> Value {
@@ -116,6 +124,14 @@ impl Parameter {
                 json!({"anyOf":[{"type":"null"},crate::optical::SurfaceOptics::schema()]})
             }
             ParameterKind::Palette => crate::optical::palette_schema(),
+            ParameterKind::Placement => crate::nodes::Placement::schema(),
+            ParameterKind::Colour3 => crate::track::schema(0.0, 1.0),
+            ParameterKind::ShapeKind => {
+                json!({"type":"string","enum":crate::nodes::ShapeKind::ALL})
+            }
+            ParameterKind::LightKind => {
+                json!({"type":"string","enum":crate::nodes::LightKind::ALL})
+            }
             ParameterKind::PlanarTrack => crate::planar::schema(),
             ParameterKind::PlanarMode => {
                 json!({"type":"string","enum":["follow","fit","stabilize"]})
@@ -199,6 +215,8 @@ pub(crate) const fn other(
 pub enum PortKind {
     Image,
     Lights,
+    /// Objects, cameras and lights in 3D; rendered back to an image by Render scene.
+    Scene,
 }
 #[derive(Debug, Serialize)]
 pub struct NodeType {
@@ -220,6 +238,8 @@ impl NodeType {
     pub fn port_kind(&self, port: &str) -> PortKind {
         if port == "lights" {
             PortKind::Lights
+        } else if port == "scene" || port.starts_with("scene_") {
+            PortKind::Scene
         } else {
             PortKind::Image
         }
@@ -250,12 +270,13 @@ impl NodeType {
 }
 // Each descriptor lives with its node struct in `crate::nodes`.
 pub use crate::nodes::{
-    AFFINE, ATMOSPHERE, BLEND, BLUR, CHANNEL_MASK, CHROMA_KEY, COLOR_CORRECT, COLORIZE,
+    AFFINE, ATMOSPHERE, BLEND, BLUR, CAMERA_3D, CHANNEL_MASK, CHROMA_KEY, COLOR_CORRECT, COLORIZE,
     COMBINE_MASK, CONDENSATION, DISPLACE, DRIP, DUST, ELLIPSE, EXPOSURE, FADE, FIRE, FOOTAGE,
-    FRACTAL_NOISE, GLASS, GRADIENT, IMAGE, LENS_BLUR, LIGHT_RIG, LUMA_KEY, LUT, MASK, MATERIAL,
-    MATERIAL_LAYERS, MERGE, METALLIC_SHINE, MORPHOLOGY, MOTION_BLUR, NOISE, OCIO, OPTICAL_FLOW,
-    PATH, PATINA, PLANAR_TRACK, PLANAR_WARP, REFINE_MATTE, SOLID, SUN_GLINTS, SURFACE_BLEND,
-    SURFACE_REFLECTION, TEXT, TIME_REMAP, TRANSFORM,
+    FRACTAL_NOISE, GLASS, GRADIENT, IMAGE, IMAGE_CARD, LENS_BLUR, LIGHT_3D, LIGHT_RIG, LUMA_KEY,
+    LUT, MASK, MATERIAL, MATERIAL_LAYERS, MERGE, MERGE_SCENES, METALLIC_SHINE, MORPHOLOGY,
+    MOTION_BLUR, NOISE, OCIO, OPTICAL_FLOW, PATH, PATINA, PLANAR_TRACK, PLANAR_WARP, REFINE_MATTE,
+    RENDER_SCENE, SHAPE_3D, SOLID, SUN_GLINTS, SURFACE_BLEND, SURFACE_REFLECTION, TEXT, TEXT_3D,
+    TIME_REMAP, TRANSFORM, TRANSFORM_3D,
 };
 pub static TYPES: &[&NodeType] = &[
     &SOLID,
@@ -269,6 +290,14 @@ pub static TYPES: &[&NodeType] = &[
     &LIGHT_RIG,
     &crate::nodes::SHADOW,
     &crate::nodes::CONTACT_SHADOW,
+    &crate::nodes::SHAPE_3D,
+    &crate::nodes::TEXT_3D,
+    &crate::nodes::IMAGE_CARD,
+    &crate::nodes::TRANSFORM_3D,
+    &crate::nodes::MERGE_SCENES,
+    &crate::nodes::CAMERA_3D,
+    &crate::nodes::LIGHT_3D,
+    &crate::nodes::RENDER_SCENE,
     &MERGE,
     &IMAGE,
     &FOOTAGE,

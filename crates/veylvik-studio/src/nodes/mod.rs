@@ -56,6 +56,7 @@ mod keying;
 mod materials;
 pub(crate) use materials::{finish_controls, lighting_controls, look_slider};
 mod media;
+mod scene;
 mod text;
 mod tracking;
 mod vector;

@@ -1,0 +1,334 @@
+//! Evaluates a 3D scene graph at one frame into flat, bounded lists of objects, cameras and lights with world matrices.
+//!
+//! The frame is the composition's: x right and y down in pixels, z towards the viewer.
+//! "Home" is the frame centre at depth 0; positions are offsets from where each node
+//! naturally sits. The home camera sees exactly the 2D frame at depth 0.
+pub mod math;
+use math::{Mat4, mul, rotate, scale, translate};
+use veylvik_document::{
+    Composition, Error, NodeId, Operation, Time,
+    nodes::{LightKind, Placement, ShapeKind},
+    vector::PathMask,
+};
+pub use veylvik_mesh::Mesh;
+
+pub type Result<T> = std::result::Result<T, Error>;
+/// Bound on what one scene may hold.
+pub const MAX_OBJECTS: usize = 4096;
+/// Flattening tolerance for extruded outlines, in pixels.
+pub const OUTLINE_TOLERANCE: f32 = 0.2;
+
+#[derive(Debug, Clone)]
+pub enum Geometry {
+    Shape {
+        kind: ShapeKind,
+        size: [f32; 3],
+        segments: u32,
+    },
+    /// An outline in composition pixels, extruded `depth` deep about z = 0.
+    Text { outline: PathMask, depth: f32 },
+    /// A card the size of the frame showing the image of node `image`.
+    Card { image: NodeId, size: [f32; 2] },
+}
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Surface {
+    pub colour: [f32; 3],
+    pub roughness: f32,
+    pub metallic: f32,
+    /// Shows its own colours without lighting (image cards).
+    pub unlit: bool,
+}
+#[derive(Debug, Clone)]
+pub struct Object {
+    pub node: NodeId,
+    pub geometry: Geometry,
+    pub world: Mat4,
+    pub surface: Surface,
+}
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Camera {
+    /// None for the home view.
+    pub node: Option<NodeId>,
+    /// Camera to world; the camera looks along its -z with y down.
+    pub world: Mat4,
+    pub focal_length: f32,
+    pub sensor_width: f32,
+}
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Light {
+    pub node: NodeId,
+    pub kind: LightKind,
+    pub world: Mat4,
+    pub colour: [f32; 3],
+    pub intensity: f32,
+    pub cone: f32,
+    pub softness: f32,
+}
+impl Light {
+    pub fn position(&self) -> [f32; 3] {
+        math::point(&self.world, [0.0; 3])
+    }
+    /// Where the light points (its -z), normalised.
+    pub fn direction(&self) -> [f32; 3] {
+        let d = math::direction(&self.world, [0.0, 0.0, -1.0]);
+        let l = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt().max(1e-12);
+        d.map(|v| v / l)
+    }
+}
+#[derive(Debug, Clone, Default)]
+pub struct Scene {
+    pub objects: Vec<Object>,
+    pub cameras: Vec<Camera>,
+    pub lights: Vec<Light>,
+}
+fn fail<T>(message: impl Into<String>) -> Result<T> {
+    Err(Error(message.into()))
+}
+fn placed(p: &Placement, time: Time, origin: [f32; 3]) -> Result<Mat4> {
+    let position = p.position.at(time)?;
+    Ok(mul(
+        &translate([
+            origin[0] + position[0],
+            origin[1] + position[1],
+            origin[2] + position[2],
+        ]),
+        &mul(&rotate(p.rotation.at(time)?), &scale(p.scale.at(time)?)),
+    ))
+}
+/// Pixels from the home camera to the frame at depth 0 (its focal length in pixels).
+pub fn home_distance(width: u32, focal_length: f32, sensor_width: f32) -> f32 {
+    width as f32 * focal_length / sensor_width.max(1e-6)
+}
+/// The camera that sees the 2D frame exactly.
+pub fn home_camera(width: u32, height: u32) -> Camera {
+    let (focal_length, sensor_width) = (50.0, 36.0);
+    Camera {
+        node: None,
+        world: translate([
+            width as f32 * 0.5,
+            height as f32 * 0.5,
+            home_distance(width, focal_length, sensor_width),
+        ]),
+        focal_length,
+        sensor_width,
+    }
+}
+impl Camera {
+    /// Where a world point lands in the frame (pixels) and its distance in front of
+    /// the camera; None behind it.
+    pub fn project(&self, p: [f32; 3], width: u32, height: u32) -> Option<([f32; 2], f32)> {
+        let v = math::point(&math::rigid_inverse(&self.world), p);
+        let depth = -v[2];
+        if depth <= 1e-4 {
+            return None;
+        }
+        let f = home_distance(width, self.focal_length, self.sensor_width);
+        Some((
+            [
+                width as f32 * 0.5 + f * v[0] / depth,
+                height as f32 * 0.5 + f * v[1] / depth,
+            ],
+            depth,
+        ))
+    }
+}
+impl Scene {
+    /// Camera `index` (1-based, in node order); 0, or a missing camera, is the home view.
+    pub fn camera(&self, index: usize, width: u32, height: u32) -> Camera {
+        index
+            .checked_sub(1)
+            .and_then(|i| self.cameras.get(i))
+            .copied()
+            .unwrap_or_else(|| home_camera(width, height))
+    }
+    fn transformed(mut self, m: &Mat4) -> Self {
+        for o in &mut self.objects {
+            o.world = mul(m, &o.world);
+        }
+        for c in &mut self.cameras {
+            c.world = mul(m, &c.world);
+        }
+        for l in &mut self.lights {
+            l.world = mul(m, &l.world);
+        }
+        self
+    }
+}
+
+/// The scene produced by `root` at `time`.
+pub fn evaluate(doc: &Composition, root: NodeId, time: Time) -> Result<Scene> {
+    let scene = node(doc, root, time, 0)?;
+    if scene.objects.len() + scene.cameras.len() + scene.lights.len() > MAX_OBJECTS {
+        return fail(format!(
+            "a 3D scene may hold at most {MAX_OBJECTS} objects, cameras and lights"
+        ));
+    }
+    Ok(scene)
+}
+fn node(doc: &Composition, id: NodeId, time: Time, depth: usize) -> Result<Scene> {
+    if depth > 256 {
+        return fail("3D scene nesting is too deep");
+    }
+    let Some(n) = doc.nodes.get(&id) else {
+        return fail("a 3D scene input is missing");
+    };
+    let (w, h) = (doc.width, doc.height);
+    let centre = [w as f32 * 0.5, h as f32 * 0.5, 0.0];
+    let input = |port: &str| n.inputs.get(port).copied();
+    let mut scene = Scene::default();
+    if n.bypass {
+        // A bypassed transform passes its scene through; other scene nodes vanish.
+        if let (Operation::Transform3d(_), Some(child)) = (&n.operation, input("scene")) {
+            return node(doc, child, time, depth + 1);
+        }
+        return Ok(scene);
+    }
+    match &n.operation {
+        Operation::Shape3d(s) => scene.objects.push(Object {
+            node: id,
+            geometry: Geometry::Shape {
+                kind: s.kind,
+                size: [s.size_x.at(time)?, s.size_y.at(time)?, s.size_z.at(time)?],
+                segments: s.detail.at(time)?.round().clamp(3.0, 256.0) as u32,
+            },
+            world: placed(&s.placement, time, centre)?,
+            surface: Surface {
+                colour: s.colour.at(time)?,
+                roughness: s.roughness.at(time)?.clamp(0.0, 1.0),
+                metallic: s.metallic.at(time)?.clamp(0.0, 1.0),
+                unlit: false,
+            },
+        }),
+        Operation::Text3d(t) => {
+            let source =
+                input("outline").ok_or_else(|| Error("3D text needs an outline".into()))?;
+            let outline = match &doc.nodes[&source].operation {
+                op @ Operation::Text(_) => {
+                    veylvik_text::outline(op, time).map_err(|e| Error(e.to_string()))?
+                }
+                Operation::Path(p) => p.geometry.at(time)?,
+                _ => return fail("3D text extrudes a Text or Path node"),
+            };
+            // Turn about the outline's own centre, so the title spins in place.
+            let [x0, y0, x1, y1] = veylvik_text::bounds(&outline);
+            let pivot = [(x0 + x1) * 0.5, (y0 + y1) * 0.5, 0.0];
+            let world = mul(
+                &placed(&t.placement, time, pivot)?,
+                &translate([-pivot[0], -pivot[1], 0.0]),
+            );
+            scene.objects.push(Object {
+                node: id,
+                geometry: Geometry::Text {
+                    outline,
+                    depth: t.depth.at(time)?.max(0.0),
+                },
+                world,
+                surface: Surface {
+                    colour: t.colour.at(time)?,
+                    roughness: t.roughness.at(time)?.clamp(0.0, 1.0),
+                    metallic: t.metallic.at(time)?.clamp(0.0, 1.0),
+                    unlit: false,
+                },
+            });
+        }
+        Operation::ImageCard(c) => scene.objects.push(Object {
+            node: id,
+            geometry: Geometry::Card {
+                image: input("image")
+                    .ok_or_else(|| Error("an image card needs an image".into()))?,
+                size: [w as f32, h as f32],
+            },
+            world: placed(&c.placement, time, centre)?,
+            surface: Surface {
+                colour: [1.0; 3],
+                roughness: 1.0,
+                metallic: 0.0,
+                unlit: true,
+            },
+        }),
+        Operation::Transform3d(t) => {
+            let child = input("scene").ok_or_else(|| Error("3D transform needs a scene".into()))?;
+            let m = mul(
+                &placed(&t.placement, time, centre)?,
+                &translate(centre.map(|v| -v)),
+            );
+            scene = node(doc, child, time, depth + 1)?.transformed(&m);
+        }
+        Operation::MergeScenes(_) => {
+            for port in veylvik_document::nodes::MERGE_PORTS {
+                if let Some(child) = input(port) {
+                    let part = node(doc, child, time, depth + 1)?;
+                    scene.objects.extend(part.objects);
+                    scene.cameras.extend(part.cameras);
+                    scene.lights.extend(part.lights);
+                }
+            }
+        }
+        Operation::Camera3d(c) => {
+            let (focal_length, sensor_width) = (c.focal_length.at(time)?, c.sensor_width.at(time)?);
+            // Scale is ignored: a camera is rigid.
+            let position = c.placement.position.at(time)?;
+            let home = [
+                centre[0],
+                centre[1],
+                home_distance(w, focal_length, sensor_width),
+            ];
+            scene.cameras.push(Camera {
+                node: Some(id),
+                world: mul(
+                    &translate([
+                        home[0] + position[0],
+                        home[1] + position[1],
+                        home[2] + position[2],
+                    ]),
+                    &rotate(c.placement.rotation.at(time)?),
+                ),
+                focal_length,
+                sensor_width,
+            });
+        }
+        Operation::Light3d(l) => scene.lights.push(Light {
+            node: id,
+            kind: l.kind,
+            world: placed(&l.placement, time, centre)?,
+            colour: l.colour.at(time)?,
+            intensity: l.intensity.at(time)?.max(0.0),
+            cone: l.cone.at(time)?.clamp(1.0, 179.0),
+            softness: l.softness.at(time)?.clamp(0.0, 1.0),
+        }),
+        _ => return fail(format!("{} is not a 3D scene node", n.label)),
+    }
+    Ok(scene)
+}
+
+/// The object's mesh in its own frame (before `world`).
+pub fn mesh(object: &Object) -> Result<Mesh> {
+    use veylvik_mesh::Primitive as P;
+    match &object.geometry {
+        Geometry::Shape {
+            kind,
+            size,
+            segments,
+        } => veylvik_mesh::primitive(
+            match kind {
+                ShapeKind::Cube => P::Cube,
+                ShapeKind::Sphere => P::Sphere,
+                ShapeKind::Plane => P::Plane,
+                ShapeKind::Cylinder => P::Cylinder,
+                ShapeKind::Cone => P::Cone,
+                ShapeKind::Torus => P::Torus,
+            },
+            *size,
+            *segments,
+        ),
+        Geometry::Text { outline, depth } => veylvik_mesh::extrude(
+            &outline.commands,
+            outline.fill_rule,
+            *depth,
+            OUTLINE_TOLERANCE,
+        ),
+        Geometry::Card { size, .. } => {
+            veylvik_mesh::primitive(P::Plane, [size[0], size[1], 0.0], 3)
+        }
+    }
+}

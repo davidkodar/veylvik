@@ -1,4 +1,4 @@
-//! Extrudes closed vector outlines into watertight, bounded triangle meshes: two caps and side walls sharing one flattening.
+//! Bounded triangle meshes: closed vector outlines extruded into watertight solids (caps and walls share one flattening), and primitive solids.
 //!
 //! Frame: x right and y down in composition pixels, z towards the viewer. The front
 //! cap sits at z = +depth/2 facing +z, the back cap at -depth/2 facing -z.
@@ -10,6 +10,9 @@ use veylvik_document::{
     Error,
     vector::{FillRule, PathCommand},
 };
+
+mod primitives;
+pub use primitives::{Primitive, SEGMENTS, primitive};
 
 pub type Result<T> = std::result::Result<T, Error>;
 /// Bound on output size so a pathological outline cannot exhaust memory.

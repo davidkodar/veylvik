@@ -301,12 +301,18 @@ impl Plan {
         if !composition.nodes.contains_key(&output) {
             return Err(error("requested output node is missing"));
         }
-        if composition.nodes[&output].operation.descriptor().output
-            != veylvik_document::registry::PortKind::Image
-        {
-            return Err(error(
-                "A Light rig has no image of its own; view a surface it lights",
-            ));
+        match composition.nodes[&output].operation.descriptor().output {
+            veylvik_document::registry::PortKind::Image => {}
+            veylvik_document::registry::PortKind::Lights => {
+                return Err(error(
+                    "A Light rig has no image of its own; view a surface it lights",
+                ));
+            }
+            veylvik_document::registry::PortKind::Scene => {
+                return Err(error(
+                    "A 3D scene has no image of its own; view the Render scene node that films it",
+                ));
+            }
         }
         // Resolve bypasses before traversal, so disabled compound effects dispatch no work.
         let mut effective = None;
@@ -439,8 +445,9 @@ impl Plan {
                         | Operation::Affine(_)
                 );
             domains.insert(node.id, aces);
-            // A light rig is read by the surfaces it lights; it has no pass or image.
-            if node.operation.descriptor().output == veylvik_document::registry::PortKind::Lights {
+            // Light rigs and 3D scene nodes are data read by the nodes they feed;
+            // they have no pass or image of their own.
+            if node.operation.descriptor().output != veylvik_document::registry::PortKind::Image {
                 continue;
             }
             if node.operation.inputs().len() > MAX_PORTS {
@@ -592,6 +599,11 @@ impl Plan {
                     Operation::Image(veylvik_document::nodes::Image { asset }) => {
                         inputs[0] = Input::Asset(asset.clone());
                         Kernel::Image
+                    }
+                    Operation::RenderScene(_) => {
+                        return Err(error(
+                            "Render scene needs the 3D renderer, which is not in this build yet",
+                        ));
                     }
                     _ => unreachable!("only structural nodes are special"),
                 },
