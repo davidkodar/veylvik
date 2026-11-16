@@ -97,6 +97,7 @@ fn export(
             RenderRequest {
                 time,
                 region: Some(region),
+                scene_view: None,
             },
             &inputs,
         )?;

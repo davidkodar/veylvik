@@ -209,3 +209,110 @@ fn placement_and_colour_are_keyable_through_commands() {
         .collect();
     assert_eq!(keyed, ["placement.rotation", "colour"]);
 }
+
+#[test]
+fn the_free_view_orbits_walks_and_turns_into_camera_keys() {
+    use veylvik_scene::FreeView;
+    let home = FreeView::home(W, H);
+    let near = |a: [f32; 2], b: [f32; 2]| (a[0] - b[0]).abs() < 0.05 && (a[1] - b[1]).abs() < 0.05;
+    // Home sees the frame exactly, like the home camera.
+    let (corner, _) = home.camera().project([0.0, 0.0, 0.0], W, H).unwrap();
+    assert!(near(corner, [0.0, 0.0]), "{corner:?}");
+    // Orbiting keeps the target in the middle of the picture.
+    let mut view = home;
+    view.orbit(35.0, 20.0);
+    let (centre, depth) = view.camera().project(view.target, W, H).unwrap();
+    assert!(near(centre, [960.0, 540.0]) && (depth - view.distance).abs() < 0.5);
+    // Panning by a tenth of the view moves the old target a tenth of the frame.
+    let before = view.target;
+    view.pan(0.1, 0.0);
+    let (p, _) = view.camera().project(before, W, H).unwrap();
+    assert!((p[0] - (960.0 + 192.0)).abs() < 0.5, "{p:?}");
+    // Round trip through a camera.
+    let back = FreeView::from_camera(&view.camera(), view.distance);
+    for (a, b) in back.target.iter().zip(view.target) {
+        assert!((a - b).abs() < 0.05);
+    }
+    // Walking forward moves the eye along the view without turning it.
+    let eye = view.eye();
+    view.walk(0.0, 0.0, 100.0, 0.0, 0.0);
+    let moved = view.eye();
+    let travelled =
+        ((moved[0] - eye[0]).powi(2) + (moved[1] - eye[1]).powi(2) + (moved[2] - eye[2]).powi(2))
+            .sqrt();
+    assert!((travelled - 100.0).abs() < 0.01);
+    // A Camera node given the view's placement films exactly the same picture.
+    let (position, rotation) = view.placement(W, H);
+    let mut doc = scene();
+    let mut camera = op(&CAMERA_3D);
+    if let Operation::Camera3d(c) = &mut camera {
+        c.placement.position = position.into();
+        c.placement.rotation = rotation.into();
+    }
+    let id = add(&mut doc, "camera", camera, &[]);
+    let filmed = evaluate(&doc, id, at(0)).unwrap().camera(1, W, H);
+    for p in [
+        [0.0, 0.0, 0.0],
+        [500.0, 300.0, -200.0],
+        [1800.0, 900.0, 100.0],
+    ] {
+        let (a, b) = (view.camera().project(p, W, H), filmed.project(p, W, H));
+        match (a, b) {
+            (Some((a, _)), Some((b, _))) => assert!(near(a, b), "{a:?} vs {b:?}"),
+            (a, b) => assert_eq!(a.is_some(), b.is_some()),
+        }
+    }
+}
+
+#[test]
+fn the_view_aims_and_frames() {
+    use veylvik_scene::FreeView;
+    let mut view = FreeView::home(W, H);
+    view.look_at([0.0, 0.0, 1000.0], [960.0, 540.0, 0.0]);
+    let (p, _) = view.camera().project([960.0, 540.0, 0.0], W, H).unwrap();
+    assert!(
+        (p[0] - 960.0).abs() < 0.1 && (p[1] - 540.0).abs() < 0.1,
+        "{p:?}"
+    );
+    view.frame([100.0, 100.0, 100.0], 300.0);
+    // The sphere's edge stays inside the picture.
+    let r = view.camera();
+    let right = math::direction(&r.world, [1.0, 0.0, 0.0]);
+    let edge = [
+        100.0 + right[0] * 300.0,
+        100.0 + right[1] * 300.0,
+        100.0 + right[2] * 300.0,
+    ];
+    let (p, _) = r.project(edge, W, H).unwrap();
+    assert!(p[0] > 960.0 && p[0] < 1920.0, "{p:?}");
+}
+
+#[test]
+fn walked_paths_are_smoothed_unwrapped_and_thinned() {
+    use veylvik_scene::smooth_walk;
+    // A straight walk with shake, turning through 360 degrees.
+    let samples: Vec<_> = (0..97)
+        .map(|i| {
+            let shake = if i % 2 == 0 { 6.0 } else { -6.0 };
+            (
+                Time { ticks: i, rate: 24 },
+                [i as f32 * 10.0, shake, 0.0],
+                [0.0, (i as f32 * 5.0).rem_euclid(360.0), 0.0],
+            )
+        })
+        .collect();
+    let out = smooth_walk(&samples, 9, 4);
+    assert_eq!(out.len(), 25, "every fourth frame, last included");
+    assert_eq!(out.first().unwrap().0.ticks, 0);
+    assert_eq!(out.last().unwrap().0.ticks, 96);
+    // Shake is gone in the middle; the ends stay put.
+    assert!(
+        out[5..20].iter().all(|p| p.1[1].abs() < 1.0),
+        "{:?}",
+        out[10].1
+    );
+    assert_eq!(out[0].1, samples[0].1);
+    // Rotation keeps increasing past 360 instead of jumping back.
+    assert!(out.windows(2).all(|w| w[1].2[1] >= w[0].2[1] - 1e-3));
+    assert!((out.last().unwrap().2[1] - 480.0).abs() < 1e-3);
+}

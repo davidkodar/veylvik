@@ -148,11 +148,26 @@ impl Session {
         let renderer = self.renderer.as_ref().unwrap();
         let inputs = crate::assets::load_inputs(&plan, &self.asset_base, renderer.budget_bytes)?;
         let frame = if preview {
-            let frame =
-                renderer.render_gpu_cached(&plan, RenderRequest { time, region }, &inputs)?;
+            let frame = renderer.render_gpu_cached(
+                &plan,
+                RenderRequest {
+                    time,
+                    region,
+                    scene_view: None,
+                },
+                &inputs,
+            )?;
             renderer.read_frame(renderer.apply_ocio_view(&plan, &inputs, frame)?.as_ref())?
         } else {
-            renderer.render_frame_export(&plan, RenderRequest { time, region }, &inputs)?
+            renderer.render_frame_export(
+                &plan,
+                RenderRequest {
+                    time,
+                    region,
+                    scene_view: None,
+                },
+                &inputs,
+            )?
         };
         Ok((output, time, frame))
     }

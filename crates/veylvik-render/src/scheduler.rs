@@ -125,9 +125,11 @@ impl PreviewScheduler<Arc<GpuFrame>> {
                 let start = Instant::now();
                 let frame = (|| {
                     cache.prepare(&job.plan, &job.inputs)?;
-                    if job.request.region.is_none()
-                        && let Some(frame) = cache.lookup(&renderer, job.request.time)?
-                    {
+                    // The playback cache holds frames by time alone, so a free 3D view
+                    // (which films the same time differently) bypasses it both ways.
+                    let cacheable =
+                        job.request.region.is_none() && job.request.scene_view.is_none();
+                    if cacheable && let Some(frame) = cache.lookup(&renderer, job.request.time)? {
                         return Ok(frame);
                     }
                     cache.make_room(
@@ -145,7 +147,7 @@ impl PreviewScheduler<Arc<GpuFrame>> {
                         frame = render_gpu_job(&renderer, &job, cache.divisor(), cancelled);
                     }
                     let frame = frame?;
-                    if job.request.region.is_none() {
+                    if cacheable {
                         cache.insert(&renderer, job.request.time, frame.clone(), cancelled);
                     }
                     Ok(frame)

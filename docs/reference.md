@@ -1310,6 +1310,49 @@ pass, keeps card images alive for it and calls the renderer the host registered
 Render scene reports that the 3D renderer is not loaded, and viewing a scene node
 explains that it has no image of its own.
 
+**Navigating a scene.** While the viewer shows a Render scene node, or an image
+with one upstream (the nearest is used), a **3D** row
+appears under the viewer toolbar and the mouse moves through the scene instead of
+panning the 2D image (untick **Navigate** for 2D pan and zoom): drag to orbit
+around the view's target, middle-drag or Shift-drag to pan, scroll to dolly, and
+hold the right button to walk (W A S D to move along the view, Q and E down and up,
+Shift faster, the mouse to look around, at half the view distance per second).
+Double-click or **Home view** returns to the view that matches 2D. The first move
+starts a **free view** from the scene's camera; it only films the preview (the
+render request's `scene_view`, part of the frame cache key) and never changes the
+project or exports. **Scene camera** looks through the scene's camera again.
+**Camera from view** moves the scene's camera (the one Render scene films with, or
+the scene's first) to the free view in one undo step, keyed at the playhead when
+the camera is animated. **Record walk**, while playing, keeps the free view at every
+played frame and, when stopped, writes them all as camera position and rotation
+keys in one undo step. `veylvik_scene::FreeView` holds the view (target, yaw,
+pitch, distance, lens) and its `placement` is exactly what a Camera node needs to
+film the same picture.
+
+**Scene guides and assisted camera work.** While navigating, the viewer draws
+guides through the camera it looks through; they are overlays, never rendered.
+**Guides** toggles each kind: cameras (a body, the cone to the frame it films and
+that frame, where 2D layers sit; the camera Render scene uses in amber, others
+grey, hidden while you look through it), lights in their own colour (a bulb with
+rays; a spot's cone with its angle and aim line; a sun's parallel arrows), the 2D
+frame as a dashed rectangle at depth 0 with a faint floor grid level with its bottom
+edge and X/Y/Z axes at its centre, camera paths (an animated camera's route with a
+dot at every key, cached per revision), and the selected object's box. Hovering a
+guide names it; clicking selects its node. **View** jumps the free view to Front,
+Top or Side around the same target, back to the scene **Camera**, or along the
+selected **Light** (to aim a spot or sun).
+
+**Frame (F)** brings the selected object, or everything, into view. **Keep aimed**
+keeps looking at the selection while you walk. **Record walk** plays the range from
+its start while you walk, draws the path live in red, and stops by itself when play
+stops or wraps round; the walk is then smoothed (half a second, so hand shake goes;
+the ends stay put; turns past 360 degrees stay continuous), thinned to a key every
+four frames with smooth interpolation, and written in one undo step. **Moves**
+writes a ready-made eased move over the play range from the current view, aimed at
+the selection: **Orbit** (a quarter turn), **Push in**, **Pull out**, **Crane up**
+and **Fly by** (keys every six frames). Recording, moves and **Camera from view**
+add a Camera to the scene (merged in front of Render scene) when it has none.
+
 **Library looks on 3D objects.** 3D text and 3D shapes take an optional **look**:
 any library material, catalogue look or saved material (Library > Materials >
 Apply to selection, or MCP `apply_material` with the 3D node as target). A look

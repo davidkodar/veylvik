@@ -82,6 +82,7 @@ impl Renderer {
                 RenderRequest {
                     time,
                     region: request.region,
+                    scene_view: None,
                 },
                 inputs,
             )?;

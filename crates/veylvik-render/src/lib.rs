@@ -563,7 +563,7 @@ impl Renderer {
         let allocation = self.device.push_error_scope(wgpu::ErrorFilter::OutOfMemory);
         let result = self.encode_and_read(
             plan,
-            (&evaluated, request.time),
+            (&evaluated, request.time, request.scene_view),
             inputs,
             &vectors,
             &mut pool,
@@ -718,7 +718,11 @@ impl Renderer {
     fn encode_and_read(
         &self,
         plan: &Plan,
-        (evaluated, time): (&[Params], veylvik_document::Time),
+        (evaluated, time, scene_view): (
+            &[Params],
+            veylvik_document::Time,
+            Option<veylvik_scene::Camera>,
+        ),
         inputs: &ImageInputs,
         vectors: &BTreeMap<usize, Arc<GpuFrame>>,
         pool: &mut pool::Pool,
@@ -790,6 +794,7 @@ impl Renderer {
                         error("Render scene needs the 3D renderer, which this host has not loaded")
                     })?;
                 let (scene, camera) = scene_hook::evaluate(plan, scheduled.node, time)?;
+                let camera = scene_view.unwrap_or(camera);
                 let images: Vec<(veylvik_document::NodeId, &wgpu::Buffer)> = scheduled
                     .cards
                     .iter()

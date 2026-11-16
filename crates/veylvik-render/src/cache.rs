@@ -50,6 +50,11 @@ impl Key {
                     pass.node,
                     request.time,
                 )?);
+                if let Some(view) = request.scene_view {
+                    words.push(3);
+                    words.extend(view.world.iter().flatten().map(|v| v.to_bits()));
+                    words.extend([view.focal_length.to_bits(), view.sensor_width.to_bits()]);
+                }
                 for (_, input) in &pass.cards {
                     if let Input::Value(slot) = input {
                         words.extend([2, *slot as u32]);

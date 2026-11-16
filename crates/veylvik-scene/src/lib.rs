@@ -4,6 +4,7 @@
 //! "Home" is the frame centre at depth 0; positions are offsets from where each node
 //! naturally sits. The home camera sees exactly the 2D frame at depth 0.
 pub mod math;
+mod view;
 use math::{Mat4, mul, rotate, scale, translate};
 use veylvik_document::{
     Composition, Error, NodeId, Operation, Time,
@@ -11,6 +12,7 @@ use veylvik_document::{
     vector::PathMask,
 };
 pub use veylvik_mesh::Mesh;
+pub use view::{FreeView, Pose, smooth_walk};
 
 pub type Result<T> = std::result::Result<T, Error>;
 /// Bound on what one scene may hold.

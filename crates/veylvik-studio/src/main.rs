@@ -46,6 +46,7 @@ mod preview_images;
 mod project;
 mod recovery;
 mod render_queue;
+mod scene_guides;
 mod scopes;
 mod sequence;
 mod shape_animation;
@@ -65,6 +66,7 @@ mod transform_handles;
 mod vector_editor;
 mod video_export;
 mod viewer;
+mod viewport3d;
 use display::{Display, DisplayFrame, Paint, ViewSettings};
 use eframe::{egui, egui_wgpu};
 use files::{Choice, Completed, Tasks};
@@ -238,6 +240,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 last_render_ms: None,
                 error: false,
                 playing: false,
+                scene_view: None,
                 playback: Instant::now(),
                 playback_frame: 0,
                 files: Tasks::new(cc.egui_ctx.clone()),
@@ -332,6 +335,8 @@ struct Studio {
     last_render_ms: Option<f64>,
     error: bool,
     playing: bool,
+    /// The free 3D view the preview films with (see `viewport3d`).
+    scene_view: Option<veylvik_scene::Camera>,
     playback: Instant,
     playback_frame: i64,
     files: Tasks,
@@ -709,7 +714,10 @@ impl Studio {
             Ok::<_, Box<dyn std::error::Error>>(scheduler.submit(
                 self.project.document.revision(),
                 plan,
-                RenderRequest::full(self.project.time()?),
+                RenderRequest {
+                    scene_view: self.scene_view.filter(|_| self.viewed_scene().is_some()),
+                    ..RenderRequest::full(self.project.time()?)
+                },
                 self.project.inputs.clone(),
             )?)
         })();
@@ -2650,6 +2658,7 @@ impl eframe::App for Studio {
     fn ui(&mut self, ui: &mut egui::Ui, _: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
         self.theme(&ctx);
+        self.scene_record_tick(&ctx);
         // eframe creates the root UI before our live palette update.
         ui.set_style(ctx.global_style());
         if ctx.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, egui::Key::Comma))
@@ -3045,6 +3054,7 @@ impl eframe::App for Studio {
                         }
                     });
                     self.comparison_toolbar(ui);
+                    self.scene_toolbar(ui);
                     self.scopes_panel(ui);
                     if self.occlusion_pending() {
                         ui.horizontal_wrapped(|ui| {
@@ -3093,7 +3103,12 @@ impl eframe::App for Studio {
                             egui::Sense::click_and_drag(),
                         );
                         let before_navigation = self.navigation.transform(canvas, image, ctx.pixels_per_point());
-                        let text_hit = if !light_guides::active(&ctx) && response.clicked()
+                        let navigating_3d = self.navigating_3d(&ctx);
+                        let guides_response = response.clone();
+                        if navigating_3d && self.scene_interact(ui, &response, canvas) {
+                            self.request_preview();
+                        }
+                        let text_hit = if !navigating_3d && !light_guides::active(&ctx) && response.clicked()
                             && !self.text_viewer.active && self.picking.is_none()
                             && !self.tracking.open && !self.planar.open && !self.subject.open && !self.path_pen.active {
                             response.interact_pointer_pos().and_then(|pointer| {
@@ -3107,7 +3122,8 @@ impl eframe::App for Studio {
                             if id!=self.draft.id { self.project.selected=id; self.refresh_draft(); }
                             if response.double_clicked() { self.playing=false; self.text_viewer.open(id); }
                         }
-                        if !self.text_viewer.active
+                        if !navigating_3d
+                            && !self.text_viewer.active
                             && !light_guides::active(&ctx)
                             && self.picking.is_none()
                             && !self.tracking.open && !self.planar.open && !self.subject.open
@@ -3151,6 +3167,9 @@ impl eframe::App for Studio {
                             ),
                         );
                         self.light_overlay(ui, canvas, transform, image);
+                        if navigating_3d {
+                            self.scene_guides(ui, &guides_response, canvas, transform);
+                        }
                         let label = format!(
                             "{} × {} · {:.0}%",
                             image.x as u32,

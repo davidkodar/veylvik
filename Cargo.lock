@@ -4188,6 +4188,7 @@ dependencies = [
  "veylvik-io",
  "veylvik-render",
  "veylvik-render3d",
+ "veylvik-scene",
  "veylvik-segment",
  "veylvik-text",
  "veylvik-track",

@@ -397,10 +397,17 @@ impl Region {
 pub struct RenderRequest {
     pub time: Time,
     pub region: Option<Region>,
+    /// Films every Render scene through this camera instead of its own: the
+    /// editor's free view while navigating a scene. Never set for output renders.
+    pub scene_view: Option<veylvik_scene::Camera>,
 }
 impl RenderRequest {
     pub fn full(time: Time) -> Self {
-        Self { time, region: None }
+        Self {
+            time,
+            region: None,
+            scene_view: None,
+        }
     }
 }
 pub struct RenderedFrame {

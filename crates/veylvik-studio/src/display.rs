@@ -241,6 +241,7 @@ mod tests {
                             width: 2,
                             height: 1,
                         }),
+                        scene_view: None,
                     },
                     &inputs,
                 )

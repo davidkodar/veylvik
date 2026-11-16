@@ -238,3 +238,101 @@ fn a_3d_title_with_a_look_matches_the_2d_title_face_on() {
     let blue: f32 = covered.iter().map(|p| p[2]).sum();
     assert!(red > blue * 1.5, "gold: {red} vs {blue}");
 }
+
+#[test]
+#[ignore = "requires Vulkan"]
+fn a_free_view_films_the_scene_without_changing_it() {
+    let renderer = renderer();
+    let (mut doc, inputs, pixels, image) = gradient();
+    let card = add(&mut doc, op(&IMAGE_CARD), &[("image", image)]);
+    let render_node = add(&mut doc, op(&RENDER_SCENE), &[("scene", card)]);
+    doc.output = render_node;
+    let plan = Plan::compile(&doc).unwrap();
+    let frame = |view: Option<veylvik_scene::Camera>| {
+        let frame = renderer
+            .render_gpu_cached(
+                &plan,
+                RenderRequest {
+                    scene_view: view,
+                    ..RenderRequest::full(Time::new(0, 1).unwrap())
+                },
+                &inputs,
+            )
+            .unwrap();
+        renderer.read_frame(&frame).unwrap().pixels
+    };
+    // The home free view is the scene's own view.
+    let home = veylvik_scene::FreeView::home(W, H);
+    let same = frame(Some(home.camera()));
+    assert!(
+        same.iter()
+            .zip(&pixels)
+            .all(|(a, b)| (a[0] - b[0]).abs() < 2e-3)
+    );
+    // Orbiting shows the card at an angle; the cached plain frame stays as it was.
+    let mut turned = home;
+    turned.orbit(40.0, 0.0);
+    let angled = frame(Some(turned.camera()));
+    let differing = angled
+        .iter()
+        .zip(&pixels)
+        .filter(|(a, b)| (a[3] - b[3]).abs() > 0.5)
+        .count();
+    assert!(differing > 500, "{differing}");
+    let plain = frame(None);
+    assert!(
+        plain
+            .iter()
+            .zip(&pixels)
+            .all(|(a, b)| (a[0] - b[0]).abs() < 2e-3)
+    );
+}
+
+#[test]
+#[ignore = "requires Vulkan"]
+fn the_preview_scheduler_shows_the_free_view_not_a_cached_frame() {
+    let renderer = Arc::new(renderer());
+    let scheduler =
+        veylvik_render::GpuPreviewScheduler::with_renderer(renderer.clone(), || {}).unwrap();
+    let (mut doc, inputs, _, image) = gradient();
+    let card = add(&mut doc, op(&IMAGE_CARD), &[("image", image)]);
+    let render_node = add(&mut doc, op(&RENDER_SCENE), &[("scene", card)]);
+    doc.output = render_node;
+    let plan = Arc::new(Plan::compile(&doc).unwrap());
+    let show = |view: Option<veylvik_scene::Camera>| {
+        let ticket = scheduler
+            .submit(
+                1,
+                plan.clone(),
+                RenderRequest {
+                    scene_view: view,
+                    ..RenderRequest::full(Time::new(0, 1).unwrap())
+                },
+                inputs.clone(),
+            )
+            .unwrap();
+        loop {
+            if let Some(result) = scheduler.try_take().unwrap()
+                && result.ticket == ticket
+            {
+                return renderer.read_frame(&result.frame.unwrap()).unwrap().pixels;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+    };
+    let plain = show(None);
+    let mut turned = veylvik_scene::FreeView::home(W, H);
+    turned.orbit(45.0, 0.0);
+    let orbited = show(Some(turned.camera()));
+    let changed = plain
+        .iter()
+        .zip(&orbited)
+        .filter(|(a, b)| (a[3] - b[3]).abs() > 0.5)
+        .count();
+    assert!(
+        changed > 500,
+        "the free view must not come from the playback cache: {changed}"
+    );
+    // And the plain frame is still the plain frame afterwards.
+    assert_eq!(show(None), plain);
+}

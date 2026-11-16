@@ -149,6 +149,7 @@ fn morphology_matches_square_reference_and_animated_cache_and_crop() {
                 RenderRequest {
                     time: Time::new(1, 1).unwrap(),
                     region: Some(region),
+                    scene_view: None,
                 },
                 &inputs,
             )
