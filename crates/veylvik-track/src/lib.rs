@@ -2,6 +2,7 @@
 pub mod camera;
 pub mod estimate;
 pub mod features;
+pub mod grain;
 pub mod planar;
 pub mod point;
 mod refine;

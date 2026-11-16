@@ -230,3 +230,43 @@ node!(
     CONTACT_SHADOW,
     [reach, strength, lean, angle]
 );
+
+/// Grain like a plate's, added to a clean image such as 3D rendered over footage.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MatchGrain {
+    pub amount: Scalar,
+    pub size: Scalar,
+    pub shadows: Scalar,
+    pub midtones: Scalar,
+    pub highlights: Scalar,
+    pub red: Scalar,
+    pub blue: Scalar,
+    pub colour: Scalar,
+}
+pub static MATCH_GRAIN: NodeType = NodeType {
+    type_id: "match_grain",
+    version: 1,
+    label: "Match grain",
+    description: "Adds fresh grain every frame to a clean image, such as 3D rendered over footage, so it matches the plate. Shadows, Midtones and Highlights are the grain's strength (standard deviation, linear light) at luminance 0.02, 0.18 and 0.9, blended between; Red and Blue scale it against green; Colour is how much the channels move together (0 independent, 1 grey grain); Size is the grain's blur radius in pixels. Studio's Measure from plate fills them from the optional Plate input, which is otherwise unused. Amount scales the result (1 = matched); grain follows alpha, so edges blend.",
+    inputs: &["image", "plate"],
+    optional: &["plate"],
+    output: PortKind::Image,
+    parameters: &[
+        scalar("amount", "factor", 0.0, 4.0, 1.0),
+        scalar("size", "pixels", 0.0, 9.0, 2.0),
+        scalar("shadows", "std", 0.0, 0.5, 0.012),
+        scalar("midtones", "std", 0.0, 0.5, 0.008),
+        scalar("highlights", "std", 0.0, 0.5, 0.006),
+        scalar("red", "factor", 0.0, 4.0, 1.0),
+        scalar("blue", "factor", 0.0, 4.0, 1.2),
+        scalar("colour", "factor", 0.0, 1.0, 0.35),
+    ],
+};
+node!(
+    MatchGrain,
+    MATCH_GRAIN,
+    [
+        amount, size, shadows, midtones, highlights, red, blue, colour
+    ]
+);

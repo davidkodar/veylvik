@@ -277,3 +277,62 @@ impl RenderNode for veylvik_document::nodes::Shadow {
         Ok(())
     }
 }
+impl RenderNode for veylvik_document::nodes::MatchGrain {
+    /// The plate is only measured, in Studio; rendering never reads it.
+    fn idle_inputs(
+        &self,
+        _sample: &dyn Fn(&str) -> Result<f32>,
+        _time: veylvik_document::Time,
+    ) -> Result<&'static [&'static str]> {
+        Ok(&["plate"])
+    }
+    fn identity(&self) -> bool {
+        matches!(self.amount, Scalar::Constant { value } if value == 0.0)
+    }
+    fn passes(&self) -> Passes {
+        use super::{From, Step};
+        // White noise, blurred to the grain size, added by brightness.
+        Passes::chain(&[
+            Step {
+                kernel: Kernel::GrainNoise,
+                inputs: [From::Port(0), From::None, From::None, From::None],
+            },
+            Step {
+                kernel: Kernel::BlurHorizontal,
+                inputs: [From::Step(0), From::None, From::None, From::None],
+            },
+            Step {
+                kernel: Kernel::BlurVertical,
+                inputs: [From::Step(1), From::None, From::None, From::None],
+            },
+            Step {
+                kernel: Kernel::GrainApply,
+                inputs: [From::Port(0), From::Step(2), From::None, From::None],
+            },
+        ])
+    }
+    fn params(
+        &self,
+        cx: &Cx<'_>,
+        sample: &dyn Fn(&str) -> Result<f32>,
+        p: &mut Params,
+    ) -> Result<()> {
+        // Fresh grain every frame: the seed counts 240ths of a second.
+        let seconds = cx.time.seconds().map_err(|e| error(e.to_string()))?;
+        p.size_op[2] = (seconds * 240.0).round().rem_euclid(f64::from(u32::MAX)) as u32;
+        let amount = sample("amount")?;
+        p.values = [
+            sample("size")?.round().clamp(0.0, 9.0),
+            1.0,
+            sample("colour")?,
+            sample("red")?,
+        ];
+        p.extra = [
+            sample("shadows")? * amount,
+            sample("midtones")? * amount,
+            sample("highlights")? * amount,
+            sample("blue")?,
+        ];
+        Ok(())
+    }
+}

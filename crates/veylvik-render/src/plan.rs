@@ -41,6 +41,8 @@ pub enum Kernel {
     ContactShadow,
     BlurHorizontal,
     BlurVertical,
+    GrainNoise,
+    GrainApply,
     LensPrefilterHorizontal,
     LensPrefilterVertical,
     LensBlur,
@@ -79,7 +81,7 @@ pub enum Kernel {
     Lut,
 }
 impl Kernel {
-    pub(crate) const ALL: [Self; 69] = [
+    pub(crate) const ALL: [Self; 71] = [
         Self::ToAcescg,
         Self::FromAcescg,
         Self::Text,
@@ -113,6 +115,8 @@ impl Kernel {
         Self::ContactShadow,
         Self::BlurHorizontal,
         Self::BlurVertical,
+        Self::GrainNoise,
+        Self::GrainApply,
         Self::LensPrefilterHorizontal,
         Self::LensPrefilterVertical,
         Self::LensBlur,
@@ -186,6 +190,8 @@ impl Kernel {
             Self::ContactShadow => "contact_shadow",
             Self::BlurHorizontal => "blur_horizontal",
             Self::BlurVertical => "blur_vertical",
+            Self::GrainNoise => "grain_noise",
+            Self::GrainApply => "grain_apply",
             Self::LensPrefilterHorizontal => "lens_prefilter_horizontal",
             Self::LensPrefilterVertical => "lens_prefilter_vertical",
             Self::LensBlur => "lens_blur",

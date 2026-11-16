@@ -16,6 +16,7 @@ mod effects;
 mod eyedropper;
 mod files;
 mod font_browser;
+mod grain_measure;
 mod graph;
 mod graph_layout;
 mod handles;
@@ -1689,6 +1690,8 @@ impl Studio {
             pick: None,
             objects: &focus_objects,
             pick_focus: false,
+            plated: self.draft.inputs.contains_key("plate"),
+            measure_grain: false,
         };
         match &mut self.draft.operation {
             op @ Operation::Text(veylvik_document::nodes::Text { .. }) => {
@@ -1714,8 +1717,12 @@ impl Studio {
             error,
             pick,
             pick_focus,
+            measure_grain,
             ..
         } = cx;
+        if measure_grain {
+            self.measure_grain(ui.ctx());
+        }
         if pick_focus {
             scene_focus::set_picking(ui.ctx(), true);
         }
@@ -2712,6 +2719,7 @@ impl eframe::App for Studio {
         self.audio_tick();
         self.materials.poll(&ctx);
         self.shot_light_tick();
+        self.grain_measure_tick(&ctx);
         light_guides::begin_frame(&ctx);
         self.fonts.poll(&ctx);
         if self.draft_dirty

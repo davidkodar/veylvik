@@ -206,6 +206,18 @@ impl Inspect for Light3d {
         cx.dirty |= placement(ui, &mut self.placement, cx);
     }
 }
+impl Inspect for veylvik_document::nodes::MatchGrain {
+    fn inspect(&mut self, ui: &mut egui::Ui, cx: &mut InspectCx<'_>) {
+        ui.weak("Adds grain like the plate's to a clean image, such as 3D over footage. Connect the footage to Plate, then measure.");
+        if ui
+            .add_enabled(cx.plated, egui::Button::new("Measure from plate"))
+            .on_hover_text("Measure the plate's grain at this frame: its strength in shadows, midtones and highlights, colour and size")
+            .clicked()
+        {
+            cx.measure_grain = true;
+        }
+    }
+}
 impl Inspect for PointCloud {
     fn inspect(&mut self, ui: &mut egui::Ui, _cx: &mut InspectCx<'_>) {
         ui.label(format!("{} points", self.points.len()));

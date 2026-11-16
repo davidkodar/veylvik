@@ -45,6 +45,10 @@ pub(crate) struct InspectCx<'a> {
     pub objects: &'a [(veylvik_document::NodeId, String)],
     /// The user asked to pick the object in focus in the viewer.
     pub pick_focus: bool,
+    /// The node's Plate input is connected.
+    pub plated: bool,
+    /// The user asked to measure the plate's grain.
+    pub measure_grain: bool,
 }
 pub(crate) trait Inspect {
     /// Node-specific controls above the registered parameters; most nodes have none.

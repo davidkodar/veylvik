@@ -59,6 +59,8 @@ pub struct Outcome {
     pub tracks: usize,
     pub width: u32,
     pub height: u32,
+    /// The footage's grain, measured on the middle frame, for the CG to match.
+    pub grain: Option<crate::grain::Grain>,
 }
 /// Follow features through the footage and solve its camera.
 pub fn analyse(
@@ -98,11 +100,18 @@ pub fn analyse(
         },
     )
     .map_err(|e| error(e.to_string()))?;
+    let middle = Time::at_frame((request.frames[0] + request.frames[1]) / 2, rate)
+        .map_err(|e| error(e.to_string()))?;
+    let grain = renderer
+        .render_frame(plan, veylvik_render::RenderRequest::full(middle), inputs)
+        .ok()
+        .and_then(|frame| crate::grain::measure(&frame.pixels, found.width, found.height));
     Ok(Outcome {
         solved,
         tracks: tracks.len(),
         width: found.width,
         height: found.height,
+        grain,
     })
 }
 /// The dominant plane below the first camera: (normal towards the cameras, a point
@@ -385,10 +394,28 @@ pub fn scene(doc: &Composition, request: &Request, outcome: &Outcome) -> Result<
         Operation::RenderScene(render),
         &[("scene", merged.id)],
     );
+    // The CG gets the footage's grain before it goes over the footage.
+    let Operation::MatchGrain(mut grain) = default_of(&nodes::MATCH_GRAIN)? else {
+        return Err(error("grain default"));
+    };
+    if let Some(g) = &outcome.grain {
+        grain.size = (g.size as f32).into();
+        grain.shadows = g.shadows.into();
+        grain.midtones = g.midtones.into();
+        grain.highlights = g.highlights.into();
+        grain.red = g.red.into();
+        grain.blue = g.blue.into();
+        grain.colour = g.colour.into();
+    }
+    let grain = Node::new(
+        "Footage grain",
+        Operation::MatchGrain(grain),
+        &[("image", render.id), ("plate", request.source)],
+    );
     let over = Node::new(
         "3D over footage",
         Operation::Merge(nodes::Merge {}),
-        &[("background", request.source), ("foreground", render.id)],
+        &[("background", request.source), ("foreground", grain.id)],
     );
     let worst = solved
         .frame_error
@@ -399,7 +426,7 @@ pub fn scene(doc: &Composition, request: &Request, outcome: &Outcome) -> Result<
         "frames": solved.poses.len(), "solved_frames": keyed, "tracks": outcome.tracks,
         "points": solved.points.iter().flatten().count(), "rms_pixels": solved.rms, "worst_frame_pixels": worst,
         "focal_length": focal_mm, "sensor_width": request.sensor_width, "tripod": solved.nodal, "lens_measured": solved.focal_measured,
-        "camera": camera.id, "ground": ground_report, "scene": merged.id, "render": render.id, "composite": over.id,
+        "camera": camera.id, "ground": ground_report, "scene": merged.id, "render": render.id, "composite": over.id, "grain": grain.id, "grain_measured": outcome.grain.is_some(),
         "next": "Add 3D objects to the Solved scene node and view 3D over footage",
     });
     let scene = merged.id;
@@ -411,6 +438,9 @@ pub fn scene(doc: &Composition, request: &Request, outcome: &Outcome) -> Result<
     });
     commands.push(Command::Put {
         node: Box::new(render),
+    });
+    commands.push(Command::Put {
+        node: Box::new(grain),
     });
     commands.push(Command::Put {
         node: Box::new(over),

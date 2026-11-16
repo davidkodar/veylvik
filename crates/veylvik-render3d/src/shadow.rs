@@ -64,14 +64,16 @@ impl Maps {
         }
     }
 }
-/// Centre and radius of everything that casts or catches shadows.
+/// Centre and radius of everything that casts shadows (not cards or shadow
+/// catchers): shadow and occlusion maps hold only casters, so fitting them to the
+/// casters keeps their detail when a catcher is a huge ground.
 pub(crate) fn bounds(scene: &Scene) -> Option<([f32; 3], f32)> {
     let mut lo = [f32::MAX; 3];
     let mut hi = [f32::MIN; 3];
     for object in scene
         .objects
         .iter()
-        .filter(|o| !matches!(o.geometry, Geometry::Card { .. }))
+        .filter(|o| !o.surface.catcher && !matches!(o.geometry, Geometry::Card { .. }))
     {
         let (a, b) = object.local_bounds();
         for i in 0..8 {

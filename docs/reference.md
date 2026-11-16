@@ -1313,7 +1313,9 @@ and `colour`.
   perspective view aimed at the scene. Surfaces test it with a 3 × 3 filter whose
   width follows the light's **Softness**, offset along their normal (and with a
   slope-scaled depth bias) so nothing shadows itself. Image cards and shadow
-  catchers cast none. Only scene lights shadow; the environment's light is not
+  catchers cast none. The maps are fitted to the casters alone, so a huge shadow-catching
+  ground does not cost them detail; a point beyond a map's far end counts as
+  behind every caster. Only scene lights shadow; the environment's light is not
   shadowed directly; **Occlusion** handles it.
 - **Occlusion** (on Render scene, 0–1, default 1): contact shading of the
   environment's light, so objects sit on the floor and gaps and creases darken.
@@ -1416,6 +1418,24 @@ and `colour`.
   scene's first light, else adds a Shot light to the scene's Merge scenes.
   **Pick light** instead takes a click on the light in the frame (a sun, lamp
   or window) as that source.
+- **Match grain** (`match_grain`, inputs image and optional plate): adds fresh
+  grain every frame to a clean image so it matches footage. The GPU makes unit
+  gaussian noise in four channels (red, green, blue and a shared part), blurs it
+  with the gaussian blur at **Size** (radius in pixels, sigma = radius / 3),
+  undoes the blur's loss of spread, mixes the shared part in by **Colour**, and
+  adds it to the unpremultiplied colour times the strength at the pixel's
+  luminance (**Shadows**, **Midtones**, **Highlights** at 0.02, 0.18 and 0.9,
+  linear in log2 luminance between), with **Red** and **Blue** against green,
+  times **Amount**, then premultiplies again, so grain follows alpha. The plate is
+  never rendered by it. **Measure from plate** (Studio) renders the plate at the
+  playhead and measures its grain: the residual after a gaussian blur of radius
+  6 in the flattest 30% of 16-pixel blocks of each brightness band (under 0.06,
+  0.06–0.45, above), its standard deviation per channel, how much the channels'
+  residuals correlate, and its neighbour correlation. Running Veylvik's own
+  generator through the same estimator at sizes 0–6 picks the size and scales
+  the strengths, so measured settings reproduce the plate. A camera solve
+  measures the middle frame and puts **Footage grain** between the render and the
+  merge over the footage.
 - **Render scene**: films a scene as an image with camera 1, 2, … in node order, or
   0 for the home view.
 

@@ -271,6 +271,7 @@ fn tracks_rendered_footage_and_solves_its_camera() {
     )
     .unwrap();
     let outcome = veylvik_track::camera::Outcome {
+        grain: None,
         solved,
         tracks: tracks.len(),
         width: W,
@@ -340,6 +341,7 @@ fn far_background_points_stay_out_of_the_point_cloud() {
         sensor_width: 36.0,
     };
     let outcome = veylvik_track::camera::Outcome {
+        grain: None,
         solved,
         tracks: 41,
         width: W,

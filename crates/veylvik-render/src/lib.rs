@@ -240,6 +240,7 @@ impl Renderer {
                     include_str!("environment.wgsl"),
                     include_str!("working_space.wgsl"),
                     include_str!("matte.wgsl"),
+                    include_str!("grain.wgsl"),
                     include_str!("lut.wgsl"),
                     include_str!("shadow.wgsl"),
                     include_str!("particles.wgsl"),
