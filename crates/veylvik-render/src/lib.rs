@@ -26,6 +26,11 @@ mod plan;
 pub mod playback;
 mod pool;
 mod preview_scale;
+mod scene_hook;
+/// WGSL for the prefiltered studio environment (`environment_specular`), for
+/// renderers that light with the same studio as materials.
+pub const ENVIRONMENT_WGSL: &str = include_str!("environment.wgsl");
+pub use scene_hook::{SceneJob, SceneRenderer};
 mod scheduler;
 mod texture;
 mod vector;
@@ -108,6 +113,7 @@ pub struct Renderer {
     pool: Mutex<pool::Pool>,
     cache: Mutex<cache::FrameCache>,
     flow_engine: Mutex<Option<Arc<flow::Engine>>>,
+    scene_renderer: std::sync::RwLock<Option<Arc<dyn SceneRenderer>>>,
     ocio_cache: Mutex<std::collections::VecDeque<ocio::CachedProcessor>>,
     pub cache_limit_bytes: u64,
     owner: Arc<frame::DeviceIdentity>,
@@ -129,6 +135,12 @@ pub fn device_limits(adapter: &wgpu::Adapter) -> wgpu::Limits {
     }
 }
 impl Renderer {
+    /// Register what draws Render scene nodes (the host's 3D renderer).
+    pub fn set_scene_renderer(&self, renderer: Arc<dyn SceneRenderer>) {
+        if let Ok(mut slot) = self.scene_renderer.write() {
+            *slot = Some(renderer);
+        }
+    }
     pub fn new() -> Result<Self> {
         pollster::block_on(Self::create())
     }
@@ -153,6 +165,7 @@ impl Renderer {
             source: wgpu::ShaderSource::Wgsl(
                 concat!(
                     include_str!("kernels.wgsl"),
+                    include_str!("environment.wgsl"),
                     include_str!("working_space.wgsl"),
                     include_str!("matte.wgsl"),
                     include_str!("lut.wgsl"),
@@ -342,6 +355,7 @@ impl Renderer {
             cache: Mutex::new(cache::FrameCache::default()),
             ocio_cache: Mutex::new(Default::default()),
             flow_engine: Mutex::new(None),
+            scene_renderer: std::sync::RwLock::new(None),
             cache_limit_bytes: 64 * 1024 * 1024,
             owner: Arc::new(frame::DeviceIdentity),
             pool_limit_bytes: 128 * 1024 * 1024,
@@ -711,6 +725,38 @@ impl Renderer {
                 label: Some("frame"),
             });
         for scheduled in &plan.passes {
+            if scheduled.kernel == Kernel::RenderScene {
+                let renderer = self
+                    .scene_renderer
+                    .read()
+                    .map_err(|_| error("scene renderer lock poisoned"))?
+                    .clone()
+                    .ok_or_else(|| {
+                        error("Render scene needs the 3D renderer, which this host has not loaded")
+                    })?;
+                let (scene, camera) = scene_hook::evaluate(plan, scheduled.node, time)?;
+                let images: Vec<(veylvik_document::NodeId, &wgpu::Buffer)> = scheduled
+                    .cards
+                    .iter()
+                    .filter_map(|(source, input)| match input {
+                        plan::Input::Value(slot) => Some((*source, &buffers[*slot])),
+                        _ => None,
+                    })
+                    .collect();
+                renderer.render(SceneJob {
+                    device: &self.device,
+                    queue: &self.queue,
+                    encoder: &mut encoder,
+                    scene: &scene,
+                    camera,
+                    width: plan.width,
+                    height: plan.height,
+                    images: &images,
+                    environment: &self.studio_environment,
+                    target: &buffers[scheduled.output],
+                })?;
+                continue;
+            }
             let node = &plan.nodes[scheduled.node];
             let p = &evaluated[scheduled.node];
             let uniform = resources.take(

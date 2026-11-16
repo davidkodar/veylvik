@@ -74,10 +74,14 @@ fn mem_total_bytes(meminfo: &str) -> Option<u64> {
 fn source_budget_for(total: Option<u64>) -> u64 {
     total.map_or(256 * MIB, |total| (total / 16).clamp(256 * MIB, 2048 * MIB))
 }
+/// A headless renderer with its limits applied and the 3D renderer registered.
 pub fn renderer() -> Result<Renderer> {
     let limits = RenderLimits::from_env()?;
     let mut renderer = Renderer::new()?;
     limits.apply(&mut renderer);
+    renderer.set_scene_renderer(std::sync::Arc::new(veylvik_render3d::Engine::new(
+        renderer.device(),
+    )));
     Ok(renderer)
 }
 #[cfg(test)]

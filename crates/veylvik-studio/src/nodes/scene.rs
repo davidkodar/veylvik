@@ -121,6 +121,6 @@ impl Inspect for Light3d {
 }
 impl Inspect for RenderScene {
     fn inspect(&mut self, ui: &mut egui::Ui, _cx: &mut InspectCx<'_>) {
-        ui.weak("Films the scene on its Scene input. Camera 1 is the first camera in the scene; 0 is the home view that matches 2D. The 3D renderer arrives in the next update.");
+        ui.weak("Films the scene on its Scene input. Camera 1 is the first camera in the scene; 0 is the home view that matches 2D.");
     }
 }

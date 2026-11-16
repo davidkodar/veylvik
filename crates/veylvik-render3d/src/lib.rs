@@ -1,0 +1,492 @@
+//! Rasterises evaluated 3D scenes for Render scene: depth-tested, 4x antialiased PBR lit by the studio environment and scene lights.
+//!
+//! Registered with `Renderer::set_scene_renderer`; the render crate plans the pass
+//! and hands over the scene, camera, card images and target buffer.
+use std::collections::HashMap;
+use std::sync::Mutex;
+use veylvik_render::{Result, SceneJob, SceneRenderer};
+use veylvik_scene::{Geometry, Light, math};
+use wgpu::util::DeviceExt;
+
+const SAMPLES: u32 = 4;
+const COLOUR: wgpu::TextureFormat = wgpu::TextureFormat::Rgba16Float;
+const DEPTH: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
+/// Near plane in pixels; depth is reversed with an infinite far plane.
+const NEAR: f32 = 1.0;
+/// Meshes kept on the GPU between frames.
+const MESH_CACHE: usize = 128;
+/// Strength of the studio environment, as a material's default rig.
+const ENVIRONMENT: f32 = 0.65;
+
+#[repr(C)]
+#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+struct ObjectUniform {
+    model: [[f32; 4]; 4],
+    normal: [[f32; 4]; 4],
+    view_proj: [[f32; 4]; 4],
+    camera: [f32; 4],
+    surface: [f32; 4],
+    params: [f32; 4],
+    counts: [f32; 4],
+}
+#[repr(C)]
+#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+struct LightUniform {
+    position: [f32; 4],
+    direction: [f32; 4],
+    colour: [f32; 4],
+}
+struct GpuMesh {
+    vertices: wgpu::Buffer,
+    indices: wgpu::Buffer,
+    count: u32,
+    used: u64,
+}
+pub struct Engine {
+    layout: wgpu::BindGroupLayout,
+    lit: wgpu::RenderPipeline,
+    card: wgpu::RenderPipeline,
+    copy: wgpu::ComputePipeline,
+    meshes: Mutex<(HashMap<String, GpuMesh>, u64)>,
+}
+fn error(message: impl ToString) -> veylvik_render::Error {
+    veylvik_render::Error::Message(message.to_string())
+}
+/// Row-major to WGSL's column-major layout.
+fn columns(m: &math::Mat4) -> [[f32; 4]; 4] {
+    std::array::from_fn(|c| std::array::from_fn(|r| m[r][c]))
+}
+/// Inverse transpose of the upper 3x3, for normals under non-uniform scale.
+fn normal_matrix(m: &math::Mat4) -> math::Mat4 {
+    let a = |r: usize, c: usize| m[r][c];
+    let cof = |r0, r1, c0, c1| a(r0, c0) * a(r1, c1) - a(r0, c1) * a(r1, c0);
+    let c = [
+        [cof(1, 2, 1, 2), -cof(1, 2, 0, 2), cof(1, 2, 0, 1)],
+        [-cof(0, 2, 1, 2), cof(0, 2, 0, 2), -cof(0, 2, 0, 1)],
+        [cof(0, 1, 1, 2), -cof(0, 1, 0, 2), cof(0, 1, 0, 1)],
+    ];
+    // The cofactor matrix is the inverse transpose up to a positive scale for
+    // proper transforms; its sign follows the determinant.
+    let det = a(0, 0) * c[0][0] + a(0, 1) * c[0][1] + a(0, 2) * c[0][2];
+    let s = if det < 0.0 { -1.0 } else { 1.0 };
+    let mut out = math::IDENTITY;
+    for (r, row) in c.iter().enumerate() {
+        for (k, v) in row.iter().enumerate() {
+            out[r][k] = v * s;
+        }
+    }
+    out
+}
+impl Engine {
+    pub fn new(device: &wgpu::Device) -> Self {
+        let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("3D scene"),
+            source: wgpu::ShaderSource::Wgsl(
+                format!(
+                    "{}{}",
+                    include_str!("scene.wgsl"),
+                    veylvik_render::ENVIRONMENT_WGSL
+                )
+                .into(),
+            ),
+        });
+        let storage = |binding| wgpu::BindGroupLayoutEntry {
+            binding,
+            visibility: wgpu::ShaderStages::FRAGMENT,
+            ty: wgpu::BindingType::Buffer {
+                ty: wgpu::BufferBindingType::Storage { read_only: true },
+                has_dynamic_offset: false,
+                min_binding_size: None,
+            },
+            count: None,
+        };
+        let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("3D object"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                storage(1),
+                storage(2),
+                storage(3),
+            ],
+        });
+        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("3D object"),
+            bind_group_layouts: &[Some(&layout)],
+            immediate_size: 0,
+        });
+        let attributes = wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3, 2 => Float32x2];
+        let pipeline = |entry: &str, blend: Option<wgpu::BlendState>, write: bool| {
+            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some(entry),
+                layout: Some(&pipeline_layout),
+                vertex: wgpu::VertexState {
+                    module: &module,
+                    entry_point: Some("vertex"),
+                    compilation_options: Default::default(),
+                    buffers: &[wgpu::VertexBufferLayout {
+                        array_stride: 32,
+                        step_mode: wgpu::VertexStepMode::Vertex,
+                        attributes: &attributes,
+                    }],
+                },
+                primitive: wgpu::PrimitiveState::default(),
+                depth_stencil: Some(wgpu::DepthStencilState {
+                    format: DEPTH,
+                    depth_write_enabled: Some(write),
+                    depth_compare: Some(wgpu::CompareFunction::Greater),
+                    stencil: Default::default(),
+                    bias: Default::default(),
+                }),
+                multisample: wgpu::MultisampleState {
+                    count: SAMPLES,
+                    ..Default::default()
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &module,
+                    entry_point: Some(entry),
+                    compilation_options: Default::default(),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: COLOUR,
+                        blend,
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                }),
+                multiview_mask: None,
+                cache: None,
+            })
+        };
+        let lit = pipeline("lit", None, true);
+        let card = pipeline(
+            "card",
+            Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
+            false,
+        );
+        let copy_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("3D resolve copy"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("copy.wgsl").into()),
+        });
+        let copy = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: Some("3D resolve copy"),
+            layout: None,
+            module: &copy_module,
+            entry_point: Some("copy"),
+            compilation_options: Default::default(),
+            cache: None,
+        });
+        Self {
+            layout,
+            lit,
+            card,
+            copy,
+            meshes: Mutex::new((HashMap::new(), 0)),
+        }
+    }
+    /// Upload (or reuse) the mesh of an object; meshes are keyed by their geometry.
+    fn mesh(
+        &self,
+        device: &wgpu::Device,
+        object: &veylvik_scene::Object,
+    ) -> Result<(wgpu::Buffer, wgpu::Buffer, u32)> {
+        let key = format!("{:?}", object.geometry);
+        let mut guard = self
+            .meshes
+            .lock()
+            .map_err(|_| error("mesh cache lock poisoned"))?;
+        let (meshes, clock) = &mut *guard;
+        *clock += 1;
+        if let Some(m) = meshes.get_mut(&key) {
+            m.used = *clock;
+            return Ok((m.vertices.clone(), m.indices.clone(), m.count));
+        }
+        let mesh = veylvik_scene::mesh(object).map_err(error)?;
+        let vertices: Vec<f32> = mesh
+            .vertices
+            .iter()
+            .flat_map(|v| v.position.into_iter().chain(v.normal).chain(v.uv))
+            .collect();
+        let mut indices = mesh.indices;
+        if indices.is_empty() {
+            indices = vec![0, 0, 0];
+        }
+        let vertex_bytes: &[u8] = if vertices.is_empty() {
+            &[0; 32]
+        } else {
+            bytemuck::cast_slice(&vertices)
+        };
+        let entry = GpuMesh {
+            vertices: device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("3D vertices"),
+                contents: vertex_bytes,
+                usage: wgpu::BufferUsages::VERTEX,
+            }),
+            indices: device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("3D indices"),
+                contents: bytemuck::cast_slice(&indices),
+                usage: wgpu::BufferUsages::INDEX,
+            }),
+            count: if mesh.vertices.is_empty() {
+                0
+            } else {
+                indices.len() as u32
+            },
+            used: *clock,
+        };
+        if meshes.len() >= MESH_CACHE
+            && let Some(oldest) = meshes
+                .iter()
+                .min_by_key(|(_, m)| m.used)
+                .map(|(k, _)| k.clone())
+        {
+            meshes.remove(&oldest);
+        }
+        let out = (entry.vertices.clone(), entry.indices.clone(), entry.count);
+        meshes.insert(key, entry);
+        Ok(out)
+    }
+}
+fn light_uniform(light: &Light) -> LightUniform {
+    use veylvik_document::nodes::LightKind;
+    let p = light.position();
+    let d = light.direction();
+    let outer = (light.cone * 0.5).to_radians();
+    let inner = outer * (1.0 - light.softness).max(0.0);
+    LightUniform {
+        position: [
+            p[0],
+            p[1],
+            p[2],
+            match light.kind {
+                LightKind::Point => 0.0,
+                LightKind::Spot => 1.0,
+                LightKind::Sun => 2.0,
+            },
+        ],
+        direction: [d[0], d[1], d[2], outer.cos()],
+        colour: [
+            light.colour[0] * light.intensity,
+            light.colour[1] * light.intensity,
+            light.colour[2] * light.intensity,
+            inner.cos().max(outer.cos() + 1e-4),
+        ],
+    }
+}
+/// Perspective with y down (the scene frame) into wgpu clip space, reversed depth
+/// with an infinite far plane.
+fn projection(camera: &veylvik_scene::Camera, width: u32, height: u32) -> math::Mat4 {
+    let f = veylvik_scene::home_distance(width, camera.focal_length, camera.sensor_width);
+    let (fx, fy) = (f / (width as f32 * 0.5), f / (height as f32 * 0.5));
+    [
+        [fx, 0.0, 0.0, 0.0],
+        [0.0, -fy, 0.0, 0.0],
+        [0.0, 0.0, 0.0, NEAR],
+        [0.0, 0.0, -1.0, 0.0],
+    ]
+}
+impl SceneRenderer for Engine {
+    fn render(&self, job: SceneJob<'_>) -> Result<()> {
+        let SceneJob {
+            device,
+            encoder,
+            scene,
+            camera,
+            width,
+            height,
+            images,
+            environment,
+            target,
+            ..
+        } = job;
+        let size = wgpu::Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        };
+        let texture = |label, format, samples, usage| {
+            device
+                .create_texture(&wgpu::TextureDescriptor {
+                    label: Some(label),
+                    size,
+                    mip_level_count: 1,
+                    sample_count: samples,
+                    dimension: wgpu::TextureDimension::D2,
+                    format,
+                    usage,
+                    view_formats: &[],
+                })
+                .create_view(&Default::default())
+        };
+        let colour = texture(
+            "3D colour",
+            COLOUR,
+            SAMPLES,
+            wgpu::TextureUsages::RENDER_ATTACHMENT,
+        );
+        let resolved = texture(
+            "3D resolved",
+            COLOUR,
+            1,
+            wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+        );
+        let depth = texture(
+            "3D depth",
+            DEPTH,
+            SAMPLES,
+            wgpu::TextureUsages::RENDER_ATTACHMENT,
+        );
+        let view_proj = math::mul(
+            &projection(&camera, width, height),
+            &math::rigid_inverse(&camera.world),
+        );
+        let eye = math::point(&camera.world, [0.0; 3]);
+        let lights: Vec<LightUniform> = scene.lights.iter().map(light_uniform).collect();
+        let light_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("3D lights"),
+            contents: if lights.is_empty() {
+                &[0; std::mem::size_of::<LightUniform>()]
+            } else {
+                bytemuck::cast_slice(&lights)
+            },
+            usage: wgpu::BufferUsages::STORAGE,
+        });
+        let empty = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("no image"),
+            contents: &[0; 16],
+            usage: wgpu::BufferUsages::STORAGE,
+        });
+        // Solid objects first; cards after them, far to near, blended over.
+        let mut order: Vec<&veylvik_scene::Object> = scene.objects.iter().collect();
+        let distance = |o: &veylvik_scene::Object| {
+            let p = math::point(&o.world, [0.0; 3]);
+            (p[0] - eye[0]).powi(2) + (p[1] - eye[1]).powi(2) + (p[2] - eye[2]).powi(2)
+        };
+        order.sort_by(|a, b| {
+            let card = |o: &veylvik_scene::Object| matches!(o.geometry, Geometry::Card { .. });
+            card(a).cmp(&card(b)).then(if card(a) {
+                distance(b).total_cmp(&distance(a))
+            } else {
+                std::cmp::Ordering::Equal
+            })
+        });
+        let mut draws = Vec::new();
+        for object in order {
+            let (vertices, indices, count) = self.mesh(device, object)?;
+            if count == 0 {
+                continue;
+            }
+            let (pipeline, image) = match &object.geometry {
+                Geometry::Card { image, .. } => (
+                    &self.card,
+                    images.iter().find(|(id, _)| id == image).map(|(_, b)| *b),
+                ),
+                _ => (&self.lit, None),
+            };
+            let uniform = ObjectUniform {
+                model: columns(&object.world),
+                normal: columns(&normal_matrix(&object.world)),
+                view_proj: columns(&view_proj),
+                camera: [eye[0], eye[1], eye[2], 1.0],
+                surface: [
+                    object.surface.colour[0],
+                    object.surface.colour[1],
+                    object.surface.colour[2],
+                    object.surface.roughness,
+                ],
+                params: [
+                    object.surface.metallic,
+                    f32::from(object.surface.unlit),
+                    width as f32,
+                    height as f32,
+                ],
+                counts: [lights.len() as f32, ENVIRONMENT, 0.0, 0.0],
+            };
+            let uniform = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("3D object"),
+                contents: bytemuck::bytes_of(&uniform),
+                usage: wgpu::BufferUsages::UNIFORM,
+            });
+            let bind = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("3D object"),
+                layout: &self.layout,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: uniform.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: light_buffer.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: environment.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 3,
+                        resource: image.unwrap_or(&empty).as_entire_binding(),
+                    },
+                ],
+            });
+            draws.push((pipeline, bind, vertices, indices, count));
+        }
+        {
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("3D scene"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &colour,
+                    depth_slice: None,
+                    resolve_target: Some(&resolved),
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
+                        store: wgpu::StoreOp::Discard,
+                    },
+                })],
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: &depth,
+                    depth_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(0.0),
+                        store: wgpu::StoreOp::Discard,
+                    }),
+                    stencil_ops: None,
+                }),
+                timestamp_writes: None,
+                occlusion_query_set: None,
+                multiview_mask: None,
+            });
+            for (pipeline, bind, vertices, indices, count) in &draws {
+                pass.set_pipeline(pipeline);
+                pass.set_bind_group(0, bind, &[]);
+                pass.set_vertex_buffer(0, vertices.slice(..));
+                pass.set_index_buffer(indices.slice(..), wgpu::IndexFormat::Uint32);
+                pass.draw_indexed(0..*count, 0, 0..1);
+            }
+        }
+        let copy = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("3D resolve copy"),
+            layout: &self.copy.get_bind_group_layout(0),
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&resolved),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: target.as_entire_binding(),
+                },
+            ],
+        });
+        let mut pass = encoder.begin_compute_pass(&Default::default());
+        pass.set_pipeline(&self.copy);
+        pass.set_bind_group(0, &copy, &[]);
+        pass.dispatch_workgroups(width.div_ceil(8), height.div_ceil(8), 1);
+        Ok(())
+    }
+}

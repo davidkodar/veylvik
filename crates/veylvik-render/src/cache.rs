@@ -43,6 +43,19 @@ impl Key {
                 request.time,
             )?;
             words.extend_from_slice(bytemuck::cast_slice(std::slice::from_ref(&values)));
+            if pass.kernel == crate::Kernel::RenderScene {
+                // Scene nodes have no passes of their own: key what the scene shows.
+                words.extend(crate::scene_hook::fingerprint(
+                    plan,
+                    pass.node,
+                    request.time,
+                )?);
+                for (_, input) in &pass.cards {
+                    if let Input::Value(slot) = input {
+                        words.extend([2, *slot as u32]);
+                    }
+                }
+            }
             if let Some(lighting) =
                 crate::shadow_lighting::for_node(&plan.nodes[pass.node], plan, request.time)?
             {

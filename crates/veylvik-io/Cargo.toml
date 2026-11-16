@@ -12,6 +12,7 @@ serde.workspace = true
 veylvik-text.workspace = true
 veylvik-document.workspace = true
 veylvik-render.workspace = true
+veylvik-render3d.workspace = true
 png = "0.18"
 pathdiff = "0.2"
 serde_json.workspace = true

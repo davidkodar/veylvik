@@ -1261,7 +1261,7 @@ are limited to 64 MiB and each decoded float image to 128 MiB, also subject to t
 remaining render budget. Images are reloaded for each request; there is no stale
 image cache. Input orientation metadata is not applied.
 
-## 3D scenes (in progress)
+## 3D scenes
 
 3D scenes travel through the same node graph on **Scene** ports (sockets named
 `scene` or `scene_N`; validation rejects images there and scenes on image ports).
@@ -1292,9 +1292,24 @@ and `colour`.
 `veylvik-mesh` builds the geometry (extruded outlines and primitives, watertight
 and bounded); `veylvik-scene` evaluates a scene graph at a frame into objects,
 cameras and lights with world matrices, and projects points through cameras.
-Rendering scenes is the next stage: until then Render scene reports that the 3D
-renderer is not in this build, and viewing a scene node explains that it has no
-image of its own.
+
+**Rendering.** `veylvik-render3d` draws Render scene on the GPU: 4× multisampled,
+depth-tested (reversed depth, infinite far plane) and two-sided, into a half-float
+target copied to the frame as premultiplied scene-linear Rec.709. Surfaces use a
+metallic-roughness model (GGX specular, Lambert diffuse): the same prefiltered
+studio environment that lights 2D materials, at the default rig's strength, plus
+every point, spot and sun light in the scene (point and spot fall off with the
+inverse square, normalised to 1000 pixels; spots blend from the inner to the outer
+half-angle by softness). Image cards show their image's own premultiplied colour
+unlit, sampled at its pixel centres, and draw after solid objects, far to near, so
+an untouched card renders like the 2D image to half-float precision. Meshes stay
+on the GPU between frames (up to 128). The frame cache keys a Render scene by what
+its scene shows at that frame. The render crate holds no 3D code: it plans the
+pass, keeps card images alive for it and calls the renderer the host registered
+(`Renderer::set_scene_renderer`); Studio, the CLI and MCP register it. Without one,
+Render scene reports that the 3D renderer is not loaded, and viewing a scene node
+explains that it has no image of its own. Not yet: your library materials on 3D
+objects, shadows, ambient occlusion, depth of field and motion blur.
 
 ## MCP
 

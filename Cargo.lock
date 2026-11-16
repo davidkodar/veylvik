@@ -4096,6 +4096,7 @@ dependencies = [
  "veylvik-decode",
  "veylvik-document",
  "veylvik-render",
+ "veylvik-render3d",
  "veylvik-text",
 ]
 
@@ -4125,7 +4126,20 @@ dependencies = [
  "veylvik-color",
  "veylvik-document",
  "veylvik-interop",
+ "veylvik-scene",
  "veylvik-text",
+ "wgpu",
+]
+
+[[package]]
+name = "veylvik-render3d"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "serde_json",
+ "veylvik-document",
+ "veylvik-render",
+ "veylvik-scene",
  "wgpu",
 ]
 
@@ -4173,6 +4187,7 @@ dependencies = [
  "veylvik-document",
  "veylvik-io",
  "veylvik-render",
+ "veylvik-render3d",
  "veylvik-segment",
  "veylvik-text",
  "veylvik-track",

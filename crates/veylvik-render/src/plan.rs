@@ -6,6 +6,8 @@ use veylvik_document::{CompiledScalar, Composition, Node, NodeId, Operation};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Kernel {
+    /// A Render scene node, drawn by the registered scene renderer, not a compute kernel.
+    RenderScene,
     ToAcescg,
     FromAcescg,
     Text,
@@ -150,6 +152,7 @@ impl Kernel {
     ];
     pub(crate) fn entry(self) -> &'static str {
         match self {
+            Self::RenderScene => "render_scene",
             Self::ToAcescg => "to_acescg",
             Self::FromAcescg => "from_acescg",
             Self::Text => "text_image",
@@ -234,6 +237,8 @@ pub(crate) struct Pass {
     pub kernel: Kernel,
     pub inputs: [Input; BOUND],
     pub output: usize,
+    /// Image card sources a Render scene reads: (source node, its image).
+    pub cards: Vec<(NodeId, Input)>,
 }
 /// Images a pass binds (`source`, `second`, `third`, `fourth`).
 pub(crate) const BOUND: usize = 4;
@@ -455,8 +460,9 @@ impl Plan {
             }
             let mut inputs: [Input; MAX_PORTS] = std::array::from_fn(|_| Input::Empty);
             for (i, port) in node.operation.inputs().iter().enumerate() {
+                // Light rigs and scenes are read as data, not bound as images.
                 if node.operation.descriptor().port_kind(port)
-                    == veylvik_document::registry::PortKind::Lights
+                    != veylvik_document::registry::PortKind::Image
                 {
                     continue;
                 }
@@ -481,6 +487,7 @@ impl Plan {
                             Input::Empty,
                         ],
                         output: converted,
+                        cards: Vec::new(),
                     });
                     value = converted;
                 }
@@ -520,6 +527,7 @@ impl Plan {
                 outputs.insert(node.id, *value);
                 continue;
             }
+            let mut cards = Vec::new();
             let kernel = match veylvik_document::each_node!(&node.operation, n => crate::nodes::RenderNode::passes_for(n, node))
             {
                 crate::nodes::Passes::One(kernel) => {
@@ -540,6 +548,7 @@ impl Plan {
                         kernel: first,
                         inputs: bound(&inputs),
                         output: intermediate,
+                        cards: Vec::new(),
                     });
                     inputs = widen([
                         Input::Value(intermediate),
@@ -565,6 +574,7 @@ impl Plan {
                             kernel: step.kernel,
                             inputs: step.inputs.map(|from| resolve(from, &values)),
                             output: value,
+                            cards: Vec::new(),
                         });
                         values.push(value);
                     }
@@ -601,9 +611,48 @@ impl Plan {
                         Kernel::Image
                     }
                     Operation::RenderScene(_) => {
-                        return Err(error(
-                            "Render scene needs the 3D renderer, which is not in this build yet",
-                        ));
+                        // Every image card's picture, in Rec.709, alive until the scene draws.
+                        let mut pending: Vec<NodeId> = node.inputs.values().copied().collect();
+                        let mut seen = BTreeSet::new();
+                        while let Some(id) = pending.pop() {
+                            if !seen.insert(id) {
+                                continue;
+                            }
+                            let Some(n) = composition.nodes.get(&id) else {
+                                continue;
+                            };
+                            if let (Operation::ImageCard(_), Some(&source)) =
+                                (&n.operation, n.inputs.get("image"))
+                                && !cards.iter().any(|(s, _)| *s == source)
+                                && let Some(&value) = outputs.get(&source)
+                            {
+                                let mut value = value;
+                                if domains.get(&source).copied().unwrap_or(false) {
+                                    let converted = passes.len();
+                                    passes.push(Pass {
+                                        node: index,
+                                        kernel: Kernel::FromAcescg,
+                                        inputs: [
+                                            Input::Value(value),
+                                            Input::Empty,
+                                            Input::Empty,
+                                            Input::Empty,
+                                        ],
+                                        output: converted,
+                                        cards: Vec::new(),
+                                    });
+                                    value = converted;
+                                }
+                                cards.push((source, Input::Value(value)));
+                            }
+                            let descriptor = n.operation.descriptor();
+                            pending.extend(n.inputs.iter().filter_map(|(port, source)| {
+                                (descriptor.port_kind(port)
+                                    == veylvik_document::registry::PortKind::Scene)
+                                    .then_some(*source)
+                            }));
+                        }
+                        Kernel::RenderScene
                     }
                     _ => unreachable!("only structural nodes are special"),
                 },
@@ -614,6 +663,7 @@ impl Plan {
                 kernel,
                 inputs: bound(&inputs),
                 output: value,
+                cards,
             });
             outputs.insert(node.id, value);
             if let Some(key) = key {
@@ -636,12 +686,13 @@ impl Plan {
                     Input::Empty,
                 ],
                 output: converted,
+                cards: Vec::new(),
             });
             final_value = converted;
         }
         let mut uses = vec![0usize; passes.len()];
         for pass in &passes {
-            for input in &pass.inputs {
+            for input in pass.inputs.iter().chain(pass.cards.iter().map(|(_, i)| i)) {
                 if let Input::Value(value) = input {
                     uses[*value] += 1;
                 }
@@ -661,7 +712,11 @@ impl Plan {
             slots[value] = slot;
             pass.output = slot;
             // Retire inputs only after assigning the output, never within their own pass.
-            for input in &mut pass.inputs {
+            for input in pass
+                .inputs
+                .iter_mut()
+                .chain(pass.cards.iter_mut().map(|(_, i)| i))
+            {
                 if let Input::Value(value) = input {
                     let source = *value;
                     *value = slots[source];

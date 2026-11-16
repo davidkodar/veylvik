@@ -155,9 +155,29 @@ impl Scene {
     }
 }
 
+/// Where scene evaluation reads nodes from: a whole composition, or the nodes a
+/// render plan already holds.
+pub struct Graph<'a> {
+    pub width: u32,
+    pub height: u32,
+    pub node: &'a dyn Fn(NodeId) -> Option<&'a veylvik_document::Node>,
+}
 /// The scene produced by `root` at `time`.
 pub fn evaluate(doc: &Composition, root: NodeId, time: Time) -> Result<Scene> {
-    let scene = node(doc, root, time, 0)?;
+    let lookup = |id: NodeId| doc.nodes.get(&id);
+    evaluate_in(
+        &Graph {
+            width: doc.width,
+            height: doc.height,
+            node: &lookup,
+        },
+        root,
+        time,
+    )
+}
+/// The scene produced by `root` at `time`, reading nodes from `graph`.
+pub fn evaluate_in(graph: &Graph<'_>, root: NodeId, time: Time) -> Result<Scene> {
+    let scene = node(graph, root, time, 0)?;
     if scene.objects.len() + scene.cameras.len() + scene.lights.len() > MAX_OBJECTS {
         return fail(format!(
             "a 3D scene may hold at most {MAX_OBJECTS} objects, cameras and lights"
@@ -165,11 +185,11 @@ pub fn evaluate(doc: &Composition, root: NodeId, time: Time) -> Result<Scene> {
     }
     Ok(scene)
 }
-fn node(doc: &Composition, id: NodeId, time: Time, depth: usize) -> Result<Scene> {
+fn node(doc: &Graph<'_>, id: NodeId, time: Time, depth: usize) -> Result<Scene> {
     if depth > 256 {
         return fail("3D scene nesting is too deep");
     }
-    let Some(n) = doc.nodes.get(&id) else {
+    let Some(n) = (doc.node)(id) else {
         return fail("a 3D scene input is missing");
     };
     let (w, h) = (doc.width, doc.height);
@@ -202,7 +222,10 @@ fn node(doc: &Composition, id: NodeId, time: Time, depth: usize) -> Result<Scene
         Operation::Text3d(t) => {
             let source =
                 input("outline").ok_or_else(|| Error("3D text needs an outline".into()))?;
-            let outline = match &doc.nodes[&source].operation {
+            let Some(source) = (doc.node)(source) else {
+                return fail("3D text's outline is missing");
+            };
+            let outline = match &source.operation {
                 op @ Operation::Text(_) => {
                     veylvik_text::outline(op, time).map_err(|e| Error(e.to_string()))?
                 }

@@ -50,6 +50,7 @@ Veylvik is young, but it already works end to end: compose a graph, animate it, 
 - **Shared lights:** a Light rig node lights any number of titles and logos at once; drag a light in the viewer and every surface and shadow follows, press Match the shot to take the light's direction and colour from the footage, or let a light ride on a planar track.
 - **67 materials:** metals, chrome and anodised colours, liquid metal, plastics, enamel, car paint with flakes, carbon fibre, holographic foil, pearl, see-through glass, ice and gemstones that bend the shot, neon, marbles, slate, woods, fabrics, brick, leathers and papers.
 - **Image textures and PBR maps:** any image, logo or footage can be a material's surface, with Normal (OpenGL or DirectX), Roughness and Height maps from libraries such as ambientCG.
+- **3D scenes:** extruded 3D text, shapes, image cards, cameras and lights in the node graph, rendered on the GPU with studio-lit PBR surfaces and composited like any layer.
 - **Grounded titles:** contact shadows make text sit on the surface behind it, dense at the edges and leaning away from its lights, with or without a cast shadow.
 - **Layered and worn materials:** put one material over another through a mask, with automatic edge wear that chips paint off corners and edges first.
 - **Your own materials:** recolour any patterned surface (black marble with gold veins, navy leather), save the whole look as your own material, star favourites, and reuse them on text, backgrounds and layers.
@@ -67,7 +68,7 @@ The [feature list](docs/features.md) covers everything Veylvik can do, area by a
 
 ## How it is built and tested
 
-Veylvik is written in Rust as a fifteen-crate workspace. Application, document and rendering crates forbid `unsafe`; native FFmpeg and GPU-handle access is isolated in `veylvik-decode` and `veylvik-interop`, with explicit unsafe-operation and safety-comment checks. `veylvik-color` isolates the native OpenColorIO C++ interface behind a safe Rust API. Rendering compiles the graph into an immutable plan of compute passes and runs it on the GPU through wgpu and Vulkan. The editor is a native egui app that shows those frames from the same Vulkan device, without copying the preview frame back to the CPU. Document editing, font shaping and orchestration run on the CPU; composition kernels, material shading and vector coverage run on Vulkan. Export and diagnostic readbacks are separate from the live viewer path.
+Veylvik is written in Rust as a sixteen-crate workspace. Application, document and rendering crates forbid `unsafe`; native FFmpeg and GPU-handle access is isolated in `veylvik-decode` and `veylvik-interop`, with explicit unsafe-operation and safety-comment checks. `veylvik-color` isolates the native OpenColorIO C++ interface behind a safe Rust API. Rendering compiles the graph into an immutable plan of compute passes and runs it on the GPU through wgpu and Vulkan. The editor is a native egui app that shows those frames from the same Vulkan device, without copying the preview frame back to the CPU. Document editing, font shaping and orchestration run on the CPU; composition kernels, material shading and vector coverage run on Vulkan. Export and diagnostic readbacks are separate from the live viewer path.
 
 | Crate | Role |
 | --- | --- |
@@ -77,6 +78,7 @@ Veylvik is written in Rust as a fifteen-crate workspace. Application, document a
 | `veylvik-text` | CPU font shaping and layout, producing editable outlines for GPU coverage. |
 | `veylvik-mesh` | Watertight 3D meshes from vector outlines and primitive solids (the geometry behind 3D text and shapes). |
 | `veylvik-scene` | Evaluates 3D scene graphs at a frame: objects, cameras, lights, transforms and projection. |
+| `veylvik-render3d` | Draws 3D scenes on the GPU for Render scene, plugged into the renderer through a hook. |
 | `veylvik-track` | GPU point and planar tracking, built on the renderer's narrow compute interface. |
 | `veylvik-segment` | Subject mattes from local AI models, run in an isolated worker process, with a verified model installer. |
 | `veylvik-decode` | Hardware-first video decoding into GPU frames. |

@@ -245,7 +245,13 @@ impl Renderer {
             .device
             .create_shader_module(wgpu::ShaderModuleDescriptor {
                 label: Some("material library sample"),
-                source: wgpu::ShaderSource::Wgsl(include_str!("kernels.wgsl").into()),
+                source: wgpu::ShaderSource::Wgsl(
+                    concat!(
+                        include_str!("kernels.wgsl"),
+                        include_str!("environment.wgsl")
+                    )
+                    .into(),
+                ),
             });
         let pipeline = self
             .device

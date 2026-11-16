@@ -157,6 +157,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 state.adapter.get_info(),
             )?;
             render_limits.apply(&mut renderer);
+            renderer.set_scene_renderer(Arc::new(veylvik_render3d::Engine::new(renderer.device())));
             let renderer = Arc::new(renderer);
             let context = cc.egui_ctx.clone();
             let scheduler = GpuPreviewScheduler::with_renderer(renderer.clone(), move || {

@@ -222,6 +222,7 @@ Everything Veylvik can do today, area by area. Veylvik is a native Rust node com
 
 - **Text surface** (`material`) families: gold, silver, aluminium, bronze, phosphor, wood, light oak, dark oak, marble, light brick, red brick, concrete, paper, aged paper, red/brown/tan/dark/black leather, glossy plastic, car paint (metallic flakes under a clear coat), carbon fibre (twill weave) and holographic foil (23).
 - **Image texture** surface: put any image, logo or footage on a material's optional Texture input to light, bevel and reflect it like a material (footage plays inside text).
+- **3D scenes**: 3D text, shapes, image cards, cameras and lights rendered on the GPU (Add > 3D).
 - **Materials over MCP**: agents list every material (families, catalogue looks, your saved ones) and apply them to titles.
 - **Contact shadow**: soft occlusion where a title meets the surface behind it, leaning away from its lights.
 - **Keyed colours and lights**: animate material colours and every light's colour, intensity, position and rotation, with keys on the timeline.

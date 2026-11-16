@@ -1,0 +1,17 @@
+[package]
+name = "veylvik-render3d"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Rasterises Veylvik 3D scenes on the GPU for Render scene nodes."
+[dependencies]
+veylvik-document.workspace = true
+veylvik-render.workspace = true
+veylvik-scene.workspace = true
+wgpu.workspace = true
+bytemuck.workspace = true
+[dev-dependencies]
+serde_json.workspace = true
+[lints]
+workspace = true
