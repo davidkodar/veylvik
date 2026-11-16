@@ -19,7 +19,7 @@ pub struct Material {
     pub optics: Option<crate::optical::SurfaceOptics>,
     /// None uses the material family’s own pattern colours.
     #[serde(default)]
-    pub colours: Option<crate::optical::Palette>,
+    pub colours: Option<crate::optical::PaletteTrack>,
     pub kind: MaterialKind,
     pub scale: Scalar,
     pub bevel: Scalar,
@@ -297,7 +297,7 @@ node!(
                 optics.validate()?;
             }
             if let Some(colours) = &self.colours {
-                crate::optical::validate_palette(colours)?;
+                crate::optical::validate_palette_track(colours)?;
             }
             Ok(())
         }

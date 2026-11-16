@@ -157,6 +157,19 @@ impl Keys {
                     }
                 }
             }
+            // Keyed colours, light positions and intensities share the timeline.
+            for (path, times) in node.operation.keyed_properties() {
+                for (index, time) in times.into_iter().enumerate() {
+                    if let Some(f) = frame(time, doc.frame_rate, doc.frame_count) {
+                        self.marks.entry(f).or_default().push(Mark {
+                            node: id,
+                            parameter: path.clone(),
+                            index,
+                            hint: format!("{} · {}", node.label, path),
+                        });
+                    }
+                }
+            }
             for parameter in node.operation.descriptor().parameters {
                 if let Some(keys) = node.operation.scalar(parameter.name).and_then(|s| s.keys()) {
                     for (index, key) in keys.iter().enumerate() {
@@ -530,6 +543,71 @@ mod tests {
         assert_eq!(keys.frames, [0, 24]);
         assert_eq!(keys.adjacent(12, false), Some(0));
         assert_eq!(keys.adjacent(12, true), Some(24));
+    }
+    #[test]
+    fn colour_and_light_keys_share_the_timeline_and_move_together() {
+        let mut doc = veylvik_document::demo();
+        let mut material = veylvik_document::presets::material::Source::Builtin("marble")
+            .material()
+            .unwrap();
+        material.lighting = 0.0.into();
+        let mut colours = veylvik_document::optical::palette_track(
+            veylvik_document::MaterialKind::Marble.palette(),
+        );
+        colours[1]
+            .set_key_at(Time { ticks: 0, rate: 24 }, [0.1; 3])
+            .unwrap();
+        colours[1]
+            .set_key_at(
+                Time {
+                    ticks: 12,
+                    rate: 24,
+                },
+                [0.9; 3],
+            )
+            .unwrap();
+        material.colours = Some(colours);
+        material.studio.lights[0]
+            .position
+            .set_key_at(Time { ticks: 6, rate: 24 }, [1.0, 0.0, 2.0])
+            .unwrap();
+        let node = Node::new("Surface", Operation::Material(material), &[]);
+        let id = node.id;
+        doc.nodes.insert(id, node);
+        let mut keys = Keys {
+            scope: Scope::Selected,
+            ..Keys::default()
+        };
+        keys.sync(&doc, 0, id);
+        assert_eq!(keys.frames, [0, 6, 12]);
+        // Move the colour key at frame 12 to frame 18.
+        keys.selected = BTreeSet::from([12]);
+        let commands = keys.commands(&doc, 6, false, false, 12).unwrap();
+        let Command::Put { node } = &commands[0] else {
+            panic!()
+        };
+        let Operation::Material(m) = &node.operation else {
+            panic!()
+        };
+        let times: Vec<i64> = m.colours.as_ref().unwrap()[1]
+            .keys()
+            .iter()
+            .map(|k| k.time.ticks * 24 / i64::from(k.time.rate))
+            .collect();
+        assert_eq!(times, [0, 18]);
+        // Deleting the only light key keeps its value as a constant.
+        keys.selected = BTreeSet::from([6]);
+        let commands = keys.commands(&doc, 0, false, true, 6).unwrap();
+        let Command::Put { node } = &commands[0] else {
+            panic!()
+        };
+        let Operation::Material(m) = &node.operation else {
+            panic!()
+        };
+        assert_eq!(
+            m.studio.lights[0].position.constant(),
+            Some([1.0, 0.0, 2.0])
+        );
     }
     #[test]
     fn shared_parameter_frames_and_revision_refresh() {

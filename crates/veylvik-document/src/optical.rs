@@ -1,5 +1,6 @@
 //! Portable optical response, independent of texture and lighting.
 use crate::MaterialKind;
+use crate::Track3;
 use serde::{Deserialize, Serialize};
 
 /// Linear RGB reflectance at normal incidence. These are artistic defaults,
@@ -77,9 +78,38 @@ pub fn validate_palette(palette: &Palette) -> crate::Result<()> {
     }
     Ok(())
 }
+/// Pattern colours that may be keyed; constant colours stay plain `[r, g, b]` arrays.
+pub type PaletteTrack = [Track3; 3];
+pub fn palette_track(palette: Palette) -> PaletteTrack {
+    palette.map(Track3::from)
+}
+pub fn palette_at(colours: &PaletteTrack, time: crate::Time) -> crate::Result<Palette> {
+    Ok([
+        colours[0].at(time)?,
+        colours[1].at(time)?,
+        colours[2].at(time)?,
+    ])
+}
+pub fn validate_palette_track(colours: &PaletteTrack) -> crate::Result<()> {
+    for colour in colours {
+        colour.validate()?;
+        let values: Vec<[f32; 3]> = match colour {
+            Track3::Constant(v) => vec![*v],
+            Track3::Animated(curve) => curve.keys.iter().map(|k| k.value).collect(),
+        };
+        for v in values {
+            validate_palette(&[v; 3])?;
+        }
+    }
+    Ok(())
+}
 pub fn palette_schema() -> serde_json::Value {
     let colour = serde_json::json!({"type":"array","minItems":3,"maxItems":3,"items":{"type":"number","minimum":0,"maximum":1}});
-    serde_json::json!({"anyOf":[{"type":"null"},{"type":"array","minItems":3,"maxItems":3,"items":colour}]})
+    let keyed = serde_json::json!({"type":"object","additionalProperties":false,"required":["interpolation","keys"],"properties":{
+        "interpolation":{"enum":["linear","step","smooth","monotone"]},
+        "keys":{"type":"array","minItems":1,"maxItems":crate::animation::MAX_KEYS,"items":{"type":"object","additionalProperties":false,
+            "required":["time","value"],"properties":{"time":crate::registry::time_schema(),"value":colour}}}}});
+    serde_json::json!({"anyOf":[{"type":"null"},{"type":"array","minItems":3,"maxItems":3,"items":{"oneOf":[colour,keyed]}}]})
 }
 impl MaterialKind {
     /// What each palette entry colours. Metals have none: their colour is the
@@ -152,16 +182,18 @@ impl MaterialKind {
 
 pub const MAX_STUDIO_LIGHTS: usize = 8;
 /// A rectangular emitter; scene units are relative to the preview sphere radius.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+/// Position, rotation, colour and intensity may be keyed.
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AreaLight {
     pub enabled: bool,
-    pub position: [f32; 3],
+    pub position: Track3,
     /// Euler rotations in degrees, applied X then Y then Z.
-    pub rotation: [f32; 3],
+    pub rotation: Track3,
     pub size: [f32; 2],
-    pub colour: [f32; 3],
-    pub intensity: f32,
+    pub colour: Track3,
+    #[serde(deserialize_with = "crate::track::number_or_scalar")]
+    pub intensity: crate::Scalar,
     /// Ride on the rig's planar track: X/Y become an offset from the tracked point
     /// and the light keeps aiming at the subject.
     #[serde(default)]
@@ -171,13 +203,62 @@ impl Default for AreaLight {
     fn default() -> Self {
         Self {
             enabled: true,
-            position: [-3.2, -3.0, 1.5],
-            rotation: [25., -45., -20.],
+            position: [-3.2, -3.0, 1.5].into(),
+            rotation: [25., -45., -20.].into(),
             size: [3.0, 4.5],
-            colour: [1., 0.96, 0.89],
-            intensity: 4.,
+            colour: [1., 0.96, 0.89].into(),
+            intensity: 4.0.into(),
             follow: false,
         }
+    }
+}
+// Keys compare by exact rational time, which has no derived equality.
+impl PartialEq for AreaLight {
+    fn eq(&self, other: &Self) -> bool {
+        serde_json::to_value(self).ok() == serde_json::to_value(other).ok()
+    }
+}
+/// A light at one moment: what rendering, guides and shot matching read.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct LightState {
+    pub enabled: bool,
+    pub position: [f32; 3],
+    pub rotation: [f32; 3],
+    pub size: [f32; 2],
+    pub colour: [f32; 3],
+    pub intensity: f32,
+    pub follow: bool,
+}
+/// A rig at one moment.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RigState {
+    pub environment: f32,
+    pub environment_rotation: f32,
+    pub ambient: f32,
+    pub lights: Vec<LightState>,
+}
+impl Default for RigState {
+    fn default() -> Self {
+        StudioRig::default().still()
+    }
+}
+impl AreaLight {
+    pub fn at(&self, time: crate::Time) -> crate::Result<LightState> {
+        Ok(LightState {
+            enabled: self.enabled,
+            position: self.position.at(time)?,
+            rotation: self.rotation.at(time)?,
+            size: self.size,
+            colour: self.colour.at(time)?,
+            intensity: self.intensity.at(time)?,
+            follow: self.follow,
+        })
+    }
+    pub fn is_animated(&self) -> bool {
+        self.position.is_animated()
+            || self.rotation.is_animated()
+            || self.colour.is_animated()
+            || self.intensity.keys().is_some()
     }
 }
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -205,34 +286,34 @@ impl Default for StudioRig {
             ambient: 0.0,
             lights: vec![
                 AreaLight {
-                    position: [-3.0, -0.7, -1.0],
-                    rotation: [0.0, -105.0, 0.0],
+                    position: [-3.0, -0.7, -1.0].into(),
+                    rotation: [0.0, -105.0, 0.0].into(),
                     size: [1.5, 4.0],
-                    intensity: 1.2,
+                    intensity: 1.2.into(),
                     ..AreaLight::default()
                 },
                 AreaLight {
-                    position: [3., -0.3, 1.5],
-                    rotation: [0., 50., 0.],
+                    position: [3., -0.3, 1.5].into(),
+                    rotation: [0., 50., 0.].into(),
                     size: [2.3, 3.2],
-                    colour: [0.96, 0.98, 1.],
-                    intensity: 3.5,
+                    colour: [0.96, 0.98, 1.].into(),
+                    intensity: 3.5.into(),
                     ..AreaLight::default()
                 },
                 AreaLight {
-                    position: [-2.8, 2.6, 1.5],
-                    rotation: [-30., -45., 0.],
+                    position: [-2.8, 2.6, 1.5].into(),
+                    rotation: [-30., -45., 0.].into(),
                     size: [1.8, 2.0],
-                    colour: [1., 0.93, 0.8],
-                    intensity: 3.2,
+                    colour: [1., 0.93, 0.8].into(),
+                    intensity: 3.2.into(),
                     ..AreaLight::default()
                 },
                 AreaLight {
-                    position: [0., -4., 2.],
-                    rotation: [60., 0., 0.],
+                    position: [0., -4., 2.].into(),
+                    rotation: [60., 0., 0.].into(),
                     size: [7., 4.],
-                    colour: [1.; 3],
-                    intensity: 0.45,
+                    colour: [1.; 3].into(),
+                    intensity: 0.45.into(),
                     ..AreaLight::default()
                 },
             ]
@@ -243,7 +324,7 @@ impl Default for StudioRig {
                 // Extra cards are opt-in; stacking them made solid white patches.
                 light.enabled = false;
                 if index == 1 {
-                    light.intensity = 1.2;
+                    light.intensity = 1.2.into();
                 }
                 light
             })
@@ -264,11 +345,29 @@ impl StudioRig {
             return crate::fail("Studio lighting supports up to eight lights and ambient 0–16");
         }
         for l in &self.lights {
-            if l.position.iter().any(|&v| !within(v, -100., 100.))
-                || l.rotation.iter().any(|&v| !within(v, -360., 360.))
+            let track = |t: &Track3, lo: f32, hi: f32| {
+                t.validate().is_ok()
+                    && match t {
+                        Track3::Constant(v) => v.iter().all(|&v| within(v, lo, hi)),
+                        Track3::Animated(c) => c
+                            .keys
+                            .iter()
+                            .all(|k| k.value.iter().all(|&v| within(v, lo, hi))),
+                    }
+            };
+            let intensity = l.intensity.validate().is_ok()
+                && match l.intensity.keys() {
+                    Some(keys) => keys.iter().all(|k| within(k.value, 0., 100.)),
+                    None => l
+                        .intensity
+                        .at(crate::Time { ticks: 0, rate: 1 })
+                        .is_ok_and(|v| within(v, 0., 100.)),
+                };
+            if !track(&l.position, -100., 100.)
+                || !track(&l.rotation, -360., 360.)
                 || l.size.iter().any(|&v| !within(v, 0.01, 100.))
-                || l.colour.iter().any(|&v| !within(v, 0., 1.))
-                || !within(l.intensity, 0., 100.)
+                || !track(&l.colour, 0., 1.)
+                || !intensity
             {
                 return crate::fail(
                     "Invalid studio light position, rotation, size, colour or intensity",
@@ -277,17 +376,50 @@ impl StudioRig {
         }
         Ok(())
     }
+    /// The rig at `time`.
+    pub fn at(&self, time: crate::Time) -> crate::Result<RigState> {
+        Ok(RigState {
+            environment: self.environment,
+            environment_rotation: self.environment_rotation,
+            ambient: self.ambient,
+            lights: self
+                .lights
+                .iter()
+                .map(|l| l.at(time))
+                .collect::<crate::Result<_>>()?,
+        })
+    }
+    /// The rig at time zero, for library samples and other stills.
+    pub fn still(&self) -> RigState {
+        self.at(crate::Time { ticks: 0, rate: 1 })
+            .expect("a validated rig evaluates")
+    }
+    pub fn is_animated(&self) -> bool {
+        self.lights.iter().any(AreaLight::is_animated)
+    }
     pub fn schema() -> serde_json::Value {
         use serde_json::json;
-        let vector = |n, lo, hi| json!({"type":"array","minItems":n,"maxItems":n,"items":{"type":"number","minimum":lo,"maximum":hi}});
+        let number = |lo, hi| json!({"type":"number","minimum":lo,"maximum":hi});
+        let vector =
+            |n, lo, hi| json!({"type":"array","minItems":n,"maxItems":n,"items":number(lo,hi)});
+        // A constant array, or keys holding whole vectors.
+        let track = |lo, hi| {
+            json!({"oneOf":[vector(3,lo,hi),{"type":"object","additionalProperties":false,
+            "required":["interpolation","keys"],"properties":{
+                "interpolation":{"enum":["linear","step","smooth","monotone"]},
+                "keys":{"type":"array","minItems":1,"maxItems":crate::animation::MAX_KEYS,"items":{"type":"object",
+                    "additionalProperties":false,"required":["time","value"],"properties":{
+                        "time":crate::registry::time_schema(),"value":vector(3,lo,hi)}}}}}]})
+        };
         json!({"type":"object","additionalProperties":false,"required":["environment","environment_rotation","ambient","lights"],"properties":{
             "environment":{"type":"number","minimum":0,"maximum":16},
             "environment_rotation":{"type":"number","minimum":-360,"maximum":360},
             "ambient":{"type":"number","minimum":0,"maximum":16},
             "lights":{"type":"array","maxItems":MAX_STUDIO_LIGHTS,"items":{"type":"object","additionalProperties":false,
                 "required":["enabled","position","rotation","size","colour","intensity"],"properties":{
-                    "enabled":{"type":"boolean"},"position":vector(3,-100.,100.),"rotation":vector(3,-360.,360.),
-                    "size":vector(2,0.01,100.),"colour":vector(3,0.,1.),"intensity":{"type":"number","minimum":0,"maximum":100},
+                    "enabled":{"type":"boolean"},"position":track(-100.,100.),"rotation":track(-360.,360.),
+                    "size":vector(2,0.01,100.),"colour":track(0.,1.),
+                    "intensity":{"oneOf":[number(0.,100.),crate::registry::scalar_schema(Some(0.),Some(100.))]},
                     "follow":{"type":"boolean"}}}}}})
     }
 }
@@ -484,7 +616,14 @@ impl StudioRig {
     /// environment to the shot's brightness. Flat light keeps a soft key above.
     /// Image space maps to scene units like the viewer guides: an eighth of the
     /// shorter side per unit around the frame centre.
-    pub fn match_shot(&mut self, shot: &ShotLight, width: u32, height: u32) {
+    /// Animated properties of the key are keyed at `time`; constant ones are replaced.
+    pub fn match_shot(
+        &mut self,
+        shot: &ShotLight,
+        width: u32,
+        height: u32,
+        time: crate::Time,
+    ) -> crate::Result<()> {
         let directional = shot.contrast >= 1.3;
         let (x, y) = if directional {
             let [x, y] = scene_point(shot.position, width, height);
@@ -502,15 +641,17 @@ impl StudioRig {
         let key = &mut self.lights[1];
         key.enabled = true;
         key.follow = false;
-        key.position = position;
-        key.rotation = aim(position);
-        key.colour = shot.colour;
-        key.intensity = if directional {
+        key.position.set_at(time, position)?;
+        key.rotation.set_at(time, aim(position))?;
+        key.colour.set_at(time, shot.colour)?;
+        let intensity = if directional {
             (1.2 * shot.contrast.min(10.0)).clamp(1.2, 12.0)
         } else {
             1.2
         };
+        crate::track::set_scalar_at(&mut key.intensity, time, intensity)?;
         self.environment = (0.65 * shot.mean / 0.18).clamp(0.05, 4.0);
+        Ok(())
     }
 }
 
@@ -562,8 +703,8 @@ impl StudioRig {
         time: crate::Time,
         width: u32,
         height: u32,
-    ) -> crate::Result<Self> {
-        let mut rig = self.clone();
+    ) -> crate::Result<RigState> {
+        let mut rig = self.at(time)?;
         let Some(track) = track.filter(|_| rig.lights.iter().any(|l| l.follow)) else {
             return Ok(rig);
         };

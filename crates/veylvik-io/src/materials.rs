@@ -176,7 +176,11 @@ mod tests {
         let directory =
             std::env::temp_dir().join(format!("veylvik-materials-{}", NodeId::new_v4()));
         let mut material = Source::Builtin("marble").material().unwrap();
-        material.colours = Some([[0.02; 3], [0.8, 0.55, 0.15], [0.; 3]]);
+        material.colours = Some(veylvik_document::optical::palette_track([
+            [0.02; 3],
+            [0.8, 0.55, 0.15],
+            [0.; 3],
+        ]));
         let saved = Saved::new("Black marble", &material).unwrap();
         let path = add(&directory, &saved).unwrap();
         add(&directory, &Saved::new("Aqua leather", &material).unwrap()).unwrap();

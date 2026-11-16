@@ -106,6 +106,9 @@ impl crate::Studio {
                 let doc = self.project.document.snapshot();
                 veylvik_document::optical::scene_point(point, doc.width, doc.height)
             });
+        let Ok(time) = self.project.time() else {
+            return;
+        };
         let studio = match &mut node.operation {
             Operation::Material(m) => &mut m.studio,
             Operation::LightRig(rig) => &mut rig.studio,
@@ -138,16 +141,20 @@ impl crate::Studio {
             .enumerate()
             .filter(|(_, l)| l.enabled)
         {
+            // Lights are drawn where they are at the current frame.
+            let Ok(now) = light.at(time) else {
+                continue;
+            };
             let offset = base.filter(|_| light.follow).unwrap_or([0.0; 2]);
             let at = [
-                light.position[0] + offset[0],
-                light.position[1] + offset[1],
-                light.position[2],
+                now.position[0] + offset[0],
+                now.position[1] + offset[1],
+                now.position[2],
             ];
             let rotation = if light.follow && base.is_some() {
                 veylvik_document::optical::aim(at)
             } else {
-                light.rotation
+                now.rotation
             };
             let actual = origin + Vec2::new(at[0], at[1]) * scale;
             let bounds = canvas.shrink(22.0);
@@ -174,9 +181,13 @@ impl crate::Studio {
             }
             if response.dragged() {
                 let delta = crate::handles::drag_delta(&response) / scale;
-                light.position[0] = (light.position[0] + delta.x).clamp(-100.0, 100.0);
-                light.position[1] = (light.position[1] + delta.y).clamp(-100.0, 100.0);
-                changed |= delta != Vec2::ZERO;
+                // An animated light gets a key at this frame; a still one just moves.
+                let moved = [
+                    (now.position[0] + delta.x).clamp(-100.0, 100.0),
+                    (now.position[1] + delta.y).clamp(-100.0, 100.0),
+                    now.position[2],
+                ];
+                changed |= delta != Vec2::ZERO && light.position.set_at(time, moved).is_ok();
             }
             let selected = s.selected == index;
             let colour = if selected {

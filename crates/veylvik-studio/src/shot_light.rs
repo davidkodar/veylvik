@@ -104,7 +104,13 @@ impl crate::Studio {
         let Some(rig) = rig_mut(&mut node.operation) else {
             return;
         };
-        rig.match_shot(&shot, width, height);
+        let matched = self
+            .project
+            .time()
+            .and_then(|time| Ok(rig.match_shot(&shot, width, height, time)?));
+        if let Err(e) = matched {
+            return self.fail(e);
+        }
         match self.project.apply(&[Command::Put {
             node: Box::new(node),
         }]) {

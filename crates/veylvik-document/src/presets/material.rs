@@ -101,7 +101,7 @@ impl Source<'_> {
 pub fn restyle(target: &mut Material, source: Source<'_>, with: &Material) {
     target.kind = with.kind;
     target.optics = with.optics;
-    target.colours = with.colours;
+    target.colours = with.colours.clone();
     let whole_look = match source {
         Source::Saved(_) => true,
         Source::Builtin(id) => super::catalogue::get(id).is_some(),

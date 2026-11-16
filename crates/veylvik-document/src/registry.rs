@@ -129,13 +129,7 @@ impl Parameter {
             }
             ParameterKind::TextLanguage => json!({"type":"string","maxLength":64}),
             ParameterKind::Boolean => json!({"type":"boolean"}),
-            ParameterKind::Scalar => {
-                let number = json!({"type":"number","minimum":self.min,"maximum":self.max});
-                json!({"oneOf":[
-                    {"type":"object","properties":{"kind":{"const":"constant"},"value":number},"required":["kind","value"],"additionalProperties":false},
-                    {"type":"object","properties":{"kind":{"enum":["linear","step","smooth","monotone"]},"keys":{"type":"array","minItems":1,"maxItems":crate::animation::MAX_KEYS,"items":{"type":"object","properties":{"time":{"type":"object","properties":{"ticks":{"type":"integer","minimum":i64::MIN,"maximum":i64::MAX},"rate":{"type":"integer","minimum":1,"maximum":u32::MAX}},"required":["ticks","rate"],"additionalProperties":false},"value":number,"segment":crate::schema::segment()},"required":["time","value"],"additionalProperties":false}}},"required":["kind","keys"],"additionalProperties":false}
-                ]})
-            }
+            ParameterKind::Scalar => scalar_schema(self.min, self.max),
             ParameterKind::BlendMode => json!({"type":"string","enum":crate::BlendMode::ALL}),
             ParameterKind::MaskChannel => json!({"type":"string","enum":crate::MaskChannel::ALL}),
             ParameterKind::GradientMode => json!({"type":"string","enum":crate::GradientMode::ALL}),
@@ -319,4 +313,17 @@ pub fn operation_schema() -> Value {
 }
 pub fn catalog() -> Value {
     json!({"recipes":crate::recipes::catalog(),"nodes":TYPES.iter().map(|node|json!({"descriptor":node,"default_operation":node.default_operation(),"operation_schema":node.schema()})).collect::<Vec<_>>(),"image_contract":"scene-linear Rec.709, premultiplied RGBA32F","scalar_contract":"constant, linear, step, smooth or monotone keyframes; smooth uses cubic smoothstep per interval; monotone uses bounded cubic Hermite with shared harmonic interior slopes and secant endpoint slopes; time is ticks/rate seconds; 1..4096 strictly increasing keys"})
+}
+
+/// An exact rational time.
+pub fn time_schema() -> Value {
+    json!({"type":"object","properties":{"ticks":{"type":"integer","minimum":i64::MIN,"maximum":i64::MAX},"rate":{"type":"integer","minimum":1,"maximum":u32::MAX}},"required":["ticks","rate"],"additionalProperties":false})
+}
+/// A constant or keyed number within bounds.
+pub fn scalar_schema(min: Option<f32>, max: Option<f32>) -> Value {
+    let number = json!({"type":"number","minimum":min,"maximum":max});
+    json!({"oneOf":[
+        {"type":"object","properties":{"kind":{"const":"constant"},"value":number},"required":["kind","value"],"additionalProperties":false},
+        {"type":"object","properties":{"kind":{"enum":["linear","step","smooth","monotone"]},"keys":{"type":"array","minItems":1,"maxItems":crate::animation::MAX_KEYS,"items":{"type":"object","properties":{"time":time_schema(),"value":number,"segment":crate::schema::segment()},"required":["time","value"],"additionalProperties":false}}},"required":["kind","keys"],"additionalProperties":false}
+    ]})
 }

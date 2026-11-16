@@ -1,29 +1,64 @@
 //! Scalar authoring controls; edits remain in the inspector's transaction draft.
 use eframe::egui;
-use veylvik_document::{Interpolation, Scalar, Time, animation::MAX_KEYS};
+use veylvik_document::{Interpolation, Scalar, Time, Track3, animation::MAX_KEYS};
 
 /// Shared compact key controls. Navigation is consumed by Studio after committing drafts.
 pub fn key_controls(ui: &mut egui::Ui, scalar: &mut Scalar, time: Time) -> bool {
-    let here = scalar.keys().is_some_and(|keys| {
-        keys.iter()
-            .any(|key| key.time.compare(time).is_ok_and(|o| o.is_eq()))
-    });
-    let previous = scalar
+    let times: Vec<Time> = scalar
         .keys()
-        .and_then(|keys| {
-            keys.iter()
-                .rev()
-                .find(|key| key.time.compare(time).is_ok_and(|o| o.is_lt()))
-        })
-        .map(|key| key.time);
-    let next = scalar
-        .keys()
-        .and_then(|keys| {
-            keys.iter()
-                .find(|key| key.time.compare(time).is_ok_and(|o| o.is_gt()))
-        })
-        .map(|key| key.time);
-    let mut changed = false;
+        .map(|keys| keys.iter().map(|key| key.time).collect())
+        .unwrap_or_default();
+    let Some(here) = key_strip(ui, &times, scalar.keys().is_some(), time) else {
+        return false;
+    };
+    let result = if here {
+        scalar.remove_key_at(time)
+    } else {
+        scalar
+            .at(time)
+            .and_then(|value| scalar.set_key_at(time, value))
+    };
+    report(ui, result)
+}
+/// Key controls for a whole colour or vector: one key holds all three channels.
+pub fn track_key_controls(ui: &mut egui::Ui, track: &mut Track3, time: Time) -> bool {
+    let times: Vec<Time> = track.keys().iter().map(|key| key.time).collect();
+    let Some(here) = key_strip(ui, &times, track.is_animated(), time) else {
+        return false;
+    };
+    let result = if here {
+        track.remove_key_at(time)
+    } else {
+        track
+            .at(time)
+            .and_then(|value| track.set_key_at(time, value))
+    };
+    report(ui, result)
+}
+fn report(ui: &mut egui::Ui, result: veylvik_document::Result<()>) -> bool {
+    match result {
+        Ok(()) => true,
+        Err(error) => {
+            ui.colored_label(egui::Color32::LIGHT_RED, error.to_string());
+            false
+        }
+    }
+}
+/// Previous key, the key diamond and next key for a property keyed at `times`.
+/// Returns Some(key is at this frame) when the diamond was clicked.
+fn key_strip(ui: &mut egui::Ui, times: &[Time], animated: bool, time: Time) -> Option<bool> {
+    let here = times
+        .iter()
+        .any(|t| t.compare(time).is_ok_and(|o| o.is_eq()));
+    let previous = times
+        .iter()
+        .rev()
+        .find(|t| t.compare(time).is_ok_and(|o| o.is_lt()))
+        .copied();
+    let next = times
+        .iter()
+        .find(|t| t.compare(time).is_ok_and(|o| o.is_gt()))
+        .copied();
     if ui
         .add_enabled(
             previous.is_some(),
@@ -37,7 +72,7 @@ pub fn key_controls(ui: &mut egui::Ui, scalar: &mut Scalar, time: Time) -> bool 
     }
     let colour = if here {
         egui::Color32::from_rgb(239, 99, 109)
-    } else if scalar.keys().is_some() {
+    } else if animated {
         egui::Color32::from_rgb(210, 165, 90)
     } else {
         ui.visuals().text_color()
@@ -77,28 +112,13 @@ pub fn key_controls(ui: &mut egui::Ui, scalar: &mut Scalar, time: Time) -> bool 
         },
         egui::Stroke::new(1.4_f32, colour),
     ));
-    if response
+    let clicked = response
         .on_hover_text(if here {
             "Remove key at this frame"
         } else {
             "Add key at this frame"
         })
-        .clicked()
-    {
-        let result = if here {
-            scalar.remove_key_at(time)
-        } else {
-            scalar
-                .at(time)
-                .and_then(|value| scalar.set_key_at(time, value))
-        };
-        match result {
-            Ok(()) => changed = true,
-            Err(error) => {
-                ui.colored_label(egui::Color32::LIGHT_RED, error.to_string());
-            }
-        }
-    }
+        .clicked();
     if ui
         .add_enabled(
             next.is_some(),
@@ -110,6 +130,62 @@ pub fn key_controls(ui: &mut egui::Ui, scalar: &mut Scalar, time: Time) -> bool 
         ui.ctx()
             .data_mut(|d| d.insert_temp(egui::Id::new("parameter-key-seek"), next.unwrap()));
     }
+    clicked.then_some(here)
+}
+/// A keyable colour (linear RGB) with its key controls.
+pub fn colour_track(ui: &mut egui::Ui, label: &str, track: &mut Track3, time: Time) -> bool {
+    let mut changed = false;
+    ui.push_id(label, |ui| {
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 3.;
+            ui.label(label);
+            // egui's colour button takes and returns linear RGB.
+            if let Ok(mut value) = track.at(time)
+                && ui
+                    .color_edit_button_rgb(&mut value)
+                    .on_hover_text(format!("{label} colour"))
+                    .changed()
+            {
+                changed |= report(ui, track.set_at(time, value.map(|v| v.clamp(0., 1.))));
+            }
+            changed |= track_key_controls(ui, track, time);
+        });
+    });
+    changed
+}
+/// A keyable 3D vector as three number fields with one set of key controls.
+pub fn vector_track(
+    ui: &mut egui::Ui,
+    label: &str,
+    names: [&str; 3],
+    track: &mut Track3,
+    range: std::ops::RangeInclusive<f32>,
+    time: Time,
+) -> bool {
+    let mut changed = false;
+    ui.push_id(label, |ui| {
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 3.;
+            ui.add_sized([62., 20.], egui::Label::new(label).truncate());
+            if let Ok(mut value) = track.at(time) {
+                let mut edited = false;
+                for (name, v) in names.iter().zip(&mut value) {
+                    edited |= ui
+                        .add(
+                            egui::DragValue::new(v)
+                                .prefix(format!("{name} "))
+                                .speed(0.02)
+                                .range(range.clone()),
+                        )
+                        .changed();
+                }
+                if edited {
+                    changed |= report(ui, track.set_at(time, value));
+                }
+            }
+            changed |= track_key_controls(ui, track, time);
+        });
+    });
     changed
 }
 

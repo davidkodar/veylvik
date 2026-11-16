@@ -49,8 +49,10 @@ fn fail<T>(message: impl Into<String>) -> Result<T> {
 pub mod animation;
 pub mod key_edit;
 pub mod nodes;
+pub mod track;
 pub use animation::{CompiledScalar, Handle, Interpolation, Key, Scalar, Segment, Time};
 use nodes::NodeOp;
+pub use track::Track3;
 /// Evaluates `$body` with `$node` bound to the node struct inside any `Operation`.
 #[macro_export]
 macro_rules! each_node {
@@ -550,6 +552,13 @@ pub enum Command {
         id: NodeId,
         parameter: String,
         time: Time,
+    },
+    /// Key a whole colour or vector (see `track::Property` for paths).
+    SetTrackKey {
+        id: NodeId,
+        track: String,
+        time: Time,
+        value: [f32; 3],
     },
     Remove {
         id: NodeId,

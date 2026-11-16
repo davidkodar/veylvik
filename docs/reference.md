@@ -589,6 +589,26 @@ viewer edits its offset. The rig reads the track as data only, so footage under 
 track is not decoded to light a title. Track a lamp, a window or the sun through a
 shot and its light moves with it.
 
+**Keyed colours and lights.** A Text surface's pattern colours and every light's
+colour, intensity, position and rotation can be keyed. A colour or a position is
+keyed as a whole: one key holds all three channels (a *track*), blended linearly by
+default; a constant stays a plain `[x, y, z]` array in the project, and lights saved
+before tracks existed (plain arrays and a plain intensity number) load unchanged.
+In the inspector each colour, position and rotation row has the usual previous key,
+key diamond and next key buttons; editing an animated value at the playhead sets a
+key there, and dragging an animated light's guide in the viewer keys its position.
+Keying a family's own colours first copies them, and **Reset colours** removes the
+colour keys. Track keys show on the timeline with other keys and move, duplicate
+and delete with them; removing a track's last key keeps its value. Following lights
+add their keyed offset to the tracked point. **Match the shot** keys the key light
+at the playhead when its properties are animated and replaces them otherwise.
+
+Commands address these by path: `set_track_key` with `track` = `colours.0`..`colours.2`
+(linear RGB 0–1) or `studio.lights.N.position`, `.rotation` (degrees) or `.colour`
+and a `[x, y, z]` value; `set_key` with `parameter` = `studio.lights.N.intensity`;
+`remove_key` with any of these paths. Every key is validated against the same bounds
+as the constant values.
+
 **Match the shot** (Light rig, or a surface's own lights) renders the shot behind
 the surface at the playhead in the background: the surface's Environment input, else
 an Environment of any surface the rig lights, else the composition's backdrop. It

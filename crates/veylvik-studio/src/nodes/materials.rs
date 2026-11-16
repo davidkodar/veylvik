@@ -39,7 +39,7 @@ impl Inspect for veylvik_document::nodes::Material {
                 .on_hover_text("Tick for maps whose green channel points down (often named _NormalDX); leave off for OpenGL maps (_NormalGL)")
                 .changed();
         }
-        cx.dirty |= colour_controls(ui, self);
+        cx.dirty |= colour_controls(ui, self, cx.time);
         ui.horizontal_wrapped(|ui| {
             if cx.environment {
                 ui.label("Reflects the shot");
@@ -66,6 +66,7 @@ impl Inspect for veylvik_document::nodes::Material {
             cx.lit_by,
             &mut cx.share_lights,
             &mut cx.match_shot,
+            cx.time,
         );
         ui.add_space(4.);
         cx.save_material |= ui
@@ -105,38 +106,29 @@ pub(crate) fn look_slider(
     }
     changed
 }
-/// Pattern colours with their family roles, edited in display (sRGB) terms.
+/// Pattern colours with their family roles (linear RGB, shown by the picker). Each
+/// colour can be keyed; editing one first copies the family's colours.
 pub(crate) fn colour_controls(
     ui: &mut egui::Ui,
     material: &mut veylvik_document::nodes::Material,
+    time: veylvik_document::Time,
 ) -> bool {
     let roles = material.kind.colour_roles();
     if roles.is_empty() {
         return false;
     }
-    let (mut changed, mut reset) = (false, false);
-    let defaults = material.kind.palette();
-    let mut palette = material.colours.unwrap_or(defaults);
-    ui.horizontal_wrapped(|ui| {
-        for (role, colour) in roles.iter().zip(&mut palette) {
-            let mut shown = colour.map(egui::ecolor::gamma_from_linear);
-            ui.label(*role);
-            if ui
-                .color_edit_button_rgb(&mut shown)
-                .on_hover_text(format!("{role} colour"))
-                .changed()
-            {
-                *colour = shown.map(|v| egui::ecolor::linear_from_gamma(v).clamp(0., 1.));
-                changed = true;
-            }
-        }
-        reset = material.colours.is_some()
-            && ui
-                .small_button("Reset colours")
-                .on_hover_text("Use this surface’s own colours")
-                .clicked();
-    });
-    if reset {
+    let mut changed = false;
+    let defaults = veylvik_document::optical::palette_track(material.kind.palette());
+    let mut palette = material.colours.clone().unwrap_or_else(|| defaults.clone());
+    for (role, colour) in roles.iter().zip(&mut palette) {
+        changed |= crate::animation::colour_track(ui, role, colour, time);
+    }
+    if material.colours.is_some()
+        && ui
+            .small_button("Reset colours")
+            .on_hover_text("Use this surface’s own colours (removes colour keys)")
+            .clicked()
+    {
         material.colours = None;
         return true;
     }
@@ -155,6 +147,7 @@ impl Inspect for veylvik_document::nodes::LightRig {
                 cx.node_id,
                 &mut cx.match_shot,
                 cx.tracked,
+                cx.time,
             );
         });
     }
@@ -230,6 +223,7 @@ pub(crate) fn rig_controls(
     node_id: veylvik_document::NodeId,
     match_shot: &mut bool,
     tracked: bool,
+    time: veylvik_document::Time,
 ) -> bool {
     use veylvik_document::optical::{AreaLight, MAX_STUDIO_LIGHTS, StudioRig};
     let mut changed = false;
@@ -259,25 +253,38 @@ pub(crate) fn rig_controls(
                         .checkbox(&mut light.follow, "Follow the track")
                         .on_hover_text("Ride on the rig's tracked point and keep aiming at the subject. X/Y become an offset from the point (set to zero when turned on); drag the light in the viewer to adjust it.")
                         .changed();
-                    if light.follow && !before {
-                        light.position[0] = 0.0;
-                        light.position[1] = 0.0;
+                    if light.follow
+                        && !before
+                        && let Ok([_, _, z]) = light.position.at(time)
+                    {
+                        light.position = [0.0, 0.0, z].into();
                     }
                 }
-                changed |= ui
-                    .color_edit_button_rgb(&mut light.colour)
-                    .on_hover_text("Emitter colour in linear RGB")
-                    .changed();
-                changed |= light_slider(ui, "Intensity", &mut light.intensity, 0.0..=100.0);
-                for (label, value) in ["X", "Y", "Z"].into_iter().zip(&mut light.position) {
-                    changed |= light_slider(ui, label, value, -100.0..=100.0);
-                }
-                for (label, value) in ["Rotate X", "Rotate Y", "Rotate Z"]
-                    .into_iter()
-                    .zip(&mut light.rotation)
-                {
-                    changed |= light_slider(ui, label, value, -360.0..=360.0);
-                }
+                // Colour, intensity, position and rotation can be keyed.
+                changed |= crate::animation::colour_track(ui, "Colour", &mut light.colour, time);
+                changed |= crate::animation::scalar(
+                    ui,
+                    "Intensity",
+                    &mut light.intensity,
+                    0.0..=100.0,
+                    time,
+                );
+                changed |= crate::animation::vector_track(
+                    ui,
+                    "Position",
+                    ["X", "Y", "Z"],
+                    &mut light.position,
+                    -100.0..=100.0,
+                    time,
+                );
+                changed |= crate::animation::vector_track(
+                    ui,
+                    "Rotation",
+                    ["X", "Y", "Z"],
+                    &mut light.rotation,
+                    -360.0..=360.0,
+                    time,
+                );
                 for (label, value) in ["Width", "Height"].into_iter().zip(&mut light.size) {
                     changed |= light_slider(ui, label, value, 0.01..=100.0);
                 }
@@ -318,6 +325,7 @@ pub(crate) fn lighting_controls(
     lit_by: Option<&str>,
     share: &mut Option<bool>,
     match_shot: &mut bool,
+    time: veylvik_document::Time,
 ) -> bool {
     let mut changed = false;
     ui.push_id("surface-lighting",|ui| {
@@ -343,7 +351,7 @@ pub(crate) fn lighting_controls(
                 ui.weak("Select that Light rig node to move its lights; every surface it lights follows.");
                 if ui.button("Use own lights").on_hover_text("Disconnect the shared rig and light this surface with its own lights again").clicked() {*share=Some(false);}
             } else {
-                changed|=rig_controls(ui,&mut material.studio,node_id,match_shot,false);
+                changed|=rig_controls(ui,&mut material.studio,node_id,match_shot,false,time);
                 if ui.button("Share these lights").on_hover_text("Move these lights into a Light rig node that other surfaces can use too").clicked() {*share=Some(true);}
             }
         });

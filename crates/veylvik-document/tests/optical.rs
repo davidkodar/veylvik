@@ -36,7 +36,7 @@ fn optical_defaults_and_invalid_rigs() {
     rig.lights[0].size[0] = 0.;
     assert!(rig.validate().is_err());
     rig = StudioRig::default();
-    rig.lights[0].rotation[0] = f32::INFINITY;
+    rig.lights[0].rotation = [f32::INFINITY, 0.0, 0.0].into();
     assert!(rig.validate().is_err());
     rig = StudioRig::default();
     rig.lights = vec![Default::default(); 9];
@@ -152,9 +152,10 @@ fn shot_light_finds_the_bright_side_and_its_colour() {
         shot.colour
     );
     assert!(shot.contrast > 5.0);
+    let zero = veylvik_document::Time { ticks: 0, rate: 1 };
     let mut rig = StudioRig::default();
-    rig.match_shot(&shot, w, h);
-    let key = &rig.lights[1];
+    rig.match_shot(&shot, w, h, zero).unwrap();
+    let key = rig.lights[1].at(zero).unwrap();
     assert!(
         key.enabled && key.position[0] > 0.0 && key.position[1] < 0.0,
         "up and right"
@@ -163,8 +164,8 @@ fn shot_light_finds_the_bright_side_and_its_colour() {
     // Flat grey: a soft key above, environment follows brightness.
     let flat = vec![[0.18, 0.18, 0.18, 1.0]; (w * h) as usize];
     let shot = ShotLight::analyse(&flat, w, h).unwrap();
-    rig.match_shot(&shot, w, h);
-    assert_eq!(rig.lights[1].position, [0.0, -3.0, 2.5]);
+    rig.match_shot(&shot, w, h, zero).unwrap();
+    assert_eq!(rig.lights[1].position.constant(), Some([0.0, -3.0, 2.5]));
     assert!((rig.environment - 0.65).abs() < 0.01);
     assert!(ShotLight::analyse(&vec![[0.0; 4]; (w * h) as usize], w, h).is_none());
 }
@@ -195,8 +196,10 @@ fn following_lights_ride_the_track_and_keep_aiming_at_the_subject() {
     let mut rig = StudioRig::default();
     rig.lights[1].enabled = true;
     rig.lights[1].follow = true;
-    rig.lights[1].position = [0.5, 0.0, 2.0];
-    let fixed = rig.lights[0].clone();
+    rig.lights[1].position = [0.5, 0.0, 2.0].into();
+    let fixed = rig.lights[0]
+        .at(veylvik_document::Time { ticks: 0, rate: 1 })
+        .unwrap();
     let at = |ticks| {
         rig.followed(
             Some(&track),
@@ -241,7 +244,10 @@ fn following_lights_ride_the_track_and_keep_aiming_at_the_subject() {
             108,
         )
         .unwrap();
-    assert_eq!(still.lights[1].position, rig.lights[1].position);
+    assert_eq!(
+        Some(still.lights[1].position),
+        rig.lights[1].position.constant()
+    );
 }
 
 #[test]

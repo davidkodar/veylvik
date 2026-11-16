@@ -381,8 +381,8 @@ fn area_lights_and_optics_control_radiance_without_changing_coverage() {
         m.studio.ambient = 0.;
         m.studio.environment = 0.;
         m.studio.lights = vec![veylvik_document::optical::AreaLight {
-            position: [0., 0., 4.],
-            rotation: [0.; 3],
+            position: [0., 0., 4.].into(),
+            rotation: [0.; 3].into(),
             size: [8., 8.],
             ..Default::default()
         }];
@@ -391,7 +391,12 @@ fn area_lights_and_optics_control_radiance_without_changing_coverage() {
         let Operation::Material(m) = &mut doc.nodes.get_mut(&doc.output).unwrap().operation else {
             panic!()
         };
-        m.studio.lights[0].intensity *= 2.;
+        m.studio.lights[0].intensity = (m.studio.lights[0]
+            .intensity
+            .at(Time::new(0, 1).unwrap())
+            .unwrap()
+            * 2.)
+            .into();
         let brighter = render(&doc);
         for (a, b) in lit.iter().zip(&brighter) {
             for c in 0..3 {
@@ -605,15 +610,25 @@ fn material_colours_repaint_the_pattern_and_default_to_the_family() {
         })
         .unwrap();
     let family = renderer.material_sample(&marble).unwrap();
-    marble.colours = Some(MaterialKind::Marble.palette());
+    marble.colours = Some(veylvik_document::optical::palette_track(
+        MaterialKind::Marble.palette(),
+    ));
     assert_eq!(renderer.material_sample(&marble).unwrap(), family);
     // Black marble with gold veins: same pattern, new colours.
-    marble.colours = Some([[0.02, 0.02, 0.025], [0.8, 0.55, 0.15], [0.; 3]]);
+    marble.colours = Some(veylvik_document::optical::palette_track([
+        [0.02, 0.02, 0.025],
+        [0.8, 0.55, 0.15],
+        [0.; 3],
+    ]));
     let black = renderer.material_sample(&marble).unwrap();
     let mean = |p: &[[f32; 4]]| p.iter().map(|v| v[0] + v[1] + v[2]).sum::<f32>() / p.len() as f32;
     assert!(mean(&black) < mean(&family) * 0.5);
     assert!(black.iter().all(|p| p.iter().all(|v| v.is_finite())));
-    marble.colours = Some([[2.0, 0., 0.], [0.; 3], [0.; 3]]);
+    marble.colours = Some(veylvik_document::optical::palette_track([
+        [2.0, 0., 0.],
+        [0.; 3],
+        [0.; 3],
+    ]));
     assert!(
         veylvik_document::Document::new({
             let mut doc = blank(8, 8, Time::new(24, 1).unwrap()).unwrap();
@@ -771,7 +786,7 @@ fn a_shared_light_rig_lights_every_surface_like_their_own_lights() {
     gold.lighting = 0.0.into();
     let mut studio = veylvik_document::optical::StudioRig::default();
     studio.lights[1].enabled = true;
-    studio.lights[1].intensity = 6.0;
+    studio.lights[1].intensity = 6.0.into();
     let render = |own: &veylvik_document::optical::StudioRig,
                   rig: Option<&veylvik_document::optical::StudioRig>| {
         let mut d = doc.clone();
@@ -809,7 +824,7 @@ fn a_shared_light_rig_lights_every_surface_like_their_own_lights() {
     );
     assert_eq!(shared, own);
     let mut brighter = studio.clone();
-    brighter.lights[1].intensity = 12.0;
+    brighter.lights[1].intensity = 12.0.into();
     let relit = render(
         &veylvik_document::optical::StudioRig::default(),
         Some(&brighter),
@@ -861,11 +876,14 @@ fn a_key_light_matched_to_the_shot_faces_and_lights_the_surface() {
             })
             .collect();
         let mut matched = StudioRig::default();
-        matched.match_shot(
-            &ShotLight::analyse(&shot, w as u32, h as u32).unwrap(),
-            w as u32,
-            h as u32,
-        );
+        matched
+            .match_shot(
+                &ShotLight::analyse(&shot, w as u32, h as u32).unwrap(),
+                w as u32,
+                h as u32,
+                Time::new(0, 1).unwrap(),
+            )
+            .unwrap();
         let mut dark = matched.clone();
         dark.lights[1].enabled = false;
         let sum = |p: &[[f32; 4]]| p.iter().map(|v| v[0] + v[1] + v[2]).sum::<f32>();
@@ -917,8 +935,8 @@ fn a_light_following_a_track_relights_over_time_without_decoding_the_footage() {
     };
     studio.lights[1].enabled = true;
     studio.lights[1].follow = true;
-    studio.lights[1].position = [0.0, 0.0, 1.0];
-    studio.lights[1].intensity = 20.0;
+    studio.lights[1].position = [0.0, 0.0, 1.0].into();
+    studio.lights[1].intensity = 20.0.into();
     let rig = Node::new(
         "Rig",
         Operation::LightRig(nodes::LightRig { studio }),
@@ -1468,4 +1486,89 @@ fn layered_materials_mask_and_wear_from_the_edges() {
         assert_eq!(at(p, 4, 4)[3], 0.0);
         assert!((at(p, centre.0, centre.1)[3] - 1.0).abs() < 1e-6);
     }
+}
+
+#[test]
+#[ignore = "requires Vulkan"]
+fn keyed_colours_and_lights_change_the_render_over_time() {
+    let renderer = Renderer::new().unwrap();
+    let (mut doc, inputs, _) = source();
+    let coverage = doc.output;
+    let mut m = veylvik_document::presets::material::Source::Builtin("gloss_red_plastic")
+        .material()
+        .unwrap();
+    m.lighting = 0.0.into();
+    let mut colours = veylvik_document::optical::palette_track(MaterialKind::Plastic.palette());
+    colours[0] = [0.8, 0.05, 0.05].into();
+    colours[0]
+        .set_key_at(Time::new(0, 1).unwrap(), [0.8, 0.05, 0.05])
+        .unwrap();
+    colours[0]
+        .set_key_at(Time::new(2, 1).unwrap(), [0.05, 0.05, 0.8])
+        .unwrap();
+    m.colours = Some(colours);
+    let node = Node::new("m", Operation::Material(m), &[("image", coverage)]);
+    doc.output = node.id;
+    doc.nodes.insert(node.id, node);
+    let plan = Plan::compile(&doc).unwrap();
+    let frame = |ticks| {
+        renderer
+            .render_frame(
+                &plan,
+                RenderRequest::full(Time::new(ticks, 1).unwrap()),
+                &inputs,
+            )
+            .unwrap()
+            .pixels[32 * 96 + 60]
+    };
+    let (red, blue) = (frame(0), frame(2));
+    assert!(
+        red[0] > red[2] * 2.0 && blue[2] > blue[0] * 2.0,
+        "{red:?} {blue:?}"
+    );
+    // A keyed light sweeping across moves its highlight.
+    let Operation::Material(m) = &mut doc.nodes.get_mut(&doc.output).unwrap().operation else {
+        panic!()
+    };
+    m.colours = None;
+    let mut light = veylvik_document::optical::AreaLight {
+        intensity: 30.0.into(),
+        size: [0.5, 0.5],
+        ..Default::default()
+    };
+    light
+        .position
+        .set_key_at(Time::new(0, 1).unwrap(), [-2.0, 0.0, 2.0])
+        .unwrap();
+    light
+        .position
+        .set_key_at(Time::new(2, 1).unwrap(), [2.0, 0.0, 2.0])
+        .unwrap();
+    light.rotation = veylvik_document::optical::aim([0.0, 0.0, 2.0]).into();
+    m.studio.lights = vec![light];
+    m.studio.environment = 0.0;
+    let plan = Plan::compile(&doc).unwrap();
+    let brightness = |ticks| {
+        let pixels = renderer
+            .render_frame(
+                &plan,
+                RenderRequest::full(Time::new(ticks, 1).unwrap()),
+                &inputs,
+            )
+            .unwrap()
+            .pixels;
+        let row = &pixels[32 * 96..33 * 96];
+        let total: f32 = row.iter().map(|p| p[0] + p[1] + p[2]).sum();
+        row.iter()
+            .enumerate()
+            .map(|(x, p)| x as f32 * (p[0] + p[1] + p[2]))
+            .sum::<f32>()
+            / total.max(1e-6)
+    };
+    assert!(
+        brightness(2) > brightness(0) + 1.0,
+        "{} vs {}",
+        brightness(0),
+        brightness(2)
+    );
 }

@@ -1,7 +1,7 @@
 //! GPU layout shared by library samples and composition material nodes.
 use veylvik_document::{
     MaterialKind,
-    optical::{Palette, StudioRig, SurfaceOptics},
+    optical::{Palette, RigState, SurfaceOptics},
 };
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
@@ -18,9 +18,18 @@ pub(crate) struct Lighting {
 /// Uniform size, shared by the bind group layout and per-node buffers.
 pub(crate) const SIZE: u64 = std::mem::size_of::<Lighting>() as u64;
 impl Lighting {
-    /// `shot` is the material's Shot mix at the frame time (palette[0].w).
+    /// A still of the material at time zero (library samples); `shot` is its Shot
+    /// mix (palette[0].w).
     pub fn material(m: &veylvik_document::nodes::Material, shot: f32) -> Self {
-        let mut lighting = Self::new(m.kind, m.optics, m.colours, &m.studio);
+        let zero = veylvik_document::Time { ticks: 0, rate: 1 };
+        let colours = m
+            .colours
+            .as_ref()
+            .map(|c| veylvik_document::optical::palette_at(c, zero))
+            .transpose()
+            .ok()
+            .flatten();
+        let mut lighting = Self::new(m.kind, m.optics, colours, &m.studio.still());
         lighting.palette[0][3] = shot.clamp(0.0, 1.0);
         lighting
     }
@@ -28,7 +37,7 @@ impl Lighting {
         kind: MaterialKind,
         optics: Option<SurfaceOptics>,
         colours: Option<Palette>,
-        rig: &StudioRig,
+        rig: &RigState,
     ) -> Self {
         let custom = colours.is_some();
         let palette = colours.unwrap_or_else(|| kind.palette());

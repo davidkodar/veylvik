@@ -961,7 +961,9 @@ impl crate::Studio {
                     .map(|n| n.label.clone());
                 let mut share = None;
                 let mut match_shot = false;
-                if let Operation::Material(material) = &mut node.operation {
+                if let Operation::Material(material) = &mut node.operation
+                    && let Ok(time) = self.project.time()
+                {
                     edited |= crate::nodes::lighting_controls(
                         ui,
                         material,
@@ -969,6 +971,7 @@ impl crate::Studio {
                         lit_by.as_deref(),
                         &mut share,
                         &mut match_shot,
+                        time,
                     );
                 }
                 if edited {

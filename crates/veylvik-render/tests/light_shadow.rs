@@ -27,9 +27,9 @@ fn light_shadow_moves_opposite_light_and_invalidates_cached_lighting() {
     };
     m.studio.lights = vec![optical::AreaLight {
         enabled: true,
-        position: [2., 0., 2.],
+        position: [2., 0., 2.].into(),
         size: [0.01, 0.01],
-        rotation: [0.; 3],
+        rotation: [0.; 3].into(),
         ..Default::default()
     }];
     let material = Node::new("Material", op, &[("image", source)]);
@@ -78,7 +78,7 @@ fn light_shadow_moves_opposite_light_and_invalidates_cached_lighting() {
     let Operation::Material(m) = &mut doc.nodes.get_mut(&mid).unwrap().operation else {
         panic!()
     };
-    m.studio.lights[0].position[0] = -2.;
+    m.studio.lights[0].position = [-2., 0., 2.].into();
     let right = render(&doc);
     assert!((centroid(&right) - 57.5).abs() < 0.1);
     let Operation::Material(m) = &mut doc.nodes.get_mut(&mid).unwrap().operation else {

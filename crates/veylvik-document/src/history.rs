@@ -161,26 +161,62 @@ impl Document {
                     time,
                     value,
                 } => {
-                    next.nodes
+                    let operation = &mut next
+                        .nodes
                         .get_mut(id)
                         .ok_or_else(|| Error("cannot edit missing node".into()))?
-                        .operation
-                        .scalar_mut(parameter)
-                        .ok_or_else(|| Error("parameter is not an animated scalar".into()))?
-                        .set_key_at(*time, *value)?;
+                        .operation;
+                    if let Some(scalar) = operation.scalar_mut(parameter) {
+                        scalar.set_key_at(*time, *value)?;
+                    } else if let Some(crate::track::Property::Number(scalar)) =
+                        operation.property_mut(parameter)
+                    {
+                        scalar.set_key_at(*time, *value)?;
+                    } else {
+                        return fail("parameter is not an animated scalar");
+                    }
                 }
                 Command::RemoveKey {
                     id,
                     parameter,
                     time,
                 } => {
-                    next.nodes
+                    let operation = &mut next
+                        .nodes
                         .get_mut(id)
                         .ok_or_else(|| Error("cannot edit missing node".into()))?
-                        .operation
-                        .scalar_mut(parameter)
-                        .ok_or_else(|| Error("parameter is not an animated scalar".into()))?
-                        .remove_key_at(*time)?;
+                        .operation;
+                    if let Some(scalar) = operation.scalar_mut(parameter) {
+                        scalar.remove_key_at(*time)?;
+                    } else {
+                        match operation.property_mut(parameter) {
+                            Some(crate::track::Property::Number(scalar)) => {
+                                scalar.remove_key_at(*time)?
+                            }
+                            Some(crate::track::Property::Vector(track)) => {
+                                track.remove_key_at(*time)?
+                            }
+                            None => return fail("parameter has no keys"),
+                        }
+                    }
+                }
+                Command::SetTrackKey {
+                    id,
+                    track,
+                    time,
+                    value,
+                } => {
+                    let operation = &mut next
+                        .nodes
+                        .get_mut(id)
+                        .ok_or_else(|| Error("cannot edit missing node".into()))?
+                        .operation;
+                    match operation.property_mut(track) {
+                        Some(crate::track::Property::Vector(track)) => {
+                            track.set_key_at(*time, *value)?
+                        }
+                        _ => return fail("not a keyable colour or vector"),
+                    }
                 }
                 Command::Remove { id } => {
                     if next.nodes.remove(id).is_none() {

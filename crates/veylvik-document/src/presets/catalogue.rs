@@ -571,7 +571,7 @@ impl Entry {
                 }),
                 (None, None) => None,
             },
-            colours: self.colours,
+            colours: self.colours.map(crate::optical::palette_track),
             kind: self.kind,
             scale: 180.0.into(),
             bevel: self.bevel.unwrap_or(5.0).into(),

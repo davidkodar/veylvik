@@ -8,7 +8,7 @@ pub(super) struct Drag {
 }
 
 impl Keys {
-    fn commands(
+    pub(super) fn commands(
         &self,
         doc: &Composition,
         offset: i64,
@@ -41,8 +41,18 @@ impl Keys {
                         } else {
                             continue;
                         }
+                    } else if let Some(scalar) = node.operation.scalar(&parameter) {
+                        scalar.keys().unwrap()[*index].time
                     } else {
-                        node.operation.scalar(&parameter).unwrap().keys().unwrap()[*index].time
+                        let found = node
+                            .operation
+                            .keyed_properties()
+                            .into_iter()
+                            .find(|(path, _)| *path == parameter);
+                        match found {
+                            Some((_, times)) => times[*index],
+                            None => continue,
+                        }
                     };
                     if frame(original.checked_add(time)?, doc.frame_rate, doc.frame_count).is_none()
                     {
@@ -84,6 +94,32 @@ impl Keys {
                         .sort_by(|a, b| a.time.compare(b.time).unwrap());
                 }
                 p.geometry.validate()?;
+            } else if node.operation.scalar(&parameter).is_none()
+                && let Some(property) = node.operation.property_mut(&parameter)
+            {
+                match property {
+                    veylvik_document::track::Property::Vector(track) => {
+                        *track = if delete {
+                            track.without(&indices, now)?
+                        } else {
+                            track.shifted(&indices, time, duplicate)?
+                        };
+                    }
+                    veylvik_document::track::Property::Number(scalar) => {
+                        *scalar = if delete {
+                            key_edit::deleted(scalar, &indices, now)?
+                        } else if duplicate {
+                            let first = scalar.keys().unwrap()[*indices.first().unwrap()].time;
+                            key_edit::pasted(
+                                scalar,
+                                &key_edit::copied(scalar, &indices)?,
+                                first.checked_add(time)?,
+                            )?
+                        } else {
+                            key_edit::moved(scalar, &indices, time, 0.)?
+                        };
+                    }
+                }
             } else if let Some(scalar) = node.operation.scalar_mut(&parameter) {
                 *scalar = if delete {
                     key_edit::deleted(scalar, &indices, now)?

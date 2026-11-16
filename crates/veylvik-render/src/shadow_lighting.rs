@@ -5,7 +5,7 @@ fn rig(
     material: &veylvik_document::Node,
     plan: &crate::Plan,
     time: veylvik_document::Time,
-) -> crate::Result<Option<veylvik_document::optical::StudioRig>> {
+) -> crate::Result<Option<veylvik_document::optical::RigState>> {
     use veylvik_document::Operation;
     let Operation::Material(m) = &material.operation else {
         return Ok(None);
@@ -15,10 +15,10 @@ fn rig(
         .get("lights")
         .and_then(|id| plan.nodes.iter().find(|n| n.id == *id))
     else {
-        return Ok(Some(m.studio.clone()));
+        return Ok(Some(m.studio.at(time)?));
     };
     let Operation::LightRig(light) = &rig.operation else {
-        return Ok(Some(m.studio.clone()));
+        return Ok(Some(m.studio.at(time)?));
     };
     let track = rig
         .inputs
@@ -72,7 +72,7 @@ pub(crate) fn for_node(
         let found = material(&upstream, nodes);
         let rig = match found {
             Some(n) => rig(n, plan, time)?.unwrap_or_default(),
-            None => veylvik_document::optical::StudioRig::default(),
+            None => veylvik_document::optical::RigState::default(),
         };
         let material = found.and_then(|n| match &n.operation {
             Operation::Material(m) => Some(m),
@@ -110,8 +110,16 @@ pub(crate) fn for_node(
     let Some((source, Operation::Material(m))) = source.map(|n| (n, &n.operation)) else {
         return Ok(None);
     };
-    let studio = rig(source, plan, time)?.unwrap_or_else(|| m.studio.clone());
-    let mut lighting = Lighting::new(m.kind, m.optics, m.colours, &studio);
+    let studio = match rig(source, plan, time)? {
+        Some(studio) => studio,
+        None => m.studio.at(time)?,
+    };
+    let colours = m
+        .colours
+        .as_ref()
+        .map(|c| veylvik_document::optical::palette_at(c, time))
+        .transpose()?;
+    let mut lighting = Lighting::new(m.kind, m.optics, colours, &studio);
     lighting.palette[0][3] = m.shot.at(time)?.clamp(0.0, 1.0);
     if matches!(node.operation, Operation::Material(_)) {
         let bit = |port: &str, bit: u32| u32::from(node.inputs.contains_key(port)) * bit;

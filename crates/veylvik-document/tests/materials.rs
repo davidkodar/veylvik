@@ -25,7 +25,11 @@ fn titled() -> (Document, NodeId) {
 
 fn black_marble() -> material::Saved {
     let mut m = material::Source::Builtin("marble").material().unwrap();
-    m.colours = Some([[0.02, 0.02, 0.025], [0.8, 0.55, 0.15], [0.; 3]]);
+    m.colours = Some(veylvik_document::optical::palette_track([
+        [0.02, 0.02, 0.025],
+        [0.8, 0.55, 0.15],
+        [0.; 3],
+    ]));
     m.roughness = 0.08.into();
     material::Saved::new("  Black marble  ", &m).unwrap()
 }
@@ -49,7 +53,11 @@ fn saved_materials_round_trip_and_reject_bad_input() {
     bad.label = "x".repeat(material::MAX_LABEL + 1);
     assert!(bad.validate().is_err());
     let mut bad = saved.clone();
-    bad.material.colours = Some([[1.5, 0., 0.], [0.; 3], [0.; 3]]);
+    bad.material.colours = Some(veylvik_document::optical::palette_track([
+        [1.5, 0., 0.],
+        [0.; 3],
+        [0.; 3],
+    ]));
     assert!(bad.validate().is_err());
     let mut bad = saved;
     bad.material.roughness = 7.0.into();
