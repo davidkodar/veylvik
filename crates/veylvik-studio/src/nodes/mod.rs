@@ -52,7 +52,7 @@ mod filters;
 mod generators;
 mod keying;
 mod materials;
-pub(crate) use materials::{finish_controls, lighting_controls};
+pub(crate) use materials::{finish_controls, lighting_controls, look_slider};
 mod media;
 mod text;
 mod tracking;

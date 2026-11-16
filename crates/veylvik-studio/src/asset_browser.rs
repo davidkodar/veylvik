@@ -452,6 +452,7 @@ impl Studio {
                             );
                         });
                     });
+                changed |= crate::nodes::look_slider(ui, material);
                 changed |= crate::animation::scalar_with_default(
                     ui,
                     "Roughness",

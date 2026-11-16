@@ -32,6 +32,7 @@ impl Inspect for veylvik_document::nodes::Material {
         if self.kind == veylvik_document::MaterialKind::Texture && !cx.textured {
             ui.weak("Connect an image, logo or footage to the Texture input (port list below); it becomes the lit, bevelled surface.");
         }
+        cx.dirty |= look_slider(ui, self);
         cx.dirty |= colour_controls(ui, self);
         ui.horizontal_wrapped(|ui| {
             if cx.environment {
@@ -66,6 +67,37 @@ impl Inspect for veylvik_document::nodes::Material {
             .on_hover_text("Keep this surface, its colours, finish and lighting in My materials in the Library")
             .clicked();
     }
+}
+/// One control from polished to matte; Roughness and Grain stay below for detail.
+pub(crate) fn look_slider(
+    ui: &mut egui::Ui,
+    material: &mut veylvik_document::nodes::Material,
+) -> bool {
+    let current = material.look();
+    let mut look = current.unwrap_or(0.5);
+    let mut changed = false;
+    ui.horizontal(|ui| {
+        ui.label("Look");
+        // As wide as the panel allows, leaving room for the finish name.
+        ui.spacing_mut().slider_width = (ui.available_width() - 70.0).max(80.0);
+        changed = ui
+            .add(egui::Slider::new(&mut look, 0.0..=1.0).show_value(false))
+            .on_hover_text("Polished on the left, matte on the right. Sets roughness (and the fine grain of metals); fine-tune them below.")
+            .changed();
+        ui.weak(match look {
+            l if l < 0.15 => "Polished",
+            l if l < 0.4 => "Glossy",
+            l if l < 0.65 => "Satin",
+            _ => "Matte",
+        });
+    });
+    if current.is_none() {
+        ui.weak("Roughness is animated; moving Look sets one fixed value.");
+    }
+    if changed {
+        material.set_look(look);
+    }
+    changed
 }
 /// Pattern colours with their family roles, edited in display (sRGB) terms.
 pub(crate) fn colour_controls(

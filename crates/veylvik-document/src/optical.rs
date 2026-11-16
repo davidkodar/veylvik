@@ -328,7 +328,35 @@ impl MetalFinish {
         }
     }
 }
+/// Roughness at Look 0 (polished) and 1 (matte); the curve gives the satin middle
+/// more room, where small roughness changes are most visible.
+const LOOK_ROUGHNESS: (f32, f32) = (0.04, 0.85);
+const LOOK_CURVE: f32 = 1.6;
 impl crate::nodes::Material {
+    /// Where the material sits between polished (0) and matte (1), from its roughness.
+    /// None while roughness is animated.
+    pub fn look(&self) -> Option<f32> {
+        let crate::Scalar::Constant { value } = self.roughness else {
+            return None;
+        };
+        let (lo, hi) = LOOK_ROUGHNESS;
+        Some(
+            ((value - lo) / (hi - lo))
+                .clamp(0.0, 1.0)
+                .powf(1.0 / LOOK_CURVE),
+        )
+    }
+    /// Polished (0) to matte (1): sets roughness, and for unbrushed metals a grain
+    /// that rises gently with it. Replaces roughness (and that grain) animation with
+    /// constants. The named metal finishes remain separate presets.
+    pub fn set_look(&mut self, look: f32) {
+        let t = look.clamp(0.0, 1.0);
+        let (lo, hi) = LOOK_ROUGHNESS;
+        self.roughness = (lo + (hi - lo) * t.powf(LOOK_CURVE)).into();
+        if self.kind.optics().metallic && !self.is_brushed() {
+            self.grain = (0.25 + 0.2 * t).into();
+        }
+    }
     pub fn is_brushed(&self) -> bool {
         self.kind.optics().metallic
             && match self.brushing {

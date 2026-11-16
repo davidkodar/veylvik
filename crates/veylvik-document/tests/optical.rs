@@ -243,3 +243,35 @@ fn following_lights_ride_the_track_and_keep_aiming_at_the_subject() {
         .unwrap();
     assert_eq!(still.lights[1].position, rig.lights[1].position);
 }
+
+#[test]
+fn the_look_slider_runs_polished_to_matte_and_reads_back() {
+    use veylvik_document::presets::material::Source;
+    let mut gold = Source::Builtin("gold_text").material().unwrap();
+    let mut last = -1.0;
+    for step in 0..=10 {
+        let look = step as f32 / 10.0;
+        gold.set_look(look);
+        assert!(
+            (gold.look().unwrap() - look).abs() < 1e-4,
+            "round trip at {look}"
+        );
+        let rough = gold
+            .roughness
+            .at(veylvik_document::Time::new(0, 1).unwrap())
+            .unwrap();
+        assert!(rough > last, "roughness rises with the look");
+        last = rough;
+    }
+    veylvik_document::presets::material::Saved::new("Look", &gold).unwrap();
+    // Animated roughness has no single look.
+    gold.roughness = serde_json::from_value(serde_json::json!({"kind":"linear","keys":[
+        {"time":{"ticks":0,"rate":1},"value":0.1},{"time":{"ticks":1,"rate":1},"value":0.5}]}))
+    .unwrap();
+    assert!(gold.look().is_none());
+    // Wood keeps its grain: only metals tie grain to the finish.
+    let mut wood = Source::Builtin("walnut").material().unwrap();
+    let grain = serde_json::to_value(&wood.grain).unwrap();
+    wood.set_look(0.0);
+    assert_eq!(serde_json::to_value(&wood.grain).unwrap(), grain);
+}

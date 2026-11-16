@@ -591,6 +591,13 @@ and foreground layers, can be renamed or deleted (projects keep their own copy),
 any material can be starred; **Favourites** lists starred built-in and saved
 materials (`favourites.json` in the same folder).
 
+**Look** is one slider from polished to matte, in the material inspector, the text
+Style panel and text Appearance. It sets roughness along a curve that gives the
+glossy-to-satin middle more room (0.04 at polished, 0.85 at matte) and, for unbrushed
+metals, a grain that rises gently with it; Roughness and Grain stay available for
+fine-tuning. It reads the current roughness back, and while roughness is animated it
+says so and sets one fixed value when moved.
+
 For gold, silver, bronze and aluminium, **Finish** offers **Polished**, **Satin**,
 **Matte** and **Brushed**. Find it in the material node inspector, on a collapsed
 single-material group, or under text **Style → Material**. A finish sets roughness,

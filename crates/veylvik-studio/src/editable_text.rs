@@ -937,6 +937,7 @@ impl crate::Studio {
                     .clone();
                 let mut edited = false;
                 if let Operation::Material(material) = &mut node.operation {
+                    edited |= crate::nodes::look_slider(ui, material);
                     edited |= crate::nodes::finish_controls(ui, material);
                 }
                 if let Ok(time) = self.project.time() {

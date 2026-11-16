@@ -230,6 +230,7 @@ Everything Veylvik can do today, area by area. Veylvik is a native Rust node com
 - **Lights that follow a track**: connect a Planar track to a Light rig and tick **Follow the track** on a light; it rides on the tracked object and keeps aiming at the subject.
 - **Match the shot**: one click places the key light where the footage's light comes from, in its colour, and sets the environment to the shot's brightness.
 - Optional node inputs: hollow sockets in the graph, drag a link off to disconnect, **None** in the inspector port list.
+- **Look** slider: one control from polished to matte for every material.
 - **Show on my text**: with text selected, every Materials card previews on your own words and font.
 - **Save as my material…** stores the whole look under a name; **Library → Materials** has **Favourites** (star any material) and **My materials** with live GPU swatches, rename and delete. Saved materials apply to text, as backgrounds and as foreground layers.
 - Text surface controls: scale, bevel, roughness, lighting, grain, emission. **Smooth bevel highlights** is enabled by default, including older material nodes; continuous two-dimensional bevel normals and subpixel shading reduce stepped metallic highlights without altering alpha coverage. Disable it under **Surface response** for legacy shading.
