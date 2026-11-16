@@ -1386,13 +1386,16 @@ and `colour`.
 - **Point cloud**: points in 3D (offsets from the frame centre at depth 0, at most
   20000) that draw nothing in renders; a camera solve adds its points as
   **Solved points**. In Studio the viewer shows them as dots (Guides > Points).
-  Hovering a dot with a 3D shape or image card selected offers **Put … here**: a
-  click moves it there (an upright shape rests its base on the point), as one
-  undo step. **Surface** in the 3D toolbar switches clicks to choosing points;
+  Hovering a dot with a 3D shape, 3D text, image card or 3D model selected offers
+  **Put … here**: a click moves its centre there (an upright object rests its
+  bottom on the point), as one undo step. **Surface** in the 3D toolbar switches clicks to choosing points;
   with three or more, **Ground here** moves the scene's shadow catcher onto the
   least-squares plane through them (facing the camera) and **New surface** adds
   another shadow catcher there, merged next to the point cloud, so tables and
-  walls catch shadows too.
+  walls catch shadows too. **Put … on it** turns the selected 3D text, shape, card or
+  model to face that plane (its front towards the side the camera is on) and
+  sets it there with its back resting on the surface: a title on a floor, a
+  table or a wall, as one undo step.
 - **Solve camera window** (Layer tools > Solve camera…): solves the selected
   footage in the background over a chosen frame range, with the lens found
   automatically or given (focal length and sensor width in millimetres), showing

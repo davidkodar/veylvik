@@ -32,6 +32,16 @@ Veylvik is young, but it already works end to end: compose a graph, animate it, 
 
 *Every frame above is a bundled example scene rendered by Veylvik, including Gilded inferno in the editor. Each one opens as an editable graph, with no external fonts or media.*
 
+## What it aims to do well
+
+- **3D in filmed shots without a long setup.** Solve camera finds the camera of a moving shot and adds a matching camera, a ground that catches shadows and the footage's own grain, and tells you plainly how well it solved. Match the shot points a sun where the footage's light comes from. On rendered test footage the solved camera stays within 0.1° and 0.1% of the true path; real footage with heavy stabilisation or rolling shutter solves less tightly.
+- **Click to cut out.** Select a person or object and get a tracked mask with hair and soft edges, computed by a local model on your own GPU.
+- **A modern 3D look.** Physically based materials, HDR environments, soft shadows, depth of field and motion blur for 3D text, shapes and glTF models, with a library of ready-made materials.
+- **Scriptable by assistants.** An MCP server lets an assistant build and edit comps, track, solve cameras and render, either headless or in the open editor.
+- **Linux first.** A native Vulkan application, open source under GPL-3.0, with scene-linear HDR throughout and explicit errors instead of silent fallbacks.
+
+Many of these tools are new and have been tested on a small set of shots so far. Reports from real projects are very welcome.
+
 ## Compose, animate, deliver
 
 - **Node graph:** connect generators, effects, masks and merges by dragging between sockets. Search and add nodes with <kbd>Tab</kbd>, find existing ones with <kbd>Ctrl</kbd>+<kbd>F</kbd>, box-select, copy and paste across projects, duplicate whole branches, and let auto-arrange keep the graph readable. Preview any node without changing the output. Hide the editor to give the viewer more room while retaining playback and the time ruler. Cards have vector icons, text excerpts or material/finish summaries, category strips and labelled inputs; detail reduces as you zoom out.

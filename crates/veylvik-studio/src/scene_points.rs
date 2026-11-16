@@ -42,7 +42,18 @@ fn plane(points: &[[f32; 3]], eye: [f32; 3]) -> ([f32; 3], [f32; 3]) {
     }
     (c, normal)
 }
-/// Rotation (degrees) that turns a Plane shape to face `normal`.
+/// 3D objects that can be put on points and surfaces.
+fn movable(operation: &Operation) -> bool {
+    matches!(
+        operation,
+        Operation::Shape3d(_)
+            | Operation::Text3d(_)
+            | Operation::ImageCard(_)
+            | Operation::Model3d(_)
+    )
+}
+/// Rotation (degrees) that turns a Plane shape (or the front of text, a card or a
+/// model) to face `normal`.
 fn facing(normal: [f32; 3]) -> [f32; 3] {
     let x = (-normal[1]).clamp(-1.0, 1.0).asin();
     let y = normal[0].atan2(normal[2]);
@@ -62,6 +73,30 @@ impl Studio {
             s.chosen.clear();
         }
         if s.on && s.chosen.len() >= 3 {
+            let selected = self
+                .project
+                .document
+                .snapshot()
+                .nodes
+                .get(&self.project.selected)
+                .filter(|n| movable(&n.operation))
+                .map(|n| (n.id, n.label.clone()));
+            if let Some((node, label)) = selected
+                && ui
+                    .button(format!("Put {label} on it"))
+                    .on_hover_text(
+                        "Turn it to face this surface and set it on it, back against the surface",
+                    )
+                    .clicked()
+            {
+                match self
+                    .surface_scene(&ctx)
+                    .and_then(|(scene, eye)| self.put_on_surface(node, &scene, &s.chosen, eye))
+                {
+                    Ok(()) => s = Surface::default(),
+                    Err(e) => self.fail(e),
+                }
+            }
             let mut made = None;
             if ui
                 .button("Ground here")
@@ -87,6 +122,22 @@ impl Studio {
             ui.weak(format!("{} of 3 points", s.chosen.len()));
         }
         store(&ctx, s);
+    }
+    /// The viewed scene now, and where the viewer looks from.
+    fn surface_scene(&self, ctx: &egui::Context) -> Result<(Scene, [f32; 3]), String> {
+        let doc = self.project.document.snapshot();
+        let time = self.project.time().map_err(|e| e.to_string())?;
+        let render = self.viewed_scene().ok_or("No 3D scene in view")?;
+        let root = *doc.nodes[&render]
+            .inputs
+            .get("scene")
+            .ok_or("Render scene needs a scene")?;
+        let scene = veylvik_scene::evaluate(doc, root, time).map_err(|e| e.to_string())?;
+        let eye = self.viewing_camera(ctx).map_or(
+            [doc.width as f32 * 0.5, doc.height as f32 * 0.5, 1e4],
+            |c| veylvik_scene::math::point(&c.world, [0.0; 3]),
+        );
+        Ok((scene, eye))
     }
     /// A shadow catcher on the plane through `points`: the scene's existing one moved
     /// there, or (`new`, or none yet) a new plane merged next to the point cloud.
@@ -253,11 +304,12 @@ impl Studio {
         painter.circle_stroke(at, 6.0, Stroke::new(1.5_f32, Color32::WHITE));
         let doc = self.project.document.snapshot();
         let selected = doc.nodes.get(&self.project.selected);
-        let movable = selected
-            .filter(|n| matches!(n.operation, Operation::Shape3d(_) | Operation::ImageCard(_)));
+        let movable = selected.filter(|n| movable(&n.operation));
         let text = match movable {
             Some(n) => format!("Put {} here", n.label),
-            None => "Select a 3D shape or image card, then click a point to put it there".into(),
+            None => {
+                "Select a 3D shape, text, card or model, then click a point to put it there".into()
+            }
         };
         painter.text(
             at + egui::vec2(10.0, -10.0),
@@ -269,51 +321,84 @@ impl Studio {
         if response.clicked()
             && let Some(node) = movable.map(|n| n.id)
         {
-            if let Err(e) = self.put_on_point(node, world) {
+            if let Err(e) = self.put_on_point(node, scene, world) {
                 self.fail(e);
             }
             return true;
         }
         false
     }
-    /// Move `node` so it sits on the world point: a shape rests its base on it when
-    /// upright, a card centres on it.
-    fn put_on_point(&mut self, node: NodeId, world: [f32; 3]) -> Result<(), String> {
+    /// Move `node` so it sits on the world point: an upright object rests its bottom
+    /// on it, a tilted one centres on it.
+    fn put_on_point(&mut self, node: NodeId, scene: &Scene, world: [f32; 3]) -> Result<(), String> {
+        self.place_object(node, scene, |object, rotation, scale| {
+            let (lo, hi) = object.local_bounds();
+            let upright = rotation[0].abs() < 1.0 && rotation[2].abs() < 1.0;
+            let lift = if upright {
+                (hi[1] - lo[1]) * scale[1].abs() * 0.5
+            } else {
+                0.0
+            };
+            ([world[0], world[1] - lift, world[2]], None)
+        })
+    }
+    /// Turn `node` to face the surface through `points` and set it on it, its back
+    /// resting on the surface (text on a floor, a table or a wall).
+    fn put_on_surface(
+        &mut self,
+        node: NodeId,
+        scene: &Scene,
+        points: &[[f32; 3]],
+        eye: [f32; 3],
+    ) -> Result<(), String> {
+        let (c, normal) = plane(points, eye);
+        self.place_object(node, scene, |object, _, scale| {
+            let (lo, hi) = object.local_bounds();
+            let half = (hi[2] - lo[2]) * scale[2].abs() * 0.5;
+            (
+                [0, 1, 2].map(|k| c[k] + normal[k] * half),
+                Some(facing(normal)),
+            )
+        })
+    }
+    /// Move a 3D object (and turn it, when `to` gives a rotation) so its centre lands
+    /// where `to` says, as one undo step. Objects turn about their centre, so the move
+    /// is the centre's offset whatever the rotation.
+    fn place_object(
+        &mut self,
+        node: NodeId,
+        scene: &Scene,
+        to: impl FnOnce(&veylvik_scene::Object, [f32; 3], [f32; 3]) -> ([f32; 3], Option<[f32; 3]>),
+    ) -> Result<(), String> {
         let doc = self.project.document.snapshot();
         let time = self.project.time().map_err(|e| e.to_string())?;
+        let object = scene
+            .objects
+            .iter()
+            .find(|o| o.node == node)
+            .ok_or("The object is not in the viewed scene")?;
         let mut node = doc.nodes.get(&node).ok_or("The object is gone")?.clone();
-        let offset = [
-            world[0] - doc.width as f32 * 0.5,
-            world[1] - doc.height as f32 * 0.5,
-            world[2],
-        ];
         let placement = match &mut node.operation {
-            Operation::Shape3d(s) => {
-                let upright = s.placement.rotation.at(time).map_err(|e| e.to_string())?;
-                let lift = if upright[0].abs() < 1.0 && upright[2].abs() < 1.0 {
-                    s.size_y.at(time).map_err(|e| e.to_string())?
-                        * s.placement.scale.at(time).map_err(|e| e.to_string())?[1]
-                        * 0.5
-                } else {
-                    0.0
-                };
-                s.placement
-                    .position
-                    .set_at(time, [offset[0], offset[1] - lift, offset[2]])
-                    .map_err(|e| e.to_string())?;
-                true
-            }
-            Operation::ImageCard(c) => {
-                c.placement
-                    .position
-                    .set_at(time, offset)
-                    .map_err(|e| e.to_string())?;
-                true
-            }
-            _ => false,
+            Operation::Shape3d(s) => &mut s.placement,
+            Operation::Text3d(t) => &mut t.placement,
+            Operation::ImageCard(c) => &mut c.placement,
+            Operation::Model3d(m) => &mut m.placement,
+            _ => return Err("Only 3D shapes, text, cards and models can be placed".into()),
         };
-        if !placement {
-            return Err("Only 3D shapes and image cards can be put on a point".into());
+        let err = |e: veylvik_document::Error| e.to_string();
+        let (rotation, scale, position) = (
+            placement.rotation.at(time).map_err(err)?,
+            placement.scale.at(time).map_err(err)?,
+            placement.position.at(time).map_err(err)?,
+        );
+        let centre = object.sphere().0;
+        let (target, turn) = to(object, rotation, scale);
+        placement
+            .position
+            .set_at(time, [0, 1, 2].map(|k| position[k] + target[k] - centre[k]))
+            .map_err(err)?;
+        if let Some(turn) = turn {
+            placement.rotation.set_at(time, turn).map_err(err)?;
         }
         self.project
             .apply(&[Command::Put {
