@@ -268,6 +268,7 @@ pub static TYPES: &[&NodeType] = &[
     &LENS_BLUR,
     &LIGHT_RIG,
     &crate::nodes::SHADOW,
+    &crate::nodes::CONTACT_SHADOW,
     &MERGE,
     &IMAGE,
     &FOOTAGE,

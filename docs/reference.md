@@ -1901,6 +1901,19 @@ of pixel data), independent of the number of effects in the library.
 
 ### Lighting-driven shadows and viewer guides
 
+**Contact shadow** (`contact_shadow`, and the **Contact shadow** button among a
+title's attached effects) makes a layer sit on what is behind it. It outputs black
+premultiplied occlusion to merge behind the layer: a ring of taps on the layer's
+sharp alpha gives dense, tight darkening right at the edge and in counters, and a
+gaussian of the alpha over **Reach** pixels (up to 256) a soft falloff that fades to
+nothing at the reach. Both are read from a point shifted **Lean** pixels towards the
+light, so the occlusion leans away from it: with a material on the optional
+**Lighting** input, from that material's enabled lights (weighted by power, in the
+same frame as cast shadows); otherwise towards **Angle** (degrees, 90 = down).
+**Strength** scales it. The title button sizes Reach and Lean to the composition
+(32 and 6 pixels at 1080p) and connects Lighting to the title's surface. Use it with
+or instead of a cast Shadow.
+
 New text **Shadow** actions create a Shadow node followed by a merge. **Follow scene
 lighting** defaults off. When enabled, the nearest upstream Material on the Lighting
 input supplies its area lights; breadth-first traversal follows input-name order to

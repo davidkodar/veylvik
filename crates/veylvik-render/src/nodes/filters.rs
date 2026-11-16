@@ -210,6 +210,48 @@ impl RenderNode for veylvik_document::nodes::Affine {
     }
 }
 
+impl RenderNode for veylvik_document::nodes::ContactShadow {
+    fn passes(&self) -> Passes {
+        use super::{From, Step};
+        // A gaussian of the layer's alpha over the reach carries the soft outer
+        // falloff; the occlusion pass adds the tight contact from the sharp alpha.
+        Passes::chain(&[
+            Step {
+                kernel: Kernel::BlurHorizontal,
+                inputs: [From::Port(0), From::None, From::None, From::None],
+            },
+            Step {
+                kernel: Kernel::BlurVertical,
+                inputs: [From::Step(0), From::None, From::None, From::None],
+            },
+            Step {
+                kernel: Kernel::ContactShadow,
+                inputs: [From::Port(0), From::Step(1), From::None, From::None],
+            },
+        ])
+    }
+    fn shareable(&self) -> bool {
+        true
+    }
+    fn params(
+        &self,
+        cx: &Cx<'_>,
+        sample: &dyn Fn(&str) -> Result<f32>,
+        p: &mut Params,
+    ) -> Result<()> {
+        let reach = sample("reach")?;
+        // values.x/y are the blur's radius (its visible reach) and gaussian flag.
+        p.values = [reach.clamp(0.0, 256.0), 1.0, reach, sample("strength")?];
+        let follows = crate::shadow_lighting::material(cx.node, cx.nodes).is_some();
+        p.extra = [
+            sample("lean")?,
+            sample("angle")?.to_radians(),
+            f32::from(follows),
+            0.,
+        ];
+        Ok(())
+    }
+}
 impl RenderNode for veylvik_document::nodes::Shadow {
     fn passes(&self) -> Passes {
         Passes::One(Kernel::Shadow)

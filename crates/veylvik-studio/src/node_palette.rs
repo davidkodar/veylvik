@@ -232,6 +232,12 @@ pub fn operation(kind: &NodeType, width: u32, height: u32) -> Operation {
             *wear_width = (width as f32 / 120.0).clamp(1.0, 128.0).into();
             *noise_size = (width as f32 / 24.0).clamp(1.0, 4096.0).into();
         }
+        Operation::ContactShadow(veylvik_document::nodes::ContactShadow {
+            reach, lean, ..
+        }) => {
+            *reach = (width as f32 / 60.0).clamp(1.0, 256.0).into();
+            *lean = (width as f32 / 320.0).clamp(0.0, 512.0).into();
+        }
         Operation::Patina(veylvik_document::nodes::Patina { scale, .. }) => {
             *scale = (width as f32 * 110.0 / 960.0).clamp(1.0, 8192.0).into();
         }

@@ -47,6 +47,11 @@ impl Inspect for veylvik_document::nodes::Displace {
 impl Inspect for veylvik_document::nodes::Transform {}
 impl Inspect for veylvik_document::nodes::Affine {}
 
+impl Inspect for veylvik_document::nodes::ContactShadow {
+    fn inspect(&mut self, ui: &mut egui::Ui, _cx: &mut InspectCx<'_>) {
+        ui.weak("Merge behind the layer so it sits on the surface: darkest at the edge, softer within Reach. Connect a material to Lighting to lean away from its lights; otherwise Angle sets the direction.");
+    }
+}
 impl Inspect for veylvik_document::nodes::Shadow {
     fn inspect(&mut self, ui: &mut egui::Ui, cx: &mut InspectCx<'_>) {
         cx.dirty |= crate::text_effects::shadow_controls(ui, self);

@@ -181,6 +181,31 @@ pub struct Shadow {
     /// Zero selects all enabled area lights; 1–8 selects a particular emitter.
     pub light: Scalar,
 }
+/// Occlusion where a layer meets the surface behind it: darkest and tightest at the
+/// layer's edge, fading softly within its reach, leaning away from the light.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ContactShadow {
+    pub reach: Scalar,
+    pub strength: Scalar,
+    pub lean: Scalar,
+    pub angle: Scalar,
+}
+pub static CONTACT_SHADOW: NodeType = NodeType {
+    type_id: "contact_shadow",
+    version: 1,
+    label: "Contact shadow",
+    description: "Ambient occlusion where a layer meets the surface behind it, so it sits on that surface: dense and sharp right at the layer's edge, fading softly over Reach pixels, and shifted Lean pixels away from the light. With a material on the optional Lighting input it leans away from that material's lights; otherwise towards Angle (degrees, 90 = down). Outputs black premultiplied occlusion only; merge it behind the layer, together with or instead of a cast Shadow.",
+    inputs: &["image", "lighting"],
+    optional: &["lighting"],
+    output: PortKind::Image,
+    parameters: &[
+        scalar("reach", "pixels", 0., 256., 16.),
+        scalar("strength", "factor", 0., 1., 0.7),
+        scalar("lean", "pixels", 0., 512., 3.),
+        scalar("angle", "degrees", -3600., 3600., 90.),
+    ],
+};
 pub static SHADOW: NodeType = NodeType {
     type_id: "shadow",
     version: 1,
@@ -200,3 +225,8 @@ pub static SHADOW: NodeType = NodeType {
     ],
 };
 node!(Shadow, SHADOW, [distance, softness, strength, x, y, light]);
+node!(
+    ContactShadow,
+    CONTACT_SHADOW,
+    [reach, strength, lean, angle]
+);

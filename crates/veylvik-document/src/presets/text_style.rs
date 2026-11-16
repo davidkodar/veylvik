@@ -415,6 +415,58 @@ pub fn remove_effect(doc: &Composition, text: NodeId, id: NodeId) -> Result<Vec<
     Ok(commands)
 }
 
+/// Contact occlusion behind a title so it sits on what is behind it; it leans away
+/// from the lights of the title's material when there is one.
+pub fn contact_shadow(doc: &Composition, source: NodeId) -> Result<Vec<Command>> {
+    let scale = doc.width.max(doc.height) as f32 / 1920.0;
+    let shadow = Node::new(
+        "Contact shadow",
+        Operation::ContactShadow(crate::nodes::ContactShadow {
+            reach: (32.0 * scale).clamp(1.0, 256.0).into(),
+            strength: 0.75.into(),
+            lean: (6.0 * scale).clamp(0.0, 512.0).into(),
+            angle: 90.0.into(),
+        }),
+        &[("image", source), ("lighting", source)],
+    );
+    let merge = Node::new(
+        "Contact shadow behind text",
+        Operation::Merge(crate::nodes::Merge {}),
+        &[("background", shadow.id), ("foreground", source)],
+    );
+    let output = merge.id;
+    let nodes = [shadow, merge];
+    let mut candidate = doc.clone();
+    for node in &nodes {
+        candidate.nodes.insert(node.id, node.clone());
+    }
+    let mut group = crate::groups::Group::capture(
+        &candidate,
+        nodes.iter().map(|n| n.id).collect(),
+        output,
+        "Contact shadow",
+    )?;
+    for name in ["reach", "strength", "lean", "angle"] {
+        group.controls.insert(
+            format!("{}_{name}", nodes[0].id),
+            crate::groups::Control::new(&candidate, nodes[0].id, name, &{
+                let mut label = name.to_owned();
+                label[..1].make_ascii_uppercase();
+                label
+            })?,
+        );
+    }
+    let mut commands: Vec<_> = nodes
+        .into_iter()
+        .map(|node| Command::Put {
+            node: Box::new(node),
+        })
+        .collect();
+    commands.push(Command::PutGroup {
+        group: Box::new(group),
+    });
+    connect_after(doc, source, output, commands)
+}
 pub fn shadow(doc: &Composition, source: NodeId) -> Result<Vec<Command>> {
     let shadow = Node::new(
         "Shadow",

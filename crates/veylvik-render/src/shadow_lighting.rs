@@ -105,6 +105,7 @@ pub(crate) fn for_node(
     let source = match &node.operation {
         Operation::Material(_) => Some(node),
         Operation::Shadow(s) if s.follow_lighting => material(node, nodes),
+        Operation::ContactShadow(_) => material(node, nodes),
         _ => None,
     };
     let Some((source, Operation::Material(m))) = source.map(|n| (n, &n.operation)) else {
@@ -134,7 +135,10 @@ pub(crate) fn for_node(
             0.,
         ];
     }
-    if matches!(node.operation, Operation::Shadow(_)) {
+    if matches!(
+        node.operation,
+        Operation::Shadow(_) | Operation::ContactShadow(_)
+    ) {
         // Match the material's rotation of the light frame (inverse Y rotation).
         let (s, c) = (m.lighting.at(time)? * std::f32::consts::TAU).sin_cos();
         for light in &mut lighting.lights {

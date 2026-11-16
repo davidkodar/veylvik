@@ -11,6 +11,7 @@ impl crate::Studio {
             for (label, kind) in [
                 ("Outline", "outline"),
                 ("Shadow", "soft_shadow"),
+                ("Contact shadow", "contact_shadow"),
                 ("Glow", "glow"),
                 ("Shine", "metallic_shine"),
                 ("Bevel relief", "silver_relief"),
@@ -183,6 +184,8 @@ impl crate::Studio {
                     });
                     if kind == "soft_shadow" {
                         text_style::shadow(doc, source)
+                    } else if kind == "contact_shadow" {
+                        text_style::contact_shadow(doc, source)
                     } else if kind == "outline" || kind == "glow" {
                         (|| {
                             let recipe = if kind == "outline" {

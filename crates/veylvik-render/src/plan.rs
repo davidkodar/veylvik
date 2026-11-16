@@ -36,6 +36,7 @@ pub enum Kernel {
     MorphologyHorizontal,
     MorphologyVertical,
     Shadow,
+    ContactShadow,
     BlurHorizontal,
     BlurVertical,
     LensPrefilterHorizontal,
@@ -76,7 +77,7 @@ pub enum Kernel {
     Lut,
 }
 impl Kernel {
-    pub(crate) const ALL: [Self; 68] = [
+    pub(crate) const ALL: [Self; 69] = [
         Self::ToAcescg,
         Self::FromAcescg,
         Self::Text,
@@ -107,6 +108,7 @@ impl Kernel {
         Self::MorphologyHorizontal,
         Self::MorphologyVertical,
         Self::Shadow,
+        Self::ContactShadow,
         Self::BlurHorizontal,
         Self::BlurVertical,
         Self::LensPrefilterHorizontal,
@@ -178,6 +180,7 @@ impl Kernel {
             Self::MorphologyHorizontal => "morphology_horizontal",
             Self::MorphologyVertical => "morphology_vertical",
             Self::Shadow => "shadow",
+            Self::ContactShadow => "contact_shadow",
             Self::BlurHorizontal => "blur_horizontal",
             Self::BlurVertical => "blur_vertical",
             Self::LensPrefilterHorizontal => "lens_prefilter_horizontal",

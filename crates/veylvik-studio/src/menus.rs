@@ -266,6 +266,7 @@ pub(crate) const ADD_MENU: [(&str, &[&registry::NodeType]); 9] = [
             &registry::METALLIC_SHINE,
             &registry::LIGHT_RIG,
             &veylvik_document::nodes::SHADOW,
+            &veylvik_document::nodes::CONTACT_SHADOW,
         ],
     ),
     (
