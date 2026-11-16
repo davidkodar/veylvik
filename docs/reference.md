@@ -1306,6 +1306,20 @@ and `colour`.
   library look light and reflect from it unchanged; the image wraps around
   horizontally and its alpha is divided out. An Image node placed with Fit
   letterboxes a non-16:9 panorama, so stretch it to the frame for a full sky.
+- **Shadows**: every sun, spot and point light with **Shadows** on (the default)
+  casts shadows, up to four lights per scene. Each renders a 2048 × 2048 depth map
+  of the solids from where it shines: a sun an orthographic view fitted to the
+  scene's bounds, a spot a perspective view down its cone, a point light a
+  perspective view aimed at the scene. Surfaces test it with a 3 × 3 filter whose
+  width follows the light's **Softness**, offset along their normal (and with a
+  slope-scaled depth bias) so nothing shadows itself. Image cards and shadow
+  catchers cast none. Only scene lights shadow; the environment's light is not
+  shadowed (contact occlusion for it comes next).
+- **Shadow catcher** (on a 3D shape): invisible except for the shadows falling on
+  it. It renders black with the share of the direct light that is blocked as its
+  alpha, weighed against the environment's ambient light, and draws after solid
+  objects without hiding anything, so a plane laid on the ground of the footage
+  darkens the real floor when the render goes over the clip.
 - **Render scene**: films a scene as an image with camera 1, 2, … in node order, or
   0 for the home view.
 

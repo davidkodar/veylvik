@@ -46,6 +46,8 @@ pub struct Surface {
     pub unlit: bool,
     /// A library material that shades the surface instead of the values above.
     pub look: Option<Box<veylvik_document::nodes::Material>>,
+    /// Shows only the shadows falling on it.
+    pub catcher: bool,
 }
 #[derive(Debug, Clone)]
 pub struct Object {
@@ -67,6 +69,7 @@ pub struct Camera {
 pub struct Light {
     pub node: NodeId,
     pub kind: LightKind,
+    pub shadows: bool,
     pub world: Mat4,
     pub colour: [f32; 3],
     pub intensity: f32,
@@ -240,6 +243,7 @@ fn node(doc: &Graph<'_>, id: NodeId, time: Time, depth: usize) -> Result<Scene> 
                 metallic: s.metallic.at(time)?.clamp(0.0, 1.0),
                 unlit: false,
                 look: s.look.clone(),
+                catcher: s.shadow_catcher,
             },
         }),
         Operation::Text3d(t) => {
@@ -277,6 +281,7 @@ fn node(doc: &Graph<'_>, id: NodeId, time: Time, depth: usize) -> Result<Scene> 
                     metallic: t.metallic.at(time)?.clamp(0.0, 1.0),
                     unlit: false,
                     look: t.look.clone(),
+                    catcher: false,
                 },
             });
         }
@@ -294,6 +299,7 @@ fn node(doc: &Graph<'_>, id: NodeId, time: Time, depth: usize) -> Result<Scene> 
                 metallic: 0.0,
                 unlit: true,
                 look: None,
+                catcher: false,
             },
         }),
         Operation::Transform3d(t) => {
@@ -341,6 +347,7 @@ fn node(doc: &Graph<'_>, id: NodeId, time: Time, depth: usize) -> Result<Scene> 
         Operation::Light3d(l) => scene.lights.push(Light {
             node: id,
             kind: l.kind,
+            shadows: l.shadows,
             world: placed(&l.placement, time, centre)?,
             colour: l.colour.at(time)?,
             intensity: l.intensity.at(time)?.max(0.0),

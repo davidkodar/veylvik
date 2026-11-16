@@ -2,6 +2,9 @@
 //!
 //! Registered with `Renderer::set_scene_renderer`; the render crate plans the pass
 //! and hands over the scene, camera, card images and target buffer.
+mod resources;
+mod setup;
+mod shadow;
 use std::collections::HashMap;
 use std::sync::Mutex;
 use veylvik_render::{Result, SceneJob, SceneRenderer};
@@ -35,6 +38,15 @@ struct LightUniform {
     position: [f32; 4],
     direction: [f32; 4],
     colour: [f32; 4],
+    shadow: [[f32; 4]; 4],
+    /// Shadow map layer (-1: none), normal offset, filter width in texels, unused.
+    shadow_info: [f32; 4],
+}
+#[repr(C)]
+#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+struct ShadowUniform {
+    model: [[f32; 4]; 4],
+    light: [[f32; 4]; 4],
 }
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
@@ -58,6 +70,9 @@ pub struct Engine {
     look_layout: wgpu::BindGroupLayout,
     look: wgpu::RenderPipeline,
     lit: wgpu::RenderPipeline,
+    catcher: wgpu::RenderPipeline,
+    shadow_pipeline: wgpu::RenderPipeline,
+    shadow_maps: Mutex<Option<std::sync::Arc<shadow::Maps>>>,
     card: wgpu::RenderPipeline,
     copy: wgpu::ComputePipeline,
     meshes: Mutex<(HashMap<String, GpuMesh>, u64)>,
@@ -106,420 +121,6 @@ fn normal_matrix(m: &math::Mat4) -> math::Mat4 {
     }
     out
 }
-impl Engine {
-    pub fn new(device: &wgpu::Device) -> Self {
-        let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("3D scene"),
-            source: wgpu::ShaderSource::Wgsl(
-                format!(
-                    "{}{}",
-                    include_str!("scene.wgsl"),
-                    veylvik_render::ENVIRONMENT_WGSL
-                )
-                .into(),
-            ),
-        });
-        let storage = |binding| wgpu::BindGroupLayoutEntry {
-            binding,
-            visibility: wgpu::ShaderStages::FRAGMENT,
-            ty: wgpu::BindingType::Buffer {
-                ty: wgpu::BufferBindingType::Storage { read_only: true },
-                has_dynamic_offset: false,
-                min_binding_size: None,
-            },
-            count: None,
-        };
-        let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("3D object"),
-            entries: &[
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                },
-                storage(1),
-                storage(2),
-                storage(3),
-            ],
-        });
-        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("3D object"),
-            bind_group_layouts: &[Some(&layout)],
-            immediate_size: 0,
-        });
-        let attributes = wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3, 2 => Float32x2];
-        let pipeline = |entry: &str, blend: Option<wgpu::BlendState>, write: bool| {
-            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                label: Some(entry),
-                layout: Some(&pipeline_layout),
-                vertex: wgpu::VertexState {
-                    module: &module,
-                    entry_point: Some("vertex"),
-                    compilation_options: Default::default(),
-                    buffers: &[wgpu::VertexBufferLayout {
-                        array_stride: 32,
-                        step_mode: wgpu::VertexStepMode::Vertex,
-                        attributes: &attributes,
-                    }],
-                },
-                primitive: wgpu::PrimitiveState::default(),
-                depth_stencil: Some(wgpu::DepthStencilState {
-                    format: DEPTH,
-                    depth_write_enabled: Some(write),
-                    depth_compare: Some(wgpu::CompareFunction::Greater),
-                    stencil: Default::default(),
-                    bias: Default::default(),
-                }),
-                multisample: wgpu::MultisampleState {
-                    count: SAMPLES,
-                    ..Default::default()
-                },
-                fragment: Some(wgpu::FragmentState {
-                    module: &module,
-                    entry_point: Some(entry),
-                    compilation_options: Default::default(),
-                    targets: &[Some(wgpu::ColorTargetState {
-                        format: COLOUR,
-                        blend,
-                        write_mask: wgpu::ColorWrites::ALL,
-                    })],
-                }),
-                multiview_mask: None,
-                cache: None,
-            })
-        };
-        let lit = pipeline("lit", None, true);
-        let card = pipeline(
-            "card",
-            Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
-            false,
-        );
-        // Library looks: the material kernels' bindings in group 0, the object in 1.
-        let entry = |binding, ty, writable: bool| wgpu::BindGroupLayoutEntry {
-            binding,
-            // Only the object uniform (group 1) feeds the vertex stage.
-            visibility: if ty == 0 && binding == 0 && !writable {
-                wgpu::ShaderStages::VERTEX_FRAGMENT
-            } else {
-                wgpu::ShaderStages::FRAGMENT
-            },
-            ty: match ty {
-                0 => wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
-                },
-                _ => wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Storage {
-                        read_only: !writable,
-                    },
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
-                },
-            },
-            count: None,
-        };
-        let material_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("3D look material"),
-            entries: &[
-                entry(0, 0, false),
-                entry(1, 1, false),
-                entry(2, 1, false),
-                entry(3, 1, true),
-                entry(4, 1, false),
-                entry(5, 1, false),
-                entry(6, 0, false),
-                entry(7, 1, false),
-                entry(8, 1, false),
-            ],
-        });
-        let look_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("3D look object"),
-            entries: &[entry(0, 0, false), entry(1, 1, false)],
-        });
-        let look_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("3D looks"),
-            source: wgpu::ShaderSource::Wgsl(
-                format!(
-                    "{}{}",
-                    veylvik_render::MATERIAL_WGSL,
-                    include_str!("look.wgsl")
-                )
-                .into(),
-            ),
-        });
-        let look_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("3D looks"),
-            bind_group_layouts: &[Some(&material_layout), Some(&look_layout)],
-            immediate_size: 0,
-        });
-        let look = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("3D looks"),
-            layout: Some(&look_pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &look_module,
-                entry_point: Some("look_vertex"),
-                compilation_options: Default::default(),
-                buffers: &[wgpu::VertexBufferLayout {
-                    array_stride: 32,
-                    step_mode: wgpu::VertexStepMode::Vertex,
-                    attributes: &attributes,
-                }],
-            },
-            primitive: wgpu::PrimitiveState::default(),
-            depth_stencil: Some(wgpu::DepthStencilState {
-                format: DEPTH,
-                depth_write_enabled: Some(true),
-                depth_compare: Some(wgpu::CompareFunction::Greater),
-                stencil: Default::default(),
-                bias: Default::default(),
-            }),
-            multisample: wgpu::MultisampleState {
-                count: SAMPLES,
-                ..Default::default()
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &look_module,
-                entry_point: Some("look_surface"),
-                compilation_options: Default::default(),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: COLOUR,
-                    blend: None,
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-            }),
-            multiview_mask: None,
-            cache: None,
-        });
-        let copy_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("3D resolve copy"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("copy.wgsl").into()),
-        });
-        let copy = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-            label: Some("3D resolve copy"),
-            layout: None,
-            module: &copy_module,
-            entry_point: Some("copy"),
-            compilation_options: Default::default(),
-            cache: None,
-        });
-        let env_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("3D environment"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("env.wgsl").into()),
-        });
-        let compute = |entry: &str| {
-            device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-                label: Some(entry),
-                layout: None,
-                module: &env_module,
-                entry_point: Some(entry),
-                compilation_options: Default::default(),
-                cache: None,
-            })
-        };
-        let (resample, reduce, irradiance) = (
-            compute("resample"),
-            compute("reduce"),
-            compute("irradiance"),
-        );
-        let sky_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("3D sky"),
-            source: wgpu::ShaderSource::Wgsl(
-                format!(
-                    "{}{}",
-                    include_str!("sky.wgsl"),
-                    veylvik_render::ENVIRONMENT_WGSL
-                )
-                .into(),
-            ),
-        });
-        let sky = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("3D sky"),
-            layout: None,
-            vertex: wgpu::VertexState {
-                module: &sky_module,
-                entry_point: Some("sky_vertex"),
-                compilation_options: Default::default(),
-                buffers: &[],
-            },
-            primitive: wgpu::PrimitiveState::default(),
-            depth_stencil: Some(wgpu::DepthStencilState {
-                format: DEPTH,
-                depth_write_enabled: Some(false),
-                depth_compare: Some(wgpu::CompareFunction::Always),
-                stencil: Default::default(),
-                bias: Default::default(),
-            }),
-            multisample: wgpu::MultisampleState {
-                count: SAMPLES,
-                ..Default::default()
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &sky_module,
-                entry_point: Some("sky_fragment"),
-                compilation_options: Default::default(),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: COLOUR,
-                    blend: None,
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-            }),
-            multiview_mask: None,
-            cache: None,
-        });
-        Self {
-            resample,
-            reduce,
-            irradiance,
-            panorama: Mutex::new(None),
-            sky,
-            layout,
-            material_layout,
-            look_layout,
-            look,
-            lit,
-            card,
-            copy,
-            meshes: Mutex::new((HashMap::new(), 0)),
-        }
-    }
-    /// Convert a premultiplied panorama of `width` x `height` into the studio
-    /// environment layout, on `encoder`; returns the buffer to light with.
-    fn panorama(
-        &self,
-        device: &wgpu::Device,
-        encoder: &mut wgpu::CommandEncoder,
-        image: &wgpu::Buffer,
-        width: u32,
-        height: u32,
-    ) -> Result<wgpu::Buffer> {
-        let target = {
-            let mut slot = self
-                .panorama
-                .lock()
-                .map_err(|_| error("panorama lock poisoned"))?;
-            slot.get_or_insert_with(|| {
-                device.create_buffer(&wgpu::BufferDescriptor {
-                    label: Some("3D panorama"),
-                    size: ENVIRONMENT_TEXELS * 16,
-                    usage: wgpu::BufferUsages::STORAGE,
-                    mapped_at_creation: false,
-                })
-            })
-            .clone()
-        };
-        let params = |level: u32| {
-            device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("panorama level"),
-                contents: bytemuck::cast_slice(&[width, height, level, 0u32]),
-                usage: wgpu::BufferUsages::UNIFORM,
-            })
-        };
-        let mut run = |pipeline: &wgpu::ComputePipeline,
-                       bindings: &[(u32, &wgpu::Buffer)],
-                       size: (u32, u32)| {
-            let entries: Vec<wgpu::BindGroupEntry> = bindings
-                .iter()
-                .map(|(binding, buffer)| wgpu::BindGroupEntry {
-                    binding: *binding,
-                    resource: buffer.as_entire_binding(),
-                })
-                .collect();
-            let bind = device.create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some("panorama"),
-                layout: &pipeline.get_bind_group_layout(0),
-                entries: &entries,
-            });
-            let mut pass = encoder.begin_compute_pass(&Default::default());
-            pass.set_pipeline(pipeline);
-            pass.set_bind_group(0, &bind, &[]);
-            pass.dispatch_workgroups(size.0.div_ceil(8), size.1.div_ceil(8), 1);
-        };
-        let first = params(0);
-        run(
-            &self.resample,
-            &[(0, &first), (1, image), (2, &target)],
-            (1024, 512),
-        );
-        for level in 1..=8u32 {
-            let p = params(level);
-            run(
-                &self.reduce,
-                &[(0, &p), (2, &target)],
-                ((1024 >> level).max(1), (512 >> level).max(1)),
-            );
-        }
-        run(&self.irradiance, &[(2, &target)], (64, 32));
-        Ok(target)
-    }
-    /// Upload (or reuse) the mesh of an object; meshes are keyed by their geometry.
-    fn mesh(
-        &self,
-        device: &wgpu::Device,
-        object: &veylvik_scene::Object,
-    ) -> Result<(wgpu::Buffer, wgpu::Buffer, u32)> {
-        let key = format!("{:?}", object.geometry);
-        let mut guard = self
-            .meshes
-            .lock()
-            .map_err(|_| error("mesh cache lock poisoned"))?;
-        let (meshes, clock) = &mut *guard;
-        *clock += 1;
-        if let Some(m) = meshes.get_mut(&key) {
-            m.used = *clock;
-            return Ok((m.vertices.clone(), m.indices.clone(), m.count));
-        }
-        let mesh = veylvik_scene::mesh(object).map_err(error)?;
-        let vertices: Vec<f32> = mesh
-            .vertices
-            .iter()
-            .flat_map(|v| v.position.into_iter().chain(v.normal).chain(v.uv))
-            .collect();
-        let mut indices = mesh.indices;
-        if indices.is_empty() {
-            indices = vec![0, 0, 0];
-        }
-        let vertex_bytes: &[u8] = if vertices.is_empty() {
-            &[0; 32]
-        } else {
-            bytemuck::cast_slice(&vertices)
-        };
-        let entry = GpuMesh {
-            vertices: device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("3D vertices"),
-                contents: vertex_bytes,
-                usage: wgpu::BufferUsages::VERTEX,
-            }),
-            indices: device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("3D indices"),
-                contents: bytemuck::cast_slice(&indices),
-                usage: wgpu::BufferUsages::INDEX,
-            }),
-            count: if mesh.vertices.is_empty() {
-                0
-            } else {
-                indices.len() as u32
-            },
-            used: *clock,
-        };
-        if meshes.len() >= MESH_CACHE
-            && let Some(oldest) = meshes
-                .iter()
-                .min_by_key(|(_, m)| m.used)
-                .map(|(k, _)| k.clone())
-        {
-            meshes.remove(&oldest);
-        }
-        let out = (entry.vertices.clone(), entry.indices.clone(), entry.count);
-        meshes.insert(key, entry);
-        Ok(out)
-    }
-}
 /// Pixels per mesh uv unit: titles' uv is already in pixels; primitives wrap 0..1.
 fn uv_scale(geometry: &Geometry) -> [f32; 4] {
     use veylvik_document::nodes::ShapeKind;
@@ -537,7 +138,7 @@ fn uv_scale(geometry: &Geometry) -> [f32; 4] {
         _ => [1.0, 1.0, 0.0, 0.0],
     }
 }
-fn light_uniform(light: &Light) -> LightUniform {
+fn light_uniform(light: &Light, shadow: Option<(u32, math::Mat4, f32)>) -> LightUniform {
     use veylvik_document::nodes::LightKind;
     let p = light.position();
     let d = light.direction();
@@ -561,6 +162,11 @@ fn light_uniform(light: &Light) -> LightUniform {
             light.colour[2] * light.intensity,
             inner.cos().max(outer.cos() + 1e-4),
         ],
+        shadow: shadow.map_or([[0.0; 4]; 4], |(_, m, _)| columns(&m)),
+        shadow_info: match shadow {
+            Some((layer, _, offset)) => [layer as f32, offset, 1.0 + light.softness * 4.0, 0.0],
+            None => [-1.0, 0.0, 0.0, 0.0],
+        },
     }
 }
 /// Perspective with y down (the scene frame) into wgpu clip space, reversed depth
@@ -633,7 +239,87 @@ impl SceneRenderer for Engine {
             &math::rigid_inverse(&camera.world),
         );
         let eye = math::point(&camera.world, [0.0; 3]);
-        let lights: Vec<LightUniform> = scene.lights.iter().map(light_uniform).collect();
+        // Up to four lights cast shadows, each from its own depth map.
+        let maps = {
+            let mut slot = self
+                .shadow_maps
+                .lock()
+                .map_err(|_| error("shadow map lock poisoned"))?;
+            slot.get_or_insert_with(|| std::sync::Arc::new(shadow::Maps::new(device)))
+                .clone()
+        };
+        let reach = shadow::bounds(scene);
+        let mut layer = 0u32;
+        let shadows: Vec<Option<(u32, math::Mat4, f32)>> = scene
+            .lights
+            .iter()
+            .map(|light| {
+                let (centre, radius) = reach?;
+                if !light.shadows || layer >= shadow::MAX_SHADOWS || light.intensity <= 0.0 {
+                    return None;
+                }
+                let (matrix, offset) = shadow::view(light, centre, radius)?;
+                layer += 1;
+                Some((layer - 1, matrix, offset))
+            })
+            .collect();
+        for (layer, matrix, _) in shadows.iter().flatten() {
+            let mut casts = Vec::new();
+            for object in &scene.objects {
+                if object.surface.catcher || matches!(object.geometry, Geometry::Card { .. }) {
+                    continue;
+                }
+                let (vertices, indices, count) = self.mesh(device, object)?;
+                if count == 0 {
+                    continue;
+                }
+                let uniform = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("3D shadow object"),
+                    contents: bytemuck::bytes_of(&ShadowUniform {
+                        model: columns(&object.world),
+                        light: columns(matrix),
+                    }),
+                    usage: wgpu::BufferUsages::UNIFORM,
+                });
+                let bind = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some("3D shadow object"),
+                    layout: &self.shadow_pipeline.get_bind_group_layout(0),
+                    entries: &[wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: uniform.as_entire_binding(),
+                    }],
+                });
+                casts.push((bind, vertices, indices, count));
+            }
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("3D shadow map"),
+                color_attachments: &[],
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: &maps.layers[*layer as usize],
+                    depth_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(1.0),
+                        store: wgpu::StoreOp::Store,
+                    }),
+                    stencil_ops: None,
+                }),
+                timestamp_writes: None,
+                occlusion_query_set: None,
+                multiview_mask: None,
+            });
+            pass.set_pipeline(&self.shadow_pipeline);
+            for (bind, vertices, indices, count) in &casts {
+                pass.set_bind_group(0, bind, &[]);
+                pass.set_vertex_buffer(0, vertices.slice(..));
+                pass.set_index_buffer(indices.slice(..), wgpu::IndexFormat::Uint32);
+                pass.draw_indexed(0..*count, 0, 0..1);
+            }
+        }
+        let lights: Vec<LightUniform> = scene
+            .lights
+            .iter()
+            .zip(&shadows)
+            .map(|(light, shadow)| light_uniform(light, *shadow))
+            .collect();
         let light_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("3D lights"),
             contents: if lights.is_empty() {
@@ -654,9 +340,18 @@ impl SceneRenderer for Engine {
             let p = math::point(&o.world, [0.0; 3]);
             (p[0] - eye[0]).powi(2) + (p[1] - eye[1]).powi(2) + (p[2] - eye[2]).powi(2)
         };
+        // Solids, then shadow catchers over them, then cards far to near.
+        let rank = |o: &veylvik_scene::Object| {
+            if matches!(o.geometry, Geometry::Card { .. }) {
+                2
+            } else if o.surface.catcher {
+                1
+            } else {
+                0
+            }
+        };
         order.sort_by(|a, b| {
-            let card = |o: &veylvik_scene::Object| matches!(o.geometry, Geometry::Card { .. });
-            card(a).cmp(&card(b)).then(if card(a) {
+            rank(a).cmp(&rank(b)).then(if rank(a) == 2 {
                 distance(b).total_cmp(&distance(a))
             } else {
                 std::cmp::Ordering::Equal
@@ -692,7 +387,12 @@ impl SceneRenderer for Engine {
             if count == 0 {
                 continue;
             }
-            if let Some(look) = &object.surface.look {
+            if let Some(look) = object
+                .surface
+                .look
+                .as_ref()
+                .filter(|_| !object.surface.catcher)
+            {
                 let (params, lighting) =
                     veylvik_render::material_uniforms(look, width, height, time, look_environment)?;
                 let buffer = |label, bytes: &[u8], usage| {
@@ -752,6 +452,14 @@ impl SceneRenderer for Engine {
                             binding: 1,
                             resource: light_buffer.as_entire_binding(),
                         },
+                        wgpu::BindGroupEntry {
+                            binding: 2,
+                            resource: wgpu::BindingResource::TextureView(&maps.array),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 3,
+                            resource: wgpu::BindingResource::Sampler(&maps.sampler),
+                        },
                     ],
                 });
                 looks.push((material, object_bind, vertices, indices, count));
@@ -762,6 +470,7 @@ impl SceneRenderer for Engine {
                     &self.card,
                     images.iter().find(|(id, _)| id == image).map(|(_, b)| *b),
                 ),
+                _ if object.surface.catcher => (&self.catcher, None),
                 _ => (&self.lit, None),
             };
             let uniform = ObjectUniform {
@@ -807,6 +516,14 @@ impl SceneRenderer for Engine {
                     wgpu::BindGroupEntry {
                         binding: 3,
                         resource: image.unwrap_or(&empty).as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 4,
+                        resource: wgpu::BindingResource::TextureView(&maps.array),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 5,
+                        resource: wgpu::BindingResource::Sampler(&maps.sampler),
                     },
                 ],
             });

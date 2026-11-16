@@ -115,12 +115,16 @@ pub struct Shape3d {
     /// do not apply.
     #[serde(default)]
     pub look: Option<Box<crate::nodes::Material>>,
+    /// Invisible except for the shadows that fall on it: lay one on the ground of
+    /// the footage so 3D objects shadow the real floor.
+    #[serde(default)]
+    pub shadow_catcher: bool,
 }
 pub static SHAPE_3D: NodeType = NodeType {
     type_id: "shape_3d",
     version: 1,
     label: "3D shape",
-    description: "A cube, sphere, plane, cylinder, cone or torus in a 3D scene, sized in pixels and centred on the frame at depth 0. Detail sets how many segments curved shapes use (3–256). Placement offsets, rotates (degrees, X then Y then Z) and scales it; colour (linear RGB), roughness and metallic shade it, unless a Look (any library material) is set, which shades it like a title. Outputs a scene for Merge scenes, 3D transform or Render scene.",
+    description: "A cube, sphere, plane, cylinder, cone or torus in a 3D scene, sized in pixels and centred on the frame at depth 0. Detail sets how many segments curved shapes use (3–256). Placement offsets, rotates (degrees, X then Y then Z) and scales it; colour (linear RGB), roughness and metallic shade it, unless a Look (any library material) is set, which shades it like a title. As a Shadow catcher it is invisible except for the shadows falling on it: lay a plane on the ground of the footage so 3D objects shadow the real floor. Outputs a scene for Merge scenes, 3D transform or Render scene.",
     inputs: &[],
     optional: &[],
     output: PortKind::Scene,
@@ -135,6 +139,7 @@ pub static SHAPE_3D: NodeType = NodeType {
         scalar("roughness", "factor", 0.0, 1.0, 0.4),
         scalar("metallic", "factor", 0.0, 1.0, 0.0),
         other("look", ParameterKind::Look, "library material"),
+        other("shadow_catcher", ParameterKind::Boolean, "shadows only"),
     ],
 };
 node!(
@@ -307,6 +312,9 @@ node!(Camera3d, CAMERA_3D, [focal_length, sensor_width], {
 #[serde(deny_unknown_fields)]
 pub struct Light3d {
     pub kind: LightKind,
+    /// Casts shadows (sun, spot and point lights; up to four per scene).
+    #[serde(default = "yes")]
+    pub shadows: bool,
     #[serde(default)]
     pub placement: Placement,
     pub colour: Track3,
@@ -318,12 +326,16 @@ pub static LIGHT_3D: NodeType = NodeType {
     type_id: "light_3d",
     version: 1,
     label: "Light",
-    description: "A point light, a spot (cone in degrees, softness of its edge) or a sun (parallel light; only its rotation matters). Lights sit at the frame centre plus their placement and point along -z (towards the scene) before rotation. Colour is linear RGB; intensity is relative to the studio. Outputs a scene.",
+    description: "A point light, a spot (cone in degrees, softness of its edge) or a sun (parallel light; only its rotation matters). Lights sit at the frame centre plus their placement and point along -z (towards the scene) before rotation. Colour is linear RGB; intensity is relative to the studio. With Shadows on (the default) it casts shadows from a shadow map, softened by Softness; up to four lights per scene cast them. Outputs a scene.",
     inputs: &[],
     optional: &[],
     output: PortKind::Scene,
     parameters: &[
         other("kind", ParameterKind::LightKind, "light"),
+        Parameter {
+            default: 1.0,
+            ..other("shadows", ParameterKind::Boolean, "casts shadows")
+        },
         other("placement", ParameterKind::Placement, "transform"),
         other("colour", ParameterKind::Colour3, "linear RGB"),
         scalar("intensity", "factor", 0.0, 1000.0, 1.0),

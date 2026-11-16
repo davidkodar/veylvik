@@ -1,0 +1,218 @@
+//! Shadow maps for scene lights: where each light sees the scene from, the depth maps rendered from there, and how surfaces read them.
+use veylvik_document::nodes::LightKind;
+use veylvik_scene::{Geometry, Light, Scene, math};
+
+/// Lights that cast shadows, per scene.
+pub(crate) const MAX_SHADOWS: u32 = 4;
+/// Shadow map side in texels.
+pub(crate) const SIZE: u32 = 2048;
+pub(crate) const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
+
+/// The shadow map array, one layer per shadowing light, and its comparison sampler.
+pub(crate) struct Maps {
+    pub array: wgpu::TextureView,
+    pub layers: Vec<wgpu::TextureView>,
+    pub sampler: wgpu::Sampler,
+}
+impl Maps {
+    pub fn new(device: &wgpu::Device) -> Self {
+        let texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("3D shadow maps"),
+            size: wgpu::Extent3d {
+                width: SIZE,
+                height: SIZE,
+                depth_or_array_layers: MAX_SHADOWS,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: FORMAT,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        });
+        let array = texture.create_view(&wgpu::TextureViewDescriptor {
+            dimension: Some(wgpu::TextureViewDimension::D2Array),
+            ..Default::default()
+        });
+        let layers = (0..MAX_SHADOWS)
+            .map(|layer| {
+                texture.create_view(&wgpu::TextureViewDescriptor {
+                    dimension: Some(wgpu::TextureViewDimension::D2),
+                    base_array_layer: layer,
+                    array_layer_count: Some(1),
+                    ..Default::default()
+                })
+            })
+            .collect();
+        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("3D shadow compare"),
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            compare: Some(wgpu::CompareFunction::LessEqual),
+            ..Default::default()
+        });
+        Self {
+            array,
+            layers,
+            sampler,
+        }
+    }
+}
+/// Local bounds of an object's geometry.
+fn local_bounds(geometry: &Geometry) -> ([f32; 3], [f32; 3]) {
+    match geometry {
+        Geometry::Shape { size, .. } => (size.map(|v| -v * 0.5), size.map(|v| v * 0.5)),
+        Geometry::Text { outline, depth, .. } => {
+            let [x0, y0, x1, y1] = veylvik_text_bounds(outline);
+            ([x0, y0, -depth * 0.5], [x1, y1, depth * 0.5])
+        }
+        Geometry::Card { size, .. } => (
+            [-size[0] * 0.5, -size[1] * 0.5, 0.0],
+            [size[0] * 0.5, size[1] * 0.5, 0.0],
+        ),
+    }
+}
+fn veylvik_text_bounds(outline: &veylvik_document::vector::PathMask) -> [f32; 4] {
+    let mut b = [f32::MAX, f32::MAX, f32::MIN, f32::MIN];
+    for command in &outline.commands {
+        use veylvik_document::vector::PathCommand as C;
+        let points: &[[f32; 2]] = match command {
+            C::Move { to } | C::Line { to } => std::slice::from_ref(to),
+            C::Quad { control, to } => &[*control, *to],
+            C::Cubic {
+                control1,
+                control2,
+                to,
+            } => &[*control1, *control2, *to],
+            C::Close {} => &[],
+        };
+        for p in points {
+            b = [
+                b[0].min(p[0]),
+                b[1].min(p[1]),
+                b[2].max(p[0]),
+                b[3].max(p[1]),
+            ];
+        }
+    }
+    if b[0] > b[2] { [0.0; 4] } else { b }
+}
+/// Centre and radius of everything that casts or catches shadows.
+pub(crate) fn bounds(scene: &Scene) -> Option<([f32; 3], f32)> {
+    let mut lo = [f32::MAX; 3];
+    let mut hi = [f32::MIN; 3];
+    for object in scene
+        .objects
+        .iter()
+        .filter(|o| !matches!(o.geometry, Geometry::Card { .. }))
+    {
+        let (a, b) = local_bounds(&object.geometry);
+        for i in 0..8 {
+            let p = math::point(
+                &object.world,
+                [
+                    if i & 1 == 0 { a[0] } else { b[0] },
+                    if i & 2 == 0 { a[1] } else { b[1] },
+                    if i & 4 == 0 { a[2] } else { b[2] },
+                ],
+            );
+            for k in 0..3 {
+                lo[k] = lo[k].min(p[k]);
+                hi[k] = hi[k].max(p[k]);
+            }
+        }
+    }
+    if lo[0] > hi[0] {
+        return None;
+    }
+    let centre = [0, 1, 2].map(|k| (lo[k] + hi[k]) * 0.5);
+    let radius =
+        ((hi[0] - lo[0]).powi(2) + (hi[1] - lo[1]).powi(2) + (hi[2] - lo[2]).powi(2)).sqrt() * 0.5;
+    Some((centre, radius.max(1.0)))
+}
+fn norm(v: [f32; 3]) -> [f32; 3] {
+    let l = (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt().max(1e-9);
+    v.map(|x| x / l)
+}
+fn cross(a: [f32; 3], b: [f32; 3]) -> [f32; 3] {
+    [
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0],
+    ]
+}
+/// A camera-like frame at `eye` looking along `forward`.
+fn looking(eye: [f32; 3], forward: [f32; 3]) -> math::Mat4 {
+    let z = norm(forward.map(|v| -v));
+    let hint = if z[1].abs() > 0.99 {
+        [0.0, 0.0, 1.0]
+    } else {
+        [0.0, -1.0, 0.0]
+    };
+    let x = norm(cross(hint, z));
+    let y = cross(z, x);
+    [
+        [x[0], y[0], z[0], eye[0]],
+        [x[1], y[1], z[1], eye[1]],
+        [x[2], y[2], z[2], eye[2]],
+        [0.0, 0.0, 0.0, 1.0],
+    ]
+}
+/// The light's view-projection (depth 0..1) and the normal offset that keeps lit
+/// surfaces from shadowing themselves, or None when it cannot see the scene.
+pub(crate) fn view(light: &Light, centre: [f32; 3], radius: f32) -> Option<(math::Mat4, f32)> {
+    let texel = |span: f32| span / SIZE as f32 * 1.5;
+    match light.kind {
+        LightKind::Sun => {
+            let forward = light.direction();
+            let eye = [0, 1, 2].map(|k| centre[k] - forward[k] * radius * 2.0);
+            let (near, far) = (radius * 0.5, radius * 3.5);
+            let projection = [
+                [1.0 / radius, 0.0, 0.0, 0.0],
+                [0.0, -1.0 / radius, 0.0, 0.0],
+                [0.0, 0.0, -1.0 / (far - near), -near / (far - near)],
+                [0.0, 0.0, 0.0, 1.0],
+            ];
+            Some((
+                math::mul(&projection, &math::rigid_inverse(&looking(eye, forward))),
+                texel(radius * 2.0),
+            ))
+        }
+        LightKind::Spot | LightKind::Point => {
+            let eye = light.position();
+            let to = [0, 1, 2].map(|k| centre[k] - eye[k]);
+            let distance = (to[0] * to[0] + to[1] * to[1] + to[2] * to[2]).sqrt();
+            let (forward, half) = if light.kind == LightKind::Spot {
+                (
+                    light.direction(),
+                    (light.cone * 0.5 + 5.0).min(85.0).to_radians(),
+                )
+            } else if distance > radius {
+                (
+                    norm(to),
+                    ((radius / distance).min(0.999).asin().to_degrees() + 5.0)
+                        .min(85.0)
+                        .to_radians(),
+                )
+            } else {
+                (
+                    norm(if distance > 1e-3 { to } else { [0.0, 1.0, 0.0] }),
+                    85f32.to_radians(),
+                )
+            };
+            let near = ((distance - radius) * 0.5).max(1.0);
+            let far = distance + radius * 1.5 + 1.0;
+            let f = 1.0 / half.tan();
+            let projection = [
+                [f, 0.0, 0.0, 0.0],
+                [0.0, -f, 0.0, 0.0],
+                [0.0, 0.0, -far / (far - near), -far * near / (far - near)],
+                [0.0, 0.0, -1.0, 0.0],
+            ];
+            Some((
+                math::mul(&projection, &math::rigid_inverse(&looking(eye, forward))),
+                texel(2.0 * distance.max(radius) * half.tan()),
+            ))
+        }
+    }
+}

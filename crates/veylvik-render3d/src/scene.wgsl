@@ -18,11 +18,36 @@ struct Light {
     direction: vec4<f32>,
     // rgb radiance, cosine of the inner half-angle
     colour: vec4<f32>,
+    // Its shadow map's view-projection, and layer (-1: none), normal offset, filter width.
+    shadow: mat4x4<f32>,
+    shadow_info: vec4<f32>,
 }
 @group(0) @binding(0) var<uniform> object: Object;
 @group(0) @binding(1) var<storage, read> lights: array<Light>;
 @group(0) @binding(2) var<storage, read> environment_map: array<vec4<f32>>;
 @group(0) @binding(3) var<storage, read> image: array<vec4<f32>>;
+@group(0) @binding(4) var shadow_maps: texture_depth_2d_array;
+@group(0) @binding(5) var shadow_sampler: sampler_comparison;
+// How much of light `index` reaches `world` (1 lit, 0 shadowed): a 3x3 filtered
+// shadow-map test, offset along the normal so surfaces never shadow themselves.
+fn shadow_of(position: vec3<f32>, normal: vec3<f32>, shadow: mat4x4<f32>, info: vec4<f32>) -> f32 {
+    let layer = i32(info.x);
+    if layer < 0 { return 1.0; }
+    let p = shadow * vec4<f32>(position + normal * info.y, 1.0);
+    if p.w <= 0.0 { return 1.0; }
+    let ndc = p.xyz / p.w;
+    let uv = vec2<f32>(ndc.x * 0.5 + 0.5, 0.5 - ndc.y * 0.5);
+    if uv.x < 0.0 || uv.y < 0.0 || uv.x > 1.0 || uv.y > 1.0 || ndc.z > 1.0 { return 1.0; }
+    let step = info.z / 2048.0;
+    var lit = 0.0;
+    for (var y = -1; y <= 1; y++) {
+        for (var x = -1; x <= 1; x++) {
+            lit += textureSampleCompareLevel(shadow_maps, shadow_sampler, uv + vec2<f32>(f32(x), f32(y)) * step, layer, ndc.z);
+        }
+    }
+    return lit / 9.0;
+}
+
 
 struct Varying {
     @builtin(position) clip: vec4<f32>,
@@ -90,6 +115,7 @@ fn lit(in: Varying) -> @location(0) vec4<f32> {
         }
         let nl = dot(n, l);
         if nl <= 0.0 { continue; }
+        radiance *= shadow_of(in.world, n, light.shadow, light.shadow_info);
         let h = normalize(l + v);
         let nh = max(dot(n, h), 0.0);
         let f = f0 + (vec3<f32>(1.0) - f0) * pow(1.0 - max(dot(h, v), 0.0), 5.0);
@@ -112,4 +138,37 @@ fn card(in: Varying) -> @location(0) vec4<f32> {
     let f = fract(q);
     return mix(mix(texel(i.x, i.y), texel(i.x + 1, i.y), f.x),
                mix(texel(i.x, i.y + 1), texel(i.x + 1, i.y + 1), f.x), f.y);
+}
+
+// A shadow catcher: transparent where lit, darkening by the share of the direct
+// light that is blocked, weighed against the environment's ambient light.
+@fragment
+fn catcher(in: Varying) -> @location(0) vec4<f32> {
+    let v = normalize(object.camera.xyz - in.world);
+    var n = normalize(in.normal);
+    if dot(n, v) < 0.0 { n = -n; }
+    var direct = 0.0;
+    var blocked = 0.0;
+    for (var i = 0u; i < u32(object.counts.x); i++) {
+        let light = lights[i];
+        var l = -light.direction.xyz;
+        var radiance = light.colour.rgb;
+        if light.position.w < 1.5 {
+            let to = light.position.xyz - in.world;
+            let d2 = max(dot(to, to), 1.0);
+            l = to / sqrt(d2);
+            radiance *= 1.0e6 / d2;
+            if light.position.w > 0.5 {
+                radiance *= smoothstep(light.direction.w, light.colour.w, dot(-l, light.direction.xyz));
+            }
+        }
+        let nl = dot(n, l);
+        if nl <= 0.0 { continue; }
+        let amount = dot(radiance, vec3<f32>(0.2126, 0.7152, 0.0722)) * nl;
+        direct += amount;
+        blocked += amount * (1.0 - shadow_of(in.world, n, light.shadow, light.shadow_info));
+    }
+    let ambient = dot(environment_specular(turned(n), 1.0), vec3<f32>(0.2126, 0.7152, 0.0722)) * object.counts.y;
+    let shade = clamp(blocked / max(direct + ambient, 1e-4), 0.0, 1.0);
+    return vec4<f32>(0.0, 0.0, 0.0, shade);
 }

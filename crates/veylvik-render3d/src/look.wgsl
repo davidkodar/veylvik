@@ -16,9 +16,33 @@ struct SceneLight {
     position: vec4<f32>,
     direction: vec4<f32>,
     colour: vec4<f32>,
+    shadow: mat4x4<f32>,
+    shadow_info: vec4<f32>,
 }
 @group(1) @binding(0) var<uniform> look_object: LookObject;
 @group(1) @binding(1) var<storage, read> scene_lights: array<SceneLight>;
+@group(1) @binding(2) var shadow_maps: texture_depth_2d_array;
+@group(1) @binding(3) var shadow_sampler: sampler_comparison;
+// How much of light `index` reaches `world` (1 lit, 0 shadowed): a 3x3 filtered
+// shadow-map test, offset along the normal so surfaces never shadow themselves.
+fn shadow_of(position: vec3<f32>, normal: vec3<f32>, shadow: mat4x4<f32>, info: vec4<f32>) -> f32 {
+    let layer = i32(info.x);
+    if layer < 0 { return 1.0; }
+    let p = shadow * vec4<f32>(position + normal * info.y, 1.0);
+    if p.w <= 0.0 { return 1.0; }
+    let ndc = p.xyz / p.w;
+    let uv = vec2<f32>(ndc.x * 0.5 + 0.5, 0.5 - ndc.y * 0.5);
+    if uv.x < 0.0 || uv.y < 0.0 || uv.x > 1.0 || uv.y > 1.0 || ndc.z > 1.0 { return 1.0; }
+    let step = info.z / 2048.0;
+    var lit = 0.0;
+    for (var y = -1; y <= 1; y++) {
+        for (var x = -1; x <= 1; x++) {
+            lit += textureSampleCompareLevel(shadow_maps, shadow_sampler, uv + vec2<f32>(f32(x), f32(y)) * step, layer, ndc.z);
+        }
+    }
+    return lit / 9.0;
+}
+
 struct LookVarying {
     @builtin(position) clip: vec4<f32>,
     @location(0) world: vec3<f32>,
@@ -67,6 +91,7 @@ fn look_surface(in: LookVarying) -> @location(0) vec4<f32> {
         }
         let nl = dot(n, l);
         if nl <= 0.0 { continue; }
+        radiance *= shadow_of(in.world, n, light.shadow, light.shadow_info);
         let h = normalize(l + v);
         let nh = max(dot(n, h), 0.0);
         let f = f0 + (vec3<f32>(1.0) - f0) * pow(1.0 - max(dot(h, v), 0.0), 5.0);

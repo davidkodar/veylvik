@@ -423,3 +423,77 @@ fn an_environment_lights_reflects_and_fills_the_backdrop() {
         "nothing lights the scene"
     );
 }
+
+#[test]
+#[ignore = "requires Vulkan"]
+fn lights_cast_shadows_and_a_catcher_shows_only_them() {
+    let renderer = renderer();
+    let mut doc = blank(W, H, Time::new(24, 1).unwrap()).unwrap();
+    let shape = |kind, size: [f32; 3], position: [f32; 3]| {
+        let mut s = op(&SHAPE_3D);
+        if let Operation::Shape3d(s) = &mut s {
+            s.kind = kind;
+            s.size_x = size[0].into();
+            s.size_y = size[1].into();
+            s.size_z = size[2].into();
+            s.colour = [0.8; 3].into();
+            s.roughness = 0.9.into();
+            s.placement.position = position.into();
+        }
+        s
+    };
+    let cube = add(&mut doc, shape(ShapeKind::Cube, [20.0; 3], [0.0; 3]), &[]);
+    let wall = add(
+        &mut doc,
+        shape(ShapeKind::Plane, [400.0, 300.0, 0.0], [0.0, 0.0, -30.0]),
+        &[],
+    );
+    // A sun from the upper left and the front: the cube's shadow falls down and right.
+    let mut sun = op(&LIGHT_3D);
+    if let Operation::Light3d(l) = &mut sun {
+        l.kind = LightKind::Sun;
+        l.intensity = 3.0.into();
+        l.colour = [1.0; 3].into();
+        l.placement.rotation = [35.26, -45.0, 0.0].into();
+    }
+    let sun = add(&mut doc, sun, &[]);
+    let merged = add(
+        &mut doc,
+        op(&MERGE_SCENES),
+        &[("scene", cube), ("scene_2", wall), ("scene_3", sun)],
+    );
+    let render_node = add(&mut doc, op(&RENDER_SCENE), &[("scene", merged)]);
+    doc.output = render_node;
+    let at = |p: &[[f32; 4]], x: u32, y: u32| p[(y * W + x) as usize];
+    let luma = |p: [f32; 4]| p[0] * 0.2126 + p[1] * 0.7152 + p[2] * 0.0722;
+    let shadowed_point = (108, 73);
+    let lit_point = (30, 15);
+    let out = render(&renderer, &doc, &Default::default());
+    let (dark, bright) = (
+        luma(at(&out, shadowed_point.0, shadowed_point.1)),
+        luma(at(&out, lit_point.0, lit_point.1)),
+    );
+    assert!(dark < bright * 0.7, "shadow {dark} vs lit {bright}");
+    // Without shadows the wall is evenly lit by the sun.
+    let set_light = |doc: &mut Composition, shadows: bool| {
+        if let Operation::Light3d(l) = &mut doc.nodes.get_mut(&sun).unwrap().operation {
+            l.shadows = shadows;
+        }
+    };
+    set_light(&mut doc, false);
+    let open = render(&renderer, &doc, &Default::default());
+    let (a, b) = (
+        luma(at(&open, shadowed_point.0, shadowed_point.1)),
+        luma(at(&open, lit_point.0, lit_point.1)),
+    );
+    assert!((a - b).abs() < b * 0.1, "no shadow: {a} vs {b}");
+    // As a shadow catcher the wall shows only the shadow: black, alpha where blocked.
+    set_light(&mut doc, true);
+    if let Operation::Shape3d(s) = &mut doc.nodes.get_mut(&wall).unwrap().operation {
+        s.shadow_catcher = true;
+    }
+    let caught = render(&renderer, &doc, &Default::default());
+    let shade = at(&caught, shadowed_point.0, shadowed_point.1);
+    assert!(shade[3] > 0.3 && shade[0] < 1e-4, "{shade:?}");
+    assert!(at(&caught, lit_point.0, lit_point.1)[3] < 0.05);
+}

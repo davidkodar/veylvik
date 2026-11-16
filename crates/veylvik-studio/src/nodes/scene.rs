@@ -106,6 +106,10 @@ impl Inspect for Shape3d {
                 (Torus, "Torus"),
             ],
         );
+        cx.dirty |= ui
+            .checkbox(&mut self.shadow_catcher, "Shadow catcher")
+            .on_hover_text("Invisible except for the shadows falling on it: lay a plane on the ground of your footage so 3D objects shadow the real floor")
+            .changed();
         cx.dirty |= look(ui, &mut self.look, cx);
         if self.look.is_none() {
             cx.dirty |= crate::animation::colour_track(ui, "Colour", &mut self.colour, cx.time);
@@ -161,6 +165,10 @@ impl Inspect for Light3d {
             &mut self.kind,
             &[(Point, "Point"), (Spot, "Spot"), (Sun, "Sun")],
         );
+        cx.dirty |= ui
+            .checkbox(&mut self.shadows, "Shadows")
+            .on_hover_text("Cast shadows from this light (up to four lights per scene); Softness blurs their edges")
+            .changed();
         cx.dirty |= crate::animation::colour_track(ui, "Colour", &mut self.colour, cx.time);
         cx.dirty |= placement(ui, &mut self.placement, cx);
     }
