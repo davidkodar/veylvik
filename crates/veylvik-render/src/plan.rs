@@ -853,6 +853,16 @@ impl Plan {
             .chain(self.temporal.iter().flat_map(|b| b.plan.required_assets()))
             .collect()
     }
+    /// The model files the plan's 3D models read.
+    pub fn required_models(&self) -> BTreeSet<&str> {
+        self.nodes
+            .iter()
+            .filter_map(|n| match &n.operation {
+                Operation::Model3d(m) if !m.model.is_empty() => Some(m.model.as_str()),
+                _ => None,
+            })
+            .collect()
+    }
     pub fn image_slots(&self) -> usize {
         self.slot_count
     }

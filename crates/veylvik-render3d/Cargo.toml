@@ -12,6 +12,7 @@ veylvik-scene.workspace = true
 wgpu.workspace = true
 bytemuck.workspace = true
 [dev-dependencies]
+veylvik-mesh.workspace = true
 serde_json.workspace = true
 [lints]
 workspace = true

@@ -837,6 +837,7 @@ impl Renderer {
                         width: plan.width,
                         height: plan.height,
                         images: &images,
+                        models: inputs.models(),
                         environment: &self.studio_environment,
                         ltc: &self.ltc,
                         target: &buffers[scheduled.output],

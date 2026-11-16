@@ -86,6 +86,11 @@ pub struct Engine {
     shadow_pipeline: wgpu::RenderPipeline,
     shadow_maps: Mutex<Option<std::sync::Arc<shadow::Maps>>>,
     sky_maps: Mutex<Option<std::sync::Arc<shadow::Maps>>>,
+    /// The models of the frame being rendered, by file path.
+    models: Mutex<std::collections::BTreeMap<String, std::sync::Arc<veylvik_scene::Model>>>,
+    /// Model textures on the GPU, by the loaded texture they hold (kept alive with it).
+    #[allow(clippy::type_complexity)]
+    textures: Mutex<HashMap<usize, (wgpu::Buffer, std::sync::Arc<veylvik_scene::Texture>)>>,
     card: wgpu::RenderPipeline,
     copy: wgpu::ComputePipeline,
     meshes: Mutex<(HashMap<String, GpuMesh>, u64)>,
@@ -148,6 +153,7 @@ fn uv_scale(geometry: &Geometry) -> [f32; 4] {
                 _ => [around, size[1], 0.0, 0.0],
             }
         }
+        Geometry::Model { size, .. } => [*size, *size, 0.0, 0.0],
         _ => [1.0, 1.0, 0.0, 0.0],
     }
 }
@@ -242,8 +248,11 @@ impl SceneRenderer for Engine {
             occlusion,
             blend,
             target,
+            models,
             ..
         } = job;
+        let expanded = self.expand(scene, models)?;
+        let scene = &expanded;
         let size = wgpu::Extent3d {
             width,
             height,
@@ -517,13 +526,18 @@ impl SceneRenderer for Engine {
                 looks.push((material, object_bind, vertices, indices, count));
                 continue;
             }
+            let texture = self.part_texture(device, &object.geometry)?;
             let (pipeline, image) = match &object.geometry {
                 Geometry::Card { image, .. } => (
                     &self.card,
                     images.iter().find(|(id, _)| id == image).map(|(_, b)| *b),
                 ),
                 _ if object.surface.catcher => (&self.catcher, None),
-                _ => (&self.lit, None),
+                _ => (&self.lit, texture.as_ref().map(|(b, ..)| b)),
+            };
+            let picture = match &texture {
+                Some((_, w, h)) => [*w as f32, *h as f32],
+                None => [width as f32, height as f32],
             };
             let uniform = ObjectUniform {
                 model: columns(&object.world),
@@ -539,10 +553,15 @@ impl SceneRenderer for Engine {
                 params: [
                     object.surface.metallic,
                     f32::from(object.surface.unlit),
-                    width as f32,
-                    height as f32,
+                    picture[0],
+                    picture[1],
                 ],
-                counts: [lights.len() as f32, strength, turn, 0.0],
+                counts: [
+                    lights.len() as f32,
+                    strength,
+                    turn,
+                    f32::from(texture.is_some()),
+                ],
             };
             let uniform = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("3D object"),

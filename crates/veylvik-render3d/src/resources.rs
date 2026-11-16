@@ -1,6 +1,7 @@
 //! GPU resources the 3D renderer keeps between frames: meshes by geometry, and the panorama converted into the studio environment layout.
 use crate::{ENVIRONMENT_TEXELS, Engine, GpuMesh, MESH_CACHE, error};
 use veylvik_render::Result;
+use veylvik_scene::Geometry;
 use wgpu::util::DeviceExt;
 
 impl Engine {
@@ -90,7 +91,29 @@ impl Engine {
             m.used = *clock;
             return Ok((m.vertices.clone(), m.indices.clone(), m.count));
         }
-        let mesh = veylvik_scene::mesh(object).map_err(error)?;
+        let mesh = match &object.geometry {
+            Geometry::Model {
+                path,
+                size,
+                part: Some(part),
+                ..
+            } => {
+                let models = self
+                    .models
+                    .lock()
+                    .map_err(|_| error("model lock poisoned"))?;
+                let mut mesh = models
+                    .get(path)
+                    .and_then(|m| m.parts.get(*part))
+                    .map(|p| p.mesh.clone())
+                    .unwrap_or_default();
+                for v in &mut mesh.vertices {
+                    v.position = v.position.map(|x| x * size);
+                }
+                mesh
+            }
+            _ => veylvik_scene::mesh(object).map_err(error)?,
+        };
         let vertices: Vec<f32> = mesh
             .vertices
             .iter()
@@ -134,5 +157,106 @@ impl Engine {
         let out = (entry.vertices.clone(), entry.indices.clone(), entry.count);
         meshes.insert(key, entry);
         Ok(out)
+    }
+    /// Hold this frame's models, and split each model object into its parts: each
+    /// keeps the object's place and takes the part's material, unless the object has
+    /// a library look. Models that are not loaded show nothing.
+    pub(crate) fn expand(
+        &self,
+        scene: &veylvik_scene::Scene,
+        models: &std::collections::BTreeMap<String, std::sync::Arc<veylvik_scene::Model>>,
+    ) -> Result<veylvik_scene::Scene> {
+        *self
+            .models
+            .lock()
+            .map_err(|_| error("model lock poisoned"))? = models.clone();
+        if !scene
+            .objects
+            .iter()
+            .any(|o| matches!(o.geometry, Geometry::Model { .. }))
+        {
+            return Ok(scene.clone());
+        }
+        let mut out = scene.clone();
+        out.objects.clear();
+        for object in &scene.objects {
+            let Geometry::Model {
+                path,
+                size,
+                extent,
+                part: None,
+            } = &object.geometry
+            else {
+                out.objects.push(object.clone());
+                continue;
+            };
+            let Some(model) = models.get(path) else {
+                continue;
+            };
+            for (i, part) in model.parts.iter().enumerate() {
+                let mut piece = object.clone();
+                piece.geometry = Geometry::Model {
+                    path: path.clone(),
+                    size: *size,
+                    extent: *extent,
+                    part: Some(i),
+                };
+                if piece.surface.look.is_none() {
+                    piece.surface.colour = [part.colour[0], part.colour[1], part.colour[2]];
+                    piece.surface.metallic = part.metallic;
+                    piece.surface.roughness = part.roughness;
+                }
+                out.objects.push(piece);
+            }
+        }
+        Ok(out)
+    }
+    /// A part's base colour texture on the GPU (straight linear RGBA rows), cached by
+    /// the loaded texture; None for an untextured part.
+    pub(crate) fn part_texture(
+        &self,
+        device: &wgpu::Device,
+        geometry: &Geometry,
+    ) -> Result<Option<(wgpu::Buffer, u32, u32)>> {
+        let Geometry::Model {
+            path,
+            part: Some(part),
+            ..
+        } = geometry
+        else {
+            return Ok(None);
+        };
+        let texture = {
+            let models = self
+                .models
+                .lock()
+                .map_err(|_| error("model lock poisoned"))?;
+            models
+                .get(path)
+                .and_then(|m| m.parts.get(*part))
+                .and_then(|p| p.texture.clone())
+        };
+        let Some(texture) = texture else {
+            return Ok(None);
+        };
+        let key = std::sync::Arc::as_ptr(&texture) as usize;
+        let mut cache = self
+            .textures
+            .lock()
+            .map_err(|_| error("texture cache lock poisoned"))?;
+        if let Some((buffer, _)) = cache.get(&key) {
+            return Ok(Some((buffer.clone(), texture.width, texture.height)));
+        }
+        // Keep the cache to textures still alive in some loaded model.
+        if cache.len() >= 256 {
+            cache.clear();
+        }
+        let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("3D model texture"),
+            contents: bytemuck::cast_slice(&texture.pixels),
+            usage: wgpu::BufferUsages::STORAGE,
+        });
+        cache.insert(key, (buffer.clone(), texture.clone()));
+        Ok(Some((buffer, texture.width, texture.height)))
     }
 }

@@ -13,10 +13,12 @@ veylvik-text.workspace = true
 veylvik-document.workspace = true
 veylvik-render.workspace = true
 veylvik-render3d.workspace = true
+veylvik-mesh.workspace = true
 png = "0.18"
 pathdiff = "0.2"
 serde_json.workspace = true
 image = { workspace = true, features = ["hdr"] }
 exr = { version = "=1.74.2", default-features = false }
+gltf = { version = "=1.4.1", default-features = false, features = ["import", "utils", "names"] }
 [lints]
 workspace = true

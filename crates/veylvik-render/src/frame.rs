@@ -133,6 +133,8 @@ pub struct ImageInputs(
     BTreeMap<String, Arc<GpuFrame>>,
     BTreeMap<String, Arc<dyn FrameSource>>,
     std::path::PathBuf,
+    /// Imported 3D models by file path.
+    BTreeMap<String, Arc<veylvik_scene::Model>>,
 );
 impl ImageInputs {
     pub(crate) fn same_sources(&self, other: &Self) -> bool {
@@ -152,6 +154,21 @@ impl ImageInputs {
                 .2
                 .iter()
                 .all(|(k, v)| other.2.get(k).is_some_and(|w| Arc::ptr_eq(v, w)))
+            && self.4.len() == other.4.len()
+            && self
+                .4
+                .iter()
+                .all(|(k, v)| other.4.get(k).is_some_and(|w| Arc::ptr_eq(v, w)))
+    }
+    /// Hold an imported model under its file path.
+    pub fn insert_model(&mut self, path: impl Into<String>, model: Arc<veylvik_scene::Model>) {
+        self.4.insert(path.into(), model);
+    }
+    pub fn model(&self, path: &str) -> Option<&Arc<veylvik_scene::Model>> {
+        self.4.get(path)
+    }
+    pub fn models(&self) -> &BTreeMap<String, Arc<veylvik_scene::Model>> {
+        &self.4
     }
     pub(crate) fn playback_dependencies(&self) -> Option<Vec<std::path::PathBuf>> {
         let mut paths = Vec::new();

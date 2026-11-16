@@ -1436,6 +1436,21 @@ and `colour`.
   the strengths, so measured settings reproduce the plate. A camera solve
   measures the middle frame and puts **Footage grain** between the render and the
   merge over the footage.
+- **3D model** (`model_3d`): an imported glTF 2.0 model (.glb, or .gltf with its
+  buffers and images), by absolute path (Collect project does not copy it yet).
+  Every triangle part of the default scene is read with its node transforms
+  (a mirroring transform keeps faces the right way out) and its
+  metallic-roughness material: base colour factor and texture (8-bit images,
+  decoded to linear and box-reduced to at most 1024 pixels a side), metallic and
+  roughness factors. Normal, metallic-roughness, occlusion and emissive maps,
+  transparency, skins and animation are not read. glTF's y up becomes y down,
+  and the model is centred on its box and scaled so its largest side is 1,
+  then **Size** pixels; **Extent**, measured on import, gives the scene its box
+  without reading the file. A library **Look** replaces every part's material.
+  Limits: 4 million vertices in 1024 parts. Studio loads models with the
+  project; Add > 3D > 3D model asks for the file, and **Choose model file…** in
+  the inspector replaces it (one undo step). The CLI and MCP load a plan's
+  models with its other inputs.
 - **Render scene**: films a scene as an image with camera 1, 2, … in node order, or
   0 for the home view.
 

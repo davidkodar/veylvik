@@ -11,7 +11,9 @@ use veylvik_document::{
     vector::{FillRule, PathCommand},
 };
 
+mod model;
 mod primitives;
+pub use model::{MAX_PARTS, MAX_TEXTURE, MAX_VERTICES, Model, Part, Texture};
 pub use primitives::{Primitive, SEGMENTS, primitive};
 
 pub type Result<T> = std::result::Result<T, Error>;

@@ -12,3 +12,4 @@ impl RenderNode for Light3d {}
 impl RenderNode for RenderScene {}
 impl RenderNode for Environment3d {}
 impl RenderNode for PointCloud {}
+impl RenderNode for Model3d {}

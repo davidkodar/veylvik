@@ -1,0 +1,321 @@
+//! glTF 2.0 import (.glb or .gltf with its buffers and images): every triangle part of the default scene with its node transforms and metallic-roughness material, in Veylvik's frame (y down), normalised to a unit box.
+use std::collections::HashMap;
+use std::path::Path;
+use std::sync::Arc;
+use veylvik_mesh::{MAX_PARTS, MAX_TEXTURE, MAX_VERTICES, Mesh, Model, Part, Texture, Vertex};
+
+type Result<T> = std::result::Result<T, String>;
+type Mat = [[f32; 4]; 4];
+
+fn mul(a: &Mat, b: &Mat) -> Mat {
+    // glTF matrices are column-major: m[column][row].
+    let mut out = [[0.0; 4]; 4];
+    for (c, column) in out.iter_mut().enumerate() {
+        for (r, value) in column.iter_mut().enumerate() {
+            *value = (0..4).map(|k| a[k][r] * b[c][k]).sum();
+        }
+    }
+    out
+}
+fn point(m: &Mat, p: [f32; 3]) -> [f32; 3] {
+    [0, 1, 2].map(|r| m[0][r] * p[0] + m[1][r] * p[1] + m[2][r] * p[2] + m[3][r])
+}
+fn direction(m: &Mat, d: [f32; 3]) -> [f32; 3] {
+    [0, 1, 2].map(|r| m[0][r] * d[0] + m[1][r] * d[1] + m[2][r] * d[2])
+}
+fn normalize(v: [f32; 3]) -> [f32; 3] {
+    let l = (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt();
+    if l > 1e-12 {
+        v.map(|x| x / l)
+    } else {
+        [0.0, 0.0, 1.0]
+    }
+}
+fn srgb(v: f32) -> f32 {
+    if v <= 0.04045 {
+        v / 12.92
+    } else {
+        ((v + 0.055) / 1.055).powf(2.4)
+    }
+}
+/// A glTF image as linear straight RGBA, box-reduced to at most `MAX_TEXTURE` a side.
+fn texture(data: &gltf::image::Data) -> Option<Texture> {
+    use gltf::image::Format as F;
+    let (w, h) = (data.width as usize, data.height as usize);
+    let channels = match data.format {
+        F::R8 => 1,
+        F::R8G8 => 2,
+        F::R8G8B8 => 3,
+        F::R8G8B8A8 => 4,
+        _ => return None,
+    };
+    if w == 0 || h == 0 || data.pixels.len() < w * h * channels {
+        return None;
+    }
+    let texel = |x: usize, y: usize| -> [f32; 4] {
+        let p = &data.pixels[(y * w + x) * channels..][..channels];
+        let v = |i: usize| f32::from(p[i]) / 255.0;
+        match channels {
+            1 => [srgb(v(0)), srgb(v(0)), srgb(v(0)), 1.0],
+            2 => [srgb(v(0)), srgb(v(0)), srgb(v(0)), v(1)],
+            3 => [srgb(v(0)), srgb(v(1)), srgb(v(2)), 1.0],
+            _ => [srgb(v(0)), srgb(v(1)), srgb(v(2)), v(3)],
+        }
+    };
+    let step = (w.max(h) as u32).div_ceil(MAX_TEXTURE).max(1) as usize;
+    let (tw, th) = (w.div_ceil(step), h.div_ceil(step));
+    let mut pixels = Vec::with_capacity(tw * th);
+    for ty in 0..th {
+        for tx in 0..tw {
+            let mut sum = [0.0f32; 4];
+            let mut n = 0.0;
+            for y in ty * step..((ty + 1) * step).min(h) {
+                for x in tx * step..((tx + 1) * step).min(w) {
+                    let t = texel(x, y);
+                    for c in 0..4 {
+                        sum[c] += t[c];
+                    }
+                    n += 1.0;
+                }
+            }
+            pixels.push(sum.map(|v| v / n));
+        }
+    }
+    Some(Texture {
+        width: tw as u32,
+        height: th as u32,
+        pixels,
+    })
+}
+/// Load a glTF model normalised to a unit box (largest side 1, centred).
+pub fn load(path: &Path) -> Result<Model> {
+    let (document, buffers, images) =
+        gltf::import(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    let scene = document
+        .default_scene()
+        .or_else(|| document.scenes().next())
+        .ok_or("the file has no scene")?;
+    let mut textures: HashMap<usize, Option<Arc<Texture>>> = HashMap::new();
+    let mut parts = Vec::new();
+    let mut vertices_total = 0usize;
+    let identity: Mat = [
+        [1.0, 0.0, 0.0, 0.0],
+        [0.0, 1.0, 0.0, 0.0],
+        [0.0, 0.0, 1.0, 0.0],
+        [0.0, 0.0, 0.0, 1.0],
+    ];
+    let mut pending: Vec<(gltf::Node, Mat)> = scene.nodes().map(|n| (n, identity)).collect();
+    while let Some((node, parent)) = pending.pop() {
+        let world = mul(&parent, &node.transform().matrix());
+        pending.extend(node.children().map(|c| (c, world)));
+        let Some(mesh) = node.mesh() else { continue };
+        // A mirroring transform turns faces inside out; flip them back.
+        let m3 = |c: usize, r: usize| world[c][r];
+        let det = m3(0, 0) * (m3(1, 1) * m3(2, 2) - m3(2, 1) * m3(1, 2))
+            - m3(1, 0) * (m3(0, 1) * m3(2, 2) - m3(2, 1) * m3(0, 2))
+            + m3(2, 0) * (m3(0, 1) * m3(1, 2) - m3(1, 1) * m3(0, 2));
+        for primitive in mesh.primitives() {
+            if primitive.mode() != gltf::mesh::Mode::Triangles {
+                continue;
+            }
+            let reader = primitive.reader(|b| buffers.get(b.index()).map(|d| &d.0[..]));
+            let Some(positions) = reader.read_positions() else {
+                continue;
+            };
+            let positions: Vec<[f32; 3]> = positions.collect();
+            vertices_total += positions.len();
+            if vertices_total > MAX_VERTICES || parts.len() >= MAX_PARTS {
+                return Err(format!(
+                    "the model is too large (at most {MAX_VERTICES} vertices in {MAX_PARTS} parts)"
+                ));
+            }
+            let mut indices: Vec<u32> = match reader.read_indices() {
+                Some(i) => i.into_u32().collect(),
+                None => (0..positions.len() as u32).collect(),
+            };
+            indices.truncate(indices.len() / 3 * 3);
+            if indices.iter().any(|i| *i as usize >= positions.len()) {
+                return Err("a part indexes past its vertices".into());
+            }
+            let normals: Option<Vec<[f32; 3]>> = reader.read_normals().map(|n| n.collect());
+            let uvs: Option<Vec<[f32; 2]>> =
+                reader.read_tex_coords(0).map(|t| t.into_f32().collect());
+            // Into Veylvik's frame: world transform, then y flipped (glTF is y up), which
+            // mirrors, so triangle order flips too (twice for a mirroring transform).
+            let flip = |v: [f32; 3]| [v[0], -v[1], v[2]];
+            let placed: Vec<[f32; 3]> = positions.iter().map(|p| flip(point(&world, *p))).collect();
+            if det > 0.0 {
+                for t in indices.as_chunks_mut::<3>().0 {
+                    t.swap(1, 2);
+                }
+            }
+            let normals: Vec<[f32; 3]> = match normals {
+                Some(n) if n.len() == positions.len() => n
+                    .iter()
+                    .map(|v| normalize(flip(direction(&world, *v))))
+                    .collect(),
+                _ => {
+                    // Smooth normals from the faces around each vertex.
+                    let mut sum = vec![[0.0f32; 3]; placed.len()];
+                    for t in indices.as_chunks::<3>().0 {
+                        let [a, b, c] = [0, 1, 2].map(|k| placed[t[k] as usize]);
+                        let (u, v) = (
+                            [0, 1, 2].map(|k| b[k] - a[k]),
+                            [0, 1, 2].map(|k| c[k] - a[k]),
+                        );
+                        let n = [
+                            u[1] * v[2] - u[2] * v[1],
+                            u[2] * v[0] - u[0] * v[2],
+                            u[0] * v[1] - u[1] * v[0],
+                        ];
+                        for &i in t {
+                            for k in 0..3 {
+                                sum[i as usize][k] += n[k];
+                            }
+                        }
+                    }
+                    sum.into_iter().map(normalize).collect()
+                }
+            };
+            let vertices = placed
+                .iter()
+                .enumerate()
+                .map(|(i, p)| Vertex {
+                    position: *p,
+                    normal: normals[i],
+                    uv: uvs
+                        .as_ref()
+                        .and_then(|u| u.get(i))
+                        .copied()
+                        .unwrap_or([0.0; 2]),
+                })
+                .collect();
+            let material = primitive.material();
+            let pbr = material.pbr_metallic_roughness();
+            let texture = pbr.base_color_texture().and_then(|info| {
+                let index = info.texture().source().index();
+                textures
+                    .entry(index)
+                    .or_insert_with(|| images.get(index).and_then(texture).map(Arc::new))
+                    .clone()
+            });
+            parts.push(Part {
+                mesh: Mesh {
+                    vertices,
+                    indices,
+                    cap_indices: 0,
+                },
+                colour: pbr.base_color_factor(),
+                metallic: pbr.metallic_factor().clamp(0.0, 1.0),
+                roughness: pbr.roughness_factor().clamp(0.0, 1.0),
+                texture,
+            });
+        }
+    }
+    if parts.is_empty() {
+        return Err("the model has no triangle meshes".into());
+    }
+    // Normalise: centre the box on the origin and make its largest side 1.
+    let mut lo = [f32::MAX; 3];
+    let mut hi = [f32::MIN; 3];
+    for v in parts.iter().flat_map(|p| &p.mesh.vertices) {
+        for k in 0..3 {
+            lo[k] = lo[k].min(v.position[k]);
+            hi[k] = hi[k].max(v.position[k]);
+        }
+    }
+    let size = [0, 1, 2].map(|k| hi[k] - lo[k]);
+    let largest = size.iter().copied().fold(0.0f32, f32::max);
+    if !largest.is_finite() || largest <= 0.0 {
+        return Err("the model has no size".into());
+    }
+    let centre = [0, 1, 2].map(|k| (lo[k] + hi[k]) * 0.5);
+    for v in parts.iter_mut().flat_map(|p| &mut p.mesh.vertices) {
+        v.position = [0, 1, 2].map(|k| (v.position[k] - centre[k]) / largest);
+    }
+    Ok(Model {
+        parts,
+        extent: size.map(|s| s / largest),
+    })
+}
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn loads_a_textured_part_upright_and_normalised() {
+        // A 2 x 1 quad in the xy plane, 4 units up (glTF y is up), with a 2 x 1 texture.
+        let mut bin = Vec::new();
+        for p in [
+            [0.0f32, 4.0, 0.0],
+            [2.0, 4.0, 0.0],
+            [2.0, 5.0, 0.0],
+            [0.0, 5.0, 0.0],
+        ] {
+            for v in p {
+                bin.extend_from_slice(&v.to_le_bytes());
+            }
+        }
+        for uv in [[0.0f32, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]] {
+            for v in uv {
+                bin.extend_from_slice(&v.to_le_bytes());
+            }
+        }
+        for i in [0u16, 1, 2, 0, 2, 3] {
+            bin.extend_from_slice(&i.to_le_bytes());
+        }
+        let dir = std::env::temp_dir().join(format!("veylvik-model-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("quad.bin"), &bin).unwrap();
+        // A red then blue 2 x 1 PNG.
+        let mut png = Vec::new();
+        {
+            let mut e = png::Encoder::new(&mut png, 2, 1);
+            e.set_color(png::ColorType::Rgb);
+            e.set_depth(png::BitDepth::Eight);
+            e.write_header()
+                .unwrap()
+                .write_image_data(&[255, 0, 0, 0, 0, 255])
+                .unwrap();
+        }
+        std::fs::write(dir.join("colours.png"), &png).unwrap();
+        let gltf = serde_json::json!({
+            "asset": {"version": "2.0"},
+            "scene": 0, "scenes": [{"nodes": [0]}], "nodes": [{"mesh": 0}],
+            "meshes": [{"primitives": [{"attributes": {"POSITION": 0, "TEXCOORD_0": 1}, "indices": 2, "material": 0}]}],
+            "materials": [{"pbrMetallicRoughness": {"baseColorTexture": {"index": 0}, "metallicFactor": 0.25, "roughnessFactor": 0.75}}],
+            "textures": [{"source": 0}], "images": [{"uri": "colours.png"}],
+            "buffers": [{"uri": "quad.bin", "byteLength": bin.len()}],
+            "bufferViews": [
+                {"buffer": 0, "byteOffset": 0, "byteLength": 48},
+                {"buffer": 0, "byteOffset": 48, "byteLength": 32},
+                {"buffer": 0, "byteOffset": 80, "byteLength": 12}
+            ],
+            "accessors": [
+                {"bufferView": 0, "componentType": 5126, "count": 4, "type": "VEC3", "min": [0, 4, 0], "max": [2, 5, 0]},
+                {"bufferView": 1, "componentType": 5126, "count": 4, "type": "VEC2"},
+                {"bufferView": 2, "componentType": 5123, "count": 6, "type": "SCALAR"}
+            ]
+        });
+        std::fs::write(dir.join("quad.gltf"), gltf.to_string()).unwrap();
+        let model = super::load(&dir.join("quad.gltf")).unwrap();
+        std::fs::remove_dir_all(&dir).ok();
+        assert_eq!(model.parts.len(), 1);
+        assert_eq!(model.extent, [1.0, 0.5, 0.0]);
+        let part = &model.parts[0];
+        assert_eq!((part.metallic, part.roughness), (0.25, 0.75));
+        // Centred, largest side 1, and y down: glTF's top edge (y 5) is now at -0.25.
+        let top = part.mesh.vertices[2].position;
+        assert!(
+            (top[0] - 0.5).abs() < 1e-6 && (top[1] + 0.25).abs() < 1e-6,
+            "{top:?}"
+        );
+        // Normals face the viewer (+z), and the texture is linear red then blue.
+        assert!(
+            part.mesh.vertices.iter().all(|v| v.normal[2] > 0.99),
+            "{:?}",
+            part.mesh.vertices[0].normal
+        );
+        let t = part.texture.as_ref().unwrap();
+        assert_eq!((t.width, t.height), (2, 1));
+        assert!(t.pixels[0][0] > 0.99 && t.pixels[1][2] > 0.99 && t.pixels[1][0] < 0.01);
+    }
+}

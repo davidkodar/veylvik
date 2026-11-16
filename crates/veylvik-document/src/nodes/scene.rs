@@ -399,6 +399,56 @@ pub static ENVIRONMENT_3D: NodeType = NodeType {
 };
 node!(Environment3d, ENVIRONMENT_3D, [intensity, rotation, blur]);
 
+/// An imported glTF model (.glb or .gltf).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Model3d {
+    /// The model file's absolute path; empty shows nothing.
+    pub model: String,
+    /// The model's largest side, in pixels.
+    pub size: Scalar,
+    /// The model's proportions (largest side 1), measured on import, so the scene
+    /// knows its box without reading the file.
+    pub extent: [f32; 3],
+    #[serde(default)]
+    pub placement: Placement,
+    /// A library material instead of the model's own.
+    #[serde(default)]
+    pub look: Option<Box<crate::nodes::Material>>,
+}
+pub static MODEL_3D: NodeType = NodeType {
+    type_id: "model_3d",
+    version: 1,
+    label: "3D model",
+    description: "An imported glTF 2.0 model (.glb or .gltf with its files): every part with its own base colour, texture, metallic and roughness, centred on its box and scaled so its largest side is Size pixels. Placement moves, turns and scales it about the frame centre; a library Look replaces its materials. Outputs a scene.",
+    inputs: &[],
+    optional: &[],
+    output: PortKind::Scene,
+    parameters: &[
+        other("model", ParameterKind::FilePath, "glTF file"),
+        scalar("size", "pixels", 1.0, 100_000.0, 400.0),
+        other("extent", ParameterKind::Vector3, "proportions"),
+        other("placement", ParameterKind::Placement, "transform"),
+        other("look", ParameterKind::Look, "library material"),
+    ],
+};
+node!(Model3d, MODEL_3D, [size], {
+    fn validate(&self) -> Result<()> {
+        if self.model.len() > 4096 || self.model.contains('\0') {
+            return fail("The model path is too long or invalid");
+        }
+        if self
+            .extent
+            .iter()
+            .any(|v| !v.is_finite() || !(0.0..=1.0).contains(v))
+        {
+            return fail("Model proportions must be 0 to 1");
+        }
+        validate_look(&self.look)?;
+        self.placement.validate()
+    }
+});
+
 /// Points in 3D, such as those a camera solve finds in footage: guides in the viewer for
 /// placing objects, drawing nothing in renders.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

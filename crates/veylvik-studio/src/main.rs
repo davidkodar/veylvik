@@ -28,6 +28,7 @@ mod material_library;
 mod media_controls;
 mod media_import;
 mod menus;
+mod model_import;
 mod models_window;
 mod node_clipboard;
 mod node_finder;
@@ -622,6 +623,10 @@ impl Studio {
                         // A new LUT starts by choosing its .cube file.
                         if matches!(self.draft.operation, Operation::Lut(_)) {
                             self.replace_image();
+                        }
+                        // A new 3D model starts by choosing its file.
+                        if matches!(self.draft.operation, Operation::Model3d(_)) {
+                            self.choose_model();
                         }
                     }
                     Err(error) => self.fail(error),
@@ -1299,6 +1304,7 @@ impl Studio {
             Ok(Completed::Portable(result)) => self.portable_finished(*result),
             Ok(Completed::PlanarTracked(result)) => self.planar_completed(result),
             Ok(Completed::CameraSolved(result)) => self.camera_solved(*result),
+            Ok(Completed::ModelChosen(chosen)) => self.model_chosen(*chosen),
             Ok(Completed::Segmented(result)) => self.subject_completed(*result),
             Ok(Completed::Tracked(result)) => self.tracking_completed(result),
             Ok(Completed::Cancelled) => {
@@ -1692,6 +1698,7 @@ impl Studio {
             pick_focus: false,
             plated: self.draft.inputs.contains_key("plate"),
             measure_grain: false,
+            choose_model: false,
         };
         match &mut self.draft.operation {
             op @ Operation::Text(veylvik_document::nodes::Text { .. }) => {
@@ -1718,8 +1725,12 @@ impl Studio {
             pick,
             pick_focus,
             measure_grain,
+            choose_model,
             ..
         } = cx;
+        if choose_model {
+            self.choose_model();
+        }
         if measure_grain {
             self.measure_grain(ui.ctx());
         }

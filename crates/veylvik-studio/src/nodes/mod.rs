@@ -49,6 +49,8 @@ pub(crate) struct InspectCx<'a> {
     pub plated: bool,
     /// The user asked to measure the plate's grain.
     pub measure_grain: bool,
+    /// The user asked to choose a 3D model file.
+    pub choose_model: bool,
 }
 pub(crate) trait Inspect {
     /// Node-specific controls above the registered parameters; most nodes have none.

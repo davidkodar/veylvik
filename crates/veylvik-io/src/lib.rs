@@ -8,6 +8,7 @@ mod icc;
 pub mod import;
 pub mod lut;
 pub mod materials;
+pub mod model;
 pub mod presets;
 pub mod preview;
 pub mod relink;
@@ -170,6 +171,10 @@ pub fn load_inputs(plan: &Plan, base: &Path, budget: u64) -> Result<ImageInputs>
             footage::load(&base.join(key), remaining).map_err(|e| format!("image {key}: {e}"))?;
         remaining -= image.byte_size();
         image.insert(&mut inputs, key);
+    }
+    for path in plan.required_models() {
+        let loaded = model::load(&base.join(path)).map_err(|e| format!("3D model {path}: {e}"))?;
+        inputs.insert_model(path, std::sync::Arc::new(loaded));
     }
     Ok(inputs)
 }

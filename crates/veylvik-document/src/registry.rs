@@ -50,6 +50,10 @@ pub enum ParameterKind {
     NodeRef,
     /// A list of [x, y, z] points.
     Points3,
+    /// A file path (string).
+    FilePath,
+    /// A plain [x, y, z].
+    Vector3,
 }
 #[derive(Debug, Clone, Copy, Serialize)]
 pub struct Parameter {
@@ -109,6 +113,8 @@ impl Parameter {
             ParameterKind::LightKind => json!(crate::nodes::LightKind::default()),
             ParameterKind::Look | ParameterKind::NodeRef => json!(null),
             ParameterKind::Points3 => json!([]),
+            ParameterKind::FilePath => json!(""),
+            ParameterKind::Vector3 => json!([1.0, 1.0, 1.0]),
         }
     }
     fn schema(&self) -> Value {
@@ -141,6 +147,10 @@ impl Parameter {
             }
             ParameterKind::Look => {
                 json!({"anyOf":[{"type":"null"},{"type":"object","description":"A Text surface (material) definition: the parameters of a material node without its type."}]})
+            }
+            ParameterKind::FilePath => json!({"type":"string","maxLength":4096}),
+            ParameterKind::Vector3 => {
+                json!({"type":"array","minItems":3,"maxItems":3,"items":{"type":"number"}})
             }
             ParameterKind::Points3 => {
                 json!({"type":"array","maxItems":crate::nodes::MAX_CLOUD_POINTS,"items":{"type":"array","minItems":3,"maxItems":3,"items":{"type":"number"}}})
@@ -290,9 +300,10 @@ pub use crate::nodes::{
     COMBINE_MASK, CONDENSATION, DISPLACE, DRIP, DUST, ELLIPSE, ENVIRONMENT_3D, EXPOSURE, FADE,
     FIRE, FOOTAGE, FRACTAL_NOISE, GLASS, GRADIENT, IMAGE, IMAGE_CARD, LENS_BLUR, LIGHT_3D,
     LIGHT_RIG, LUMA_KEY, LUT, MASK, MATCH_GRAIN, MATERIAL, MATERIAL_LAYERS, MERGE, MERGE_SCENES,
-    METALLIC_SHINE, MORPHOLOGY, MOTION_BLUR, NOISE, OCIO, OPTICAL_FLOW, PATH, PATINA, PLANAR_TRACK,
-    PLANAR_WARP, POINT_CLOUD, REFINE_MATTE, RENDER_SCENE, SHAPE_3D, SOLID, SUN_GLINTS,
-    SURFACE_BLEND, SURFACE_REFLECTION, TEXT, TEXT_3D, TIME_REMAP, TRANSFORM, TRANSFORM_3D,
+    METALLIC_SHINE, MODEL_3D, MORPHOLOGY, MOTION_BLUR, NOISE, OCIO, OPTICAL_FLOW, PATH, PATINA,
+    PLANAR_TRACK, PLANAR_WARP, POINT_CLOUD, REFINE_MATTE, RENDER_SCENE, SHAPE_3D, SOLID,
+    SUN_GLINTS, SURFACE_BLEND, SURFACE_REFLECTION, TEXT, TEXT_3D, TIME_REMAP, TRANSFORM,
+    TRANSFORM_3D,
 };
 pub static TYPES: &[&NodeType] = &[
     &SOLID,
@@ -317,6 +328,7 @@ pub static TYPES: &[&NodeType] = &[
     &crate::nodes::ENVIRONMENT_3D,
     &crate::nodes::POINT_CLOUD,
     &crate::nodes::MATCH_GRAIN,
+    &crate::nodes::MODEL_3D,
     &MERGE,
     &IMAGE,
     &FOOTAGE,

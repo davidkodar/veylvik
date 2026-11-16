@@ -24,6 +24,8 @@ pub struct SceneJob<'a> {
     pub time: veylvik_document::Time,
     pub width: u32,
     pub height: u32,
+    /// Imported models by file path (`Geometry::Model { path }`).
+    pub models: &'a std::collections::BTreeMap<String, std::sync::Arc<veylvik_scene::Model>>,
     /// Image card pictures by their source node (`Geometry::Card { image }`).
     pub images: &'a [(NodeId, &'a wgpu::Buffer)],
     /// The prefiltered studio environment, laid out as `environment_layer` reads it.

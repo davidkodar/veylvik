@@ -13,7 +13,7 @@ use veylvik_document::{
     nodes::{LightKind, Placement, ShapeKind},
     vector::PathMask,
 };
-pub use veylvik_mesh::Mesh;
+pub use veylvik_mesh::{Mesh, Model, Part, Texture};
 pub use view::{FreeView, Pose, smooth_walk};
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -38,6 +38,15 @@ pub enum Geometry {
     },
     /// A card the size of the frame showing the image of node `image`.
     Card { image: NodeId, size: [f32; 2] },
+    /// An imported model (its file path), scaled so its largest side is `size`
+    /// pixels; `extent` is its normalised box. The renderer splits it into its
+    /// parts, each with `part` set.
+    Model {
+        path: String,
+        size: f32,
+        extent: [f32; 3],
+        part: Option<usize>,
+    },
 }
 #[derive(Debug, Clone)]
 pub struct Surface {
@@ -176,6 +185,10 @@ pub fn local_bounds(geometry: &Geometry) -> ([f32; 3], [f32; 3]) {
         Geometry::Card { size, .. } => (
             [-size[0] * 0.5, -size[1] * 0.5, 0.0],
             [size[0] * 0.5, size[1] * 0.5, 0.0],
+        ),
+        Geometry::Model { size, extent, .. } => (
+            extent.map(|v| -v * size * 0.5),
+            extent.map(|v| v * size * 0.5),
         ),
     }
 }
@@ -357,6 +370,25 @@ fn node(doc: &Graph<'_>, id: NodeId, time: Time, depth: usize) -> Result<Scene> 
                 catcher: false,
             },
         }),
+        Operation::Model3d(m) if !m.model.is_empty() => scene.objects.push(Object {
+            node: id,
+            geometry: Geometry::Model {
+                path: m.model.clone(),
+                size: m.size.at(time)?.max(1.0),
+                extent: m.extent,
+                part: None,
+            },
+            world: placed(&m.placement, time, centre)?,
+            surface: Surface {
+                colour: [0.8; 3],
+                roughness: 0.5,
+                metallic: 0.0,
+                unlit: false,
+                look: m.look.clone(),
+                catcher: false,
+            },
+        }),
+        Operation::Model3d(_) => {}
         Operation::Transform3d(t) => {
             let child = input("scene").ok_or_else(|| Error("3D transform needs a scene".into()))?;
             let m = mul(
@@ -471,5 +503,7 @@ pub fn mesh(object: &Object) -> Result<Mesh> {
         Geometry::Card { size, .. } => {
             veylvik_mesh::primitive(P::Plane, [size[0], size[1], 0.0], 3)
         }
+        // Model meshes come from the loaded file, which the renderer holds.
+        Geometry::Model { .. } => Ok(Mesh::default()),
     }
 }

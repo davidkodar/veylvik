@@ -168,6 +168,19 @@ impl Project {
                     }
                 }
             }
+            // 3D models load with the project, by absolute path.
+            if let veylvik_document::Operation::Model3d(m) = &node.operation
+                && !m.model.is_empty()
+                && self.inputs.model(&m.model).is_none()
+                && !self.asset_errors.contains_key(m.model.as_str())
+            {
+                match veylvik_io::model::load(&self.base.join(&m.model)) {
+                    Ok(model) => self.inputs.insert_model(m.model.clone(), Arc::new(model)),
+                    Err(error) => {
+                        self.asset_errors.insert(m.model.clone(), error);
+                    }
+                }
+            }
         }
     }
     pub fn unavailable_assets(&self) -> std::collections::BTreeMap<&str, &str> {

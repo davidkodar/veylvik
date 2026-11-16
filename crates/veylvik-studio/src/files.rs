@@ -25,6 +25,7 @@ pub enum Choice {
     Source,
     Font,
     Lut,
+    Model,
 }
 pub enum Completed {
     /// An eyedropper sample, to apply to the draft colour it was taken for.
@@ -32,6 +33,7 @@ pub enum Completed {
     Tracked(crate::tracking::Tracked),
     PlanarTracked(crate::planar::Tracked),
     CameraSolved(Box<crate::solve_camera::Solved>),
+    ModelChosen(Box<crate::model_import::Chosen>),
     Segmented(Box<crate::subject::Segmented>),
     PresetLibrary(veylvik_io::presets::Listing),
     PresetLoaded(Box<veylvik_document::presets::Preset>),
@@ -131,6 +133,7 @@ pub fn select(choice: Choice, folder: &Path, name: &str) -> Result<Option<PathBu
         Choice::Save => ("Save composition", "Veylvik composition", "*.veylvik"),
         Choice::Font => ("Choose font", "Font", "*.ttf"),
         Choice::Lut => ("Choose a 3D LUT", "Cube LUT", "*.cube"),
+        Choice::Model => ("Choose a 3D model", "glTF model", "*.glb"),
         Choice::ImportSequence => (
             "Choose the first numbered frame",
             "PNG or OpenEXR sequence",
@@ -166,6 +169,8 @@ pub fn select(choice: Choice, folder: &Path, name: &str) -> Result<Option<PathBu
             .glob("*.mpeg")
             .glob("*.veyseq")
             .glob("sequence.json")
+    } else if matches!(choice, Choice::Model) {
+        FileFilter::new(label).glob("*.glb").glob("*.gltf")
     } else if matches!(choice, Choice::Export | Choice::ImportSequence) {
         FileFilter::new(label).glob("*.png").glob("*.exr")
     } else {
@@ -182,6 +187,7 @@ pub fn select(choice: Choice, folder: &Path, name: &str) -> Result<Option<PathBu
                 | Choice::Source
                 | Choice::Font
                 | Choice::Lut
+                | Choice::Model
         ) {
             SelectedFiles::open_file()
                 .title(title)

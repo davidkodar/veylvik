@@ -670,3 +670,75 @@ fn motion_blur_smears_a_moving_cube_across_the_shutter() {
     // The middle stays covered the whole shutter.
     assert!(alpha(&blurred, 80) > 0.99);
 }
+
+#[test]
+#[ignore = "requires Vulkan"]
+fn a_model_renders_its_parts_with_their_textures_and_materials() {
+    use veylvik_scene::{Model, Part, Texture};
+    let renderer = renderer();
+    let mut doc = blank(W, H, Time::new(24, 1).unwrap()).unwrap();
+    // Two flat parts facing the viewer: the left one textured red then blue, the right one plain green.
+    let quad = |x0: f32, x1: f32| veylvik_mesh::Mesh {
+        vertices: [
+            [x0, -0.25, 0.0, 0.0, 0.0],
+            [x1, -0.25, 0.0, 1.0, 0.0],
+            [x1, 0.25, 0.0, 1.0, 1.0],
+            [x0, 0.25, 0.0, 0.0, 1.0],
+        ]
+        .map(|[x, y, z, u, v]| veylvik_mesh::Vertex {
+            position: [x, y, z],
+            normal: [0.0, 0.0, 1.0],
+            uv: [u, v],
+        })
+        .to_vec(),
+        indices: vec![0, 2, 1, 0, 3, 2],
+        cap_indices: 0,
+    };
+    let texture = Arc::new(Texture {
+        width: 2,
+        height: 1,
+        pixels: vec![[1.0, 0.0, 0.0, 1.0], [0.0, 0.0, 1.0, 1.0]],
+    });
+    let part = |mesh, colour: [f32; 4], texture| Part {
+        mesh,
+        colour,
+        metallic: 0.0,
+        roughness: 1.0,
+        texture,
+    };
+    let model = Model {
+        parts: vec![
+            part(quad(-0.5, 0.0), [1.0; 4], Some(texture)),
+            part(quad(0.0, 0.5), [0.0, 1.0, 0.0, 1.0], None),
+        ],
+        extent: [1.0, 0.5, 0.0],
+    };
+    let mut inputs = ImageInputs::default();
+    inputs.insert_model("/models/test.glb", Arc::new(model));
+    let mut node = op(&MODEL_3D);
+    if let Operation::Model3d(m) = &mut node {
+        m.model = "/models/test.glb".into();
+        m.size = 120.0.into();
+        m.extent = [1.0, 0.5, 0.0];
+    }
+    let model = add(&mut doc, node, &[]);
+    let render_node = add(&mut doc, op(&RENDER_SCENE), &[("scene", model)]);
+    doc.output = render_node;
+    let out = render(&renderer, &doc, &inputs);
+    let at = |x: u32, y: u32| out[(y * W + x) as usize];
+    // The model spans x 20..140 at y 45: textured red then blue on the left half, green on the right.
+    let (red, blue, green) = (at(35, 45), at(65, 45), at(110, 45));
+    assert!(red[0] > red[1] * 3.0 && red[0] > red[2] * 3.0, "{red:?}");
+    assert!(
+        blue[2] > blue[0] * 3.0 && blue[2] > blue[1] * 3.0,
+        "{blue:?}"
+    );
+    assert!(
+        green[1] > green[0] * 3.0 && green[1] > green[2] * 3.0,
+        "{green:?}"
+    );
+    assert!(at(5, 45)[3] < 0.01, "outside the model");
+    // Without the model loaded it shows nothing.
+    let empty = render(&renderer, &doc, &Default::default());
+    assert!(empty.iter().all(|p| p[3] == 0.0));
+}

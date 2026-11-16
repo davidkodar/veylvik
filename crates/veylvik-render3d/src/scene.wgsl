@@ -8,7 +8,7 @@ struct Object {
     surface: vec4<f32>,
     // metallic, unlit (1), image width, image height
     params: vec4<f32>,
-    // light count, environment strength, environment turn (radians), unused
+    // light count, environment strength, environment turn (radians), textured (1)
     counts: vec4<f32>,
 }
 struct Light {
@@ -137,7 +137,16 @@ fn lit(in: Varying) -> @location(0) vec4<f32> {
     var n = normalize(in.normal);
     // Two-sided: a face seen from behind shades as its other side.
     if dot(n, v) < 0.0 { n = -n; }
-    let base = object.surface.rgb;
+    var base = object.surface.rgb;
+    // A model part's base colour texture (straight linear RGBA, uv repeating).
+    if object.counts.w > 0.5 {
+        let q = fract(in.uv) * object.params.zw - vec2<f32>(0.5);
+        let i = vec2<i32>(floor(q));
+        let f = fract(q);
+        let t = mix(mix(wrapped(i.x, i.y), wrapped(i.x + 1, i.y), f.x),
+                    mix(wrapped(i.x, i.y + 1), wrapped(i.x + 1, i.y + 1), f.x), f.y);
+        base *= t.rgb;
+    }
     let rough = clamp(object.surface.a, 0.04, 1.0);
     let a = rough * rough;
     let metal = clamp(object.params.x, 0.0, 1.0);
@@ -175,6 +184,12 @@ fn lit(in: Varying) -> @location(0) vec4<f32> {
         colour += (diffuse / 3.14159265 * (vec3<f32>(1.0) - f) + specular) * radiance * nl * 3.14159265;
     }
     return vec4<f32>(colour, 1.0);
+}
+// A texel of a repeating texture of params.zw pixels.
+fn wrapped(x: i32, y: i32) -> vec4<f32> {
+    let w = max(i32(object.params.z), 1);
+    let h = max(i32(object.params.w), 1);
+    return image[u32(((y % h + h) % h) * w + (x % w + w) % w)];
 }
 fn texel(x: i32, y: i32) -> vec4<f32> {
     let w = i32(object.params.z);
