@@ -497,3 +497,55 @@ fn lights_cast_shadows_and_a_catcher_shows_only_them() {
     assert!(shade[3] > 0.3 && shade[0] < 1e-4, "{shade:?}");
     assert!(at(&caught, lit_point.0, lit_point.1)[3] < 0.05);
 }
+
+#[test]
+#[ignore = "requires Vulkan"]
+fn occlusion_darkens_the_environment_light_where_surfaces_meet() {
+    let renderer = renderer();
+    let mut doc = blank(W, H, Time::new(24, 1).unwrap()).unwrap();
+    let shape = |kind, size: [f32; 3], position: [f32; 3]| {
+        let mut s = op(&SHAPE_3D);
+        if let Operation::Shape3d(s) = &mut s {
+            s.kind = kind;
+            s.size_x = size[0].into();
+            s.size_y = size[1].into();
+            s.size_z = size[2].into();
+            s.colour = [0.8; 3].into();
+            s.roughness = 0.9.into();
+            s.placement.position = position.into();
+        }
+        s
+    };
+    // A cube just in front of a wall, lit only by the studio environment.
+    let cube = add(&mut doc, shape(ShapeKind::Cube, [20.0; 3], [0.0; 3]), &[]);
+    let wall = add(
+        &mut doc,
+        shape(ShapeKind::Plane, [400.0, 300.0, 0.0], [0.0, 0.0, -12.0]),
+        &[],
+    );
+    let merged = add(
+        &mut doc,
+        op(&MERGE_SCENES),
+        &[("scene", cube), ("scene_2", wall)],
+    );
+    let render_node = add(&mut doc, op(&RENDER_SCENE), &[("scene", merged)]);
+    doc.output = render_node;
+    let set = |doc: &mut Composition, amount: f32| {
+        if let Operation::RenderScene(r) = &mut doc.nodes.get_mut(&render_node).unwrap().operation {
+            r.occlusion = amount.into();
+        }
+    };
+    let luma = |p: &[[f32; 4]], x: u32, y: u32| {
+        let p = p[(y * W + x) as usize];
+        p[0] * 0.2126 + p[1] * 0.7152 + p[2] * 0.0722
+    };
+    let (near, far) = ((93, 45), (20, 15));
+    set(&mut doc, 0.0);
+    let open = render(&renderer, &doc, &Default::default());
+    set(&mut doc, 1.0);
+    let shaded = render(&renderer, &doc, &Default::default());
+    let (a, b) = (luma(&shaded, near.0, near.1), luma(&open, near.0, near.1));
+    assert!(a < b * 0.85, "beside the cube: {a} vs {b}");
+    let (a, b) = (luma(&shaded, far.0, far.1), luma(&open, far.0, far.1));
+    assert!(a > b * 0.95, "open wall: {a} vs {b}");
+}

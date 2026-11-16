@@ -44,6 +44,18 @@ struct LightUniform {
 }
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+struct AmbientView {
+    matrix: [[f32; 4]; 4],
+    direction: [f32; 4],
+}
+#[repr(C)]
+#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+struct AmbientUniform {
+    views: [AmbientView; 16],
+    info: [f32; 4],
+}
+#[repr(C)]
+#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 struct ShadowUniform {
     model: [[f32; 4]; 4],
     light: [[f32; 4]; 4],
@@ -73,6 +85,7 @@ pub struct Engine {
     catcher: wgpu::RenderPipeline,
     shadow_pipeline: wgpu::RenderPipeline,
     shadow_maps: Mutex<Option<std::sync::Arc<shadow::Maps>>>,
+    sky_maps: Mutex<Option<std::sync::Arc<shadow::Maps>>>,
     card: wgpu::RenderPipeline,
     copy: wgpu::ComputePipeline,
     meshes: Mutex<(HashMap<String, GpuMesh>, u64)>,
@@ -194,6 +207,7 @@ impl SceneRenderer for Engine {
             environment,
             ltc,
             time,
+            occlusion,
             target,
             ..
         } = job;
@@ -264,56 +278,53 @@ impl SceneRenderer for Engine {
             })
             .collect();
         for (layer, matrix, _) in shadows.iter().flatten() {
-            let mut casts = Vec::new();
-            for object in &scene.objects {
-                if object.surface.catcher || matches!(object.geometry, Geometry::Card { .. }) {
-                    continue;
-                }
-                let (vertices, indices, count) = self.mesh(device, object)?;
-                if count == 0 {
-                    continue;
-                }
-                let uniform = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: Some("3D shadow object"),
-                    contents: bytemuck::bytes_of(&ShadowUniform {
-                        model: columns(&object.world),
-                        light: columns(matrix),
-                    }),
-                    usage: wgpu::BufferUsages::UNIFORM,
-                });
-                let bind = device.create_bind_group(&wgpu::BindGroupDescriptor {
-                    label: Some("3D shadow object"),
-                    layout: &self.shadow_pipeline.get_bind_group_layout(0),
-                    entries: &[wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: uniform.as_entire_binding(),
-                    }],
-                });
-                casts.push((bind, vertices, indices, count));
-            }
-            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("3D shadow map"),
-                color_attachments: &[],
-                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                    view: &maps.layers[*layer as usize],
-                    depth_ops: Some(wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(1.0),
-                        store: wgpu::StoreOp::Store,
-                    }),
-                    stencil_ops: None,
-                }),
-                timestamp_writes: None,
-                occlusion_query_set: None,
-                multiview_mask: None,
-            });
-            pass.set_pipeline(&self.shadow_pipeline);
-            for (bind, vertices, indices, count) in &casts {
-                pass.set_bind_group(0, bind, &[]);
-                pass.set_vertex_buffer(0, vertices.slice(..));
-                pass.set_index_buffer(indices.slice(..), wgpu::IndexFormat::Uint32);
-                pass.draw_indexed(0..*count, 0, 0..1);
-            }
+            self.depth_pass(
+                device,
+                encoder,
+                scene,
+                matrix,
+                &maps.layers[*layer as usize],
+            )?;
         }
+        // Sky visibility for contact shading: the scene seen from 16 directions.
+        let sky_maps = {
+            let mut slot = self
+                .sky_maps
+                .lock()
+                .map_err(|_| error("sky map lock poisoned"))?;
+            slot.get_or_insert_with(|| {
+                std::sync::Arc::new(shadow::Maps::sized(
+                    device,
+                    shadow::SKY_SIZE,
+                    shadow::SKY_VIEWS,
+                ))
+            })
+            .clone()
+        };
+        let mut ambient: AmbientUniform = bytemuck::Zeroable::zeroed();
+        if let Some((centre, radius)) = reach.filter(|_| occlusion > 0.0) {
+            for (k, toward) in shadow::sky_directions().iter().enumerate() {
+                let (matrix, offset) =
+                    shadow::parallel(toward.map(|v| -v), centre, radius, shadow::SKY_SIZE);
+                self.depth_pass(device, encoder, scene, &matrix, &sky_maps.layers[k])?;
+                ambient.views[k] = AmbientView {
+                    matrix: columns(&matrix),
+                    direction: [toward[0], toward[1], toward[2], offset],
+                };
+            }
+            // Blockers count within a tenth of the scene's size; the depth maps span 3r.
+            ambient.info = [
+                shadow::SKY_VIEWS as f32,
+                occlusion,
+                radius * 0.1,
+                radius * 3.0,
+            ];
+        }
+        let ambient = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("3D ambient occlusion"),
+            contents: bytemuck::bytes_of(&ambient),
+            usage: wgpu::BufferUsages::UNIFORM,
+        });
         let lights: Vec<LightUniform> = scene
             .lights
             .iter()
@@ -460,6 +471,14 @@ impl SceneRenderer for Engine {
                             binding: 3,
                             resource: wgpu::BindingResource::Sampler(&maps.sampler),
                         },
+                        wgpu::BindGroupEntry {
+                            binding: 4,
+                            resource: wgpu::BindingResource::TextureView(&sky_maps.array),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 5,
+                            resource: ambient.as_entire_binding(),
+                        },
                     ],
                 });
                 looks.push((material, object_bind, vertices, indices, count));
@@ -524,6 +543,14 @@ impl SceneRenderer for Engine {
                     wgpu::BindGroupEntry {
                         binding: 5,
                         resource: wgpu::BindingResource::Sampler(&maps.sampler),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 6,
+                        resource: wgpu::BindingResource::TextureView(&sky_maps.array),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 7,
+                        resource: ambient.as_entire_binding(),
                     },
                 ],
             });

@@ -1314,7 +1314,16 @@ and `colour`.
   width follows the light's **Softness**, offset along their normal (and with a
   slope-scaled depth bias) so nothing shadows itself. Image cards and shadow
   catchers cast none. Only scene lights shadow; the environment's light is not
-  shadowed (contact occlusion for it comes next).
+  shadowed directly; **Occlusion** handles it.
+- **Occlusion** (on Render scene, 0–1, default 1): contact shading of the
+  environment's light, so objects sit on the floor and gaps and creases darken.
+  The solids are rendered as 1024 × 1024 depth maps from 16 directions spread
+  over the sphere (orthographic, fitted to the scene). For each of those
+  facing it, a surface counts blockers within a tenth of the scene's size, fading
+  with distance, weighted towards its normal; distant blockers do not count, so a
+  large floor does not dim everything above it (full within half that reach, then fading out). It scales the environment's
+  diffuse and reflected light and the look materials' colour, and adds to a
+  shadow catcher's darkening. 0 skips the depth maps altogether.
 - **Shadow catcher** (on a 3D shape): invisible except for the shadows falling on
   it. It renders black with the share of the direct light that is blocked as its
   alpha, weighed against the environment's ambient light, and draws after solid

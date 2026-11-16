@@ -23,6 +23,55 @@ struct SceneLight {
 @group(1) @binding(1) var<storage, read> scene_lights: array<SceneLight>;
 @group(1) @binding(2) var shadow_maps: texture_depth_2d_array;
 @group(1) @binding(3) var shadow_sampler: sampler_comparison;
+@group(1) @binding(4) var sky_maps: texture_depth_2d_array;
+@group(1) @binding(5) var<uniform> ambient: Ambient;
+struct AmbientView {
+    matrix: mat4x4<f32>,
+    // towards the sky, normal offset
+    direction: vec4<f32>,
+}
+struct Ambient {
+    views: array<AmbientView, 16>,
+    // views in use, amount, contact reach, depth span (scene units)
+    info: vec4<f32>,
+}
+// How open `position` is to the surrounding light (1 open, 0 enclosed): depth maps
+// of the scene seen from many directions, counting only blockers within the
+// contact reach (fading with distance) and weighting directions towards the normal.
+fn sky_visibility(position: vec3<f32>, normal: vec3<f32>) -> f32 {
+    let count = u32(ambient.info.x);
+    if count == 0u || ambient.info.y <= 0.0 { return 1.0; }
+    let reach = ambient.info.z;
+    let span = ambient.info.w;
+    var total = 0.0;
+    var seen = 0.0;
+    for (var k = 0u; k < count; k++) {
+        let view = ambient.views[k];
+        let w = max(dot(normal, view.direction.xyz), 0.0);
+        if w <= 0.0 { continue; }
+        let p = view.matrix * vec4<f32>(position + normal * view.direction.w, 1.0);
+        let ndc = p.xyz / p.w;
+        let uv = vec2<f32>(ndc.x * 0.5 + 0.5, 0.5 - ndc.y * 0.5);
+        var open = 1.0;
+        if uv.x >= 0.0 && uv.y >= 0.0 && uv.x <= 1.0 && uv.y <= 1.0 && ndc.z <= 1.0 {
+            let texel = vec2<i32>(uv * 1024.0);
+            var blocked = 0.0;
+            for (var t = 0; t < 4; t++) {
+                let at = clamp(texel + vec2<i32>(t % 2 * 2 - 1, t / 2 * 2 - 1), vec2<i32>(0), vec2<i32>(1023));
+                let gap = (ndc.z - textureLoad(sky_maps, at, i32(k), 0)) * span;
+                if gap > view.direction.w {
+                    blocked += 1.0 - smoothstep(reach * 0.5, reach, gap);
+                }
+            }
+            open = 1.0 - blocked * 0.25;
+        }
+        total += w;
+        seen += w * open;
+    }
+    if total <= 0.0 { return 1.0; }
+    return mix(1.0, seen / total, ambient.info.y);
+}
+
 // How much of light `index` reaches `world` (1 lit, 0 shadowed): a 3x3 filtered
 // shadow-map test, offset along the normal so surfaces never shadow themselves.
 fn shadow_of(position: vec3<f32>, normal: vec3<f32>, shadow: mat4x4<f32>, info: vec4<f32>) -> f32 {
@@ -65,7 +114,7 @@ fn look_surface(in: LookVarying) -> @location(0) vec4<f32> {
     if dot(n, look_object.camera.xyz - in.world) < 0.0 { n = -n; }
     let facing = normalize((look_object.view * vec4<f32>(n, 0.0)).xyz);
     let uv = in.uv * look_object.uv_scale.xy / max(p.values.x, 1e-3);
-    let surface = material_colour(uv, facing);
+    let surface = material_colour(uv, facing) * sky_visibility(in.world, n);
     // Scene lights add to the look's own studio. Metals reflect them in their
     // reflectance; other looks also scatter them with the colour the look shows.
     let v = normalize(look_object.camera.xyz - in.world);

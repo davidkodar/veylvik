@@ -8,7 +8,10 @@ pub(crate) const MAX_SHADOWS: u32 = 4;
 pub(crate) const SIZE: u32 = 2048;
 pub(crate) const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 
-/// The shadow map array, one layer per shadowing light, and its comparison sampler.
+/// Directions the scene's sky visibility is measured from (ambient occlusion).
+pub(crate) const SKY_VIEWS: u32 = 16;
+pub(crate) const SKY_SIZE: u32 = 1024;
+/// A depth map array, one layer per view, and its comparison sampler.
 pub(crate) struct Maps {
     pub array: wgpu::TextureView,
     pub layers: Vec<wgpu::TextureView>,
@@ -16,12 +19,15 @@ pub(crate) struct Maps {
 }
 impl Maps {
     pub fn new(device: &wgpu::Device) -> Self {
+        Self::sized(device, SIZE, MAX_SHADOWS)
+    }
+    pub fn sized(device: &wgpu::Device, side: u32, count: u32) -> Self {
         let texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("3D shadow maps"),
             size: wgpu::Extent3d {
-                width: SIZE,
-                height: SIZE,
-                depth_or_array_layers: MAX_SHADOWS,
+                width: side,
+                height: side,
+                depth_or_array_layers: count,
             },
             mip_level_count: 1,
             sample_count: 1,
@@ -34,7 +40,7 @@ impl Maps {
             dimension: Some(wgpu::TextureViewDimension::D2Array),
             ..Default::default()
         });
-        let layers = (0..MAX_SHADOWS)
+        let layers = (0..count)
             .map(|layer| {
                 texture.create_view(&wgpu::TextureViewDescriptor {
                     dimension: Some(wgpu::TextureViewDimension::D2),
@@ -158,26 +164,44 @@ fn looking(eye: [f32; 3], forward: [f32; 3]) -> math::Mat4 {
         [0.0, 0.0, 0.0, 1.0],
     ]
 }
+/// An orthographic view along `forward` over the scene's bounds, and its normal offset.
+pub(crate) fn parallel(
+    forward: [f32; 3],
+    centre: [f32; 3],
+    radius: f32,
+    side: u32,
+) -> (math::Mat4, f32) {
+    let eye = [0, 1, 2].map(|k| centre[k] - forward[k] * radius * 2.0);
+    let (near, far) = (radius * 0.5, radius * 3.5);
+    let projection = [
+        [1.0 / radius, 0.0, 0.0, 0.0],
+        [0.0, -1.0 / radius, 0.0, 0.0],
+        [0.0, 0.0, -1.0 / (far - near), -near / (far - near)],
+        [0.0, 0.0, 0.0, 1.0],
+    ];
+    (
+        math::mul(&projection, &math::rigid_inverse(&looking(eye, forward))),
+        radius * 2.0 / side as f32 * 1.5,
+    )
+}
+/// Evenly spread unit directions over the whole sphere (a Fibonacci lattice).
+pub(crate) fn sky_directions() -> Vec<[f32; 3]> {
+    let golden = std::f32::consts::PI * (3.0 - 5f32.sqrt());
+    (0..SKY_VIEWS)
+        .map(|i| {
+            let y = 1.0 - 2.0 * (i as f32 + 0.5) / SKY_VIEWS as f32;
+            let r = (1.0 - y * y).max(0.0).sqrt();
+            let a = golden * i as f32;
+            [r * a.cos(), y, r * a.sin()]
+        })
+        .collect()
+}
 /// The light's view-projection (depth 0..1) and the normal offset that keeps lit
 /// surfaces from shadowing themselves, or None when it cannot see the scene.
 pub(crate) fn view(light: &Light, centre: [f32; 3], radius: f32) -> Option<(math::Mat4, f32)> {
     let texel = |span: f32| span / SIZE as f32 * 1.5;
     match light.kind {
-        LightKind::Sun => {
-            let forward = light.direction();
-            let eye = [0, 1, 2].map(|k| centre[k] - forward[k] * radius * 2.0);
-            let (near, far) = (radius * 0.5, radius * 3.5);
-            let projection = [
-                [1.0 / radius, 0.0, 0.0, 0.0],
-                [0.0, -1.0 / radius, 0.0, 0.0],
-                [0.0, 0.0, -1.0 / (far - near), -near / (far - near)],
-                [0.0, 0.0, 0.0, 1.0],
-            ];
-            Some((
-                math::mul(&projection, &math::rigid_inverse(&looking(eye, forward))),
-                texel(radius * 2.0),
-            ))
-        }
+        LightKind::Sun => Some(parallel(light.direction(), centre, radius, SIZE)),
         LightKind::Spot | LightKind::Point => {
             let eye = light.position();
             let to = [0, 1, 2].map(|k| centre[k] - eye[k]);
@@ -214,5 +238,70 @@ pub(crate) fn view(light: &Light, centre: [f32; 3], radius: f32) -> Option<(math
                 texel(2.0 * distance.max(radius) * half.tan()),
             ))
         }
+    }
+}
+
+impl crate::Engine {
+    /// Render the depth of every solid (not cards or shadow catchers) through
+    /// `matrix` into `target`.
+    pub(crate) fn depth_pass(
+        &self,
+        device: &wgpu::Device,
+        encoder: &mut wgpu::CommandEncoder,
+        scene: &Scene,
+        matrix: &math::Mat4,
+        target: &wgpu::TextureView,
+    ) -> veylvik_render::Result<()> {
+        use wgpu::util::DeviceExt;
+        let mut casts = Vec::new();
+        for object in &scene.objects {
+            if object.surface.catcher || matches!(object.geometry, Geometry::Card { .. }) {
+                continue;
+            }
+            let (vertices, indices, count) = self.mesh(device, object)?;
+            if count == 0 {
+                continue;
+            }
+            let uniform = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("3D depth object"),
+                contents: bytemuck::bytes_of(&crate::ShadowUniform {
+                    model: crate::columns(&object.world),
+                    light: crate::columns(matrix),
+                }),
+                usage: wgpu::BufferUsages::UNIFORM,
+            });
+            let bind = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("3D depth object"),
+                layout: &self.shadow_pipeline.get_bind_group_layout(0),
+                entries: &[wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: uniform.as_entire_binding(),
+                }],
+            });
+            casts.push((bind, vertices, indices, count));
+        }
+        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("3D depth map"),
+            color_attachments: &[],
+            depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                view: target,
+                depth_ops: Some(wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(1.0),
+                    store: wgpu::StoreOp::Store,
+                }),
+                stencil_ops: None,
+            }),
+            timestamp_writes: None,
+            occlusion_query_set: None,
+            multiview_mask: None,
+        });
+        pass.set_pipeline(&self.shadow_pipeline);
+        for (bind, vertices, indices, count) in &casts {
+            pass.set_bind_group(0, bind, &[]);
+            pass.set_vertex_buffer(0, vertices.slice(..));
+            pass.set_index_buffer(indices.slice(..), wgpu::IndexFormat::Uint32);
+            pass.draw_indexed(0..*count, 0, 0..1);
+        }
+        Ok(())
     }
 }

@@ -28,6 +28,55 @@ struct Light {
 @group(0) @binding(3) var<storage, read> image: array<vec4<f32>>;
 @group(0) @binding(4) var shadow_maps: texture_depth_2d_array;
 @group(0) @binding(5) var shadow_sampler: sampler_comparison;
+@group(0) @binding(6) var sky_maps: texture_depth_2d_array;
+@group(0) @binding(7) var<uniform> ambient: Ambient;
+struct AmbientView {
+    matrix: mat4x4<f32>,
+    // towards the sky, normal offset
+    direction: vec4<f32>,
+}
+struct Ambient {
+    views: array<AmbientView, 16>,
+    // views in use, amount, contact reach, depth span (scene units)
+    info: vec4<f32>,
+}
+// How open `position` is to the surrounding light (1 open, 0 enclosed): depth maps
+// of the scene seen from many directions, counting only blockers within the
+// contact reach (fading with distance) and weighting directions towards the normal.
+fn sky_visibility(position: vec3<f32>, normal: vec3<f32>) -> f32 {
+    let count = u32(ambient.info.x);
+    if count == 0u || ambient.info.y <= 0.0 { return 1.0; }
+    let reach = ambient.info.z;
+    let span = ambient.info.w;
+    var total = 0.0;
+    var seen = 0.0;
+    for (var k = 0u; k < count; k++) {
+        let view = ambient.views[k];
+        let w = max(dot(normal, view.direction.xyz), 0.0);
+        if w <= 0.0 { continue; }
+        let p = view.matrix * vec4<f32>(position + normal * view.direction.w, 1.0);
+        let ndc = p.xyz / p.w;
+        let uv = vec2<f32>(ndc.x * 0.5 + 0.5, 0.5 - ndc.y * 0.5);
+        var open = 1.0;
+        if uv.x >= 0.0 && uv.y >= 0.0 && uv.x <= 1.0 && uv.y <= 1.0 && ndc.z <= 1.0 {
+            let texel = vec2<i32>(uv * 1024.0);
+            var blocked = 0.0;
+            for (var t = 0; t < 4; t++) {
+                let at = clamp(texel + vec2<i32>(t % 2 * 2 - 1, t / 2 * 2 - 1), vec2<i32>(0), vec2<i32>(1023));
+                let gap = (ndc.z - textureLoad(sky_maps, at, i32(k), 0)) * span;
+                if gap > view.direction.w {
+                    blocked += 1.0 - smoothstep(reach * 0.5, reach, gap);
+                }
+            }
+            open = 1.0 - blocked * 0.25;
+        }
+        total += w;
+        seen += w * open;
+    }
+    if total <= 0.0 { return 1.0; }
+    return mix(1.0, seen / total, ambient.info.y);
+}
+
 // How much of light `index` reaches `world` (1 lit, 0 shadowed): a 3x3 filtered
 // shadow-map test, offset along the normal so surfaces never shadow themselves.
 fn shadow_of(position: vec3<f32>, normal: vec3<f32>, shadow: mat4x4<f32>, info: vec4<f32>) -> f32 {
@@ -96,8 +145,9 @@ fn lit(in: Varying) -> @location(0) vec4<f32> {
     // The same prefiltered studio that lights 2D materials.
     let fresnel = f0 + (max(vec3<f32>(1.0 - rough), f0) - f0) * pow(1.0 - nv, 5.0);
     let strength = object.counts.y;
-    var colour = environment_specular(turned(n), 1.0) * diffuse * strength
-        + environment_specular(turned(reflect(-v, n)), rough) * fresnel * strength;
+    var colour = (environment_specular(turned(n), 1.0) * diffuse * strength
+        + environment_specular(turned(reflect(-v, n)), rough) * fresnel * strength)
+        * sky_visibility(in.world, n);
     for (var i = 0u; i < u32(object.counts.x); i++) {
         let light = lights[i];
         var l = -light.direction.xyz;
@@ -168,7 +218,8 @@ fn catcher(in: Varying) -> @location(0) vec4<f32> {
         direct += amount;
         blocked += amount * (1.0 - shadow_of(in.world, n, light.shadow, light.shadow_info));
     }
-    let ambient = dot(environment_specular(turned(n), 1.0), vec3<f32>(0.2126, 0.7152, 0.0722)) * object.counts.y;
-    let shade = clamp(blocked / max(direct + ambient, 1e-4), 0.0, 1.0);
+    let ambient_light = dot(environment_specular(turned(n), 1.0), vec3<f32>(0.2126, 0.7152, 0.0722)) * object.counts.y;
+    let enclosed = ambient_light * (1.0 - sky_visibility(in.world, n));
+    let shade = clamp((blocked + enclosed) / max(direct + ambient_light, 1e-4), 0.0, 1.0);
     return vec4<f32>(0.0, 0.0, 0.0, shade);
 }

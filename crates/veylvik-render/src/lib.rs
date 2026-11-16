@@ -810,7 +810,7 @@ impl Renderer {
                     .ok_or_else(|| {
                         error("Render scene needs the 3D renderer, which this host has not loaded")
                     })?;
-                let (scene, camera) = scene_hook::evaluate(plan, scheduled.node, time)?;
+                let (scene, camera, occlusion) = scene_hook::evaluate(plan, scheduled.node, time)?;
                 let camera = scene_view.unwrap_or(camera);
                 let images: Vec<(veylvik_document::NodeId, &wgpu::Buffer)> = scheduled
                     .cards
@@ -826,6 +826,7 @@ impl Renderer {
                     encoder: &mut encoder,
                     scene: &scene,
                     camera,
+                    occlusion,
                     time,
                     width: plan.width,
                     height: plan.height,

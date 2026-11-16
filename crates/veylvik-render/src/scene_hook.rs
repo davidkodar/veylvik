@@ -15,6 +15,8 @@ pub struct SceneJob<'a> {
     pub encoder: &'a mut wgpu::CommandEncoder,
     pub scene: &'a veylvik_scene::Scene,
     pub camera: veylvik_scene::Camera,
+    /// How much nearby surfaces shade the environment (Render scene's Occlusion).
+    pub occlusion: f32,
     /// The frame time, for animated looks.
     pub time: veylvik_document::Time,
     pub width: u32,
@@ -27,12 +29,12 @@ pub struct SceneJob<'a> {
     pub ltc: &'a wgpu::Buffer,
     pub target: &'a wgpu::Buffer,
 }
-/// The scene and camera a Render scene node films at `time`.
+/// The scene and camera a Render scene node films at `time`, and its occlusion.
 pub(crate) fn evaluate(
     plan: &crate::Plan,
     node: usize,
     time: veylvik_document::Time,
-) -> Result<(veylvik_scene::Scene, veylvik_scene::Camera)> {
+) -> Result<(veylvik_scene::Scene, veylvik_scene::Camera, f32)> {
     let render = &plan.nodes[node];
     let Operation::RenderScene(op) = &render.operation else {
         return Err(error("not a Render scene node"));
@@ -56,7 +58,8 @@ pub(crate) fn evaluate(
     .map_err(error)?;
     let index = op.camera.at(time).map_err(error)?.round().clamp(0.0, 64.0) as usize;
     let camera = scene.camera(index, plan.width, plan.height);
-    Ok((scene, camera))
+    let occlusion = op.occlusion.at(time).map_err(error)?.clamp(0.0, 1.0);
+    Ok((scene, camera, occlusion))
 }
 /// A stable fingerprint of what a Render scene shows at a frame, for the frame cache.
 pub(crate) fn fingerprint(
@@ -65,9 +68,9 @@ pub(crate) fn fingerprint(
     time: veylvik_document::Time,
 ) -> Result<[u32; 2]> {
     use std::hash::{Hash, Hasher};
-    let (scene, camera) = evaluate(plan, node, time)?;
+    let (scene, camera, occlusion) = evaluate(plan, node, time)?;
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    format!("{scene:?}{camera:?}").hash(&mut hasher);
+    format!("{scene:?}{camera:?}{occlusion}").hash(&mut hasher);
     let h = hasher.finish();
     Ok([h as u32, (h >> 32) as u32])
 }

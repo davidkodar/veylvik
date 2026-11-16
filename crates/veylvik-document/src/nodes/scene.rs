@@ -60,6 +60,9 @@ fn validate_look(look: &Option<Box<crate::nodes::Material>>) -> Result<()> {
     }
     Ok(())
 }
+fn one() -> Scalar {
+    1.0.into()
+}
 fn zero() -> Scalar {
     0.0.into()
 }
@@ -381,15 +384,21 @@ node!(Environment3d, ENVIRONMENT_3D, [intensity, rotation, blur]);
 #[serde(deny_unknown_fields)]
 pub struct RenderScene {
     pub camera: Scalar,
+    /// How much nearby surfaces shade the environment's light (contact shadows).
+    #[serde(default = "one")]
+    pub occlusion: Scalar,
 }
 pub static RENDER_SCENE: NodeType = NodeType {
     type_id: "render_scene",
     version: 1,
     label: "Render scene",
-    description: "Renders the scene on its Scene input as an image at the composition size, with transparent background. Camera picks which camera films it (1 = the first, in node order; 0 = the home view that matches 2D).",
+    description: "Renders the scene on its Scene input as an image at the composition size, with transparent background. Camera picks which camera films it (1 = the first, in node order; 0 = the home view that matches 2D). Occlusion sets how much nearby surfaces shade the environment's light, so objects sit on the floor and gaps darken (0 = off).",
     inputs: &["scene"],
     optional: &[],
     output: PortKind::Image,
-    parameters: &[scalar("camera", "index", 0.0, 64.0, 1.0)],
+    parameters: &[
+        scalar("camera", "index", 0.0, 64.0, 1.0),
+        scalar("occlusion", "factor", 0.0, 1.0, 1.0),
+    ],
 };
-node!(RenderScene, RENDER_SCENE, [camera]);
+node!(RenderScene, RENDER_SCENE, [camera, occlusion]);

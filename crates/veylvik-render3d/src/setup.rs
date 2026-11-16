@@ -34,6 +34,16 @@ impl Engine {
             },
             count: None,
         };
+        let ambient_uniform = |binding| wgpu::BindGroupLayoutEntry {
+            binding,
+            visibility: wgpu::ShaderStages::FRAGMENT,
+            ty: wgpu::BindingType::Buffer {
+                ty: wgpu::BufferBindingType::Uniform,
+                has_dynamic_offset: false,
+                min_binding_size: None,
+            },
+            count: None,
+        };
         let shadow_compare = |binding| wgpu::BindGroupLayoutEntry {
             binding,
             visibility: wgpu::ShaderStages::FRAGMENT,
@@ -58,6 +68,8 @@ impl Engine {
                 storage(3),
                 shadow_texture(4),
                 shadow_compare(5),
+                shadow_texture(6),
+                ambient_uniform(7),
             ],
         });
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -197,6 +209,8 @@ impl Engine {
                 entry(1, 1, false),
                 shadow_texture(2),
                 shadow_compare(3),
+                shadow_texture(4),
+                ambient_uniform(5),
             ],
         });
         let look_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -338,6 +352,7 @@ impl Engine {
             catcher,
             shadow_pipeline,
             shadow_maps: Mutex::new(None),
+            sky_maps: Mutex::new(None),
             layout,
             material_layout,
             look_layout,
