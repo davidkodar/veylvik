@@ -7,6 +7,8 @@ rust-version.workspace = true
 [dependencies]
 veylvik-document.workspace = true
 veylvik-render.workspace = true
+veylvik-solve.workspace = true
+veylvik-scene.workspace = true
 wgpu.workspace = true
 bytemuck.workspace = true
 thiserror.workspace = true
@@ -14,3 +16,5 @@ serde.workspace = true
 serde_json.workspace = true
 [lints]
 workspace = true
+[dev-dependencies]
+veylvik-render3d.workspace = true

@@ -33,6 +33,9 @@ pub struct Solved {
     pub frame_error: Vec<Option<f64>>,
     /// The camera only turned (no parallax): positions are fixed, points are at unit distance.
     pub nodal: bool,
+    /// The lens was measured from the shot; false when it was given, or when the
+    /// camera barely turned on a tripod and a 36 mm-equivalent lens was assumed.
+    pub focal_measured: bool,
     pub keyframes: Vec<usize>,
 }
 #[derive(Debug, Clone, PartialEq)]
@@ -150,8 +153,17 @@ pub fn solve(tracks: &[Track], frames: usize, settings: &Settings) -> Result<Sol
         }
     }
     let mut r = best.ok_or_else(|| Error("No camera motion fits the tracks".into()))?;
-    if settings.focal.is_none() {
+    let mut measured = settings.focal.is_none();
+    if measured && r.nodal && r.turn() < 3.0 {
+        // A camera that barely turns on a tripod says nothing about its lens.
+        measured = false;
+        if let Some(fallback) = reconstruct::keyframes(&shot, &keyframes, width) {
+            r = fallback;
+        }
+    } else if measured {
         r.adjust(&shot, &keyframes, true, 100);
     }
-    Ok(r.all_frames(&shot, keyframes))
+    let mut solved = r.all_frames(&shot, keyframes);
+    solved.focal_measured = measured;
+    Ok(solved)
 }

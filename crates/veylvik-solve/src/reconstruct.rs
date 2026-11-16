@@ -23,6 +23,16 @@ impl Reconstruction {
     pub fn solved(&self) -> usize {
         self.poses.iter().flatten().count()
     }
+    /// The largest turn (degrees) of any solved keyframe from the first.
+    pub fn turn(&self) -> f64 {
+        let mut poses = self.poses.iter().flatten();
+        let Some(first) = poses.next() else {
+            return 0.0;
+        };
+        poses
+            .map(|p| norm(log_so3(&mat_mul(&p.r, &transpose(&first.r)))).to_degrees())
+            .fold(0.0, f64::max)
+    }
     /// Bundle adjust every solved keyframe and point; drop outlier sightings' points
     /// when they have too few good sightings left, then adjust again.
     pub fn adjust(&mut self, shot: &Shot, keys: &[usize], solve_focal: bool, iterations: usize) {
@@ -153,6 +163,7 @@ impl Reconstruction {
             rms: (sum / n.max(1) as f64).sqrt(),
             frame_error: errors,
             nodal: self.nodal,
+            focal_measured: false,
             keyframes: keys,
         }
     }

@@ -1353,6 +1353,34 @@ and `colour`.
   **Blur samples** (2–32, default 10) exact moments spread evenly across the
   shutter, centred on the frame, and averaged; render time grows with the
   samples.
+- **Camera solve** (`veylvik solve-camera`, MCP `solve_camera`): recovers the
+  real camera of a filmed shot so 3D sits in it. Features are detected over the
+  whole frame (a 16 × 16 grid, up to 220 alive at once, replenished as they
+  leave) and followed frame to frame on the GPU: a coarse-to-fine match gives
+  each frame's overall motion, every point is matched on its own within ±16
+  pixels (so parallax is kept), refined against the frame where the track was
+  anchored within ±3 pixels (so matching errors do not add up into drift; a
+  track re-anchors when its look has changed too much), and kept only when it
+  correlates above 0.85 and comes back to within 0.6 pixels when matched
+  backwards. Positions keep their sub-pixel part. The `veylvik-solve` crate then
+  solves the camera (CPU, deterministic): keyframes, the pair with the most
+  parallax (essential matrix by RANSAC), cameras added outward by resection,
+  points triangulated (at least 1.5 degrees of parallax), and robust bundle
+  adjustment (Levenberg-Marquardt with the Schur complement and Huber weights;
+  sightings over 3 pixels are outliers). An unknown lens is searched over 0.5 to
+  3.6 times the frame width and refined; a shot without parallax solves as a
+  tripod pan (rotation only), and a tripod shot that turns under 3 degrees
+  assumes a 36 mm-equivalent lens and reports `lens_measured: false`. The result
+  is added as one undo step, leaving the output alone: **Solved camera** keyed on
+  every frame (focal length in millimetres for the given sensor width, 36 mm by
+  default), **Ground (shadow catcher)** when a plane facing up under the first
+  camera holds at least 10% of the points (the world is levelled with it and
+  faces the first camera's way), **Solved scene** (merge 3D objects into it),
+  **Render solved scene** and **3D over footage** (that render merged over the
+  source). The median depth seen from the first frame lands at the home
+  distance, so units match 2D pixels there. The report gives frames solved,
+  tracks, points, rms and worst-frame error in pixels (under 0.5 is a good
+  solve), the focal length and the new nodes.
 - **Render scene**: films a scene as an image with camera 1, 2, … in node order, or
   0 for the home view.
 

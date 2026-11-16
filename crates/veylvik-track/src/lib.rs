@@ -1,5 +1,7 @@
 //! Footage analysis on the GPU: point and planar tracking built only on `veylvik_render::compute`.
+pub mod camera;
 pub mod estimate;
+pub mod features;
 pub mod planar;
 pub mod point;
 mod refine;

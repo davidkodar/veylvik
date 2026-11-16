@@ -562,14 +562,51 @@ impl PlanarTracker {
         settings: Settings,
         occlusion: Option<&GpuFrame>,
     ) -> Result<TrackedPlane> {
-        self.validate(renderer, reference, current, settings)?;
         if !(6..=256).contains(&points.len()) {
             return Err(error("Planar tracking requires 6..256 features"));
         }
         let size = [reference.width(), reference.height()];
+        let mut features = self.match_points(
+            renderer, reference, current, points, None, prediction, settings, occlusion,
+        )?;
+        let consensus = estimate(&features, size, settings.tolerance_pixels, settings.motion)
+            .map_err(|e| error(e.to_string()))?;
+        for (f, &accepted) in features.iter_mut().zip(&consensus.accepted) {
+            f.accepted = accepted;
+        }
+        Ok(TrackedPlane {
+            consensus,
+            features,
+        })
+    }
+    /// Match every point independently: its best patch correlation within the search
+    /// window around where `prediction` puts it (plus its own pixel offset, if given),
+    /// to sub-pixel precision. No common motion is fitted, so points may move
+    /// differently (parallax). 1..256 points.
+    #[allow(clippy::too_many_arguments)]
+    pub fn match_points(
+        &self,
+        renderer: &Renderer,
+        reference: &GpuFrame,
+        current: &GpuFrame,
+        points: &[Point],
+        offsets: Option<&[[f64; 2]]>,
+        prediction: Homography,
+        settings: Settings,
+        occlusion: Option<&GpuFrame>,
+    ) -> Result<Vec<Feature>> {
+        if offsets.is_some_and(|o| o.len() != points.len()) {
+            return Err(error("One offset per point"));
+        }
+        let offset = |i: usize| offsets.map_or([0.0; 2], |o| o[i]);
+        self.validate(renderer, reference, current, settings)?;
+        if !(1..=256).contains(&points.len()) {
+            return Err(error("Matching takes 1..256 points"));
+        }
+        let size = [reference.width(), reference.height()];
         let mut gpu_points = Vec::with_capacity(points.len());
         let mut origins = Vec::with_capacity(points.len());
-        for p in points {
+        for (i, p) in points.iter().enumerate() {
             let pixel = [0, 1].map(|axis| (p[axis] * f64::from(size[axis]) - 0.5).round());
             if pixel.iter().enumerate().any(|(axis, &v)| {
                 !v.is_finite()
@@ -580,7 +617,13 @@ impl PlanarTracker {
                     "Planar feature patch must fit inside the reference image",
                 ));
             }
-            gpu_points.push([pixel[0] as f32, pixel[1] as f32, 0., 0.]);
+            let shift = offset(i);
+            gpu_points.push([
+                pixel[0] as f32,
+                pixel[1] as f32,
+                shift[0] as f32,
+                shift[1] as f32,
+            ]);
             origins.push([
                 (pixel[0] + 0.5) / f64::from(size[0]),
                 (pixel[1] + 0.5) / f64::from(size[1]),
@@ -606,7 +649,12 @@ impl PlanarTracker {
             occlusion,
         )?;
         let mut features = Vec::with_capacity(points.len());
-        for (&origin, scores) in origins.iter().zip(values.chunks_exact(count as usize)) {
+        for (i, (&origin, scores)) in origins
+            .iter()
+            .zip(values.chunks_exact(count as usize))
+            .enumerate()
+        {
+            let shift = offset(i);
             let (best, &score) = scores
                 .iter()
                 .enumerate()
@@ -643,10 +691,11 @@ impl PlanarTracker {
                 reference: origin,
                 position: [
                     predicted[0]
-                        + (f64::from(x) - f64::from(settings.search_radius) + subpixel(1, x))
+                        + (shift[0] + f64::from(x) - f64::from(settings.search_radius)
+                            + subpixel(1, x))
                             / f64::from(size[0]),
                     predicted[1]
-                        + (f64::from(y) - f64::from(settings.search_radius)
+                        + (shift[1] + f64::from(y) - f64::from(settings.search_radius)
                             + subpixel(side as usize, y))
                             / f64::from(size[1]),
                 ],
@@ -655,15 +704,7 @@ impl PlanarTracker {
                 accepted: false,
             });
         }
-        let consensus = estimate(&features, size, settings.tolerance_pixels, settings.motion)
-            .map_err(|e| error(e.to_string()))?;
-        for (f, &accepted) in features.iter_mut().zip(&consensus.accepted) {
-            f.accepted = accepted;
-        }
-        Ok(TrackedPlane {
-            consensus,
-            features,
-        })
+        Ok(features)
     }
     /// Filtered GPU image pyramid. Pixels remain on the renderer's device;
     /// retained levels count against its shared memory budget.

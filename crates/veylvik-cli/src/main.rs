@@ -2,13 +2,14 @@ use veylvik_io as assets;
 mod mcp;
 mod outline;
 mod segment;
+mod solve;
 mod track;
 mod video_export;
 use std::path::Path;
 use veylvik_document::{Composition, Node, Operation, Time};
 use veylvik_render::{Plan, Region, RenderRequest};
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
-const USAGE: &str = "usage: veylvik open [FILE] [--control-dir DIRECTORY | --no-control] | demo FILE [--motion|--procedural] | import IMAGE.png|IMAGE.exr FILE | outline-text FONT TEXT NEW_FILE [OPTIONS] | collect FILE NEW_DIRECTORY | verify-collection DIRECTORY | nodes | check FILE | render FILE OUTPUT.png|OUTPUT.exr [TICKS RATE] [--node UUID] [--crop X Y WIDTH HEIGHT] | render-video FILE OUTPUT.mp4 [OPTIONS] | render-sequence FILE DIRECTORY START END [--format png|exr] [--node UUID] [--crop X Y WIDTH HEIGHT] | track FILE NEW_FILE SOURCE_UUID START END \"X,Y X,Y X,Y X,Y\" [\"AREA X,Y X,Y X,Y X,Y\"] [--screen-area] [--motion auto|perspective|affine|similarity|translation] [--no-refine] [--back-to FRAME] | segment FILE NEW_FILE SOURCE_UUID FRAME END \"X,Y X,Y,- ...\" [--back-to FRAME] [--model ID] [--no-detail] [--matting|--no-matting] | models [install|uninstall|enable|disable ID] | mcp FILE | mcp --studio [SOCKET|DIRECTORY]";
+const USAGE: &str = "usage: veylvik open [FILE] [--control-dir DIRECTORY | --no-control] | demo FILE [--motion|--procedural] | import IMAGE.png|IMAGE.exr FILE | outline-text FONT TEXT NEW_FILE [OPTIONS] | collect FILE NEW_DIRECTORY | verify-collection DIRECTORY | nodes | check FILE | render FILE OUTPUT.png|OUTPUT.exr [TICKS RATE] [--node UUID] [--crop X Y WIDTH HEIGHT] | render-video FILE OUTPUT.mp4 [OPTIONS] | render-sequence FILE DIRECTORY START END [--format png|exr] [--node UUID] [--crop X Y WIDTH HEIGHT] | track FILE NEW_FILE SOURCE_UUID START END \"X,Y X,Y X,Y X,Y\" [\"AREA X,Y X,Y X,Y X,Y\"] [--screen-area] [--motion auto|perspective|affine|similarity|translation] [--no-refine] [--back-to FRAME] | solve-camera FILE NEW_FILE SOURCE_UUID [START END] [--focal MM] [--sensor MM] | segment FILE NEW_FILE SOURCE_UUID FRAME END \"X,Y X,Y,- ...\" [--back-to FRAME] [--model ID] [--no-detail] [--matting|--no-matting] | models [install|uninstall|enable|disable ID] | mcp FILE | mcp --studio [SOCKET|DIRECTORY]";
 fn run() -> Result<()> {
     let args: Vec<String> = std::env::args().collect();
     match args.get(1).map(String::as_str) {
@@ -116,6 +117,65 @@ fn run() -> Result<()> {
             document.apply(document.revision(), &commands)?;
             document.snapshot().save(output)?;
             report["node"] = serde_json::json!(node);
+            report["saved"] = serde_json::json!(output);
+            println!("{report}");
+        }
+        Some("solve-camera") => {
+            let mut focal = None;
+            let mut sensor = None;
+            let mut positional = Vec::new();
+            let mut flags = args.iter();
+            while let Some(arg) = flags.next() {
+                match arg.as_str() {
+                    "--focal" => {
+                        focal = Some(
+                            flags
+                                .next()
+                                .ok_or("--focal needs millimetres")?
+                                .parse::<f64>()?,
+                        )
+                    }
+                    "--sensor" => {
+                        sensor = Some(
+                            flags
+                                .next()
+                                .ok_or("--sensor needs millimetres")?
+                                .parse::<f64>()?,
+                        )
+                    }
+                    _ => positional.push(arg.clone()),
+                }
+            }
+            // veylvik solve-camera FILE NEW_FILE SOURCE_UUID [START END]
+            if !matches!(positional.len(), 5 | 7) {
+                return Err(USAGE.into());
+            }
+            let (input, output) = (Path::new(&positional[2]), Path::new(&positional[3]));
+            if output.exists() {
+                return Err("NEW_FILE already exists; choose a new path".into());
+            }
+            let mut document = veylvik_document::Document::new(Composition::load(input)?)?;
+            let mut request = serde_json::json!({"source": positional[4]});
+            if positional.len() == 7 {
+                request["start"] = serde_json::json!(positional[5].parse::<i64>()?);
+                request["end"] = serde_json::json!(positional[6].parse::<i64>()?);
+            }
+            if let Some(mm) = focal {
+                request["focal_length"] = serde_json::json!(mm);
+            }
+            if let Some(mm) = sensor {
+                request["sensor_width"] = serde_json::json!(mm);
+            }
+            let request = solve::Request::from_json(&request, document.snapshot().frame_count)?;
+            let renderer = assets::runtime::renderer()?;
+            let (commands, mut report) = solve::run(
+                &renderer,
+                document.snapshot(),
+                &assets::document_base(input)?,
+                &request,
+            )?;
+            document.apply(document.revision(), &commands)?;
+            document.snapshot().save(output)?;
             report["saved"] = serde_json::json!(output);
             println!("{report}");
         }

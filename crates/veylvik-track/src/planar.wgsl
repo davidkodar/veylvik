@@ -87,11 +87,12 @@ fn correlate(@builtin(global_invocation_id) id: vec3<u32>) {
     if id.x>=side*side || id.y>=arrayLength(&features) { return; }
     let output=id.y*side*side+id.x;
     let delta=vec2<f32>(f32(id.x%side),f32(id.x/side))-vec2<f32>(f32(settings.search));
+    // zw: a per-feature offset (pixels) added to the plane's prediction.
     let origin=vec2<i32>(features[id.y].xy);
     var sa=0.0;var sb=0.0;var aa=0.0;var bb=0.0;var ab=0.0;
     let r=i32(settings.radius);
     for(var y=-r;y<=r;y++) { for(var x=-r;x<=r;x++) {
-        let p=origin+vec2<i32>(x,y); let q=project(vec2<f32>(p))+delta;
+        let p=origin+vec2<i32>(x,y); let q=project(vec2<f32>(p))+delta+features[id.y].zw;
         if any(q<vec2<f32>(0.0)) || any(q>=vec2<f32>(settings.size)-vec2<f32>(1.0)) {
             scores[output]=-2.0;return;
         }

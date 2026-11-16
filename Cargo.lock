@@ -4221,6 +4221,9 @@ dependencies = [
  "thiserror 2.0.21",
  "veylvik-document",
  "veylvik-render",
+ "veylvik-render3d",
+ "veylvik-scene",
+ "veylvik-solve",
  "wgpu",
 ]
 
