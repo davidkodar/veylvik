@@ -4,9 +4,10 @@ struct Params { size_op: vec4<u32>, values: vec4<f32>, extra: vec4<f32> }
 @group(0) @binding(2) var<storage, read> second: array<vec4<f32>>;
 @group(0) @binding(3) var<storage, read_write> result: array<vec4<f32>>;
 @group(0) @binding(4) var<storage, read> third: array<vec4<f32>>;
+@group(0) @binding(8) var<storage, read> fourth: array<vec4<f32>>;
 @group(0) @binding(5) var<storage, read> ltc: array<vec4<f32>>;
 struct StudioLight { center:vec4<f32>, u:vec4<f32>, v:vec4<f32>, colour:vec4<f32> }
-struct StudioLighting { optics:vec4<f32>, environment:vec4<f32>, lights:array<StudioLight,8>, palette:array<vec4<f32>,3> }
+struct StudioLighting { optics:vec4<f32>, environment:vec4<f32>, lights:array<StudioLight,8>, palette:array<vec4<f32>,3>, maps:vec4<f32> }
 @group(0) @binding(6) var<uniform> studio:StudioLighting;
 @group(0) @binding(7) var<storage,read> environment_map:array<vec4<f32>>;
 fn inside(gid:vec3<u32>)->bool { return gid.x<p.size_op.x && gid.y<p.size_op.y; }
@@ -754,6 +755,64 @@ fn shot_environment(screen:vec2<f32>,direction:vec3<f32>,rough:f32)->vec3<f32> {
     let lo=u32(floor(level));
     return mix(shot_level(uv,lo),shot_level(uv,min(lo+1u,6u)),fract(level));
 }
+// A connected Roughness map sets this per pixel in `material` (negative: none).
+var<private> map_roughness:f32=-1.0;
+fn surface_roughness()->f32 {
+    if map_roughness>=0.0 {return map_roughness;}
+    return p.values.z;
+}
+fn map_flags()->u32 {return u32(studio.maps.z);}
+// Stored map data: images are linearised on import, so undo the sRGB curve to
+// recover the 8/16-bit values the map was authored with.
+fn map_data(c:f32)->f32 {
+    let v=clamp(c,0.0,1.0);
+    return select(1.055*pow(v,1.0/2.4)-0.055,v*12.92,v<=0.0031308);
+}
+fn map_value(c:vec4<f32>)->vec3<f32> {
+    let s=c.rgb/max(c.a,0.0001);
+    return vec3<f32>(map_data(s.r),map_data(s.g),map_data(s.b));
+}
+// PBR maps packed into one image: normal xy in the shading frame (x right, y down),
+// roughness and height. Unconnected maps are never read.
+@compute @workgroup_size(8,8)
+fn surface_maps(@builtin(global_invocation_id) gid:vec3<u32>) {
+    if !inside(gid) {return;}
+    let i=index(gid);let flags=map_flags();
+    var packed=vec4<f32>(0.0,0.0,-1.0,0.0);
+    if (flags&1u)!=0u {
+        let t=map_value(source[i])*2.0-vec3<f32>(1.0);
+        // OpenGL maps point green up; the shading frame points y down.
+        packed.x=t.x;packed.y=select(-t.y,t.y,(flags&8u)!=0u);
+    }
+    if (flags&2u)!=0u {packed.z=dot(map_value(second[i]),vec3<f32>(1.0/3.0));}
+    if (flags&4u)!=0u {packed.w=dot(map_value(third[i]),vec3<f32>(1.0/3.0));}
+    result[i]=packed;
+}
+fn map_height(x:i32,y:i32)->f32 {
+    let q=clamp(vec2<i32>(x,y),vec2<i32>(0),vec2<i32>(p.size_op.xy)-vec2<i32>(1));
+    return fourth[u32(q.y)*p.size_op.x+u32(q.x)].w;
+}
+// Tilts the bevel normal by the Normal map and the Height map's slope, blended so
+// the bevel and the detail both survive (whiteout blending).
+fn surface_detail(pos:vec2<f32>,n:vec3<f32>)->vec3<f32> {
+    let flags=map_flags();
+    if (flags&5u)==0u {return n;}
+    let q=clamp(vec2<i32>(floor(pos)),vec2<i32>(0),vec2<i32>(p.size_op.xy)-vec2<i32>(1));
+    var detail=vec3<f32>(0.0,0.0,1.0);
+    if (flags&1u)!=0u {
+        let m=fourth[u32(q.y)*p.size_op.x+u32(q.x)].xy;
+        let z=sqrt(max(1.0-dot(m,m),0.0));
+        detail=normalize(vec3<f32>(m*studio.maps.x,max(z,0.001)));
+    }
+    if (flags&4u)!=0u {
+        let depth=studio.maps.y*0.5;
+        let dx=(map_height(q.x+1,q.y)-map_height(q.x-1,q.y))*depth;
+        let dy=(map_height(q.x,q.y+1)-map_height(q.x,q.y-1))*depth;
+        let bump=normalize(vec3<f32>(-dx,-dy,1.0));
+        detail=normalize(vec3<f32>(detail.xy+bump.xy,detail.z*bump.z));
+    }
+    return normalize(vec3<f32>(n.xy+detail.xy,n.z*detail.z));
+}
 fn studio_surface(uv:vec2<f32>, normal:vec3<f32>,albedo:vec3<f32>)->vec3<f32> {
     let kind=p.size_op.w;
     // Lighting coordinates follow canvas proportions, independent of texture scale.
@@ -787,7 +846,7 @@ fn studio_surface(uv:vec2<f32>, normal:vec3<f32>,albedo:vec3<f32>)->vec3<f32> {
         let anisotropic_normal=normalize(projected_view+n*0.00001);
         n=normalize(mix(n,anisotropic_normal,clamp(p.extra.x*1.1,0.0,0.85)));
     }
-    let rough=clamp(p.values.z+(texture-0.5)*p.extra.x*select(select(0.06,0.14,kind==3u),0.03,p.extra.w>0.5),0.03,1.0);
+    let rough=clamp(surface_roughness()+(texture-0.5)*p.extra.x*select(select(0.06,0.14,kind==3u),0.03,p.extra.w>0.5),0.03,1.0);
     let f0=studio.optics.rgb;
     let nv=max(dot(n,v),0.0001);
     var tangent=v-n*dot(n,v);
@@ -850,7 +909,7 @@ fn glass_surface(uv:vec2<f32>,n:vec3<f32>)->vec3<f32> {
     let pixel=uv*p.values.x;
     // Stronger bevels and denser materials bend the background further.
     let bend=-n.xy*p.values.y*6.0*(1.0-1.0/ior);
-    let rough=p.values.z;
+    let rough=surface_roughness();
     var through=glass_refracted(pixel+bend,rough);
     // Dense stones split colour at the edges.
     let spread=max(ior-1.6,0.0)*0.6;
@@ -965,11 +1024,16 @@ fn material(@builtin(global_invocation_id) gid:vec3<u32>) {
                                     sample_source(xy.x,xy.y-offset).a-sample_source(xy.x,xy.y+offset).a);
         }
     }
-    let n=normalize(vec3<f32>(slope*1.6,1.0));
+    if (map_flags()&2u)!=0u {
+        // Roughness 0.5 reads the map as authored; lower is glossier, higher rougher.
+        map_roughness=clamp(fourth[i].z*p.values.z*2.0,0.02,1.0);
+    }
+    let here=vec2<f32>(gid.xy);
+    let n=surface_detail(here,normalize(vec3<f32>(slope*1.6,1.0)));
     var color=material_colour(uv,n);
     if p.extra.z>=0.0 && p.values.y>0.0 {
         let position=vec2<f32>(gid.xy);
-        let filtered_normal=smooth_bevel_normal(position,p.values.y);
+        let filtered_normal=surface_detail(position,smooth_bevel_normal(position,p.values.y));
         color=material_colour(uv,filtered_normal);
         // Shade the subpixel footprint where the bevel bends. Keep the original
         // coverage, so antialiasing never expands the silhouette or adds a halo.
@@ -979,7 +1043,7 @@ fn material(@builtin(global_invocation_id) gid:vec3<u32>) {
             for(var y=0;y<2;y++) {for(var x=0;x<2;x++) {
                 let offset=vec2<f32>(f32(x),f32(y))*0.5-vec2<f32>(0.25);
                 let weight=bilinear(position+offset).a;
-                color+=material_colour((position+offset)/p.values.x,smooth_bevel_normal(position+offset,p.values.y))*weight;
+                color+=material_colour((position+offset)/p.values.x,surface_detail(position+offset,smooth_bevel_normal(position+offset,p.values.y)))*weight;
                 total+=weight;
             }}
             color/=max(total,0.000001);

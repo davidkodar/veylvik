@@ -49,18 +49,18 @@ impl RenderNode for veylvik_document::nodes::LensBlur {
         static STEPS: [Step; 3] = [
             Step {
                 kernel: Kernel::LensPrefilterHorizontal,
-                inputs: [From::Port(0), From::None, From::None],
+                inputs: [From::Port(0), From::None, From::None, From::None],
             },
             Step {
                 kernel: Kernel::LensPrefilterVertical,
-                inputs: [From::Step(0), From::None, From::None],
+                inputs: [From::Step(0), From::None, From::None, From::None],
             },
             Step {
                 kernel: Kernel::LensBlur,
-                inputs: [From::Step(1), From::None, From::None],
+                inputs: [From::Step(1), From::None, From::None, From::None],
             },
         ];
-        Passes::Chain(&STEPS)
+        Passes::chain(&STEPS)
     }
     fn shareable(&self) -> bool {
         true

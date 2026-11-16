@@ -72,12 +72,12 @@ const REFINE: &[Step] = {
 const fn step(kernel: Kernel, a: From, b: From, c: From) -> Step {
     Step {
         kernel,
-        inputs: [a, b, c],
+        inputs: [a, b, c, From::None],
     }
 }
 impl RenderNode for veylvik_document::nodes::RefineMatte {
     fn passes(&self) -> Passes {
-        Passes::Chain(REFINE)
+        Passes::chain(REFINE)
     }
     fn shareable(&self) -> bool {
         true

@@ -113,6 +113,19 @@ pub(crate) fn for_node(
     let studio = rig(source, plan, time)?.unwrap_or_else(|| m.studio.clone());
     let mut lighting = Lighting::new(m.kind, m.optics, m.colours, &studio);
     lighting.palette[0][3] = m.shot.at(time)?.clamp(0.0, 1.0);
+    if matches!(node.operation, Operation::Material(_)) {
+        let bit = |port: &str, bit: u32| u32::from(node.inputs.contains_key(port)) * bit;
+        let flags = bit("normal_map", 1)
+            | bit("roughness_map", 2)
+            | bit("height_map", 4)
+            | (u32::from(m.normal_directx) * 8);
+        lighting.maps = [
+            m.normal_strength.at(time)?,
+            m.height_depth.at(time)?,
+            flags as f32,
+            0.,
+        ];
+    }
     if matches!(node.operation, Operation::Shadow(_)) {
         // Match the material's rotation of the light frame (inverse Y rotation).
         let (s, c) = (m.lighting.at(time)? * std::f32::consts::TAU).sin_cos();

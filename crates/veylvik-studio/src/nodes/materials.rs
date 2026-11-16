@@ -33,6 +33,12 @@ impl Inspect for veylvik_document::nodes::Material {
             ui.weak("Connect an image, logo or footage to the Texture input (port list below); it becomes the lit, bevelled surface.");
         }
         cx.dirty |= look_slider(ui, self);
+        if cx.normal_mapped {
+            cx.dirty |= ui
+                .checkbox(&mut self.normal_directx, "DirectX normal map")
+                .on_hover_text("Tick for maps whose green channel points down (often named _NormalDX); leave off for OpenGL maps (_NormalGL)")
+                .changed();
+        }
         cx.dirty |= colour_controls(ui, self);
         ui.horizontal_wrapped(|ui| {
             if cx.environment {

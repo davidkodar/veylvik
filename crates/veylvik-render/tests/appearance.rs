@@ -98,6 +98,9 @@ fn materials_are_distinct_finite_and_preserve_partial_alpha() {
                 grain: 0.6.into(),
                 emission: 1.0.into(),
                 shot: 1.0.into(),
+                normal_strength: 1.0.into(),
+                height_depth: 4.0.into(),
+                normal_directx: false,
             }),
             &[("image", input)],
         );
@@ -1137,4 +1140,239 @@ fn materials_preview_on_the_users_own_words() {
             assert!((ink_x - 128.0).abs() < 20.0, "{id} centred: {ink_x}");
         }
     }
+}
+
+#[test]
+#[ignore = "requires Vulkan"]
+fn pbr_maps_tilt_roughen_and_raise_the_surface() {
+    let renderer = Renderer::new().unwrap();
+    let (mut doc, mut inputs, coverage_pixels) = source();
+    let coverage = doc.output;
+    // Maps arrive linearised like any imported 8-bit image.
+    let linear = |d: f32| {
+        if d <= 0.04045 {
+            d / 12.92
+        } else {
+            ((d + 0.055) / 1.055).powf(2.4)
+        }
+    };
+    let map = |f: &dyn Fn(usize, usize) -> [f32; 3]| {
+        let pixels = (0..96 * 64)
+            .map(|i| {
+                let [r, g, b] = f(i % 96, i / 96);
+                [linear(r), linear(g), linear(b), 1.0]
+            })
+            .collect();
+        Arc::new(Image::new(96, 64, pixels).unwrap())
+    };
+    inputs.insert("flat_normal", map(&|_, _| [0.5, 0.5, 1.0]));
+    // Right half tilted towards +x, top half towards +green.
+    inputs.insert(
+        "tilted_normal",
+        map(&|x, _| {
+            if x < 56 {
+                [0.5, 0.5, 1.0]
+            } else {
+                [0.85, 0.5, 0.86]
+            }
+        }),
+    );
+    inputs.insert("green_normal", map(&|_, _| [0.5, 0.8, 0.9]));
+    inputs.insert("half_grey", map(&|_, _| [0.5; 3]));
+    inputs.insert("black", map(&|_, _| [0.0; 3]));
+    inputs.insert("white", map(&|_, _| [1.0; 3]));
+    inputs.insert(
+        "ramp",
+        map(&|x, _| [((x as f32) / 6.0).sin() * 0.5 + 0.5; 3]),
+    );
+    let mut m = veylvik_document::presets::material::Source::Builtin("gold_text")
+        .material()
+        .unwrap();
+    m.lighting = 0.0.into();
+    m.roughness = 0.5.into();
+    let mut ids = std::collections::BTreeMap::new();
+    for key in [
+        "flat_normal",
+        "tilted_normal",
+        "green_normal",
+        "half_grey",
+        "black",
+        "white",
+        "ramp",
+    ] {
+        let node = Node::new(
+            key,
+            Operation::Image(nodes::Image { asset: key.into() }),
+            &[],
+        );
+        ids.insert(key, node.id);
+        doc.nodes.insert(node.id, node);
+    }
+    let render = |material: &veylvik_document::nodes::Material, maps: &[(&str, &str)]| {
+        let mut d = doc.clone();
+        let mut ports = vec![("image", coverage)];
+        ports.extend(maps.iter().map(|(port, key)| (*port, ids[key])));
+        let node = Node::new("m", Operation::Material(material.clone()), &ports);
+        d.output = node.id;
+        d.nodes.insert(node.id, node);
+        renderer
+            .render_frame(
+                &Plan::compile(&d).unwrap(),
+                RenderRequest::full(Time::new(0, 1).unwrap()),
+                &inputs,
+            )
+            .unwrap()
+            .pixels
+    };
+    let differs = |a: &[[f32; 4]], b: &[[f32; 4]], x: std::ops::Range<usize>| {
+        a.iter()
+            .zip(b)
+            .enumerate()
+            .filter(|(i, (p, q))| {
+                x.contains(&(i % 96)) && (0..3).any(|c| (p[c] - q[c]).abs() > 0.01)
+            })
+            .count()
+    };
+    let bare = render(&m, &[]);
+    // Neutral maps leave the surface exactly as it was.
+    for neutral in [
+        render(&m, &[("normal_map", "flat_normal")]),
+        render(&m, &[("roughness_map", "half_grey")]),
+        render(&m, &[("height_map", "white")]),
+    ] {
+        assert_eq!(differs(&bare, &neutral, 0..96), 0);
+    }
+    // A tilted normal map changes only where it tilts.
+    let tilted = render(&m, &[("normal_map", "tilted_normal")]);
+    assert_eq!(differs(&bare, &tilted, 16..54), 0);
+    assert!(differs(&bare, &tilted, 58..94) > 1000);
+    // Strength 0 switches the map off.
+    let mut off = m.clone();
+    off.normal_strength = 0.0.into();
+    assert_eq!(
+        differs(
+            &bare,
+            &render(&off, &[("normal_map", "tilted_normal")]),
+            0..96
+        ),
+        0
+    );
+    // OpenGL and DirectX disagree about green.
+    let gl = render(&m, &[("normal_map", "green_normal")]);
+    let mut dx = m.clone();
+    dx.normal_directx = true;
+    assert!(differs(&gl, &render(&dx, &[("normal_map", "green_normal")]), 16..96) > 1000);
+    // A black roughness map polishes, a white one roughens.
+    let glossy = render(&m, &[("roughness_map", "black")]);
+    let rough = render(&m, &[("roughness_map", "white")]);
+    assert!(differs(&glossy, &rough, 16..96) > 1000);
+    assert!(differs(&bare, &glossy, 16..96) > 1000);
+    // A height ramp adds relief; depth 0 removes it.
+    assert!(differs(&bare, &render(&m, &[("height_map", "ramp")]), 16..96) > 1000);
+    let mut flat = m.clone();
+    flat.height_depth = 0.0.into();
+    assert_eq!(
+        differs(&bare, &render(&flat, &[("height_map", "ramp")]), 0..96),
+        0
+    );
+    // All three together keep the coverage and stay finite.
+    let all = render(
+        &m,
+        &[
+            ("normal_map", "tilted_normal"),
+            ("roughness_map", "ramp"),
+            ("height_map", "ramp"),
+        ],
+    );
+    for (p, c) in all.iter().zip(&coverage_pixels) {
+        assert!((p[3] - c[3]).abs() < 1e-5 && p.iter().all(|v| v.is_finite()));
+    }
+}
+
+#[test]
+#[ignore = "requires Vulkan"]
+fn a_normal_map_and_the_height_map_it_came_from_shade_alike() {
+    let renderer = Renderer::new().unwrap();
+    let (w, h, depth) = (96u32, 64u32, 16.0f32);
+    let linear = |d: f32| {
+        if d <= 0.04045 {
+            d / 12.92
+        } else {
+            ((d + 0.055) / 1.055).powf(2.4)
+        }
+    };
+    let dome = |x: f32, y: f32| {
+        let d = ((x - 48.0).powi(2) + (y - 32.0).powi(2)).sqrt() / 24.0;
+        (1.0 - d * d).max(0.0)
+    };
+    let (mut heights, mut normals) = (Vec::new(), Vec::new());
+    for i in 0..(w * h) as usize {
+        let (x, y) = ((i % 96) as f32, (i / 96) as f32);
+        let v = linear(dome(x, y));
+        heights.push([v, v, v, 1.0]);
+        // OpenGL convention: green points up the image.
+        let dx = (dome(x + 1.0, y) - dome(x - 1.0, y)) * 0.5 * depth;
+        let dy = (dome(x, y + 1.0) - dome(x, y - 1.0)) * 0.5 * depth;
+        let length = (dx * dx + dy * dy + 1.0).sqrt();
+        let encode = |v: f32| linear(v / length * 0.5 + 0.5);
+        normals.push([encode(-dx), encode(dy), encode(1.0), 1.0]);
+    }
+    let mut inputs = ImageInputs::default();
+    inputs.insert("heights", Arc::new(Image::new(w, h, heights).unwrap()));
+    inputs.insert("normals", Arc::new(Image::new(w, h, normals).unwrap()));
+    inputs.insert(
+        "cover",
+        Arc::new(Image::new(w, h, vec![[1.0; 4]; (w * h) as usize]).unwrap()),
+    );
+    let mut doc = blank(w, h, Time::new(24, 1).unwrap()).unwrap();
+    let mut ids = std::collections::BTreeMap::new();
+    for key in ["heights", "normals", "cover"] {
+        let node = Node::new(
+            key,
+            Operation::Image(nodes::Image { asset: key.into() }),
+            &[],
+        );
+        ids.insert(key, node.id);
+        doc.nodes.insert(node.id, node);
+    }
+    let mut m = veylvik_document::presets::material::Source::Builtin("gloss_red_plastic")
+        .material()
+        .unwrap();
+    m.lighting = 0.0.into();
+    m.bevel = 0.0.into();
+    m.grain = 0.0.into();
+    m.height_depth = depth.into();
+    let render = |m: &veylvik_document::nodes::Material, port: &str, key: &str| {
+        let mut d = doc.clone();
+        let node = Node::new(
+            "m",
+            Operation::Material(m.clone()),
+            &[("image", ids["cover"]), (port, ids[key])],
+        );
+        d.output = node.id;
+        d.nodes.insert(node.id, node);
+        renderer
+            .render_frame(
+                &Plan::compile(&d).unwrap(),
+                RenderRequest::full(Time::new(0, 1).unwrap()),
+                &inputs,
+            )
+            .unwrap()
+            .pixels
+    };
+    let rms = |p: &[[f32; 4]], q: &[[f32; 4]]| {
+        (p.iter()
+            .zip(q)
+            .map(|(a, b)| (0..3).map(|i| (a[i] - b[i]).powi(2)).sum::<f32>())
+            .sum::<f32>()
+            / p.len() as f32)
+            .sqrt()
+    };
+    let raised = render(&m, "height_map", "heights");
+    let mapped = render(&m, "normal_map", "normals");
+    let mut directx = m.clone();
+    directx.normal_directx = true;
+    let flipped = render(&directx, "normal_map", "normals");
+    assert!(rms(&raised, &mapped) < 0.005, "{}", rms(&raised, &mapped));
+    assert!(rms(&raised, &flipped) > 0.05, "{}", rms(&raised, &flipped));
 }

@@ -11,6 +11,9 @@ pub(crate) struct Lighting {
     pub lights: [[[f32; 4]; 4]; 8],
     /// Pattern colours; the family decides what each one paints.
     pub palette: [[f32; 4]; 3],
+    /// PBR maps: normal strength, height depth (pixels), connected maps as bits
+    /// (1 normal, 2 roughness, 4 height, 8 DirectX normals), unused.
+    pub maps: [f32; 4],
 }
 /// Uniform size, shared by the bind group layout and per-node buffers.
 pub(crate) const SIZE: u64 = std::mem::size_of::<Lighting>() as u64;
@@ -41,6 +44,7 @@ impl Lighting {
             ],
             lights: [[[0.; 4]; 4]; 8],
             palette: palette.map(|[r, g, b]| [r, g, b, 0.]),
+            maps: [0.; 4],
         };
         // Recoloured looks (palette[2].w) may shade differently from the family's
         // original colours, which must keep rendering as they always have.

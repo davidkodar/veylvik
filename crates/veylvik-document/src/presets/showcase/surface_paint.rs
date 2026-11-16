@@ -24,6 +24,9 @@ pub(super) fn build() -> Result<Scene> {
             grain: 0.8.into(),
             emission: 1.0.into(),
             shot: 1.0.into(),
+            normal_strength: 1.0.into(),
+            height_depth: 4.0.into(),
+            normal_directx: false,
         }),
         &[("image", white)],
     );

@@ -46,6 +46,7 @@ pub enum Kernel {
     FrostHorizontal,
     FrostVertical,
     TexturePack,
+    SurfaceMaps,
     Merge,
     Blend,
     SurfaceBlend,
@@ -74,7 +75,7 @@ pub enum Kernel {
     Lut,
 }
 impl Kernel {
-    pub(crate) const ALL: [Self; 66] = [
+    pub(crate) const ALL: [Self; 67] = [
         Self::ToAcescg,
         Self::FromAcescg,
         Self::Text,
@@ -115,6 +116,7 @@ impl Kernel {
         Self::FrostHorizontal,
         Self::FrostVertical,
         Self::TexturePack,
+        Self::SurfaceMaps,
         Self::Merge,
         Self::Blend,
         Self::SurfaceBlend,
@@ -184,6 +186,7 @@ impl Kernel {
             Self::FrostHorizontal => "frost_horizontal",
             Self::FrostVertical => "frost_vertical",
             Self::TexturePack => "texture_pack",
+            Self::SurfaceMaps => "surface_maps",
             Self::Merge => "merge",
             Self::Blend => "blend",
             Self::SurfaceBlend => "surface_blend",
@@ -223,8 +226,22 @@ pub(crate) enum Input {
 pub(crate) struct Pass {
     pub node: usize,
     pub kernel: Kernel,
-    pub inputs: [Input; 3],
+    pub inputs: [Input; BOUND],
     pub output: usize,
+}
+/// Images a pass binds (`source`, `second`, `third`, `fourth`).
+pub(crate) const BOUND: usize = 4;
+/// Ports a node may have; chain steps pick any of them, a single pass the first four.
+const MAX_PORTS: usize = 8;
+fn bound(ports: &[Input; MAX_PORTS]) -> [Input; BOUND] {
+    std::array::from_fn(|i| ports[i].clone())
+}
+fn widen(bound: [Input; BOUND]) -> [Input; MAX_PORTS] {
+    let mut ports: [Input; MAX_PORTS] = std::array::from_fn(|_| Input::Empty);
+    for (port, input) in ports.iter_mut().zip(bound) {
+        *port = input;
+    }
+    ports
 }
 #[derive(serde::Serialize)]
 pub struct PassInfo {
@@ -420,7 +437,10 @@ impl Plan {
             if node.operation.descriptor().output == veylvik_document::registry::PortKind::Lights {
                 continue;
             }
-            let mut inputs = [Input::Empty, Input::Empty, Input::Empty];
+            if node.operation.inputs().len() > MAX_PORTS {
+                return Err(error("a node has more input ports than a pass can address"));
+            }
+            let mut inputs: [Input; MAX_PORTS] = std::array::from_fn(|_| Input::Empty);
             for (i, port) in node.operation.inputs().iter().enumerate() {
                 if node.operation.descriptor().port_kind(port)
                     == veylvik_document::registry::PortKind::Lights
@@ -441,7 +461,12 @@ impl Plan {
                         } else {
                             Kernel::FromAcescg
                         },
-                        inputs: [Input::Value(value), Input::Empty, Input::Empty],
+                        inputs: [
+                            Input::Value(value),
+                            Input::Empty,
+                            Input::Empty,
+                            Input::Empty,
+                        ],
                         output: converted,
                     });
                     value = converted;
@@ -487,7 +512,9 @@ impl Plan {
                 crate::nodes::Passes::One(kernel) => {
                     // A node that reads a file (such as a LUT) gets it on its next free input.
                     if let Some(asset) = node.operation.asset()
-                        && let Some(slot) = inputs.iter_mut().find(|i| matches!(i, Input::Empty))
+                        && let Some(slot) = inputs[..BOUND]
+                            .iter_mut()
+                            .find(|i| matches!(i, Input::Empty))
                     {
                         *slot = Input::Asset(asset.to_owned());
                     }
@@ -498,10 +525,15 @@ impl Plan {
                     passes.push(Pass {
                         node: index,
                         kernel: first,
-                        inputs,
+                        inputs: bound(&inputs),
                         output: intermediate,
                     });
-                    inputs = [Input::Value(intermediate), Input::Empty, Input::Empty];
+                    inputs = widen([
+                        Input::Value(intermediate),
+                        Input::Empty,
+                        Input::Empty,
+                        Input::Empty,
+                    ]);
                     second
                 }
                 crate::nodes::Passes::Chain(steps) => {
@@ -523,7 +555,7 @@ impl Plan {
                         });
                         values.push(value);
                     }
-                    inputs = last.inputs.map(|from| resolve(from, &values));
+                    inputs = widen(last.inputs.map(|from| resolve(from, &values)));
                     last.kernel
                 }
                 crate::nodes::Passes::Special => match &node.operation {
@@ -562,7 +594,7 @@ impl Plan {
             passes.push(Pass {
                 node: index,
                 kernel,
-                inputs,
+                inputs: bound(&inputs),
                 output: value,
             });
             outputs.insert(node.id, value);
@@ -579,7 +611,12 @@ impl Plan {
             passes.push(Pass {
                 node: nodes.len() - 1,
                 kernel: Kernel::FromAcescg,
-                inputs: [Input::Value(final_value), Input::Empty, Input::Empty],
+                inputs: [
+                    Input::Value(final_value),
+                    Input::Empty,
+                    Input::Empty,
+                    Input::Empty,
+                ],
                 output: converted,
             });
             final_value = converted;

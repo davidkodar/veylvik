@@ -1654,6 +1654,7 @@ impl Studio {
             save_material: false,
             environment: self.draft.inputs.contains_key("environment"),
             textured: self.draft.inputs.contains_key("texture"),
+            normal_mapped: self.draft.inputs.contains_key("normal_map"),
             reflect_shot: None,
             lit_by: lit_by.as_deref(),
             share_lights: None,
@@ -1807,15 +1808,26 @@ impl Studio {
             {
                 continue;
             }
+            // Map controls appear with their map.
+            let needs = match parameter.name {
+                "shot" => "environment",
+                "normal_strength" => "normal_map",
+                "height_depth" => "height_map",
+                _ => "",
+            };
             if kind.type_id == "material"
-                && parameter.name == "shot"
-                && !self.draft.inputs.contains_key("environment")
+                && !needs.is_empty()
+                && !self.draft.inputs.contains_key(needs)
             {
                 continue;
             }
             if let Some(value) = self.draft.operation.scalar_mut(parameter.name) {
                 let label = if kind.type_id == "material" && parameter.name == "shot" {
                     "Shot reflection".to_owned()
+                } else if kind.type_id == "material" && parameter.name == "normal_strength" {
+                    "Normal strength".to_owned()
+                } else if kind.type_id == "material" && parameter.name == "height_depth" {
+                    "Height depth (px)".to_owned()
                 } else if kind.type_id == "surface_blend" {
                     match parameter.name {
                         "lighting" => "Lighting",

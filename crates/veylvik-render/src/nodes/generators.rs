@@ -272,16 +272,22 @@ impl RenderNode for veylvik_document::nodes::Dust {
 
 impl RenderNode for veylvik_document::nodes::Drip {
     fn passes(&self) -> Passes {
-        Passes::Chain(&[
+        Passes::chain(&[
             super::Step {
                 kernel: Kernel::DripRoots,
-                inputs: [super::From::Port(0), super::From::None, super::From::None],
+                inputs: [
+                    super::From::Port(0),
+                    super::From::None,
+                    super::From::None,
+                    super::From::None,
+                ],
             },
             super::Step {
                 kernel: Kernel::Drip,
                 inputs: [
                     super::From::Port(0),
                     super::From::Step(0),
+                    super::From::None,
                     super::From::None,
                 ],
             },

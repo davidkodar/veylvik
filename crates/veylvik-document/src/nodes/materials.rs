@@ -31,6 +31,21 @@ pub struct Material {
     /// studio; unused without an Environment input.
     #[serde(default = "shot_default")]
     pub shot: Scalar,
+    /// How strongly a connected Normal map tilts the surface (1 = as authored).
+    #[serde(default = "one")]
+    pub normal_strength: Scalar,
+    /// Height of a connected Height map's white, in pixels.
+    #[serde(default = "height_depth_default")]
+    pub height_depth: Scalar,
+    /// The Normal map uses the DirectX convention (green points down).
+    #[serde(default)]
+    pub normal_directx: bool,
+}
+fn one() -> Scalar {
+    1.0.into()
+}
+fn height_depth_default() -> Scalar {
+    4.0.into()
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -100,15 +115,31 @@ pub static MATERIAL: NodeType = NodeType {
     type_id: "material",
     version: 1,
     label: "Text surface",
-    description: "Procedural gold, silver, brushed aluminium, bronze, phosphor, wood, light/dark oak, marble, light/red brick, rough concrete, clean/weathered paper and five leather colours from image alpha. Surface grain, edge bevel and studio reflections; source RGB is replaced and alpha preserved. With the Image texture surface, an image, logo or footage on the optional Texture input becomes the surface colour, lit and bevelled like any material. Connect footage to the optional Environment input to reflect the shot instead of the studio: roughness blurs it and dielectrics take their diffuse light from it. Not a 3D mesh or spectral renderer.",
-    inputs: &["image", "environment", "texture", "lights"],
-    optional: &["environment", "texture", "lights"],
+    description: "Procedural gold, silver, brushed aluminium, bronze, phosphor, wood, light/dark oak, marble, light/red brick, rough concrete, clean/weathered paper and five leather colours from image alpha. Surface grain, edge bevel and studio reflections; source RGB is replaced and alpha preserved. With the Image texture surface, an image, logo or footage on the optional Texture input becomes the surface colour, lit and bevelled like any material. Connect footage to the optional Environment input to reflect the shot instead of the studio: roughness blurs it and dielectrics take their diffuse light from it. Optional PBR maps (for example from ambientCG), placed like the texture: a Normal map (OpenGL green-up by default, DirectX with normal_directx) tilts the surface by normal_strength, a Roughness map sets roughness per pixel (Roughness 0.5 reads it as authored, lower is glossier, higher rougher) and a Height map adds relief up to height_depth pixels. Maps are read as stored 8/16-bit data, not colour. Not a 3D mesh or spectral renderer.",
+    inputs: &[
+        "image",
+        "environment",
+        "texture",
+        "lights",
+        "normal_map",
+        "roughness_map",
+        "height_map",
+    ],
+    optional: &[
+        "environment",
+        "texture",
+        "lights",
+        "normal_map",
+        "roughness_map",
+        "height_map",
+    ],
     output: PortKind::Image,
     parameters: &[
         Parameter {
             default: 1.0,
             ..other("smooth_edges", ParameterKind::Boolean, "quality")
         },
+        other("normal_directx", ParameterKind::Boolean, "map convention"),
         other("kind", ParameterKind::MaterialKind, "material"),
         other("brushing", ParameterKind::Brushing, "surface finish"),
         other("studio", ParameterKind::StudioRig, "lighting rig"),
@@ -121,6 +152,8 @@ pub static MATERIAL: NodeType = NodeType {
         scalar("grain", "factor", 0.0, 2.0, 0.4),
         scalar("emission", "factor", 0.0, 16.0, 1.0),
         scalar("shot", "factor", 0.0, 1.0, 0.6),
+        scalar("normal_strength", "factor", 0.0, 4.0, 1.0),
+        scalar("height_depth", "pixels", 0.0, 64.0, 4.0),
     ],
 };
 pub static PATINA: NodeType = NodeType {
@@ -217,7 +250,17 @@ pub static SURFACE_REFLECTION: NodeType = NodeType {
 node!(
     Material,
     MATERIAL,
-    [scale, bevel, roughness, lighting, grain, emission, shot],
+    [
+        scale,
+        bevel,
+        roughness,
+        lighting,
+        grain,
+        emission,
+        shot,
+        normal_strength,
+        height_depth
+    ],
     {
         fn validate(&self) -> Result<()> {
             self.studio.validate()?;

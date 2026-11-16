@@ -490,7 +490,31 @@ bevelled and reflective like any material; the texture's own detail tilts the
 normal a little, scaled by Grain, and Roughness sets its gloss. A pack pass stores the
 texture's straight colour beside the bevel height, so a textured material that also
 reflects the shot still reads three images. Without a texture the surface is
-black. Separate normal and roughness maps are not yet read.
+black.
+
+Every material also takes optional **PBR maps**, placed like the texture (sampled
+where they lie in the frame) and usable with any family, for example a CC0 set from
+ambientCG with its colour map on Texture:
+
+- **Normal map** tilts the surface on top of the bevel (whiteout blending, so both
+  survive). OpenGL maps (green up, `_NormalGL`) are the default; tick **DirectX
+  normal map** (`normal_directx`) for green-down maps. **Normal strength** scales the
+  tilt (0 switches the map off, 1 is as authored, up to 4).
+- **Roughness map** sets roughness per pixel. Roughness 0.5 reads the map as
+  authored; lower values make the whole surface glossier and higher ones rougher, so
+  the Look slider still works.
+- **Height map** adds relief: white is **Height depth** pixels high (default 4, up
+  to 64) and its slope shades like a normal map. A height map and the normal map
+  derived from it shade identically.
+
+Maps are data, not colour: the pack pass undoes the sRGB decode that import
+applies, recovering the stored 8/16-bit values. PNG import also accepts greyscale
+PNGs with a pure-gamma grey ICC profile (common on roughness maps) and decodes them
+with that gamma, so their darkest values can read up to about 0.03 high; other ICC
+profiles are still refused. The three maps are packed into one image (normal xy,
+roughness, height) that the material reads as a fourth image. Map controls appear in
+the inspector once their map is connected. Nodes may have up to eight input ports;
+a pass binds four images.
 
 Six animated recipes loop over four seconds as editable groups: **Chrome Shine
 Sweep** (a shine travels across mirror chrome), **Glint Reveal** (rose-gold glints

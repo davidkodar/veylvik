@@ -66,6 +66,9 @@ pub fn build(id: &str, b: &mut Builder, source: NodeId) -> Result<NodeId> {
                 .into(),
                 emission: 1.0.into(),
                 shot: 1.0.into(),
+                normal_strength: 1.0.into(),
+                height_depth: 4.0.into(),
+                normal_directx: false,
             },
         );
     }

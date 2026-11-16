@@ -4,6 +4,7 @@ pub mod export;
 pub mod export_audio;
 pub mod footage;
 pub mod host_cache;
+mod icc;
 pub mod import;
 pub mod lut;
 pub mod materials;
@@ -36,6 +37,8 @@ pub fn document_base(path: &Path) -> Result<PathBuf> {
         .ok_or("composition has no parent")?
         .to_owned())
 }
+/// Reads an sRGB PNG (untagged, sRGB, gAMA 1/2.2 or sRGB primaries), or a greyscale
+/// PNG with a pure-gamma grey ICC profile, as premultiplied scene-linear pixels.
 pub fn load_png(path: &Path, budget: u64) -> Result<Image> {
     let file = File::open(path)?;
     if file.metadata()?.len() > 64 * 1024 * 1024 {
@@ -63,8 +66,25 @@ pub fn load_png(path: &Path, budget: u64) -> Result<Image> {
     }
     let srgb_primaries =
         png::SourceChromaticities::new((0.3127, 0.3290), (0.64, 0.33), (0.30, 0.60), (0.15, 0.06));
-    if info.icc_profile.is_some()
-        || info.coding_independent_code_points.is_some()
+    // Greyscale data maps (roughness, height) often carry a grey gamma profile;
+    // decode those with their exact gamma. Every other profile is refused.
+    let grey = matches!(
+        info.color_type,
+        png::ColorType::Grayscale | png::ColorType::GrayscaleAlpha
+    );
+    let profile_gamma = match &info.icc_profile {
+        Some(profile) if grey => Some(icc::grey_gamma(profile).ok_or(
+            "PNG colour metadata requires an unsupported input transform; supply an sRGB PNG",
+        )?),
+        Some(_) => {
+            return Err(
+                "PNG colour metadata requires an unsupported input transform; supply an sRGB PNG"
+                    .into(),
+            );
+        }
+        None => None,
+    };
+    if info.coding_independent_code_points.is_some()
         || (info.srgb.is_none()
             && (info.gama_chunk.is_some_and(|g| g.into_scaled() != 45455)
                 || info
@@ -91,7 +111,9 @@ pub fn load_png(path: &Path, budget: u64) -> Result<Image> {
         _ => return Err("unsupported expanded PNG depth".into()),
     };
     let decode = |x: f32| {
-        if x <= 0.04045 {
+        if let Some(gamma) = profile_gamma {
+            x.powf(gamma)
+        } else if x <= 0.04045 {
             x / 12.92
         } else {
             ((x + 0.055) / 1.055).powf(2.4)
@@ -294,6 +316,54 @@ pub fn protect_inputs(composition: &Composition, base: &Path, destination: &Path
 mod tests {
     use super::*;
     use veylvik_document::Operation;
+    #[test]
+    fn grey_maps_with_a_gamma_profile_import_and_other_profiles_do_not() {
+        let dir = Temp::new();
+        let write = |name: &str, colour: png::ColorType, profile: Option<Vec<u8>>| {
+            let path = dir.0.join(name);
+            let mut info = png::Info::with_size(2, 1);
+            info.color_type = colour;
+            info.bit_depth = png::BitDepth::Eight;
+            info.icc_profile = profile.map(Into::into);
+            let file = std::io::BufWriter::new(File::create(&path).unwrap());
+            let mut writer = png::Encoder::with_info(file, info)
+                .unwrap()
+                .write_header()
+                .unwrap();
+            let samples = if colour == png::ColorType::Rgb { 6 } else { 2 };
+            writer
+                .write_image_data(&vec![128; samples][..samples / 2 * 2])
+                .unwrap();
+            writer.finish().unwrap();
+            path
+        };
+        let para = [
+            b"para".as_slice(),
+            &[0; 4],
+            &[0, 0, 0, 0],
+            &144179i32.to_be_bytes(),
+        ]
+        .concat();
+        let profile = icc::grey_profile(&para);
+        let grey = load_png(
+            &write(
+                "rough.png",
+                png::ColorType::Grayscale,
+                Some(profile.clone()),
+            ),
+            1 << 20,
+        )
+        .unwrap();
+        let expected = (128.0f32 / 255.0).powf(2.2);
+        assert!((grey.pixels()[0][0] - expected).abs() < 1e-5);
+        let err = load_png(
+            &write("rgb.png", png::ColorType::Rgb, Some(profile)),
+            1 << 20,
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(err.contains("unsupported input transform"), "{err}");
+    }
     use veylvik_document::{Node, Time};
     struct Temp(PathBuf);
     impl Temp {

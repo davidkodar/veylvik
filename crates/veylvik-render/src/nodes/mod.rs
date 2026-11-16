@@ -9,9 +9,15 @@ pub(crate) enum Passes {
     One(Kernel),
     /// Horizontal then vertical pass through an intermediate image.
     Separable(Kernel, Kernel),
-    /// A fixed pipeline of passes; the last step's output is the node's output.
-    Chain(&'static [Step]),
+    /// A pipeline of passes; the last step's output is the node's output. Fixed
+    /// chains borrow a static list; nodes whose wiring changes the work build one.
+    Chain(std::borrow::Cow<'static, [Step]>),
     Special,
+}
+impl Passes {
+    pub(crate) const fn chain(steps: &'static [Step]) -> Self {
+        Self::Chain(std::borrow::Cow::Borrowed(steps))
+    }
 }
 /// Where a chain step reads an image from.
 #[derive(Clone, Copy)]
@@ -22,9 +28,11 @@ pub(crate) enum From {
     Step(usize),
     None,
 }
+#[derive(Clone)]
 pub(crate) struct Step {
     pub kernel: Kernel,
-    pub inputs: [From; 3],
+    /// Bound in order to `source`, `second`, `third` and `fourth`.
+    pub inputs: [From; 4],
 }
 /// What a node's uniforms may depend on besides its own animated values.
 #[derive(Clone, Copy)]

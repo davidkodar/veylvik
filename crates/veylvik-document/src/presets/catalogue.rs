@@ -589,6 +589,9 @@ impl Entry {
             grain: self.grain.into(),
             emission: 1.0.into(),
             shot: 0.6.into(),
+            normal_strength: 1.0.into(),
+            height_depth: 4.0.into(),
+            normal_directx: false,
         }
     }
     /// As a library card.

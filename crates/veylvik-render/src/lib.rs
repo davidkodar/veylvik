@@ -257,6 +257,16 @@ impl Renderer {
                     count: None,
                 },
                 wgpu::BindGroupLayoutEntry {
+                    binding: 8,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: std::num::NonZeroU64::new(16),
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
                     binding: 3,
                     visibility: wgpu::ShaderStages::COMPUTE,
                     ty: wgpu::BindingType::Buffer {
@@ -767,6 +777,10 @@ impl Renderer {
                     wgpu::BindGroupEntry {
                         binding: 4,
                         resource: input(2).as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 8,
+                        resource: input(3).as_entire_binding(),
                     },
                 ],
             });

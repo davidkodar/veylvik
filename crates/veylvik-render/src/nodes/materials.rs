@@ -10,141 +10,98 @@ use veylvik_document::{Operation, Scalar};
 impl RenderNode for veylvik_document::nodes::LightRig {}
 impl RenderNode for veylvik_document::nodes::Material {
     fn passes_for(&self, node: &veylvik_document::Node) -> Passes {
+        use super::{From, Step};
         // Optional inputs add work only when connected: the shot becomes a roughness
-        // pyramid, and a texture is packed beside the bevel height (rgb + a).
-        let environment = node.inputs.contains_key("environment");
-        if self.kind == veylvik_document::MaterialKind::Glass && environment {
-            // Glass reads the shot twice: full resolution beside the bevel height for
-            // clear glass, and as a roughness pyramid for frosted glass.
-            return Passes::Chain(&[
-                super::Step {
-                    kernel: Kernel::BevelHeightHorizontal,
-                    inputs: [super::From::Port(0), super::From::None, super::From::None],
-                },
-                super::Step {
-                    kernel: Kernel::BevelHeightVertical,
-                    inputs: [super::From::Step(0), super::From::None, super::From::None],
-                },
-                super::Step {
-                    kernel: Kernel::TexturePack,
-                    inputs: [
-                        super::From::Step(1),
-                        super::From::Port(1),
-                        super::From::None,
-                    ],
-                },
-                super::Step {
-                    kernel: Kernel::EnvironmentPyramid,
-                    inputs: [super::From::Port(1), super::From::None, super::From::None],
-                },
-                super::Step {
-                    kernel: Kernel::Material,
-                    inputs: [
-                        super::From::Port(0),
-                        super::From::Step(2),
-                        super::From::Step(3),
-                    ],
-                },
-            ]);
+        // pyramid, a texture is packed beside the bevel height (rgb + a), and PBR
+        // maps are packed into one image (normal xy, roughness, height).
+        let connected = |port: &str| node.inputs.contains_key(port);
+        let environment = connected("environment");
+        let maps = ["normal_map", "roughness_map", "height_map"]
+            .iter()
+            .any(|port| connected(port));
+        // Glass reads the shot twice: full resolution beside the bevel height for
+        // clear glass, and as a roughness pyramid for frosted glass.
+        let glass = self.kind == veylvik_document::MaterialKind::Glass && environment;
+        if !environment && !maps && !connected("texture") {
+            return self.passes();
         }
-        match (environment, node.inputs.contains_key("texture")) {
-            (false, false) => self.passes(),
-            (true, false) => Passes::Chain(&[
-                super::Step {
-                    kernel: Kernel::BevelHeightHorizontal,
-                    inputs: [super::From::Port(0), super::From::None, super::From::None],
-                },
-                super::Step {
-                    kernel: Kernel::BevelHeightVertical,
-                    inputs: [super::From::Step(0), super::From::None, super::From::None],
-                },
-                super::Step {
-                    kernel: Kernel::EnvironmentPyramid,
-                    inputs: [super::From::Port(1), super::From::None, super::From::None],
-                },
-                super::Step {
-                    kernel: Kernel::Material,
-                    inputs: [
-                        super::From::Port(0),
-                        super::From::Step(1),
-                        super::From::Step(2),
-                    ],
-                },
-            ]),
-            (false, true) => Passes::Chain(&[
-                super::Step {
-                    kernel: Kernel::BevelHeightHorizontal,
-                    inputs: [super::From::Port(0), super::From::None, super::From::None],
-                },
-                super::Step {
-                    kernel: Kernel::BevelHeightVertical,
-                    inputs: [super::From::Step(0), super::From::None, super::From::None],
-                },
-                super::Step {
-                    kernel: Kernel::TexturePack,
-                    inputs: [
-                        super::From::Step(1),
-                        super::From::Port(2),
-                        super::From::None,
-                    ],
-                },
-                super::Step {
-                    kernel: Kernel::Material,
-                    inputs: [
-                        super::From::Port(0),
-                        super::From::Step(2),
-                        super::From::None,
-                    ],
-                },
-            ]),
-            (true, true) => Passes::Chain(&[
-                super::Step {
-                    kernel: Kernel::BevelHeightHorizontal,
-                    inputs: [super::From::Port(0), super::From::None, super::From::None],
-                },
-                super::Step {
-                    kernel: Kernel::BevelHeightVertical,
-                    inputs: [super::From::Step(0), super::From::None, super::From::None],
-                },
-                super::Step {
-                    kernel: Kernel::TexturePack,
-                    inputs: [
-                        super::From::Step(1),
-                        super::From::Port(2),
-                        super::From::None,
-                    ],
-                },
-                super::Step {
-                    kernel: Kernel::EnvironmentPyramid,
-                    inputs: [super::From::Port(1), super::From::None, super::From::None],
-                },
-                super::Step {
-                    kernel: Kernel::Material,
-                    inputs: [
-                        super::From::Port(0),
-                        super::From::Step(2),
-                        super::From::Step(3),
-                    ],
-                },
-            ]),
+        let step = |kernel, a, b, c| Step {
+            kernel,
+            inputs: [a, b, c, From::None],
+        };
+        let mut steps = vec![
+            step(
+                Kernel::BevelHeightHorizontal,
+                From::Port(0),
+                From::None,
+                From::None,
+            ),
+            step(
+                Kernel::BevelHeightVertical,
+                From::Step(0),
+                From::None,
+                From::None,
+            ),
+        ];
+        let mut second = From::Step(1);
+        if glass || connected("texture") {
+            let packed = From::Port(if glass { 1 } else { 2 });
+            steps.push(step(Kernel::TexturePack, From::Step(1), packed, From::None));
+            second = From::Step(steps.len() - 1);
         }
+        let mut third = From::None;
+        if environment {
+            steps.push(step(
+                Kernel::EnvironmentPyramid,
+                From::Port(1),
+                From::None,
+                From::None,
+            ));
+            third = From::Step(steps.len() - 1);
+        }
+        let mut fourth = From::None;
+        if maps {
+            steps.push(step(
+                Kernel::SurfaceMaps,
+                From::Port(4),
+                From::Port(5),
+                From::Port(6),
+            ));
+            fourth = From::Step(steps.len() - 1);
+        }
+        steps.push(Step {
+            kernel: Kernel::Material,
+            inputs: [From::Port(0), second, third, fourth],
+        });
+        Passes::Chain(steps.into())
     }
     fn passes(&self) -> Passes {
         // A smooth height field first; the material shades its gradient as the bevel.
-        Passes::Chain(&[
+        Passes::chain(&[
             super::Step {
                 kernel: Kernel::BevelHeightHorizontal,
-                inputs: [super::From::Port(0), super::From::None, super::From::None],
+                inputs: [
+                    super::From::Port(0),
+                    super::From::None,
+                    super::From::None,
+                    super::From::None,
+                ],
             },
             super::Step {
                 kernel: Kernel::BevelHeightVertical,
-                inputs: [super::From::Step(0), super::From::None, super::From::None],
+                inputs: [
+                    super::From::Step(0),
+                    super::From::None,
+                    super::From::None,
+                    super::From::None,
+                ],
             },
             super::Step {
                 kernel: Kernel::Material,
                 inputs: [
                     super::From::Port(0),
                     super::From::Step(1),
+                    super::From::None,
                     super::From::None,
                 ],
             },
@@ -258,16 +215,22 @@ impl RenderNode for veylvik_document::nodes::MetallicShine {
 }
 impl RenderNode for veylvik_document::nodes::SunGlints {
     fn passes(&self) -> Passes {
-        Passes::Chain(&[
+        Passes::chain(&[
             super::Step {
                 kernel: Kernel::GlintSeeds,
-                inputs: [super::From::Port(0), super::From::None, super::From::None],
+                inputs: [
+                    super::From::Port(0),
+                    super::From::None,
+                    super::From::None,
+                    super::From::None,
+                ],
             },
             super::Step {
                 kernel: Kernel::SunGlints,
                 inputs: [
                     super::From::Port(0),
                     super::From::Step(0),
+                    super::From::None,
                     super::From::None,
                 ],
             },
@@ -307,20 +270,31 @@ impl RenderNode for veylvik_document::nodes::SunGlints {
 impl RenderNode for veylvik_document::nodes::Glass {
     fn passes(&self) -> Passes {
         // Frost the background first (separable gaussian), then refract it.
-        Passes::Chain(&[
+        Passes::chain(&[
             super::Step {
                 kernel: Kernel::FrostHorizontal,
-                inputs: [super::From::Port(1), super::From::None, super::From::None],
+                inputs: [
+                    super::From::Port(1),
+                    super::From::None,
+                    super::From::None,
+                    super::From::None,
+                ],
             },
             super::Step {
                 kernel: Kernel::FrostVertical,
-                inputs: [super::From::Step(0), super::From::None, super::From::None],
+                inputs: [
+                    super::From::Step(0),
+                    super::From::None,
+                    super::From::None,
+                    super::From::None,
+                ],
             },
             super::Step {
                 kernel: Kernel::Glass,
                 inputs: [
                     super::From::Port(0),
                     super::From::Step(1),
+                    super::From::None,
                     super::From::None,
                 ],
             },
