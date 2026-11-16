@@ -166,11 +166,137 @@ pub fn set_favourites(directory: &Path, keys: &BTreeSet<String>) -> Result<()> {
     Ok(())
 }
 
+/// Every material an agent can apply: the family surfaces, the catalogue's whole
+/// looks and the user's saved materials, with favourites marked. Saved ids are
+/// `saved:<file stem>`, as in the library.
+pub fn library(directory: &Path) -> Result<serde_json::Value> {
+    use veylvik_document::presets::{builtin, catalogue, material};
+    let favourites = favourites(directory).unwrap_or_default();
+    let mut materials = Vec::new();
+    for entry in builtin::ALL
+        .iter()
+        .filter(|e| builtin::is_material(e.id) && catalogue::get(e.id).is_none())
+    {
+        materials.push(serde_json::json!({"id":entry.id,"label":entry.label,"category":material::category(entry.id),"source":"family","description":entry.description,"favourite":favourites.contains(&format!("builtin:{}",entry.id))}));
+    }
+    for entry in &catalogue::ENTRIES {
+        materials.push(serde_json::json!({"id":entry.id,"label":entry.label,"category":entry.category,"source":"catalogue","description":entry.description,"favourite":favourites.contains(&format!("builtin:{}",entry.id))}));
+    }
+    let listing = list(directory)?;
+    for entry in &listing.entries {
+        materials.push(serde_json::json!({"id":entry.key(),"label":entry.saved.label,"category":"My materials","source":"saved","favourite":favourites.contains(&entry.key())}));
+    }
+    Ok(serde_json::json!({"materials":materials,"warnings":listing.warnings}))
+}
+
+/// Commands that put material `id` on `target`: a Text node gets (or keeps and
+/// restyles) its Text surface, exactly like the library; a Text surface is restyled
+/// in place. A family keeps the target's finish and lighting; a catalogue look or a
+/// saved material brings its whole look.
+pub fn apply(
+    doc: &veylvik_document::Composition,
+    target: NodeId,
+    id: &str,
+    directory: &Path,
+) -> Result<Vec<veylvik_document::Command>> {
+    use veylvik_document::{
+        Command, Operation,
+        presets::{builtin, material::Source, text_style},
+    };
+    let listing;
+    let source = if let Some(stem) = id.strip_prefix("saved:") {
+        listing = list(directory)?;
+        let entry = listing
+            .entries
+            .iter()
+            .find(|e| e.key() == format!("saved:{stem}"))
+            .ok_or_else(|| format!("no saved material {id}"))?;
+        Source::Saved(&entry.saved)
+    } else if builtin::is_material(id) {
+        Source::Builtin(id)
+    } else {
+        return Err(format!("unknown material {id}; list them with materials").into());
+    };
+    let node = doc
+        .nodes
+        .get(&target)
+        .ok_or_else(|| format!("no node {target}"))?;
+    match &node.operation {
+        Operation::Text(_) => Ok(text_style::apply(doc, target, Some(source), None)?),
+        Operation::Material(current) => {
+            let with = source.material()?;
+            let mut restyled = current.clone();
+            veylvik_document::presets::material::restyle(&mut restyled, source, &with);
+            let mut node = node.clone();
+            node.operation = Operation::Material(restyled);
+            Ok(vec![Command::Put {
+                node: Box::new(node),
+            }])
+        }
+        _ => Err("target must be a Text node or a Text surface".into()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use veylvik_document::presets::material::Source;
 
+    #[test]
+    fn agents_list_every_material_and_apply_it_to_text_or_a_surface() {
+        use veylvik_document::{Command, Document, Node, Operation, Time, blank};
+        let directory =
+            std::env::temp_dir().join(format!("veylvik-materials-{}", NodeId::new_v4()));
+        let mut navy = Source::Builtin("leather_brown").material().unwrap();
+        navy.roughness = 0.61.into();
+        let path = add(&directory, &Saved::new("Navy leather", &navy).unwrap()).unwrap();
+        let library = library(&directory).unwrap();
+        let materials = library["materials"].as_array().unwrap();
+        let find = |id: &str| materials.iter().find(|m| m["id"] == id).cloned();
+        assert_eq!(find("gold_text").unwrap()["source"], "family");
+        assert_eq!(find("chrome").unwrap()["source"], "catalogue");
+        let saved = format!("saved:{}", path.file_stem().unwrap().to_string_lossy());
+        assert_eq!(find(&saved).unwrap()["label"], "Navy leather");
+        assert!(
+            find("liquid_shimmer").is_none(),
+            "effects are not materials"
+        );
+
+        // A bare title gets a surface; applying again restyles that surface.
+        let mut scene = blank(64, 32, Time::new(24, 1).unwrap()).unwrap();
+        let text: Operation =
+            serde_json::from_value(veylvik_document::registry::TEXT.default_operation()).unwrap();
+        let title = Node::new("Title", text, &[]);
+        let id = title.id;
+        scene.nodes.insert(id, title);
+        scene.output = id;
+        let mut document = Document::new(scene).unwrap();
+        let commands = apply(document.snapshot(), id, "chrome", &directory).unwrap();
+        let revision = document.apply(0, &commands).unwrap();
+        let surface = veylvik_document::presets::text_style::current(document.snapshot(), id)
+            .unwrap()
+            .unwrap();
+        let commands = apply(document.snapshot(), surface, &saved, &directory).unwrap();
+        assert!(matches!(commands[..], [Command::Put { .. }]));
+        document.apply(revision, &commands).unwrap();
+        let Operation::Material(m) = &document.snapshot().nodes[&surface].operation else {
+            panic!()
+        };
+        assert_eq!(m.kind, navy.kind);
+        assert_eq!(
+            serde_json::to_value(&m.roughness).unwrap(),
+            serde_json::to_value(&navy.roughness).unwrap(),
+            "a saved material brings its whole look"
+        );
+        for bad in ["liquid_shimmer", "saved:missing", "nope"] {
+            assert!(apply(document.snapshot(), id, bad, &directory).is_err());
+        }
+        let output = document.snapshot().output;
+        if output != id && output != surface {
+            assert!(apply(document.snapshot(), output, "chrome", &directory).is_err());
+        }
+        std::fs::remove_dir_all(&directory).unwrap();
+    }
     #[test]
     fn saved_materials_add_list_rename_and_remove() {
         let directory =

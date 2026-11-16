@@ -78,6 +78,9 @@ pub fn call(
         result["revision"] = json!(project.document.revision());
         return Ok(result);
     }
+    if name == "materials" {
+        return veylvik_io::materials::library(&veylvik_io::materials::directory()?);
+    }
     if name == "get_preset" {
         let preset = veylvik_document::presets::read(
             project.document.snapshot(),
@@ -133,6 +136,32 @@ pub fn call(
             studio.project.preview = Some(instance.output);
             result["revision"] = json!(studio.project.document.revision());
             response = Some(result);
+        }
+        "apply_material" => {
+            let target = args["target"]
+                .as_str()
+                .ok_or("target must be a UUID")?
+                .parse()?;
+            let commands = veylvik_io::materials::apply(
+                studio.project.document.snapshot(),
+                target,
+                args["material"]
+                    .as_str()
+                    .ok_or("material must be a string")?,
+                &veylvik_io::materials::directory()?,
+            )?;
+            if dry_run {
+                studio.project.document.prepare(revision, &commands)?;
+                return Ok(
+                    json!({"session":session,"revision":revision,"dry_run":true,"valid":true}),
+                );
+            }
+            studio.project.apply(&commands)?;
+            studio.project.selected = target;
+            studio.project.preview = Some(target);
+            response = Some(
+                json!({"session":session,"revision":studio.project.document.revision(),"dry_run":false,"changed_nodes":commands.len()}),
+            );
         }
         "add_effect" => {
             let input = args["input"]

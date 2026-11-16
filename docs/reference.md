@@ -781,6 +781,20 @@ input bindings, revision guards and dry-run support. `get_preset` accepts either
 a group UUID or a starter ID (`prismatic_glow`, `neon_outline`, `liquid_shimmer`).
 Neither tool accesses files.
 
+Headless and live MCP also expose the material library. **materials** lists every
+material an agent can apply, with `id`, `label`, `category`, `description` (not for
+saved ones), `source` and `favourite`: the family surfaces (`source: family`, such
+as `gold_text` or `marble`), the catalogue's whole looks (`catalogue`, such as
+`chrome` or `glass_frosted`) and the user's saved materials (`saved`, id
+`saved:<file name>`, read from `$XDG_DATA_HOME/veylvik/materials`; unreadable files
+come back as `warnings`). **apply_material** takes `revision` (and `session` live),
+a `target` and a `material` id. A Text node gets a Text surface, or its existing one
+restyled, exactly as when the library is used on text (neon looks bring their glow,
+glass connects its backdrop); a Text surface node is restyled in place. A family
+changes only the surface kind and keeps the target's finish and lighting; a
+catalogue look or a saved material brings its whole look. It is one undo step, keeps
+the output and wiring, supports `dry_run`, and live selects and previews the target.
+
 Groups add no rendering passes. Exposed controls directly reference registered
 node parameters; there is no second evaluator or duplicate value storage.
 MCP **apply** accepts **put_group**, **ungroup**, **set_control** and
@@ -1351,7 +1365,8 @@ tool error saying so; when another client holds the editor, the call gives up af
 five seconds and says the editor is busy.
 
 Live tools are `inspect`, `graph`, `get_node`, `nodes`, `diagnostics`, `apply`,
-`duplicate_branch`, `add_effect`, `get_preset`, `insert_preset`, `undo`, `redo`,
+`duplicate_branch`, `add_effect`, `get_preset`, `insert_preset`, `materials`,
+`apply_material`, `undo`, `redo`,
 `preview`, `preview_image`, `new_project`, `open_project`, `new_from_media`,
 `import_media`, `track_surface` and `segment_subject`.
 
