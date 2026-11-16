@@ -46,6 +46,7 @@ mod preview_images;
 mod project;
 mod recovery;
 mod render_queue;
+mod scene_gizmo;
 mod scene_guides;
 mod scopes;
 mod sequence;
@@ -3105,7 +3106,10 @@ impl eframe::App for Studio {
                         let before_navigation = self.navigation.transform(canvas, image, ctx.pixels_per_point());
                         let navigating_3d = self.navigating_3d(&ctx);
                         let guides_response = response.clone();
-                        if navigating_3d && self.scene_interact(ui, &response, canvas) {
+                        // Handles take drags that start on them; other drags move the view.
+                        let handled = navigating_3d
+                            && self.gizmo_input(ui, &response, canvas, before_navigation);
+                        if navigating_3d && !handled && self.scene_interact(ui, &response, canvas) {
                             self.request_preview();
                         }
                         let text_hit = if !navigating_3d && !light_guides::active(&ctx) && response.clicked()

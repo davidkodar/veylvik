@@ -316,3 +316,18 @@ fn walked_paths_are_smoothed_unwrapped_and_thinned() {
     assert!(out.windows(2).all(|w| w[1].2[1] >= w[0].2[1] - 1e-3));
     assert!((out.last().unwrap().2[1] - 480.0).abs() < 1e-3);
 }
+
+#[test]
+fn linear_inverse_undoes_rotation_and_scale() {
+    let m = math::mul(
+        &math::rotate([20.0, -35.0, 50.0]),
+        &math::scale([2.0, 0.5, 3.0]),
+    );
+    let inv = math::linear_inverse(&m).unwrap();
+    let v = [3.0, -1.0, 2.0];
+    let back = math::direction(&inv, math::direction(&m, v));
+    for (a, b) in back.iter().zip(v) {
+        assert!((a - b).abs() < 1e-4);
+    }
+    assert!(math::linear_inverse(&math::scale([1.0, 0.0, 1.0])).is_none());
+}

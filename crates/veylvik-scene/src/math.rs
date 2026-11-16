@@ -77,3 +77,26 @@ pub fn rigid_inverse(m: &Mat4) -> Mat4 {
     }
     out
 }
+/// Inverse of the upper 3x3 (rotation and scale) as a matrix without translation;
+/// None when it is singular (a zero scale).
+pub fn linear_inverse(m: &Mat4) -> Option<Mat4> {
+    let a = |r: usize, c: usize| m[r][c];
+    let cof = |r0, r1, c0, c1| a(r0, c0) * a(r1, c1) - a(r0, c1) * a(r1, c0);
+    let c = [
+        [cof(1, 2, 1, 2), -cof(1, 2, 0, 2), cof(1, 2, 0, 1)],
+        [-cof(0, 2, 1, 2), cof(0, 2, 0, 2), -cof(0, 2, 0, 1)],
+        [cof(0, 1, 1, 2), -cof(0, 1, 0, 2), cof(0, 1, 0, 1)],
+    ];
+    let det = a(0, 0) * c[0][0] + a(0, 1) * c[0][1] + a(0, 2) * c[0][2];
+    if det.abs() < 1e-12 {
+        return None;
+    }
+    let mut out = IDENTITY;
+    for (r, row) in out.iter_mut().take(3).enumerate() {
+        for (k, v) in row.iter_mut().take(3).enumerate() {
+            // The inverse is the transposed cofactor matrix over the determinant.
+            *v = c[k][r] / det;
+        }
+    }
+    Some(out)
+}

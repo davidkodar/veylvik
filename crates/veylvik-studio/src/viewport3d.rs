@@ -121,6 +121,7 @@ impl Studio {
                 changed = true;
             }
             self.scene_guides_toolbar(ui);
+            self.gizmo_toolbar(ui);
             if ui.button("Home view").on_hover_text("The view that matches the 2D frame").clicked() {
                 let doc = self.project.document.snapshot();
                 s.view = Some(FreeView::home(doc.width, doc.height));

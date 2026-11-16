@@ -1353,6 +1353,19 @@ the selection: **Orbit** (a quarter turn), **Push in**, **Pull out**, **Crane up
 and **Fly by** (keys every six frames). Recording, moves and **Camera from view**
 add a Camera to the scene (merged in front of Render scene) when it has none.
 
+**Moving things in the viewer.** The selected 3D shape, 3D text, image card, light
+or camera gets handles; **Edit** (or W, E, R over the viewer) picks **Move**,
+**Rotate** or **Scale**. Move shows red, green and blue arrows along X, Y (up on
+screen) and Z, and a square that moves freely across the screen; Rotate shows a
+ring per axis of the object's own frame, turning that rotation angle a degree per
+two pixels across the ring; Scale shows axis handles that stretch and a square that
+scales evenly (lights and cameras do not scale). A spot or sun also gets an amber
+**aim** handle at the end of its beam: drag it and the light turns to point there.
+Drags start only on a handle (anywhere else still orbits), work inside 3D
+transforms (world motion is turned into the node's own frame), edit the inspector
+draft with a live preview, key the placement at the playhead when it is animated,
+and apply on release as one undo step.
+
 **Library looks on 3D objects.** 3D text and 3D shapes take an optional **look**:
 any library material, catalogue look or saved material (Library > Materials >
 Apply to selection, or MCP `apply_material` with the 3D node as target). A look

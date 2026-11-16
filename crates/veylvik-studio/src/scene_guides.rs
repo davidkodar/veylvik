@@ -38,8 +38,8 @@ fn show(ctx: &egui::Context) -> Show {
     })
 }
 /// Projects scene points onto the viewer canvas through one camera.
-struct Projector {
-    camera: Camera,
+pub(crate) struct Projector {
+    pub camera: Camera,
     view: math::Mat4,
     width: u32,
     height: u32,
@@ -55,7 +55,7 @@ impl Projector {
             self.canvas.min.y + self.canvas.height() * (oy + sy * pixel[1] / self.height as f32),
         )
     }
-    fn point(&self, p: [f32; 3]) -> Option<Pos2> {
+    pub(crate) fn point(&self, p: [f32; 3]) -> Option<Pos2> {
         self.camera
             .project(p, self.width, self.height)
             .map(|(pixel, _)| self.to_canvas(pixel))
@@ -82,7 +82,7 @@ impl Projector {
             self.point(math::point(&back, vb))?,
         ])
     }
-    fn line(&self, painter: &egui::Painter, a: [f32; 3], b: [f32; 3], stroke: Stroke) {
+    pub(crate) fn line(&self, painter: &egui::Painter, a: [f32; 3], b: [f32; 3], stroke: Stroke) {
         if let Some(points) = self.segment(a, b) {
             painter.line_segment(points, stroke);
         }
@@ -234,6 +234,29 @@ impl Studio {
             .sqrt()
             * 0.5;
         Some((centre, radius))
+    }
+    /// The viewed scene, the camera Render scene uses, and a projector onto `canvas`.
+    pub(crate) fn scene_projector(
+        &self,
+        ctx: &egui::Context,
+        canvas: egui::Rect,
+        transform: crate::viewer::ViewTransform,
+    ) -> Option<(Projector, Scene, Option<NodeId>)> {
+        let (scene, active) = self.viewed_scene_now()?;
+        let camera = self.viewing_camera(ctx)?;
+        let doc = self.project.document.snapshot();
+        Some((
+            Projector {
+                camera,
+                view: math::rigid_inverse(&camera.world),
+                width: doc.width,
+                height: doc.height,
+                canvas,
+                transform: transform.0,
+            },
+            scene,
+            active,
+        ))
     }
     fn viewed_scene_now(&self) -> Option<(Scene, Option<NodeId>)> {
         let doc = self.project.document.snapshot();
@@ -578,6 +601,7 @@ impl Studio {
                 hits.push((at, object.node, label));
             }
         }
+        self.draw_gizmo(&ctx, &painter, &p, &scene);
         // Hover names a guide; a click selects its node.
         if let Some(pointer) = response.hover_pos() {
             let nearest = hits
