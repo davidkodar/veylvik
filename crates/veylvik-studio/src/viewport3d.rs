@@ -170,6 +170,7 @@ impl Studio {
                     }
                 }
             }
+            self.focus_button(ui);
             ui.menu_button("Moves", |ui| {
                 ui.weak("A smooth camera move from this view over the play range:");
                 for (label, hint, kind) in [
@@ -494,6 +495,42 @@ impl Studio {
     /// already animated), else a still placement. A scene without a camera gets one,
     /// merged into what Render scene films. One undo step.
     fn write_camera(&mut self, poses: &[veylvik_scene::Pose], keyed: bool) -> Result<(), String> {
+        self.edit_scene_camera(|c| {
+            for (time, position, rotation) in poses {
+                if keyed {
+                    c.placement
+                        .position
+                        .set_key_at(*time, *position)
+                        .map_err(|e| e.to_string())?;
+                    c.placement
+                        .rotation
+                        .set_key_at(*time, *rotation)
+                        .map_err(|e| e.to_string())?;
+                } else {
+                    c.placement
+                        .position
+                        .set_at(*time, *position)
+                        .map_err(|e| e.to_string())?;
+                    c.placement
+                        .rotation
+                        .set_at(*time, *rotation)
+                        .map_err(|e| e.to_string())?;
+                }
+            }
+            if keyed {
+                use veylvik_document::Interpolation::Smooth;
+                c.placement.position.set_interpolation(Smooth);
+                c.placement.rotation.set_interpolation(Smooth);
+            }
+            Ok(())
+        })
+    }
+    /// Change the camera the viewed Render scene films with, in one undo step; a
+    /// scene without one gets a new camera merged in front of Render scene.
+    pub(crate) fn edit_scene_camera(
+        &mut self,
+        edit: impl FnOnce(&mut veylvik_document::nodes::Camera3d) -> Result<(), String>,
+    ) -> Result<(), String> {
         use veylvik_document::{Node, nodes};
         let doc = self.project.document.snapshot();
         let render = self.viewed_scene().ok_or("No 3D scene in view")?;
@@ -512,35 +549,7 @@ impl Studio {
         let Operation::Camera3d(c) = &mut camera.operation else {
             return Err("Not a Camera node".into());
         };
-        for (time, position, rotation) in poses {
-            if keyed {
-                c.placement
-                    .position
-                    .set_key_at(*time, *position)
-                    .map_err(|e| e.to_string())?;
-                c.placement
-                    .rotation
-                    .set_key_at(*time, *rotation)
-                    .map_err(|e| e.to_string())?;
-            } else {
-                c.placement
-                    .position
-                    .set_at(*time, *position)
-                    .map_err(|e| e.to_string())?;
-                c.placement
-                    .rotation
-                    .set_at(*time, *rotation)
-                    .map_err(|e| e.to_string())?;
-            }
-        }
-        if keyed {
-            c.placement
-                .position
-                .set_interpolation(veylvik_document::Interpolation::Smooth);
-            c.placement
-                .rotation
-                .set_interpolation(veylvik_document::Interpolation::Smooth);
-        }
+        edit(c)?;
         let camera_id = camera.id;
         commands.push(Command::Put {
             node: Box::new(camera),

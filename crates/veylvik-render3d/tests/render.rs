@@ -549,3 +549,124 @@ fn occlusion_darkens_the_environment_light_where_surfaces_meet() {
     let (a, b) = (luma(&shaded, far.0, far.1), luma(&open, far.0, far.1));
     assert!(a > b * 0.95, "open wall: {a} vs {b}");
 }
+
+fn cube(size: f32, position: [f32; 3]) -> Operation {
+    let mut s = op(&SHAPE_3D);
+    if let Operation::Shape3d(s) = &mut s {
+        s.kind = ShapeKind::Cube;
+        s.size_x = size.into();
+        s.size_y = size.into();
+        s.size_z = size.into();
+        s.colour = [0.8; 3].into();
+        s.placement.position = position.into();
+    }
+    s
+}
+/// Sum of horizontal steps along row `y` between `x0` and `x1`: how sharp the edges there are.
+fn edges(p: &[[f32; 4]], y: u32, x0: u32, x1: u32) -> f32 {
+    (x0..x1)
+        .map(|x| {
+            (p[(y * W + x + 1) as usize][3] - p[(y * W + x) as usize][3])
+                .abs()
+                .powi(2)
+        })
+        .sum()
+}
+
+#[test]
+#[ignore = "requires Vulkan"]
+fn depth_of_field_blurs_what_is_out_of_focus_only() {
+    let renderer = renderer();
+    let mut doc = blank(W, H, Time::new(24, 1).unwrap()).unwrap();
+    // A cube at the frame centre (autofocus picks it) and one far behind, to the left.
+    let near = add(&mut doc, cube(16.0, [0.0; 3]), &[]);
+    let far = add(&mut doc, cube(160.0, [-250.0, 0.0, -900.0]), &[]);
+    let camera = add(&mut doc, op(&CAMERA_3D), &[]);
+    let merged = add(
+        &mut doc,
+        op(&MERGE_SCENES),
+        &[("scene", near), ("scene_2", far), ("scene_3", camera)],
+    );
+    let mut render_op = op(&RENDER_SCENE);
+    if let Operation::RenderScene(r) = &mut render_op {
+        r.camera = 1.0.into();
+    }
+    let render_node = add(&mut doc, render_op, &[("scene", merged)]);
+    doc.output = render_node;
+    let sharp = render(&renderer, &doc, &Default::default());
+    if let Operation::Camera3d(c) = &mut doc.nodes.get_mut(&camera).unwrap().operation {
+        c.f_stop = 1.4.into();
+    }
+    let soft = render(&renderer, &doc, &Default::default());
+    let (near_sharp, near_soft) = (edges(&sharp, 45, 60, 100), edges(&soft, 45, 60, 100));
+    let (far_sharp, far_soft) = (edges(&sharp, 45, 0, 50), edges(&soft, 45, 0, 50));
+    assert!(far_sharp > 0.5, "far cube edges visible: {far_sharp}");
+    assert!(
+        far_soft < far_sharp * 0.5,
+        "far cube blurred: {far_soft} vs {far_sharp}"
+    );
+    assert!(
+        near_soft > near_sharp * 0.7,
+        "focused cube stays sharp: {near_soft} vs {near_sharp}"
+    );
+    // Focus on the far cube instead: it sharpens and the near one blurs.
+    if let Operation::Camera3d(c) = &mut doc.nodes.get_mut(&camera).unwrap().operation {
+        c.focus_on = Some(far);
+    }
+    let pulled = render(&renderer, &doc, &Default::default());
+    let (near_pulled, far_pulled) = (edges(&pulled, 45, 60, 100), edges(&pulled, 45, 0, 50));
+    assert!(
+        far_pulled > far_sharp * 0.7,
+        "far cube in focus: {far_pulled} vs {far_sharp}"
+    );
+    assert!(
+        near_pulled < near_sharp * 0.5,
+        "near cube blurred: {near_pulled} vs {near_sharp}"
+    );
+}
+
+#[test]
+#[ignore = "requires Vulkan"]
+fn motion_blur_smears_a_moving_cube_across_the_shutter() {
+    let renderer = renderer();
+    let rate = Time::new(24, 1).unwrap();
+    let mut doc = blank(W, H, rate).unwrap();
+    // 20 pixels a frame to the right, at x = 0 on frame 1: the half-frame shutter
+    // sweeps it 10 pixels.
+    let mut moving = cube(20.0, [0.0; 3]);
+    if let Operation::Shape3d(s) = &mut moving {
+        let track = &mut s.placement.position;
+        track
+            .set_key_at(Time::at_frame(0, rate).unwrap(), [-20.0, 0.0, 0.0])
+            .unwrap();
+        track
+            .set_key_at(Time::at_frame(2, rate).unwrap(), [20.0, 0.0, 0.0])
+            .unwrap();
+        track.set_interpolation(Interpolation::Linear);
+    }
+    let moving = add(&mut doc, moving, &[]);
+    let render_node = add(&mut doc, op(&RENDER_SCENE), &[("scene", moving)]);
+    doc.output = render_node;
+    let frame = |doc: &Composition| {
+        renderer
+            .render_frame(
+                &Plan::compile(doc).unwrap(),
+                RenderRequest::full(Time::at_frame(1, rate).unwrap()),
+                &Default::default(),
+            )
+            .unwrap()
+            .pixels
+    };
+    let still = frame(&doc);
+    if let Operation::RenderScene(r) = &mut doc.nodes.get_mut(&render_node).unwrap().operation {
+        r.motion_blur = 180.0.into();
+    }
+    let blurred = frame(&doc);
+    let alpha = |p: &[[f32; 4]], x: u32| p[(45 * W + x) as usize][3];
+    // Just past the cube's right edge: empty when still, partly covered while moving.
+    assert!(alpha(&still, 93) < 0.01);
+    let edge = alpha(&blurred, 93);
+    assert!(edge > 0.1 && edge < 0.9, "{edge}");
+    // The middle stays covered the whole shutter.
+    assert!(alpha(&blurred, 80) > 0.99);
+}

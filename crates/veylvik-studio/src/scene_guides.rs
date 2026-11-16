@@ -98,17 +98,7 @@ fn tint(colour: [f32; 3]) -> Color32 {
 }
 /// Local bounding box of an object's geometry.
 pub(crate) fn bounds(geometry: &Geometry) -> ([f32; 3], [f32; 3]) {
-    match geometry {
-        Geometry::Shape { size, .. } => (size.map(|v| -v * 0.5), size.map(|v| v * 0.5)),
-        Geometry::Text { outline, depth, .. } => {
-            let [x0, y0, x1, y1] = veylvik_text::bounds(outline);
-            ([x0, y0, -depth * 0.5], [x1, y1, depth * 0.5])
-        }
-        Geometry::Card { size, .. } => (
-            [-size[0] * 0.5, -size[1] * 0.5, 0.0],
-            [size[0] * 0.5, size[1] * 0.5, 0.0],
-        ),
-    }
+    veylvik_scene::local_bounds(geometry)
 }
 impl Studio {
     /// The guides row (toggles and quick views) inside the 3D toolbar.
@@ -184,6 +174,9 @@ impl Studio {
                 world: light.world,
                 focal_length: 30.0,
                 sensor_width: 36.0,
+                f_stop: 0.0,
+                focus_distance: 0.0,
+                focus_on: None,
             };
             chosen = Some(Some(FreeView::from_camera(
                 &camera,
@@ -602,6 +595,9 @@ impl Studio {
             }
         }
         self.draw_gizmo(&ctx, &painter, &p, &scene);
+        if self.scene_focus(&ctx, &painter, &p, &scene, response) {
+            return;
+        }
         // Hover names a guide; a click selects its node.
         if let Some(pointer) = response.hover_pos() {
             let nearest = hits

@@ -46,6 +46,8 @@ pub enum ParameterKind {
     ShapeKind,
     LightKind,
     Look,
+    /// Another node by id, or null.
+    NodeRef,
 }
 #[derive(Debug, Clone, Copy, Serialize)]
 pub struct Parameter {
@@ -103,7 +105,7 @@ impl Parameter {
             ParameterKind::Colour3 => json!([0.6_f32, 0.6_f32, 0.6_f32]),
             ParameterKind::ShapeKind => json!(crate::nodes::ShapeKind::default()),
             ParameterKind::LightKind => json!(crate::nodes::LightKind::default()),
-            ParameterKind::Look => json!(null),
+            ParameterKind::Look | ParameterKind::NodeRef => json!(null),
         }
     }
     fn schema(&self) -> Value {
@@ -136,6 +138,9 @@ impl Parameter {
             }
             ParameterKind::Look => {
                 json!({"anyOf":[{"type":"null"},{"type":"object","description":"A Text surface (material) definition: the parameters of a material node without its type."}]})
+            }
+            ParameterKind::NodeRef => {
+                json!({"anyOf":[{"type":"null"},{"type":"string","format":"uuid"}]})
             }
             ParameterKind::PlanarTrack => crate::planar::schema(),
             ParameterKind::PlanarMode => {

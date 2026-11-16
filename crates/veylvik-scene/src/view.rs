@@ -62,6 +62,9 @@ impl FreeView {
             world: math::mul(&math::translate(self.eye()), &self.rotation()),
             focal_length: self.focal_length,
             sensor_width: self.sensor_width,
+            f_stop: 0.0,
+            focus_distance: 0.0,
+            focus_on: None,
         }
     }
     /// Turn around the target (degrees).

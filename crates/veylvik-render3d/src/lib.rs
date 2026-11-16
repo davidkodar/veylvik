@@ -194,6 +194,38 @@ fn projection(camera: &veylvik_scene::Camera, width: u32, height: u32) -> math::
         [0.0, 0.0, -1.0, 0.0],
     ]
 }
+/// The lens uniform of `copy.wgsl`. Depth of field treats one scene unit as a
+/// millimetre: the blur radius of a point at distance d, focused at s, is
+/// f^2 / N / (s - f) * |1 - s / d| on the sensor, scaled to pixels.
+fn lens(
+    camera: &veylvik_scene::Camera,
+    scene: &veylvik_scene::Scene,
+    width: u32,
+    blend: f32,
+) -> [f32; 8] {
+    let f = camera.focal_length.max(1.0);
+    let optics = if camera.f_stop > 0.0 {
+        f * f / camera.f_stop * (width as f32 / camera.sensor_width.max(1e-3)) * 0.5
+    } else {
+        0.0
+    };
+    let eye = math::point(&camera.world, [0.0; 3]);
+    let nearest = shadow::bounds(scene).map_or(1.0e9, |(centre, radius)| {
+        let d = [0, 1, 2].map(|k| centre[k] - eye[k]);
+        ((d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt() - radius).max(NEAR)
+    });
+    let largest = 64.0 * width as f32 / 1920.0;
+    [
+        optics,
+        f,
+        camera.focus(scene),
+        nearest,
+        largest,
+        blend,
+        NEAR,
+        0.0,
+    ]
+}
 impl SceneRenderer for Engine {
     fn render(&self, job: SceneJob<'_>) -> Result<()> {
         let SceneJob {
@@ -208,6 +240,7 @@ impl SceneRenderer for Engine {
             ltc,
             time,
             occlusion,
+            blend,
             target,
             ..
         } = job;
@@ -246,7 +279,7 @@ impl SceneRenderer for Engine {
             "3D depth",
             DEPTH,
             SAMPLES,
-            wgpu::TextureUsages::RENDER_ATTACHMENT,
+            wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
         );
         let view_proj = math::mul(
             &projection(&camera, width, height),
@@ -603,7 +636,7 @@ impl SceneRenderer for Engine {
                     view: &depth,
                     depth_ops: Some(wgpu::Operations {
                         load: wgpu::LoadOp::Clear(0.0),
-                        store: wgpu::StoreOp::Discard,
+                        store: wgpu::StoreOp::Store,
                     }),
                     stencil_ops: None,
                 }),
@@ -632,6 +665,11 @@ impl SceneRenderer for Engine {
                 pass.draw_indexed(0..*count, 0, 0..1);
             }
         }
+        let lens = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("3D lens"),
+            contents: bytemuck::cast_slice(&lens(&camera, scene, width, blend)),
+            usage: wgpu::BufferUsages::UNIFORM,
+        });
         let copy = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("3D resolve copy"),
             layout: &self.copy.get_bind_group_layout(0),
@@ -643,6 +681,14 @@ impl SceneRenderer for Engine {
                 wgpu::BindGroupEntry {
                     binding: 1,
                     resource: target.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::TextureView(&depth),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: lens.as_entire_binding(),
                 },
             ],
         });

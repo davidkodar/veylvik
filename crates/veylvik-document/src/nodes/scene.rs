@@ -60,6 +60,9 @@ fn validate_look(look: &Option<Box<crate::nodes::Material>>) -> Result<()> {
     }
     Ok(())
 }
+fn ten() -> Scalar {
+    10.0.into()
+}
 fn one() -> Scalar {
     1.0.into()
 }
@@ -289,12 +292,21 @@ pub struct Camera3d {
     pub placement: Placement,
     pub focal_length: Scalar,
     pub sensor_width: Scalar,
+    /// Depth of field: the lens's f-number (0 = everything sharp).
+    #[serde(default = "zero")]
+    pub f_stop: Scalar,
+    /// Distance in focus, in scene units (0 = autofocus on the frame centre).
+    #[serde(default = "zero")]
+    pub focus_distance: Scalar,
+    /// A 3D object kept in focus wherever it and the camera move; overrides Focus distance.
+    #[serde(default)]
+    pub focus_on: Option<NodeId>,
 }
 pub static CAMERA_3D: NodeType = NodeType {
     type_id: "camera_3d",
     version: 1,
     label: "Camera",
-    description: "A perspective camera. Untouched, it frames the composition exactly at depth 0, at the distance its focal length and sensor width (millimetres, horizontal) imply, so 3D layers there match 2D. Placement moves and turns it from that home view; keys animate it. Outputs a scene to merge with the objects it films.",
+    description: "A perspective camera. Untouched, it frames the composition exactly at depth 0, at the distance its focal length and sensor width (millimetres, horizontal) imply, so 3D layers there match 2D. Placement moves and turns it from that home view; keys animate it. F-stop above 0 adds depth of field (lower = blurrier, like a real lens with one scene unit as a millimetre), focused on the Focus on object (kept sharp as it and the camera move), else at Focus distance or, at 0, on whatever is at the frame centre. Outputs a scene to merge with the objects it films.",
     inputs: &[],
     optional: &[],
     output: PortKind::Scene,
@@ -302,13 +314,21 @@ pub static CAMERA_3D: NodeType = NodeType {
         other("placement", ParameterKind::Placement, "transform"),
         scalar("focal_length", "millimetres", 1.0, 2000.0, 50.0),
         scalar("sensor_width", "millimetres", 1.0, 100.0, 36.0),
+        scalar("f_stop", "f-number", 0.0, 64.0, 0.0),
+        scalar("focus_distance", "pixels", 0.0, 1_000_000.0, 0.0),
+        other("focus_on", ParameterKind::NodeRef, "object in focus"),
     ],
 };
-node!(Camera3d, CAMERA_3D, [focal_length, sensor_width], {
-    fn validate(&self) -> Result<()> {
-        self.placement.validate()
+node!(
+    Camera3d,
+    CAMERA_3D,
+    [focal_length, sensor_width, f_stop, focus_distance],
+    {
+        fn validate(&self) -> Result<()> {
+            self.placement.validate()
+        }
     }
-});
+);
 
 /// A point, spot or sun light.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -387,18 +407,30 @@ pub struct RenderScene {
     /// How much nearby surfaces shade the environment's light (contact shadows).
     #[serde(default = "one")]
     pub occlusion: Scalar,
+    /// Shutter angle in degrees (0 = no motion blur, 180 = the film look).
+    #[serde(default = "zero")]
+    pub motion_blur: Scalar,
+    /// Moments across the shutter that are rendered and averaged.
+    #[serde(default = "ten")]
+    pub blur_samples: Scalar,
 }
 pub static RENDER_SCENE: NodeType = NodeType {
     type_id: "render_scene",
     version: 1,
     label: "Render scene",
-    description: "Renders the scene on its Scene input as an image at the composition size, with transparent background. Camera picks which camera films it (1 = the first, in node order; 0 = the home view that matches 2D). Occlusion sets how much nearby surfaces shade the environment's light, so objects sit on the floor and gaps darken (0 = off).",
+    description: "Renders the scene on its Scene input as an image at the composition size, with transparent background. Camera picks which camera films it (1 = the first, in node order; 0 = the home view that matches 2D). Occlusion sets how much nearby surfaces shade the environment's light, so objects sit on the floor and gaps darken (0 = off). Motion blur is the shutter angle (180 = the film look): the scene is rendered at Blur samples moments across the shutter, centred on the frame, and averaged.",
     inputs: &["scene"],
     optional: &[],
     output: PortKind::Image,
     parameters: &[
         scalar("camera", "index", 0.0, 64.0, 1.0),
         scalar("occlusion", "factor", 0.0, 1.0, 1.0),
+        scalar("motion_blur", "degrees", 0.0, 360.0, 0.0),
+        scalar("blur_samples", "count", 2.0, 32.0, 10.0),
     ],
 };
-node!(RenderScene, RENDER_SCENE, [camera, occlusion]);
+node!(
+    RenderScene,
+    RENDER_SCENE,
+    [camera, occlusion, motion_blur, blur_samples]
+);

@@ -810,8 +810,6 @@ impl Renderer {
                     .ok_or_else(|| {
                         error("Render scene needs the 3D renderer, which this host has not loaded")
                     })?;
-                let (scene, camera, occlusion) = scene_hook::evaluate(plan, scheduled.node, time)?;
-                let camera = scene_view.unwrap_or(camera);
                 let images: Vec<(veylvik_document::NodeId, &wgpu::Buffer)> = scheduled
                     .cards
                     .iter()
@@ -820,21 +818,29 @@ impl Renderer {
                         _ => None,
                     })
                     .collect();
-                renderer.render(SceneJob {
-                    device: &self.device,
-                    queue: &self.queue,
-                    encoder: &mut encoder,
-                    scene: &scene,
-                    camera,
-                    occlusion,
-                    time,
-                    width: plan.width,
-                    height: plan.height,
-                    images: &images,
-                    environment: &self.studio_environment,
-                    ltc: &self.ltc,
-                    target: &buffers[scheduled.output],
-                })?;
+                // Motion blur renders several moments and averages them in place.
+                let moments = scene_hook::sample_times(plan, scheduled.node, time)?;
+                for (k, at) in moments.into_iter().enumerate() {
+                    let (scene, camera, occlusion) =
+                        scene_hook::evaluate(plan, scheduled.node, at)?;
+                    let camera = scene_view.unwrap_or(camera);
+                    renderer.render(SceneJob {
+                        device: &self.device,
+                        queue: &self.queue,
+                        encoder: &mut encoder,
+                        scene: &scene,
+                        camera,
+                        occlusion,
+                        blend: 1.0 / (k + 1) as f32,
+                        time: at,
+                        width: plan.width,
+                        height: plan.height,
+                        images: &images,
+                        environment: &self.studio_environment,
+                        ltc: &self.ltc,
+                        target: &buffers[scheduled.output],
+                    })?;
+                }
                 continue;
             }
             let node = &plan.nodes[scheduled.node];

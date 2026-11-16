@@ -64,6 +64,12 @@ pub struct Camera {
     pub world: Mat4,
     pub focal_length: f32,
     pub sensor_width: f32,
+    /// Lens f-number for depth of field; 0 keeps everything sharp.
+    pub f_stop: f32,
+    /// Distance in focus (scene units); 0 focuses on the frame centre.
+    pub focus_distance: f32,
+    /// An object kept in focus, overriding the distance.
+    pub focus_on: Option<NodeId>,
 }
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Light {
@@ -136,9 +142,51 @@ pub fn home_camera(width: u32, height: u32) -> Camera {
         ]),
         focal_length,
         sensor_width,
+        f_stop: 0.0,
+        focus_distance: 0.0,
+        focus_on: None,
+    }
+}
+impl Object {
+    /// The corners of the box around its geometry, in its own frame.
+    pub fn local_bounds(&self) -> ([f32; 3], [f32; 3]) {
+        local_bounds(&self.geometry)
+    }
+    /// Centre and radius of a sphere around it, in the world.
+    pub fn sphere(&self) -> ([f32; 3], f32) {
+        let (a, b) = self.local_bounds();
+        let centre = math::point(&self.world, [0, 1, 2].map(|k| (a[k] + b[k]) * 0.5));
+        let corner = math::point(&self.world, b);
+        let d = [0, 1, 2].map(|k| corner[k] - centre[k]);
+        (centre, (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt())
+    }
+}
+/// Local bounding box of an object's geometry.
+pub fn local_bounds(geometry: &Geometry) -> ([f32; 3], [f32; 3]) {
+    match geometry {
+        Geometry::Shape { size, .. } => (size.map(|v| -v * 0.5), size.map(|v| v * 0.5)),
+        Geometry::Text { outline, depth, .. } => {
+            let [x0, y0, x1, y1] = veylvik_text::bounds(outline);
+            ([x0, y0, -depth * 0.5], [x1, y1, depth * 0.5])
+        }
+        Geometry::Card { size, .. } => (
+            [-size[0] * 0.5, -size[1] * 0.5, 0.0],
+            [size[0] * 0.5, size[1] * 0.5, 0.0],
+        ),
     }
 }
 impl Camera {
+    /// The distance in focus: the Focus on object's centre along the view when it
+    /// is in the scene, else Focus distance (0 = the frame centre).
+    pub fn focus(&self, scene: &Scene) -> f32 {
+        self.focus_on
+            .and_then(|id| scene.objects.iter().find(|o| o.node == id))
+            .map(|o| {
+                let v = math::point(&math::rigid_inverse(&self.world), o.sphere().0);
+                (-v[2]).max(1.0)
+            })
+            .unwrap_or(self.focus_distance)
+    }
     /// Where a world point lands in the frame (pixels) and its distance in front of
     /// the camera; None behind it.
     pub fn project(&self, p: [f32; 3], width: u32, height: u32) -> Option<([f32; 2], f32)> {
@@ -342,6 +390,9 @@ fn node(doc: &Graph<'_>, id: NodeId, time: Time, depth: usize) -> Result<Scene> 
                 ),
                 focal_length,
                 sensor_width,
+                f_stop: c.f_stop.at(time)?.max(0.0),
+                focus_distance: c.focus_distance.at(time)?.max(0.0),
+                focus_on: c.focus_on,
             });
         }
         Operation::Light3d(l) => scene.lights.push(Light {

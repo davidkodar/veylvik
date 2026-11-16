@@ -41,6 +41,10 @@ pub(crate) struct InspectCx<'a> {
     pub picking: Option<&'static str>,
     /// An eyedropper request for this colour field.
     pub pick: Option<&'static str>,
+    /// The 3D objects in the composition, for a camera's Focus on.
+    pub objects: &'a [(veylvik_document::NodeId, String)],
+    /// The user asked to pick the object in focus in the viewer.
+    pub pick_focus: bool,
 }
 pub(crate) trait Inspect {
     /// Node-specific controls above the registered parameters; most nodes have none.

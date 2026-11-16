@@ -154,6 +154,39 @@ impl Inspect for Camera3d {
     fn inspect(&mut self, ui: &mut egui::Ui, cx: &mut InspectCx<'_>) {
         ui.weak("Untouched, the camera sees exactly the 2D frame at depth 0. Move and turn it from there.");
         cx.dirty |= placement(ui, &mut self.placement, cx);
+        ui.horizontal(|ui| {
+            ui.add_sized([88., 22.], egui::Label::new("Focus on"));
+            let name = |id: Option<veylvik_document::NodeId>| match id {
+                None => "Focus distance".to_string(),
+                Some(id) => cx
+                    .objects
+                    .iter()
+                    .find(|(o, _)| *o == id)
+                    .map_or("Missing object".into(), |(_, label)| label.clone()),
+            };
+            egui::ComboBox::from_id_salt("focus_on")
+                .selected_text(name(self.focus_on))
+                .show_ui(ui, |ui| {
+                    cx.dirty |= ui
+                        .selectable_value(&mut self.focus_on, None, "Focus distance")
+                        .on_hover_text("Focus at Focus distance; 0 focuses on whatever is at the frame centre")
+                        .changed();
+                    for (id, label) in cx.objects {
+                        cx.dirty |= ui
+                            .selectable_value(&mut self.focus_on, Some(*id), label)
+                            .changed();
+                    }
+                })
+                .response
+                .on_hover_text("Keep this object sharp wherever it and the camera move (depth of field needs an F-stop above 0)");
+            if ui
+                .button("Pick in viewer")
+                .on_hover_text("Click an object in the viewer to focus on it")
+                .clicked()
+            {
+                cx.pick_focus = true;
+            }
+        });
     }
 }
 impl Inspect for Light3d {

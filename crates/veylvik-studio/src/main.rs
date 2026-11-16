@@ -46,6 +46,7 @@ mod preview_images;
 mod project;
 mod recovery;
 mod render_queue;
+mod scene_focus;
 mod scene_gizmo;
 mod scene_guides;
 mod scopes;
@@ -1652,6 +1653,7 @@ impl Studio {
             .get("lights")
             .and_then(|id| self.project.document.snapshot().nodes.get(id))
             .map(|n| n.label.clone());
+        let focus_objects = scene_focus::objects(self.project.document.snapshot());
         let mut cx = nodes::InspectCx {
             node_id: self.draft.id,
             time,
@@ -1678,6 +1680,8 @@ impl Studio {
                 .filter(|p| p.node == self.draft.id)
                 .map(|p| p.field),
             pick: None,
+            objects: &focus_objects,
+            pick_focus: false,
         };
         match &mut self.draft.operation {
             op @ Operation::Text(veylvik_document::nodes::Text { .. }) => {
@@ -1702,8 +1706,12 @@ impl Studio {
             preview_soon,
             error,
             pick,
+            pick_focus,
             ..
         } = cx;
+        if pick_focus {
+            scene_focus::set_picking(ui.ctx(), true);
+        }
         if match_shot {
             self.match_shot(ui.ctx());
         }

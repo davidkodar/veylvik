@@ -1329,6 +1329,30 @@ and `colour`.
   alpha, weighed against the environment's ambient light, and draws after solid
   objects without hiding anything, so a plane laid on the ground of the footage
   darkens the real floor when the render goes over the clip.
+- **Depth of field** (on a Camera): **F-stop** above 0 blurs what is out of
+  focus like a real lens, treating one scene unit as a millimetre (so at home a
+  1920-pixel-wide frame at depth 0 is about 1.9 m across). A point at distance d
+  with the lens focused at s blurs by a radius of f² / N / (s − f) · |1 − s / d|
+  on the sensor, scaled to pixels and capped at 64 pixels per 1920 of width.
+  **Focus on** names a 3D object (shape, 3D text or image card) kept in focus:
+  the distance is its bounding box centre along the camera's view, re-measured
+  every frame, so it stays sharp as it and the camera move; a missing object
+  falls back to **Focus distance**, in scene units from the camera, where 0
+  focuses on whatever is at the frame centre. In Studio, the Camera inspector
+  lists the objects, and **Focus** in the viewer's 3D toolbar (or **Pick in
+  viewer**) outlines the object under the pointer (the smallest box wins, so a
+  cube beats the floor under it) and sets it with a click on the scene camera,
+  adding a camera if there is none and turning depth of field on at f/2.8 if it
+  was off, as one undo step. Esc stops picking. The blur is a depth-aware gather after the resolve:
+  out-of-focus neighbours spill onto a pixel as far as their own blur reaches,
+  and a sharp object in front is not smeared by the background behind it. The
+  free view in Studio always shows everything sharp.
+- **Motion blur** (on Render scene): **Motion blur** is the shutter angle in
+  whole degrees (0 off, 180 the film look, 360 the whole frame). The scene,
+  cameras, lights, shadows and animated looks are evaluated and rendered at
+  **Blur samples** (2–32, default 10) exact moments spread evenly across the
+  shutter, centred on the frame, and averaged; render time grows with the
+  samples.
 - **Render scene**: films a scene as an image with camera 1, 2, … in node order, or
   0 for the home view.
 

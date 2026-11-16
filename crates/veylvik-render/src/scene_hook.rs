@@ -17,6 +17,9 @@ pub struct SceneJob<'a> {
     pub camera: veylvik_scene::Camera,
     /// How much nearby surfaces shade the environment (Render scene's Occlusion).
     pub occlusion: f32,
+    /// How much of this render goes into `target`: 1 replaces it; motion blur
+    /// averages its samples by blending sample k at 1 / (k + 1).
+    pub blend: f32,
     /// The frame time, for animated looks.
     pub time: veylvik_document::Time,
     pub width: u32,
@@ -61,6 +64,47 @@ pub(crate) fn evaluate(
     let occlusion = op.occlusion.at(time).map_err(error)?.clamp(0.0, 1.0);
     Ok((scene, camera, occlusion))
 }
+/// The moments a Render scene films for the frame at `time`: the frame itself, or
+/// with motion blur its samples spread evenly over the shutter, centred on it.
+pub(crate) fn sample_times(
+    plan: &crate::Plan,
+    node: usize,
+    time: veylvik_document::Time,
+) -> Result<Vec<veylvik_document::Time>> {
+    let Operation::RenderScene(op) = &plan.nodes[node].operation else {
+        return Err(error("not a Render scene node"));
+    };
+    let angle = op
+        .motion_blur
+        .at(time)
+        .map_err(error)?
+        .clamp(0.0, 360.0)
+        .round() as i64;
+    let rate = plan.frame_rate;
+    if angle == 0 || rate.ticks <= 0 {
+        return Ok(vec![time]);
+    }
+    let n = op
+        .blur_samples
+        .at(time)
+        .map_err(error)?
+        .clamp(2.0, 32.0)
+        .round() as i64;
+    // Sample i sits (2i - (n - 1)) / (2 (n - 1)) of the shutter from the frame;
+    // a frame lasts rate.rate / rate.ticks seconds.
+    let denominator = u32::try_from(2 * (n - 1) * 360 * rate.ticks)
+        .map_err(|_| error("frame rate too fine for motion blur"))?;
+    (0..n)
+        .map(|i| {
+            let offset = veylvik_document::Time::new(
+                (2 * i - (n - 1)) * angle * i64::from(rate.rate),
+                denominator,
+            )
+            .map_err(error)?;
+            time.checked_add(offset).map_err(error)
+        })
+        .collect()
+}
 /// A stable fingerprint of what a Render scene shows at a frame, for the frame cache.
 pub(crate) fn fingerprint(
     plan: &crate::Plan,
@@ -68,9 +112,11 @@ pub(crate) fn fingerprint(
     time: veylvik_document::Time,
 ) -> Result<[u32; 2]> {
     use std::hash::{Hash, Hasher};
-    let (scene, camera, occlusion) = evaluate(plan, node, time)?;
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    format!("{scene:?}{camera:?}{occlusion}").hash(&mut hasher);
+    for at in sample_times(plan, node, time)? {
+        let (scene, camera, occlusion) = evaluate(plan, node, at)?;
+        format!("{scene:?}{camera:?}{occlusion}").hash(&mut hasher);
+    }
     let h = hasher.finish();
     Ok([h as u32, (h >> 32) as u32])
 }

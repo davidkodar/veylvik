@@ -64,45 +64,6 @@ impl Maps {
         }
     }
 }
-/// Local bounds of an object's geometry.
-fn local_bounds(geometry: &Geometry) -> ([f32; 3], [f32; 3]) {
-    match geometry {
-        Geometry::Shape { size, .. } => (size.map(|v| -v * 0.5), size.map(|v| v * 0.5)),
-        Geometry::Text { outline, depth, .. } => {
-            let [x0, y0, x1, y1] = veylvik_text_bounds(outline);
-            ([x0, y0, -depth * 0.5], [x1, y1, depth * 0.5])
-        }
-        Geometry::Card { size, .. } => (
-            [-size[0] * 0.5, -size[1] * 0.5, 0.0],
-            [size[0] * 0.5, size[1] * 0.5, 0.0],
-        ),
-    }
-}
-fn veylvik_text_bounds(outline: &veylvik_document::vector::PathMask) -> [f32; 4] {
-    let mut b = [f32::MAX, f32::MAX, f32::MIN, f32::MIN];
-    for command in &outline.commands {
-        use veylvik_document::vector::PathCommand as C;
-        let points: &[[f32; 2]] = match command {
-            C::Move { to } | C::Line { to } => std::slice::from_ref(to),
-            C::Quad { control, to } => &[*control, *to],
-            C::Cubic {
-                control1,
-                control2,
-                to,
-            } => &[*control1, *control2, *to],
-            C::Close {} => &[],
-        };
-        for p in points {
-            b = [
-                b[0].min(p[0]),
-                b[1].min(p[1]),
-                b[2].max(p[0]),
-                b[3].max(p[1]),
-            ];
-        }
-    }
-    if b[0] > b[2] { [0.0; 4] } else { b }
-}
 /// Centre and radius of everything that casts or catches shadows.
 pub(crate) fn bounds(scene: &Scene) -> Option<([f32; 3], f32)> {
     let mut lo = [f32::MAX; 3];
@@ -112,7 +73,7 @@ pub(crate) fn bounds(scene: &Scene) -> Option<([f32; 3], f32)> {
         .iter()
         .filter(|o| !matches!(o.geometry, Geometry::Card { .. }))
     {
-        let (a, b) = local_bounds(&object.geometry);
+        let (a, b) = object.local_bounds();
         for i in 0..8 {
             let p = math::point(
                 &object.world,
