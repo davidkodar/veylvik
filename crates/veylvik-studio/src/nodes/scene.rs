@@ -33,6 +33,40 @@ fn placement(ui: &mut egui::Ui, placement: &mut Placement, cx: &InspectCx<'_>) -
     );
     changed
 }
+/// The surface's library look, or a pointer to the library when it is plain.
+fn look(
+    ui: &mut egui::Ui,
+    look: &mut Option<Box<veylvik_document::nodes::Material>>,
+    cx: &InspectCx<'_>,
+) -> bool {
+    let mut changed = false;
+    match look {
+        Some(material) => {
+            ui.horizontal(|ui| {
+                ui.label(format!("Look: {}", material.kind.label()));
+                if ui
+                    .small_button("Plain surface")
+                    .on_hover_text("Remove the look and shade with colour, roughness and metallic")
+                    .clicked()
+                {
+                    changed = true;
+                }
+            });
+            if changed {
+                *look = None;
+                return true;
+            }
+            changed |= super::look_slider(ui, material);
+            changed |= super::colour_controls(ui, material, cx.time);
+        }
+        None => {
+            ui.weak(
+                "Pick a material in Library > Materials and Apply to selection to give it a look.",
+            );
+        }
+    }
+    changed
+}
 fn kind<T: PartialEq + Copy>(
     ui: &mut egui::Ui,
     label: &str,
@@ -72,14 +106,20 @@ impl Inspect for Shape3d {
                 (Torus, "Torus"),
             ],
         );
-        cx.dirty |= crate::animation::colour_track(ui, "Colour", &mut self.colour, cx.time);
+        cx.dirty |= look(ui, &mut self.look, cx);
+        if self.look.is_none() {
+            cx.dirty |= crate::animation::colour_track(ui, "Colour", &mut self.colour, cx.time);
+        }
         cx.dirty |= placement(ui, &mut self.placement, cx);
     }
 }
 impl Inspect for Text3d {
     fn inspect(&mut self, ui: &mut egui::Ui, cx: &mut InspectCx<'_>) {
         ui.weak("Extrudes the Text or Path on its Outline input; Depth sets how deep.");
-        cx.dirty |= crate::animation::colour_track(ui, "Colour", &mut self.colour, cx.time);
+        cx.dirty |= look(ui, &mut self.look, cx);
+        if self.look.is_none() {
+            cx.dirty |= crate::animation::colour_track(ui, "Colour", &mut self.colour, cx.time);
+        }
         cx.dirty |= placement(ui, &mut self.placement, cx);
     }
 }

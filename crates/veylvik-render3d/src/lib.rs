@@ -36,6 +36,16 @@ struct LightUniform {
     direction: [f32; 4],
     colour: [f32; 4],
 }
+#[repr(C)]
+#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+struct LookUniform {
+    model: [[f32; 4]; 4],
+    normal: [[f32; 4]; 4],
+    view_proj: [[f32; 4]; 4],
+    view: [[f32; 4]; 4],
+    camera: [f32; 4],
+    uv_scale: [f32; 4],
+}
 struct GpuMesh {
     vertices: wgpu::Buffer,
     indices: wgpu::Buffer,
@@ -44,6 +54,9 @@ struct GpuMesh {
 }
 pub struct Engine {
     layout: wgpu::BindGroupLayout,
+    material_layout: wgpu::BindGroupLayout,
+    look_layout: wgpu::BindGroupLayout,
+    look: wgpu::RenderPipeline,
     lit: wgpu::RenderPipeline,
     card: wgpu::RenderPipeline,
     copy: wgpu::ComputePipeline,
@@ -170,6 +183,103 @@ impl Engine {
             Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
             false,
         );
+        // Library looks: the material kernels' bindings in group 0, the object in 1.
+        let entry = |binding, ty, writable: bool| wgpu::BindGroupLayoutEntry {
+            binding,
+            // Only the object uniform (group 1) feeds the vertex stage.
+            visibility: if ty == 0 && binding == 0 && !writable {
+                wgpu::ShaderStages::VERTEX_FRAGMENT
+            } else {
+                wgpu::ShaderStages::FRAGMENT
+            },
+            ty: match ty {
+                0 => wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                _ => wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Storage {
+                        read_only: !writable,
+                    },
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+            },
+            count: None,
+        };
+        let material_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("3D look material"),
+            entries: &[
+                entry(0, 0, false),
+                entry(1, 1, false),
+                entry(2, 1, false),
+                entry(3, 1, true),
+                entry(4, 1, false),
+                entry(5, 1, false),
+                entry(6, 0, false),
+                entry(7, 1, false),
+                entry(8, 1, false),
+            ],
+        });
+        let look_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("3D look object"),
+            entries: &[entry(0, 0, false), entry(1, 1, false)],
+        });
+        let look_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("3D looks"),
+            source: wgpu::ShaderSource::Wgsl(
+                format!(
+                    "{}{}",
+                    veylvik_render::MATERIAL_WGSL,
+                    include_str!("look.wgsl")
+                )
+                .into(),
+            ),
+        });
+        let look_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("3D looks"),
+            bind_group_layouts: &[Some(&material_layout), Some(&look_layout)],
+            immediate_size: 0,
+        });
+        let look = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("3D looks"),
+            layout: Some(&look_pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &look_module,
+                entry_point: Some("look_vertex"),
+                compilation_options: Default::default(),
+                buffers: &[wgpu::VertexBufferLayout {
+                    array_stride: 32,
+                    step_mode: wgpu::VertexStepMode::Vertex,
+                    attributes: &attributes,
+                }],
+            },
+            primitive: wgpu::PrimitiveState::default(),
+            depth_stencil: Some(wgpu::DepthStencilState {
+                format: DEPTH,
+                depth_write_enabled: Some(true),
+                depth_compare: Some(wgpu::CompareFunction::Greater),
+                stencil: Default::default(),
+                bias: Default::default(),
+            }),
+            multisample: wgpu::MultisampleState {
+                count: SAMPLES,
+                ..Default::default()
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &look_module,
+                entry_point: Some("look_surface"),
+                compilation_options: Default::default(),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: COLOUR,
+                    blend: None,
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+            }),
+            multiview_mask: None,
+            cache: None,
+        });
         let copy_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("3D resolve copy"),
             source: wgpu::ShaderSource::Wgsl(include_str!("copy.wgsl").into()),
@@ -184,6 +294,9 @@ impl Engine {
         });
         Self {
             layout,
+            material_layout,
+            look_layout,
+            look,
             lit,
             card,
             copy,
@@ -253,6 +366,23 @@ impl Engine {
         Ok(out)
     }
 }
+/// Pixels per mesh uv unit: titles' uv is already in pixels; primitives wrap 0..1.
+fn uv_scale(geometry: &Geometry) -> [f32; 4] {
+    use veylvik_document::nodes::ShapeKind;
+    match geometry {
+        Geometry::Shape { kind, size, .. } => {
+            let around = std::f32::consts::PI * size[0].max(size[2]);
+            match kind {
+                ShapeKind::Cube | ShapeKind::Plane => {
+                    let side = size[0].max(size[1]).max(size[2]);
+                    [side, side, 0.0, 0.0]
+                }
+                _ => [around, size[1], 0.0, 0.0],
+            }
+        }
+        _ => [1.0, 1.0, 0.0, 0.0],
+    }
+}
 fn light_uniform(light: &Light) -> LightUniform {
     use veylvik_document::nodes::LightKind;
     let p = light.position();
@@ -302,6 +432,8 @@ impl SceneRenderer for Engine {
             height,
             images,
             environment,
+            ltc,
+            time,
             target,
             ..
         } = job;
@@ -376,10 +508,77 @@ impl SceneRenderer for Engine {
                 std::cmp::Ordering::Equal
             })
         });
+        let view = math::rigid_inverse(&camera.world);
         let mut draws = Vec::new();
+        let mut looks = Vec::new();
         for object in order {
             let (vertices, indices, count) = self.mesh(device, object)?;
             if count == 0 {
+                continue;
+            }
+            if let Some(look) = &object.surface.look {
+                let (params, lighting) =
+                    veylvik_render::material_uniforms(look, width, height, time)?;
+                let buffer = |label, bytes: &[u8], usage| {
+                    device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                        label: Some(label),
+                        contents: bytes,
+                        usage,
+                    })
+                };
+                let p = buffer("look parameters", &params, wgpu::BufferUsages::UNIFORM);
+                let studio = buffer("look lighting", &lighting, wgpu::BufferUsages::UNIFORM);
+                let scratch = buffer("look scratch", &[0; 16], wgpu::BufferUsages::STORAGE);
+                let material = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some("3D look material"),
+                    layout: &self.material_layout,
+                    entries: &[
+                        (0, &p),
+                        (1, &empty),
+                        (2, &empty),
+                        (3, &scratch),
+                        (4, &empty),
+                        (5, ltc),
+                        (6, &studio),
+                        (7, environment),
+                        (8, &empty),
+                    ]
+                    .map(|(binding, buffer)| wgpu::BindGroupEntry {
+                        binding,
+                        resource: buffer.as_entire_binding(),
+                    }),
+                });
+                let uniform = LookUniform {
+                    model: columns(&object.world),
+                    normal: columns(&normal_matrix(&object.world)),
+                    view_proj: columns(&view_proj),
+                    view: columns(&view),
+                    camera: [eye[0], eye[1], eye[2], 1.0],
+                    uv_scale: {
+                        let [x, y, ..] = uv_scale(&object.geometry);
+                        [x, y, lights.len() as f32, 0.0]
+                    },
+                };
+                let uniform = buffer(
+                    "3D look object",
+                    bytemuck::bytes_of(&uniform),
+                    wgpu::BufferUsages::UNIFORM,
+                );
+                let object_bind = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some("3D look object"),
+                    layout: &self.look_layout,
+                    entries: &[
+                        wgpu::BindGroupEntry {
+                            binding: 0,
+                            resource: uniform.as_entire_binding(),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 1,
+                            resource: light_buffer.as_entire_binding(),
+                        },
+                    ],
+                });
+                looks.push((material, object_bind, vertices, indices, count));
                 continue;
             }
             let (pipeline, image) = match &object.geometry {
@@ -461,6 +660,14 @@ impl SceneRenderer for Engine {
                 occlusion_query_set: None,
                 multiview_mask: None,
             });
+            pass.set_pipeline(&self.look);
+            for (material, object, vertices, indices, count) in &looks {
+                pass.set_bind_group(0, material, &[]);
+                pass.set_bind_group(1, object, &[]);
+                pass.set_vertex_buffer(0, vertices.slice(..));
+                pass.set_index_buffer(indices.slice(..), wgpu::IndexFormat::Uint32);
+                pass.draw_indexed(0..*count, 0, 0..1);
+            }
             for (pipeline, bind, vertices, indices, count) in &draws {
                 pass.set_pipeline(pipeline);
                 pass.set_bind_group(0, bind, &[]);

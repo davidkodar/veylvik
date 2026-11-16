@@ -355,3 +355,34 @@ fn neon_on_text_brings_its_glow_and_other_looks_remove_it() {
         Some(material)
     );
 }
+
+#[test]
+fn library_materials_apply_to_3d_objects_as_their_look() {
+    use veylvik_document::nodes::SHAPE_3D;
+    let mut scene = blank(64, 64, Time::new(24, 1).unwrap()).unwrap();
+    let shape: Operation = serde_json::from_value(SHAPE_3D.default_operation()).unwrap();
+    let node = Node::new("ball", shape, &[]);
+    let id = node.id;
+    scene.nodes.insert(id, node);
+    let mut document = Document::new(scene).unwrap();
+    let look = |document: &Document| match &document.snapshot().nodes[&id].operation {
+        Operation::Shape3d(s) => s.look.clone(),
+        _ => panic!(),
+    };
+    // A catalogue look brings everything; a family then changes only the kind.
+    let commands = material::apply_commands(document.snapshot(), id, "chrome".into()).unwrap();
+    let revision = document.apply(0, &commands).unwrap();
+    let chrome = look(&document).unwrap();
+    let commands = material::apply_commands(document.snapshot(), id, "marble".into()).unwrap();
+    document.apply(revision, &commands).unwrap();
+    let marble = look(&document).unwrap();
+    assert_eq!(marble.kind, MaterialKind::Marble);
+    assert_eq!(
+        serde_json::to_value(&marble.roughness).unwrap(),
+        serde_json::to_value(&chrome.roughness).unwrap(),
+        "a family keeps the finish"
+    );
+    // Solids and other nodes are refused.
+    let output = document.snapshot().output;
+    assert!(material::apply_commands(document.snapshot(), output, "chrome".into()).is_err());
+}

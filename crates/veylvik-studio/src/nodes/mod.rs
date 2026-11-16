@@ -54,7 +54,7 @@ mod filters;
 mod generators;
 mod keying;
 mod materials;
-pub(crate) use materials::{finish_controls, lighting_controls, look_slider};
+pub(crate) use materials::{colour_controls, finish_controls, lighting_controls, look_slider};
 mod media;
 mod scene;
 mod text;

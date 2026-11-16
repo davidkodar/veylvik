@@ -189,20 +189,17 @@ pub fn library(directory: &Path) -> Result<serde_json::Value> {
     Ok(serde_json::json!({"materials":materials,"warnings":listing.warnings}))
 }
 
-/// Commands that put material `id` on `target`: a Text node gets (or keeps and
-/// restyles) its Text surface, exactly like the library; a Text surface is restyled
-/// in place. A family keeps the target's finish and lighting; a catalogue look or a
-/// saved material brings its whole look.
+/// Commands that put material `id` on `target`, exactly like the library: a Text
+/// node gets (or restyles) its Text surface, a Text surface is restyled in place,
+/// and 3D text or a 3D shape gets it as its look. A family keeps the target's
+/// finish and lighting; a catalogue look or a saved material brings its whole look.
 pub fn apply(
     doc: &veylvik_document::Composition,
     target: NodeId,
     id: &str,
     directory: &Path,
 ) -> Result<Vec<veylvik_document::Command>> {
-    use veylvik_document::{
-        Command, Operation,
-        presets::{builtin, material::Source, text_style},
-    };
+    use veylvik_document::presets::{builtin, material::Source};
     let listing;
     let source = if let Some(stem) = id.strip_prefix("saved:") {
         listing = list(directory)?;
@@ -217,24 +214,9 @@ pub fn apply(
     } else {
         return Err(format!("unknown material {id}; list them with materials").into());
     };
-    let node = doc
-        .nodes
-        .get(&target)
-        .ok_or_else(|| format!("no node {target}"))?;
-    match &node.operation {
-        Operation::Text(_) => Ok(text_style::apply(doc, target, Some(source), None)?),
-        Operation::Material(current) => {
-            let with = source.material()?;
-            let mut restyled = current.clone();
-            veylvik_document::presets::material::restyle(&mut restyled, source, &with);
-            let mut node = node.clone();
-            node.operation = Operation::Material(restyled);
-            Ok(vec![Command::Put {
-                node: Box::new(node),
-            }])
-        }
-        _ => Err("target must be a Text node or a Text surface".into()),
-    }
+    Ok(veylvik_document::presets::material::apply_commands(
+        doc, target, source,
+    )?)
 }
 
 #[cfg(test)]

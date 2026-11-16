@@ -15,12 +15,16 @@ pub struct SceneJob<'a> {
     pub encoder: &'a mut wgpu::CommandEncoder,
     pub scene: &'a veylvik_scene::Scene,
     pub camera: veylvik_scene::Camera,
+    /// The frame time, for animated looks.
+    pub time: veylvik_document::Time,
     pub width: u32,
     pub height: u32,
     /// Image card pictures by their source node (`Geometry::Card { image }`).
     pub images: &'a [(NodeId, &'a wgpu::Buffer)],
     /// The prefiltered studio environment, laid out as `environment_layer` reads it.
     pub environment: &'a wgpu::Buffer,
+    /// The area-light LTC table material shading reads (binding 5 of `MATERIAL_WGSL`).
+    pub ltc: &'a wgpu::Buffer,
     pub target: &'a wgpu::Buffer,
 }
 /// The scene and camera a Render scene node films at `time`.

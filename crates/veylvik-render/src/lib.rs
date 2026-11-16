@@ -30,6 +30,61 @@ mod scene_hook;
 /// WGSL for the prefiltered studio environment (`environment_specular`), for
 /// renderers that light with the same studio as materials.
 pub const ENVIRONMENT_WGSL: &str = include_str!("environment.wgsl");
+/// The material kernels with their studio environment, for renderers that shade
+/// surfaces with `material_colour(uv, normal)` exactly as titles are shaded. Their
+/// bindings are group 0: 0 `p` (48-byte parameters), 1, 2, 4, 8 images, 3 the
+/// result, 5 the LTC table, 6 `studio` lighting, 7 the environment.
+pub const MATERIAL_WGSL: &str = concat!(
+    include_str!("kernels.wgsl"),
+    include_str!("environment.wgsl")
+);
+/// Size of the `studio` lighting uniform in `MATERIAL_WGSL`.
+pub const MATERIAL_LIGHTING_BYTES: u64 = studio_lighting::SIZE;
+/// The kernel parameters (`p`) and studio lighting (`studio`) a material reads at
+/// `time` on a `width` x `height` canvas, as bytes for `MATERIAL_WGSL` uniforms.
+pub fn material_uniforms(
+    material: &veylvik_document::nodes::Material,
+    width: u32,
+    height: u32,
+    time: Time,
+) -> Result<(Vec<u8>, Vec<u8>)> {
+    let node = Node::new("look", Operation::Material(material.clone()), &[]);
+    let sample = |name: &str| -> Result<f32> {
+        node.operation
+            .scalar(name)
+            .ok_or_else(|| error("material parameter missing"))?
+            .at(time)
+            .map_err(Into::into)
+    };
+    let mut p = Params {
+        size_op: [width, height, 0, 0],
+        values: [0.0; 4],
+        extra: [0.0; 4],
+    };
+    let cx = nodes::Cx {
+        node: &node,
+        nodes: &[],
+        width,
+        height,
+        time,
+    };
+    nodes::RenderNode::params(material, &cx, &sample, &mut p)?;
+    let colours = material
+        .colours
+        .as_ref()
+        .map(|c| veylvik_document::optical::palette_at(c, time))
+        .transpose()?;
+    let lighting = studio_lighting::Lighting::new(
+        material.kind,
+        material.optics,
+        colours,
+        &material.studio.at(time)?,
+    );
+    Ok((
+        bytemuck::bytes_of(&p).to_vec(),
+        bytemuck::bytes_of(&lighting).to_vec(),
+    ))
+}
 pub use scene_hook::{SceneJob, SceneRenderer};
 mod scheduler;
 mod texture;
@@ -749,10 +804,12 @@ impl Renderer {
                     encoder: &mut encoder,
                     scene: &scene,
                     camera,
+                    time,
                     width: plan.width,
                     height: plan.height,
                     images: &images,
                     environment: &self.studio_environment,
+                    ltc: &self.ltc,
                     target: &buffers[scheduled.output],
                 })?;
                 continue;

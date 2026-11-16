@@ -128,7 +128,10 @@ impl Studio {
         }
 
         let mut use_action = None;
-        let can_fill_text = matches!(self.draft.operation, Operation::Text(_));
+        let can_fill_text = matches!(
+            self.draft.operation,
+            Operation::Text(_) | Operation::Text3d(_) | Operation::Shape3d(_)
+        );
         let mut chosen = None;
         let mut chosen_saved = None;
         let mut toggle_favourite: Option<String> = None;
@@ -288,7 +291,7 @@ impl Studio {
                     let key=self.materials.entries[i].key();
                     ui.strong(&self.materials.entries[i].saved.label);
                     let payload=LibraryDrag{id:"",template:false,saved:Some(i)};
-                    if can_fill_text && ui.add_sized([ui.available_width(),30.],egui::Button::new(egui::RichText::new("Apply to selected text").color(crate::theme::ink(crate::theme::palette(ui.ctx()).selection))).fill(crate::theme::palette(ui.ctx()).selection)).clicked() {use_action=Some((payload,Use::Text));}
+                    if can_fill_text && ui.add_sized([ui.available_width(),30.],egui::Button::new(egui::RichText::new("Apply to selection").color(crate::theme::ink(crate::theme::palette(ui.ctx()).selection))).fill(crate::theme::palette(ui.ctx()).selection)).clicked() {use_action=Some((payload,Use::Text));}
                     ui.horizontal_wrapped(|ui| {
                         if ui.button("Use as background").clicked() {use_action=Some((payload,Use::Background));}
                         if ui.button("Use as foreground").clicked() {use_action=Some((payload,Use::Foreground));}
@@ -298,7 +301,7 @@ impl Studio {
                 } else if let Some(entry)=selected {
                     ui.strong(label(entry));
                     if self.browser.tab==Tab::Materials && matches!(self.draft.operation,Operation::Text(_)) {
-                        if ui.add_sized([ui.available_width(),30.],egui::Button::new(egui::RichText::new("Apply to selected text").color(crate::theme::ink(crate::theme::palette(ui.ctx()).selection))).fill(crate::theme::palette(ui.ctx()).selection)).clicked() {apply=Some(entry.id);}
+                        if ui.add_sized([ui.available_width(),30.],egui::Button::new(egui::RichText::new("Apply to selection").color(crate::theme::ink(crate::theme::palette(ui.ctx()).selection))).fill(crate::theme::palette(ui.ctx()).selection)).clicked() {apply=Some(entry.id);}
                     } else if catalogue(entry.id).is_none() && ui.button("Apply to composition…").clicked() {details=Some(entry.id);}
                     let payload=LibraryDrag{id:entry.id,template:false,saved:None};
                     ui.horizontal_wrapped(|ui| {
@@ -356,11 +359,10 @@ impl Studio {
         if let Some(id) = apply
             && self.apply_draft()
         {
-            match text_style::apply(
+            match veylvik_document::presets::material::apply_commands(
                 self.project.document.snapshot(),
                 self.project.selected,
-                Some(id),
-                None,
+                id.into(),
             )
             .map_err(|e| e.to_string())
             .and_then(|commands| self.project.apply(&commands).map_err(|e| e.to_string()))
@@ -500,7 +502,7 @@ fn usage_options(ui: &mut egui::Ui, item: LibraryDrag, can_fill_text: bool) -> O
             .add_enabled(
                 can_fill_text,
                 egui::Button::new(
-                    egui::RichText::new("Apply to selected text")
+                    egui::RichText::new("Apply to selection")
                         .color(crate::theme::ink(crate::theme::palette(ui.ctx()).selection)),
                 ),
             )
@@ -577,11 +579,10 @@ impl Studio {
                 if !self.apply_draft() {
                     return;
                 }
-                let result = text_style::apply(
+                let result = veylvik_document::presets::material::apply_commands(
                     self.project.document.snapshot(),
                     self.project.selected,
-                    Some(source),
-                    None,
+                    source,
                 )
                 .map_err(|e| e.to_string())
                 .and_then(|commands| self.project.apply(&commands).map_err(|e| e.to_string()));

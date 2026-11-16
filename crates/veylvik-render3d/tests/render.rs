@@ -156,3 +156,85 @@ fn render_scene_without_a_3d_renderer_says_so() {
     let error = error.to_string();
     assert!(error.contains("3D renderer"), "{error}");
 }
+
+#[test]
+#[ignore = "requires Vulkan"]
+fn a_3d_title_with_a_look_matches_the_2d_title_face_on() {
+    let renderer = renderer();
+    let mut doc = blank(W * 2, H * 2, Time::new(24, 1).unwrap()).unwrap();
+    let mut text = op(&registry::TEXT);
+    if let Operation::Text(t) = &mut text {
+        t.content = "Hi".into();
+        t.size = 120.0.into();
+        t.x = (W as f32).into();
+        t.y = (H as f32 + 40.0).into();
+    }
+    let text = add(&mut doc, text, &[]);
+    let mut gold = veylvik_document::presets::material::Source::Builtin("gold_text")
+        .material()
+        .unwrap();
+    // Flat faces: 3D has real geometry instead of the 2D bevel.
+    gold.bevel = 0.0.into();
+    gold.lighting = 0.0.into();
+    let flat = add(
+        &mut doc,
+        Operation::Material(gold.clone()),
+        &[("image", text)],
+    );
+    let mut title = op(&TEXT_3D);
+    if let Operation::Text3d(t) = &mut title {
+        t.depth = 20.0.into();
+        t.look = Some(Box::new(gold));
+    }
+    let title = add(&mut doc, title, &[("outline", text)]);
+    let solid = add(&mut doc, op(&RENDER_SCENE), &[("scene", title)]);
+    let render_at = |doc: &mut Composition, output| {
+        doc.output = output;
+        render(&renderer, doc, &Default::default())
+    };
+    let two = render_at(&mut doc, flat);
+    let three = render_at(&mut doc, solid);
+    // Compare where both are fully covered, away from edges.
+    let w = (W * 2) as usize;
+    let mut diffs = Vec::new();
+    for (i, (a, b)) in two.iter().zip(&three).enumerate() {
+        let (x, y) = (i % w, i / w);
+        let inside = |p: &[[f32; 4]]| {
+            [(0i32, 0i32), (2, 0), (-2, 0), (0, 2), (0, -2)]
+                .iter()
+                .all(|(dx, dy)| {
+                    let (xx, yy) = (x as i32 + dx, y as i32 + dy);
+                    xx >= 0
+                        && yy >= 0
+                        && (xx as usize) < w
+                        && p.get(yy as usize * w + xx as usize)
+                            .is_some_and(|q| q[3] > 0.999)
+                })
+        };
+        if inside(&two) && inside(&three) {
+            diffs.push((0..3).map(|c| (a[c] - b[c]).abs()).sum::<f32>() / 3.0);
+        }
+    }
+    assert!(diffs.len() > 500, "{} covered pixels", diffs.len());
+    let mean = diffs.iter().sum::<f32>() / diffs.len() as f32;
+    let brightness = two
+        .iter()
+        .filter(|p| p[3] > 0.999)
+        .map(|p| (p[0] + p[1] + p[2]) / 3.0)
+        .sum::<f32>()
+        / two.iter().filter(|p| p[3] > 0.999).count() as f32;
+    assert!(
+        mean < brightness * 0.05,
+        "mean difference {mean} vs brightness {brightness}"
+    );
+    // A turned title shows its lit side walls, still in gold (red over blue).
+    if let Operation::Text3d(t) = &mut doc.nodes.get_mut(&title).unwrap().operation {
+        t.placement.rotation = [0.0, 40.0, 0.0].into();
+    }
+    let turned = render_at(&mut doc, solid);
+    let covered: Vec<_> = turned.iter().filter(|p| p[3] > 0.999).collect();
+    assert!(covered.len() > 500);
+    let red: f32 = covered.iter().map(|p| p[0]).sum();
+    let blue: f32 = covered.iter().map(|p| p[2]).sum();
+    assert!(red > blue * 1.5, "gold: {red} vs {blue}");
+}

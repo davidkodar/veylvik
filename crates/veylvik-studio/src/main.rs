@@ -1809,6 +1809,15 @@ impl Studio {
             {
                 continue;
             }
+            // A 3D surface with a look is shaded by it, not these.
+            let looked = match &self.draft.operation {
+                Operation::Shape3d(s) => s.look.is_some(),
+                Operation::Text3d(t) => t.look.is_some(),
+                _ => false,
+            };
+            if looked && matches!(parameter.name, "roughness" | "metallic") {
+                continue;
+            }
             // Map controls appear with their map.
             let needs = match parameter.name {
                 "shot" => "environment",

@@ -53,6 +53,13 @@ fn validate_colour(colour: &Track3) -> Result<()> {
     }
     Ok(())
 }
+/// A look is a whole Text surface definition, checked like one.
+fn validate_look(look: &Option<Box<crate::nodes::Material>>) -> Result<()> {
+    if let Some(look) = look {
+        Operation::Material((**look).clone()).validate()?;
+    }
+    Ok(())
+}
 fn grey() -> Track3 {
     [0.6, 0.6, 0.6].into()
 }
@@ -98,12 +105,16 @@ pub struct Shape3d {
     pub colour: Track3,
     pub roughness: Scalar,
     pub metallic: Scalar,
+    /// A library material shading the surface; colour, roughness and metallic then
+    /// do not apply.
+    #[serde(default)]
+    pub look: Option<Box<crate::nodes::Material>>,
 }
 pub static SHAPE_3D: NodeType = NodeType {
     type_id: "shape_3d",
     version: 1,
     label: "3D shape",
-    description: "A cube, sphere, plane, cylinder, cone or torus in a 3D scene, sized in pixels and centred on the frame at depth 0. Detail sets how many segments curved shapes use (3–256). Placement offsets, rotates (degrees, X then Y then Z) and scales it; colour (linear RGB), roughness and metallic shade it. Outputs a scene for Merge scenes, 3D transform or Render scene.",
+    description: "A cube, sphere, plane, cylinder, cone or torus in a 3D scene, sized in pixels and centred on the frame at depth 0. Detail sets how many segments curved shapes use (3–256). Placement offsets, rotates (degrees, X then Y then Z) and scales it; colour (linear RGB), roughness and metallic shade it, unless a Look (any library material) is set, which shades it like a title. Outputs a scene for Merge scenes, 3D transform or Render scene.",
     inputs: &[],
     optional: &[],
     output: PortKind::Scene,
@@ -117,6 +128,7 @@ pub static SHAPE_3D: NodeType = NodeType {
         other("colour", ParameterKind::Colour3, "linear RGB"),
         scalar("roughness", "factor", 0.0, 1.0, 0.4),
         scalar("metallic", "factor", 0.0, 1.0, 0.0),
+        other("look", ParameterKind::Look, "library material"),
     ],
 };
 node!(
@@ -126,6 +138,7 @@ node!(
     {
         fn validate(&self) -> Result<()> {
             self.placement.validate()?;
+            validate_look(&self.look)?;
             validate_colour(&self.colour)
         }
     }
@@ -142,12 +155,16 @@ pub struct Text3d {
     pub colour: Track3,
     pub roughness: Scalar,
     pub metallic: Scalar,
+    /// A library material shading the surface; colour, roughness and metallic then
+    /// do not apply.
+    #[serde(default)]
+    pub look: Option<Box<crate::nodes::Material>>,
 }
 pub static TEXT_3D: NodeType = NodeType {
     type_id: "text_3d",
     version: 1,
     label: "3D text",
-    description: "Extrudes the Text or Path node on its Outline input into a solid Depth pixels deep, front face where the 2D layer sits, centred in depth. Placement turns and moves it about its own centre; colour (linear RGB), roughness and metallic shade it. Outputs a scene.",
+    description: "Extrudes the Text or Path node on its Outline input into a solid Depth pixels deep, front face where the 2D layer sits, centred in depth. Placement turns and moves it about its own centre; colour (linear RGB), roughness and metallic shade it, unless a Look (any library material) is set, which shades it like the 2D title. Outputs a scene.",
     inputs: &["outline"],
     optional: &[],
     output: PortKind::Scene,
@@ -157,11 +174,13 @@ pub static TEXT_3D: NodeType = NodeType {
         other("colour", ParameterKind::Colour3, "linear RGB"),
         scalar("roughness", "factor", 0.0, 1.0, 0.35),
         scalar("metallic", "factor", 0.0, 1.0, 0.0),
+        other("look", ParameterKind::Look, "library material"),
     ],
 };
 node!(Text3d, TEXT_3D, [depth, roughness, metallic], {
     fn validate(&self) -> Result<()> {
         self.placement.validate()?;
+        validate_look(&self.look)?;
         validate_colour(&self.colour)
     }
 });

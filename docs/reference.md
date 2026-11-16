@@ -1308,8 +1308,26 @@ its scene shows at that frame. The render crate holds no 3D code: it plans the
 pass, keeps card images alive for it and calls the renderer the host registered
 (`Renderer::set_scene_renderer`); Studio, the CLI and MCP register it. Without one,
 Render scene reports that the 3D renderer is not loaded, and viewing a scene node
-explains that it has no image of its own. Not yet: your library materials on 3D
-objects, shadows, ambient occlusion, depth of field and motion blur.
+explains that it has no image of its own.
+
+**Library looks on 3D objects.** 3D text and 3D shapes take an optional **look**:
+any library material, catalogue look or saved material (Library > Materials >
+Apply to selection, or MCP `apply_material` with the 3D node as target). A look
+replaces colour, roughness and metallic, whose sliders then hide; the inspector
+shows the look's Look slider and keyable colours, and **Plain surface** removes it.
+Applying a family to an object with a look keeps its finish, like a Text surface.
+Looks are shaded by the material kernels' own `material_colour`, with the look's
+parameters and studio lighting (`veylvik_render::material_uniforms` and
+`MATERIAL_WGSL`), so they cannot drift from 2D: pattern coordinates come from the
+mesh's pixel-sized uv (a title's caps use composition pixels, as the 2D title
+does; primitives wrap theirs around their size), and each normal is turned into
+camera space, where a face looking at the camera faces +z as a flat title does. A
+face-on 3D title with a look therefore matches the 2D title with the same material
+(no bevel) to within a few percent. Scene lights add GGX specular in the look's
+reflectance and, for non-metals, diffuse in the colour the look shows. The 2D bevel
+does not apply; flat metal faces mostly reflect their surroundings, as a flat 2D
+title's face does. Not yet: geometric bevels, shadows, ambient occlusion, depth of
+field and motion blur.
 
 ## MCP
 

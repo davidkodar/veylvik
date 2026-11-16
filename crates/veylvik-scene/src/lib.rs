@@ -30,13 +30,15 @@ pub enum Geometry {
     /// A card the size of the frame showing the image of node `image`.
     Card { image: NodeId, size: [f32; 2] },
 }
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct Surface {
     pub colour: [f32; 3],
     pub roughness: f32,
     pub metallic: f32,
     /// Shows its own colours without lighting (image cards).
     pub unlit: bool,
+    /// A library material that shades the surface instead of the values above.
+    pub look: Option<Box<veylvik_document::nodes::Material>>,
 }
 #[derive(Debug, Clone)]
 pub struct Object {
@@ -217,6 +219,7 @@ fn node(doc: &Graph<'_>, id: NodeId, time: Time, depth: usize) -> Result<Scene> 
                 roughness: s.roughness.at(time)?.clamp(0.0, 1.0),
                 metallic: s.metallic.at(time)?.clamp(0.0, 1.0),
                 unlit: false,
+                look: s.look.clone(),
             },
         }),
         Operation::Text3d(t) => {
@@ -251,6 +254,7 @@ fn node(doc: &Graph<'_>, id: NodeId, time: Time, depth: usize) -> Result<Scene> 
                     roughness: t.roughness.at(time)?.clamp(0.0, 1.0),
                     metallic: t.metallic.at(time)?.clamp(0.0, 1.0),
                     unlit: false,
+                    look: t.look.clone(),
                 },
             });
         }
@@ -267,6 +271,7 @@ fn node(doc: &Graph<'_>, id: NodeId, time: Time, depth: usize) -> Result<Scene> 
                 roughness: 1.0,
                 metallic: 0.0,
                 unlit: true,
+                look: None,
             },
         }),
         Operation::Transform3d(t) => {
