@@ -530,8 +530,9 @@ strokes. Output colour and alpha mix like the inputs, so both should share a sha
 
 Seven animated recipes loop over four seconds as editable groups: **Chrome Shine
 Sweep** (a shine travels across mirror chrome), **Glint Reveal** (rose-gold glints
-flare, hold and fade), **Heat to Embers** (brushed steel glows from deep red to
-white-hot with an ember halo, then cools; Heat, Glow and Glow spread are keyable)
+flare, hold and fade), **Heat to Embers** (steel heats to embers and cools; thin parts heat first and
+hotter: the title minus its own gaussian blur marks edges, corners and thin strokes,
+which glow yellow-white and lead the heat, while thicker parts lag at a deep red)
 **Rust Spreading** (rust patches grow over steel and recede), **Chipping Paint** (red
 car paint chips off brushed steel from the edges and comes back, through Layered
 material),

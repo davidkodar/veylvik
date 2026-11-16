@@ -72,48 +72,7 @@ pub fn build(id: &str, b: &mut Builder, source: NodeId) -> Result<Option<NodeId>
             }
             glints
         }
-        "heat_to_embers" => {
-            let steel = look(b, source, "brushed_steel")?;
-            let heat = keyed(true, &[(0, 0.0), (2, 1.0), (4, 0.0)]);
-            // The metal's own brightness picks the colour: dark areas glow deep red,
-            // highlights white-hot, as heated steel does.
-            let glow = b.add(
-                "Heat colour",
-                Operation::Colorize(crate::nodes::Colorize {
-                    low: [0.6, 0.04, 0.0, 1.0],
-                    high: [4.0, 1.4, 0.25, 1.0],
-                }),
-                &[("image", steel)],
-            );
-            let core = b.add(
-                "Glowing metal",
-                Operation::Blend(crate::nodes::Blend {
-                    mode: BlendMode::Add,
-                    opacity: heat.clone(),
-                }),
-                &[("background", steel), ("foreground", glow)],
-            );
-            let halo = b.add(
-                "Ember halo",
-                Operation::Blur(crate::nodes::Blur {
-                    radius: 14.0.into(),
-                    filter: crate::nodes::BlurFilter::Gaussian,
-                }),
-                &[("image", glow)],
-            );
-            let out = b.add(
-                "Heat haze glow",
-                Operation::Blend(crate::nodes::Blend {
-                    mode: BlendMode::Add,
-                    opacity: keyed(true, &[(0, 0.0), (2, 0.6), (4, 0.0)]),
-                }),
-                &[("background", core), ("foreground", halo)],
-            );
-            b.expose(core, "opacity", "Heat")?;
-            b.expose(out, "opacity", "Glow")?;
-            b.expose(halo, "radius", "Glow spread")?;
-            out
-        }
+        "heat_to_embers" => heat_to_embers(b, source)?,
         "rust_spreading" => {
             let steel = look(b, source, "brushed_steel")?;
             let rust = b.add(
@@ -311,5 +270,88 @@ fn paper_burn(b: &mut Builder, source: NodeId) -> Result<NodeId> {
     b.expose(front, "stops", "Burn progress")?;
     b.expose(noise, "scale", "Burn pattern size")?;
     b.expose(glow, "radius", "Ember glow")?;
+    Ok(out)
+}
+
+/// Steel heating to embers and cooling. Thin parts carry little metal, so edges,
+/// corners and thin strokes heat first and hotter (yellow-white) while thick parts
+/// lag behind at a deep red. Thinness is the shape minus its own blur.
+fn heat_to_embers(b: &mut Builder, source: NodeId) -> Result<NodeId> {
+    let steel = look(b, source, "brushed_steel")?;
+    let body = b.add(
+        "Metal mass",
+        Operation::Blur(crate::nodes::Blur {
+            radius: 18.0.into(),
+            filter: crate::nodes::BlurFilter::Gaussian,
+        }),
+        &[("image", source)],
+    );
+    let thin = b.add(
+        "Thin parts",
+        Operation::CombineMask(crate::nodes::CombineMask {
+            mode: MaskMode::Subtract,
+        }),
+        &[("mask", source), ("other", body)],
+    );
+    // The metal's own brightness picks the colour within each heat level.
+    let red = b.add(
+        "Red heat",
+        Operation::Colorize(crate::nodes::Colorize {
+            low: [0.5, 0.03, 0.0, 1.0],
+            high: [2.2, 0.55, 0.08, 1.0],
+        }),
+        &[("image", steel)],
+    );
+    let white = b.add(
+        "White heat",
+        Operation::Colorize(crate::nodes::Colorize {
+            low: [3.0, 1.0, 0.15, 1.0],
+            high: [7.0, 4.2, 1.6, 1.0],
+        }),
+        &[("image", steel)],
+    );
+    let edges = b.add(
+        "Hot edges",
+        Operation::Mask(crate::nodes::Mask {}),
+        &[("image", white), ("mask", thin)],
+    );
+    let warm = b.add(
+        "Glowing metal",
+        Operation::Blend(crate::nodes::Blend {
+            mode: BlendMode::Add,
+            opacity: keyed(true, &[(0, 0.0), (1, 0.15), (2, 0.8), (3, 0.3), (4, 0.0)]),
+        }),
+        &[("background", steel), ("foreground", red)],
+    );
+    // Edges lead: hot before the body warms and still glowing as it cools.
+    let hot = b.add(
+        "Glowing edges",
+        Operation::Blend(crate::nodes::Blend {
+            mode: BlendMode::Add,
+            opacity: keyed(true, &[(0, 0.0), (1, 0.7), (2, 1.0), (3, 0.55), (4, 0.0)]),
+        }),
+        &[("background", warm), ("foreground", edges)],
+    );
+    let halo = b.add(
+        "Ember halo",
+        Operation::Blur(crate::nodes::Blur {
+            radius: 14.0.into(),
+            filter: crate::nodes::BlurFilter::Gaussian,
+        }),
+        &[("image", edges)],
+    );
+    let out = b.add(
+        "Heat haze glow",
+        Operation::Blend(crate::nodes::Blend {
+            mode: BlendMode::Add,
+            opacity: keyed(true, &[(0, 0.0), (1, 0.3), (2, 0.6), (3, 0.3), (4, 0.0)]),
+        }),
+        &[("background", hot), ("foreground", halo)],
+    );
+    b.expose(warm, "opacity", "Heat")?;
+    b.expose(hot, "opacity", "Edge heat")?;
+    b.expose(body, "radius", "Thickness that stays cooler")?;
+    b.expose(out, "opacity", "Glow")?;
+    b.expose(halo, "radius", "Glow spread")?;
     Ok(out)
 }

@@ -44,7 +44,7 @@ pub const ALL: [Builtin; 74] = [
     Builtin {
         id: "heat_to_embers",
         label: "Heat to Embers",
-        description: "Brushed steel that heats to a deep-red-to-white glow with an ember halo and cools again. Heat, Glow and Glow spread stay keyable.",
+        description: "Brushed steel that heats to embers and cools again. Edges, corners and thin strokes heat first and glow yellow-white while thicker parts stay deep red, with an ember halo. Heat, Edge heat, Glow, Glow spread and the thickness that stays cooler are editable.",
     },
     Builtin {
         id: "paper_burn",
