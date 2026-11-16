@@ -1,5 +1,6 @@
-//! Bundle adjustment: robust Levenberg-Marquardt over camera poses, points and the focal length, points eliminated by the Schur complement.
+//! Bundle adjustment: robust Levenberg-Marquardt over camera poses, points, the focal length and radial lens distortion, points eliminated by the Schur complement.
 use crate::geometry::Pose;
+use crate::lens::Distortion;
 use crate::linalg::*;
 
 /// One sighting of `point` by `camera`, in pixels.
@@ -20,6 +21,10 @@ pub struct Problem<'a> {
     pub focal: &'a mut f64,
     pub centre: V2,
     pub solve_focal: bool,
+    /// The lens's radial distortion, and the frame's half diagonal it is normalised by.
+    pub distortion: &'a mut Distortion,
+    pub radius: f64,
+    pub solve_distortion: bool,
     /// Rotation only: every camera stays where it is (a tripod pan).
     pub nodal: bool,
     /// Points stay where they are: only cameras move (resection).
@@ -47,33 +52,31 @@ fn huber_cost(r: f64, delta: f64) -> f64 {
     }
 }
 impl Problem<'_> {
+    /// Where camera-space `p` lands in the frame through the lens, or None behind the camera.
+    fn pixel(&self, p: V3) -> Option<V2> {
+        let u = project(p, *self.focal, [0.0; 2])?;
+        let d = self.distortion.distort(u, self.radius);
+        Some([self.centre[0] + d[0], self.centre[1] + d[1]])
+    }
     /// Robust cost of the current state.
     fn cost(&self) -> f64 {
         self.observations
             .iter()
-            .map(|o| {
-                match project(
-                    self.poses[o.camera].apply(self.points[o.point]),
-                    *self.focal,
-                    self.centre,
-                ) {
+            .map(
+                |o| match self.pixel(self.poses[o.camera].apply(self.points[o.point])) {
                     Some(p) => huber_cost(
                         ((p[0] - o.pixel[0]).powi(2) + (p[1] - o.pixel[1]).powi(2)).sqrt(),
                         self.huber,
                     ),
                     None => huber_cost(1e4, self.huber),
-                }
-            })
+                },
+            )
             .sum()
     }
     /// Root mean square reprojection error (pixels) of every observation.
     pub fn rms(&self) -> f64 {
         let (sum, n) = self.observations.iter().fold((0.0, 0usize), |(s, n), o| {
-            match project(
-                self.poses[o.camera].apply(self.points[o.point]),
-                *self.focal,
-                self.centre,
-            ) {
+            match self.pixel(self.poses[o.camera].apply(self.points[o.point])) {
                 Some(p) => (
                     s + (p[0] - o.pixel[0]).powi(2) + (p[1] - o.pixel[1]).powi(2),
                     n + 1,
@@ -85,14 +88,10 @@ impl Problem<'_> {
     }
     /// Reprojection error (pixels) of one observation.
     pub fn error(&self, o: &Observation) -> f64 {
-        project(
-            self.poses[o.camera].apply(self.points[o.point]),
-            *self.focal,
-            self.centre,
-        )
-        .map_or(f64::INFINITY, |p| {
-            ((p[0] - o.pixel[0]).powi(2) + (p[1] - o.pixel[1]).powi(2)).sqrt()
-        })
+        self.pixel(self.poses[o.camera].apply(self.points[o.point]))
+            .map_or(f64::INFINITY, |p| {
+                ((p[0] - o.pixel[0]).powi(2) + (p[1] - o.pixel[1]).powi(2)).sqrt()
+            })
     }
     /// Run up to `iterations` LM steps; returns the final rms error.
     pub fn optimise(&mut self, iterations: usize) -> f64 {
@@ -108,6 +107,10 @@ impl Problem<'_> {
         let focal_index = m;
         if self.solve_focal {
             m += 1;
+        }
+        let lens_index = m;
+        if self.solve_distortion {
+            m += 2;
         }
         let mut by_point: Vec<Vec<usize>> = vec![Vec::new(); self.points.len()];
         for (k, o) in self.observations.iter().enumerate() {
@@ -129,17 +132,39 @@ impl Problem<'_> {
                     let pose = self.poses[o.camera];
                     let rx = mat_vec(&pose.r, self.points[p]);
                     let pc = add(rx, pose.t);
-                    let Some(pix) = project(pc, *self.focal, self.centre) else {
+                    let Some(q) = project(pc, *self.focal, [0.0; 2]) else {
                         continue;
                     };
+                    // Through the lens: pixel = centre + q s(r²), its Jacobian by q is `lens`.
+                    let (k, rr) = (*self.distortion, self.radius * self.radius);
+                    let r2 = (q[0] * q[0] + q[1] * q[1]) / rr;
+                    let s = k.factor(r2);
+                    let g = (k.k1 + 2.0 * k.k2 * r2) * 2.0 / rr;
+                    let lens = [
+                        [s + g * q[0] * q[0], g * q[0] * q[1]],
+                        [g * q[1] * q[0], s + g * q[1] * q[1]],
+                    ];
+                    let through = |c: [f64; 2]| {
+                        [
+                            lens[0][0] * c[0] + lens[0][1] * c[1],
+                            lens[1][0] * c[0] + lens[1][1] * c[1],
+                        ]
+                    };
+                    let pix = [self.centre[0] + q[0] * s, self.centre[1] + q[1] * s];
                     let r = [pix[0] - o.pixel[0], pix[1] - o.pixel[1]];
                     let w = huber_weight((r[0] * r[0] + r[1] * r[1]).sqrt(), self.huber);
                     let (x, y, z) = (pc[0], pc[1], pc[2]);
                     let f = *self.focal;
-                    let jp = [
+                    let ideal = [
                         [f / z, 0.0, -f * x / (z * z)],
                         [0.0, f / z, -f * y / (z * z)],
                     ];
+                    let mut jp = [[0.0; 3]; 2];
+                    for j in 0..3 {
+                        let c = through([ideal[0][j], ideal[1][j]]);
+                        jp[0][j] = c[0];
+                        jp[1][j] = c[1];
+                    }
                     let mul = |a: &[[f64; 3]; 2], b: &M3| -> [[f64; 3]; 2] {
                         let mut out = [[0.0; 3]; 2];
                         for i in 0..2 {
@@ -151,7 +176,7 @@ impl Problem<'_> {
                     };
                     let j_rot = mul(&jp, &scale_m(&skew(rx), -1.0));
                     let j_x = mul(&jp, &pose.r);
-                    let j_f = [x / z, y / z];
+                    let j_f = through([x / z, y / z]);
                     // The camera's columns: rotation, then translation (pixel rows 0, 1).
                     let mut cam_cols: Vec<[f64; 2]> =
                         (0..3).map(|j| [j_rot[0][j], j_rot[1][j]]).collect();
@@ -165,6 +190,10 @@ impl Problem<'_> {
                     }
                     if self.solve_focal {
                         cols.push((focal_index, j_f));
+                    }
+                    if self.solve_distortion {
+                        cols.push((lens_index, [q[0] * r2, q[1] * r2]));
+                        cols.push((lens_index + 1, [q[0] * r2 * r2, q[1] * r2 * r2]));
                     }
                     for (a, ca) in &cols {
                         gy[*a] += w * (ca[0] * r[0] + ca[1] * r[1]);
@@ -237,6 +266,7 @@ impl Problem<'_> {
                 let saved_poses = self.poses.to_vec();
                 let saved_points = self.points.to_vec();
                 let saved_focal = *self.focal;
+                let saved_lens = *self.distortion;
                 for (c, pose) in self.poses.iter_mut().enumerate() {
                     if self.fixed[c] {
                         continue;
@@ -249,6 +279,10 @@ impl Problem<'_> {
                 }
                 if self.solve_focal {
                     *self.focal = (*self.focal + dy[focal_index]).max(1.0);
+                }
+                if self.solve_distortion {
+                    self.distortion.k1 = (self.distortion.k1 + dy[lens_index]).clamp(-1.0, 1.0);
+                    self.distortion.k2 = (self.distortion.k2 + dy[lens_index + 1]).clamp(-1.0, 1.0);
                 }
                 for (p, (_, gx, w_blocks)) in point_blocks.iter().enumerate() {
                     let Some(vi) = inverses[p] else {
@@ -273,6 +307,7 @@ impl Problem<'_> {
                 self.poses.copy_from_slice(&saved_poses);
                 self.points.copy_from_slice(&saved_points);
                 *self.focal = saved_focal;
+                *self.distortion = saved_lens;
                 lambda *= 4.0;
                 if lambda > 1e12 {
                     return self.rms();

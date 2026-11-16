@@ -221,7 +221,12 @@ pub(crate) const ADD_MENU: [(&str, &[&registry::NodeType]); 10] = [
     ),
     (
         "Transform and distort",
-        &[&registry::AFFINE, &registry::TRANSFORM, &registry::DISPLACE],
+        &[
+            &registry::AFFINE,
+            &registry::TRANSFORM,
+            &registry::DISPLACE,
+            &registry::LENS_DISTORTION,
+        ],
     ),
     (
         "Colour and filters",

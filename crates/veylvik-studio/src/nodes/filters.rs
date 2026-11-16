@@ -57,3 +57,20 @@ impl Inspect for veylvik_document::nodes::Shadow {
         cx.dirty |= crate::text_effects::shadow_controls(ui, self);
     }
 }
+impl Inspect for veylvik_document::nodes::LensDistortion {
+    fn inspect(&mut self, ui: &mut egui::Ui, cx: &mut InspectCx<'_>) {
+        ui.horizontal(|ui| {
+            cx.dirty |= ui
+                .selectable_value(&mut self.redistort, false, "Remove the lens")
+                .on_hover_text("Straighten footage: lines bent by the lens come out straight")
+                .changed();
+            cx.dirty |= ui
+                .selectable_value(&mut self.redistort, true, "Put the lens on")
+                .on_hover_text(
+                    "Bend 3D or graphics made in a straight frame the way the footage's lens does",
+                )
+                .changed();
+        });
+        ui.weak("Negative k1 is barrel distortion (wide lenses), positive is pincushion; k2 shapes the corners. Solve camera measures both and adds this node after Render scene.");
+    }
+}

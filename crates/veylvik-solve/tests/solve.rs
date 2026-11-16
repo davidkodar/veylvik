@@ -1,5 +1,5 @@
 use veylvik_solve::linalg::*;
-use veylvik_solve::{Pose, Settings, Track, solve};
+use veylvik_solve::{Distortion, Pose, Settings, Track, lens, solve};
 
 const W: u32 = 1920;
 const H: u32 = 1080;
@@ -15,6 +15,7 @@ fn shot(
     focal: f64,
     camera: impl Fn(f64) -> Pose,
     seed: u64,
+    distortion: Distortion,
 ) -> (Vec<Pose>, Vec<Track>) {
     let mut rng = Rng::new(seed);
     let truth: Vec<Pose> = (0..frames)
@@ -42,10 +43,11 @@ fn shot(
             if c[2] <= 0.1 {
                 break;
             }
-            let mut u = [
-                W as f64 * 0.5 + focal * c[0] / c[2],
-                H as f64 * 0.5 + focal * c[1] / c[2],
-            ];
+            let d = distortion.distort(
+                [focal * c[0] / c[2], focal * c[1] / c[2]],
+                lens::radius(W, H),
+            );
+            let mut u = [W as f64 * 0.5 + d[0], H as f64 * 0.5 + d[1]];
             if !(8.0..W as f64 - 8.0).contains(&u[0]) || !(8.0..H as f64 - 8.0).contains(&u[1]) {
                 break;
             }
@@ -127,7 +129,7 @@ fn moving(t: f64) -> Pose {
 }
 #[test]
 fn solves_a_moving_camera_with_a_known_lens() {
-    let (truth, tracks) = shot(60, 1400.0, moving, 3);
+    let (truth, tracks) = shot(60, 1400.0, moving, 3, Distortion::NONE);
     let settings = Settings {
         width: W,
         height: H,
@@ -153,7 +155,7 @@ fn solves_a_moving_camera_with_a_known_lens() {
 }
 #[test]
 fn finds_the_focal_length_when_it_is_unknown() {
-    let (truth, tracks) = shot(60, 1400.0, moving, 5);
+    let (truth, tracks) = shot(60, 1400.0, moving, 5, Distortion::NONE);
     let settings = Settings {
         width: W,
         height: H,
@@ -164,6 +166,11 @@ fn finds_the_focal_length_when_it_is_unknown() {
         (solved.focal - 1400.0).abs() < 1400.0 * 0.03,
         "focal {}",
         solved.focal
+    );
+    assert_eq!(
+        solved.distortion,
+        Distortion::NONE,
+        "no lens distortion invented"
     );
     assert!(solved.rms < 0.6, "rms {}", solved.rms);
     assert!(
@@ -179,6 +186,7 @@ fn solves_a_tripod_pan_as_rotation_only() {
         1400.0,
         |t| pose(-15.0 + 30.0 * t, 3.0 - 6.0 * t, [0.0; 3]),
         9,
+        Distortion::NONE,
     );
     let settings = Settings {
         width: W,
@@ -197,5 +205,73 @@ fn solves_a_tripod_pan_as_rotation_only() {
         rotation_error(&solved.poses, &truth) < 0.3,
         "{}",
         rotation_error(&solved.poses, &truth)
+    );
+}
+#[test]
+fn measures_wide_lens_distortion() {
+    let lens = Distortion {
+        k1: -0.14,
+        k2: 0.03,
+    };
+    let (truth, tracks) = shot(60, 1000.0, moving, 11, lens);
+    let settings = Settings {
+        width: W,
+        height: H,
+        focal: None,
+    };
+    let solved = solve(&tracks, 60, &settings).unwrap();
+    let k = solved.distortion;
+    // Compare the distortion where it shows, at the frame's edge and corner.
+    for r in [0.5f64, 0.9] {
+        let (got, want) = (k.factor(r * r), lens.factor(r * r));
+        assert!(
+            (got - want).abs() < 0.006,
+            "at r {r}: {got} vs {want} ({k:?})"
+        );
+    }
+    assert!(
+        (solved.focal - 1000.0).abs() < 1000.0 * 0.03,
+        "focal {}",
+        solved.focal
+    );
+    assert!(solved.rms < 0.6, "rms {}", solved.rms);
+    assert!(
+        rotation_error(&solved.poses, &truth) < 0.3,
+        "{}",
+        rotation_error(&solved.poses, &truth)
+    );
+    assert!(
+        path_error(&solved.poses, &truth) < 0.03,
+        "{}",
+        path_error(&solved.poses, &truth)
+    );
+}
+#[test]
+fn finds_a_strongly_bent_lens_the_straight_search_misses() {
+    let lens = Distortion {
+        k1: -0.22,
+        k2: 0.03,
+    };
+    let (truth, tracks) = shot(60, 900.0, moving, 13, lens);
+    let settings = Settings {
+        width: W,
+        height: H,
+        focal: None,
+    };
+    let solved = solve(&tracks, 60, &settings).unwrap();
+    let k = solved.distortion;
+    for r in [0.5f64, 0.9] {
+        let (got, want) = (k.factor(r * r), lens.factor(r * r));
+        assert!(
+            (got - want).abs() < 0.01,
+            "at r {r}: {got} vs {want} ({k:?})"
+        );
+    }
+    assert!(!solved.nodal);
+    assert!(solved.rms < 0.6, "rms {}", solved.rms);
+    assert!(
+        path_error(&solved.poses, &truth) < 0.03,
+        "{}",
+        path_error(&solved.poses, &truth)
     );
 }

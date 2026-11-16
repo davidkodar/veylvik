@@ -336,3 +336,24 @@ impl RenderNode for veylvik_document::nodes::MatchGrain {
         Ok(())
     }
 }
+impl RenderNode for veylvik_document::nodes::LensDistortion {
+    fn passes(&self) -> Passes {
+        Passes::One(Kernel::LensDistortion)
+    }
+    fn shareable(&self) -> bool {
+        true
+    }
+    fn identity(&self) -> bool {
+        let zero = |s: &Scalar| matches!(s, Scalar::Constant { value } if *value == 0.0);
+        zero(&self.k1) && zero(&self.k2)
+    }
+    fn params(
+        &self,
+        _cx: &Cx<'_>,
+        sample: &dyn Fn(&str) -> Result<f32>,
+        p: &mut Params,
+    ) -> Result<()> {
+        p.values = [sample("k1")?, sample("k2")?, f32::from(self.redistort), 0.0];
+        Ok(())
+    }
+}

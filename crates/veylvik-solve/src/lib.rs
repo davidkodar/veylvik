@@ -1,10 +1,12 @@
-//! Camera solving: from 2D feature tracks through a shot, the moving camera (or a tripod pan), its focal length and a point cloud. Deterministic, CPU only.
+//! Camera solving: from 2D feature tracks through a shot, the moving camera (or a tripod pan), its focal length, lens distortion and a point cloud. Deterministic, CPU only.
 mod bundle;
 mod geometry;
+pub mod lens;
 pub mod linalg;
 mod reconstruct;
 
 pub use geometry::Pose;
+pub use lens::Distortion;
 use linalg::*;
 
 /// One feature followed through the shot: (frame, pixel) in increasing frames.
@@ -36,6 +38,9 @@ pub struct Solved {
     /// The lens was measured from the shot; false when it was given, or when the
     /// camera barely turned on a tripod and a 36 mm-equivalent lens was assumed.
     pub focal_measured: bool,
+    /// The lens's radial distortion (see `lens`); NONE when the shot showed none worth
+    /// modelling. Poses, points and errors are for the undistorted (ideal) frame.
+    pub distortion: Distortion,
     pub keyframes: Vec<usize>,
 }
 #[derive(Debug, Clone, PartialEq)]
@@ -54,6 +59,8 @@ pub(crate) struct Shot<'a> {
     pub frames: usize,
     pub by_frame: Vec<Vec<(usize, V2)>>,
     pub centre: V2,
+    /// Half the frame diagonal: the distortion model's unit radius.
+    pub radius: f64,
 }
 impl<'a> Shot<'a> {
     fn new(tracks: &'a [Track], frames: usize, settings: &Settings) -> Self {
@@ -70,6 +77,7 @@ impl<'a> Shot<'a> {
             frames,
             by_frame,
             centre: [settings.width as f64 * 0.5, settings.height as f64 * 0.5],
+            radius: lens::radius(settings.width, settings.height),
         }
     }
     /// Tracks seen in both frames, with their pixels there.
@@ -139,31 +147,129 @@ pub fn solve(tracks: &[Track], frames: usize, settings: &Settings) -> Result<Sol
             .map(|m| m * width)
             .collect(),
     };
-    let mut best: Option<reconstruct::Reconstruction> = None;
-    for focal in candidates {
-        let Some(r) = reconstruct::keyframes(&shot, &keyframes, focal) else {
-            continue;
-        };
-        let better = best.as_ref().is_none_or(|b| {
-            let (solved, best_solved) = (r.solved(), b.solved());
-            solved > best_solved || (solved == best_solved && r.rms < b.rms)
-        });
-        if better {
-            best = Some(r);
+    let search = |shot: &Shot| {
+        let mut best: Option<reconstruct::Reconstruction> = None;
+        for &focal in &candidates {
+            let Some(r) = reconstruct::keyframes(shot, &keyframes, focal) else {
+                continue;
+            };
+            if best.as_ref().is_none_or(|b| better(&r, b)) {
+                best = Some(r);
+            }
+        }
+        best
+    };
+    let mut best = search(&shot);
+    // Strong distortion can hide the camera's motion from the straight-lens search:
+    // when it found little, look again through a few lenses and keep the best fit.
+    let weak = best
+        .as_ref()
+        .is_none_or(|r| r.nodal || r.solved() * 10 < keyframes.len() * 9 || r.rms > WEAK_RMS);
+    if weak {
+        for k1 in [-0.08, -0.16, -0.24, 0.08] {
+            let lens = Distortion { k1, k2: 0.0 };
+            let ideal = undistorted(&shot, lens);
+            let Some(mut r) = search(&Shot::new(&ideal, frames, settings)) else {
+                continue;
+            };
+            r.distortion = lens;
+            if best.as_ref().is_none_or(|b| better(&r, b)) {
+                best = Some(r);
+            }
         }
     }
     let mut r = best.ok_or_else(|| Error("No camera motion fits the tracks".into()))?;
     let mut measured = settings.focal.is_none();
-    if measured && r.nodal && r.turn() < 3.0 {
+    let mut solved = if measured && r.nodal && r.turn() < 3.0 {
         // A camera that barely turns on a tripod says nothing about its lens.
         measured = false;
-        if let Some(fallback) = reconstruct::keyframes(&shot, &keyframes, width) {
-            r = fallback;
+        match reconstruct::keyframes(&shot, &keyframes, width) {
+            Some(fallback) => fallback.all_frames(&shot, keyframes),
+            None => through_lens(r, &shot, settings, keyframes, false),
         }
-    } else if measured {
-        r.adjust(&shot, &keyframes, true, 100);
-    }
-    let mut solved = r.all_frames(&shot, keyframes);
+    } else {
+        if measured {
+            r.adjust(&shot, &keyframes, true, false, 100);
+        }
+        through_lens(r, &shot, settings, keyframes, measured)
+    };
     solved.focal_measured = measured;
     Ok(solved)
+}
+/// Keyframe rms error (pixels) above which a straight-lens solve counts as weak.
+const WEAK_RMS: f64 = 3.0;
+/// Fewest points a reconstruction needs to count at all.
+const MIN_POINTS: usize = 20;
+/// A real fit beats none, then more keyframes placed, then the lower error. Through
+/// different lenses the median error is compared, since a pan keeps the bad tracks a
+/// moving camera drops; and parallax is not preferred, since through a wrong lens a
+/// pan can look like a moving camera.
+fn better(r: &reconstruct::Reconstruction, than: &reconstruct::Reconstruction) -> bool {
+    let rank = |r: &reconstruct::Reconstruction| {
+        (r.points.iter().flatten().count() >= MIN_POINTS, r.solved())
+    };
+    let (a, b) = (rank(r), rank(than));
+    // A coarse lens guess has to earn its place over the straight lens.
+    if r.distortion == than.distortion {
+        return a > b || (a == b && r.rms < than.rms);
+    }
+    let margin = if than.distortion == Distortion::NONE {
+        LENS_GUESS_GAIN
+    } else {
+        0.0
+    };
+    a > b || (a == b && r.median < than.median * (1.0 - margin))
+}
+/// How much lower a lens guess's median error must be than the straight lens's: a
+/// coarse guess with free camera positions can beat a correct pan by fitting noise
+/// (about 1.3 times lower on a clean synthetic pan), while a lens that really bends
+/// leaves the straight fit several times worse (7 times on the bent beach test).
+const LENS_GUESS_GAIN: f64 = 0.5;
+/// The shot's tracks as an ideal lens would have seen them through `lens`.
+fn undistorted(shot: &Shot, lens: Distortion) -> Vec<Track> {
+    shot.tracks
+        .iter()
+        .map(|t| Track {
+            points: t
+                .points
+                .iter()
+                .map(|&(f, p)| {
+                    let u =
+                        lens.undistort([p[0] - shot.centre[0], p[1] - shot.centre[1]], shot.radius);
+                    (f, [shot.centre[0] + u[0], shot.centre[1] + u[1]])
+                })
+                .collect(),
+        })
+        .collect()
+}
+/// Least improvement in keyframe rms error for distortion to be kept: below it, two
+/// more unknowns are only fitting noise.
+const DISTORTION_GAIN: f64 = 0.03;
+/// Measure the lens's distortion with everything else, from the distortion `r` was
+/// found through; when it explains the tracks clearly better than a straight lens,
+/// undistort every track and place every frame in the ideal frame.
+fn through_lens(
+    r: reconstruct::Reconstruction,
+    shot: &Shot,
+    settings: &Settings,
+    keyframes: Vec<usize>,
+    solve_focal: bool,
+) -> Solved {
+    let mut lens = r.clone();
+    lens.adjust(shot, &keyframes, solve_focal, true, 100);
+    let mut k = lens.distortion;
+    if !k.invertible() {
+        k = r.distortion;
+    }
+    let straight = r.distortion == Distortion::NONE;
+    if k == Distortion::NONE || (straight && lens.rms >= r.rms * (1.0 - DISTORTION_GAIN)) {
+        return r.all_frames(shot, keyframes);
+    }
+    let ideal = undistorted(shot, k);
+    let ideal_shot = Shot::new(&ideal, shot.frames, settings);
+    lens.distortion = Distortion::NONE;
+    lens.adjust(&ideal_shot, &keyframes, false, false, 30);
+    let mut solved = lens.all_frames(&ideal_shot, keyframes);
+    solved.distortion = k;
+    solved
 }

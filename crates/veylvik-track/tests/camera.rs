@@ -332,6 +332,7 @@ fn far_background_points_stay_out_of_the_point_cloud() {
         frame_error: vec![Some(0.2); 3],
         nodal: false,
         focal_measured: true,
+        distortion: veylvik_solve::Distortion { k1: -0.1, k2: 0.0 },
         keyframes: vec![0, 1, 2],
     };
     let request = veylvik_track::camera::Request {
@@ -360,4 +361,17 @@ fn far_background_points_stay_out_of_the_point_cloud() {
         })
         .unwrap();
     assert_eq!(cloud, 40);
+    // The measured lens bends the CG before its grain goes on.
+    let snapshot = project.snapshot();
+    let lens = snapshot
+        .nodes
+        .values()
+        .find(|n| matches!(&n.operation, Operation::LensDistortion(l) if l.redistort))
+        .expect("a redistort node");
+    let grain = snapshot
+        .nodes
+        .values()
+        .find(|n| matches!(n.operation, Operation::MatchGrain(_)))
+        .unwrap();
+    assert_eq!(grain.inputs.get("image"), Some(&lens.id));
 }

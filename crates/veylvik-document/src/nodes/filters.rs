@@ -270,3 +270,31 @@ node!(
         amount, size, shadows, midtones, highlights, red, blue, colour
     ]
 );
+
+/// A lens's radial distortion removed from or put back on an image, so work done in a
+/// straight (ideal) frame lines up with footage shot through a real lens.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LensDistortion {
+    /// Put the lens's distortion on (for 3D or graphics made in the ideal frame);
+    /// otherwise take it off (to straighten footage).
+    #[serde(default)]
+    pub redistort: bool,
+    pub k1: Scalar,
+    pub k2: Scalar,
+}
+pub static LENS_DISTORTION: NodeType = NodeType {
+    type_id: "lens_distortion",
+    version: 1,
+    label: "Lens distortion",
+    description: "Radial lens distortion (Brown-Conrady k1, k2) about the frame centre, with radii normalised by half the frame diagonal: a point at ideal radius r is seen at r (1 + k1 r^2 + k2 r^4). Negative k1 is barrel distortion (wide lenses), positive is pincushion. Off (default) removes the distortion, straightening the footage; Redistort puts it on, so 3D or graphics made in the ideal frame bend like the footage. The camera solve measures k1 and k2 and adds a Redistort node after Render scene. Bilinear premultiplied sampling; areas with no source pixels, or beyond where the lens folds over, are transparent.",
+    inputs: &["image"],
+    optional: &[],
+    output: PortKind::Image,
+    parameters: &[
+        other("redistort", ParameterKind::Boolean, "put the distortion on"),
+        scalar("k1", "factor", -1.0, 1.0, 0.0),
+        scalar("k2", "factor", -1.0, 1.0, 0.0),
+    ],
+};
+node!(LensDistortion, LENS_DISTORTION, [k1, k2]);

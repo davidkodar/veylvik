@@ -394,6 +394,19 @@ pub fn scene(doc: &Composition, request: &Request, outcome: &Outcome) -> Result<
         Operation::RenderScene(render),
         &[("scene", merged.id)],
     );
+    // The CG is made through an ideal lens: bend it like the footage's.
+    let k = solved.distortion;
+    let lens = (k != veylvik_solve::Distortion::NONE).then(|| {
+        Node::new(
+            "Footage lens",
+            Operation::LensDistortion(nodes::LensDistortion {
+                redistort: true,
+                k1: (k.k1 as f32).into(),
+                k2: (k.k2 as f32).into(),
+            }),
+            &[("image", render.id)],
+        )
+    });
     // The CG gets the footage's grain before it goes over the footage.
     let Operation::MatchGrain(mut grain) = default_of(&nodes::MATCH_GRAIN)? else {
         return Err(error("grain default"));
@@ -410,7 +423,10 @@ pub fn scene(doc: &Composition, request: &Request, outcome: &Outcome) -> Result<
     let grain = Node::new(
         "Footage grain",
         Operation::MatchGrain(grain),
-        &[("image", render.id), ("plate", request.source)],
+        &[
+            ("image", lens.as_ref().map_or(render.id, |l| l.id)),
+            ("plate", request.source),
+        ],
     );
     let over = Node::new(
         "3D over footage",
@@ -426,6 +442,8 @@ pub fn scene(doc: &Composition, request: &Request, outcome: &Outcome) -> Result<
         "frames": solved.poses.len(), "solved_frames": keyed, "tracks": outcome.tracks,
         "points": solved.points.iter().flatten().count(), "rms_pixels": solved.rms, "worst_frame_pixels": worst,
         "focal_length": focal_mm, "sensor_width": request.sensor_width, "tripod": solved.nodal, "lens_measured": solved.focal_measured,
+        "lens_distortion": (k != veylvik_solve::Distortion::NONE).then(|| json!({"k1": k.k1, "k2": k.k2})),
+        "lens_node": lens.as_ref().map(|l| l.id),
         "camera": camera.id, "ground": ground_report, "scene": merged.id, "render": render.id, "composite": over.id, "grain": grain.id, "grain_measured": outcome.grain.is_some(),
         "next": "Add 3D objects to the Solved scene node and view 3D over footage",
     });
@@ -439,6 +457,11 @@ pub fn scene(doc: &Composition, request: &Request, outcome: &Outcome) -> Result<
     commands.push(Command::Put {
         node: Box::new(render),
     });
+    if let Some(lens) = lens {
+        commands.push(Command::Put {
+            node: Box::new(lens),
+        });
+    }
     commands.push(Command::Put {
         node: Box::new(grain),
     });

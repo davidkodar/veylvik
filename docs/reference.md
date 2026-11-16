@@ -1372,17 +1372,27 @@ and `colour`.
   sightings over 3 pixels are outliers). An unknown lens is searched over 0.5 to
   3.6 times the frame width and refined; a shot without parallax solves as a
   tripod pan (rotation only), and a tripod shot that turns under 3 degrees
-  assumes a 36 mm-equivalent lens and reports `lens_measured: false`. The result
+  assumes a 36 mm-equivalent lens and reports `lens_measured: false`. The
+  lens's radial distortion (k1, k2, as in **Lens distortion**) is measured in the
+  final bundle adjustment and kept when it lowers the keyframe error by at least
+  3%; when the straight-lens search finds only a pan, misses keyframes or leaves
+  over 3 pixels of error, it searches again through lenses with k1 of −0.08,
+  −0.16, −0.24 and 0.08, and a guess must at least halve the median error
+  to be kept (a free moving camera can fit a pan's noise slightly better through a
+  wrong lens). With distortion, every track is undistorted and the camera
+  is placed in the ideal (straight) frame. The result
   is added as one undo step, leaving the output alone: **Solved camera** keyed on
   every frame (focal length in millimetres for the given sensor width, 36 mm by
   default), **Ground (shadow catcher)** when a plane facing up under the first
   camera holds at least 10% of the points (the world is levelled with it and
   faces the first camera's way), **Solved scene** (merge 3D objects into it),
-  **Render solved scene** and **3D over footage** (that render merged over the
-  source). The median depth seen from the first frame lands at the home
+  **Render solved scene**, **Footage lens** (a Lens distortion node putting the
+  measured distortion on the render, only when there is some), **Footage
+  grain** and **3D over footage** (that merged over the source). The median depth seen from the first frame lands at the home
   distance, so units match 2D pixels there. The report gives frames solved,
   tracks, points, rms and worst-frame error in pixels (under 0.5 is a good
-  solve), the focal length and the new nodes.
+  solve), the focal length, `lens_distortion` ({k1, k2} or null) and the new
+  nodes.
 - **Point cloud**: points in 3D (offsets from the frame centre at depth 0, at most
   20000) that draw nothing in renders; a camera solve adds its points as
   **Solved points**. In Studio the viewer shows them as dots (Guides > Points).
@@ -1421,6 +1431,17 @@ and `colour`.
   scene's first light, else adds a Shot light to the scene's Merge scenes.
   **Pick light** instead takes a click on the light in the frame (a sun, lamp
   or window) as that source.
+- **Lens distortion** (`lens_distortion`, input image): radial Brown-Conrady
+  distortion about the frame centre, with radii normalised by half the frame
+  diagonal: a point at ideal radius r is seen at r (1 + **k1** r² + **k2** r⁴),
+  both −1 to 1. Negative k1 is barrel distortion (wide lenses), positive is
+  pincushion. By default it removes the distortion (each output pixel samples the
+  source where the lens saw it), straightening footage; **Redistort** puts it on
+  (the ideal radius is found by Newton's method), so 3D or graphics made in the
+  ideal frame bend like the footage. Bilinear premultiplied sampling; pixels with
+  no source, or beyond where the lens folds over, are transparent, so barrel
+  distortion put on leaves the corners of a frame-sized render empty. Studio
+  offers Remove the lens / Put the lens on.
 - **Match grain** (`match_grain`, inputs image and optional plate): adds fresh
   grain every frame to a clean image so it matches footage. The GPU makes unit
   gaussian noise in four channels (red, green, blue and a shared part), blurs it

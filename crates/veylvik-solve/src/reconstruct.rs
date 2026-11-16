@@ -1,6 +1,7 @@
 //! Incremental reconstruction over keyframes: the best-parallax starting pair, cameras added outward by resection, new points triangulated, robust bundle adjustment; a rotation-only path for tripod pans.
 use crate::bundle::{Observation, Problem};
 use crate::geometry::{self, Pose};
+use crate::lens::Distortion;
 use crate::linalg::*;
 use crate::{Shot, Solved};
 
@@ -10,14 +11,19 @@ const MIN_ANGLE: f64 = 1.5;
 const OUTLIER: f64 = 3.0;
 const HUBER: f64 = 2.0;
 
+#[derive(Clone)]
 pub(crate) struct Reconstruction {
     /// Per keyframe.
     pub poses: Vec<Option<Pose>>,
     /// Per track.
     pub points: Vec<Option<V3>>,
     pub focal: f64,
+    /// Measured by `adjust` when asked; tracks are undistorted before `all_frames`.
+    pub distortion: Distortion,
     pub nodal: bool,
     pub rms: f64,
+    /// Median reprojection error (pixels) of every sighting, after `adjust`.
+    pub median: f64,
 }
 impl Reconstruction {
     pub fn solved(&self) -> usize {
@@ -35,7 +41,14 @@ impl Reconstruction {
     }
     /// Bundle adjust every solved keyframe and point; drop outlier sightings' points
     /// when they have too few good sightings left, then adjust again.
-    pub fn adjust(&mut self, shot: &Shot, keys: &[usize], solve_focal: bool, iterations: usize) {
+    pub fn adjust(
+        &mut self,
+        shot: &Shot,
+        keys: &[usize],
+        solve_focal: bool,
+        solve_distortion: bool,
+        iterations: usize,
+    ) {
         for round in 0..2 {
             let cams: Vec<usize> = (0..keys.len())
                 .filter(|&k| self.poses[k].is_some())
@@ -67,6 +80,7 @@ impl Reconstruction {
                 }
             }
             let mut focal = self.focal;
+            let mut distortion = self.distortion;
             let mut problem = Problem {
                 poses: &mut poses,
                 fixed: &fixed,
@@ -75,6 +89,9 @@ impl Reconstruction {
                 focal: &mut focal,
                 centre: shot.centre,
                 solve_focal: solve_focal && round == 1,
+                distortion: &mut distortion,
+                radius: shot.radius,
+                solve_distortion: solve_distortion && round == 1,
                 nodal: self.nodal,
                 points_fixed: false,
                 huber: HUBER,
@@ -82,11 +99,19 @@ impl Reconstruction {
             self.rms = problem.optimise(iterations);
             // Points with fewer than two good sightings are not trusted.
             let mut good = vec![0usize; ids.len()];
+            let mut errors = Vec::with_capacity(observations.len());
             for o in &observations {
-                if problem.error(o) < OUTLIER.max(3.0 * self.rms) {
+                let e = problem.error(o);
+                errors.push(e);
+                if e < OUTLIER.max(3.0 * self.rms) {
                     good[o.point] += 1;
                 }
             }
+            errors.sort_by(f64::total_cmp);
+            self.median = errors
+                .get(errors.len() / 2)
+                .copied()
+                .unwrap_or(f64::INFINITY);
             for (c, &k) in cams.iter().enumerate() {
                 self.poses[k] = Some(poses[c]);
             }
@@ -94,6 +119,7 @@ impl Reconstruction {
                 self.points[t] = (good[i] >= 2).then_some(points[i]);
             }
             self.focal = focal;
+            self.distortion = distortion;
         }
     }
     /// Place every frame against the settled points: keyframes keep their poses,
@@ -164,6 +190,7 @@ impl Reconstruction {
             frame_error: errors,
             nodal: self.nodal,
             focal_measured: false,
+            distortion: Distortion::NONE,
             keyframes: keys,
         }
     }
@@ -196,6 +223,7 @@ fn resect(
     }
     let mut poses = [start];
     let mut focal = focal;
+    let mut distortion = Distortion::NONE;
     let fixed = [hold];
     let mut problem = Problem {
         poses: &mut poses,
@@ -205,6 +233,9 @@ fn resect(
         focal: &mut focal,
         centre: shot.centre,
         solve_focal: false,
+        distortion: &mut distortion,
+        radius: shot.radius,
+        solve_distortion: false,
         nodal,
         points_fixed: true,
         huber: HUBER,
@@ -330,8 +361,10 @@ fn general(
         poses: vec![None; keys.len()],
         points: vec![None; shot.tracks.len()],
         focal,
+        distortion: Distortion::NONE,
         nodal: false,
         rms: 0.0,
+        median: f64::INFINITY,
     };
     r.poses[a] = Some(Pose::ORIGIN);
     r.poses[b] = Some(pose);
@@ -343,7 +376,7 @@ fn general(
         }
     };
     triangulate_new(&mut r, keys[a]);
-    r.adjust(shot, keys, false, 30);
+    r.adjust(shot, keys, false, false, 30);
     // Add keyframes outward from the pair, the best-supported first. One that
     // cannot be placed is skipped for good, so those beyond it (which need a
     // placed neighbour) stay unsolved too.
@@ -379,10 +412,10 @@ fn general(
         triangulate_new(&mut r, keys[k]);
         added += 1;
         if added % 4 == 0 {
-            r.adjust(shot, keys, false, 20);
+            r.adjust(shot, keys, false, false, 20);
         }
     }
-    r.adjust(shot, keys, false, 60);
+    r.adjust(shot, keys, false, false, 60);
     (r.solved() >= 2).then_some(r)
 }
 /// A tripod pan: the camera only turns. Rotations chain from frame to frame by
@@ -431,9 +464,11 @@ fn nodal(shot: &Shot, keys: &[usize], focal: f64) -> Option<Reconstruction> {
         poses,
         points,
         focal,
+        distortion: Distortion::NONE,
         nodal: true,
         rms: 0.0,
+        median: f64::INFINITY,
     };
-    r.adjust(shot, keys, false, 40);
+    r.adjust(shot, keys, false, false, 40);
     (r.solved() >= 2).then_some(r)
 }

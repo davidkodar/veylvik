@@ -130,6 +130,12 @@ impl Studio {
                     if report["lens_measured"].as_bool() == Some(false) && report["tripod"].as_bool() == Some(true) {
                         ui.weak("It barely turned, so the lens could not be measured: tick I know the lens if 3D looks the wrong size.");
                     }
+                    if let Some(k1) = report["lens_distortion"]["k1"].as_f64() {
+                        ui.weak(format!(
+                            "The lens bends straight lines ({}, k1 {k1:.3}): the 3D is bent the same way by the Footage lens node.",
+                            if k1 < 0.0 { "barrel" } else { "pincushion" }
+                        ));
+                    }
                     if report["ground"].is_null() {
                         ui.weak("No ground was found; add a shadow catcher plane yourself if objects need shadows.");
                     } else {
