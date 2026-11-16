@@ -15,22 +15,16 @@ Build shots from nodes, animate parameters with keyframes and curves, mask and g
 
 Veylvik is young, but it already works end to end: compose a graph, animate it, preview it live on the GPU, and export HDR frames and sequences. Keep copies of work you care about, because the project format can still change. Build it from source or as a local Arch package.
 
-[![Veylvik Studio with the Gilded inferno scene in the viewer: gold lettering under procedural fire with embers and a floor reflection, the node graph that builds it, and the Embers effect controls in the inspector](assets/readme/studio.webp)](assets/readme/studio.webp)
+[![Veylvik Studio: a gold 3D title standing on the sand of a filmed beach shot. The camera was solved from the footage and the sun matched to the shot; the inspector shows the title's 3D controls and the timeline the solved camera's keys.](assets/readme/3d-in-footage.webp)](assets/readme/3d-in-footage.webp)
 
 <table>
   <tr>
-    <td><img src="assets/readme/liquid-shimmer.webp" alt="Pink melt: liquid lettering with falling drips"></td>
-    <td><img src="assets/readme/snowfall.webp" alt="Deep freeze: crystalline lettering with snowfall over mountains"></td>
-    <td><img src="assets/readme/starfield.webp" alt="Nova ignition: a turbulent plasma ring over a starfield"></td>
-  </tr>
-  <tr>
-    <td><img src="assets/readme/fireflies.webp" alt="Toxic nectar: glossy green dripping lettering with fireflies"></td>
-    <td><img src="assets/readme/neon-outline.webp" alt="After hours: a neon outline title"></td>
-    <td><img src="assets/readme/prismatic-glow.webp" alt="Prism / identity: an emblem with prismatic light spill"></td>
+    <td><a href="assets/readme/cut-out.webp"><img src="assets/readme/cut-out.webp" alt="Select subject: three clicks mask a person, hair included, with a preview in 77 ms from a local model"></a></td>
+    <td><a href="assets/readme/3d-scene.webp"><img src="assets/readme/3d-scene.webp" alt="A 3D scene from a free view: the scene camera's frustum, the key light and soft shadows, with the camera's lens settings (focus on the marble sphere, f/1.4) in the inspector"></a></td>
   </tr>
 </table>
 
-*Every frame above is a bundled example scene rendered by Veylvik, including Gilded inferno in the editor. Each one opens as an editable graph, with no external fonts or media.*
+*Screenshots of Veylvik Studio: 3D text in a filmed shot with a solved camera, a subject selected with three clicks, and a 3D scene with its camera and light. Beach footage: ["A young woman's portrait at the beach"](https://mixkit.co/free-stock-video/a-young-womans-portrait-at-the-beach-1221/), Mixkit (Mixkit Stock Video Free License).*
 
 ## What it aims to do well
 
