@@ -95,3 +95,58 @@ node!(GridWarp, GRID_WARP, [amount], {
         Ok(())
     }
 });
+
+/// Most closed outlines a warp shape may have.
+pub const WARP_CONTOURS: usize = 8;
+
+/// Two drawn shapes: the image is pulled so the start shape lands on the end shape.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ShapeWarp {
+    pub from: vector::PathMask,
+    pub to: vector::PathMask,
+    pub amount: Scalar,
+    pub reach: Scalar,
+}
+pub static SHAPE_WARP: NodeType = NodeType {
+    type_id: "shape_warp",
+    version: 1,
+    label: "Shape warp",
+    description: "Pulls the image so that the start shape (from) lands on the end shape (to): draw from round a feature and to where it should go. Both are closed paths in pixels with the same number of outlines (1 to 8); their point counts may differ, because each outline is matched by distance along it from its first point, going the same way round. Everything inside the start shape follows it, and the surroundings stretch over reach pixels beyond it, untouched further out. Amount scales the move (0 leaves the image alone, 1 lands on the end shape) and can be keyed for a morph; either shape may carry geometry keys. The warp runs through a mesh with a point about every 16 pixels (at most 129 a side), so detail finer than that is smoothed; a move longer than reach folds the picture.",
+    inputs: &["image"],
+    optional: &[],
+    output: PortKind::Image,
+    parameters: &[
+        other("from", ParameterKind::Path, "pixels"),
+        other("to", ParameterKind::Path, "pixels"),
+        scalar("amount", "factor", 0.0, 1.0, 1.0),
+        scalar("reach", "pixels", 1.0, 4096.0, 200.0),
+    ],
+};
+node!(ShapeWarp, SHAPE_WARP, [amount, reach], {
+    fn validate(&self) -> Result<()> {
+        self.from.validate()?;
+        self.to.validate()?;
+        let outlines = |path: &vector::PathMask| {
+            path.commands
+                .iter()
+                .filter(|c| matches!(c, vector::PathCommand::Close {}))
+                .count()
+        };
+        if outlines(&self.from) > WARP_CONTOURS {
+            return fail("A warp shape has at most 8 outlines");
+        }
+        if outlines(&self.from) != outlines(&self.to)
+            || self.from.keys.iter().chain(&self.to.keys).any(|k| {
+                k.commands
+                    .iter()
+                    .filter(|c| matches!(c, vector::PathCommand::Close {}))
+                    .count()
+                    != outlines(&self.from)
+            })
+        {
+            return fail("The start and end shapes need the same number of outlines");
+        }
+        Ok(())
+    }
+});

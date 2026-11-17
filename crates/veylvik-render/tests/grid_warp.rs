@@ -7,6 +7,9 @@ const H: u32 = 48;
 
 /// A ramp (red = x, green = y of each pixel centre) through a grid warp.
 fn render(warp: nodes::GridWarp) -> Vec<[f32; 4]> {
+    render_operation(Operation::GridWarp(warp))
+}
+fn render_operation(operation: Operation) -> Vec<[f32; 4]> {
     let renderer = Renderer::new().unwrap();
     let pixels: Vec<[f32; 4]> = (0..W * H)
         .map(|i| [(i % W) as f32 + 0.5, (i / W) as f32 + 0.5, 0.0, 1.0])
@@ -20,7 +23,7 @@ fn render(warp: nodes::GridWarp) -> Vec<[f32; 4]> {
         }),
         &[],
     );
-    let node = Node::new("warp", Operation::GridWarp(warp), &[("image", image.id)]);
+    let node = Node::new("warp", operation, &[("image", image.id)]);
     let doc = Composition {
         ocio: Default::default(),
         working_space: Default::default(),
@@ -103,5 +106,73 @@ fn the_image_under_a_point_follows_it_and_the_rest_stays_smooth() {
     assert!(
         (p[0] - 32.0).abs() < 0.25 && (p[1] - 23.5).abs() < 0.3,
         "{p:?}"
+    );
+}
+fn rectangle(x: f32, y: f32, w: f32, h: f32) -> vector::PathMask {
+    use vector::PathCommand::*;
+    vector::PathMask {
+        keys: vec![],
+        fill_rule: Default::default(),
+        commands: vec![
+            Move { to: [x, y] },
+            Line { to: [x + w, y] },
+            Line { to: [x + w, y + h] },
+            Line { to: [x, y + h] },
+            Close {},
+        ],
+    }
+}
+#[test]
+#[ignore = "requires Vulkan"]
+fn a_start_shape_is_carried_onto_the_end_shape() {
+    let warp = |to: vector::PathMask, amount: f32| {
+        render_operation(Operation::ShapeWarp(nodes::ShapeWarp {
+            from: rectangle(20.0, 14.0, 16.0, 12.0),
+            to,
+            amount: amount.into(),
+            reach: 12.0.into(),
+        }))
+    };
+    // The same shape twice leaves the picture alone.
+    let still = warp(rectangle(20.0, 14.0, 16.0, 12.0), 1.0);
+    for (i, p) in still.iter().enumerate() {
+        assert_eq!(p[0], (i as u32 % W) as f32 + 0.5);
+    }
+    // Moved 8 px right and 6 down: what was inside the start shape is inside the end shape.
+    let out = warp(rectangle(28.0, 20.0, 16.0, 12.0), 1.0);
+    let at = |x: u32, y: u32| out[(y * W + x) as usize];
+    let p = at(36, 26); // centre (36.5, 26.5) shows the content from (28.5, 20.5)
+    assert!(
+        (p[0] - 28.5).abs() < 0.35 && (p[1] - 20.5).abs() < 0.35,
+        "{p:?}"
+    );
+    // Beyond the reach the picture is untouched.
+    for (x, y) in [(2, 2), (61, 45), (60, 3), (3, 44)] {
+        let p = at(x, y);
+        assert!(
+            (p[0] - (x as f32 + 0.5)).abs() < 0.05 && (p[1] - (y as f32 + 0.5)).abs() < 0.05,
+            "{p:?}"
+        );
+    }
+    // Half the amount moves it half as far.
+    let half = warp(rectangle(28.0, 20.0, 16.0, 12.0), 0.5);
+    let p = half[(23 * W + 32) as usize]; // centre (32.5, 23.5) shows (28.5, 20.5)
+    assert!(
+        (p[0] - 28.5).abs() < 0.35 && (p[1] - 20.5).abs() < 0.35,
+        "{p:?}"
+    );
+    // Shapes with different numbers of outlines are refused.
+    let mut two = rectangle(20.0, 14.0, 16.0, 12.0);
+    two.commands
+        .extend(rectangle(44.0, 30.0, 6.0, 6.0).commands);
+    assert!(
+        Operation::ShapeWarp(nodes::ShapeWarp {
+            from: rectangle(20.0, 14.0, 16.0, 12.0),
+            to: two,
+            amount: 1.0.into(),
+            reach: 12.0.into(),
+        })
+        .validate()
+        .is_err()
     );
 }

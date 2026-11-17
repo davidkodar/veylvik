@@ -92,6 +92,14 @@ fn move_handle(operation: &mut Operation, handle: usize, delta: Vec2, time: Time
     Ok(())
 }
 
+/// Whether the viewer edits a shape warp's end shape (otherwise its start shape).
+pub fn editing_end_shape(ctx: &egui::Context) -> bool {
+    ctx.data(|d| d.get_temp(egui::Id::new("shape-warp-end")))
+        .unwrap_or(true)
+}
+pub fn edit_end_shape(ctx: &egui::Context, end: bool) {
+    ctx.data_mut(|d| d.insert_temp(egui::Id::new("shape-warp-end"), end));
+}
 pub fn show(
     ui: &egui::Ui,
     canvas: Rect,
@@ -131,6 +139,44 @@ pub fn show(
     let origin = canvas.min + egui::vec2(canvas.width() * ox, canvas.height() * oy);
     let painter = ui.painter().with_clip_rect(canvas);
     let color = crate::design::accent(ui.ctx());
+    if let Operation::ShapeWarp(warp) = operation {
+        // The shape being edited has handles; the other is drawn faintly, with
+        // links showing which points of the two outlines belong together.
+        let end = editing_end_shape(ui.ctx());
+        let (start, target) = (warp.from.at(time)?, warp.to.at(time)?);
+        if let (Ok(a), Ok(b)) = (
+            veylvik_warp::samples(&start),
+            veylvik_warp::samples(&target),
+        ) && a.len() == b.len()
+        {
+            let screen = |p: &[f32; 2]| origin + egui::vec2(p[0], p[1]) * scale;
+            let faint = Stroke::new(1.0_f32, color.gamma_multiply(0.45));
+            for (a, b) in a.iter().zip(&b) {
+                let other = if end { a } else { b };
+                painter.add(egui::Shape::closed_line(
+                    other.iter().map(screen).collect(),
+                    faint,
+                ));
+                for (p, q) in a.iter().zip(b).step_by(8) {
+                    painter.line_segment([screen(p), screen(q)], faint);
+                }
+            }
+        }
+        let path = if end { &mut warp.to } else { &mut warp.from };
+        let mut shape = if end { target } else { start };
+        let changed = crate::path_handles::show(
+            ui,
+            canvas,
+            transform,
+            image,
+            &mut shape,
+            !path.keys.is_empty(),
+        );
+        if changed {
+            path.edit_at(time, shape)?;
+        }
+        return Ok(changed);
+    }
     let ellipse = |center: Pos2, radii: Vec2| {
         let outline: Vec<Pos2> = (0..=96)
             .map(|i| {

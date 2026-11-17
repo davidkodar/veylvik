@@ -106,6 +106,7 @@ macro_rules! each_node {
             $crate::Operation::Bloom($node) => $body,
             $crate::Operation::Shader($node) => $body,
             $crate::Operation::GridWarp($node) => $body,
+            $crate::Operation::ShapeWarp($node) => $body,
             $crate::Operation::Model3d($node) => $body,
             $crate::Operation::Merge($node) => $body,
             $crate::Operation::Blend($node) => $body,
@@ -185,6 +186,7 @@ pub enum Operation {
     Bloom(nodes::Bloom),
     Shader(nodes::Shader),
     GridWarp(nodes::GridWarp),
+    ShapeWarp(nodes::ShapeWarp),
     #[serde(rename = "model_3d")]
     Model3d(nodes::Model3d),
     Merge(nodes::Merge),

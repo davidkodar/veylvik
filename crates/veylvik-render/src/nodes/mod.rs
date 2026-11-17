@@ -68,8 +68,17 @@ pub(crate) trait RenderNode {
     }
     /// A small image of the node's own data, bound after its inputs (a warp's mesh).
     /// The same data must give the same image, so frames stay cached.
-    fn data(&self) -> Option<std::sync::Arc<crate::Image>> {
-        None
+    fn data(
+        &self,
+        _time: Time,
+        _width: u32,
+        _height: u32,
+    ) -> Result<Option<std::sync::Arc<crate::Image>>> {
+        Ok(None)
+    }
+    /// Whether `data` gives an image (decided without building it).
+    fn has_data(&self) -> bool {
+        false
     }
     /// Passes its input through unchanged with these parameters.
     fn identity(&self) -> bool {

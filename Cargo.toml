@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/veylvik-color", "crates/veylvik-document", "crates/veylvik-render", "crates/veylvik-cli", "crates/veylvik-io", "crates/veylvik-studio", "crates/veylvik-control", "crates/veylvik-text", "crates/veylvik-decode", "crates/veylvik-interop", "crates/veylvik-track", "crates/veylvik-segment", "crates/veylvik-audio", "crates/veylvik-mesh", "crates/veylvik-scene", "crates/veylvik-render3d", "crates/veylvik-solve", "crates/veylvik-expr", "crates/veylvik-preview", "crates/veylvik-presets", "crates/veylvik-shader"]
+members = ["crates/veylvik-color", "crates/veylvik-document", "crates/veylvik-render", "crates/veylvik-cli", "crates/veylvik-io", "crates/veylvik-studio", "crates/veylvik-control", "crates/veylvik-text", "crates/veylvik-decode", "crates/veylvik-interop", "crates/veylvik-track", "crates/veylvik-segment", "crates/veylvik-audio", "crates/veylvik-mesh", "crates/veylvik-scene", "crates/veylvik-render3d", "crates/veylvik-solve", "crates/veylvik-expr", "crates/veylvik-preview", "crates/veylvik-presets", "crates/veylvik-shader", "crates/veylvik-warp"]
 resolver = "3"
 
 [workspace.package]
@@ -34,6 +34,7 @@ veylvik-expr = { path = "crates/veylvik-expr" }
 veylvik-preview = { path = "crates/veylvik-preview" }
 veylvik-presets = { path = "crates/veylvik-presets" }
 veylvik-shader = { path = "crates/veylvik-shader" }
+veylvik-warp = { path = "crates/veylvik-warp" }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

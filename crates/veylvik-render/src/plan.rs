@@ -590,7 +590,7 @@ impl Plan {
                         *slot = Input::Asset(asset.to_owned());
                     }
                     // A node with data of its own (such as a warp's mesh) reads it there too.
-                    if veylvik_document::each_node!(&node.operation, n => crate::nodes::RenderNode::data(n)).is_some()
+                    if veylvik_document::each_node!(&node.operation, n => crate::nodes::RenderNode::has_data(n))
                         && let Some(slot) = inputs[..BOUND]
                             .iter_mut()
                             .find(|i| matches!(i, Input::Empty))

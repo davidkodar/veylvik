@@ -4230,6 +4230,7 @@ dependencies = [
  "veylvik-scene",
  "veylvik-shader",
  "veylvik-text",
+ "veylvik-warp",
  "wgpu",
 ]
 
@@ -4309,6 +4310,7 @@ dependencies = [
  "veylvik-solve",
  "veylvik-text",
  "veylvik-track",
+ "veylvik-warp",
  "wgpu",
 ]
 
@@ -4338,6 +4340,13 @@ dependencies = [
  "veylvik-scene",
  "veylvik-solve",
  "wgpu",
+]
+
+[[package]]
+name = "veylvik-warp"
+version = "0.1.0"
+dependencies = [
+ "veylvik-document",
 ]
 
 [[package]]

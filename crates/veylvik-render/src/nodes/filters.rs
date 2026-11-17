@@ -476,27 +476,16 @@ impl RenderNode for veylvik_document::nodes::GridWarp {
             || matches!(self.amount, Scalar::Constant { value } if value == 0.0)
     }
     /// The mesh's offsets as a columns x rows image; one image per distinct mesh.
-    fn data(&self) -> Option<std::sync::Arc<crate::Image>> {
-        type Kept = Vec<((u32, Vec<[f32; 2]>), std::sync::Arc<crate::Image>)>;
-        static MESHES: std::sync::Mutex<Kept> = std::sync::Mutex::new(Vec::new());
-        let key = (self.columns, self.points.clone());
-        let mut kept = MESHES.lock().ok()?;
-        if let Some((_, image)) = kept.iter().find(|(k, _)| *k == key) {
-            return Some(image.clone());
-        }
-        let image = std::sync::Arc::new(
-            crate::Image::new(
-                self.columns,
-                self.rows,
-                self.points.iter().map(|p| [p[0], p[1], 0.0, 1.0]).collect(),
-            )
-            .ok()?,
-        );
-        if kept.len() >= 64 {
-            kept.remove(0);
-        }
-        kept.push((key, image.clone()));
-        Some(image)
+    fn has_data(&self) -> bool {
+        true
+    }
+    fn data(
+        &self,
+        _time: veylvik_document::Time,
+        _width: u32,
+        _height: u32,
+    ) -> Result<Option<std::sync::Arc<crate::Image>>> {
+        Ok(grid_mesh(self))
     }
     fn params(
         &self,
@@ -510,6 +499,97 @@ impl RenderNode for veylvik_document::nodes::GridWarp {
             sample("amount")?,
             0.0,
         ];
+        Ok(())
+    }
+}
+/// The mesh's offsets as a columns x rows image; one image per distinct mesh.
+fn grid_mesh(warp: &veylvik_document::nodes::GridWarp) -> Option<std::sync::Arc<crate::Image>> {
+    type Kept = Vec<((u32, Vec<[f32; 2]>), std::sync::Arc<crate::Image>)>;
+    static MESHES: std::sync::Mutex<Kept> = std::sync::Mutex::new(Vec::new());
+    let key = (warp.columns, warp.points.clone());
+    let mut kept = MESHES.lock().ok()?;
+    if let Some((_, image)) = kept.iter().find(|(k, _)| *k == key) {
+        return Some(image.clone());
+    }
+    let image = std::sync::Arc::new(
+        crate::Image::new(
+            warp.columns,
+            warp.rows,
+            warp.points.iter().map(|p| [p[0], p[1], 0.0, 1.0]).collect(),
+        )
+        .ok()?,
+    );
+    if kept.len() >= 64 {
+        kept.remove(0);
+    }
+    kept.push((key, image.clone()));
+    Some(image)
+}
+impl RenderNode for veylvik_document::nodes::ShapeWarp {
+    fn passes(&self) -> Passes {
+        Passes::One(Kernel::GridWarp)
+    }
+    fn identity(&self) -> bool {
+        (self.from.keys.is_empty()
+            && self.to.keys.is_empty()
+            && self.from.commands == self.to.commands)
+            || matches!(self.amount, Scalar::Constant { value } if value == 0.0)
+    }
+    fn has_data(&self) -> bool {
+        true
+    }
+    /// The mesh that carries the start shape onto the end shape at `time`; the same
+    /// shapes give the same image, so a still warp stays cached.
+    fn data(
+        &self,
+        time: veylvik_document::Time,
+        width: u32,
+        height: u32,
+    ) -> Result<Option<std::sync::Arc<crate::Image>>> {
+        type Key = (
+            Vec<veylvik_document::vector::PathCommand>,
+            Vec<veylvik_document::vector::PathCommand>,
+            [u32; 3],
+        );
+        static FIELDS: std::sync::Mutex<Vec<(Key, std::sync::Arc<crate::Image>)>> =
+            std::sync::Mutex::new(Vec::new());
+        let (from, to) = (self.from.at(time)?, self.to.at(time)?);
+        let reach = self.reach.at(time)?;
+        let key = (
+            from.commands.clone(),
+            to.commands.clone(),
+            [width, height, reach.to_bits()],
+        );
+        let mut kept = FIELDS
+            .lock()
+            .map_err(|_| error("warp field lock poisoned"))?;
+        if let Some((_, image)) = kept.iter().find(|(k, _)| *k == key) {
+            return Ok(Some(image.clone()));
+        }
+        let field = veylvik_warp::field(&from, &to, width, height, reach).map_err(error)?;
+        let image = std::sync::Arc::new(crate::Image::new(
+            field.columns,
+            field.rows,
+            field
+                .offsets
+                .iter()
+                .map(|o| [o[0], o[1], 0.0, 1.0])
+                .collect(),
+        )?);
+        if kept.len() >= 16 {
+            kept.remove(0);
+        }
+        kept.push((key, image.clone()));
+        Ok(Some(image))
+    }
+    fn params(
+        &self,
+        cx: &Cx<'_>,
+        sample: &dyn Fn(&str) -> Result<f32>,
+        p: &mut Params,
+    ) -> Result<()> {
+        let (columns, rows) = veylvik_warp::sides(cx.width, cx.height);
+        p.values = [columns as f32, rows as f32, sample("amount")?, 0.0];
         Ok(())
     }
 }

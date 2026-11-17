@@ -118,3 +118,35 @@ impl Inspect for veylvik_document::nodes::GridWarp {
         }
     }
 }
+impl Inspect for veylvik_document::nodes::ShapeWarp {
+    fn inspect(&mut self, ui: &mut egui::Ui, cx: &mut InspectCx<'_>) {
+        ui.weak("Put the start shape round the part to move, then shape the end shape where it should go. The picture inside follows; Reach is how far the surroundings stretch.");
+        let mut end = crate::handles::editing_end_shape(ui.ctx());
+        ui.horizontal(|ui| {
+            ui.label("Edit in the viewer");
+            let was = end;
+            ui.selectable_value(&mut end, false, "Start shape");
+            ui.selectable_value(&mut end, true, "End shape");
+            if end != was {
+                crate::handles::edit_end_shape(ui.ctx(), end);
+            }
+        });
+        ui.horizontal(|ui| {
+            if ui
+                .add_enabled(
+                    self.to.keys.is_empty()
+                        && self.from.keys.is_empty()
+                        && self.to.commands != self.from.commands,
+                    egui::Button::new("End shape like the start"),
+                )
+                .on_hover_text(
+                    "Make the end shape a copy of the start shape, leaving the picture as it was",
+                )
+                .clicked()
+            {
+                self.to = self.from.clone();
+                cx.dirty = true;
+            }
+        });
+    }
+}

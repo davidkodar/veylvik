@@ -1508,6 +1508,23 @@ and `colour`.
   dragged; the inspector changes the number of points (resampling the warp so
   far) and resets the mesh. Points are not keyable yet, and there are no tangent
   handles.
+- **Shape warp** (`shape_warp`, input image): pulls the image so the start
+  shape `from` lands on the end shape `to`. Both are closed paths in pixels
+  (the Path mask's geometry format, keys allowed) with the same number of
+  outlines, 1 to 8. Point counts may differ: each outline is resampled to 96
+  points evenly along its length from its first point, both taken the same way
+  round, and point k of the start goes to point k of the end. A mesh of offsets
+  is built from those pairs (inverse-fourth-power weighting, so the outline is
+  followed closely): everything inside the start shape follows fully, and
+  outside it the pull fades smoothly to nothing **Reach** pixels (1–4096,
+  default 200) from the outline. The mesh has a point about every 16 pixels
+  (at least 33 a side in small frames, at most 129) and runs through the Grid
+  warp's kernel, so detail finer than the mesh is smoothed, and a move longer
+  than Reach folds the picture. **Amount** (0–1, keyable) scales the move.
+  Matching shapes, or Amount 0, pass the image through. In Studio the inspector
+  chooses which shape the viewer edits (Start shape or End shape); the other is
+  drawn faintly with links between matching points, and **End shape like the
+  start** resets the warp.
 - **Custom shader** (`shader`, optional inputs image and second): runs the
   user's WGSL on every pixel. `code` defines `fn shade(at: vec2<f32>) ->
   vec4<f32>`, returning premultiplied scene-linear RGBA for the pixel centred at

@@ -228,6 +228,7 @@ pub(crate) const ADD_MENU: [(&str, &[&registry::NodeType]); 10] = [
             &registry::DISPLACE,
             &registry::LENS_DISTORTION,
             &registry::GRID_WARP,
+            &registry::SHAPE_WARP,
         ],
     ),
     (

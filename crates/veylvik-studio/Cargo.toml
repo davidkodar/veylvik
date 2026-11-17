@@ -19,6 +19,7 @@ veylvik-expr.workspace = true
 veylvik-preview.workspace = true
 veylvik-presets.workspace = true
 veylvik-shader.workspace = true
+veylvik-warp.workspace = true
 veylvik-segment.workspace = true
 veylvik-audio.workspace = true
 veylvik-io.workspace = true
