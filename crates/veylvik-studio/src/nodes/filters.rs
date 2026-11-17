@@ -79,3 +79,8 @@ impl Inspect for veylvik_document::nodes::Bloom {
         ui.weak("Bright light spreads as glow over its surroundings. Put it after the merge so titles light the background too; raise Threshold to keep it to the hottest highlights.");
     }
 }
+impl Inspect for veylvik_document::nodes::Shader {
+    fn inspect(&mut self, ui: &mut egui::Ui, cx: &mut InspectCx<'_>) {
+        cx.dirty |= crate::shader_editor::show(ui, cx.node_id, self);
+    }
+}

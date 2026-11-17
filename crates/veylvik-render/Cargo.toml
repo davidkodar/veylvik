@@ -11,6 +11,7 @@ veylvik-interop = { path = "../veylvik-interop" }
 veylvik-document.workspace = true
 veylvik-text.workspace = true
 veylvik-scene.workspace = true
+veylvik-shader.workspace = true
 wgpu.workspace = true
 bytemuck.workspace = true
 pollster.workspace = true

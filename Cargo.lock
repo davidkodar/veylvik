@@ -4143,6 +4143,7 @@ dependencies = [
  "ttf-parser",
  "uuid",
  "veylvik-expr",
+ "veylvik-shader",
 ]
 
 [[package]]
@@ -4227,6 +4228,7 @@ dependencies = [
  "veylvik-interop",
  "veylvik-preview",
  "veylvik-scene",
+ "veylvik-shader",
  "veylvik-text",
  "wgpu",
 ]
@@ -4272,6 +4274,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "veylvik-shader"
+version = "0.1.0"
+
+[[package]]
 name = "veylvik-solve"
 version = "0.1.0"
 
@@ -4299,6 +4305,7 @@ dependencies = [
  "veylvik-render3d",
  "veylvik-scene",
  "veylvik-segment",
+ "veylvik-shader",
  "veylvik-solve",
  "veylvik-text",
  "veylvik-track",

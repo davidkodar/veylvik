@@ -104,6 +104,7 @@ macro_rules! each_node {
             $crate::Operation::MatchGrain($node) => $body,
             $crate::Operation::LensDistortion($node) => $body,
             $crate::Operation::Bloom($node) => $body,
+            $crate::Operation::Shader($node) => $body,
             $crate::Operation::Model3d($node) => $body,
             $crate::Operation::Merge($node) => $body,
             $crate::Operation::Blend($node) => $body,
@@ -181,6 +182,7 @@ pub enum Operation {
     MatchGrain(nodes::MatchGrain),
     LensDistortion(nodes::LensDistortion),
     Bloom(nodes::Bloom),
+    Shader(nodes::Shader),
     #[serde(rename = "model_3d")]
     Model3d(nodes::Model3d),
     Merge(nodes::Merge),

@@ -1494,6 +1494,32 @@ and `colour`.
   width. The title uses the built-in bold font; a heavier font from the font
   browser suits it better. The scene comes from the `veylvik-presets` crate,
   which builds scenes from document nodes only.
+- **Custom shader** (`shader`, optional inputs image and second): runs the
+  user's WGSL on every pixel. `code` defines `fn shade(at: vec2<f32>) ->
+  vec4<f32>`, returning premultiplied scene-linear RGBA for the pixel centred at
+  `at` (pixels, y down). `image(at)` and `second(at)` read the inputs with
+  bilinear filtering and are transparent outside the frame or when
+  unconnected; `size` is the frame's size and `time` the frame's time in
+  seconds. Controls are declared in comments and read from `u`: `// slider NAME
+  MIN MAX DEFAULT` gives `u.NAME` (f32) and `// colour NAME R G B` gives
+  `u.NAME` (vec3, linear RGB, 0–64). Their values are the node's `p1` to `p8`
+  in the order declared, a slider using one and a colour three (eight in all);
+  each can be keyed or follow an expression, and Studio shows them under the
+  declared names and ranges. To be safe on every pixel, the text may not use
+  attributes (`@…`), global variables, `while`, `loop` or `continuing`, must be
+  ASCII outside comments and at most 16000 characters, and may not redefine
+  `image`, `second` or `custom`; `for` loops are allowed only inside `shade`,
+  written `for (var i = 0; i < 16; i++)` (or `<=`, `+= N`) with whole-number
+  bounds, a counter that is only read in the body, at most 1024 iterations
+  each and when nested, and eight loops in all. These rules are checked when
+  the node is stored; the full program (the node's bindings and helpers, the
+  code, and an entry point that fills `u` and calls `shade`) is then parsed and
+  validated with naga when the plan is compiled, so a mistake is an error
+  naming the user's line and never reaches the GPU. Results are checked for
+  non-finite values like every node's. Compiled shaders are cached by source
+  (24 kept). In Studio the inspector has a code field that reports "Compiles"
+  or the error as you type; **Use this code** runs it, starting newly declared
+  controls at their defaults, and **Revert** returns to the running code.
 - **Bloom** (`bloom`, input image): light brighter than **Threshold**
   (scene-linear luminance; **Knee** softens where it starts) spreads as glow in
   its own colour times **Tint**. The bright part is blurred with a wide gaussian

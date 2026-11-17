@@ -1,0 +1,10 @@
+[package]
+name = "veylvik-shader"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Custom shader nodes for Veylvik: control declarations, bounded-loop rules and the WGSL program built around the user's code."
+[dependencies]
+[lints]
+workspace = true

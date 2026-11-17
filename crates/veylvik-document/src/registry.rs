@@ -24,6 +24,7 @@ pub enum ParameterKind {
     MediaPlacement,
     MediaColour,
     ExrLayer,
+    ShaderCode,
     TextFeatures,
     TextContent,
     TextFont,
@@ -84,6 +85,7 @@ impl Parameter {
             ParameterKind::MediaPlacement => json!(crate::media::Placement::default()),
             ParameterKind::MediaColour => json!(crate::media::InputColour::default()),
             ParameterKind::ExrLayer => json!(null),
+            ParameterKind::ShaderCode => json!(veylvik_shader::EXAMPLE),
             ParameterKind::MediaTiming => json!(crate::media::Timing::default()),
             ParameterKind::FadeTiming => json!(crate::nodes::FadeTiming::default()),
             ParameterKind::Typography => json!(crate::text::Typography::default()),
@@ -199,6 +201,9 @@ impl Parameter {
             ParameterKind::ExrLayer => {
                 json!({"type":["string","null"],"minLength":1,"maxLength":512})
             }
+            ParameterKind::ShaderCode => {
+                json!({"type":"string","minLength":1,"maxLength":veylvik_shader::MAX_SOURCE})
+            }
             ParameterKind::FadeTiming => crate::nodes::fade_schema(),
             ParameterKind::MediaPlacement => {
                 json!({"type":"string","enum":["legacy","fit","fill","original","stretch"]})
@@ -307,8 +312,8 @@ pub use crate::nodes::{
     LENS_DISTORTION, LIGHT_3D, LIGHT_RIG, LUMA_KEY, LUT, MASK, MATCH_GRAIN, MATERIAL,
     MATERIAL_LAYERS, MERGE, MERGE_SCENES, METALLIC_SHINE, MODEL_3D, MORPHOLOGY, MOTION_BLUR, NOISE,
     OCIO, OPTICAL_FLOW, PATH, PATINA, PLANAR_TRACK, PLANAR_WARP, POINT_CLOUD, REFINE_MATTE,
-    RENDER_SCENE, SHAPE_3D, SOLID, SUN_GLINTS, SURFACE_BLEND, SURFACE_REFLECTION, TEXT, TEXT_3D,
-    TIME_REMAP, TRANSFORM, TRANSFORM_3D,
+    RENDER_SCENE, SHADER, SHAPE_3D, SOLID, SUN_GLINTS, SURFACE_BLEND, SURFACE_REFLECTION, TEXT,
+    TEXT_3D, TIME_REMAP, TRANSFORM, TRANSFORM_3D,
 };
 pub static TYPES: &[&NodeType] = &[
     &SOLID,
@@ -336,6 +341,7 @@ pub static TYPES: &[&NodeType] = &[
     &crate::nodes::MODEL_3D,
     &crate::nodes::LENS_DISTORTION,
     &crate::nodes::BLOOM,
+    &crate::nodes::SHADER,
     &MERGE,
     &IMAGE,
     &FOOTAGE,

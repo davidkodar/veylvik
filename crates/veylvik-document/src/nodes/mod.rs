@@ -50,6 +50,7 @@ macro_rules! node {
 }
 mod color;
 mod composite;
+mod custom;
 mod filters;
 mod generators;
 mod keying;
@@ -62,6 +63,7 @@ mod tracking;
 mod vector;
 pub use color::*;
 pub use composite::*;
+pub use custom::*;
 pub use filters::*;
 pub use generators::*;
 pub use keying::*;

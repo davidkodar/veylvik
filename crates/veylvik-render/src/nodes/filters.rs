@@ -447,3 +447,23 @@ impl RenderNode for veylvik_document::nodes::Bloom {
         Ok(())
     }
 }
+impl RenderNode for veylvik_document::nodes::Shader {
+    fn passes(&self) -> Passes {
+        Passes::One(Kernel::Custom)
+    }
+    fn params(
+        &self,
+        cx: &Cx<'_>,
+        sample: &dyn Fn(&str) -> Result<f32>,
+        p: &mut Params,
+    ) -> Result<()> {
+        // The frame's time for the shader, and which inputs are connected.
+        let seconds = cx.time.seconds().map_err(|e| error(e.to_string()))?;
+        p.size_op[2] = (seconds as f32).to_bits();
+        p.size_op[3] = u32::from(cx.node.inputs.contains_key("image"))
+            | u32::from(cx.node.inputs.contains_key("second")) << 1;
+        p.values = [sample("p1")?, sample("p2")?, sample("p3")?, sample("p4")?];
+        p.extra = [sample("p5")?, sample("p6")?, sample("p7")?, sample("p8")?];
+        Ok(())
+    }
+}

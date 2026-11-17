@@ -8,6 +8,8 @@ use veylvik_document::{CompiledScalar, Composition, Node, NodeId, Operation};
 pub enum Kernel {
     /// A Render scene node, drawn by the registered scene renderer, not a compute kernel.
     RenderScene,
+    /// A custom shader node: its pipeline is compiled from the node's code.
+    Custom,
     ToAcescg,
     FromAcescg,
     Text,
@@ -177,6 +179,7 @@ impl Kernel {
     pub(crate) fn entry(self) -> &'static str {
         match self {
             Self::RenderScene => "render_scene",
+            Self::Custom => "custom",
             Self::ToAcescg => "to_acescg",
             Self::FromAcescg => "from_acescg",
             Self::Text => "text_image",
@@ -789,6 +792,13 @@ impl Plan {
                     .collect::<std::result::Result<BTreeMap<_, _>, _>>()
             })
             .collect::<std::result::Result<Vec<_>, _>>()?;
+        // A custom shader that does not compile is an error here, with its line.
+        for node in &nodes {
+            if let Operation::Shader(shader) = &node.operation {
+                crate::custom::check(&shader.code)
+                    .map_err(|e| error(format!("{}: {e}", node.label)))?;
+            }
+        }
         let link_data = composition
             .linked_nodes(nodes.iter().chain(&light_data).map(|n| n.id))
             .into_iter()

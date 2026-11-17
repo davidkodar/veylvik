@@ -48,6 +48,7 @@ Many of these tools are new and have been tested on a small set of shots so far.
 - **Tracking and keying:** GPU planar tracking that pins layers to surfaces through occlusions, camera moves and both directions, point tracking, and colour-difference chroma and luma keyers with despill and an eyedropper.
 - **Text and titles:** GPU-rendered editable text with a searchable library of system and personal fonts, layout, styling and animation tools, and outlines, glows and surface materials connected as ordinary effects.
 - **Blur and defocus:** box and gaussian blur, plus a lens blur that turns lights into round bokeh discs and animates for rack focus. Give it a depth pass and it focuses at a chosen distance, like a real lens.
+- **Custom shaders:** write your own effect as a WGSL function in a node, with sliders and colours it declares itself; it is checked and compiled before it runs, with errors on your own line.
 - **Blender passes:** read any layer of multi-layer OpenEXR renders (Combined, Depth, Normal, light groups) as footage, still or sequence.
 - **Temporal effects:** branch-local GPU shutter motion blur with separate preview/final samples, plus source-time remapping for speed, reverse, freeze and animated ramps. Time remap preserves footage trims and transparent boundaries; it does not retime audio or interpolate missing video frames. The Shutter Motion Blur starter demonstrates exposure sampling.
 - **Looks and materials:** 74 starter effects in a searchable, categorised library with animated hover previews, drag-and-drop, double-click actions and context menus. They include glows, streaks, distortions, echoes and particle overlays; procedural metals, wood, marble, brick, paper and leather; glass and reflections; procedural fire; depth-layered airborne dust; silhouette-driven wet ink and refractive water drips; a separate condensation coating with beads, fine moisture and sliding trails; and smoke, fog and clouds. Every starter is an editable group with public controls, and they scale to any resolution, up to native UHD.
@@ -74,7 +75,7 @@ The [feature list](docs/features.md) covers everything Veylvik can do, area by a
 
 ## How it is built and tested
 
-Veylvik is written in Rust as a twenty-crate workspace. Application, document and rendering crates forbid `unsafe`; native FFmpeg and GPU-handle access is isolated in `veylvik-decode` and `veylvik-interop`, with explicit unsafe-operation and safety-comment checks. `veylvik-color` isolates the native OpenColorIO C++ interface behind a safe Rust API. Rendering compiles the graph into an immutable plan of compute passes and runs it on the GPU through wgpu and Vulkan. The editor is a native egui app that shows those frames from the same Vulkan device, without copying the preview frame back to the CPU. Document editing, font shaping and orchestration run on the CPU; composition kernels, material shading and vector coverage run on Vulkan. Export and diagnostic readbacks are separate from the live viewer path.
+Veylvik is written in Rust as a twenty-one-crate workspace. Application, document and rendering crates forbid `unsafe`; native FFmpeg and GPU-handle access is isolated in `veylvik-decode` and `veylvik-interop`, with explicit unsafe-operation and safety-comment checks. `veylvik-color` isolates the native OpenColorIO C++ interface behind a safe Rust API. Rendering compiles the graph into an immutable plan of compute passes and runs it on the GPU through wgpu and Vulkan. The editor is a native egui app that shows those frames from the same Vulkan device, without copying the preview frame back to the CPU. Document editing, font shaping and orchestration run on the CPU; composition kernels, material shading and vector coverage run on Vulkan. Export and diagnostic readbacks are separate from the live viewer path.
 
 | Crate | Role |
 | --- | --- |
@@ -87,6 +88,7 @@ Veylvik is written in Rust as a twenty-crate workspace. Application, document an
 | `veylvik-mesh` | Watertight 3D meshes from vector outlines and primitive solids (the geometry behind 3D text and shapes). |
 | `veylvik-scene` | Evaluates 3D scene graphs at a frame: objects, cameras, lights, transforms and projection. |
 | `veylvik-render3d` | Draws 3D scenes on the GPU for Render scene, plugged into the renderer through a hook. |
+| `veylvik-shader` | Custom shader nodes: control declarations, the rules that keep user code bounded, and the program built around it. No dependencies. |
 | `veylvik-presets` | Ready-made scenes built only from document nodes, kept apart from the engine. |
 | `veylvik-track` | GPU point and planar tracking, built on the renderer's narrow compute interface. |
 | `veylvik-solve` | Camera solving from feature tracks: camera path, lens, distortion and a point cloud. No dependencies. |

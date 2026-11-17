@@ -57,6 +57,7 @@ mod scene_points;
 mod scene_shot;
 mod scopes;
 mod sequence;
+mod shader_editor;
 mod shape_animation;
 mod shot_light;
 mod showcase_gallery;
@@ -1882,6 +1883,11 @@ impl Studio {
             if looked && matches!(parameter.name, "roughness" | "metallic") {
                 continue;
             }
+            // A custom shader's values show as the controls its code declares.
+            let declared = shader_editor::slot(&self.draft.operation, parameter.name);
+            if kind.type_id == "shader" && declared.is_none() {
+                continue;
+            }
             // Map controls appear with their map.
             let needs = match parameter.name {
                 "shot" => "environment",
@@ -1896,7 +1902,9 @@ impl Studio {
                 continue;
             }
             if let Some(value) = self.draft.operation.scalar_mut(parameter.name) {
-                let label = if kind.type_id == "material" && parameter.name == "shot" {
+                let label = if let Some(slot) = &declared {
+                    slot.label.clone()
+                } else if kind.type_id == "material" && parameter.name == "shot" {
                     "Shot reflection".to_owned()
                 } else if kind.type_id == "material" && parameter.name == "normal_strength" {
                     "Normal strength".to_owned()
@@ -1921,13 +1929,19 @@ impl Studio {
                     ui,
                     &label,
                     value,
-                    parameter.min.unwrap()..=parameter.max.unwrap(),
+                    declared
+                        .as_ref()
+                        .map_or(parameter.min.unwrap()..=parameter.max.unwrap(), |slot| {
+                            slot.range.clone()
+                        }),
                     time,
-                    serde_json::from_value::<veylvik_document::Scalar>(
-                        kind.default_operation()[parameter.name].clone(),
-                    )
-                    .ok()
-                    .and_then(|value| value.at(time).ok()),
+                    declared.as_ref().map(|slot| slot.default).or_else(|| {
+                        serde_json::from_value::<veylvik_document::Scalar>(
+                            kind.default_operation()[parameter.name].clone(),
+                        )
+                        .ok()
+                        .and_then(|value| value.at(time).ok())
+                    }),
                 );
                 self.draft_dirty |= changed;
                 text_changed |= changed;

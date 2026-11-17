@@ -4,6 +4,7 @@ mod diagnostics;
 mod environment_bake;
 mod material_preview;
 pub use material_preview::material_preview_revision;
+pub mod custom;
 pub mod flow;
 pub mod ocio;
 mod shadow_lighting;
@@ -166,6 +167,9 @@ pub struct Renderer {
     device: wgpu::Device,
     queue: wgpu::Queue,
     pipelines: BTreeMap<Kernel, wgpu::ComputePipeline>,
+    /// The kernels' pipeline layout, for custom shaders compiled later.
+    pipeline_layout: wgpu::PipelineLayout,
+    custom: custom::Cache,
     layout: wgpu::BindGroupLayout,
     ltc: wgpu::Buffer,
     studio_environment: wgpu::Buffer,
@@ -411,6 +415,8 @@ impl Renderer {
             device,
             queue,
             pipelines,
+            pipeline_layout,
+            custom: Default::default(),
             layout,
             ltc,
             studio_environment,
@@ -923,12 +929,22 @@ impl Renderer {
                     },
                 ],
             });
+            let custom_pipeline = match &node.operation {
+                Operation::Shader(shader) if scheduled.kernel == Kernel::Custom => Some(
+                    self.custom
+                        .pipeline(&self.device, &self.pipeline_layout, &shader.code)?,
+                ),
+                _ => None,
+            };
             {
                 let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
                     label: Some(&node.label),
                     ..Default::default()
                 });
-                pass.set_pipeline(&self.pipelines[&scheduled.kernel]);
+                pass.set_pipeline(match &custom_pipeline {
+                    Some(pipeline) => pipeline,
+                    None => &self.pipelines[&scheduled.kernel],
+                });
                 pass.set_bind_group(0, &bind, &[]);
                 match scheduled.kernel {
                     Kernel::GlintSeeds => {
