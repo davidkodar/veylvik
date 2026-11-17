@@ -657,6 +657,9 @@ impl Studio {
             .open(&mut open)
             .default_width(340.0)
             .collapsible(false)
+
+            .pivot(egui::Align2::CENTER_CENTER)
+            .default_pos(ctx.content_rect().center())
             .show(ctx, |ui| {
                 ui.label(format!("Source: {source_label}"));
                 ui.horizontal(|ui| {

@@ -2700,6 +2700,8 @@ impl Studio {
         if let Some(action) = self.confirm {
             egui::Window::new("Unsaved changes")
                 .collapsible(false)
+                .pivot(egui::Align2::CENTER_CENTER)
+                .default_pos(ctx.content_rect().center())
                 .show(ctx, |ui| {
                     ui.label("Save your work before continuing, or discard it.");
                     ui.horizontal(|ui| {
@@ -2723,6 +2725,8 @@ impl Studio {
         if self.help {
             egui::Window::new("Keyboard shortcuts")
                 .open(&mut self.help)
+                .pivot(egui::Align2::CENTER_CENTER)
+                .default_pos(ctx.content_rect().center())
                 .show(ctx, |ui| {
                     for (key, action) in [
                         ("Space", "Play / pause"),

@@ -1,5 +1,5 @@
 //! Shared visual language for the editing workspace.
-use eframe::egui::{self, Color32};
+use eframe::egui::{self, Color32, Stroke};
 pub fn accent(ctx: &egui::Context) -> Color32 {
     crate::theme::palette(ctx).accent
 }
@@ -170,4 +170,131 @@ pub fn number(
                 .max_decimals(3),
         )
         .on_hover_text(hint)
+}
+
+/// A choice shown as a card: a small picture of the frame's shape, a name and a
+/// detail line. Selected cards take the accent colour.
+pub fn format_card(
+    ui: &mut egui::Ui,
+    name: &str,
+    detail: &str,
+    shape: Option<[f32; 2]>,
+    selected: bool,
+) -> egui::Response {
+    let (rect, response) = ui.allocate_exact_size(egui::vec2(118.0, 96.0), egui::Sense::click());
+    let accent = accent(ui.ctx());
+    let visuals = ui.visuals();
+    let (fill, stroke) = if selected {
+        (accent.gamma_multiply(0.18), Stroke::new(1.5_f32, accent))
+    } else if response.hovered() {
+        (
+            visuals.widgets.hovered.weak_bg_fill,
+            Stroke::new(1.0_f32, border(ui.ctx())),
+        )
+    } else {
+        (
+            visuals.widgets.inactive.weak_bg_fill,
+            Stroke::new(1.0_f32, border(ui.ctx())),
+        )
+    };
+    let painter = ui.painter();
+    painter.rect(rect, 8.0, fill, stroke, egui::StrokeKind::Inside);
+    let ink = if selected {
+        accent
+    } else {
+        visuals.text_color()
+    };
+    let area = egui::Rect::from_center_size(
+        rect.center_top() + egui::vec2(0.0, 30.0),
+        egui::vec2(60.0, 34.0),
+    );
+    match shape {
+        Some([w, h]) => {
+            // The frame's proportions, fitted into the picture area.
+            let scale = (area.width() / w).min(area.height() / h);
+            let frame = egui::Rect::from_center_size(area.center(), egui::vec2(w, h) * scale);
+            painter.rect(
+                frame,
+                2.0,
+                ink.gamma_multiply(0.16),
+                Stroke::new(1.5_f32, ink),
+                egui::StrokeKind::Inside,
+            );
+        }
+        None => {
+            // Custom: a frame with adjustable corners.
+            let frame = egui::Rect::from_center_size(area.center(), egui::vec2(44.0, 28.0));
+            painter.rect_stroke(
+                frame,
+                2.0,
+                Stroke::new(1.0_f32, ink.gamma_multiply(0.6)),
+                egui::StrokeKind::Inside,
+            );
+            for corner in [
+                frame.left_top(),
+                frame.right_top(),
+                frame.left_bottom(),
+                frame.right_bottom(),
+            ] {
+                painter.circle_filled(corner, 3.0, ink);
+            }
+        }
+    }
+    painter.text(
+        rect.center_top() + egui::vec2(0.0, 58.0),
+        egui::Align2::CENTER_TOP,
+        name,
+        egui::FontId::proportional(13.5),
+        if selected {
+            accent
+        } else {
+            visuals.strong_text_color()
+        },
+    );
+    painter.text(
+        rect.center_top() + egui::vec2(0.0, 75.0),
+        egui::Align2::CENTER_TOP,
+        detail,
+        egui::FontId::proportional(11.5),
+        visuals.weak_text_color(),
+    );
+    response
+}
+/// A small pill for one of a few choices.
+pub fn chip(ui: &mut egui::Ui, label: &str, selected: bool) -> egui::Response {
+    let accent = accent(ui.ctx());
+    let text = egui::RichText::new(label).size(13.0);
+    let button = if selected {
+        egui::Button::new(text.color(accent).strong())
+            .fill(accent.gamma_multiply(0.18))
+            .stroke(Stroke::new(1.5_f32, accent))
+    } else {
+        egui::Button::new(text).stroke(Stroke::new(1.0_f32, border(ui.ctx())))
+    };
+    ui.add(button.corner_radius(14.0).min_size(egui::vec2(58.0, 28.0)))
+}
+/// The button that carries out a dialog's purpose.
+pub fn primary(ui: &mut egui::Ui, label: &str) -> egui::Response {
+    let accent = accent(ui.ctx());
+    ui.add(
+        egui::Button::new(
+            egui::RichText::new(label)
+                .strong()
+                .color(Color32::from_gray(16)),
+        )
+        .fill(accent)
+        .corner_radius(8.0)
+        .min_size(egui::vec2(110.0, 32.0)),
+    )
+}
+/// A dialog's quiet section heading.
+pub fn heading(ui: &mut egui::Ui, label: &str) {
+    ui.add_space(10.0);
+    ui.label(
+        egui::RichText::new(label)
+            .size(12.0)
+            .color(ui.visuals().weak_text_color())
+            .strong(),
+    );
+    ui.add_space(2.0);
 }

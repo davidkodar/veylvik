@@ -5,7 +5,10 @@ pub fn show(ctx: &egui::Context, open: &mut bool, renderer: &Renderer) {
     if !*open {
         return;
     }
-    egui::Window::new("Renderer statistics").open(open).show(ctx, |ui| {
+    egui::Window::new("Renderer statistics").open(open)
+            .pivot(egui::Align2::CENTER_CENTER)
+            .default_pos(ctx.content_rect().center())
+            .show(ctx, |ui| {
         ui.label(&renderer.adapter.name);
         match renderer.try_diagnostics() {
             Ok(Some(stats)) => {

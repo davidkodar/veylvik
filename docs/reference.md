@@ -2152,8 +2152,16 @@ re-enable background recovery.
 ### New compositions and format settings
 
 **File → New composition…** (`Ctrl+N`) creates a composition with one transparent Background node.
-Choose canvas width/height, frame count, and an exact frame-rate numerator/denominator
-before creating it. Unsaved work is protected by the same Save/Discard/Keep editing
+Choose a format card (HD 1920 × 1080, 4K UHD, Vertical 1080 × 1920, Square, HD 720,
+2K cinema 2048 × 1080, 4K cinema 4096 × 2160, Vertical 4K), a frame rate (23.976,
+24, 25, 29.97, 30, 50, 59.94 or 60, stored as exact fractions such as 24000/1001)
+and a length (5, 10, 15 or 30 seconds, 1 or 2 minutes). **Custom** in each row
+reveals the manual fields: width and height up to 8192 pixels (with Swap), frames
+every so many seconds, and a length in seconds or frames. The length is kept in
+seconds, so changing the frame rate changes the frame count, not the duration. A
+summary line shows the result before creating it. The same dialog serves
+Composition settings, opening on Custom wherever the current values are not a
+preset. Dialogs open centred on the window and can be dragged. Unsaved work is protected by the same Save/Discard/Keep editing
 flow as opening another project. **File → Composition settings…** changes canvas, frame count, and
 frame rate together as one undo step. Resizing changes the canvas bounds; it does
 not scale node coordinates. Animation keys retain their times in seconds, while

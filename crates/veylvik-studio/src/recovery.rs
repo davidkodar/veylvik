@@ -225,7 +225,10 @@ impl Recovery {
         let mut restore = None;
         let mut discard = Vec::new();
         if self.open {
-            egui::Window::new("Recover unsaved work").open(&mut self.open).show(ctx, |ui| {
+            egui::Window::new("Recover unsaved work").open(&mut self.open)
+            .pivot(egui::Align2::CENTER_CENTER)
+            .default_pos(ctx.content_rect().center())
+            .show(ctx, |ui| {
                 ui.label("Restore an unsaved composition or discard copies you no longer need.");
                 ui.weak("Discarding recovery copies does not delete saved projects.");
                 if let Some(error) = &self.error { ui.colored_label(egui::Color32::LIGHT_RED, error); }

@@ -39,7 +39,10 @@ impl Controls {
         let mut request = None;
         let mut open = self.open;
         if open {
-            egui::Window::new("Outline text").open(&mut open).collapsible(false).resizable(false).show(ctx,|ui| {
+            egui::Window::new("Outline text").open(&mut open).collapsible(false).resizable(false)
+            .pivot(egui::Align2::CENTER_CENTER)
+            .default_pos(ctx.content_rect().center())
+            .show(ctx,|ui| {
                 ui.add_enabled_ui(enabled,|ui| {
                     ui.label("Create editable vector outlines from text with explicit line breaks.");
                     ui.add(egui::TextEdit::multiline(&mut self.text).desired_rows(3).desired_width(420.0).char_limit(4096));

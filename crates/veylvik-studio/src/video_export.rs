@@ -27,6 +27,8 @@ impl Controls {
             .collapsible(false)
             .resizable(false)
             .default_width(460.)
+            .pivot(egui::Align2::CENTER_CENTER)
+            .default_pos(ctx.content_rect().center())
             .show(ctx, |ui| {
                 ui.add_enabled_ui(enabled, |ui| {
                     result = settings_panel(ui, s, doc);

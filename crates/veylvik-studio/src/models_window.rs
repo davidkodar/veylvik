@@ -153,6 +153,9 @@ impl ModelsWindow {
             .open(&mut open)
             .default_width(460.0)
             .collapsible(false)
+
+            .pivot(egui::Align2::CENTER_CENTER)
+            .default_pos(ctx.content_rect().center())
             .show(ctx, |ui| {
                 ui.weak("Models run on this computer; nothing is sent anywhere. Each download is verified before it is used.");
                 ui.add_space(6.0);

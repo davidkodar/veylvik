@@ -1507,6 +1507,8 @@ impl Graph {
                     .open(&mut open)
                     .collapsible(false)
                     .resizable(false)
+                    .pivot(egui::Align2::CENTER_CENTER)
+                    .default_pos(ui.ctx().content_rect().center())
                     .show(ui.ctx(), |ui| {
                         let response = ui.add(egui::TextEdit::singleline(label).char_limit(256));
                         if self.rename_focus {

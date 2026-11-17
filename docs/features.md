@@ -467,7 +467,8 @@ Details: [Subject segmentation](subject-segmentation.md).
 - Missing media: projects still open, unavailable sources marked in the menu bar and inspector, repair via Replace source / Reload.
 - **Project files:** collect images, video, sequences, LUTs and lossless resolved OCIO conversions with relative paths, streamed copying, cancellation and SHA-256 verification. Fonts and tracking data travel in the project. Folder search / Locate proposes relinks; unique collected-content matches preselect, ambiguous and name-only matches require a choice. Batch relink is one undoable transaction.
 - 16 MiB document size limit.
-- **File → New composition…** (Ctrl+N): width, height, frame count, exact frame-rate numerator/denominator.
+- **File → New composition…** (Ctrl+N): pick a format card (HD, 4K UHD, Vertical, Square, HD 720, 2K and 4K cinema, Vertical 4K), a frame rate (23.976 to 60) and a length (5 s to 2 min); **Custom** in each row reveals the manual fields (any size, an exact frame-rate fraction, seconds or frames). The length is kept in seconds when the frame rate changes.
+- Dialogs open centred on the window and can be dragged.
 - **File → Composition settings…**: canvas, frame count, frame rate as one undo step, optional control scaling; **Display** transform.
 - **OCIO colour management**: independent GPU preview/output transforms, explicit branch conversion node, built-in or local OCIO 2.5 configurations and resolved LUT dependencies. Preview never bakes into export; explicitly enabled output conversion also affects EXR. AgX requires a supplied configuration such as Blender’s.
 - **Working colour space**: linear Rec.709 or ACEScg for compositing/grading/spatial passes; material colour interpretation and public frames remain Rec.709 through explicit conversions.

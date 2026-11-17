@@ -89,6 +89,9 @@ impl Controls {
         let mut result = None;
         egui::Window::new(if self.group.is_some() { "Edit effect" } else { "Create effect" })
             .id(egui::Id::new("group-editor")).open(&mut open).collapsible(false).default_width(540.0)
+
+            .pivot(egui::Align2::CENTER_CENTER)
+            .default_pos(ctx.content_rect().center())
             .show(ctx, |ui| {
                 ui.label("Name"); ui.text_edit_singleline(&mut self.label);
                 if let Some(group) = &mut self.group {

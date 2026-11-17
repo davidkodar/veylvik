@@ -80,6 +80,9 @@ impl Studio {
             .default_width(340.)
             .collapsible(false)
             .open(&mut open)
+
+            .pivot(egui::Align2::CENTER_CENTER)
+            .default_pos(ctx.content_rect().center())
             .show(ctx, |ui| {
                 ui.label(format!("Footage: {source_label}"));
                 ui.weak("Finds the real camera of the shot, so 3D objects stay put in it. Works best with a moving camera and a textured, still background.");

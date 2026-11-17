@@ -49,7 +49,10 @@ impl Controls {
                 self.end = i64::from(frame_count) - 1;
                 self.initialized = true;
             }
-            egui::Window::new("Export image sequence").open(&mut open).collapsible(false).show(ctx, |ui| {
+            egui::Window::new("Export image sequence").open(&mut open).collapsible(false)
+            .pivot(egui::Align2::CENTER_CENTER)
+            .default_pos(ctx.content_rect().center())
+            .show(ctx, |ui| {
                 ui.add_enabled_ui(enabled, |ui| {
                     ui.label("Export the current preview node at the composition frame rate.");
                     egui::ComboBox::from_id_salt("sequence-format").selected_text(self.format.label()).show_ui(ui,|ui| {

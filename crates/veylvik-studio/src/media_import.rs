@@ -163,7 +163,10 @@ impl Studio {
         .open(&mut open)
         .collapsible(false)
         .resizable(false)
-        .show(ctx, |ui| {
+
+            .pivot(egui::Align2::CENTER_CENTER)
+            .default_pos(ctx.content_rect().center())
+            .show(ctx, |ui| {
             ui.label(format!("Composition: {} × {}", doc.width, doc.height));
             ui.label(format!(
                 "Media: {} × {}",
