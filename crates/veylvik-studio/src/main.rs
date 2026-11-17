@@ -1883,6 +1883,20 @@ impl Studio {
             if looked && matches!(parameter.name, "roughness" | "metallic") {
                 continue;
             }
+            // Particles show the settings that apply to how they are wired.
+            if kind.type_id == "particles" {
+                let wired = |port: &str| self.draft.inputs.contains_key(port);
+                let hidden = match parameter.name {
+                    "density" => !wired("emitter"),
+                    "rate" | "x" | "y" | "width" | "height" => wired("emitter"),
+                    "homing" => !wired("target"),
+                    "inherit" => !wired("emitter") && !wired("target"),
+                    _ => false,
+                };
+                if hidden {
+                    continue;
+                }
+            }
             // A custom shader's values show as the controls its code declares.
             let declared = shader_editor::slot(&self.draft.operation, parameter.name);
             if kind.type_id == "shader" && declared.is_none() {

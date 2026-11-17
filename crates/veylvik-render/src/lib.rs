@@ -168,6 +168,8 @@ pub struct Renderer {
     queue: wgpu::Queue,
     /// The kernels' module; each kernel's pipeline is compiled the first time it runs.
     shader: wgpu::ShaderModule,
+    /// The particle passes' module: the same layout, with the output as atomics.
+    particle_shader: wgpu::ShaderModule,
     pipelines: std::sync::Mutex<BTreeMap<Kernel, wgpu::ComputePipeline>>,
     /// The kernels' pipeline layout, for custom shaders compiled later.
     pipeline_layout: wgpu::PipelineLayout,
@@ -377,6 +379,10 @@ impl Renderer {
             bind_group_layouts: &[Some(&layout)],
             immediate_size: 0,
         });
+        let particle_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("particles"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("particle_system.wgsl").into()),
+        });
         let validation_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("finite output validation"),
             source: wgpu::ShaderSource::Wgsl(include_str!("validate.wgsl").into()),
@@ -402,6 +408,7 @@ impl Renderer {
             device,
             queue,
             shader,
+            particle_shader,
             pipelines: Default::default(),
             pipeline_layout,
             custom: Default::default(),
@@ -614,7 +621,11 @@ impl Renderer {
             .create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
                 label: Some(kernel.entry()),
                 layout: Some(&self.pipeline_layout),
-                module: &self.shader,
+                module: if matches!(kernel, Kernel::ParticleSplat | Kernel::ParticleResolve) {
+                    &self.particle_shader
+                } else {
+                    &self.shader
+                },
                 entry_point: Some(kernel.entry()),
                 compilation_options: Default::default(),
                 cache: None,
@@ -827,7 +838,9 @@ impl Renderer {
                 resources.take(
                     &self.device,
                     byte_size,
-                    wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
+                    wgpu::BufferUsages::STORAGE
+                        | wgpu::BufferUsages::COPY_SRC
+                        | wgpu::BufferUsages::COPY_DST,
                     "frame slot",
                 )
             })
@@ -962,6 +975,10 @@ impl Renderer {
                 ),
                 _ => Some(self.pipeline(scheduled.kernel)?),
             };
+            // Particles add into their output, so it starts from zero.
+            if scheduled.kernel == Kernel::ParticleSplat {
+                encoder.clear_buffer(output, 0, None);
+            }
             {
                 let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
                     label: Some(&node.label),
@@ -970,6 +987,11 @@ impl Renderer {
                 pass.set_pipeline(custom_pipeline.as_ref().expect("every pass has a pipeline"));
                 pass.set_bind_group(0, &bind, &[]);
                 match scheduled.kernel {
+                    // One thread per particle, in rows of `values.y` threads.
+                    Kernel::ParticleSplat => {
+                        let (threads, row) = (p.values[0] as u32, (p.values[1] as u32).max(1));
+                        pass.dispatch_workgroups(row.div_ceil(64), threads.div_ceil(row).max(1), 1);
+                    }
                     Kernel::GlintSeeds => {
                         let cell = (p.values[0] * 2.).max(8.).ceil() as u32;
                         pass.dispatch_workgroups(

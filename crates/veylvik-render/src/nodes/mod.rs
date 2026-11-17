@@ -26,6 +26,8 @@ pub(crate) enum From {
     Port(usize),
     /// An earlier step's output.
     Step(usize),
+    /// The node's own data image (`RenderNode::data`).
+    Data,
     None,
 }
 #[derive(Clone)]
@@ -102,6 +104,7 @@ mod generators;
 mod keying;
 mod materials;
 mod media;
+mod particles;
 mod scene;
 mod text;
 mod tracking;

@@ -206,6 +206,7 @@ pub(crate) const ADD_MENU: [(&str, &[&registry::NodeType]); 10] = [
             &registry::GRADIENT,
             &registry::FIRE,
             &registry::DUST,
+            &registry::PARTICLES,
             &registry::DRIP,
             &registry::ATMOSPHERE,
         ],

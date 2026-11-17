@@ -99,3 +99,8 @@ impl Inspect for veylvik_document::nodes::Drip {
         });
     }
 }
+impl Inspect for veylvik_document::nodes::Particles {
+    fn inspect(&mut self, ui: &mut egui::Ui, _cx: &mut InspectCx<'_>) {
+        ui.weak("Connect Emitter to text, a shape or footage and particles are born on it; Inherit gives them its colours. Connect Target and they fly onto that image. Streak turns dots into sparks. Put a Bloom after it for glow.");
+    }
+}

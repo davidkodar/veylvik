@@ -56,6 +56,8 @@ pub enum Kernel {
     BloomTightVertical,
     BloomCombine,
     GridWarp,
+    ParticleSplat,
+    ParticleResolve,
     LensPrefilterHorizontal,
     LensPrefilterVertical,
     LensBlur,
@@ -94,7 +96,7 @@ pub enum Kernel {
     Lut,
 }
 impl Kernel {
-    pub(crate) const ALL: [Self; 82] = [
+    pub(crate) const ALL: [Self; 84] = [
         Self::ToAcescg,
         Self::FromAcescg,
         Self::Text,
@@ -141,6 +143,8 @@ impl Kernel {
         Self::BloomTightVertical,
         Self::BloomCombine,
         Self::GridWarp,
+        Self::ParticleSplat,
+        Self::ParticleResolve,
         Self::LensPrefilterHorizontal,
         Self::LensPrefilterVertical,
         Self::LensBlur,
@@ -228,6 +232,8 @@ impl Kernel {
             Self::BloomTightVertical => "bloom_tight_vertical",
             Self::BloomCombine => "bloom_combine",
             Self::GridWarp => "grid_warp",
+            Self::ParticleSplat => "particle_splat",
+            Self::ParticleResolve => "particle_resolve",
             Self::LensPrefilterHorizontal => "lens_prefilter_horizontal",
             Self::LensPrefilterVertical => "lens_prefilter_vertical",
             Self::LensBlur => "lens_blur",
@@ -623,6 +629,7 @@ impl Plan {
                         crate::nodes::From::Port(i) => ports[i].clone(),
                         crate::nodes::From::Step(j) => Input::Value(values[j]),
                         crate::nodes::From::None => Input::Empty,
+                        crate::nodes::From::Data => Input::Asset(data_key(node.id)),
                     };
                     let (last, rest) = steps.split_last().expect("a chain has steps");
                     for step in rest {
