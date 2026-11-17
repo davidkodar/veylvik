@@ -1900,6 +1900,8 @@ impl Studio {
                     "bounce" => !wired("obstacle"),
                     "spin" => !wired("sprite"),
                     "camera" => !wired("scene"),
+                    // Offered as a choice by the node's own inspector.
+                    "history" => true,
                     _ => false,
                 };
                 if hidden {

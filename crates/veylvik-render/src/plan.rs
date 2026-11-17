@@ -461,6 +461,20 @@ impl Plan {
                     replacement.inputs.clear();
                     nodes.push(replacement);
                 } else {
+                    // A node that wants an input's recent past gets it as a branch
+                    // rendered at other times; the node itself stays.
+                    if let Some(source) = history_source(node) {
+                        temporal.push(TemporalBranch {
+                            operation: node.operation.clone(),
+                            plan: Box::new(Self::compile_branch(
+                                composition,
+                                source,
+                                depth + 1,
+                                remaining,
+                            )?),
+                            key: history_key(node.id),
+                        });
+                    }
                     nodes.push(node.clone());
                 }
             } else if visited.insert(id) {
@@ -487,6 +501,10 @@ impl Plan {
                     continue;
                 }
                 for port in node.operation.inputs().iter().rev() {
+                    // An input read through its history is planned as a branch instead.
+                    if *port == HISTORY_PORT && history_source(node).is_some() {
+                        continue;
+                    }
                     if let Some(source) = node.inputs.get(*port) {
                         todo.push((*source, false));
                     }
@@ -526,6 +544,10 @@ impl Plan {
                 if node.operation.descriptor().port_kind(port)
                     != veylvik_document::registry::PortKind::Image
                 {
+                    continue;
+                }
+                if *port == HISTORY_PORT && history_source(node).is_some() {
+                    inputs[i] = Input::Asset(history_key(node.id));
                     continue;
                 }
                 // An unconnected optional port stays an empty input.
@@ -1036,6 +1058,20 @@ fn shareable(operation: &Operation) -> bool {
     veylvik_document::each_node!(operation, n => crate::nodes::RenderNode::shareable(n))
 }
 
+/// The port a node may read through its recent past (see `crate::history`).
+pub(crate) const HISTORY_PORT: &str = "emitter";
+/// The source of the input a node reads through its history, when it asks for one.
+pub(crate) fn history_source(node: &Node) -> Option<NodeId> {
+    match &node.operation {
+        Operation::Particles(particles) if particles.history > 0 => {
+            node.inputs.get(HISTORY_PORT).copied()
+        }
+        _ => None,
+    }
+}
+pub(crate) fn history_key(id: veylvik_document::NodeId) -> String {
+    format!("\0temporal:{id}")
+}
 /// The input key of a node's own data image (`RenderNode::data`).
 pub(crate) fn data_key(id: veylvik_document::NodeId) -> String {
     format!("\0data:{id}")

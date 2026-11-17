@@ -119,5 +119,35 @@ impl Inspect for veylvik_document::nodes::Particles {
         .on_hover_text(
             "Set every setting for a ready-made effect, scaled to this frame; then adjust",
         );
+        // Only an emitter image can move out from under its particles.
+        let boxed: bool = ui
+            .data(|d| d.get_temp(egui::Id::new("particles-box")))
+            .unwrap_or(true);
+        if !boxed {
+            let name = |moments: u32| match moments {
+                0 => "Off",
+                1..=4 => "4 moments",
+                5..=9 => "9 moments",
+                _ => "16 moments",
+            };
+            ui.horizontal(|ui| {
+                ui.label("Follow a moving emitter");
+                egui::ComboBox::from_id_salt("particle-history")
+                    .selected_text(name(self.history))
+                    .show_ui(ui, |ui| {
+                        for moments in [0, 4, 9, 16] {
+                            if ui
+                                .selectable_label(name(self.history) == name(moments), name(moments))
+                                .clicked()
+                            {
+                                self.history = moments;
+                                cx.dirty = true;
+                            }
+                        }
+                    })
+                    .response
+                    .on_hover_text("Particles are born where the emitter was when they were born, so moving text or footage leaves them behind. The emitter is rendered that many extra times for every frame, at a half, a third or a quarter of its size; more moments give a smoother trail");
+            });
+        }
     }
 }

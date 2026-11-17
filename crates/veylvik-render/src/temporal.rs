@@ -154,6 +154,23 @@ impl Renderer {
                     };
                     Some(self.ocio_transform(&node.transform, inputs, &frame)?)
                 }
+                Operation::Particles(particles) => {
+                    // The emitter at earlier moments, from the cache where it can be.
+                    let grid = crate::history::grid(particles.history);
+                    let times = crate::history::moments(
+                        request.time,
+                        particles.life.at(request.time)?,
+                        grid,
+                        plan.frame_rate,
+                    )?;
+                    let previous = work.cache_sources;
+                    work.cache_sources = true;
+                    let atlas = self.pack_history(&branch.plan, grid, times, |time| {
+                        self.temporal_frame(&branch.plan, RenderRequest::full(time), inputs, work)
+                    });
+                    work.cache_sources = previous;
+                    atlas?
+                }
                 _ => unreachable!("compiled temporal boundary"),
             };
             let Some(frame) = frame else {

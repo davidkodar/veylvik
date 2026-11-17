@@ -1569,9 +1569,17 @@ and `colour`.
     life (96 with an obstacle). Keyed settings are followed: the settings are
     sampled 16 times across the last life, a particle is launched with those
     in force at its birth, and forces act as keyed while it flies. Life itself
-    is read at the frame, and the emitter, target, field, obstacle and sprite
-    images are read as they are at the frame (a moving emitter image does not
-    leave particles behind; a moving box does).
+    is read at the frame, and the target, field, obstacle and sprite images
+    are read as they are at the frame. So is the emitter, unless `history`
+    (**Follow a moving emitter** in Studio: Off, 4, 9 or 16 moments) is set:
+    then the emitter's branch is rendered at that many moments, evenly back
+    over the last life and each on a whole frame, into an atlas of tiles at a
+    half, a third or a quarter of the frame's size, and a particle is born on
+    the emitter as it was at the moment nearest its birth. Moving text or
+    footage then leaves its particles behind. It costs that many more renders
+    of the emitter's branch for every frame (earlier frames come from the
+    frame cache when they are there), and the emitter's colour and edge are
+    read at the tile's lower resolution.
   - Light is accumulated in fixed point (steps of 1/4096) with atomic adds,
     then resolved. The frame must be at least 32 x 32 pixels. In Studio the
     inspector shows the settings that apply to the node's wiring, **Start from

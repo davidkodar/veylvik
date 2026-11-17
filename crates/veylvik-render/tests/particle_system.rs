@@ -744,3 +744,84 @@ fn depth_spreads_particles_and_a_scene_camera_films_them() {
     point.camera = 0.0.into();
     assert_eq!(render_filmed(&renderer, point, 20.0), deep);
 }
+/// Still particles born on a small disc that moves from x 30 to x 130 over two seconds,
+/// seen at two seconds.
+fn render_moving(renderer: &Renderer, history: u32) -> Vec<[f32; 4]> {
+    let mut disc = registry::ELLIPSE.default_operation();
+    disc["x"] = serde_json::json!({"kind": "linear", "keys": [
+        {"time": {"ticks": 0, "rate": 1}, "value": 30.0},
+        {"time": {"ticks": 2, "rate": 1}, "value": 130.0}]});
+    disc["y"] = serde_json::json!({"kind": "constant", "value": 60.0});
+    disc["radius_x"] = serde_json::json!({"kind": "constant", "value": 6.0});
+    disc["radius_y"] = serde_json::json!({"kind": "constant", "value": 6.0});
+    let disc = Node::new("disc", serde_json::from_value(disc).unwrap(), &[]);
+    let mut particles = still();
+    particles.density = 6000.0.into();
+    particles.size = 0.7.into();
+    particles.history = history;
+    let node = Node::new(
+        "particles",
+        Operation::Particles(particles),
+        &[("emitter", disc.id)],
+    );
+    let doc = Composition {
+        ocio: Default::default(),
+        working_space: Default::default(),
+        display: Default::default(),
+        groups: Default::default(),
+        schema: 1,
+        frame_count: 240,
+        width: W,
+        height: H,
+        frame_rate: Time::new(24, 1).unwrap(),
+        output: node.id,
+        nodes: [disc, node].into_iter().map(|n| (n.id, n)).collect(),
+    };
+    let plan = Plan::compile(&doc).unwrap();
+    let frame = renderer
+        .render_gpu_temporal(
+            &plan,
+            RenderRequest::full(Time::new(2, 1).unwrap()),
+            &ImageInputs::default(),
+            false,
+            || false,
+        )
+        .unwrap()
+        .unwrap();
+    renderer.read_frame(&frame).unwrap().pixels
+}
+#[test]
+#[ignore = "requires Vulkan"]
+fn a_moving_emitter_leaves_its_particles_behind_when_history_is_kept() {
+    let renderer = Renderer::new().unwrap();
+    // Without history every particle sits on the disc where it is now (x 124..136).
+    let (left, right, top, bottom) = span(&render_moving(&renderer, 0));
+    assert!(
+        left >= 121 && right <= 139 && top >= 51 && bottom <= 69,
+        "{left} {right} {top} {bottom}"
+    );
+    // With history, particles born in the last second lie where the disc was then:
+    // back to x 80, a second (50 pixels) ago.
+    for history in [4, 16] {
+        let out = render_moving(&renderer, history);
+        let (left, right, top, bottom) = span(&out);
+        assert!(
+            (70..=80).contains(&left) && (130..=139).contains(&right),
+            "{history}: {left} {right}"
+        );
+        assert!(top >= 50 && bottom <= 70, "{top} {bottom}");
+        // Rendered again it is identical.
+        assert_eq!(render_moving(&renderer, history), out);
+    }
+    // Sixteen moments fill the trail more evenly than four: fewer empty columns.
+    let empty = |pixels: &[[f32; 4]]| {
+        (86..124)
+            .filter(|x| (0..H).all(|y| pixels[(y * W + x) as usize][3] < 0.02))
+            .count()
+    };
+    let (four, sixteen) = (
+        empty(&render_moving(&renderer, 4)),
+        empty(&render_moving(&renderer, 16)),
+    );
+    assert!(sixteen < four || four == 0, "{four} {sixteen}");
+}

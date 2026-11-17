@@ -290,7 +290,12 @@ impl RenderNode for Particles {
             SLOTS,
         ];
         p.extra = [
-            f32::from(u8::from(wired("emitter"))),
+            // 1: the emitter as it is; 2 to 4: an atlas of its past, that many tiles a side.
+            if wired("emitter") {
+                crate::history::grid(self.history).max(1) as f32
+            } else {
+                0.0
+            },
             f32::from(u8::from(wired("target"))),
             f32::from(
                 u8::from(wired("field")) | u8::from(wired("obstacle")) << 1 | u8::from(sprite) << 2,

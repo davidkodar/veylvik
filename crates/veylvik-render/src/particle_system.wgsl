@@ -5,7 +5,8 @@
 // output with atomics) and resolve (sums to an image). A particle is a pure function
 // of (thread, generation, time).
 // p.size_op: width, height, time (f32 bits), seed. p.values: threads, threads per
-// dispatch row, emitter cell stride, threads per cell. p.extra: emitter connected,
+// dispatch row, emitter cell stride, threads per cell. p.extra: emitter (0 none, 1 as it
+// is, 2 to 4 an atlas of its past with that many tiles a side),
 // target connected, flags (1 field, 2 obstacle, 4 sprite), nominal life in seconds.
 // Settings: ROWS rows of COUNT values, row r holding the settings in force at time
 // now - life + life * r / (ROWS - 1), so a particle reads those of its own birth. One more
@@ -328,7 +329,16 @@ fn particle_splat(@builtin(global_invocation_id) gid: vec3<u32>) {
         origin = vec3<f32>((vec2<f32>(f32(cell % across), f32(cell / across))
             + vec2<f32>(random(thread, generation, 2u), random(thread, generation, 3u))) * f32(stride), 0.0);
         if origin.x >= size.x || origin.y >= size.y { return; }
-        let born = bitcast<vec4<f32>>(first[u32(origin.y) * p.size_op.x + u32(origin.x)]);
+        // The emitter as it is, or as it was nearest the birth: a tile of its history.
+        var texel = vec2<u32>(u32(origin.x), u32(origin.y));
+        let grid = u32(p.extra.x);
+        if grid > 1u {
+            let tile = min(u32(round(age / life * f32(grid * grid - 1u))), grid * grid - 1u);
+            let across = p.size_op.x / grid; let down = p.size_op.y / grid;
+            texel = vec2<u32>((tile % grid) * across + min(texel.x / grid, across - 1u),
+                              (tile / grid) * down + min(texel.y / grid, down - 1u));
+        }
+        let born = bitcast<vec4<f32>>(first[texel.y * p.size_op.x + texel.x]);
         let chance = setting(DENSITY, birth) * life / 10000.0 * f32(stride * stride) / f32(slots);
         if random(thread, generation, 4u) >= clamp(born.a, 0.0, 1.0) * chance { return; }
         born_on = unpremultiplied(born);
