@@ -10,6 +10,7 @@ path = "src/main.rs"
 [dependencies]
 veylvik-control.workspace = true
 veylvik-document.workspace = true
+veylvik-presets.workspace = true
 veylvik-render.workspace = true
 veylvik-track.workspace = true
 veylvik-segment = { workspace = true, features = ["engine"] }

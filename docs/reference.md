@@ -1481,6 +1481,19 @@ and `colour`.
   scene's first light, else adds a Shot light to the scene's Merge scenes.
   **Pick light** instead takes a click on the light in the frame (a sun, lamp
   or window) as that source.
+- **Gold title scene** (Studio Add > Gold title (3D scene); `veylvik demo FILE
+  --gold-title`): adds, as one undo step, a 3D title in brushed gold (Brushed
+  0.6, Brush angle 65, Grain 0.37, Ridges and Imperfections 0.12, roughness 0.15,
+  a 6-pixel round bevel) in a dim even room, lit by three rows of strip lights
+  (4 strips each, Variation 0.8), seven small bright panels, five point lights
+  close to the sign for stars on its corners and two glancing suns from above
+  and from the left that light the bevels facing them; a near-black wall with
+  streaked haze, a tilted warm beam and a vignette; an optional subtitle; and
+  Bloom with a short streak. It becomes the output and sets the display to
+  Filmic, which the look relies on. Every measure scales with the composition's
+  width. The title uses the built-in bold font; a heavier font from the font
+  browser suits it better. The scene comes from the `veylvik-presets` crate,
+  which builds scenes from document nodes only.
 - **Bloom** (`bloom`, input image): light brighter than **Threshold**
   (scene-linear luminance; **Knee** softens where it starts) spreads as glow in
   its own colour times **Tint**. The bright part is blurred with a wide gaussian

@@ -9,7 +9,7 @@ use std::path::Path;
 use veylvik_document::{Composition, Node, Operation, Time};
 use veylvik_render::{Plan, Region, RenderRequest};
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
-const USAGE: &str = "usage: veylvik open [FILE] [--control-dir DIRECTORY | --no-control] | demo FILE [--motion|--procedural] | import IMAGE.png|IMAGE.exr FILE | outline-text FONT TEXT NEW_FILE [OPTIONS] | collect FILE NEW_DIRECTORY | verify-collection DIRECTORY | nodes | check FILE | render FILE OUTPUT.png|OUTPUT.exr [TICKS RATE] [--node UUID] [--crop X Y WIDTH HEIGHT] | render-video FILE OUTPUT.mp4 [OPTIONS] | render-sequence FILE DIRECTORY START END [--format png|exr] [--node UUID] [--crop X Y WIDTH HEIGHT] | track FILE NEW_FILE SOURCE_UUID START END \"X,Y X,Y X,Y X,Y\" [\"AREA X,Y X,Y X,Y X,Y\"] [--screen-area] [--motion auto|perspective|affine|similarity|translation] [--no-refine] [--back-to FRAME] | solve-camera FILE NEW_FILE SOURCE_UUID [START END] [--focal MM] [--sensor MM] | segment FILE NEW_FILE SOURCE_UUID FRAME END \"X,Y X,Y,- ...\" [--back-to FRAME] [--model ID] [--no-detail] [--matting|--no-matting] | models [install|uninstall|enable|disable ID] | mcp FILE | mcp --studio [SOCKET|DIRECTORY]";
+const USAGE: &str = "usage: veylvik open [FILE] [--control-dir DIRECTORY | --no-control] | demo FILE [--motion|--procedural|--gold-title] | import IMAGE.png|IMAGE.exr FILE | outline-text FONT TEXT NEW_FILE [OPTIONS] | collect FILE NEW_DIRECTORY | verify-collection DIRECTORY | nodes | check FILE | render FILE OUTPUT.png|OUTPUT.exr [TICKS RATE] [--node UUID] [--crop X Y WIDTH HEIGHT] | render-video FILE OUTPUT.mp4 [OPTIONS] | render-sequence FILE DIRECTORY START END [--format png|exr] [--node UUID] [--crop X Y WIDTH HEIGHT] | track FILE NEW_FILE SOURCE_UUID START END \"X,Y X,Y X,Y X,Y\" [\"AREA X,Y X,Y X,Y X,Y\"] [--screen-area] [--motion auto|perspective|affine|similarity|translation] [--no-refine] [--back-to FRAME] | solve-camera FILE NEW_FILE SOURCE_UUID [START END] [--focal MM] [--sensor MM] | segment FILE NEW_FILE SOURCE_UUID FRAME END \"X,Y X,Y,- ...\" [--back-to FRAME] [--model ID] [--no-detail] [--matting|--no-matting] | models [install|uninstall|enable|disable ID] | mcp FILE | mcp --studio [SOCKET|DIRECTORY]";
 fn run() -> Result<()> {
     let args: Vec<String> = std::env::args().collect();
     match args.get(1).map(String::as_str) {
@@ -253,11 +253,27 @@ fn run() -> Result<()> {
         Some("nodes") if args.len() == 2 => println!("{}", veylvik_document::registry::catalog()),
         Some("demo")
             if args.len() == 3
-                || (args.len() == 4 && matches!(args[3].as_str(), "--motion" | "--procedural")) =>
+                || (args.len() == 4
+                    && matches!(
+                        args[3].as_str(),
+                        "--motion" | "--procedural" | "--gold-title"
+                    )) =>
         {
             let composition = match args.get(3).map(String::as_str) {
                 Some("--motion") => veylvik_document::motion_demo(),
                 Some("--procedural") => veylvik_document::procedural_demo(),
+                Some("--gold-title") => {
+                    let blank =
+                        veylvik_document::blank(1920, 1080, veylvik_document::Time::new(24, 1)?)?;
+                    let scene = veylvik_presets::gold_title(
+                        &blank,
+                        "VEYLVIK",
+                        "CREATE SOMETHING EXTRAORDINARY",
+                    )?;
+                    let mut document = veylvik_document::Document::new(blank)?;
+                    document.apply(0, &scene.commands)?;
+                    document.snapshot().clone()
+                }
                 _ => veylvik_document::demo(),
             };
             composition.save(Path::new(&args[2]))?;

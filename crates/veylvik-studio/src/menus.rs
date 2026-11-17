@@ -105,6 +105,31 @@ impl Studio {
                         if item(ui, recipe.label(), "", true) { chosen = Some(node_palette::Choice::Effect(recipe)); }
                     }
                 });
+                ui.separator();
+                let mut scene = false;
+                ui.add_enabled_ui(ready, |ui| {
+                    scene = ui
+                        .button("Gold title (3D scene)")
+                        .on_hover_text("Brushed gold 3D lettering under studio strip lights on a dark wall, as ordinary nodes sized to this composition. It becomes the output and switches the display to Filmic; change the words on its Title node.")
+                        .clicked();
+                });
+                if scene {
+                    ui.close();
+                    self.playing = false;
+                    let built = veylvik_presets::gold_title(
+                        self.project.document.snapshot(),
+                        "YOUR TITLE",
+                        "A LINE OF TEXT BELOW",
+                    );
+                    match built.and_then(|b| self.project.apply(&b.commands).map_err(|e| veylvik_document::Error(e.to_string()))) {
+                        Ok(()) => {
+                            self.project.preview = None;
+                            self.status = "Gold title added; edit the Title node to change the words".into();
+                            self.request_preview();
+                        }
+                        Err(e) => self.fail(e.to_string()),
+                    }
+                }
                 if let Some(choice) = chosen {
                     self.playing = false;
                     self.add_from_palette(choice, self.graph.insertion_position(ui.ctx()));
