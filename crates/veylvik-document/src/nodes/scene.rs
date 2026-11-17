@@ -97,9 +97,11 @@ pub enum LightKind {
     Point,
     Spot,
     Sun,
+    /// A glowing rectangular panel: a soft box or strip light.
+    Area,
 }
 impl LightKind {
-    pub const ALL: [&'static str; 3] = ["point", "spot", "sun"];
+    pub const ALL: [&'static str; 4] = ["point", "spot", "sun", "area"];
 }
 
 /// A primitive solid centred on the frame at depth 0.
@@ -117,6 +119,24 @@ pub struct Shape3d {
     pub colour: Track3,
     pub roughness: Scalar,
     pub metallic: Scalar,
+    /// Brushed finish: light scatters across the grain, stretching highlights and
+    /// reflections that way (0 is an even polish).
+    #[serde(default = "zero")]
+    pub brushed: Scalar,
+    /// The direction the grain runs, in degrees from the object's horizontal.
+    #[serde(default = "zero")]
+    pub brush_angle: Scalar,
+    /// How strongly the grain shows as fine streaks of brighter and duller polish.
+    #[serde(default = "zero")]
+    pub grain: Scalar,
+    /// Long shallow ridges along the grain, as a worked plate has: they tip parts of
+    /// the surface towards a light and parts away, breaking reflections into bands.
+    #[serde(default = "zero")]
+    pub ridges: Scalar,
+    /// Wear and handling: the polish varies in soft blotches, with faint scratches
+    /// (0 is factory-perfect).
+    #[serde(default = "zero")]
+    pub imperfections: Scalar,
     /// A library material shading the surface; colour, roughness and metallic then
     /// do not apply.
     #[serde(default)]
@@ -130,7 +150,7 @@ pub static SHAPE_3D: NodeType = NodeType {
     type_id: "shape_3d",
     version: 1,
     label: "3D shape",
-    description: "A cube, sphere, plane, cylinder, cone or torus in a 3D scene, sized in pixels and centred on the frame at depth 0. Detail sets how many segments curved shapes use (3–256). Placement offsets, rotates (degrees, X then Y then Z) and scales it; colour (linear RGB), roughness and metallic shade it, unless a Look (any library material) is set, which shades it like a title. As a Shadow catcher it is invisible except for the shadows falling on it: lay a plane on the ground of the footage so 3D objects shadow the real floor. Outputs a scene for Merge scenes, 3D transform or Render scene.",
+    description: "A cube, sphere, plane, cylinder, cone or torus in a 3D scene, sized in pixels and centred on the frame at depth 0. Detail sets how many segments curved shapes use (3–256). Placement offsets, rotates (degrees, X then Y then Z) and scales it; colour (linear RGB), roughness and metallic shade it, unless a Look (any library material) is set, which shades it like a title. As a Shadow catcher it is invisible except for the shadows falling on it: lay a plane on the ground of the footage so 3D objects shadow the real floor. Outputs a scene for Merge scenes, 3D transform or Render scene. Finish, each 0 to 1 and 0 by default: brushed scatters light across the grain so reflections stretch that way, brush_angle (degrees) turns the grain, grain shows it as fine streaks, ridges add long shallow undulations along the grain that break reflections into bands, imperfections add uneven polish and faint scratches; they shade the plain surface, not a look.",
     inputs: &[],
     optional: &[],
     output: PortKind::Scene,
@@ -144,6 +164,11 @@ pub static SHAPE_3D: NodeType = NodeType {
         other("colour", ParameterKind::Colour3, "linear RGB"),
         scalar("roughness", "factor", 0.0, 1.0, 0.4),
         scalar("metallic", "factor", 0.0, 1.0, 0.0),
+        scalar("brushed", "factor", 0.0, 1.0, 0.0),
+        scalar("brush_angle", "degrees", -360.0, 360.0, 0.0),
+        scalar("grain", "factor", 0.0, 1.0, 0.0),
+        scalar("ridges", "factor", 0.0, 1.0, 0.0),
+        scalar("imperfections", "factor", 0.0, 1.0, 0.0),
         other("look", ParameterKind::Look, "library material"),
         other("shadow_catcher", ParameterKind::Boolean, "shadows only"),
     ],
@@ -151,7 +176,19 @@ pub static SHAPE_3D: NodeType = NodeType {
 node!(
     Shape3d,
     SHAPE_3D,
-    [size_x, size_y, size_z, detail, roughness, metallic],
+    [
+        size_x,
+        size_y,
+        size_z,
+        detail,
+        roughness,
+        metallic,
+        brushed,
+        brush_angle,
+        grain,
+        ridges,
+        imperfections
+    ],
     {
         fn validate(&self) -> Result<()> {
             self.placement.validate()?;
@@ -178,6 +215,24 @@ pub struct Text3d {
     pub colour: Track3,
     pub roughness: Scalar,
     pub metallic: Scalar,
+    /// Brushed finish: light scatters across the grain, stretching highlights and
+    /// reflections that way (0 is an even polish).
+    #[serde(default = "zero")]
+    pub brushed: Scalar,
+    /// The direction the grain runs, in degrees from the object's horizontal.
+    #[serde(default = "zero")]
+    pub brush_angle: Scalar,
+    /// How strongly the grain shows as fine streaks of brighter and duller polish.
+    #[serde(default = "zero")]
+    pub grain: Scalar,
+    /// Long shallow ridges along the grain, as a worked plate has: they tip parts of
+    /// the surface towards a light and parts away, breaking reflections into bands.
+    #[serde(default = "zero")]
+    pub ridges: Scalar,
+    /// Wear and handling: the polish varies in soft blotches, with faint scratches
+    /// (0 is factory-perfect).
+    #[serde(default = "zero")]
+    pub imperfections: Scalar,
     /// A library material shading the surface; colour, roughness and metallic then
     /// do not apply.
     #[serde(default)]
@@ -187,7 +242,7 @@ pub static TEXT_3D: NodeType = NodeType {
     type_id: "text_3d",
     version: 1,
     label: "3D text",
-    description: "Extrudes the Text or Path node on its Outline input into a solid Depth pixels deep, front face where the 2D layer sits, centred in depth, with a Bevel (pixels, rounded or chamfered) on its front and back edges so metals catch highlights. Placement turns and moves it about its own centre; colour (linear RGB), roughness and metallic shade it, unless a Look (any library material) is set, which shades it like the 2D title. Outputs a scene.",
+    description: "Extrudes the Text or Path node on its Outline input into a solid Depth pixels deep, front face where the 2D layer sits, centred in depth, with a Bevel (pixels, rounded or chamfered) on its front and back edges so metals catch highlights. Placement turns and moves it about its own centre; colour (linear RGB), roughness and metallic shade it, unless a Look (any library material) is set, which shades it like the 2D title. Outputs a scene. Finish, each 0 to 1 and 0 by default: brushed scatters light across the grain so reflections stretch that way, brush_angle (degrees) turns the grain, grain shows it as fine streaks, ridges add long shallow undulations along the grain that break reflections into bands, imperfections add uneven polish and faint scratches; they shade the plain surface, not a look.",
     inputs: &["outline"],
     optional: &[],
     output: PortKind::Scene,
@@ -206,16 +261,36 @@ pub static TEXT_3D: NodeType = NodeType {
         other("colour", ParameterKind::Colour3, "linear RGB"),
         scalar("roughness", "factor", 0.0, 1.0, 0.35),
         scalar("metallic", "factor", 0.0, 1.0, 0.0),
+        scalar("brushed", "factor", 0.0, 1.0, 0.0),
+        scalar("brush_angle", "degrees", -360.0, 360.0, 0.0),
+        scalar("grain", "factor", 0.0, 1.0, 0.0),
+        scalar("ridges", "factor", 0.0, 1.0, 0.0),
+        scalar("imperfections", "factor", 0.0, 1.0, 0.0),
         other("look", ParameterKind::Look, "library material"),
     ],
 };
-node!(Text3d, TEXT_3D, [depth, bevel, roughness, metallic], {
-    fn validate(&self) -> Result<()> {
-        self.placement.validate()?;
-        validate_look(&self.look)?;
-        validate_colour(&self.colour)
+node!(
+    Text3d,
+    TEXT_3D,
+    [
+        depth,
+        bevel,
+        roughness,
+        metallic,
+        brushed,
+        brush_angle,
+        grain,
+        ridges,
+        imperfections
+    ],
+    {
+        fn validate(&self) -> Result<()> {
+            self.placement.validate()?;
+            validate_look(&self.look)?;
+            validate_colour(&self.colour)
+        }
     }
-});
+);
 
 /// Any image as a flat card in the scene: footage, stills, titles, whole comps.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -330,7 +405,7 @@ node!(
     }
 );
 
-/// A point, spot or sun light.
+/// A point, spot, sun or area light.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Light3d {
@@ -344,12 +419,23 @@ pub struct Light3d {
     pub intensity: Scalar,
     pub cone: Scalar,
     pub softness: Scalar,
+    /// An area light's panel size in pixels.
+    #[serde(default = "panel_width")]
+    pub width: Scalar,
+    #[serde(default = "panel_height")]
+    pub height: Scalar,
+}
+fn panel_width() -> Scalar {
+    600.0.into()
+}
+fn panel_height() -> Scalar {
+    150.0.into()
 }
 pub static LIGHT_3D: NodeType = NodeType {
     type_id: "light_3d",
     version: 1,
     label: "Light",
-    description: "A point light, a spot (cone in degrees, softness of its edge) or a sun (parallel light; only its rotation matters). Lights sit at the frame centre plus their placement and point along -z (towards the scene) before rotation. Colour is linear RGB; intensity is relative to the studio. With Shadows on (the default) it casts shadows from a shadow map, softened by Softness; up to four lights per scene cast them. Outputs a scene.",
+    description: "A point light, a spot (cone in degrees, softness of its edge), a sun (parallel light; only its rotation matters) or an area light: a glowing panel of width by height pixels facing along its direction, like a soft box or strip light. An area light near a surface lights it unevenly, brightest where it is close, and glossy surfaces show its reflection as a soft-edged shape whose blur follows the surface's roughness and brushing; its intensity is the panel's brightness, so a larger panel gives more light. Area lights cast no shadows yet. Lights sit at the frame centre plus their placement and point along -z (towards the scene) before rotation. Colour is linear RGB; intensity is relative to the studio. With Shadows on (the default) it casts shadows from a shadow map, softened by Softness; up to four lights per scene cast them. Outputs a scene.",
     inputs: &[],
     optional: &[],
     output: PortKind::Scene,
@@ -364,14 +450,21 @@ pub static LIGHT_3D: NodeType = NodeType {
         scalar("intensity", "factor", 0.0, 1000.0, 1.0),
         scalar("cone", "degrees", 1.0, 179.0, 40.0),
         scalar("softness", "factor", 0.0, 1.0, 0.2),
+        scalar("width", "pixels", 1.0, 100000.0, 600.0),
+        scalar("height", "pixels", 1.0, 100000.0, 150.0),
     ],
 };
-node!(Light3d, LIGHT_3D, [intensity, cone, softness], {
-    fn validate(&self) -> Result<()> {
-        self.placement.validate()?;
-        validate_colour(&self.colour)
+node!(
+    Light3d,
+    LIGHT_3D,
+    [intensity, cone, softness, width, height],
+    {
+        fn validate(&self) -> Result<()> {
+            self.placement.validate()?;
+            validate_colour(&self.colour)
+        }
     }
-});
+);
 
 /// What surrounds a scene: lighting, reflections and an optional backdrop.
 #[derive(Debug, Clone, Serialize, Deserialize)]

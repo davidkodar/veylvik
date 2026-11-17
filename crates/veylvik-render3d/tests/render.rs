@@ -742,3 +742,87 @@ fn a_model_renders_its_parts_with_their_textures_and_materials() {
     let empty = render(&renderer, &doc, &Default::default());
     assert!(empty.iter().all(|p| p[3] == 0.0));
 }
+/// A gold plate facing the camera under one thin horizontal strip light; returns the
+/// red channel. `finish` is (brushed, brush_angle, imperfections and ridges).
+fn plate_under_a_strip(renderer: &Renderer, finish: [f32; 3], lit: bool) -> Vec<f32> {
+    let mut doc = blank(W, H, Time::new(24, 1).unwrap()).unwrap();
+    let mut plate = op(&SHAPE_3D);
+    if let Operation::Shape3d(s) = &mut plate {
+        s.kind = ShapeKind::Plane;
+        s.size_x = 400.0.into();
+        s.size_y = 300.0.into();
+        s.colour = [1.0, 0.6, 0.2].into();
+        s.metallic = 1.0.into();
+        s.roughness = 0.12.into();
+        s.brushed = finish[0].into();
+        s.brush_angle = finish[1].into();
+        s.imperfections = finish[2].into();
+        s.ridges = finish[2].into();
+    }
+    let plate = add(&mut doc, plate, &[]);
+    let mut strip = op(&LIGHT_3D);
+    if let Operation::Light3d(l) = &mut strip {
+        l.kind = LightKind::Area;
+        l.intensity = (if lit { 4.0 } else { 0.0 }).into();
+        l.colour = [1.0; 3].into();
+        l.width = 600.0.into();
+        l.height = 4.0.into();
+        l.placement.position = [0.0, 0.0, 120.0].into();
+    }
+    let strip = add(&mut doc, strip, &[]);
+    let merged = add(
+        &mut doc,
+        op(&MERGE_SCENES),
+        &[("scene", plate), ("scene_2", strip)],
+    );
+    doc.output = add(&mut doc, op(&RENDER_SCENE), &[("scene", merged)]);
+    render(renderer, &doc, &ImageInputs::default())
+        .iter()
+        .map(|p| p[0])
+        .collect()
+}
+#[test]
+#[ignore = "requires Vulkan"]
+fn an_area_light_reflects_as_a_band_that_brushing_and_wear_reshape() {
+    let renderer = renderer();
+    let at = |p: &[f32], x: u32, y: u32| p[(y * W + x) as usize];
+    let dark = plate_under_a_strip(&renderer, [0.0; 3], false);
+    let smooth = plate_under_a_strip(&renderer, [0.0; 3], true);
+    // The strip's light alone, down the middle column: a band across the centre.
+    let band = |p: &[f32], y: u32| at(p, W / 2, y) - at(&dark, W / 2, y);
+    assert!(band(&smooth, H / 2) > 0.5, "{}", band(&smooth, H / 2));
+    assert!(band(&smooth, H / 2) > 8.0 * band(&smooth, H / 2 - 20).max(0.0));
+    assert!(band(&smooth, 4).abs() < 0.02 && band(&smooth, H - 5).abs() < 0.02);
+    // How far the band reaches: rows where it keeps a tenth of its peak.
+    let reach = |p: &[f32]| {
+        let peak = band(p, H / 2);
+        (0..H).filter(|&y| band(p, y) > 0.1 * peak).count()
+    };
+    // Brushing scatters light across the grain only: with the grain along the strip
+    // the band widens, with the grain across it the band keeps its width.
+    let along = plate_under_a_strip(&renderer, [1.0, 0.0, 0.0], true);
+    let across = plate_under_a_strip(&renderer, [1.0, 90.0, 0.0], true);
+    let (s, a, c) = (reach(&smooth), reach(&along), reach(&across));
+    assert!(
+        a.max(c) as f32 > 1.5 * s as f32,
+        "smooth {s}, along {a}, across {c}"
+    );
+    assert!(
+        a.min(c) as f32 <= 1.2 * s as f32,
+        "smooth {s}, along {a}, across {c}"
+    );
+    // Wear makes the plate uneven: the band is no longer the same all along.
+    let spread = |p: &[f32]| {
+        let row: Vec<f32> = (20..W - 20).map(|x| at(p, x, H / 2 - 3)).collect();
+        let mean = row.iter().sum::<f32>() / row.len() as f32;
+        (row.iter().map(|v| (v - mean).powi(2)).sum::<f32>() / row.len() as f32).sqrt() / mean
+    };
+    let worn = plate_under_a_strip(&renderer, [0.0, 0.0, 1.0], true);
+    assert!(
+        spread(&worn) > 4.0 * spread(&smooth) && spread(&worn) > 0.05,
+        "worn {} smooth {}",
+        spread(&worn),
+        spread(&smooth)
+    );
+    assert!(worn.iter().all(|v| v.is_finite()));
+}

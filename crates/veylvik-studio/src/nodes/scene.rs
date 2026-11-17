@@ -196,7 +196,12 @@ impl Inspect for Light3d {
             ui,
             "Light",
             &mut self.kind,
-            &[(Point, "Point"), (Spot, "Spot"), (Sun, "Sun")],
+            &[
+                (Point, "Point"),
+                (Spot, "Spot"),
+                (Sun, "Sun"),
+                (Area, "Area"),
+            ],
         );
         cx.dirty |= ui
             .checkbox(&mut self.shadows, "Shadows")

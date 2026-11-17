@@ -53,6 +53,9 @@ pub struct Surface {
     pub colour: [f32; 3],
     pub roughness: f32,
     pub metallic: f32,
+    /// Finish: brushing, the grain's direction (degrees), imperfections, visible
+    /// grain, ridges (all but the direction 0 to 1).
+    pub finish: [f32; 5],
     /// Shows its own colours without lighting (image cards).
     pub unlit: bool,
     /// A library material that shades the surface instead of the values above.
@@ -92,10 +95,19 @@ pub struct Light {
     pub intensity: f32,
     pub cone: f32,
     pub softness: f32,
+    /// An area light's panel size.
+    pub size: [f32; 2],
 }
 impl Light {
     pub fn position(&self) -> [f32; 3] {
         math::point(&self.world, [0.0; 3])
+    }
+    /// An area light's half-width and half-height axes in the world.
+    pub fn panel(&self) -> [[f32; 3]; 2] {
+        [
+            math::direction(&self.world, [self.size[0] * 0.5, 0.0, 0.0]),
+            math::direction(&self.world, [0.0, self.size[1] * 0.5, 0.0]),
+        ]
     }
     /// Where the light points (its -z), normalised.
     pub fn direction(&self) -> [f32; 3] {
@@ -309,6 +321,13 @@ fn node(doc: &Graph<'_>, id: NodeId, time: Time, depth: usize) -> Result<Scene> 
                 colour: s.colour.at(time)?,
                 roughness: s.roughness.at(time)?.clamp(0.0, 1.0),
                 metallic: s.metallic.at(time)?.clamp(0.0, 1.0),
+                finish: [
+                    s.brushed.at(time)?.clamp(0.0, 1.0),
+                    s.brush_angle.at(time)?,
+                    s.imperfections.at(time)?.clamp(0.0, 1.0),
+                    s.grain.at(time)?.clamp(0.0, 1.0),
+                    s.ridges.at(time)?.clamp(0.0, 1.0),
+                ],
                 unlit: false,
                 look: s.look.clone(),
                 catcher: s.shadow_catcher,
@@ -347,6 +366,13 @@ fn node(doc: &Graph<'_>, id: NodeId, time: Time, depth: usize) -> Result<Scene> 
                     colour: t.colour.at(time)?,
                     roughness: t.roughness.at(time)?.clamp(0.0, 1.0),
                     metallic: t.metallic.at(time)?.clamp(0.0, 1.0),
+                    finish: [
+                        t.brushed.at(time)?.clamp(0.0, 1.0),
+                        t.brush_angle.at(time)?,
+                        t.imperfections.at(time)?.clamp(0.0, 1.0),
+                        t.grain.at(time)?.clamp(0.0, 1.0),
+                        t.ridges.at(time)?.clamp(0.0, 1.0),
+                    ],
                     unlit: false,
                     look: t.look.clone(),
                     catcher: false,
@@ -365,6 +391,7 @@ fn node(doc: &Graph<'_>, id: NodeId, time: Time, depth: usize) -> Result<Scene> 
                 colour: [1.0; 3],
                 roughness: 1.0,
                 metallic: 0.0,
+                finish: [0.0; 5],
                 unlit: true,
                 look: None,
                 catcher: false,
@@ -383,6 +410,7 @@ fn node(doc: &Graph<'_>, id: NodeId, time: Time, depth: usize) -> Result<Scene> 
                 colour: [0.8; 3],
                 roughness: 0.5,
                 metallic: 0.0,
+                finish: [0.0; 5],
                 unlit: false,
                 look: m.look.clone(),
                 catcher: false,
@@ -444,6 +472,7 @@ fn node(doc: &Graph<'_>, id: NodeId, time: Time, depth: usize) -> Result<Scene> 
             intensity: l.intensity.at(time)?.max(0.0),
             cone: l.cone.at(time)?.clamp(1.0, 179.0),
             softness: l.softness.at(time)?.clamp(0.0, 1.0),
+            size: [l.width.at(time)?.max(1.0), l.height.at(time)?.max(1.0)],
         }),
         Operation::Environment3d(e) => {
             scene.environment = Some(Environment {

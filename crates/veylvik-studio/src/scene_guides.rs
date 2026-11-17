@@ -533,7 +533,7 @@ impl Studio {
                 let dir = light.direction();
                 let reach = wf * 0.18;
                 match light.kind {
-                    LightKind::Point => {}
+                    LightKind::Point | LightKind::Area => {}
                     LightKind::Spot => {
                         let tip = add(at, dir, reach);
                         let half = (light.cone * 0.5).to_radians();

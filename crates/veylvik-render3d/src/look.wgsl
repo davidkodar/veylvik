@@ -18,6 +18,8 @@ struct SceneLight {
     colour: vec4<f32>,
     shadow: mat4x4<f32>,
     shadow_info: vec4<f32>,
+    right: vec4<f32>,
+    up: vec4<f32>,
 }
 @group(1) @binding(0) var<uniform> look_object: LookObject;
 @group(1) @binding(1) var<storage, read> scene_lights: array<SceneLight>;
@@ -129,6 +131,8 @@ fn look_surface(in: LookVarying) -> @location(0) vec4<f32> {
     var added = vec3<f32>(0.0);
     for (var i = 0u; i < u32(look_object.uv_scale.z); i++) {
         let light = scene_lights[i];
+        // Area lights are not reflected by library looks yet.
+        if light.position.w > 2.5 { continue; }
         var l = -light.direction.xyz;
         var radiance = light.colour.rgb;
         if light.position.w < 1.5 {

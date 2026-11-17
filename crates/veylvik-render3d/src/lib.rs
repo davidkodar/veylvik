@@ -31,6 +31,10 @@ struct ObjectUniform {
     surface: [f32; 4],
     params: [f32; 4],
     counts: [f32; 4],
+    /// Finish: brushing, the grain's direction (radians), imperfections, visible grain.
+    finish: [f32; 4],
+    /// Ridges, unused.
+    relief: [f32; 4],
 }
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
@@ -41,6 +45,9 @@ struct LightUniform {
     shadow: [[f32; 4]; 4],
     /// Shadow map layer (-1: none), normal offset, filter width in texels, unused.
     shadow_info: [f32; 4],
+    /// An area light's half-width and half-height axes.
+    right: [f32; 4],
+    up: [f32; 4],
 }
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
@@ -163,6 +170,7 @@ fn light_uniform(light: &Light, shadow: Option<(u32, math::Mat4, f32)>) -> Light
     let d = light.direction();
     let outer = (light.cone * 0.5).to_radians();
     let inner = outer * (1.0 - light.softness).max(0.0);
+    let panel = light.panel();
     LightUniform {
         position: [
             p[0],
@@ -172,6 +180,7 @@ fn light_uniform(light: &Light, shadow: Option<(u32, math::Mat4, f32)>) -> Light
                 LightKind::Point => 0.0,
                 LightKind::Spot => 1.0,
                 LightKind::Sun => 2.0,
+                LightKind::Area => 3.0,
             },
         ],
         direction: [d[0], d[1], d[2], outer.cos()],
@@ -186,6 +195,8 @@ fn light_uniform(light: &Light, shadow: Option<(u32, math::Mat4, f32)>) -> Light
             Some((layer, _, offset)) => [layer as f32, offset, 1.0 + light.softness * 4.0, 0.0],
             None => [-1.0, 0.0, 0.0, 0.0],
         },
+        right: [panel[0][0], panel[0][1], panel[0][2], 0.0],
+        up: [panel[1][0], panel[1][1], panel[1][2], 0.0],
     }
 }
 /// Perspective with y down (the scene frame) into wgpu clip space, reversed depth
@@ -311,7 +322,11 @@ impl SceneRenderer for Engine {
             .iter()
             .map(|light| {
                 let (centre, radius) = reach?;
-                if !light.shadows || layer >= shadow::MAX_SHADOWS || light.intensity <= 0.0 {
+                if !light.shadows
+                    || light.kind == veylvik_document::nodes::LightKind::Area
+                    || layer >= shadow::MAX_SHADOWS
+                    || light.intensity <= 0.0
+                {
                     return None;
                 }
                 let (matrix, offset) = shadow::view(light, centre, radius)?;
@@ -562,6 +577,13 @@ impl SceneRenderer for Engine {
                     turn,
                     f32::from(texture.is_some()),
                 ],
+                finish: [
+                    object.surface.finish[0],
+                    object.surface.finish[1].to_radians(),
+                    object.surface.finish[2],
+                    object.surface.finish[3],
+                ],
+                relief: [object.surface.finish[4], 0.0, 0.0, 0.0],
             };
             let uniform = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("3D object"),

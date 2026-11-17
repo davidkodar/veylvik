@@ -165,6 +165,7 @@ pub(crate) fn view(light: &Light, centre: [f32; 3], radius: f32) -> Option<(math
     let texel = |span: f32| span / SIZE as f32 * 1.5;
     match light.kind {
         LightKind::Sun => Some(parallel(light.direction(), centre, radius, SIZE)),
+        LightKind::Area => None,
         LightKind::Spot | LightKind::Point => {
             let eye = light.position();
             let to = [0, 1, 2].map(|k| centre[k] - eye[k]);

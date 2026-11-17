@@ -1301,7 +1301,17 @@ scale) and colours are tracks, keyable as whole vectors through the inspector or
 and `colour`.
 
 - **3D shape**: cube, sphere, plane, cylinder, cone or torus, sized in pixels, with
-  detail (segments, 3–256), colour, roughness and metallic.
+  detail (segments, 3–256), colour, roughness and metallic. Shapes and 3D text
+  also take a finish, each setting separate and 0 by default: **Brushed** (0–1)
+  makes the surface scatter light across its grain, so reflections and
+  highlights stretch that way; **Brush angle** (degrees from the object's
+  horizontal) sets the grain's direction; **Grain** (0–1) shows the grain as
+  fine streaks of brighter and duller polish, in the environment's and the area
+  lights' reflections; **Ridges** (0–1) undulate the surface in long shallow
+  ridges along the grain, which is what breaks a reflection into bands on a real
+  plate; **Imperfections** (0–1) add wear: the polish varies in soft blotches
+  and faint scratches catch or dull the light. They stay on the surface as it
+  moves and apply to the plain surface, not to a library look.
 - **3D text**: extrudes the Text or Path node on its Outline input Depth pixels
   deep, front face where the 2D layer sits, turning about its own centre.
   **Bevel** (pixels, at most half the depth) rounds the front and back edges in four
@@ -1319,8 +1329,16 @@ and `colour`.
 - **Camera**: untouched, it frames the composition exactly at depth 0, at the
   distance its focal length and sensor width imply (1920 × 50 / 36 = 2667 pixels for
   the defaults at 1080p); placement moves and turns it from there.
-- **Light**: point, spot (cone and softness) or sun, pointing along −z before
-  rotation.
+- **Light**: point, spot (cone and softness), sun or **area**, pointing along −z
+  before rotation. An area light is a glowing panel of Width by Height pixels
+  (a soft box or strip light): near a surface it lights it unevenly, and glossy
+  surfaces show its reflection as a soft-edged shape. Its intensity is the
+  panel's brightness. The reflection is found where the mirrored view ray meets
+  the panel (held to its edges) and weighted by the surface's lobe, which is
+  stretched across the grain on a brushed surface, and by the share of that lobe
+  the panel fills, so a small panel on a rough or sharply curved surface is a
+  faint sheen. Area lights cast no shadows, are not drawn as viewport guides,
+  and are not reflected by library looks yet.
 - **Environment**: what surrounds the scene. The image on its optional Image input
   is a panorama (equirectangular; an HDR or EXR sky, any image or footage) that
   lights and reflects in everything; without one the built-in studio is used.
@@ -1458,6 +1476,15 @@ and `colour`.
   scene's first light, else adds a Shot light to the scene's Merge scenes.
   **Pick light** instead takes a click on the light in the frame (a sun, lamp
   or window) as that source.
+- **Bloom** (`bloom`, input image): light brighter than **Threshold**
+  (scene-linear luminance; **Knee** softens where it starts) spreads as glow in
+  its own colour times **Tint**. The bright part is blurred with a wide gaussian
+  of **Radius** pixels and a tight one of a fifth of it; 0.55 × wide + 0.45 ×
+  tight, times **Intensity**, is added to the image, so lights keep a hot core
+  with a long falloff. **Streak** adds a horizontal lens streak: the bright part
+  blurred sideways only. Alpha is unchanged; put Bloom after the merge so a
+  title lights its background. It works on HDR values, so it pairs with the
+  Filmic display transform, which rolls highlights off to white.
 - **Lens distortion** (`lens_distortion`, input image): radial Brown-Conrady
   distortion about the frame centre, with radii normalised by half the frame
   diagonal: a point at ideal radius r is seen at r (1 + **k1** r² + **k2** r⁴),
@@ -1516,7 +1543,10 @@ metallic-roughness model (GGX specular, Lambert diffuse): the same prefiltered
 studio environment that lights 2D materials, at the default rig's strength, plus
 every point, spot and sun light in the scene (point and spot fall off with the
 inverse square, normalised to 1000 pixels; spots blend from the inner to the outer
-half-angle by softness). Image cards show their image's own premultiplied colour
+half-angle by softness). Where a surface curves faster than the pixel grid can
+show, such as a tight bevel, its lobe is widened by the change of the normal
+across the pixel, so a highlight thinner than a pixel becomes a soft glint
+instead of a broken line. Image cards show their image's own premultiplied colour
 unlit, sampled at its pixel centres, and draw after solid objects, far to near, so
 an untouched card renders like the 2D image to half-float precision. Meshes stay
 on the GPU between frames (up to 128). The frame cache keys a Render scene by what
