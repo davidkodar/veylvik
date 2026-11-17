@@ -386,6 +386,7 @@ pub fn scalar_schema(min: Option<f32>, max: Option<f32>) -> Value {
     let number = json!({"type":"number","minimum":min,"maximum":max});
     json!({"oneOf":[
         {"type":"object","properties":{"kind":{"const":"constant"},"value":number},"required":["kind","value"],"additionalProperties":false},
+        {"type":"object","description":"A formula of time (seconds), frame, numbers, + - * / % ^ and functions (sin, cos, noise, random, clamp, mix, smoothstep, ...), with links [Node].parameter to other nodes' animatable parameters by node id or unique label; clamped to the parameter's range","properties":{"kind":{"const":"expression"},"expression":{"type":"string","minLength":1,"maxLength":veylvik_expr::MAX_SOURCE}},"required":["kind","expression"],"additionalProperties":false},
         {"type":"object","properties":{"kind":{"enum":["linear","step","smooth","monotone"]},"keys":{"type":"array","minItems":1,"maxItems":crate::animation::MAX_KEYS,"items":{"type":"object","properties":{"time":time_schema(),"value":number,"segment":crate::schema::segment()},"required":["time","value"],"additionalProperties":false}}},"required":["kind","keys"],"additionalProperties":false}
     ]})
 }

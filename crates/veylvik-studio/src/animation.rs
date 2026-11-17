@@ -213,7 +213,9 @@ pub fn scalar_with_default(
             ui.spacing_mut().item_spacing.x = 3.;
             ui.add_sized([88., 28.], egui::Label::new(label).truncate())
                 .on_hover_text(label);
-            if let Ok(mut value) = scalar.at(time) {
+            if matches!(scalar, Scalar::Expression { .. }) {
+                changed |= crate::expressions::row(ui, scalar, time);
+            } else if let Ok(mut value) = scalar.at(time) {
                 let old = value;
                 let mut edited = false;
                 if ui.available_width() > 220. {
@@ -236,7 +238,9 @@ pub fn scalar_with_default(
                     .is_ok();
                 }
             }
-            changed |= key_controls(ui, scalar, time);
+            if !matches!(scalar, Scalar::Expression { .. }) {
+                changed |= key_controls(ui, scalar, time);
+            }
             if let Some(default) = default
                 && ui
                     .add(crate::icons::Button::new(
@@ -295,6 +299,9 @@ pub fn details(
             Scalar::Constant { value } => {
                 changed |= ui.add(egui::DragValue::new(value).speed(0.1).range(range.clone())).changed();
             }
+            Scalar::Expression { .. } => {
+                ui.horizontal(|ui| changed |= crate::expressions::row(ui, scalar, time));
+            }
             _ => {
                 let key_count = scalar.keys().unwrap().len();
                 match &value {
@@ -342,7 +349,10 @@ pub fn details(
                 }
             }
         }
-        if let Ok(value) = scalar.at(time) {
+        changed |= crate::expressions::section(ui, scalar, time);
+        if let Ok(value) = scalar.at(time)
+            && !matches!(scalar, Scalar::Expression { .. })
+        {
             ui.horizontal_wrapped(|ui| {
                 let can_add = scalar.keys().is_none_or(|keys| keys.len() < MAX_KEYS && !keys.iter().any(|key| key.time.compare(time).is_ok_and(|order| order.is_eq())));
                 if ui.add_enabled(can_add, egui::Button::new("Add key at playhead").small()).clicked() {

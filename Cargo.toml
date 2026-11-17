@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/veylvik-color", "crates/veylvik-document", "crates/veylvik-render", "crates/veylvik-cli", "crates/veylvik-io", "crates/veylvik-studio", "crates/veylvik-control", "crates/veylvik-text", "crates/veylvik-decode", "crates/veylvik-interop", "crates/veylvik-track", "crates/veylvik-segment", "crates/veylvik-audio", "crates/veylvik-mesh", "crates/veylvik-scene", "crates/veylvik-render3d", "crates/veylvik-solve"]
+members = ["crates/veylvik-color", "crates/veylvik-document", "crates/veylvik-render", "crates/veylvik-cli", "crates/veylvik-io", "crates/veylvik-studio", "crates/veylvik-control", "crates/veylvik-text", "crates/veylvik-decode", "crates/veylvik-interop", "crates/veylvik-track", "crates/veylvik-segment", "crates/veylvik-audio", "crates/veylvik-mesh", "crates/veylvik-scene", "crates/veylvik-render3d", "crates/veylvik-solve", "crates/veylvik-expr"]
 resolver = "3"
 
 [workspace.package]
@@ -30,6 +30,7 @@ veylvik-mesh = { path = "crates/veylvik-mesh" }
 veylvik-scene = { path = "crates/veylvik-scene" }
 veylvik-render3d = { path = "crates/veylvik-render3d" }
 veylvik-solve = { path = "crates/veylvik-solve" }
+veylvik-expr = { path = "crates/veylvik-expr" }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

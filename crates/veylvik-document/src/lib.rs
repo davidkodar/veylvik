@@ -47,6 +47,7 @@ fn fail<T>(message: impl Into<String>) -> Result<T> {
 }
 
 pub mod animation;
+pub mod expression;
 pub mod key_edit;
 pub mod nodes;
 pub mod track;
@@ -381,6 +382,7 @@ impl Composition {
             return fail("The output must be an image; a Light rig only lights surfaces");
         }
         self.encoded_size()?;
+        expression::check(self)?;
         let mut pending = BTreeMap::new();
         let mut consumers: BTreeMap<NodeId, Vec<NodeId>> = BTreeMap::new();
         for (id, node) in &self.nodes {

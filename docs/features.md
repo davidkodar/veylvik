@@ -90,6 +90,7 @@ Everything Veylvik can do today, area by area. Veylvik is a native Rust node com
 - Interpolation: Linear, Hold (`step`), Ease in/out (`smooth`, cubic smoothstep), Auto smooth (`monotone`, no overshoot), and per-segment Bézier.
 - Per-key outgoing segment override: Auto, Smooth, Linear, Hold or Bézier; **Use curve default** removes overrides.
 - Curves hold their end values outside the keyed range; 1–4096 keys per curve.
+- **Expressions and links**: any scalar can follow a formula instead of keys, such as `sin(time * 4) * 10`, `noise(time * 2) * 0.3` or `[Title].size * 0.5 + 10`, linking to other nodes' parameters by name; loops are refused and results stay within the parameter's range.
 - Inspector: **At playhead** edits or inserts a key, preserving interpolation.
 - Expanded key list edits exact rational times and values, removes keys, shows a read-only curve preview.
 - **Remove key at playhead**; removing the last key keeps its value as a constant.

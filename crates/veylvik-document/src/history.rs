@@ -31,7 +31,8 @@ impl Document {
     }
     /// Limit retained snapshots by canonical JSON size, capped at 128 MiB and
     /// 64 entries. This accounting excludes allocator overhead and the current document.
-    pub fn with_history_budget(composition: Composition, bytes: usize) -> Result<Self> {
+    pub fn with_history_budget(mut composition: Composition, bytes: usize) -> Result<Self> {
+        composition.resolve_expressions()?;
         composition.validate()?;
         let size = composition.encoded_size()?;
         Ok(Self {
@@ -241,6 +242,7 @@ impl Document {
                 }
             }
         }
+        next.resolve_expressions()?;
         next.validate()?;
         Ok(next)
     }

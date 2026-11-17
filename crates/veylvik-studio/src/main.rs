@@ -13,6 +13,7 @@ mod diagnostics;
 mod display;
 mod editable_text;
 mod effects;
+mod expressions;
 mod eyedropper;
 mod files;
 mod font_browser;
@@ -1668,6 +1669,7 @@ impl Studio {
             .and_then(|id| self.project.document.snapshot().nodes.get(id))
             .map(|n| n.label.clone());
         let focus_objects = scene_focus::objects(self.project.document.snapshot());
+        expressions::publish(ui.ctx(), self.project.document.snapshot());
         let mut cx = nodes::InspectCx {
             node_id: self.draft.id,
             time,

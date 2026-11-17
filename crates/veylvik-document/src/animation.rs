@@ -84,11 +84,28 @@ pub struct Key {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Scalar {
-    Constant { value: f32 },
-    Linear { keys: Vec<Key> },
-    Step { keys: Vec<Key> },
-    Smooth { keys: Vec<Key> },
-    Monotone { keys: Vec<Key> },
+    Constant {
+        value: f32,
+    },
+    Linear {
+        keys: Vec<Key>,
+    },
+    Step {
+        keys: Vec<Key>,
+    },
+    Smooth {
+        keys: Vec<Key>,
+    },
+    Monotone {
+        keys: Vec<Key>,
+    },
+    /// A formula of time, frame and other parameters (see `crate::expression`); links
+    /// are stored by node id. `resolved` is attached by the document after each change.
+    Expression {
+        expression: String,
+        #[serde(skip)]
+        resolved: Option<std::sync::Arc<crate::expression::Resolved>>,
+    },
 }
 impl From<f32> for Scalar {
     fn from(value: f32) -> Self {
@@ -142,7 +159,7 @@ pub enum Interpolation {
 impl Scalar {
     pub fn interpolation(&self) -> Option<Interpolation> {
         match self {
-            Self::Constant { .. } => None,
+            Self::Constant { .. } | Self::Expression { .. } => None,
             Self::Linear { .. } => Some(Interpolation::Linear),
             Self::Step { .. } => Some(Interpolation::Step),
             Self::Smooth { .. } => Some(Interpolation::Smooth),
@@ -151,7 +168,7 @@ impl Scalar {
     }
     pub fn keys(&self) -> Option<&[Key]> {
         match self {
-            Self::Constant { .. } => None,
+            Self::Constant { .. } | Self::Expression { .. } => None,
             Self::Linear { keys }
             | Self::Step { keys }
             | Self::Smooth { keys }
@@ -163,6 +180,9 @@ impl Scalar {
     /// Constants become a single-key linear curve. Failure leaves self unchanged.
     pub fn set_key_at(&mut self, time: Time, value: f32) -> Result<()> {
         self.validate()?;
+        if let Self::Expression { .. } = self {
+            return fail("this value follows an expression; remove the expression to set keys");
+        }
         time.seconds()?;
         if !value.is_finite() {
             return fail("non-finite key");
@@ -224,7 +244,7 @@ impl Scalar {
     }
     pub fn keys_mut(&mut self) -> Option<&mut Vec<Key>> {
         match self {
-            Self::Constant { .. } => None,
+            Self::Constant { .. } | Self::Expression { .. } => None,
             Self::Linear { keys }
             | Self::Step { keys }
             | Self::Smooth { keys }
@@ -251,6 +271,7 @@ impl Scalar {
     pub fn validate(&self) -> Result<()> {
         match self {
             Self::Constant { value } if !value.is_finite() => fail("non-finite scalar"),
+            Self::Expression { expression, .. } => crate::expression::validate(expression),
             Self::Linear { keys }
             | Self::Step { keys }
             | Self::Smooth { keys }
@@ -298,6 +319,8 @@ impl Scalar {
         };
         match self {
             Self::Constant { value } => check(*value),
+            // Expressions are clamped to the range when sampled.
+            Self::Expression { .. } => Ok(()),
             Self::Linear { keys }
             | Self::Step { keys }
             | Self::Smooth { keys }
@@ -355,6 +378,13 @@ impl Scalar {
     }
     fn sample_validated(&self, time: Time, segments: Option<&[MonotoneSegment]>) -> Result<f32> {
         time.seconds()?;
+        if let Self::Expression {
+            expression,
+            resolved,
+        } = self
+        {
+            return crate::expression::evaluate(expression, resolved.as_deref(), time);
+        }
         let Some(keys) = self.keys() else {
             let Self::Constant { value } = self else {
                 unreachable!()

@@ -287,6 +287,8 @@ pub struct Plan {
     pub(crate) nodes: Vec<Node>,
     /// Inputs of light rigs (planar tracks) read as data; never rendered.
     pub(crate) light_data: Vec<Node>,
+    /// Nodes that expressions in this plan read; a change to them changes the plan.
+    link_data: Vec<Node>,
     pub(crate) curves: Vec<BTreeMap<&'static str, CompiledScalar>>,
     pub(crate) passes: Vec<Pass>,
     pub(crate) output_slot: usize,
@@ -301,6 +303,12 @@ impl Plan {
     }
     pub fn compile_output(composition: &Composition, output: NodeId) -> Result<Self> {
         composition.validate()?;
+        // Documents arrive resolved; a composition built by hand gets its links here.
+        if composition.needs_resolving() {
+            let mut resolved = composition.clone();
+            resolved.resolve_expressions().map_err(error)?;
+            return Self::compile_branch(&resolved, output, 0, &mut 16384);
+        }
         Self::compile_branch(composition, output, 0, &mut 16384)
     }
     fn compile_branch(
@@ -754,6 +762,11 @@ impl Plan {
                     .collect::<std::result::Result<BTreeMap<_, _>, _>>()
             })
             .collect::<std::result::Result<Vec<_>, _>>()?;
+        let link_data = composition
+            .linked_nodes(nodes.iter().chain(&light_data).map(|n| n.id))
+            .into_iter()
+            .map(|id| composition.nodes[&id].clone())
+            .collect();
         Ok(Self {
             ocio: composition.ocio.clone(),
             temporal,
@@ -764,6 +777,7 @@ impl Plan {
             width: composition.width,
             height: composition.height,
             nodes,
+            link_data,
             light_data,
             passes,
             output_slot: slots[final_value],
@@ -820,7 +834,12 @@ impl Plan {
         {
             return Ok(false);
         }
-        for before in self.nodes.iter().chain(&self.light_data) {
+        for before in self
+            .nodes
+            .iter()
+            .chain(&self.light_data)
+            .chain(&self.link_data)
+        {
             let Some(after) = composition.nodes.get(&before.id) else {
                 return Ok(false);
             };

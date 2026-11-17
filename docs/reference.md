@@ -1011,7 +1011,29 @@ conversion, including near the timestamp limits.
 Step holds each value until the next exact key time. Smooth applies cubic
 smoothstep (`3t² − 2t³`) within each interval, easing in and out without
 overshooting the endpoint values. Curves contain 1–4096 keys. Outside
-the key range they hold the nearest endpoint. Input boundaries are transparent
+the key range they hold the nearest endpoint.
+
+A scalar can instead follow an **expression** (`{"kind": "expression",
+"expression": "..."}`, at most 1000 characters and 256 steps): numbers (`1.5`,
+`2e3`), `time` (seconds), `frame` (time × the frame rate), `pi`, `tau`,
+`+ - * / %`, `^` (power, right-associative; unary minus binds looser, so `-2^2`
+is −4), parentheses, and the functions `sin cos tan asin acos atan atan2 sqrt abs
+floor ceil round fract sign exp ln log10 pow min max clamp mix step smoothstep mod
+noise random radians degrees`. `noise(x)` is smooth gradient noise in −1..1, zero at
+whole numbers; `random(x)` is a repeatable value in 0..1 that changes at whole
+numbers (`random(frame)` flickers per frame). A link `[Node].parameter` reads
+another node's animatable parameter at the same time, after its own keys or
+expression; it may name the node by a unique label, and is stored by node id, so
+renaming keeps it. Up to 16 links per expression and chains up to 16 deep;
+loops, unknown nodes or parameters, and removing a node an expression reads are
+refused with the reason. The result is kept within the parameter's range; a
+result that is not a number (such as `1/0`) is an error for that frame. An
+expression has no keys: setting a key is refused until it is removed. Render
+plans include the nodes that expressions read, so changing them re-renders, even
+when they are not connected. In Studio, a parameter's `...` menu offers **Use an
+expression**, **Link to a parameter** (or **Add a link**) and **Remove expression**
+(keeping the value at the playhead); the row then shows the formula with node
+names and its current value. Input boundaries are transparent
 black. Image dimensions are 1–8192 per axis, subject to GPU limits and budget.
 Affine transforms scale around the pivot, rotate clockwise, then translate;
 integer coordinates address pixel centers. Negative scales flip the image and
