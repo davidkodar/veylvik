@@ -1059,7 +1059,12 @@ Lens blur boosts colour above its luminance threshold by 1 + highlights × (lumi
 threshold), then gathers over a disc on a golden-angle spiral of up to 400 samples;
 when the disc is larger than the sample count, the image is first box-filtered to the
 widest spiral gap, so even a single-pixel light spreads into a solid, evenly lit disc.
-Discs up to about 11 px gather every pixel exactly. Material bevels are the gradient of
+Discs up to about 11 px gather every pixel exactly. With a depth input (red channel),
+each pixel's disc is radius × |1 − focus / depth|, capped at radius (depth ≤ 0 is
+infinitely far); the box prefilter follows each pixel's own disc, and the gather
+samples within it, counting a nearer sample only when that sample's own disc reaches
+the pixel, so in-focus foreground keeps a sharp edge over blurred background (blurred
+foreground does not spread past its silhouette). Material bevels are the gradient of
 the coverage blurred with a gaussian (sigma = 0.35 × bevel) in two passes before
 shading, so corners and acute vertices stay round. The
 horizontal pass shares 64-pixel rows and their halo in 2 KiB of workgroup memory;
@@ -1851,16 +1856,27 @@ inputs and therefore also reuses equal pixels across different times.
 ### OpenEXR image inputs
 
 CLI import, native import, saved image nodes, and MCP rendering accept `.exr`
-assets. The initial supported subset is single-part version-2 scanline EXR with
-exactly R/G/B/A half- or full-float channels, no subsampling, matching origin-zero
-data/display windows, and square pixels. Raw, RLE, ZIP1, and ZIP16 compression
-are supported. Chromaticities must be Rec.709/D65, or absent (the EXR default).
-Pixels are interpreted as scene-linear premultiplied RGBA and preserved without
-SDR clipping. Nonfinite values, alpha outside [0,1], and nonzero RGB at zero
-alpha are rejected by the image-input contract. Tiled, deep, multipart, other
-color spaces, extra channels, and cropped data windows are not yet imported.
+assets: single-part version-2 scanline EXR (long channel names allowed) with half-
+or full-float channels, no subsampling, matching origin-zero data/display windows,
+and square pixels, in any compression the decoder reads (raw, RLE, ZIP, PIZ,
+PXR24, B44, B44A, DWAA, DWAB). Chromaticities must be Rec.709/D65, or absent (the
+EXR default).
 
-Files are bounded to 64 MiB, headers to 1 MiB/256 attributes, dimensions to
+Multi-layer files (such as Blender's) group channels into layers by everything
+before the last dot: `ViewLayer.Depth.Z` is channel Z of layer
+`ViewLayer.Depth`. Only the chosen layer's channels are decoded. The main image is
+the top-level R, G, B (and A), else a layer whose last part is `Combined`; it is
+scene-linear premultiplied RGBA (alpha 1 without an A channel). A Footage node's
+**layer** (`null` for the main image) picks any other layer of a still or of every
+frame of an OpenEXR sequence; passes become data with alpha 1: R, G, B layers give
+their colour, X, Y, Z layers (normals, positions, motion) fill R, G, B, two-channel
+layers fill R and G, and one channel (such as depth Z) fills R, G and B. Studio's
+footage inspector shows a **Layer** menu for multi-layer files, listed from the
+file header in the background. Values that are not numbers, alpha outside [0,1],
+and nonzero RGB at zero alpha are rejected. Tiled, deep, multipart, other colour
+spaces and cropped data windows are not imported.
+
+Files are bounded to 256 MiB, headers to 4 MiB/4096 attributes, dimensions to
 8192 per axis, and decoded RGBA32F to the smaller of the caller's budget and
 128 MiB. Header checks precede pixel allocation; serial decoding uses the same
 immutable file bytes that were checked. Original input files remain protected

@@ -38,6 +38,12 @@ pub struct LensBlur {
     pub radius: Scalar,
     pub highlights: Scalar,
     pub threshold: Scalar,
+    /// The in-focus depth when a depth pass is connected (in the pass's units).
+    #[serde(default = "default_focus")]
+    pub focus: Scalar,
+}
+fn default_focus() -> Scalar {
+    10.0.into()
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -85,14 +91,15 @@ pub static LENS_BLUR: NodeType = NodeType {
     type_id: "lens_blur",
     version: 1,
     label: "Lens blur",
-    description: "Out-of-focus lens blur: every pixel spreads evenly over a disc of radius pixels, so lights become round bokeh, even single-pixel ones (large discs are prefiltered to the sample spacing). Highlights boosts colour brighter than threshold (scene-linear luminance) by 1 + highlights x (luminance - threshold) before blurring, so lights bloom into bright discs instead of fading. Premultiplied colour and alpha blur together; transparent borders. Animate radius for a rack focus.",
-    inputs: &["image"],
-    optional: &[],
+    description: "Out-of-focus lens blur: every pixel spreads evenly over a disc of radius pixels, so lights become round bokeh, even single-pixel ones (large discs are prefiltered to the sample spacing). Highlights boosts colour brighter than threshold (scene-linear luminance) by 1 + highlights x (luminance - threshold) before blurring, so lights bloom into bright discs instead of fading. Premultiplied colour and alpha blur together; transparent borders. Animate radius for a rack focus. With the optional depth input (a depth pass, such as a Blender Depth layer, read from its red channel), each pixel's disc is radius x |1 - focus / depth| capped at radius, so pixels at the focus depth stay sharp and the far background gets the full radius; a pixel gathers within its own disc, and nearer pixels only mix in when their own disc reaches it, so sharp foreground does not smear into the blurred background (blurred foreground edges stay within their silhouette). Depth 0 or below counts as infinitely far.",
+    inputs: &["image", "depth"],
+    optional: &["depth"],
     output: PortKind::Image,
     parameters: &[
         scalar("radius", "pixels", 0.0, 128.0, 12.0),
         scalar("highlights", "gain", 0.0, 16.0, 2.0),
         scalar("threshold", "luminance", 0.0, 64.0, 0.8),
+        scalar("focus", "depth units", 0.0, 1.0e6, 10.0),
     ],
 };
 pub static MORPHOLOGY: NodeType = NodeType {
@@ -157,7 +164,7 @@ pub static AFFINE: NodeType = NodeType {
 };
 
 node!(Blur, BLUR, [radius]);
-node!(LensBlur, LENS_BLUR, [radius, highlights, threshold]);
+node!(LensBlur, LENS_BLUR, [radius, highlights, threshold, focus]);
 node!(Morphology, MORPHOLOGY, [radius]);
 node!(Displace, DISPLACE, [x, y]);
 node!(Transform, TRANSFORM, [x, y]);

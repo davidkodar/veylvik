@@ -62,6 +62,28 @@ impl RenderNode for veylvik_document::nodes::LensBlur {
         ];
         Passes::chain(&STEPS)
     }
+    fn passes_for(&self, node: &veylvik_document::Node) -> Passes {
+        use super::{From, Step};
+        if !node.inputs.contains_key("depth") {
+            return self.passes();
+        }
+        // Each pixel's disc comes from the depth pass on the second input.
+        static STEPS: [Step; 3] = [
+            Step {
+                kernel: Kernel::LensDepthPrefilterHorizontal,
+                inputs: [From::Port(0), From::Port(1), From::None, From::None],
+            },
+            Step {
+                kernel: Kernel::LensDepthPrefilterVertical,
+                inputs: [From::Step(0), From::Port(1), From::None, From::None],
+            },
+            Step {
+                kernel: Kernel::LensDepthBlur,
+                inputs: [From::Step(1), From::Port(1), From::None, From::None],
+            },
+        ];
+        Passes::chain(&STEPS)
+    }
     fn shareable(&self) -> bool {
         true
     }
@@ -77,6 +99,7 @@ impl RenderNode for veylvik_document::nodes::LensBlur {
         p.values[0] = sample("radius")?;
         p.values[1] = sample("highlights")?;
         p.values[2] = sample("threshold")?;
+        p.values[3] = sample("focus")?;
         Ok(())
     }
 }

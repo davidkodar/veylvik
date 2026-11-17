@@ -57,16 +57,45 @@ pub fn is_sequence(path: &Path) -> bool {
         || path.file_name().is_some_and(|n| n == "sequence.json")
 }
 pub fn load(path: &Path, budget: u64) -> Result<Media> {
+    load_layer(path, None, budget)
+}
+/// The media of a source key (`veylvik_document::Operation::source_key`) relative to `base`.
+pub fn load_key(base: &Path, key: &str, budget: u64) -> Result<Media> {
+    let (path, layer) = veylvik_document::split_source_key(key);
+    load_layer(&base.join(path), layer, budget)
+}
+/// The OpenEXR layers of a still or of a sequence's first frame; empty for other media.
+pub fn layers(path: &Path) -> Result<Vec<crate::Layer>> {
+    if crate::is_exr(path) {
+        return crate::exr_layers(path);
+    }
+    if is_sequence(path) {
+        let (_, files, _) = Sequence::manifest(path)?;
+        if let Some(first) = files.first().filter(|f| crate::is_exr(f)) {
+            return crate::exr_layers(first);
+        }
+    }
+    Ok(Vec::new())
+}
+/// As `load`; `layer` reads one layer of multi-layer OpenEXR stills or sequences.
+pub fn load_layer(path: &Path, layer: Option<&str>, budget: u64) -> Result<Media> {
+    if layer.is_some() && !(is_sequence(path) || crate::is_exr(path)) {
+        return Err("only OpenEXR stills and sequences have layers".into());
+    }
     if crate::video::is_video(path) {
         Ok(Media::Video(Arc::new(crate::video::Video::open(
             path, budget,
         )?)))
     } else if is_sequence(path) {
-        Ok(Media::Sequence(Arc::new(Sequence::open(path, budget)?)))
+        Ok(Media::Sequence(Arc::new(Sequence::open_layer(
+            path, layer, budget,
+        )?)))
     } else if crate::lut::is_lut(path) {
         Ok(Media::Still(Arc::new(crate::lut::load(path)?)))
     } else {
-        Ok(Media::Still(Arc::new(crate::load_image(path, budget)?)))
+        Ok(Media::Still(Arc::new(crate::load_image_layer(
+            path, layer, budget,
+        )?)))
     }
 }
 
@@ -83,9 +112,38 @@ pub struct Sequence {
     cache: Mutex<VecDeque<usize>>,
     /// Largest single frame the caller accepted when opening.
     frame_limit: u64,
+    /// The OpenEXR layer read from every frame; None for the main image.
+    layer: Option<String>,
 }
 impl Sequence {
     pub fn open(path: &Path, budget: u64) -> Result<Self> {
+        Self::open_layer(path, None, budget)
+    }
+    pub fn open_layer(path: &Path, layer: Option<&str>, budget: u64) -> Result<Self> {
+        let (rate, files, stamps) = Self::manifest(path)?;
+        let first = Arc::new(crate::load_image_layer(
+            &files[0],
+            layer,
+            budget.min(crate::MAX_IMAGE_BYTES),
+        )?);
+        let size = (first.width(), first.height());
+        let owner = crate::host_cache::owner();
+        let sequence = Self {
+            files,
+            stamps,
+            rate,
+            size,
+            owner,
+            cache: Mutex::new(VecDeque::from([0])),
+            frame_limit: budget.min(crate::MAX_IMAGE_BYTES),
+            layer: layer.map(str::to_owned),
+        };
+        crate::host_cache::put(sequence.key(0), first.clone(), first.byte_size());
+        Ok(sequence)
+    }
+    /// The frame rate, frame files and their stamps listed by a manifest.
+    #[allow(clippy::type_complexity)]
+    fn manifest(path: &Path) -> Result<(Time, Vec<PathBuf>, Vec<(u64, std::time::SystemTime)>)> {
         let mut bytes = Vec::new();
         std::fs::File::open(path)?
             .take(1024 * 1024 + 1)
@@ -169,29 +227,13 @@ impl Sequence {
                 return Err("Sequence frame escapes its directory".into());
             }
             let meta = std::fs::metadata(&file)?;
-            if !meta.is_file() || meta.len() > 64 * 1024 * 1024 {
-                return Err("Sequence frame must be a regular file of at most 64 MiB".into());
+            if !meta.is_file() || meta.len() > 256 * 1024 * 1024 {
+                return Err("Sequence frame must be a regular file of at most 256 MiB".into());
             }
             stamps.push((meta.len(), meta.modified()?));
             files.push(file);
         }
-        let first = Arc::new(crate::load_image(
-            &files[0],
-            budget.min(crate::MAX_IMAGE_BYTES),
-        )?);
-        let size = (first.width(), first.height());
-        let owner = crate::host_cache::owner();
-        let sequence = Self {
-            files,
-            stamps,
-            rate,
-            size,
-            owner,
-            cache: Mutex::new(VecDeque::from([0])),
-            frame_limit: budget.min(crate::MAX_IMAGE_BYTES),
-        };
-        crate::host_cache::put(sequence.key(0), first.clone(), first.byte_size());
-        Ok(sequence)
+        Ok((rate, files, stamps))
     }
     fn key(&self, index: usize) -> crate::host_cache::Key {
         crate::host_cache::Key {
@@ -249,7 +291,11 @@ impl FrameSource for Sequence {
             {
                 return Ok(image);
             }
-            let image = Arc::new(crate::load_image(&self.files[index], self.frame_limit)?);
+            let image = Arc::new(crate::load_image_layer(
+                &self.files[index],
+                self.layer.as_deref(),
+                self.frame_limit,
+            )?);
             let after = std::fs::metadata(&self.files[index])?;
             if (after.len(), after.modified()?) != self.stamps[index] {
                 return Err("Sequence frame changed during decoding; reload sources".into());

@@ -14,6 +14,7 @@ mod display;
 mod editable_text;
 mod effects;
 mod expressions;
+mod exr_layers;
 mod eyedropper;
 mod files;
 mod font_browser;
@@ -1832,6 +1833,7 @@ impl Studio {
                     timing: Default::default(),
                     placement: Default::default(),
                     colour: Default::default(),
+                    layer: None,
                 });
                 self.draft_dirty = true;
                 text_changed = true;

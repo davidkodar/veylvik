@@ -9,7 +9,7 @@ pub(crate) struct InspectCx<'a> {
     pub time: Time,
     pub frame_rate: Time,
     pub inputs: &'a veylvik_render::ImageInputs,
-    pub unavailable: &'a std::collections::BTreeMap<&'a str, &'a str>,
+    pub unavailable: &'a std::collections::BTreeMap<String, String>,
     /// The draft changed and needs Apply.
     pub dirty: bool,
     /// The change affects text or media layout and should refresh the text preview.

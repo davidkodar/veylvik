@@ -48,7 +48,7 @@ impl Inspect for veylvik_document::nodes::Lut {
             cx.replace_image = ui.button("Choose .cube…").clicked();
         });
         if let Some(reason) = cx.unavailable.get(self.asset.as_str()) {
-            ui.colored_label(egui::Color32::LIGHT_RED, *reason);
+            ui.colored_label(egui::Color32::LIGHT_RED, reason.as_str());
         }
         egui::Grid::new("lut-spaces").num_columns(3).show(ui, |ui| {
             for (label, colour) in [("Input", &mut self.input), ("Output", &mut self.output)] {

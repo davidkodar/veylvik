@@ -150,21 +150,22 @@ impl Project {
         self.inputs.set_base_directory(self.base.clone());
         let mut remaining = veylvik_io::runtime::source_budget();
         for node in self.document.snapshot().nodes.values() {
-            if let Some(asset) = node.operation.asset()
-                && !self.inputs.contains_key(asset)
-                && !self.asset_errors.contains_key(asset)
+            if let Some(key) = node.operation.source_key()
+                && !self.inputs.contains_key(&key)
+                && !self.asset_errors.contains_key(&*key)
             {
-                match veylvik_io::footage::load(
-                    &self.base.join(asset),
+                match veylvik_io::footage::load_key(
+                    &self.base,
+                    &key,
                     remaining.min(128 * 1024 * 1024),
                 ) {
                     Ok(image) => {
                         remaining -= image.byte_size();
-                        image.insert(&mut self.inputs, asset.to_owned());
+                        image.insert(&mut self.inputs, key.into_owned());
                     }
                     Err(error) => {
                         self.asset_errors
-                            .insert(asset.to_owned(), error.to_string());
+                            .insert(key.into_owned(), error.to_string());
                     }
                 }
             }
@@ -183,21 +184,22 @@ impl Project {
             }
         }
     }
-    pub fn unavailable_assets(&self) -> std::collections::BTreeMap<&str, &str> {
+    /// Sources that failed to load, by asset path, with the reason.
+    pub fn unavailable_assets(&self) -> std::collections::BTreeMap<String, String> {
         self.document
             .snapshot()
             .nodes
             .values()
             .filter_map(|node| {
-                if let Some(asset) = node.operation.asset()
-                    && !self.inputs.contains_key(asset)
-                {
+                let key = node.operation.source_key()?;
+                if !self.inputs.contains_key(&key) {
                     Some((
-                        asset,
+                        node.operation.asset().unwrap_or_default().to_owned(),
                         self.asset_errors
-                            .get(asset)
+                            .get(&*key)
                             .map(String::as_str)
-                            .unwrap_or("Source is not loaded; reload or replace it."),
+                            .unwrap_or("Source is not loaded; reload or replace it.")
+                            .to_owned(),
                     ))
                 } else {
                     None
@@ -405,6 +407,7 @@ impl Project {
                     timing: Default::default(),
                     placement: Default::default(),
                     colour: Default::default(),
+                    layer: None,
                 });
             } else {
                 *node.operation.asset_mut().unwrap() = next.clone();
@@ -441,6 +444,7 @@ impl Project {
                 timing: Default::default(),
                 placement: veylvik_document::media::Placement::Fit,
                 colour: Default::default(),
+                layer: None,
             }),
             &[],
         );
@@ -478,15 +482,14 @@ pub fn load_inputs(
     let mut seen = std::collections::BTreeSet::new();
     let budget = veylvik_io::runtime::source_budget();
     for node in composition.nodes.values() {
-        if let Some(asset) = node.operation.asset()
-            && seen.insert(asset)
+        if let Some(key) = node.operation.source_key()
+            && seen.insert(key.clone())
         {
-            let replaced = inputs.source_budget(asset);
+            let replaced = inputs.source_budget(&key);
             let remaining = budget.saturating_sub(inputs.byte_size().saturating_sub(replaced));
-            let image =
-                veylvik_io::footage::load(&base.join(asset), remaining.min(128 * 1024 * 1024))
-                    .map_err(|error| format!("Image {asset}: {error}"))?;
-            image.insert(&mut inputs, asset);
+            let image = veylvik_io::footage::load_key(base, &key, remaining.min(128 * 1024 * 1024))
+                .map_err(|error| format!("Image {}: {error}", key.replace('\0', " layer ")))?;
+            image.insert(&mut inputs, key.into_owned());
             // Aliased keys may still retain the replaced allocation.
             if inputs.byte_size() > budget {
                 return Err(format!(

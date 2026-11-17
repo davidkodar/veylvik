@@ -256,12 +256,14 @@ impl ImageInputs {
         let visible = plan.visible_at(time)?;
         for node in &plan.nodes {
             if let veylvik_document::Operation::Footage(veylvik_document::nodes::Footage {
-                asset,
                 timing,
                 placement,
                 colour,
+                ..
             }) = &node.operation
             {
+                let source = node.operation.source_key().unwrap_or_default();
+                let asset: &str = &source;
                 let key = crate::plan::footage_key(node.id);
                 if self.contains_key(&key) {
                     continue;

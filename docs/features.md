@@ -200,7 +200,8 @@ Everything Veylvik can do today, area by area. Veylvik is a native Rust node com
 ## Filters and distortion
 
 - **Blur**: radius 0–256 px with a **Box** or **Gaussian** filter, two-pass GPU.
-- **Lens blur**: round out-of-focus bokeh up to 128 px with a highlight boost and threshold; single-pixel lights become solid discs; animate the radius for a rack focus.
+- **Lens blur**: round out-of-focus bokeh up to 128 px with a highlight boost and threshold; single-pixel lights become solid discs; animate the radius for a rack focus. Connect a depth pass (such as Blender's Depth layer) and set Focus for real depth of field: the focus depth stays sharp, blur grows with distance from it, and sharp foreground does not smear into the blurred background.
+- **Multi-layer OpenEXR**: Footage reads any layer of Blender-style multi-layer EXR stills and sequences (Combined, Depth, Normal, light groups and other passes) from a Layer menu; ZIP, PIZ, DWAA and the other common compressions.
 - **Transform**: X/Y translation, bilinear.
 - **Affine transform**: X/Y translate, signed X/Y scale (flip), clockwise rotation, pivot.
 - **Displace**: map red/green displaces X/Y, animated strength up to ±8192 px, alpha-weighted.

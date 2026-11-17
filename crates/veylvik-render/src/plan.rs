@@ -44,6 +44,9 @@ pub enum Kernel {
     GrainNoise,
     GrainApply,
     LensDistortion,
+    LensDepthPrefilterHorizontal,
+    LensDepthPrefilterVertical,
+    LensDepthBlur,
     LensPrefilterHorizontal,
     LensPrefilterVertical,
     LensBlur,
@@ -82,7 +85,7 @@ pub enum Kernel {
     Lut,
 }
 impl Kernel {
-    pub(crate) const ALL: [Self; 72] = [
+    pub(crate) const ALL: [Self; 75] = [
         Self::ToAcescg,
         Self::FromAcescg,
         Self::Text,
@@ -119,6 +122,9 @@ impl Kernel {
         Self::GrainNoise,
         Self::GrainApply,
         Self::LensDistortion,
+        Self::LensDepthPrefilterHorizontal,
+        Self::LensDepthPrefilterVertical,
+        Self::LensDepthBlur,
         Self::LensPrefilterHorizontal,
         Self::LensPrefilterVertical,
         Self::LensBlur,
@@ -195,6 +201,9 @@ impl Kernel {
             Self::GrainNoise => "grain_noise",
             Self::GrainApply => "grain_apply",
             Self::LensDistortion => "lens_distortion",
+            Self::LensDepthPrefilterHorizontal => "lens_depth_prefilter_horizontal",
+            Self::LensDepthPrefilterVertical => "lens_depth_prefilter_vertical",
+            Self::LensDepthBlur => "lens_depth_blur",
             Self::LensPrefilterHorizontal => "lens_prefilter_horizontal",
             Self::LensPrefilterVertical => "lens_prefilter_vertical",
             Self::LensBlur => "lens_blur",
@@ -867,10 +876,12 @@ impl Plan {
             })
             .collect()
     }
-    pub fn required_assets(&self) -> BTreeSet<&str> {
+    /// Media the plan reads, by source key (`Operation::source_key`): a file path, or
+    /// for one layer of a multi-layer OpenEXR, the path, a NUL and the layer.
+    pub fn required_assets(&self) -> BTreeSet<std::borrow::Cow<'_, str>> {
         self.nodes
             .iter()
-            .filter_map(|n| n.operation.asset())
+            .filter_map(|n| n.operation.source_key())
             .filter(|key| !key.starts_with('\0'))
             .chain(self.temporal.iter().flat_map(|b| b.plan.required_assets()))
             .collect()

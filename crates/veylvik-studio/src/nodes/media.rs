@@ -13,7 +13,7 @@ impl Inspect for veylvik_document::nodes::Image {
             ui.label(asset.as_str());
             ui.label("Images use native size and transparent padding.");
             if let Some(reason) = cx.unavailable.get(asset.as_str()) {
-                ui.colored_label(egui::Color32::LIGHT_RED, *reason);
+                ui.colored_label(egui::Color32::LIGHT_RED, reason.as_str());
             }
             cx.replace_image = ui.button("Replace source…").clicked();
         }
@@ -21,16 +21,26 @@ impl Inspect for veylvik_document::nodes::Image {
 }
 impl Inspect for veylvik_document::nodes::Footage {
     fn inspect(&mut self, ui: &mut egui::Ui, cx: &mut InspectCx<'_>) {
+        let key = veylvik_document::Operation::Footage(self.clone())
+            .source_key()
+            .map(|k| k.into_owned())
+            .unwrap_or_default();
         let veylvik_document::nodes::Footage {
             asset,
             timing,
             placement,
             colour,
+            layer,
         } = self;
         {
             ui.label(asset.as_str());
+            let path = std::path::PathBuf::from(cx.inputs.resolve_config(asset));
+            if crate::exr_layers::choose(ui, &path, layer) {
+                cx.dirty = true;
+                cx.text_changed = true;
+            }
             let changed =
-                media_controls::edit(ui, timing, placement, cx.inputs.info(asset), cx.frame_rate);
+                media_controls::edit(ui, timing, placement, cx.inputs.info(&key), cx.frame_rate);
             cx.dirty |= changed;
             cx.text_changed |= changed;
             if input_colour(ui, colour) {
@@ -38,7 +48,7 @@ impl Inspect for veylvik_document::nodes::Footage {
                 cx.text_changed = true;
             }
             if let Some(reason) = cx.unavailable.get(asset.as_str()) {
-                ui.colored_label(egui::Color32::LIGHT_RED, *reason);
+                ui.colored_label(egui::Color32::LIGHT_RED, reason.as_str());
             }
             cx.replace_image = ui.button("Replace source…").clicked();
         }

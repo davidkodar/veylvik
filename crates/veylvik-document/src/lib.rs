@@ -207,6 +207,19 @@ impl Operation {
     pub fn asset_mut(&mut self) -> Option<&mut String> {
         each_node!(self, node => node.asset_mut())
     }
+    /// The key a renderer looks this node's media up by: its asset, or for footage
+    /// reading one layer of a multi-layer OpenEXR, the asset, a NUL and the layer
+    /// (asset keys never contain NUL). `split_source_key` takes it apart.
+    pub fn source_key(&self) -> Option<std::borrow::Cow<'_, str>> {
+        match self {
+            Operation::Footage(nodes::Footage {
+                asset,
+                layer: Some(layer),
+                ..
+            }) => Some(format!("{asset}\0{layer}").into()),
+            _ => self.asset().map(Into::into),
+        }
+    }
     pub fn descriptor(&self) -> &'static registry::NodeType {
         each_node!(self, node => node.descriptor())
     }
@@ -665,6 +678,13 @@ pub fn blank(width: u32, height: u32, frame_rate: Time) -> Result<Composition> {
     Ok(composition)
 }
 
+/// A media source key's file path and layer (see `Operation::source_key`).
+pub fn split_source_key(key: &str) -> (&str, Option<&str>) {
+    match key.split_once('\0') {
+        Some((path, layer)) => (path, Some(layer)),
+        None => (key, None),
+    }
+}
 pub fn demo() -> Composition {
     let background = Node::new(
         "Background",

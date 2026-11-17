@@ -15,7 +15,9 @@ pub mod relink;
 pub mod video;
 pub mod video_export;
 pub use export::{FrameFormat, save_frame};
-pub use import::{load_exr, load_image};
+pub use import::{
+    Layer, exr_layers, is_exr, load_exr, load_exr_layer, load_image, load_image_layer,
+};
 pub mod recovery;
 pub mod runtime;
 pub mod sequence;
@@ -150,8 +152,8 @@ pub fn load_png(path: &Path, budget: u64) -> Result<Image> {
 pub fn inspect_inputs(plan: &Plan, base: &Path) -> Result<u64> {
     let mut bytes = 0;
     for key in plan.required_assets() {
-        let image = footage::load(&base.join(key), MAX_IMAGE_BYTES)
-            .map_err(|error| format!("image {key}: {error}"))?;
+        let image = footage::load_key(base, &key, MAX_IMAGE_BYTES)
+            .map_err(|error| format!("image {}: {error}", key.replace('\0', " layer ")))?;
         bytes += image.byte_size();
     }
     Ok(bytes)
@@ -167,10 +169,10 @@ pub fn load_inputs(plan: &Plan, base: &Path, budget: u64) -> Result<ImageInputs>
     let mut inputs = ImageInputs::default();
     inputs.set_base_directory(base);
     for key in plan.required_assets() {
-        let image =
-            footage::load(&base.join(key), remaining).map_err(|e| format!("image {key}: {e}"))?;
+        let image = footage::load_key(base, &key, remaining)
+            .map_err(|e| format!("image {}: {e}", key.replace('\0', " layer ")))?;
         remaining -= image.byte_size();
-        image.insert(&mut inputs, key);
+        image.insert(&mut inputs, key.into_owned());
     }
     for path in plan.required_models() {
         let loaded = model::load(&base.join(path)).map_err(|e| format!("3D model {path}: {e}"))?;

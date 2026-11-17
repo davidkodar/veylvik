@@ -21,6 +21,10 @@ pub struct Footage {
     /// from before it existed load as Auto.
     #[serde(default)]
     pub colour: media::InputColour,
+    /// The layer of a multi-layer OpenEXR (such as a Blender pass, "ViewLayer.Depth");
+    /// None reads the main image.
+    #[serde(default)]
+    pub layer: Option<String>,
 }
 
 pub static IMAGE: NodeType = NodeType {
@@ -37,7 +41,7 @@ pub static FOOTAGE: NodeType = NodeType {
     type_id: "footage",
     version: 1,
     label: "Footage",
-    description: "Time-aware video or image sequence, with exact source in/out and timeline placement. Outside the clip is transparent; pixels retain native dimensions. colour overrides a video's colour tags: curve (auto, rec709, srgb, linear, pq, hlg, apple_log, slog3, logc3, logc4, vlog) and gamut (auto, rec709, rec2020, p3_d65, s_gamut3, s_gamut3_cine, arri_wide_gamut3, arri_wide_gamut4, v_gamut); camera log footage is usually untagged and needs its curve and gamut set.",
+    description: "Time-aware video or image sequence, with exact source in/out and timeline placement. Outside the clip is transparent; pixels retain native dimensions. colour overrides a video's colour tags: curve (auto, rec709, srgb, linear, pq, hlg, apple_log, slog3, logc3, logc4, vlog) and gamut (auto, rec709, rec2020, p3_d65, s_gamut3, s_gamut3_cine, arri_wide_gamut3, arri_wide_gamut4, v_gamut); camera log footage is usually untagged and needs its curve and gamut set. layer picks a layer of multi-layer OpenEXR stills or sequences (such as a Blender pass, \"ViewLayer.Depth\"); null reads the main image.",
     inputs: &[],
     optional: &[],
     output: PortKind::Image,
@@ -46,6 +50,7 @@ pub static FOOTAGE: NodeType = NodeType {
         other("timing", ParameterKind::MediaTiming, "seconds"),
         other("placement", ParameterKind::MediaPlacement, ""),
         other("colour", ParameterKind::MediaColour, ""),
+        other("layer", ParameterKind::ExrLayer, "OpenEXR layer"),
     ],
 };
 
@@ -75,6 +80,11 @@ node!(Footage, FOOTAGE, [], {
             || asset.contains('\0')
         {
             return fail("Footage needs a valid asset key");
+        }
+        if let Some(layer) = &self.layer
+            && (layer.is_empty() || layer.len() > 512 || layer.contains('\0'))
+        {
+            return fail("Footage layer needs 1 to 512 characters without NUL");
         }
         self.timing.validate()
     }
