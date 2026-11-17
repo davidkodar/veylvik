@@ -166,7 +166,9 @@ fn params(
 pub struct Renderer {
     device: wgpu::Device,
     queue: wgpu::Queue,
-    pipelines: BTreeMap<Kernel, wgpu::ComputePipeline>,
+    /// The kernels' module; each kernel's pipeline is compiled the first time it runs.
+    shader: wgpu::ShaderModule,
+    pipelines: std::sync::Mutex<BTreeMap<Kernel, wgpu::ComputePipeline>>,
     /// The kernels' pipeline layout, for custom shaders compiled later.
     pipeline_layout: wgpu::PipelineLayout,
     custom: custom::Cache,
@@ -375,22 +377,6 @@ impl Renderer {
             bind_group_layouts: &[Some(&layout)],
             immediate_size: 0,
         });
-        let pipelines = Kernel::ALL
-            .into_iter()
-            .map(|kernel| {
-                (
-                    kernel,
-                    device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-                        label: Some(kernel.entry()),
-                        layout: Some(&pipeline_layout),
-                        module: &shader,
-                        entry_point: Some(kernel.entry()),
-                        compilation_options: Default::default(),
-                        cache: None,
-                    }),
-                )
-            })
-            .collect();
         let validation_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("finite output validation"),
             source: wgpu::ShaderSource::Wgsl(include_str!("validate.wgsl").into()),
@@ -415,7 +401,8 @@ impl Renderer {
         Ok(Self {
             device,
             queue,
-            pipelines,
+            shader,
+            pipelines: Default::default(),
             pipeline_layout,
             custom: Default::default(),
             layout,
@@ -608,6 +595,44 @@ impl Renderer {
         let available = self.budget_bytes.saturating_sub(pool.stats().held_bytes);
         pool.trim(self.pool_limit_bytes.min(available));
         Ok((result?, region))
+    }
+    /// A kernel's pipeline, compiled on first use: the driver's compile of all of
+    /// them took far longer than starting the renderer, and a graph uses a handful.
+    fn pipeline(&self, kernel: Kernel) -> Result<wgpu::ComputePipeline> {
+        let mut pipelines = self
+            .pipelines
+            .lock()
+            .map_err(|_| error("kernel pipelines lock poisoned"))?;
+        if let Some(pipeline) = pipelines.get(&kernel) {
+            return Ok(pipeline.clone());
+        }
+        if !Kernel::ALL.contains(&kernel) {
+            return Err(error("kernel has no pipeline of its own"));
+        }
+        let pipeline = self
+            .device
+            .create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                label: Some(kernel.entry()),
+                layout: Some(&self.pipeline_layout),
+                module: &self.shader,
+                entry_point: Some(kernel.entry()),
+                compilation_options: Default::default(),
+                cache: None,
+            });
+        pipelines.insert(kernel, pipeline.clone());
+        Ok(pipeline)
+    }
+    /// Compile every kernel now, so no later frame waits for one. Errors if any fails.
+    pub fn compile_kernels(&self) -> Result<usize> {
+        let scope = self.device.push_error_scope(wgpu::ErrorFilter::Validation);
+        let built = Kernel::ALL
+            .into_iter()
+            .map(|kernel| self.pipeline(kernel))
+            .collect::<Result<Vec<_>>>();
+        if let Some(e) = pollster::block_on(scope.pop()) {
+            return Err(error(e));
+        }
+        Ok(built?.len())
     }
     pub fn render_frame(
         &self,
@@ -935,17 +960,14 @@ impl Renderer {
                     self.custom
                         .pipeline(&self.device, &self.pipeline_layout, &shader.code)?,
                 ),
-                _ => None,
+                _ => Some(self.pipeline(scheduled.kernel)?),
             };
             {
                 let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
                     label: Some(&node.label),
                     ..Default::default()
                 });
-                pass.set_pipeline(match &custom_pipeline {
-                    Some(pipeline) => pipeline,
-                    None => &self.pipelines[&scheduled.kernel],
-                });
+                pass.set_pipeline(custom_pipeline.as_ref().expect("every pass has a pipeline"));
                 pass.set_bind_group(0, &bind, &[]);
                 match scheduled.kernel {
                     Kernel::GlintSeeds => {
