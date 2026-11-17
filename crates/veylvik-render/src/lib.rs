@@ -621,7 +621,7 @@ impl Renderer {
             .create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
                 label: Some(kernel.entry()),
                 layout: Some(&self.pipeline_layout),
-                module: if matches!(kernel, Kernel::ParticleSplat | Kernel::ParticleResolve) {
+                module: if kernel.entry().starts_with("particle_") {
                     &self.particle_shader
                 } else {
                     &self.shader

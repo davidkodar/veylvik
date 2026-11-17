@@ -1886,11 +1886,20 @@ impl Studio {
             // Particles show the settings that apply to how they are wired.
             if kind.type_id == "particles" {
                 let wired = |port: &str| self.draft.inputs.contains_key(port);
+                let doc = self.project.document.snapshot();
+                ui.data_mut(|d| {
+                    d.insert_temp(egui::Id::new("particles-frame"), [doc.width, doc.height]);
+                    d.insert_temp(egui::Id::new("particles-box"), !wired("emitter"));
+                });
                 let hidden = match parameter.name {
                     "density" => !wired("emitter"),
                     "rate" | "x" | "y" | "width" | "height" => wired("emitter"),
                     "homing" => !wired("target"),
                     "inherit" => !wired("emitter") && !wired("target"),
+                    "field_push" | "field_flow" => !wired("field"),
+                    "bounce" => !wired("obstacle"),
+                    "spin" => !wired("sprite"),
+                    "streak" => wired("sprite"),
                     _ => false,
                 };
                 if hidden {

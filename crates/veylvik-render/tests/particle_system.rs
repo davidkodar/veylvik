@@ -28,31 +28,32 @@ fn render_to(
     target: Option<Vec<[f32; 4]>>,
     seconds: (i64, u32),
 ) -> Vec<[f32; 4]> {
+    let mut images = Vec::new();
+    if let Some(pixels) = emitter {
+        images.push(("emitter", pixels));
+    }
+    if let Some(pixels) = target {
+        images.push(("target", pixels));
+    }
+    render_with(renderer, particles, images, seconds)
+}
+fn render_with(
+    renderer: &Renderer,
+    particles: nodes::Particles,
+    images: Vec<(&'static str, Vec<[f32; 4]>)>,
+    seconds: (i64, u32),
+) -> Vec<[f32; 4]> {
     let mut inputs = ImageInputs::default();
     let mut nodes = Vec::new();
     let mut wires = Vec::new();
-    if let Some(pixels) = emitter {
-        inputs.insert("emitter", Arc::new(Image::new(W, H, pixels).unwrap()));
+    for (port, pixels) in images {
+        inputs.insert(port, Arc::new(Image::new(W, H, pixels).unwrap()));
         let image = Node::new(
-            "emitter",
-            Operation::Image(nodes::Image {
-                asset: "emitter".into(),
-            }),
+            port,
+            Operation::Image(nodes::Image { asset: port.into() }),
             &[],
         );
-        wires.push(("emitter", image.id));
-        nodes.push(image);
-    }
-    if let Some(pixels) = target {
-        inputs.insert("target", Arc::new(Image::new(W, H, pixels).unwrap()));
-        let image = Node::new(
-            "target",
-            Operation::Image(nodes::Image {
-                asset: "target".into(),
-            }),
-            &[],
-        );
-        wires.push(("target", image.id));
+        wires.push((port, image.id));
         nodes.push(image);
     }
     let node = Node::new("particles", Operation::Particles(particles), &wires);
@@ -337,4 +338,241 @@ fn particles_take_the_pictures_colour_fly_to_a_target_and_leave_streaks() {
         max.unwrap() <= dot_max.unwrap() + 1 && min.unwrap() + 8 <= dot_min.unwrap(),
         "{min:?} {max:?} vs {dot_min:?} {dot_max:?}"
     );
+}
+/// A still cloud at a point: no launch speed, no gravity, no fades.
+fn still() -> nodes::Particles {
+    let mut base = particles();
+    base.x = 80.0.into();
+    base.y = 60.0.into();
+    base.rate = 400.0.into();
+    base.life = 1.0.into();
+    base.speed = 0.0.into();
+    base.gravity = 0.0.into();
+    base.variation = 0.0.into();
+    base.fade = 0.0.into();
+    base.size = 1.5.into();
+    base
+}
+fn span(pixels: &[[f32; 4]]) -> (u32, u32, u32, u32) {
+    let lit: Vec<(u32, u32)> = pixels
+        .iter()
+        .enumerate()
+        .filter(|(_, p)| p[3] > 0.02)
+        .map(|(i, _)| (i as u32 % W, i as u32 / W))
+        .collect();
+    (
+        lit.iter().map(|p| p.0).min().unwrap_or(0),
+        lit.iter().map(|p| p.0).max().unwrap_or(0),
+        lit.iter().map(|p| p.1).min().unwrap_or(0),
+        lit.iter().map(|p| p.1).max().unwrap_or(0),
+    )
+}
+#[test]
+#[ignore = "requires Vulkan"]
+fn keyed_settings_apply_from_each_particles_birth() {
+    let renderer = Renderer::new().unwrap();
+    // The emitter point moves from x 30 to x 130 over two seconds. Particles do not
+    // move, so at two seconds those born in the last second lie along 80..130.
+    let mut moving = still();
+    let key = |ticks: i64, value: f32| Key {
+        segment: None,
+        time: Time::new(ticks, 1).unwrap(),
+        value,
+    };
+    moving.x = Scalar::Linear {
+        keys: vec![key(0, 30.0), key(2, 130.0)],
+    };
+    let out = render(&renderer, moving.clone(), None, (2, 1));
+    let (left, right, top, bottom) = span(&out);
+    assert!(
+        (77..=83).contains(&left) && (127..=133).contains(&right),
+        "{left} {right}"
+    );
+    assert!(top >= 56 && bottom <= 64, "{top} {bottom}");
+    // The same frame again is identical, and an earlier frame shows the earlier stretch.
+    assert_eq!(render(&renderer, moving.clone(), None, (2, 1)), out);
+    let (left, right, ..) = span(&render(&renderer, moving.clone(), None, (3, 2)));
+    assert!(
+        (52..=58).contains(&left) && (102..=108).contains(&right),
+        "{left} {right}"
+    );
+    // Rate keyed from nothing to full: more particles are young than old.
+    let mut rising = still();
+    rising.size = 0.6.into();
+    rising.variation = 0.0.into();
+    rising.speed = 40.0.into();
+    rising.direction = 0.0.into();
+    rising.spread = 0.0.into();
+    rising.rate = Scalar::Linear {
+        keys: vec![key(1, 0.0), key(2, 60.0)],
+    };
+    let out = render(&renderer, rising, None, (2, 1));
+    let half = |from: u32, to: u32| {
+        out.iter()
+            .enumerate()
+            .filter(|(i, _)| (from..to).contains(&(*i as u32 % W)))
+            .map(|(_, p)| p[3])
+            .sum::<f32>()
+    };
+    // Flying right at 40 px/s from x 80: the young are at 80..100, the old at 100..120.
+    assert!(
+        half(78, 100) > 2.0 * half(100, 124),
+        "{} {}",
+        half(78, 100),
+        half(100, 124)
+    );
+}
+#[test]
+#[ignore = "requires Vulkan"]
+fn a_small_target_loses_no_particles() {
+    let renderer = Renderer::new().unwrap();
+    let mut burst = still();
+    burst.width = 160.0.into();
+    burst.height = 120.0.into();
+    burst.rate = 2000.0.into();
+    burst.duration = 0.05.into();
+    burst.size = 0.6.into();
+    burst.glow = 1.0.into();
+    // Homing only late in the life, so halfway through they are still spread out.
+    burst.homing = 0.2.into();
+    let free = mass(&render(&renderer, burst.clone(), None, (1, 2))).0;
+    // A target of 6 x 6 pixels in a frame of 19200: every particle still finds a place.
+    let small = block(100..106, 30..36, [1.0; 4]);
+    let homed = render_with(
+        &renderer,
+        burst.clone(),
+        vec![("target", small.clone())],
+        (1, 2),
+    );
+    assert!(mass(&homed).0 > 0.97 * free, "{} of {free}", mass(&homed).0);
+    // At the end of their lives they are all on it (the dots' soft edges reach a little past).
+    burst.rate = 200_000.0.into();
+    burst.duration = 0.004.into();
+    let landed = render_with(&renderer, burst, vec![("target", small)], (995, 1000));
+    let (left, right, top, bottom) = span(&landed);
+    assert!(
+        left >= 96 && right <= 109 && top >= 26 && bottom <= 39,
+        "{left} {right} {top} {bottom}"
+    );
+    assert!(mass(&landed).0 > 10.0);
+}
+#[test]
+#[ignore = "requires Vulkan"]
+fn fields_pull_points_and_obstacles_move_particles() {
+    let renderer = Renderer::new().unwrap();
+    let centre = |pixels: &[[f32; 4]]| mass(pixels);
+    let (_, x0, y0) = centre(&render(&renderer, still(), None, (2, 1)));
+    assert!(
+        (x0 - 79.5).abs() < 1.0 && (y0 - 59.5).abs() < 1.0,
+        "{x0} {y0}"
+    );
+    // A field brightening to the right pushes particles left, towards the dark;
+    // flow carries them along the slope instead.
+    let ramp: Vec<[f32; 4]> = (0..W * H)
+        .map(|i| {
+            let v = (i % W) as f32 / W as f32;
+            [v, v, v, 1.0]
+        })
+        .collect();
+    let mut pushed = still();
+    pushed.field_push = 400.0.into();
+    let (_, x, y) = centre(&render_with(
+        &renderer,
+        pushed.clone(),
+        vec![("field", ramp.clone())],
+        (2, 1),
+    ));
+    assert!(x < x0 - 3.0 && (y - y0).abs() < 1.0, "{x} {y}");
+    pushed.field_push = 0.0.into();
+    pushed.field_flow = 400.0.into();
+    let (_, x, y) = centre(&render_with(
+        &renderer,
+        pushed,
+        vec![("field", ramp)],
+        (2, 1),
+    ));
+    assert!((x - x0).abs() < 1.0 && (y - y0).abs() > 3.0, "{x} {y}");
+    // A pull point draws them towards it; a vortex swings them round it.
+    let mut pulled = still();
+    pulled.pull_x = 130.0.into();
+    pulled.pull_y = 60.0.into();
+    pulled.pull = 200.0.into();
+    let (_, x, y) = centre(&render(&renderer, pulled.clone(), None, (2, 1)));
+    assert!(x > x0 + 5.0 && (y - y0).abs() < 1.0, "{x} {y}");
+    pulled.pull = 0.0.into();
+    pulled.vortex = 200.0.into();
+    let (_, _, y) = centre(&render(&renderer, pulled, None, (2, 1)));
+    assert!((y - y0).abs() > 5.0, "{y}");
+    // Falling particles stop at an obstacle and bounce; without it they fall through.
+    let mut falling = still();
+    falling.gravity = 300.0.into();
+    falling.life = 1.5.into();
+    falling.speed = 40.0.into();
+    falling.spread = 360.0.into();
+    falling.rate = 150.0.into();
+    falling.size = 0.7.into();
+    let floor = block(0..W, 90..H, [1.0; 4]);
+    let below = |pixels: &[[f32; 4]]| {
+        pixels
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| *i as u32 / W >= 96)
+            .map(|(_, p)| p[3])
+            .sum::<f32>()
+    };
+    let through = render(&renderer, falling.clone(), None, (3, 1));
+    let stopped = render_with(&renderer, falling, vec![("obstacle", floor)], (3, 1));
+    assert!(below(&through) > 5.0, "{}", below(&through));
+    assert!(
+        below(&stopped) < 0.02 * below(&through),
+        "{} vs {}",
+        below(&stopped),
+        below(&through)
+    );
+    assert!(
+        mass(&stopped).0 > 0.6 * mass(&through).0,
+        "particles are kept, not lost"
+    );
+}
+#[test]
+#[ignore = "requires Vulkan"]
+fn a_sprite_is_drawn_as_each_particle() {
+    let renderer = Renderer::new().unwrap();
+    // The sprite is red in its left half and empty in its right half.
+    let sprite = block(0..W / 2, 0..H, [1.0, 0.0, 0.0, 1.0]);
+    let mut one = still();
+    one.rate = 1.0.into();
+    one.duration = 0.02.into();
+    one.size = 12.0.into();
+    let seen = (5..19).find_map(|t| {
+        let out = render_with(
+            &renderer,
+            one.clone(),
+            vec![("sprite", sprite.clone())],
+            (t, 20),
+        );
+        (mass(&out).0 > 1.0).then_some((t, out))
+    });
+    let (t, out) = seen.expect("the burst particle is alive at some frame");
+    // 12 pixels wide either side of x 80, 9 either side of y 60 (the frame's shape);
+    // only the left half is drawn, and it is red.
+    let (left, right, top, bottom) = span(&out);
+    assert!(
+        (67..=70).contains(&left) && (78..=81).contains(&right),
+        "{left} {right}"
+    );
+    assert!(
+        (50..=53).contains(&top) && (67..=70).contains(&bottom),
+        "{top} {bottom}"
+    );
+    let p = out[(60 * W + 74) as usize];
+    assert!(
+        p[0] > 0.8 && p[1] < 0.05 && p[2] < 0.05 && p[3] > 0.8,
+        "{p:?}"
+    );
+    // Grow halves it by the end of the life; spin turns it, so the right side fills.
+    let mut turning = one.clone();
+    turning.spin = 720.0.into();
+    let spun = render_with(&renderer, turning, vec![("sprite", sprite)], (t, 20));
+    assert!(spun != out);
 }

@@ -100,7 +100,24 @@ impl Inspect for veylvik_document::nodes::Drip {
     }
 }
 impl Inspect for veylvik_document::nodes::Particles {
-    fn inspect(&mut self, ui: &mut egui::Ui, _cx: &mut InspectCx<'_>) {
-        ui.weak("Connect Emitter to text, a shape or footage and particles are born on it; Inherit gives them its colours. Connect Target and they fly onto that image. Streak turns dots into sparks. Put a Bloom after it for glow.");
+    fn inspect(&mut self, ui: &mut egui::Ui, cx: &mut InspectCx<'_>) {
+        ui.weak("Connect Emitter to text, a shape or footage and particles are born on it; Target and they fly onto that image; Field and Obstacle to steer and bounce them; Sprite to draw a picture as each particle. Put a Bloom after it for glow.");
+        // The frame's size, left here by the inspector for looks that fill the frame.
+        let [width, height]: [u32; 2] = ui
+            .data(|d| d.get_temp(egui::Id::new("particles-frame")))
+            .unwrap_or([1920, 1080]);
+        ui.menu_button("Start from a look", |ui| {
+            for look in &veylvik_presets::particles::LOOKS {
+                if ui.button(look.name).on_hover_text(look.hint).clicked() {
+                    look.apply(self, width, height);
+                    cx.dirty = true;
+                    ui.close();
+                }
+            }
+        })
+        .response
+        .on_hover_text(
+            "Set every setting for a ready-made effect, scaled to this frame; then adjust",
+        );
     }
 }

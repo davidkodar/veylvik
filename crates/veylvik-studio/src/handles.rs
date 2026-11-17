@@ -79,6 +79,24 @@ fn move_handle(operation: &mut Operation, handle: usize, delta: Vec2, time: Time
             edit(x, time, delta.x, -1_000_000.0, 1_000_000.0)?;
             edit(y, time, delta.y, -1_000_000.0, 1_000_000.0)?;
         }
+        Operation::Particles(particles) => {
+            let far = 1_000_000.0;
+            match handle {
+                0 => {
+                    edit(&mut particles.x, time, delta.x, -far, far)?;
+                    edit(&mut particles.y, time, delta.y, -far, far)?;
+                }
+                // The corner is half the box from its centre.
+                1 => {
+                    edit(&mut particles.width, time, 2.0 * delta.x, 0.0, 8192.0)?;
+                    edit(&mut particles.height, time, 2.0 * delta.y, 0.0, 8192.0)?;
+                }
+                _ => {
+                    edit(&mut particles.pull_x, time, delta.x, -far, far)?;
+                    edit(&mut particles.pull_y, time, delta.y, -far, far)?;
+                }
+            }
+        }
         Operation::GridWarp(warp) => {
             let reach = veylvik_document::nodes::GRID_REACH;
             if let Some(point) = warp.points.get_mut(handle) {
@@ -248,6 +266,47 @@ pub fn show(
                     "Drag gradient end. Apply commits; Revert discards.",
                 ),
             ]
+        }
+        Operation::Particles(particles) => {
+            // The emitter box (when nothing is connected as the emitter) and the pull point.
+            let boxed = ui
+                .data(|d| d.get_temp(egui::Id::new("particles-box")))
+                .unwrap_or(true);
+            let centre = origin + egui::vec2(particles.x.at(time)?, particles.y.at(time)?) * scale;
+            let half =
+                egui::vec2(particles.width.at(time)?, particles.height.at(time)?) * 0.5 * scale;
+            let pull =
+                origin + egui::vec2(particles.pull_x.at(time)?, particles.pull_y.at(time)?) * scale;
+            let pulling = particles.pull.at(time)? != 0.0 || particles.vortex.at(time)? != 0.0;
+            let mut points = Vec::new();
+            if boxed {
+                painter.rect_stroke(
+                    Rect::from_center_size(centre, half * 2.0),
+                    0.0,
+                    Stroke::new(1.0_f32, color),
+                    egui::StrokeKind::Middle,
+                );
+                points.push((
+                    centre,
+                    "Drag where particles are born. Apply commits; Revert discards.",
+                ));
+                points.push((
+                    centre + egui::vec2(half.x.max(18.0), half.y.max(18.0)),
+                    "Drag to size the box particles are born in. Apply commits; Revert discards.",
+                ));
+            }
+            if pulling {
+                ellipse(pull, Vec2::splat(10.0));
+                // Keep the handle numbers fixed: the pull point is always the third.
+                while points.len() < 2 {
+                    points.push((Pos2::new(f32::NAN, f32::NAN), ""));
+                }
+                points.push((
+                    pull,
+                    "Drag the point particles are pulled to or swung round. Apply commits; Revert discards.",
+                ));
+            }
+            points
         }
         Operation::GridWarp(warp) => {
             // The mesh as it stands: rest positions spread over the frame, plus offsets.

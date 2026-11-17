@@ -1508,39 +1508,62 @@ and `colour`.
   dragged; the inspector changes the number of points (resampling the warp so
   far) and resets the mesh. Points are not keyable yet, and there are no tangent
   handles.
-- **Particles** (`particles`, optional inputs emitter and target): soft dots on
-  a transparent frame. Without an emitter, **Rate** particles a second (at most
-  400000 alive) are born inside the box **Width** x **Height** centred on
-  **X**, **Y** (0 x 0 is a point). With an emitter, they are born where that
-  image has alpha, **Density** a second for every 100 x 100 pixels of it (the
-  frame is divided into cells of 2 to 16 pixels with four particle threads
-  each, so density saturates at about one a pixel). Each lives **Life**
-  seconds, launched at **Speed** along **Direction** (degrees, 0 right, 90 up)
-  within **Spread** degrees, then accelerated by **Gravity** (down) and
-  **Wind** (right) and carried by **Turbulence**, the curl of a noise field
-  with swirls about **Turbulence scale** pixels across (so it never gathers or
-  thins the cloud). Motion is integrated in 32 fixed steps of the nominal life,
-  so a particle's path is the same at every frame. **Size** is the dot's
-  radius (a gaussian of half that as sigma); **Colour** runs to **End colour**
-  over the life (linear RGBA; values above 1 are HDR and glow under Bloom),
-  with a short fade-in and a fade-out over the last **Fade** share of the
-  life. **Variation** makes lives, speeds and sizes differ. **Inherit** tints
-  each particle with the unpremultiplied colour of the emitter where it was
-  born. With a target connected, each particle takes the first of 32 random
-  places that passes the target's alpha (those that find none are not born)
-  and is steered onto it over the last **Homing** share of its life, arriving
-  as it dies and, with Inherit, taking the target's colour on the way.
-  **Streak** draws a particle as up to 48 dots back along where it was that
-  many seconds earlier (at most 96 pixels), fading towards the tail.
-  Emission begins at **Start** and lasts **Duration** seconds (0 is endless).
-  **Glow** 1 adds the dots' light (alpha clamped to 1); 0 lets them cover one
-  another (alpha 1 - exp(-sum)). Nothing is simulated from frame to frame: a
-  particle is a function of its thread, its generation and the frame's time,
-  so frames render in any order and repeat exactly, and the settings in force
-  at a frame apply to the particles' whole lives; an emitter or target image
-  is read as it is at that frame. Light is accumulated in fixed point (steps
-  of 1/4096) with atomic adds, then resolved. In Studio the inspector shows
-  the settings that apply to the node's wiring.
+- **Particles** (`particles`, optional inputs emitter, target, field, obstacle
+  and sprite): soft dots or pictures on a transparent frame.
+  - *Birth.* Without an emitter, **Rate** particles a second (at most 2000000
+    alive) are born inside the box **Width** x **Height** centred on **X**,
+    **Y** (0 x 0 is a point). With an emitter, they are born where that image
+    has alpha, **Density** a second for every 100 x 100 pixels of it (the frame
+    is divided into cells of 2 to 16 pixels with four particle threads each, so
+    density saturates at about one a pixel). Emission begins at **Start** and
+    lasts **Duration** seconds (0 is endless; a short duration is a burst).
+  - *Motion.* Each lives **Life** seconds, launched at **Speed** along
+    **Direction** (degrees, 0 right, 90 up) within **Spread** degrees, then
+    accelerated by **Gravity** (down) and **Wind** (right) and carried by
+    **Turbulence**, the curl of a noise field with swirls about **Turbulence
+    scale** pixels across (so it never gathers or thins the cloud).
+    **Variation** makes lives, speeds and sizes differ.
+  - *Forces.* The field input pushes particles by the slope of its brightness
+    (measured over 6 pixels): **Field push** from bright towards dark (negative
+    the other way) and **Field flow** along the edges, so they stream round a
+    shape. **Pull** draws them to the point **Pull X**, **Pull Y** (negative
+    drives them away) and **Vortex** swings them round it, both easing to
+    nothing at the point itself. The obstacle input is a matte: a particle
+    about to enter it (alpha above 0.5) is turned back, reflected about the
+    way out of the matte and keeping **Bounce** of its speed.
+  - *Target.* With a target connected each particle is given a place on it,
+    drawn exactly in proportion to the target's alpha (a cumulative table over
+    tiles of 16 pixels, 32 in frames above 2.5 megapixels, then a walk through
+    the tile), so none goes without one however small the target. It is steered
+    there over the last **Homing** share of its life, arriving as it dies.
+  - *Look.* **Size** is the dot's radius (a gaussian of half that as sigma) and
+    **Grow** its size at the end of the life as a factor of that. **Colour**
+    runs to **End colour** over the life (linear RGBA; values above 1 are HDR
+    and glow under Bloom), with a short fade-in and a fade-out over the last
+    **Fade** share. **Inherit** tints a particle with the unpremultiplied
+    colour of the emitter where it was born, turning to the target's as it
+    lands. **Streak** draws it as up to 48 dots back along where it was that
+    many seconds earlier (at most 96 pixels). With a sprite connected, that
+    input's whole frame (averaged to 64 x 64) is drawn as each particle, Size
+    wide either side and in the frame's proportions, tinted by the colours and
+    turning at **Spin** degrees a second either way; streaks are not drawn.
+    **Glow** 1 adds the particles' light (alpha clamped to 1); 0 lets them
+    cover one another (alpha 1 - exp(-sum)).
+  - *Time.* Nothing is simulated from frame to frame: a particle is a function
+    of its thread, its generation and the frame's time, so frames render in any
+    order and repeat exactly. Motion is integrated in 32 fixed steps of the
+    life (96 with an obstacle). Keyed settings are followed: the settings are
+    sampled 16 times across the last life, a particle is launched with those
+    in force at its birth, and forces act as keyed while it flies. Life itself
+    is read at the frame, and the emitter, target, field, obstacle and sprite
+    images are read as they are at the frame (a moving emitter image does not
+    leave particles behind; a moving box does).
+  - Light is accumulated in fixed point (steps of 1/4096) with atomic adds,
+    then resolved. The frame must be at least 32 x 32 pixels. In Studio the
+    inspector shows the settings that apply to the node's wiring, **Start from
+    a look** sets every setting for a ready-made effect scaled to the frame
+    (Sparks, Embers, Snow, Rain, Magic dust, Whirlpool, Disintegrate, Assemble),
+    and the emitter box and the pull point are dragged in the viewer.
 - **Shape warp** (`shape_warp`, input image): pulls the image so the start
   shape `from` lands on the end shape `to`. Both are closed paths in pixels
   (the Path mask's geometry format, keys allowed) with the same number of

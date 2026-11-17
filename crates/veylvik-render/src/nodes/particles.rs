@@ -1,42 +1,184 @@
-//! GPU passes and uniforms for particles: a splat pass over particle threads, then a resolve pass over pixels. The node's settings travel in a data image, since they outnumber the uniform's slots.
+//! GPU passes and uniforms for particles: prepare and fields passes pack the inputs, a splat pass runs over particle threads, and a resolve pass over pixels. The node's settings travel in a data image as rows through time, so a particle reads the settings of its own birth.
 use super::{Cx, From, Passes, RenderNode, Step};
-use crate::{Kernel, Params, Result};
-use veylvik_document::{Time, nodes::Particles};
+use crate::{Kernel, Params, Result, error};
+use veylvik_document::{Scalar, Time, nodes::Particles};
 
 /// Most particle threads from a box, and the threads each emitter cell has.
-const MAX_BOX: f32 = 400_000.0;
+const MAX_BOX: f32 = 2_000_000.0;
 const SLOTS: f32 = 4.0;
 /// Threads in one dispatch row (1024 workgroups of 64).
-pub(crate) const ROW: u32 = 65536;
+const ROW: u32 = 65536;
+/// Settings in a row, and rows through the last life (as in particle_system.wgsl).
+const COUNT: usize = 45;
+const ROWS: usize = 16;
+/// The target's tile size for a frame (as in particle_system.wgsl).
+fn tile(pixels: u64) -> u32 {
+    if pixels > 2_500_000 { 32 } else { 16 }
+}
+const MIP: u32 = 64;
 
-/// How the threads are laid out at `time`: (box threads, box chance, stride, image chance).
-fn layout(node: &Particles, time: Time) -> Result<(f32, f32, f32, f32)> {
-    let life = node.life.at(time)?;
-    let wanted = node.rate.at(time)? * life;
-    let threads = wanted.ceil().clamp(1.0, MAX_BOX);
+fn settings(node: &Particles, time: Time) -> Result<[f32; COUNT]> {
+    let at = |scalar: &Scalar| scalar.at(time).map_err(error);
+    let mut row = [0.0; COUNT];
+    let values = [
+        at(&node.life)?,
+        at(&node.speed)?,
+        at(&node.direction)?,
+        at(&node.spread)?,
+        at(&node.gravity)?,
+        at(&node.wind)?,
+        at(&node.turbulence)?,
+        at(&node.turbulence_scale)?,
+        at(&node.size)?,
+        at(&node.glow)?,
+        at(&node.variation)?,
+        at(&node.fade)?,
+        at(&node.start)?,
+        at(&node.duration)?,
+        at(&node.rate)?,
+        at(&node.density)?,
+        at(&node.x)?,
+        at(&node.y)?,
+        at(&node.width)?,
+        at(&node.height)?,
+        node.colour[0],
+        node.colour[1],
+        node.colour[2],
+        node.end_colour[0],
+        node.end_colour[1],
+        node.end_colour[2],
+        node.colour[3],
+        node.end_colour[3],
+        at(&node.inherit)?,
+        at(&node.homing)?,
+        at(&node.streak)?,
+        at(&node.field_push)?,
+        at(&node.field_flow)?,
+        at(&node.bounce)?,
+        at(&node.pull_x)?,
+        at(&node.pull_y)?,
+        at(&node.pull)?,
+        at(&node.vortex)?,
+        at(&node.spin)?,
+        at(&node.grow)?,
+    ];
+    row[..values.len()].copy_from_slice(&values);
+    Ok(row)
+}
+fn scalars(node: &Particles) -> [&Scalar; 34] {
+    [
+        &node.life,
+        &node.speed,
+        &node.direction,
+        &node.spread,
+        &node.gravity,
+        &node.wind,
+        &node.turbulence,
+        &node.turbulence_scale,
+        &node.size,
+        &node.glow,
+        &node.variation,
+        &node.fade,
+        &node.start,
+        &node.duration,
+        &node.rate,
+        &node.density,
+        &node.x,
+        &node.y,
+        &node.width,
+        &node.height,
+        &node.inherit,
+        &node.homing,
+        &node.streak,
+        &node.field_push,
+        &node.field_flow,
+        &node.bounce,
+        &node.pull_x,
+        &node.pull_y,
+        &node.pull,
+        &node.vortex,
+        &node.spin,
+        &node.grow,
+        &node.rate,
+        &node.density,
+    ]
+}
+/// The settings in force over the last life before `time`, oldest first. Unkeyed
+/// settings give equal rows without sampling each.
+fn rows(node: &Particles, time: Time) -> Result<Vec<[f32; COUNT]>> {
+    let now = settings(node, time)?;
+    if scalars(node)
+        .iter()
+        .all(|s| matches!(s, Scalar::Constant { .. }))
+    {
+        return Ok(vec![now; ROWS]);
+    }
+    let life = f64::from(now[0]);
+    let seconds = time.seconds().map_err(error)?;
+    (0..ROWS)
+        .map(|r| {
+            if r == ROWS - 1 {
+                return Ok(now);
+            }
+            let earlier = seconds - life + life * r as f64 / (ROWS - 1) as f64;
+            settings(
+                node,
+                Time::new((earlier * 24000.0).round() as i64, 24000).map_err(error)?,
+            )
+        })
+        .collect()
+}
+/// Threads from a box, and the emitter cell's stride, for these rows.
+fn layout(rows: &[[f32; COUNT]]) -> (u32, u32) {
+    let life = rows[ROWS - 1][0];
+    let most = |k: usize| rows.iter().map(|r| r[k]).fold(0.0f32, f32::max);
+    let threads = (most(14) * life).ceil().clamp(1.0, MAX_BOX);
     // A cell of stride x stride pixels holds SLOTS threads; make cells as large as the
     // density allows, so sparse systems cost little.
-    let per_pixel = node.density.at(time)? * life / 10_000.0;
+    let per_pixel = most(15) * life / 10_000.0;
     let stride = if per_pixel > 0.0 {
         (SLOTS / per_pixel).sqrt().floor().clamp(2.0, 16.0)
     } else {
         16.0
     };
-    Ok((
-        threads,
-        (wanted / threads).min(1.0),
-        stride,
-        (per_pixel * stride * stride / SLOTS).min(1.0),
-    ))
+    (threads as u32, stride as u32)
 }
-static STEPS: [Step; 2] = [
+const EMITTER: usize = 0;
+const TARGET: usize = 1;
+const FIELD: usize = 2;
+const OBSTACLE: usize = 3;
+const SPRITE: usize = 4;
+static STEPS: [Step; 4] = [
+    Step {
+        kernel: Kernel::ParticlePrepare,
+        inputs: [
+            From::Port(TARGET),
+            From::Port(SPRITE),
+            From::None,
+            From::None,
+        ],
+    },
+    Step {
+        kernel: Kernel::ParticleFields,
+        inputs: [
+            From::Port(FIELD),
+            From::Port(OBSTACLE),
+            From::Step(0),
+            From::Data,
+        ],
+    },
     Step {
         kernel: Kernel::ParticleSplat,
-        inputs: [From::Port(0), From::Data, From::Port(1), From::None],
+        inputs: [
+            From::Port(EMITTER),
+            From::Port(TARGET),
+            From::Step(1),
+            From::Step(0),
+        ],
     },
     Step {
         kernel: Kernel::ParticleResolve,
-        inputs: [From::Step(0), From::Data, From::None, From::None],
+        inputs: [From::Step(2), From::Step(1), From::None, From::None],
     },
 ];
 impl RenderNode for Particles {
@@ -46,65 +188,30 @@ impl RenderNode for Particles {
     fn has_data(&self) -> bool {
         true
     }
-    /// The settings at `time` as a 12 x 1 image; equal settings share one image.
+    /// The settings rows at `time` as an image, three values a texel; equal settings
+    /// share one image, so an unkeyed system stays cached.
     fn data(
         &self,
         time: Time,
         _width: u32,
         _height: u32,
     ) -> Result<Option<std::sync::Arc<crate::Image>>> {
-        type Kept = Vec<(Vec<[u32; 4]>, std::sync::Arc<crate::Image>)>;
+        type Kept = Vec<(Vec<u32>, std::sync::Arc<crate::Image>)>;
         static BLOCKS: std::sync::Mutex<Kept> = std::sync::Mutex::new(Vec::new());
-        let at = |scalar: &veylvik_document::Scalar| scalar.at(time);
-        let (_, box_chance, stride, image_chance) = layout(self, time)?;
-        // Three values a texel, with alpha 1, so the block is a valid image.
-        let values = [
-            at(&self.life)?,
-            at(&self.speed)?,
-            at(&self.direction)?.to_radians(),
-            at(&self.spread)?.to_radians(),
-            at(&self.gravity)?,
-            at(&self.wind)?,
-            at(&self.turbulence)?,
-            at(&self.turbulence_scale)?,
-            at(&self.size)?,
-            at(&self.glow)?,
-            at(&self.variation)?,
-            at(&self.fade)?,
-            at(&self.start)?,
-            at(&self.duration)?,
-            box_chance,
-            image_chance,
-            stride,
-            SLOTS,
-            at(&self.x)?,
-            at(&self.y)?,
-            0.0,
-            at(&self.width)?,
-            at(&self.height)?,
-            0.0,
-            self.colour[0],
-            self.colour[1],
-            self.colour[2],
-            self.end_colour[0],
-            self.end_colour[1],
-            self.end_colour[2],
-            self.colour[3],
-            self.end_colour[3],
-            0.0,
-            at(&self.inherit)?,
-            at(&self.homing)?,
-            at(&self.streak)?,
-        ];
-        let block: Vec<[f32; 4]> = values.chunks(3).map(|v| [v[0], v[1], v[2], 1.0]).collect();
-        let key: Vec<[u32; 4]> = block.iter().map(|row| row.map(f32::to_bits)).collect();
+        let rows = rows(self, time)?;
+        let key: Vec<u32> = rows.iter().flatten().map(|v| v.to_bits()).collect();
         let mut kept = BLOCKS
             .lock()
-            .map_err(|_| crate::error("particle settings lock poisoned"))?;
+            .map_err(|_| error("particle settings lock poisoned"))?;
         if let Some((_, image)) = kept.iter().find(|(k, _)| *k == key) {
             return Ok(Some(image.clone()));
         }
-        let image = std::sync::Arc::new(crate::Image::new(12, 1, block)?);
+        let texels: Vec<[f32; 4]> = rows
+            .iter()
+            .flat_map(|row| row.chunks(3).map(|v| [v[0], v[1], v[2], 1.0]))
+            .collect();
+        let image =
+            std::sync::Arc::new(crate::Image::new((COUNT / 3) as u32, ROWS as u32, texels)?);
         if kept.len() >= 32 {
             kept.remove(0);
         }
@@ -117,22 +224,37 @@ impl RenderNode for Particles {
         _sample: &dyn Fn(&str) -> Result<f32>,
         p: &mut Params,
     ) -> Result<()> {
-        let (box_threads, _, stride, _) = layout(self, cx.time)?;
-        let emitter = cx.node.inputs.contains_key("emitter");
-        let threads = if emitter {
-            let stride = stride as u32;
+        let rows = rows(self, cx.time)?;
+        let (box_threads, stride) = layout(&rows);
+        let wired = |port: &str| cx.node.inputs.contains_key(port);
+        let pixels = u64::from(cx.width) * u64::from(cx.height);
+        let tile = tile(pixels);
+        let tiles = u64::from(cx.width.div_ceil(tile) * cx.height.div_ceil(tile));
+        if pixels < tiles + (COUNT * ROWS) as u64 {
+            return Err(error("Particles need a frame of at least 32 x 32 pixels"));
+        }
+        let threads = if wired("emitter") {
             cx.width.div_ceil(stride) * cx.height.div_ceil(stride) * SLOTS as u32
         } else {
-            box_threads as u32
+            box_threads
         };
+        // The sprite's small copy sits after the tile table; without room, dots are drawn.
+        let sprite = wired("sprite") && pixels >= tiles + u64::from(MIP * MIP);
         p.size_op[2] = (cx.time.seconds()? as f32).to_bits();
         p.size_op[3] = self.seed;
-        p.values = [threads as f32, threads.min(ROW) as f32, 0.0, 0.0];
+        p.values = [
+            threads as f32,
+            threads.min(ROW) as f32,
+            stride as f32,
+            SLOTS,
+        ];
         p.extra = [
-            f32::from(u8::from(emitter)),
-            f32::from(u8::from(cx.node.inputs.contains_key("target"))),
-            0.0,
-            0.0,
+            f32::from(u8::from(wired("emitter"))),
+            f32::from(u8::from(wired("target"))),
+            f32::from(
+                u8::from(wired("field")) | u8::from(wired("obstacle")) << 1 | u8::from(sprite) << 2,
+            ),
+            rows[ROWS - 1][0],
         ];
         Ok(())
     }
