@@ -219,6 +219,7 @@ impl Studio {
             self.focus_button(ui);
             self.surface_buttons(ui);
             self.shot_button(ui);
+            self.shine_button(ui);
             ui.menu_button("Moves", |ui| {
                 ui.weak("A smooth camera move from this view over the play range:");
                 for (label, hint, kind) in [

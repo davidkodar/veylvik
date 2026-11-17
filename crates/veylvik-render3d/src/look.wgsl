@@ -131,8 +131,39 @@ fn look_surface(in: LookVarying) -> @location(0) vec4<f32> {
     var added = vec3<f32>(0.0);
     for (var i = 0u; i < u32(look_object.uv_scale.z); i++) {
         let light = scene_lights[i];
-        // Area lights are not reflected by library looks yet.
-        if light.position.w > 2.5 { continue; }
+        if light.position.w > 2.5 {
+            // An area light: its panel mirrored in the surface, blurred by the look's
+            // roughness, and scattered by how much of the surface's view it fills.
+            let facing_light = light.direction.xyz;
+            let hw = length(light.right.xyz);
+            let hh = length(light.up.xyz);
+            let ax_r = light.right.xyz / hw;
+            let ax_u = light.up.xyz / hh;
+            let to = light.position.xyz - in.world;
+            let r = reflect(-v, n);
+            let closing = dot(r, facing_light);
+            var offset = vec3<f32>(0.0);
+            if closing < -1e-4 { offset = r * (dot(to, facing_light) / closing) - to; }
+            let on = light.position.xyz
+                + ax_r * clamp(dot(offset, ax_r), -hw, hw)
+                + ax_u * clamp(dot(offset, ax_u), -hh, hh);
+            let l = normalize(on - in.world);
+            let front = max(dot(-normalize(to), facing_light), 0.0);
+            if dot(n, l) > 0.0 && front > 0.0 {
+                let h = normalize(l + v);
+                let f = f0 + (vec3<f32>(1.0) - f0) * pow(1.0 - max(dot(h, v), 0.0), 5.0);
+                let b = max(a, 0.004);
+                let nh = max(dot(n, h), 0.0);
+                let d = nh * nh * (b * b - 1.0) + 1.0;
+                let seen = min(b * b / (3.14159265 * d * d) * 3.14159265 * b * b, 1.0);
+                let solid = 4.0 * hw * hh * front / max(dot(to, to), 1.0);
+                let fills = clamp(solid / (4.0 * 3.14159265 * b * b), 0.0, 1.0);
+                added += (light.colour.rgb * f * seen * fills
+                    + albedo / 3.14159265 * light.colour.rgb * solid * max(dot(n, normalize(to)), 0.0))
+                    * shadow_of(in.world, n, light.shadow, light.shadow_info);
+            }
+            continue;
+        }
         var l = -light.direction.xyz;
         var radiance = light.colour.rgb;
         if light.position.w < 1.5 {

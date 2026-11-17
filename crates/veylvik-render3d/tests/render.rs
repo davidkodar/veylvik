@@ -826,3 +826,115 @@ fn an_area_light_reflects_as_a_band_that_brushing_and_wear_reshape() {
     );
     assert!(worn.iter().all(|v| v.is_finite()));
 }
+#[test]
+#[ignore = "requires Vulkan"]
+fn an_area_light_casts_a_soft_shadow_and_lights_a_look() {
+    let renderer = renderer();
+    let mut doc = blank(W, H, Time::new(24, 1).unwrap()).unwrap();
+    let shape = |kind, size: [f32; 3], position: [f32; 3]| {
+        let mut s = op(&SHAPE_3D);
+        if let Operation::Shape3d(s) = &mut s {
+            s.kind = kind;
+            s.size_x = size[0].into();
+            s.size_y = size[1].into();
+            s.size_z = size[2].into();
+            s.colour = [0.8; 3].into();
+            s.roughness = 0.9.into();
+            s.placement.position = position.into();
+        }
+        s
+    };
+    let cube = add(&mut doc, shape(ShapeKind::Cube, [24.0; 3], [0.0; 3]), &[]);
+    let wall = add(
+        &mut doc,
+        shape(ShapeKind::Plane, [400.0, 300.0, 0.0], [0.0, 0.0, -30.0]),
+        &[],
+    );
+    // A panel in front of the scene, up and to the left, facing it.
+    let mut panel = op(&LIGHT_3D);
+    if let Operation::Light3d(l) = &mut panel {
+        l.kind = LightKind::Area;
+        l.width = 60.0.into();
+        l.height = 60.0.into();
+        l.intensity = 12.0.into();
+        l.colour = [1.0; 3].into();
+        l.placement.position = [-90.0, -70.0, 120.0].into();
+        l.placement.rotation = [28.0, -34.0, 0.0].into();
+    }
+    let panel = add(&mut doc, panel, &[]);
+    let merged = add(
+        &mut doc,
+        op(&MERGE_SCENES),
+        &[("scene", cube), ("scene_2", wall), ("scene_3", panel)],
+    );
+    let render_node = add(&mut doc, op(&RENDER_SCENE), &[("scene", merged)]);
+    doc.output = render_node;
+    let luma = |p: [f32; 4]| p[0] * 0.2126 + p[1] * 0.7152 + p[2] * 0.0722;
+    let set = |doc: &mut Composition, shadows: bool| {
+        if let Operation::Light3d(l) = &mut doc.nodes.get_mut(&panel).unwrap().operation {
+            l.shadows = shadows;
+        }
+    };
+    set(&mut doc, false);
+    let open = render(&renderer, &doc, &Default::default());
+    set(&mut doc, true);
+    let shadowed = render(&renderer, &doc, &Default::default());
+    // With shadows the wall is darker somewhere down and right of the cube, by a good
+    // margin, and nowhere brighter; far from the cube it is unchanged.
+    let mut deepest = (0.0f32, 0u32, 0u32);
+    for y in 0..H {
+        for x in 0..W {
+            let i = (y * W + x) as usize;
+            let (a, b) = (luma(open[i]), luma(shadowed[i]));
+            assert!(b <= a + 1e-3, "brighter at {x},{y}: {b} vs {a}");
+            if a > 0.02 && (a - b) / a > deepest.0 {
+                deepest = ((a - b) / a, x, y);
+            }
+        }
+    }
+    assert!(deepest.0 > 0.3, "deepest shadow {deepest:?}");
+    assert!(
+        deepest.1 > W / 2 && deepest.2 > H / 2,
+        "shadow falls away from the light: {deepest:?}"
+    );
+    let far = (8 * W + 8) as usize;
+    assert!((luma(open[far]) - luma(shadowed[far])).abs() < 0.02 * luma(open[far]).max(0.01));
+    // The shadow's edge is soft: between its core and the lit wall lie in-between values.
+    let (_, sx, sy) = deepest;
+    let row: Vec<f32> = (sx..W)
+        .map(|x| {
+            let i = (sy * W + x) as usize;
+            (luma(open[i]) - luma(shadowed[i])) / luma(open[i]).max(1e-4)
+        })
+        .collect();
+    assert!(
+        row.iter()
+            .filter(|v| **v > 0.05 && **v < deepest.0 * 0.8)
+            .count()
+            >= 3,
+        "{row:?}"
+    );
+    // A surface with a library look is lit by the panel too.
+    let look_of = |doc: &mut Composition, on: bool| {
+        if let Operation::Light3d(l) = &mut doc.nodes.get_mut(&panel).unwrap().operation {
+            l.intensity = if on { 12.0 } else { 0.0 }.into();
+        }
+    };
+    if let Operation::Shape3d(s) = &mut doc.nodes.get_mut(&wall).unwrap().operation {
+        let Operation::Material(material) = op(&MATERIAL) else {
+            unreachable!()
+        };
+        s.look = Some(Box::new(material));
+    }
+    look_of(&mut doc, false);
+    let dark = render(&renderer, &doc, &Default::default());
+    look_of(&mut doc, true);
+    let lit = render(&renderer, &doc, &Default::default());
+    let total = |p: &[[f32; 4]]| p.iter().map(|p| luma(*p)).sum::<f32>();
+    assert!(
+        total(&lit) > total(&dark) * 1.05,
+        "{} vs {}",
+        total(&lit),
+        total(&dark)
+    );
+}

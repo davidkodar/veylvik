@@ -54,6 +54,7 @@ mod scene_focus;
 mod scene_gizmo;
 mod scene_guides;
 mod scene_points;
+mod scene_shine;
 mod scene_shot;
 mod scopes;
 mod sequence;

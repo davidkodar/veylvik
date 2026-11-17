@@ -4,6 +4,7 @@
 //! "Home" is the frame centre at depth 0; positions are offsets from where each node
 //! naturally sits. The home camera sees exactly the 2D frame at depth 0.
 pub mod math;
+pub mod pick;
 mod shot;
 mod view;
 use math::{Mat4, mul, rotate, scale, translate};

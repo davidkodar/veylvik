@@ -410,7 +410,7 @@ node!(
 #[serde(deny_unknown_fields)]
 pub struct Light3d {
     pub kind: LightKind,
-    /// Casts shadows (sun, spot and point lights; up to four per scene).
+    /// Casts shadows (up to four lights per scene; area lights after the others).
     #[serde(default = "yes")]
     pub shadows: bool,
     #[serde(default)]
@@ -448,7 +448,7 @@ pub static LIGHT_3D: NodeType = NodeType {
     type_id: "light_3d",
     version: 1,
     label: "Light",
-    description: "A point light, a spot (cone in degrees, softness of its edge), a sun (parallel light; only its rotation matters) or an area light: a glowing panel of width by height pixels facing along its direction, like a soft box or strip light. An area light near a surface lights it unevenly, brightest where it is close, and glossy surfaces show its reflection as a soft-edged shape whose blur follows the surface's roughness and brushing; its intensity is the panel's brightness, so a larger panel gives more light. With Strips above 1 the panel is split along its width into that many strip lights, a row of studio strips from one node; Variation (0 to 1) makes their lengths, gaps, heights, tilt and brightness uneven, as a hand-set studio is, and Seed picks the arrangement (the same seed always gives the same row). Area lights cast no shadows yet. Lights sit at the frame centre plus their placement and point along -z (towards the scene) before rotation. Colour is linear RGB; intensity is relative to the studio. With Shadows on (the default) it casts shadows from a shadow map, softened by Softness; up to four lights per scene cast them. Outputs a scene.",
+    description: "A point light, a spot (cone in degrees, softness of its edge), a sun (parallel light; only its rotation matters) or an area light: a glowing panel of width by height pixels facing along its direction, like a soft box or strip light. An area light near a surface lights it unevenly, brightest where it is close, and glossy surfaces show its reflection as a soft-edged shape whose blur follows the surface's roughness and brushing; its intensity is the panel's brightness, so a larger panel gives more light. With Strips above 1 the panel is split along its width into that many strip lights, a row of studio strips from one node; Variation (0 to 1) makes their lengths, gaps, heights, tilt and brightness uneven, as a hand-set studio is, and Seed picks the arrangement (the same seed always gives the same row). An area light casts a soft shadow from the middle of its panel, a row of strips as one light. Lights sit at the frame centre plus their placement and point along -z (towards the scene) before rotation. Colour is linear RGB; intensity is relative to the studio. With Shadows on (the default) it casts shadows from a shadow map, softened by Softness; up to four lights per scene cast them, sun, spot and point lights first. Outputs a scene.",
     inputs: &[],
     optional: &[],
     output: PortKind::Scene,

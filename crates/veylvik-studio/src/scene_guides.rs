@@ -573,7 +573,30 @@ impl Studio {
                 let dir = light.direction();
                 let reach = wf * 0.18;
                 match light.kind {
-                    LightKind::Point | LightKind::Area => {}
+                    LightKind::Point => {}
+                    LightKind::Area => {
+                        // Each panel's outline (every strip of a row), and which way it faces.
+                        for strip in scene.lights.iter().filter(|l| l.node == light.node) {
+                            let [right, up] = strip.panel();
+                            let centre = strip.position();
+                            let corner = |a: f32, b: f32| add(add(centre, right, a), up, b);
+                            let corners = [
+                                corner(-1.0, -1.0),
+                                corner(1.0, -1.0),
+                                corner(1.0, 1.0),
+                                corner(-1.0, 1.0),
+                            ];
+                            for k in 0..4 {
+                                p.line(&painter, corners[k], corners[(k + 1) % 4], ring);
+                            }
+                        }
+                        p.line(
+                            &painter,
+                            at,
+                            add(at, dir, reach * 0.4),
+                            Stroke::new(1.0_f32, colour),
+                        );
+                    }
                     LightKind::Spot => {
                         let tip = add(at, dir, reach);
                         let half = (light.cone * 0.5).to_radians();
@@ -647,6 +670,9 @@ impl Studio {
         }
         self.draw_gizmo(&ctx, &painter, &p, &scene);
         if self.scene_light_pick(&ctx, &painter, &p, response) {
+            return;
+        }
+        if self.scene_shine(&ctx, &painter, &p, &scene, response) {
             return;
         }
         if self.scene_focus(&ctx, &painter, &p, &scene, response) {

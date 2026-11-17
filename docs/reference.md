@@ -1342,8 +1342,13 @@ and `colour`.
   **Variation** (0–1) makes them uneven (lengths 0.5–1.5 times the even share,
   gaps up to half a share, heights and brightness up to ±40%, tilt up to ±4
   degrees) and **Seed** picks the arrangement, the same every time. With no
-  variation the strips tile the panel exactly. Area lights cast no shadows, are not drawn as viewport guides,
-  and are not reflected by library looks yet.
+  variation the strips tile the panel exactly. An area light with Shadows on
+  casts a soft shadow from the middle of its panel (a row of strips casts as
+  one light, from the middle of the row), through a shadow map with a wide
+  view; sun, spot and point lights take the four shadow maps first. Surfaces
+  with a library look reflect and scatter area lights as plain ones do,
+  without the finish settings. In Studio each panel is outlined in the viewer,
+  every strip of a row, with a line showing which way it faces.
 - **Environment**: what surrounds the scene. The image on its optional Image input
   is a panorama (equirectangular; an HDR or EXR sky, any image or footage) that
   lights and reflects in everything; without one the built-in studio is used.
@@ -1481,6 +1486,16 @@ and `colour`.
   scene's first light, else adds a Shot light to the scene's Merge scenes.
   **Pick light** instead takes a click on the light in the frame (a sun, lamp
   or window) as that source.
+- **Shine here** (3D toolbar, with a light selected): click a surface in the
+  viewer and the light moves to where its reflection shows at that spot from
+  the current view, and turns to face it: the view ray is mirrored about the
+  surface's normal at the point clicked (the nearest solid surface under the
+  pointer, found by a ray against the scene's meshes; cards and shadow
+  catchers are passed through) and the light is put along it at its present
+  distance from the point. A row of strips moves by its middle. Each click is
+  one undo step and the tool stays on until Escape. The move is made in the
+  world, so it is exact for a light that is not inside a turned or scaled 3D
+  transform.
 - **Gold title scene** (Studio's Library > Templates, the first card, added with a double-click; `veylvik demo FILE
   --gold-title`): adds, as one undo step, a 3D title in brushed gold (Brushed
   0.6, Brush angle 65, Grain 0.37, Ridges and Imperfections 0.12, roughness 0.15,

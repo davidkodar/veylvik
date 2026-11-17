@@ -192,7 +192,17 @@ fn light_uniform(light: &Light, shadow: Option<(u32, math::Mat4, f32)>) -> Light
         ],
         shadow: shadow.map_or([[0.0; 4]; 4], |(_, m, _)| columns(&m)),
         shadow_info: match shadow {
-            Some((layer, _, offset)) => [layer as f32, offset, 1.0 + light.softness * 4.0, 0.0],
+            // A panel's shadow is soft however it is set.
+            Some((layer, _, offset)) => [
+                layer as f32,
+                offset,
+                if light.kind == LightKind::Area {
+                    3.0
+                } else {
+                    1.0
+                } + light.softness * 4.0,
+                0.0,
+            ],
             None => [-1.0, 0.0, 0.0, 0.0],
         },
         right: [panel[0][0], panel[0][1], panel[0][2], 0.0],
@@ -306,7 +316,8 @@ impl SceneRenderer for Engine {
             &math::rigid_inverse(&camera.world),
         );
         let eye = math::point(&camera.world, [0.0; 3]);
-        // Up to four lights cast shadows, each from its own depth map.
+        // Up to four lights cast shadows, each from its own depth map; a row of strip
+        // lights shares one.
         let maps = {
             let mut slot = self
                 .shadow_maps
@@ -317,24 +328,58 @@ impl SceneRenderer for Engine {
         };
         let reach = shadow::bounds(scene);
         let mut layer = 0u32;
-        let shadows: Vec<Option<(u32, math::Mat4, f32)>> = scene
-            .lights
-            .iter()
-            .map(|light| {
-                let (centre, radius) = reach?;
-                if !light.shadows
-                    || light.kind == veylvik_document::nodes::LightKind::Area
-                    || layer >= shadow::MAX_SHADOWS
-                    || light.intensity <= 0.0
-                {
-                    return None;
+        let mut shadows: Vec<Option<(u32, math::Mat4, f32)>> = vec![None; scene.lights.len()];
+        let mut cast = Vec::new();
+        if let Some((centre, radius)) = reach {
+            use veylvik_document::nodes::LightKind;
+            let casts = |light: &veylvik_scene::Light| light.shadows && light.intensity > 0.0;
+            // Sun, spot and point lights take the maps first.
+            for (i, light) in scene.lights.iter().enumerate() {
+                if light.kind == LightKind::Area || !casts(light) || layer >= shadow::MAX_SHADOWS {
+                    continue;
                 }
-                let (matrix, offset) = shadow::view(light, centre, radius)?;
-                layer += 1;
-                Some((layer - 1, matrix, offset))
-            })
-            .collect();
-        for (layer, matrix, _) in shadows.iter().flatten() {
+                if let Some((matrix, offset)) = shadow::view(light, centre, radius) {
+                    shadows[i] = Some((layer, matrix, offset));
+                    cast.push((layer, matrix));
+                    layer += 1;
+                }
+            }
+            // An area light casts from the middle of its panel, a row of strips as one.
+            for i in 0..scene.lights.len() {
+                let light = &scene.lights[i];
+                if light.kind != LightKind::Area || !casts(light) {
+                    continue;
+                }
+                let row =
+                    |l: &veylvik_scene::Light| l.kind == LightKind::Area && l.node == light.node;
+                if let Some(first) = (0..i).find(|j| row(&scene.lights[*j])) {
+                    shadows[i] = shadows[first];
+                    continue;
+                }
+                if layer >= shadow::MAX_SHADOWS {
+                    continue;
+                }
+                let strips: Vec<[f32; 3]> = scene
+                    .lights
+                    .iter()
+                    .filter(|l| row(l))
+                    .map(|l| l.position())
+                    .collect();
+                let mut middle = *light;
+                middle.kind = LightKind::Spot;
+                middle.cone = 170.0;
+                for k in 0..3 {
+                    middle.world[k][3] =
+                        strips.iter().map(|p| p[k]).sum::<f32>() / strips.len() as f32;
+                }
+                if let Some((matrix, offset)) = shadow::view(&middle, centre, radius) {
+                    shadows[i] = Some((layer, matrix, offset));
+                    cast.push((layer, matrix));
+                    layer += 1;
+                }
+            }
+        }
+        for (layer, matrix) in &cast {
             self.depth_pass(
                 device,
                 encoder,

@@ -343,8 +343,9 @@ fn lit(in: Varying) -> @location(0) vec4<f32> {
                 // light is spread over the lobe, so its reflection dims by the share
                 // of the lobe it fills.
                 let fills = clamp(solid / (4.0 * 3.14159265 * bx * by), 0.0, 1.0);
-                colour += light.colour.rgb * f * min(seen, 1.0) * fills * grain_gain
-                    + diffuse / 3.14159265 * light.colour.rgb * solid * max(dot(n, normalize(to)), 0.0);
+                let reaches = shadow_of(in.world, n, light.shadow, light.shadow_info);
+                colour += (light.colour.rgb * f * min(seen, 1.0) * fills * grain_gain
+                    + diffuse / 3.14159265 * light.colour.rgb * solid * max(dot(n, normalize(to)), 0.0)) * reaches;
             }
             continue;
         }
@@ -409,7 +410,14 @@ fn catcher(in: Varying) -> @location(0) vec4<f32> {
         let light = lights[i];
         var l = -light.direction.xyz;
         var radiance = light.colour.rgb;
-        if light.position.w < 1.5 {
+        if light.position.w > 2.5 {
+            // An area light: by how much of the surface's view its panel fills.
+            let to = light.position.xyz - in.world;
+            let d2 = max(dot(to, to), 1.0);
+            l = to / sqrt(d2);
+            let front = max(dot(-l, light.direction.xyz), 0.0);
+            radiance *= 4.0 * length(light.right.xyz) * length(light.up.xyz) * front / d2 / 3.14159265;
+        } else if light.position.w < 1.5 {
             let to = light.position.xyz - in.world;
             let d2 = max(dot(to, to), 1.0);
             l = to / sqrt(d2);
