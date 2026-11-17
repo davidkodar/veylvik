@@ -51,6 +51,10 @@ pub(crate) struct InspectCx<'a> {
     pub measure_grain: bool,
     /// The user asked to choose a 3D model file.
     pub choose_model: bool,
+    /// The node on this node's Outline input (the words of a 3D text).
+    pub outline: Option<veylvik_document::NodeId>,
+    /// The user asked to select this other node.
+    pub select: Option<veylvik_document::NodeId>,
 }
 pub(crate) trait Inspect {
     /// Node-specific controls above the registered parameters; most nodes have none.

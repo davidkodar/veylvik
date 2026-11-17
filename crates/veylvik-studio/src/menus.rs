@@ -118,10 +118,15 @@ impl Studio {
                         "YOUR TITLE",
                         "A LINE OF TEXT BELOW",
                     );
-                    match built.and_then(|b| self.project.apply(&b.commands).map_err(|e| veylvik_document::Error(e.to_string()))) {
-                        Ok(()) => {
+                    match built.and_then(|b| self.project.apply(&b.commands).map(|()| b.edit).map_err(|e| veylvik_document::Error(e.to_string()))) {
+                        Ok(edit) => {
+                            // The Title node is selected, so its words are in the inspector.
+                            if let Some(id) = edit {
+                                self.project.selected = id;
+                                self.refresh_draft();
+                            }
                             self.project.preview = None;
-                            self.status = "Gold title added; edit the Title node to change the words".into();
+                            self.status = "Gold title added: change the words in the inspector (the Title node is selected)".into();
                             self.request_preview();
                         }
                         Err(e) => self.fail(e.to_string()),

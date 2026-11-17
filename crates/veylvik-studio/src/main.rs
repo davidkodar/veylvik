@@ -1709,6 +1709,8 @@ impl Studio {
             plated: self.draft.inputs.contains_key("plate"),
             measure_grain: false,
             choose_model: false,
+            outline: self.draft.inputs.get("outline").copied(),
+            select: None,
         };
         match &mut self.draft.operation {
             op @ Operation::Text(veylvik_document::nodes::Text { .. }) => {
@@ -1736,8 +1738,17 @@ impl Studio {
             pick_focus,
             measure_grain,
             choose_model,
+            select: select_other,
             ..
         } = cx;
+        if let Some(id) = select_other
+            && self.can_change_selection()
+        {
+            self.project.selected = id;
+            self.project.preview = None;
+            self.refresh_draft();
+            return;
+        }
         if choose_model {
             self.choose_model();
         }
@@ -3305,7 +3316,26 @@ impl eframe::App for Studio {
                             .project
                             .preview
                             .unwrap_or(self.project.document.snapshot().output);
+                        // Text boxes and shape handles are drawn in the flat 2D frame: over a
+                        // free 3D view they would sit in the wrong place, so they wait for
+                        // the scene camera.
+                        let free_3d = self.viewed_scene().is_some() && self.free_view(&ctx).is_some();
+                        if free_3d
+                            && matches!(
+                                self.draft.operation,
+                                Operation::Text(veylvik_document::nodes::Text { .. }) | Operation::Path(veylvik_document::nodes::Path { .. })
+                            )
+                        {
+                            ui.painter().with_clip_rect(canvas).text(
+                                canvas.left_top() + egui::vec2(10.0, 8.0),
+                                egui::Align2::LEFT_TOP,
+                                "Free 3D view: click Scene camera to move or resize this on the picture",
+                                egui::FontId::proportional(12.0),
+                                egui::Color32::from_rgb(235, 215, 160),
+                            );
+                        }
                         if !self.playing
+                            && !free_3d
                             && !light_guides::active(&ctx)
                             && self.picking.is_none()
                             && !self.tracking.open && !self.planar.open && !self.subject.open

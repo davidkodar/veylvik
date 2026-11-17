@@ -11,10 +11,20 @@ pub fn gold_title(composition: &Composition, text: &str, subtitle: &str) -> Resu
     let s = w / 1920.0;
     let (cx, cy) = (w * 0.5, h * 0.5);
     let mut scene = Scene::below(composition);
+    // Sized so the title fits the frame with a margin: capitals in the built-in
+    // bold font are about 0.6 of their size wide on average (an estimate; the font
+    // browser's fonts differ, and the size is the Title node's to change).
+    let longest = text
+        .lines()
+        .map(|l| l.chars().count())
+        .max()
+        .unwrap_or(1)
+        .max(1);
+    let size = (0.82 * 1920.0 / (0.6 * longest as f32)).clamp(60.0, 340.0);
     let title = scene.add(
         "Title",
         &TEXT,
-        json!({"content": text, "size": c(340.0 * s), "x": c(cx), "y": c(cy + 70.0 * s)}),
+        json!({"content": text, "size": c(size * s), "x": c(cx), "y": c(cy + 70.0 * s)}),
         &[],
     )?;
     let lettering = scene.add(
@@ -246,6 +256,7 @@ pub fn gold_title(composition: &Composition, text: &str, subtitle: &str) -> Resu
     )?;
     Ok(scene.built(
         output,
+        Some(title),
         vec![
             Command::Display {
                 display: DisplayTransform::Filmic,
@@ -277,6 +288,24 @@ mod tests {
             doc.undo(doc.revision()).unwrap();
             assert_eq!(doc.snapshot().nodes.len(), 1);
         }
+        // Long titles are made smaller so they fit the frame; short ones keep the size.
+        let size = |text: &str| {
+            let doc = blank(1920, 1080, Time::new(24, 1).unwrap()).unwrap();
+            let built = gold_title(&doc, text, "").unwrap();
+            built
+                .commands
+                .iter()
+                .find_map(|c| match c {
+                    Command::Put { node } if Some(node.id) == built.edit => match &node.operation {
+                        Operation::Text(t) => Some(t.size.at(Time::new(0, 1).unwrap()).unwrap()),
+                        _ => None,
+                    },
+                    _ => None,
+                })
+                .unwrap()
+        };
+        assert_eq!(size("VEYLVIK"), 340.0);
+        assert!(size("YOUR TITLE") < 270.0 && size("YOUR TITLE") * 0.6 * 10.0 < 1920.0 * 0.85);
         let doc = blank(1920, 1080, Time::new(24, 1).unwrap()).unwrap();
         let plain = gold_title(&doc, "GOLD", "").unwrap();
         let with = gold_title(&doc, "GOLD", "SUB").unwrap();

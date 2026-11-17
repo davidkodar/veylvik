@@ -120,6 +120,14 @@ impl Inspect for Shape3d {
 impl Inspect for Text3d {
     fn inspect(&mut self, ui: &mut egui::Ui, cx: &mut InspectCx<'_>) {
         ui.weak("Extrudes the Text or Path on its Outline input; Depth sets how deep.");
+        if let Some(outline) = cx.outline
+            && ui
+                .button("Edit the words…")
+                .on_hover_text("Select the Text or Path node this 3D text is made from, to change its words, font and size")
+                .clicked()
+        {
+            cx.select = Some(outline);
+        }
         cx.dirty |= ui
             .checkbox(&mut self.round_bevel, "Round bevel")
             .on_hover_text(

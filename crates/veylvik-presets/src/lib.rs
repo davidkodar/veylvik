@@ -10,6 +10,8 @@ use veylvik_document::{
 pub struct Built {
     pub commands: Vec<Command>,
     pub output: NodeId,
+    /// The node to select afterwards, where the scene's words are edited.
+    pub edit: Option<NodeId>,
 }
 /// A constant animatable value.
 fn c(value: f32) -> Value {
@@ -100,7 +102,7 @@ impl Scene {
             &inputs,
         )
     }
-    fn built(self, output: NodeId, mut extra: Vec<Command>) -> Built {
+    fn built(self, output: NodeId, edit: Option<NodeId>, mut extra: Vec<Command>) -> Built {
         let mut commands: Vec<Command> = self
             .nodes
             .into_iter()
@@ -109,6 +111,10 @@ impl Scene {
             })
             .collect();
         commands.append(&mut extra);
-        Built { commands, output }
+        Built {
+            commands,
+            output,
+            edit,
+        }
     }
 }
