@@ -380,3 +380,70 @@ impl RenderNode for veylvik_document::nodes::LensDistortion {
         Ok(())
     }
 }
+impl RenderNode for veylvik_document::nodes::Bloom {
+    fn passes(&self) -> Passes {
+        use super::{From, Step};
+        const fn step(kernel: Kernel, a: From, b: From, c: From) -> Step {
+            Step {
+                kernel,
+                inputs: [a, b, c, From::None],
+            }
+        }
+        // The combine also takes the sideways-only blur, for lens streaks.
+        const COMBINE: Step = Step {
+            kernel: Kernel::BloomCombine,
+            inputs: [From::Port(0), From::Step(2), From::Step(4), From::Step(1)],
+        };
+        // The bright part, blurred wide and tight, added back to the image.
+        static STEPS: [Step; 6] = [
+            step(Kernel::BloomBright, From::Port(0), From::None, From::None),
+            step(
+                Kernel::BloomWideHorizontal,
+                From::Step(0),
+                From::None,
+                From::None,
+            ),
+            step(
+                Kernel::BloomWideVertical,
+                From::Step(1),
+                From::None,
+                From::None,
+            ),
+            step(
+                Kernel::BloomTightHorizontal,
+                From::Step(0),
+                From::None,
+                From::None,
+            ),
+            step(
+                Kernel::BloomTightVertical,
+                From::Step(3),
+                From::None,
+                From::None,
+            ),
+            COMBINE,
+        ];
+        Passes::chain(&STEPS)
+    }
+    fn shareable(&self) -> bool {
+        true
+    }
+    fn identity(&self) -> bool {
+        matches!(self.intensity, Scalar::Constant { value } if value == 0.0)
+    }
+    fn params(
+        &self,
+        _cx: &Cx<'_>,
+        sample: &dyn Fn(&str) -> Result<f32>,
+        p: &mut Params,
+    ) -> Result<()> {
+        p.values = [
+            sample("radius")?,
+            sample("intensity")?,
+            sample("threshold")?,
+            sample("knee")?,
+        ];
+        p.extra = [self.tint[0], self.tint[1], self.tint[2], sample("streak")?];
+        Ok(())
+    }
+}

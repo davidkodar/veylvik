@@ -74,3 +74,8 @@ impl Inspect for veylvik_document::nodes::LensDistortion {
         ui.weak("Negative k1 is barrel distortion (wide lenses), positive is pincushion; k2 shapes the corners. Solve camera measures both and adds this node after Render scene.");
     }
 }
+impl Inspect for veylvik_document::nodes::Bloom {
+    fn inspect(&mut self, ui: &mut egui::Ui, _cx: &mut InspectCx<'_>) {
+        ui.weak("Bright light spreads as glow over its surroundings. Put it after the merge so titles light the background too; raise Threshold to keep it to the hottest highlights.");
+    }
+}

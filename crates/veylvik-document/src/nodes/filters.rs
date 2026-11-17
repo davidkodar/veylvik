@@ -305,3 +305,57 @@ pub static LENS_DISTORTION: NodeType = NodeType {
     ],
 };
 node!(LensDistortion, LENS_DISTORTION, [k1, k2]);
+
+/// Glow from the brightest light in an image, as a lens and the air around it make.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Bloom {
+    pub threshold: Scalar,
+    pub knee: Scalar,
+    pub intensity: Scalar,
+    pub radius: Scalar,
+    /// Horizontal lens streaks through the brightest light (0 is none).
+    #[serde(default = "no_streak")]
+    pub streak: Scalar,
+    pub tint: [f32; 4],
+}
+fn no_streak() -> Scalar {
+    0.0.into()
+}
+pub static BLOOM: NodeType = NodeType {
+    type_id: "bloom",
+    version: 1,
+    label: "Bloom",
+    description: "Light brighter than threshold (scene-linear luminance) spreads as soft glow over its surroundings, in its own colour times tint. The part above the threshold (knee softens where it starts, as a share of the threshold) is blurred with a wide gaussian of radius pixels and a tight one of a fifth of it, and 0.55 x wide + 0.45 x tight, times intensity, is added to the image, so lights keep a hot core with a long falloff. Streak adds a horizontal lens streak through the brightest light: the bright part blurred sideways only, over radius pixels, times streak and intensity. Alpha is unchanged: the glow is added light and shows over whatever the image is merged onto; put Bloom after the merge to light the background too. Works on HDR values, so highlights far above 1 glow most.",
+    inputs: &["image"],
+    optional: &[],
+    output: PortKind::Image,
+    parameters: &[
+        scalar("threshold", "luminance", 0.0, 64.0, 1.0),
+        scalar("knee", "factor", 0.0, 1.0, 0.5),
+        scalar("intensity", "factor", 0.0, 16.0, 0.8),
+        scalar("radius", "pixels", 1.0, 256.0, 80.0),
+        scalar("streak", "factor", 0.0, 8.0, 0.0),
+        Parameter {
+            default: 1.0,
+            ..other("tint", ParameterKind::Color, "linear RGBA")
+        },
+    ],
+};
+node!(
+    Bloom,
+    BLOOM,
+    [threshold, knee, intensity, radius, streak],
+    {
+        fn validate(&self) -> Result<()> {
+            if self
+                .tint
+                .iter()
+                .any(|v| !v.is_finite() || !(0.0..=64.0).contains(v))
+            {
+                return fail("Bloom tint needs values in 0..=64");
+            }
+            Ok(())
+        }
+    }
+);
