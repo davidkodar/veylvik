@@ -331,3 +331,52 @@ fn linear_inverse_undoes_rotation_and_scale() {
     }
     assert!(math::linear_inverse(&math::scale([1.0, 0.0, 1.0])).is_none());
 }
+#[test]
+fn an_area_light_splits_into_a_repeatable_row_of_strips() {
+    use veylvik_document::nodes::LightKind;
+    use veylvik_scene::{Light, math, strips};
+    let light = Light {
+        node: veylvik_document::NodeId::nil(),
+        kind: LightKind::Area,
+        shadows: false,
+        world: math::translate([100.0, 50.0, 400.0]),
+        colour: [1.0; 3],
+        intensity: 2.0,
+        cone: 40.0,
+        softness: 0.2,
+        size: [1200.0, 20.0],
+    };
+    // Even strips tile the panel exactly and keep its brightness.
+    let even = strips(&light, 6, 0.0, 7);
+    assert_eq!(even.len(), 6);
+    for (i, s) in even.iter().enumerate() {
+        assert!((s.size[0] - 200.0).abs() < 1e-3 && s.size[1] == 20.0 && s.intensity == 2.0);
+        let x = s.position()[0];
+        assert!((x - (100.0 - 500.0 + 200.0 * i as f32)).abs() < 1e-2, "{x}");
+        assert!((s.position()[2] - 400.0).abs() < 1e-3);
+    }
+    // Uneven strips differ from each other, stay within the panel in order, with
+    // gaps, and the same seed gives the same row while another gives a different one.
+    let uneven = strips(&light, 6, 1.0, 7);
+    let mut edge = -600.0 - 1e-2;
+    let mut covered = 0.0;
+    for s in &uneven {
+        let x = s.position()[0] - 100.0;
+        assert!(
+            x - s.size[0] * 0.5 >= edge - 0.05,
+            "strips keep their order"
+        );
+        edge = x + s.size[0] * 0.5;
+        covered += s.size[0];
+        assert!((0.5..=3.5).contains(&(s.intensity)) && (10.0..=30.0).contains(&s.size[1]));
+    }
+    assert!(edge <= 600.0 + 0.05 && covered < 1150.0, "gaps: {covered}");
+    let widths = |row: &[Light]| row.iter().map(|s| s.size[0]).collect::<Vec<_>>();
+    assert!(
+        widths(&uneven)
+            .windows(2)
+            .any(|w| (w[0] - w[1]).abs() > 20.0)
+    );
+    assert_eq!(widths(&uneven), widths(&strips(&light, 6, 1.0, 7)));
+    assert_ne!(widths(&uneven), widths(&strips(&light, 6, 1.0, 8)));
+}

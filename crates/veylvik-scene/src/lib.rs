@@ -463,17 +463,30 @@ fn node(doc: &Graph<'_>, id: NodeId, time: Time, depth: usize) -> Result<Scene> 
                 focus_on: c.focus_on,
             });
         }
-        Operation::Light3d(l) => scene.lights.push(Light {
-            node: id,
-            kind: l.kind,
-            shadows: l.shadows,
-            world: placed(&l.placement, time, centre)?,
-            colour: l.colour.at(time)?,
-            intensity: l.intensity.at(time)?.max(0.0),
-            cone: l.cone.at(time)?.clamp(1.0, 179.0),
-            softness: l.softness.at(time)?.clamp(0.0, 1.0),
-            size: [l.width.at(time)?.max(1.0), l.height.at(time)?.max(1.0)],
-        }),
+        Operation::Light3d(l) => {
+            let light = Light {
+                node: id,
+                kind: l.kind,
+                shadows: l.shadows,
+                world: placed(&l.placement, time, centre)?,
+                colour: l.colour.at(time)?,
+                intensity: l.intensity.at(time)?.max(0.0),
+                cone: l.cone.at(time)?.clamp(1.0, 179.0),
+                softness: l.softness.at(time)?.clamp(0.0, 1.0),
+                size: [l.width.at(time)?.max(1.0), l.height.at(time)?.max(1.0)],
+            };
+            let count = l.strips.at(time)?.round().clamp(1.0, 32.0) as usize;
+            if l.kind == veylvik_document::nodes::LightKind::Area && count > 1 {
+                scene.lights.extend(strips(
+                    &light,
+                    count,
+                    l.variation.at(time)?.clamp(0.0, 1.0),
+                    l.seed,
+                ));
+            } else {
+                scene.lights.push(light);
+            }
+        }
         Operation::Environment3d(e) => {
             scene.environment = Some(Environment {
                 node: id,
@@ -494,6 +507,56 @@ fn node(doc: &Graph<'_>, id: NodeId, time: Time, depth: usize) -> Result<Scene> 
     Ok(scene)
 }
 
+/// An area light split along its width into `count` strips. `variation` (0 to 1)
+/// makes them uneven: lengths 0.5 to 1.5 times the even share, gaps up to half a
+/// share, heights and brightness up to ±40%, tilt up to ±4 degrees. Deterministic
+/// for a seed; with no variation the strips tile the panel exactly.
+pub fn strips(light: &Light, count: usize, variation: f32, seed: u32) -> Vec<Light> {
+    let mut state = u64::from(seed) ^ 0x9e37_79b9_7f4a_7c15;
+    // Uniform in -1..1 (SplitMix64).
+    let mut draw = move || {
+        state = state.wrapping_add(0x9e37_79b9_7f4a_7c15);
+        let mut z = state;
+        z = (z ^ (z >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
+        z = (z ^ (z >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
+        ((z ^ (z >> 31)) >> 40) as f32 / (1u64 << 23) as f32 - 1.0
+    };
+    // Relative lengths and the gap after each strip, then fitted to the width.
+    let parts: Vec<[f32; 5]> = (0..count)
+        .map(|_| {
+            [
+                1.0 + 0.5 * variation * draw(),
+                0.25 * variation * (draw() + 1.0),
+                1.0 + 0.4 * variation * draw(),
+                1.0 + 0.4 * variation * draw(),
+                4.0 * variation * draw(),
+            ]
+        })
+        .collect();
+    let total: f32 = parts.iter().map(|p| p[0] + p[1]).sum::<f32>() - parts[count - 1][1];
+    let unit = light.size[0] / total;
+    let mut x = -light.size[0] * 0.5;
+    parts
+        .iter()
+        .map(|&[length, gap, height, gain, tilt]| {
+            let width = length * unit;
+            let centre = x + width * 0.5;
+            x += width + gap * unit;
+            Light {
+                world: math::mul(
+                    &light.world,
+                    &math::mul(
+                        &math::translate([centre, 0.0, 0.0]),
+                        &math::rotate([0.0, 0.0, tilt]),
+                    ),
+                ),
+                intensity: light.intensity * gain,
+                size: [width.max(1.0), (light.size[1] * height).max(1.0)],
+                ..*light
+            }
+        })
+        .collect()
+}
 /// The object's mesh in its own frame (before `world`).
 pub fn mesh(object: &Object) -> Result<Mesh> {
     use veylvik_mesh::Primitive as P;

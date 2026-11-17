@@ -1337,7 +1337,12 @@ and `colour`.
   the panel (held to its edges) and weighted by the surface's lobe, which is
   stretched across the grain on a brushed surface, and by the share of that lobe
   the panel fills, so a small panel on a rough or sharply curved surface is a
-  faint sheen. Area lights cast no shadows, are not drawn as viewport guides,
+  faint sheen. With **Strips** above 1 (up to 32) the panel is split along its
+  width into that many strip lights, a row of studio strips from one node;
+  **Variation** (0–1) makes them uneven (lengths 0.5–1.5 times the even share,
+  gaps up to half a share, heights and brightness up to ±40%, tilt up to ±4
+  degrees) and **Seed** picks the arrangement, the same every time. With no
+  variation the strips tile the panel exactly. Area lights cast no shadows, are not drawn as viewport guides,
   and are not reflected by library looks yet.
 - **Environment**: what surrounds the scene. The image on its optional Image input
   is a panorama (equirectangular; an HDR or EXR sky, any image or footage) that
