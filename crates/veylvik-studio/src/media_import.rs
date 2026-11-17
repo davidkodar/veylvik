@@ -167,12 +167,26 @@ impl Studio {
             .pivot(egui::Align2::CENTER_CENTER)
             .default_pos(ctx.content_rect().center())
             .show(ctx, |ui| {
-            ui.label(format!("Composition: {} × {}", doc.width, doc.height));
-            ui.label(format!(
-                "Media: {} × {}",
-                pending.info.width, pending.info.height
-            ));
-            ui.separator();
+            ui.set_width(520.0_f32.min(ctx.content_rect().width() - 40.0));
+            ui.spacing_mut().item_spacing = egui::vec2(8.0, 8.0);
+            crate::design::heading(ui, "SIZES");
+            ui.horizontal(|ui| {
+                crate::design::format_card(
+                    ui,
+                    "Composition",
+                    &format!("{} × {}", doc.width, doc.height),
+                    Some([doc.width as f32, doc.height as f32]),
+                    false,
+                );
+                crate::design::format_card(
+                    ui,
+                    "Media",
+                    &format!("{} × {}", pending.info.width, pending.info.height),
+                    Some([pending.info.width as f32, pending.info.height as f32]),
+                    true,
+                );
+            });
+            crate::design::heading(ui, "ALSO MATCH");
             if let Some(rate) = pending.info.frame_rate {
                 ui.checkbox(
                     &mut pending.match_rate,
@@ -200,14 +214,20 @@ impl Studio {
             } else {
                 ui.weak("Keep settings fits and centres the media in the current canvas.");
             }
-            ui.horizontal(|ui| {
-                if ui.button("Match composition").clicked() {
+            ui.add_space(6.0);
+            ui.separator();
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if crate::design::primary(ui, "Match the media").clicked() {
                     action = Some(true);
                 }
-                if pending.import.is_some() && ui.button("Keep settings").clicked() {
+                if pending.import.is_some()
+                    && ui
+                        .add(egui::Button::new("Keep my settings").min_size(egui::vec2(120.0, 32.0)))
+                        .clicked()
+                {
                     action = Some(false);
                 }
-                if ui.button("Cancel").clicked() {
+                if ui.add(egui::Button::new("Cancel").min_size(egui::vec2(80.0, 32.0))).clicked() {
                     cancel = true;
                 }
             });

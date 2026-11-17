@@ -298,3 +298,43 @@ pub fn heading(ui: &mut egui::Ui, label: &str) {
     );
     ui.add_space(2.0);
 }
+/// A choice shown as a wide card with a name and a line saying what it is for.
+pub fn option_card(ui: &mut egui::Ui, name: &str, detail: &str, selected: bool) -> egui::Response {
+    let (rect, response) = ui.allocate_exact_size(egui::vec2(303.0, 62.0), egui::Sense::click());
+    let accent = accent(ui.ctx());
+    let visuals = ui.visuals();
+    let (fill, stroke) = if selected {
+        (accent.gamma_multiply(0.18), Stroke::new(1.5_f32, accent))
+    } else if response.hovered() {
+        (
+            visuals.widgets.hovered.weak_bg_fill,
+            Stroke::new(1.0_f32, border(ui.ctx())),
+        )
+    } else {
+        (
+            visuals.widgets.inactive.weak_bg_fill,
+            Stroke::new(1.0_f32, border(ui.ctx())),
+        )
+    };
+    let painter = ui.painter();
+    painter.rect(rect, 8.0, fill, stroke, egui::StrokeKind::Inside);
+    painter.text(
+        rect.left_top() + egui::vec2(14.0, 11.0),
+        egui::Align2::LEFT_TOP,
+        name,
+        egui::FontId::proportional(14.0),
+        if selected {
+            accent
+        } else {
+            visuals.strong_text_color()
+        },
+    );
+    painter.text(
+        rect.left_top() + egui::vec2(14.0, 34.0),
+        egui::Align2::LEFT_TOP,
+        detail,
+        egui::FontId::proportional(11.5),
+        visuals.weak_text_color(),
+    );
+    response
+}

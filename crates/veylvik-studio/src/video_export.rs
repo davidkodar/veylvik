@@ -39,180 +39,306 @@ impl Controls {
     }
 }
 
-fn rate_option(ui: &mut egui::Ui, current: &mut Time, value: Time, label: &str) {
-    let selected = current
-        .checked_sub(value)
-        .is_ok_and(|delta| delta.ticks == 0);
-    if ui.selectable_label(selected, label).clicked() {
-        *current = value;
-    }
+/// A ready-made delivery: name, detail line, size, format, quality and what it is for.
+type Delivery = (
+    &'static str,
+    String,
+    (u32, u32),
+    Codec,
+    Quality,
+    &'static str,
+);
+/// Even dimensions, as video needs.
+fn even(v: u32) -> u32 {
+    (v / 2 * 2).clamp(2, 8192)
 }
-
+/// A flag kept while the dialog is open (whether a row shows its manual fields).
+fn flag(ui: &egui::Ui, name: &'static str) -> bool {
+    ui.data(|d| d.get_temp(egui::Id::new(name)))
+        .unwrap_or(false)
+}
+fn set_flag(ui: &egui::Ui, name: &'static str, on: bool) {
+    ui.data_mut(|d| d.insert_temp(egui::Id::new(name), on));
+}
 fn settings_panel(ui: &mut egui::Ui, s: &mut Settings, doc: &Composition) -> Option<Settings> {
-    ui.heading("Ready to share");
-    ui.weak("Composition output · SDR Rec.709 · Video only");
-    ui.add_space(8.);
-    egui::Grid::new("video-settings")
-        .num_columns(2)
-        .spacing([18., 10.])
-        .show(ui, |ui| {
-            ui.label("Format");
-            egui::ComboBox::from_id_salt("video-codec")
-                .selected_text(s.codec.label())
-                .show_ui(ui, |ui| {
-                    for c in [Codec::H264, Codec::Hevc10] {
-                        ui.selectable_value(&mut s.codec, c, c.label());
-                    }
-                });
-            ui.end_row();
-            ui.label("Quality");
-            let quality_label = |q| match q {
-                Quality::Draft => "Draft · faster",
-                Quality::High => "High · recommended",
-                Quality::Master => "Master · larger files",
-            };
-            egui::ComboBox::from_id_salt("video-quality")
-                .selected_text(quality_label(s.quality))
-                .show_ui(ui, |ui| {
-                    for q in [Quality::Draft, Quality::High, Quality::Master] {
-                        ui.selectable_value(&mut s.quality, q, quality_label(q));
-                    }
-                });
-            ui.end_row();
-            ui.label("Resolution");
-            ui.horizontal(|ui| {
-                ui.add(egui::DragValue::new(&mut s.width).range(2..=8192).speed(2.));
-                ui.label("×");
-                ui.add(
-                    egui::DragValue::new(&mut s.height)
-                        .range(2..=8192)
-                        .speed(2.),
-                );
-                if ui
-                    .add(crate::icons::Button::new(
-                        crate::icons::Icon::Reset,
-                        "Match composition resolution",
-                    ))
-                    .clicked()
-                {
-                    s.width = doc.width;
-                    s.height = doc.height;
-                }
-            });
-            ui.end_row();
-            ui.label("Size presets");
-            ui.horizontal(|ui| {
-                for (w, h, label) in [
-                    (1280, 720, "720p"),
-                    (1920, 1080, "1080p"),
-                    (3840, 2160, "4K"),
-                ] {
-                    if ui.button(label).clicked() {
-                        s.width = w;
-                        s.height = h;
-                    }
-                }
-            });
-            ui.end_row();
-            ui.label("Frame rate");
-            egui::ComboBox::from_id_salt("video-rate")
-                .selected_text(format!("{:.3} fps", s.frame_rate.seconds().unwrap_or(0.)))
-                .show_ui(ui, |ui| {
-                    rate_option(
-                        ui,
-                        &mut s.frame_rate,
-                        doc.frame_rate,
-                        "Composition frame rate",
-                    );
-                    for (n, d, label) in [
-                        (24, 1, "24 fps"),
-                        (25, 1, "25 fps"),
-                        (30000, 1001, "29.97 fps"),
-                        (30, 1, "30 fps"),
-                        (50, 1, "50 fps"),
-                        (60000, 1001, "59.94 fps"),
-                        (60, 1, "60 fps"),
-                    ] {
-                        rate_option(ui, &mut s.frame_rate, Time::new(n, d).unwrap(), label);
-                    }
-                });
-            ui.end_row();
-            ui.label("Source frames");
-            ui.horizontal(|ui| {
-                let last = i64::from(doc.frame_count) - 1;
-                ui.add(egui::DragValue::new(&mut s.start).range(0..=last));
-                ui.label("to");
-                ui.add(egui::DragValue::new(&mut s.end).range(0..=last));
-                if ui
-                    .add(crate::icons::Button::new(
-                        crate::icons::Icon::Reset,
-                        "Use the entire composition",
-                    ))
-                    .clicked()
-                {
-                    s.start = 0;
-                    s.end = last;
-                }
-            });
-            ui.end_row();
-            ui.label("Background");
-            ui.color_edit_button_rgb(&mut s.matte);
-            ui.end_row();
-            ui.label("Audio");
-            let mut include = !s.audio.mute;
-            if ui
-                .checkbox(&mut include, "Include footage audio")
-                .on_hover_text("Mix the sound of every clip feeding the output, at its timeline position and trims.")
-                .changed()
+    use crate::design::{chip, format_card, heading};
+    ui.set_width(622.0_f32.min(ui.ctx().content_rect().width() - 40.0));
+    ui.spacing_mut().item_spacing = egui::vec2(8.0, 8.0);
+    let own = (even(doc.width), even(doc.height));
+    let half = (even(doc.width / 2), even(doc.height / 2));
+    // Ready-made deliveries: one click sets the format, quality and size.
+    heading(ui, "DELIVERY");
+    let deliveries: [Delivery; 7] = [
+        (
+            "Composition",
+            format!("{} × {}", own.0, own.1),
+            own,
+            Codec::H264,
+            Quality::High,
+            "The composition's own size in H.264, for most uses",
+        ),
+        (
+            "Web 1080p",
+            "1920 × 1080".into(),
+            (1920, 1080),
+            Codec::H264,
+            Quality::High,
+            "Full HD for video sites",
+        ),
+        (
+            "Web 4K",
+            "3840 × 2160".into(),
+            (3840, 2160),
+            Codec::H264,
+            Quality::High,
+            "Ultra HD for video sites",
+        ),
+        (
+            "Vertical",
+            "1080 × 1920".into(),
+            (1080, 1920),
+            Codec::H264,
+            Quality::High,
+            "Upright video for phones",
+        ),
+        (
+            "Square",
+            "1080 × 1080".into(),
+            (1080, 1080),
+            Codec::H264,
+            Quality::High,
+            "Square video for feeds",
+        ),
+        (
+            "Master",
+            "HEVC 10-bit".into(),
+            own,
+            Codec::Hevc10,
+            Quality::Master,
+            "The best quality at the composition's size, for archiving or further editing; large files",
+        ),
+        (
+            "Draft",
+            format!("{} × {}", half.0, half.1),
+            half,
+            Codec::H264,
+            Quality::Draft,
+            "Half size and fast, to check timing",
+        ),
+    ];
+    ui.horizontal_wrapped(|ui| {
+        for (name, detail, size, codec, quality, hint) in deliveries {
+            let chosen = (s.width, s.height) == size && s.codec == codec && s.quality == quality;
+            if format_card(
+                ui,
+                name,
+                &detail,
+                Some([size.0 as f32, size.1 as f32]),
+                chosen,
+            )
+            .on_hover_text(hint)
+            .clicked()
             {
-                s.audio.mute = !include;
+                (s.width, s.height) = size;
+                s.codec = codec;
+                s.quality = quality;
+                set_flag(ui, "video-custom-size", false);
             }
-            ui.end_row();
-            ui.label("Music");
-            ui.horizontal(|ui| {
-                let mut text = s.audio.music.as_ref().map(|p| p.display().to_string()).unwrap_or_default();
-                if ui
-                    .add(egui::TextEdit::singleline(&mut text).hint_text("Optional audio file path").desired_width(220.))
-                    .changed()
-                {
-                    s.audio.music = (!text.trim().is_empty()).then(|| std::path::PathBuf::from(text.trim()));
-                }
-                ui.add_enabled(
-                    s.audio.music.is_some(),
-                    egui::DragValue::new(&mut s.audio.music_gain_db).range(-60.0..=12.0).speed(0.2).suffix(" dB"),
-                );
-            });
-            ui.end_row();
-        });
-    ui.add_space(8.);
-    ui.weak("Fits the composition without stretching. Source frame range is inclusive.");
-    ui.separator();
-    ui.label("Hardware encoding · NVENC / VA-API");
-    ui.checkbox(
-        &mut s.allow_software,
-        "Allow software encoding if hardware is unavailable",
-    );
-    ui.weak("MP4 flattens transparency onto the background and carries AAC audio. For alpha or scene-linear HDR, use Export image sequence.");
-    let valid = s.times(doc);
-    match &valid {
-        Ok(times) => {
-            ui.label(format!(
-                "{} frames · {:.2} seconds",
-                times.len(),
-                times.len() as f64 / s.frame_rate.seconds().unwrap()
-            ));
         }
-        Err(e) => {
-            ui.colored_label(egui::Color32::LIGHT_RED, e.to_string());
+    });
+    heading(ui, "FORMAT AND QUALITY");
+    ui.horizontal_wrapped(|ui| {
+        for (codec, label, hint) in [
+            (Codec::H264, "H.264", "Plays everywhere"),
+            (
+                Codec::Hevc10,
+                "HEVC 10-bit",
+                "Smaller files and smoother gradients; needs a recent player",
+            ),
+        ] {
+            if chip(ui, label, s.codec == codec)
+                .on_hover_text(hint)
+                .clicked()
+            {
+                s.codec = codec;
+            }
         }
-    }
-    ui.add_space(6.);
-    let export = ui
-        .add_enabled(
-            valid.is_ok(),
-            egui::Button::new("Choose destination and queue…").min_size(egui::vec2(250., 32.)),
+        ui.add_space(14.0);
+        for (quality, label, hint) in [
+            (Quality::Draft, "Draft", "Fast, small, visibly compressed"),
+            (Quality::High, "High", "Recommended"),
+            (Quality::Master, "Master", "Nearly lossless; large files"),
+        ] {
+            if chip(ui, label, s.quality == quality)
+                .on_hover_text(hint)
+                .clicked()
+            {
+                s.quality = quality;
+            }
+        }
+    });
+    heading(ui, "SIZE");
+    let custom_size = flag(ui, "video-custom-size");
+    ui.horizontal_wrapped(|ui| {
+        for (label, size) in [
+            ("Composition", own),
+            ("720p", (1280, 720)),
+            ("1080p", (1920, 1080)),
+            ("4K", (3840, 2160)),
+        ] {
+            if chip(ui, label, !custom_size && (s.width, s.height) == size).clicked() {
+                (s.width, s.height) = size;
+                set_flag(ui, "video-custom-size", false);
+            }
+        }
+        if chip(ui, "Custom", custom_size).clicked() {
+            set_flag(ui, "video-custom-size", true);
+        }
+        if custom_size {
+            ui.add(
+                egui::DragValue::new(&mut s.width)
+                    .range(2..=8192)
+                    .speed(2.)
+                    .suffix(" px"),
+            );
+            ui.label("×");
+            ui.add(
+                egui::DragValue::new(&mut s.height)
+                    .range(2..=8192)
+                    .speed(2.)
+                    .suffix(" px"),
+            );
+        }
+    });
+    heading(ui, "FRAME RATE");
+    ui.horizontal_wrapped(|ui| {
+        let same = |a: Time, b: Time| a.checked_sub(b).is_ok_and(|delta| delta.ticks == 0);
+        if chip(ui, "Composition", same(s.frame_rate, doc.frame_rate)).clicked() {
+            s.frame_rate = doc.frame_rate;
+        }
+        for (n, d, label) in [
+            (24, 1, "24"),
+            (25, 1, "25"),
+            (30000, 1001, "29.97"),
+            (30, 1, "30"),
+            (50, 1, "50"),
+            (60000, 1001, "59.94"),
+            (60, 1, "60"),
+        ] {
+            let value = Time::new(n, d).unwrap();
+            // The composition's own rate is shown once, as Composition.
+            if same(value, doc.frame_rate) {
+                continue;
+            }
+            if chip(ui, label, same(s.frame_rate, value)).clicked() {
+                s.frame_rate = value;
+            }
+        }
+    });
+    heading(ui, "RANGE");
+    let last = i64::from(doc.frame_count) - 1;
+    let whole = s.start == 0 && s.end == last;
+    let custom_range = flag(ui, "video-custom-range") || !whole;
+    ui.horizontal_wrapped(|ui| {
+        if chip(ui, "Whole composition", !custom_range).clicked() {
+            s.start = 0;
+            s.end = last;
+            set_flag(ui, "video-custom-range", false);
+        }
+        if chip(ui, "Part of it", custom_range).clicked() {
+            set_flag(ui, "video-custom-range", true);
+        }
+        if custom_range {
+            ui.label("Frames");
+            ui.add(egui::DragValue::new(&mut s.start).range(0..=last));
+            ui.label("to");
+            ui.add(egui::DragValue::new(&mut s.end).range(0..=last));
+        }
+    });
+    heading(ui, "SOUND");
+    let mut include = !s.audio.mute;
+    if ui
+        .checkbox(&mut include, "Include the footage's sound")
+        .on_hover_text(
+            "Mix the sound of every clip feeding the output, at its timeline position and trims.",
         )
-        .clicked();
-    ui.weak("Choose a new .mp4 filename. Existing files are never replaced.");
+        .changed()
+    {
+        s.audio.mute = !include;
+    }
+    ui.horizontal(|ui| {
+        ui.label("Music");
+        let mut text = s
+            .audio
+            .music
+            .as_ref()
+            .map(|p| p.display().to_string())
+            .unwrap_or_default();
+        if ui
+            .add(
+                egui::TextEdit::singleline(&mut text)
+                    .hint_text("Optional audio file path")
+                    .desired_width(330.),
+            )
+            .changed()
+        {
+            s.audio.music =
+                (!text.trim().is_empty()).then(|| std::path::PathBuf::from(text.trim()));
+        }
+        ui.add_enabled(
+            s.audio.music.is_some(),
+            egui::DragValue::new(&mut s.audio.music_gain_db)
+                .range(-60.0..=12.0)
+                .speed(0.2)
+                .suffix(" dB"),
+        );
+    });
+    heading(ui, "MORE");
+    ui.horizontal(|ui| {
+        ui.label("Background");
+        ui.color_edit_button_rgb(&mut s.matte)
+            .on_hover_text("MP4 has no transparency: clear areas are filled with this colour. For alpha or scene-linear HDR, use Export image sequence.");
+        ui.add_space(14.0);
+        ui.checkbox(&mut s.allow_software, "Allow software encoding")
+            .on_hover_text("Encoding uses the graphics card (NVENC or VA-API). Tick this to fall back to the processor when that is unavailable.");
+    });
+    ui.add_space(6.0);
+    ui.separator();
+    let valid = s.times(doc);
+    let mut export = false;
+    ui.horizontal(|ui| {
+        match &valid {
+            Ok(times) => {
+                let fps = s.frame_rate.seconds().unwrap_or(1.0);
+                ui.label(
+                    egui::RichText::new(format!(
+                        "{} × {}  ·  {}  ·  {:.1} s  ·  {} frames",
+                        s.width,
+                        s.height,
+                        if (fps - fps.round()).abs() < 1e-9 {
+                            format!("{fps:.0} fps")
+                        } else {
+                            format!("{fps:.3} fps")
+                        },
+                        times.len() as f64 / fps,
+                        times.len()
+                    ))
+                    .color(ui.visuals().weak_text_color()),
+                );
+            }
+            Err(e) => {
+                ui.colored_label(egui::Color32::LIGHT_RED, e.to_string());
+            }
+        }
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            export = ui
+                .add_enabled_ui(valid.is_ok(), |ui| {
+                    crate::design::primary(ui, "Choose where to save")
+                })
+                .inner
+                .clicked();
+        });
+    });
+    ui.weak("The picture is fitted without stretching. Existing files are never replaced.");
     export.then(|| s.clone())
 }
