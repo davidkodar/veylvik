@@ -8,7 +8,9 @@
 // dispatch row, emitter cell stride, threads per cell. p.extra: emitter connected,
 // target connected, flags (1 field, 2 obstacle, 4 sprite), nominal life in seconds.
 // Settings: ROWS rows of COUNT values, row r holding the settings in force at time
-// now - life + life * r / (ROWS - 1), so a particle reads those of its own birth.
+// now - life + life * r / (ROWS - 1), so a particle reads those of its own birth. One more
+// row holds the camera: the world-to-camera matrix's three rows and the focal length in
+// pixels. Particles live in the scenes' space: the frame at depth 0, z towards the viewer.
 struct Params { size_op: vec4<u32>, values: vec4<f32>, extra: vec4<f32> }
 @group(0) @binding(0) var<uniform> p: Params;
 @group(0) @binding(1) var<storage, read> first: array<vec4<u32>>;
@@ -33,7 +35,7 @@ const DENSITY = 15u; const BOX_X = 16u; const BOX_Y = 17u; const BOX_W = 18u; co
 const COLOUR = 20u; const END_COLOUR = 23u; const COLOUR_A = 26u; const END_A = 27u;
 const INHERIT = 28u; const HOMING = 29u; const STREAK = 30u; const PUSH = 31u; const FLOW = 32u;
 const BOUNCE = 33u; const PULL_X = 34u; const PULL_Y = 35u; const PULL = 36u; const VORTEX = 37u;
-const SPIN = 38u; const GROW = 39u;
+const SPIN = 38u; const GROW = 39u; const HUES = 40u; const DEPTH = 41u;
 fn tiles() -> u32 {
     let t = tile();
     return ((p.size_op.x + t - 1u) / t) * ((p.size_op.y + t - 1u) / t);
@@ -122,7 +124,7 @@ fn particle_fields(@builtin(global_invocation_id) gid: vec3<u32>) {
         var sum = 0.0;
         for (var k = 0u; k <= i; k++) { sum += third[k].x; }
         out.w = sum;
-    } else if i < count + COUNT * ROWS {
+    } else if i < count + COUNT * (ROWS + 1u) {
         let k = i - count;
         out.w = fourth[k / 3u][k % 3u];
     }
@@ -168,7 +170,7 @@ fn solid(at: vec2<f32>) -> f32 {
 // then gravity, wind, the painted field, the pull point and the swirl act on it, in
 // fixed steps of the nominal life so its path is the same at every frame; it bounces
 // off the obstacle, and is steered onto `goal` over the last part of its life.
-fn place(origin: vec2<f32>, launch: vec2<f32>, birth: f32, age: f32, own_life: f32, goal: vec2<f32>, homing: f32) -> vec2<f32> {
+fn place(origin: vec3<f32>, launch: vec3<f32>, birth: f32, age: f32, own_life: f32, goal: vec3<f32>, homing: f32, deep: bool) -> vec3<f32> {
     var at = origin; var velocity = launch;
     let flags = u32(p.extra.z);
     var steps = 32u;
@@ -183,27 +185,44 @@ fn place(origin: vec2<f32>, launch: vec2<f32>, birth: f32, age: f32, own_life: f
         if k % 8u == 0u { f = forces_at(birth + done); }
         var push = f.pull;
         if (flags & 1u) != 0u && at.x >= 0.0 && at.y >= 0.0 && at.x < f32(p.size_op.x) && at.y < f32(p.size_op.y) {
-            let slope = field_at(at).xy * 100.0;
+            let slope = field_at(at.xy).xy * 100.0;
             push += -slope * f.push + vec2<f32>(-slope.y, slope.x) * f.flow;
         }
         if f.attract != 0.0 || f.vortex != 0.0 {
-            let to = f.centre - at; let far = length(to);
+            let to = f.centre - at.xy; let far = length(to);
             if far > 0.001 {
                 let toward = to / far;
                 push += (toward * f.attract + vec2<f32>(-toward.y, toward.x) * f.vortex) * (far / (far + 40.0));
             }
         }
-        velocity += push * dt;
+        velocity += vec3<f32>(push, 0.0) * dt;
         var drift = velocity;
-        if f.turbulence > 0.0 { drift += swirl(at, birth + done, f); }
+        if f.turbulence > 0.0 {
+            // In depth the swirl also carries particles towards and away from the viewer.
+            var through = 0.0;
+            if deep { through = (value_noise(vec3<f32>(at.xy / f.scale * 1.3 + vec2<f32>(91.0, 7.0), (birth + done) * 0.35 + 13.0)) - 0.5) * 2.0 * f.turbulence; }
+            drift += vec3<f32>(swirl(at.xy, birth + done, f), through);
+        }
         var next = at + drift * dt;
-        if (flags & 2u) != 0u && solid(next) > 0.5 && solid(at) <= 0.5 {
+        // Look along the move every two pixels or so, so a thin obstacle is not stepped over.
+        var hit = false;
+        if (flags & 2u) != 0u && solid(at.xy) <= 0.5 {
+            let checks = clamp(u32(ceil(length(next.xy - at.xy) / 2.0)), 1u, 12u);
+            var clear = at;
+            for (var c = 1u; c <= checks; c++) {
+                let probe = mix(at, next, f32(c) / f32(checks));
+                if solid(probe.xy) > 0.5 { hit = true; next = probe; break; }
+                clear = probe;
+            }
+            if hit { at = clear; }
+        }
+        if hit {
             // Bounce off the obstacle's edge: reflect about the way out of it.
-            var out = vec2<f32>(solid(next - vec2<f32>(2.0, 0.0)) - solid(next + vec2<f32>(2.0, 0.0)),
-                                solid(next - vec2<f32>(0.0, 2.0)) - solid(next + vec2<f32>(0.0, 2.0)));
-            if dot(out, out) < 1e-6 { out = -drift; }
+            var out = vec2<f32>(solid(next.xy - vec2<f32>(2.0, 0.0)) - solid(next.xy + vec2<f32>(2.0, 0.0)),
+                                solid(next.xy - vec2<f32>(0.0, 2.0)) - solid(next.xy + vec2<f32>(0.0, 2.0)));
+            if dot(out, out) < 1e-6 { out = -drift.xy; }
             out = normalize(out);
-            velocity = (velocity - 2.0 * min(dot(velocity, out), 0.0) * out) * f.bounce;
+            velocity = vec3<f32>(velocity.xy - 2.0 * min(dot(velocity.xy, out), 0.0) * out, velocity.z) * f.bounce;
             next = at;
         }
         at = next;
@@ -213,6 +232,25 @@ fn place(origin: vec2<f32>, launch: vec2<f32>, birth: f32, age: f32, own_life: f
         at = mix(at, goal, smoothstep(1.0 - homing, 1.0, age / own_life));
     }
     return at;
+}
+// A colour with its hue turned by `angle` radians (about the grey axis).
+fn turned(c: vec3<f32>, angle: f32) -> vec3<f32> {
+    let k = vec3<f32>(0.57735027);
+    let cs = cos(angle);
+    return max(c * cs + cross(k, c) * sin(angle) + k * dot(k, c) * (1.0 - cs), vec3<f32>(0.0));
+}
+// Where a point of the scene lands in the frame, and how large a pixel-sized thing
+// there is drawn (0 when it is behind the camera).
+fn filmed(at: vec3<f32>) -> vec3<f32> {
+    let base = tiles() + ROWS * COUNT;
+    let v = vec3<f32>(
+        dot(vec4<f32>(third[base].w, third[base + 1u].w, third[base + 2u].w, third[base + 3u].w), vec4<f32>(at, 1.0)),
+        dot(vec4<f32>(third[base + 4u].w, third[base + 5u].w, third[base + 6u].w, third[base + 7u].w), vec4<f32>(at, 1.0)),
+        dot(vec4<f32>(third[base + 8u].w, third[base + 9u].w, third[base + 10u].w, third[base + 11u].w), vec4<f32>(at, 1.0)));
+    let focal = third[base + 12u].w;
+    let away = -v.z;
+    if away <= 1.0 { return vec3<f32>(0.0); }
+    return vec3<f32>(vec2<f32>(p.size_op.xy) * 0.5 + focal * v.xy / away, focal / away);
 }
 fn unpremultiplied(c: vec4<f32>) -> vec3<f32> {
     if c.a <= 0.0 { return vec3<f32>(1.0); }
@@ -280,15 +318,15 @@ fn particle_splat(@builtin(global_invocation_id) gid: vec3<u32>) {
     let variation = setting(VARIATION, birth);
     let own_life = life * (1.0 - 0.6 * variation * random(thread, generation, 1u));
     if age >= own_life { return; }
-    var origin: vec2<f32>;
+    var origin: vec3<f32>;
     var born_on = vec3<f32>(1.0);
     if p.extra.x > 0.5 {
         // One cell of the frame per group of threads; born where the emitter has alpha.
         let stride = u32(p.values.z); let slots = u32(p.values.w);
         let across = (p.size_op.x + stride - 1u) / stride;
         let cell = thread / slots;
-        origin = (vec2<f32>(f32(cell % across), f32(cell / across))
-            + vec2<f32>(random(thread, generation, 2u), random(thread, generation, 3u))) * f32(stride);
+        origin = vec3<f32>((vec2<f32>(f32(cell % across), f32(cell / across))
+            + vec2<f32>(random(thread, generation, 2u), random(thread, generation, 3u))) * f32(stride), 0.0);
         if origin.x >= size.x || origin.y >= size.y { return; }
         let born = bitcast<vec4<f32>>(first[u32(origin.y) * p.size_op.x + u32(origin.x)]);
         let chance = setting(DENSITY, birth) * life / 10000.0 * f32(stride * stride) / f32(slots);
@@ -296,10 +334,14 @@ fn particle_splat(@builtin(global_invocation_id) gid: vec3<u32>) {
         born_on = unpremultiplied(born);
     } else {
         if random(thread, generation, 4u) >= setting(RATE, birth) * life / p.values.x { return; }
-        origin = vec2<f32>(setting(BOX_X, birth), setting(BOX_Y, birth))
+        origin = vec3<f32>(vec2<f32>(setting(BOX_X, birth), setting(BOX_Y, birth))
             + (vec2<f32>(random(thread, generation, 2u), random(thread, generation, 3u)) - 0.5)
-            * vec2<f32>(setting(BOX_W, birth), setting(BOX_H, birth));
+            * vec2<f32>(setting(BOX_W, birth), setting(BOX_H, birth)), 0.0);
     }
+    // Depth spreads births in front of and behind the frame.
+    let depth = setting(DEPTH, birth);
+    let deep = depth > 0.0;
+    origin.z = (random(thread, generation, 13u) - 0.5) * depth;
     // A place on the target, drawn in proportion to its alpha: first the tile, by the
     // cumulative table, then the pixel in it. No particle goes without a place.
     var goal = origin; var lands_on = born_on; var landing = 0.0;
@@ -329,7 +371,7 @@ fn particle_splat(@builtin(global_invocation_id) gid: vec3<u32>) {
                 let there = second[y * p.size_op.x + x];
                 run += clamp(there.a, 0.0, 1.0);
                 if run >= within && there.a > 0.0 {
-                    goal = vec2<f32>(f32(x) + random(thread, generation, 16u), f32(y) + random(thread, generation, 17u));
+                    goal = vec3<f32>(f32(x) + random(thread, generation, 16u), f32(y) + random(thread, generation, 17u), 0.0);
                     lands_on = unpremultiplied(there); found = true; break;
                 }
             }
@@ -340,9 +382,15 @@ fn particle_splat(@builtin(global_invocation_id) gid: vec3<u32>) {
         if homing > 0.0 { landing = smoothstep(1.0 - homing, 1.0, age / own_life); }
     }
     let heading = radians(setting(DIRECTION, birth)) + (random(thread, generation, 5u) - 0.5) * radians(setting(SPREAD, birth));
-    let launch = vec2<f32>(cos(heading), -sin(heading))
+    // In depth the spread is a cone: the launch also leans towards or away from the viewer.
+    var lean = 0.0;
+    if deep { lean = (random(thread, generation, 14u) - 0.5) * radians(setting(SPREAD, birth)); }
+    let launch = vec3<f32>(cos(heading) * cos(lean), -sin(heading) * cos(lean), sin(lean))
         * setting(SPEED, birth) * (1.0 - 0.7 * variation * random(thread, generation, 6u));
-    let at = place(origin, launch, birth, age, own_life, goal, homing);
+    let where_now = place(origin, launch, birth, age, own_life, goal, homing, deep);
+    let seen = filmed(where_now);
+    if seen.z <= 0.0 { return; }
+    let at = seen.xy;
     let share = age / own_life;
     let fade = setting(FADE, birth);
     var opacity = min(share / 0.04, 1.0);
@@ -351,8 +399,13 @@ fn particle_splat(@builtin(global_invocation_id) gid: vec3<u32>) {
     let last_colour = vec4<f32>(setting(END_COLOUR, birth), setting(END_COLOUR + 1u, birth), setting(END_COLOUR + 2u, birth), setting(END_A, birth));
     var colour = mix(first_colour, last_colour, share);
     colour = vec4<f32>(colour.rgb * mix(vec3<f32>(1.0), mix(born_on, lands_on, landing), setting(INHERIT, birth)), colour.a);
-    let radius = setting(SIZE, birth) * (1.0 - 0.6 * variation * random(thread, generation, 7u))
-        * mix(1.0, setting(GROW, birth), share);
+    let hues = setting(HUES, birth);
+    if hues > 0.0 {
+        colour = vec4<f32>(turned(colour.rgb, (random(thread, generation, 12u) - 0.5) * 6.2831853 * hues), colour.a);
+    }
+    // Near particles are drawn larger, up to a limit that keeps one particle affordable.
+    let radius = min(setting(SIZE, birth) * (1.0 - 0.6 * variation * random(thread, generation, 7u))
+        * mix(1.0, setting(GROW, birth), share) * seen.z, 48.0);
     if radius <= 0.0 { return; }
     if (u32(p.extra.z) & 4u) != 0u {
         // Spin either way, from a random angle when spinning at all.
@@ -363,13 +416,25 @@ fn particle_splat(@builtin(global_invocation_id) gid: vec3<u32>) {
                 + spin * age * (1.0 - variation * random(thread, generation, 10u)) * sign(random(thread, generation, 11u) - 0.5);
         }
         stamp_sprite(at, radius, angle, vec4<f32>(colour.rgb, colour.a * opacity));
+        // A streak leaves fading copies back along the path.
+        let ghost_trail = min(setting(STREAK, birth), age);
+        if ghost_trail > 0.0 {
+            for (var g = 1u; g <= 5u; g++) {
+                let back = f32(g) / 5.0;
+                let was = filmed(place(origin, launch, birth, age - ghost_trail * back, own_life, goal, homing, deep));
+                if was.z <= 0.0 { continue; }
+                stamp_sprite(was.xy, radius * (1.0 - 0.3 * back), angle, vec4<f32>(colour.rgb, colour.a * opacity * 0.5 * (1.0 - back * 0.85)));
+            }
+        }
         return;
     }
     let light = vec4<f32>(colour.rgb * colour.a, colour.a) * opacity;
     // A streak is a row of dots back along the path, fading towards the tail.
     let trail = min(setting(STREAK, birth), age);
     if trail <= 0.0 { stamp(at, radius, light); return; }
-    var back = place(origin, launch, birth, age - trail, own_life, goal, homing) - at;
+    let tail = filmed(place(origin, launch, birth, age - trail, own_life, goal, homing, deep));
+    if tail.z <= 0.0 { stamp(at, radius, light); return; }
+    var back = tail.xy - at;
     let far = length(back);
     if far > 96.0 { back *= 96.0 / far; }
     let spacing = max(radius, 1.0) * 0.6;

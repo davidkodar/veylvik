@@ -479,12 +479,7 @@ impl RenderNode for veylvik_document::nodes::GridWarp {
     fn has_data(&self) -> bool {
         true
     }
-    fn data(
-        &self,
-        _time: veylvik_document::Time,
-        _width: u32,
-        _height: u32,
-    ) -> Result<Option<std::sync::Arc<crate::Image>>> {
+    fn data(&self, _cx: &Cx<'_>) -> Result<Option<std::sync::Arc<crate::Image>>> {
         Ok(grid_mesh(self))
     }
     fn params(
@@ -540,12 +535,8 @@ impl RenderNode for veylvik_document::nodes::ShapeWarp {
     }
     /// The mesh that carries the start shape onto the end shape at `time`; the same
     /// shapes give the same image, so a still warp stays cached.
-    fn data(
-        &self,
-        time: veylvik_document::Time,
-        width: u32,
-        height: u32,
-    ) -> Result<Option<std::sync::Arc<crate::Image>>> {
+    fn data(&self, cx: &Cx<'_>) -> Result<Option<std::sync::Arc<crate::Image>>> {
+        let (time, width, height) = (cx.time, cx.width, cx.height);
         type Key = (
             Vec<veylvik_document::vector::PathCommand>,
             Vec<veylvik_document::vector::PathCommand>,

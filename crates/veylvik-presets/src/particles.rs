@@ -44,7 +44,7 @@ fn set(node: &mut Particles, values: &[(&str, f32)]) {
         }
     }
 }
-pub static LOOKS: [Look; 8] = [
+pub static LOOKS: [Look; 9] = [
     Look {
         name: "Sparks",
         hint: "A shower of hot streaks thrown up from the emitter and falling back",
@@ -159,6 +159,36 @@ pub static LOOKS: [Look; 8] = [
             );
             n.colour = [0.75, 0.85, 1.0, 0.45];
             n.end_colour = [0.75, 0.85, 1.0, 0.45];
+        },
+    },
+    Look {
+        name: "Confetti",
+        hint: "Paper of every colour thrown up and fluttering down. Connect Sprite to a small shape for real pieces",
+        needs: Needs::Nothing,
+        apply: |n, w, _| {
+            let s = w / 1920.0;
+            set(
+                n,
+                &[
+                    ("rate", 500.0),
+                    ("life", 3.5),
+                    ("width", 200.0 * s),
+                    ("height", 10.0 * s),
+                    ("speed", 1300.0 * s),
+                    ("spread", 60.0),
+                    ("gravity", 1100.0 * s),
+                    ("turbulence", 260.0 * s),
+                    ("turbulence_scale", 240.0 * s),
+                    ("size", 6.0 * s),
+                    ("fade", 0.15),
+                    ("variation", 0.6),
+                    ("glow", 0.0),
+                    ("colour_variation", 1.0),
+                    ("spin", 400.0),
+                ],
+            );
+            n.colour = [1.0, 0.25, 0.2, 1.0];
+            n.end_colour = [1.0, 0.25, 0.2, 1.0];
         },
     },
     Look {

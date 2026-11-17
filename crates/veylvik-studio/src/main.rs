@@ -1899,7 +1899,7 @@ impl Studio {
                     "field_push" | "field_flow" => !wired("field"),
                     "bounce" => !wired("obstacle"),
                     "spin" => !wired("sprite"),
-                    "streak" => wired("sprite"),
+                    "camera" => !wired("scene"),
                     _ => false,
                 };
                 if hidden {

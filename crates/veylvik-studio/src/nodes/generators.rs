@@ -101,7 +101,7 @@ impl Inspect for veylvik_document::nodes::Drip {
 }
 impl Inspect for veylvik_document::nodes::Particles {
     fn inspect(&mut self, ui: &mut egui::Ui, cx: &mut InspectCx<'_>) {
-        ui.weak("Connect Emitter to text, a shape or footage and particles are born on it; Target and they fly onto that image; Field and Obstacle to steer and bounce them; Sprite to draw a picture as each particle. Put a Bloom after it for glow.");
+        ui.weak("Connect Emitter to text, a shape or footage and particles are born on it; Target and they fly onto that image; Field and Obstacle to steer and bounce them; Sprite to draw a picture as each particle; Scene to film them with a 3D camera. Depth spreads them towards and away from the viewer. Put a Bloom after it for glow.");
         // The frame's size, left here by the inspector for looks that fill the frame.
         let [width, height]: [u32; 2] = ui
             .data(|d| d.get_temp(egui::Id::new("particles-frame")))

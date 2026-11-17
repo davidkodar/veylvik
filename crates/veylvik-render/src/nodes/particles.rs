@@ -61,11 +61,13 @@ fn settings(node: &Particles, time: Time) -> Result<[f32; COUNT]> {
         at(&node.vortex)?,
         at(&node.spin)?,
         at(&node.grow)?,
+        at(&node.colour_variation)?,
+        at(&node.depth)?,
     ];
     row[..values.len()].copy_from_slice(&values);
     Ok(row)
 }
-fn scalars(node: &Particles) -> [&Scalar; 34] {
+fn scalars(node: &Particles) -> [&Scalar; 36] {
     [
         &node.life,
         &node.speed,
@@ -99,6 +101,8 @@ fn scalars(node: &Particles) -> [&Scalar; 34] {
         &node.vortex,
         &node.spin,
         &node.grow,
+        &node.colour_variation,
+        &node.depth,
         &node.rate,
         &node.density,
     ]
@@ -142,6 +146,43 @@ fn layout(rows: &[[f32; COUNT]]) -> (u32, u32) {
         16.0
     };
     (threads as u32, stride as u32)
+}
+/// The camera filming the particles at the frame, as a last row: the world-to-camera
+/// matrix's three rows, then the focal length in pixels.
+fn camera(node: &Particles, cx: &Cx<'_>) -> Result<[f32; COUNT]> {
+    let home = veylvik_scene::home_camera(cx.width, cx.height);
+    let camera = match cx.node.inputs.get("scene") {
+        Some(root) => {
+            let by_id: std::collections::BTreeMap<_, _> =
+                cx.nodes.iter().map(|n| (n.id, n)).collect();
+            let lookup = |id| by_id.get(&id).copied();
+            let scene = veylvik_scene::evaluate_in(
+                &veylvik_scene::Graph {
+                    width: cx.width,
+                    height: cx.height,
+                    node: &lookup,
+                },
+                *root,
+                cx.time,
+            )
+            .map_err(error)?;
+            let index = node
+                .camera
+                .at(cx.time)
+                .map_err(error)?
+                .round()
+                .clamp(0.0, 64.0);
+            scene.camera(index as usize, cx.width, cx.height)
+        }
+        None => home,
+    };
+    let view = veylvik_scene::math::rigid_inverse(&camera.world);
+    let mut row = [0.0; COUNT];
+    for (i, line) in view.iter().take(3).enumerate() {
+        row[i * 4..i * 4 + 4].copy_from_slice(line);
+    }
+    row[12] = veylvik_scene::home_distance(cx.width, camera.focal_length, camera.sensor_width);
+    Ok(row)
 }
 const EMITTER: usize = 0;
 const TARGET: usize = 1;
@@ -190,15 +231,12 @@ impl RenderNode for Particles {
     }
     /// The settings rows at `time` as an image, three values a texel; equal settings
     /// share one image, so an unkeyed system stays cached.
-    fn data(
-        &self,
-        time: Time,
-        _width: u32,
-        _height: u32,
-    ) -> Result<Option<std::sync::Arc<crate::Image>>> {
+    fn data(&self, cx: &Cx<'_>) -> Result<Option<std::sync::Arc<crate::Image>>> {
+        let time = cx.time;
         type Kept = Vec<(Vec<u32>, std::sync::Arc<crate::Image>)>;
         static BLOCKS: std::sync::Mutex<Kept> = std::sync::Mutex::new(Vec::new());
-        let rows = rows(self, time)?;
+        let mut rows = rows(self, time)?;
+        rows.push(camera(self, cx)?);
         let key: Vec<u32> = rows.iter().flatten().map(|v| v.to_bits()).collect();
         let mut kept = BLOCKS
             .lock()
@@ -210,8 +248,11 @@ impl RenderNode for Particles {
             .iter()
             .flat_map(|row| row.chunks(3).map(|v| [v[0], v[1], v[2], 1.0]))
             .collect();
-        let image =
-            std::sync::Arc::new(crate::Image::new((COUNT / 3) as u32, ROWS as u32, texels)?);
+        let image = std::sync::Arc::new(crate::Image::new(
+            (COUNT / 3) as u32,
+            ROWS as u32 + 1,
+            texels,
+        )?);
         if kept.len() >= 32 {
             kept.remove(0);
         }
@@ -230,7 +271,7 @@ impl RenderNode for Particles {
         let pixels = u64::from(cx.width) * u64::from(cx.height);
         let tile = tile(pixels);
         let tiles = u64::from(cx.width.div_ceil(tile) * cx.height.div_ceil(tile));
-        if pixels < tiles + (COUNT * ROWS) as u64 {
+        if pixels < tiles + (COUNT * (ROWS + 1)) as u64 {
             return Err(error("Particles need a frame of at least 32 x 32 pixels"));
         }
         let threads = if wired("emitter") {

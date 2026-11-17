@@ -576,3 +576,171 @@ fn a_sprite_is_drawn_as_each_particle() {
     let spun = render_with(&renderer, turning, vec![("sprite", sprite)], (t, 20));
     assert!(spun != out);
 }
+#[test]
+#[ignore = "requires Vulkan"]
+fn hues_vary_sprites_trail_and_thin_obstacles_hold() {
+    let renderer = Renderer::new().unwrap();
+    // Red particles with full colour variation come out in many hues.
+    let mut confetti = still();
+    confetti.width = 120.0.into();
+    confetti.height = 80.0.into();
+    confetti.rate = 60.0.into();
+    confetti.size = 1.0.into();
+    confetti.colour = [1.0, 0.0, 0.0, 1.0];
+    confetti.end_colour = [1.0, 0.0, 0.0, 1.0];
+    let plain = render(&renderer, confetti.clone(), None, (2, 1));
+    assert!(plain.iter().all(|p| p[1] < 0.01 && p[2] < 0.01));
+    confetti.colour_variation = 1.0.into();
+    let varied = render(&renderer, confetti, None, (2, 1));
+    let leaning = |c: usize| {
+        varied
+            .iter()
+            .filter(|p| p[3] > 0.1 && p[c] > p[(c + 1) % 3] && p[c] > p[(c + 2) % 3])
+            .count()
+    };
+    assert!(
+        leaning(0) > 3 && leaning(1) > 3 && leaning(2) > 3,
+        "{} {} {}",
+        leaning(0),
+        leaning(1),
+        leaning(2)
+    );
+    // Fast particles do not pass a floor two pixels thick.
+    let mut falling = still();
+    falling.gravity = 0.0.into();
+    falling.speed = 900.0.into();
+    falling.direction = 270.0.into();
+    falling.spread = 20.0.into();
+    falling.life = 0.3.into();
+    falling.rate = 300.0.into();
+    falling.size = 0.7.into();
+    let thin = block(0..W, 90..92, [1.0; 4]);
+    let below = |pixels: &[[f32; 4]]| {
+        pixels
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| *i as u32 / W >= 94)
+            .map(|(_, p)| p[3])
+            .sum::<f32>()
+    };
+    let through = below(&render(&renderer, falling.clone(), None, (2, 1)));
+    let held = below(&render_with(
+        &renderer,
+        falling,
+        vec![("obstacle", thin)],
+        (2, 1),
+    ));
+    assert!(
+        through > 3.0 && held < 0.02 * through,
+        "{held} vs {through}"
+    );
+    // A sprite with a streak leaves copies behind it, and only behind it.
+    let sprite = block(0..W, 0..H, [1.0; 4]);
+    let mut one = still();
+    one.x = 40.0.into();
+    one.rate = 1.0.into();
+    one.duration = 0.02.into();
+    one.size = 4.0.into();
+    one.speed = 80.0.into();
+    one.direction = 0.0.into();
+    one.spread = 0.0.into();
+    let seen = (5..19).find_map(|t| {
+        let out = render_with(
+            &renderer,
+            one.clone(),
+            vec![("sprite", sprite.clone())],
+            (t, 20),
+        );
+        (mass(&out).0 > 1.0).then_some((t, out))
+    });
+    let (t, out) = seen.expect("the burst particle is alive at some frame");
+    let (left, right, ..) = span(&out);
+    one.streak = 0.2.into();
+    let (trail_left, trail_right, ..) = span(&render_with(
+        &renderer,
+        one,
+        vec![("sprite", sprite)],
+        (t, 20),
+    ));
+    assert!(
+        trail_right <= right + 1 && trail_left + 8 <= left,
+        "{trail_left} {trail_right} vs {left} {right}"
+    );
+}
+/// Particles filmed by a 3D camera moved `shift` pixels to the right.
+fn render_filmed(renderer: &Renderer, particles: nodes::Particles, shift: f32) -> Vec<[f32; 4]> {
+    let mut camera = registry::CAMERA_3D.default_operation();
+    camera["placement"]["position"] = serde_json::json!([shift, 0.0, 0.0]);
+    let camera = Node::new("camera", serde_json::from_value(camera).unwrap(), &[]);
+    let node = Node::new(
+        "particles",
+        Operation::Particles(particles),
+        &[("scene", camera.id)],
+    );
+    let doc = Composition {
+        ocio: Default::default(),
+        working_space: Default::default(),
+        display: Default::default(),
+        groups: Default::default(),
+        schema: 1,
+        frame_count: 240,
+        width: W,
+        height: H,
+        frame_rate: Time::new(24, 1).unwrap(),
+        output: node.id,
+        nodes: [camera, node].into_iter().map(|n| (n.id, n)).collect(),
+    };
+    let plan = Plan::compile(&doc).unwrap();
+    let frame = renderer
+        .render_gpu_cached(
+            &plan,
+            RenderRequest::full(Time::new(2, 1).unwrap()),
+            &ImageInputs::default(),
+        )
+        .unwrap();
+    renderer.read_frame(&frame).unwrap().pixels
+}
+#[test]
+#[ignore = "requires Vulkan"]
+fn depth_spreads_particles_and_a_scene_camera_films_them() {
+    let renderer = Renderer::new().unwrap();
+    // A still point of particles to the right of the frame's centre. Flat, it is a dot.
+    let mut point = still();
+    point.x = 120.0.into();
+    point.size = 1.0.into();
+    let (left, right, top, bottom) = span(&render(&renderer, point.clone(), None, (2, 1)));
+    assert!(
+        right - left <= 4 && bottom - top <= 4,
+        "{left} {right} {top} {bottom}"
+    );
+    // With depth, births lie 50 px in front of and behind the frame: seen from the
+    // frame's centre they spread along the line through it (x 113..132 for this lens),
+    // and stay on the centre's height.
+    point.depth = 100.0.into();
+    let deep = render(&renderer, point.clone(), None, (2, 1));
+    let (left, right, top, bottom) = span(&deep);
+    assert!(
+        (110..=114).contains(&left) && (130..=135).contains(&right),
+        "{left} {right}"
+    );
+    assert!(top >= 56 && bottom <= 64, "{top} {bottom}");
+    // The same frame again is identical.
+    assert_eq!(render(&renderer, point.clone(), None, (2, 1)), deep);
+    // A camera in the scene films them: moved 20 px right, flat particles shift 20 px
+    // left; a camera where the home view is leaves the picture as it was.
+    point.depth = 0.0.into();
+    let home = render(&renderer, point.clone(), None, (2, 1));
+    assert_eq!(render_filmed(&renderer, point.clone(), 0.0), home);
+    let (_, x, y) = mass(&render_filmed(&renderer, point.clone(), 20.0));
+    assert!((x - 99.5).abs() < 1.0 && (y - 59.5).abs() < 1.0, "{x} {y}");
+    // In depth, near particles shift more than far ones: the cloud widens (parallax).
+    point.depth = 100.0.into();
+    let (left, right, ..) = span(&render_filmed(&renderer, point.clone(), 20.0));
+    assert!(
+        left < 98 && right > 104 && right - left > 8,
+        "{left} {right}"
+    );
+    // Camera 0 is the home view even with a scene connected.
+    point.camera = 0.0.into();
+    assert_eq!(render_filmed(&renderer, point, 20.0), deep);
+}

@@ -1508,8 +1508,8 @@ and `colour`.
   dragged; the inspector changes the number of points (resampling the warp so
   far) and resets the mesh. Points are not keyable yet, and there are no tangent
   handles.
-- **Particles** (`particles`, optional inputs emitter, target, field, obstacle
-  and sprite): soft dots or pictures on a transparent frame.
+- **Particles** (`particles`, optional inputs emitter, target, field, obstacle,
+  sprite and scene): soft dots or pictures on a transparent frame.
   - *Birth.* Without an emitter, **Rate** particles a second (at most 2000000
     alive) are born inside the box **Width** x **Height** centred on **X**,
     **Y** (0 x 0 is a point). With an emitter, they are born where that image
@@ -1530,7 +1530,19 @@ and `colour`.
     drives them away) and **Vortex** swings them round it, both easing to
     nothing at the point itself. The obstacle input is a matte: a particle
     about to enter it (alpha above 0.5) is turned back, reflected about the
-    way out of the matte and keeping **Bounce** of its speed.
+    way out of the matte and keeping **Bounce** of its speed; each move is
+    checked about every two pixels, so thin mattes hold.
+  - *Depth.* Particles live in the 3D scenes' space: the frame at depth 0, in
+    pixels, z towards the viewer. **Depth** spreads births that many pixels in
+    front of and behind the frame, makes the launch spread a cone and lets the
+    turbulence carry particles through depth; fields, the pull point, the
+    obstacle and the target act on their position across the frame. They are
+    filmed by camera number **Camera** of the scene connected to the scene
+    input, counted as a Render scene node counts them (0, or no scene, is the
+    view that sees the frame exactly), so they follow a 3D or solved camera
+    with parallax. Near particles are drawn larger (radius at most 48 pixels);
+    those behind the camera are not drawn. They are not hidden by the scene's
+    objects.
   - *Target.* With a target connected each particle is given a place on it,
     drawn exactly in proportion to the target's alpha (a cumulative table over
     tiles of 16 pixels, 32 in frames above 2.5 megapixels, then a walk through
@@ -1546,7 +1558,9 @@ and `colour`.
     many seconds earlier (at most 96 pixels). With a sprite connected, that
     input's whole frame (averaged to 64 x 64) is drawn as each particle, Size
     wide either side and in the frame's proportions, tinted by the colours and
-    turning at **Spin** degrees a second either way; streaks are not drawn.
+    turning at **Spin** degrees a second either way; Streak leaves five fading
+    copies back along the path. **Colour variation** turns each particle's hue
+    by its own random amount (1 is anywhere round the colour wheel).
     **Glow** 1 adds the particles' light (alpha clamped to 1); 0 lets them
     cover one another (alpha 1 - exp(-sum)).
   - *Time.* Nothing is simulated from frame to frame: a particle is a function
@@ -1562,7 +1576,8 @@ and `colour`.
     then resolved. The frame must be at least 32 x 32 pixels. In Studio the
     inspector shows the settings that apply to the node's wiring, **Start from
     a look** sets every setting for a ready-made effect scaled to the frame
-    (Sparks, Embers, Snow, Rain, Magic dust, Whirlpool, Disintegrate, Assemble),
+    (Sparks, Embers, Snow, Rain, Confetti, Magic dust, Whirlpool, Disintegrate,
+    Assemble),
     and the emitter box and the pull point are dragged in the viewer.
 - **Shape warp** (`shape_warp`, input image): pulls the image so the start
   shape `from` lands on the end shape `to`. Both are closed paths in pixels
