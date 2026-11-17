@@ -30,6 +30,22 @@ impl Studio {
     /// The Render scene node in the viewer, if any.
     /// The Render scene in the viewer: the viewed node itself, or the nearest one
     /// upstream of it (so a scene composited over a backdrop still navigates).
+    /// Shows the viewer alone on the whole screen, or brings the panels back.
+    pub(crate) fn set_viewer_fullscreen(&mut self, ctx: &egui::Context, on: bool) {
+        self.viewer_fullscreen = on;
+        // A window that was full screen already stays that way afterwards.
+        if on {
+            self.window_was_windowed = !ctx.input(|i| i.viewport().fullscreen.unwrap_or(false));
+        }
+        if self.window_was_windowed {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(on));
+        }
+        self.status = if on {
+            "Viewer full screen: F11 or Escape to leave".into()
+        } else {
+            String::new()
+        };
+    }
     pub(crate) fn viewed_scene(&self) -> Option<NodeId> {
         let doc = self.project.document.snapshot();
         let mut pending =

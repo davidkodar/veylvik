@@ -122,6 +122,31 @@ impl Studio {
             ui.checkbox(&mut s.paths, "Camera paths");
             ui.checkbox(&mut s.selection, "Selected object");
             ui.checkbox(&mut s.points, "Points (from a camera solve)");
+            ui.separator();
+            ui.horizontal(|ui| {
+                let all = |s: &mut Show, on: bool| {
+                    *s = Show {
+                        cameras: on,
+                        lights: on,
+                        frame: on,
+                        paths: on,
+                        selection: on,
+                        points: on,
+                    };
+                };
+                if ui
+                    .button("Hide all")
+                    .on_hover_text(
+                        "See only the picture; F11 also shows the viewer alone on the whole screen",
+                    )
+                    .clicked()
+                {
+                    all(&mut s, false);
+                }
+                if ui.button("Show all").clicked() {
+                    all(&mut s, true);
+                }
+            });
         });
         ctx.data_mut(|d| d.insert_temp(egui::Id::new("scene-guides"), s));
         let doc = self.project.document.snapshot();
@@ -346,6 +371,9 @@ impl Studio {
         canvas: egui::Rect,
         transform: crate::viewer::ViewTransform,
     ) {
+        if self.viewer_fullscreen {
+            return;
+        }
         let ctx = ui.ctx().clone();
         let Some((scene, active)) = self.viewed_scene_now() else {
             return;
@@ -525,11 +553,23 @@ impl Studio {
             }
         }
         if s.lights {
+            // A light split into strips is one node: one marker, at the row's middle.
+            let mut drawn = std::collections::BTreeSet::new();
             for light in &scene.lights {
+                if !drawn.insert(light.node) {
+                    continue;
+                }
                 let colour = tint(light.colour);
                 let selected_light = light.node == selected;
                 let ring = Stroke::new(if selected_light { 2.0_f32 } else { 1.2_f32 }, colour);
-                let at = light.position();
+                let row: Vec<[f32; 3]> = scene
+                    .lights
+                    .iter()
+                    .filter(|l| l.node == light.node)
+                    .map(|l| l.position())
+                    .collect();
+                let at =
+                    [0, 1, 2].map(|k| row.iter().map(|p| p[k]).sum::<f32>() / row.len() as f32);
                 let dir = light.direction();
                 let reach = wf * 0.18;
                 match light.kind {

@@ -1481,7 +1481,7 @@ and `colour`.
   scene's first light, else adds a Shot light to the scene's Merge scenes.
   **Pick light** instead takes a click on the light in the frame (a sun, lamp
   or window) as that source.
-- **Gold title scene** (Studio Add > Gold title (3D scene); `veylvik demo FILE
+- **Gold title scene** (Studio Add > Gold title (3D scene), near the top of the menu; `veylvik demo FILE
   --gold-title`): adds, as one undo step, a 3D title in brushed gold (Brushed
   0.6, Brush angle 65, Grain 0.37, Ridges and Imperfections 0.12, roughness 0.15,
   a 6-pixel round bevel) in a dim even room, lit by three rows of strip lights

@@ -88,10 +88,15 @@ impl Studio {
                 if item(ui, "Search nodes…", "Tab", ready) { self.open_node_palette(ui.ctx()); }
                 ui.separator();
                 let mut chosen = None;
+                let mut scene = false;
                 ui.add_enabled_ui(ready, |ui| {
                     if item(ui, "Image or footage…", "Ctrl+I", true) { chosen = Some(node_palette::Choice::Image); }
                     if item(ui, "Text", "", true) { chosen = Some(node_palette::Choice::Node(&registry::TEXT)); }
                     if item(ui, "Text outlines…", "", true) { chosen = Some(node_palette::Choice::Text); }
+                    scene = ui
+                        .button("Gold title (3D scene)")
+                        .on_hover_text("Brushed gold 3D lettering under studio strip lights on a dark wall, as ordinary nodes sized to this composition. It becomes the output and switches the display to Filmic; change the words on its Title node.")
+                        .clicked();
                     ui.separator();
                     for (label, kinds) in ADD_MENU {
                         ui.menu_button(label, |ui| {
@@ -104,14 +109,6 @@ impl Studio {
                     for recipe in Recipe::ALL {
                         if item(ui, recipe.label(), "", true) { chosen = Some(node_palette::Choice::Effect(recipe)); }
                     }
-                });
-                ui.separator();
-                let mut scene = false;
-                ui.add_enabled_ui(ready, |ui| {
-                    scene = ui
-                        .button("Gold title (3D scene)")
-                        .on_hover_text("Brushed gold 3D lettering under studio strip lights on a dark wall, as ordinary nodes sized to this composition. It becomes the output and switches the display to Filmic; change the words on its Title node.")
-                        .clicked();
                 });
                 if scene {
                     ui.close();
@@ -138,6 +135,7 @@ impl Studio {
             ui.menu_button("View", |ui| {
                 let mut show_editor=!self.node_editor_hidden;
                 if ui.checkbox(&mut show_editor,"Node / animation editor").changed() {self.node_editor_hidden = !show_editor;}
+                if item(ui, "Viewer full screen", "F11", true) { let ctx = ui.ctx().clone(); self.set_viewer_fullscreen(&ctx, true); }
 
                 ui.checkbox(&mut self.browser.visible, "Library panel");
                 ui.checkbox(&mut self.inspector_visible, "Inspector panel");

@@ -242,6 +242,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 library: preset_library::Library::default(),
                 browser: asset_browser::Browser::default(),
                 inspector_visible: true,
+                viewer_fullscreen: false,
+                window_was_windowed: false,
                 node_palette: node_palette::Controls::default(),
                 node_finder: node_finder::Controls::default(),
                 key_timeline: key_timeline::Keys::default(),
@@ -338,6 +340,10 @@ struct Studio {
     library: preset_library::Library,
     browser: asset_browser::Browser,
     inspector_visible: bool,
+    /// The viewer alone fills the screen: panels and 3D guides are hidden (F11).
+    viewer_fullscreen: bool,
+    /// The window was not full screen when the viewer took it over, so it goes back.
+    window_was_windowed: bool,
     node_palette: node_palette::Controls,
     node_finder: node_finder::Controls,
     key_timeline: key_timeline::Keys,
@@ -2974,6 +2980,13 @@ impl eframe::App for Studio {
                 self.help = !self.help;
             }
         }
+        // F11 shows the viewer alone on the whole screen; F11 or Escape brings the rest back.
+        let leave = self.viewer_fullscreen
+            && self.picking.is_none()
+            && ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape));
+        if leave || ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::F11)) {
+            self.set_viewer_fullscreen(&ctx, !self.viewer_fullscreen);
+        }
         if ctx.input(|i| i.viewport().close_requested()) && !self.allow_close {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
             self.leave(Leave::Close, &ctx);
@@ -2981,6 +2994,7 @@ impl eframe::App for Studio {
         ui.add_enabled_ui(
             !self.files.busy() && !self.authoring_dialog_open() && self.confirm.is_none(),
             |ui| {
+                if !self.viewer_fullscreen {
                 egui::Panel::top("menu_bar").show_inside(ui, |ui| self.menu_bar(ui));
                 egui::Panel::bottom("status").show_inside(ui, |ui| self.status_bar(ui));
                 self.asset_browser(ui);
@@ -3029,6 +3043,7 @@ impl eframe::App for Studio {
                             if self.animation_editor.visible {self.animation_workspace(ui);} else {self.graph(ui);}
                         }
                     });
+                }
                 egui::CentralPanel::default().frame(design::panel(ui.ctx())).show_inside(ui, |ui| {
                     ui.horizontal_wrapped(|ui| {
                         ui.heading("Viewer");
