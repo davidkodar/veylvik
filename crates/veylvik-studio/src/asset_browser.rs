@@ -142,6 +142,7 @@ impl Studio {
         let mut example = None;
         let mut import = false;
         let mut media = None;
+        let mut add_scene = false;
         egui::Panel::left("asset-library").frame(design::panel(ui.ctx())).default_size(326.).min_size(230.).max_size(420.).resizable(true).show_inside(ui,|ui| {
             ui.horizontal(|ui| {
                 ui.heading("Library");
@@ -183,6 +184,26 @@ impl Studio {
                 let selected_saved=self.browser.selected_saved.as_ref().filter(|_|materials_tab).and_then(|key|self.materials.entries.iter().position(|e|e.key()==*key));
                 let reserve=if selected.is_some()||selected_saved.is_some() {145.} else {38.};
                 egui::ScrollArea::vertical().id_salt("library-cards").max_height((ui.available_height()-reserve).max(80.)).show(ui,|ui| {
+                    // Whole scenes built from ordinary nodes come first among the templates.
+                    if self.browser.tab==Tab::Templates && "gold title 3d scene brushed metal lettering".contains(&query) {
+                        let width=((ui.available_width()-10.)/2.).floor();
+                        ui.vertical(|ui| {
+                            ui.set_width(width);
+                            let (rect,response)=ui.allocate_exact_size(egui::vec2(width,width*9./16.),egui::Sense::click());
+                            if ui.is_rect_visible(rect) {
+                                let texture=self.browser.textures.entry("scene-gold_title").or_insert_with(|| {
+                                    let image=image::load_from_memory(include_bytes!("../assets/showcase/scene-gold_title.png")).expect("bundled scene preview").to_rgba8();
+                                    ui.ctx().load_texture("scene-gold_title",egui::ColorImage::from_rgba_unmultiplied([image.width() as usize,image.height() as usize],image.as_raw()),egui::TextureOptions::LINEAR)
+                                }).id();
+                                ui.painter().image(texture,rect,egui::Rect::from_min_max(egui::Pos2::ZERO,egui::pos2(1.,1.)),egui::Color32::WHITE);
+                                if response.hovered() {ui.painter().rect_stroke(rect,6.,egui::Stroke::new(1.5_f32,design::border(ui.ctx())),egui::StrokeKind::Inside);}
+                            }
+                            let caption=ui.add_sized([width,26.],egui::Button::new("Gold title (3D)").frame(false));
+                            let response=response.union(caption).on_hover_text("Brushed gold 3D lettering under studio strip lights on a dark wall, as ordinary nodes sized to this composition. Double-click to add it: it becomes the output and switches the display to Filmic, and its Title node is selected so you can change the words.");
+                            if response.double_clicked() {add_scene=true;}
+                        });
+                        ui.add_space(6.);
+                    }
                     let shown=self.browser.category.clone();
                     let favourite=|key:&str|self.materials.is_favourite(key);
                     let mut cards:Vec<Card>=Vec::new();
@@ -344,6 +365,9 @@ impl Studio {
         }
         if let Some(id) = example {
             self.leave(crate::Leave::Example(id), ui.ctx());
+        }
+        if add_scene {
+            self.add_gold_title();
         }
         if import {
             self.import_image(self.graph.insertion_position(ui.ctx()));

@@ -30,6 +30,36 @@ impl Studio {
     /// The Render scene node in the viewer, if any.
     /// The Render scene in the viewer: the viewed node itself, or the nearest one
     /// upstream of it (so a scene composited over a backdrop still navigates).
+    /// Adds the Gold title scene to the composition and selects its Title node, so
+    /// the words are in the inspector.
+    pub(crate) fn add_gold_title(&mut self) {
+        self.playing = false;
+        let built = veylvik_presets::gold_title(
+            self.project.document.snapshot(),
+            "YOUR TITLE",
+            "A LINE OF TEXT BELOW",
+        );
+        let applied = built.map_err(|e| e.to_string()).and_then(|b| {
+            self.project
+                .apply(&b.commands)
+                .map(|()| b.edit)
+                .map_err(|e| e.to_string())
+        });
+        match applied {
+            Ok(edit) => {
+                if let Some(id) = edit {
+                    self.project.selected = id;
+                    self.refresh_draft();
+                }
+                self.project.preview = None;
+                self.status =
+                    "Gold title added: change the words in the inspector (the Title node is selected)"
+                        .into();
+                self.request_preview();
+            }
+            Err(e) => self.fail(e),
+        }
+    }
     /// Shows the viewer alone on the whole screen, or brings the panels back.
     pub(crate) fn set_viewer_fullscreen(&mut self, ctx: &egui::Context, on: bool) {
         self.viewer_fullscreen = on;

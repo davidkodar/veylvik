@@ -88,15 +88,10 @@ impl Studio {
                 if item(ui, "Search nodes…", "Tab", ready) { self.open_node_palette(ui.ctx()); }
                 ui.separator();
                 let mut chosen = None;
-                let mut scene = false;
                 ui.add_enabled_ui(ready, |ui| {
                     if item(ui, "Image or footage…", "Ctrl+I", true) { chosen = Some(node_palette::Choice::Image); }
                     if item(ui, "Text", "", true) { chosen = Some(node_palette::Choice::Node(&registry::TEXT)); }
                     if item(ui, "Text outlines…", "", true) { chosen = Some(node_palette::Choice::Text); }
-                    scene = ui
-                        .button("Gold title (3D scene)")
-                        .on_hover_text("Brushed gold 3D lettering under studio strip lights on a dark wall, as ordinary nodes sized to this composition. It becomes the output and switches the display to Filmic; change the words on its Title node.")
-                        .clicked();
                     ui.separator();
                     for (label, kinds) in ADD_MENU {
                         ui.menu_button(label, |ui| {
@@ -110,28 +105,6 @@ impl Studio {
                         if item(ui, recipe.label(), "", true) { chosen = Some(node_palette::Choice::Effect(recipe)); }
                     }
                 });
-                if scene {
-                    ui.close();
-                    self.playing = false;
-                    let built = veylvik_presets::gold_title(
-                        self.project.document.snapshot(),
-                        "YOUR TITLE",
-                        "A LINE OF TEXT BELOW",
-                    );
-                    match built.and_then(|b| self.project.apply(&b.commands).map(|()| b.edit).map_err(|e| veylvik_document::Error(e.to_string()))) {
-                        Ok(edit) => {
-                            // The Title node is selected, so its words are in the inspector.
-                            if let Some(id) = edit {
-                                self.project.selected = id;
-                                self.refresh_draft();
-                            }
-                            self.project.preview = None;
-                            self.status = "Gold title added: change the words in the inspector (the Title node is selected)".into();
-                            self.request_preview();
-                        }
-                        Err(e) => self.fail(e.to_string()),
-                    }
-                }
                 if let Some(choice) = chosen {
                     self.playing = false;
                     self.add_from_palette(choice, self.graph.insertion_position(ui.ctx()));
