@@ -14,10 +14,26 @@ pub(crate) struct Lighting {
     /// PBR maps: normal strength, height depth (pixels), connected maps as bits
     /// (1 normal, 2 roughness, 4 height, 8 DirectX normals), unused.
     pub maps: [f32; 4],
+    /// Finish: ridges, imperfections, the grain's angle (radians), unused.
+    pub finish: [f32; 4],
 }
 /// Uniform size, shared by the bind group layout and per-node buffers.
 pub(crate) const SIZE: u64 = std::mem::size_of::<Lighting>() as u64;
 impl Lighting {
+    /// Take the material's finish settings as they are at `time`.
+    pub(crate) fn set_finish(
+        &mut self,
+        m: &veylvik_document::nodes::Material,
+        time: veylvik_document::Time,
+    ) -> crate::Result<()> {
+        self.finish = [
+            m.ridges.at(time)?.clamp(0.0, 1.0),
+            m.imperfections.at(time)?.clamp(0.0, 1.0),
+            m.brush_angle.at(time)?.to_radians(),
+            0.0,
+        ];
+        Ok(())
+    }
     /// A still of the material at time zero (library samples); `shot` is its Shot
     /// mix (palette[0].w).
     pub fn material(m: &veylvik_document::nodes::Material, shot: f32) -> Self {
@@ -54,6 +70,7 @@ impl Lighting {
             lights: [[[0.; 4]; 4]; 8],
             palette: palette.map(|[r, g, b]| [r, g, b, 0.]),
             maps: [0.; 4],
+            finish: [0.; 4],
         };
         // Recoloured looks (palette[2].w) may shade differently from the family's
         // original colours, which must keep rendering as they always have.

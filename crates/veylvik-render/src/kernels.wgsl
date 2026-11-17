@@ -7,7 +7,7 @@ struct Params { size_op: vec4<u32>, values: vec4<f32>, extra: vec4<f32> }
 @group(0) @binding(8) var<storage, read> fourth: array<vec4<f32>>;
 @group(0) @binding(5) var<storage, read> ltc: array<vec4<f32>>;
 struct StudioLight { center:vec4<f32>, u:vec4<f32>, v:vec4<f32>, colour:vec4<f32> }
-struct StudioLighting { optics:vec4<f32>, environment:vec4<f32>, lights:array<StudioLight,8>, palette:array<vec4<f32>,3>, maps:vec4<f32> }
+struct StudioLighting { optics:vec4<f32>, environment:vec4<f32>, lights:array<StudioLight,8>, palette:array<vec4<f32>,3>, maps:vec4<f32>, finish:vec4<f32> }
 @group(0) @binding(6) var<uniform> studio:StudioLighting;
 @group(0) @binding(7) var<storage,read> environment_map:array<vec4<f32>>;
 fn inside(gid:vec3<u32>)->bool { return gid.x<p.size_op.x && gid.y<p.size_op.y; }
@@ -796,6 +796,8 @@ fn surface_detail(pos:vec2<f32>,n:vec3<f32>)->vec3<f32> {
     }
     return normalize(vec3<f32>(n.xy+detail.xy,n.z*detail.z));
 }
+// Smooth noise in 0..1 over the plate, for the finish.
+fn plate_noise(q:vec2<f32>)->f32 {return fire_noise(vec3<f32>(q,0.0),907u);}
 fn studio_surface(uv:vec2<f32>, normal:vec3<f32>,albedo:vec3<f32>)->vec3<f32> {
     let kind=p.size_op.w;
     // Lighting coordinates follow canvas proportions, independent of texture scale.
@@ -810,26 +812,57 @@ fn studio_surface(uv:vec2<f32>, normal:vec3<f32>,albedo:vec3<f32>)->vec3<f32> {
     let fine_y=fire_noise(texture_position*140.0+vec3<f32>(4.1,9.2,0.7),191u)-0.5;
     let texture=fire_fbm(texture_position*19.0+vec3<f32>(1.0),257u);
     var bump=vec3<f32>(fine,fine_y,0.0)*0.012*p.extra.x;
+    let grain_turn=vec2<f32>(cos(studio.finish.z),sin(studio.finish.z));
+    let grain_across=vec3<f32>(-grain_turn.y,grain_turn.x,0.0);
     if p.extra.w>0.5 {
-        let brush=fire_noise(vec3<f32>(uv.x*3.0,uv.y*min(500.0,p.values.x*0.65),0.0),71u)-0.5;
+        // The grain runs along x, turned by the finish's angle.
+        let turned=vec2<f32>(uv.x*grain_turn.x+uv.y*grain_turn.y,uv.y*grain_turn.x-uv.x*grain_turn.y);
+        let brush=fire_noise(vec3<f32>(turned.x*3.0,turned.y*min(500.0,p.values.x*0.65),0.0),71u)-0.5;
         // Brush grooves vary across the grain, not along it. Project the
         // slope onto the surface so the engraving wraps around the sphere.
-        let across=normalize(vec3<f32>(0.0,1.0,0.0)-normal*normal.y+vec3<f32>(0.0,0.0,0.00001));
+        let across=normalize(grain_across-normal*dot(normal,grain_across)+vec3<f32>(0.0,0.0,0.00001));
         bump=across*brush*0.22*p.extra.x;
     }
     var n=normalize(normal+bump);
+    // Finish: a worked plate undulates in long shallow ridges along the grain, which
+    // tip parts of it towards the light and parts away (the soft bands on real metal);
+    // wear leaves it not quite flat, unevenly polished and faintly scratched.
+    let ridged=studio.finish.x;let worn=studio.finish.y;
+    var plate_polish=0.0;var plate_gain=1.0;
+    if ridged>0.0 || worn>0.0 {
+        let pixel=uv*p.values.x;
+        let q=vec2<f32>(pixel.x*grain_turn.x+pixel.y*grain_turn.y,pixel.y*grain_turn.x-pixel.x*grain_turn.y);
+        let over=normalize(grain_across-n*dot(n,grain_across)+vec3<f32>(0.0,0.0,0.00001));
+        let run=normalize(cross(over,n));
+        let ridge=(plate_noise(vec2<f32>(q.x*0.0026,q.y*0.0105))-0.5)+0.4*(plate_noise(vec2<f32>(q.x*0.006+13.0,q.y*0.028+5.0))-0.5);
+        let wave=vec2<f32>(plate_noise(q*0.012+vec2<f32>(21.0,5.0))-0.5,plate_noise(q*0.012+vec2<f32>(4.0,31.0))-0.5);
+        n=normalize(n+over*ridge*0.22*ridged+(run*wave.x+over*wave.y)*0.025*worn);
+        if worn>0.0 {
+            plate_polish=((plate_noise(q*0.006+vec2<f32>(3.0,9.0))-0.5)+(plate_noise(q*0.019+vec2<f32>(11.0,2.0))-0.5)*0.6
+                +(plate_noise(q*0.07+vec2<f32>(7.0,4.0))-0.5)*0.3+(plate_noise(q*0.9+vec2<f32>(1.0,6.0))-0.5)*0.1)*1.1*worn;
+            // Sparse fine scratches a little off the grain, some bright and some dull.
+            var bright=0.0;var dull=0.0;
+            for(var k=0;k<3;k++) {
+                let turn=(f32(k)-1.0)*0.22;let tc=cos(turn);let ts=sin(turn);
+                let r=vec2<f32>(q.x*tc-q.y*ts,q.x*ts+q.y*tc);let o=f32(k)*37.0;
+                bright+=smoothstep(0.62,0.95,plate_noise(vec2<f32>(r.x*0.014+o,r.y*0.7+o)))*smoothstep(0.35,0.6,plate_noise(r*0.03+vec2<f32>(o,5.0)));
+                dull+=smoothstep(0.62,0.95,plate_noise(vec2<f32>(r.x*0.012+o+50.0,r.y*0.55+o)))*smoothstep(0.35,0.6,plate_noise(r*0.025+vec2<f32>(9.0,o)));
+            }
+            plate_gain=max(1.0+worn*(0.3*bright-0.16*dull),0.0);
+        }
+    }
     if p.extra.w>0.5 {
         // Real-time anisotropic IBL approximation (Filament bent reflection
         // normal): brush direction shapes the lobe instead of blurring it
         // equally in every direction. Use the same frame for area lights.
-        var along=vec3<f32>(n.z,0.0,-n.x);
-        if dot(along,along)<0.000001 {along=vec3<f32>(1.0,0.0,0.0);}
+        var along=cross(grain_across,n);
+        if dot(along,along)<0.000001 {along=vec3<f32>(grain_turn.x,grain_turn.y,0.0);}
         along=normalize(along);
         let projected_view=cross(cross(along,v),along);
         let anisotropic_normal=normalize(projected_view+n*0.00001);
         n=normalize(mix(n,anisotropic_normal,clamp(p.extra.x*1.1,0.0,0.85)));
     }
-    let rough=clamp(surface_roughness()+(texture-0.5)*p.extra.x*select(select(0.06,0.14,kind==3u),0.03,p.extra.w>0.5),0.03,1.0);
+    let rough=clamp((surface_roughness()+(texture-0.5)*p.extra.x*select(select(0.06,0.14,kind==3u),0.03,p.extra.w>0.5))*(1.0+plate_polish),0.03,1.0);
     let f0=studio.optics.rgb;
     let nv=max(dot(n,v),0.0001);
     var tangent=v-n*dot(n,v);
@@ -870,7 +903,7 @@ fn studio_surface(uv:vec2<f32>, normal:vec3<f32>,albedo:vec3<f32>)->vec3<f32> {
             if studio.optics.w<0.5 {diffuse+=light.colour.rgb*light.center.w*ltc_rect(origin,diffuse_basis,light.center.xyz,light.u.xyz,light.v.xyz);}
         }
     }
-    return reflected*radiance+(1.0-studio.optics.w)*(vec3<f32>(1.0)-reflected)*albedo*diffuse;
+    return reflected*radiance*plate_gain+(1.0-studio.optics.w)*(vec3<f32>(1.0)-reflected)*albedo*diffuse;
 
 }
 // Glass: the shot behind, bent by the bevel and tinted, plus studio reflections.

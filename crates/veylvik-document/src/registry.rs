@@ -297,6 +297,19 @@ impl NodeType {
         for param in self.parameters {
             value[param.name] = param.default_value();
         }
+        // A new Material is gold, lit and finished to look like it.
+        if self.type_id == "material"
+            && let Ok(crate::Operation::Material(mut material)) =
+                serde_json::from_value(value.clone())
+        {
+            material.shine();
+            material.brushing = crate::optical::Brushing::Directional;
+            material.roughness = 0.15.into();
+            material.ridges = 0.7.into();
+            if let Ok(shining) = serde_json::to_value(crate::Operation::Material(material)) {
+                value = shining;
+            }
+        }
         value
     }
     pub fn schema(&self) -> Value {

@@ -101,6 +101,9 @@ fn materials_are_distinct_finite_and_preserve_partial_alpha() {
                 normal_strength: 1.0.into(),
                 height_depth: 4.0.into(),
                 normal_directx: false,
+                brush_angle: 0.0.into(),
+                ridges: 0.0.into(),
+                imperfections: 0.0.into(),
             }),
             &[("image", input)],
         );

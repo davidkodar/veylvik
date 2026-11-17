@@ -24,6 +24,18 @@ impl Renderer {
         material: &veylvik_document::nodes::Material,
     ) -> Result<Vec<[f32; 4]>> {
         use veylvik_document::{MaterialKind::*, Operation, Time};
+        // Strip lights are for flat faces: on the round sample they show as a small
+        // striped patch, so a material lit by them is sampled in the plain studio.
+        let plain;
+        let material = if material.studio.is_strips() {
+            plain = veylvik_document::nodes::Material {
+                studio: Default::default(),
+                ..material.clone()
+            };
+            &plain
+        } else {
+            material
+        };
         let zero = Time::new(0, 1)?;
         let at = |s: &veylvik_document::Scalar| s.at(zero);
         if matches!(

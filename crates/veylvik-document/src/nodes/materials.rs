@@ -40,6 +40,43 @@ pub struct Material {
     /// The Normal map uses the DirectX convention (green points down).
     #[serde(default)]
     pub normal_directx: bool,
+    /// Turns the grain of brushing, ridges and wear (degrees).
+    #[serde(default = "nothing")]
+    pub brush_angle: Scalar,
+    /// Long shallow undulations along the grain that break reflections into bands.
+    #[serde(default = "nothing")]
+    pub ridges: Scalar,
+    /// Uneven polish, a plate that is not quite flat, and faint scratches.
+    #[serde(default = "nothing")]
+    pub imperfections: Scalar,
+}
+fn nothing() -> Scalar {
+    0.0.into()
+}
+impl Material {
+    /// Whether the material is a metal (by its optics, else its family).
+    pub fn is_metal(&self) -> bool {
+        self.optics.map_or(
+            matches!(
+                self.kind,
+                MaterialKind::Gold
+                    | MaterialKind::Silver
+                    | MaterialKind::Aluminium
+                    | MaterialKind::Bronze
+                    | MaterialKind::LiquidMetal
+            ),
+            |o| o.metallic,
+        )
+    }
+    /// Light and finish a metal so it looks like one: strip lights to reflect, the
+    /// grain turned to cross them, shallow ridges and a little wear. Roughness, grain
+    /// and brushing are left alone, so a named finish (Polished, Brushed, ...) stays.
+    pub fn shine(&mut self) {
+        self.studio = crate::optical::StudioRig::strips();
+        self.brush_angle = 65.0.into();
+        self.ridges = 0.6.into();
+        self.imperfections = 0.3.into();
+    }
 }
 fn one() -> Scalar {
     1.0.into()
@@ -166,6 +203,9 @@ pub static MATERIAL: NodeType = NodeType {
         scalar("shot", "factor", 0.0, 1.0, 0.6),
         scalar("normal_strength", "factor", 0.0, 4.0, 1.0),
         scalar("height_depth", "pixels", 0.0, 64.0, 4.0),
+        scalar("brush_angle", "degrees", -180.0, 180.0, 0.0),
+        scalar("ridges", "factor", 0.0, 1.0, 0.0),
+        scalar("imperfections", "factor", 0.0, 1.0, 0.0),
     ],
 };
 pub static MATERIAL_LAYERS: NodeType = NodeType {
@@ -288,7 +328,10 @@ node!(
         emission,
         shot,
         normal_strength,
-        height_depth
+        height_depth,
+        brush_angle,
+        ridges,
+        imperfections
     ],
     {
         fn validate(&self) -> Result<()> {

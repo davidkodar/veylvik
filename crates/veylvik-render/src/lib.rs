@@ -90,6 +90,7 @@ pub fn material_uniforms(
         colours,
         &material.studio.at(time)?,
     );
+    lighting.set_finish(material, time)?;
     if let Some(e) = environment {
         lighting.environment[2] = if e.absolute {
             e.strength

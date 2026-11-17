@@ -122,6 +122,7 @@ pub(crate) fn for_node(
         .transpose()?;
     let mut lighting = Lighting::new(m.kind, m.optics, colours, &studio);
     lighting.palette[0][3] = m.shot.at(time)?.clamp(0.0, 1.0);
+    lighting.set_finish(m, time)?;
     if matches!(node.operation, Operation::Material(_)) {
         let bit = |port: &str, bit: u32| u32::from(node.inputs.contains_key(port)) * bit;
         let flags = bit("normal_map", 1)

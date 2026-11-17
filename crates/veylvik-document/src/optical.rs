@@ -272,6 +272,42 @@ pub struct StudioRig {
     pub ambient: f32,
     pub lights: Vec<AreaLight>,
 }
+impl StudioRig {
+    /// A dim room with eight long strip lights in front of the surface, tilted a
+    /// little: what polished and brushed metal needs to reflect to look like metal.
+    /// The strips sit in two groups so their reflections cover the whole frame.
+    pub fn strips() -> Self {
+        let strip = |x: f32, y: f32| AreaLight {
+            enabled: true,
+            position: [x, y, 3.0].into(),
+            rotation: [0.0, 0.0, -14.0].into(),
+            size: [7.0, 0.07],
+            colour: [1.0, 0.9, 0.72].into(),
+            intensity: 2.4.into(),
+            follow: false,
+        };
+        Self {
+            environment: 0.35,
+            environment_rotation: default_environment_rotation(),
+            ambient: 0.0,
+            lights: [-0.8, -0.4, 0.0, 0.4, 0.8]
+                .into_iter()
+                .map(|y| strip(-2.5, y))
+                .chain([-0.2, 0.2, 0.6].into_iter().map(|y| strip(-0.3, y)))
+                .collect(),
+        }
+    }
+}
+impl StudioRig {
+    /// Whether this is the strips studio as `strips` makes it (lights unmoved).
+    pub fn is_strips(&self) -> bool {
+        self.lights.len() == 8
+            && self
+                .lights
+                .iter()
+                .all(|l| l.enabled && l.size == [7.0, 0.07] && !l.position.is_animated())
+    }
+}
 fn default_environment() -> f32 {
     0.65
 }

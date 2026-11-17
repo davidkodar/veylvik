@@ -109,6 +109,9 @@ pub fn build(id: &str, b: &mut Builder, source: NodeId) -> Result<NodeId> {
                     normal_strength: 1.0.into(),
                     height_depth: 4.0.into(),
                     normal_directx: false,
+                    brush_angle: 0.0.into(),
+                    ridges: 0.0.into(),
+                    imperfections: 0.0.into(),
                 }),
                 &[("image", shape)],
             );

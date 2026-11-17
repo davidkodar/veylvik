@@ -27,50 +27,53 @@ pub fn material_kind(id: &str) -> Option<MaterialKind> {
 }
 pub fn build(id: &str, b: &mut Builder, source: NodeId) -> Result<NodeId> {
     if let Some(kind) = material_kind(id) {
-        return surface(
-            b,
-            source,
-            crate::nodes::Material {
-                smooth_edges: true,
-                brushing: Default::default(),
-                colours: None,
-                optics: None,
-                studio: Default::default(),
-                kind,
-                scale: 180.0.into(),
-                bevel: 5.0.into(),
-                roughness: (match kind {
-                    MaterialKind::Gold => 0.18,
-                    MaterialKind::Silver => 0.18,
-                    MaterialKind::Bronze => 0.38,
-                    MaterialKind::Aluminium => 0.28,
-                    MaterialKind::Phosphor | MaterialKind::Marble => 0.15,
-                    _ => 0.7,
-                })
-                .into(),
-                lighting: Scalar::Smooth {
-                    keys: [(0, 0.0), (2, 0.12), (4, 0.0)]
-                        .into_iter()
-                        .map(|(ticks, value)| Key {
-                            time: Time { ticks, rate: 1 },
-                            value,
-                            segment: None,
-                        })
-                        .collect(),
-                },
-                grain: (match kind {
-                    MaterialKind::Gold | MaterialKind::Silver => 0.25,
-                    MaterialKind::Bronze => 0.35,
-                    _ => 0.65,
-                })
-                .into(),
-                emission: 1.0.into(),
-                shot: 1.0.into(),
-                normal_strength: 1.0.into(),
-                height_depth: 4.0.into(),
-                normal_directx: false,
+        let mut material = crate::nodes::Material {
+            smooth_edges: true,
+            brushing: Default::default(),
+            colours: None,
+            optics: None,
+            studio: Default::default(),
+            kind,
+            scale: 180.0.into(),
+            bevel: 5.0.into(),
+            roughness: (match kind {
+                MaterialKind::Gold => 0.18,
+                MaterialKind::Silver => 0.18,
+                MaterialKind::Bronze => 0.38,
+                MaterialKind::Aluminium => 0.28,
+                MaterialKind::Phosphor | MaterialKind::Marble => 0.15,
+                _ => 0.7,
+            })
+            .into(),
+            lighting: Scalar::Smooth {
+                keys: [(0, 0.0), (2, 0.12), (4, 0.0)]
+                    .into_iter()
+                    .map(|(ticks, value)| Key {
+                        time: Time { ticks, rate: 1 },
+                        value,
+                        segment: None,
+                    })
+                    .collect(),
             },
-        );
+            grain: (match kind {
+                MaterialKind::Gold | MaterialKind::Silver => 0.25,
+                MaterialKind::Bronze => 0.35,
+                _ => 0.65,
+            })
+            .into(),
+            emission: 1.0.into(),
+            shot: 1.0.into(),
+            normal_strength: 1.0.into(),
+            height_depth: 4.0.into(),
+            normal_directx: false,
+            brush_angle: 0.0.into(),
+            ridges: 0.0.into(),
+            imperfections: 0.0.into(),
+        };
+        if material.is_metal() {
+            material.shine();
+        }
+        return surface(b, source, material);
     }
     let (kind, width, height, y, density) = match id {
         "light_smoke" => (AtmosphereKind::Smoke, 650.0, 470.0, 510.0, 1.7),

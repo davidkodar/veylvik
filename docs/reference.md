@@ -554,6 +554,28 @@ triples; `null` keeps the surface's own colours, so older projects render exactl
 before); **Reset colours** returns to them, and choosing another surface resets them
 because its colour roles differ.
 
+**Finish and strip lights.** Three settings shape a material's surface beyond its
+roughness, grain and brushing, each 0 by default so older projects render exactly
+as before. **Ridges** (0–1) are long shallow undulations along the grain that tip
+parts of the surface towards the light and parts away, breaking reflections into
+soft bands, as on worked metal. **Imperfections** (0–1) leave the plate not quite
+flat, its polish uneven from place to place, and faintly scratched a little off the
+grain, some scratches catching the light and some dull. **Brush angle** (degrees)
+turns the grain that brushing, ridges and wear follow. They act in the surface
+shading itself, so they also apply to library looks on 3D text and shapes. A flat
+metal face mirrors only one direction of its surroundings, so it needs something
+bright there to reflect: `StudioRig::strips` is a dim room (environment 0.35) with
+eight long thin strip lights in front of the surface, tilted 14 degrees, in two
+groups so their reflections cover the frame. A new Material node starts as gold in
+that studio, brushed, with roughness 0.15, Brush angle 65, Ridges 0.7 and
+Imperfections 0.3; the Gold, Silver, Bronze and Aluminium starters and the
+library's metal looks take the strips, Brush angle 65, Ridges 0.6 and Imperfections
+0.3 while keeping their own roughness, grain and brushing, so their named finish
+(Polished, Satin, Matte, Brushed) stays. Projects saved earlier keep the studio
+and finish they were saved with. Library samples of strip-lit metals are still
+rendered in the plain studio, because on the round sample the strips show as a
+small striped patch.
+
 **Reflect the shot** (material inspector) connects the footage behind the layer to
 the material's optional **Environment** input, so the surface sits in the shot
 instead of a studio: metals reflect the footage with their own colour and Fresnel

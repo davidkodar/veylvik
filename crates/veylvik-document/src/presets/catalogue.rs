@@ -554,7 +554,7 @@ impl Entry {
     /// The material this look applies, with the library's usual size and motion.
     pub fn material(&self) -> crate::nodes::Material {
         use crate::{Key, Scalar, Time};
-        crate::nodes::Material {
+        let mut material = crate::nodes::Material {
             smooth_edges: true,
             brushing: self.brushing,
             studio: Default::default(),
@@ -592,7 +592,15 @@ impl Entry {
             normal_strength: 1.0.into(),
             height_depth: 4.0.into(),
             normal_directx: false,
+            brush_angle: 0.0.into(),
+            ridges: 0.0.into(),
+            imperfections: 0.0.into(),
+        };
+        // Metals get the strips and finish that make them look like metal.
+        if material.is_metal() {
+            material.shine();
         }
+        material
     }
     /// As a library card.
     pub fn builtin(&self) -> super::builtin::Builtin {
