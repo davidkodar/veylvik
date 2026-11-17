@@ -245,6 +245,7 @@ impl Renderer {
                     include_str!("lens.wgsl"),
                     include_str!("lens_depth.wgsl"),
                     include_str!("bloom.wgsl"),
+                    include_str!("warp.wgsl"),
                     include_str!("lut.wgsl"),
                     include_str!("shadow.wgsl"),
                     include_str!("particles.wgsl"),

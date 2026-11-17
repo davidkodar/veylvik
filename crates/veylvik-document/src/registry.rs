@@ -25,6 +25,7 @@ pub enum ParameterKind {
     MediaColour,
     ExrLayer,
     ShaderCode,
+    GridPoints,
     TextFeatures,
     TextContent,
     TextFont,
@@ -86,6 +87,7 @@ impl Parameter {
             ParameterKind::MediaColour => json!(crate::media::InputColour::default()),
             ParameterKind::ExrLayer => json!(null),
             ParameterKind::ShaderCode => json!(veylvik_shader::EXAMPLE),
+            ParameterKind::GridPoints => json!(vec![[0.0f32; 2]; 16]),
             ParameterKind::MediaTiming => json!(crate::media::Timing::default()),
             ParameterKind::FadeTiming => json!(crate::nodes::FadeTiming::default()),
             ParameterKind::Typography => json!(crate::text::Typography::default()),
@@ -204,6 +206,9 @@ impl Parameter {
             ParameterKind::ShaderCode => {
                 json!({"type":"string","minLength":1,"maxLength":veylvik_shader::MAX_SOURCE})
             }
+            ParameterKind::GridPoints => {
+                json!({"type":"array","minItems":4,"maxItems":289,"items":{"type":"array","minItems":2,"maxItems":2,"items":{"type":"number","minimum":-8192,"maximum":8192}}})
+            }
             ParameterKind::FadeTiming => crate::nodes::fade_schema(),
             ParameterKind::MediaPlacement => {
                 json!({"type":"string","enum":["legacy","fit","fill","original","stretch"]})
@@ -308,7 +313,7 @@ impl NodeType {
 pub use crate::nodes::{
     AFFINE, ATMOSPHERE, BLEND, BLOOM, BLUR, CAMERA_3D, CHANNEL_MASK, CHROMA_KEY, COLOR_CORRECT,
     COLORIZE, COMBINE_MASK, CONDENSATION, DISPLACE, DRIP, DUST, ELLIPSE, ENVIRONMENT_3D, EXPOSURE,
-    FADE, FIRE, FOOTAGE, FRACTAL_NOISE, GLASS, GRADIENT, IMAGE, IMAGE_CARD, LENS_BLUR,
+    FADE, FIRE, FOOTAGE, FRACTAL_NOISE, GLASS, GRADIENT, GRID_WARP, IMAGE, IMAGE_CARD, LENS_BLUR,
     LENS_DISTORTION, LIGHT_3D, LIGHT_RIG, LUMA_KEY, LUT, MASK, MATCH_GRAIN, MATERIAL,
     MATERIAL_LAYERS, MERGE, MERGE_SCENES, METALLIC_SHINE, MODEL_3D, MORPHOLOGY, MOTION_BLUR, NOISE,
     OCIO, OPTICAL_FLOW, PATH, PATINA, PLANAR_TRACK, PLANAR_WARP, POINT_CLOUD, REFINE_MATTE,
@@ -342,6 +347,7 @@ pub static TYPES: &[&NodeType] = &[
     &crate::nodes::LENS_DISTORTION,
     &crate::nodes::BLOOM,
     &crate::nodes::SHADER,
+    &crate::nodes::GRID_WARP,
     &MERGE,
     &IMAGE,
     &FOOTAGE,

@@ -467,3 +467,49 @@ impl RenderNode for veylvik_document::nodes::Shader {
         Ok(())
     }
 }
+impl RenderNode for veylvik_document::nodes::GridWarp {
+    fn passes(&self) -> Passes {
+        Passes::One(Kernel::GridWarp)
+    }
+    fn identity(&self) -> bool {
+        self.points.iter().all(|p| *p == [0.0; 2])
+            || matches!(self.amount, Scalar::Constant { value } if value == 0.0)
+    }
+    /// The mesh's offsets as a columns x rows image; one image per distinct mesh.
+    fn data(&self) -> Option<std::sync::Arc<crate::Image>> {
+        type Kept = Vec<((u32, Vec<[f32; 2]>), std::sync::Arc<crate::Image>)>;
+        static MESHES: std::sync::Mutex<Kept> = std::sync::Mutex::new(Vec::new());
+        let key = (self.columns, self.points.clone());
+        let mut kept = MESHES.lock().ok()?;
+        if let Some((_, image)) = kept.iter().find(|(k, _)| *k == key) {
+            return Some(image.clone());
+        }
+        let image = std::sync::Arc::new(
+            crate::Image::new(
+                self.columns,
+                self.rows,
+                self.points.iter().map(|p| [p[0], p[1], 0.0, 1.0]).collect(),
+            )
+            .ok()?,
+        );
+        if kept.len() >= 64 {
+            kept.remove(0);
+        }
+        kept.push((key, image.clone()));
+        Some(image)
+    }
+    fn params(
+        &self,
+        _cx: &Cx<'_>,
+        sample: &dyn Fn(&str) -> Result<f32>,
+        p: &mut Params,
+    ) -> Result<()> {
+        p.values = [
+            self.columns as f32,
+            self.rows as f32,
+            sample("amount")?,
+            0.0,
+        ];
+        Ok(())
+    }
+}

@@ -55,6 +55,7 @@ pub enum Kernel {
     BloomTightHorizontal,
     BloomTightVertical,
     BloomCombine,
+    GridWarp,
     LensPrefilterHorizontal,
     LensPrefilterVertical,
     LensBlur,
@@ -93,7 +94,7 @@ pub enum Kernel {
     Lut,
 }
 impl Kernel {
-    pub(crate) const ALL: [Self; 81] = [
+    pub(crate) const ALL: [Self; 82] = [
         Self::ToAcescg,
         Self::FromAcescg,
         Self::Text,
@@ -139,6 +140,7 @@ impl Kernel {
         Self::BloomTightHorizontal,
         Self::BloomTightVertical,
         Self::BloomCombine,
+        Self::GridWarp,
         Self::LensPrefilterHorizontal,
         Self::LensPrefilterVertical,
         Self::LensBlur,
@@ -225,6 +227,7 @@ impl Kernel {
             Self::BloomTightHorizontal => "bloom_tight_horizontal",
             Self::BloomTightVertical => "bloom_tight_vertical",
             Self::BloomCombine => "bloom_combine",
+            Self::GridWarp => "grid_warp",
             Self::LensPrefilterHorizontal => "lens_prefilter_horizontal",
             Self::LensPrefilterVertical => "lens_prefilter_vertical",
             Self::LensBlur => "lens_blur",
@@ -585,6 +588,14 @@ impl Plan {
                             .find(|i| matches!(i, Input::Empty))
                     {
                         *slot = Input::Asset(asset.to_owned());
+                    }
+                    // A node with data of its own (such as a warp's mesh) reads it there too.
+                    if veylvik_document::each_node!(&node.operation, n => crate::nodes::RenderNode::data(n)).is_some()
+                        && let Some(slot) = inputs[..BOUND]
+                            .iter_mut()
+                            .find(|i| matches!(i, Input::Empty))
+                    {
+                        *slot = Input::Asset(data_key(node.id));
                     }
                     kernel
                 }
@@ -1012,6 +1023,10 @@ fn shareable(operation: &Operation) -> bool {
     veylvik_document::each_node!(operation, n => crate::nodes::RenderNode::shareable(n))
 }
 
+/// The input key of a node's own data image (`RenderNode::data`).
+pub(crate) fn data_key(id: veylvik_document::NodeId) -> String {
+    format!("\0data:{id}")
+}
 pub(crate) fn footage_key(id: veylvik_document::NodeId) -> String {
     format!("\0footage:{id}")
 }

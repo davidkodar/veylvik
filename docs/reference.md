@@ -1494,6 +1494,20 @@ and `colour`.
   width. The title uses the built-in bold font; a heavier font from the font
   browser suits it better. The scene comes from the `veylvik-presets` crate,
   which builds scenes from document nodes only.
+- **Grid warp** (`grid_warp`, input image): a mesh of `columns` by `rows`
+  points (2 to 17 a side) spread evenly over the frame. `points` holds each
+  point's offset in pixels from its rest position, row by row (at most 8192);
+  the image under a point moves with it, and the offsets between points follow
+  a Catmull-Rom surface across the mesh. **Amount** (0–1, keyable) scales every
+  offset. Each output pixel finds its source q by solving q + offset(q) = pixel
+  with eight fixed-point steps, which is exact while neighbouring points do not
+  cross; sampling is bilinear and premultiplied, transparent beyond the frame.
+  An untouched mesh, or Amount 0, passes the image through. The mesh reaches the
+  kernel as a small data image bound after the node's inputs. In Studio, with
+  the node viewed, the mesh is drawn over the picture and its points are
+  dragged; the inspector changes the number of points (resampling the warp so
+  far) and resets the mesh. Points are not keyable yet, and there are no tangent
+  handles.
 - **Custom shader** (`shader`, optional inputs image and second): runs the
   user's WGSL on every pixel. `code` defines `fn shade(at: vec2<f32>) ->
   vec4<f32>`, returning premultiplied scene-linear RGBA for the pixel centred at

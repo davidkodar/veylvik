@@ -66,6 +66,11 @@ pub(crate) trait RenderNode {
     fn shareable(&self) -> bool {
         false
     }
+    /// A small image of the node's own data, bound after its inputs (a warp's mesh).
+    /// The same data must give the same image, so frames stay cached.
+    fn data(&self) -> Option<std::sync::Arc<crate::Image>> {
+        None
+    }
     /// Passes its input through unchanged with these parameters.
     fn identity(&self) -> bool {
         false

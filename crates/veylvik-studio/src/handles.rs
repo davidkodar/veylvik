@@ -79,6 +79,13 @@ fn move_handle(operation: &mut Operation, handle: usize, delta: Vec2, time: Time
             edit(x, time, delta.x, -1_000_000.0, 1_000_000.0)?;
             edit(y, time, delta.y, -1_000_000.0, 1_000_000.0)?;
         }
+        Operation::GridWarp(warp) => {
+            let reach = veylvik_document::nodes::GRID_REACH;
+            if let Some(point) = warp.points.get_mut(handle) {
+                point[0] = (point[0] + delta.x).clamp(-reach, reach);
+                point[1] = (point[1] + delta.y).clamp(-reach, reach);
+            }
+        }
         _ => return Ok(()),
     }
     *operation = next;
@@ -195,6 +202,44 @@ pub fn show(
                     "Drag gradient end. Apply commits; Revert discards.",
                 ),
             ]
+        }
+        Operation::GridWarp(warp) => {
+            // The mesh as it stands: rest positions spread over the frame, plus offsets.
+            let (columns, rows) = (warp.columns as usize, warp.rows as usize);
+            let at = |i: usize, j: usize| {
+                let rest = egui::vec2(
+                    image.x * i as f32 / (columns - 1) as f32,
+                    image.y * j as f32 / (rows - 1) as f32,
+                );
+                let offset = warp
+                    .points
+                    .get(j * columns + i)
+                    .copied()
+                    .unwrap_or([0.0; 2]);
+                origin + (rest + egui::vec2(offset[0], offset[1])) * scale
+            };
+            let line = Stroke::new(1.0_f32, color.gamma_multiply(0.6));
+            for j in 0..rows {
+                painter.add(egui::Shape::line(
+                    (0..columns).map(|i| at(i, j)).collect(),
+                    line,
+                ));
+            }
+            for i in 0..columns {
+                painter.add(egui::Shape::line(
+                    (0..rows).map(|j| at(i, j)).collect(),
+                    line,
+                ));
+            }
+            (0..rows)
+                .flat_map(|j| (0..columns).map(move |i| (i, j)))
+                .map(|(i, j)| {
+                    (
+                        at(i, j),
+                        "Drag to move the image under this point. Apply commits; Revert discards.",
+                    )
+                })
+                .collect()
         }
         _ => return Ok(false),
     };

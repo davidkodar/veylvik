@@ -84,3 +84,37 @@ impl Inspect for veylvik_document::nodes::Shader {
         cx.dirty |= crate::shader_editor::show(ui, cx.node_id, self);
     }
 }
+impl Inspect for veylvik_document::nodes::GridWarp {
+    fn inspect(&mut self, ui: &mut egui::Ui, cx: &mut InspectCx<'_>) {
+        ui.weak("Drag the points in the viewer: the image under a point moves with it. View this node (Selected node) to see the mesh on the picture.");
+        let (mut columns, mut rows) = (self.columns, self.rows);
+        let sides = veylvik_document::nodes::GRID_SIDE;
+        ui.horizontal(|ui| {
+            ui.label("Points");
+            ui.add(
+                egui::DragValue::new(&mut columns)
+                    .range(sides.clone())
+                    .suffix(" across"),
+            );
+            ui.add(egui::DragValue::new(&mut rows).range(sides).suffix(" down"))
+                .on_hover_text(
+                    "A finer mesh allows smaller, more local moves; the warp so far is kept",
+                );
+        });
+        if (columns, rows) != (self.columns, self.rows) {
+            *self = self.resized(columns, rows);
+            cx.dirty = true;
+        }
+        if ui
+            .add_enabled(
+                self.points.iter().any(|p| *p != [0.0; 2]),
+                egui::Button::new("Reset the mesh"),
+            )
+            .on_hover_text("Put every point back, leaving the image as it was")
+            .clicked()
+        {
+            self.points.fill([0.0; 2]);
+            cx.dirty = true;
+        }
+    }
+}
