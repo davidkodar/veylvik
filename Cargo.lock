@@ -4189,11 +4189,23 @@ dependencies = [
 ]
 
 [[package]]
-name = "veylvik-render"
+name = "veylvik-preview"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
  "flate2",
+ "serde",
+ "veylvik-color",
+ "veylvik-document",
+ "veylvik-render",
+ "wgpu",
+]
+
+[[package]]
+name = "veylvik-render"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
  "half",
  "pollster",
  "serde",
@@ -4204,6 +4216,7 @@ dependencies = [
  "veylvik-color",
  "veylvik-document",
  "veylvik-interop",
+ "veylvik-preview",
  "veylvik-scene",
  "veylvik-text",
  "wgpu",
@@ -4217,6 +4230,7 @@ dependencies = [
  "serde_json",
  "veylvik-document",
  "veylvik-mesh",
+ "veylvik-preview",
  "veylvik-render",
  "veylvik-scene",
  "wgpu",
@@ -4270,6 +4284,7 @@ dependencies = [
  "veylvik-document",
  "veylvik-expr",
  "veylvik-io",
+ "veylvik-preview",
  "veylvik-render",
  "veylvik-render3d",
  "veylvik-scene",

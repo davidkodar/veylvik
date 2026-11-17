@@ -86,7 +86,8 @@ use std::{
     time::{Duration, Instant},
 };
 use veylvik_document::{Command, Node, Operation};
-use veylvik_render::{GpuPreviewScheduler, PreviewTicket, RenderRequest, Renderer};
+use veylvik_preview::{GpuPreviewScheduler, PreviewTicket};
+use veylvik_render::{RenderRequest, Renderer};
 
 fn main() {
     if let Err(error) = run() {
@@ -1514,7 +1515,7 @@ impl Studio {
                 .map(|p| p.join("veylvik/playback"));
             scheduler
                 .playback_cache()
-                .configure(veylvik_render::playback::Settings {
+                .configure(veylvik_preview::playback::Settings {
                     divisor: self.playback_controls.divisor(),
                     gpu_bytes: p.playback_gpu_mib * 1024 * 1024,
                     disk_bytes: p.playback_disk_mib * 1024 * 1024,

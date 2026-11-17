@@ -1,0 +1,17 @@
+[package]
+name = "veylvik-preview"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Interactive preview for Veylvik: a replaceable-request render scheduler and a bounded playback cache."
+[dependencies]
+veylvik-render.workspace = true
+veylvik-document.workspace = true
+wgpu.workspace = true
+serde.workspace = true
+bytemuck.workspace = true
+flate2 = "1.1.11"
+veylvik-color = { path = "../veylvik-color" }
+[lints]
+workspace = true

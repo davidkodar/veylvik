@@ -1,4 +1,5 @@
 use veylvik_document::*;
+use veylvik_preview::{GpuPreviewScheduler, PreviewScheduler};
 use veylvik_render::*;
 fn composition(nodes: Vec<Node>, output: NodeId) -> Composition {
     Composition {

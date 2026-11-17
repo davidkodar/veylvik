@@ -1,5 +1,5 @@
 //! Bounded, disposable playback cache. All file I/O and transfers run on the preview worker.
-use crate::{GpuFrame, ImageInputs, Plan, Renderer, Result, error};
+use crate::{Result, error};
 use std::{
     collections::VecDeque,
     io::{Read, Write},
@@ -7,7 +7,8 @@ use std::{
     sync::{Arc, Mutex, Weak},
     time::{Duration, Instant, SystemTime},
 };
-use veylvik_document::{Operation, Time};
+use veylvik_document::Time;
+use veylvik_render::{GpuFrame, ImageInputs, Plan, Renderer};
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Settings {
     pub divisor: u32,
@@ -90,7 +91,7 @@ struct Entry {
     disk: Option<(PathBuf, u64)>,
     width: u32,
     height: u32,
-    flow: Option<crate::flow::FlowReport>,
+    flow: Option<veylvik_render::flow::FlowReport>,
 }
 type Stamp = (PathBuf, u64, SystemTime);
 fn stamps(paths: impl IntoIterator<Item = PathBuf>) -> Result<Vec<Stamp>> {
@@ -104,19 +105,7 @@ fn stamps(paths: impl IntoIterator<Item = PathBuf>) -> Result<Vec<Stamp>> {
         .collect()
 }
 fn ocio_paths(plan: &Plan, inputs: &ImageInputs, paths: &mut Vec<PathBuf>) -> Result<()> {
-    let mut transforms: Vec<_> = plan.ocio.view.iter().collect();
-    for node in &plan.nodes {
-        if let Operation::Ocio(v) = &node.operation {
-            transforms.push(&v.transform);
-        }
-    }
-    for branch in &plan.temporal {
-        if let Operation::Ocio(v) = &branch.operation {
-            transforms.push(&v.transform);
-        }
-        ocio_paths(&branch.plan, inputs, paths)?;
-    }
-    for transform in transforms {
+    for transform in plan.ocio_transforms() {
         let config_path = inputs.resolve_config(&transform.config);
         if config_path.starts_with("ocio://") {
             continue;
@@ -325,7 +314,7 @@ impl Store {
             )?;
             scratch.queue().write_buffer(&buffer, 0, &bytes);
             let mut frame = scratch.frame(&buffer, entry.width, entry.height)?;
-            frame.flow_report = entry.flow;
+            frame.set_flow_report(entry.flow);
             Ok(Arc::new(frame))
         })
     }
@@ -485,8 +474,8 @@ impl Store {
                     .as_ref()
                     .map(|s| {
                         [
-                            s.0.width.div_ceil(self.divisor()),
-                            s.0.height.div_ceil(self.divisor()),
+                            s.0.size()[0].div_ceil(self.divisor()),
+                            s.0.size()[1].div_ceil(self.divisor()),
                         ]
                     })
                     .unwrap_or_default(),
@@ -547,7 +536,7 @@ mod tests {
         let time = Time::new(0, 1).unwrap();
         let frame = Arc::new(
             renderer
-                .render_gpu(&plan, crate::RenderRequest::full(time), &inputs)
+                .render_gpu(&plan, veylvik_render::RenderRequest::full(time), &inputs)
                 .unwrap(),
         );
         let expected = renderer.read_frame(&frame).unwrap().pixels;
@@ -574,7 +563,7 @@ mod tests {
             let t = Time::new(n, 24).unwrap();
             let frame = Arc::new(
                 renderer
-                    .render_gpu(&plan, crate::RenderRequest::full(t), &inputs)
+                    .render_gpu(&plan, veylvik_render::RenderRequest::full(t), &inputs)
                     .unwrap(),
             );
             store.insert(&renderer, t, frame, &mut || false);
@@ -594,11 +583,11 @@ mod tests {
     #[test]
     fn changed_sources_and_dependencies_invalidate_scope() {
         struct Source {
-            image: Arc<crate::Image>,
+            image: Arc<veylvik_render::Image>,
             path: PathBuf,
         }
-        impl crate::FrameSource for Source {
-            fn frame(&self, _: Time) -> Result<Arc<crate::Image>> {
+        impl veylvik_render::FrameSource for Source {
+            fn frame(&self, _: Time) -> Result<Arc<veylvik_render::Image>> {
                 Ok(self.image.clone())
             }
             fn byte_budget(&self) -> u64 {
@@ -617,7 +606,7 @@ mod tests {
         inputs.insert_source(
             "test",
             Arc::new(Source {
-                image: Arc::new(crate::Image::new(1, 1, vec![[0.; 4]]).unwrap()),
+                image: Arc::new(veylvik_render::Image::new(1, 1, vec![[0.; 4]]).unwrap()),
                 path: path.clone(),
             }),
         );

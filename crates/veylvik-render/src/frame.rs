@@ -137,7 +137,8 @@ pub struct ImageInputs(
     BTreeMap<String, Arc<veylvik_scene::Model>>,
 );
 impl ImageInputs {
-    pub(crate) fn same_sources(&self, other: &Self) -> bool {
+    /// Whether both hold exactly the same images, frames, sources and models.
+    pub fn same_sources(&self, other: &Self) -> bool {
         self.3 == other.3
             && self.0.len() == other.0.len()
             && self.1.len() == other.1.len()
@@ -170,7 +171,9 @@ impl ImageInputs {
     pub fn models(&self) -> &BTreeMap<String, Arc<veylvik_scene::Model>> {
         &self.4
     }
-    pub(crate) fn playback_dependencies(&self) -> Option<Vec<std::path::PathBuf>> {
+    /// The files a cache of rendered frames depends on; None when a source cannot
+    /// name its files, so its frames must not be cached.
+    pub fn playback_dependencies(&self) -> Option<Vec<std::path::PathBuf>> {
         let mut paths = Vec::new();
         for source in self.2.values() {
             paths.extend(source.cache_dependencies()?);
@@ -450,6 +453,10 @@ pub struct GpuFrame {
 }
 pub(crate) struct DeviceIdentity;
 impl GpuFrame {
+    /// Carry a flow report on a frame rebuilt from stored pixels.
+    pub fn set_flow_report(&mut self, report: Option<crate::flow::FlowReport>) {
+        self.flow_report = report;
+    }
     pub fn flow_report(&self) -> Option<crate::flow::FlowReport> {
         self.flow_report
     }

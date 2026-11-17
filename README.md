@@ -74,18 +74,21 @@ The [feature list](docs/features.md) covers everything Veylvik can do, area by a
 
 ## How it is built and tested
 
-Veylvik is written in Rust as a sixteen-crate workspace. Application, document and rendering crates forbid `unsafe`; native FFmpeg and GPU-handle access is isolated in `veylvik-decode` and `veylvik-interop`, with explicit unsafe-operation and safety-comment checks. `veylvik-color` isolates the native OpenColorIO C++ interface behind a safe Rust API. Rendering compiles the graph into an immutable plan of compute passes and runs it on the GPU through wgpu and Vulkan. The editor is a native egui app that shows those frames from the same Vulkan device, without copying the preview frame back to the CPU. Document editing, font shaping and orchestration run on the CPU; composition kernels, material shading and vector coverage run on Vulkan. Export and diagnostic readbacks are separate from the live viewer path.
+Veylvik is written in Rust as a nineteen-crate workspace. Application, document and rendering crates forbid `unsafe`; native FFmpeg and GPU-handle access is isolated in `veylvik-decode` and `veylvik-interop`, with explicit unsafe-operation and safety-comment checks. `veylvik-color` isolates the native OpenColorIO C++ interface behind a safe Rust API. Rendering compiles the graph into an immutable plan of compute passes and runs it on the GPU through wgpu and Vulkan. The editor is a native egui app that shows those frames from the same Vulkan device, without copying the preview frame back to the CPU. Document editing, font shaping and orchestration run on the CPU; composition kernels, material shading and vector coverage run on Vulkan. Export and diagnostic readbacks are separate from the live viewer path.
 
 | Crate | Role |
 | --- | --- |
 | `veylvik-document` | Project format, exact time, curves, node registry, atomic edits and undo. No GPU. |
+| `veylvik-expr` | The bounded expression language for animated parameters. No dependencies. |
 | `veylvik-render` | Immutable render plans, WGSL kernels, vector coverage, material lighting, HDR environment filtering, temporal sampling, optical flow and GPU caches. |
+| `veylvik-preview` | Interactive preview on the renderer's public interface: the latest-request render scheduler and the bounded playback cache. |
 | `veylvik-color` | Native OCIO configuration, reference transforms and GPU shader/LUT extraction. |
 | `veylvik-text` | CPU font shaping and layout, producing editable outlines for GPU coverage. |
 | `veylvik-mesh` | Watertight 3D meshes from vector outlines and primitive solids (the geometry behind 3D text and shapes). |
 | `veylvik-scene` | Evaluates 3D scene graphs at a frame: objects, cameras, lights, transforms and projection. |
 | `veylvik-render3d` | Draws 3D scenes on the GPU for Render scene, plugged into the renderer through a hook. |
 | `veylvik-track` | GPU point and planar tracking, built on the renderer's narrow compute interface. |
+| `veylvik-solve` | Camera solving from feature tracks: camera path, lens, distortion and a point cloud. No dependencies. |
 | `veylvik-segment` | Subject mattes from local AI models, run in an isolated worker process, with a verified model installer. |
 | `veylvik-decode` | Hardware-first video decoding into GPU frames. |
 | `veylvik-interop` | Native CUDA/Vulkan and VA-API/DMA-BUF interoperability boundaries for video frames. |

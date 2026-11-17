@@ -23,7 +23,6 @@ mod encode;
 pub use encode::Look;
 mod nodes;
 mod plan;
-pub mod playback;
 mod pool;
 mod preview_scale;
 mod scene_hook;
@@ -103,13 +102,11 @@ pub fn material_uniforms(
     ))
 }
 pub use scene_hook::{SceneJob, SceneRenderer};
-mod scheduler;
 mod texture;
 mod vector;
 mod video;
 pub use plan::{Kernel, PassInfo, Plan};
 pub use pool::ResourceStats;
-pub use scheduler::{GpuPreviewScheduler, PreviewResult, PreviewScheduler, PreviewTicket};
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 pub use texture::{TextureEncoding, TextureTarget};
@@ -437,6 +434,10 @@ impl Renderer {
             adapter: info,
             budget_bytes: 2048 * 1024 * 1024,
         })
+    }
+    /// The device timed out or was lost: it must not receive more submissions.
+    pub fn device_failed(&self) -> bool {
+        self.pool.lock().map_or(true, |p| p.failed)
     }
     pub fn resource_stats(&self) -> Result<ResourceStats> {
         Ok(self

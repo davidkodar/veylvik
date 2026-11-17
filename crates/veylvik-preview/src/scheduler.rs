@@ -1,12 +1,12 @@
 //! One active render, one replaceable pending request, one replaceable completion.
-use crate::{
-    GpuFrame, ImageInputs, Plan, RenderRequest, RenderedFrame, Renderer, ResourceStats, Result,
-    error,
-};
+use crate::{Result, error};
 use std::{
     sync::{Arc, Condvar, Mutex},
     thread::{self, JoinHandle},
     time::{Duration, Instant},
+};
+use veylvik_render::{
+    GpuFrame, ImageInputs, Plan, RenderRequest, RenderedFrame, Renderer, ResourceStats,
 };
 
 /// A generation identifies a request, even when its document revision is unchanged.
@@ -27,7 +27,7 @@ fn render_gpu_job(
     divisor: u32,
     cancelled: &mut dyn FnMut() -> bool,
 ) -> Result<Arc<GpuFrame>> {
-    let frame = if job.plan.temporal.is_empty() {
+    let frame = if !job.plan.has_temporal() {
         renderer
             .render_gpu(&job.plan, job.request, &job.inputs)
             .map(Arc::new)
@@ -86,10 +86,7 @@ impl PreviewScheduler {
                 })();
                 let resources = renderer.as_ref().and_then(|r| r.resource_stats().ok());
                 // A timed-out/lost device must not receive more submissions.
-                if renderer
-                    .as_ref()
-                    .is_some_and(|r| r.pool.lock().map_or(true, |p| p.failed))
-                {
+                if renderer.as_ref().is_some_and(|r| r.device_failed()) {
                     renderer = None;
                 }
                 PreviewResult {

@@ -902,6 +902,31 @@ impl Plan {
     pub fn node_count(&self) -> usize {
         self.nodes.len()
     }
+    /// The composition's size in pixels.
+    pub fn size(&self) -> [u32; 2] {
+        [self.width, self.height]
+    }
+    /// Whether the plan has temporal branches (motion blur, retiming, flow, OCIO).
+    pub fn has_temporal(&self) -> bool {
+        !self.temporal.is_empty()
+    }
+    /// Every OCIO transform the plan uses: the viewer's, and those of OCIO nodes in it
+    /// and its temporal branches.
+    pub fn ocio_transforms(&self) -> Vec<&veylvik_document::color_management::OcioTransform> {
+        let mut transforms: Vec<_> = self.ocio.view.iter().collect();
+        for node in &self.nodes {
+            if let Operation::Ocio(v) = &node.operation {
+                transforms.push(&v.transform);
+            }
+        }
+        for branch in &self.temporal {
+            if let Operation::Ocio(v) = &branch.operation {
+                transforms.push(&v.transform);
+            }
+            transforms.extend(branch.plan.ocio_transforms());
+        }
+        transforms
+    }
     pub fn pass_count(&self) -> usize {
         self.passes.len()
     }

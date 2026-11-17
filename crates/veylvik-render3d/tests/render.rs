@@ -295,7 +295,7 @@ fn a_free_view_films_the_scene_without_changing_it() {
 fn the_preview_scheduler_shows_the_free_view_not_a_cached_frame() {
     let renderer = Arc::new(renderer());
     let scheduler =
-        veylvik_render::GpuPreviewScheduler::with_renderer(renderer.clone(), || {}).unwrap();
+        veylvik_preview::GpuPreviewScheduler::with_renderer(renderer.clone(), || {}).unwrap();
     let (mut doc, inputs, _, image) = gradient();
     let card = add(&mut doc, op(&IMAGE_CARD), &[("image", image)]);
     let render_node = add(&mut doc, op(&RENDER_SCENE), &[("scene", card)]);
