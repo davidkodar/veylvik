@@ -70,7 +70,7 @@ impl Studio {
                 if item(ui, "Undo", "Ctrl+Z", ready && history.undo_steps > 0) { self.history(false); }
                 if item(ui, "Redo", "Ctrl+Shift+Z", ready && history.redo_steps > 0) { self.history(true); }
                 ui.separator();
-                if item(ui, "Apply inspector changes", "Ctrl+Enter", self.draft_dirty) { self.apply_draft(); }
+                if item(ui, "Apply inspector changes", "Ctrl+Enter", self.draft_dirty) { self.keep_tryout(); }
                 if item(ui, "Revert inspector changes", "", self.draft_dirty) {
                     self.refresh_draft(); self.request_preview();
                 }
@@ -83,6 +83,8 @@ impl Studio {
                 ui.separator();
                 if item(ui, "Find node…", "Ctrl+F", ready) { self.open_node_finder(); }
                 if item(ui, "Add a marker here", "M", true) { self.add_marker(); }
+                let mut auto_key = self.preferences.values.auto_key;
+                if ui.checkbox(&mut auto_key, "Automatic keyframes").on_hover_text("On: changing an animated setting adds a keyframe at the current position. Off: such a change is a try-out until you add the keyframe").changed() { self.toggle_auto_key(); }
                 ui.separator();
                 if item(ui,"Preferences…","Ctrl+,",true) {self.open_preferences();}
             });

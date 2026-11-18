@@ -2149,6 +2149,37 @@ normal saving. A recovery storage error is shown; normal project saving remains
 available. If storage is unavailable at startup, restart after fixing it to
 re-enable background recovery.
 
+### Automatic keyframes
+
+A setting without keyframes is never animated by changing it: its value simply
+changes. The first keyframe of a setting is always added by the artist, with
+the key button beside it.
+
+For a setting that already has keyframes, **Edit > Automatic keyframes**
+(off by default, kept in preferences as `auto_key`, also a command without a
+default shortcut) decides what a change means at a position where the setting
+has no key:
+
+- **Off**: the change is a try-out. The viewer shows it, and a bar at the top
+  of the window says so and offers **Add keyframe**, **Discard** and **Always
+  add keyframes** (which turns the option on and keeps this one). A try-out is
+  not applied after the usual short pause. Going to another frame, playing,
+  selecting another node, undoing or saving drops it and restores the
+  animation as it was, with a note in the status line. **Add keyframe**, the
+  inspector's **Apply** and Ctrl+Enter keep it as a keyframe in one undo step.
+- **On**: the change adds a keyframe at the current position, and the status
+  line says where.
+
+At a position that has a key the change edits that key, whichever way the
+option is set. The key buttons (the diamond beside a setting, **Add key at
+playhead**, **Reset to default** on an animated setting) always add or change
+keys, because they are the artist's own request. The rule covers every slider,
+number field and viewer handle of the selected node and of the effects
+attached to a text, for numbers, colours, vectors and shapes alike: Studio
+compares the keys in the pending edit with those of the saved nodes, and keys
+that appeared without a key button are the try-out. Keys set in the curve
+editor and on the timeline are direct edits and are not affected.
+
 ### Putting a layer's frame away
 
 The frame and handles drawn in the viewer around the selected text or layer

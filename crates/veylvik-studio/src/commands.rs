@@ -41,6 +41,7 @@ commands! {
     SetOutput, "set_output", "Edit", "Set selected node as output", "";
     CreateGroup, "create_group", "Edit", "Create effect group", "";
     FindNode, "find_node", "Edit", "Find node", "Ctrl+F";
+    AutoKey, "auto_key", "Edit", "Automatic keyframes on or off", "";
     AddNode, "add_node", "Add", "Search and add a node", "Tab";
     EffectLibrary, "effect_library", "Add", "Effect library", "";
     Play, "play", "Playback", "Play or pause", "Space";

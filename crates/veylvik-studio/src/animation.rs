@@ -11,6 +11,7 @@ pub fn key_controls(ui: &mut egui::Ui, scalar: &mut Scalar, time: Time) -> bool 
     let Some(here) = key_strip(ui, &times, scalar.keys().is_some(), time) else {
         return false;
     };
+    crate::autokey::asked();
     let result = if here {
         scalar.remove_key_at(time)
     } else {
@@ -26,6 +27,7 @@ pub fn track_key_controls(ui: &mut egui::Ui, track: &mut Track3, time: Time) -> 
     let Some(here) = key_strip(ui, &times, track.is_animated(), time) else {
         return false;
     };
+    crate::autokey::asked();
     let result = if here {
         track.remove_key_at(time)
     } else {
@@ -251,6 +253,7 @@ pub fn scalar_with_default(
                     .clicked()
             {
                 if scalar.keys().is_some() {
+                    crate::autokey::asked();
                     changed |= scalar.set_key_at(time, default).is_ok();
                 } else {
                     *scalar = default.into();
@@ -313,6 +316,7 @@ pub fn details(
                             ui.label("At playhead");
                             if ui.add_enabled(can_edit, egui::DragValue::new(&mut edited).speed(0.1).range(range.clone()))
                                 .on_hover_text("Change or add a key at the current frame. Apply commits the edit.").changed() {
+                                crate::autokey::asked();
                                 match scalar.set_key_at(time, edited) {
                                     Ok(()) => changed = true,
                                     Err(error) => { ui.colored_label(egui::Color32::LIGHT_RED, error.to_string()); }
@@ -356,6 +360,7 @@ pub fn details(
             ui.horizontal_wrapped(|ui| {
                 let can_add = scalar.keys().is_none_or(|keys| keys.len() < MAX_KEYS && !keys.iter().any(|key| key.time.compare(time).is_ok_and(|order| order.is_eq())));
                 if ui.add_enabled(can_add, egui::Button::new("Add key at playhead").small()).clicked() {
+                    crate::autokey::asked();
                     match scalar.set_key_at(time, value) {
                         Ok(()) => changed = true,
                         Err(error) => { ui.colored_label(egui::Color32::LIGHT_RED, error.to_string()); }

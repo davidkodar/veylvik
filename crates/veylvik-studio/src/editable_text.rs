@@ -68,6 +68,7 @@ fn parameter(
 }
 fn reset(value: &mut Scalar, time: Time, default: f32) -> veylvik_document::Result<()> {
     if value.keys().is_some() {
+        crate::autokey::asked();
         value.set_key_at(time, default)
     } else {
         *value = default.into();

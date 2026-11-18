@@ -3,6 +3,7 @@ mod animation;
 mod animation_editor;
 mod asset_browser;
 mod audio_preview;
+mod autokey;
 mod color_controls;
 mod command_ui;
 mod commands;
@@ -283,6 +284,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 thumbnails: Default::default(),
                 commands: Default::default(),
                 overlay_hidden: None,
+                tryout: None,
+                keys_accepted: None,
                 materials: Default::default(),
                 shot_light: Default::default(),
                 subject: subject::Controls::default(),
@@ -404,6 +407,10 @@ struct Studio {
     commands: command_ui::Commands,
     /// The node whose frame and handles in the viewer were put away by a click beside it.
     overlay_hidden: Option<veylvik_document::NodeId>,
+    /// The frame of a pending try-out on an animated setting (automatic keyframes off).
+    tryout: Option<i64>,
+    /// Keys in the pending edit that the artist asked for or already had.
+    keys_accepted: Option<usize>,
     materials: material_library::Library,
     shot_light: shot_light::Pending,
     subject: subject::Controls,
@@ -554,6 +561,10 @@ impl Studio {
         self.draft_dirty = false;
     }
     fn can_change_selection(&mut self) -> bool {
+        // A try-out does not hold the artist back: moving on drops it.
+        if self.drop_tryout() {
+            return true;
+        }
         if matches!(
             self.draft.operation,
             Operation::Text(veylvik_document::nodes::Text { .. })
@@ -819,6 +830,10 @@ impl Studio {
     }
     fn apply_draft(&mut self) -> bool {
         if !self.draft_dirty {
+            return true;
+        }
+        // A try-out is never applied by moving on; only by adding its keyframe.
+        if self.drop_tryout() {
             return true;
         }
         let commands = self.draft_commands();
@@ -1624,7 +1639,7 @@ impl Studio {
                         .on_hover_text("Commit this draft as one undo step (Ctrl+Enter)")
                         .clicked()
                     {
-                        self.apply_draft();
+                        self.keep_tryout();
                     }
                     if ui
                         .add_enabled(self.draft_dirty, egui::Button::new("Revert"))
@@ -2904,7 +2919,10 @@ impl eframe::App for Studio {
         self.grain_measure_tick(&ctx);
         light_guides::begin_frame(&ctx);
         self.fonts.poll(&ctx);
+        self.autokey_tick(&ctx);
+        self.tryout_bar(&ctx);
         if self.draft_dirty
+            && self.tryout.is_none()
             && self
                 .draft_commit_deadline
                 .is_some_and(|t| Instant::now() >= t)
@@ -3606,7 +3624,7 @@ impl eframe::App for Studio {
             && self.confirm.is_none()
             && !self.graph.dragging()
             && !self.animation_editor.dragging()
-            && self.apply_draft()
+            && self.keep_tryout()
         {
             ctx.memory_mut(|memory| {
                 if let Some(focused) = memory.focused() {

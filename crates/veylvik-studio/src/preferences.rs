@@ -58,6 +58,8 @@ pub struct Values {
     pub time_display: crate::timecode::Display,
     /// A small picture of each node's output on its tile in the graph.
     pub node_thumbnails: bool,
+    /// Changing an animated setting adds a keyframe by itself.
+    pub auto_key: bool,
     /// Changed shortcuts: command id to key, empty for none.
     pub shortcuts: std::collections::BTreeMap<String, String>,
 }
@@ -81,6 +83,7 @@ impl Default for Values {
             audio_volume: 1.,
             time_display: Default::default(),
             node_thumbnails: false,
+            auto_key: false,
             shortcuts: Default::default(),
         }
     }
