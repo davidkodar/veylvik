@@ -1924,6 +1924,7 @@ impl Studio {
             .and_then(|id| self.project.document.snapshot().nodes.get(id))
             .map(|n| n.label.clone());
         let focus_objects = scene_focus::objects(self.project.document.snapshot());
+        let scene_things = scene_focus::things(self.project.document.snapshot());
         expressions::publish(ui.ctx(), self.project.document.snapshot());
         let mut cx = nodes::InspectCx {
             node_id: self.draft.id,
@@ -1952,6 +1953,7 @@ impl Studio {
                 .map(|p| p.field),
             pick: None,
             objects: &focus_objects,
+            things: &scene_things,
             pick_focus: false,
             plated: self.draft.inputs.contains_key("plate"),
             measure_grain: false,

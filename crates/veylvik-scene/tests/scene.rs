@@ -543,3 +543,95 @@ fn a_thing_left_out_is_not_in_the_scene_and_a_ring_is_flat() {
         "{nearest} {farthest}"
     );
 }
+#[test]
+fn objects_face_a_camera_or_another_object_and_a_card_carries_its_tint() {
+    let mut doc = scene();
+    let image = add(
+        &mut doc,
+        "image",
+        Operation::Solid(veylvik_document::nodes::Solid { color: [1.0; 4] }),
+        &[],
+    );
+    let mut camera = op(&CAMERA_3D);
+    let Operation::Camera3d(c) = &mut camera else {
+        panic!()
+    };
+    c.placement.position = [900.0, -300.0, 700.0].into();
+    let camera = add(&mut doc, "camera", camera, &[]);
+    let mut card = op(&IMAGE_CARD);
+    let Operation::ImageCard(c) = &mut card else {
+        panic!()
+    };
+    c.placement.position = [-400.0, 150.0, -600.0].into();
+    c.placement.rotation = [20.0, 70.0, 5.0].into();
+    c.colour = [2.0, 0.5, 0.25].into();
+    c.opacity = 0.4.into();
+    c.aim_at = Some(camera);
+    let card = add(&mut doc, "card", card, &[("image", image)]);
+    // A cube that faces the card, and one whose target is not in the scene.
+    let cube = |doc: &mut Composition, target: NodeId| {
+        let mut op = op(&SHAPE_3D);
+        let Operation::Shape3d(s) = &mut op else {
+            panic!()
+        };
+        s.placement.position = [500.0, 500.0, 100.0].into();
+        s.placement.rotation = [0.0, 33.0, 0.0].into();
+        s.aim_at = Some(target);
+        add(doc, "cube", op, &[])
+    };
+    let facing = cube(&mut doc, card);
+    let lost = cube(&mut doc, NodeId::new_v4());
+    let merged = add(
+        &mut doc,
+        "merge",
+        op(&MERGE_SCENES),
+        &[
+            ("scene", card),
+            ("scene_2", camera),
+            ("scene_3", facing),
+            ("scene_4", lost),
+        ],
+    );
+    // A transform above everything must not break the facing.
+    let mut turn = op(&TRANSFORM_3D);
+    let Operation::Transform3d(t) = &mut turn else {
+        panic!()
+    };
+    t.placement.rotation = [0.0, 35.0, 0.0].into();
+    t.placement.scale = [1.5, 1.5, 1.5].into();
+    let root = add(&mut doc, "turn", turn, &[("scene", merged)]);
+    let s = evaluate(&doc, root, at(0)).unwrap();
+    let object = |id: NodeId| s.objects.iter().find(|o| o.node == id).unwrap();
+    let front = |o: &veylvik_scene::Object, towards: [f32; 3]| {
+        let from = o.sphere().0;
+        let z = math::direction(&o.world, [0.0, 0.0, 1.0]);
+        let d = [0, 1, 2].map(|k| towards[k] - from[k]);
+        let (lz, ld) = (
+            z.iter().map(|v| v * v).sum::<f32>().sqrt(),
+            d.iter().map(|v| v * v).sum::<f32>().sqrt(),
+        );
+        (0..3).map(|k| z[k] * d[k]).sum::<f32>() / (lz * ld)
+    };
+    let eye = math::point(&s.cameras[0].world, [0.0; 3]);
+    let shown = object(card);
+    assert!(front(shown, eye) > 0.9999, "{}", front(shown, eye));
+    assert!(front(object(facing), shown.sphere().0) > 0.9999);
+    // Facing keeps the object where it was, and its size.
+    let alone = evaluate(&doc, card, at(0)).unwrap();
+    let apart = |a: [f32; 3], b: [f32; 3]| (0..3).map(|k| (a[k] - b[k]).abs()).fold(0.0, f32::max);
+    assert!(apart(object(lost).sphere().0, object(facing).sphere().0) < 1e-2);
+    assert!((shown.sphere().1 - alone.objects[0].sphere().1 * 1.5).abs() < 1e-2);
+    // A missing target leaves the rotation in charge.
+    assert!(front(object(lost), shown.sphere().0) < 0.99);
+    assert_eq!(shown.surface.colour, [2.0, 0.5, 0.25]);
+    assert_eq!(shown.surface.opacity, 0.4);
+    // A card from before tints and facing: white, opaque, its own rotation.
+    let old: Operation = serde_json::from_value(serde_json::json!({"type": "image_card"})).unwrap();
+    let Operation::ImageCard(old) = old else {
+        panic!()
+    };
+    assert!(old.aim_at.is_none());
+    let written = serde_json::to_value(Operation::ImageCard(old)).unwrap();
+    assert_eq!(written["colour"], serde_json::json!([1.0, 1.0, 1.0]));
+    assert!(written["aim_at"].is_null());
+}

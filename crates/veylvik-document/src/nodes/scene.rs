@@ -94,6 +94,9 @@ fn zero() -> Scalar {
 fn yes() -> bool {
     true
 }
+fn white() -> Track3 {
+    [1.0, 1.0, 1.0].into()
+}
 fn grey() -> Track3 {
     [0.6, 0.6, 0.6].into()
 }
@@ -176,12 +179,17 @@ pub struct Shape3d {
     /// ground is rarely that dark, with light bouncing in from all round).
     #[serde(default = "one")]
     pub shadow_strength: Scalar,
+    /// A thing in the scene (the camera, a light, another object) this keeps its
+    /// front turned towards, wherever both move; replaces the placement's rotation
+    /// while that thing is in the scene.
+    #[serde(default)]
+    pub aim_at: Option<NodeId>,
 }
 pub static SHAPE_3D: NodeType = NodeType {
     type_id: "shape_3d",
     version: 1,
     label: "3D shape",
-    description: "A cube, sphere, plane, cylinder, cone, torus or flat ring (size x and y its outer diameters, size z its width inwards; a planet's rings, or a disc when the width reaches the middle) in a 3D scene, sized in pixels and centred on the frame at depth 0. Detail sets how many segments curved shapes use (3–256). Placement offsets, rotates (degrees, X then Y then Z) and scales it; colour (linear RGB), roughness and metallic shade it, unless a Look (any library material) is set, which shades it like a title. As a Shadow catcher it is invisible except for the shadows falling on it: lay a plane on the ground of the footage so 3D objects shadow the real floor. Outputs a scene for Merge scenes, 3D transform or Render scene. Finish, each 0 to 1 and 0 by default: brushed scatters light across the grain so reflections stretch that way, brush_angle (degrees) turns the grain, grain shows it as fine streaks, ridges add long shallow undulations along the grain that break reflections into bands, imperfections add uneven polish and faint scratches; they shade the plain surface, not a look. Shadow strength (0 to 1) sets how dark a shadow catcher's shadows are. An image on the optional Texture input colours the surface, wrapped once round it (for a sphere, a map of the whole globe: left to right round the equator, top to bottom from pole to pole), multiplied by Colour (which may go above 1, to 64, to brighten it); where the image is less than half opaque the surface is cut away, so a ring can have gaps (the cut-away parts still cast shadows); a library look takes its place.",
+    description: "A cube, sphere, plane, cylinder, cone, torus or flat ring (size x and y its outer diameters, size z its width inwards; a planet's rings, or a disc when the width reaches the middle) in a 3D scene, sized in pixels and centred on the frame at depth 0. Detail sets how many segments curved shapes use (3–256). Placement offsets, rotates (degrees, X then Y then Z) and scales it; colour (linear RGB), roughness and metallic shade it, unless a Look (any library material) is set, which shades it like a title. As a Shadow catcher it is invisible except for the shadows falling on it: lay a plane on the ground of the footage so 3D objects shadow the real floor. Outputs a scene for Merge scenes, 3D transform or Render scene. Finish, each 0 to 1 and 0 by default: brushed scatters light across the grain so reflections stretch that way, brush_angle (degrees) turns the grain, grain shows it as fine streaks, ridges add long shallow undulations along the grain that break reflections into bands, imperfections add uneven polish and faint scratches; they shade the plain surface, not a look. Shadow strength (0 to 1) sets how dark a shadow catcher's shadows are. An image on the optional Texture input colours the surface, wrapped once round it (for a sphere, a map of the whole globe: left to right round the equator, top to bottom from pole to pole), multiplied by Colour (which may go above 1, to 64, to brighten it); where the image is less than half opaque the surface is cut away, so a ring can have gaps (the cut-away parts still cast shadows); a library look takes its place. Aim at (aim_at, a node id) keeps its front turned towards that camera, light or object wherever both move.",
     inputs: &["texture"],
     optional: &["texture"],
     output: PortKind::Scene,
@@ -203,6 +211,7 @@ pub static SHAPE_3D: NodeType = NodeType {
         other("look", ParameterKind::Look, "library material"),
         other("shadow_catcher", ParameterKind::Boolean, "shadows only"),
         scalar("shadow_strength", "factor", 0.0, 1.0, 1.0),
+        other("aim_at", ParameterKind::NodeRef, "thing faced"),
     ],
 };
 node!(
@@ -365,12 +374,17 @@ pub struct Text3d {
     /// The pieces of a Text arriving one by one in 3D; a Path outline stays whole.
     #[serde(default)]
     pub letters: Letters,
+    /// A thing in the scene (the camera, a light, another object) this keeps its
+    /// front turned towards, wherever both move; replaces the placement's rotation
+    /// while that thing is in the scene.
+    #[serde(default)]
+    pub aim_at: Option<NodeId>,
 }
 pub static TEXT_3D: NodeType = NodeType {
     type_id: "text_3d",
     version: 1,
     label: "3D text",
-    description: "Extrudes the Text or Path node on its Outline input into a solid Depth pixels deep, front face where the 2D layer sits, centred in depth, with a Bevel (pixels, rounded or chamfered) on its front and back edges so metals catch highlights. Placement turns and moves it about its own centre; colour (linear RGB), roughness and metallic shade it, unless a Look (any library material) is set, which shades it like the 2D title. Outputs a scene. Finish, each 0 to 1 and 0 by default: brushed scatters light across the grain so reflections stretch that way, brush_angle (degrees) turns the grain, grain shows it as fine streaks, ridges add long shallow undulations along the grain that break reflections into bands, imperfections add uneven polish and faint scratches; they shade the plain surface, not a look. Letters brings a Text in piece by piece in 3D (motion fly, drop, turn or grow; unit character, word or line; start, duration and stagger in seconds).",
+    description: "Extrudes the Text or Path node on its Outline input into a solid Depth pixels deep, front face where the 2D layer sits, centred in depth, with a Bevel (pixels, rounded or chamfered) on its front and back edges so metals catch highlights. Placement turns and moves it about its own centre; colour (linear RGB), roughness and metallic shade it, unless a Look (any library material) is set, which shades it like the 2D title. Outputs a scene. Finish, each 0 to 1 and 0 by default: brushed scatters light across the grain so reflections stretch that way, brush_angle (degrees) turns the grain, grain shows it as fine streaks, ridges add long shallow undulations along the grain that break reflections into bands, imperfections add uneven polish and faint scratches; they shade the plain surface, not a look. Letters brings a Text in piece by piece in 3D (motion fly, drop, turn or grow; unit character, word or line; start, duration and stagger in seconds). Aim at (aim_at, a node id) keeps its front turned towards that camera, light or object wherever both move.",
     inputs: &["outline"],
     optional: &[],
     output: PortKind::Scene,
@@ -396,6 +410,7 @@ pub static TEXT_3D: NodeType = NodeType {
         scalar("imperfections", "factor", 0.0, 1.0, 0.0),
         other("look", ParameterKind::Look, "library material"),
         other("letters", ParameterKind::Letters, "per-letter animation"),
+        other("aim_at", ParameterKind::NodeRef, "thing faced"),
     ],
 };
 node!(
@@ -423,25 +438,51 @@ node!(
 );
 
 /// Any image as a flat card in the scene: footage, stills, titles, whole comps.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ImageCard {
     #[serde(default)]
     pub placement: Placement,
+    /// Multiplies the picture (linear RGB; above 1 brightens it).
+    #[serde(default = "white")]
+    pub colour: Track3,
+    #[serde(default = "one")]
+    pub opacity: Scalar,
+    /// A thing in the scene (the camera, a light, another object) this keeps its
+    /// front turned towards, wherever both move; replaces the placement's rotation
+    /// while that thing is in the scene.
+    #[serde(default)]
+    pub aim_at: Option<NodeId>,
+}
+impl Default for ImageCard {
+    fn default() -> Self {
+        Self {
+            placement: Placement::default(),
+            colour: white(),
+            opacity: one(),
+            aim_at: None,
+        }
+    }
 }
 pub static IMAGE_CARD: NodeType = NodeType {
     type_id: "image_card",
     version: 1,
     label: "Image card",
-    description: "Puts the image on its Image input on a flat card in a 3D scene. The card covers the frame at depth 0, so an untouched card renders like the 2D image; Placement moves, turns and scales it about the frame centre. It shows the image's own colours, unlit, with its alpha. Outputs a scene.",
+    description: "Puts the image on its Image input on a flat card in a 3D scene. The card covers the frame at depth 0, so an untouched card renders like the 2D image; Placement moves, turns and scales it about the frame centre. It shows the image's own colours, unlit, with its alpha. Colour tints it (linear RGB, white leaves it as it is, above 1 brightens it) and Opacity fades it. Aim at (aim_at, a node id) keeps it facing that camera, light or object. Outputs a scene.",
     inputs: &["image"],
     optional: &[],
     output: PortKind::Scene,
-    parameters: &[other("placement", ParameterKind::Placement, "transform")],
+    parameters: &[
+        other("placement", ParameterKind::Placement, "transform"),
+        other("colour", ParameterKind::Colour3, "tint"),
+        scalar("opacity", "factor", 0.0, 1.0, 1.0),
+        other("aim_at", ParameterKind::NodeRef, "thing faced"),
+    ],
 };
-node!(ImageCard, IMAGE_CARD, [], {
+node!(ImageCard, IMAGE_CARD, [opacity], {
     fn validate(&self) -> Result<()> {
-        self.placement.validate()
+        self.placement.validate()?;
+        validate_colour(&self.colour)
     }
 });
 
@@ -669,12 +710,17 @@ pub struct Model3d {
     /// A library material instead of the model's own.
     #[serde(default)]
     pub look: Option<Box<crate::nodes::Material>>,
+    /// A thing in the scene (the camera, a light, another object) this keeps its
+    /// front turned towards, wherever both move; replaces the placement's rotation
+    /// while that thing is in the scene.
+    #[serde(default)]
+    pub aim_at: Option<NodeId>,
 }
 pub static MODEL_3D: NodeType = NodeType {
     type_id: "model_3d",
     version: 1,
     label: "3D model",
-    description: "An imported glTF 2.0 model (.glb or .gltf with its files): every part with its own base colour, texture, metallic and roughness, centred on its box and scaled so its largest side is Size pixels. Placement moves, turns and scales it about the frame centre; a library Look replaces its materials. Outputs a scene.",
+    description: "An imported glTF 2.0 model (.glb or .gltf with its files): every part with its own base colour, texture, metallic and roughness, centred on its box and scaled so its largest side is Size pixels. Placement moves, turns and scales it about the frame centre; a library Look replaces its materials. Outputs a scene. Aim at (aim_at, a node id) keeps its front turned towards that camera, light or object wherever both move.",
     inputs: &[],
     optional: &[],
     output: PortKind::Scene,
@@ -684,6 +730,7 @@ pub static MODEL_3D: NodeType = NodeType {
         other("extent", ParameterKind::Vector3, "proportions"),
         other("placement", ParameterKind::Placement, "transform"),
         other("look", ParameterKind::Look, "library material"),
+        other("aim_at", ParameterKind::NodeRef, "thing faced"),
     ],
 };
 node!(Model3d, MODEL_3D, [size], {

@@ -146,7 +146,7 @@ impl Parameter {
             }
             ParameterKind::Palette => crate::optical::palette_schema(),
             ParameterKind::Placement => crate::nodes::Placement::schema(),
-            ParameterKind::Colour3 => crate::track::schema(0.0, 1.0),
+            ParameterKind::Colour3 => crate::track::schema(0.0, 64.0),
             ParameterKind::ShapeKind => {
                 json!({"type":"string","enum":crate::nodes::ShapeKind::ALL})
             }
@@ -301,6 +301,10 @@ impl NodeType {
         let mut value = json!({"type":self.type_id});
         for param in self.parameters {
             value[param.name] = param.default_value();
+        }
+        // A card's tint starts white: the picture as it is.
+        if self.type_id == "image_card" {
+            value["colour"] = json!([1.0_f32, 1.0_f32, 1.0_f32]);
         }
         // A new Material is gold, lit and finished to look like it.
         if self.type_id == "material"

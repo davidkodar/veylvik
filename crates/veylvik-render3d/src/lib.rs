@@ -627,7 +627,11 @@ impl SceneRenderer for Engine {
                     object.surface.colour[0],
                     object.surface.colour[1],
                     object.surface.colour[2],
-                    object.surface.roughness,
+                    if matches!(object.geometry, Geometry::Card { .. }) {
+                        object.surface.opacity
+                    } else {
+                        object.surface.roughness
+                    },
                 ],
                 params: [
                     object.surface.metallic,

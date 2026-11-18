@@ -4,7 +4,7 @@ use std::fmt::Write;
 /// Longest accepted source, in bytes.
 pub const MAX_SOURCE: usize = 16_000;
 /// Control values a shader may use (a slider takes one, a colour three).
-pub const SLOTS: usize = 8;
+pub const SLOTS: usize = 16;
 /// Most iterations of one loop, and of nested loops multiplied together.
 pub const MAX_LOOP: i64 = 1024;
 /// Most `for` loops in a shader.
@@ -12,7 +12,9 @@ pub const MAX_LOOPS: usize = 8;
 /// The code a new shader node starts with.
 pub const EXAMPLE: &str = "// slider amount 0 1 0.5\n// colour tint 1 0.8 0.6\n\n// `at` is the pixel's centre. image(at) reads the input there.\nfn shade(at: vec2<f32>) -> vec4<f32> {\n    let c = image(at);\n    return vec4<f32>(mix(c.rgb, c.rgb * u.tint, u.amount), c.a);\n}\n";
 /// The slot values `EXAMPLE` declares, for the node's defaults.
-pub const EXAMPLE_DEFAULTS: [f32; SLOTS] = [0.5, 1.0, 0.8, 0.6, 0.0, 0.0, 0.0, 0.0];
+pub const EXAMPLE_DEFAULTS: [f32; SLOTS] = [
+    0.5, 1.0, 0.8, 0.6, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+];
 
 /// A control declared in the shader's comments.
 #[derive(Debug, Clone, PartialEq)]
@@ -437,7 +439,10 @@ pub fn assemble(code: &str, controls: &[Control]) -> (String, usize) {
     let mut fields = String::new();
     let mut fill = String::new();
     let slot = |i: usize| {
-        let (vector, part) = (["values", "extra"][i / 4], ["x", "y", "z", "w"][i % 4]);
+        let (vector, part) = (
+            ["values", "extra", "third", "fourth"][i / 4],
+            ["x", "y", "z", "w"][i % 4],
+        );
         format!("p.{vector}.{part}")
     };
     for control in controls {
@@ -462,7 +467,7 @@ pub fn assemble(code: &str, controls: &[Control]) -> (String, usize) {
         fields.push_str("    unused: f32,\n");
     }
     let prelude = format!(
-        "struct Params {{ size_op: vec4<u32>, values: vec4<f32>, extra: vec4<f32> }}
+        "struct Params {{ size_op: vec4<u32>, values: vec4<f32>, extra: vec4<f32>, third: vec4<f32>, fourth: vec4<f32> }}
 @group(0) @binding(0) var<uniform> p: Params;
 @group(0) @binding(1) var<storage, read> source: array<vec4<f32>>;
 @group(0) @binding(2) var<storage, read> other: array<vec4<f32>>;
@@ -526,7 +531,7 @@ mod tests {
             ("// colour c 1 2", "RED GREEN BLUE"),
             ("// slider 9a 0 1 0", "needs a name"),
             (
-                "// colour a 1 1 1\n// colour b 1 1 1\n// colour c 1 1 1",
+                "// colour a 1 1 1\n// colour b 1 1 1\n// colour c 1 1 1\n// colour d 1 1 1\n// colour e 1 1 1\n// colour f 1 1 1",
                 "control values",
             ),
         ] {

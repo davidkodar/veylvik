@@ -405,8 +405,10 @@ fn card(in: Varying) -> @location(0) vec4<f32> {
     let q = in.uv * object.params.zw - vec2<f32>(0.5);
     let i = vec2<i32>(floor(q));
     let f = fract(q);
-    return mix(mix(texel(i.x, i.y), texel(i.x + 1, i.y), f.x),
-               mix(texel(i.x, i.y + 1), texel(i.x + 1, i.y + 1), f.x), f.y);
+    let c = mix(mix(texel(i.x, i.y), texel(i.x + 1, i.y), f.x),
+                mix(texel(i.x, i.y + 1), texel(i.x + 1, i.y + 1), f.x), f.y);
+    // The card's tint, and its opacity in place of a roughness.
+    return vec4<f32>(c.rgb * object.surface.rgb, c.a) * object.surface.a;
 }
 
 // A shadow catcher: transparent where lit, darkening by the share of the direct

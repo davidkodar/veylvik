@@ -1,4 +1,4 @@
-//! The custom shader node's inspector: a code field that only commits code that compiles, with the compiler's message under it, and the node's eight values shown as the controls the code declares.
+//! The custom shader node's inspector: a code field that only commits code that compiles, with the compiler's message under it, and the node's sixteen values shown as the controls the code declares.
 use eframe::egui;
 use veylvik_document::{Operation, Scalar, nodes::Shader};
 use veylvik_shader::Control;
@@ -13,13 +13,13 @@ struct Buffer {
     problem: Option<String>,
     checked: String,
 }
-/// One of the node's eight values as its declared control: label, range, default.
+/// One of the node's sixteen values as its declared control: label, range, default.
 pub struct Slot {
     pub label: String,
     pub range: std::ops::RangeInclusive<f32>,
     pub default: f32,
 }
-/// The control behind value `parameter` (p1 to p8) of a shader node, or None when
+/// The control behind value `parameter` (p1 to p16) of a shader node, or None when
 /// the code declares nothing there (the value is unused and not shown).
 pub fn slot(operation: &Operation, parameter: &str) -> Option<Slot> {
     let Operation::Shader(shader) = operation else {
@@ -62,7 +62,7 @@ pub fn slot(operation: &Operation, parameter: &str) -> Option<Slot> {
             _ => None,
         })
 }
-fn values(shader: &mut Shader) -> [&mut Scalar; 8] {
+fn values(shader: &mut Shader) -> [&mut Scalar; veylvik_shader::SLOTS] {
     [
         &mut shader.p1,
         &mut shader.p2,
@@ -72,6 +72,14 @@ fn values(shader: &mut Shader) -> [&mut Scalar; 8] {
         &mut shader.p6,
         &mut shader.p7,
         &mut shader.p8,
+        &mut shader.p9,
+        &mut shader.p10,
+        &mut shader.p11,
+        &mut shader.p12,
+        &mut shader.p13,
+        &mut shader.p14,
+        &mut shader.p15,
+        &mut shader.p16,
     ]
 }
 /// The code editor. Returns whether the node changed.

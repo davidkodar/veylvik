@@ -71,6 +71,7 @@ pub fn material_uniforms(
         size_op: [width, height, 0, 0],
         values: [0.0; 4],
         extra: [0.0; 4],
+        more: [0.0; 8],
     };
     let cx = nodes::Cx {
         node: &node,
@@ -134,6 +135,9 @@ struct Params {
     size_op: [u32; 4],
     values: [f32; 4],
     extra: [f32; 4],
+    /// Eight more values, read only by custom shaders (other kernels declare the
+    /// first three fields; a longer buffer is allowed).
+    more: [f32; 8],
 }
 fn params(
     node: &Node,
@@ -154,6 +158,7 @@ fn params(
         size_op: [width, height, 0, 0],
         values: [0.0; 4],
         extra: [0.0; 4],
+        more: [0.0; 8],
     };
     let cx = nodes::Cx {
         node,
@@ -322,7 +327,8 @@ impl Renderer {
                     ty: wgpu::BindingType::Buffer {
                         ty: wgpu::BufferBindingType::Uniform,
                         has_dynamic_offset: false,
-                        min_binding_size: std::num::NonZeroU64::new(48),
+                        // Kernels read the first 48 bytes; a custom shader all 80.
+                        min_binding_size: None,
                     },
                     count: None,
                 },
@@ -903,13 +909,20 @@ impl Renderer {
             }
             let node = &plan.nodes[scheduled.node];
             let p = &evaluated[scheduled.node];
+            // Only a custom shader reads the eight values past the first 48 bytes.
+            let size = if scheduled.kernel == Kernel::Custom {
+                std::mem::size_of::<Params>()
+            } else {
+                48
+            };
             let uniform = resources.take(
                 &self.device,
-                48,
+                size as u64,
                 wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
                 "parameters",
             )?;
-            self.queue.write_buffer(&uniform, 0, bytemuck::bytes_of(p));
+            self.queue
+                .write_buffer(&uniform, 0, &bytemuck::bytes_of(p)[..size]);
             let lighting = if let Some(lighting_data) = shadow_lighting::for_node(node, plan, time)?
             {
                 let buffer = resources.take(

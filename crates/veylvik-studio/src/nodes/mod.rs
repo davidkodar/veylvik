@@ -43,6 +43,8 @@ pub(crate) struct InspectCx<'a> {
     pub pick: Option<&'static str>,
     /// The 3D objects in the composition, for a camera's Focus on.
     pub objects: &'a [(veylvik_document::NodeId, String)],
+    /// Everything in the scene an object can face: objects, cameras and lights.
+    pub things: &'a [(veylvik_document::NodeId, String)],
     /// The user asked to pick the object in focus in the viewer.
     pub pick_focus: bool,
     /// The node's Plate input is connected.

@@ -61,6 +61,8 @@ pub struct Surface {
     pub unlit: bool,
     /// A library material that shades the surface instead of the values above.
     pub look: Option<Box<veylvik_document::nodes::Material>>,
+    /// How much of an image card shows, 0 to 1 (1 for everything else).
+    pub opacity: f32,
     /// Shows only the shadows falling on it.
     pub catcher: bool,
     /// How dark those shadows are, 0 to 1.
@@ -74,6 +76,9 @@ pub struct Object {
     pub geometry: Geometry,
     pub world: Mat4,
     pub surface: Surface,
+    /// A thing the object keeps its front towards, and the frame it turns about
+    /// (a 3D text's letters share one); applied once the whole scene is known.
+    pub aim: Option<(NodeId, Mat4)>,
 }
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Camera {
@@ -279,11 +284,40 @@ impl Scene {
             .copied()
             .unwrap_or_else(|| home_camera(width, height))
     }
-    /// Turns every camera and light with an Aim at object in the scene towards its
-    /// centre. A missing object leaves the placement's rotation in charge.
+    /// Turns every camera, light and object with an Aim at thing in the scene towards
+    /// its centre. A missing object leaves the placement's rotation in charge.
     fn aim(&mut self) {
         let mut centres: Vec<(NodeId, [f32; 3])> = self.anchors.clone();
         centres.extend(self.objects.iter().map(|o| (o.node, o.sphere().0)));
+        let own = centres.len();
+        // Objects may also face a camera or a light.
+        centres.extend(
+            self.cameras
+                .iter()
+                .filter_map(|c| Some((c.node?, math::point(&c.world, [0.0; 3])))),
+        );
+        centres.extend(self.lights.iter().map(|l| (l.node, l.position())));
+        let faced: Vec<Option<([f32; 3], [f32; 3])>> = self
+            .objects
+            .iter()
+            .map(|o| {
+                let (id, _) = o.aim?;
+                let at = centres[..own].iter().find(|c| c.0 == o.node)?.1;
+                let target = centres.iter().find(|c| c.0 == id && c.0 != o.node)?.1;
+                Some((at, target))
+            })
+            .collect();
+        for (o, faced) in self.objects.iter_mut().zip(faced) {
+            if let (Some((_, mut pivot)), Some((at, target))) = (o.aim, faced) {
+                // Turn about the object's middle; its front is +z, where a camera's
+                // view runs along -z, so it looks away from the mirrored target.
+                for (row, value) in at.into_iter().enumerate() {
+                    pivot[row][3] = value;
+                }
+                let away = [0, 1, 2].map(|k| 2.0 * at[k] - target[k]);
+                o.world = math::aimed(&o.world, &pivot, away);
+            }
+        }
         let centre = |id: NodeId| centres.iter().find(|(node, _)| *node == id).map(|c| c.1);
         for camera in &mut self.cameras {
             if let Some(target) = camera.aim_at.and_then(centre) {
@@ -301,6 +335,9 @@ impl Scene {
     fn transformed(mut self, m: &Mat4) -> Self {
         for o in &mut self.objects {
             o.world = mul(m, &o.world);
+            if let Some((_, pivot)) = &mut o.aim {
+                *pivot = mul(m, pivot);
+            }
         }
         for c in &mut self.cameras {
             c.world = mul(m, &c.world);
@@ -394,6 +431,7 @@ fn node(doc: &Graph<'_>, id: NodeId, time: Time, depth: usize) -> Result<Scene> 
             world: placed(&s.placement, time, centre)?,
             surface: Surface {
                 colour: s.colour.at(time)?,
+                opacity: 1.0,
                 roughness: s.roughness.at(time)?.clamp(0.0, 1.0),
                 metallic: s.metallic.at(time)?.clamp(0.0, 1.0),
                 finish: [
@@ -408,6 +446,7 @@ fn node(doc: &Graph<'_>, id: NodeId, time: Time, depth: usize) -> Result<Scene> 
                 catcher: s.shadow_catcher,
                 shadow: s.shadow_strength.at(time)?.clamp(0.0, 1.0),
             },
+            aim: None,
         }),
         Operation::Text3d(t) => {
             let source =
@@ -431,6 +470,7 @@ fn node(doc: &Graph<'_>, id: NodeId, time: Time, depth: usize) -> Result<Scene> 
             );
             let surface = Surface {
                 colour: t.colour.at(time)?,
+                opacity: 1.0,
                 roughness: t.roughness.at(time)?.clamp(0.0, 1.0),
                 metallic: t.metallic.at(time)?.clamp(0.0, 1.0),
                 finish: [
@@ -494,6 +534,7 @@ fn node(doc: &Graph<'_>, id: NodeId, time: Time, depth: usize) -> Result<Scene> 
                     },
                     world: mul(&world, &moved),
                     surface: surface.clone(),
+                    aim: t.aim_at.map(|target| (target, world)),
                 });
             }
         }
@@ -507,7 +548,8 @@ fn node(doc: &Graph<'_>, id: NodeId, time: Time, depth: usize) -> Result<Scene> 
             },
             world: placed(&c.placement, time, centre)?,
             surface: Surface {
-                colour: [1.0; 3],
+                colour: c.colour.at(time)?,
+                opacity: c.opacity.at(time)?.clamp(0.0, 1.0),
                 roughness: 1.0,
                 metallic: 0.0,
                 finish: [0.0; 5],
@@ -516,6 +558,7 @@ fn node(doc: &Graph<'_>, id: NodeId, time: Time, depth: usize) -> Result<Scene> 
                 catcher: false,
                 shadow: 1.0,
             },
+            aim: None,
         }),
         Operation::Model3d(m) if !m.model.is_empty() => scene.objects.push(Object {
             node: id,
@@ -529,6 +572,7 @@ fn node(doc: &Graph<'_>, id: NodeId, time: Time, depth: usize) -> Result<Scene> 
             world: placed(&m.placement, time, centre)?,
             surface: Surface {
                 colour: [0.8; 3],
+                opacity: 1.0,
                 roughness: 0.5,
                 metallic: 0.0,
                 finish: [0.0; 5],
@@ -537,6 +581,7 @@ fn node(doc: &Graph<'_>, id: NodeId, time: Time, depth: usize) -> Result<Scene> 
                 catcher: false,
                 shadow: 1.0,
             },
+            aim: None,
         }),
         Operation::Model3d(_) => {}
         Operation::Transform3d(t) => {
@@ -630,6 +675,18 @@ fn node(doc: &Graph<'_>, id: NodeId, time: Time, depth: usize) -> Result<Scene> 
                 .map(|p| (id, [centre[0] + p[0], centre[1] + p[1], centre[2] + p[2]])),
         ),
         _ => return fail(format!("{} is not a 3D scene node", n.label)),
+    }
+    // A shape, card or model that faces something turns about its own frame.
+    let facing = match &n.operation {
+        Operation::Shape3d(s) => s.aim_at,
+        Operation::ImageCard(c) => c.aim_at,
+        Operation::Model3d(m) => m.aim_at,
+        _ => None,
+    };
+    if let Some(target) = facing {
+        for o in &mut scene.objects {
+            o.aim = Some((target, o.world));
+        }
     }
     Ok(scene)
 }

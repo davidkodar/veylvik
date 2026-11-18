@@ -1370,6 +1370,13 @@ and `colour`.
   animation still applies inside each piece. Cameras and lights that aim or
   focus at such a text use its resting place, not a moving letter.
 - **Image card**: any image on a flat card that covers the frame at depth 0.
+  **Tint** (`colour`, linear RGB, keyable) multiplies the picture: white leaves
+  it as it is, values up to 64 brighten it. **Opacity** (0–1) fades it.
+- **Face** (`aim_at`, on 3D shapes, 3D text, image cards and models) names a
+  camera, a light or another object the thing keeps its front turned towards,
+  upright, wherever both move; the placement's rotation is then not used. A card
+  that faces the camera never shows its edge. A 3D text turns as a whole. If the
+  named thing is not in the scene, the rotation stays in charge.
 - **3D transform**: moves, turns and scales a whole scene (cameras and lights too)
   about the frame centre. Bypassed, it passes its scene through.
 - **Merge scenes**: combines up to eight scenes.
@@ -1719,8 +1726,9 @@ settles on the wrong kind of motion can still look sure. The
   unconnected; `size` is the frame's size and `time` the frame's time in
   seconds. Controls are declared in comments and read from `u`: `// slider NAME
   MIN MAX DEFAULT` gives `u.NAME` (f32) and `// colour NAME R G B` gives
-  `u.NAME` (vec3, linear RGB, 0–64). Their values are the node's `p1` to `p8`
-  in the order declared, a slider using one and a colour three (eight in all);
+  `u.NAME` (vec3, linear RGB, 0–64). Their values are the node's `p1` to `p16`
+  in the order declared, a slider using one and a colour three (sixteen in all;
+  the second eight read as 0 in files from before them);
   each can be keyed or follow an expression, and Studio shows them under the
   declared names and ranges. To be safe on every pixel, the text may not use
   attributes (`@…`), global variables, `while`, `loop` or `continuing`, must be

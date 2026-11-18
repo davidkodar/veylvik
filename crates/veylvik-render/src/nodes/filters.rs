@@ -557,6 +557,13 @@ impl RenderNode for veylvik_document::nodes::Shader {
             | u32::from(cx.node.inputs.contains_key("second")) << 1;
         p.values = [sample("p1")?, sample("p2")?, sample("p3")?, sample("p4")?];
         p.extra = [sample("p5")?, sample("p6")?, sample("p7")?, sample("p8")?];
+        for (value, name) in p
+            .more
+            .iter_mut()
+            .zip(["p9", "p10", "p11", "p12", "p13", "p14", "p15", "p16"])
+        {
+            *value = sample(name)?;
+        }
         Ok(())
     }
 }

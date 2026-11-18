@@ -31,6 +31,27 @@ pub(crate) fn objects(doc: &veylvik_document::Composition) -> Vec<(NodeId, Strin
     list.sort_by(|a, b| a.1.cmp(&b.1));
     list
 }
+/// Everything an object can face: the objects, and the cameras, lights and models.
+pub(crate) fn things(doc: &veylvik_document::Composition) -> Vec<(NodeId, String)> {
+    let mut list: Vec<(NodeId, String)> = doc
+        .nodes
+        .values()
+        .filter(|n| {
+            matches!(
+                n.operation,
+                Operation::Shape3d(_)
+                    | Operation::Text3d(_)
+                    | Operation::ImageCard(_)
+                    | Operation::Model3d(_)
+                    | Operation::Camera3d(_)
+                    | Operation::Light3d(_)
+            )
+        })
+        .map(|n| (n.id, n.label.clone()))
+        .collect();
+    list.sort_by(|a, b| a.1.cmp(&b.1));
+    list
+}
 /// The object under `pointer`: of those whose projected box holds it, the one with
 /// the smallest box, so a cube wins over the floor it stands on.
 fn under(scene: &Scene, p: &Projector, pointer: Pos2) -> Option<(NodeId, egui::Rect)> {

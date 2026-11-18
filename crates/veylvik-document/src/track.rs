@@ -408,7 +408,7 @@ impl crate::Operation {
             O::Shape3d(n) => (Some(&mut n.placement), Some(&mut n.colour)),
             O::Text3d(n) => (Some(&mut n.placement), Some(&mut n.colour)),
             O::Light3d(n) => (Some(&mut n.placement), Some(&mut n.colour)),
-            O::ImageCard(n) => (Some(&mut n.placement), None),
+            O::ImageCard(n) => (Some(&mut n.placement), Some(&mut n.colour)),
             O::Transform3d(n) => (Some(&mut n.placement), None),
             O::Camera3d(n) => (Some(&mut n.placement), None),
             _ => (None, None),

@@ -1008,3 +1008,27 @@ fn a_texture_wraps_a_shape_the_right_way_round_and_its_alpha_cuts_holes() {
     assert!(left[0] > 4.0 * left[1].max(1e-4), "{left:?}");
     assert!(right[1] > 4.0 * right[0].max(1e-4), "{right:?}");
 }
+#[test]
+#[ignore = "requires Vulkan"]
+fn a_card_is_tinted_brightened_and_faded() {
+    let renderer = renderer();
+    let (mut doc, inputs, pixels, image) = gradient();
+    let mut card = op(&IMAGE_CARD);
+    if let Operation::ImageCard(c) = &mut card {
+        c.colour = [2.0, 0.5, 1.0].into();
+        c.opacity = 0.5.into();
+    }
+    let card = add(&mut doc, card, &[("image", image)]);
+    let out_node = add(&mut doc, op(&RENDER_SCENE), &[("scene", card)]);
+    doc.output = out_node;
+    let out = render(&renderer, &doc, &inputs);
+    let worst = out
+        .iter()
+        .zip(&pixels)
+        .map(|(a, b)| {
+            let want = [b[0] * 2.0 * 0.5, b[1] * 0.5 * 0.5, b[2] * 0.5, b[3] * 0.5];
+            (0..4).map(|c| (a[c] - want[c]).abs()).fold(0.0, f32::max)
+        })
+        .fold(0.0, f32::max);
+    assert!(worst < 2e-3, "worst channel difference {worst}");
+}

@@ -138,6 +138,7 @@ impl Inspect for Shape3d {
             cx.dirty |= crate::animation::colour_track(ui, "Colour", &mut self.colour, cx.time);
         }
         cx.dirty |= placement(ui, &mut self.placement, cx);
+        face_row(ui, &mut self.aim_at, cx);
     }
 }
 impl Inspect for Text3d {
@@ -162,6 +163,7 @@ impl Inspect for Text3d {
             cx.dirty |= crate::animation::colour_track(ui, "Colour", &mut self.colour, cx.time);
         }
         cx.dirty |= placement(ui, &mut self.placement, cx);
+        face_row(ui, &mut self.aim_at, cx);
         cx.dirty |= letters(ui, &mut self.letters);
     }
 }
@@ -287,7 +289,9 @@ fn letters(ui: &mut egui::Ui, l: &mut veylvik_document::nodes::Letters) -> bool 
 impl Inspect for ImageCard {
     fn inspect(&mut self, ui: &mut egui::Ui, cx: &mut InspectCx<'_>) {
         ui.weak("Untouched, the card covers the frame and renders like the 2D image.");
+        cx.dirty |= crate::animation::colour_track(ui, "Tint", &mut self.colour, cx.time);
         cx.dirty |= placement(ui, &mut self.placement, cx);
+        face_row(ui, &mut self.aim_at, cx);
     }
 }
 impl Inspect for Transform3d {
@@ -302,6 +306,37 @@ impl Inspect for MergeScenes {
     }
 }
 /// A row choosing a 3D object to aim at, or none.
+/// What an object keeps its front turned towards: the camera, a light or another object.
+fn face_row(
+    ui: &mut egui::Ui,
+    aim_at: &mut Option<veylvik_document::NodeId>,
+    cx: &mut InspectCx<'_>,
+) {
+    ui.horizontal(|ui| {
+        ui.add_sized([88., 22.], egui::Label::new("Face"));
+        let shown = match *aim_at {
+            None => "Its own rotation".to_string(),
+            Some(id) => cx
+                .things
+                .iter()
+                .find(|(o, _)| *o == id)
+                .map_or("Missing object".into(), |(_, label)| label.clone()),
+        };
+        egui::ComboBox::from_id_salt("face")
+            .selected_text(shown)
+            .show_ui(ui, |ui| {
+                cx.dirty |= ui
+                    .selectable_value(aim_at, None, "Its own rotation")
+                    .on_hover_text("Turn it with the rotation above")
+                    .changed();
+                for (id, label) in cx.things.iter().filter(|(id, _)| *id != cx.node_id) {
+                    cx.dirty |= ui.selectable_value(aim_at, Some(*id), label).changed();
+                }
+            })
+            .response
+            .on_hover_text("Keep its front turned towards this camera, light or object wherever both move; the rotation above is then not used");
+    });
+}
 fn aim_row(
     ui: &mut egui::Ui,
     aim_at: &mut Option<veylvik_document::NodeId>,
@@ -429,6 +464,7 @@ impl Inspect for veylvik_document::nodes::Model3d {
         });
         cx.dirty |= look(ui, &mut self.look, cx);
         cx.dirty |= placement(ui, &mut self.placement, cx);
+        face_row(ui, &mut self.aim_at, cx);
     }
 }
 impl Inspect for PointCloud {

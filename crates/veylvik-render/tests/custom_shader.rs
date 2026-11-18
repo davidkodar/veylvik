@@ -18,6 +18,14 @@ fn shader(code: &str, values: [f32; 8]) -> nodes::Shader {
         p6,
         p7,
         p8,
+        p9: 0.0.into(),
+        p10: 0.0.into(),
+        p11: 0.0.into(),
+        p12: 0.0.into(),
+        p13: 0.0.into(),
+        p14: 0.0.into(),
+        p15: 0.0.into(),
+        p16: 0.0.into(),
     }
 }
 /// A composition of a ramp image (red = x, green = y, alpha 1) through `shader`.
@@ -124,6 +132,39 @@ fn shade(at: vec2<f32>) -> vec4<f32> {
     let out = render(&doc, &inputs, 0);
     let p = out[(8 * W + 16) as usize];
     assert!((p[0] - 16.5 / 32.0).abs() < 1e-5 && (p[1] - 8.5 / 16.0).abs() < 1e-5 && p[3] == 1.0);
+}
+#[test]
+#[ignore = "requires Vulkan"]
+fn sixteen_control_values_reach_the_shader_and_old_files_read_the_new_ones_as_zero() {
+    // Five colours and a slider: the last colour and the slider sit in the second eight.
+    let code = "// colour a 0 0 0
+// colour b 0 0 0
+// colour c 0 0 0
+// colour d 0 0 0
+// colour e 0 0 0
+// slider last 0 9 0
+fn shade(at: vec2<f32>) -> vec4<f32> {
+    return vec4<f32>(u.c.b, u.d.g, u.e.r + u.e.b, u.last);
+}";
+    let mut node = shader(code, [0.0; 8]);
+    node.p9 = 0.25.into(); // c blue
+    node.p11 = 0.5.into(); // d green
+    node.p13 = 1.0.into(); // e red
+    node.p15 = 2.0.into(); // e blue
+    node.p16 = 7.0.into(); // last
+    let (doc, inputs) = scene(node, false);
+    assert_eq!(render(&doc, &inputs, 0)[0], [0.25, 0.5, 3.0, 7.0]);
+    // A file from before the second eight.
+    let constant = |v: f32| serde_json::json!({"kind": "constant", "value": v});
+    let mut old = serde_json::json!({"type": "shader",
+        "code": "fn shade(at: vec2<f32>) -> vec4<f32> { return vec4<f32>(0.0); }"});
+    for name in ["p1", "p2", "p3", "p4", "p5", "p6", "p7", "p8"] {
+        old[name] = constant(1.0);
+    }
+    let Operation::Shader(read) = serde_json::from_value(old).unwrap() else {
+        panic!("a shader");
+    };
+    assert!(matches!(read.p16, Scalar::Constant { value } if value == 0.0));
 }
 #[test]
 #[ignore = "requires Vulkan"]

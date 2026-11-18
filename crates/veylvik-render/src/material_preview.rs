@@ -306,9 +306,10 @@ impl Renderer {
             size_op: [256, 256, 0, kind as u32],
             values: [80., 32., roughness, 0.],
             extra: [grain, emission, 1., f32::from(brushed)],
+            more: [0.0; 8],
         };
         self.queue
-            .write_buffer(&uniform, 0, bytemuck::bytes_of(&params));
+            .write_buffer(&uniform, 0, &bytemuck::bytes_of(&params)[..48]);
         use wgpu::util::DeviceExt;
         let lighting = self
             .device
