@@ -353,6 +353,36 @@ impl Graph {
             );
         }
     }
+    /// The node's picture in the lower right of its tile, and the note that it may have one.
+    pub(super) fn paint_thumbnail(&mut self, ui: &egui::Ui, canvas: Rect, rect: Rect, id: NodeId) {
+        if !self.show_thumbnails || self.zoom < 0.45 {
+            return;
+        }
+        self.visible.push(id);
+        let Some((texture, size)) = self.thumbnails.get(&id).copied() else {
+            return;
+        };
+        let room = egui::vec2(84.0, 50.0) * self.zoom;
+        let scale = (room.x / size.x.max(1.0)).min(room.y / size.y.max(1.0));
+        let area = Rect::from_min_size(
+            rect.right_bottom() - egui::vec2(8.0, 8.0) * self.zoom - size * scale,
+            size * scale,
+        );
+        let painter = ui.painter().with_clip_rect(canvas);
+        painter.rect_filled(area, 2.0, Color32::from_rgb(10, 11, 14));
+        painter.image(
+            texture,
+            area,
+            Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+            Color32::WHITE,
+        );
+        painter.rect_stroke(
+            area,
+            2.0,
+            Stroke::new(1.0_f32, Color32::from_gray(70)),
+            egui::StrokeKind::Outside,
+        );
+    }
     /// A map of the whole graph in the corner while part of it is out of view; click or
     /// drag in it to look there.
     pub(super) fn overview(

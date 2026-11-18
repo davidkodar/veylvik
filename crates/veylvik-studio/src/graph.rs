@@ -151,6 +151,12 @@ pub struct Graph {
     active: Option<NodeId>,
     marquee: Option<(Pos2, std::collections::BTreeSet<NodeId>)>,
     pending_paste: Option<(NodePosition, f64)>,
+    /// Draw a small picture of each node's output on its tile.
+    pub show_thumbnails: bool,
+    /// The pictures to draw, with their sizes; filled in from outside.
+    pub thumbnails: BTreeMap<NodeId, (egui::TextureId, Vec2)>,
+    /// The node tiles drawn large enough for a picture in the last frame.
+    pub visible: Vec<NodeId>,
 }
 impl Default for Graph {
     fn default() -> Self {
@@ -178,6 +184,9 @@ impl Default for Graph {
             active: None,
             marquee: None,
             pending_paste: None,
+            show_thumbnails: false,
+            thumbnails: BTreeMap::new(),
+            visible: Vec::new(),
         }
     }
 }
@@ -765,6 +774,9 @@ impl Graph {
                 self.revision = None;
             }
             ui.menu_button("More", |ui| {
+            ui.checkbox(&mut self.show_thumbnails, "Thumbnails on nodes").on_hover_text(
+                "A small picture of each node's output on its tile, made while Studio is idle",
+            );
             if ui
                 .button("Find")
                 .on_hover_text("Find and preview a node (Ctrl+F)")
@@ -1020,6 +1032,7 @@ impl Graph {
             });
         }
         let mut node_dragged = false;
+        self.visible.clear();
         for node in &nodes {
             let rect = Rect::from_min_size(
                 canvas.min + self.pan + self.positions[&node.id].to_vec2() * self.zoom,
@@ -1212,6 +1225,7 @@ impl Graph {
                 );
             }
             self.paint_annotation(ui, canvas, rect, doc, node.id);
+            self.paint_thumbnail(ui, canvas, rect, node.id);
             if self.pinned.contains(&node.id) {
                 painter.circle_filled(
                     rect.right_top() + egui::vec2(-8.0, 9.0) * self.zoom,

@@ -56,6 +56,8 @@ pub struct Values {
     pub audio_volume: f32,
     /// Positions in time as timecode or as frame numbers.
     pub time_display: crate::timecode::Display,
+    /// A small picture of each node's output on its tile in the graph.
+    pub node_thumbnails: bool,
 }
 impl Default for Values {
     fn default() -> Self {
@@ -76,6 +78,7 @@ impl Default for Values {
             audio_device: None,
             audio_volume: 1.,
             time_display: Default::default(),
+            node_thumbnails: false,
         }
     }
 }

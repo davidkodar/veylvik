@@ -37,6 +37,7 @@ mod models_window;
 mod node_clipboard;
 mod node_finder;
 mod node_palette;
+mod node_thumbnails;
 mod nodes;
 mod occlusion;
 mod pages;
@@ -277,6 +278,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 audio: Default::default(),
                 waveform: Default::default(),
                 layer_bars: Default::default(),
+                thumbnails: Default::default(),
                 materials: Default::default(),
                 shot_light: Default::default(),
                 subject: subject::Controls::default(),
@@ -395,6 +397,7 @@ struct Studio {
     audio: audio_preview::AudioPreview,
     waveform: waveform::Waveform,
     layer_bars: layer_bars::LayerBars,
+    thumbnails: node_thumbnails::Thumbnails,
     materials: material_library::Library,
     shot_light: shot_light::Pending,
     subject: subject::Controls,
@@ -466,6 +469,7 @@ impl Studio {
         self.graph = graph::Graph::default();
         self.graph
             .set_auto_arrange(self.preferences.values.auto_arrange);
+        self.graph.show_thumbnails = self.preferences.values.node_thumbnails;
         self.effects = effects::Controls::default();
         self.library = preset_library::Library::default();
         self.navigation.fit();
@@ -2932,6 +2936,7 @@ impl eframe::App for Studio {
         }
         self.audio_tick();
         self.waveform_tick(&ctx);
+        self.thumbnails_tick(&ctx);
         self.materials.poll(&ctx);
         self.shot_light_tick();
         self.grain_measure_tick(&ctx);

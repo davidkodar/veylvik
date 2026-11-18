@@ -2176,6 +2176,20 @@ part of the graph is outside the panel, an **overview map** appears in the
 panel's lower right corner with every node, tagged ones in their colour, and
 the visible part outlined; clicking or dragging in it moves the view there.
 
+**Thumbnails on nodes** (Nodes > **More** > **Thumbnails on nodes**, off by
+default, kept in preferences as `node_thumbnails`) draw a small picture of
+each image node's own output in the lower right of its tile, once tiles are
+drawn at 45% zoom or more. Pictures are made one node at a time on a worker,
+only while Studio is idle (not playing, no unapplied edit, the viewer up to
+date, nothing being dragged) and after the current frame has stood still for
+0.35 seconds. Each is a full render of that node's branch at the current
+frame, reduced on the GPU before it is read back, at most 112 pixels on its
+longer edge. A picture is kept until that node, anything upstream of it, the
+composition's size or the frame changes; renaming, tagging or annotating a
+node does not remake it. Nodes that output a scene, lights or data have none,
+and neither has a collapsed group's tile. A node whose branch cannot render
+shows no picture and is not tried again until it changes.
+
 ### Timeline: markers, sound and layer bars
 
 **Markers** are named points in time stored in the composition (`markers`: a
