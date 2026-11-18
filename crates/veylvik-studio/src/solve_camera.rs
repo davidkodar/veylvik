@@ -142,6 +142,18 @@ impl Studio {
                         report["solved_frames"], report["frames"], report["tracks"], report["points"],
                         report["focal_length"].as_f64().unwrap_or(0.0)
                     ));
+                    if report["lens_sure"].as_bool() == Some(false)
+                        && let Some(range) = report["lens_range"].as_array()
+                    {
+                        ui.colored_label(
+                            egui::Color32::from_rgb(230, 200, 90),
+                            format!(
+                                "The shot does not pin its lens down: anything from {:.0} to {:.0} mm fits about as well. Tick I know the lens if you know it, or 3D may look the wrong size or slide.",
+                                range[0].as_f64().unwrap_or(0.0),
+                                range[1].as_f64().unwrap_or(0.0)
+                            ),
+                        );
+                    }
                     if report["tripod"].as_bool() == Some(true) {
                         ui.weak("The camera only turned (a tripod shot): it stays in place and turns.");
                     }

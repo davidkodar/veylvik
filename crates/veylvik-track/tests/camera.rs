@@ -334,6 +334,7 @@ fn far_background_points_stay_out_of_the_point_cloud() {
         focal_measured: true,
         distortion: veylvik_solve::Distortion { k1: -0.1, k2: 0.0 },
         keyframes: vec![0, 1, 2],
+        focal_range: None,
     };
     let request = veylvik_track::camera::Request {
         source: doc.output,

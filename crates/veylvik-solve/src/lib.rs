@@ -42,6 +42,10 @@ pub struct Solved {
     /// modelling. Poses, points and errors are for the undistorted (ideal) frame.
     pub distortion: Distortion,
     pub keyframes: Vec<usize>,
+    /// For a measured lens: the shortest and longest focal lengths (pixels), among
+    /// 0.7, 0.85, 1.15 and 1.3 times the answer, that fit the tracks nearly as well.
+    /// A wide range means the shot does not pin its lens down.
+    pub focal_range: Option<[f64; 2]>,
 }
 #[derive(Debug, Clone, PartialEq)]
 pub struct Error(pub String);
@@ -180,6 +184,7 @@ pub fn solve(tracks: &[Track], frames: usize, settings: &Settings) -> Result<Sol
     }
     let mut r = best.ok_or_else(|| Error("No camera motion fits the tracks".into()))?;
     let mut measured = settings.focal.is_none();
+    let (range_shot, range_keys) = (&shot, keyframes.clone());
     let mut solved = if measured && r.nodal && r.turn() < 3.0 {
         // A camera that barely turns on a tripod says nothing about its lens.
         measured = false;
@@ -194,6 +199,31 @@ pub fn solve(tracks: &[Track], frames: usize, settings: &Settings) -> Result<Sol
         through_lens(r, &shot, settings, keyframes, measured)
     };
     solved.focal_measured = measured;
+    if measured {
+        // How firmly do the tracks hold that lens? Fit the keyframes again through
+        // shorter and longer ones: where the error barely rises, they do not.
+        let fit = |focal: f64| reconstruct::keyframes(range_shot, &range_keys, focal);
+        if let Some(own) = fit(solved.focal) {
+            let fits = |factor: f64| {
+                fit(solved.focal * factor).is_some_and(|other| {
+                    other.nodal == own.nodal
+                        && other.solved() * 10 >= own.solved() * 9
+                        && other.rms <= own.rms * 1.25 + 0.05
+                })
+            };
+            let reach = |steps: [f64; 2]| {
+                steps
+                    .into_iter()
+                    .take_while(|factor| fits(*factor))
+                    .last()
+                    .unwrap_or(1.0)
+            };
+            solved.focal_range = Some([
+                solved.focal * reach([0.85, 0.7]),
+                solved.focal * reach([1.15, 1.3]),
+            ]);
+        }
+    }
     Ok(solved)
 }
 /// Keyframe rms error (pixels) above which a straight-lens solve counts as weak.

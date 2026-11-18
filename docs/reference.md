@@ -1476,7 +1476,14 @@ and `colour`.
   sightings over 3 pixels are outliers). An unknown lens is searched over 0.5 to
   3.6 times the frame width and refined; a shot without parallax solves as a
   tripod pan (rotation only), and a tripod shot that turns under 3 degrees
-  assumes a 36 mm-equivalent lens and reports `lens_measured: false`. The
+  assumes a 36 mm-equivalent lens and reports `lens_measured: false`. The report also carries `lens_range`, the shortest
+and longest lens (millimetres) among 0.7, 0.85, 1.15 and 1.3 times the answer
+that fit the keyframes nearly as well (within a quarter more error), and
+`lens_sure`, true only when the lens was measured and that range is narrow
+(under 1.2 to 1). A wide range means the shot does not pin its lens down, as a
+short or gentle move often does not; Studio's Solve camera window then says so
+and suggests giving the lens. It is a check, not a guarantee: a solve that
+settles on the wrong kind of motion can still look sure. The
   lens's radial distortion (k1, k2, as in **Lens distortion**) is measured in the
   final bundle adjustment and kept when it lowers the keyframe error by at least
   3%; when the straight-lens search finds only a pan, misses keyframes or leaves

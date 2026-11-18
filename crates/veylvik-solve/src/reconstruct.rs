@@ -192,6 +192,7 @@ impl Reconstruction {
             focal_measured: false,
             distortion: Distortion::NONE,
             keyframes: keys,
+            focal_range: None,
         }
     }
 }

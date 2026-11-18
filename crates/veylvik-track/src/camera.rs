@@ -441,10 +441,15 @@ pub fn scene(doc: &Composition, request: &Request, outcome: &Outcome) -> Result<
         .iter()
         .flatten()
         .fold(0.0_f64, |a, b| a.max(*b));
+    // Millimetres, like the lens itself.
+    let lens_range = solved
+        .focal_range
+        .map(|range| range.map(|f| f * f64::from(request.sensor_width) / f64::from(outcome.width)));
     let report = json!({
         "frames": solved.poses.len(), "solved_frames": keyed, "tracks": outcome.tracks,
         "points": solved.points.iter().flatten().count(), "rms_pixels": solved.rms, "worst_frame_pixels": worst,
         "focal_length": focal_mm, "sensor_width": request.sensor_width, "tripod": solved.nodal, "lens_measured": solved.focal_measured,
+        "lens_range": lens_range, "lens_sure": solved.focal_measured && lens_range.is_some_and(|[low, high]| high / low < 1.2),
         "lens_distortion": (k != veylvik_solve::Distortion::NONE).then(|| json!({"k1": k.k1, "k2": k.k2})),
         "lens_node": lens.as_ref().map(|l| l.id),
         "camera": camera.id, "ground": ground_report, "scene": merged.id, "render": render.id, "composite": over.id, "grain": grain.id, "grain_measured": outcome.grain.is_some(),
