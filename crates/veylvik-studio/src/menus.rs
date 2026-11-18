@@ -115,6 +115,8 @@ impl Studio {
             ui.menu_button("View", |ui| {
                 let mut show_editor=!self.node_editor_hidden;
                 if ui.checkbox(&mut show_editor,"Node / animation editor").changed() {self.node_editor_hidden = !show_editor;}
+                let mut layer_bars = !self.layer_bars.hidden;
+                if ui.checkbox(&mut layer_bars, "Layer bars on the timeline").on_hover_text("A bar for each footage clip and fade under the ruler: drag to slide, drag an end to trim").changed() { self.layer_bars.hidden = !layer_bars; }
                 if item(ui, "Viewer full screen", "F11", true) { let ctx = ui.ctx().clone(); self.set_viewer_fullscreen(&ctx, true); }
 
                 ui.checkbox(&mut self.browser.visible, "Library panel");

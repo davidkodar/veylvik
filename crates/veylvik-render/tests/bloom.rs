@@ -33,6 +33,7 @@ fn render(threshold: f32, intensity: f32) -> Vec<[f32; 4]> {
     );
     let doc = Composition {
         markers: Default::default(),
+        backdrops: Default::default(),
         ocio: Default::default(),
         working_space: Default::default(),
         display: Default::default(),

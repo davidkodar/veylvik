@@ -189,6 +189,7 @@ mod tests {
         );
         let doc = Composition {
             markers: Default::default(),
+            backdrops: Default::default(),
             ocio: Default::default(),
             working_space: Default::default(),
             display: Default::default(),
@@ -230,6 +231,7 @@ mod tests {
         );
         let doc = Composition {
             markers: Default::default(),
+            backdrops: Default::default(),
             ocio: Default::default(),
             working_space: Default::default(),
             display: Default::default(),
@@ -311,6 +313,7 @@ mod tests {
         );
         let doc = Composition {
             markers: Default::default(),
+            backdrops: Default::default(),
             ocio: Default::default(),
             working_space: Default::default(),
             display: Default::default(),
@@ -399,6 +402,7 @@ mod tests {
         );
         let doc = Composition {
             markers: Default::default(),
+            backdrops: Default::default(),
             ocio: Default::default(),
             working_space: Default::default(),
             display: Default::default(),
@@ -545,6 +549,7 @@ mod tests {
         );
         let doc = Composition {
             markers: Default::default(),
+            backdrops: Default::default(),
             ocio: Default::default(),
             working_space: Default::default(),
             display: Default::default(),

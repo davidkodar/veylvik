@@ -31,6 +31,7 @@ fn plan_reuse_tracks_reachable_definitions_and_validates_disconnected_edits() {
     );
     let mut doc = Composition {
         markers: Default::default(),
+        backdrops: Default::default(),
         ocio: Default::default(),
         working_space: Default::default(),
         display: Default::default(),
@@ -111,6 +112,7 @@ fn plan_reuse_preserves_signed_zero_in_authored_parameters() {
     );
     let mut doc = Composition {
         markers: Default::default(),
+        backdrops: Default::default(),
         ocio: Default::default(),
         working_space: Default::default(),
         display: Default::default(),

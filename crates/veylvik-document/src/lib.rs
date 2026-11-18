@@ -8,6 +8,7 @@ pub mod presets;
 mod procedural;
 pub mod recipes;
 pub use procedural::procedural_demo;
+pub mod annotations;
 pub mod inspection;
 pub mod limits;
 pub mod markers;
@@ -290,6 +291,12 @@ pub struct Node {
     pub scene_background: bool,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub bypass: bool,
+    /// A colour to find the node by in the graph.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tag: Option<annotations::Tag>,
+    /// The artist's note on this node.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub note: String,
     pub operation: Operation,
     pub inputs: BTreeMap<String, NodeId>,
 }
@@ -302,6 +309,8 @@ impl Node {
             position: None,
             scene_background: false,
             bypass: false,
+            tag: None,
+            note: String::new(),
             operation,
             inputs: inputs.iter().map(|(k, v)| ((*k).into(), *v)).collect(),
         }
@@ -341,6 +350,9 @@ pub struct Composition {
     /// Named points in time; they guide the editor and never change a render.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub markers: Vec<markers::Marker>,
+    /// Named frames around nodes in the graph; they never change a render.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub backdrops: Vec<annotations::Backdrop>,
 }
 impl Composition {
     pub fn ocio_transforms(&self) -> impl Iterator<Item = &color_management::OcioTransform> {
@@ -394,6 +406,7 @@ impl Composition {
             return fail("dimensions must be in 1..=8192");
         }
         markers::validate(&self.markers)?;
+        annotations::validate(self)?;
         if !(1..=MAX_FRAME_COUNT).contains(&self.frame_count) {
             return fail("frame count must be in 1..=1000000");
         }
@@ -418,6 +431,7 @@ impl Composition {
                 return fail(format!("invalid identity or version for {id}"));
             }
             node.operation.validate()?;
+            annotations::validate_note(&node.note)?;
             if let Some(position) = node.position {
                 position.validate()?;
             }
@@ -667,6 +681,18 @@ pub enum Command {
     Display {
         display: media::DisplayTransform,
     },
+    /// Set a node's colour tag and note.
+    Annotate {
+        id: NodeId,
+        #[serde(default)]
+        tag: Option<annotations::Tag>,
+        #[serde(default)]
+        note: String,
+    },
+    /// Replace the composition's backdrops.
+    Backdrops {
+        backdrops: Vec<annotations::Backdrop>,
+    },
     /// Replace the composition's markers.
     Markers {
         markers: Vec<markers::Marker>,
@@ -682,6 +708,7 @@ pub fn blank(width: u32, height: u32, frame_rate: Time) -> Result<Composition> {
     );
     let composition = Composition {
         markers: Default::default(),
+        backdrops: Default::default(),
         ocio: Default::default(),
         working_space: Default::default(),
         display: Default::default(),
@@ -764,6 +791,7 @@ pub fn demo() -> Composition {
     );
     Composition {
         markers: Default::default(),
+        backdrops: Default::default(),
         ocio: Default::default(),
         working_space: Default::default(),
         display: Default::default(),
@@ -906,6 +934,7 @@ pub fn motion_demo() -> Composition {
     );
     Composition {
         markers: Default::default(),
+        backdrops: Default::default(),
         ocio: Default::default(),
         working_space: Default::default(),
         display: Default::default(),

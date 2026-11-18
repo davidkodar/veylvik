@@ -2,6 +2,8 @@
 use eframe::egui::{self, Color32, Pos2, Rect, Vec2};
 use std::collections::BTreeMap;
 use veylvik_document::{Composition, NodeId, NodePosition};
+#[path = "graph_annotations.rs"]
+mod annotations;
 #[path = "graph_presentation.rs"]
 mod presentation;
 pub(super) const NODE_SIZE: Vec2 = egui::vec2(200.0, 108.0);
@@ -52,6 +54,14 @@ pub enum Action {
         port: String,
         group: bool,
     },
+    /// Set a node's colour tag and note.
+    Annotate {
+        id: NodeId,
+        tag: Option<veylvik_document::annotations::Tag>,
+        note: String,
+    },
+    /// Replace the composition's backdrops.
+    Backdrops(Vec<veylvik_document::annotations::Backdrop>),
     /// Unlink an optional input port.
     Disconnect {
         target: NodeId,
@@ -882,6 +892,7 @@ impl Graph {
                 self.positions.insert(*id, *start + delta);
             }
         }
+        self.paint_backdrops(ui, canvas, doc, &nodes, &mut actions);
         let mut sockets = Vec::new();
         for node in &nodes {
             let origin = canvas.min + self.pan + self.positions[&node.id].to_vec2() * self.zoom;
@@ -1025,7 +1036,12 @@ impl Graph {
                     ui.id().with(node.id),
                     egui::Sense::click_and_drag(),
                 )
-                .on_hover_text(format!("{}\n{}", node.label, node.subtitle));
+                .on_hover_text(match doc.nodes.get(&node.id).map(|n| n.note.as_str()) {
+                    Some(note) if !note.is_empty() => {
+                        format!("{}\n{}\n\n{note}", node.label, node.subtitle)
+                    }
+                    _ => format!("{}\n{}", node.label, node.subtitle),
+                });
             if response.secondary_clicked() {
                 if !self.selection.contains(&node.id) {
                     self.selection.clear();
@@ -1068,6 +1084,8 @@ impl Graph {
                     }
                     if ui.button("Edit group...").clicked() { actions.push(Action::Node { id:node.id,action:NodeAction::EditGroup }); ui.close(); }
                 } else if ui.button("Create effect group...").clicked() { actions.push(Action::Node { id:node.id,action:NodeAction::CreateGroup }); ui.close(); }
+                ui.separator();
+                self.annotation_menu(ui, doc, node, &mut actions);
                 ui.separator();
                 if ui.button("Arrange upstream branch").clicked() {
                     let positions=self.arrangement(doc,Some(node.id));
@@ -1193,6 +1211,7 @@ impl Graph {
                     colour,
                 );
             }
+            self.paint_annotation(ui, canvas, rect, doc, node.id);
             if self.pinned.contains(&node.id) {
                 painter.circle_filled(
                     rect.right_top() + egui::vec2(-8.0, 9.0) * self.zoom,
@@ -1540,6 +1559,7 @@ impl Graph {
             }
             self.rename_open = open && !done;
         }
+        self.overview(ui, canvas, &nodes, doc);
         actions
     }
     pub fn selected_positions(&self, doc: &Composition) -> BTreeMap<NodeId, NodePosition> {

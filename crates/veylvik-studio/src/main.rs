@@ -2771,6 +2771,12 @@ impl Studio {
                         }
                     }
                 }
+                graph::Action::Annotate { id, tag, note } => {
+                    self.annotate(&[Command::Annotate { id, tag, note }]);
+                }
+                graph::Action::Backdrops(backdrops) => {
+                    self.annotate(&[Command::Backdrops { backdrops }]);
+                }
                 graph::Action::Place { id, position } => self.place(&[Command::Place {
                     id,
                     position: Some(position),
@@ -2785,6 +2791,16 @@ impl Studio {
                         .collect::<Vec<_>>(),
                 ),
             }
+        }
+    }
+    /// Tags, notes and backdrops: one undo step, and nothing to render again.
+    fn annotate(&mut self, commands: &[Command]) {
+        if !self.can_change_selection() {
+            return;
+        }
+        match self.project.apply(commands) {
+            Ok(()) => self.refresh_draft(),
+            Err(error) => self.fail(error),
         }
     }
     fn place(&mut self, commands: &[Command]) {
@@ -3232,12 +3248,14 @@ impl eframe::App for Studio {
                     // Animate gives the curves most of the window.
                     egui::Panel::bottom("graph-animate").default_size(560.0_f32.min(room.max(200.0))).min_size(200.0).max_size(room.max(200.0)).resizable(true)
                 } else {
-                    egui::Panel::bottom("graph").default_size(300.0_f32.min(room.max(130.0))).min_size(130.0).max_size(room.max(130.0)).resizable(true)
+                    egui::Panel::bottom("graph").default_size(420.0_f32.min(room.max(130.0))).min_size(130.0).max_size(room.max(130.0)).resizable(true)
                 }).frame(design::panel(ui.ctx()))
                     .show_inside(ui, |ui| {
                         // In a window too narrow to show it, the transport would wrap into a
                         // tall column and the panel would grow to hold it, and stay that tall.
                         if ui.available_width() < EDITOR_NARROWEST {
+                            // Hold the panel's height, or it would shrink to nothing and stay so.
+                            ui.allocate_space(ui.available_size());
                             return;
                         }
                         ui.add_enabled_ui(!self.animation_editor.dragging(), |ui| {

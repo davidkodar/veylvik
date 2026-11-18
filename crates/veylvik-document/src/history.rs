@@ -223,6 +223,7 @@ impl Document {
                     if next.nodes.remove(id).is_none() {
                         return fail("cannot remove missing node");
                     }
+                    crate::annotations::forget(&mut next.backdrops, *id);
                 }
                 Command::FrameRate { frame_rate } => next.frame_rate = *frame_rate,
                 Command::FrameCount { frame_count } => next.frame_count = *frame_count,
@@ -230,6 +231,15 @@ impl Document {
                 Command::WorkingSpace { space } => next.working_space = *space,
                 Command::Display { display } => next.display = *display,
                 Command::Markers { markers } => next.markers = markers.clone(),
+                Command::Backdrops { backdrops } => next.backdrops = backdrops.clone(),
+                Command::Annotate { id, tag, note } => {
+                    let node = next
+                        .nodes
+                        .get_mut(id)
+                        .ok_or_else(|| Error("cannot annotate missing node".into()))?;
+                    node.tag = *tag;
+                    node.note = note.clone();
+                }
                 Command::Output { id } => next.output = *id,
                 Command::Place { id, position } => {
                     next.nodes

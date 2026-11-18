@@ -147,13 +147,6 @@ impl crate::Studio {
             {
                 self.add_marker();
             }
-            if ui
-                .selectable_label(!self.layer_bars.hidden, "Layers")
-                .on_hover_text("Show a bar for each footage clip and fade under the ruler: drag to slide, drag an end to trim")
-                .clicked()
-            {
-                self.layer_bars.hidden = !self.layer_bars.hidden;
-            }
         });
     }
 }

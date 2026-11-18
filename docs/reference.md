@@ -2149,6 +2149,33 @@ normal saving. A recovery storage error is shown; normal project saving remains
 available. If storage is unavailable at startup, restart after fixing it to
 re-enable background recovery.
 
+### Graph tags, notes, backdrops and overview
+
+These help read a graph and never change a render. A node may carry a colour
+`tag` (`red`, `orange`, `yellow`, `green`, `teal`, `blue`, `purple`, `grey`)
+and a `note` of up to 400 characters of plain text over any number of lines;
+the command `{"command":"annotate","id":..,"tag":..,"note":..}` sets both. A
+composition may hold up to 64 `backdrops`, each `{id, label, tag, nodes}`: a
+name of up to 80 characters, an optional colour and one or more existing
+nodes; `{"command":"backdrops","backdrops":[...]}` replaces the list. Removing
+a node takes it out of its backdrops, and a backdrop left without nodes is
+removed. Projects without any of these save exactly as before; projects with
+them cannot be opened by builds from before they existed.
+
+In Studio a node's menu has **Colour tag**, **Add a note...**, **Backdrop
+around N selected node(s)** and **Take out of the backdrop**. A tag colours
+a band behind the node's name and a bar down its side, and the node's tile in
+the overview. A note is written under the node (once the graph is zoomed to
+40% or more), marked by a folded corner at any zoom, and added to the node's
+hover text. A backdrop is not a box with a position of its own: it is drawn
+around its member nodes wherever they are, so it survives Auto arrange. A node
+belongs to at most one backdrop made this way (framing it again moves it).
+Clicking a backdrop's name selects its nodes, which can then be moved
+together; its menu renames, recolours or removes it (the nodes stay). When
+part of the graph is outside the panel, an **overview map** appears in the
+panel's lower right corner with every node, tagged ones in their colour, and
+the visible part outlined; clicking or dragging in it moves the view there.
+
 ### Timeline: markers, sound and layer bars
 
 **Markers** are named points in time stored in the composition (`markers`: a
@@ -2171,7 +2198,7 @@ up to four times larger so its shape can be read; the strip is a picture of
 the sound, not a level meter. Only the first ten minutes are drawn.
 
 **Layer bars** show, under the ruler, when each footage clip and each Fade is
-on screen (the first eight; **Layers** in the transport hides them, and they
+on screen (the first eight; **View > Layer bars on the timeline** hides them, and they
 are not shown while the editor is hidden). Dragging a bar slides the layer in
 time; dragging its start or end trims it. Moves are in whole frames, previewed
 while dragging and committed on release as one undo step. For footage,
@@ -2203,8 +2230,8 @@ nearest rendered pixel. The aids follow zoom and pan, are hidden while the
 viewer is full screen, are kept for the session only, and never change the
 composition, a render or an export.
 
-The node and animation editor below the viewer can be dragged taller, but the
-viewer always keeps at least 220 points of height.
+The node and animation editor below the viewer opens 420 points tall and can
+be dragged taller, but the viewer always keeps at least 220 points of height.
 
 ### Pasting and dropping files
 
