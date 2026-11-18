@@ -2149,6 +2149,28 @@ normal saving. A recovery storage error is shown; normal project saving remains
 available. If storage is unavailable at startup, restart after fixing it to
 re-enable background recovery.
 
+### Viewer aids
+
+The viewer's toolbar has a choice of what to look at: **Colour**, **Red**,
+**Green**, **Blue**, **Luminance** or **Alpha**. A single channel and the
+luminance (Rec.709 weights) are shown as grey after the view exposure and the
+display transform; Alpha shows coverage directly, independent of exposure.
+The **Overlays** menu draws aids over the picture: **Safe areas** (action safe
+at 90% and title safe at 80% of the frame), **Centre**, **Thirds**, a **Grid**
+in composition pixels whose spacing stays round (1, 2, 5, 10, 20, 25, 50, 100
+and so on) and at least 48 points apart at any zoom, **Rulers** along the top
+and left in composition pixels, and **Colour under the pointer**: the
+position in composition pixels and the straight (unpremultiplied) scene-linear
+red, green and blue with the alpha of the rendered pixel there, unclamped, with
+a swatch. The value is read back one pixel at a time away from the interface
+thread, of the frame as previewed, so at a reduced preview quality it is the
+nearest rendered pixel. The aids follow zoom and pan, are hidden while the
+viewer is full screen, are kept for the session only, and never change the
+composition, a render or an export.
+
+The node and animation editor below the viewer can be dragged taller, but the
+viewer always keeps at least 220 points of height.
+
 ### Pasting and dropping files
 
 Files reach Studio in two more ways than its menus. **Paste**: with files

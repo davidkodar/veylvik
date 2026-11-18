@@ -27,6 +27,7 @@ mod nodes;
 mod plan;
 mod pool;
 mod preview_scale;
+mod probe;
 mod scene_hook;
 /// WGSL for the prefiltered studio environment (`environment_specular`), for
 /// renderers that light with the same studio as materials.

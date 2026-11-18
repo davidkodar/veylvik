@@ -55,6 +55,12 @@ fn sample_pixel(position: vec2<i32>) -> vec4<f32> {
         if (params.size.z & 4u) != 0u { color = filmic(pixel.rgb * gain / alpha) * alpha; }
         else { color = clamp(pixel.rgb * gain / alpha, vec3<f32>(0.0), vec3<f32>(1.0)) * alpha; }
     }
+    // One channel, or luminance, as grey: taken after exposure and the display transform.
+    let channel = (params.size.z >> 4u) & 7u;
+    if channel == 1u { color = vec3<f32>(color.r); }
+    else if channel == 2u { color = vec3<f32>(color.g); }
+    else if channel == 3u { color = vec3<f32>(color.b); }
+    else if channel == 4u { color = vec3<f32>(dot(color, vec3<f32>(0.2126, 0.7152, 0.0722))); }
     let grid = (u32(v.position.x) / 12u + u32(v.position.y) / 12u) % 2u;
     let checker = select(0.045, 0.075, grid == 0u);
     color += vec3<f32>(checker * (1.0 - alpha));

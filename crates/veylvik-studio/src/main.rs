@@ -81,6 +81,7 @@ mod transform_handles;
 mod vector_editor;
 mod video_export;
 mod viewer;
+mod viewer_overlays;
 mod viewport3d;
 use display::{Display, DisplayFrame, Paint, ViewSettings};
 use eframe::{egui, egui_wgpu};
@@ -280,6 +281,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 pages: Default::default(),
                 start: start::Start::load(false),
                 dropped: Default::default(),
+                overlays: Default::default(),
                 imported_files: 0,
                 media_import: None,
                 confirm: None,
@@ -313,6 +315,10 @@ enum Leave {
     Example(&'static str),
     Close,
 }
+/// Height the viewer keeps above the node and animation editor.
+const VIEWER_ROOM: f32 = 220.0;
+/// Below this width the editor panel draws nothing.
+const EDITOR_NARROWEST: f32 = 160.0;
 struct Studio {
     playback_controls: playback::Playback,
     preferences: preferences::Preferences,
@@ -392,6 +398,7 @@ struct Studio {
     start: start::Start,
     /// Files dropped or pasted, waiting to be taken in, and how many of this batch were.
     dropped: std::collections::VecDeque<PathBuf>,
+    overlays: viewer_overlays::Overlays,
     imported_files: usize,
     media_import: Option<media_import::Pending>,
     confirm: Option<Leave>,
@@ -3186,15 +3193,22 @@ impl eframe::App for Studio {
                     });
                 }
                 let editor_hidden_at_start=self.node_editor_hidden;
+                // The viewer always keeps this much height, whatever the editor wants.
+                let room = ui.available_height() - VIEWER_ROOM;
                 (if editor_hidden_at_start {
                     egui::Panel::bottom("transport-only").exact_size(126.0).resizable(false)
                 } else if self.pages.page == pages::Page::Animate {
                     // Animate gives the curves most of the window.
-                    egui::Panel::bottom("graph-animate").default_size(560.0).min_size(200.0).resizable(true)
+                    egui::Panel::bottom("graph-animate").default_size(560.0_f32.min(room.max(200.0))).min_size(200.0).max_size(room.max(200.0)).resizable(true)
                 } else {
-                    egui::Panel::bottom("graph").default_size(300.0).min_size(130.0).resizable(true)
+                    egui::Panel::bottom("graph").default_size(300.0_f32.min(room.max(130.0))).min_size(130.0).max_size(room.max(130.0)).resizable(true)
                 }).frame(design::panel(ui.ctx()))
                     .show_inside(ui, |ui| {
+                        // In a window too narrow to show it, the transport would wrap into a
+                        // tall column and the panel would grow to hold it, and stay that tall.
+                        if ui.available_width() < EDITOR_NARROWEST {
+                            return;
+                        }
                         ui.add_enabled_ui(!self.animation_editor.dragging(), |ui| {
                             self.timeline(ui)
                         });
@@ -3247,8 +3261,8 @@ impl eframe::App for Studio {
                             "Composition output"
                         });
                         ui.separator();
-                        ui.checkbox(&mut self.view.alpha, "Alpha")
-                            .on_hover_text("Inspect coverage without changing the composition");
+                        self.channel_choice(ui);
+                        self.overlays_menu(ui);
                         ui.checkbox(&mut self.view.fast_filter, "Fast view").on_hover_text("Basic bilinear filtering instead of antialiased downscaling. Off by default; does not change exports.");
                         ui.add_enabled_ui(!self.view.alpha, |ui| {
                             ui.label("View exposure");
@@ -3391,6 +3405,10 @@ impl eframe::App for Studio {
                                 Paint(self.displayed.as_ref().unwrap().clone()),
                             ),
                         );
+                        if !self.viewer_fullscreen {
+                            let pointer = ctx.pointer_hover_pos().filter(|pos| viewer_on_top && canvas.contains(*pos));
+                            self.viewer_overlays(ui, canvas, transform, image, &frame.frame, pointer);
+                        }
                         self.light_overlay(ui, canvas, transform, image);
                         if navigating_3d {
                             self.scene_guides(ui, &guides_response, canvas, transform);

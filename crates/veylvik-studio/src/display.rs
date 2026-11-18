@@ -4,6 +4,34 @@ use std::sync::Arc;
 use veylvik_render::{GpuFrame, Renderer};
 use wgpu::util::DeviceExt;
 
+/// What of the picture the viewer shows; anything but Colour is drawn as grey.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub enum Channel {
+    #[default]
+    Colour,
+    Red,
+    Green,
+    Blue,
+    Luminance,
+}
+impl Channel {
+    pub const ALL: [Self; 5] = [
+        Self::Colour,
+        Self::Red,
+        Self::Green,
+        Self::Blue,
+        Self::Luminance,
+    ];
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Colour => "Colour",
+            Self::Red => "Red",
+            Self::Green => "Green",
+            Self::Blue => "Blue",
+            Self::Luminance => "Luminance",
+        }
+    }
+}
 #[derive(Debug, Default, Clone, Copy, PartialEq)]
 pub struct ViewSettings {
     pub exposure: f32,
@@ -11,6 +39,8 @@ pub struct ViewSettings {
     pub fast_filter: bool,
     /// The composition's filmic display transform instead of clipping at white.
     pub filmic: bool,
+    /// A single channel or the luminance as grey; coverage is `alpha`.
+    pub channel: Channel,
 }
 pub struct Display {
     pipeline: wgpu::RenderPipeline,
@@ -71,7 +101,8 @@ impl Display {
                     u32::from(self.format.is_srgb())
                         | (u32::from(settings.alpha) << 1)
                         | (u32::from(settings.filmic) << 2)
-                        | (u32::from(settings.fast_filter) << 3),
+                        | (u32::from(settings.fast_filter) << 3)
+                        | ((settings.channel as u32) << 4),
                     exposure.to_bits(),
                     frame.region().x,
                     frame.region().y,
@@ -314,6 +345,7 @@ mod tests {
                         alpha: false,
                         fast_filter: false,
                         filmic: false,
+                        channel: Default::default(),
                     },
                 );
                 let green = if exposure == -2.0 { 0.1625 } else { 0.5375 };
@@ -337,6 +369,7 @@ mod tests {
                         alpha: true,
                         fast_filter: false,
                         filmic: false,
+                        channel: Default::default(),
                     },
                 );
                 for value in &actual[0][..3] {
@@ -492,6 +525,75 @@ mod tests {
         assert!(
             fast.iter().all(|p| p[0] == 255),
             "legacy bilinear misses the stripe footprint: {fast:?}"
+        );
+    }
+    #[test]
+    #[ignore = "requires Vulkan"]
+    fn a_single_channel_or_the_luminance_shows_as_grey() {
+        let renderer = Renderer::new().unwrap();
+        let rgb = [0.2_f32, 0.5, 0.8];
+        let node = Node::new(
+            "Colour",
+            Operation::Solid(veylvik_document::nodes::Solid {
+                color: [rgb[0], rgb[1], rgb[2], 1.0],
+            }),
+            &[],
+        );
+        let doc = Composition {
+            ocio: Default::default(),
+            working_space: Default::default(),
+            display: Default::default(),
+            groups: Default::default(),
+            schema: 1,
+            frame_count: 240,
+            width: 2,
+            height: 2,
+            frame_rate: Time::new(24, 1).unwrap(),
+            output: node.id,
+            nodes: [(node.id, node)].into(),
+        };
+        let frame = Arc::new(
+            renderer
+                .render_gpu(
+                    &Plan::compile(&doc).unwrap(),
+                    RenderRequest::full(Time::new(0, 1).unwrap()),
+                    &ImageInputs::default(),
+                )
+                .unwrap(),
+        );
+        let luminance = 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2];
+        for (channel, value) in [
+            (Channel::Red, rgb[0]),
+            (Channel::Green, rgb[1]),
+            (Channel::Blue, rgb[2]),
+            (Channel::Luminance, luminance),
+        ] {
+            let shown = paint_with_settings(
+                &renderer,
+                frame.clone(),
+                2,
+                2,
+                wgpu::TextureFormat::Rgba8Unorm,
+                ViewSettings {
+                    channel,
+                    ..Default::default()
+                },
+            );
+            let expected = veylvik_render::to_srgba8(&[[value, value, value, 1.]])[0];
+            assert!(
+                shown
+                    .iter()
+                    .all(|p| p[..3].iter().all(|c| c.abs_diff(expected) <= 1)),
+                "{channel:?}: {shown:?} against {expected}"
+            );
+        }
+        // Colour is untouched by the new setting.
+        let colour = paint(&renderer, frame, 2, 2, wgpu::TextureFormat::Rgba8Unorm);
+        let expected = veylvik_render::to_srgba8(&[[rgb[0], rgb[1], rgb[2], 1.]]);
+        assert!(
+            colour
+                .iter()
+                .all(|p| (0..3).all(|c| p[c].abs_diff(expected[c]) <= 1))
         );
     }
     fn paint(
