@@ -8,6 +8,33 @@ pub struct Controls {
     settings: Option<Settings>,
 }
 impl Controls {
+    /// The settings as a panel (the Export page); Some when a destination is wanted.
+    pub fn panel(
+        &mut self,
+        ui: &mut egui::Ui,
+        doc: &Composition,
+        enabled: bool,
+    ) -> Option<Settings> {
+        let s = self
+            .settings
+            .get_or_insert_with(|| Settings::for_document(doc));
+        ui.add_enabled_ui(enabled, |ui| settings_panel(ui, s, doc))
+            .inner
+    }
+    /// Only the delivery cards (the quick export dialog).
+    pub fn quick(&mut self, ui: &mut egui::Ui, doc: &Composition) {
+        let s = self
+            .settings
+            .get_or_insert_with(|| Settings::for_document(doc));
+        delivery_cards(ui, s, doc);
+    }
+    /// The settings as they stand, when they can be exported (the Export page's button).
+    pub fn request(&mut self, doc: &Composition) -> Option<Settings> {
+        let s = self
+            .settings
+            .get_or_insert_with(|| Settings::for_document(doc));
+        s.times(doc).is_ok().then(|| s.clone())
+    }
     pub fn show(
         &mut self,
         ctx: &egui::Context,
@@ -60,10 +87,9 @@ fn flag(ui: &egui::Ui, name: &'static str) -> bool {
 fn set_flag(ui: &egui::Ui, name: &'static str, on: bool) {
     ui.data_mut(|d| d.insert_temp(egui::Id::new(name), on));
 }
-fn settings_panel(ui: &mut egui::Ui, s: &mut Settings, doc: &Composition) -> Option<Settings> {
-    use crate::design::{chip, format_card, heading};
-    ui.set_width(622.0_f32.min(ui.ctx().content_rect().width() - 40.0));
-    ui.spacing_mut().item_spacing = egui::vec2(8.0, 8.0);
+/// Ready-made deliveries as cards: one click sets the format, quality and size.
+fn delivery_cards(ui: &mut egui::Ui, s: &mut Settings, doc: &Composition) {
+    use crate::design::{format_card, heading};
     let own = (even(doc.width), even(doc.height));
     let half = (even(doc.width / 2), even(doc.height / 2));
     // Ready-made deliveries: one click sets the format, quality and size.
@@ -146,6 +172,13 @@ fn settings_panel(ui: &mut egui::Ui, s: &mut Settings, doc: &Composition) -> Opt
             }
         }
     });
+}
+fn settings_panel(ui: &mut egui::Ui, s: &mut Settings, doc: &Composition) -> Option<Settings> {
+    use crate::design::{chip, heading};
+    ui.set_width(622.0_f32.min(ui.ctx().content_rect().width() - 40.0));
+    ui.spacing_mut().item_spacing = egui::vec2(8.0, 8.0);
+    let own = (even(doc.width), even(doc.height));
+    delivery_cards(ui, s, doc);
     heading(ui, "FORMAT AND QUALITY");
     ui.horizontal_wrapped(|ui| {
         for (codec, label, hint) in [

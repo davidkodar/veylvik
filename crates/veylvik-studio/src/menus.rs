@@ -50,9 +50,9 @@ impl Studio {
                 ui.separator();
                 if item(ui, "Project files…", "", true) { self.portable.open = true; }
                 if item(ui, "Render queue…", "", true) { self.render_queue.open = true; }
-                if item(ui, "Export video…", "", true) { self.video_export.open = true; }
+                if item(ui, "Export video…", "", true) { self.pages.export = crate::pages::ExportKind::Video; self.go_to(crate::pages::Page::Export); }
                 if item(ui, "Export current preview…", "Ctrl+E", true) { self.export_frame(); }
-                if item(ui, "Export image sequence…", "Ctrl+Shift+E", true) { self.export_controls.open = true; }
+                if item(ui, "Export image sequence…", "Ctrl+Shift+E", true) { self.pages.export = crate::pages::ExportKind::Sequence; self.go_to(crate::pages::Page::Export); }
                 ui.separator();
                 if item(ui, "Composition settings…", "", !self.draft_dirty) {
                     self.playing = false;
@@ -174,9 +174,11 @@ impl Studio {
                 if item(ui, "About Veylvik…", "", true) { self.about.begin(); }
             });
             ui.separator();
+            self.page_bar(ui);
+            ui.separator();
             // Reserve only the remaining space so long filenames never push menus offscreen.
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.add(egui::Button::new(egui::RichText::new("Render").color(crate::theme::ink(crate::theme::palette(ui.ctx()).selection))).fill(crate::theme::palette(ui.ctx()).selection)).clicked() {self.render_queue.open=true;}
+                if ui.add(egui::Button::new(egui::RichText::new("Render").color(crate::theme::ink(crate::theme::palette(ui.ctx()).selection))).fill(crate::theme::palette(ui.ctx()).selection)).clicked() {self.go_to(crate::pages::Page::Export);}
 
                 let unavailable = self.project.unavailable_assets().len();
                 if unavailable > 0 && ui.button(egui::RichText::new(format!("{unavailable} unavailable")).color(egui::Color32::LIGHT_RED))
@@ -185,7 +187,8 @@ impl Studio {
                     .map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "Untitled".into());
                 let title = if self.project.dirty() || self.draft_dirty { format!("{name} •") } else { name };
                 if ui.ctx().content_rect().width()>1200. {
-                    let center=egui::pos2(ui.ctx().content_rect().center().x,ui.max_rect().center().y);
+                    // Centred in the room left of the Render button, clear of the page tabs.
+                    let center=ui.available_rect_before_wrap().center();
                     ui.painter().text(center,egui::Align2::CENTER_CENTER,title.chars().take(42).collect::<String>(),egui::FontId::proportional(14.),ui.visuals().text_color());
                 } else {ui.add(egui::Label::new(&title).truncate()).on_hover_text(title);}
 

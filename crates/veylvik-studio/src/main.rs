@@ -37,6 +37,7 @@ mod node_finder;
 mod node_palette;
 mod nodes;
 mod occlusion;
+mod pages;
 mod path_edit;
 mod path_handles;
 mod path_pen;
@@ -273,6 +274,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 models: models_window::ModelsWindow::default(),
                 outline_controls: text_outline::Controls::default(),
                 composition_controls: composition::Controls::default(),
+                pages: Default::default(),
                 media_import: None,
                 confirm: None,
                 after_save: None,
@@ -374,6 +376,7 @@ struct Studio {
     models: models_window::ModelsWindow,
     outline_controls: text_outline::Controls,
     composition_controls: composition::Controls,
+    pages: pages::Pages,
     media_import: Option<media_import::Pending>,
     confirm: Option<Leave>,
     after_save: Option<Leave>,
@@ -1478,7 +1481,15 @@ impl Studio {
             }
             Ok(Completed::Queued(job)) => match self.render_queue.add(*job) {
                 Ok(()) => {
-                    self.status = "Added snapshot to render queue".into();
+                    if self.pages.page == pages::Page::Export {
+                        // From the Export page a chosen destination renders at once,
+                        // with its progress shown there.
+                        self.render_queue.start();
+                        self.render_queue.open = false;
+                        self.status = "Exporting".into();
+                    } else {
+                        self.status = "Added snapshot to render queue".into();
+                    }
                     self.error = false;
                 }
                 Err(e) => self.fail(e),
@@ -2745,6 +2756,7 @@ impl Studio {
                         ("Ctrl+R", "Reload source images"),
                         ("Ctrl+E", "Export current preview"),
                         ("Ctrl+Shift+E", "Export image sequence"),
+                        ("Ctrl+1 to Ctrl+4", "Compose, Animate, 3D and Export pages"),
                         ("Ctrl+S", "Save"),
                         ("Ctrl+Shift+S", "Save as"),
                         ("Ctrl+Z", "Undo"),
@@ -2989,8 +3001,10 @@ impl eframe::App for Studio {
             if ctx.input_mut(|i| {
                 i.consume_key(egui::Modifiers::CTRL | egui::Modifiers::SHIFT, egui::Key::E)
             }) {
-                self.export_controls.open = true;
+                self.pages.export = pages::ExportKind::Sequence;
+                self.go_to(pages::Page::Export);
             }
+            self.page_shortcuts(&ctx);
             if ctx.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, egui::Key::E)) {
                 self.export_frame();
             }
@@ -3052,8 +3066,14 @@ impl eframe::App for Studio {
                 if !self.viewer_fullscreen {
                 egui::Panel::top("menu_bar").show_inside(ui, |ui| self.menu_bar(ui));
                 egui::Panel::bottom("status").show_inside(ui, |ui| self.status_bar(ui));
-                self.asset_browser(ui);
-                if self.inspector_visible {
+                match self.pages.page {
+                    pages::Page::Compose => self.asset_browser(ui),
+                    pages::Page::Scene => self.scene_outline(ui),
+                    pages::Page::Animate | pages::Page::Export => {}
+                }
+                if self.pages.page == pages::Page::Export {
+                    self.export_page(ui);
+                } else if self.inspector_visible {
                 egui::Panel::right("inspector").frame(design::panel(ui.ctx()))
                     .default_size(414.0)
                     .min_size(340.0)
@@ -3086,6 +3106,9 @@ impl eframe::App for Studio {
                 let editor_hidden_at_start=self.node_editor_hidden;
                 (if editor_hidden_at_start {
                     egui::Panel::bottom("transport-only").exact_size(126.0).resizable(false)
+                } else if self.pages.page == pages::Page::Animate {
+                    // Animate gives the curves most of the window.
+                    egui::Panel::bottom("graph-animate").default_size(560.0).min_size(200.0).resizable(true)
                 } else {
                     egui::Panel::bottom("graph").default_size(300.0).min_size(130.0).resizable(true)
                 }).frame(design::panel(ui.ctx()))
@@ -3570,6 +3593,7 @@ impl eframe::App for Studio {
                 Err(e) => self.fail(e),
             }
         }
+        self.quick_export(&ctx);
         if let Some(settings) = self.composition_controls.show(&ctx) {
             self.apply_composition_settings(settings, &ctx);
         }

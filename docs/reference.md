@@ -2149,6 +2149,29 @@ normal saving. A recovery storage error is shown; normal project saving remains
 available. If storage is unavailable at startup, restart after fixing it to
 re-enable background recovery.
 
+### Pages
+
+The top bar switches the window between four arrangements of the same panels;
+nothing in the project changes. **Compose** (`Ctrl+1`) is the full editor:
+library, viewer, inspector and the node or animation editor. **Animate**
+(`Ctrl+2`) shows the animation editor in a taller panel of its own size and
+hides the library. **3D** (`Ctrl+3`) hides the editor (the transport stays) and
+replaces the library with a Scene panel listing the document's 3D nodes as
+Objects, Cameras, Lights and Structure; clicking one selects it. **Export**
+(`Ctrl+4`) hides the editor and replaces the inspector with the export settings:
+Video or Image sequence (the same panels as the export dialogs), **This frame**,
+**Render queue** and **Export**. Entering the page opens the quick **Export**
+dialog: Video or Image sequence, the delivery cards (or the two image formats)
+with the current choice selected, **Export** and **More settings**. Export, in
+the dialog or on the page, asks where to save and then starts rendering at
+once (from this page a queued job is started without opening the queue), with
+a progress bar on the page and afterwards where it was saved or why it did not
+finish. More settings, Escape or closing the dialog leaves the page's full
+settings. Leaving Compose remembers whether the editor was shown and
+whether it showed nodes or curves, and returning restores that. **File → Export
+video…**, **Export image sequence…** (`Ctrl+Shift+E`) and the **Render** button
+open the Export page.
+
 ### New compositions and format settings
 
 **File → New composition…** (`Ctrl+N`) creates a composition with one transparent Background node.

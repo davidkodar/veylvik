@@ -344,6 +344,50 @@ impl Queue {
         }
         Ok(())
     }
+    /// Start working through the queue (as the Start queue button does).
+    pub fn start(&mut self) {
+        if self._lock.is_some() {
+            self.running = true;
+        }
+    }
+    /// The job rendering now: its file name, the share done and what it is doing.
+    pub fn rendering(&self) -> Option<(String, f32, String)> {
+        let active = self.active.as_ref()?;
+        let job = self.jobs.iter().find(|j| j.id == active.id)?;
+        let (share, phase) = active
+            .progress
+            .lock()
+            .ok()
+            .map_or((0.0, String::new()), |p| {
+                (
+                    if p.total > 0 {
+                        p.completed as f32 / p.total as f32
+                    } else {
+                        0.0
+                    },
+                    p.phase.clone(),
+                )
+            });
+        let file = job
+            .path
+            .file_name()
+            .map_or_else(String::new, |n| n.to_string_lossy().into_owned());
+        Some((file, share, phase))
+    }
+    /// The job that finished last: where it wrote, whether it succeeded, and its note.
+    pub fn finished(&self) -> Option<(&std::path::Path, bool, &str)> {
+        self.jobs
+            .iter()
+            .rev()
+            .find(|j| !matches!(j.state, State::Pending | State::Rendering))
+            .map(|j| {
+                (
+                    j.path.as_path(),
+                    j.state == State::Complete,
+                    j.detail.as_str(),
+                )
+            })
+    }
     pub fn will_start(&self) -> bool {
         self.running && self.active.is_none() && self.pending() > 0
     }
