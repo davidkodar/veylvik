@@ -403,6 +403,7 @@ pub fn scene(doc: &Composition, request: &Request, outcome: &Outcome) -> Result<
                 redistort: true,
                 k1: (k.k1 as f32).into(),
                 k2: (k.k2 as f32).into(),
+                fill: false,
             }),
             &[("image", render.id)],
         )

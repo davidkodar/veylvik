@@ -33,7 +33,9 @@ struct ObjectUniform {
     counts: [f32; 4],
     /// Finish: brushing, the grain's direction (radians), imperfections, visible grain.
     finish: [f32; 4],
-    /// Ridges, unused.
+    /// Ridges, then the frame's width over 1920: the finish's patterns and the
+    /// edge softening are sized for a 1920-wide frame and scale with it, so a
+    /// scene looks the same at every resolution.
     relief: [f32; 4],
 }
 #[repr(C)]
@@ -628,7 +630,12 @@ impl SceneRenderer for Engine {
                     object.surface.finish[2],
                     object.surface.finish[3],
                 ],
-                relief: [object.surface.finish[4], 0.0, 0.0, 0.0],
+                relief: [
+                    object.surface.finish[4],
+                    job.width as f32 / 1920.0,
+                    0.0,
+                    0.0,
+                ],
             };
             let uniform = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("3D object"),

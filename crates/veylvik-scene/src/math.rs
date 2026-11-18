@@ -66,6 +66,55 @@ pub fn direction(m: &Mat4, d: [f32; 3]) -> [f32; 3] {
     let r = |i: usize| (0..3).map(|k| m[i][k] * d[k]).sum::<f32>();
     [r(0), r(1), r(2)]
 }
+fn cross(a: [f32; 3], b: [f32; 3]) -> [f32; 3] {
+    [
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0],
+    ]
+}
+fn unit(v: [f32; 3]) -> Option<[f32; 3]> {
+    let length = (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt();
+    (length > 1e-6).then(|| v.map(|c| c / length))
+}
+/// The rotation whose -z points from `from` to `to` with y kept as far down as it
+/// can be (no roll); None when the two points coincide.
+pub fn look_at(from: [f32; 3], to: [f32; 3]) -> Option<Mat4> {
+    let forward = unit([to[0] - from[0], to[1] - from[1], to[2] - from[2]])?;
+    let z = forward.map(|c| -c);
+    // Straight up or down has no sideways direction of its own: keep x to the right.
+    let x = unit(cross([0.0, 1.0, 0.0], z)).unwrap_or([1.0, 0.0, 0.0]);
+    let y = cross(z, x);
+    let mut m = IDENTITY;
+    for row in 0..3 {
+        m[row][0] = x[row];
+        m[row][1] = y[row];
+        m[row][2] = z[row];
+    }
+    Some(m)
+}
+/// `world` turned about `pivot`'s position by the rotation that makes `pivot`
+/// look at `target` along its -z. Scale and anything offset from the pivot (the
+/// strips of a row of lights) turn with it. Unchanged when the pivot sits on the
+/// target or has a zero scale.
+pub fn aimed(world: &Mat4, pivot: &Mat4, target: [f32; 3]) -> Mat4 {
+    let at = point(pivot, [0.0; 3]);
+    let axis = |k: usize| unit([pivot[0][k], pivot[1][k], pivot[2][k]]);
+    let (Some(look), Some(x), Some(y), Some(z)) = (look_at(at, target), axis(0), axis(1), axis(2))
+    else {
+        return *world;
+    };
+    // The pivot's own rotation, undone by its transpose.
+    let mut undo = IDENTITY;
+    for (k, column) in [x, y, z].into_iter().enumerate() {
+        undo[k][..3].copy_from_slice(&column);
+    }
+    let turn = mul(&look, &undo);
+    mul(
+        &mul(&translate(at), &turn),
+        &mul(&translate(at.map(|c| -c)), world),
+    )
+}
 /// Inverse of a rigid transform (rotation and translation, no scale), such as a camera.
 pub fn rigid_inverse(m: &Mat4) -> Mat4 {
     let mut out = IDENTITY;

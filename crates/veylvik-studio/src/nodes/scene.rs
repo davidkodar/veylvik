@@ -158,10 +158,45 @@ impl Inspect for MergeScenes {
         ui.weak("Combines up to eight scenes; depth decides what is in front.");
     }
 }
+/// A row choosing a 3D object to aim at, or none.
+fn aim_row(
+    ui: &mut egui::Ui,
+    aim_at: &mut Option<veylvik_document::NodeId>,
+    cx: &mut InspectCx<'_>,
+    what: &str,
+) {
+    ui.horizontal(|ui| {
+        ui.add_sized([88., 22.], egui::Label::new("Aim at"));
+        let shown = match *aim_at {
+            None => "Its own rotation".to_string(),
+            Some(id) => cx
+                .objects
+                .iter()
+                .find(|(o, _)| *o == id)
+                .map_or("Missing object".into(), |(_, label)| label.clone()),
+        };
+        egui::ComboBox::from_id_salt("aim_at")
+            .selected_text(shown)
+            .show_ui(ui, |ui| {
+                cx.dirty |= ui
+                    .selectable_value(aim_at, None, "Its own rotation")
+                    .on_hover_text("Turn it with the rotation above")
+                    .changed();
+                for (id, label) in cx.objects {
+                    cx.dirty |= ui.selectable_value(aim_at, Some(*id), label).changed();
+                }
+            })
+            .response
+            .on_hover_text(format!(
+                "Keep the {what} pointed at this object wherever both move; the rotation above is then not used"
+            ));
+    });
+}
 impl Inspect for Camera3d {
     fn inspect(&mut self, ui: &mut egui::Ui, cx: &mut InspectCx<'_>) {
         ui.weak("Untouched, the camera sees exactly the 2D frame at depth 0. Move and turn it from there.");
         cx.dirty |= placement(ui, &mut self.placement, cx);
+        aim_row(ui, &mut self.aim_at, cx, "camera");
         ui.horizontal(|ui| {
             ui.add_sized([88., 22.], egui::Label::new("Focus on"));
             let name = |id: Option<veylvik_document::NodeId>| match id {
@@ -217,6 +252,7 @@ impl Inspect for Light3d {
             .changed();
         cx.dirty |= crate::animation::colour_track(ui, "Colour", &mut self.colour, cx.time);
         cx.dirty |= placement(ui, &mut self.placement, cx);
+        aim_row(ui, &mut self.aim_at, cx, "light");
     }
 }
 impl Inspect for veylvik_document::nodes::MatchGrain {

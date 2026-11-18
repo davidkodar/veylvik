@@ -33,6 +33,13 @@ fn bloom_tight_horizontal(@builtin(global_invocation_id) gid:vec3<u32>) {
 fn bloom_tight_vertical(@builtin(global_invocation_id) gid:vec3<u32>) {
     if !inside(gid) {return;} result[index(gid)]=bloom_blur(gid,vec2<i32>(0,1),p.values.x*0.2);
 }
+// The streak is the sideways blur given a little height (a twentieth of the radius):
+// a lens streak is a soft band, and a blur that is one row tall draws hard lines
+// along bright horizontal edges and stripes where rows differ.
+@compute @workgroup_size(8,8)
+fn bloom_streak_vertical(@builtin(global_invocation_id) gid:vec3<u32>) {
+    if !inside(gid) {return;} result[index(gid)]=bloom_blur(gid,vec2<i32>(0,1),p.values.x*0.05);
+}
 @compute @workgroup_size(8,8)
 fn bloom_combine(@builtin(global_invocation_id) gid:vec3<u32>) {
     if !inside(gid) {return;}

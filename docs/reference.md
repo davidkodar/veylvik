@@ -1333,7 +1333,10 @@ and `colour`.
   ridges along the grain, which is what breaks a reflection into bands on a real
   plate; **Imperfections** (0–1) add wear: the polish varies in soft blotches
   and faint scratches catch or dull the light. They stay on the surface as it
-  moves and apply to the plain surface, not to a library look.
+  moves and apply to the plain surface, not to a library look. The finish's
+  patterns and the softening of sharply curved edges are sized for a
+  1920-pixel-wide frame and scale with the frame's width, so the same scene
+  looks the same at 1080p and at 4K.
 - **3D text**: extrudes the Text or Path node on its Outline input Depth pixels
   deep, front face where the 2D layer sits, turning about its own centre.
   **Bevel** (pixels, at most half the depth) rounds the front and back edges in four
@@ -1350,9 +1353,15 @@ and `colour`.
 - **Merge scenes**: combines up to eight scenes.
 - **Camera**: untouched, it frames the composition exactly at depth 0, at the
   distance its focal length and sensor width imply (1920 × 50 / 36 = 2667 pixels for
-  the defaults at 1080p); placement moves and turns it from there.
+  the defaults at 1080p); placement moves and turns it from there. **Aim at**
+  names a 3D object (shape, 3D text, image card or model) the camera keeps
+  looking at, upright, from wherever it is placed and as both move; the
+  placement's rotation is then not used. A missing object hands the rotation
+  back. Lights have the same setting.
 - **Light**: point, spot (cone and softness), sun or **area**, pointing along −z
-  before rotation. An area light is a glowing panel of Width by Height pixels
+  before rotation, or at its **Aim at** object from wherever it is placed (a row
+  of strips turns as one, about the row's middle; aiming is worked out after the
+  whole scene is put together, so it holds under 3D transforms). An area light is a glowing panel of Width by Height pixels
   (a soft box or strip light): near a surface it lights it unevenly, and glossy
   surfaces show its reflection as a soft-edged shape. Its intensity is the
   panel's brightness. The reflection is found where the mirrored view ray meets
@@ -1673,7 +1682,8 @@ and `colour`.
   of **Radius** pixels and a tight one of a fifth of it; 0.55 × wide + 0.45 ×
   tight, times **Intensity**, is added to the image, so lights keep a hot core
   with a long falloff. **Streak** adds a horizontal lens streak: the bright part
-  blurred sideways only. Alpha is unchanged; put Bloom after the merge so a
+  blurred sideways by the radius and upwards by a twentieth of it, so it is a
+  soft band and not a hard line along bright horizontal edges. Alpha is unchanged; put Bloom after the merge so a
   title lights its background. It works on HDR values, so it pairs with the
   Filmic display transform, which rolls highlights off to white.
 - **Lens distortion** (`lens_distortion`, input image): radial Brown-Conrady
@@ -1685,8 +1695,12 @@ and `colour`.
   (the ideal radius is found by Newton's method), so 3D or graphics made in the
   ideal frame bend like the footage. Bilinear premultiplied sampling; pixels with
   no source, or beyond where the lens folds over, are transparent, so barrel
-  distortion put on leaves the corners of a frame-sized render empty. Studio
-  offers Remove the lens / Put the lens on.
+  distortion put on leaves the corners of a frame-sized render empty. **Fill the
+  frame** (`fill`) enlarges the picture about the centre by the least that
+  leaves no empty rim, found from the frame's edge, for a lens look on a finished
+  picture; it is off by default because it moves every pixel, which a render
+  that must line up with solved footage cannot have. Studio offers Remove the
+  lens / Put the lens on and the Fill the frame box.
 - **Match grain** (`match_grain`, inputs image and optional plate): adds fresh
   grain every frame to a clean image so it matches footage. The GPU makes unit
   gaussian noise in four channels (red, green, blue and a shared part), blurs it

@@ -345,6 +345,7 @@ fn an_area_light_splits_into_a_repeatable_row_of_strips() {
         cone: 40.0,
         softness: 0.2,
         size: [1200.0, 20.0],
+        aim: None,
     };
     // Even strips tile the panel exactly and keep its brightness.
     let even = strips(&light, 6, 0.0, 7);
@@ -379,4 +380,79 @@ fn an_area_light_splits_into_a_repeatable_row_of_strips() {
     );
     assert_eq!(widths(&uneven), widths(&strips(&light, 6, 1.0, 7)));
     assert_ne!(widths(&uneven), widths(&strips(&light, 6, 1.0, 8)));
+}
+#[test]
+fn cameras_and_lights_aim_at_an_object_wherever_they_are_placed() {
+    let mut doc = scene();
+    let mut cube = op(&SHAPE_3D);
+    let Operation::Shape3d(shape) = &mut cube else {
+        panic!()
+    };
+    shape.placement.position = [300.0, -120.0, -200.0].into();
+    let cube = add(&mut doc, "cube", cube, &[]);
+    let camera = |doc: &mut Composition, target: Option<NodeId>| {
+        let mut op = op(&CAMERA_3D);
+        let Operation::Camera3d(c) = &mut op else {
+            panic!()
+        };
+        c.placement.position = [900.0, 400.0, -700.0].into();
+        c.placement.rotation = [10.0, 20.0, 30.0].into();
+        c.aim_at = target;
+        add(doc, "camera", op, &[])
+    };
+    let aimed = camera(&mut doc, Some(cube));
+    let lost = camera(&mut doc, Some(NodeId::new_v4()));
+    let mut row = op(&LIGHT_3D);
+    let Operation::Light3d(light) = &mut row else {
+        panic!()
+    };
+    light.kind = LightKind::Area;
+    light.strips = 4.0.into();
+    light.placement.position = [-800.0, -600.0, 500.0].into();
+    light.aim_at = Some(cube);
+    let row = add(&mut doc, "strips", row, &[]);
+    let merged = add(
+        &mut doc,
+        "merge",
+        op(&MERGE_SCENES),
+        &[
+            ("scene", cube),
+            ("scene_2", aimed),
+            ("scene_3", lost),
+            ("scene_4", row),
+        ],
+    );
+    // A transform above everything must not break the aim.
+    let mut turn = op(&TRANSFORM_3D);
+    let Operation::Transform3d(t) = &mut turn else {
+        panic!()
+    };
+    t.placement.rotation = [0.0, 35.0, 0.0].into();
+    t.placement.scale = [1.5, 1.5, 1.5].into();
+    let root = add(&mut doc, "turn", turn, &[("scene", merged)]);
+    for root in [merged, root] {
+        let s = evaluate(&doc, root, at(0)).unwrap();
+        let target = s.objects[0].sphere().0;
+        // The aimed camera has the cube dead centre, upright; the other keeps its rotation.
+        let (p, _) = s.cameras[0].project(target, W, H).unwrap();
+        assert!(close(p, [960.0, 540.0]), "{p:?}");
+        let side = math::direction(&s.cameras[0].world, [1.0, 0.0, 0.0]);
+        if root == merged {
+            assert!(side[1].abs() < 1e-4, "no roll: {side:?}");
+        }
+        let missed = s.cameras[1].project(target, W, H).map(|(p, _)| p);
+        assert!(missed.is_none_or(|p| !close(p, [960.0, 540.0])));
+        // The row turns as one: its middle points at the cube and the strips stay in line.
+        assert_eq!(s.lights.len(), 4);
+        let middle =
+            [0, 1, 2].map(|k| (s.lights[0].position()[k] + s.lights[3].position()[k]) * 0.5);
+        let to = [0, 1, 2].map(|k| target[k] - middle[k]);
+        let length = (to[0] * to[0] + to[1] * to[1] + to[2] * to[2]).sqrt();
+        let facing = s.lights[1].direction();
+        let along: f32 = (0..3).map(|k| facing[k] * to[k] / length).sum();
+        assert!(along > 0.995, "row faces the cube: {along}");
+    }
+    // Aiming at where it already stands changes nothing.
+    let m = math::translate([1.0, 2.0, 3.0]);
+    assert_eq!(math::aimed(&m, &m, [1.0, 2.0, 3.0]), m);
 }

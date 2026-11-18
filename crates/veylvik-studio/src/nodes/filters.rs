@@ -71,6 +71,10 @@ impl Inspect for veylvik_document::nodes::LensDistortion {
                 )
                 .changed();
         });
+        cx.dirty |= ui
+            .checkbox(&mut self.fill, "Fill the frame")
+            .on_hover_text("Enlarge the picture just enough that the bend leaves no empty rim. Leave it off when the picture must line up with footage, as after a camera solve")
+            .changed();
         ui.weak("Negative k1 is barrel distortion (wide lenses), positive is pincushion; k2 shapes the corners. Solve camera measures both and adds this node after Render scene.");
     }
 }

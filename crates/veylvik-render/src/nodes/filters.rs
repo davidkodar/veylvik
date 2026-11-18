@@ -372,11 +372,17 @@ impl RenderNode for veylvik_document::nodes::LensDistortion {
     }
     fn params(
         &self,
-        _cx: &Cx<'_>,
+        cx: &Cx<'_>,
         sample: &dyn Fn(&str) -> Result<f32>,
         p: &mut Params,
     ) -> Result<()> {
-        p.values = [sample("k1")?, sample("k2")?, f32::from(self.redistort), 0.0];
+        let (k1, k2) = (sample("k1")?, sample("k2")?);
+        let zoom = if self.fill {
+            Self::fill_zoom(k1, k2, self.redistort, cx.width, cx.height)
+        } else {
+            1.0
+        };
+        p.values = [k1, k2, f32::from(self.redistort), zoom];
         Ok(())
     }
 }
@@ -392,10 +398,10 @@ impl RenderNode for veylvik_document::nodes::Bloom {
         // The combine also takes the sideways-only blur, for lens streaks.
         const COMBINE: Step = Step {
             kernel: Kernel::BloomCombine,
-            inputs: [From::Port(0), From::Step(2), From::Step(4), From::Step(1)],
+            inputs: [From::Port(0), From::Step(2), From::Step(4), From::Step(5)],
         };
         // The bright part, blurred wide and tight, added back to the image.
-        static STEPS: [Step; 6] = [
+        static STEPS: [Step; 7] = [
             step(Kernel::BloomBright, From::Port(0), From::None, From::None),
             step(
                 Kernel::BloomWideHorizontal,
@@ -418,6 +424,12 @@ impl RenderNode for veylvik_document::nodes::Bloom {
             step(
                 Kernel::BloomTightVertical,
                 From::Step(3),
+                From::None,
+                From::None,
+            ),
+            step(
+                Kernel::BloomStreakVertical,
+                From::Step(1),
                 From::None,
                 From::None,
             ),

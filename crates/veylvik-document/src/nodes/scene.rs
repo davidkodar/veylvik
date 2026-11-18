@@ -376,12 +376,16 @@ pub struct Camera3d {
     /// A 3D object kept in focus wherever it and the camera move; overrides Focus distance.
     #[serde(default)]
     pub focus_on: Option<NodeId>,
+    /// A 3D object the camera keeps looking at, wherever both move; replaces the
+    /// placement's rotation while the object is in the scene.
+    #[serde(default)]
+    pub aim_at: Option<NodeId>,
 }
 pub static CAMERA_3D: NodeType = NodeType {
     type_id: "camera_3d",
     version: 1,
     label: "Camera",
-    description: "A perspective camera. Untouched, it frames the composition exactly at depth 0, at the distance its focal length and sensor width (millimetres, horizontal) imply, so 3D layers there match 2D. Placement moves and turns it from that home view; keys animate it. F-stop above 0 adds depth of field (lower = blurrier, like a real lens with one scene unit as a millimetre), focused on the Focus on object (kept sharp as it and the camera move), else at Focus distance or, at 0, on whatever is at the frame centre. Outputs a scene to merge with the objects it films.",
+    description: "A perspective camera. Untouched, it frames the composition exactly at depth 0, at the distance its focal length and sensor width (millimetres, horizontal) imply, so 3D layers there match 2D. Placement moves and turns it from that home view; keys animate it. F-stop above 0 adds depth of field (lower = blurrier, like a real lens with one scene unit as a millimetre), focused on the Focus on object (kept sharp as it and the camera move), else at Focus distance or, at 0, on whatever is at the frame centre. Aim at names an object the camera keeps looking at from wherever it is placed, in place of its rotation. Outputs a scene to merge with the objects it films.",
     inputs: &[],
     optional: &[],
     output: PortKind::Scene,
@@ -392,6 +396,7 @@ pub static CAMERA_3D: NodeType = NodeType {
         scalar("f_stop", "f-number", 0.0, 64.0, 0.0),
         scalar("focus_distance", "pixels", 0.0, 1_000_000.0, 0.0),
         other("focus_on", ParameterKind::NodeRef, "object in focus"),
+        other("aim_at", ParameterKind::NodeRef, "object looked at"),
     ],
 };
 node!(
@@ -434,6 +439,10 @@ pub struct Light3d {
     /// Which arrangement of strips; the same seed always gives the same row.
     #[serde(default)]
     pub seed: u32,
+    /// A 3D object the light keeps pointing at, wherever both move; replaces the
+    /// placement's rotation while the object is in the scene.
+    #[serde(default)]
+    pub aim_at: Option<NodeId>,
 }
 fn one_strip() -> Scalar {
     1.0.into()
@@ -448,7 +457,7 @@ pub static LIGHT_3D: NodeType = NodeType {
     type_id: "light_3d",
     version: 1,
     label: "Light",
-    description: "A point light, a spot (cone in degrees, softness of its edge), a sun (parallel light; only its rotation matters) or an area light: a glowing panel of width by height pixels facing along its direction, like a soft box or strip light. An area light near a surface lights it unevenly, brightest where it is close, and glossy surfaces show its reflection as a soft-edged shape whose blur follows the surface's roughness and brushing; its intensity is the panel's brightness, so a larger panel gives more light. With Strips above 1 the panel is split along its width into that many strip lights, a row of studio strips from one node; Variation (0 to 1) makes their lengths, gaps, heights, tilt and brightness uneven, as a hand-set studio is, and Seed picks the arrangement (the same seed always gives the same row). An area light casts a soft shadow from the middle of its panel, a row of strips as one light. Lights sit at the frame centre plus their placement and point along -z (towards the scene) before rotation. Colour is linear RGB; intensity is relative to the studio. With Shadows on (the default) it casts shadows from a shadow map, softened by Softness; up to four lights per scene cast them, sun, spot and point lights first. Outputs a scene.",
+    description: "A point light, a spot (cone in degrees, softness of its edge), a sun (parallel light; only its rotation matters) or an area light: a glowing panel of width by height pixels facing along its direction, like a soft box or strip light. An area light near a surface lights it unevenly, brightest where it is close, and glossy surfaces show its reflection as a soft-edged shape whose blur follows the surface's roughness and brushing; its intensity is the panel's brightness, so a larger panel gives more light. With Strips above 1 the panel is split along its width into that many strip lights, a row of studio strips from one node; Variation (0 to 1) makes their lengths, gaps, heights, tilt and brightness uneven, as a hand-set studio is, and Seed picks the arrangement (the same seed always gives the same row). An area light casts a soft shadow from the middle of its panel, a row of strips as one light. Lights sit at the frame centre plus their placement and point along -z (towards the scene) before rotation; Aim at names an object the light keeps pointing at instead, from wherever it is placed. Colour is linear RGB; intensity is relative to the studio. With Shadows on (the default) it casts shadows from a shadow map, softened by Softness; up to four lights per scene cast them, sun, spot and point lights first. Outputs a scene.",
     inputs: &[],
     optional: &[],
     output: PortKind::Scene,
@@ -468,6 +477,7 @@ pub static LIGHT_3D: NodeType = NodeType {
         scalar("strips", "count", 1.0, 32.0, 1.0),
         scalar("variation", "factor", 0.0, 1.0, 0.0),
         other("seed", ParameterKind::Seed, "integer"),
+        other("aim_at", ParameterKind::NodeRef, "object pointed at"),
     ],
 };
 node!(

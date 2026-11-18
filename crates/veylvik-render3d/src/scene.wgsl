@@ -171,7 +171,8 @@ fn grain(in: Varying, n: vec3<f32>) -> Grain {
     let along = side * c + up * s;
     let across = up * c - side * s;
     var g: Grain;
-    g.q = vec2<f32>(dot(in.local, along), dot(in.local, across));
+    // Patterns are sized for a 1920-wide frame and grow with the frame.
+    g.q = vec2<f32>(dot(in.local, along), dot(in.local, across)) / max(object.relief.y, 1e-3);
     let wa = (object.normal * vec4<f32>(across, 0.0)).xyz;
     g.across = normalize(wa - n * dot(wa, n));
     g.along = normalize(cross(g.across, n));
@@ -202,7 +203,10 @@ fn lit(in: Varying) -> @location(0) vec4<f32> {
     // by how much the normal changes across the pixel instead.
     let bend_x = dpdx(n);
     let bend_y = dpdy(n);
-    let curvature = min(dot(bend_x, bend_x) + dot(bend_y, bend_y), 0.03);
+    // Measured per pixel of a 1920-wide frame too, so a bevel's highlight is as soft
+    // in a larger frame as in that one (and never thinner than this frame's pixels).
+    let unit = max(object.relief.y, 1.0);
+    let curvature = min((dot(bend_x, bend_x) + dot(bend_y, bend_y)) * unit * unit, 0.03);
     // Two-sided: a face seen from behind shades as its other side.
     if dot(n, v) < 0.0 { n = -n; }
     let brushed = clamp(object.finish.x, 0.0, 1.0);

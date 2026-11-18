@@ -289,12 +289,64 @@ pub struct LensDistortion {
     pub redistort: bool,
     pub k1: Scalar,
     pub k2: Scalar,
+    /// Enlarge the picture just enough that the bend leaves no empty rim. Off keeps
+    /// every pixel exactly where the lens puts it, as matching footage needs.
+    #[serde(default)]
+    pub fill: bool,
+}
+impl LensDistortion {
+    /// The share of the frame's size the picture is read from (1 or less) so that
+    /// no output pixel reads outside a `width` x `height` source: the largest zoom-out
+    /// for which every point on the frame's edge still samples inside it.
+    pub fn fill_zoom(k1: f32, k2: f32, redistort: bool, width: u32, height: u32) -> f32 {
+        let (w, h) = (f64::from(width), f64::from(height));
+        let radius = 0.5 * w.hypot(h);
+        let nearest = 0.5 * w.min(h) / radius;
+        let (k1, k2) = (f64::from(k1), f64::from(k2));
+        let factor = |r: f64| 1.0 + k1 * r * r + k2 * r.powi(4);
+        let slope = |r: f64| 1.0 + 3.0 * k1 * r * r + 5.0 * k2 * r.powi(4);
+        // How far from the centre, relative to itself, a point at radius r reads.
+        let reads = |r: f64| -> Option<f64> {
+            if !redistort {
+                return (slope(r) > 0.0).then(|| factor(r));
+            }
+            let mut ideal = r;
+            for _ in 0..24 {
+                let s = slope(ideal);
+                if s <= 0.0 {
+                    return None;
+                }
+                ideal -= (ideal * factor(ideal) - r) / s;
+            }
+            (ideal >= 0.0 && (ideal * factor(ideal) - r).abs() < 1e-6).then(|| ideal / r)
+        };
+        // Along the frame's edge the radius runs from the nearest side to the corner.
+        let fits = |zoom: f64| {
+            (0..=32).all(|i| {
+                let r = nearest + (1.0 - nearest) * f64::from(i) / 32.0;
+                reads(zoom * r).is_some_and(|scale| zoom * scale <= 1.0)
+            })
+        };
+        if fits(1.0) {
+            return 1.0;
+        }
+        let (mut low, mut high) = (0.05, 1.0);
+        for _ in 0..32 {
+            let middle = 0.5 * (low + high);
+            if fits(middle) {
+                low = middle;
+            } else {
+                high = middle;
+            }
+        }
+        low as f32
+    }
 }
 pub static LENS_DISTORTION: NodeType = NodeType {
     type_id: "lens_distortion",
     version: 1,
     label: "Lens distortion",
-    description: "Radial lens distortion (Brown-Conrady k1, k2) about the frame centre, with radii normalised by half the frame diagonal: a point at ideal radius r is seen at r (1 + k1 r^2 + k2 r^4). Negative k1 is barrel distortion (wide lenses), positive is pincushion. Off (default) removes the distortion, straightening the footage; Redistort puts it on, so 3D or graphics made in the ideal frame bend like the footage. The camera solve measures k1 and k2 and adds a Redistort node after Render scene. Bilinear premultiplied sampling; areas with no source pixels, or beyond where the lens folds over, are transparent.",
+    description: "Radial lens distortion (Brown-Conrady k1, k2) about the frame centre, with radii normalised by half the frame diagonal: a point at ideal radius r is seen at r (1 + k1 r^2 + k2 r^4). Negative k1 is barrel distortion (wide lenses), positive is pincushion. Off (default) removes the distortion, straightening the footage; Redistort puts it on, so 3D or graphics made in the ideal frame bend like the footage. The camera solve measures k1 and k2 and adds a Redistort node after Render scene. Bilinear premultiplied sampling; areas with no source pixels, or beyond where the lens folds over, are transparent. Fill enlarges the picture about the centre just enough that no such empty rim shows, for a lens look on a finished picture; leave it off where pixels must stay exactly in place, as when matching solved footage.",
     inputs: &["image"],
     optional: &[],
     output: PortKind::Image,
@@ -302,6 +354,7 @@ pub static LENS_DISTORTION: NodeType = NodeType {
         other("redistort", ParameterKind::Boolean, "put the distortion on"),
         scalar("k1", "factor", -1.0, 1.0, 0.0),
         scalar("k2", "factor", -1.0, 1.0, 0.0),
+        other("fill", ParameterKind::Boolean, "fill the frame"),
     ],
 };
 node!(LensDistortion, LENS_DISTORTION, [k1, k2]);

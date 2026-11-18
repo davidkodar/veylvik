@@ -10,6 +10,9 @@ const K2: f64 = 0.05;
 /// Renders a source whose red and green are each pixel's own centre, through the node,
 /// so every output pixel says where it sampled the source.
 fn sampled(redistort: bool) -> Vec<[f32; 4]> {
+    rendered(redistort, false)
+}
+fn rendered(redistort: bool, fill: bool) -> Vec<[f32; 4]> {
     let renderer = Renderer::new().unwrap();
     let source: Vec<[f32; 4]> = (0..W * H)
         .map(|i| [(i % W) as f32 + 0.5, (i / W) as f32 + 0.5, 0.0, 1.0])
@@ -29,6 +32,7 @@ fn sampled(redistort: bool) -> Vec<[f32; 4]> {
             redistort,
             k1: (K1 as f32).into(),
             k2: (K2 as f32).into(),
+            fill,
         }),
         &[("image", image.id)],
     );
@@ -111,4 +115,32 @@ fn removing_and_putting_on_the_lens_follow_the_model() {
     );
     // Barrel distortion put on reaches past the ideal frame at the corners.
     assert!(empty > 0 && put_on[0][3] == 0.0);
+}
+#[test]
+#[ignore = "requires Vulkan"]
+fn filling_the_frame_leaves_no_empty_rim_and_keeps_the_centre() {
+    for redistort in [false, true] {
+        let (plain, filled) = (rendered(redistort, false), rendered(redistort, true));
+        let empty = |pixels: &[[f32; 4]]| pixels.iter().filter(|p| p[3] < 0.999).count();
+        // One of the two directions bends the picture inwards and leaves a rim.
+        if empty(&plain) > 0 {
+            assert_eq!(empty(&filled), 0, "redistort {redistort}");
+            let middle = ((H / 2) * W + W / 2) as usize;
+            for k in 0..2 {
+                assert!((plain[middle][k] - filled[middle][k]).abs() < 0.6);
+            }
+            // It enlarges no more than needed: an edge pixel reads within two pixels of the source's edge.
+            let nearest = (0..W as usize)
+                .map(|x| filled[x][1])
+                .chain((0..H as usize).map(|y| filled[y * W as usize][0]))
+                .fold(f32::MAX, f32::min);
+            assert!(nearest < 2.5, "redistort {redistort}: {nearest}");
+        } else {
+            assert_eq!(plain, filled);
+        }
+    }
+    assert_eq!(
+        nodes::LensDistortion::fill_zoom(0.0, 0.0, true, 1920, 1080),
+        1.0
+    );
 }

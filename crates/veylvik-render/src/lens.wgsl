@@ -1,6 +1,7 @@
 // Lens distortion: radial Brown-Conrady about the frame centre, radii normalised by half
 // the diagonal; ideal radius r is seen at r (1 + k1 r^2 + k2 r^4). values = (k1, k2,
-// redistort, 0). Removing samples the source where each ideal pixel was seen; putting
+// redistort, zoom). The picture is read from zoom times the frame about its centre
+// (1 = as is; less enlarges it so the bend leaves no empty rim). Removing samples the source where each ideal pixel was seen; putting
 // it on inverts the radius by Newton. Pixels past the lens's fold stay transparent.
 fn lens_factor(r2:f32)->f32 {return 1.0+p.values.x*r2+p.values.y*r2*r2;}
 fn lens_slope(r2:f32)->f32 {return 1.0+3.0*p.values.x*r2+5.0*p.values.y*r2*r2;}
@@ -9,7 +10,7 @@ fn lens_distortion(@builtin(global_invocation_id) gid:vec3<u32>) {
     if !inside(gid) {return;}
     let size=vec2<f32>(p.size_op.xy);
     let radius=0.5*length(size);
-    let offset=vec2<f32>(gid.xy)+vec2<f32>(0.5)-0.5*size;
+    let offset=(vec2<f32>(gid.xy)+vec2<f32>(0.5)-0.5*size)*p.values.w;
     let r=length(offset)/radius;
     var scale=1.0;
     if p.values.z<0.5 {

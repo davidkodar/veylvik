@@ -65,6 +65,7 @@ impl FreeView {
             f_stop: 0.0,
             focus_distance: 0.0,
             focus_on: None,
+            aim_at: None,
         }
     }
     /// Turn around the target (degrees).

@@ -85,6 +85,8 @@ pub struct Camera {
     pub focus_distance: f32,
     /// An object kept in focus, overriding the distance.
     pub focus_on: Option<NodeId>,
+    /// An object the camera keeps looking at; applied once the whole scene is known.
+    pub aim_at: Option<NodeId>,
 }
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Light {
@@ -98,6 +100,9 @@ pub struct Light {
     pub softness: f32,
     /// An area light's panel size.
     pub size: [f32; 2],
+    /// An object the light keeps pointing at, and the frame it turns about (its
+    /// own, or the whole row's for a strip); applied once the whole scene is known.
+    pub aim: Option<(NodeId, Mat4)>,
 }
 impl Light {
     pub fn position(&self) -> [f32; 3] {
@@ -171,6 +176,7 @@ pub fn home_camera(width: u32, height: u32) -> Camera {
         f_stop: 0.0,
         focus_distance: 0.0,
         focus_on: None,
+        aim_at: None,
     }
 }
 impl Object {
@@ -244,6 +250,28 @@ impl Scene {
             .copied()
             .unwrap_or_else(|| home_camera(width, height))
     }
+    /// Turns every camera and light with an Aim at object in the scene towards its
+    /// centre. A missing object leaves the placement's rotation in charge.
+    fn aim(&mut self) {
+        let centres: Vec<(NodeId, [f32; 3])> = self
+            .objects
+            .iter()
+            .map(|o| (o.node, o.sphere().0))
+            .collect();
+        let centre = |id: NodeId| centres.iter().find(|(node, _)| *node == id).map(|c| c.1);
+        for camera in &mut self.cameras {
+            if let Some(target) = camera.aim_at.and_then(centre) {
+                camera.world = math::aimed(&camera.world, &camera.world, target);
+            }
+        }
+        for light in &mut self.lights {
+            if let Some((id, pivot)) = light.aim
+                && let Some(target) = centre(id)
+            {
+                light.world = math::aimed(&light.world, &pivot, target);
+            }
+        }
+    }
     fn transformed(mut self, m: &Mat4) -> Self {
         for o in &mut self.objects {
             o.world = mul(m, &o.world);
@@ -253,6 +281,9 @@ impl Scene {
         }
         for l in &mut self.lights {
             l.world = mul(m, &l.world);
+            if let Some((_, pivot)) = &mut l.aim {
+                *pivot = mul(m, pivot);
+            }
         }
         for (_, p) in &mut self.points {
             *p = math::point(m, *p);
@@ -283,7 +314,8 @@ pub fn evaluate(doc: &Composition, root: NodeId, time: Time) -> Result<Scene> {
 }
 /// The scene produced by `root` at `time`, reading nodes from `graph`.
 pub fn evaluate_in(graph: &Graph<'_>, root: NodeId, time: Time) -> Result<Scene> {
-    let scene = node(graph, root, time, 0)?;
+    let mut scene = node(graph, root, time, 0)?;
+    scene.aim();
     if scene.objects.len() + scene.cameras.len() + scene.lights.len() > MAX_OBJECTS {
         return fail(format!(
             "a 3D scene may hold at most {MAX_OBJECTS} objects, cameras and lights"
@@ -462,14 +494,17 @@ fn node(doc: &Graph<'_>, id: NodeId, time: Time, depth: usize) -> Result<Scene> 
                 f_stop: c.f_stop.at(time)?.max(0.0),
                 focus_distance: c.focus_distance.at(time)?.max(0.0),
                 focus_on: c.focus_on,
+                aim_at: c.aim_at,
             });
         }
         Operation::Light3d(l) => {
+            let world = placed(&l.placement, time, centre)?;
             let light = Light {
                 node: id,
                 kind: l.kind,
                 shadows: l.shadows,
-                world: placed(&l.placement, time, centre)?,
+                world,
+                aim: l.aim_at.map(|target| (target, world)),
                 colour: l.colour.at(time)?,
                 intensity: l.intensity.at(time)?.max(0.0),
                 cone: l.cone.at(time)?.clamp(1.0, 179.0),

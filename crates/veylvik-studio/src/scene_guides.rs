@@ -213,6 +213,7 @@ impl Studio {
                 f_stop: 0.0,
                 focus_distance: 0.0,
                 focus_on: None,
+                aim_at: None,
             };
             chosen = Some(Some(FreeView::from_camera(
                 &camera,
