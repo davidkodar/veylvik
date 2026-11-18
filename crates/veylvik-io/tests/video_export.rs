@@ -194,7 +194,21 @@ fn gpu_planes_and_nvenc_mp4_are_correct_and_cancellation_is_atomic() {
         assert!(
             video_export::render(&renderer, &doc, &inputs, &output, &settings, |_| true).is_err()
         );
+        assert_eq!(std::fs::read(&output).unwrap(), original); // When the user agreed to replace it, the finished video takes the old
+        // file's place, and nothing is left behind beside it.
+        std::fs::write(&output, b"an older file").unwrap();
+        let mut replacing = settings.clone();
+        replacing.replace = true;
+        let replaced =
+            video_export::render(&renderer, &doc, &inputs, &output, &replacing, |_| true).unwrap();
+        assert!(!replaced.cancelled);
         assert_eq!(std::fs::read(&output).unwrap(), original);
+        assert!(std::fs::read_dir(&dir.0).unwrap().all(|e| {
+            !e.unwrap()
+                .file_name()
+                .to_string_lossy()
+                .starts_with(".veylvik-export")
+        }));
     }
     let settings = Settings::for_document(&doc);
     let output = dir.0.join("cancelled.mp4");

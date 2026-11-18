@@ -56,6 +56,10 @@ pub struct Settings {
     pub matte: [f32; 3],
     #[serde(default)]
     pub audio: crate::export_audio::Audio,
+    /// Replace a file already at the destination (the user agreed to in the save
+    /// dialog). The finished video takes its place only when rendering succeeded.
+    #[serde(default)]
+    pub replace: bool,
     /// The composition's SDR display transform; filled in by [`render`], never saved.
     #[serde(skip)]
     pub display: veylvik_document::media::DisplayTransform,
@@ -79,6 +83,7 @@ impl Settings {
             allow_software: false,
             matte: [0.; 3],
             audio: Default::default(),
+            replace: false,
             display: doc.output_display(),
         }
     }
@@ -425,6 +430,16 @@ impl Drop for Encoder {
         }
     }
 }
+/// Put the finished file at its destination: never over an existing file, unless the
+/// user agreed to replace it, when it takes the old file's place in one step.
+fn publish(output: &Path, target: &Path, replace: bool) -> Result<()> {
+    if replace {
+        fs::rename(output, target)?;
+    } else {
+        fs::hard_link(output, target)?;
+    }
+    Ok(())
+}
 struct Temporary(PathBuf);
 impl Temporary {
     fn new(parent: &Path) -> Result<Self> {
@@ -483,8 +498,11 @@ pub fn render(
     {
         return Err("Video output must end in .mp4".into());
     }
-    if fs::symlink_metadata(path).is_ok() {
-        return Err("Video output already exists; choose a new filename".into());
+    match fs::symlink_metadata(path) {
+        Err(_) => {}
+        // Only an ordinary file is replaced, and only when the user agreed to it.
+        Ok(existing) if settings.replace && existing.is_file() => {}
+        Ok(_) => return Err("Video output already exists; choose a new filename".into()),
     }
     let parent = path
         .parent()
@@ -638,7 +656,7 @@ pub fn render(
         return Ok(cancelled(backend.label(), hardware, total));
     }
     fs::File::open(&output)?.sync_all()?;
-    fs::hard_link(&output, &target)?;
+    publish(&output, &target, settings.replace)?;
     fs::File::open(&parent)?.sync_all()?;
     Ok(Outcome {
         audio: soundtrack.sources(),
@@ -799,7 +817,7 @@ fn render_direct(
         return Ok(cancelled(total));
     }
     fs::File::open(&output)?.sync_all()?;
-    fs::hard_link(&output, target)?;
+    publish(&output, target, settings.replace)?;
     fs::File::open(target.parent().ok_or("Missing output parent")?)?.sync_all()?;
     Ok(Outcome {
         audio: soundtrack.sources(),
