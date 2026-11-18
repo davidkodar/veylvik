@@ -11,6 +11,7 @@ mod curve_preview;
 mod design;
 mod diagnostics;
 mod display;
+mod drops;
 mod editable_text;
 mod effects;
 mod expressions;
@@ -278,6 +279,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 composition_controls: composition::Controls::default(),
                 pages: Default::default(),
                 start: start::Start::load(false),
+                dropped: Default::default(),
+                imported_files: 0,
                 media_import: None,
                 confirm: None,
                 after_save: None,
@@ -387,6 +390,9 @@ struct Studio {
     composition_controls: composition::Controls,
     pages: pages::Pages,
     start: start::Start,
+    /// Files dropped or pasted, waiting to be taken in, and how many of this batch were.
+    dropped: std::collections::VecDeque<PathBuf>,
+    imported_files: usize,
     media_import: Option<media_import::Pending>,
     confirm: Option<Leave>,
     after_save: Option<Leave>,
@@ -2838,6 +2844,10 @@ impl eframe::App for Studio {
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         files::offer_parent(frame);
         self.track_recent();
+        let files_ctx = ui.ctx().clone();
+        self.gather_files(&files_ctx);
+        self.take_next_file(&files_ctx);
+        self.drop_hint(&files_ctx);
         let ctx = ui.ctx().clone();
         self.theme(&ctx);
         self.scene_record_tick(&ctx);

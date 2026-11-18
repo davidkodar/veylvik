@@ -22,6 +22,8 @@ struct Entry {
 /// What a click on the start screen does once unsaved work has been dealt with.
 pub enum Chosen {
     Recent(PathBuf),
+    /// A new composition matched to this video or image.
+    FromMedia(PathBuf),
     Blank(u32, u32),
     GoldTitle,
 }
@@ -210,6 +212,7 @@ impl Studio {
     pub(crate) fn start_chosen(&mut self, ctx: &egui::Context) {
         match self.start.chosen.take() {
             Some(Chosen::Recent(path)) => self.open_path(Some(path)),
+            Some(Chosen::FromMedia(path)) => self.new_from_media_path(Some(path)),
             Some(Chosen::Blank(width, height)) => {
                 match Time::new(24, 1)
                     .map_err(|e| e.to_string())

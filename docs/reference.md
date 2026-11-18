@@ -2149,6 +2149,26 @@ normal saving. A recovery storage error is shown; normal project saving remains
 available. If storage is unavailable at startup, restart after fixing it to
 re-enable background recovery.
 
+### Pasting and dropping files
+
+Files reach Studio in two more ways than its menus. **Paste**: with files
+copied in a file manager, Ctrl+V while no text field is being typed in takes
+them. The clipboard's text is read as files only when every line is an absolute
+path or a `file://` address (percent-escapes decoded, an optional host name
+dropped, and a leading `copy` or `cut` line ignored) and the file exists;
+any other text is pasted as usual, for instance as nodes. **Drop**: files
+dropped on the window are taken the same way, with a hint over the window
+while they are held there. A `.veylvik` project opens (asking about unsaved
+changes, and discarding the rest of the batch). A video (`mp4`, `mov`, `m4v`,
+`mkv`, `webm`, `avi`, `mpg`, `mpeg`), a `png` or `exr` image, a `.veyseq` or a
+`sequence.json` is imported at the graph's insertion point: the first may
+offer to match an empty composition to it, the rest are placed as they are.
+On the start screen a media file starts a new composition matched to it.
+Anything else is refused with a message. Up to 32 files wait and are taken one
+at a time, each through the ordinary open or import path. Drops arrive only
+where the windowing system delivers them: on X11, and not on Wayland with the
+windowing library Studio uses now (winit 0.30), where pasting is the way.
+
 ### Timecode
 
 Positions in time are shown as timecode by default: the transport's position
