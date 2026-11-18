@@ -440,3 +440,56 @@ fn a_sound_sits_on_the_timeline_and_is_no_picture() {
         .is_err()
     );
 }
+#[test]
+fn one_input_connects_and_disconnects_without_touching_the_rest() {
+    use veylvik_document::*;
+    let mut doc = Document::new(blank(640, 360, Time { ticks: 24, rate: 1 }).unwrap()).unwrap();
+    let back = doc.snapshot().output;
+    let node = |kind: &registry::NodeType, inputs: &[(&str, NodeId)]| {
+        Node::new(
+            kind.label,
+            serde_json::from_value(kind.default_operation()).unwrap(),
+            inputs,
+        )
+    };
+    let blur = node(&registry::BLUR, &[("image", back)]);
+    let merge = node(
+        &registry::MERGE,
+        &[("background", back), ("foreground", back)],
+    );
+    let (blur_id, merge_id) = (blur.id, merge.id);
+    let put = |node: Node| Command::Put {
+        node: Box::new(node),
+    };
+    doc.apply(0, &[put(blur), put(merge)]).unwrap();
+    doc.apply(
+        1,
+        &[Command::Connect {
+            id: merge_id,
+            input: "foreground".into(),
+            source: Some(blur_id),
+        }],
+    )
+    .unwrap();
+    let inputs = &doc.snapshot().nodes[&merge_id].inputs;
+    assert_eq!(
+        (inputs["background"], inputs["foreground"]),
+        (back, blur_id)
+    );
+    // A required input cannot be left empty, a port must exist, and a loop is refused.
+    let connect = |input: &str, source| Command::Connect {
+        id: merge_id,
+        input: input.into(),
+        source,
+    };
+    assert!(doc.apply(2, &[connect("foreground", None)]).is_err());
+    assert!(doc.apply(2, &[connect("sideways", Some(back))]).is_err());
+    assert!(
+        doc.apply(2, &[connect("background", Some(merge_id))])
+            .is_err()
+    );
+    assert_eq!(
+        doc.steps().0.last().map(String::as_str),
+        Some("Connect Merge")
+    );
+}

@@ -684,6 +684,14 @@ pub enum Command {
     Display {
         display: media::DisplayTransform,
     },
+    /// Connect one input of a node to `source`, or disconnect it with None; the
+    /// node's other inputs and its settings stay as they are.
+    Connect {
+        id: NodeId,
+        input: String,
+        #[serde(default)]
+        source: Option<NodeId>,
+    },
     /// Set a node's colour tag and note.
     Annotate {
         id: NodeId,

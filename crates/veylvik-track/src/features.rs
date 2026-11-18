@@ -109,6 +109,9 @@ pub fn track(
         tracks: Vec::new(),
     };
     let mut anchors: std::collections::HashMap<usize, Arc<GpuFrame>> = Default::default();
+    // A third of the GPU budget for anchor frames (16 bytes a pixel), at least four.
+    let most_anchors =
+        ((renderer.budget_bytes / 3) / (u64::from(w) * u64::from(h) * 16).max(1)).max(4) as usize;
     let mut live: Vec<Live> = Vec::new();
     let replenish = |live: &mut Vec<Live>,
                      out: &mut Tracks,
@@ -282,6 +285,22 @@ pub fn track(
         }
         replenish(&mut live, &mut out, &mut anchors, &current, offset);
         anchors.retain(|frame, _| live.iter().any(|l| l.anchor == *frame));
+        // Every anchor is a whole frame held on the GPU, and long-lived points keep
+        // old ones alive: past a share of the budget, the oldest anchors are let go
+        // and their points anchor afresh on this frame.
+        while anchors.len() > most_anchors {
+            let Some(&oldest) = anchors.keys().min() else {
+                break;
+            };
+            anchors.remove(&oldest);
+            for l in live.iter_mut().filter(|l| l.anchor == oldest) {
+                l.anchor = offset;
+                l.origin = l.at;
+            }
+            anchors
+                .entry(offset)
+                .or_insert_with(|| current.image.clone());
+        }
         previous = current;
         if !progress(offset + 1, total) {
             return Err(error("Cancelled"));

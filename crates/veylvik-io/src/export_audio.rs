@@ -130,6 +130,11 @@ pub fn clips(doc: &Composition, base: &Path, window: [f64; 2]) -> Result<Vec<Cli
             continue;
         };
         let path = base.join(&footage.asset);
+        // An image sequence is a manifest of pictures: it has no sound, and is no
+        // media file to probe.
+        if crate::footage::is_sequence(&path) {
+            continue;
+        }
         let probe = probe(&path)?;
         if !probe.has_audio {
             continue;
@@ -316,6 +321,27 @@ mod tests {
         // Outside the window, or unknown length without a trim: nothing to play.
         assert_eq!(place(p, (20., 0., Some(3.)), Some(6.), [0., 10.]), None);
         assert_eq!(place(p, (0., 0., None), None, [0., 10.]), None);
+    }
+    #[test]
+    fn an_image_sequence_feeding_the_output_has_no_sound_and_is_not_probed() {
+        use veylvik_document::{Node, Time, nodes::Footage};
+        let mut doc = veylvik_document::blank(64, 64, Time { ticks: 24, rate: 1 }).unwrap();
+        // A matte sequence as a subject cutout leaves it; the file need not even exist.
+        let matte = Node::new(
+            "Subject matte",
+            Operation::Footage(Footage {
+                asset: "Subject mattes/abc/subject.veyseq".into(),
+                timing: Default::default(),
+                placement: Default::default(),
+                colour: Default::default(),
+                layer: None,
+            }),
+            &[],
+        );
+        doc.output = matte.id;
+        doc.nodes.insert(matte.id, matte);
+        let clips = clips(&doc, Path::new("/nowhere"), [0., 10.]).unwrap();
+        assert!(clips.is_empty());
     }
     #[test]
     fn graph_delays_each_clip_mixes_without_normalizing_over_exact_length_silence() {

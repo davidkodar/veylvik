@@ -4,6 +4,7 @@ use std::io::{BufRead, Write};
 use veylvik_document::{Command, Composition, Document, Time};
 use veylvik_render::{Plan, Region, RenderRequest, Renderer};
 mod project;
+mod shot;
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 struct Session {
     document: Document,
@@ -50,6 +51,10 @@ fn build_tools() -> Value {
         .as_array_mut()
         .unwrap()
         .extend(project::tools(&revision));
+    list["tools"]
+        .as_array_mut()
+        .unwrap()
+        .push(shot::descriptor(&revision));
     list["tools"].as_array_mut().unwrap().push(tool(
         "measure",
         "Read numbers back from a rendered frame instead of a picture: displayed brightness percentiles (0..1 after the display transform and the sRGB curve), scene-linear mean, peak and where it is, the share of pixels above 1.0, how much of the frame is covered and the box round everything that is not transparent (in composition pixels). Use it to check exposure, find where a node's picture lands in the frame, or compare two versions. node measures that node's own picture; region measures part of the frame.",
@@ -208,6 +213,26 @@ impl Session {
         self.validate_call(name, args)?;
         if let Some(reply) = self.project(name, args)? {
             return Ok(reply);
+        }
+        if name == "match_shot" {
+            return self.match_shot(args);
+        }
+        if name == "stand_on_ground" {
+            let (commands, mut report) =
+                crate::assets::placing::stand(self.document.snapshot(), args)?;
+            let dry_run = args
+                .get("dry_run")
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
+            let revision = self.document.revision();
+            if dry_run {
+                self.document.prepare(revision, &commands)?;
+            } else {
+                self.document.apply(revision, &commands)?;
+            }
+            report["dry_run"] = json!(dry_run);
+            report["revision"] = json!(self.document.revision());
+            return Ok(report);
         }
         if let Some(authored) =
             veylvik_presets::authoring::build(self.document.snapshot(), name, args)?

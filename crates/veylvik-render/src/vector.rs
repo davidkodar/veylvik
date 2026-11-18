@@ -240,9 +240,13 @@ impl Renderer {
                 break;
             }
             if !cache.evict() {
-                return Err(error(
-                    "render including vector masks exceeds GPU buffer budget",
-                ));
+                let mib = |bytes: u64| bytes / (1024 * 1024);
+                return Err(error(format!(
+                    "this render needs {} MiB of GPU buffers and the budget is {} MiB ({} MiB are held by other work): lower the resolution, or raise the GPU budget in Preferences or with VEYLVIK_GPU_BUDGET_MIB",
+                    mib(needed),
+                    mib(self.budget_bytes),
+                    mib(needed.saturating_sub(base + missing * frame_bytes))
+                )));
             }
         }
         let mut frames = std::collections::BTreeMap::new();

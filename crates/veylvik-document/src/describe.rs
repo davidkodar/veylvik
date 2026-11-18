@@ -52,6 +52,15 @@ fn one(command: &Command, before: &Composition) -> String {
             std::cmp::Ordering::Less => "Remove a marker".into(),
             std::cmp::Ordering::Equal => "Change a marker".into(),
         },
+        Command::Connect { id, source, .. } => format!(
+            "{} {}",
+            if source.is_some() {
+                "Connect"
+            } else {
+                "Disconnect"
+            },
+            name(before, id)
+        ),
         Command::Annotate { id, .. } => format!("Tag or note {}", name(before, id)),
         Command::Backdrops { backdrops } => match backdrops.len().cmp(&before.backdrops.len()) {
             std::cmp::Ordering::Greater => "Add a backdrop".into(),

@@ -1424,7 +1424,8 @@ and `colour`.
   diffuse and reflected light and the look materials' colour, and adds to a
   shadow catcher's darkening. 0 skips the depth maps altogether.
 - **Shadow catcher** (on a 3D shape): invisible except for the shadows falling on
-  it. It renders black with the share of the direct light that is blocked as its
+  it; **Shadow strength** (0–1) sets how dark they are, and the Ground a camera
+  solve adds starts at 0.65, because real ground is lit from all round. It renders black with the share of the direct light that is blocked as its
   alpha, weighed against the environment's ambient light, and draws after solid
   objects without hiding anything, so a plane laid on the ground of the footage
   darkens the real floor when the render goes over the clip.
@@ -1904,7 +1905,14 @@ applied. `add_node` adds one node from a type's defaults with only the settings
 you name written over them, wires its inputs and returns its id; `gold_title`
 adds the Gold title scene and `particle_look` gives a Particles node one of the
 ready-made looks, exactly as Studio does. The commands also cover `markers`,
-`annotate` (a node's tag and note) and `backdrops`. `render_video` takes
+`annotate` (a node's tag and note), `backdrops` and `connect`, which connects
+or disconnects one input of a node and leaves the rest of it alone.
+`stand_on_ground` stands a 3D object on the ground of a shot at a point in the
+picture: the ray from the filming camera through that point meets the nearest
+shadow catcher, the object's base is moved there, and an optional height in
+picture pixels scales it to stand that tall at that distance. `match_shot`
+(headless) reads a frame of the footage for where its light comes from and sets
+a 3D sun to match, as Studio's Match the shot does. `render_video` takes
 `settings` naming only what differs from the composition's defaults, including
 `audio` (`mute`, `music`, `music_gain_db`) and `replace`. Every mutation, save, or render
 requires the current revision from `inspect`. A batch is validated atomically

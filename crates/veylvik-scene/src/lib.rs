@@ -63,6 +63,8 @@ pub struct Surface {
     pub look: Option<Box<veylvik_document::nodes::Material>>,
     /// Shows only the shadows falling on it.
     pub catcher: bool,
+    /// How dark those shadows are, 0 to 1.
+    pub shadow: f32,
 }
 #[derive(Debug, Clone)]
 pub struct Object {
@@ -380,6 +382,7 @@ fn node(doc: &Graph<'_>, id: NodeId, time: Time, depth: usize) -> Result<Scene> 
                 unlit: false,
                 look: s.look.clone(),
                 catcher: s.shadow_catcher,
+                shadow: s.shadow_strength.at(time)?.clamp(0.0, 1.0),
             },
         }),
         Operation::Text3d(t) => {
@@ -416,6 +419,7 @@ fn node(doc: &Graph<'_>, id: NodeId, time: Time, depth: usize) -> Result<Scene> 
                 unlit: false,
                 look: t.look.clone(),
                 catcher: false,
+                shadow: 1.0,
             };
             // The pieces that arrive one by one, each moved in the outline's own frame.
             let mut pieces = vec![(outline, math::IDENTITY)];
@@ -484,6 +488,7 @@ fn node(doc: &Graph<'_>, id: NodeId, time: Time, depth: usize) -> Result<Scene> 
                 unlit: true,
                 look: None,
                 catcher: false,
+                shadow: 1.0,
             },
         }),
         Operation::Model3d(m) if !m.model.is_empty() => scene.objects.push(Object {
@@ -503,6 +508,7 @@ fn node(doc: &Graph<'_>, id: NodeId, time: Time, depth: usize) -> Result<Scene> 
                 unlit: false,
                 look: m.look.clone(),
                 catcher: false,
+                shadow: 1.0,
             },
         }),
         Operation::Model3d(_) => {}

@@ -114,9 +114,14 @@ pub fn call(
         return Err("Apply or revert the inspector draft before live edits".into());
     }
     let mut response = None;
-    if let Some(authored) =
+    let authored = if name == "stand_on_ground" {
+        let (commands, result) =
+            veylvik_io::placing::stand(studio.project.document.snapshot(), args)?;
+        Some(veylvik_presets::authoring::Authored { commands, result })
+    } else {
         veylvik_presets::authoring::build(studio.project.document.snapshot(), name, args)?
-    {
+    };
+    if let Some(authored) = authored {
         let mut result = authored.result;
         result["session"] = json!(session);
         result["dry_run"] = json!(dry_run);
@@ -133,7 +138,7 @@ pub fn call(
         response = Some(result);
     }
     match name {
-        "add_node" | "gold_title" | "particle_look" => {}
+        "add_node" | "gold_title" | "particle_look" | "stand_on_ground" => {}
         "insert_preset" => {
             let preset: veylvik_document::presets::Preset =
                 serde_json::from_value(args["preset"].clone())?;

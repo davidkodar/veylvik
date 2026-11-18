@@ -257,6 +257,20 @@ impl Document {
                 Command::Display { display } => next.display = *display,
                 Command::Markers { markers } => next.markers = markers.clone(),
                 Command::Backdrops { backdrops } => next.backdrops = backdrops.clone(),
+                Command::Connect { id, input, source } => {
+                    let node = next
+                        .nodes
+                        .get_mut(id)
+                        .ok_or_else(|| Error("cannot connect a missing node".into()))?;
+                    match source {
+                        Some(source) => {
+                            node.inputs.insert(input.clone(), *source);
+                        }
+                        None => {
+                            node.inputs.remove(input);
+                        }
+                    }
+                }
                 Command::Annotate { id, tag, note } => {
                     let node = next
                         .nodes

@@ -35,6 +35,14 @@ pub fn tools() -> Vec<(&'static str, &'static str, Value, &'static [&'static str
             json!({"node":id,"look":{"enum":looks}}),
             &["node", "look"],
         ),
+        // Carried out by the hosts themselves: it needs the 3D scene, which this
+        // crate does not know.
+        (
+            "stand_on_ground",
+            "Stand a 3D object on the ground of the shot at a point in the picture. render is the Render scene node that films it (its scene and camera are used); node is the object to move: a shape_3d, text_3d, model_3d or image_card, or a transform_3d holding several. x and y are the point in 0..1 of the frame (0, 0 is the top left) at frame (default 0). The ray through that point meets the nearest shadow catcher (the Ground a camera solve adds), and the object is moved so the middle of its base rests there. height, in pixels of the picture, also scales it to stand that tall at that distance. The node must sit directly in the scene, with no 3D transform above it, and its position and scale must not be animated. One undo step; returns the point and its distance.",
+            json!({"render":id,"node":id,"x":{"type":"number","minimum":0,"maximum":1},"y":{"type":"number","minimum":0,"maximum":1},"frame":{"type":"integer","minimum":0},"height":{"type":"number","minimum":1,"maximum":100000}}),
+            &["render", "node", "x", "y"],
+        ),
     ]
 }
 fn text<'a>(args: &'a Value, name: &str) -> Result<&'a str> {

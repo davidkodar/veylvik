@@ -31,10 +31,42 @@ fn unit(v: [f32; 3]) -> [f32; 3] {
 /// The nearest solid surface along the ray from `origin` in `direction` (cards and
 /// shadow catchers are passed through). Objects whose mesh cannot be built are skipped.
 pub fn hit(scene: &Scene, origin: [f32; 3], direction: [f32; 3]) -> Result<Option<Hit>> {
+    hit_where(scene, origin, direction, |object| {
+        !object.surface.catcher && !matches!(object.geometry, Geometry::Card { .. })
+    })
+}
+/// The nearest shadow catcher along the ray: the ground (or wall) of the footage
+/// that 3D objects stand on.
+pub fn hit_ground(scene: &Scene, origin: [f32; 3], direction: [f32; 3]) -> Result<Option<Hit>> {
+    hit_where(scene, origin, direction, |object| object.surface.catcher)
+}
+/// The corners of the box round `scene`'s solid objects in the world; None without any.
+pub fn bounds(scene: &Scene) -> Option<([f32; 3], [f32; 3])> {
+    let mut found: Option<([f32; 3], [f32; 3])> = None;
+    for object in scene.objects.iter().filter(|o| !o.surface.catcher) {
+        let (a, b) = object.local_bounds();
+        for corner in 0..8 {
+            let local = [0, 1, 2].map(|k| if corner >> k & 1 == 0 { a[k] } else { b[k] });
+            let p = math::point(&object.world, local);
+            let (low, high) = found.get_or_insert((p, p));
+            for k in 0..3 {
+                low[k] = low[k].min(p[k]);
+                high[k] = high[k].max(p[k]);
+            }
+        }
+    }
+    found
+}
+fn hit_where(
+    scene: &Scene,
+    origin: [f32; 3],
+    direction: [f32; 3],
+    wanted: impl Fn(&crate::Object) -> bool,
+) -> Result<Option<Hit>> {
     let direction = unit(direction);
     let mut nearest: Option<Hit> = None;
     for object in &scene.objects {
-        if object.surface.catcher || matches!(object.geometry, Geometry::Card { .. }) {
+        if !wanted(object) {
             continue;
         }
         // A sphere round the object rules most of them out cheaply.

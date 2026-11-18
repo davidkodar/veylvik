@@ -113,10 +113,12 @@ fn protocol_enforces_lifecycle_and_transaction_revision() {
             "open_project",
             "new_from_media",
             "import_media",
+            "match_shot",
             "measure",
             "add_node",
             "gold_title",
-            "particle_look"
+            "particle_look",
+            "stand_on_ground"
         ]
         .into()
     );

@@ -145,12 +145,16 @@ pub struct Shape3d {
     /// the footage so 3D objects shadow the real floor.
     #[serde(default)]
     pub shadow_catcher: bool,
+    /// How dark a shadow catcher's shadows are (1 is their full darkness; real
+    /// ground is rarely that dark, with light bouncing in from all round).
+    #[serde(default = "one")]
+    pub shadow_strength: Scalar,
 }
 pub static SHAPE_3D: NodeType = NodeType {
     type_id: "shape_3d",
     version: 1,
     label: "3D shape",
-    description: "A cube, sphere, plane, cylinder, cone or torus in a 3D scene, sized in pixels and centred on the frame at depth 0. Detail sets how many segments curved shapes use (3–256). Placement offsets, rotates (degrees, X then Y then Z) and scales it; colour (linear RGB), roughness and metallic shade it, unless a Look (any library material) is set, which shades it like a title. As a Shadow catcher it is invisible except for the shadows falling on it: lay a plane on the ground of the footage so 3D objects shadow the real floor. Outputs a scene for Merge scenes, 3D transform or Render scene. Finish, each 0 to 1 and 0 by default: brushed scatters light across the grain so reflections stretch that way, brush_angle (degrees) turns the grain, grain shows it as fine streaks, ridges add long shallow undulations along the grain that break reflections into bands, imperfections add uneven polish and faint scratches; they shade the plain surface, not a look.",
+    description: "A cube, sphere, plane, cylinder, cone or torus in a 3D scene, sized in pixels and centred on the frame at depth 0. Detail sets how many segments curved shapes use (3–256). Placement offsets, rotates (degrees, X then Y then Z) and scales it; colour (linear RGB), roughness and metallic shade it, unless a Look (any library material) is set, which shades it like a title. As a Shadow catcher it is invisible except for the shadows falling on it: lay a plane on the ground of the footage so 3D objects shadow the real floor. Outputs a scene for Merge scenes, 3D transform or Render scene. Finish, each 0 to 1 and 0 by default: brushed scatters light across the grain so reflections stretch that way, brush_angle (degrees) turns the grain, grain shows it as fine streaks, ridges add long shallow undulations along the grain that break reflections into bands, imperfections add uneven polish and faint scratches; they shade the plain surface, not a look. Shadow strength (0 to 1) sets how dark a shadow catcher's shadows are.",
     inputs: &[],
     optional: &[],
     output: PortKind::Scene,
@@ -171,6 +175,7 @@ pub static SHAPE_3D: NodeType = NodeType {
         scalar("imperfections", "factor", 0.0, 1.0, 0.0),
         other("look", ParameterKind::Look, "library material"),
         other("shadow_catcher", ParameterKind::Boolean, "shadows only"),
+        scalar("shadow_strength", "factor", 0.0, 1.0, 1.0),
     ],
 };
 node!(
@@ -187,7 +192,8 @@ node!(
         brush_angle,
         grain,
         ridges,
-        imperfections
+        imperfections,
+        shadow_strength
     ],
     {
         fn validate(&self) -> Result<()> {

@@ -108,7 +108,7 @@ impl Inspect for Shape3d {
         );
         cx.dirty |= ui
             .checkbox(&mut self.shadow_catcher, "Shadow catcher")
-            .on_hover_text("Invisible except for the shadows falling on it: lay a plane on the ground of your footage so 3D objects shadow the real floor")
+            .on_hover_text("Invisible except for the shadows falling on it: lay a plane on the ground of your footage so 3D objects shadow the real floor. Shadow strength below sets how dark they are")
             .changed();
         cx.dirty |= look(ui, &mut self.look, cx);
         if self.look.is_none() {

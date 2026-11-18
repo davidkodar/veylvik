@@ -333,6 +333,8 @@ pub fn scene(doc: &Composition, request: &Request, outcome: &Outcome) -> Result<
         plane.size_x = extent.into();
         plane.size_y = extent.into();
         plane.shadow_catcher = true;
+        // Sand, grass or a floor is lit from all round: full black reads as a hole.
+        plane.shadow_strength = 0.65.into();
         plane.placement.position = [
             (c[0] - w * 0.5) as f32,
             (c[1] - h * 0.5) as f32,

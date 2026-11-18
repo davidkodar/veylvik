@@ -33,7 +33,7 @@ struct ObjectUniform {
     counts: [f32; 4],
     /// Finish: brushing, the grain's direction (radians), imperfections, visible grain.
     finish: [f32; 4],
-    /// Ridges, then the frame's width over 1920: the finish's patterns and the
+    /// Ridges, the frame's width over 1920 and a shadow catcher's strength: the finish's patterns and the
     /// edge softening are sized for a 1920-wide frame and scale with it, so a
     /// scene looks the same at every resolution.
     relief: [f32; 4],
@@ -636,7 +636,7 @@ impl SceneRenderer for Engine {
                 relief: [
                     object.surface.finish[4],
                     job.width as f32 / 1920.0,
-                    0.0,
+                    object.surface.shadow,
                     0.0,
                 ],
             };
