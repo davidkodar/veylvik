@@ -2158,17 +2158,23 @@ library, viewer, inspector and the node or animation editor. **Animate**
 hides the library. **3D** (`Ctrl+3`) hides the editor (the transport stays) and
 replaces the library with a Scene panel listing the document's 3D nodes as
 Objects, Cameras, Lights and Structure; clicking one selects it. **Export**
-(`Ctrl+4`) hides the editor and replaces the inspector with the export settings:
-Video or Image sequence (the same panels as the export dialogs), **This frame**,
-**Render queue** and **Export**. Entering the page opens the quick **Export**
-dialog: Video or Image sequence, the delivery cards (or the two image formats)
-with the current choice selected, **Export** and **More settings**. The page's
-own **Export** button opens the same dialog, so exporting always passes
-through it. Export in the dialog asks where to save and then renders (a job
-queued from this page is started without opening the queue), with
-a progress bar on the page and afterwards where it was saved or why it did not
-finish. More settings, Escape or closing the dialog leaves the page's full
-settings. Leaving Compose remembers whether the editor was shown and
+(`Ctrl+4`) hides the editor and replaces the inspector with the list of exports
+(the render queue: what is rendering with its progress, waiting and done, with
+Start queue, Pause after current, Clear completed, and Cancel, Retry and Remove
+on each job), an **Export** button and **This frame**. Entering the page, the
+Export button, **File → Export video…** and **Export image sequence…** open the
+**Export** dialog: Video or Image sequence, the delivery cards (or the two
+image formats) with the current choice selected, and **More settings**, which
+expands the dialog in place with format and quality, size, frame rate, range,
+sound, background and software encoding for a video, or range and folder name
+for a sequence (**Fewer settings** folds them again). A line shows what will be
+made. **Export** asks where to save and then renders: a job queued from this
+page is started at once. **Cancel**, Escape or closing the dialog exports
+nothing. A video saved over an existing file replaces it when the save window's
+overwrite question was answered yes: the render is written beside it and takes
+its place only when it has finished, so a failed or cancelled render leaves the
+old file. Image sequences and single frames still need a new name.
+Leaving Compose remembers whether the editor was shown and
 whether it showed nodes or curves, and returning restores that. **File → Export
 video…**, **Export image sequence…** (`Ctrl+Shift+E`) and the **Render** button
 open the Export page.

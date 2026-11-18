@@ -155,6 +155,52 @@ impl Controls {
             }
         });
     }
+    /// The range and folder name (More settings in the export dialog).
+    pub fn details(&mut self, ui: &mut egui::Ui, frame_count: u32) {
+        use crate::design::{chip, heading};
+        if !self.initialized {
+            self.end = i64::from(frame_count) - 1;
+            self.initialized = true;
+        }
+        let last = i64::from(frame_count) - 1;
+        heading(ui, "RANGE");
+        let whole = self.start == 0 && self.end == last;
+        let custom = self.part || !whole;
+        ui.horizontal_wrapped(|ui| {
+            if chip(ui, "Whole composition", !custom).clicked() {
+                (self.start, self.end) = (0, last);
+                self.part = false;
+            }
+            if chip(ui, "Part of it", custom).clicked() {
+                self.part = true;
+            }
+            if custom {
+                ui.label("Frames");
+                ui.add(egui::DragValue::new(&mut self.start).range(0..=last));
+                ui.label("to");
+                ui.add(egui::DragValue::new(&mut self.end).range(0..=last));
+            }
+        });
+        heading(ui, "FOLDER");
+        ui.horizontal(|ui| {
+            ui.label("Name");
+            ui.add(egui::TextEdit::singleline(&mut self.name).desired_width(260.0))
+                .on_hover_text("A new folder with this name is made inside the folder you choose next; it must not exist yet");
+        });
+    }
+    /// What the current settings will make, or why they cannot be exported.
+    pub fn summary(&mut self, rate: Time, frame_count: u32) -> Result<String, String> {
+        if !self.initialized {
+            self.end = i64::from(frame_count) - 1;
+            self.initialized = true;
+        }
+        let frames = validate(self.start, self.end, rate, &self.name)?;
+        Ok(format!(
+            "{} images  ·  a new folder named {}",
+            frames.count().map_err(|e| e.to_string())?,
+            self.name
+        ))
+    }
     /// The settings as they stand, when they can be exported (the Export page's button).
     pub fn request(&mut self, rate: Time, frame_count: u32) -> Option<Settings> {
         if !self.initialized {

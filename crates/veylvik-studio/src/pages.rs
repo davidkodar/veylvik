@@ -28,7 +28,7 @@ impl Page {
             Self::Scene => {
                 "The viewer large, with the scene's objects, cameras and lights listed (Ctrl+3)"
             }
-            Self::Export => "Delivery settings beside the picture, and the render queue (Ctrl+4)",
+            Self::Export => "Export the composition, and see what is rendering and done (Ctrl+4)",
         }
     }
 }
@@ -44,8 +44,10 @@ pub struct Pages {
     pub export: ExportKind,
     /// Compose's editor state while another page is shown: (curves shown, editor hidden).
     compose: Option<(bool, bool)>,
-    /// The quick export dialog, shown on entering the Export page.
+    /// The export dialog, shown on entering the Export page and by its Export button.
     pub quick: bool,
+    /// The dialog is showing every setting.
+    pub more: bool,
 }
 impl Studio {
     /// Show `page`, arranging the editor for it.
@@ -172,10 +174,17 @@ impl Studio {
                 }
             });
     }
-    /// The dialog that greets the Export page: pick a delivery or keep the default,
-    /// and export; More settings leaves the full page.
+    /// Open the export dialog for `kind`, on the Export page where its progress shows.
+    pub(crate) fn ask_export(&mut self, kind: ExportKind) {
+        self.pages.export = kind;
+        self.go_to(Page::Export);
+        self.pages.quick = true;
+    }
+    /// The export dialog: what to make and a delivery to pick or keep, with every
+    /// other setting behind More settings in the same dialog. Nothing is exported
+    /// until Export is pressed and a destination chosen.
     pub(crate) fn quick_export(&mut self, ctx: &egui::Context) {
-        if self.pages.page != Page::Export || !self.pages.quick {
+        if !self.pages.quick {
             return;
         }
         let enabled = !self.files.busy() && !self.authoring_dialog_open() && self.confirm.is_none();
@@ -212,28 +221,57 @@ impl Studio {
                         }
                     }
                 });
-                let ready = match self.pages.export {
-                    ExportKind::Video => {
-                        self.video_export.quick(ui, doc);
-                        self.video_export.request(doc).is_some()
-                    }
-                    ExportKind::Sequence => {
-                        self.export_controls.quick(ui);
-                        self.export_controls
-                            .request(doc.frame_rate, doc.frame_count)
-                            .is_some()
-                    }
+                match self.pages.export {
+                    ExportKind::Video => self.video_export.quick(ui, doc),
+                    ExportKind::Sequence => self.export_controls.quick(ui),
+                }
+                // Every other setting, here in the dialog when asked for.
+                if ui
+                    .add(
+                        egui::Button::new(if self.pages.more {
+                            "Fewer settings"
+                        } else {
+                            "More settings"
+                        })
+                        .min_size(egui::vec2(130.0, 28.0)),
+                    )
+                    .on_hover_text("Size, frame rate, range, sound and more")
+                    .clicked()
+                {
+                    self.pages.more = !self.pages.more;
+                }
+                if self.pages.more {
+                    egui::ScrollArea::vertical()
+                        .max_height((ctx.content_rect().height() - 520.0).max(160.0))
+                        .show(ui, |ui| match self.pages.export {
+                            ExportKind::Video => self.video_export.details(ui, doc),
+                            ExportKind::Sequence => {
+                                self.export_controls.details(ui, doc.frame_count)
+                            }
+                        });
+                }
+                let summary = match self.pages.export {
+                    ExportKind::Video => self.video_export.summary(doc),
+                    ExportKind::Sequence => self
+                        .export_controls
+                        .summary(doc.frame_rate, doc.frame_count),
                 };
                 ui.add_space(6.0);
                 ui.separator();
                 ui.horizontal(|ui| {
-                    ui.label(
-                        egui::RichText::new("The whole composition, at its own frame rate")
-                            .color(ui.visuals().weak_text_color()),
-                    );
+                    match &summary {
+                        Ok(text) => {
+                            ui.label(
+                                egui::RichText::new(text).color(ui.visuals().weak_text_color()),
+                            );
+                        }
+                        Err(error) => {
+                            ui.colored_label(egui::Color32::LIGHT_RED, error);
+                        }
+                    }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         if ui
-                            .add_enabled_ui(enabled && ready, |ui| {
+                            .add_enabled_ui(enabled && summary.is_ok(), |ui| {
                                 crate::design::primary(ui, "Export")
                             })
                             .inner
@@ -251,13 +289,7 @@ impl Studio {
                             close = true;
                         }
                         if ui
-                            .add(
-                                egui::Button::new("More settings")
-                                    .min_size(egui::vec2(120.0, 32.0)),
-                            )
-                            .on_hover_text(
-                                "Size, frame rate, range, sound and more, on the page behind",
-                            )
+                            .add(egui::Button::new("Cancel").min_size(egui::vec2(90.0, 32.0)))
                             .clicked()
                         {
                             close = true;
@@ -278,32 +310,20 @@ impl Studio {
             self.export_sequence(settings, ctx);
         }
     }
-    /// The Export page's right panel: delivery settings and the queue.
+    /// The Export page's right panel: the Export button and what has been exported,
+    /// is rendering and is waiting.
     pub(crate) fn export_page(&mut self, ui: &mut egui::Ui) {
-        let ctx = ui.ctx().clone();
         let enabled = !self.files.busy() && !self.authoring_dialog_open() && self.confirm.is_none();
-        let mut video = None;
-        let mut sequence = None;
+        let mut action = None;
         egui::Panel::right("export-page")
             .frame(crate::design::panel(ui.ctx()))
-            .default_size(660.0)
-            .min_size(520.0)
+            .default_size(560.0)
+            .min_size(420.0)
             .resizable(true)
             .show_inside(ui, |ui| {
                 ui.horizontal(|ui| {
-                    ui.heading("Export");
-                    ui.add_space(12.0);
-                    for (kind, label) in [
-                        (ExportKind::Video, "Video"),
-                        (ExportKind::Sequence, "Image sequence"),
-                    ] {
-                        if crate::design::chip(ui, label, self.pages.export == kind).clicked() {
-                            self.pages.export = kind;
-                        }
-                    }
+                    ui.heading("Exports");
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        // Exporting always goes through the dialog first: keep the
-                        // default or choose how, then export.
                         if ui
                             .add_enabled_ui(enabled, |ui| crate::design::primary(ui, "Export"))
                             .inner
@@ -311,13 +331,6 @@ impl Studio {
                             .clicked()
                         {
                             self.pages.quick = true;
-                        }
-                        if ui
-                            .button("Render queue")
-                            .on_hover_text("What is waiting, rendering and done")
-                            .clicked()
-                        {
-                            self.render_queue.open = true;
                         }
                         if ui
                             .button("This frame")
@@ -329,51 +342,14 @@ impl Studio {
                     });
                 });
                 ui.separator();
-                // What is rendering, or how the last export went.
-                if let Some((file, share, phase)) = self.render_queue.rendering() {
-                    ui.add(
-                        egui::ProgressBar::new(share)
-                            .text(format!(
-                                "Rendering {file}  {}  {:.0}%",
-                                phase,
-                                share * 100.0
-                            ))
-                            .desired_height(22.0),
-                    );
-                    ctx.request_repaint_after_secs(0.2);
-                } else if let Some((path, ok, detail)) = self.render_queue.finished() {
-                    if ok {
-                        ui.colored_label(
-                            egui::Color32::from_rgb(140, 210, 150),
-                            format!("Saved {}", path.display()),
-                        );
-                    } else {
-                        ui.colored_label(
-                            egui::Color32::LIGHT_RED,
-                            format!("{} did not finish: {detail}", path.display()),
-                        );
-                    }
-                }
-                egui::ScrollArea::vertical().show(ui, |ui| {
-                    let doc = self.project.document.snapshot();
-                    match self.pages.export {
-                        ExportKind::Video => video = self.video_export.panel(ui, doc, enabled),
-                        ExportKind::Sequence => {
-                            sequence = self.export_controls.panel(
-                                ui,
-                                doc.frame_rate,
-                                doc.frame_count,
-                                enabled,
-                            )
-                        }
-                    }
-                });
+                action = self.render_queue.panel(ui, true);
             });
-        if let Some(settings) = video {
-            self.export_video(settings, &ctx);
-        }
-        if let Some(settings) = sequence {
-            self.export_sequence(settings, &ctx);
+        match action {
+            Some(crate::render_queue::Action::Frame) => self.export_frame(),
+            Some(crate::render_queue::Action::Video) => self.ask_export(ExportKind::Video),
+            Some(crate::render_queue::Action::Sequence) => self.ask_export(ExportKind::Sequence),
+            Some(crate::render_queue::Action::Retry(job)) => self.retry_render(*job),
+            None => {}
         }
     }
 }

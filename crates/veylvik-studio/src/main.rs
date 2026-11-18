@@ -1247,7 +1247,7 @@ impl Studio {
             settings.name,
         );
     }
-    fn queue_export(&mut self, output: render_queue::Output, filename: String) {
+    fn queue_export(&mut self, mut output: render_queue::Output, filename: String) {
         if self.files.busy() || !self.apply_draft() {
             return;
         }
@@ -1266,6 +1266,10 @@ impl Studio {
             };
             if matches!(output, render_queue::Output::Sequence { .. }) {
                 path = path.join(filename);
+            } else {
+                // The save dialog asked before giving back a file that exists, and
+                // the user agreed: the finished render may take its place.
+                output.agree_to_replace(path.exists());
             }
             render_queue::Job::prepare(name, document, base, path, output)
                 .map(|j| Completed::Queued(Box::new(j)))
@@ -2801,8 +2805,8 @@ impl eframe::App for Studio {
         if let Some(action) = self.render_queue.show(&ctx) {
             match action {
                 render_queue::Action::Frame => self.export_frame(),
-                render_queue::Action::Video => self.video_export.open = true,
-                render_queue::Action::Sequence => self.export_controls.open = true,
+                render_queue::Action::Video => self.ask_export(pages::ExportKind::Video),
+                render_queue::Action::Sequence => self.ask_export(pages::ExportKind::Sequence),
                 render_queue::Action::Retry(job) => self.retry_render(*job),
             }
         }
@@ -3002,8 +3006,7 @@ impl eframe::App for Studio {
             if ctx.input_mut(|i| {
                 i.consume_key(egui::Modifiers::CTRL | egui::Modifiers::SHIFT, egui::Key::E)
             }) {
-                self.pages.export = pages::ExportKind::Sequence;
-                self.go_to(pages::Page::Export);
+                self.ask_export(pages::ExportKind::Sequence);
             }
             self.page_shortcuts(&ctx);
             if ctx.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, egui::Key::E)) {

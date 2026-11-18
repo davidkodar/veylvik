@@ -30,6 +30,17 @@ pub enum Output {
     Video(Box<veylvik_io::video_export::Settings>),
 }
 impl Output {
+    /// Whether this output may take the place of a file already at its destination.
+    pub fn replaces(&self) -> bool {
+        matches!(self, Self::Video(settings) if settings.replace)
+    }
+    /// Record that the user agreed, in the save dialog, to replace the file there.
+    /// Only a video is written as one file and put in place at the end.
+    pub fn agree_to_replace(&mut self, replace: bool) {
+        if let Self::Video(settings) = self {
+            settings.replace = replace;
+        }
+    }
     fn label(&self) -> &'static str {
         match self {
             Self::Frame { .. } => "Still frame",
@@ -105,7 +116,7 @@ impl Job {
             veylvik_io::FrameFormat::from_path(&path).map_err(|e| e.to_string())?;
         }
         document.validate().map_err(|e| e.to_string())?;
-        if path.exists() {
+        if path.exists() && !output.replaces() {
             return Err(
                 "Choose a new output name; queued renders never replace existing files or folders."
                     .into(),
@@ -188,7 +199,7 @@ impl Job {
                 ));
             }
         }
-        if self.path.exists() {
+        if self.path.exists() && !self.output.replaces() {
             return Err(
                 "Output already exists. Retry to a new destination; existing output is preserved."
                     .into(),
@@ -350,44 +361,6 @@ impl Queue {
             self.running = true;
         }
     }
-    /// The job rendering now: its file name, the share done and what it is doing.
-    pub fn rendering(&self) -> Option<(String, f32, String)> {
-        let active = self.active.as_ref()?;
-        let job = self.jobs.iter().find(|j| j.id == active.id)?;
-        let (share, phase) = active
-            .progress
-            .lock()
-            .ok()
-            .map_or((0.0, String::new()), |p| {
-                (
-                    if p.total > 0 {
-                        p.completed as f32 / p.total as f32
-                    } else {
-                        0.0
-                    },
-                    p.phase.clone(),
-                )
-            });
-        let file = job
-            .path
-            .file_name()
-            .map_or_else(String::new, |n| n.to_string_lossy().into_owned());
-        Some((file, share, phase))
-    }
-    /// The job that finished last: where it wrote, whether it succeeded, and its note.
-    pub fn finished(&self) -> Option<(&std::path::Path, bool, &str)> {
-        self.jobs
-            .iter()
-            .rev()
-            .find(|j| !matches!(j.state, State::Pending | State::Rendering))
-            .map(|j| {
-                (
-                    j.path.as_path(),
-                    j.state == State::Complete,
-                    j.detail.as_str(),
-                )
-            })
-    }
     pub fn will_start(&self) -> bool {
         self.running && self.active.is_none() && self.pending() > 0
     }
@@ -504,64 +477,121 @@ impl Queue {
     pub fn show(&mut self, ctx: &egui::Context) -> Option<Action> {
         let mut open = self.open;
         let mut action = None;
+        egui::Window::new("Render queue")
+            .open(&mut open)
+            .default_width(670.)
+            .default_pos(egui::pos2(280., 100.))
+            .min_width(460.)
+            .collapsible(false)
+            .show(ctx, |ui| {
+                action = self.panel(ui, false);
+            });
+        self.open = open;
+        action
+    }
+    /// The queue's contents: in its window, or (`page`) on the Export page, where
+    /// exports are started from the page's own button.
+    pub fn panel(&mut self, ui: &mut egui::Ui, page: bool) -> Option<Action> {
+        let ctx = ui.ctx().clone();
+        let ctx = &ctx;
+        let mut action = None;
         let mut changed = false;
         let mut reorder = None;
         let mut remove = None;
-        egui::Window::new("Render queue").open(&mut open).default_width(670.).default_pos(egui::pos2(280.,100.)).min_width(460.).collapsible(false).show(ctx, |ui| {
+        if !page {
             ui.label("Queue a snapshot, then keep editing. Jobs render one at a time.");
+        }
+        if !page {
             ui.horizontal(|ui| {
-                if ui.button("Add video…").clicked() { action = Some(Action::Video); }
-                if ui.button("Add sequence…").clicked() { action = Some(Action::Sequence); }
-                if ui.button("Add current frame…").clicked() { action = Some(Action::Frame); }
-            });
-            ui.horizontal(|ui| {
-                if ui.add_enabled(self._lock.is_some() && !self.running && self.jobs.iter().any(|j|j.state == State::Pending), egui::Button::new("Start queue")).clicked() { self.running = true; }
-                if ui.add_enabled(self.running, egui::Button::new("Pause after current")).clicked() { self.running = false; }
-                if ui.button("Clear completed").clicked() { self.jobs.retain(|j| j.state != State::Complete); changed = true; }
-                ui.label(if self.running { "Running" } else if self.busy() { "Finishing current job" } else { "Paused" });
-            });
-            if let Some(error) = &self.error { ui.colored_label(egui::Color32::LIGHT_RED, error); }
-            ui.separator();
-            if self.jobs.is_empty() { ui.weak("No jobs yet. Add a video, image sequence or still frame above."); }
-            egui::ScrollArea::vertical().max_height((ctx.content_rect().height()-260.).clamp(120.,420.)).auto_shrink([false, true]).show(ui, |ui| {
-                let len = self.jobs.len();
-                for (index, job) in self.jobs.iter_mut().enumerate() {
-                    ui.push_id(job.id, |ui| {
-                        egui::Frame::group(ui.style()).show(ui, |ui| {
-                            ui.set_min_width(ui.available_width());
-                            ui.horizontal(|ui| { ui.strong(&job.name); ui.weak(job.output.label());
-                                let color = match job.state { State::Complete => egui::Color32::from_rgb(83,190,156), State::Failed | State::Interrupted => egui::Color32::from_rgb(232,155,93), State::Rendering => ui.visuals().selection.bg_fill, _ => ui.visuals().weak_text_color() };
-                                ui.colored_label(color,format!("{:?}",job.state)); });
-                            ui.add(egui::Label::new(egui::RichText::new(job.path.to_string_lossy()).small()).truncate()).on_hover_text(job.path.to_string_lossy());
-                            let range = match &job.output {
-                                Output::Frame { time, .. } => format!("Time {:.3} s", time.seconds().unwrap_or(0.)),
-                                Output::Sequence { frames, format, .. } => format!("Frames {}–{} · {}", frames.start, frames.end, format.label()),
-                                Output::Video(s) => format!("Frames {}–{} · {} × {} · {}", s.start, s.end, s.width, s.height, s.codec.label()),
-                            };
-                            ui.weak(range);
-                            if let Some(active) = self.active.as_ref().filter(|a|a.id == job.id) {
-                                if let Ok(p) = active.progress.lock() {
-                                    ui.add(egui::ProgressBar::new(p.completed as f32 / p.total.max(1) as f32).text(format!("{} / {} frames · {:.1} s · {}", p.completed, p.total, active.started.elapsed().as_secs_f64(), p.phase)));
-                                }
-                                if ui.add_enabled(!active.cancel.load(Ordering::Relaxed), egui::Button::new("Cancel job")).on_hover_text("Stop at the next safe render or encoder boundary").clicked() { active.cancel.store(true, Ordering::Relaxed); }
-                            } else {
-                                ui.add(egui::Label::new(format!("{} · {:.1} s", job.detail, job.elapsed)).wrap());
-                                ui.horizontal(|ui| {
-                                    if job.state == State::Pending {
-                                        if ui.add_enabled(index > 0, egui::Button::new("Move earlier")).clicked() { reorder = Some((index,index-1)); }
-                                        if ui.add_enabled(index+1 < len, egui::Button::new("Move later")).clicked() { reorder = Some((index,index+1)); }
-                                        if ui.button("Cancel").clicked() { job.state = State::Cancelled; job.detail = "Cancelled before rendering".into(); changed = true; }
-                                    } else if ui.button("Retry to…").on_hover_text("Keep the same snapshot and choose a new output destination").clicked() { action = Some(Action::Retry(Box::new(job.clone()))); }
-                                    if ui.button("Remove").clicked() { remove = Some(index); }
-                                });
-                            }
-                        });
-                    });
+                if ui.button("Add video…").clicked() {
+                    action = Some(Action::Video);
+                }
+                if ui.button("Add sequence…").clicked() {
+                    action = Some(Action::Sequence);
+                }
+                if ui.button("Add current frame…").clicked() {
+                    action = Some(Action::Frame);
                 }
             });
-            ui.add(egui::Label::new(egui::RichText::new("Saved locally. Reopening starts paused. External media must remain unchanged; completed files are never overwritten.").weak()).wrap());
+        }
+        ui.horizontal(|ui| {
+            if ui
+                .add_enabled(
+                    self._lock.is_some()
+                        && !self.running
+                        && self.jobs.iter().any(|j| j.state == State::Pending),
+                    egui::Button::new("Start queue"),
+                )
+                .clicked()
+            {
+                self.running = true;
+            }
+            if ui
+                .add_enabled(self.running, egui::Button::new("Pause after current"))
+                .clicked()
+            {
+                self.running = false;
+            }
+            if ui.button("Clear completed").clicked() {
+                self.jobs.retain(|j| j.state != State::Complete);
+                changed = true;
+            }
+            ui.label(if self.running {
+                "Running"
+            } else if self.busy() {
+                "Finishing current job"
+            } else {
+                "Paused"
+            });
         });
-        self.open = open;
+        if let Some(error) = &self.error {
+            ui.colored_label(egui::Color32::LIGHT_RED, error);
+        }
+        ui.separator();
+        if self.jobs.is_empty() {
+            ui.weak(if page {
+                "Nothing exported yet. Press Export to make a video or an image sequence."
+            } else {
+                "No jobs yet. Add a video, image sequence or still frame above."
+            });
+        }
+        egui::ScrollArea::vertical().max_height(if page { (ui.available_height() - 60.).max(120.) } else { (ctx.content_rect().height()-260.).clamp(120.,420.) }).auto_shrink([false, true]).show(ui, |ui| {
+            let len = self.jobs.len();
+            for (index, job) in self.jobs.iter_mut().enumerate() {
+                ui.push_id(job.id, |ui| {
+                    egui::Frame::group(ui.style()).show(ui, |ui| {
+                        ui.set_min_width(ui.available_width());
+                        ui.horizontal(|ui| { ui.strong(&job.name); ui.weak(job.output.label());
+                            let color = match job.state { State::Complete => egui::Color32::from_rgb(83,190,156), State::Failed | State::Interrupted => egui::Color32::from_rgb(232,155,93), State::Rendering => ui.visuals().selection.bg_fill, _ => ui.visuals().weak_text_color() };
+                            ui.colored_label(color,format!("{:?}",job.state)); });
+                        ui.add(egui::Label::new(egui::RichText::new(job.path.to_string_lossy()).small()).truncate()).on_hover_text(job.path.to_string_lossy());
+                        let range = match &job.output {
+                            Output::Frame { time, .. } => format!("Time {:.3} s", time.seconds().unwrap_or(0.)),
+                            Output::Sequence { frames, format, .. } => format!("Frames {}–{} · {}", frames.start, frames.end, format.label()),
+                            Output::Video(s) => format!("Frames {}–{} · {} × {} · {}", s.start, s.end, s.width, s.height, s.codec.label()),
+                        };
+                        ui.weak(range);
+                        if let Some(active) = self.active.as_ref().filter(|a|a.id == job.id) {
+                            if let Ok(p) = active.progress.lock() {
+                                ui.add(egui::ProgressBar::new(p.completed as f32 / p.total.max(1) as f32).text(format!("{} / {} frames · {:.1} s · {}", p.completed, p.total, active.started.elapsed().as_secs_f64(), p.phase)));
+                            }
+                            if ui.add_enabled(!active.cancel.load(Ordering::Relaxed), egui::Button::new("Cancel job")).on_hover_text("Stop at the next safe render or encoder boundary").clicked() { active.cancel.store(true, Ordering::Relaxed); }
+                        } else {
+                            ui.add(egui::Label::new(format!("{} · {:.1} s", job.detail, job.elapsed)).wrap());
+                            ui.horizontal(|ui| {
+                                if job.state == State::Pending {
+                                    if ui.add_enabled(index > 0, egui::Button::new("Move earlier")).clicked() { reorder = Some((index,index-1)); }
+                                    if ui.add_enabled(index+1 < len, egui::Button::new("Move later")).clicked() { reorder = Some((index,index+1)); }
+                                    if ui.button("Cancel").clicked() { job.state = State::Cancelled; job.detail = "Cancelled before rendering".into(); changed = true; }
+                                } else if ui.button("Retry to…").on_hover_text("Keep the same snapshot and choose a new output destination").clicked() { action = Some(Action::Retry(Box::new(job.clone()))); }
+                                if ui.button("Remove").clicked() { remove = Some(index); }
+                            });
+                        }
+                    });
+                });
+            }
+        });
+        ui.add(egui::Label::new(egui::RichText::new("Saved locally. Reopening starts paused. External media must remain unchanged. A video replaces an existing file only when you agreed to it in the save window, and only once it has finished.").weak()).wrap());
         if let Some((a, b)) = reorder {
             self.jobs.swap(a, b);
             changed = true;
@@ -766,6 +796,48 @@ mod tests {
         assert_eq!(queue.jobs[1].document.width, 32);
         assert_eq!(queue.jobs[1].state, State::Interrupted);
         drop(queue);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+    #[test]
+    fn an_existing_file_is_replaced_only_when_the_user_agreed() {
+        let dir = temp();
+        let doc = veylvik_document::blank(32, 32, Time::new(24, 1).unwrap()).unwrap();
+        let target = dir.join("film.mp4");
+        std::fs::write(&target, b"old film").unwrap();
+        let video = |replace: bool| {
+            let mut output = Output::Video(Box::new(
+                veylvik_io::video_export::Settings::for_document(&doc),
+            ));
+            output.agree_to_replace(replace);
+            output
+        };
+        let prepare = |output: Output, path: &std::path::Path| {
+            Job::prepare(
+                "film".into(),
+                doc.clone(),
+                dir.clone(),
+                path.to_path_buf(),
+                output,
+            )
+        };
+        // Without the user's agreement an existing file is refused, as before.
+        let refused = prepare(video(false), &target).err().unwrap();
+        assert!(refused.contains("never replace"), "{refused}");
+        // With it the job is accepted, and stays valid while the old file is there;
+        // nothing has been written over it yet.
+        let job = prepare(video(true), &target).unwrap();
+        assert!(job.verify().is_ok());
+        assert_eq!(std::fs::read(&target).unwrap(), b"old film");
+        // Agreement is only meaningful for a video: a frame or a sequence keeps refusing.
+        let mut frame = Output::Frame {
+            time: Time::new(0, 1).unwrap(),
+            output: doc.output,
+        };
+        frame.agree_to_replace(true);
+        assert!(!frame.replaces());
+        let still = dir.join("still.png");
+        std::fs::write(&still, b"old still").unwrap();
+        assert!(prepare(frame, &still).is_err());
         std::fs::remove_dir_all(dir).unwrap();
     }
     #[test]

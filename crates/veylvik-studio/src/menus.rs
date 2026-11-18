@@ -49,10 +49,10 @@ impl Studio {
                 if item(ui, "Reload source images", "Ctrl+R", !self.draft_dirty) { self.reload_images(); }
                 ui.separator();
                 if item(ui, "Project files…", "", true) { self.portable.open = true; }
-                if item(ui, "Render queue…", "", true) { self.render_queue.open = true; }
-                if item(ui, "Export video…", "", true) { self.pages.export = crate::pages::ExportKind::Video; self.go_to(crate::pages::Page::Export); }
+                if item(ui, "Render queue…", "", true) { self.go_to(crate::pages::Page::Export); self.pages.quick = false; }
+                if item(ui, "Export video…", "", true) { self.ask_export(crate::pages::ExportKind::Video); }
                 if item(ui, "Export current preview…", "Ctrl+E", true) { self.export_frame(); }
-                if item(ui, "Export image sequence…", "Ctrl+Shift+E", true) { self.pages.export = crate::pages::ExportKind::Sequence; self.go_to(crate::pages::Page::Export); }
+                if item(ui, "Export image sequence…", "Ctrl+Shift+E", true) { self.ask_export(crate::pages::ExportKind::Sequence); }
                 ui.separator();
                 if item(ui, "Composition settings…", "", !self.draft_dirty) {
                     self.playing = false;

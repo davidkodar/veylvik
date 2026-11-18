@@ -8,18 +8,31 @@ pub struct Controls {
     settings: Option<Settings>,
 }
 impl Controls {
-    /// The settings as a panel (the Export page); Some when a destination is wanted.
-    pub fn panel(
-        &mut self,
-        ui: &mut egui::Ui,
-        doc: &Composition,
-        enabled: bool,
-    ) -> Option<Settings> {
+    /// The settings beyond the delivery cards (More settings in the export dialog).
+    pub fn details(&mut self, ui: &mut egui::Ui, doc: &Composition) {
         let s = self
             .settings
             .get_or_insert_with(|| Settings::for_document(doc));
-        ui.add_enabled_ui(enabled, |ui| settings_panel(ui, s, doc))
-            .inner
+        details(ui, s, doc);
+    }
+    /// What the current settings will make, or why they cannot be exported.
+    pub fn summary(&mut self, doc: &Composition) -> Result<String, String> {
+        let s = self
+            .settings
+            .get_or_insert_with(|| Settings::for_document(doc));
+        let times = s.times(doc).map_err(|e| e.to_string())?;
+        let fps = s.frame_rate.seconds().unwrap_or(1.0);
+        Ok(format!(
+            "{} × {}  ·  {}  ·  {:.1} s",
+            s.width,
+            s.height,
+            if (fps - fps.round()).abs() < 1e-9 {
+                format!("{fps:.0} fps")
+            } else {
+                format!("{fps:.3} fps")
+            },
+            times.len() as f64 / fps
+        ))
     }
     /// Only the delivery cards (the quick export dialog).
     pub fn quick(&mut self, ui: &mut egui::Ui, doc: &Composition) {
@@ -173,12 +186,11 @@ fn delivery_cards(ui: &mut egui::Ui, s: &mut Settings, doc: &Composition) {
         }
     });
 }
-fn settings_panel(ui: &mut egui::Ui, s: &mut Settings, doc: &Composition) -> Option<Settings> {
+/// Everything beyond the delivery cards: format, quality, size, frame rate, range,
+/// sound and the rest.
+fn details(ui: &mut egui::Ui, s: &mut Settings, doc: &Composition) {
     use crate::design::{chip, heading};
-    ui.set_width(622.0_f32.min(ui.ctx().content_rect().width() - 40.0));
-    ui.spacing_mut().item_spacing = egui::vec2(8.0, 8.0);
     let own = (even(doc.width), even(doc.height));
-    delivery_cards(ui, s, doc);
     heading(ui, "FORMAT AND QUALITY");
     ui.horizontal_wrapped(|ui| {
         for (codec, label, hint) in [
@@ -335,6 +347,12 @@ fn settings_panel(ui: &mut egui::Ui, s: &mut Settings, doc: &Composition) -> Opt
         ui.checkbox(&mut s.allow_software, "Allow software encoding")
             .on_hover_text("Encoding uses the graphics card (NVENC or VA-API). Tick this to fall back to the processor when that is unavailable.");
     });
+}
+fn settings_panel(ui: &mut egui::Ui, s: &mut Settings, doc: &Composition) -> Option<Settings> {
+    ui.set_width(622.0_f32.min(ui.ctx().content_rect().width() - 40.0));
+    ui.spacing_mut().item_spacing = egui::vec2(8.0, 8.0);
+    delivery_cards(ui, s, doc);
+    details(ui, s, doc);
     ui.add_space(6.0);
     ui.separator();
     let valid = s.times(doc);
