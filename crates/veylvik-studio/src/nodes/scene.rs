@@ -31,6 +31,28 @@ fn placement(ui: &mut egui::Ui, placement: &mut Placement, cx: &InspectCx<'_>) -
         -1000.0..=1000.0,
         cx.time,
     );
+    // Shown at this frame; a keyed one is edited with its keys in the timeline.
+    match &mut placement.shown {
+        veylvik_document::Scalar::Constant { value } => {
+            let mut shown = *value >= 0.5;
+            if ui
+                .checkbox(&mut shown, "In the scene")
+                .on_hover_text("Untick to leave it out of the scene. Key it (step keys) to make it appear or vanish on a frame")
+                .changed()
+            {
+                *value = f32::from(u8::from(shown));
+                changed = true;
+            }
+        }
+        keyed => {
+            let there = keyed.at(cx.time).is_ok_and(|v| v >= 0.5);
+            ui.weak(if there {
+                "In the scene at this frame (keyed)"
+            } else {
+                "Left out of the scene at this frame (keyed)"
+            });
+        }
+    }
     changed
 }
 /// The surface's library look, or a pointer to the library when it is plain.
@@ -104,6 +126,7 @@ impl Inspect for Shape3d {
                 (Cylinder, "Cylinder"),
                 (Cone, "Cone"),
                 (Torus, "Torus"),
+                (Ring, "Ring"),
             ],
         );
         cx.dirty |= ui

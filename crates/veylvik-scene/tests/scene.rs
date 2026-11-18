@@ -499,3 +499,47 @@ fn a_3d_text_arrives_letter_by_letter() {
     t.letters.motion = LetterMotion::None;
     assert_eq!(count(&doc, 0).len(), 1);
 }
+#[test]
+fn a_thing_left_out_is_not_in_the_scene_and_a_ring_is_flat() {
+    let mut doc = scene();
+    let mut cube = op(&SHAPE_3D);
+    let Operation::Shape3d(shape) = &mut cube else {
+        panic!()
+    };
+    // In the scene from the third second on.
+    shape.placement.shown = serde_json::from_value(serde_json::json!({"kind": "step", "keys": [
+        {"time": {"ticks": 0, "rate": 1}, "value": 0.0},
+        {"time": {"ticks": 3, "rate": 1}, "value": 1.0}]}))
+    .unwrap();
+    let cube = add(&mut doc, "cube", cube, &[]);
+    let always = add(&mut doc, "always", op(&SHAPE_3D), &[]);
+    let merged = add(
+        &mut doc,
+        "merge",
+        op(&MERGE_SCENES),
+        &[("scene", cube), ("scene_2", always)],
+    );
+    let mut holder = op(&TRANSFORM_3D);
+    let Operation::Transform3d(t) = &mut holder else {
+        panic!()
+    };
+    t.placement.shown = 0.0.into();
+    let hidden = add(&mut doc, "hidden", holder, &[("scene", merged)]);
+    assert_eq!(evaluate(&doc, merged, at(2)).unwrap().objects.len(), 1);
+    assert_eq!(evaluate(&doc, merged, at(3)).unwrap().objects.len(), 2);
+    assert!(evaluate(&doc, hidden, at(3)).unwrap().objects.is_empty());
+    // A placement that is always shown is written as before.
+    let written = serde_json::to_value(&doc.nodes[&always].operation).unwrap();
+    assert!(written["placement"].get("shown").is_none());
+    // A ring: flat, from its inner edge to its rim.
+    let ring =
+        veylvik_mesh::primitive(veylvik_mesh::Primitive::Ring, [200.0, 200.0, 30.0], 64).unwrap();
+    let radius = |v: &veylvik_mesh::Vertex| v.position[0].hypot(v.position[1]);
+    assert!(ring.vertices.iter().all(|v| v.position[2] == 0.0));
+    let nearest = ring.vertices.iter().map(radius).fold(f32::MAX, f32::min);
+    let farthest = ring.vertices.iter().map(radius).fold(0.0, f32::max);
+    assert!(
+        (nearest - 70.0).abs() < 0.01 && (farthest - 100.0).abs() < 0.01,
+        "{nearest} {farthest}"
+    );
+}

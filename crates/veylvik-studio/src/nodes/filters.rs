@@ -83,6 +83,11 @@ impl Inspect for veylvik_document::nodes::Bloom {
         ui.weak("Bright light spreads as glow over its surroundings. Put it after the merge so titles light the background too; raise Threshold to keep it to the hottest highlights.");
     }
 }
+impl Inspect for veylvik_document::nodes::ZoomBlur {
+    fn inspect(&mut self, ui: &mut egui::Ui, _cx: &mut InspectCx<'_>) {
+        ui.weak("Streaks the picture away from a point, as flying fast towards it does. X and Y place the point; key Amount to speed up and slow down.");
+    }
+}
 impl Inspect for veylvik_document::nodes::LightWrap {
     fn inspect(&mut self, ui: &mut egui::Ui, _cx: &mut InspectCx<'_>) {
         ui.weak("The background's light spills onto the foreground's edges, so 3D or a cut-out subject sits in the shot. Connect the same background you merge it over afterwards.");

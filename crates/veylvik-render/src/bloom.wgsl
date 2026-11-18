@@ -59,3 +59,17 @@ fn light_wrap_combine(@builtin(global_invocation_id) gid:vec3<u32>) {
     let light=max(second[i].rgb,vec3<f32>(0.0));
     result[i]=vec4<f32>(c.rgb+light*min(edge,c.a)*p.values.y,c.a);
 }
+// Zoom blur: values = (amount, x, y). Each pixel is the average of 32 samples along
+// the line towards the point, over `amount` of its distance from it.
+@compute @workgroup_size(8,8)
+fn zoom_blur(@builtin(global_invocation_id) gid:vec3<u32>) {
+    if !inside(gid) {return;}
+    let at=vec2<f32>(gid.xy)+vec2<f32>(0.5);
+    let away=at-p.values.yz;
+    var sum=vec4<f32>(0.0);
+    for(var k=0;k<32;k++) {
+        let along=1.0-clamp(p.values.x,0.0,1.0)*(f32(k)+0.5)/32.0;
+        sum+=bilinear(p.values.yz+away*along-vec2<f32>(0.5));
+    }
+    result[index(gid)]=sum/32.0;
+}

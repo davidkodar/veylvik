@@ -69,6 +69,8 @@ pub struct Surface {
 #[derive(Debug, Clone)]
 pub struct Object {
     pub node: NodeId,
+    /// The node whose picture colours the surface (a shape's Texture input).
+    pub texture: Option<NodeId>,
     pub geometry: Geometry,
     pub world: Mat4,
     pub surface: Surface,
@@ -168,6 +170,10 @@ impl Scene {
 }
 fn fail<T>(message: impl Into<String>) -> Result<T> {
     Err(Error(message.into()))
+}
+/// Whether a placed thing is in the scene at `time`.
+fn shown(p: &Placement, time: Time) -> Result<bool> {
+    Ok(p.shown.at(time)? >= 0.5)
 }
 fn placed(p: &Placement, time: Time, origin: [f32; 3]) -> Result<Mat4> {
     let position = p.position.at(time)?;
@@ -361,9 +367,25 @@ fn node(doc: &Graph<'_>, id: NodeId, time: Time, depth: usize) -> Result<Scene> 
         }
         return Ok(scene);
     }
+    // Hidden for now: not in the scene (a hidden transform hides all it holds).
+    let placement = match &n.operation {
+        Operation::Shape3d(s) => Some(&s.placement),
+        Operation::Text3d(t) => Some(&t.placement),
+        Operation::ImageCard(c) => Some(&c.placement),
+        Operation::Model3d(m) => Some(&m.placement),
+        Operation::Transform3d(t) => Some(&t.placement),
+        Operation::Light3d(l) => Some(&l.placement),
+        _ => None,
+    };
+    if let Some(placement) = placement
+        && !shown(placement, time)?
+    {
+        return Ok(scene);
+    }
     match &n.operation {
         Operation::Shape3d(s) => scene.objects.push(Object {
             node: id,
+            texture: input("texture"),
             geometry: Geometry::Shape {
                 kind: s.kind,
                 size: [s.size_x.at(time)?, s.size_y.at(time)?, s.size_z.at(time)?],
@@ -463,6 +485,7 @@ fn node(doc: &Graph<'_>, id: NodeId, time: Time, depth: usize) -> Result<Scene> 
             for (outline, moved) in pieces {
                 scene.objects.push(Object {
                     node: id,
+                    texture: None,
                     geometry: Geometry::Text {
                         outline,
                         depth,
@@ -476,6 +499,7 @@ fn node(doc: &Graph<'_>, id: NodeId, time: Time, depth: usize) -> Result<Scene> 
         }
         Operation::ImageCard(c) => scene.objects.push(Object {
             node: id,
+            texture: None,
             geometry: Geometry::Card {
                 image: input("image")
                     .ok_or_else(|| Error("an image card needs an image".into()))?,
@@ -495,6 +519,7 @@ fn node(doc: &Graph<'_>, id: NodeId, time: Time, depth: usize) -> Result<Scene> 
         }),
         Operation::Model3d(m) if !m.model.is_empty() => scene.objects.push(Object {
             node: id,
+            texture: None,
             geometry: Geometry::Model {
                 path: m.model.clone(),
                 size: m.size.at(time)?.max(1.0),
@@ -675,6 +700,7 @@ pub fn mesh(object: &Object) -> Result<Mesh> {
                 ShapeKind::Cylinder => P::Cylinder,
                 ShapeKind::Cone => P::Cone,
                 ShapeKind::Torus => P::Torus,
+                ShapeKind::Ring => P::Ring,
             },
             *size,
             *segments,

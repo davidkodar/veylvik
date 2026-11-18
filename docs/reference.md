@@ -1322,7 +1322,16 @@ scale) and colours are tracks, keyable as whole vectors through the inspector or
 `set_track_key` with `placement.position`, `placement.rotation`, `placement.scale`
 and `colour`.
 
-- **3D shape**: cube, sphere, plane, cylinder, cone or torus, sized in pixels, with
+- **Placement** also carries **In the scene** (`placement.shown`, 0 or 1,
+  keyable; use step keys): below 0.5 the thing is left out of the scene at that
+  time, so an object appears or vanishes on a frame. On a 3D transform it leaves
+  out everything the transform holds. It is written to the file only when used.
+- **3D shape**: cube, sphere, plane, cylinder, cone, torus or **ring** (a flat
+  ring facing the viewer: size x and y are its outer diameters, size z its width
+  inwards, a disc when that reaches the middle), sized in pixels, with an
+  optional **Texture** input (an image wrapped once round the shape and
+  multiplied by its colour: for a sphere a map of the whole globe; a look takes
+  its place), with
   detail (segments, 3–256), colour, roughness and metallic. Shapes and 3D text
   also take a finish, each setting separate and 0 by default: **Brushed** (0–1)
   makes the surface scatter light across its grain, so reflections and
@@ -1588,6 +1597,14 @@ settles on the wrong kind of motion can still look sure. The
   handles.
 - **Particles** (`particles`, optional inputs emitter, target, field, obstacle,
   sprite, scene and depth): soft dots or pictures on a transparent frame.
+  - *In depth.* **Z** places the box in front of the frame (positive) or behind
+    it, **Towards** launches particles at the viewer (away when negative), and
+    **Reach** is how far from the camera they are drawn, fading over its last
+    quarter (0: any distance), so a volume of stars shows no far end. The box
+    may be up to a million pixels wide and high. **Shutter** is an exposure in
+    seconds: with a scene connected, the camera's own move during it streaks
+    each particle. Particles exist from **Start** on: set it to minus their
+    life for a full cloud at the first frame. Large soft dots are round.
   - *In a 3D scene.* With a scene connected, its camera films the particles,
     and that camera's depth of field blurs them: a particle out of focus spreads
     over a larger disc and dims by as much (focused like the 3D render: on the
@@ -1728,6 +1745,11 @@ settles on the wrong kind of motion can still look sure. The
   soft band and not a hard line along bright horizontal edges. Alpha is unchanged; put Bloom after the merge so a
   title lights its background. It works on HDR values, so it pairs with the
   Filmic display transform, which rolls highlights off to white.
+- **Zoom blur** (`zoom_blur`, input image): smears the picture along lines
+  through a point, more the farther from it, as a fast move towards that point
+  or a zoom during the exposure does. **Amount** (0–1) is the share of each
+  pixel's distance from the point it is smeared over; **X** and **Y** place the
+  point. Thirty-two premultiplied samples a pixel.
 - **Light wrap** (`light_wrap`, inputs image and background): lets the
   background's light spill onto a foreground's edges, so 3D or a cut-out
   subject sits in a shot instead of looking pasted on. The background is

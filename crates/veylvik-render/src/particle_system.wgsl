@@ -37,6 +37,7 @@ const COLOUR = 20u; const END_COLOUR = 23u; const COLOUR_A = 26u; const END_A = 
 const INHERIT = 28u; const HOMING = 29u; const STREAK = 30u; const PUSH = 31u; const FLOW = 32u;
 const BOUNCE = 33u; const PULL_X = 34u; const PULL_Y = 35u; const PULL = 36u; const VORTEX = 37u;
 const SPIN = 38u; const GROW = 39u; const HUES = 40u; const DEPTH = 41u;
+const BOX_Z = 42u; const REACH = 43u; const TOWARDS = 44u;
 fn tiles() -> u32 {
     let t = tile();
     return ((p.size_op.x + t - 1u) / t) * ((p.size_op.y + t - 1u) / t);
@@ -261,6 +262,18 @@ fn filmed(at: vec3<f32>) -> vec3<f32> {
     if away <= 1.0 { return vec3<f32>(0.0); }
     return vec3<f32>(vec2<f32>(p.size_op.xy) * 0.5 + focal * v.xy / away, focal / away);
 }
+// The same through the camera as it was when the exposure began.
+fn filmed_before(at: vec3<f32>) -> vec3<f32> {
+    let base = tiles() + ROWS * COUNT + 18u;
+    let v = vec3<f32>(
+        dot(vec4<f32>(third[base].w, third[base + 1u].w, third[base + 2u].w, third[base + 3u].w), vec4<f32>(at, 1.0)),
+        dot(vec4<f32>(third[base + 4u].w, third[base + 5u].w, third[base + 6u].w, third[base + 7u].w), vec4<f32>(at, 1.0)),
+        dot(vec4<f32>(third[base + 8u].w, third[base + 9u].w, third[base + 10u].w, third[base + 11u].w), vec4<f32>(at, 1.0)));
+    let focal = third[base + 12u].w;
+    let away = -v.z;
+    if away <= 1.0 { return vec3<f32>(0.0); }
+    return vec3<f32>(vec2<f32>(p.size_op.xy) * 0.5 + focal * v.xy / away, focal / away);
+}
 // How far in front of the camera a point of the scene is.
 fn distance_to(at: vec3<f32>) -> f32 {
     let base = tiles() + ROWS * COUNT;
@@ -306,7 +319,12 @@ fn stamp(at: vec2<f32>, radius: f32, light: vec4<f32>) {
         for (var i = -reach; i <= reach; i++) {
             let pixel = centre + vec2<i32>(i, j);
             let d = vec2<f32>(pixel) + vec2<f32>(0.5) - at;
-            add_light(pixel, light * exp(-dot(d, d) / (2.0 * sigma * sigma)));
+            var soft = exp(-dot(d, d) / (2.0 * sigma * sigma));
+            // A large dot reaches zero at its rim, all the way round: cut off at the
+            // square it is drawn in, it showed that square's corners.
+            let rim = exp(-f32(reach * reach) / (2.0 * sigma * sigma));
+            soft = mix(soft, max(soft - rim, 0.0) / (1.0 - rim), smoothstep(2.0, 6.0, radius));
+            add_light(pixel, light * soft);
         }
     }
 }
@@ -382,8 +400,9 @@ fn particle_splat(@builtin(global_invocation_id) gid: vec3<u32>) {
     }
     // Depth spreads births in front of and behind the frame.
     let depth = setting(DEPTH, birth);
-    let deep = depth > 0.0;
-    origin.z = (random(thread, generation, 13u) - 0.5) * depth;
+    let towards = setting(TOWARDS, birth);
+    let deep = depth > 0.0 || setting(BOX_Z, birth) != 0.0 || towards != 0.0;
+    origin.z = setting(BOX_Z, birth) + (random(thread, generation, 13u) - 0.5) * depth;
     // A place on the target, drawn in proportion to its alpha: first the tile, by the
     // cumulative table, then the pixel in it. No particle goes without a place.
     var goal = origin; var lands_on = born_on; var landing = 0.0;
@@ -428,7 +447,8 @@ fn particle_splat(@builtin(global_invocation_id) gid: vec3<u32>) {
     var lean = 0.0;
     if deep { lean = (random(thread, generation, 14u) - 0.5) * radians(setting(SPREAD, birth)); }
     let launch = vec3<f32>(cos(heading) * cos(lean), -sin(heading) * cos(lean), sin(lean))
-        * setting(SPEED, birth) * (1.0 - 0.7 * variation * random(thread, generation, 6u));
+        * setting(SPEED, birth) * (1.0 - 0.7 * variation * random(thread, generation, 6u))
+        + vec3<f32>(0.0, 0.0, towards);
     let where_now = place(origin, launch, birth, age, own_life, goal, homing, deep);
     let seen = filmed(where_now);
     if seen.z <= 0.0 { return; }
@@ -437,9 +457,13 @@ fn particle_splat(@builtin(global_invocation_id) gid: vec3<u32>) {
     let away = distance_to(where_now);
     let wall = occluder(at);
     if wall > 0.0 && away > wall * 1.002 + 1.0 { return; }
+    // Beyond its reach a particle is not drawn; it fades out over the last quarter.
+    let reach = setting(REACH, birth);
+    if reach > 0.0 && away >= reach { return; }
     let share = age / own_life;
     let fade = setting(FADE, birth);
     var opacity = min(share / 0.04, 1.0);
+    if reach > 0.0 { opacity *= clamp((reach - away) / (0.25 * reach), 0.0, 1.0); }
     if fade > 0.0 { opacity *= clamp((1.0 - share) / fade, 0.0, 1.0); }
     let first_colour = vec4<f32>(setting(COLOUR, birth), setting(COLOUR + 1u, birth), setting(COLOUR + 2u, birth), setting(COLOUR_A, birth));
     let last_colour = vec4<f32>(setting(END_COLOUR, birth), setting(END_COLOUR + 1u, birth), setting(END_COLOUR + 2u, birth), setting(END_A, birth));
@@ -479,9 +503,14 @@ fn particle_splat(@builtin(global_invocation_id) gid: vec3<u32>) {
     }
     let light = vec4<f32>(colour.rgb * colour.a, colour.a) * opacity;
     // A streak is a row of dots back along the path, fading towards the tail.
-    let trail = min(setting(STREAK, birth), age);
+    var trail = min(setting(STREAK, birth), age);
+    // An exposure: the scene camera's own move during it streaks the particle too.
+    let exposure = min(third[tiles() + ROWS * COUNT + 17u].w, age);
+    trail = max(trail, exposure);
     if trail <= 0.0 { stamp(at, radius, light); return; }
-    let tail = filmed(place(origin, launch, birth, age - trail, own_life, goal, homing, deep));
+    let earlier = place(origin, launch, birth, age - trail, own_life, goal, homing, deep);
+    var tail = filmed(earlier);
+    if exposure > 0.0 { tail = filmed_before(earlier); }
     if tail.z <= 0.0 { stamp(at, radius, light); return; }
     var back = tail.xy - at;
     let far = length(back);

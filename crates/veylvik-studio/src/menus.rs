@@ -258,6 +258,7 @@ pub(crate) const ADD_MENU: [(&str, &[&registry::NodeType]); 10] = [
             &registry::BLUR,
             &registry::BLOOM,
             &veylvik_document::nodes::LIGHT_WRAP,
+            &veylvik_document::nodes::ZOOM_BLUR,
             &registry::SHADER,
             &registry::MATCH_GRAIN,
             &registry::LENS_BLUR,

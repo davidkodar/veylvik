@@ -459,6 +459,26 @@ impl RenderNode for veylvik_document::nodes::Bloom {
         Ok(())
     }
 }
+impl RenderNode for veylvik_document::nodes::ZoomBlur {
+    fn passes(&self) -> Passes {
+        Passes::One(Kernel::ZoomBlur)
+    }
+    fn shareable(&self) -> bool {
+        true
+    }
+    fn identity(&self) -> bool {
+        matches!(self.amount, Scalar::Constant { value } if value == 0.0)
+    }
+    fn params(
+        &self,
+        _cx: &Cx<'_>,
+        sample: &dyn Fn(&str) -> Result<f32>,
+        p: &mut Params,
+    ) -> Result<()> {
+        p.values = [sample("amount")?, sample("x")?, sample("y")?, 0.0];
+        Ok(())
+    }
+}
 impl RenderNode for veylvik_document::nodes::LightWrap {
     fn passes(&self) -> Passes {
         use super::{From, Step};

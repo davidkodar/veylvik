@@ -11,6 +11,8 @@ pub enum Primitive {
     Cylinder,
     Cone,
     Torus,
+    /// A flat ring facing +z; z is its width from the rim inwards.
+    Ring,
 }
 /// Segments around curved primitives are clamped to this range.
 pub const SEGMENTS: std::ops::RangeInclusive<u32> = 3..=256;
@@ -115,6 +117,19 @@ pub fn primitive(kind: Primitive, size: [f32; 3], segments: u32) -> Result<Mesh>
                         normal[2] * tube,
                     ],
                     normal,
+                )
+            });
+        }
+        Primitive::Ring => {
+            // From the inner edge (row 0) to the rim (row 1); a width of the whole
+            // radius closes it into a disc.
+            let width = (size[2] / hx.min(hy).max(1e-6)).clamp(0.0, 1.0);
+            grid(&mut mesh, n, 1, |i, j| {
+                let u = i as f32 / n as f32 * TAU;
+                let reach = 1.0 - width * (1 - j) as f32;
+                (
+                    [u.cos() * hx * reach, u.sin() * hy * reach, 0.0],
+                    [0.0, 0.0, 1.0],
                 )
             });
         }

@@ -63,11 +63,14 @@ fn settings(node: &Particles, time: Time) -> Result<[f32; COUNT]> {
         at(&node.grow)?,
         at(&node.colour_variation)?,
         at(&node.depth)?,
+        at(&node.z)?,
+        at(&node.reach)?,
+        at(&node.towards)?,
     ];
     row[..values.len()].copy_from_slice(&values);
     Ok(row)
 }
-fn scalars(node: &Particles) -> [&Scalar; 36] {
+fn scalars(node: &Particles) -> [&Scalar; 39] {
     [
         &node.life,
         &node.speed,
@@ -103,6 +106,9 @@ fn scalars(node: &Particles) -> [&Scalar; 36] {
         &node.grow,
         &node.colour_variation,
         &node.depth,
+        &node.z,
+        &node.reach,
+        &node.towards,
         &node.rate,
         &node.density,
     ]
@@ -150,10 +156,14 @@ fn layout(rows: &[[f32; COUNT]]) -> (u32, u32) {
 /// The camera filming the particles at the frame, as a last row: the world-to-camera
 /// matrix's three rows, the focal length in pixels, then its lens: the blur in
 /// pixels of a point infinitely far away (0 without depth of field), the distance
-/// in focus (0: whatever is at the frame centre) and the largest blur.
+/// in focus (0: whatever is at the frame centre) and the largest blur. With a
+/// shutter, the same camera as it was that long before follows from value 18 (its
+/// matrix and focal length), with the shutter itself at 17.
 fn camera(node: &Particles, cx: &Cx<'_>) -> Result<[f32; COUNT]> {
     let home = veylvik_scene::home_camera(cx.width, cx.height);
     let mut focus = 0.0;
+    let shutter = node.shutter.at(cx.time).map_err(error)?.clamp(0.0, 0.5);
+    let mut earlier = None;
     let camera = match cx.node.inputs.get("scene") {
         Some(root) => {
             let by_id: std::collections::BTreeMap<_, _> =
@@ -177,6 +187,22 @@ fn camera(node: &Particles, cx: &Cx<'_>) -> Result<[f32; COUNT]> {
                 .clamp(0.0, 64.0);
             let camera = scene.camera(index as usize, cx.width, cx.height);
             focus = camera.focus(&scene);
+            if shutter > 0.0 {
+                // The camera as it was when the exposure began.
+                let seconds = cx.time.seconds().map_err(error)? - f64::from(shutter);
+                let before = Time::new((seconds * 24000.0).round() as i64, 24000).map_err(error)?;
+                let scene = veylvik_scene::evaluate_in(
+                    &veylvik_scene::Graph {
+                        width: cx.width,
+                        height: cx.height,
+                        node: &lookup,
+                    },
+                    *root,
+                    before,
+                )
+                .map_err(error)?;
+                earlier = Some(scene.camera(index as usize, cx.width, cx.height));
+            }
             camera
         }
         None => home,
@@ -195,6 +221,14 @@ fn camera(node: &Particles, cx: &Cx<'_>) -> Result<[f32; COUNT]> {
         row[14] = focus;
         row[15] = f;
         row[16] = 64.0 * cx.width as f32 / 1920.0;
+    }
+    if let Some(before) = earlier {
+        row[17] = shutter;
+        let view = veylvik_scene::math::rigid_inverse(&before.world);
+        for (i, line) in view.iter().take(3).enumerate() {
+            row[18 + i * 4..22 + i * 4].copy_from_slice(line);
+        }
+        row[30] = veylvik_scene::home_distance(cx.width, before.focal_length, before.sensor_width);
     }
     Ok(row)
 }

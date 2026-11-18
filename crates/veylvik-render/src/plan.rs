@@ -57,6 +57,7 @@ pub enum Kernel {
     BloomStreakVertical,
     BloomCombine,
     LightWrapCombine,
+    ZoomBlur,
     GridWarp,
     ParticlePrepare,
     ParticleFields,
@@ -100,7 +101,7 @@ pub enum Kernel {
     Lut,
 }
 impl Kernel {
-    pub(crate) const ALL: [Self; 88] = [
+    pub(crate) const ALL: [Self; 89] = [
         Self::ToAcescg,
         Self::FromAcescg,
         Self::Text,
@@ -148,6 +149,7 @@ impl Kernel {
         Self::BloomStreakVertical,
         Self::BloomCombine,
         Self::LightWrapCombine,
+        Self::ZoomBlur,
         Self::GridWarp,
         Self::ParticlePrepare,
         Self::ParticleFields,
@@ -241,6 +243,7 @@ impl Kernel {
             Self::BloomStreakVertical => "bloom_streak_vertical",
             Self::BloomCombine => "bloom_combine",
             Self::LightWrapCombine => "light_wrap_combine",
+            Self::ZoomBlur => "zoom_blur",
             Self::GridWarp => "grid_warp",
             Self::ParticlePrepare => "particle_prepare",
             Self::ParticleFields => "particle_fields",
@@ -726,10 +729,14 @@ impl Plan {
                             let Some(n) = composition.nodes.get(&id) else {
                                 continue;
                             };
-                            if let (
-                                Operation::ImageCard(_) | Operation::Environment3d(_),
-                                Some(&source),
-                            ) = (&n.operation, n.inputs.get("image"))
+                            let pictured = match &n.operation {
+                                Operation::ImageCard(_) | Operation::Environment3d(_) => {
+                                    n.inputs.get("image")
+                                }
+                                Operation::Shape3d(_) => n.inputs.get("texture"),
+                                _ => None,
+                            };
+                            if let Some(&source) = pictured
                                 && !cards.iter().any(|(s, _)| *s == source)
                                 && let Some(&value) = outputs.get(&source)
                             {

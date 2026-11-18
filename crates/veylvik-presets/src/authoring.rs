@@ -19,7 +19,7 @@ pub fn tools() -> Vec<(&'static str, &'static str, Value, &'static [&'static str
     vec![
         (
             "add_node",
-            "Add one node of a type from nodes and return its id. settings are written over the type's default settings (only name what differs; scalars are {\"kind\":\"constant\",\"value\":N} or keyed curves as in nodes), inputs maps port names to existing node ids, and output true also makes the node the composition's output. One undo step.",
+            "Add one node of a type from nodes and return its id. settings are written over the type's default settings (only name what differs, also inside a setting made of parts such as placement, timing or a Text's typography; scalars are {\"kind\":\"constant\",\"value\":N} or keyed curves as in nodes), inputs maps port names to existing node ids, and output true also makes the node the composition's output. One undo step.",
             json!({"type":{"enum":kinds},"label":{"type":"string","maxLength":256},"settings":{"type":"object"},"inputs":{"type":"object","additionalProperties":id},"position":veylvik_document::schema::position(),"output":{"type":"boolean"}}),
             &["type"],
         ),
@@ -94,6 +94,24 @@ pub fn build(composition: &Composition, tool: &str, args: &Value) -> Result<Opti
         _ => return Ok(None),
     }))
 }
+/// Writes `given` over `default`. A setting made of named parts (a placement, a
+/// timing, a Text's animation) takes only the parts given and keeps the rest;
+/// an animatable value (`kind` and its keys) and everything else is replaced whole.
+fn merge(default: &mut Value, given: &Value) {
+    match (default.as_object_mut(), given.as_object()) {
+        (Some(parts), Some(new)) if !parts.contains_key("kind") && !new.contains_key("kind") => {
+            for (key, value) in new {
+                match parts.get_mut(key) {
+                    Some(part) => merge(part, value),
+                    None => {
+                        parts.insert(key.clone(), value.clone());
+                    }
+                }
+            }
+        }
+        _ => *default = given.clone(),
+    }
+}
 fn add_node(args: &Value) -> Result<Authored> {
     let kind = text(args, "type")?;
     let kind = TYPES
@@ -110,7 +128,7 @@ fn add_node(args: &Value) -> Result<Authored> {
             if key == "type" || !target.contains_key(key) {
                 return Err(Error(format!("{} has no setting {key}", kind.type_id)));
             }
-            target.insert(key.clone(), value.clone());
+            merge(target.get_mut(key).expect("checked above"), value);
         }
     }
     let operation: Operation =
@@ -188,6 +206,33 @@ mod tests {
                 .is_some_and(|e| e.0.contains("no setting radiuss"))
         );
         assert!(build(after, "save", &json!({})).unwrap().is_none());
+        // A setting made of parts takes the parts given and keeps the others.
+        let text = build(
+            after,
+            "add_node",
+            &json!({"type":"text","settings":{"typography":{"motion":"rise","start":2.0}}}),
+        )
+        .unwrap()
+        .unwrap();
+        let Command::Put { node } = &text.commands[0] else {
+            panic!()
+        };
+        let stored = serde_json::to_value(&node.operation).unwrap();
+        assert_eq!(stored["typography"]["motion"], "rise");
+        assert!((stored["typography"]["stagger"].as_f64().unwrap() - 0.04).abs() < 1e-6);
+        let moved = build(
+            after,
+            "add_node",
+            &json!({"type":"shape_3d","settings":{"placement":{"position":[1.0, 2.0, 3.0]}}}),
+        )
+        .unwrap()
+        .unwrap();
+        let Command::Put { node } = &moved.commands[0] else {
+            panic!()
+        };
+        let stored = serde_json::to_value(&node.operation).unwrap();
+        assert_eq!(stored["placement"]["position"], json!([1.0, 2.0, 3.0]));
+        assert_eq!(stored["placement"]["scale"], json!([1.0, 1.0, 1.0]));
     }
     #[test]
     fn a_look_restyles_particles_and_the_gold_title_becomes_the_output() {

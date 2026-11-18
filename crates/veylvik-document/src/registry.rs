@@ -366,6 +366,7 @@ pub static TYPES: &[&NodeType] = &[
     &crate::nodes::LENS_DISTORTION,
     &crate::nodes::BLOOM,
     &crate::nodes::LIGHT_WRAP,
+    &crate::nodes::ZOOM_BLUR,
     &crate::nodes::SHADER,
     &crate::nodes::GRID_WARP,
     &crate::nodes::SHAPE_WARP,

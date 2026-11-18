@@ -607,6 +607,13 @@ impl SceneRenderer for Engine {
                 _ if object.surface.catcher => (&self.catcher, None),
                 _ => (&self.lit, texture.as_ref().map(|(b, ..)| b)),
             };
+            // A shape's Texture input: that node's picture, the frame's size.
+            let wrapped = object
+                .texture
+                .filter(|_| !object.surface.catcher && texture.is_none())
+                .and_then(|source| images.iter().find(|(id, _)| *id == source))
+                .map(|(_, buffer)| *buffer);
+            let image = image.or(wrapped);
             let picture = match &texture {
                 Some((_, w, h)) => [*w as f32, *h as f32],
                 None => [width as f32, height as f32],
@@ -632,7 +639,7 @@ impl SceneRenderer for Engine {
                     lights.len() as f32,
                     strength,
                     turn,
-                    f32::from(texture.is_some()),
+                    f32::from(texture.is_some() || wrapped.is_some()),
                 ],
                 finish: [
                     object.surface.finish[0],

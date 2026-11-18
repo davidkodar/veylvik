@@ -11,12 +11,29 @@ use serde::{Deserialize, Serialize};
 
 /// Where an object sits: position offset (pixels), rotation (degrees about X, then Y,
 /// then Z) and scale, each keyable as a whole vector.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Placement {
     pub position: Track3,
     pub rotation: Track3,
     pub scale: Track3,
+    /// Whether the thing is there at all: below 0.5 it is left out of the scene
+    /// (a 3D transform leaves out everything in it). Keyed with step keys it
+    /// makes an object appear or vanish on a frame.
+    #[serde(default = "one", skip_serializing_if = "always_shown")]
+    pub shown: Scalar,
+}
+impl PartialEq for Placement {
+    fn eq(&self, other: &Self) -> bool {
+        // A Scalar has no equality of its own: its written form is compared.
+        self.position == other.position
+            && self.rotation == other.rotation
+            && self.scale == other.scale
+            && serde_json::to_value(&self.shown).ok() == serde_json::to_value(&other.shown).ok()
+    }
+}
+fn always_shown(shown: &Scalar) -> bool {
+    matches!(shown, Scalar::Constant { value } if *value == 1.0)
 }
 impl Default for Placement {
     fn default() -> Self {
@@ -24,6 +41,7 @@ impl Default for Placement {
             position: [0.0; 3].into(),
             rotation: [0.0; 3].into(),
             scale: [1.0; 3].into(),
+            shown: 1.0.into(),
         }
     }
 }
@@ -43,7 +61,9 @@ impl Placement {
     }
     pub fn schema() -> serde_json::Value {
         serde_json::json!({"type":"object","additionalProperties":false,"required":["position","rotation","scale"],"properties":{
-            "position":track::schema(-1.0e6,1.0e6),"rotation":track::schema(-1.0e5,1.0e5),"scale":track::schema(-1000.0,1000.0)}})
+            "position":track::schema(-1.0e6,1.0e6),"rotation":track::schema(-1.0e5,1.0e5),"scale":track::schema(-1000.0,1000.0),
+            "shown":crate::registry::scalar_schema(Some(0.0),Some(1.0))},
+            "description":"shown (0 or 1, default 1; keyable, use step keys) leaves the thing out of the scene below 0.5"})
     }
 }
 fn validate_colour(colour: &Track3) -> Result<()> {
@@ -86,9 +106,14 @@ pub enum ShapeKind {
     Cylinder,
     Cone,
     Torus,
+    /// A flat ring facing +z: size x and y are its outer diameters, size z its
+    /// width from the rim inwards (half the diameter or more makes a disc).
+    Ring,
 }
 impl ShapeKind {
-    pub const ALL: [&'static str; 6] = ["cube", "sphere", "plane", "cylinder", "cone", "torus"];
+    pub const ALL: [&'static str; 7] = [
+        "cube", "sphere", "plane", "cylinder", "cone", "torus", "ring",
+    ];
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -154,9 +179,9 @@ pub static SHAPE_3D: NodeType = NodeType {
     type_id: "shape_3d",
     version: 1,
     label: "3D shape",
-    description: "A cube, sphere, plane, cylinder, cone or torus in a 3D scene, sized in pixels and centred on the frame at depth 0. Detail sets how many segments curved shapes use (3–256). Placement offsets, rotates (degrees, X then Y then Z) and scales it; colour (linear RGB), roughness and metallic shade it, unless a Look (any library material) is set, which shades it like a title. As a Shadow catcher it is invisible except for the shadows falling on it: lay a plane on the ground of the footage so 3D objects shadow the real floor. Outputs a scene for Merge scenes, 3D transform or Render scene. Finish, each 0 to 1 and 0 by default: brushed scatters light across the grain so reflections stretch that way, brush_angle (degrees) turns the grain, grain shows it as fine streaks, ridges add long shallow undulations along the grain that break reflections into bands, imperfections add uneven polish and faint scratches; they shade the plain surface, not a look. Shadow strength (0 to 1) sets how dark a shadow catcher's shadows are.",
-    inputs: &[],
-    optional: &[],
+    description: "A cube, sphere, plane, cylinder, cone, torus or flat ring (size x and y its outer diameters, size z its width inwards; a planet's rings, or a disc when the width reaches the middle) in a 3D scene, sized in pixels and centred on the frame at depth 0. Detail sets how many segments curved shapes use (3–256). Placement offsets, rotates (degrees, X then Y then Z) and scales it; colour (linear RGB), roughness and metallic shade it, unless a Look (any library material) is set, which shades it like a title. As a Shadow catcher it is invisible except for the shadows falling on it: lay a plane on the ground of the footage so 3D objects shadow the real floor. Outputs a scene for Merge scenes, 3D transform or Render scene. Finish, each 0 to 1 and 0 by default: brushed scatters light across the grain so reflections stretch that way, brush_angle (degrees) turns the grain, grain shows it as fine streaks, ridges add long shallow undulations along the grain that break reflections into bands, imperfections add uneven polish and faint scratches; they shade the plain surface, not a look. Shadow strength (0 to 1) sets how dark a shadow catcher's shadows are. An image on the optional Texture input colours the surface, wrapped once round it (for a sphere, a map of the whole globe: left to right round the equator, top to bottom from pole to pole), multiplied by Colour; a library look takes its place.",
+    inputs: &["texture"],
+    optional: &["texture"],
     output: PortKind::Scene,
     parameters: &[
         other("kind", ParameterKind::ShapeKind, "shape"),

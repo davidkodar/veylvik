@@ -872,3 +872,34 @@ fn a_depth_picture_hides_the_particles_behind_it() {
         open
     );
 }
+#[test]
+#[ignore = "requires Vulkan"]
+fn a_box_sits_in_depth_particles_fly_at_the_viewer_and_a_reach_hides_the_far_ones() {
+    let renderer = Renderer::new().unwrap();
+    // A still point 40 px right of the centre. Seen from the home view, 222 px away.
+    let mut point = still();
+    point.x = 120.0.into();
+    point.size = 1.0.into();
+    let (_, x, _) = mass(&render(&renderer, point.clone(), None, (2, 1)));
+    assert!((x - 119.5).abs() < 1.0, "{x}");
+    // 74 px nearer it is a third closer, so half as far again from the centre.
+    point.z = 74.0.into();
+    let (_, x, _) = mass(&render(&renderer, point.clone(), None, (2, 1)));
+    assert!((x - 139.5).abs() < 1.5, "{x}");
+    // 200 px behind the frame it is 422 px away: drawn within a reach of 600, not of 300.
+    point.z = (-200.0).into();
+    point.reach = 600.0.into();
+    assert!(mass(&render(&renderer, point.clone(), None, (2, 1))).0 > 0.5);
+    point.reach = 300.0.into();
+    assert_eq!(mass(&render(&renderer, point.clone(), None, (2, 1))).0, 0.0);
+    // Launched at the viewer, the particles of the last second lie between the frame
+    // and 100 px in front of it: they spread from x 120 outwards, towards x 153.
+    point.z = 0.0.into();
+    point.reach = 0.0.into();
+    point.towards = 100.0.into();
+    let (left, right, ..) = span(&render(&renderer, point, None, (2, 1)));
+    assert!(
+        (117..=121).contains(&left) && (146..=155).contains(&right),
+        "{left} {right}"
+    );
+}

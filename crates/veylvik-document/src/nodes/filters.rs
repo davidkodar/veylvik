@@ -359,6 +359,30 @@ pub static LENS_DISTORTION: NodeType = NodeType {
 };
 node!(LensDistortion, LENS_DISTORTION, [k1, k2]);
 
+/// A blur along lines through a point, as a fast move towards it or a zoom makes.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ZoomBlur {
+    pub amount: Scalar,
+    pub x: Scalar,
+    pub y: Scalar,
+}
+pub static ZOOM_BLUR: NodeType = NodeType {
+    type_id: "zoom_blur",
+    version: 1,
+    label: "Zoom blur",
+    description: "Smears the picture along lines through a point, more the farther from it: the streaking of a fast move towards that point, or of a zoom during the exposure. Amount (0 to 1) is the share of each pixel's distance from the point that it is smeared over, towards the point; x and y (pixels) place the point, the frame's middle for a move straight ahead. Thirty-two samples a pixel, premultiplied, so alpha smears with the colour. Key Amount to speed up and slow down.",
+    inputs: &["image"],
+    optional: &[],
+    output: PortKind::Image,
+    parameters: &[
+        scalar("amount", "factor", 0.0, 1.0, 0.15),
+        scalar("x", "pixels", -1.0e6, 1.0e6, 960.0),
+        scalar("y", "pixels", -1.0e6, 1.0e6, 540.0),
+    ],
+};
+node!(ZoomBlur, ZOOM_BLUR, [amount, x, y]);
+
 /// The background's light wrapping round a foreground's edges, as it does in a lens.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
