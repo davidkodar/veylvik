@@ -278,7 +278,7 @@ pub static LOOKS: [Look; 9] = [
     },
     Look {
         name: "Assemble",
-        hint: "A burst of scattered particles gathers into the target's picture over two seconds. Connect Target",
+        hint: "A burst of scattered particles gathers into the target's picture over two seconds. Connect Target. The burst holds Rate times Duration particles (48,000): raise Rate, up to 2,000,000, for a denser picture",
         needs: Needs::Target,
         apply: |n, w, h| {
             let s = w / 1920.0;

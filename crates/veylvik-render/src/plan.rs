@@ -383,6 +383,11 @@ impl Plan {
                     "A 3D scene has no image of its own; view the Render scene node that films it",
                 ));
             }
+            veylvik_document::registry::PortKind::Sound => {
+                return Err(error(
+                    "A Sound has no image; it plays on the timeline and in exports",
+                ));
+            }
         }
         // Resolve bypasses before traversal, so disabled compound effects dispatch no work.
         let mut effective = None;

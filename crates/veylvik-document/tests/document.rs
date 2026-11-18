@@ -395,3 +395,48 @@ fn frame_count_defaults_for_old_documents_and_edits_are_atomic() {
         serde_json::from_slice(&serde_json::to_vec(document.snapshot()).unwrap()).unwrap();
     assert_eq!(decoded.frame_count, MAX_FRAME_COUNT);
 }
+#[test]
+fn a_sound_sits_on_the_timeline_and_is_no_picture() {
+    use veylvik_document::*;
+    let mut doc = Document::new(blank(640, 360, Time { ticks: 24, rate: 1 }).unwrap()).unwrap();
+    let sound: Operation = serde_json::from_value(registry::SOUND.default_operation()).unwrap();
+    let node = Node::new("Music", sound, &[]);
+    let id = node.id;
+    doc.apply(
+        0,
+        &[Command::Put {
+            node: Box::new(node),
+        }],
+    )
+    .unwrap();
+    assert_eq!(registry::SOUND.output, registry::PortKind::Sound);
+    // It cannot be shown, and nothing takes it as an input.
+    assert!(doc.apply(1, &[Command::Output { id }]).is_err());
+    let blur: Operation = serde_json::from_value(registry::BLUR.default_operation()).unwrap();
+    let wrong = Node::new("Blur", blur, &[("image", id)]);
+    let error = doc
+        .apply(
+            1,
+            &[Command::Put {
+                node: Box::new(wrong),
+            }],
+        )
+        .unwrap_err();
+    assert!(error.to_string().contains("takes an image"), "{error}");
+    // A stop before the start is refused like footage's.
+    let mut bad = doc.snapshot().nodes[&id].clone();
+    let Operation::Sound(s) = &mut bad.operation else {
+        panic!()
+    };
+    s.timing.source_in = Time { ticks: 5, rate: 1 };
+    s.timing.source_out = Some(Time { ticks: 2, rate: 1 });
+    assert!(
+        doc.apply(
+            1,
+            &[Command::Put {
+                node: Box::new(bad)
+            }]
+        )
+        .is_err()
+    );
+}

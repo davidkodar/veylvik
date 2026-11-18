@@ -1294,6 +1294,18 @@ impl Studio {
                 }
             };
             let path = path.canonicalize().map_err(|e| e.to_string())?;
+            if !sequence && veylvik_io::export_audio::is_audio(&path) {
+                let probe = veylvik_io::export_audio::probe(&path).map_err(|e| e.to_string())?;
+                if !probe.has_audio {
+                    return Err(format!("{} has no sound", path.display()));
+                }
+                return Ok(Completed::SoundFile {
+                    session,
+                    revision,
+                    position,
+                    path,
+                });
+            }
             if !sequence && veylvik_io::svg::is_svg(&path) {
                 let (shapes, skipped) = veylvik_io::svg::import(&path, frame.0, frame.1, 0.8)
                     .map_err(|e| e.to_string())?;
@@ -1532,6 +1544,39 @@ impl Studio {
                     self.fail(
                         "The sampled colour no longer matches the selected node; pick again.",
                     );
+                }
+            }
+            Ok(Completed::SoundFile {
+                session,
+                revision,
+                position,
+                path,
+            }) => {
+                if session != self.project.session || revision != self.project.document.revision() {
+                    self.fail("Import became obsolete; import again for the current composition.");
+                } else {
+                    let mut node = veylvik_document::Node::new(
+                        path.file_name().and_then(|s| s.to_str()).unwrap_or("Sound"),
+                        veylvik_document::Operation::Sound(veylvik_document::nodes::Sound {
+                            file: path.to_string_lossy().into_owned(),
+                            timing: Default::default(),
+                            gain: 0.0.into(),
+                        }),
+                        &[],
+                    );
+                    node.position = Some(position);
+                    let id = node.id;
+                    match self.project.apply(&[veylvik_document::Command::Put {
+                        node: Box::new(node),
+                    }]) {
+                        Ok(()) => {
+                            self.project.selected = id;
+                            self.status = "Sound added: it plays from the first frame; drag its bar on the timeline (View > Layer bars) to place it".into();
+                            self.error = false;
+                            self.refresh_draft();
+                        }
+                        Err(error) => self.fail(error),
+                    }
                 }
             }
             Ok(Completed::Drawing {

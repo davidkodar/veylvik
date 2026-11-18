@@ -27,7 +27,7 @@ pub(super) fn tools(revision: &Value) -> Vec<Value> {
         ),
         tool(
             "import_media",
-            "Add a video, PNG, OpenEXR or sequence manifest (.veyseq, sequence.json) as a Footage node and return its id and the media's size, rate and duration. match_composition also gives the composition the media's size, frame rate and duration; output true makes the node the output. An SVG drawing is added as vector shapes instead, fitted to 80% of the frame: per shape a Path (its outline: connect it to text_3d to extrude it), a Solid of its colour and a Mask layer, merged back to front; the reply lists every node (result is the merged drawing) and left_out counts text, pictures and patterns that were not read. One undo step.",
+            "Add a video, PNG, OpenEXR or sequence manifest (.veyseq, sequence.json) as a Footage node and return its id and the media's size, rate and duration. match_composition also gives the composition the media's size, frame rate and duration; output true makes the node the output. An audio file (wav, mp3, flac, ogg, opus, m4a, aac, aiff) is added as a Sound node that plays from the first frame (set timing.start to place it; it is mixed into render_video). An SVG drawing is added as vector shapes instead, fitted to 80% of the frame: per shape a Path (its outline: connect it to text_3d to extrude it), a Solid of its colour and a Mask layer, merged back to front; the reply lists every node (result is the merged drawing) and left_out counts text, pictures and patterns that were not read. One undo step.",
             json!({"revision":revision,"path":{"type":"string"},"match_composition":{"type":"boolean"},"output":{"type":"boolean"}}),
             &["revision", "path"],
         ),
@@ -133,6 +133,30 @@ impl Session {
                 reply["node"] = json!(id);
                 reply["media"] = json!(info.description);
                 reply
+            }
+            _ if crate::assets::export_audio::is_audio(&media(args)?) => {
+                let path = media(args)?;
+                let probe = crate::assets::export_audio::probe(&path)?;
+                if !probe.has_audio {
+                    return Err(format!("{} has no sound", path.display()).into());
+                }
+                let node = Node::new(
+                    path.file_name().and_then(|s| s.to_str()).unwrap_or("Sound"),
+                    Operation::Sound(veylvik_document::nodes::Sound {
+                        file: path.to_str().ok_or("path is not UTF-8")?.to_owned(),
+                        timing: Default::default(),
+                        gain: 0.0.into(),
+                    }),
+                    &[],
+                );
+                let id = node.id;
+                let revision = self.document.apply(
+                    self.document.revision(),
+                    &[Command::Put {
+                        node: Box::new(node),
+                    }],
+                )?;
+                json!({"revision":revision,"node":id,"type":"sound","duration_seconds":probe.duration})
             }
             _ if crate::assets::svg::is_svg(&media(args)?) => {
                 let path = media(args)?;

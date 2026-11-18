@@ -261,6 +261,8 @@ pub enum PortKind {
     Lights,
     /// Objects, cameras and lights in 3D; rendered back to an image by Render scene.
     Scene,
+    /// Sound on the timeline: no picture, and no input takes it.
+    Sound,
 }
 #[derive(Debug, Serialize)]
 pub struct NodeType {
@@ -333,8 +335,8 @@ pub use crate::nodes::{
     LENS_DISTORTION, LIGHT_3D, LIGHT_RIG, LUMA_KEY, LUT, MASK, MATCH_GRAIN, MATERIAL,
     MATERIAL_LAYERS, MERGE, MERGE_SCENES, METALLIC_SHINE, MODEL_3D, MORPHOLOGY, MOTION_BLUR, NOISE,
     OCIO, OPTICAL_FLOW, PARTICLES, PATH, PATINA, PLANAR_TRACK, PLANAR_WARP, POINT_CLOUD,
-    REFINE_MATTE, RENDER_SCENE, SHADER, SHAPE_3D, SHAPE_WARP, SOLID, SUN_GLINTS, SURFACE_BLEND,
-    SURFACE_REFLECTION, TEXT, TEXT_3D, TIME_REMAP, TRANSFORM, TRANSFORM_3D,
+    REFINE_MATTE, RENDER_SCENE, SHADER, SHAPE_3D, SHAPE_WARP, SOLID, SOUND, SUN_GLINTS,
+    SURFACE_BLEND, SURFACE_REFLECTION, TEXT, TEXT_3D, TIME_REMAP, TRANSFORM, TRANSFORM_3D,
 };
 pub static TYPES: &[&NodeType] = &[
     &SOLID,
@@ -346,6 +348,7 @@ pub static TYPES: &[&NodeType] = &[
     &BLUR,
     &LENS_BLUR,
     &LIGHT_RIG,
+    &SOUND,
     &crate::nodes::SHADOW,
     &crate::nodes::CONTACT_SHADOW,
     &crate::nodes::SHAPE_3D,
@@ -415,7 +418,7 @@ pub fn operation_reference() -> Value {
     json!({"type":"object","properties":{"type":{"enum":TYPES.iter().map(|node|node.type_id).collect::<Vec<_>>()}},"required":["type"],"description":"A complete operation: its type and every setting. The nodes tool lists each type's default_operation (a valid starting point) and operation_schema; add_node fills the defaults in for you."})
 }
 pub fn catalog() -> Value {
-    json!({"recipes":crate::recipes::catalog(),"nodes":TYPES.iter().map(|node|json!({"descriptor":node,"default_operation":node.default_operation(),"operation_schema":node.schema()})).collect::<Vec<_>>(),"image_contract":"scene-linear Rec.709, premultiplied RGBA32F","scalar_contract":"constant, linear, step, smooth or monotone keyframes; smooth uses cubic smoothstep per interval; monotone uses bounded cubic Hermite with shared harmonic interior slopes and secant endpoint slopes; time is ticks/rate seconds; 1..4096 strictly increasing keys"})
+    json!({"recipes":crate::recipes::catalog(),"nodes":TYPES.iter().map(|node|json!({"descriptor":node,"default_operation":node.default_operation(),"operation_schema":node.schema()})).collect::<Vec<_>>(),"image_contract":"scene-linear Rec.709, premultiplied RGBA32F","time_contract":"Two forms, by what the value is. A point on the timeline that must be exact (keyframe times, a Fade's or Footage's timing, markers, render times) is {ticks, rate}: ticks / rate seconds, so frame 45 at 30 fps is {\"ticks\":45,\"rate\":30}. A duration or start used as an ordinary number (a Text's typography and a 3D text's letters: start, duration, stagger, exit; Particles: start, duration, life) is plain seconds, as its unit says. Frame numbers appear only as tool arguments (preview, render_sequence, markers shown in Studio).","scalar_contract":"constant, linear, step, smooth or monotone keyframes; smooth uses cubic smoothstep per interval; monotone uses bounded cubic Hermite with shared harmonic interior slopes and secant endpoint slopes; time is ticks/rate seconds; 1..4096 strictly increasing keys"})
 }
 
 /// An exact rational time.

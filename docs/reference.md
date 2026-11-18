@@ -2676,6 +2676,22 @@ the viewer. Radial mode also draws the radius. As with ellipse handles, these
 are inspector drafts until Apply, preserve existing animation modes, and remain
 separate from pan/zoom and exported pixels.
 
+## Sound
+
+A **Sound** node (`sound`) puts an audio file on the timeline: wav, mp3, flac,
+ogg, opus, m4a, aac or aiff, or the sound of a video. `timing.start` places it,
+`source_in` and `source_out` trim it, and **Gain** sets its level in decibels
+(−60 to 12, read where the sound starts). It makes no picture and its output
+connects to nothing; it cannot be viewed or be the composition's output. Every
+Sound node that is not bypassed plays in Studio's preview, shows in the
+timeline's waveform, has a layer bar that moves and trims it like footage, and
+is mixed into video exports together with the footage's own sound (footage
+keeps its recorded level). **Import media**, pasting or dropping an audio file,
+and `import_media` over MCP add one, starting at the first frame; Add > Time
+and motion > Sound adds an empty one. The export's extra music file still
+exists for a track that is not part of the project. Collect project does not
+copy sound files yet.
+
 ## SVG drawings
 
 **Import media**, pasting or dropping a file, and the `import_media` tool of both

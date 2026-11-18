@@ -37,6 +37,17 @@ pub struct Clip {
     pub to: f64,
     /// Export time where it starts.
     pub at: f64,
+    /// Level in decibels (0 keeps the file's own).
+    pub gain_db: f32,
+}
+/// Whether `path` names an audio file by its extension.
+pub fn is_audio(path: &Path) -> bool {
+    path.extension().and_then(|e| e.to_str()).is_some_and(|e| {
+        [
+            "wav", "mp3", "flac", "ogg", "oga", "opus", "m4a", "aac", "aiff", "aif",
+        ]
+        .contains(&e.to_ascii_lowercase().as_str())
+    })
 }
 /// Probed audio facts about a media file: whether it has sound, and its length.
 pub struct Probe {
@@ -65,6 +76,7 @@ pub fn place(
         from: source_in + (visible_from - at),
         to: source_in + (visible_to - at),
         at: visible_from - start,
+        gain_db: 0.0,
     })
 }
 /// Footage nodes that feed the composition output, in graph order, each counted once.
@@ -129,6 +141,30 @@ pub fn clips(doc: &Composition, base: &Path, window: [f64; 2]) -> Result<Vec<Cli
         );
         clips.extend(place(&path, timing, probe.duration, window));
     }
+    // Every Sound node plays, wherever it sits in the graph; in id order so the mix
+    // is the same every time.
+    for node in doc.nodes.values() {
+        let Operation::Sound(sound) = &node.operation else {
+            continue;
+        };
+        if node.bypass || sound.file.trim().is_empty() {
+            continue;
+        }
+        let path = base.join(&sound.file);
+        let probe = probe(&path)?;
+        if !probe.has_audio {
+            return Err(format!("{}: {} has no sound", node.label, path.display()).into());
+        }
+        let timing = (
+            sound.timing.start.seconds()?,
+            sound.timing.source_in.seconds()?,
+            sound.timing.source_out.map(|t| t.seconds()).transpose()?,
+        );
+        if let Some(mut clip) = place(&path, timing, probe.duration, window) {
+            clip.gain_db = sound.gain.at(sound.timing.start)?.clamp(-60.0, 12.0);
+            clips.push(clip);
+        }
+    }
     Ok(clips)
 }
 /// FFmpeg filter graph: input 0 is the video, inputs 1.. the clips, then the music. The mix
@@ -142,10 +178,11 @@ pub fn graph(clips: &[Clip], music_gain_db: Option<f32>, duration: f64) -> Strin
     for (i, clip) in clips.iter().enumerate() {
         let delay = (clip.at * 1000.).round() as u64;
         parts.push(format!(
-            "[{}:a:0]atrim=start={:.6}:end={:.6},asetpts=PTS-STARTPTS,aresample=48000,aformat=channel_layouts=stereo,adelay=delays={delay}:all=1[a{i}]",
+            "[{}:a:0]atrim=start={:.6}:end={:.6},asetpts=PTS-STARTPTS,aresample=48000,aformat=channel_layouts=stereo,volume={:.2}dB,adelay=delays={delay}:all=1[a{i}]",
             i + 1,
             clip.from,
-            clip.to
+            clip.to,
+            clip.gain_db
         ));
         labels.push_str(&format!("[a{i}]"));
     }
@@ -250,7 +287,8 @@ mod tests {
                 path: p.into(),
                 from: 1.,
                 to: 4.,
-                at: 2.
+                at: 2.,
+                gain_db: 0.0,
             })
         );
         // Exporting 3..4 s keeps only that second, starting at export time 0.
@@ -260,7 +298,8 @@ mod tests {
                 path: p.into(),
                 from: 2.,
                 to: 3.,
-                at: 0.
+                at: 0.,
+                gain_db: 0.0,
             })
         );
         // Untrimmed clips end with the file; a source out beyond it is clamped.
@@ -286,12 +325,14 @@ mod tests {
                 from: 1.,
                 to: 4.,
                 at: 2.5,
+                gain_db: 0.0,
             },
             Clip {
                 path: "b.mov".into(),
                 from: 0.,
                 to: 3.,
                 at: 0.,
+                gain_db: 0.0,
             },
         ];
         let graph = graph(&clips, Some(-6.), 12.);

@@ -38,6 +38,13 @@ pub enum Completed {
     PresetLibrary(veylvik_io::presets::Listing),
     PresetLoaded(Box<veylvik_document::presets::Preset>),
     Cancelled,
+    /// An audio file checked to hold sound, to add as a Sound node.
+    SoundFile {
+        session: veylvik_document::NodeId,
+        revision: u64,
+        position: veylvik_document::NodePosition,
+        path: PathBuf,
+    },
     /// An SVG drawing read as shapes, to add as nodes on the UI thread.
     Drawing {
         session: veylvik_document::NodeId,
@@ -226,7 +233,7 @@ pub fn select(choice: Choice, folder: &Path, name: &str) -> Result<Option<PathBu
         ),
         Choice::Import => (
             "Import media",
-            "Video, images, SVG drawings and image sequences",
+            "Video, images, sound, SVG drawings and image sequences",
             "*.png",
         ),
         Choice::Export => (
@@ -249,6 +256,14 @@ pub fn select(choice: Choice, folder: &Path, name: &str) -> Result<Option<PathBu
             .glob("*.png")
             .glob("*.exr")
             .glob("*.svg")
+            .glob("*.wav")
+            .glob("*.mp3")
+            .glob("*.flac")
+            .glob("*.ogg")
+            .glob("*.opus")
+            .glob("*.m4a")
+            .glob("*.aac")
+            .glob("*.aiff")
             .glob("*.mp4")
             .glob("*.mov")
             .glob("*.m4v")

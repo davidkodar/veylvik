@@ -268,6 +268,7 @@ pub(crate) const ADD_MENU: [(&str, &[&registry::NodeType]); 10] = [
             &registry::MOTION_BLUR,
             &registry::TIME_REMAP,
             &registry::OPTICAL_FLOW,
+            &veylvik_document::nodes::SOUND,
         ],
     ),
     (

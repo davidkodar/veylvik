@@ -54,6 +54,17 @@ fn fingerprint(doc: &Composition, base: &std::path::Path) -> Option<u64> {
                 time.map(|t| (t.ticks, t.rate)).hash(&mut hasher);
             }
         }
+        if let Operation::Sound(sound) = &node.operation {
+            any = true;
+            (&sound.file, node.bypass).hash(&mut hasher);
+            serde_json::to_string(&sound.gain)
+                .unwrap_or_default()
+                .hash(&mut hasher);
+            let t = &sound.timing;
+            for time in [Some(t.start), Some(t.source_in), t.source_out] {
+                time.map(|t| (t.ticks, t.rate)).hash(&mut hasher);
+            }
+        }
     }
     (doc.frame_count, doc.frame_rate.ticks, doc.frame_rate.rate).hash(&mut hasher);
     base.hash(&mut hasher);

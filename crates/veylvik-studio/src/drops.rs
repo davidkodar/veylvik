@@ -20,7 +20,8 @@ pub(crate) fn kind(path: &Path) -> Option<Kind> {
     match extension.as_str() {
         "veylvik" => Some(Kind::Project),
         "png" | "exr" | "svg" | "mp4" | "mov" | "m4v" | "mkv" | "webm" | "avi" | "mpg" | "mpeg"
-        | "veyseq" => Some(Kind::Media),
+        | "veyseq" | "wav" | "mp3" | "flac" | "ogg" | "oga" | "opus" | "m4a" | "aac" | "aiff"
+        | "aif" => Some(Kind::Media),
         _ => None,
     }
 }

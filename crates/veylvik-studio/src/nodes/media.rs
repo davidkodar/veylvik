@@ -182,3 +182,73 @@ impl Inspect for veylvik_document::nodes::OpticalFlow {
         ui.weak("Preview uses reduced analysis resolution. Output keeps the full project resolution. Increase confidence to reject more uncertain motion.");
     }
 }
+impl Inspect for veylvik_document::nodes::Sound {
+    fn inspect(&mut self, ui: &mut egui::Ui, cx: &mut InspectCx<'_>) {
+        use veylvik_document::Time;
+        ui.weak("Plays on the timeline and in video exports. It makes no picture and connects to nothing.");
+        ui.horizontal(|ui| {
+            ui.add_sized([88., 22.], egui::Label::new("File"));
+            let changed = ui
+                .add(egui::TextEdit::singleline(&mut self.file).desired_width(f32::INFINITY))
+                .on_hover_text("The audio file: wav, mp3, flac, ogg, m4a, or a video with sound. Import media adds one for you")
+                .changed();
+            cx.dirty |= changed;
+            cx.text_changed |= changed;
+        });
+        let rate = cx.frame_rate;
+        let fps = rate.ticks as f64 / f64::from(rate.rate.max(1));
+        let frames = |time: Time| time.seconds().map_or(0, |s| (s * fps).round() as i64);
+        let row = |ui: &mut egui::Ui, label: &str, time: &mut Time, hint: &str| -> bool {
+            let mut changed = false;
+            ui.horizontal(|ui| {
+                ui.add_sized([88., 22.], egui::Label::new(label));
+                let mut frame = frames(*time);
+                if ui
+                    .add(
+                        egui::DragValue::new(&mut frame)
+                            .range(0..=1_000_000)
+                            .suffix(" f"),
+                    )
+                    .on_hover_text(hint)
+                    .changed()
+                    && let Ok(at) = Time::at_frame(frame, rate)
+                {
+                    *time = at;
+                    changed = true;
+                }
+            });
+            changed
+        };
+        row(
+            ui,
+            "Starts at",
+            &mut self.timing.start,
+            "The frame where the sound begins on the timeline",
+        );
+        row(
+            ui,
+            "Skip",
+            &mut self.timing.source_in,
+            "How much of the file's beginning to leave out, in frames",
+        );
+        let mut trimmed = self.timing.source_out.is_some();
+        if ui
+            .checkbox(&mut trimmed, "Stop early")
+            .on_hover_text("End the sound before the file ends")
+            .changed()
+        {
+            self.timing.source_out = trimmed
+                .then(|| Time::at_frame(frames(self.timing.source_in) + 60, rate).ok())
+                .flatten();
+            cx.dirty = true;
+        }
+        if let Some(out) = &mut self.timing.source_out {
+            row(
+                ui,
+                "Stop at",
+                out,
+                "Where in the file the sound stops, in frames from the file's beginning",
+            );
+        }
+    }
+}

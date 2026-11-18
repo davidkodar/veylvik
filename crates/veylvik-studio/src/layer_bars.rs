@@ -39,8 +39,8 @@ fn shifted(time: Time, by: i64, fps: Time) -> Option<Time> {
 }
 pub(crate) fn bar(node: &Node, fps: Time) -> Option<Bar> {
     let (first, last, footage) = match &node.operation {
-        Operation::Footage(footage) => {
-            let t = &footage.timing;
+        Operation::Footage(veylvik_document::nodes::Footage { timing: t, .. })
+        | Operation::Sound(veylvik_document::nodes::Sound { timing: t, .. }) => {
             let first = frames(t.start, fps);
             (
                 first,
@@ -80,8 +80,8 @@ pub(crate) fn moved(node: &Node, part: Part, by: i64, doc: &Composition) -> Opti
     let count = i64::from(doc.frame_count);
     let mut next = node.clone();
     match &mut next.operation {
-        Operation::Footage(footage) => {
-            let t = &mut footage.timing;
+        Operation::Footage(veylvik_document::nodes::Footage { timing: t, .. })
+        | Operation::Sound(veylvik_document::nodes::Sound { timing: t, .. }) => {
             match part {
                 Part::Body => t.start = shifted(t.start, by.max(-frames(t.start, fps)), fps)?,
                 Part::Start => {
