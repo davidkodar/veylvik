@@ -315,10 +315,10 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 accent: egui::Color32::from_rgb(255, 214, 10),
             };
             // Opened without a file: begin on the start screen.
-            if app.project.path.is_none() {
-                app.show_start();
-            }
             app.apply_preferences(None, &cc.egui_ctx);
+            if app.project.path.is_none() {
+                app.launch(&cc.egui_ctx);
+            }
             app.request_preview();
             Ok(Box::new(app))
         }),
@@ -505,6 +505,29 @@ impl Studio {
         self.displayed_time = None;
         self.refresh_draft();
         self.request_preview();
+    }
+    /// What to show when started without a project, as preferences say.
+    fn launch(&mut self, ctx: &egui::Context) {
+        let p = &self.preferences.values;
+        match p.launch {
+            preferences::Launch::StartScreen => self.show_start(),
+            preferences::Launch::LastProject => match self.start.latest() {
+                Some(path) => self.open_path(Some(path)),
+                None => self.show_start(),
+            },
+            preferences::Launch::Empty => {
+                let (width, height, rate, frames) =
+                    (p.new_width, p.new_height, p.new_rate, p.new_frames);
+                match veylvik_document::Time::new(rate.0, rate.1)
+                    .map_err(|e| e.to_string())
+                    .and_then(|rate| {
+                        Project::blank(width, height, rate, frames).map_err(|e| e.to_string())
+                    }) {
+                    Ok(project) => self.open_project(project, ctx),
+                    Err(error) => self.fail(error),
+                }
+            }
+        }
     }
     fn apply_composition_settings(&mut self, settings: composition::Settings, ctx: &egui::Context) {
         if settings.new {
@@ -1616,6 +1639,11 @@ impl Studio {
                 });
         }
         ctx.set_zoom_factor(p.scale);
+        files::set_default_folders(&p.projects_folder, &p.exports_folder);
+        self.composition_controls.defaults =
+            veylvik_document::Time::new(p.new_rate.0, p.new_rate.1)
+                .ok()
+                .map(|rate| (p.new_width, p.new_height, rate, p.new_frames));
         ctx.data_mut(|d| {
             d.insert_temp(egui::Id::new("animate-library-previews"), p.hover_previews)
         });

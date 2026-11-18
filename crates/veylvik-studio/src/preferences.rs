@@ -33,6 +33,26 @@ impl Theme {
         }
     }
 }
+/// What Studio shows when started without a project.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Launch {
+    #[default]
+    StartScreen,
+    LastProject,
+    Empty,
+}
+/// The frame rates offered for new compositions, as ticks over a base.
+pub const RATES: [(&str, i64, u32); 8] = [
+    ("23.976", 24000, 1001),
+    ("24", 24, 1),
+    ("25", 25, 1),
+    ("29.97", 30000, 1001),
+    ("30", 30, 1),
+    ("50", 50, 1),
+    ("59.94", 60000, 1001),
+    ("60", 60, 1),
+];
 /// The viewer aids that are switched on.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
@@ -92,6 +112,16 @@ pub struct Values {
     pub layer_bars: bool,
     /// The viewer aids left on.
     pub aids: Aids,
+    /// A new composition's size, frame rate (ticks over a base) and length in frames.
+    pub new_width: u32,
+    pub new_height: u32,
+    pub new_rate: (i64, u32),
+    pub new_frames: u32,
+    pub launch: Launch,
+    /// Where Open and Save begin for a project not saved yet, and where exports begin;
+    /// empty for the folder Studio was started in.
+    pub projects_folder: String,
+    pub exports_folder: String,
     /// Panel arrangements saved by name.
     pub layouts: Vec<crate::layouts::Layout>,
     /// Changed shortcuts: command id to key, empty for none.
@@ -121,6 +151,13 @@ impl Default for Values {
             spread_edits: true,
             layer_bars: true,
             aids: Aids::default(),
+            new_width: 1920,
+            new_height: 1080,
+            new_rate: (24, 1),
+            new_frames: 240,
+            launch: Launch::default(),
+            projects_folder: String::new(),
+            exports_folder: String::new(),
             layouts: Vec::new(),
             shortcuts: Default::default(),
         }
@@ -136,6 +173,14 @@ impl Values {
             || !(10..=300).contains(&self.recovery_seconds)
             || !(0.0..=2.0).contains(&self.audio_volume)
             || self.audio_device.as_ref().is_some_and(|d| d.len() > 512)
+            || !(1..=8192).contains(&self.new_width)
+            || !(1..=8192).contains(&self.new_height)
+            || !(1..=1_000_000).contains(&self.new_frames)
+            || !RATES
+                .iter()
+                .any(|(_, ticks, base)| (*ticks, *base) == self.new_rate)
+            || self.projects_folder.len() > 4096
+            || self.exports_folder.len() > 4096
         {
             return Err("Preferences contain out-of-range values".into());
         }
@@ -284,6 +329,15 @@ impl Preferences {
                 self.draft.node_thumbnails = d.node_thumbnails;
             }
             8 => {}
+            9 => {
+                self.draft.new_width = d.new_width;
+                self.draft.new_height = d.new_height;
+                self.draft.new_rate = d.new_rate;
+                self.draft.new_frames = d.new_frames;
+                self.draft.launch = d.launch;
+                self.draft.projects_folder = d.projects_folder;
+                self.draft.exports_folder = d.exports_folder;
+            }
             _ => {
                 self.draft.recovery_enabled = d.recovery_enabled;
                 self.draft.recovery_seconds = d.recovery_seconds;
@@ -382,6 +436,107 @@ impl Preferences {
     fn section_ui(&mut self, ui: &mut egui::Ui, source: &str) {
         match self.section {
             5 => self.audio_ui(ui),
+            9 => {
+                ui.heading("New projects");
+                ui.label("A new composition starts as");
+                ui.horizontal(|ui| {
+                    for (label, width, height) in [
+                        ("HD", 1920, 1080),
+                        ("UHD", 3840, 2160),
+                        ("Vertical", 1080, 1920),
+                        ("Square", 1080, 1080),
+                    ] {
+                        if ui
+                            .selectable_label(
+                                (self.draft.new_width, self.draft.new_height) == (width, height),
+                                label,
+                            )
+                            .clicked()
+                        {
+                            (self.draft.new_width, self.draft.new_height) = (width, height);
+                        }
+                    }
+                    ui.add(egui::DragValue::new(&mut self.draft.new_width).range(1..=8192));
+                    ui.label("x");
+                    ui.add(egui::DragValue::new(&mut self.draft.new_height).range(1..=8192));
+                });
+                let fps = self.draft.new_rate.0 as f64 / f64::from(self.draft.new_rate.1.max(1));
+                ui.horizontal(|ui| {
+                    ui.label("Frame rate");
+                    let shown = RATES
+                        .iter()
+                        .find(|(_, t, b)| (*t, *b) == self.draft.new_rate)
+                        .map_or("24", |(label, ..)| label);
+                    egui::ComboBox::from_id_salt("new-rate")
+                        .selected_text(shown)
+                        .width(80.)
+                        .show_ui(ui, |ui| {
+                            for (label, ticks, base) in RATES {
+                                if ui
+                                    .selectable_label(self.draft.new_rate == (ticks, base), label)
+                                    .clicked()
+                                {
+                                    // The length keeps its duration at the new rate.
+                                    let seconds = f64::from(self.draft.new_frames) / fps;
+                                    self.draft.new_rate = (ticks, base);
+                                    self.draft.new_frames =
+                                        ((seconds * ticks as f64 / f64::from(base)).round() as u32)
+                                            .clamp(1, 1_000_000);
+                                }
+                            }
+                        });
+                    ui.label("Length");
+                    let mut seconds = f64::from(self.draft.new_frames) / fps;
+                    if ui
+                        .add(
+                            egui::DragValue::new(&mut seconds)
+                                .range(0.04..=3600.0)
+                                .speed(0.1)
+                                .suffix(" s"),
+                        )
+                        .changed()
+                    {
+                        self.draft.new_frames =
+                            ((seconds * fps).round() as u32).clamp(1, 1_000_000);
+                    }
+                    ui.weak(format!("{} frames", self.draft.new_frames));
+                });
+                ui.weak("Used by New composition and by the start screen's size cards. A composition made from media still takes the media's size and rate.");
+                ui.add_space(6.);
+                ui.label("When Veylvik starts without a project");
+                ui.horizontal(|ui| {
+                    ui.selectable_value(
+                        &mut self.draft.launch,
+                        Launch::StartScreen,
+                        "Show the start screen",
+                    );
+                    ui.selectable_value(
+                        &mut self.draft.launch,
+                        Launch::LastProject,
+                        "Open the last project",
+                    );
+                    ui.selectable_value(&mut self.draft.launch, Launch::Empty, "Start empty");
+                });
+                ui.add_space(6.);
+                for (label, folder) in [
+                    ("Projects folder", &mut self.draft.projects_folder),
+                    ("Exports folder", &mut self.draft.exports_folder),
+                ] {
+                    ui.horizontal(|ui| {
+                        ui.add_sized([104., 22.], egui::Label::new(label));
+                        ui.add(
+                            egui::TextEdit::singleline(folder)
+                                .hint_text("The folder Veylvik was started in")
+                                .desired_width(300.),
+                        );
+                        let path = folder.trim();
+                        if !path.is_empty() && !std::path::Path::new(path).is_dir() {
+                            ui.colored_label(ui.visuals().warn_fg_color, "Not a folder");
+                        }
+                    });
+                }
+                ui.weak("Type a full path. Open and Save begin in the projects folder until a project has a place of its own; export dialogs begin in the exports folder.");
+            }
             6 => {
                 ui.heading("Editing");
                 ui.checkbox(&mut self.draft.auto_key, "Automatic keyframes");
@@ -569,6 +724,7 @@ impl Preferences {
                                 (2, "Workspace"),
                                 (3, "Performance"),
                                 (4, "Recovery"),
+                                (9, "New projects"),
                                 (6, "Editing"),
                                 (7, "Viewer and timeline"),
                                 (8, "Keyboard and layouts"),
@@ -654,6 +810,38 @@ mod tests {
         assert_eq!(merged(&opened, &draft, &current).scale, 1.5);
         // Nothing changed in the window: nothing is touched.
         assert_eq!(merged(&opened, &opened, &current), current);
+        // New-project settings are held to what a composition allows.
+        let fine = Values {
+            new_width: 3840,
+            new_height: 2160,
+            new_rate: (30000, 1001),
+            new_frames: 900,
+            launch: Launch::LastProject,
+            ..Values::default()
+        };
+        fine.validate().unwrap();
+        let back: Values = serde_json::from_str(&serde_json::to_string(&fine).unwrap()).unwrap();
+        assert_eq!(back, fine);
+        for bad in [
+            Values {
+                new_width: 0,
+                ..Values::default()
+            },
+            Values {
+                new_height: 9000,
+                ..Values::default()
+            },
+            Values {
+                new_frames: 0,
+                ..Values::default()
+            },
+            Values {
+                new_rate: (27, 1),
+                ..Values::default()
+            },
+        ] {
+            assert!(bad.validate().is_err());
+        }
         // Preferences written before the newer settings existed still load, with defaults.
         let old: Values = serde_json::from_str(r#"{"scale":1.25,"loop_playback":false}"#).unwrap();
         assert_eq!(

@@ -2162,6 +2162,22 @@ saved). Flipping one of these switches in a menu or panel saves it at once;
 the viewer aids, the layer bars and editing several nodes at once are
 remembered between sessions (`aids`, `layer_bars`, `spread_edits`).
 
+**New projects** holds what a new composition starts as: its size (1 to 8192
+on each side, with HD, UHD, Vertical and Square as shortcuts), its frame rate
+(23.976, 24, 25, 29.97, 30, 50, 59.94 or 60) and its length, kept as a number
+of frames and shown in seconds; changing the rate keeps the duration. New
+composition starts from these, and the start screen's size cards use the rate
+and length. A composition made from media still takes the media's size and
+rate. **When Veylvik starts without a project** it shows the start screen (the
+default), opens the project used most recently (the start screen if there is
+none), or starts with an empty composition of the default size. The
+**Projects folder** is where Open, Save and Import begin while the project has
+no folder of its own, and the **Exports folder** is where frame, video and
+sequence exports begin; each is a typed path, used only if it is an existing
+folder, and left empty means the folder Veylvik was started in. These are kept
+as `new_width`, `new_height`, `new_rate`, `new_frames`, `launch`,
+`projects_folder` and `exports_folder`.
+
 **Apply** saves only what was changed in the window since it opened. A
 setting changed elsewhere while the window was open, such as a shortcut, a
 saved layout or the timecode switch, keeps its new value; where both changed

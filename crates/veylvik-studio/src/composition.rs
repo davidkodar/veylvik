@@ -40,6 +40,8 @@ const LENGTHS: [u32; 6] = [5, 10, 15, 30, 60, 120];
 #[derive(Default)]
 pub struct Controls {
     pub open: bool,
+    /// What a new composition starts as: width, height, frame rate and frames.
+    pub defaults: Option<(u32, u32, Time, u32)>,
     settings: Option<Settings>,
     /// Showing the manual fields for size, frame rate and length.
     custom: [bool; 3],
@@ -56,11 +58,17 @@ impl Controls {
     pub fn begin(&mut self, document: &Composition, new: bool) {
         self.open = true;
         let settings = if new {
+            let (width, height, frame_rate, frame_count) = self.defaults.unwrap_or((
+                1920,
+                1080,
+                Time { ticks: 24, rate: 1 },
+                veylvik_document::DEFAULT_FRAME_COUNT,
+            ));
             Settings {
-                width: 1920,
-                height: 1080,
-                frame_rate: Time { ticks: 24, rate: 1 },
-                frame_count: veylvik_document::DEFAULT_FRAME_COUNT,
+                width,
+                height,
+                frame_rate,
+                frame_count,
                 new: true,
                 scale_scene: false,
                 display: Default::default(),

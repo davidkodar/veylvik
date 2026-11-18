@@ -79,6 +79,10 @@ fn ago(then: u64) -> String {
     }
 }
 impl Start {
+    /// The project opened most recently that still exists.
+    pub fn latest(&self) -> Option<PathBuf> {
+        self.entries.first().map(|entry| entry.path.clone())
+    }
     /// Read the recent list (at startup, before the window is shown). Projects whose
     /// files are gone are dropped.
     pub fn load(open: bool) -> Self {
@@ -214,10 +218,14 @@ impl Studio {
             Some(Chosen::Recent(path)) => self.open_path(Some(path)),
             Some(Chosen::FromMedia(path)) => self.new_from_media_path(Some(path)),
             Some(Chosen::Blank(width, height)) => {
-                match Time::new(24, 1)
+                let (rate, frames) = (
+                    self.preferences.values.new_rate,
+                    self.preferences.values.new_frames,
+                );
+                match Time::new(rate.0, rate.1)
                     .map_err(|e| e.to_string())
                     .and_then(|rate| {
-                        Project::blank(width, height, rate, 240).map_err(|e| e.to_string())
+                        Project::blank(width, height, rate, frames).map_err(|e| e.to_string())
                     }) {
                     Ok(project) => self.open_project(project, ctx),
                     Err(e) => self.fail(e),

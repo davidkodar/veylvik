@@ -159,7 +159,48 @@ pub fn offer_parent(frame: &eframe::Frame) {
 fn parent() -> Option<ashpd::WindowIdentifier> {
     PARENT.lock().ok()?.take()
 }
+/// Where dialogs begin when the project has no folder of its own: projects, exports.
+static DEFAULTS: std::sync::Mutex<(Option<PathBuf>, Option<PathBuf>)> =
+    std::sync::Mutex::new((None, None));
+/// Set the folders from preferences; a path that is not a folder is ignored.
+pub fn set_default_folders(projects: &str, exports: &str) {
+    let folder = |text: &str| {
+        Some(PathBuf::from(text.trim())).filter(|p| !text.trim().is_empty() && p.is_dir())
+    };
+    if let Ok(mut defaults) = DEFAULTS.lock() {
+        *defaults = (folder(projects), folder(exports));
+    }
+}
+/// The folder a dialog for `choice` begins in, given the one the project offers.
+pub(crate) fn starting_folder(
+    choice: &Choice,
+    offered: &Path,
+    started_in: Option<&Path>,
+    defaults: &(Option<PathBuf>, Option<PathBuf>),
+) -> PathBuf {
+    let exporting = matches!(choice, Choice::Export | Choice::Video | Choice::Folder);
+    if exporting && let Some(exports) = &defaults.1 {
+        return exports.clone();
+    }
+    // A project without a place of its own offers the folder Studio was started in.
+    if started_in == Some(offered)
+        && let Some(projects) = &defaults.0
+    {
+        return projects.clone();
+    }
+    offered.to_owned()
+}
 pub fn select(choice: Choice, folder: &Path, name: &str) -> Result<Option<PathBuf>, String> {
+    let begin = {
+        let defaults = DEFAULTS.lock().map(|d| d.clone()).unwrap_or_default();
+        starting_folder(
+            &choice,
+            folder,
+            std::env::current_dir().ok().as_deref(),
+            &defaults,
+        )
+    };
+    let folder = begin.as_path();
     let (title, label, pattern) = match choice {
         Choice::PresetOpen => ("Import effect preset", "Veylvik effect", "*.veyfx"),
         Choice::PresetSave => ("Export effect preset", "Veylvik effect", "*.veyfx"),
@@ -284,5 +325,59 @@ mod tests {
         assert!(matches!(result, Err(message) if message == "test failure"));
         tasks.thread.take().unwrap().join().unwrap();
         assert!(!tasks.busy());
+    }
+}
+
+#[cfg(test)]
+mod folder_tests {
+    use super::*;
+    #[test]
+    fn dialogs_begin_in_the_chosen_folders_only_when_the_project_has_none() {
+        let (cwd, project) = (Path::new("/home/me"), Path::new("/work/film"));
+        let set = (
+            Some(PathBuf::from("/projects")),
+            Some(PathBuf::from("/renders")),
+        );
+        let none = (None, None);
+        // Nothing set: always the folder offered.
+        assert_eq!(starting_folder(&Choice::Open, cwd, Some(cwd), &none), cwd);
+        assert_eq!(
+            starting_folder(&Choice::Video, project, Some(cwd), &none),
+            project
+        );
+        // An unsaved project offers the folder Studio was started in: use the projects folder.
+        assert_eq!(
+            starting_folder(&Choice::Open, cwd, Some(cwd), &set),
+            Path::new("/projects")
+        );
+        assert_eq!(
+            starting_folder(&Choice::Save, cwd, Some(cwd), &set),
+            Path::new("/projects")
+        );
+        assert_eq!(
+            starting_folder(&Choice::Import, cwd, Some(cwd), &set),
+            Path::new("/projects")
+        );
+        // A project with a place of its own keeps it for opening, saving and importing.
+        assert_eq!(
+            starting_folder(&Choice::Save, project, Some(cwd), &set),
+            project
+        );
+        assert_eq!(
+            starting_folder(&Choice::Import, project, Some(cwd), &set),
+            project
+        );
+        // Exports go to the exports folder whenever one is set.
+        for choice in [Choice::Export, Choice::Video, Choice::Folder] {
+            assert_eq!(
+                starting_folder(&choice, project, Some(cwd), &set),
+                Path::new("/renders")
+            );
+        }
+        let only_projects = (Some(PathBuf::from("/projects")), None);
+        assert_eq!(
+            starting_folder(&Choice::Video, project, Some(cwd), &only_projects),
+            project
+        );
     }
 }
