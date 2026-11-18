@@ -210,6 +210,12 @@ fn bytes(id: &str, before: bool) -> &'static [u8] {
         ("snowfall", true) => include_bytes!("../assets/showcase/snowfall-before.png"),
         ("starfield", false) => include_bytes!("../assets/showcase/starfield-after.png"),
         ("starfield", true) => include_bytes!("../assets/showcase/starfield-before.png"),
+        ("lens_flare", false) => include_bytes!("../assets/showcase/lens_flare-after.png"),
+        ("lens_flare", true) => include_bytes!("../assets/showcase/lens_flare-before.png"),
+        ("spiral_galaxy", false) => include_bytes!("../assets/showcase/spiral_galaxy-after.png"),
+        ("spiral_galaxy", true) => include_bytes!("../assets/showcase/spiral_galaxy-before.png"),
+        ("distant_sun", false) => include_bytes!("../assets/showcase/distant_sun-after.png"),
+        ("distant_sun", true) => include_bytes!("../assets/showcase/distant_sun-before.png"),
         _ => unreachable!("only built-in gallery entries"),
     }
 }

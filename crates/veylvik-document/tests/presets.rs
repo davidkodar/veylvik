@@ -136,7 +136,7 @@ fn animation_keeps_exact_seconds_and_defaults_across_frame_rates() {
 #[test]
 fn expanded_catalog_has_unique_discoverable_ids_and_editable_controls() {
     let mut ids = std::collections::BTreeSet::new();
-    assert_eq!(builtin::ALL.len(), 74);
+    assert_eq!(builtin::ALL.len(), 77);
     for entry in builtin::ALL {
         assert!(ids.insert(entry.id));
         assert!(builtin::CATEGORIES.contains(&builtin::category(entry.id)));

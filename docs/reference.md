@@ -424,13 +424,17 @@ input names, defaults and controls save with the composition. Nested groups are 
 **Add → Effect library…** opens searchable starter and saved effects. The bundled
 **Prismatic Glow** adds cyan/rose light spill; **Neon Outline** adds luminous
 contours; **Liquid Shimmer** adds a smooth four-second flow loop with protected
-frame edges. The library contains **74 starter effects**, searchable by name,
+frame edges. The library contains **77 starter effects**, searchable by name,
 description or category, with category counts in the left sidebar and a search field above the results. Every starter remains an editable group with public controls.
 
 The expanded set includes:
 
 - **Light:** Soft Bloom, Anamorphic Streaks, Dream Focus, Light Sweep, Soft Vignette,
   Spotlight and Metallic Shine (plus Prismatic Glow and Neon Outline).
+  Lens Flare, Distant Galaxy and Distant Sun are each one Custom shader node
+  laid over the image: their controls are the shader's own sliders, and the
+  code can be opened and changed. To keep a shader of your own, group its node
+  and choose Save to library.
 - **Surface:** Edge Engrave, Duotone Print, Silver Relief, Ink Bleed, Film Grain,
   Scanlines and Hologram.
 - **Distortion:** Frosted Glass, Heat Haze, Underwater and Glitch Slices (plus Liquid Shimmer).
@@ -1775,7 +1779,11 @@ settles on the wrong kind of motion can still look sure. The
   through a point, more the farther from it, as a fast move towards that point
   or a zoom during the exposure does. **Amount** (0–1) is the share of each
   pixel's distance from the point it is smeared over; **X** and **Y** place the
-  point. Thirty-two premultiplied samples a pixel.
+  point. Thirty-two premultiplied samples a pixel. It is a flat effect: it
+  smears near and far alike. For blur that follows depth, use what knows the
+  depth: a Render scene's **Motion blur** for 3D objects, and a Particles node's
+  **Shutter**, which streaks each particle by the camera's own move. Far things
+  then stay sharp while near ones streak.
 - **Light wrap** (`light_wrap`, inputs image and background): lets the
   background's light spill onto a foreground's edges, so 3D or a cut-out
   subject sits in a shot instead of looking pasted on. The background is

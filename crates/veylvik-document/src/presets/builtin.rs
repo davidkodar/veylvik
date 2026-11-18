@@ -5,6 +5,7 @@ pub(in crate::presets) mod appearance;
 mod extended;
 mod optics;
 mod recipes;
+mod sky;
 use crate::{
     BlendMode, Composition, Key, MaskChannel, Node, NodeId, Operation, Result, Scalar, Time,
     groups::{Control, Group},
@@ -15,7 +16,22 @@ pub struct Builtin {
     pub label: &'static str,
     pub description: &'static str,
 }
-pub const ALL: [Builtin; 74] = [
+pub const ALL: [Builtin; 77] = [
+    Builtin {
+        id: "lens_flare",
+        label: "Lens Flare",
+        description: "A light's glow, a wide streak, a faint ring and coloured ghosts along the line through the frame's middle. Place the light and balance each part; the shader behind it is open to edit.",
+    },
+    Builtin {
+        id: "spiral_galaxy",
+        label: "Distant Galaxy",
+        description: "A far galaxy as a telescope shows it: faint, soft, with ragged arms, dust lanes and a warm core. Tilt it edge on, or take the arms away for an elliptical.",
+    },
+    Builtin {
+        id: "distant_sun",
+        label: "Distant Sun",
+        description: "A small white-hot point with the glow and spikes a lens gives it, in any colour.",
+    },
     Builtin {
         id: "weathered_bronze",
         label: "Weathered Bronze",
@@ -444,6 +460,7 @@ pub fn build(id: &str) -> Result<Preset> {
     let (mut b, source) = builder()?;
     let output = match id {
         id if is_recipe(id) => recipes::build(id, &mut b, source)?,
+        id if sky::is(id) => sky::build(id, &mut b, source)?,
         "smooth_slow_motion" => {
             let operation =
                 serde_json::from_value(crate::registry::OPTICAL_FLOW.default_operation())
@@ -810,6 +827,7 @@ pub fn category(id: &str) -> &'static str {
     match id {
         id if is_recipe(id) => "Surface",
         "shutter_motion" | "smooth_slow_motion" => "Motion",
+        id if sky::is(id) => "Light",
         id if appearance::material_kind(id).is_some() => "Materials",
         "sun_glints" | "metallic_shine" | "soft_bloom" | "anamorphic_streaks" | "dream_focus"
         | "light_sweep" | "soft_vignette" | "spotlight" | "prismatic_glow" | "neon_outline" => {
