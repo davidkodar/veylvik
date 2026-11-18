@@ -48,6 +48,8 @@ pub struct Pages {
     pub quick: bool,
     /// The dialog is showing every setting.
     pub more: bool,
+    /// The 3D page's left panel shows the library and not the scene's contents.
+    pub scene_library: bool,
 }
 impl Studio {
     /// Show `page`, arranging the editor for it.
@@ -117,6 +119,21 @@ impl Studio {
         }
         ui.add_space(8.0);
     }
+    /// The 3D page's left panel is the scene's contents or the library: the switch
+    /// between them, shown at the top of whichever is open.
+    pub(crate) fn left_switch(&mut self, ui: &mut egui::Ui) {
+        for (library, label, hint) in [
+            (false, "Scene", "The scene's objects, cameras and lights"),
+            (true, "Library", "Effects, materials, templates and media"),
+        ] {
+            if crate::design::chip(ui, label, self.pages.scene_library == library)
+                .on_hover_text(hint)
+                .clicked()
+            {
+                self.pages.scene_library = library;
+            }
+        }
+    }
     /// The 3D page's left panel: what the scenes hold, to select by clicking.
     pub(crate) fn scene_outline(&mut self, ui: &mut egui::Ui) {
         egui::Panel::left("scene-outline")
@@ -125,7 +142,7 @@ impl Studio {
             .min_size(190.0)
             .resizable(true)
             .show_inside(ui, |ui| {
-                ui.heading("Scene");
+                ui.horizontal(|ui| self.left_switch(ui));
                 let doc = self.project.document.snapshot();
                 let group = |operation: &Operation| match operation {
                     Operation::Shape3d(_)

@@ -3070,10 +3070,13 @@ impl eframe::App for Studio {
                 if !self.viewer_fullscreen {
                 egui::Panel::top("menu_bar").show_inside(ui, |ui| self.menu_bar(ui));
                 egui::Panel::bottom("status").show_inside(ui, |ui| self.status_bar(ui));
+                // Compose and Animate keep the library; 3D shares the place between the
+                // scene's contents and the library; Export leaves the room to the picture.
                 match self.pages.page {
-                    pages::Page::Compose => self.asset_browser(ui),
+                    pages::Page::Compose | pages::Page::Animate => self.asset_browser(ui),
+                    pages::Page::Scene if self.pages.scene_library => self.asset_browser(ui),
                     pages::Page::Scene => self.scene_outline(ui),
-                    pages::Page::Animate | pages::Page::Export => {}
+                    pages::Page::Export => {}
                 }
                 if self.pages.page == pages::Page::Export {
                     self.export_page(ui);

@@ -2155,9 +2155,12 @@ The top bar switches the window between four arrangements of the same panels;
 nothing in the project changes. **Compose** (`Ctrl+1`) is the full editor:
 library, viewer, inspector and the node or animation editor. **Animate**
 (`Ctrl+2`) shows the animation editor in a taller panel of its own size and
-hides the library. **3D** (`Ctrl+3`) hides the editor (the transport stays) and
-replaces the library with a Scene panel listing the document's 3D nodes as
-Objects, Cameras, Lights and Structure; clicking one selects it. **Export**
+keeps the library on the left. **3D** (`Ctrl+3`) hides the editor (the
+transport stays); its left panel has a **Scene** / **Library** switch: Scene
+lists the document's 3D nodes as Objects, Cameras, Lights and Structure, and
+clicking one selects it; Library is the same library as on Compose, so
+materials and templates are in reach (collapsed to its rail it keeps a Scene
+button). **Export**
 (`Ctrl+4`) hides the editor and replaces the inspector with the list of exports
 (the render queue: what is rendering with its progress, waiting and done, with
 Start queue, Pause after current, Clear completed, and Cancel, Retry and Remove

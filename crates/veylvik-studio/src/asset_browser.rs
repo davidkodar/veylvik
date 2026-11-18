@@ -107,6 +107,15 @@ impl Studio {
                 .exact_size(76.)
                 .frame(design::panel(ui.ctx()))
                 .show_inside(ui, |ui| {
+                    // On the 3D page the scene's contents are one click away.
+                    if self.pages.page == crate::pages::Page::Scene
+                        && ui
+                            .button("Scene")
+                            .on_hover_text("The scene's objects, cameras and lights")
+                            .clicked()
+                    {
+                        self.pages.scene_library = false;
+                    }
                     for (tab, icon, label) in [
                         (Tab::Effects, icons::Icon::Effects, "Effects"),
                         (Tab::Materials, icons::Icon::Materials, "Materials"),
@@ -145,7 +154,12 @@ impl Studio {
         let mut add_scene = false;
         egui::Panel::left("asset-library").frame(design::panel(ui.ctx())).default_size(326.).min_size(230.).max_size(420.).resizable(true).show_inside(ui,|ui| {
             ui.horizontal(|ui| {
-                ui.heading("Library");
+                // On the 3D page this panel shares its place with the scene's contents.
+                if self.pages.page == crate::pages::Page::Scene {
+                    self.left_switch(ui);
+                } else {
+                    ui.heading("Library");
+                }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center),|ui| {
                     if ui.add(icons::Button::new(icons::Icon::Left,"Collapse library")).clicked() {self.browser.visible=false;}
                 });
