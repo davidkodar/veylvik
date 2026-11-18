@@ -31,6 +31,7 @@ mod icons;
 mod inspector_tools;
 mod key_timeline;
 mod layer_bars;
+mod layouts;
 mod light_guides;
 mod live_jobs;
 mod material_library;
@@ -287,6 +288,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 commands: Default::default(),
                 log: Default::default(),
                 tools: Default::default(),
+                layouts: Default::default(),
                 overlay_hidden: None,
                 tryout: None,
                 keys_accepted: None,
@@ -411,6 +413,7 @@ struct Studio {
     commands: command_ui::Commands,
     log: history_log::Log,
     tools: inspector_tools::Tools,
+    layouts: layouts::Layouts,
     /// The node whose frame and handles in the viewer were put away by a click beside it.
     overlay_hidden: Option<veylvik_document::NodeId>,
     /// The frame of a pending try-out on an animated setting (automatic keyframes off).
@@ -2905,6 +2908,9 @@ impl Studio {
         self.about.show(ctx, &self.renderer);
         self.command_windows(ctx);
         self.log_windows(ctx);
+        self.layout_windows(ctx);
+        self.second_viewer(ctx);
+        self.layout_tick(ctx);
     }
 }
 impl eframe::App for Studio {
@@ -3144,9 +3150,10 @@ impl eframe::App for Studio {
                 if self.pages.page == pages::Page::Export {
                     self.export_page(ui);
                 } else if self.inspector_visible {
-                egui::Panel::right("inspector").frame(design::panel(ui.ctx()))
-                    .default_size(414.0)
-                    .min_size(340.0)
+                (match self.layouts.inspector_width() {
+                    Some(width) => egui::Panel::right("inspector").exact_size(width),
+                    None => egui::Panel::right("inspector").default_size(414.0).min_size(340.0),
+                }).frame(design::panel(ui.ctx()))
                     .resizable(true)
                     .show_inside(ui, |ui| {
                         self.inspector_actions(ui);
@@ -3182,7 +3189,10 @@ impl eframe::App for Studio {
                     // Animate gives the curves most of the window.
                     egui::Panel::bottom("graph-animate").default_size(560.0_f32.min(room.max(200.0))).min_size(200.0).max_size(room.max(200.0)).resizable(true)
                 } else {
-                    egui::Panel::bottom("graph").default_size(420.0_f32.min(room.max(130.0))).min_size(130.0).max_size(room.max(130.0)).resizable(true)
+                    match self.layouts.editor_height() {
+                        Some(height) => egui::Panel::bottom("graph").exact_size(height.min(room.max(130.0))).resizable(true),
+                        None => egui::Panel::bottom("graph").default_size(420.0_f32.min(room.max(130.0))).min_size(130.0).max_size(room.max(130.0)).resizable(true),
+                    }
                 }).frame(design::panel(ui.ctx()))
                     .show_inside(ui, |ui| {
                         // In a window too narrow to show it, the transport would wrap into a

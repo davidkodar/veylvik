@@ -159,7 +159,10 @@ impl Studio {
         let mut import = false;
         let mut media = None;
         let mut add_scene = false;
-        egui::Panel::left("asset-library").frame(design::panel(ui.ctx())).default_size(326.).min_size(230.).max_size(420.).resizable(true).show_inside(ui,|ui| {
+        (match self.layouts.library_width() {
+            Some(width) => egui::Panel::left("asset-library").exact_size(width),
+            None => egui::Panel::left("asset-library").default_size(326.).min_size(230.).max_size(420.),
+        }).frame(design::panel(ui.ctx())).resizable(true).show_inside(ui,|ui| {
             ui.horizontal(|ui| {
                 // On the 3D page this panel shares its place with the scene's contents.
                 if self.pages.page == crate::pages::Page::Scene {

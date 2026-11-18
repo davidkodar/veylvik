@@ -2149,6 +2149,35 @@ normal saving. A recovery storage error is shown; normal project saving remains
 available. If storage is unavailable at startup, restart after fixing it to
 re-enable background recovery.
 
+### Layouts, a second viewer and interface scale
+
+A **layout** is which of the library, the inspector and the node and
+animation editor are open, and their sizes. **View > Layout** lists four that
+come with Studio: **Standard** (all three; Alt+1), **Wide viewer** (no
+library, a low editor; Alt+2), **Viewer only** (the viewer with the transport;
+Alt+3) and **Graph** (no library, a tall editor; Alt+4), then the layouts
+saved with **Save current layout as...**, each with **Remove**. Up to 16 are
+kept in preferences as `layouts`, by name (up to 40 characters); saving under
+an existing name replaces it, and a seventeenth pushes out the oldest. Sizes
+are held within what each panel allows (library 230 to 420 points wide,
+inspector at least 340, editor at least 130 and never taking the viewer's
+220). A layout does not change the page, the project or what the viewer
+shows.
+
+**View > Viewer in its own window** (also a command) opens a second window
+titled "Veylvik viewer" with the picture the viewer is showing, fitted to the
+window on black, with the same exposure, channel and display transform. It
+follows the main viewer frame by frame, including playback. It shows the
+result only: no handles, guides or overlays, and no zoom or pan. Double-click
+or F11 makes it full screen and Escape leaves that; closing the window
+switches the option off. Where separate windows are not available it appears
+as a floating panel inside the main window. It is not remembered between
+sessions.
+
+**Interface larger** (Ctrl+Plus) and **Interface smaller** (Ctrl+Minus) change
+the interface scale in steps of 10% between 75% and 200%, the same setting as
+Preferences > Interface scale, kept in preferences.
+
 ### Inspector tools
 
 **Copy and paste settings.** Node actions > **Copy settings** (Alt+C) takes

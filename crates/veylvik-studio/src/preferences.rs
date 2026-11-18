@@ -60,6 +60,8 @@ pub struct Values {
     pub node_thumbnails: bool,
     /// Changing an animated setting adds a keyframe by itself.
     pub auto_key: bool,
+    /// Panel arrangements saved by name.
+    pub layouts: Vec<crate::layouts::Layout>,
     /// Changed shortcuts: command id to key, empty for none.
     pub shortcuts: std::collections::BTreeMap<String, String>,
 }
@@ -84,6 +86,7 @@ impl Default for Values {
             time_display: Default::default(),
             node_thumbnails: false,
             auto_key: false,
+            layouts: Vec::new(),
             shortcuts: Default::default(),
         }
     }

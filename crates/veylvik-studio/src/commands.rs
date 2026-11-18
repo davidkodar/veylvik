@@ -68,6 +68,13 @@ commands! {
     ToggleLayerBars, "toggle_layer_bars", "View", "Show or hide layer bars on the timeline", "";
     ToggleThumbnails, "toggle_thumbnails", "View", "Show or hide thumbnails on nodes", "";
     ToggleTimecode, "toggle_timecode", "View", "Switch between timecode and frame numbers", "";
+    LayoutStandard, "layout_standard", "View", "Layout: Standard", "Alt+1";
+    LayoutWideViewer, "layout_wide_viewer", "View", "Layout: Wide viewer", "Alt+2";
+    LayoutViewerOnly, "layout_viewer_only", "View", "Layout: Viewer only", "Alt+3";
+    LayoutGraph, "layout_graph", "View", "Layout: Graph", "Alt+4";
+    SecondViewer, "second_viewer", "View", "Viewer in its own window", "";
+    InterfaceLarger, "interface_larger", "View", "Interface larger", "Ctrl+Plus";
+    InterfaceSmaller, "interface_smaller", "View", "Interface smaller", "Ctrl+Minus";
     PreviewSelected, "preview_selected", "View", "Preview the selected node", "";
     ViewOutput, "view_output", "View", "View the composition output", "";
     FitImage, "fit_image", "View", "Fit the image in the viewer", "";

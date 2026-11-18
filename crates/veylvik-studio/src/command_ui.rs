@@ -201,6 +201,21 @@ impl Studio {
                     self.fail(format!("Preferences: {error}"));
                 }
             }
+            Cmd::LayoutStandard
+            | Cmd::LayoutWideViewer
+            | Cmd::LayoutViewerOnly
+            | Cmd::LayoutGraph => {
+                let index = match cmd {
+                    Cmd::LayoutStandard => 0,
+                    Cmd::LayoutWideViewer => 1,
+                    Cmd::LayoutViewerOnly => 2,
+                    _ => 3,
+                };
+                self.apply_layout(&crate::layouts::Layout::built_in()[index]);
+            }
+            Cmd::SecondViewer => self.layouts.second_viewer = !self.layouts.second_viewer,
+            Cmd::InterfaceLarger => self.scale_interface(ctx, true),
+            Cmd::InterfaceSmaller => self.scale_interface(ctx, false),
             Cmd::PreviewSelected => {
                 self.project.preview = Some(self.project.selected);
                 self.request_preview();
