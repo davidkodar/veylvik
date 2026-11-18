@@ -59,6 +59,7 @@ mod preset_library;
 mod preview_images;
 mod project;
 mod recovery;
+mod remembered;
 mod render_queue;
 mod scene_focus;
 mod scene_gizmo;
@@ -289,6 +290,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 log: Default::default(),
                 tools: Default::default(),
                 layouts: Default::default(),
+                recalled: false,
                 overlay_hidden: None,
                 tryout: None,
                 keys_accepted: None,
@@ -414,6 +416,8 @@ struct Studio {
     log: history_log::Log,
     tools: inspector_tools::Tools,
     layouts: layouts::Layouts,
+    /// Live switches have been set from preferences once.
+    recalled: bool,
     /// The node whose frame and handles in the viewer were put away by a click beside it.
     overlay_hidden: Option<veylvik_document::NodeId>,
     /// The frame of a pending try-out on an animated setting (automatic keyframes off).
@@ -2872,6 +2876,10 @@ impl Studio {
         self.preferences.audio_status = self.audio.status();
         if self.preferences.show(ctx, &self.system_theme.label) {
             self.apply_preferences(Some(&before), ctx);
+            self.recall();
+        }
+        if std::mem::take(&mut self.preferences.want_shortcuts) {
+            self.commands.editor = true;
         }
         self.theme(ctx);
         self.effect_dialog(ctx);
@@ -2954,6 +2962,7 @@ impl eframe::App for Studio {
         self.grain_measure_tick(&ctx);
         light_guides::begin_frame(&ctx);
         self.fonts.poll(&ctx);
+        self.remember_tick();
         self.log_tick();
         self.autokey_tick(&ctx);
         self.tryout_bar(&ctx);

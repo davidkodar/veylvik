@@ -2149,6 +2149,25 @@ normal saving. A recovery storage error is shown; normal project saving remains
 available. If storage is unavailable at startup, restart after fixing it to
 re-enable background recovery.
 
+### Preferences: what is kept and how it is applied
+
+Preferences has sections for Playback, Audio, Appearance, Workspace,
+Performance and Recovery, and three for settings that are also switched
+elsewhere in the interface: **Editing** (automatic keyframes; applying
+inspector changes to all selected nodes of the same kind), **Viewer and
+timeline** (timecode or frame numbers, layer bars, which viewer aids are left
+on, thumbnails on nodes) and **Keyboard and layouts** (how many shortcuts were
+changed, with a button to the shortcut editor, and how many layouts are
+saved). Flipping one of these switches in a menu or panel saves it at once;
+the viewer aids, the layer bars and editing several nodes at once are
+remembered between sessions (`aids`, `layer_bars`, `spread_edits`).
+
+**Apply** saves only what was changed in the window since it opened. A
+setting changed elsewhere while the window was open, such as a shortcut, a
+saved layout or the timecode switch, keeps its new value; where both changed
+the same setting, the window's value is used. Preferences files written by
+earlier builds load, with the newer settings at their defaults.
+
 ### Layouts, a second viewer and interface scale
 
 A **layout** is which of the library, the inspector and the node and

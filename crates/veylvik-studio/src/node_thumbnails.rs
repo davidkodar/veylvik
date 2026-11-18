@@ -22,8 +22,6 @@ pub struct Thumbnails {
     failed: BTreeMap<NodeId, (u64, i64)>,
     pending: Option<(NodeId, (u64, i64), mpsc::Receiver<Made>)>,
     frame: Option<(i64, Instant)>,
-    /// The graph's switch has been set from preferences once.
-    started: bool,
 }
 /// For every node, a number that changes when it or anything upstream of it changes.
 pub(crate) fn keys(doc: &Composition) -> BTreeMap<NodeId, u64> {
@@ -95,22 +93,9 @@ pub(crate) fn reduced(
 impl Studio {
     /// Hand the graph its pictures and, when idle, make the next missing one.
     pub(crate) fn thumbnails_tick(&mut self, ctx: &egui::Context) {
-        if !self.thumbnails.started {
-            self.thumbnails.started = true;
-            self.graph.show_thumbnails = self.preferences.values.node_thumbnails;
-        }
-        if self.graph.show_thumbnails != self.preferences.values.node_thumbnails {
-            self.preferences.values.node_thumbnails = self.graph.show_thumbnails;
-            if let Err(error) = self.preferences.persist() {
-                self.fail(format!("Preferences: {error}"));
-            }
-        }
         if !self.graph.show_thumbnails {
             if !self.thumbnails.cache.is_empty() {
-                self.thumbnails = Thumbnails {
-                    started: true,
-                    ..Default::default()
-                };
+                self.thumbnails = Thumbnails::default();
                 self.graph.thumbnails.clear();
             }
             return;

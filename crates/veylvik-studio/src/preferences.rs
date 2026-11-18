@@ -33,6 +33,32 @@ impl Theme {
         }
     }
 }
+/// The viewer aids that are switched on.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Aids {
+    pub safe: bool,
+    pub centre: bool,
+    pub thirds: bool,
+    pub grid: bool,
+    pub rulers: bool,
+    pub readout: bool,
+}
+/// What Apply saves: every setting the window changed since it opened, and for the
+/// rest whatever is current, so a change made elsewhere meanwhile is not undone.
+pub(crate) fn merged(opened: &Values, draft: &Values, current: &Values) -> Values {
+    let object = |values: &Values| match serde_json::to_value(values) {
+        Ok(serde_json::Value::Object(map)) => map,
+        _ => Default::default(),
+    };
+    let (opened, draft, mut result) = (object(opened), object(draft), object(current));
+    for (name, value) in draft {
+        if opened.get(&name) != Some(&value) {
+            result.insert(name, value);
+        }
+    }
+    serde_json::from_value(serde_json::Value::Object(result)).unwrap_or_else(|_| current.clone())
+}
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Values {
@@ -60,6 +86,12 @@ pub struct Values {
     pub node_thumbnails: bool,
     /// Changing an animated setting adds a keyframe by itself.
     pub auto_key: bool,
+    /// An inspector change reaches the other selected nodes of the same kind.
+    pub spread_edits: bool,
+    /// Bars for footage and fades under the timeline's ruler.
+    pub layer_bars: bool,
+    /// The viewer aids left on.
+    pub aids: Aids,
     /// Panel arrangements saved by name.
     pub layouts: Vec<crate::layouts::Layout>,
     /// Changed shortcuts: command id to key, empty for none.
@@ -86,6 +118,9 @@ impl Default for Values {
             time_display: Default::default(),
             node_thumbnails: false,
             auto_key: false,
+            spread_edits: true,
+            layer_bars: true,
+            aids: Aids::default(),
             layouts: Vec::new(),
             shortcuts: Default::default(),
         }
@@ -157,6 +192,10 @@ pub struct Preferences {
     pub values: Values,
     pub open: bool,
     draft: Values,
+    /// The values when the window opened, to tell what it changed.
+    opened: Values,
+    /// The window asked for the shortcut editor.
+    pub want_shortcuts: bool,
     section: usize,
     path: Option<PathBuf>,
     error: Option<String>,
@@ -178,6 +217,8 @@ impl Preferences {
         let values = result.unwrap_or_default();
         Self {
             draft: values.clone(),
+            opened: values.clone(),
+            want_shortcuts: false,
             values,
             open: false,
             section: 0,
@@ -190,6 +231,7 @@ impl Preferences {
     }
     pub fn begin(&mut self) {
         self.draft = self.values.clone();
+        self.opened = self.values.clone();
         self.open = true;
     }
     pub fn theme(&self) -> Theme {
@@ -231,6 +273,17 @@ impl Preferences {
                 self.draft.audio_device = d.audio_device;
                 self.draft.audio_volume = d.audio_volume;
             }
+            6 => {
+                self.draft.auto_key = d.auto_key;
+                self.draft.spread_edits = d.spread_edits;
+            }
+            7 => {
+                self.draft.time_display = d.time_display;
+                self.draft.layer_bars = d.layer_bars;
+                self.draft.aids = d.aids;
+                self.draft.node_thumbnails = d.node_thumbnails;
+            }
+            8 => {}
             _ => {
                 self.draft.recovery_enabled = d.recovery_enabled;
                 self.draft.recovery_seconds = d.recovery_seconds;
@@ -329,6 +382,71 @@ impl Preferences {
     fn section_ui(&mut self, ui: &mut egui::Ui, source: &str) {
         match self.section {
             5 => self.audio_ui(ui),
+            6 => {
+                ui.heading("Editing");
+                ui.checkbox(&mut self.draft.auto_key, "Automatic keyframes");
+                ui.weak("On: changing an animated setting adds a keyframe at the current position. Off: such a change is a try-out until you choose Add keyframe. Settings without keyframes are never animated by changing them.");
+                ui.add_space(6.);
+                ui.checkbox(
+                    &mut self.draft.spread_edits,
+                    "Apply inspector changes to all selected nodes of the same kind",
+                );
+                ui.weak("Only the settings you change are carried over. The inspector shows how many nodes a change reaches.");
+            }
+            7 => {
+                ui.heading("Viewer and timeline");
+                ui.label("Show positions in time as");
+                ui.horizontal(|ui| {
+                    ui.selectable_value(
+                        &mut self.draft.time_display,
+                        crate::timecode::Display::Timecode,
+                        "Timecode",
+                    );
+                    ui.selectable_value(
+                        &mut self.draft.time_display,
+                        crate::timecode::Display::Frames,
+                        "Frame numbers",
+                    );
+                });
+                ui.checkbox(
+                    &mut self.draft.layer_bars,
+                    "Layer bars under the timeline's ruler",
+                );
+                ui.add_space(6.);
+                ui.label("Viewer aids left on");
+                ui.horizontal_wrapped(|ui| {
+                    let aids = &mut self.draft.aids;
+                    ui.checkbox(&mut aids.safe, "Safe areas");
+                    ui.checkbox(&mut aids.centre, "Centre");
+                    ui.checkbox(&mut aids.thirds, "Thirds");
+                    ui.checkbox(&mut aids.grid, "Grid");
+                    ui.checkbox(&mut aids.rulers, "Rulers");
+                    ui.checkbox(&mut aids.readout, "Colour under the pointer");
+                });
+                ui.weak("The aids are drawn over the viewer only and are never part of a render.");
+                ui.add_space(6.);
+                ui.checkbox(
+                    &mut self.draft.node_thumbnails,
+                    "Thumbnails on nodes in the graph",
+                );
+                ui.weak("Made one node at a time while Studio is idle; each is a full render of that node's branch.");
+            }
+            8 => {
+                ui.heading("Keyboard and layouts");
+                ui.label(match self.values.shortcuts.len() {
+                    0 => "Every command has its original shortcut.".to_owned(),
+                    n => format!("{n} command(s) have a changed shortcut."),
+                });
+                if ui.button("Keyboard shortcuts...").clicked() {
+                    self.want_shortcuts = true;
+                }
+                ui.add_space(6.);
+                ui.label(match self.values.layouts.len() {
+                    0 => "No layouts saved yet. Save one from View > Layout.".to_owned(),
+                    n => format!("{n} saved layout(s), listed under View > Layout."),
+                });
+                return;
+            }
             0 => {
                 ui.heading("Playback");
                 ui.checkbox(
@@ -451,6 +569,9 @@ impl Preferences {
                                 (2, "Workspace"),
                                 (3, "Performance"),
                                 (4, "Recovery"),
+                                (6, "Editing"),
+                                (7, "Viewer and timeline"),
+                                (8, "Keyboard and layouts"),
                             ] {
                                 ui.selectable_value(&mut self.section, i, label);
                             }
@@ -477,10 +598,10 @@ impl Preferences {
                             .path
                             .as_deref()
                             .ok_or("Cannot locate preferences file".into())
-                            .and_then(|p| save(p, &self.draft))
+                            .and_then(|p| save(p, &merged(&self.opened, &self.draft, &self.values)))
                         {
                             Ok(()) => {
-                                self.values = self.draft.clone();
+                                self.values = merged(&self.opened, &self.draft, &self.values);
                                 self.error = None;
                                 applied = true;
                                 close = true;
@@ -506,6 +627,40 @@ impl Preferences {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn applying_keeps_what_was_changed_elsewhere_while_the_window_was_open() {
+        let opened = Values::default();
+        // In the window: a new scale and automatic keyframes on.
+        let mut draft = opened.clone();
+        draft.scale = 1.5;
+        draft.auto_key = true;
+        // Meanwhile, elsewhere: a shortcut, a saved layout, thumbnails and frame numbers.
+        let mut current = opened.clone();
+        current
+            .shortcuts
+            .insert("save".into(), "Ctrl+Shift+S".into());
+        current.layouts.push(crate::layouts::Layout::default());
+        current.node_thumbnails = true;
+        current.time_display = crate::timecode::Display::Frames;
+        let result = merged(&opened, &draft, &current);
+        assert_eq!((result.scale, result.auto_key), (1.5, true));
+        assert_eq!(result.shortcuts, current.shortcuts);
+        assert_eq!(result.layouts.len(), 1);
+        assert!(result.node_thumbnails);
+        assert_eq!(result.time_display, crate::timecode::Display::Frames);
+        // Changed in both places: the window, which is what Apply was pressed on, wins.
+        current.auto_key = false;
+        current.scale = 0.9;
+        assert_eq!(merged(&opened, &draft, &current).scale, 1.5);
+        // Nothing changed in the window: nothing is touched.
+        assert_eq!(merged(&opened, &opened, &current), current);
+        // Preferences written before the newer settings existed still load, with defaults.
+        let old: Values = serde_json::from_str(r#"{"scale":1.25,"loop_playback":false}"#).unwrap();
+        assert_eq!(
+            (old.scale, old.spread_edits, old.layer_bars, old.aids),
+            (1.25, true, true, Aids::default())
+        );
+    }
     #[test]
     fn preferences_roundtrip_defaults_and_reject_invalid_files() {
         let dir = std::env::temp_dir().join(format!(
