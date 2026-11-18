@@ -282,6 +282,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 layer_bars: Default::default(),
                 thumbnails: Default::default(),
                 commands: Default::default(),
+                overlay_hidden: None,
                 materials: Default::default(),
                 shot_light: Default::default(),
                 subject: subject::Controls::default(),
@@ -401,6 +402,8 @@ struct Studio {
     layer_bars: layer_bars::LayerBars,
     thumbnails: node_thumbnails::Thumbnails,
     commands: command_ui::Commands,
+    /// The node whose frame and handles in the viewer were put away by a click beside it.
+    overlay_hidden: Option<veylvik_document::NodeId>,
     materials: material_library::Library,
     shot_light: shot_light::Pending,
     subject: subject::Controls,
@@ -2729,6 +2732,7 @@ impl Studio {
                 graph::Action::Add => self.open_node_palette(ui.ctx()),
                 graph::Action::Select { id, preview } => {
                     if self.can_change_selection() {
+                        self.overlay_hidden = None;
                         self.project.selected = id;
                         self.refresh_draft();
                         if preview {
@@ -3269,6 +3273,8 @@ impl eframe::App for Studio {
                             (ui.available_size() - egui::vec2(0.0, if self.scopes.visible { 6.0 } else { 0.0 })).max(egui::vec2(1.0, 1.0)),
                             egui::Sense::click_and_drag(),
                         );
+                        // A click that reached the picture itself, not a handle drawn over it.
+                        let clicked_at = response.clicked().then(|| response.interact_pointer_pos()).flatten();
                         let before_navigation = self.navigation.transform(canvas, image, ctx.pixels_per_point());
                         let navigating_3d = self.navigating_3d(&ctx);
                         let guides_response = response.clone();
@@ -3418,6 +3424,31 @@ impl eframe::App for Studio {
                         // free 3D view they would sit in the wrong place, so they wait for
                         // the scene camera.
                         let free_3d = self.viewed_scene().is_some() && self.free_view(&ctx).is_some();
+                        // Clicking the picture away from the selected layer puts its frame and
+                        // handles away; clicking the layer (or selecting its node) brings them back.
+                        if let Some(point) = clicked_at
+                            && !free_3d
+                            && !navigating_3d
+                            && self.picking.is_none()
+                            && !self.path_pen.active
+                            && !self.tracking.open && !self.planar.open && !self.subject.open
+                            && !matches!(self.draft.operation, Operation::Path(_))
+                        {
+                            let is_text = matches!(self.draft.operation, Operation::Text(_));
+                            let on_it = is_text && self.text_viewer.covers(canvas, transform, image, point);
+                            if self.overlay_hidden == Some(self.draft.id) {
+                                if on_it || !is_text {
+                                    self.overlay_hidden = None;
+                                }
+                            } else if !on_it && !self.text_viewer.active {
+                                self.overlay_hidden = Some(self.draft.id);
+                                self.status = if is_text {
+                                    "Frame hidden: click the text to show it again".into()
+                                } else {
+                                    "Handles hidden: click the picture to show them again".into()
+                                };
+                            }
+                        }
                         if free_3d
                             && matches!(
                                 self.draft.operation,
@@ -3436,6 +3467,7 @@ impl eframe::App for Studio {
                             && !free_3d
                             && !light_guides::active(&ctx)
                             && self.picking.is_none()
+                            && self.overlay_hidden != Some(self.draft.id)
                             && !self.tracking.open && !self.planar.open && !self.subject.open
                             && (self.displayed_ticket == self.wanted
                                 || matches!(

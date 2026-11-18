@@ -2149,6 +2149,16 @@ normal saving. A recovery storage error is shown; normal project saving remains
 available. If storage is unavailable at startup, restart after fixing it to
 re-enable background recovery.
 
+### Putting a layer's frame away
+
+The frame and handles drawn in the viewer around the selected text or layer
+are hidden by a click on the picture beside it, so the picture can be judged
+clean, and shown again by a click on the text (for other layers, a click
+anywhere on the picture) or by selecting the node in the graph. The click does
+not change the selection or the project. Mask shapes keep their points, and
+nothing is hidden while the pen, the eyedropper, a tracker or 3D navigation is
+in use, where a click means something else.
+
 ### Commands and shortcuts
 
 Studio's menu-level actions are one list of commands, each with a name, a

@@ -25,6 +25,31 @@ impl Editor {
         self.focus = self.active;
     }
 
+    /// Whether `point` on screen is on the text as it was last laid out (with a little slack).
+    pub fn covers(
+        &self,
+        canvas: Rect,
+        transform: crate::viewer::ViewTransform,
+        image: Vec2,
+        point: egui::Pos2,
+    ) -> bool {
+        let Some((_, bounds)) = &self.cached else {
+            return false;
+        };
+        let [ox, oy, sx, sy] = transform.0;
+        let scale = egui::vec2(
+            canvas.width() * sx / image.x,
+            canvas.height() * sy / image.y,
+        );
+        let origin = canvas.min + egui::vec2(canvas.width() * ox, canvas.height() * oy);
+        let screen = |p: [f32; 2]| origin + egui::vec2(p[0], p[1]) * scale;
+        Rect::from_min_max(
+            screen([bounds[0], bounds[1]]),
+            screen([bounds[2], bounds[3]]),
+        )
+        .expand(8.0)
+        .contains(point)
+    }
     #[allow(clippy::too_many_arguments)] // The overlay shares the viewer geometry and document edit target.
     pub fn show(
         &mut self,
