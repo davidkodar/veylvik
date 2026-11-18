@@ -480,7 +480,14 @@ impl SceneRenderer for Engine {
         let surround = scene.environment;
         let panorama = match surround.and_then(|e| e.image) {
             Some(source) => match images.iter().find(|(id, _)| *id == source) {
-                Some((_, image)) => Some(self.panorama(device, encoder, image, width, height)?),
+                Some((_, image)) => Some(self.panorama(
+                    device,
+                    encoder,
+                    image,
+                    width,
+                    height,
+                    surround.is_some_and(|e| e.frame),
+                )?),
                 None => None,
             },
             None => None,

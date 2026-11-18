@@ -1403,6 +1403,13 @@ and `colour`.
   library look light and reflect from it unchanged; the image wraps around
   horizontally and its alpha is divided out. An Image node placed with Fit
   letterboxes a non-16:9 panorama, so stretch it to the frame for a full sky.
+  With **A frame of the shot** (`frame`) the image is ordinary footage, not a
+  panorama: every direction looks at the picture as the camera did, its middle
+  straight ahead, its top from above, its bottom from below and its sides a
+  right angle off, the same again behind. It is a stand-in, not a measurement
+  of the real surroundings, but 3D put into footage takes the shot's own light
+  and reflects a believable world. The picture pinches together straight up
+  and straight down.
 - **Shadows**: every sun, spot and point light with **Shadows** on (the default)
   casts shadows, up to four lights per scene. Each renders a 2048 × 2048 depth map
   of the solids from where it shines: a sun an orthographic view fitted to the

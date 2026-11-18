@@ -603,12 +603,16 @@ pub struct Environment3d {
     pub rotation: Scalar,
     pub background: bool,
     pub blur: Scalar,
+    /// The image is an ordinary frame of the shot, not a panorama: it surrounds
+    /// the scene as the camera saw it.
+    #[serde(default)]
+    pub frame: bool,
 }
 pub static ENVIRONMENT_3D: NodeType = NodeType {
     type_id: "environment_3d",
     version: 1,
     label: "Environment",
-    description: "Lights a 3D scene and fills its reflections from all around: the image on the optional Image input as a panorama (equirectangular, for example an HDR or EXR sky; any image or footage works), or the built-in studio without one. Intensity scales it and Rotation turns it (degrees about the vertical). With Background on it also fills the sky behind the objects, softened by Blur. The first Environment in a scene is used.",
+    description: "Lights a 3D scene and fills its reflections from all around: the image on the optional Image input as a panorama (equirectangular, for example an HDR or EXR sky; any image or footage works), or the built-in studio without one. Intensity scales it and Rotation turns it (degrees about the vertical). With Background on it also fills the sky behind the objects, softened by Blur. With Frame on, the image is taken as an ordinary frame of the shot instead of a panorama: what is at the top of the picture lights from above, the bottom from below, its left and right from those sides and its middle from straight ahead, the same again behind, so footage gives 3D put into it the shot's own light. The first Environment in a scene is used.",
     inputs: &["image"],
     optional: &["image"],
     output: PortKind::Scene,
@@ -617,6 +621,7 @@ pub static ENVIRONMENT_3D: NodeType = NodeType {
         scalar("rotation", "degrees", -3600.0, 3600.0, 0.0),
         other("background", ParameterKind::Boolean, "show as backdrop"),
         scalar("blur", "factor", 0.0, 1.0, 0.0),
+        other("frame", ParameterKind::Boolean, "a frame of the shot"),
     ],
 };
 node!(Environment3d, ENVIRONMENT_3D, [intensity, rotation, blur]);

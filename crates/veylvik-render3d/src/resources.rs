@@ -5,8 +5,8 @@ use veylvik_scene::Geometry;
 use wgpu::util::DeviceExt;
 
 impl Engine {
-    /// Convert a premultiplied panorama of `width` x `height` into the studio
-    /// environment layout, on `encoder`; returns the buffer to light with.
+    /// Convert a premultiplied panorama of `width` x `height` (or, with `frame`,
+    /// an ordinary frame of the shot) into the studio environment layout, on `encoder`; returns the buffer to light with.
     pub(crate) fn panorama(
         &self,
         device: &wgpu::Device,
@@ -14,6 +14,7 @@ impl Engine {
         image: &wgpu::Buffer,
         width: u32,
         height: u32,
+        frame: bool,
     ) -> Result<wgpu::Buffer> {
         let target = {
             let mut slot = self
@@ -33,7 +34,7 @@ impl Engine {
         let params = |level: u32| {
             device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("panorama level"),
-                contents: bytemuck::cast_slice(&[width, height, level, 0u32]),
+                contents: bytemuck::cast_slice(&[width, height, level, u32::from(frame)]),
                 usage: wgpu::BufferUsages::UNIFORM,
             })
         };

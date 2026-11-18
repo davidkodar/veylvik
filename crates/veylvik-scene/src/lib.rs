@@ -134,6 +134,8 @@ pub struct Environment {
     pub rotation: f32,
     pub background: bool,
     pub blur: f32,
+    /// The image is a frame of the shot, not a panorama.
+    pub frame: bool,
 }
 #[derive(Debug, Clone, Default)]
 pub struct Scene {
@@ -594,6 +596,7 @@ fn node(doc: &Graph<'_>, id: NodeId, time: Time, depth: usize) -> Result<Scene> 
                 rotation: e.rotation.at(time)?,
                 background: e.background,
                 blur: e.blur.at(time)?.clamp(0.0, 1.0),
+                frame: e.frame,
             })
         }
         Operation::PointCloud(c) => scene.points.extend(

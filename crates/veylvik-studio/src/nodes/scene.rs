@@ -421,6 +421,10 @@ impl Inspect for Environment3d {
             .checkbox(&mut self.background, "Show as backdrop")
             .on_hover_text("Also fill the sky behind the objects; Blur softens it")
             .changed();
+        cx.dirty |= ui
+            .checkbox(&mut self.frame, "A frame of the shot")
+            .on_hover_text("The image is ordinary footage, not a panorama: the top of the picture lights from above, the bottom from below and the sides from the sides, so 3D put into footage takes the shot's own light")
+            .changed();
     }
 }
 impl Inspect for RenderScene {
