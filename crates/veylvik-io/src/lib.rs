@@ -480,6 +480,7 @@ mod tests {
             &[],
         );
         let doc = Composition {
+            markers: Default::default(),
             ocio: Default::default(),
             working_space: Default::default(),
             display: Default::default(),

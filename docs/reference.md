@@ -2149,6 +2149,41 @@ normal saving. A recovery storage error is shown; normal project saving remains
 available. If storage is unavailable at startup, restart after fixing it to
 re-enable background recovery.
 
+### Timeline: markers, sound and layer bars
+
+**Markers** are named points in time stored in the composition (`markers`: a
+list of `{time, label}`; at most 256, in strictly rising time, one at each
+time, labels up to 80 characters without control characters, times within
+0..86400 seconds). They never change a render. A composition without markers
+saves exactly as before; one with markers cannot be opened by builds from
+before markers existed. The command `{"command":"markers","markers":[...]}`
+replaces the whole list in one undo step, also over MCP. In Studio, **M** or
+the **Marker** button adds one at the current position, each shows as a flag
+with its name on the ruler, clicking a flag goes there, its right-click menu
+renames or deletes it, and comma and period go to the previous and next
+marker. Markers beyond the composition's last frame are kept but not shown.
+
+**Sound** is drawn as a strip under the ruler when the composition's footage
+has any: mixed the same way as export, on a worker, at 8 kHz, reduced to 2048
+peak levels (the louder channel), and remixed only when a footage node, its
+timing, or the composition's length or rate changes. Quiet material is drawn
+up to four times larger so its shape can be read; the strip is a picture of
+the sound, not a level meter. Only the first ten minutes are drawn.
+
+**Layer bars** show, under the ruler, when each footage clip and each Fade is
+on screen (the first eight; **Layers** in the transport hides them, and they
+are not shown while the editor is hidden). Dragging a bar slides the layer in
+time; dragging its start or end trims it. Moves are in whole frames, previewed
+while dragging and committed on release as one undo step. For footage,
+sliding changes `start`; trimming the start moves `start` and `source_in`
+together, so the end stays where it was; trimming the end sets `source_out`
+(a clip with no `source_out` first gets one where the composition ends). For
+a Fade, sliding moves `start` and `end` together and the ends move `start`
+or `end`. A layer never starts before time zero, never becomes shorter than
+one frame, and a Fade keeps room for its fade-in and fade-out. Clicking a
+bar selects its node. A bar with a lighter end is open-ended: it runs as long
+as the media or the composition does.
+
 ### Viewer aids
 
 The viewer's toolbar has a choice of what to look at: **Colour**, **Red**,

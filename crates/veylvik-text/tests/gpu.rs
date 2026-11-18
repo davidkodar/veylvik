@@ -29,6 +29,7 @@ fn shaped_outlines_feed_document_nodes_and_gpu_rasterization() {
         &[],
     );
     let document = Composition {
+        markers: Default::default(),
         ocio: Default::default(),
         working_space: Default::default(),
         display: Default::default(),

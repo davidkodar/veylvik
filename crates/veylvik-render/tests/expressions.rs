@@ -33,6 +33,7 @@ fn linked_parameters_drive_renders_and_invalidate_plans() {
     );
     let (driver_id, output) = (driver.id, exposure.id);
     let composition = Composition {
+        markers: Default::default(),
         ocio: Default::default(),
         working_space: Default::default(),
         display: Default::default(),

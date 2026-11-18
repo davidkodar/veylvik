@@ -229,6 +229,7 @@ impl Document {
                 Command::OcioViews { settings } => next.ocio = settings.clone(),
                 Command::WorkingSpace { space } => next.working_space = *space,
                 Command::Display { display } => next.display = *display,
+                Command::Markers { markers } => next.markers = markers.clone(),
                 Command::Output { id } => next.output = *id,
                 Command::Place { id, position } => {
                     next.nodes

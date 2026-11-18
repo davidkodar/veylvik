@@ -32,6 +32,7 @@ fn render(threshold: f32, intensity: f32) -> Vec<[f32; 4]> {
         &[("image", image.id)],
     );
     let doc = Composition {
+        markers: Default::default(),
         ocio: Default::default(),
         working_space: Default::default(),
         display: Default::default(),

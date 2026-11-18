@@ -10,6 +10,7 @@ pub mod recipes;
 pub use procedural::procedural_demo;
 pub mod inspection;
 pub mod limits;
+pub mod markers;
 pub mod registry;
 pub use history::{Document, HistoryStats};
 pub mod blending;
@@ -337,6 +338,9 @@ pub struct Composition {
     /// SDR display transform for the viewer, PNG and video; projects without it are Standard.
     #[serde(default, skip_serializing_if = "media::DisplayTransform::is_standard")]
     pub display: media::DisplayTransform,
+    /// Named points in time; they guide the editor and never change a render.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub markers: Vec<markers::Marker>,
 }
 impl Composition {
     pub fn ocio_transforms(&self) -> impl Iterator<Item = &color_management::OcioTransform> {
@@ -389,6 +393,7 @@ impl Composition {
         if self.width == 0 || self.height == 0 || self.width > 8192 || self.height > 8192 {
             return fail("dimensions must be in 1..=8192");
         }
+        markers::validate(&self.markers)?;
         if !(1..=MAX_FRAME_COUNT).contains(&self.frame_count) {
             return fail("frame count must be in 1..=1000000");
         }
@@ -662,6 +667,10 @@ pub enum Command {
     Display {
         display: media::DisplayTransform,
     },
+    /// Replace the composition's markers.
+    Markers {
+        markers: Vec<markers::Marker>,
+    },
 }
 
 /// A transparent composition with one editable background generator.
@@ -672,6 +681,7 @@ pub fn blank(width: u32, height: u32, frame_rate: Time) -> Result<Composition> {
         &[],
     );
     let composition = Composition {
+        markers: Default::default(),
         ocio: Default::default(),
         working_space: Default::default(),
         display: Default::default(),
@@ -753,6 +763,7 @@ pub fn demo() -> Composition {
         &[("background", background.id), ("foreground", transform.id)],
     );
     Composition {
+        markers: Default::default(),
         ocio: Default::default(),
         working_space: Default::default(),
         display: Default::default(),
@@ -894,6 +905,7 @@ pub fn motion_demo() -> Composition {
         &[("image", output)],
     );
     Composition {
+        markers: Default::default(),
         ocio: Default::default(),
         working_space: Default::default(),
         display: Default::default(),

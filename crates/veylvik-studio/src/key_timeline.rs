@@ -18,8 +18,12 @@ struct Mark {
     index: usize,
     hint: String,
 }
+/// Height of the sound strip under the ruler.
+const WAVE: f32 = 26.0;
 pub enum Action {
     Seek(i64),
+    /// Make this node the selected one.
+    Select(NodeId),
     Commit(Vec<Command>),
     Preview,
     Open(NodeId),
@@ -29,6 +33,10 @@ pub enum Action {
 pub struct Keys {
     /// Label the ruler in timecode and not frame numbers.
     pub timecode: bool,
+    /// The composition's sound, drawn as a strip under the ruler when there is any.
+    pub waveform: Option<std::sync::Arc<crate::waveform::Peaks>>,
+    /// Where the ruler was last drawn, for rows that line up under it.
+    pub span: Option<egui::Rangef>,
     pub playback_range: Option<(i64, i64)>,
     pub cached_gpu: Vec<i64>,
     pub cached_disk: Vec<i64>,
@@ -272,7 +280,14 @@ impl Keys {
             }
         }
         let (rect, response) = ui.allocate_exact_size(
-            egui::vec2(ui.available_width().max(40.0), 44.0),
+            egui::vec2(
+                ui.available_width().max(40.0),
+                if self.waveform.is_some() {
+                    44.0 + WAVE
+                } else {
+                    44.0
+                },
+            ),
             egui::Sense::click_and_drag(),
         );
         self.focus = Some(response.id);
@@ -283,8 +298,19 @@ impl Keys {
                 "Frame ruler and keyframes",
             )
         });
-        let rect = rect.shrink2(egui::vec2(4.0, 2.0));
+        // The ruler keeps its height; the sound sits in a strip below it.
+        let wave = rect
+            .with_min_y(rect.top() + 44.0)
+            .shrink2(egui::vec2(4.0, 1.0));
+        let rect = rect
+            .with_max_y(rect.top() + 44.0)
+            .shrink2(egui::vec2(4.0, 2.0));
         let end = count.saturating_sub(1).max(1) as f32;
+        self.span = Some(rect.x_range());
+        if let Some(peaks) = &self.waveform {
+            let fps = doc.frame_rate.ticks as f64 / f64::from(doc.frame_rate.rate.max(1));
+            crate::waveform::paint(ui, wave, end, fps, peaks);
+        }
         let x = |frame: i64| rect.left() + frame as f32 / end * rect.width();
         let painter = ui.painter();
         painter.rect_filled(rect, 2.0, crate::theme::palette(ui.ctx()).canvas);
@@ -469,6 +495,7 @@ impl Keys {
                 .into()
         };
         response.on_hover_text(hint);
+        crate::timeline_markers::show(ui, rect, end, doc, self.timecode, editable, &mut actions);
         if let Some(frame) = seek {
             actions.push(Action::Seek(frame));
         }

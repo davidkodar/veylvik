@@ -253,6 +253,7 @@ pub fn procedural_demo() -> Composition {
         &[("image", output)],
     );
     Composition {
+        markers: Default::default(),
         ocio: Default::default(),
         working_space: Default::default(),
         display: Default::default(),

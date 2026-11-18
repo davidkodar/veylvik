@@ -25,6 +25,7 @@ mod graph_layout;
 mod handles;
 mod icons;
 mod key_timeline;
+mod layer_bars;
 mod light_guides;
 mod live_jobs;
 mod material_library;
@@ -75,6 +76,7 @@ mod text_outline;
 mod text_viewer;
 mod theme;
 mod timecode;
+mod timeline_markers;
 mod title_styles;
 mod tracking;
 mod transform_handles;
@@ -83,6 +85,7 @@ mod video_export;
 mod viewer;
 mod viewer_overlays;
 mod viewport3d;
+mod waveform;
 use display::{Display, DisplayFrame, Paint, ViewSettings};
 use eframe::{egui, egui_wgpu};
 use files::{Choice, Completed, Tasks};
@@ -272,6 +275,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 solve: solve_camera::Controls::default(),
                 live_job: None,
                 audio: Default::default(),
+                waveform: Default::default(),
+                layer_bars: Default::default(),
                 materials: Default::default(),
                 shot_light: Default::default(),
                 subject: subject::Controls::default(),
@@ -388,6 +393,8 @@ struct Studio {
     solve: solve_camera::Controls,
     live_job: Option<live_jobs::LiveJob>,
     audio: audio_preview::AudioPreview,
+    waveform: waveform::Waveform,
+    layer_bars: layer_bars::LayerBars,
     materials: material_library::Library,
     shot_light: shot_light::Pending,
     subject: subject::Controls,
@@ -2453,6 +2460,7 @@ impl Studio {
         }
         let actions = ui
             .horizontal(|ui| {
+                self.key_timeline.waveform = self.waveform.peaks.clone();
                 self.key_timeline.timecode =
                     self.preferences.values.time_display == timecode::Display::Timecode;
                 self.key_timeline.show(
@@ -2463,8 +2471,27 @@ impl Studio {
                 )
             })
             .inner;
+        let mut actions = actions;
+        // Layer bars line up under the ruler; they need the editor's room.
+        if !self.node_editor_hidden
+            && let Some(span) = self.key_timeline.span
+        {
+            actions.extend(self.layer_bars.show(
+                ui,
+                self.project.document.snapshot(),
+                span,
+                self.project.selected,
+                !self.draft_dirty && !self.playing,
+            ));
+        }
         for action in actions {
             match action {
+                key_timeline::Action::Select(id) => {
+                    if self.can_change_selection() {
+                        self.project.selected = id;
+                        self.refresh_draft();
+                    }
+                }
                 key_timeline::Action::Seek(frame) => {
                     if self.apply_draft() {
                         self.project.frame = frame;
@@ -2819,6 +2846,8 @@ impl Studio {
                             "Alt+Left / Right",
                             "Previous / next selected-node keyed frame",
                         ),
+                        ("M", "Add a marker at the current position"),
+                        (", / .", "Previous / next marker"),
                         ("Tab", "Search and add a node"),
                         ("Ctrl+F", "Find and preview an existing node"),
                         ("Ctrl+D", "Duplicate selected node"),
@@ -2886,6 +2915,7 @@ impl eframe::App for Studio {
             }
         }
         self.audio_tick();
+        self.waveform_tick(&ctx);
         self.materials.poll(&ctx);
         self.shot_light_tick();
         self.grain_measure_tick(&ctx);
@@ -3084,6 +3114,7 @@ impl eframe::App for Studio {
                 self.ask_export(pages::ExportKind::Sequence);
             }
             self.page_shortcuts(&ctx);
+            self.marker_keys(&ctx);
             if ctx.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, egui::Key::E)) {
                 self.export_frame();
             }
@@ -3196,7 +3227,7 @@ impl eframe::App for Studio {
                 // The viewer always keeps this much height, whatever the editor wants.
                 let room = ui.available_height() - VIEWER_ROOM;
                 (if editor_hidden_at_start {
-                    egui::Panel::bottom("transport-only").exact_size(126.0).resizable(false)
+                    egui::Panel::bottom("transport-only").exact_size(if self.waveform.peaks.is_some() { 152.0 } else { 126.0 }).resizable(false)
                 } else if self.pages.page == pages::Page::Animate {
                     // Animate gives the curves most of the window.
                     egui::Panel::bottom("graph-animate").default_size(560.0_f32.min(room.max(200.0))).min_size(200.0).max_size(room.max(200.0)).resizable(true)

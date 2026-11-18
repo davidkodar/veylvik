@@ -85,6 +85,7 @@ fn blend_modes_match_straight_colour_reference_with_animated_opacity() {
             *value = mode;
         }
         let composition = Composition {
+            markers: Default::default(),
             ocio: Default::default(),
             working_space: Default::default(),
             display: Default::default(),

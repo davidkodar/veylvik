@@ -3,6 +3,7 @@ use veylvik_preview::{GpuPreviewScheduler, PreviewScheduler};
 use veylvik_render::*;
 fn composition(nodes: Vec<Node>, output: NodeId) -> Composition {
     Composition {
+        markers: Default::default(),
         ocio: Default::default(),
         working_space: Default::default(),
         display: Default::default(),

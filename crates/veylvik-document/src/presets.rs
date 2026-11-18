@@ -107,6 +107,7 @@ impl Preset {
             nodes.insert(stub.id, stub);
         }
         Composition {
+            markers: Default::default(),
             ocio: Default::default(),
             working_space: Default::default(),
             display: Default::default(),
