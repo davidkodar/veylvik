@@ -2,6 +2,47 @@ use crate::*;
 use veylvik_document::{Operation, TextAlignment, TextFont, Time};
 /// Resolve editable typography to contours at an exact timeline time.
 pub fn outline(operation: &Operation, time: Time) -> Result<PathMask> {
+    outlined(operation, time).map(|(path, _)| path)
+}
+/// The same contours split into the pieces a 3D animation moves one by one
+/// (characters, words, lines or the whole text), in reading order. Pieces without
+/// ink, such as spaces, are left out.
+pub fn outline_units(
+    operation: &Operation,
+    time: Time,
+    unit: veylvik_document::text::TextUnit,
+) -> Result<Vec<PathMask>> {
+    use veylvik_document::text::TextUnit;
+    let (path, glyphs) = outlined(operation, time)?;
+    let which = match unit {
+        TextUnit::Character => 0,
+        TextUnit::Word => 1,
+        TextUnit::Line => 2,
+        TextUnit::Whole => 3,
+    };
+    let mut pieces = std::collections::BTreeMap::<usize, Vec<PathCommand>>::new();
+    for (commands, units) in glyphs {
+        if !commands.is_empty() && commands.end <= path.commands.len() {
+            pieces
+                .entry(units[which])
+                .or_default()
+                .extend_from_slice(&path.commands[commands]);
+        }
+    }
+    Ok(pieces
+        .into_values()
+        .map(|commands| PathMask {
+            keys: vec![],
+            fill_rule: path.fill_rule,
+            commands,
+        })
+        .filter(|piece| piece.validate().is_ok())
+        .collect())
+}
+/// One glyph's commands in the outline and the piece it belongs to as a character,
+/// a word, a line and the whole text.
+type GlyphUnits = (std::ops::Range<usize>, [usize; 4]);
+fn outlined(operation: &Operation, time: Time) -> Result<(PathMask, Vec<GlyphUnits>)> {
     let Operation::Text(veylvik_document::nodes::Text {
         content,
         font,
@@ -164,9 +205,9 @@ pub fn outline(operation: &Operation, time: Time) -> Result<PathMask> {
     let mut clusters: Vec<_> = shaped.glyphs.iter().map(|g| g.cluster).collect();
     clusters.sort_unstable();
     clusters.dedup();
-    let unit_of = |glyph: &crate::Glyph| {
+    let unit_as = |glyph: &crate::Glyph, unit: veylvik_document::text::TextUnit| {
         let prefix = &wrapped[..glyph.cluster as usize];
-        match typography.unit {
+        match unit {
             veylvik_document::text::TextUnit::Character => {
                 clusters.binary_search(&glyph.cluster).unwrap_or(0)
             }
@@ -182,6 +223,7 @@ pub fn outline(operation: &Operation, time: Time) -> Result<PathMask> {
             veylvik_document::text::TextUnit::Whole => 0,
         }
     };
+    let unit_of = |glyph: &crate::Glyph| unit_as(glyph, typography.unit);
     let mut pivots = std::collections::BTreeMap::<usize, [f32; 4]>::new();
     for glyph in &shaped.glyphs {
         let b = pivots.entry(unit_of(glyph)).or_insert([
@@ -259,7 +301,18 @@ pub fn outline(operation: &Operation, time: Time) -> Result<PathMask> {
         }
     }
     path.validate().map_err(error)?;
-    Ok(path)
+    let glyphs = shaped
+        .glyphs
+        .iter()
+        .map(|glyph| {
+            use veylvik_document::text::TextUnit::*;
+            (
+                glyph.commands.clone(),
+                [Character, Word, Line, Whole].map(|unit| unit_as(glyph, unit)),
+            )
+        })
+        .collect();
+    Ok((path, glyphs))
 }
 // Word wrapping preserves shaping of complete words. An overlong word is kept
 // intact rather than splitting a ligature or a combining sequence.

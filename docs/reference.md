@@ -1347,6 +1347,17 @@ and `colour`.
   corners, so metal titles catch highlights on their edges. New 3D text starts
   with a 6-pixel round bevel; projects saved before bevels keep square edges.
   Very thin strokes can fold under a bevel wider than half their width.
+  **Letters** (`letters`) brings a text in piece by piece in 3D: each character,
+  word or line (`unit`) is its own solid and arrives `stagger` seconds after the
+  one before, taking `duration` seconds from `start` (seconds on the timeline, as
+  in a Text's own animation), eased unless `ease` is off. `motion` is `fly` (from
+  `distance` pixels towards the viewer; negative for away), `drop` (from that far
+  above), `turn` (about its own upright axis from edge-on) or `grow`; `none`
+  (the default) keeps the text one solid. A piece that has not started is not
+  there; `exit` sends the pieces away again the same way. Spaces are no piece.
+  It needs a Text node on Outline (a Path stays whole), and the Text's flat
+  animation still applies inside each piece. Cameras and lights that aim or
+  focus at such a text use its resting place, not a moving letter.
 - **Image card**: any image on a flat card that covers the frame at depth 0.
 - **3D transform**: moves, turns and scales a whole scene (cameras and lights too)
   about the frame centre. Bypassed, it passes its scene through.

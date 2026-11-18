@@ -18,6 +18,7 @@ pub enum ParameterKind {
     PlanarMode,
     Scalar,
     Typography,
+    Letters,
     MediaTiming,
     FadeTiming,
     KeyColor,
@@ -91,6 +92,7 @@ impl Parameter {
             ParameterKind::MediaTiming => json!(crate::media::Timing::default()),
             ParameterKind::FadeTiming => json!(crate::nodes::FadeTiming::default()),
             ParameterKind::Typography => json!(crate::text::Typography::default()),
+            ParameterKind::Letters => json!(crate::nodes::Letters::default()),
             ParameterKind::TextFeatures => json!(""),
             ParameterKind::TextContent => json!("Your text"),
             ParameterKind::TextFont => json!(crate::TextFont::default()),
@@ -169,6 +171,7 @@ impl Parameter {
                 json!({"type":"string","enum":["follow","fit","stabilize"]})
             }
             ParameterKind::Typography => crate::text::typography_schema(),
+            ParameterKind::Letters => crate::nodes::Letters::schema(),
             ParameterKind::TextFeatures => json!({"type":"string","maxLength":256}),
             ParameterKind::TextContent => json!({"type":"string","maxLength":4096}),
             ParameterKind::TextFont => crate::text::font_schema(),

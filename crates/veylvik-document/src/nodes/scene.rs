@@ -198,6 +198,98 @@ node!(
     }
 );
 
+/// How a 3D text's pieces arrive, one after another.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LetterMotion {
+    /// The text is one solid.
+    #[default]
+    None,
+    /// From `distance` pixels towards the viewer (or away, when negative).
+    Fly,
+    /// From `distance` pixels above (or below, when negative).
+    Drop,
+    /// Turning about its own upright axis from edge-on.
+    Turn,
+    /// Growing from nothing about its own centre.
+    Grow,
+}
+impl LetterMotion {
+    pub const ALL: [Self; 5] = [Self::None, Self::Fly, Self::Drop, Self::Turn, Self::Grow];
+}
+/// Per-piece 3D animation of a 3D text made from a Text node: each character,
+/// word or line is its own solid and arrives on its own, `stagger` seconds after
+/// the one before. Times are seconds on the timeline, as in a Text's animation.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, default)]
+pub struct Letters {
+    pub motion: LetterMotion,
+    pub unit: crate::text::TextUnit,
+    pub start: f32,
+    pub duration: f32,
+    pub stagger: f32,
+    /// None holds the text; otherwise the pieces leave from this time, as they came.
+    pub exit: Option<f32>,
+    pub distance: f32,
+    pub ease: bool,
+}
+impl Default for Letters {
+    fn default() -> Self {
+        Self {
+            motion: LetterMotion::None,
+            unit: crate::text::TextUnit::Character,
+            start: 0.0,
+            duration: 0.6,
+            stagger: 0.06,
+            exit: None,
+            distance: 600.0,
+            ease: true,
+        }
+    }
+}
+impl Letters {
+    pub fn validate(&self) -> Result<()> {
+        let time = |t: f32| t.is_finite() && t.abs() <= 86400.0;
+        if !time(self.start)
+            || !self.exit.is_none_or(time)
+            || !(0.001..=3600.0).contains(&self.duration)
+            || !(0.0..=60.0).contains(&self.stagger)
+            || !self.distance.is_finite()
+            || self.distance.abs() > 1.0e5
+        {
+            return fail(
+                "letters: start and exit within a day, duration 0.001..3600 s, stagger 0..60 s, distance within 100000 pixels",
+            );
+        }
+        Ok(())
+    }
+    /// How far piece `unit` has arrived at `seconds`: 0 not yet, 1 in place.
+    pub fn progress(&self, seconds: f64, unit: usize) -> f32 {
+        if self.motion == LetterMotion::None {
+            return 1.0;
+        }
+        let delay = unit as f64 * f64::from(self.stagger);
+        let span = f64::from(self.duration);
+        let arriving = ((seconds - f64::from(self.start) - delay) / span).clamp(0.0, 1.0) as f32;
+        let leaving = self.exit.map_or(1.0, |at| {
+            1.0 - ((seconds - f64::from(at) - delay) / span).clamp(0.0, 1.0) as f32
+        });
+        let p = arriving.min(leaving);
+        if self.ease {
+            p * p * (3.0 - 2.0 * p)
+        } else {
+            p
+        }
+    }
+    pub fn schema() -> serde_json::Value {
+        serde_json::json!({"type":"object","additionalProperties":false,"properties":{
+            "motion":{"enum":LetterMotion::ALL},"unit":{"enum":["character","word","line","whole"]},
+            "start":{"type":"number","minimum":-86400,"maximum":86400},"duration":{"type":"number","minimum":0.001,"maximum":3600},
+            "stagger":{"type":"number","minimum":0,"maximum":60},"exit":{"anyOf":[{"type":"null"},{"type":"number","minimum":-86400,"maximum":86400}]},
+            "distance":{"type":"number","minimum":-100000,"maximum":100000},"ease":{"type":"boolean"}},
+            "description":"Per-piece 3D animation: motion none, fly (from distance pixels towards the viewer), drop (from distance pixels above), turn (about its upright axis from edge-on) or grow; every other field has a default. Times in seconds."})
+    }
+}
 /// A title (or any vector path) extruded into a solid where the 2D layer sits.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -237,12 +329,15 @@ pub struct Text3d {
     /// do not apply.
     #[serde(default)]
     pub look: Option<Box<crate::nodes::Material>>,
+    /// The pieces of a Text arriving one by one in 3D; a Path outline stays whole.
+    #[serde(default)]
+    pub letters: Letters,
 }
 pub static TEXT_3D: NodeType = NodeType {
     type_id: "text_3d",
     version: 1,
     label: "3D text",
-    description: "Extrudes the Text or Path node on its Outline input into a solid Depth pixels deep, front face where the 2D layer sits, centred in depth, with a Bevel (pixels, rounded or chamfered) on its front and back edges so metals catch highlights. Placement turns and moves it about its own centre; colour (linear RGB), roughness and metallic shade it, unless a Look (any library material) is set, which shades it like the 2D title. Outputs a scene. Finish, each 0 to 1 and 0 by default: brushed scatters light across the grain so reflections stretch that way, brush_angle (degrees) turns the grain, grain shows it as fine streaks, ridges add long shallow undulations along the grain that break reflections into bands, imperfections add uneven polish and faint scratches; they shade the plain surface, not a look.",
+    description: "Extrudes the Text or Path node on its Outline input into a solid Depth pixels deep, front face where the 2D layer sits, centred in depth, with a Bevel (pixels, rounded or chamfered) on its front and back edges so metals catch highlights. Placement turns and moves it about its own centre; colour (linear RGB), roughness and metallic shade it, unless a Look (any library material) is set, which shades it like the 2D title. Outputs a scene. Finish, each 0 to 1 and 0 by default: brushed scatters light across the grain so reflections stretch that way, brush_angle (degrees) turns the grain, grain shows it as fine streaks, ridges add long shallow undulations along the grain that break reflections into bands, imperfections add uneven polish and faint scratches; they shade the plain surface, not a look. Letters brings a Text in piece by piece in 3D (motion fly, drop, turn or grow; unit character, word or line; start, duration and stagger in seconds).",
     inputs: &["outline"],
     optional: &[],
     output: PortKind::Scene,
@@ -267,6 +362,7 @@ pub static TEXT_3D: NodeType = NodeType {
         scalar("ridges", "factor", 0.0, 1.0, 0.0),
         scalar("imperfections", "factor", 0.0, 1.0, 0.0),
         other("look", ParameterKind::Look, "library material"),
+        other("letters", ParameterKind::Letters, "per-letter animation"),
     ],
 };
 node!(
@@ -286,6 +382,7 @@ node!(
     {
         fn validate(&self) -> Result<()> {
             self.placement.validate()?;
+            self.letters.validate()?;
             validate_look(&self.look)?;
             validate_colour(&self.colour)
         }

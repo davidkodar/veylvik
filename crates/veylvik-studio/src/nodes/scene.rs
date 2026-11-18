@@ -139,7 +139,127 @@ impl Inspect for Text3d {
             cx.dirty |= crate::animation::colour_track(ui, "Colour", &mut self.colour, cx.time);
         }
         cx.dirty |= placement(ui, &mut self.placement, cx);
+        cx.dirty |= letters(ui, &mut self.letters);
     }
+}
+/// The per-letter animation of a 3D text.
+fn letters(ui: &mut egui::Ui, l: &mut veylvik_document::nodes::Letters) -> bool {
+    use veylvik_document::{nodes::LetterMotion::*, text::TextUnit};
+    let mut changed = false;
+    ui.horizontal(|ui| {
+        ui.add_sized([88., 22.], egui::Label::new("Letters"));
+        let name = |m| match m {
+            None => "Stay together",
+            Fly => "Fly in",
+            Drop => "Drop in",
+            Turn => "Turn in",
+            Grow => "Grow",
+        };
+        egui::ComboBox::from_id_salt("letters-motion")
+            .selected_text(name(l.motion))
+            .show_ui(ui, |ui| {
+                for motion in veylvik_document::nodes::LetterMotion::ALL {
+                    changed |= ui.selectable_value(&mut l.motion, motion, name(motion)).changed();
+                }
+            })
+            .response
+            .on_hover_text("Bring the text in piece by piece in 3D. Needs a Text node on Outline; a Path stays whole");
+        if l.motion != None {
+            let unit = |u| match u {
+                TextUnit::Character => "By letter",
+                TextUnit::Word => "By word",
+                TextUnit::Line => "By line",
+                TextUnit::Whole => "All at once",
+            };
+            egui::ComboBox::from_id_salt("letters-unit")
+                .selected_text(unit(l.unit))
+                .show_ui(ui, |ui| {
+                    for u in [TextUnit::Character, TextUnit::Word, TextUnit::Line, TextUnit::Whole] {
+                        changed |= ui.selectable_value(&mut l.unit, u, unit(u)).changed();
+                    }
+                });
+        }
+    });
+    if l.motion == None {
+        return changed;
+    }
+    let mut row = |ui: &mut egui::Ui,
+                   label: &str,
+                   value: &mut f32,
+                   range: std::ops::RangeInclusive<f32>,
+                   suffix: &str,
+                   hint: &str| {
+        ui.horizontal(|ui| {
+            ui.add_sized([88., 22.], egui::Label::new(label));
+            changed |= ui
+                .add(
+                    egui::DragValue::new(value)
+                        .range(range)
+                        .speed(0.01)
+                        .suffix(suffix),
+                )
+                .on_hover_text(hint)
+                .changed();
+        });
+    };
+    row(
+        ui,
+        "Starts at",
+        &mut l.start,
+        -86400.0..=86400.0,
+        " s",
+        "When the first piece starts to arrive, in seconds on the timeline",
+    );
+    row(
+        ui,
+        "Takes",
+        &mut l.duration,
+        0.001..=3600.0,
+        " s",
+        "How long each piece takes to arrive",
+    );
+    row(
+        ui,
+        "Apart",
+        &mut l.stagger,
+        0.0..=60.0,
+        " s",
+        "How long after the piece before it each piece starts",
+    );
+    if matches!(l.motion, Fly | Drop) {
+        row(
+            ui,
+            "From",
+            &mut l.distance,
+            -100000.0..=100000.0,
+            " px",
+            "How far away the pieces start: towards the viewer for Fly in, above for Drop in; negative for the other side",
+        );
+    }
+    ui.horizontal(|ui| {
+        ui.add_sized([88., 22.], egui::Label::new("Leaves"));
+        let mut leaves = l.exit.is_some();
+        if ui
+            .checkbox(&mut leaves, "")
+            .on_hover_text("Send the pieces away again, the way they came")
+            .changed()
+        {
+            l.exit = leaves.then_some(l.start + l.duration + 3.0);
+            changed = true;
+        }
+        if let Some(at) = &mut l.exit {
+            changed |= ui
+                .add(
+                    egui::DragValue::new(at)
+                        .range(-86400.0..=86400.0)
+                        .speed(0.01)
+                        .suffix(" s"),
+                )
+                .changed();
+        }
+    });
+    changed |= ui.checkbox(&mut l.ease, "Ease in and out").changed();
+    changed
 }
 impl Inspect for ImageCard {
     fn inspect(&mut self, ui: &mut egui::Ui, cx: &mut InspectCx<'_>) {

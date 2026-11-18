@@ -142,6 +142,25 @@ pub struct Scene {
     pub environment: Option<Environment>,
     /// Guide points (Point cloud nodes) in the world, by node.
     pub points: Vec<(NodeId, [f32; 3])>,
+    /// Where a node made of several moving pieces (a 3D text arriving letter by
+    /// letter) rests as a whole: what cameras and lights aim and focus at.
+    pub anchors: Vec<(NodeId, [f32; 3])>,
+}
+impl Scene {
+    /// The centre of node `id`'s object: its resting place when it has one, else
+    /// the first object it made.
+    pub fn centre(&self, id: NodeId) -> Option<[f32; 3]> {
+        self.anchors
+            .iter()
+            .find(|(node, _)| *node == id)
+            .map(|anchor| anchor.1)
+            .or_else(|| {
+                self.objects
+                    .iter()
+                    .find(|o| o.node == id)
+                    .map(|o| o.sphere().0)
+            })
+    }
 }
 fn fail<T>(message: impl Into<String>) -> Result<T> {
     Err(Error(message.into()))
@@ -216,9 +235,9 @@ impl Camera {
     /// is in the scene, else Focus distance (0 = the frame centre).
     pub fn focus(&self, scene: &Scene) -> f32 {
         self.focus_on
-            .and_then(|id| scene.objects.iter().find(|o| o.node == id))
-            .map(|o| {
-                let v = math::point(&math::rigid_inverse(&self.world), o.sphere().0);
+            .and_then(|id| scene.centre(id))
+            .map(|centre| {
+                let v = math::point(&math::rigid_inverse(&self.world), centre);
                 (-v[2]).max(1.0)
             })
             .unwrap_or(self.focus_distance)
@@ -253,11 +272,8 @@ impl Scene {
     /// Turns every camera and light with an Aim at object in the scene towards its
     /// centre. A missing object leaves the placement's rotation in charge.
     fn aim(&mut self) {
-        let centres: Vec<(NodeId, [f32; 3])> = self
-            .objects
-            .iter()
-            .map(|o| (o.node, o.sphere().0))
-            .collect();
+        let mut centres: Vec<(NodeId, [f32; 3])> = self.anchors.clone();
+        centres.extend(self.objects.iter().map(|o| (o.node, o.sphere().0)));
         let centre = |id: NodeId| centres.iter().find(|(node, _)| *node == id).map(|c| c.1);
         for camera in &mut self.cameras {
             if let Some(target) = camera.aim_at.and_then(centre) {
@@ -285,7 +301,7 @@ impl Scene {
                 *pivot = mul(m, pivot);
             }
         }
-        for (_, p) in &mut self.points {
+        for (_, p) in self.points.iter_mut().chain(&mut self.anchors) {
             *p = math::point(m, *p);
         }
         self
@@ -386,31 +402,71 @@ fn node(doc: &Graph<'_>, id: NodeId, time: Time, depth: usize) -> Result<Scene> 
                 &placed(&t.placement, time, pivot)?,
                 &translate([-pivot[0], -pivot[1], 0.0]),
             );
-            scene.objects.push(Object {
-                node: id,
-                geometry: Geometry::Text {
-                    outline,
-                    depth: t.depth.at(time)?.max(0.0),
-                    bevel: t.bevel.at(time)?.max(0.0),
-                    round: t.round_bevel,
-                },
-                world,
-                surface: Surface {
-                    colour: t.colour.at(time)?,
-                    roughness: t.roughness.at(time)?.clamp(0.0, 1.0),
-                    metallic: t.metallic.at(time)?.clamp(0.0, 1.0),
-                    finish: [
-                        t.brushed.at(time)?.clamp(0.0, 1.0),
-                        t.brush_angle.at(time)?,
-                        t.imperfections.at(time)?.clamp(0.0, 1.0),
-                        t.grain.at(time)?.clamp(0.0, 1.0),
-                        t.ridges.at(time)?.clamp(0.0, 1.0),
-                    ],
-                    unlit: false,
-                    look: t.look.clone(),
-                    catcher: false,
-                },
-            });
+            let surface = Surface {
+                colour: t.colour.at(time)?,
+                roughness: t.roughness.at(time)?.clamp(0.0, 1.0),
+                metallic: t.metallic.at(time)?.clamp(0.0, 1.0),
+                finish: [
+                    t.brushed.at(time)?.clamp(0.0, 1.0),
+                    t.brush_angle.at(time)?,
+                    t.imperfections.at(time)?.clamp(0.0, 1.0),
+                    t.grain.at(time)?.clamp(0.0, 1.0),
+                    t.ridges.at(time)?.clamp(0.0, 1.0),
+                ],
+                unlit: false,
+                look: t.look.clone(),
+                catcher: false,
+            };
+            // The pieces that arrive one by one, each moved in the outline's own frame.
+            let mut pieces = vec![(outline, math::IDENTITY)];
+            use veylvik_document::nodes::LetterMotion;
+            let letters = t.letters;
+            if letters.motion != LetterMotion::None
+                && let op @ Operation::Text(_) = &source.operation
+            {
+                let seconds = time.seconds()?;
+                pieces = veylvik_text::outline_units(op, time, letters.unit)
+                    .map_err(|e| Error(e.to_string()))?
+                    .into_iter()
+                    .enumerate()
+                    .filter_map(|(i, piece)| {
+                        let p = letters.progress(seconds, i);
+                        // Not yet arrived, or already gone.
+                        if p <= 0.0 {
+                            return None;
+                        }
+                        let [x0, y0, x1, y1] = veylvik_text::bounds(&piece);
+                        let centre = [(x0 + x1) * 0.5, (y0 + y1) * 0.5, 0.0];
+                        let about = |m: Mat4| {
+                            mul(&translate(centre), &mul(&m, &translate(centre.map(|v| -v))))
+                        };
+                        let away = 1.0 - p;
+                        let moved = match letters.motion {
+                            LetterMotion::None => math::IDENTITY,
+                            LetterMotion::Fly => translate([0.0, 0.0, letters.distance * away]),
+                            LetterMotion::Drop => translate([0.0, -letters.distance * away, 0.0]),
+                            LetterMotion::Turn => about(rotate([0.0, 90.0 * away, 0.0])),
+                            LetterMotion::Grow => about(scale([p.max(1e-3); 3])),
+                        };
+                        Some((piece, moved))
+                    })
+                    .collect();
+                scene.anchors.push((id, math::point(&world, pivot)));
+            }
+            let (depth, bevel) = (t.depth.at(time)?.max(0.0), t.bevel.at(time)?.max(0.0));
+            for (outline, moved) in pieces {
+                scene.objects.push(Object {
+                    node: id,
+                    geometry: Geometry::Text {
+                        outline,
+                        depth,
+                        bevel,
+                        round: t.round_bevel,
+                    },
+                    world: mul(&world, &moved),
+                    surface: surface.clone(),
+                });
+            }
         }
         Operation::ImageCard(c) => scene.objects.push(Object {
             node: id,
@@ -467,6 +523,7 @@ fn node(doc: &Graph<'_>, id: NodeId, time: Time, depth: usize) -> Result<Scene> 
                     scene.lights.extend(part.lights);
                     scene.environment = scene.environment.or(part.environment);
                     scene.points.extend(part.points);
+                    scene.anchors.extend(part.anchors);
                 }
             }
         }

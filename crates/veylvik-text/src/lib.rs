@@ -5,7 +5,7 @@
 mod editable;
 mod layout;
 mod rich;
-pub use editable::{bounds, font_data, mapped_bounds, outline};
+pub use editable::{bounds, font_data, mapped_bounds, outline, outline_units};
 pub use layout::{Alignment, MAX_LINES, ShapedText, TextOptions};
 use std::{collections::BTreeMap, sync::Arc};
 use veylvik_document::vector::{FillRule, MAX_PATH_COMMANDS, PathCommand, PathMask};

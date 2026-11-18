@@ -456,3 +456,46 @@ fn cameras_and_lights_aim_at_an_object_wherever_they_are_placed() {
     let m = math::translate([1.0, 2.0, 3.0]);
     assert_eq!(math::aimed(&m, &m, [1.0, 2.0, 3.0]), m);
 }
+#[test]
+fn a_3d_text_arrives_letter_by_letter() {
+    let mut doc = scene();
+    let mut words = op(&TEXT);
+    let Operation::Text(text) = &mut words else {
+        panic!()
+    };
+    text.content = "A BC".into();
+    let words = add(&mut doc, "words", words, &[]);
+    let mut solid = op(&TEXT_3D);
+    let Operation::Text3d(t) = &mut solid else {
+        panic!()
+    };
+    t.letters.motion = LetterMotion::Fly;
+    t.letters.start = 1.0;
+    t.letters.duration = 1.0;
+    t.letters.stagger = 1.0;
+    t.letters.distance = 500.0;
+    t.letters.ease = false;
+    let solid = add(&mut doc, "solid", solid, &[("outline", words)]);
+    let count =
+        |doc: &Composition, seconds: i64| evaluate(doc, solid, at(seconds)).unwrap().objects;
+    // Before the start nothing is there; then one letter a second; spaces are no piece.
+    assert_eq!(count(&doc, 1).len(), 0);
+    assert_eq!(count(&doc, 2).len(), 1);
+    assert_eq!(count(&doc, 3).len(), 2);
+    let all = count(&doc, 9);
+    assert_eq!(all.len(), 3);
+    // Halfway in, the second letter is half the distance towards the viewer.
+    let halfway = evaluate(&doc, solid, Time { ticks: 5, rate: 2 })
+        .unwrap()
+        .objects;
+    assert_eq!(halfway.len(), 2);
+    let z = |o: &veylvik_scene::Object| math::point(&o.world, [0.0; 3])[2];
+    assert!((z(&halfway[1]) - z(&all[1]) - 250.0).abs() < 0.01);
+    assert!((z(&halfway[0]) - z(&all[0])).abs() < 0.01);
+    // Without the animation it is one solid, as before.
+    let Operation::Text3d(t) = &mut doc.nodes.get_mut(&solid).unwrap().operation else {
+        panic!()
+    };
+    t.letters.motion = LetterMotion::None;
+    assert_eq!(count(&doc, 0).len(), 1);
+}
