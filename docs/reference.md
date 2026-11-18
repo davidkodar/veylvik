@@ -2178,6 +2178,25 @@ folder, and left empty means the folder Veylvik was started in. These are kept
 as `new_width`, `new_height`, `new_rate`, `new_frames`, `launch`,
 `projects_folder` and `exports_folder`.
 
+**Editing** also holds how changes are applied and how much is kept for undo.
+An inspector change is applied **after a short pause** (the default, 300
+milliseconds, adjustable from 100 to 3000) or only **when Apply is pressed**
+(or Ctrl+Enter); the viewer shows the change at once either way, and a
+pending change is still applied on moving to another frame or node.
+**Undo steps kept** (8 to 256, default 64) and **Memory for undo** (16 to 128
+MiB, default 128) bound the history; lowering either forgets the oldest steps
+at once, and whichever is reached first applies. Kept as `apply_after_pause`,
+`apply_delay_ms`, `undo_steps` and `undo_memory_mib`.
+
+**Viewer and timeline** also holds the **preview quality** a session and each
+new project starts with (Full, Half or Quarter; the transport's choice changes
+it for the session), what the viewer shows **behind transparent areas**
+(the checkerboard, black, mid grey or white; never part of a render), and the
+**safe areas** as percentages of the frame (action 90 and title 80 by default,
+each 50 to 100), used by the viewer's Safe areas and by the text guides. Guide
+lines are drawn with a dark edge so they read on any picture. Kept as
+`preview_quality`, `backdrop`, `safe_action` and `safe_title`.
+
 **Apply** saves only what was changed in the window since it opened. A
 setting changed elsewhere while the window was open, such as a shortcut, a
 saved layout or the timecode switch, keeps its new value; where both changed
@@ -2253,7 +2272,8 @@ lists the earliest kept state, the steps that can be undone in order, the
 current state (marked) and the steps that can be redone (dimmed). Clicking a
 row undoes or redoes as many steps as it takes to reach the composition as it
 was after that step, stopping at the first step that cannot be done. Up to 64
-steps are kept within the history's memory limit, and a new change forgets
+steps are kept by default (Preferences > Editing sets the number and the
+memory limit), and a new change forgets
 the steps that could be redone, as before.
 
 The status line shows the latest message only. The last 300 messages are kept

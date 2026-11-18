@@ -1,7 +1,7 @@
 //! One document owner with bounded, atomic undo/redo snapshots.
 use crate::{
     Command, Composition, Error, Result, fail,
-    limits::{MAX_HISTORY_BYTES, MAX_HISTORY_STEPS},
+    limits::{DEFAULT_HISTORY_STEPS, MAX_HISTORY_BYTES, MAX_HISTORY_STEPS},
 };
 use std::collections::VecDeque;
 #[derive(Debug, Clone, Copy, serde::Serialize)]
@@ -26,13 +26,14 @@ pub struct Document {
     redo: VecDeque<Snapshot>,
     history_bytes: usize,
     history_limit: usize,
+    step_limit: usize,
 }
 impl Document {
     pub fn new(composition: Composition) -> Result<Self> {
         Self::with_history_budget(composition, MAX_HISTORY_BYTES)
     }
     /// Limit retained snapshots by canonical JSON size, capped at 128 MiB and
-    /// 64 entries. This accounting excludes allocator overhead and the current document.
+    /// 64 entries unless `set_history_limits` says otherwise. This accounting excludes allocator overhead and the current document.
     pub fn with_history_budget(mut composition: Composition, bytes: usize) -> Result<Self> {
         composition.resolve_expressions()?;
         composition.validate()?;
@@ -45,7 +46,21 @@ impl Document {
             redo: VecDeque::new(),
             history_bytes: 0,
             history_limit: bytes.min(MAX_HISTORY_BYTES),
+            step_limit: DEFAULT_HISTORY_STEPS,
         })
+    }
+    /// Keep at most `steps` undo and redo steps (1 to 256) within `bytes` of history
+    /// (at most 128 MiB). Steps beyond the new limits are forgotten at once, the oldest
+    /// first; the current composition is never touched.
+    pub fn set_history_limits(&mut self, steps: usize, bytes: usize) {
+        let (steps, bytes) = (
+            steps.clamp(1, MAX_HISTORY_STEPS),
+            bytes.min(MAX_HISTORY_BYTES),
+        );
+        if (steps, bytes) != (self.step_limit, self.history_limit) {
+            (self.step_limit, self.history_limit) = (steps, bytes);
+            self.trim(true);
+        }
     }
     pub fn snapshot(&self) -> &Composition {
         &self.composition
@@ -276,7 +291,7 @@ impl Document {
     }
     fn trim(&mut self, prefer_undo: bool) {
         while self.history_bytes > self.history_limit
-            || self.undo.len() + self.redo.len() > MAX_HISTORY_STEPS
+            || self.undo.len() + self.redo.len() > self.step_limit
         {
             // Discard the most distant state on the opposite side first.
             let removed = if prefer_undo {

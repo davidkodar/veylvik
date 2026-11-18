@@ -487,8 +487,11 @@ impl Studio {
         self.occlusion = Default::default();
         self.project = project;
         self.playback_controls = playback::Playback::default();
+        self.playback_controls.resolution = self.preferences.values.preview_quality;
         if let Some(scheduler) = &self.scheduler {
-            scheduler.playback_cache().set_resolution(1);
+            scheduler
+                .playback_cache()
+                .set_resolution(self.playback_controls.divisor());
             scheduler.playback_cache().clear();
         }
         self.graph = graph::Graph::default();
@@ -578,6 +581,7 @@ impl Studio {
         display::ViewSettings {
             filmic: self.project.document.snapshot().ocio.view.is_none()
                 && !self.project.document.snapshot().display.is_standard(),
+            backdrop: self.preferences.values.backdrop as u8,
             ..self.view
         }
     }
@@ -787,7 +791,10 @@ impl Studio {
         }
     }
     fn queue_draft_preview(&mut self, ctx: &egui::Context) {
-        self.draft_commit_deadline = Some(Instant::now() + Duration::from_millis(300));
+        self.draft_commit_deadline = Some(
+            Instant::now()
+                + Duration::from_millis(u64::from(self.preferences.values.apply_delay_ms)),
+        );
         let deadline = self
             .draft_preview_deadline
             .get_or_insert_with(|| Instant::now() + Duration::from_millis(32));
@@ -1639,6 +1646,10 @@ impl Studio {
                 });
         }
         ctx.set_zoom_factor(p.scale);
+        if before.is_none() {
+            // At start only: later it is the transport's own choice.
+            self.playback_controls.resolution = p.preview_quality;
+        }
         files::set_default_folders(&p.projects_folder, &p.exports_folder);
         self.composition_controls.defaults =
             veylvik_document::Time::new(p.new_rate.0, p.new_rate.1)
@@ -2996,6 +3007,7 @@ impl eframe::App for Studio {
         self.tryout_bar(&ctx);
         if self.draft_dirty
             && self.tryout.is_none()
+            && self.preferences.values.apply_after_pause
             && self
                 .draft_commit_deadline
                 .is_some_and(|t| Instant::now() >= t)

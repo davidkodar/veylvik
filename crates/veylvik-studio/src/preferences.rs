@@ -53,6 +53,16 @@ pub const RATES: [(&str, i64, u32); 8] = [
     ("59.94", 60000, 1001),
     ("60", 60, 1),
 ];
+/// What the viewer shows behind transparent areas.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Backdrop {
+    #[default]
+    Checker,
+    Black,
+    Grey,
+    White,
+}
 /// The viewer aids that are switched on.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
@@ -118,6 +128,18 @@ pub struct Values {
     pub new_rate: (i64, u32),
     pub new_frames: u32,
     pub launch: Launch,
+    /// Undo steps kept, and the memory they may use in MiB.
+    pub undo_steps: u32,
+    pub undo_memory_mib: u32,
+    /// Apply an inspector change by itself after a pause; otherwise on Apply or on moving on.
+    pub apply_after_pause: bool,
+    pub apply_delay_ms: u32,
+    /// The preview quality a session starts with: 1 full, 2 half, 4 quarter.
+    pub preview_quality: u32,
+    pub backdrop: Backdrop,
+    /// Action-safe and title-safe areas as percentages of the frame.
+    pub safe_action: u32,
+    pub safe_title: u32,
     /// Where Open and Save begin for a project not saved yet, and where exports begin;
     /// empty for the folder Studio was started in.
     pub projects_folder: String,
@@ -156,6 +178,14 @@ impl Default for Values {
             new_rate: (24, 1),
             new_frames: 240,
             launch: Launch::default(),
+            undo_steps: 64,
+            undo_memory_mib: 128,
+            apply_after_pause: true,
+            apply_delay_ms: 300,
+            preview_quality: 1,
+            backdrop: Backdrop::default(),
+            safe_action: 90,
+            safe_title: 80,
             projects_folder: String::new(),
             exports_folder: String::new(),
             layouts: Vec::new(),
@@ -180,6 +210,12 @@ impl Values {
                 .iter()
                 .any(|(_, ticks, base)| (*ticks, *base) == self.new_rate)
             || self.projects_folder.len() > 4096
+            || !(8..=256).contains(&self.undo_steps)
+            || !(16..=128).contains(&self.undo_memory_mib)
+            || !(100..=3000).contains(&self.apply_delay_ms)
+            || ![1, 2, 4].contains(&self.preview_quality)
+            || !(50..=100).contains(&self.safe_action)
+            || !(50..=100).contains(&self.safe_title)
             || self.exports_folder.len() > 4096
         {
             return Err("Preferences contain out-of-range values".into());
@@ -321,12 +357,20 @@ impl Preferences {
             6 => {
                 self.draft.auto_key = d.auto_key;
                 self.draft.spread_edits = d.spread_edits;
+                self.draft.undo_steps = d.undo_steps;
+                self.draft.undo_memory_mib = d.undo_memory_mib;
+                self.draft.apply_after_pause = d.apply_after_pause;
+                self.draft.apply_delay_ms = d.apply_delay_ms;
             }
             7 => {
                 self.draft.time_display = d.time_display;
                 self.draft.layer_bars = d.layer_bars;
                 self.draft.aids = d.aids;
                 self.draft.node_thumbnails = d.node_thumbnails;
+                self.draft.preview_quality = d.preview_quality;
+                self.draft.backdrop = d.backdrop;
+                self.draft.safe_action = d.safe_action;
+                self.draft.safe_title = d.safe_title;
             }
             8 => {}
             9 => {
@@ -547,6 +591,35 @@ impl Preferences {
                     "Apply inspector changes to all selected nodes of the same kind",
                 );
                 ui.weak("Only the settings you change are carried over. The inspector shows how many nodes a change reaches.");
+                ui.add_space(6.);
+                ui.label("An inspector change is applied");
+                ui.horizontal(|ui| {
+                    ui.selectable_value(
+                        &mut self.draft.apply_after_pause,
+                        true,
+                        "After a short pause",
+                    );
+                    ui.selectable_value(
+                        &mut self.draft.apply_after_pause,
+                        false,
+                        "When I press Apply",
+                    );
+                });
+                ui.add_enabled(
+                    self.draft.apply_after_pause,
+                    egui::Slider::new(&mut self.draft.apply_delay_ms, 100..=3000)
+                        .text("Pause (milliseconds)"),
+                );
+                ui.weak("Either way the viewer shows the change at once. Without the pause a change waits for Apply or Ctrl+Enter, and is applied when you move on to another frame or node.");
+                ui.add_space(6.);
+                ui.add(
+                    egui::Slider::new(&mut self.draft.undo_steps, 8..=256).text("Undo steps kept"),
+                );
+                ui.add(
+                    egui::Slider::new(&mut self.draft.undo_memory_mib, 16..=128)
+                        .text("Memory for undo (MiB)"),
+                );
+                ui.weak("Lowering these forgets the oldest steps at once. Whichever limit is reached first applies.");
             }
             7 => {
                 ui.heading("Viewer and timeline");
@@ -579,6 +652,37 @@ impl Preferences {
                     ui.checkbox(&mut aids.readout, "Colour under the pointer");
                 });
                 ui.weak("The aids are drawn over the viewer only and are never part of a render.");
+                ui.add_space(6.);
+                ui.horizontal(|ui| {
+                    ui.label("Preview quality at start");
+                    for (value, label) in [(1, "Full"), (2, "Half"), (4, "Quarter")] {
+                        ui.selectable_value(&mut self.draft.preview_quality, value, label);
+                    }
+                });
+                ui.horizontal(|ui| {
+                    ui.label("Behind transparent areas");
+                    for (value, label) in [
+                        (Backdrop::Checker, "Checkerboard"),
+                        (Backdrop::Black, "Black"),
+                        (Backdrop::Grey, "Grey"),
+                        (Backdrop::White, "White"),
+                    ] {
+                        ui.selectable_value(&mut self.draft.backdrop, value, label);
+                    }
+                });
+                ui.horizontal(|ui| {
+                    ui.label("Safe areas");
+                    ui.add(
+                        egui::DragValue::new(&mut self.draft.safe_action)
+                            .range(50..=100)
+                            .suffix("% action"),
+                    );
+                    ui.add(
+                        egui::DragValue::new(&mut self.draft.safe_title)
+                            .range(50..=100)
+                            .suffix("% title"),
+                    );
+                });
                 ui.add_space(6.);
                 ui.checkbox(
                     &mut self.draft.node_thumbnails,
@@ -842,6 +946,43 @@ mod tests {
         ] {
             assert!(bad.validate().is_err());
         }
+        for bad in [
+            Values {
+                undo_steps: 4,
+                ..Values::default()
+            },
+            Values {
+                undo_steps: 300,
+                ..Values::default()
+            },
+            Values {
+                undo_memory_mib: 4096,
+                ..Values::default()
+            },
+            Values {
+                apply_delay_ms: 5,
+                ..Values::default()
+            },
+            Values {
+                preview_quality: 3,
+                ..Values::default()
+            },
+            Values {
+                safe_title: 20,
+                ..Values::default()
+            },
+        ] {
+            assert!(bad.validate().is_err());
+        }
+        let set: Values = serde_json::from_str(
+            r#"{"backdrop":"white","apply_after_pause":false,"undo_steps":200}"#,
+        )
+        .unwrap();
+        set.validate().unwrap();
+        assert_eq!(
+            (set.backdrop, set.apply_after_pause, set.undo_steps),
+            (Backdrop::White, false, 200)
+        );
         // Preferences written before the newer settings existed still load, with defaults.
         let old: Values = serde_json::from_str(r#"{"scale":1.25,"loop_playback":false}"#).unwrap();
         assert_eq!(

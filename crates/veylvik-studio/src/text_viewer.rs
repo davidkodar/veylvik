@@ -5,6 +5,8 @@ use veylvik_document::{NodeId, Operation, Time};
 pub struct Editor {
     pub active: bool,
     pub guides: bool,
+    /// Insets of the safe frames, as in the viewer's overlays.
+    pub insets: [f32; 2],
     pub layout: bool,
     pub snap: bool,
     selected: Option<NodeId>,
@@ -75,7 +77,7 @@ impl Editor {
         let screen = |p: [f32; 2]| origin + egui::vec2(p[0], p[1]) * scale;
         let painter = ui.painter().with_clip_rect(canvas);
         if self.guides {
-            for inset in [0.05, 0.1] {
+            for inset in self.insets {
                 painter.rect_stroke(
                     Rect::from_min_max(
                         origin + image * scale * inset,

@@ -22,6 +22,8 @@ pub struct Overlays {
     pub grid: bool,
     pub rulers: bool,
     pub readout: bool,
+    /// How far the action-safe and title-safe frames sit in from each edge, 0 to 0.25.
+    pub insets: [f32; 2],
     busy: Arc<AtomicBool>,
     latest: Arc<Mutex<Option<Reading>>>,
     asked: Option<([u32; 2], Instant)>,
@@ -170,48 +172,53 @@ impl Studio {
                 y += step;
             }
         }
-        if o.thirds {
-            for third in [1.0 / 3.0, 2.0 / 3.0] {
+        // Each guide is drawn twice, dark then light, so it reads on any picture and on
+        // a white backdrop.
+        for (stroke, shift) in [
+            (
+                Stroke::new(1.0_f32, Color32::from_black_alpha(150)),
+                egui::vec2(1.0, 1.0),
+            ),
+            (line, egui::Vec2::ZERO),
+        ] {
+            let place = |x: f32, y: f32| screen(x, y) + shift;
+            if o.thirds {
+                for third in [1.0 / 3.0, 2.0 / 3.0] {
+                    painter.line_segment(
+                        [place(image.x * third, 0.0), place(image.x * third, image.y)],
+                        stroke,
+                    );
+                    painter.line_segment(
+                        [place(0.0, image.y * third), place(image.x, image.y * third)],
+                        stroke,
+                    );
+                }
+            }
+            if o.safe {
+                for inset in o.insets {
+                    painter.rect_stroke(
+                        Rect::from_min_max(
+                            place(image.x * inset, image.y * inset),
+                            place(image.x * (1.0 - inset), image.y * (1.0 - inset)),
+                        ),
+                        0.0,
+                        stroke,
+                        egui::StrokeKind::Inside,
+                    );
+                }
+            }
+            if o.centre {
+                let middle = place(image.x * 0.5, image.y * 0.5);
+                let arm = 14.0;
                 painter.line_segment(
-                    [
-                        screen(image.x * third, 0.0),
-                        screen(image.x * third, image.y),
-                    ],
-                    line,
+                    [middle - egui::vec2(arm, 0.0), middle + egui::vec2(arm, 0.0)],
+                    stroke,
                 );
                 painter.line_segment(
-                    [
-                        screen(0.0, image.y * third),
-                        screen(image.x, image.y * third),
-                    ],
-                    line,
+                    [middle - egui::vec2(0.0, arm), middle + egui::vec2(0.0, arm)],
+                    stroke,
                 );
             }
-        }
-        if o.safe {
-            for inset in [0.05, 0.1] {
-                painter.rect_stroke(
-                    Rect::from_min_max(
-                        screen(image.x * inset, image.y * inset),
-                        screen(image.x * (1.0 - inset), image.y * (1.0 - inset)),
-                    ),
-                    0.0,
-                    line,
-                    egui::StrokeKind::Inside,
-                );
-            }
-        }
-        if o.centre {
-            let middle = screen(image.x * 0.5, image.y * 0.5);
-            let arm = 14.0;
-            painter.line_segment(
-                [middle - egui::vec2(arm, 0.0), middle + egui::vec2(arm, 0.0)],
-                line,
-            );
-            painter.line_segment(
-                [middle - egui::vec2(0.0, arm), middle + egui::vec2(0.0, arm)],
-                line,
-            );
         }
         if o.rulers {
             let band = 16.0;

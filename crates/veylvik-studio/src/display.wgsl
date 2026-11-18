@@ -62,7 +62,10 @@ fn sample_pixel(position: vec2<i32>) -> vec4<f32> {
     else if channel == 3u { color = vec3<f32>(color.b); }
     else if channel == 4u { color = vec3<f32>(dot(color, vec3<f32>(0.2126, 0.7152, 0.0722))); }
     let grid = (u32(v.position.x) / 12u + u32(v.position.y) / 12u) % 2u;
-    let checker = select(0.045, 0.075, grid == 0u);
+    var checker = select(0.045, 0.075, grid == 0u);
+    // A plain backdrop when asked for: black, mid grey or white.
+    let backdrop = (params.size.z >> 7u) & 3u;
+    if backdrop == 1u { checker = 0.0; } else if backdrop == 2u { checker = 0.18; } else if backdrop == 3u { checker = 1.0; }
     color += vec3<f32>(checker * (1.0 - alpha));
     if (params.size.z & 1u) == 0u { color = srgb(color); }
     return vec4<f32>(color, 1.0);

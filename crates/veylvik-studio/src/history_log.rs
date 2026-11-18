@@ -120,9 +120,10 @@ impl Studio {
                 });
                 ui.separator();
                 ui.weak(format!(
-                    "{} to undo, {} to redo. Up to 64 steps are kept; a new change forgets the steps that could be redone.",
+                    "{} to undo, {} to redo. Up to {} steps are kept (Preferences > Editing); a new change forgets the steps that could be redone.",
                     undo.len(),
-                    redo.len()
+                    redo.len(),
+                    self.preferences.values.undo_steps
                 ));
             });
         self.log.history = open;

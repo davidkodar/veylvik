@@ -30,8 +30,25 @@ impl Studio {
         );
         self.recalled = true;
     }
+    /// Hand settings to the parts that are rebuilt with each project, every frame.
+    fn push_settings(&mut self) {
+        let p = &self.preferences.values;
+        self.project.document.set_history_limits(
+            p.undo_steps as usize,
+            p.undo_memory_mib as usize * 1024 * 1024,
+        );
+        self.composition_controls.defaults =
+            veylvik_document::Time::new(p.new_rate.0, p.new_rate.1)
+                .ok()
+                .map(|rate| (p.new_width, p.new_height, rate, p.new_frames));
+        let insets = [p.safe_action, p.safe_title]
+            .map(|percent| (100 - percent.clamp(50, 100)) as f32 / 200.0);
+        self.overlays.insets = insets;
+        self.text_viewer.insets = insets;
+    }
     /// Save a switch that was flipped in the interface. Called once a frame.
     pub(crate) fn remember_tick(&mut self) {
+        self.push_settings();
         if !self.recalled {
             self.recall();
             return;

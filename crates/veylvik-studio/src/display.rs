@@ -41,6 +41,8 @@ pub struct ViewSettings {
     pub filmic: bool,
     /// A single channel or the luminance as grey; coverage is `alpha`.
     pub channel: Channel,
+    /// Behind transparent areas: 0 checkerboard, 1 black, 2 grey, 3 white.
+    pub backdrop: u8,
 }
 pub struct Display {
     pipeline: wgpu::RenderPipeline,
@@ -102,7 +104,8 @@ impl Display {
                         | (u32::from(settings.alpha) << 1)
                         | (u32::from(settings.filmic) << 2)
                         | (u32::from(settings.fast_filter) << 3)
-                        | ((settings.channel as u32) << 4),
+                        | ((settings.channel as u32) << 4)
+                        | ((u32::from(settings.backdrop) & 3) << 7),
                     exposure.to_bits(),
                     frame.region().x,
                     frame.region().y,
@@ -352,6 +355,7 @@ mod tests {
                         fast_filter: false,
                         filmic: false,
                         channel: Default::default(),
+                        backdrop: 0,
                     },
                 );
                 let green = if exposure == -2.0 { 0.1625 } else { 0.5375 };
@@ -376,6 +380,7 @@ mod tests {
                         fast_filter: false,
                         filmic: false,
                         channel: Default::default(),
+                        backdrop: 0,
                     },
                 );
                 for value in &actual[0][..3] {
@@ -595,6 +600,46 @@ mod tests {
                     .iter()
                     .all(|p| p[..3].iter().all(|c| c.abs_diff(expected) <= 1)),
                 "{channel:?}: {shown:?} against {expected}"
+            );
+        }
+        // A fully transparent picture shows the chosen backdrop: black, mid grey or white.
+        let empty = Node::new(
+            "Empty",
+            Operation::Solid(veylvik_document::nodes::Solid { color: [0.0; 4] }),
+            &[],
+        );
+        let clear = Composition {
+            output: empty.id,
+            nodes: [(empty.id, empty)].into(),
+            ..doc.clone()
+        };
+        let clear = Arc::new(
+            renderer
+                .render_gpu(
+                    &Plan::compile(&clear).unwrap(),
+                    RenderRequest::full(Time::new(0, 1).unwrap()),
+                    &ImageInputs::default(),
+                )
+                .unwrap(),
+        );
+        for (backdrop, value) in [(1_u8, 0.0_f32), (2, 0.18), (3, 1.0)] {
+            let shown = paint_with_settings(
+                &renderer,
+                clear.clone(),
+                2,
+                2,
+                wgpu::TextureFormat::Rgba8Unorm,
+                ViewSettings {
+                    backdrop,
+                    ..Default::default()
+                },
+            );
+            let expected = veylvik_render::to_srgba8(&[[value, value, value, 1.]])[0];
+            assert!(
+                shown
+                    .iter()
+                    .all(|p| p[..3].iter().all(|c| c.abs_diff(expected) <= 1)),
+                "{backdrop}: {shown:?}"
             );
         }
         // Colour is untouched by the new setting.

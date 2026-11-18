@@ -182,6 +182,20 @@ mod tests {
             (5, vec!["Change the length".to_owned()])
         );
         assert_eq!(undo[4], "Arrange 3 nodes");
+        // Fewer steps kept: the oldest are forgotten at once, the composition stays.
+        let length = document.snapshot().frame_count;
+        document.set_history_limits(3, usize::MAX);
+        let (undo, redo) = document.steps();
+        assert_eq!(undo.len() + redo.len(), 3);
+        assert_eq!(undo.last().unwrap(), "Arrange 3 nodes");
+        assert_eq!(document.snapshot().frame_count, length);
+        document.set_history_limits(0, usize::MAX);
+        assert_eq!(
+            document.steps().0.len() + document.steps().1.len(),
+            1,
+            "never fewer than one step"
+        );
+        document.set_history_limits(1000, usize::MAX);
         // A new edit forgets what could be redone; long names are cut.
         let mut long = document.snapshot().nodes[&id].clone();
         long.label = "x".repeat(200);
