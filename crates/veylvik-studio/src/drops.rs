@@ -19,7 +19,7 @@ pub(crate) fn kind(path: &Path) -> Option<Kind> {
     let extension = path.extension()?.to_str()?.to_ascii_lowercase();
     match extension.as_str() {
         "veylvik" => Some(Kind::Project),
-        "png" | "exr" | "mp4" | "mov" | "m4v" | "mkv" | "webm" | "avi" | "mpg" | "mpeg"
+        "png" | "exr" | "svg" | "mp4" | "mov" | "m4v" | "mkv" | "webm" | "avi" | "mpg" | "mpeg"
         | "veyseq" => Some(Kind::Media),
         _ => None,
     }

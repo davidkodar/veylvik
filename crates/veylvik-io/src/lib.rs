@@ -13,6 +13,7 @@ pub mod model;
 pub mod presets;
 pub mod preview;
 pub mod relink;
+pub mod svg;
 pub mod video;
 pub mod video_export;
 pub use export::{FrameFormat, save_frame};

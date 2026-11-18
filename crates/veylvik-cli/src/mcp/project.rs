@@ -27,7 +27,7 @@ pub(super) fn tools(revision: &Value) -> Vec<Value> {
         ),
         tool(
             "import_media",
-            "Add a video, PNG, OpenEXR or sequence manifest (.veyseq, sequence.json) as a Footage node and return its id and the media's size, rate and duration. match_composition also gives the composition the media's size, frame rate and duration; output true makes the node the output. One undo step.",
+            "Add a video, PNG, OpenEXR or sequence manifest (.veyseq, sequence.json) as a Footage node and return its id and the media's size, rate and duration. match_composition also gives the composition the media's size, frame rate and duration; output true makes the node the output. An SVG drawing is added as vector shapes instead, fitted to 80% of the frame: per shape a Path (its outline: connect it to text_3d to extrude it), a Solid of its colour and a Mask layer, merged back to front; the reply lists every node (result is the merged drawing) and left_out counts text, pictures and patterns that were not read. One undo step.",
             json!({"revision":revision,"path":{"type":"string"},"match_composition":{"type":"boolean"},"output":{"type":"boolean"}}),
             &["revision", "path"],
         ),
@@ -133,6 +133,25 @@ impl Session {
                 reply["node"] = json!(id);
                 reply["media"] = json!(info.description);
                 reply
+            }
+            _ if crate::assets::svg::is_svg(&media(args)?) => {
+                let path = media(args)?;
+                let doc = self.document.snapshot();
+                let (shapes, skipped) =
+                    crate::assets::svg::import(&path, doc.width, doc.height, 0.8)?;
+                let name = path
+                    .file_stem()
+                    .map(|s| s.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| "Drawing".into());
+                let (mut commands, mut report) = crate::assets::svg::commands(doc, &name, &shapes);
+                if flag(args, "output") {
+                    let id = report["result"].as_str().unwrap_or_default().parse()?;
+                    commands.push(Command::Output { id });
+                }
+                report["revision"] =
+                    json!(self.document.apply(self.document.revision(), &commands)?);
+                report["left_out"] = json!(skipped);
+                report
             }
             _ => {
                 let path = media(args)?;

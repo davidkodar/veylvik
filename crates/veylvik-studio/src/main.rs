@@ -1271,6 +1271,10 @@ impl Studio {
         let session = self.project.session;
         let revision = self.project.document.revision();
         let rate = self.project.document.snapshot().frame_rate;
+        let frame = {
+            let doc = self.project.document.snapshot();
+            (doc.width, doc.height)
+        };
         let budget = veylvik_io::runtime::source_budget()
             .saturating_sub(self.project.inputs.byte_size())
             .min(128 * 1024 * 1024);
@@ -1290,6 +1294,20 @@ impl Studio {
                 }
             };
             let path = path.canonicalize().map_err(|e| e.to_string())?;
+            if !sequence && veylvik_io::svg::is_svg(&path) {
+                let (shapes, skipped) = veylvik_io::svg::import(&path, frame.0, frame.1, 0.8)
+                    .map_err(|e| e.to_string())?;
+                return Ok(Completed::Drawing {
+                    session,
+                    revision,
+                    name: path
+                        .file_stem()
+                        .map(|s| s.to_string_lossy().into_owned())
+                        .unwrap_or_else(|| "Drawing".into()),
+                    shapes,
+                    skipped,
+                });
+            }
             let (path, image) = if sequence {
                 veylvik_io::footage::import_numbered(&path, rate, budget)
                     .map_err(|e| e.to_string())?
@@ -1514,6 +1532,43 @@ impl Studio {
                     self.fail(
                         "The sampled colour no longer matches the selected node; pick again.",
                     );
+                }
+            }
+            Ok(Completed::Drawing {
+                session,
+                revision,
+                name,
+                shapes,
+                skipped,
+            }) => {
+                if session != self.project.session || revision != self.project.document.revision() {
+                    self.fail("Import became obsolete; import again for the current composition.");
+                } else {
+                    let (commands, report) =
+                        veylvik_io::svg::commands(self.project.document.snapshot(), &name, &shapes);
+                    match self.project.apply(&commands) {
+                        Ok(()) => {
+                            if let Some(id) =
+                                report["result"].as_str().and_then(|id| id.parse().ok())
+                            {
+                                self.project.selected = id;
+                                self.project.preview = Some(id);
+                            }
+                            self.status = format!(
+                                "Imported {name}: {} shapes{}. Each shape's outline is a Path node: connect it to 3D text to extrude it",
+                                shapes.len(),
+                                if skipped > 0 {
+                                    format!(" ({skipped} parts such as text or pictures left out)")
+                                } else {
+                                    String::new()
+                                }
+                            );
+                            self.error = false;
+                            self.refresh_draft();
+                            self.request_preview();
+                        }
+                        Err(error) => self.fail(error),
+                    }
                 }
             }
             Ok(Completed::Imported {

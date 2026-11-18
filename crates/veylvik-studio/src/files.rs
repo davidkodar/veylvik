@@ -38,6 +38,14 @@ pub enum Completed {
     PresetLibrary(veylvik_io::presets::Listing),
     PresetLoaded(Box<veylvik_document::presets::Preset>),
     Cancelled,
+    /// An SVG drawing read as shapes, to add as nodes on the UI thread.
+    Drawing {
+        session: veylvik_document::NodeId,
+        revision: u64,
+        name: String,
+        shapes: Vec<veylvik_io::svg::Shape>,
+        skipped: usize,
+    },
     /// The finished result of a live MCP job, reported through `inspect.job`.
     Live(&'static str, serde_json::Value),
     FontAdded(String),
@@ -216,7 +224,11 @@ pub fn select(choice: Choice, folder: &Path, name: &str) -> Result<Option<PathBu
             "PNG or OpenEXR sequence",
             "*.png",
         ),
-        Choice::Import => ("Import media", "Video, images and image sequences", "*.png"),
+        Choice::Import => (
+            "Import media",
+            "Video, images, SVG drawings and image sequences",
+            "*.png",
+        ),
         Choice::Export => (
             "Export frame (.png or .exr)",
             "PNG or OpenEXR image",
@@ -236,6 +248,7 @@ pub fn select(choice: Choice, folder: &Path, name: &str) -> Result<Option<PathBu
         FileFilter::new(label)
             .glob("*.png")
             .glob("*.exr")
+            .glob("*.svg")
             .glob("*.mp4")
             .glob("*.mov")
             .glob("*.m4v")

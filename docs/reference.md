@@ -2665,6 +2665,24 @@ the viewer. Radial mode also draws the radius. As with ellipse handles, these
 are inspector drafts until Apply, preserve existing animation modes, and remain
 separate from pan/zoom and exported pixels.
 
+## SVG drawings
+
+**Import media**, pasting or dropping a file, and the `import_media` tool of both
+MCP servers accept an `.svg` drawing (up to 16 MiB) and add it as vector shapes,
+fitted to 80% of the frame and centred. Every filled shape and every stroked
+line becomes closed path geometry in composition pixels (a line is turned into
+its outline), with groups' transforms applied. Each shape gets three nodes: a
+**Path** (its outline), a **Solid** of its colour and a **Mask** joining them;
+the layers are merged back to front, and the last merge is the drawing. A
+shape's Path is ordinary editable geometry: connect it to the Outline input of
+**3D text** to extrude it, so a logo becomes a 3D object, one piece per shape
+with its own depth and material.
+
+Limits, stated rather than guessed around: one flat colour per shape (a
+gradient gives the average of its stops), no text, embedded pictures, patterns,
+clips or masks (their count is reported as left out), at most 64 shapes, and the
+usual 4096 commands per path. Reading uses the `usvg` library.
+
 ## Inline MCP preview images
 
 The headless MCP server exposes `preview_image` for visual feedback without a
