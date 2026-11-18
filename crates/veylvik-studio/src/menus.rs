@@ -179,7 +179,7 @@ impl Studio {
                 }
             });
             ui.menu_button("Help", |ui| {
-                if item(ui, "Find a command…", "Ctrl+P", true) { let ctx = ui.ctx().clone(); self.run(crate::commands::Cmd::CommandSearch, &ctx); }
+                if item(ui, "Find a command…", "Ctrl+K", true) { let ctx = ui.ctx().clone(); self.run(crate::commands::Cmd::CommandSearch, &ctx); }
                 if item(ui, "Keyboard shortcuts…", "?", true) { self.commands.editor = true; }
                 if item(ui, "Messages…", "", true) { self.log.messages = true; }
                 ui.separator();

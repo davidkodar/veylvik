@@ -2274,7 +2274,7 @@ in use, where a click means something else.
 
 Studio's menu-level actions are one list of commands, each with a name, a
 group (File, Edit, Add, Playback, View, Help) and a default key. **Find a
-command** (Ctrl+P, or Help > Find a command) opens a search field: every word
+command** (Ctrl+K, or Help > Find a command) opens a search field: every word
 typed must occur in a command's group or name, Up and Down choose, Enter runs
 the chosen command and Escape closes. Commands without a key, such as the
 viewer's channel views and overlays or showing and hiding panels, are reached

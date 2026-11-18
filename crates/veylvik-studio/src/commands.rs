@@ -89,7 +89,7 @@ commands! {
     Grid, "grid", "View", "Viewer: grid", "";
     Rulers, "rulers", "View", "Viewer: rulers", "";
     ColourReadout, "colour_readout", "View", "Viewer: colour under the pointer", "";
-    CommandSearch, "command_search", "Help", "Find a command", "Ctrl+P";
+    CommandSearch, "command_search", "Help", "Find a command", "Ctrl+K";
     Shortcuts, "shortcuts", "Help", "Keyboard shortcuts", "";
     Messages, "messages", "Help", "Messages", "";
     About, "about", "Help", "About Veylvik", "";
