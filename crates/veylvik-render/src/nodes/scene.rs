@@ -5,8 +5,23 @@ use veylvik_document::nodes::*;
 impl RenderNode for Shape3d {}
 impl RenderNode for Text3d {}
 impl RenderNode for ImageCard {}
-/// Never a pass: its input is planned as a branch of its own size.
-impl RenderNode for OwnSize {}
+/// Its input is planned as a branch of its own size; its passes place that picture in
+/// the frame where a frame-sized image is needed.
+impl RenderNode for OwnSize {
+    fn passes(&self) -> super::Passes {
+        super::Passes::One(crate::Kernel::OwnSizeFit)
+    }
+    fn params(
+        &self,
+        _cx: &super::Cx<'_>,
+        _sample: &dyn Fn(&str) -> crate::Result<f32>,
+        p: &mut crate::Params,
+    ) -> crate::Result<()> {
+        let fit = Fit::ALL.iter().position(|f| *f == self.fit).unwrap_or(1);
+        p.values = [self.width as f32, self.height as f32, fit as f32, 0.0];
+        Ok(())
+    }
+}
 impl RenderNode for Transform3d {}
 impl RenderNode for MergeScenes {}
 impl RenderNode for Camera3d {}

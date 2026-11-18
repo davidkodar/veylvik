@@ -182,6 +182,9 @@ impl Renderer {
                         work,
                     );
                     work.cache_sources = previous;
+                    // A picture of its own size is no extra moment in time: it does not
+                    // use up the request's evaluations.
+                    work.remaining = work.remaining.saturating_add(1);
                     frame?
                 }
                 _ => unreachable!("compiled temporal boundary"),

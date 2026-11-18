@@ -1381,12 +1381,18 @@ and `colour`.
   its own **width** and **height** (1–8192 pixels each) instead of the
   composition's, so a small picture costs a small picture's memory and time: a
   1024 × 1024 picture is a sixteenth of a 4K frame. Inside the branch the frame
-  is the node's size, so pixel settings there are in its pixels. The picture may
-  feed an Image card (which takes the picture's shape), a 3D shape's Texture or a
-  scene Environment's Image; every other input needs a frame-sized image and
-  refuses it. It cannot be the output or be viewed on its own, and the branch
-  cannot yet hold footage or images. A branch in which nothing moves is rendered
-  once and reused from the frame cache.
+  is the node's size, so pixel settings there are in its pixels. An Image card
+  (which takes the picture's shape), a 3D shape's Texture and a scene
+  Environment's Image use the picture as it is, at its own size. Anywhere else
+  (any other input, the viewer, the composition's output) it is placed in the
+  frame as **Fit** says: actual size (pixel for pixel, centred), fit inside,
+  fill (covering the frame, the overflow cut off) or stretch; scaling down
+  averages the pixels each output pixel covers, up to 8 × 8 samples, and what
+  lies beyond the picture is transparent. From there on it is a frame-sized
+  image and costs one. A particle sprite always takes the whole picture. Footage
+  in the branch is placed for the branch's size. A branch in which nothing moves is
+  rendered once and reused from the frame cache, and Own size branches do not
+  count against the 256 evaluations a request may make.
 - **3D transform**: moves, turns and scales a whole scene (cameras and lights too)
   about the frame centre. Bypassed, it passes its scene through.
 - **Merge scenes**: combines up to eight scenes.

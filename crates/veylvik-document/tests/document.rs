@@ -512,12 +512,12 @@ fn an_own_size_picture_feeds_only_what_takes_any_size() {
         panic!()
     };
     assert_eq!((size.width, size.height), (1024, 1024));
-    // It is not the composition's output, and a 2D node refuses it.
-    assert!(doc.apply(1, &[Command::Output { id }]).is_err());
-    let wrong = Node::new("Blur", default(&registry::BLUR), &[("image", id)]);
-    let error = doc.apply(1, &[put(wrong)]).unwrap_err();
-    assert!(error.to_string().contains("frame-sized"), "{error}");
-    // A card, a shape's texture and a scene environment take it.
+    // It goes wherever an image does: an ordinary node, the output, and what uses it
+    // at its own size (a card, a shape's texture, a scene environment).
+    let blur = Node::new("Blur", default(&registry::BLUR), &[("image", id)]);
+    doc.apply(1, &[put(blur), Command::Output { id }]).unwrap();
+    assert!(!nodes::OWN_SIZE.takes_picture("image"));
+    assert!(registry::IMAGE_CARD.takes_picture("image"));
     let card = Node::new("Card", default(&registry::IMAGE_CARD), &[("image", id)]);
     let shape = Node::new("Ball", default(&registry::SHAPE_3D), &[("texture", id)]);
     let around = Node::new(
@@ -525,12 +525,16 @@ fn an_own_size_picture_feeds_only_what_takes_any_size() {
         default(&registry::ENVIRONMENT_3D),
         &[("image", id)],
     );
-    doc.apply(1, &[put(card), put(shape), put(around)]).unwrap();
+    doc.apply(2, &[put(card), put(shape), put(around)]).unwrap();
     // Sizes are bounded.
     for (width, height) in [(0, 64), (64, 0), (8193, 64)] {
         let mut bad = doc.snapshot().nodes[&id].clone();
-        bad.operation = Operation::OwnSize(nodes::OwnSize { width, height });
-        assert!(doc.apply(2, &[put(bad)]).is_err(), "{width} x {height}");
+        bad.operation = Operation::OwnSize(nodes::OwnSize {
+            width,
+            height,
+            fit: nodes::Fit::Fit,
+        });
+        assert!(doc.apply(3, &[put(bad)]).is_err(), "{width} x {height}");
     }
     let _ = noise_id;
 }

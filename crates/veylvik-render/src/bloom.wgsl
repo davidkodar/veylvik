@@ -73,3 +73,46 @@ fn zoom_blur(@builtin(global_invocation_id) gid:vec3<u32>) {
     }
     result[index(gid)]=sum/32.0;
 }
+
+// An Own size picture placed in the frame: source = the picture, values = (its width,
+// its height, fit: 0 actual, 1 fit, 2 fill, 3 stretch). `scale` is frame pixels for
+// each picture pixel; scaling down averages the picture pixels an output pixel covers
+// (up to 8 by 8 samples).
+fn own_texel(x:i32,y:i32)->vec4<f32> {
+    let w=i32(p.values.x); let h=i32(p.values.y);
+    return source[u32(clamp(y,0,h-1)*w+clamp(x,0,w-1))];
+}
+fn own_sample(q:vec2<f32>)->vec4<f32> {
+    let b=q-vec2<f32>(0.5); let i=vec2<i32>(floor(b)); let f=fract(b);
+    return mix(mix(own_texel(i.x,i.y),own_texel(i.x+1,i.y),f.x),
+               mix(own_texel(i.x,i.y+1),own_texel(i.x+1,i.y+1),f.x),f.y);
+}
+fn own_placed(gid:vec3<u32>,scale:vec2<f32>)->vec4<f32> {
+    let frame=vec2<f32>(p.size_op.xy);
+    let q=(vec2<f32>(gid.xy)+vec2<f32>(0.5)-frame*0.5)/scale+p.values.xy*0.5;
+    let span=1.0/scale;
+    if any(q+span*0.5<=vec2<f32>(0.0)) || any(q-span*0.5>=p.values.xy) {return vec4<f32>(0.0);}
+    let n=vec2<i32>(clamp(ceil(span),vec2<f32>(1.0),vec2<f32>(8.0)));
+    var sum=vec4<f32>(0.0);
+    for(var j=0;j<n.y;j++) { for(var i=0;i<n.x;i++) {
+        let at=q+(vec2<f32>(f32(i),f32(j))+vec2<f32>(0.5))/vec2<f32>(n)*span-span*0.5;
+        // Beyond the picture is empty, so its edge stays an edge.
+        if all(at>=vec2<f32>(0.0)) && all(at<=p.values.xy) { sum+=own_sample(at); }
+    } }
+    return sum/f32(n.x*n.y);
+}
+@compute @workgroup_size(8,8)
+fn own_size_fit(@builtin(global_invocation_id) gid:vec3<u32>) {
+    if !inside(gid) {return;}
+    let ratio=vec2<f32>(p.size_op.xy)/p.values.xy;
+    var scale=vec2<f32>(1.0);
+    if p.values.z>2.5 { scale=ratio; }
+    else if p.values.z>1.5 { scale=vec2<f32>(max(ratio.x,ratio.y)); }
+    else if p.values.z>0.5 { scale=vec2<f32>(min(ratio.x,ratio.y)); }
+    result[gid.y*p.size_op.x+gid.x]=own_placed(gid,scale);
+}
+@compute @workgroup_size(8,8)
+fn own_size_stretch(@builtin(global_invocation_id) gid:vec3<u32>) {
+    if !inside(gid) {return;}
+    result[gid.y*p.size_op.x+gid.x]=own_placed(gid,vec2<f32>(p.size_op.xy)/p.values.xy);
+}

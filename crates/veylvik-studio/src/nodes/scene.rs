@@ -296,7 +296,7 @@ impl Inspect for ImageCard {
 }
 impl Inspect for OwnSize {
     fn inspect(&mut self, ui: &mut egui::Ui, cx: &mut InspectCx<'_>) {
-        ui.weak("What is connected here is made at this size instead of the composition's, so a small picture costs little. It can feed an Image card, a 3D shape's Texture or a scene Environment.");
+        ui.weak("What is connected here is made at this size instead of the composition's, so a small picture costs little. An Image card, a 3D shape's Texture and a scene Environment use it at this size; anything else gets it placed in the frame.");
         ui.horizontal(|ui| {
             ui.add_sized([88., 22.], egui::Label::new("Size"));
             for (value, hint) in [
@@ -327,7 +327,18 @@ impl Inspect for OwnSize {
                 }
             }
         });
-        ui.weak("Inside this branch, pixel settings are in this picture's pixels. To see it, view the scene it feeds.");
+        cx.dirty |= kind(
+            ui,
+            "In the frame",
+            &mut self.fit,
+            &[
+                (Fit::Actual, "Actual size"),
+                (Fit::Fit, "Fit inside"),
+                (Fit::Fill, "Fill"),
+                (Fit::Stretch, "Stretch"),
+            ],
+        );
+        ui.weak("Inside this branch, pixel settings are in this picture's pixels.");
     }
 }
 impl Inspect for Transform3d {

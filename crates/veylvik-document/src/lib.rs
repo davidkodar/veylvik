@@ -428,7 +428,10 @@ impl Composition {
         if !self.nodes.contains_key(&self.output) {
             return fail("output node is missing");
         }
-        if self.nodes[&self.output].operation.descriptor().output != registry::PortKind::Image {
+        if !matches!(
+            self.nodes[&self.output].operation.descriptor().output,
+            registry::PortKind::Image | registry::PortKind::Picture
+        ) {
             return fail("The output must be an image; a Light rig only lights surfaces");
         }
         self.encoded_size()?;
@@ -460,15 +463,9 @@ impl Composition {
                     .nodes
                     .get(source)
                     .map(|s| s.operation.descriptor().output);
-                // A picture of its own size goes only where any size is wrapped or placed.
-                if gives == Some(registry::PortKind::Picture) {
-                    if descriptor.takes_picture(port) {
-                        continue;
-                    }
-                    return fail(format!(
-                        "{}: the {port} input needs a frame-sized image; an Own size picture can feed an Image card, a 3D shape's Texture or a scene Environment",
-                        node.label
-                    ));
+                // A picture of its own size goes wherever an image does.
+                if gives == Some(registry::PortKind::Picture) && kind == registry::PortKind::Image {
+                    continue;
                 }
                 if gives.is_some_and(|gives| gives != kind) {
                     return fail(match kind {

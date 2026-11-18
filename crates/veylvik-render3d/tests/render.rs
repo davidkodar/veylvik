@@ -1051,7 +1051,11 @@ fn an_own_size_picture_is_rendered_small_and_gives_a_card_its_shape() {
         if let Some((width, height)) = own {
             picture = add(
                 &mut doc,
-                Operation::OwnSize(OwnSize { width, height }),
+                Operation::OwnSize(OwnSize {
+                    width,
+                    height,
+                    fit: Fit::Fit,
+                }),
                 &[("image", picture)],
             );
         }
@@ -1101,4 +1105,104 @@ fn an_own_size_picture_is_rendered_small_and_gives_a_card_its_shape() {
     let wrapped = shot(Some((16, 16)), true);
     let (left, right) = (at(&wrapped, 64, 45), at(&wrapped, 96, 45));
     assert!(left[0] < right[0] - 0.3, "{left:?} {right:?}");
+}
+#[test]
+#[ignore = "requires Vulkan"]
+fn an_own_size_picture_meets_the_frame_as_its_fit_says_wherever_an_image_goes() {
+    let renderer = renderer();
+    let code = "fn shade(at: vec2<f32>) -> vec4<f32> {
+    return vec4<f32>(at.x / size.x, at.y / size.y, size.x / 100.0, 1.0);
+}";
+    let mut shader = op(&SHADER);
+    if let Operation::Shader(s) = &mut shader {
+        s.code = code.into();
+    }
+    // The picture is 40 by 20; the frame 160 by 90.
+    let shot = |fit: Fit, through: Option<&registry::NodeType>| {
+        let mut doc = blank(W, H, Time::new(24, 1).unwrap()).unwrap();
+        let picture = add(&mut doc, shader.clone(), &[]);
+        let own = add(
+            &mut doc,
+            Operation::OwnSize(OwnSize {
+                width: 40,
+                height: 20,
+                fit,
+            }),
+            &[("image", picture)],
+        );
+        doc.output = match through {
+            Some(kind) if kind.type_id == "particles" => {
+                // A small busy system in the middle of this small frame.
+                let mut value = kind.default_operation();
+                for (name, number) in [
+                    ("x", 80.0),
+                    ("y", 45.0),
+                    ("width", 100.0),
+                    ("height", 60.0),
+                    ("rate", 400.0),
+                    ("size", 8.0),
+                    ("speed", 0.0),
+                    ("gravity", 0.0),
+                ] {
+                    value[name] = serde_json::json!({"kind": "constant", "value": number});
+                }
+                add(
+                    &mut doc,
+                    serde_json::from_value(value).unwrap(),
+                    &[("image", own)],
+                )
+            }
+            Some(kind) => add(&mut doc, op(kind), &[("image", own)]),
+            None => own,
+        };
+        if let Some(kind) = through
+            && kind.type_id == "particles"
+        {
+            // The picture as a sprite instead.
+            let node = doc.nodes.get_mut(&doc.output).unwrap();
+            node.inputs = [("sprite".to_string(), own)].into();
+        }
+        doc.validate().unwrap();
+        let plan = Plan::compile(&doc).unwrap();
+        renderer
+            .render_gpu_temporal(
+                &plan,
+                RenderRequest::full(Time::new(1, 1).unwrap()),
+                &ImageInputs::default(),
+                false,
+                || false,
+            )
+            .unwrap()
+            .map(|frame| renderer.read_frame(&frame).unwrap().pixels)
+            .unwrap()
+    };
+    let at = |p: &[[f32; 4]], x: u32, y: u32| p[(y * W + x) as usize];
+    // Viewed on its own, fitted: four times larger, 160 by 80, bars above and below.
+    let fitted = shot(Fit::Fit, None);
+    assert_eq!(at(&fitted, 80, 2)[3], 0.0);
+    let (left, right) = (at(&fitted, 10, 45), at(&fitted, 150, 45));
+    assert!(left[3] > 0.99 && (left[2] - 0.4).abs() < 1e-3, "{left:?}");
+    assert!((left[0] - 10.5 / 160.0).abs() < 0.02 && (right[0] - 150.5 / 160.0).abs() < 0.02);
+    // Actual size: 40 by 20 in the middle.
+    let actual = shot(Fit::Actual, None);
+    assert_eq!(at(&actual, 50, 45)[3], 0.0);
+    assert_eq!(at(&actual, 80, 30)[3], 0.0);
+    assert!(at(&actual, 80, 45)[3] > 0.99);
+    // Fill covers the frame and loses the sides; stretch shows all of it.
+    let fill = shot(Fit::Fill, None);
+    assert!(at(&fill, 1, 1)[3] > 0.99 && at(&fill, 1, 45)[0] > 0.04);
+    let stretch = shot(Fit::Stretch, None);
+    let corner = at(&stretch, 158, 88);
+    assert!(
+        corner[3] > 0.99 && corner[0] > 0.95 && corner[1] > 0.95,
+        "{corner:?}"
+    );
+    // An ordinary node takes it, fitted the same way.
+    let blurred = shot(Fit::Fit, Some(&registry::BLUR));
+    assert!(at(&blurred, 80, 45)[3] > 0.99 && at(&blurred, 80, 0)[3] < 0.2);
+    // And particles take it as their sprite.
+    let dots = shot(Fit::Fit, Some(&registry::PARTICLES));
+    assert!(dots.iter().all(|p| p.iter().all(|v| v.is_finite())));
+    let lit = |p: &[[f32; 4]]| p.iter().filter(|p| p[3] > 0.0).count();
+    assert!(lit(&dots) > 0, "no particle drawn");
 }

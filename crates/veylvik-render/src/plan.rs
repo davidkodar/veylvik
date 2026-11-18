@@ -58,6 +58,8 @@ pub enum Kernel {
     BloomCombine,
     LightWrapCombine,
     ZoomBlur,
+    OwnSizeFit,
+    OwnSizeStretch,
     GridWarp,
     ParticlePrepare,
     ParticleFields,
@@ -101,7 +103,7 @@ pub enum Kernel {
     Lut,
 }
 impl Kernel {
-    pub(crate) const ALL: [Self; 89] = [
+    pub(crate) const ALL: [Self; 91] = [
         Self::ToAcescg,
         Self::FromAcescg,
         Self::Text,
@@ -150,6 +152,8 @@ impl Kernel {
         Self::BloomCombine,
         Self::LightWrapCombine,
         Self::ZoomBlur,
+        Self::OwnSizeFit,
+        Self::OwnSizeStretch,
         Self::GridWarp,
         Self::ParticlePrepare,
         Self::ParticleFields,
@@ -244,6 +248,8 @@ impl Kernel {
             Self::BloomCombine => "bloom_combine",
             Self::LightWrapCombine => "light_wrap_combine",
             Self::ZoomBlur => "zoom_blur",
+            Self::OwnSizeFit => "own_size_fit",
+            Self::OwnSizeStretch => "own_size_stretch",
             Self::GridWarp => "grid_warp",
             Self::ParticlePrepare => "particle_prepare",
             Self::ParticleFields => "particle_fields",
@@ -395,11 +401,8 @@ impl Plan {
                     "A Sound has no image; it plays on the timeline and in exports",
                 ));
             }
-            veylvik_document::registry::PortKind::Picture => {
-                return Err(error(
-                    "An Own size picture is not frame-sized; view the scene it feeds, or the node on its input",
-                ));
-            }
+            // Shown fitted into the frame.
+            veylvik_document::registry::PortKind::Picture => {}
         }
         // Resolve bypasses before traversal, so disabled compound effects dispatch no work.
         let mut effective = None;
@@ -451,6 +454,14 @@ impl Plan {
         let mut nodes = Vec::new();
         let mut light_data: Vec<Node> = Vec::new();
         let mut temporal = Vec::new();
+        // Own size nodes whose picture must meet the frame: fitted for an ordinary
+        // input or the view, stretched whole for a particle sprite.
+        let mut sized_nodes: Vec<NodeId> = Vec::new();
+        let mut fitted: BTreeSet<NodeId> = BTreeSet::new();
+        let mut stretched: BTreeSet<NodeId> = BTreeSet::new();
+        if matches!(composition.nodes[&output].operation, Operation::OwnSize(_)) {
+            fitted.insert(output);
+        }
         while let Some((id, expanded)) = todo.pop() {
             let node = &composition.nodes[&id];
             // What feeds an Own size node is a plan of that size, rendered apart; the
@@ -461,9 +472,12 @@ impl Plan {
                     (sized.width, sized.height) = (own.width, own.height);
                     let plan =
                         Self::compile_branch(&sized, node.inputs["image"], depth + 1, remaining)?;
-                    if !plan.required_assets().is_empty() {
+                    // Footage is placed for the plan that reads it, so it follows the
+                    // branch's size. A plain Image is its file's pixels at the
+                    // composition's size and cannot.
+                    if plan.holds_plain_image() {
                         return Err(error(format!(
-                            "{}: an Own size branch cannot hold footage or images yet; their pictures are placed for the composition's size",
+                            "{}: an Own size branch cannot hold a plain Image node, whose pixels are the composition's size; use Footage, which is placed",
                             node.label
                         )));
                     }
@@ -474,6 +488,7 @@ impl Plan {
                     });
                     // The scene reads the node itself for the picture's size.
                     light_data.push(node.clone());
+                    sized_nodes.push(id);
                 }
                 continue;
             }
@@ -550,12 +565,28 @@ impl Plan {
                         continue;
                     }
                     if let Some(source) = node.inputs.get(*port) {
+                        if matches!(composition.nodes[source].operation, Operation::OwnSize(_))
+                            && !node.operation.descriptor().takes_picture(port)
+                        {
+                            if is_sprite(node, port) {
+                                stretched.insert(*source);
+                            } else {
+                                fitted.insert(*source);
+                            }
+                        }
                         todo.push((*source, false));
                     }
                 }
             }
         }
+        // Those nodes come first: they read only their own branch's picture.
+        for id in sized_nodes.into_iter().rev() {
+            if fitted.contains(&id) || stretched.contains(&id) {
+                nodes.insert(0, composition.nodes[&id].clone());
+            }
+        }
         let mut passes = Vec::new();
+        let mut stretches = BTreeMap::new();
         let mut outputs = BTreeMap::new();
         let mut domains = BTreeMap::new();
         let mut shared = BTreeMap::new();
@@ -574,6 +605,36 @@ impl Plan {
                         | Operation::Affine(_)
                 );
             domains.insert(node.id, aces);
+            // An Own size picture, placed in the frame for what needs the frame's size.
+            if let Operation::OwnSize(_) = &node.operation {
+                for (wanted, kernel) in [
+                    (fitted.contains(&node.id), Kernel::OwnSizeFit),
+                    (stretched.contains(&node.id), Kernel::OwnSizeStretch),
+                ] {
+                    if !wanted {
+                        continue;
+                    }
+                    let value = passes.len();
+                    passes.push(Pass {
+                        node: index,
+                        kernel,
+                        inputs: [
+                            Input::Asset(own_size_key(node.id)),
+                            Input::Empty,
+                            Input::Empty,
+                            Input::Empty,
+                        ],
+                        output: value,
+                        cards: Vec::new(),
+                    });
+                    if kernel == Kernel::OwnSizeFit {
+                        outputs.insert(node.id, value);
+                    } else {
+                        stretches.insert(node.id, value);
+                    }
+                }
+                continue;
+            }
             // Light rigs and 3D scene nodes are data read by the nodes they feed;
             // they have no pass or image of their own.
             if node.operation.descriptor().output != veylvik_document::registry::PortKind::Image {
@@ -598,7 +659,10 @@ impl Plan {
                 let Some(&source) = node.inputs.get(*port) else {
                     continue;
                 };
-                let mut value = outputs[&source];
+                let mut value = match stretches.get(&source) {
+                    Some(whole) if is_sprite(node, port) => *whole,
+                    _ => outputs[&source],
+                };
                 if domains[&source] != aces {
                     let converted = passes.len();
                     passes.push(Pass {
@@ -1038,6 +1102,12 @@ impl Plan {
     pub fn size(&self) -> [u32; 2] {
         [self.width, self.height]
     }
+    /// Whether the plan, or a branch of it, reads a plain Image node's file.
+    fn holds_plain_image(&self) -> bool {
+        self.nodes.iter().any(
+            |n| matches!(&n.operation, Operation::Image(image) if !image.asset.starts_with('\0')),
+        ) || self.temporal.iter().any(|b| b.plan.holds_plain_image())
+    }
     /// Whether the plan has temporal branches (motion blur, retiming, flow, OCIO).
     pub fn has_temporal(&self) -> bool {
         !self.temporal.is_empty()
@@ -1133,6 +1203,10 @@ pub(crate) fn history_key(id: veylvik_document::NodeId) -> String {
 /// The input key of a node's own data image (`RenderNode::data`).
 pub(crate) fn data_key(id: veylvik_document::NodeId) -> String {
     format!("\0data:{id}")
+}
+/// Whether `port` of `node` is a particle sprite, which takes a whole picture.
+fn is_sprite(node: &Node, port: &str) -> bool {
+    matches!(node.operation, Operation::Particles(_)) && port == "sprite"
 }
 /// The input key of an Own size node's picture.
 pub(crate) fn own_size_key(id: veylvik_document::NodeId) -> String {

@@ -48,6 +48,7 @@ pub enum ParameterKind {
     Placement,
     Colour3,
     ShapeKind,
+    Fit,
     LightKind,
     Look,
     /// Another node by id, or null.
@@ -118,6 +119,7 @@ impl Parameter {
             ParameterKind::Placement => json!(crate::nodes::Placement::default()),
             ParameterKind::Colour3 => json!([0.6_f32, 0.6_f32, 0.6_f32]),
             ParameterKind::ShapeKind => json!(crate::nodes::ShapeKind::default()),
+            ParameterKind::Fit => json!(crate::nodes::Fit::default()),
             ParameterKind::LightKind => json!(crate::nodes::LightKind::default()),
             ParameterKind::Look | ParameterKind::NodeRef => json!(null),
             ParameterKind::Points3 => json!([]),
@@ -150,6 +152,7 @@ impl Parameter {
             ParameterKind::ShapeKind => {
                 json!({"type":"string","enum":crate::nodes::ShapeKind::ALL})
             }
+            ParameterKind::Fit => json!({"type":"string","enum":crate::nodes::Fit::ALL}),
             ParameterKind::LightKind => {
                 json!({"type":"string","enum":crate::nodes::LightKind::ALL})
             }
@@ -263,8 +266,8 @@ pub enum PortKind {
     Scene,
     /// Sound on the timeline: no picture, and no input takes it.
     Sound,
-    /// An image of a size of its own (an Own size node), taken only by inputs that
-    /// wrap or place a picture of any size.
+    /// An image of a size of its own (an Own size node): used as it is by inputs
+    /// that wrap or place a picture of any size, fitted into the frame elsewhere.
     Picture,
 }
 #[derive(Debug, Serialize)]
@@ -293,7 +296,7 @@ impl NodeType {
             PortKind::Image
         }
     }
-    /// Whether `port` also takes a picture that is not frame-sized.
+    /// Whether `port` uses a picture that is not frame-sized as it is.
     pub fn takes_picture(&self, port: &str) -> bool {
         matches!(
             (self.type_id, port),
