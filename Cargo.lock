@@ -180,9 +180,13 @@ dependencies = [
  "futures-channel",
  "futures-util",
  "rand",
+ "raw-window-handle",
  "serde",
  "serde_repr",
  "url",
+ "wayland-backend",
+ "wayland-client",
+ "wayland-protocols",
  "zbus",
 ]
 
@@ -4291,6 +4295,7 @@ dependencies = [
  "eframe",
  "image",
  "pollster",
+ "raw-window-handle",
  "serde",
  "serde_json",
  "ttf-parser",

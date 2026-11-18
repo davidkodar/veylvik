@@ -2774,7 +2774,8 @@ impl Studio {
     }
 }
 impl eframe::App for Studio {
-    fn ui(&mut self, ui: &mut egui::Ui, _: &mut eframe::Frame) {
+    fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
+        files::offer_parent(frame);
         let ctx = ui.ctx().clone();
         self.theme(&ctx);
         self.scene_record_tick(&ctx);

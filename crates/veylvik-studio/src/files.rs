@@ -125,6 +125,40 @@ impl Tasks {
         Some(result)
     }
 }
+/// The main window's handle for the next file dialog, so the desktop shows the
+/// dialog as a child of the window (floating over it at its own size) and not as an
+/// unrelated window, which a compositor may tile or make fullscreen.
+static PARENT: std::sync::Mutex<Option<ashpd::WindowIdentifier>> = std::sync::Mutex::new(None);
+static NO_PARENT: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+/// Keep a handle ready; called from the UI thread, which owns the window. Each
+/// dialog uses one up, and the next frame makes another. A desktop that cannot give
+/// one is asked only once.
+pub fn offer_parent(frame: &eframe::Frame) {
+    use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
+    if NO_PARENT.load(std::sync::atomic::Ordering::Relaxed) {
+        return;
+    }
+    let Ok(mut slot) = PARENT.lock() else {
+        return;
+    };
+    if slot.is_some() {
+        return;
+    }
+    let (Ok(window), Ok(display)) = (frame.window_handle(), frame.display_handle()) else {
+        NO_PARENT.store(true, std::sync::atomic::Ordering::Relaxed);
+        return;
+    };
+    *slot = pollster::block_on(ashpd::WindowIdentifier::from_raw_handle(
+        &window.as_raw(),
+        Some(&display.as_raw()),
+    ));
+    if slot.is_none() {
+        NO_PARENT.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+}
+fn parent() -> Option<ashpd::WindowIdentifier> {
+    PARENT.lock().ok()?.take()
+}
 pub fn select(choice: Choice, folder: &Path, name: &str) -> Result<Option<PathBuf>, String> {
     let (title, label, pattern) = match choice {
         Choice::PresetOpen => ("Import effect preset", "Veylvik effect", "*.veyfx"),
@@ -190,6 +224,7 @@ pub fn select(choice: Choice, folder: &Path, name: &str) -> Result<Option<PathBu
                 | Choice::Model
         ) {
             SelectedFiles::open_file()
+                .identifier(parent())
                 .title(title)
                 .modal(true)
                 .multiple(false)
@@ -201,6 +236,7 @@ pub fn select(choice: Choice, folder: &Path, name: &str) -> Result<Option<PathBu
                 .response()
         } else {
             SelectedFiles::save_file()
+                .identifier(parent())
                 .title(title)
                 .modal(true)
                 .current_name(name)

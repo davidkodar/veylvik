@@ -2162,9 +2162,10 @@ Objects, Cameras, Lights and Structure; clicking one selects it. **Export**
 Video or Image sequence (the same panels as the export dialogs), **This frame**,
 **Render queue** and **Export**. Entering the page opens the quick **Export**
 dialog: Video or Image sequence, the delivery cards (or the two image formats)
-with the current choice selected, **Export** and **More settings**. Export, in
-the dialog or on the page, asks where to save and then starts rendering at
-once (from this page a queued job is started without opening the queue), with
+with the current choice selected, **Export** and **More settings**. The page's
+own **Export** button opens the same dialog, so exporting always passes
+through it. Export in the dialog asks where to save and then renders (a job
+queued from this page is started without opening the queue), with
 a progress bar on the page and afterwards where it was saved or why it did not
 finish. More settings, Escape or closing the dialog leaves the page's full
 settings. Leaving Compose remembers whether the editor was shown and
@@ -2184,7 +2185,9 @@ every so many seconds, and a length in seconds or frames. The length is kept in
 seconds, so changing the frame rate changes the frame count, not the duration. A
 summary line shows the result before creating it. The same dialog serves
 Composition settings, opening on Custom wherever the current values are not a
-preset. Dialogs open centred on the window and can be dragged. Unsaved work is protected by the same Save/Discard/Keep editing
+preset. Dialogs open centred on the window and can be dragged. File dialogs come from
+the desktop's file chooser; Studio passes its window as their parent, so they
+open as dialogs over it at their own size even when Studio is fullscreen. Unsaved work is protected by the same Save/Discard/Keep editing
 flow as opening another project. **File → Composition settings…** changes canvas, frame count, and
 frame rate together as one undo step. Resizing changes the canvas bounds; it does
 not scale node coordinates. Animation keys retain their times in seconds, while
