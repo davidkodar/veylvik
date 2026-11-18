@@ -13,6 +13,7 @@ pub fn run(
     doc: &Composition,
     base: &Path,
     request: &Request,
+    progress: &mut dyn FnMut(usize, usize),
 ) -> Result<(NodeId, Vec<Command>, Value)> {
     veylvik_document::planar::validate_quad(request.surface)?;
     if !doc.nodes.contains_key(&request.source) {
@@ -64,6 +65,9 @@ pub fn run(
         None if end > start => [start, start, end],
         None => [end, start, start],
     };
+    // The tracker reports each frame as it is done; the span says how many there are.
+    let span = (ends[2] - ends[0]).unsigned_abs() as usize + 1;
+    let mut seen = 0_usize;
     let range = tracker.track_both(
         renderer,
         &plan,
@@ -75,7 +79,11 @@ pub fn run(
         doc.frame_rate,
         request.settings,
         budget,
-        &mut |_, _, _| true,
+        &mut |_, _, _| {
+            seen += 1;
+            progress(seen.min(span), span);
+            true
+        },
     )?;
     let frame_of = |time: Time| -> Result<i64> {
         Ok((time.seconds()? * doc.frame_rate.seconds()?).round() as i64)

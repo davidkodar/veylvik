@@ -139,6 +139,28 @@ pub fn call(
     }
     match name {
         "add_node" | "gold_title" | "particle_look" | "stand_on_ground" => {}
+        "match_shot" => {
+            let node = |name: &str| -> Result<Option<NodeId>> {
+                args.get(name)
+                    .map(|id| Ok(id.as_str().ok_or("node ids must be strings")?.parse()?))
+                    .transpose()
+            };
+            let render = node("render")?.ok_or("render must be a Render scene node")?;
+            if !matches!(
+                studio
+                    .project
+                    .document
+                    .snapshot()
+                    .nodes
+                    .get(&render)
+                    .map(|n| &n.operation),
+                Some(veylvik_document::Operation::RenderScene(_))
+            ) {
+                return Err("render must be a Render scene node".into());
+            }
+            studio.live_match_shot(render, node("light")?, ctx)?;
+            return Ok(json!({"session":session,"started":true}));
+        }
         "insert_preset" => {
             let preset: veylvik_document::presets::Preset =
                 serde_json::from_value(args["preset"].clone())?;

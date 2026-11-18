@@ -119,10 +119,24 @@ pub fn serve(
     })
 }
 pub fn serve_with_output(
+    input: impl BufRead,
+    output: impl Write,
+    catalog: &Value,
+    mut call: impl FnMut(&str, &Value) -> std::result::Result<ToolOutput, String>,
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    serve_reporting(input, output, catalog, |name, args, _| call(name, args))
+}
+/// How a long tool call says how far it has come: units done, units in all, and
+/// what it is doing. Calls made without a progress token go nowhere.
+pub type Progress<'a> = &'a mut dyn FnMut(u64, u64, &str);
+/// Like [`serve_with_output`], with MCP progress notifications: a `tools/call`
+/// whose `_meta.progressToken` is set gets `notifications/progress` messages
+/// before its result, at most four a second and always the last one.
+pub fn serve_reporting(
     mut input: impl BufRead,
     mut output: impl Write,
     catalog: &Value,
-    mut call: impl FnMut(&str, &Value) -> std::result::Result<ToolOutput, String>,
+    mut call: impl FnMut(&str, &Value, Progress<'_>) -> std::result::Result<ToolOutput, String>,
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut protocol = Protocol::default();
     loop {
@@ -136,8 +150,26 @@ pub fn serve_with_output(
         if count > MAX_MESSAGE_BYTES {
             return Err("MCP message exceeds 4 MiB".into());
         }
-        let response = match serde_json::from_slice(&bytes) {
-            Ok(value) => protocol.handle_output(value, catalog, &mut call),
+        let response = match serde_json::from_slice::<Value>(&bytes) {
+            Ok(value) => {
+                let token = value["params"]["_meta"]["progressToken"].clone();
+                let wanted = token.is_string() || token.is_number();
+                let mut last: Option<std::time::Instant> = None;
+                let mut report = |done: u64, total: u64, message: &str| {
+                    let due = last.is_none_or(|at| at.elapsed().as_millis() >= 250);
+                    if !wanted || !(due || done >= total) {
+                        return;
+                    }
+                    last = Some(std::time::Instant::now());
+                    let note = json!({"jsonrpc":"2.0","method":"notifications/progress","params":{"progressToken":token,"progress":done,"total":total,"message":message}});
+                    // A client that stopped listening ends the call when its result is written.
+                    if serde_json::to_writer(&mut output, &note).is_ok() {
+                        let _ = writeln!(output);
+                        let _ = output.flush();
+                    }
+                };
+                protocol.handle_output(value, catalog, |name, args| call(name, args, &mut report))
+            }
             Err(_) => Some(
                 json!({"jsonrpc":"2.0","id":null,"error":{"code":-32700,"message":"invalid JSON"}}),
             ),
@@ -175,5 +207,49 @@ mod image_tests {
         assert_eq!(plain["content"].as_array().unwrap().len(), 1);
         assert_eq!(plain["content"][0]["type"], "text");
         assert_eq!(plain["structuredContent"], injected);
+    }
+    #[test]
+    fn a_call_with_a_progress_token_gets_progress_before_its_result() {
+        let input = b"{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\"}\n{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}\n{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"slow\",\"_meta\":{\"progressToken\":\"t1\"}}}\n{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/call\",\"params\":{\"name\":\"slow\"}}\n";
+        let mut output = Vec::new();
+        serve_reporting(
+            &input[..],
+            &mut output,
+            &json!({"tools":[]}),
+            |_, _, progress| {
+                for done in 1..=5 {
+                    progress(done, 5, "frames");
+                }
+                Ok(json!({"done":true}).into())
+            },
+        )
+        .unwrap();
+        let lines: Vec<Value> = String::from_utf8(output)
+            .unwrap()
+            .lines()
+            .map(|line| serde_json::from_str(line).unwrap())
+            .collect();
+        // The first note and the last (the rest fall inside a quarter second), then the
+        // result; the call without a token gets its result only.
+        let notes: Vec<&Value> = lines
+            .iter()
+            .filter(|l| l["method"] == "notifications/progress")
+            .collect();
+        assert_eq!(notes.len(), 2);
+        assert_eq!(
+            notes[0]["params"],
+            json!({"progressToken":"t1","progress":1,"total":5,"message":"frames"})
+        );
+        assert_eq!(notes[1]["params"]["progress"], 5);
+        let position = |id: u64| lines.iter().position(|l| l["id"] == id).unwrap();
+        assert!(
+            lines
+                .iter()
+                .position(|l| l["method"] == "notifications/progress")
+                .unwrap()
+                < position(2)
+        );
+        assert_eq!(lines.len(), position(3) + 1);
+        assert_eq!(lines[position(3) - 1]["id"], 2);
     }
 }

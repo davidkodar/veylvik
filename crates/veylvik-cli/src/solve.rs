@@ -12,6 +12,7 @@ pub fn run(
     doc: &Composition,
     base: &Path,
     request: &Request,
+    progress: &mut dyn FnMut(usize, usize),
 ) -> Result<(Vec<Command>, Value)> {
     if !doc.nodes.contains_key(&request.source) {
         return Err("the footage node does not exist".into());
@@ -25,7 +26,10 @@ pub fn run(
         &inputs,
         request,
         doc.frame_rate,
-        &mut |_, _| true,
+        &mut |done, total| {
+            progress(done, total);
+            true
+        },
     )?;
     let built = veylvik_track::camera::scene(doc, request, &outcome)?;
     let mut report = built.report;

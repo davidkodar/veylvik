@@ -119,6 +119,7 @@ fn run() -> Result<()> {
                 document.snapshot(),
                 &assets::document_base(input)?,
                 &request,
+                &mut |_, _| {},
             )?;
             document.apply(document.revision(), &commands)?;
             document.snapshot().save(output)?;
@@ -179,6 +180,7 @@ fn run() -> Result<()> {
                 document.snapshot(),
                 &assets::document_base(input)?,
                 &request,
+                &mut |_, _| {},
             )?;
             document.apply(document.revision(), &commands)?;
             document.snapshot().save(output)?;
@@ -247,6 +249,7 @@ fn run() -> Result<()> {
                 &assets::document_base(input)?,
                 &project_dir,
                 &request,
+                &mut |_, _| {},
             )?;
             document.apply(document.revision(), &commands)?;
             document.snapshot().save(output)?;

@@ -91,6 +91,7 @@ pub fn run(
     base: &Path,
     project_dir: &Path,
     request: &Request,
+    progress: &mut dyn FnMut(usize, usize),
 ) -> Result<(NodeId, Vec<Command>, Value)> {
     if !doc.nodes.contains_key(&request.source) {
         return Err("segmentation source node does not exist".into());
@@ -149,6 +150,7 @@ pub fn run(
         &mut worker,
         &dir,
         &mut |done, total| {
+            progress(done, total);
             if last.elapsed().as_secs_f64() > 2.0 {
                 eprintln!("segmenting: {done}/{total} frames");
                 last = std::time::Instant::now();

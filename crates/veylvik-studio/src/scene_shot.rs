@@ -123,6 +123,22 @@ impl Studio {
         }
         true
     }
+    /// Match the shot asked for over live control: views `render`, selects `light`
+    /// when given, and starts the same match the button does.
+    pub(crate) fn live_match_shot(
+        &mut self,
+        render: NodeId,
+        light: Option<NodeId>,
+        ctx: &egui::Context,
+    ) -> Result<(), String> {
+        self.project.preview = Some(render);
+        if let Some(light) = light {
+            self.project.selected = light;
+        }
+        self.refresh_draft();
+        self.request_preview();
+        self.start_shot_match(ctx, None)
+    }
     fn start_shot_match(
         &mut self,
         ctx: &egui::Context,

@@ -120,9 +120,14 @@ impl Session {
         }
         Ok(())
     }
-    fn call_output(&mut self, name: &str, args: &Value) -> Result<veylvik_control::ToolOutput> {
+    fn call_output(
+        &mut self,
+        name: &str,
+        args: &Value,
+        progress: veylvik_control::Progress<'_>,
+    ) -> Result<veylvik_control::ToolOutput> {
         if name != "preview_image" {
-            return self.call(name, args).map(Into::into);
+            return self.call_reporting(name, args, progress).map(Into::into);
         }
         self.validate_call(name, args)?;
         let max_edge = args
@@ -209,7 +214,16 @@ impl Session {
         };
         Ok((output, time, frame))
     }
+    #[cfg(test)]
     fn call(&mut self, name: &str, args: &Value) -> Result<Value> {
+        self.call_reporting(name, args, &mut |_, _, _| {})
+    }
+    fn call_reporting(
+        &mut self,
+        name: &str,
+        args: &Value,
+        progress: veylvik_control::Progress<'_>,
+    ) -> Result<Value> {
         self.validate_call(name, args)?;
         if let Some(reply) = self.project(name, args)? {
             return Ok(reply);
@@ -412,6 +426,7 @@ impl Session {
                     self.document.snapshot(),
                     &self.asset_base,
                     &request,
+                    &mut |done, total| progress(done as u64, total as u64, "tracking frames"),
                 )?;
                 self.document.apply(self.document.revision(), &commands)?;
                 report["node"] = json!(node);
@@ -429,6 +444,7 @@ impl Session {
                     self.document.snapshot(),
                     &self.asset_base,
                     &request,
+                    &mut |done, total| progress(done as u64, total as u64, "following features"),
                 )?;
                 self.document.apply(self.document.revision(), &commands)?;
                 report["revision"] = json!(self.document.revision());
@@ -446,6 +462,7 @@ impl Session {
                     &self.asset_base,
                     &self.asset_base,
                     &request,
+                    &mut |done, total| progress(done as u64, total as u64, "cutting out frames"),
                 )?;
                 self.document.apply(self.document.revision(), &commands)?;
                 report["node"] = json!(node);
@@ -527,7 +544,10 @@ impl Session {
                     &inputs,
                     path(args)?,
                     &settings,
-                    |_| true,
+                    |p| {
+                        progress(u64::from(p.completed), u64::from(p.total), &p.phase);
+                        true
+                    },
                 )?;
                 let mut result = serde_json::to_value(outcome)?;
                 result["revision"] = json!(self.document.revision());
@@ -568,7 +588,10 @@ impl Session {
                         output,
                         region,
                     },
-                    |_, _| true,
+                    |done, total| {
+                        progress(u64::from(done), u64::from(total), "rendering frames");
+                        true
+                    },
                 )?;
                 result["revision"] = json!(self.document.revision());
                 Ok(result)
@@ -610,8 +633,10 @@ pub fn serve(
         asset_base,
         renderer: None,
     };
-    veylvik_control::serve_with_output(input, output, tools(), |name, args| {
-        session.call_output(name, args).map_err(|e| e.to_string())
+    veylvik_control::serve_reporting(input, output, tools(), |name, args, progress| {
+        session
+            .call_output(name, args, progress)
+            .map_err(|e| e.to_string())
     })
 }
 

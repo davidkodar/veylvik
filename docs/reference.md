@@ -1927,8 +1927,16 @@ or disconnects one input of a node and leaves the rest of it alone.
 picture: the ray from the filming camera through that point meets the nearest
 shadow catcher, the object's base is moved there, and an optional height in
 picture pixels scales it to stand that tall at that distance. `match_shot`
-(headless) reads a frame of the footage for where its light comes from and sets
-a 3D sun to match, as Studio's Match the shot does. `render_video` takes
+reads a frame of the footage for where its light comes from and sets a 3D sun
+to match, as Studio's Match the shot does (the live tool runs that same button
+on the open editor).
+
+Long headless calls report progress the MCP way: a `tools/call` whose
+`_meta.progressToken` is set receives `notifications/progress` messages
+(progress, total and a short message) before its result, at most four a second
+and always the last. `solve_camera`, `track_surface`, `segment_subject`,
+`render_video` and `render_sequence` send them; a call without a token gets its
+result only. `render_video` takes
 `settings` naming only what differs from the composition's defaults, including
 `audio` (`mute`, `music`, `music_gain_db`) and `replace`. Every mutation, save, or render
 requires the current revision from `inspect`. A batch is validated atomically
