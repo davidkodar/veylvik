@@ -294,6 +294,42 @@ impl Inspect for ImageCard {
         face_row(ui, &mut self.aim_at, cx);
     }
 }
+impl Inspect for OwnSize {
+    fn inspect(&mut self, ui: &mut egui::Ui, cx: &mut InspectCx<'_>) {
+        ui.weak("What is connected here is made at this size instead of the composition's, so a small picture costs little. It can feed an Image card, a 3D shape's Texture or a scene Environment.");
+        ui.horizontal(|ui| {
+            ui.add_sized([88., 22.], egui::Label::new("Size"));
+            for (value, hint) in [
+                (&mut self.width, "Width in pixels"),
+                (&mut self.height, "Height in pixels"),
+            ] {
+                cx.dirty |= ui
+                    .add(egui::DragValue::new(value).range(1..=OWN_SIZE_MAX).speed(8))
+                    .on_hover_text(hint)
+                    .changed();
+            }
+        });
+        ui.horizontal_wrapped(|ui| {
+            for (label, width, height) in [
+                ("256", 256, 256),
+                ("512", 512, 512),
+                ("1024", 1024, 1024),
+                ("2048", 2048, 2048),
+                ("2048 by 1024", 2048, 1024),
+                ("4096 by 2048", 4096, 2048),
+            ] {
+                if ui
+                    .selectable_label((self.width, self.height) == (width, height), label)
+                    .clicked()
+                {
+                    (self.width, self.height) = (width, height);
+                    cx.dirty = true;
+                }
+            }
+        });
+        ui.weak("Inside this branch, pixel settings are in this picture's pixels. To see it, view the scene it feeds.");
+    }
+}
 impl Inspect for Transform3d {
     fn inspect(&mut self, ui: &mut egui::Ui, cx: &mut InspectCx<'_>) {
         ui.weak("Moves, turns and scales the whole scene, cameras and lights included, about the frame centre.");

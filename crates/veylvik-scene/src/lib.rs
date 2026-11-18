@@ -544,7 +544,14 @@ fn node(doc: &Graph<'_>, id: NodeId, time: Time, depth: usize) -> Result<Scene> 
             geometry: Geometry::Card {
                 image: input("image")
                     .ok_or_else(|| Error("an image card needs an image".into()))?,
-                size: [w as f32, h as f32],
+                // A picture of its own size gives the card its shape.
+                size: match input("image")
+                    .and_then(|source| (doc.node)(source))
+                    .map(|source| &source.operation)
+                {
+                    Some(Operation::OwnSize(own)) => [own.width as f32, own.height as f32],
+                    _ => [w as f32, h as f32],
+                },
             },
             world: placed(&c.placement, time, centre)?,
             surface: Surface {

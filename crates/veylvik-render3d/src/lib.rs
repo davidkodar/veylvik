@@ -479,13 +479,13 @@ impl SceneRenderer for Engine {
         // strength and turn for plain surfaces, looks and the backdrop.
         let surround = scene.environment;
         let panorama = match surround.and_then(|e| e.image) {
-            Some(source) => match images.iter().find(|(id, _)| *id == source) {
-                Some((_, image)) => Some(self.panorama(
+            Some(source) => match images.iter().find(|(id, ..)| *id == source) {
+                Some((_, image, [across, down])) => Some(self.panorama(
                     device,
                     encoder,
                     image,
-                    width,
-                    height,
+                    *across,
+                    *down,
                     surround.is_some_and(|e| e.frame),
                 )?),
                 None => None,
@@ -602,22 +602,25 @@ impl SceneRenderer for Engine {
             let (pipeline, image) = match &object.geometry {
                 Geometry::Card { image, .. } => (
                     &self.card,
-                    images.iter().find(|(id, _)| id == image).map(|(_, b)| *b),
+                    images
+                        .iter()
+                        .find(|(id, ..)| id == image)
+                        .map(|(_, b, s)| (*b, *s)),
                 ),
                 _ if object.surface.catcher => (&self.catcher, None),
-                _ => (&self.lit, texture.as_ref().map(|(b, ..)| b)),
+                _ => (&self.lit, texture.as_ref().map(|(b, w, h)| (b, [*w, *h]))),
             };
-            // A shape's Texture input: that node's picture, the frame's size.
+            // A shape's Texture input: that node's picture, at its own size.
             let wrapped = object
                 .texture
                 .filter(|_| !object.surface.catcher && texture.is_none())
-                .and_then(|source| images.iter().find(|(id, _)| *id == source))
-                .map(|(_, buffer)| *buffer);
+                .and_then(|source| images.iter().find(|(id, ..)| *id == source))
+                .map(|(_, buffer, size)| (*buffer, *size));
             let image = image.or(wrapped);
-            let picture = match &texture {
-                Some((_, w, h)) => [*w as f32, *h as f32],
-                None => [width as f32, height as f32],
-            };
+            let picture = image.map_or([width as f32, height as f32], |(_, [w, h])| {
+                [w as f32, h as f32]
+            });
+            let image = image.map(|(buffer, _)| buffer);
             let uniform = ObjectUniform {
                 model: columns(&object.world),
                 normal: columns(&normal_matrix(&object.world)),

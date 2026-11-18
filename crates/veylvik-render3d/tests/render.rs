@@ -1032,3 +1032,73 @@ fn a_card_is_tinted_brightened_and_faded() {
         .fold(0.0, f32::max);
     assert!(worst < 2e-3, "worst channel difference {worst}");
 }
+#[test]
+#[ignore = "requires Vulkan"]
+fn an_own_size_picture_is_rendered_small_and_gives_a_card_its_shape() {
+    let renderer = renderer();
+    // A shader that paints its own frame: red rising across, green down, and the
+    // picture's width in blue.
+    let code = "fn shade(at: vec2<f32>) -> vec4<f32> {
+    return vec4<f32>(at.x / size.x, at.y / size.y, size.x / 100.0, 1.0);
+}";
+    let mut shader = op(&SHADER);
+    if let Operation::Shader(s) = &mut shader {
+        s.code = code.into();
+    }
+    let shot = |own: Option<(u32, u32)>, wrap: bool| {
+        let mut doc = blank(W, H, Time::new(24, 1).unwrap()).unwrap();
+        let mut picture = add(&mut doc, shader.clone(), &[]);
+        if let Some((width, height)) = own {
+            picture = add(
+                &mut doc,
+                Operation::OwnSize(OwnSize { width, height }),
+                &[("image", picture)],
+            );
+        }
+        let thing = if wrap {
+            let mut plane = op(&SHAPE_3D);
+            if let Operation::Shape3d(s) = &mut plane {
+                s.kind = ShapeKind::Plane;
+                s.size_x = 40.0.into();
+                s.size_y = 40.0.into();
+                s.colour = [1.0; 3].into();
+            }
+            add(&mut doc, plane, &[("texture", picture)])
+        } else {
+            add(&mut doc, op(&IMAGE_CARD), &[("image", picture)])
+        };
+        let out = add(&mut doc, op(&RENDER_SCENE), &[("scene", thing)]);
+        doc.output = out;
+        let plan = Plan::compile(&doc).unwrap();
+        renderer
+            .render_gpu_temporal(
+                &plan,
+                RenderRequest::full(Time::new(0, 1).unwrap()),
+                &ImageInputs::default(),
+                false,
+                || false,
+            )
+            .unwrap()
+            .map(|frame| renderer.read_frame(&frame).unwrap().pixels)
+            .unwrap()
+    };
+    let at = |p: &[[f32; 4]], x: u32, y: u32| p[(y * W + x) as usize];
+    // A 40 by 20 picture on an untouched card: a 40 by 20 card in the middle of the
+    // 160 by 90 frame, showing the whole picture, made at its own size.
+    let small = shot(Some((40, 20)), false);
+    assert_eq!(at(&small, 50, 45)[3], 0.0, "left of the card");
+    assert_eq!(at(&small, 80, 30)[3], 0.0, "above the card");
+    let (left, right) = (at(&small, 62, 45), at(&small, 98, 45));
+    assert!(left[3] > 0.99 && right[3] > 0.99, "{left:?} {right:?}");
+    assert!(left[0] < 0.1 && right[0] > 0.9, "{left:?} {right:?}");
+    assert!((left[2] - 0.4).abs() < 1e-3, "made 40 wide: {left:?}");
+    let (top, bottom) = (at(&small, 80, 37), at(&small, 80, 53));
+    assert!(top[1] < 0.2 && bottom[1] > 0.8, "{top:?} {bottom:?}");
+    // Without the node the same shader fills the frame at the frame's size.
+    let whole = shot(None, false);
+    assert!((at(&whole, 5, 5)[2] - 1.6).abs() < 1e-3);
+    // As a texture it wraps the shape whatever its size.
+    let wrapped = shot(Some((16, 16)), true);
+    let (left, right) = (at(&wrapped, 64, 45), at(&wrapped, 96, 45));
+    assert!(left[0] < right[0] - 0.3, "{left:?} {right:?}");
+}

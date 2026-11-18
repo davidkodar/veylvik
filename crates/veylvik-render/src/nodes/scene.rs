@@ -5,6 +5,8 @@ use veylvik_document::nodes::*;
 impl RenderNode for Shape3d {}
 impl RenderNode for Text3d {}
 impl RenderNode for ImageCard {}
+/// Never a pass: its input is planned as a branch of its own size.
+impl RenderNode for OwnSize {}
 impl RenderNode for Transform3d {}
 impl RenderNode for MergeScenes {}
 impl RenderNode for Camera3d {}

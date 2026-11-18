@@ -1102,7 +1102,7 @@ existing pool, avoiding repeated uploads during animation. Aliased asset names
 sharing one image also share one upload and budget allocation. Ordinary buffer
 reuse clears source identity; trimming or memory pressure may evict it. Resource
 statistics report source uploads, bytes uploaded, and source-content reuse.
-The default 2048 MiB render budget covers declared GPU image buffers, readback,
+The render budget covers declared GPU image buffers, readback,
 uniforms, and each unique source image upload; it does not measure driver overhead
 or bound total process RAM. `check` reports graph working bytes before source
 uploads and also checks the reachable image inputs against the combined budget.
@@ -1377,6 +1377,16 @@ and `colour`.
   upright, wherever both move; the placement's rotation is then not used. A card
   that faces the camera never shows its edge. A 3D text turns as a whole. If the
   named thing is not in the scene, the rotation stays in charge.
+- **Own size** (`own_size`, input image): renders everything connected to it at
+  its own **width** and **height** (1–8192 pixels each) instead of the
+  composition's, so a small picture costs a small picture's memory and time: a
+  1024 × 1024 picture is a sixteenth of a 4K frame. Inside the branch the frame
+  is the node's size, so pixel settings there are in its pixels. The picture may
+  feed an Image card (which takes the picture's shape), a 3D shape's Texture or a
+  scene Environment's Image; every other input needs a frame-sized image and
+  refuses it. It cannot be the output or be viewed on its own, and the branch
+  cannot yet hold footage or images. A branch in which nothing moves is rendered
+  once and reused from the frame cache.
 - **3D transform**: moves, turns and scales a whole scene (cameras and lights too)
   about the frame centre. Bypassed, it passes its scene through.
 - **Merge scenes**: combines up to eight scenes.
@@ -2895,8 +2905,14 @@ inspector drafts; dry runs inspect the applied document.
 ## GPU working-memory budget
 
 CLI renders, headless MCP rendering, and Studio share the optional
-`VEYLVIK_GPU_BUDGET_MIB` environment setting. The default is 2048 MiB; accepted
-values are decimal integers from 64 to 16384. For example:
+`VEYLVIK_GPU_BUDGET_MIB` environment setting; accepted values are decimal
+integers from 64 to 16384. With no setting the budget follows the graphics card:
+half its memory, between 256 and 8192 MiB, leaving the rest for the desktop,
+video decoding, AI models and other applications. The card's memory is read from
+the kernel (`mem_info_vram_total`) or from `nvidia-smi`; when neither answers the
+budget is 2048 MiB. Studio's Preferences have the same choice: automatic, or a
+fixed figure. A render that needs more than the budget fails with a message that
+names both figures. For example:
 
 ```sh
 VEYLVIK_GPU_BUDGET_MIB=1024 ./target/release/veylvik open project.veylvik

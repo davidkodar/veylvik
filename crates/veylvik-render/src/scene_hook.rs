@@ -9,6 +9,8 @@ pub trait SceneRenderer: Send + Sync {
 }
 /// One Render scene pass. `target` and every image are premultiplied scene-linear
 /// Rec.709 `vec4<f32>` rows of `width * height`; commands go on `encoder`.
+/// A picture a scene reads: the node it comes from, its pixels and its size.
+pub type Picture<'a> = (NodeId, &'a wgpu::Buffer, [u32; 2]);
 pub struct SceneJob<'a> {
     pub device: &'a wgpu::Device,
     pub queue: &'a wgpu::Queue,
@@ -29,7 +31,7 @@ pub struct SceneJob<'a> {
     /// Imported models by file path (`Geometry::Model { path }`).
     pub models: &'a std::collections::BTreeMap<String, std::sync::Arc<veylvik_scene::Model>>,
     /// Image card pictures by their source node (`Geometry::Card { image }`).
-    pub images: &'a [(NodeId, &'a wgpu::Buffer)],
+    pub images: &'a [Picture<'a>],
     /// The prefiltered studio environment, laid out as `environment_layer` reads it.
     pub environment: &'a wgpu::Buffer,
     /// The area-light LTC table material shading reads (binding 5 of `MATERIAL_WGSL`).
@@ -50,8 +52,12 @@ pub(crate) fn evaluate(
         .inputs
         .get("scene")
         .ok_or_else(|| error("Render scene needs a scene"))?;
-    let by_id: std::collections::BTreeMap<NodeId, &veylvik_document::Node> =
-        plan.nodes.iter().map(|n| (n.id, n)).collect();
+    let by_id: std::collections::BTreeMap<NodeId, &veylvik_document::Node> = plan
+        .nodes
+        .iter()
+        .chain(&plan.light_data)
+        .map(|n| (n.id, n))
+        .collect();
     let lookup = |id: NodeId| by_id.get(&id).copied();
     let scene = veylvik_scene::evaluate_in(
         &veylvik_scene::Graph {

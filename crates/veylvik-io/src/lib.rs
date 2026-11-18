@@ -164,9 +164,9 @@ pub fn inspect_inputs(plan: &Plan, base: &Path) -> Result<u64> {
 pub fn load_inputs(plan: &Plan, base: &Path, budget: u64) -> Result<ImageInputs> {
     let mut remaining = budget.checked_sub(plan.working_bytes()).ok_or_else(|| {
         format!(
-            "render requires {} working bytes before sources, budget is {}",
-            plan.working_bytes(),
-            budget
+            "this render needs {} MiB of GPU buffers before its sources and the budget is {} MiB: lower the resolution, or raise the GPU budget in Preferences or with VEYLVIK_GPU_BUDGET_MIB",
+            plan.working_bytes().div_ceil(1024 * 1024),
+            budget.div_ceil(1024 * 1024)
         )
     })?;
     let mut inputs = ImageInputs::default();

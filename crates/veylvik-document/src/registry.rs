@@ -263,6 +263,9 @@ pub enum PortKind {
     Scene,
     /// Sound on the timeline: no picture, and no input takes it.
     Sound,
+    /// An image of a size of its own (an Own size node), taken only by inputs that
+    /// wrap or place a picture of any size.
+    Picture,
 }
 #[derive(Debug, Serialize)]
 pub struct NodeType {
@@ -289,6 +292,13 @@ impl NodeType {
         } else {
             PortKind::Image
         }
+    }
+    /// Whether `port` also takes a picture that is not frame-sized.
+    pub fn takes_picture(&self, port: &str) -> bool {
+        matches!(
+            (self.type_id, port),
+            ("image_card", "image") | ("shape_3d", "texture") | ("environment_3d", "image")
+        )
     }
     pub fn is_optional(&self, port: &str) -> bool {
         self.optional.contains(&port)
@@ -372,6 +382,7 @@ pub static TYPES: &[&NodeType] = &[
     &crate::nodes::LIGHT_WRAP,
     &crate::nodes::ZOOM_BLUR,
     &crate::nodes::SHADER,
+    &crate::nodes::OWN_SIZE,
     &crate::nodes::GRID_WARP,
     &crate::nodes::SHAPE_WARP,
     &crate::nodes::PARTICLES,

@@ -339,7 +339,8 @@ pub struct Plan {
     pub(crate) width: u32,
     pub(crate) height: u32,
     pub(crate) nodes: Vec<Node>,
-    /// Inputs of light rigs (planar tracks) read as data; never rendered.
+    /// Nodes read as data, never rendered: inputs of light rigs (planar tracks), and
+    /// Own size nodes (a scene reads their size).
     pub(crate) light_data: Vec<Node>,
     /// Nodes that expressions in this plan read; a change to them changes the plan.
     link_data: Vec<Node>,
@@ -392,6 +393,11 @@ impl Plan {
             veylvik_document::registry::PortKind::Sound => {
                 return Err(error(
                     "A Sound has no image; it plays on the timeline and in exports",
+                ));
+            }
+            veylvik_document::registry::PortKind::Picture => {
+                return Err(error(
+                    "An Own size picture is not frame-sized; view the scene it feeds, or the node on its input",
                 ));
             }
         }
@@ -447,6 +453,30 @@ impl Plan {
         let mut temporal = Vec::new();
         while let Some((id, expanded)) = todo.pop() {
             let node = &composition.nodes[&id];
+            // What feeds an Own size node is a plan of that size, rendered apart; the
+            // node itself is never a pass here.
+            if let Operation::OwnSize(own) = &node.operation {
+                if visited.insert(id) {
+                    let mut sized = composition.clone();
+                    (sized.width, sized.height) = (own.width, own.height);
+                    let plan =
+                        Self::compile_branch(&sized, node.inputs["image"], depth + 1, remaining)?;
+                    if !plan.required_assets().is_empty() {
+                        return Err(error(format!(
+                            "{}: an Own size branch cannot hold footage or images yet; their pictures are placed for the composition's size",
+                            node.label
+                        )));
+                    }
+                    temporal.push(TemporalBranch {
+                        operation: node.operation.clone(),
+                        plan: Box::new(plan),
+                        key: own_size_key(id),
+                    });
+                    // The scene reads the node itself for the picture's size.
+                    light_data.push(node.clone());
+                }
+                continue;
+            }
             if expanded {
                 *remaining = remaining
                     .checked_sub(1)
@@ -736,6 +766,16 @@ impl Plan {
                                 Operation::Shape3d(_) => n.inputs.get("texture"),
                                 _ => None,
                             };
+                            // A picture of its own size is read as it is.
+                            if let Some(&source) = pictured
+                                && !cards.iter().any(|(s, _)| *s == source)
+                                && matches!(
+                                    composition.nodes.get(&source).map(|s| &s.operation),
+                                    Some(Operation::OwnSize(_))
+                                )
+                            {
+                                cards.push((source, Input::Asset(own_size_key(source))));
+                            }
                             if let Some(&source) = pictured
                                 && !cards.iter().any(|(s, _)| *s == source)
                                 && let Some(&value) = outputs.get(&source)
@@ -961,7 +1001,7 @@ impl Plan {
     pub fn required_inputs(&self) -> BTreeSet<&str> {
         self.passes
             .iter()
-            .flat_map(|p| &p.inputs)
+            .flat_map(|p| p.inputs.iter().chain(p.cards.iter().map(|(_, i)| i)))
             .filter_map(|i| match i {
                 Input::Asset(key) => Some(key.as_str()),
                 _ => None,
@@ -1093,6 +1133,10 @@ pub(crate) fn history_key(id: veylvik_document::NodeId) -> String {
 /// The input key of a node's own data image (`RenderNode::data`).
 pub(crate) fn data_key(id: veylvik_document::NodeId) -> String {
     format!("\0data:{id}")
+}
+/// The input key of an Own size node's picture.
+pub(crate) fn own_size_key(id: veylvik_document::NodeId) -> String {
+    format!("\0own:{id}")
 }
 pub(crate) fn footage_key(id: veylvik_document::NodeId) -> String {
     format!("\0footage:{id}")

@@ -99,6 +99,8 @@ pub struct Values {
     pub auto_arrange: bool,
     pub hover_previews: bool,
     pub fast_view: bool,
+    /// The budget follows the card's memory; `gpu_budget_mib` is then not used.
+    pub gpu_budget_auto: bool,
     pub gpu_budget_mib: u64,
     pub playback_gpu_mib: u64,
     pub playback_disk_mib: u64,
@@ -169,6 +171,7 @@ impl Default for Values {
             auto_arrange: true,
             hover_previews: true,
             fast_view: false,
+            gpu_budget_auto: true,
             gpu_budget_mib: 2048,
             playback_gpu_mib: 512,
             playback_disk_mib: 0,
@@ -381,6 +384,7 @@ impl Preferences {
             3 => {
                 self.draft.hover_previews = d.hover_previews;
                 self.draft.fast_view = d.fast_view;
+                self.draft.gpu_budget_auto = d.gpu_budget_auto;
                 self.draft.gpu_budget_mib = d.gpu_budget_mib;
                 self.draft.playback_gpu_mib = d.playback_gpu_mib;
                 self.draft.playback_disk_mib = d.playback_disk_mib;
@@ -903,7 +907,18 @@ impl Preferences {
                 );
                 ui.weak("Fast filtering reduces viewer antialiasing cost. It never reduces export quality. Changing this preference also updates the current viewer.");
                 ui.separator();
-                ui.add(
+                let card = veylvik_io::runtime::card_memory_mib();
+                let automatic = veylvik_io::runtime::automatic_mib(card);
+                ui.checkbox(
+                    &mut self.draft.gpu_budget_auto,
+                    match card {
+                        Some(card) => format!("Set the GPU buffer budget from the graphics card: {automatic} MiB of its {card} MiB"),
+                        None => format!("Set the GPU buffer budget automatically: {automatic} MiB (the card's memory is not known)"),
+                    },
+                )
+                .on_hover_text("Half the card's memory, at most 8192 MiB, leaving the rest for the desktop, video decoding, AI models and other applications");
+                ui.add_enabled(
+                    !self.draft.gpu_budget_auto,
                     egui::Slider::new(&mut self.draft.gpu_budget_mib, 64..=16384)
                         .text("GPU buffer budget (MiB)"),
                 );

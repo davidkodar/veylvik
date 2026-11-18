@@ -171,6 +171,19 @@ impl Renderer {
                     work.cache_sources = previous;
                     atlas?
                 }
+                Operation::OwnSize(_) => {
+                    // The branch at its own size, from the cache when nothing in it moved.
+                    let previous = work.cache_sources;
+                    work.cache_sources = true;
+                    let frame = self.temporal_frame(
+                        &branch.plan,
+                        RenderRequest::full(request.time),
+                        inputs,
+                        work,
+                    );
+                    work.cache_sources = previous;
+                    frame?
+                }
                 _ => unreachable!("compiled temporal boundary"),
             };
             let Some(frame) = frame else {

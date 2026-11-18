@@ -147,7 +147,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let no_control =
         no_control || (!preferences.values.live_control && control_directory.is_none());
     let render_limits = veylvik_io::runtime::RenderLimits::from_env_with_default(
-        preferences.values.gpu_budget_mib,
+        (!preferences.values.gpu_budget_auto).then_some(preferences.values.gpu_budget_mib),
     )?;
     let project = Project::open(path.as_deref())?;
     let (instance, adapter, device, queue) = pollster::block_on(veylvik_render::create_gpu())?;

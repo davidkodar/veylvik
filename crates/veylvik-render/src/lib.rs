@@ -548,9 +548,11 @@ impl Renderer {
             + pool.stats().held_bytes
             - plan.vector_bytes();
         if working_bytes > self.budget_bytes {
+            let mib = |bytes: u64| bytes.div_ceil(1024 * 1024);
             return Err(error(format!(
-                "render requires {} bytes, budget is {}",
-                working_bytes, self.budget_bytes
+                "this render needs {} MiB of GPU buffers and the budget is {} MiB: lower the resolution, or raise the GPU budget in Preferences or with VEYLVIK_GPU_BUDGET_MIB",
+                mib(working_bytes),
+                mib(self.budget_bytes)
             )));
         }
         // Validate evaluated values before allocating or submitting any GPU work.
@@ -872,11 +874,22 @@ impl Renderer {
                     .ok_or_else(|| {
                         error("Render scene needs the 3D renderer, which this host has not loaded")
                     })?;
-                let images: Vec<(veylvik_document::NodeId, &wgpu::Buffer)> = scheduled
+                let images: Vec<scene_hook::Picture<'_>> = scheduled
                     .cards
                     .iter()
                     .filter_map(|(source, input)| match input {
-                        plan::Input::Value(slot) => Some((*source, &buffers[*slot])),
+                        plan::Input::Value(slot) => {
+                            Some((*source, &buffers[*slot], [plan.width, plan.height]))
+                        }
+                        // A picture of its own size (an Own size node).
+                        plan::Input::Asset(key) => {
+                            let picture = inputs.source(key)?;
+                            Some((
+                                *source,
+                                &sources[key.as_str()],
+                                [picture.region().width, picture.region().height],
+                            ))
+                        }
                         _ => None,
                     })
                     .collect();

@@ -493,3 +493,44 @@ fn one_input_connects_and_disconnects_without_touching_the_rest() {
         Some("Connect Merge")
     );
 }
+#[test]
+fn an_own_size_picture_feeds_only_what_takes_any_size() {
+    use veylvik_document::*;
+    let mut doc = Document::new(blank(640, 360, Time { ticks: 24, rate: 1 }).unwrap()).unwrap();
+    let default = |kind: &registry::NodeType| -> Operation {
+        serde_json::from_value(kind.default_operation()).unwrap()
+    };
+    let noise = Node::new("Noise", default(&registry::FRACTAL_NOISE), &[]);
+    let own = Node::new("Small", default(&nodes::OWN_SIZE), &[("image", noise.id)]);
+    let (noise_id, id) = (noise.id, own.id);
+    let put = |node: Node| Command::Put {
+        node: Box::new(node),
+    };
+    doc.apply(0, &[put(noise), put(own)]).unwrap();
+    assert_eq!(nodes::OWN_SIZE.output, registry::PortKind::Picture);
+    let Operation::OwnSize(size) = &doc.snapshot().nodes[&id].operation else {
+        panic!()
+    };
+    assert_eq!((size.width, size.height), (1024, 1024));
+    // It is not the composition's output, and a 2D node refuses it.
+    assert!(doc.apply(1, &[Command::Output { id }]).is_err());
+    let wrong = Node::new("Blur", default(&registry::BLUR), &[("image", id)]);
+    let error = doc.apply(1, &[put(wrong)]).unwrap_err();
+    assert!(error.to_string().contains("frame-sized"), "{error}");
+    // A card, a shape's texture and a scene environment take it.
+    let card = Node::new("Card", default(&registry::IMAGE_CARD), &[("image", id)]);
+    let shape = Node::new("Ball", default(&registry::SHAPE_3D), &[("texture", id)]);
+    let around = Node::new(
+        "Around",
+        default(&registry::ENVIRONMENT_3D),
+        &[("image", id)],
+    );
+    doc.apply(1, &[put(card), put(shape), put(around)]).unwrap();
+    // Sizes are bounded.
+    for (width, height) in [(0, 64), (64, 0), (8193, 64)] {
+        let mut bad = doc.snapshot().nodes[&id].clone();
+        bad.operation = Operation::OwnSize(nodes::OwnSize { width, height });
+        assert!(doc.apply(2, &[put(bad)]).is_err(), "{width} x {height}");
+    }
+    let _ = noise_id;
+}

@@ -111,6 +111,7 @@ macro_rules! each_node {
             $crate::Operation::LightWrap($node) => $body,
             $crate::Operation::ZoomBlur($node) => $body,
             $crate::Operation::Shader($node) => $body,
+            $crate::Operation::OwnSize($node) => $body,
             $crate::Operation::GridWarp($node) => $body,
             $crate::Operation::ShapeWarp($node) => $body,
             $crate::Operation::Particles($node) => $body,
@@ -195,6 +196,7 @@ pub enum Operation {
     LightWrap(nodes::LightWrap),
     ZoomBlur(nodes::ZoomBlur),
     Shader(nodes::Shader),
+    OwnSize(nodes::OwnSize),
     GridWarp(nodes::GridWarp),
     ShapeWarp(nodes::ShapeWarp),
     Particles(nodes::Particles),
@@ -454,11 +456,21 @@ impl Composition {
             }
             for (port, source) in &node.inputs {
                 let kind = descriptor.port_kind(port);
-                if self
+                let gives = self
                     .nodes
                     .get(source)
-                    .is_some_and(|s| s.operation.descriptor().output != kind)
-                {
+                    .map(|s| s.operation.descriptor().output);
+                // A picture of its own size goes only where any size is wrapped or placed.
+                if gives == Some(registry::PortKind::Picture) {
+                    if descriptor.takes_picture(port) {
+                        continue;
+                    }
+                    return fail(format!(
+                        "{}: the {port} input needs a frame-sized image; an Own size picture can feed an Image card, a 3D shape's Texture or a scene Environment",
+                        node.label
+                    ));
+                }
+                if gives.is_some_and(|gives| gives != kind) {
                     return fail(match kind {
                         registry::PortKind::Lights => {
                             format!("{}: the {port} input takes a Light rig", node.label)
@@ -467,7 +479,9 @@ impl Composition {
                             "{}: the {port} input takes a 3D scene (an object, camera, light, 3D transform or Merge scenes)",
                             node.label
                         ),
-                        registry::PortKind::Image | registry::PortKind::Sound => format!(
+                        registry::PortKind::Image
+                        | registry::PortKind::Sound
+                        | registry::PortKind::Picture => format!(
                             "{}: the {port} input takes an image, not a light rig, 3D scene or sound",
                             node.label
                         ),
