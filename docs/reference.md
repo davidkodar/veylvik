@@ -574,7 +574,7 @@ library's metal looks take the strips, Brush angle 65, Ridges 0.6 and Imperfecti
 (Polished, Satin, Matte, Brushed) stays. Projects saved earlier keep the studio
 and finish they were saved with. Library samples of strip-lit metals are still
 rendered in the plain studio, because on the round sample the strips show as a
-small striped patch.
+small striped patch. Both are sized by the material's **Scale**, like its other textures (drawn for the default of 180 pixels), so a material applied in a larger frame, where Scale is larger, keeps the same look.
 
 **Reflect the shot** (material inspector) connects the footage behind the layer to
 the material's optional **Environment** input, so the surface sits in the shot

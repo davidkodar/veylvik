@@ -830,7 +830,9 @@ fn studio_surface(uv:vec2<f32>, normal:vec3<f32>,albedo:vec3<f32>)->vec3<f32> {
     let ridged=studio.finish.x;let worn=studio.finish.y;
     var plate_polish=0.0;var plate_gain=1.0;
     if ridged>0.0 || worn>0.0 {
-        let pixel=uv*p.values.x;
+        // Sized like the material's other textures: by its Scale, with the patterns
+        // drawn for the default of 180 pixels (where uv x 180 is the pixel itself).
+        let pixel=uv*180.0;
         let q=vec2<f32>(pixel.x*grain_turn.x+pixel.y*grain_turn.y,pixel.y*grain_turn.x-pixel.x*grain_turn.y);
         let over=normalize(grain_across-n*dot(n,grain_across)+vec3<f32>(0.0,0.0,0.00001));
         let run=normalize(cross(over,n));
