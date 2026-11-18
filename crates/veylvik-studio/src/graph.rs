@@ -1576,6 +1576,10 @@ impl Graph {
         self.overview(ui, canvas, &nodes, doc);
         actions
     }
+    /// The nodes the selected tiles stand for (a collapsed group is its members).
+    pub fn selected_nodes(&self, doc: &Composition) -> std::collections::BTreeSet<NodeId> {
+        annotations::node_ids(doc, &self.selection)
+    }
     pub fn selected_positions(&self, doc: &Composition) -> BTreeMap<NodeId, NodePosition> {
         self.moving_members(doc)
             .into_iter()

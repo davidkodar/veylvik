@@ -209,6 +209,9 @@ pub fn scalar_with_default(
     time: Time,
     default: Option<f32>,
 ) -> bool {
+    if !crate::inspector_tools::shown(ui.ctx(), label) {
+        return false;
+    }
     let mut changed = false;
     ui.push_id(label, |ui| {
         ui.horizontal(|ui| {

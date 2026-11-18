@@ -28,6 +28,7 @@ mod graph_layout;
 mod handles;
 mod history_log;
 mod icons;
+mod inspector_tools;
 mod key_timeline;
 mod layer_bars;
 mod light_guides;
@@ -285,6 +286,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 thumbnails: Default::default(),
                 commands: Default::default(),
                 log: Default::default(),
+                tools: Default::default(),
                 overlay_hidden: None,
                 tryout: None,
                 keys_accepted: None,
@@ -408,6 +410,7 @@ struct Studio {
     thumbnails: node_thumbnails::Thumbnails,
     commands: command_ui::Commands,
     log: history_log::Log,
+    tools: inspector_tools::Tools,
     /// The node whose frame and handles in the viewer were put away by a click beside it.
     overlay_hidden: Option<veylvik_document::NodeId>,
     /// The frame of a pending try-out on an animated setting (automatic keyframes off).
@@ -828,6 +831,7 @@ impl Studio {
                 .map(|n| Command::Put {
                     node: Box::new(n.clone()),
                 })
+                .chain(self.spread_commands())
                 .collect()
         })
     }
@@ -1719,6 +1723,7 @@ impl Studio {
         if self.effect_inspector(ui) {
             return;
         }
+        self.inspector_tools(ui);
         if !matches!(self.draft.operation, Operation::Text(_)) {
             ui.label(
                 if matches!(
@@ -2168,6 +2173,26 @@ impl Studio {
         }
         });
         ui.menu_button("Node actions...", |ui| {
+            if ui.button("Copy settings").clicked() {
+                self.copy_settings();
+                ui.close();
+            }
+            let from = self.copied_from().map(str::to_owned);
+            if ui
+                .add_enabled(
+                    from.is_some(),
+                    egui::Button::new(match &from {
+                        Some(from) => format!("Paste settings from {from}"),
+                        None => "Paste settings".to_owned(),
+                    }),
+                )
+                .on_hover_text("Onto every selected node: all settings for the same kind of node, the shared ones for another kind")
+                .clicked()
+            {
+                self.paste_settings();
+                ui.close();
+            }
+            ui.separator();
             if ui.button("Set as output").clicked() {
                 self.set_selected_output();
                 ui.close();

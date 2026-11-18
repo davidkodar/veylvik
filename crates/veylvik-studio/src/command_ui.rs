@@ -158,6 +158,8 @@ impl Studio {
             Cmd::CreateGroup => self.begin_group(false),
             Cmd::FindNode => self.open_node_finder(),
             Cmd::AutoKey => self.toggle_auto_key(),
+            Cmd::CopySettings => self.copy_settings(),
+            Cmd::PasteSettings => self.paste_settings(),
             Cmd::AddNode => self.open_node_palette(ctx),
             Cmd::EffectLibrary => self.open_preset_library(ctx),
             Cmd::Play => self.toggle_play(),

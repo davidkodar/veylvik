@@ -2149,6 +2149,34 @@ normal saving. A recovery storage error is shown; normal project saving remains
 available. If storage is unavailable at startup, restart after fixing it to
 re-enable background recovery.
 
+### Inspector tools
+
+**Copy and paste settings.** Node actions > **Copy settings** (Alt+C) takes
+the selected node's settings; **Paste settings** (Alt+V) puts them onto every
+selected node in one undo step. Onto a node of the same kind every setting is
+pasted. Onto another kind only the settings of the same name are, each tried
+on its own and kept only if the node is still valid. Which file a node reads
+(`asset`, `layer`) is never pasted, nor are a node's name, connections, tag or
+note. The status line says how many settings went onto how many nodes, or why
+nothing was pasted.
+
+**Changing several nodes at once.** With several nodes selected in the graph,
+a change made in the inspector is also applied to the other selected nodes of
+the same kind as the one shown. Only the settings that the change touched are
+carried over, with their new values (including keyframes), so the nodes keep
+their other differences. The viewer previews all of them and the change is one
+undo step. A line in the inspector says how many other nodes are reached and
+has a checkbox to switch it off. Nodes of another kind in the selection are
+left alone.
+
+**Filter sliders.** The field at the top of the inspector hides the number
+sliders whose names do not contain every word typed. Controls drawn by a node
+type itself (colours, choices, buttons, text) are not filtered and stay.
+
+Copy and paste shortcuts cannot use Ctrl+C or Ctrl+V in any combination:
+those are taken for copying and pasting nodes and text before a command sees
+them, and cannot be recorded in the shortcut editor either.
+
 ### Undo history and messages
 
 Every undo step is named when it is made, from its commands and the
