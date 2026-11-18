@@ -359,6 +359,28 @@ pub static LENS_DISTORTION: NodeType = NodeType {
 };
 node!(LensDistortion, LENS_DISTORTION, [k1, k2]);
 
+/// The background's light wrapping round a foreground's edges, as it does in a lens.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LightWrap {
+    pub radius: Scalar,
+    pub amount: Scalar,
+}
+pub static LIGHT_WRAP: NodeType = NodeType {
+    type_id: "light_wrap",
+    version: 1,
+    label: "Light wrap",
+    description: "Lets the background's light spill onto the edges of a foreground, so 3D or a keyed subject sits in the shot instead of looking pasted on. The background is blurred by radius pixels and added to the foreground just inside its edges, where the foreground's own blurred alpha falls away, times amount; a bright sky or sun behind an object softens and brightens its rim, a dark background does nothing. Alpha is unchanged and nothing is added outside the foreground: merge the result over the same background afterwards.",
+    inputs: &["image", "background"],
+    optional: &[],
+    output: PortKind::Image,
+    parameters: &[
+        scalar("radius", "pixels", 1.0, 256.0, 24.0),
+        scalar("amount", "factor", 0.0, 4.0, 0.6),
+    ],
+};
+node!(LightWrap, LIGHT_WRAP, [radius, amount]);
+
 /// Glow from the brightest light in an image, as a lens and the air around it make.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

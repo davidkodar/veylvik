@@ -47,3 +47,15 @@ fn bloom_combine(@builtin(global_invocation_id) gid:vec3<u32>) {
     let glow=(0.55*second[i].rgb+0.45*third[i].rgb+p.extra.w*fourth[i].rgb)*p.extra.rgb*p.values.y;
     result[i]=vec4<f32>(c.rgb+glow,c.a);
 }
+// Light wrap: source = the foreground, second = the background blurred by the radius,
+// third = the foreground blurred by the radius. values = (radius, amount). The
+// background's light is added just inside the foreground's edges, where its blurred
+// alpha has fallen below its own; alpha and everything outside it stay.
+@compute @workgroup_size(8,8)
+fn light_wrap_combine(@builtin(global_invocation_id) gid:vec3<u32>) {
+    if !inside(gid) {return;}
+    let i=index(gid);let c=source[i];
+    let edge=clamp(c.a-third[i].a,0.0,1.0)*2.0;
+    let light=max(second[i].rgb,vec3<f32>(0.0));
+    result[i]=vec4<f32>(c.rgb+light*min(edge,c.a)*p.values.y,c.a);
+}

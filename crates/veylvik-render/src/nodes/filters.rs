@@ -459,6 +459,67 @@ impl RenderNode for veylvik_document::nodes::Bloom {
         Ok(())
     }
 }
+impl RenderNode for veylvik_document::nodes::LightWrap {
+    fn passes(&self) -> Passes {
+        use super::{From, Step};
+        const fn step(kernel: Kernel, a: From, b: From, c: From) -> Step {
+            Step {
+                kernel,
+                inputs: [a, b, c, From::None],
+            }
+        }
+        // Bloom's wide blur is a plain gaussian of values.x pixels: here it blurs the
+        // background (port 1), then the foreground (port 0), for the combine.
+        static STEPS: [Step; 5] = [
+            step(
+                Kernel::BloomWideHorizontal,
+                From::Port(1),
+                From::None,
+                From::None,
+            ),
+            step(
+                Kernel::BloomWideVertical,
+                From::Step(0),
+                From::None,
+                From::None,
+            ),
+            step(
+                Kernel::BloomWideHorizontal,
+                From::Port(0),
+                From::None,
+                From::None,
+            ),
+            step(
+                Kernel::BloomWideVertical,
+                From::Step(2),
+                From::None,
+                From::None,
+            ),
+            step(
+                Kernel::LightWrapCombine,
+                From::Port(0),
+                From::Step(1),
+                From::Step(3),
+            ),
+        ];
+        Passes::chain(&STEPS)
+    }
+    fn shareable(&self) -> bool {
+        true
+    }
+    fn identity(&self) -> bool {
+        matches!(self.amount, Scalar::Constant { value } if value == 0.0)
+    }
+    fn params(
+        &self,
+        _cx: &Cx<'_>,
+        sample: &dyn Fn(&str) -> Result<f32>,
+        p: &mut Params,
+    ) -> Result<()> {
+        p.values = [sample("radius")?, sample("amount")?, 0.0, 0.0];
+        Ok(())
+    }
+}
 impl RenderNode for veylvik_document::nodes::Shader {
     fn passes(&self) -> Passes {
         Passes::One(Kernel::Custom)

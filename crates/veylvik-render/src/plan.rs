@@ -56,6 +56,7 @@ pub enum Kernel {
     BloomTightVertical,
     BloomStreakVertical,
     BloomCombine,
+    LightWrapCombine,
     GridWarp,
     ParticlePrepare,
     ParticleFields,
@@ -99,7 +100,7 @@ pub enum Kernel {
     Lut,
 }
 impl Kernel {
-    pub(crate) const ALL: [Self; 87] = [
+    pub(crate) const ALL: [Self; 88] = [
         Self::ToAcescg,
         Self::FromAcescg,
         Self::Text,
@@ -146,6 +147,7 @@ impl Kernel {
         Self::BloomTightVertical,
         Self::BloomStreakVertical,
         Self::BloomCombine,
+        Self::LightWrapCombine,
         Self::GridWarp,
         Self::ParticlePrepare,
         Self::ParticleFields,
@@ -238,6 +240,7 @@ impl Kernel {
             Self::BloomTightVertical => "bloom_tight_vertical",
             Self::BloomStreakVertical => "bloom_streak_vertical",
             Self::BloomCombine => "bloom_combine",
+            Self::LightWrapCombine => "light_wrap_combine",
             Self::GridWarp => "grid_warp",
             Self::ParticlePrepare => "particle_prepare",
             Self::ParticleFields => "particle_fields",

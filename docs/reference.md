@@ -1721,6 +1721,15 @@ settles on the wrong kind of motion can still look sure. The
   soft band and not a hard line along bright horizontal edges. Alpha is unchanged; put Bloom after the merge so a
   title lights its background. It works on HDR values, so it pairs with the
   Filmic display transform, which rolls highlights off to white.
+- **Light wrap** (`light_wrap`, inputs image and background): lets the
+  background's light spill onto a foreground's edges, so 3D or a cut-out
+  subject sits in a shot instead of looking pasted on. The background is
+  blurred by **Radius** pixels and added to the foreground just inside its
+  edges, where the foreground's own blurred alpha falls below its alpha, times
+  **Amount**. A bright sky behind an object softens and lifts its rim; a dark
+  background does nothing. Alpha is unchanged and nothing is added outside the
+  foreground, so merge the result over the same background afterwards. After a
+  camera solve, put it between Footage grain and 3D over footage.
 - **Lens distortion** (`lens_distortion`, input image): radial Brown-Conrady
   distortion about the frame centre, with radii normalised by half the frame
   diagonal: a point at ideal radius r is seen at r (1 + **k1** r² + **k2** r⁴),
