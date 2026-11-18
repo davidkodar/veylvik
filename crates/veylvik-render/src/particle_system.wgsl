@@ -67,7 +67,10 @@ fn potential(q: vec3<f32>) -> f32 {
     return value_noise(q) + 0.5 * value_noise(q * 2.03 + vec3<f32>(17.0, 31.0, 5.0));
 }
 
-// ---- prepare: source = target, second = sprite ----
+// ---- prepare: source = target, second = sprite, third = the scene's depth ----
+// y holds what hides particles at each pixel: the distance of the 3D object there
+// (0: nothing). The sprite's small copy needs all four values of its texels, so
+// those pixels (about two rows at the top of the frame) carry no depth.
 @compute @workgroup_size(8, 8)
 fn particle_prepare(@builtin(global_invocation_id) gid: vec3<u32>) {
     if gid.x >= p.size_op.x || gid.y >= p.size_op.y { return; }
@@ -98,6 +101,11 @@ fn particle_prepare(@builtin(global_invocation_id) gid: vec3<u32>) {
             for (var x = x0; x < min(x1, p.size_op.x); x++) { sum += second[y * p.size_op.x + x]; }
         }
         out = sum / f32((x1 - x0) * (y1 - y0));
+    }
+    let holds_sprite = i >= count && i < count + MIP * MIP && (u32(p.extra.z) & 4u) != 0u;
+    if (u32(p.extra.z) & 8u) != 0u && !holds_sprite {
+        let there = third[i];
+        if there.a > 0.5 { out.y = max(there.r, 0.0); }
     }
     store(i, out);
 }
@@ -253,6 +261,30 @@ fn filmed(at: vec3<f32>) -> vec3<f32> {
     if away <= 1.0 { return vec3<f32>(0.0); }
     return vec3<f32>(vec2<f32>(p.size_op.xy) * 0.5 + focal * v.xy / away, focal / away);
 }
+// How far in front of the camera a point of the scene is.
+fn distance_to(at: vec3<f32>) -> f32 {
+    let base = tiles() + ROWS * COUNT;
+    return -dot(vec4<f32>(third[base + 8u].w, third[base + 9u].w, third[base + 10u].w, third[base + 11u].w), vec4<f32>(at, 1.0));
+}
+// The distance of the 3D object at a pixel (0: none, or no depth connected).
+fn occluder(at: vec2<f32>) -> f32 {
+    if (u32(p.extra.z) & 8u) == 0u { return 0.0; }
+    let q = vec2<i32>(floor(at));
+    if q.x < 0 || q.y < 0 || q.x >= i32(p.size_op.x) || q.y >= i32(p.size_op.y) { return 0.0; }
+    return fourth[u32(q.y) * p.size_op.x + u32(q.x)].y;
+}
+// The lens blur in pixels of something `away` from the scene's camera.
+fn lens_blur(away: f32) -> f32 {
+    let base = tiles() + ROWS * COUNT;
+    let optics = third[base + 13u].w;
+    if optics <= 0.0 { return 0.0; }
+    var focus = third[base + 14u].w;
+    // Autofocus: whatever the depth picture holds at the frame centre.
+    if focus <= 0.0 { focus = occluder(vec2<f32>(p.size_op.xy) * 0.5); }
+    if focus <= 0.0 { return 0.0; }
+    let k = optics / max(focus - third[base + 15u].w, 1.0);
+    return min(k * abs(1.0 - focus / max(away, 1.0)), third[base + 16u].w);
+}
 fn unpremultiplied(c: vec4<f32>) -> vec3<f32> {
     if c.a <= 0.0 { return vec3<f32>(1.0); }
     return c.rgb / c.a;
@@ -401,6 +433,10 @@ fn particle_splat(@builtin(global_invocation_id) gid: vec3<u32>) {
     let seen = filmed(where_now);
     if seen.z <= 0.0 { return; }
     let at = seen.xy;
+    // A 3D object in front of the particle hides it.
+    let away = distance_to(where_now);
+    let wall = occluder(at);
+    if wall > 0.0 && away > wall * 1.002 + 1.0 { return; }
     let share = age / own_life;
     let fade = setting(FADE, birth);
     var opacity = min(share / 0.04, 1.0);
@@ -414,9 +450,12 @@ fn particle_splat(@builtin(global_invocation_id) gid: vec3<u32>) {
         colour = vec4<f32>(turned(colour.rgb, (random(thread, generation, 12u) - 0.5) * 6.2831853 * hues), colour.a);
     }
     // Near particles are drawn larger, up to a limit that keeps one particle affordable.
-    let radius = min(setting(SIZE, birth) * (1.0 - 0.6 * variation * random(thread, generation, 7u))
+    let sharp = min(setting(SIZE, birth) * (1.0 - 0.6 * variation * random(thread, generation, 7u))
         * mix(1.0, setting(GROW, birth), share) * seen.z, 48.0);
-    if radius <= 0.0 { return; }
+    if sharp <= 0.0 { return; }
+    // Out of focus it spreads over a larger disc and dims by as much.
+    let radius = min(sharp + lens_blur(away), 48.0);
+    colour = vec4<f32>(colour.rgb, colour.a * sharp * sharp / (radius * radius));
     if (u32(p.extra.z) & 4u) != 0u {
         // Spin either way, from a random angle when spinning at all.
         let spin = radians(setting(SPIN, birth));

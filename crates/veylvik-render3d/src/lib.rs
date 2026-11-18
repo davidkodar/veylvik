@@ -231,9 +231,11 @@ fn lens(
     scene: &veylvik_scene::Scene,
     width: u32,
     blend: f32,
+    show_depth: bool,
 ) -> [f32; 8] {
     let f = camera.focal_length.max(1.0);
-    let optics = if camera.f_stop > 0.0 {
+    // A depth output is exact: no lens blur.
+    let optics = if camera.f_stop > 0.0 && !show_depth {
         f * f / camera.f_stop * (width as f32 / camera.sensor_width.max(1e-3)) * 0.5
     } else {
         0.0
@@ -252,7 +254,7 @@ fn lens(
         largest,
         blend,
         NEAR,
-        0.0,
+        f32::from(u8::from(show_depth)),
     ]
 }
 impl SceneRenderer for Engine {
@@ -272,6 +274,7 @@ impl SceneRenderer for Engine {
             blend,
             target,
             models,
+            depth: show_depth,
             ..
         } = job;
         let expanded = self.expand(scene, models)?;
@@ -760,7 +763,7 @@ impl SceneRenderer for Engine {
         }
         let lens = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("3D lens"),
-            contents: bytemuck::cast_slice(&lens(&camera, scene, width, blend)),
+            contents: bytemuck::cast_slice(&lens(&camera, scene, width, blend, show_depth)),
             usage: wgpu::BufferUsages::UNIFORM,
         });
         let copy = device.create_bind_group(&wgpu::BindGroupDescriptor {

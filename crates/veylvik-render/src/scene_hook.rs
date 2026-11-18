@@ -24,6 +24,8 @@ pub struct SceneJob<'a> {
     pub time: veylvik_document::Time,
     pub width: u32,
     pub height: u32,
+    /// Write each pixel's distance from the camera instead of the picture.
+    pub depth: bool,
     /// Imported models by file path (`Geometry::Model { path }`).
     pub models: &'a std::collections::BTreeMap<String, std::sync::Arc<veylvik_scene::Model>>,
     /// Image card pictures by their source node (`Geometry::Card { image }`).
@@ -65,6 +67,10 @@ pub(crate) fn evaluate(
     let camera = scene.camera(index, plan.width, plan.height);
     let occlusion = op.occlusion.at(time).map_err(error)?.clamp(0.0, 1.0);
     Ok((scene, camera, occlusion))
+}
+/// Whether the Render scene outputs depth instead of its picture.
+pub(crate) fn shows_depth(plan: &crate::Plan, node: usize) -> bool {
+    matches!(&plan.nodes[node].operation, Operation::RenderScene(op) if op.depth)
 }
 /// The moments a Render scene films for the frame at `time`: the frame itself, or
 /// with motion blur its samples spread evenly over the shutter, centred on it.
@@ -117,7 +123,7 @@ pub(crate) fn fingerprint(
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     for at in sample_times(plan, node, time)? {
         let (scene, camera, occlusion) = evaluate(plan, node, at)?;
-        format!("{scene:?}{camera:?}{occlusion}").hash(&mut hasher);
+        format!("{scene:?}{camera:?}{occlusion}{}", shows_depth(plan, node)).hash(&mut hasher);
     }
     let h = hasher.finish();
     Ok([h as u32, (h >> 32) as u32])

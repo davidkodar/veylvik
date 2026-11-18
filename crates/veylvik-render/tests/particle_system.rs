@@ -831,3 +831,44 @@ fn a_moving_emitter_leaves_its_particles_behind_when_history_is_kept() {
     );
     assert!(sixteen < four || four == 0, "{four} {sixteen}");
 }
+#[test]
+#[ignore = "requires Vulkan"]
+fn a_depth_picture_hides_the_particles_behind_it() {
+    let renderer = Renderer::new().unwrap();
+    // Births 50 px in front of and behind the frame, right of its centre: from the
+    // home view (222 px away for this lens) they spread over x 113..132, the near
+    // ones outermost.
+    let mut point = still();
+    point.x = 120.0.into();
+    point.size = 1.0.into();
+    point.depth = 100.0.into();
+    let open = render(&renderer, point.clone(), None, (2, 1));
+    let (left, right, ..) = span(&open);
+    assert!((110..=114).contains(&left) && (130..=135).contains(&right));
+    // A wall where the frame is hides everything behind it: only the near half stays.
+    let wall = vec![[222.2, 222.2, 222.2, 1.0]; (W * H) as usize];
+    let hidden = render_with(&renderer, point.clone(), vec![("depth", wall)], (2, 1));
+    let (left, right, ..) = span(&hidden);
+    assert!(
+        left >= 118 && (130..=135).contains(&right),
+        "{left} {right}"
+    );
+    let lit = |pixels: &[[f32; 4]]| pixels.iter().filter(|p| p[3] > 0.01).count();
+    assert!(
+        lit(&hidden) < lit(&open),
+        "{} of {}",
+        lit(&hidden),
+        lit(&open)
+    );
+    // Where the depth picture is empty nothing is hidden, and a far wall hides nothing.
+    let empty = vec![[0.0; 4]; (W * H) as usize];
+    assert_eq!(
+        render_with(&renderer, point.clone(), vec![("depth", empty)], (2, 1)),
+        open
+    );
+    let far = vec![[900.0, 900.0, 900.0, 1.0]; (W * H) as usize];
+    assert_eq!(
+        render_with(&renderer, point, vec![("depth", far)], (2, 1)),
+        open
+    );
+}

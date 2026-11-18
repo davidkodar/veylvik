@@ -891,6 +891,7 @@ impl Renderer {
                         time: at,
                         width: plan.width,
                         height: plan.height,
+                        depth: scene_hook::shows_depth(plan, scheduled.node),
                         images: &images,
                         models: inputs.models(),
                         environment: &self.studio_environment,

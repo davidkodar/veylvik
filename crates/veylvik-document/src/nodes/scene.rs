@@ -715,12 +715,16 @@ pub struct RenderScene {
     /// Moments across the shutter that are rendered and averaged.
     #[serde(default = "ten")]
     pub blur_samples: Scalar,
+    /// Output the scene's depth instead of its picture: each pixel's distance from
+    /// the camera in scene units, opaque where an object is.
+    #[serde(default)]
+    pub depth: bool,
 }
 pub static RENDER_SCENE: NodeType = NodeType {
     type_id: "render_scene",
     version: 1,
     label: "Render scene",
-    description: "Renders the scene on its Scene input as an image at the composition size, with transparent background. Camera picks which camera films it (1 = the first, in node order; 0 = the home view that matches 2D). Occlusion sets how much nearby surfaces shade the environment's light, so objects sit on the floor and gaps darken (0 = off). Motion blur is the shutter angle (180 = the film look): the scene is rendered at Blur samples moments across the shutter, centred on the frame, and averaged.",
+    description: "Renders the scene on its Scene input as an image at the composition size, with transparent background. Camera picks which camera films it (1 = the first, in node order; 0 = the home view that matches 2D). Occlusion sets how much nearby surfaces shade the environment's light, so objects sit on the floor and gaps darken (0 = off). Motion blur is the shutter angle (180 = the film look): the scene is rendered at Blur samples moments across the shutter, centred on the frame, and averaged. With Depth on it outputs the scene's depth instead of its picture: every pixel's distance from the camera in scene units (red, green and blue alike), opaque where an object is and empty elsewhere, without lighting or lens blur. Connect that to the Depth input of Particles filmed by the same camera so objects hide the particles behind them, or to a Lens blur's depth input.",
     inputs: &["scene"],
     optional: &[],
     output: PortKind::Image,
@@ -729,6 +733,7 @@ pub static RENDER_SCENE: NodeType = NodeType {
         scalar("occlusion", "factor", 0.0, 1.0, 1.0),
         scalar("motion_blur", "degrees", 0.0, 360.0, 0.0),
         scalar("blur_samples", "count", 2.0, 32.0, 10.0),
+        other("depth", ParameterKind::Boolean, "output depth"),
     ],
 };
 node!(

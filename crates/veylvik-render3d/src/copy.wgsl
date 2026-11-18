@@ -4,7 +4,8 @@ struct Lens {
     // f^2 / N * pixels per millimetre / 2 (0: no depth of field), focal length,
     // focus distance (0: the frame centre), nearest scene distance
     optics: vec4<f32>,
-    // largest blur radius (px), blend into the frame, depth constant, unused
+    // largest blur radius (px), blend into the frame, depth constant, 1 to write
+    // each pixel's distance from the camera instead of the picture
     limits: vec4<f32>,
 }
 @group(0) @binding(0) var resolved: texture_2d<f32>;
@@ -59,6 +60,12 @@ fn copy(@builtin(global_invocation_id) gid: vec3<u32>) {
             }
             colour = sum / count;
         }
+    }
+    if lens.limits.w > 0.5 {
+        // Depth output: the distance in scene units, opaque where an object is.
+        let away = distance_at(p);
+        colour = vec4<f32>(0.0);
+        if away < 1.0e8 { colour = vec4<f32>(away, away, away, 1.0); }
     }
     let i = gid.y * size.x + gid.x;
     if lens.limits.y >= 1.0 {

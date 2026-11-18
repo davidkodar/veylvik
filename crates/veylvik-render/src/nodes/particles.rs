@@ -148,9 +148,12 @@ fn layout(rows: &[[f32; COUNT]]) -> (u32, u32) {
     (threads as u32, stride as u32)
 }
 /// The camera filming the particles at the frame, as a last row: the world-to-camera
-/// matrix's three rows, then the focal length in pixels.
+/// matrix's three rows, the focal length in pixels, then its lens: the blur in
+/// pixels of a point infinitely far away (0 without depth of field), the distance
+/// in focus (0: whatever is at the frame centre) and the largest blur.
 fn camera(node: &Particles, cx: &Cx<'_>) -> Result<[f32; COUNT]> {
     let home = veylvik_scene::home_camera(cx.width, cx.height);
+    let mut focus = 0.0;
     let camera = match cx.node.inputs.get("scene") {
         Some(root) => {
             let by_id: std::collections::BTreeMap<_, _> =
@@ -172,7 +175,9 @@ fn camera(node: &Particles, cx: &Cx<'_>) -> Result<[f32; COUNT]> {
                 .map_err(error)?
                 .round()
                 .clamp(0.0, 64.0);
-            scene.camera(index as usize, cx.width, cx.height)
+            let camera = scene.camera(index as usize, cx.width, cx.height);
+            focus = camera.focus(&scene);
+            camera
         }
         None => home,
     };
@@ -182,6 +187,15 @@ fn camera(node: &Particles, cx: &Cx<'_>) -> Result<[f32; COUNT]> {
         row[i * 4..i * 4 + 4].copy_from_slice(line);
     }
     row[12] = veylvik_scene::home_distance(cx.width, camera.focal_length, camera.sensor_width);
+    // As the 3D render's lens: one scene unit is a millimetre, and a point at
+    // distance d blurs by f^2 / N / (s - f) * |1 - s / d| on the sensor.
+    if camera.f_stop > 0.0 {
+        let f = camera.focal_length.max(1.0);
+        row[13] = f * f / camera.f_stop * (cx.width as f32 / camera.sensor_width.max(1e-3)) * 0.5;
+        row[14] = focus;
+        row[15] = f;
+        row[16] = 64.0 * cx.width as f32 / 1920.0;
+    }
     Ok(row)
 }
 const EMITTER: usize = 0;
@@ -189,13 +203,14 @@ const TARGET: usize = 1;
 const FIELD: usize = 2;
 const OBSTACLE: usize = 3;
 const SPRITE: usize = 4;
+const DEPTH: usize = 6;
 static STEPS: [Step; 4] = [
     Step {
         kernel: Kernel::ParticlePrepare,
         inputs: [
             From::Port(TARGET),
             From::Port(SPRITE),
-            From::None,
+            From::Port(DEPTH),
             From::None,
         ],
     },
@@ -298,7 +313,10 @@ impl RenderNode for Particles {
             },
             f32::from(u8::from(wired("target"))),
             f32::from(
-                u8::from(wired("field")) | u8::from(wired("obstacle")) << 1 | u8::from(sprite) << 2,
+                u8::from(wired("field"))
+                    | u8::from(wired("obstacle")) << 1
+                    | u8::from(sprite) << 2
+                    | u8::from(wired("depth")) << 3,
             ),
             rows[ROWS - 1][0],
         ];

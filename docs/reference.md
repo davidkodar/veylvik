@@ -1452,6 +1452,12 @@ and `colour`.
   **Blur samples** (2–32, default 10) exact moments spread evenly across the
   shutter, centred on the frame, and averaged; render time grows with the
   samples.
+- **Depth output** (on Render scene): with **Depth** on, the node outputs the
+  scene's depth instead of its picture: each pixel's distance from the camera
+  in scene units (red, green and blue alike), opaque where an object is and
+  empty elsewhere, with no lighting and no lens blur. It feeds the Depth input
+  of **Particles** and the depth input of **Lens blur**. Use a second Render
+  scene on the same scene and camera for it.
 - **Camera solve** (`veylvik solve-camera`, MCP `solve_camera`): recovers the
   real camera of a filmed shot so 3D sits in it. Features are detected over the
   whole frame (a 16 × 16 grid, up to 220 alive at once, replenished as they
@@ -1566,7 +1572,17 @@ and `colour`.
   far) and resets the mesh. Points are not keyable yet, and there are no tangent
   handles.
 - **Particles** (`particles`, optional inputs emitter, target, field, obstacle,
-  sprite and scene): soft dots or pictures on a transparent frame.
+  sprite, scene and depth): soft dots or pictures on a transparent frame.
+  - *In a 3D scene.* With a scene connected, its camera films the particles,
+    and that camera's depth of field blurs them: a particle out of focus spreads
+    over a larger disc and dims by as much (focused like the 3D render: on the
+    camera's Focus on object, at its Focus distance, or at 0 on what the depth
+    picture holds at the frame centre). Connect a Render scene with **Depth**
+    on, of the same scene and camera, to the **Depth** input and 3D objects
+    hide the particles behind them: a particle farther than the object at its
+    pixel is not drawn. The head of a particle is tested, not each dot of its
+    streak; with a sprite connected, about two pixel rows at the top of the
+    frame hide nothing.
   - *Birth.* Without an emitter, **Rate** particles a second (at most 2000000
     alive) are born inside the box **Width** x **Height** centred on **X**,
     **Y** (0 x 0 is a point). With an emitter, they are born where that image
