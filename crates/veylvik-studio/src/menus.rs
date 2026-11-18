@@ -4,6 +4,7 @@ use eframe::egui;
 use veylvik_document::{recipes::Recipe, registry};
 
 fn item(ui: &mut egui::Ui, label: &str, shortcut: &str, enabled: bool) -> bool {
+    let shortcut = crate::command_ui::menu_text(ui.ctx(), shortcut);
     let clicked = ui
         .add_enabled(enabled, egui::Button::new(label).shortcut_text(shortcut))
         .clicked();
@@ -81,6 +82,7 @@ impl Studio {
                 if item(ui, "Set selected node as output", "", ready) { self.set_selected_output(); }
                 ui.separator();
                 if item(ui, "Find node…", "Ctrl+F", ready) { self.open_node_finder(); }
+                if item(ui, "Add a marker here", "M", true) { self.add_marker(); }
                 ui.separator();
                 if item(ui,"Preferences…","Ctrl+,",true) {self.open_preferences();}
             });
@@ -173,7 +175,8 @@ impl Studio {
                 }
             });
             ui.menu_button("Help", |ui| {
-                if item(ui, "Keyboard shortcuts", "?", true) { self.help = true; }
+                if item(ui, "Find a command…", "Ctrl+P", true) { let ctx = ui.ctx().clone(); self.run(crate::commands::Cmd::CommandSearch, &ctx); }
+                if item(ui, "Keyboard shortcuts…", "?", true) { self.commands.editor = true; }
                 ui.separator();
                 if item(ui, "About Veylvik…", "", true) { self.about.begin(); }
             });

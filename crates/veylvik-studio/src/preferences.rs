@@ -58,6 +58,8 @@ pub struct Values {
     pub time_display: crate::timecode::Display,
     /// A small picture of each node's output on its tile in the graph.
     pub node_thumbnails: bool,
+    /// Changed shortcuts: command id to key, empty for none.
+    pub shortcuts: std::collections::BTreeMap<String, String>,
 }
 impl Default for Values {
     fn default() -> Self {
@@ -79,6 +81,7 @@ impl Default for Values {
             audio_volume: 1.,
             time_display: Default::default(),
             node_thumbnails: false,
+            shortcuts: Default::default(),
         }
     }
 }

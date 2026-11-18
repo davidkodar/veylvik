@@ -2149,6 +2149,35 @@ normal saving. A recovery storage error is shown; normal project saving remains
 available. If storage is unavailable at startup, restart after fixing it to
 re-enable background recovery.
 
+### Commands and shortcuts
+
+Studio's menu-level actions are one list of commands, each with a name, a
+group (File, Edit, Add, Playback, View, Help) and a default key. **Find a
+command** (Ctrl+P, or Help > Find a command) opens a search field: every word
+typed must occur in a command's group or name, Up and Down choose, Enter runs
+the chosen command and Escape closes. Commands without a key, such as the
+viewer's channel views and overlays or showing and hiding panels, are reached
+this way.
+
+**Keyboard shortcuts** (Help menu, or the question mark) lists every command
+with its key. Clicking a key and pressing a combination of Ctrl, Shift, Alt
+and one key assigns it; Escape cancels. While a key is being recorded no
+command runs. A combination that another command had is taken from it, and
+the window says which command lost its shortcut. **Clear** leaves a command
+without a key, **Reset** restores its default (taking it back from a command
+that had been given it) and **Reset all** restores every default. Changes
+apply at once and are kept in preferences as `shortcuts`, a map from command
+id to key text such as `"save": "Ctrl+Shift+S"`, with an empty text for no
+key; only changed commands are stored, and entries naming no command or no
+valid key are ignored. Menus show the current keys. A command's key works
+while no text is being typed and no dialog holds the keyboard; of two keys
+that differ only in modifiers, the one with more modifiers is tried first.
+
+Keys that belong to a tool while it is in use are fixed and not in the list:
+Ctrl+Enter applies inspector changes, W, E and R move, rotate and scale in 3D,
+F frames the selection, Ctrl+C and Ctrl+V copy and paste nodes, the pen and
+text tools' keys, and the question mark.
+
 ### Graph tags, notes, backdrops and overview
 
 These help read a graph and never change a render. A node may carry a colour
@@ -2199,7 +2228,7 @@ time, labels up to 80 characters without control characters, times within
 saves exactly as before; one with markers cannot be opened by builds from
 before markers existed. The command `{"command":"markers","markers":[...]}`
 replaces the whole list in one undo step, also over MCP. In Studio, **M** or
-the **Marker** button adds one at the current position, each shows as a flag
+Edit > **Add a marker here** adds one at the current position, each shows as a flag
 with its name on the ruler, clicking a flag goes there, its right-click menu
 renames or deletes it, and comma and period go to the previous and next
 marker. Markers beyond the composition's last frame are kept but not shown.

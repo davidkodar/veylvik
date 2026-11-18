@@ -80,19 +80,6 @@ impl Studio {
         }
         self.pages.page = page;
     }
-    /// Ctrl+1 to Ctrl+4 switch pages.
-    pub(crate) fn page_shortcuts(&mut self, ctx: &egui::Context) {
-        for (key, page) in [
-            (egui::Key::Num1, Page::Compose),
-            (egui::Key::Num2, Page::Animate),
-            (egui::Key::Num3, Page::Scene),
-            (egui::Key::Num4, Page::Export),
-        ] {
-            if ctx.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, key)) {
-                self.go_to(page);
-            }
-        }
-    }
     /// The page switch in the top bar.
     pub(crate) fn page_bar(&mut self, ui: &mut egui::Ui) {
         let accent = crate::design::accent(ui.ctx());

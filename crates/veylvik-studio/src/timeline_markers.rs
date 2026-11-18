@@ -162,28 +162,17 @@ impl Studio {
             Err(error) => self.fail(error),
         }
     }
-    /// M adds a marker; comma and period go to the previous and next one.
-    pub(crate) fn marker_keys(&mut self, ctx: &egui::Context) {
-        if ctx.egui_wants_keyboard_input() || self.files.busy() || self.authoring_dialog_open() {
-            return;
-        }
-        let pressed = |key| ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, key));
-        if pressed(egui::Key::M) {
-            self.add_marker();
-        }
-        for (key, forward) in [(egui::Key::Comma, false), (egui::Key::Period, true)] {
-            if pressed(key)
-                && let Some(frame) = adjacent(
-                    self.project.document.snapshot(),
-                    self.project.frame,
-                    forward,
-                )
-                && self.apply_draft()
-            {
-                self.project.frame = frame;
-                self.playing = false;
-                self.request_preview();
-            }
+    /// Go to the marker before or after the current position.
+    pub(crate) fn go_to_marker(&mut self, forward: bool) {
+        if let Some(frame) = adjacent(
+            self.project.document.snapshot(),
+            self.project.frame,
+            forward,
+        ) && self.apply_draft()
+        {
+            self.project.frame = frame;
+            self.playing = false;
+            self.request_preview();
         }
     }
 }

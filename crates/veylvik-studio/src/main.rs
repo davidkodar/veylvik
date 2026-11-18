@@ -4,6 +4,8 @@ mod animation_editor;
 mod asset_browser;
 mod audio_preview;
 mod color_controls;
+mod command_ui;
+mod commands;
 mod comparison;
 mod composition;
 mod control;
@@ -279,6 +281,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 waveform: Default::default(),
                 layer_bars: Default::default(),
                 thumbnails: Default::default(),
+                commands: Default::default(),
                 materials: Default::default(),
                 shot_light: Default::default(),
                 subject: subject::Controls::default(),
@@ -294,7 +297,6 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 confirm: None,
                 after_save: None,
                 allow_close: false,
-                help: false,
                 about: about::Controls::default(),
                 statistics: false,
                 theme_checked: Instant::now() - Duration::from_secs(10),
@@ -398,6 +400,7 @@ struct Studio {
     waveform: waveform::Waveform,
     layer_bars: layer_bars::LayerBars,
     thumbnails: node_thumbnails::Thumbnails,
+    commands: command_ui::Commands,
     materials: material_library::Library,
     shot_light: shot_light::Pending,
     subject: subject::Controls,
@@ -414,7 +417,6 @@ struct Studio {
     confirm: Option<Leave>,
     after_save: Option<Leave>,
     allow_close: bool,
-    help: bool,
     about: about::Controls,
     statistics: bool,
     theme_checked: Instant,
@@ -2854,46 +2856,7 @@ impl Studio {
         }
         diagnostics::show(ctx, &mut self.statistics, &self.renderer);
         self.about.show(ctx, &self.renderer);
-        if self.help {
-            egui::Window::new("Keyboard shortcuts")
-                .open(&mut self.help)
-                .pivot(egui::Align2::CENTER_CENTER)
-                .default_pos(ctx.content_rect().center())
-                .show(ctx, |ui| {
-                    for (key, action) in [
-                        ("Space", "Play / pause"),
-                        (
-                            "Alt+Left / Right",
-                            "Previous / next selected-node keyed frame",
-                        ),
-                        ("M", "Add a marker at the current position"),
-                        (", / .", "Previous / next marker"),
-                        ("Tab", "Search and add a node"),
-                        ("Ctrl+F", "Find and preview an existing node"),
-                        ("Ctrl+D", "Duplicate selected node"),
-                        ("Ctrl+Shift+D", "Duplicate upstream branch"),
-                        ("Ctrl+Enter", "Apply inspector draft"),
-                        ("Ctrl+N", "New composition"),
-                        ("Ctrl+O", "Open composition"),
-                        ("Ctrl+I", "Import image or image sequence"),
-                        ("Ctrl+R", "Reload source images"),
-                        ("Ctrl+E", "Export current preview"),
-                        ("Ctrl+Shift+E", "Export image sequence"),
-                        ("Ctrl+1 to Ctrl+4", "Compose, Animate, 3D and Export pages"),
-                        ("Ctrl+S", "Save"),
-                        ("Ctrl+Shift+S", "Save as"),
-                        ("Ctrl+Z", "Undo"),
-                        ("Ctrl+Shift+Z", "Redo"),
-                        ("Q", "Close (asks about unsaved changes)"),
-                        ("?", "Show shortcuts"),
-                    ] {
-                        ui.horizontal(|ui| {
-                            ui.monospace(key);
-                            ui.label(action);
-                        });
-                    }
-                });
-        }
+        self.command_windows(ctx);
     }
 }
 impl eframe::App for Studio {
@@ -2901,6 +2864,7 @@ impl eframe::App for Studio {
         files::offer_parent(frame);
         self.track_recent();
         let files_ctx = ui.ctx().clone();
+        self.record_key(&files_ctx);
         self.gather_files(&files_ctx);
         self.take_next_file(&files_ctx);
         self.drop_hint(&files_ctx);
@@ -2909,12 +2873,6 @@ impl eframe::App for Studio {
         self.scene_record_tick(&ctx);
         // eframe creates the root UI before our live palette update.
         ui.set_style(ctx.global_style());
-        if ctx.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, egui::Key::Comma))
-            && self.confirm.is_none()
-            && !self.preferences.open
-        {
-            self.open_preferences();
-        }
         self.path_pen.shortcuts(&ctx);
         self.occlusion_tick();
         self.poll_files(&ctx);
@@ -3090,102 +3048,21 @@ impl eframe::App for Studio {
             && !self.animation_editor.dragging()
             && !self.key_timeline.dragging()
         {
-            if ctx.input_mut(|i| {
-                i.consume_key(egui::Modifiers::CTRL | egui::Modifiers::SHIFT, egui::Key::S)
-            }) {
-                self.save_project(true);
-            }
-            if ctx.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, egui::Key::S)) {
-                self.save_project(false);
-            }
-            if ctx.input_mut(|i| {
-                i.consume_key(egui::Modifiers::CTRL | egui::Modifiers::SHIFT, egui::Key::Z)
-            }) {
-                self.history(true);
-            }
-            if ctx.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, egui::Key::F)) {
-                self.open_node_finder();
-            }
-            if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Tab)) {
-                self.open_node_palette(&ctx);
-            }
-            if ctx.input_mut(|i| {
-                i.consume_key(egui::Modifiers::CTRL | egui::Modifiers::SHIFT, egui::Key::D)
-            }) {
-                self.duplicate_branch();
-            }
-            if ctx.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, egui::Key::D)) {
-                self.duplicate_selected(&ctx);
-            }
-            if ctx.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, egui::Key::N)) {
-                self.leave(Leave::New, &ctx);
-            }
-            if ctx.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, egui::Key::O)) {
-                self.leave(Leave::Open, &ctx);
-            }
-            if ctx.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, egui::Key::R)) {
-                self.reload_images();
-            }
-            if ctx.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, egui::Key::I)) {
-                self.import_image(self.graph.insertion_position(&ctx));
-            }
-            if ctx.input_mut(|i| {
-                i.consume_key(egui::Modifiers::CTRL | egui::Modifiers::SHIFT, egui::Key::E)
-            }) {
-                self.ask_export(pages::ExportKind::Sequence);
-            }
-            self.page_shortcuts(&ctx);
-            self.marker_keys(&ctx);
-            if ctx.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, egui::Key::E)) {
-                self.export_frame();
-            }
-            if ctx.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, egui::Key::Z)) {
-                self.history(false);
-            }
-            for (key, forward) in [(egui::Key::ArrowLeft, false), (egui::Key::ArrowRight, true)] {
-                if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, key)) {
-                    self.step_frame(if forward { 1 } else { -1 });
-                }
-                if ctx.input_mut(|i| i.consume_key(egui::Modifiers::ALT, key)) {
-                    self.seek_key(forward);
-                }
-            }
-            if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::I)) {
-                self.playing = false;
-                self.playback_controls.warming = None;
-                self.playback_controls.set_in(
-                    self.project.frame,
-                    self.project.document.snapshot().frame_count,
-                );
-            }
-            if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::O)) {
-                self.playing = false;
-                self.playback_controls.warming = None;
-                self.playback_controls.set_out(
-                    self.project.frame,
-                    self.project.document.snapshot().frame_count,
-                );
-            }
-            if ctx.input(|i| i.key_pressed(egui::Key::Space)) {
-                self.toggle_play();
-            }
-            if ctx.input(|i| i.key_pressed(egui::Key::Q)) {
-                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-            }
+            self.command_keys(&ctx);
             if ctx.input(|i| {
                 i.events
                     .iter()
                     .any(|event| matches!(event, egui::Event::Text(s) if s == "?"))
             }) {
-                self.help = !self.help;
+                self.commands.editor = !self.commands.editor;
             }
         }
         // F11 shows the viewer alone on the whole screen; F11 or Escape brings the rest back.
         let leave = self.viewer_fullscreen
             && self.picking.is_none()
             && ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape));
-        if leave || ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::F11)) {
-            self.set_viewer_fullscreen(&ctx, !self.viewer_fullscreen);
+        if leave {
+            self.set_viewer_fullscreen(&ctx, false);
         }
         if ctx.input(|i| i.viewport().close_requested()) && !self.allow_close {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);

@@ -139,14 +139,6 @@ impl crate::Studio {
                     ui.colored_label(ui.visuals().warn_fg_color,"Cache notice").on_hover_text(warning);
                 }
             }
-            ui.separator();
-            if ui
-                .button("Marker")
-                .on_hover_text("Add a marker at the current position (M). Comma and period step between markers")
-                .clicked()
-            {
-                self.add_marker();
-            }
         });
     }
 }
