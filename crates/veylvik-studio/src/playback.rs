@@ -62,18 +62,21 @@ impl crate::Studio {
     pub(super) fn playback_toolbar(&mut self, ui: &mut eframe::egui::Ui) {
         use eframe::egui;
         let count = self.project.document.snapshot().frame_count;
+        // Timecode when that is how positions are shown, else frame numbers.
+        let shown = (self.preferences.values.time_display == crate::timecode::Display::Timecode)
+            .then(|| self.project.document.snapshot().frame_rate);
         ui.horizontal_wrapped(|ui| {
             let mut changed = ui.checkbox(&mut self.playback_controls.enabled, "Range")
                 .on_hover_text("Limit playback and Cache range to In/Out. Export range is unchanged.").changed();
             let mut first = self.playback_controls.first.clamp(0, i64::from(count.saturating_sub(1)));
             let mut last = self.playback_controls.last.unwrap_or(i64::from(count.saturating_sub(1)))
                 .clamp(first, i64::from(count.saturating_sub(1)));
-            if frame_control(ui, &mut first, 0..=last, "In ").on_hover_text("Inclusive first playback frame").changed() {
+            if frame_control(ui, &mut first, 0..=last, "In ", shown).on_hover_text("Inclusive first playback frame").changed() {
                 self.playback_controls.first = first;
                 self.playback_controls.enabled = true;
                 changed = true;
             }
-            if frame_control(ui, &mut last, first..=i64::from(count.saturating_sub(1)), "Out ")
+            if frame_control(ui, &mut last, first..=i64::from(count.saturating_sub(1)), "Out ", shown)
                 .on_hover_text("Inclusive last playback frame").changed() {
                 self.playback_controls.last = Some(last);
                 self.playback_controls.enabled = true;
@@ -144,9 +147,11 @@ fn frame_control(
     value: &mut i64,
     range: std::ops::RangeInclusive<i64>,
     prefix: &str,
+    timecode: Option<veylvik_document::Time>,
 ) -> eframe::egui::Response {
     use eframe::egui;
-    let (rect, _) = ui.allocate_exact_size(egui::vec2(86., 28.), egui::Sense::hover());
+    let width = if timecode.is_some() { 132. } else { 86. };
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(width, 28.), egui::Sense::hover());
     let mut field = ui.new_child(
         egui::UiBuilder::new()
             .max_rect(rect)
@@ -155,7 +160,14 @@ fn frame_control(
     field.set_clip_rect(rect.intersect(ui.clip_rect()));
     field.add_sized(
         rect.size(),
-        egui::DragValue::new(value).range(range).prefix(prefix),
+        match timecode {
+            Some(rate) => egui::DragValue::new(value)
+                .range(range)
+                .prefix(prefix)
+                .custom_formatter(move |v, _| crate::timecode::format(v as i64, rate))
+                .custom_parser(move |text| crate::timecode::parse(text, rate).map(|f| f as f64)),
+            None => egui::DragValue::new(value).range(range).prefix(prefix),
+        },
     )
 }
 #[cfg(test)]

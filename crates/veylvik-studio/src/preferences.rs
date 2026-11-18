@@ -54,6 +54,8 @@ pub struct Values {
     pub audio_device: Option<String>,
     /// Playback gain, 0..=2 (1 = as recorded).
     pub audio_volume: f32,
+    /// Positions in time as timecode or as frame numbers.
+    pub time_display: crate::timecode::Display,
 }
 impl Default for Values {
     fn default() -> Self {
@@ -73,6 +75,7 @@ impl Default for Values {
             audio_enabled: true,
             audio_device: None,
             audio_volume: 1.,
+            time_display: Default::default(),
         }
     }
 }

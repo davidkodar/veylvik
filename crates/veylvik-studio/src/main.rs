@@ -73,6 +73,7 @@ mod text_handles;
 mod text_outline;
 mod text_viewer;
 mod theme;
+mod timecode;
 mod title_styles;
 mod tracking;
 mod transform_handles;
@@ -2311,9 +2312,10 @@ impl Studio {
                 self.step_frame(1);
             }
             let mut frame = self.project.frame;
-            // Reserve the project-wide digit count, rather than the current
-            // frame's width. Keep the same bounds while typing and dragging.
-            let digits = count.to_string().len().max(4);
+            let rate = self.project.document.snapshot().frame_rate;
+            let timecode = self.preferences.values.time_display == timecode::Display::Timecode;
+            // Reserve the widest text the field can show, rather than the current
+            // value's width. Keep the same bounds while typing and dragging.
             let number_font = ui.style().drag_value_text_style.resolve(ui.style());
             let prefix_font = egui::TextStyle::Button.resolve(ui.style());
             let colour = ui.visuals().text_color();
@@ -2325,25 +2327,44 @@ impl Studio {
                         .x
                 })
                 .fold(0.0_f32, f32::max);
-            let prefix_width = ui
-                .painter()
-                .layout_no_wrap("Frame ".into(), prefix_font, colour)
-                .size()
-                .x;
-            let frame_width = prefix_width
-                + digit_width * digits as f32
-                + 2.0 * ui.spacing().button_padding.x
-                + 4.0;
+            let frame_width = if timecode {
+                // Eight digits and three separators.
+                digit_width * 8.0
+                    + 3.0
+                        * ui.painter()
+                            .layout_no_wrap(";".into(), number_font.clone(), colour)
+                            .size()
+                            .x
+                            .max(digit_width * 0.5)
+                    + 2.0 * ui.spacing().button_padding.x
+                    + 8.0
+            } else {
+                ui.painter()
+                    .layout_no_wrap("Frame ".into(), prefix_font, colour)
+                    .size()
+                    .x
+                    + digit_width * count.to_string().len().max(4) as f32
+                    + 2.0 * ui.spacing().button_padding.x
+                    + 4.0
+            };
             let changed = ui
                 .scope(|ui| {
                     ui.spacing_mut().interact_size.x = frame_width;
-                    ui.add(
-                        egui::DragValue::new(&mut frame)
-                            .range(0..=end_frame)
-                            .prefix("Frame "),
-                    )
-                    .on_hover_text("Current frame: drag to scrub or click to type a frame number")
-                    .changed()
+                    let field = egui::DragValue::new(&mut frame).range(0..=end_frame);
+                    let field = if timecode {
+                        field
+                            .custom_formatter(move |value, _| timecode::format(value as i64, rate))
+                            .custom_parser(move |text| timecode::parse(text, rate).map(|f| f as f64))
+                    } else {
+                        field.prefix("Frame ")
+                    };
+                    ui.add(field)
+                        .on_hover_text(if timecode {
+                            "Current position: drag to scrub, or click and type a timecode (5:12 is five seconds and twelve frames) or a frame number"
+                        } else {
+                            "Current frame: drag to scrub or click to type a frame number"
+                        })
+                        .changed()
                 })
                 .inner;
             if changed && self.apply_draft() {
@@ -2351,9 +2372,32 @@ impl Studio {
                 self.playing = false;
                 self.request_preview();
             }
-            ui.label(format!("of {count} frames"));
-            let fps = self.project.document.snapshot().frame_rate;
-            ui.weak(format!("{} / {} fps", fps.ticks, fps.rate));
+            if timecode {
+                ui.label(format!("of {}", timecode::format(i64::from(count), rate)));
+            } else {
+                ui.label(format!("of {count} frames"));
+            }
+            let fps = rate.ticks as f64 / f64::from(rate.rate.max(1));
+            ui.weak(if (fps - fps.round()).abs() < 1e-9 {
+                format!("{fps:.0} fps")
+            } else {
+                format!("{fps:.3} fps")
+            });
+            // Timecode or frame numbers, for every position shown.
+            if ui
+                .selectable_label(false, if timecode { "Timecode" } else { "Frames" })
+                .on_hover_text("Show positions as timecode or as frame numbers")
+                .clicked()
+            {
+                self.preferences.values.time_display = if timecode {
+                    timecode::Display::Frames
+                } else {
+                    timecode::Display::Timecode
+                };
+                if let Err(error) = self.preferences.persist() {
+                    self.fail(format!("Preferences: {error}"));
+                }
+            }
             self.key_timeline.scope_controls(ui);
         });
         self.playback_toolbar(ui);
@@ -2396,6 +2440,8 @@ impl Studio {
         }
         let actions = ui
             .horizontal(|ui| {
+                self.key_timeline.timecode =
+                    self.preferences.values.time_display == timecode::Display::Timecode;
                 self.key_timeline.show(
                     ui,
                     self.project.frame,

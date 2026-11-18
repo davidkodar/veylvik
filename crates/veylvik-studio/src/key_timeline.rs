@@ -27,6 +27,8 @@ pub enum Action {
 }
 #[derive(Default)]
 pub struct Keys {
+    /// Label the ruler in timecode and not frame numbers.
+    pub timecode: bool,
     pub playback_range: Option<(i64, i64)>,
     pub cached_gpu: Vec<i64>,
     pub cached_disk: Vec<i64>,
@@ -319,7 +321,23 @@ impl Keys {
                 );
             }
         }
-        let step = tick_step(count, rect.width());
+        let mut step = tick_step(count, rect.width());
+        if self.timecode {
+            // Labels are wider, and read best on whole seconds once there is room.
+            let fps = doc.frame_rate.ticks as f64 / f64::from(doc.frame_rate.rate.max(1));
+            let second = (fps.round() as u32).max(1);
+            let wanted = step.saturating_mul(2);
+            step = [1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 1800, 3600]
+                .into_iter()
+                .map(|seconds| seconds * second)
+                .find(|s| *s >= wanted)
+                .unwrap_or(wanted)
+                .max(if wanted < second {
+                    wanted.max(1)
+                } else {
+                    second
+                });
+        }
         for frame in (0..count).step_by(step as usize) {
             let at = x(i64::from(frame));
             painter.vline(
@@ -330,7 +348,11 @@ impl Keys {
             painter.text(
                 egui::pos2(at + 2., rect.top()),
                 egui::Align2::LEFT_TOP,
-                frame.to_string(),
+                if self.timecode {
+                    crate::timecode::short(i64::from(frame), doc.frame_rate)
+                } else {
+                    frame.to_string()
+                },
                 egui::FontId::proportional(11.),
                 ui.visuals().weak_text_color(),
             );

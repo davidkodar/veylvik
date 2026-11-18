@@ -2149,6 +2149,25 @@ normal saving. A recovery storage error is shown; normal project saving remains
 available. If storage is unavailable at startup, restart after fixing it to
 re-enable background recovery.
 
+### Timecode
+
+Positions in time are shown as timecode by default: the transport's position
+field, the composition's length beside it, the In and Out fields of the
+playback range, and the ruler's labels. Timecode is HH:MM:SS:FF counted at the
+composition's frame rate rounded to a whole number. At 30000/1001 and
+60000/1001 it is drop-frame, written HH:MM:SS;FF: frame numbers ;00 and ;01
+(;00 to ;03 at 59.94) are skipped at the start of every minute except each
+tenth, so the reading follows elapsed time and one hour is exactly 01:00:00;00.
+Other fractional rates (24000/1001) count at their nominal rate without
+dropping, so their reading runs slightly slow against the clock. A position
+field accepts a full timecode, the shorter forms MM:SS:FF and SS:FF, or a plain
+frame number, and still scrubs when dragged. The ruler labels whole seconds
+when there is room, leaving out leading zero hours and minutes. The
+**Timecode** / **Frames** button in the transport switches every one of these
+to frame numbers and back; the choice is kept in preferences (`time_display`).
+The cache counter, key tooltips and the curve editor's ruler still count
+frames.
+
 ### Start screen
 
 Studio started without a file opens on the start screen, below the top bar;
