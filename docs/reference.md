@@ -1824,20 +1824,48 @@ field and motion blur.
 
 ## MCP
 
-Launch a session against a saved composition:
+Launch a session against a saved composition, or with no file for a new empty
+one (1920 × 1080, 24 fps):
 
 ```sh
 ./target/release/veylvik mcp /absolute/path/example.veylvik
+./target/release/veylvik mcp
 ```
 
 The server uses newline-delimited JSON-RPC on stdio and MCP protocol version
 2025-11-25. Initialize, then send `notifications/initialized` before using tools.
 The tools are `inspect`, `graph`, `get_node`, `nodes`, `diagnostics`, `outline_text`,
-`apply`, `duplicate_branch`, `add_effect`, `undo`, `redo`, `save`, `render`, `render_sequence`,
-and `preview_image`.
+`apply`, `add_node`, `gold_title`, `particle_look`, `duplicate_branch`, `add_effect`, `undo`,
+`redo`, `save`, `render`, `render_sequence`, `render_video`, `preview_image`, `measure`,
+`new_project`, `open_project`, `new_from_media` and `import_media`.
+`new_project`, `open_project` and `new_from_media` replace the session's project
+(revision 0) and refuse to drop changes made since it was opened or saved unless
+`discard_changes` is true; `import_media` adds a Footage node and can match the
+composition to the media. `measure` reads numbers back from a rendered frame:
+displayed brightness percentiles, the scene-linear mean and peak, the share of
+pixels above 1.0, the coverage and the box round everything that is not
+transparent, for the output, one node or a region.
+
+The live server (`mcp --studio`) has the same tools working on the open editor,
+plus `preview`. There `save`, `render`, `render_sequence`, `render_video`,
+`outline_text` and `solve_camera` run in the background: the call returns
+`started`, renders go through the editor's render queue and start at once
+(`inspect.render_queue`), and `inspect.job` reports the result of an outline or a
+camera solve. When Veylvik is updated while a relay is running, its tool results
+carry a note asking to restart the MCP server, because its tool list is from the
+older build.
 `nodes` provides defaults, parameter units/bounds, named ports, and operation JSON
 schemas from the document registry. The same registry validates scalar parameters
-and supplies input ports to the compiler. The `apply` tool embeds these schemas. Every mutation, save, or render
+and supplies input ports to the compiler. The tool list itself stays small (about
+40 KB): `apply` and `insert_preset` name the operation types and point to `nodes`
+for each type's settings, and every operation is still validated in full when
+applied. `add_node` adds one node from a type's defaults with only the settings
+you name written over them, wires its inputs and returns its id; `gold_title`
+adds the Gold title scene and `particle_look` gives a Particles node one of the
+ready-made looks, exactly as Studio does. The commands also cover `markers`,
+`annotate` (a node's tag and note) and `backdrops`. `render_video` takes
+`settings` naming only what differs from the composition's defaults, including
+`audio` (`mute`, `music`, `music_gain_db`) and `replace`. Every mutation, save, or render
 requires the current revision from `inspect`. A batch is validated atomically
 and becomes one undo step. `apply` with `dry_run: true` changes nothing.
 
@@ -2636,7 +2664,9 @@ file export. Supply the current `revision` and exact `ticks`/`rate`; optional
 The result includes a standard MCP PNG image content block and small structured
 metadata containing revision, node, time, image dimensions, and source region.
 Image data is excluded from the text/structured metadata. `max_edge` defaults to
-512 and accepts 1..1024; images are never enlarged. Area filtering happens in
+512 and accepts 1..2048; images are never enlarged. A picture whose PNG would not
+fit one message (2.9 MB) is refused with advice to lower `max_edge` or to ask
+for a `region`, which shows part of the frame at full size. Area filtering happens in
 linear premultiplied color before conversion to straight-alpha sRGB PNG. HDR is
 clipped at the existing SDR export boundary, and transparency is preserved.
 

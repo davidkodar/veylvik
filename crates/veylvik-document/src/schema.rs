@@ -4,7 +4,7 @@ pub fn position() -> Value {
     json!({"anyOf":[{"type":"null"},{"type":"object","properties":{"x":{"type":"number","minimum":-1000000,"maximum":1000000},"y":{"type":"number","minimum":-1000000,"maximum":1000000}},"required":["x","y"],"additionalProperties":false}]})
 }
 pub fn node() -> Value {
-    json!({"type":"object","properties":{"id":{"type":"string","format":"uuid"},"version":{"const":1},"label":{"type":"string"},"position":position(),"scene_background":{"type":"boolean"},"bypass":{"type":"boolean"},"operation":crate::registry::operation_schema(),"inputs":{"type":"object","additionalProperties":{"type":"string","format":"uuid"}}},"required":["id","version","label","operation","inputs"],"additionalProperties":false})
+    json!({"type":"object","properties":{"id":{"type":"string","format":"uuid"},"version":{"const":1},"label":{"type":"string"},"position":position(),"scene_background":{"type":"boolean"},"bypass":{"type":"boolean"},"operation":crate::registry::operation_reference(),"inputs":{"type":"object","additionalProperties":{"type":"string","format":"uuid"}}},"required":["id","version","label","operation","inputs"],"additionalProperties":false})
 }
 pub fn command() -> Value {
     let mut schema = json!({"oneOf":[
@@ -27,6 +27,9 @@ pub fn command() -> Value {
         json!({"type":"object","properties":{"command":{"const":"ungroup"},"id":{"type":"string","format":"uuid"}},"required":["command","id"],"additionalProperties":false}),
         json!({"type":"object","properties":{"command":{"const":"set_control"},"id":{"type":"string","format":"uuid"},"control":{"type":"string"},"value":{}},"required":["command","id","control","value"],"additionalProperties":false,"description":"Edit the real parameter referenced by a group control. Scalar values accept the same animated curves as set_parameter."}),
         json!({"type":"object","properties":{"command":{"const":"connect_group"},"id":{"type":"string","format":"uuid"},"input":{"type":"string"},"source":{"type":"string","format":"uuid"}},"required":["command","id","input","source"],"additionalProperties":false,"description":"Reconnect all internal targets of a public group input atomically."}),
+        json!({"type":"object","properties":{"command":{"const":"markers"},"markers":{"type":"array","maxItems":crate::markers::MAX_MARKERS,"items":{"type":"object","properties":{"time":crate::registry::time_schema(),"label":{"type":"string","maxLength":crate::markers::MAX_LABEL}},"required":["time"],"additionalProperties":false}}},"required":["command","markers"],"additionalProperties":false,"description":"Replace the composition's timeline markers: the whole list, in time order, each on a frame of the composition."}),
+        json!({"type":"object","properties":{"command":{"const":"annotate"},"id":{"type":"string","format":"uuid"},"tag":{"anyOf":[{"type":"null"},{"enum":crate::annotations::Tag::ALL}]},"note":{"type":"string"}},"required":["command","id"],"additionalProperties":false,"description":"Set a node's colour tag and note; leaving one out clears it."}),
+        json!({"type":"object","properties":{"command":{"const":"backdrops"},"backdrops":{"type":"array","items":{"type":"object","properties":{"id":{"type":"string","format":"uuid"},"label":{"type":"string"},"tag":{"anyOf":[{"type":"null"},{"enum":crate::annotations::Tag::ALL}]},"nodes":{"type":"array","uniqueItems":true,"items":{"type":"string","format":"uuid"}}},"required":["id","nodes"],"additionalProperties":false}}},"required":["command","backdrops"],"additionalProperties":false,"description":"Replace the graph's backdrops: the whole list. A backdrop is a named, tagged frame drawn around its member nodes."}),
     ]);
     schema
 }

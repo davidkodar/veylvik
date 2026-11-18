@@ -17,7 +17,10 @@ impl Studio {
         if self.files.busy() || self.authoring_dialog_open() || self.confirm.is_some() {
             return Err("editor is busy; finish the current interaction first".into());
         }
-        if self.planar.active.is_some() || self.subject.active.is_some() {
+        if self.planar.active.is_some()
+            || self.subject.active.is_some()
+            || self.solve.active.is_some()
+        {
             return Err("a tracking or segmentation job is already running".into());
         }
         if self.draft_dirty {
@@ -34,12 +37,28 @@ impl Studio {
             }
             .into());
         }
+        self.begin_live_job(tool);
+        Ok(json!({"started": true, "session": self.project.session}))
+    }
+    /// Records a started job, so `inspect` reports it until the next one.
+    pub(crate) fn begin_live_job(&mut self, tool: &'static str) {
         self.live_job = Some(LiveJob {
             tool,
             session: self.project.session,
             outcome: None,
         });
-        Ok(json!({"started": true, "session": self.project.session}))
+    }
+    pub(crate) fn live_solve_camera(&mut self, args: &Value, ctx: &egui::Context) -> Result<Value> {
+        self.live_job_ready(args)?;
+        let doc = self.project.document.snapshot();
+        let request = veylvik_track::camera::Request::from_json(args, doc.frame_count)?;
+        if !doc.nodes.contains_key(&request.source) {
+            return Err("the footage node does not exist".into());
+        }
+        self.solve.configure_live(&request);
+        self.run_solve_camera(ctx);
+        let running = self.solve.active.is_some();
+        self.live_job_started("solve_camera", running)
     }
     pub(crate) fn live_track_surface(
         &mut self,
@@ -114,6 +133,8 @@ impl Studio {
         };
         let active = match job.tool {
             "track_surface" => self.planar.active.as_ref(),
+            "solve_camera" => self.solve.active.as_ref(),
+            "outline_text" => None,
             _ => self.subject.active.as_ref(),
         };
         let progress = |p: &crate::sequence::Progress| {
@@ -135,6 +156,7 @@ impl Studio {
                 report["progress"] = progress(p);
             }
             // The job ended without publishing: cancelled, or failed before completion.
+            (None, None) if self.files.busy() => report["status"] = json!("running"),
             (None, None) => {
                 report["status"] = json!("failed");
                 report["error"] = json!(if self.error {

@@ -29,7 +29,7 @@ fn preview_filters_linear_premultiplied_pixels_and_preserves_fractional_coverage
 }
 #[test]
 fn previews_reject_invalid_bounds_pixels_and_nonfinite_input() {
-    for (width, height, edge) in [(0, 1, 1), (8193, 1, 1), (1, 1, 0), (1, 1, 1025), (2, 1, 1)] {
+    for (width, height, edge) in [(0, 1, 1), (8193, 1, 1), (1, 1, 0), (1, 1, 2049), (2, 1, 1)] {
         assert!(thumbnail(width, height, &[[1.0; 4]], edge).is_err());
     }
     for pixel in [

@@ -33,6 +33,7 @@ mod key_timeline;
 mod layer_bars;
 mod layouts;
 mod light_guides;
+mod live_files;
 mod live_jobs;
 mod material_library;
 mod media_controls;
@@ -285,6 +286,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 planar: planar::Controls::default(),
                 solve: solve_camera::Controls::default(),
                 live_job: None,
+                start_queued: false,
                 audio: Default::default(),
                 waveform: Default::default(),
                 layer_bars: Default::default(),
@@ -411,6 +413,8 @@ struct Studio {
     planar: planar::Controls,
     solve: solve_camera::Controls,
     live_job: Option<live_jobs::LiveJob>,
+    /// A render queued over live MCP starts as soon as it is prepared.
+    start_queued: bool,
     audio: audio_preview::AudioPreview,
     waveform: waveform::Waveform,
     layer_bars: layer_bars::LayerBars,
@@ -1425,6 +1429,11 @@ impl Studio {
             Ok(Completed::Portable(result)) => self.portable_finished(*result),
             Ok(Completed::PlanarTracked(result)) => self.planar_completed(result),
             Ok(Completed::CameraSolved(result)) => self.camera_solved(*result),
+            Ok(Completed::Live(tool, result)) => {
+                self.finish_live_job(tool, Ok(result));
+                self.status = "Done".into();
+                self.error = false;
+            }
             Ok(Completed::ModelChosen(chosen)) => self.model_chosen(*chosen),
             Ok(Completed::Segmented(result)) => self.subject_completed(*result),
             Ok(Completed::Tracked(result)) => self.tracking_completed(result),
@@ -1588,9 +1597,10 @@ impl Studio {
             }
             Ok(Completed::Queued(job)) => match self.render_queue.add(*job) {
                 Ok(()) => {
-                    if self.pages.page == pages::Page::Export {
-                        // From the Export page a chosen destination renders at once,
-                        // with its progress shown there.
+                    let asked = std::mem::take(&mut self.start_queued);
+                    if asked || self.pages.page == pages::Page::Export {
+                        // From the Export page, or asked for over live control, a chosen
+                        // destination renders at once, with its progress shown there.
                         self.render_queue.start();
                         self.render_queue.open = false;
                         self.status = "Exporting".into();

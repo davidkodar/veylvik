@@ -8,6 +8,7 @@ mod icc;
 pub mod import;
 pub mod lut;
 pub mod materials;
+pub mod measure;
 pub mod model;
 pub mod presets;
 pub mod preview;

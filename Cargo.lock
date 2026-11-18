@@ -4125,6 +4125,7 @@ dependencies = [
  "base64 0.22.1",
  "serde_json",
  "veylvik-document",
+ "veylvik-presets",
 ]
 
 [[package]]

@@ -3,9 +3,12 @@ use serde_json::{Value, json};
 use std::io::{BufRead, Write};
 use veylvik_document::{Command, Composition, Document, Time};
 use veylvik_render::{Plan, Region, RenderRequest, Renderer};
+mod project;
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 struct Session {
     document: Document,
+    /// The revision last opened or saved: anything else is unsaved work.
+    saved: u64,
     asset_base: std::path::PathBuf,
     renderer: Option<Renderer>,
 }
@@ -18,7 +21,7 @@ fn tools() -> &'static Value {
 }
 fn build_tools() -> Value {
     let revision = json!({"type":"integer","minimum":0});
-    json!({"tools":[
+    let mut list = json!({"tools":[
         tool("inspect","Read project state and revision. Set summary=true for compact composition metadata without node payloads; graph and get_node provide targeted inspection.",json!({"summary":{"type":"boolean"}}),&[]),
         tool("graph","Page node metadata in stable UUID order without parameter payloads. Labels over 256 characters are marked as truncated. Compare revisions between pages.",json!({"offset":{"type":"integer","minimum":0},"limit":{"type":"integer","minimum":1,"maximum":128}}),&[]),
         tool("get_node","Read one exact authored node, or just a named parameter. Does not evaluate curves or change selection.",json!({"id":{"type":"string","format":"uuid"},"parameter":{"type":"string"}}),&["id"]),
@@ -38,11 +41,31 @@ fn build_tools() -> Value {
         tool("undo","Undo one transaction, with a revision precondition.",json!({"revision":revision}),&["revision"]),
         tool("redo","Redo one transaction, with a revision precondition.",json!({"revision":revision}),&["revision"]),
         tool("save","Atomically save the current composition to an explicit path.",json!({"path":{"type":"string"},"revision":revision}),&["path","revision"]),
-        tool("render_video","Export composition output to a new MP4 using hardware-first encoding. Defaults to composition size/rate/range, H.264 high quality, black matte, hardware required. Optional settings replaces the entire settings object. Audio: the sound of every Footage node feeding the output is mixed in at its timeline position and trims (AAC 48 kHz); settings.audio may set mute, music (an extra file starting at the first exported frame) and music_gain_db (-60..12). The result lists the audio sources. Video is SDR Rec.709; Vulkan resizes and converts, compatible NVIDIA devices transfer planes directly on GPU to in-process NVENC; AMD/Intel can trial experimental DMA-BUF to VA-API; unsupported paths explicitly report RAM staging. Never overwrites an existing file.",json!({"path":{"type":"string"},"revision":revision,"settings":{"type":"object","additionalProperties":false,"properties":{"width":{"type":"integer","minimum":2,"maximum":8192},"height":{"type":"integer","minimum":2,"maximum":8192},"frame_rate":{"type":"object","properties":{"ticks":{"type":"integer","minimum":1},"rate":{"type":"integer","minimum":1}},"required":["ticks","rate"],"additionalProperties":false},"start":{"type":"integer","minimum":0},"end":{"type":"integer","minimum":0},"codec":{"enum":["h264","hevc10"]},"quality":{"enum":["draft","high","master"]},"allow_software":{"type":"boolean"},"matte":{"type":"array","minItems":3,"maxItems":3,"items":{"type":"number","minimum":0,"maximum":1}}},"required":["width","height","frame_rate","start","end"]}}),&["path","revision"]),
+        tool("render_video","Export composition output to a new MP4 using hardware-first encoding. Defaults to composition size/rate/range, H.264 high quality, black matte, hardware required. settings names only what differs from those defaults. Audio: the sound of every Footage node feeding the output is mixed in at its timeline position and trims (AAC 48 kHz); settings.audio may set mute, music (an extra file starting at the first exported frame) and music_gain_db (-60..12). The result lists the audio sources. Video is SDR Rec.709; Vulkan resizes and converts, compatible NVIDIA devices transfer planes directly on GPU to in-process NVENC; AMD/Intel can trial experimental DMA-BUF to VA-API; unsupported paths explicitly report RAM staging. An existing file is refused unless settings.replace is true.",json!({"path":{"type":"string"},"revision":revision,"settings":{"type":"object","additionalProperties":false,"properties":{"width":{"type":"integer","minimum":2,"maximum":8192},"height":{"type":"integer","minimum":2,"maximum":8192},"frame_rate":{"type":"object","properties":{"ticks":{"type":"integer","minimum":1},"rate":{"type":"integer","minimum":1}},"required":["ticks","rate"],"additionalProperties":false},"start":{"type":"integer","minimum":0},"end":{"type":"integer","minimum":0},"codec":{"enum":["h264","hevc10"]},"quality":{"enum":["draft","high","master"]},"allow_software":{"type":"boolean"},"matte":{"type":"array","minItems":3,"maxItems":3,"items":{"type":"number","minimum":0,"maximum":1}},"replace":{"type":"boolean"},"audio":{"type":"object","additionalProperties":false,"properties":{"mute":{"type":"boolean"},"music":{"type":"string"},"music_gain_db":{"type":"number","minimum":-60,"maximum":12}}}}}}),&["path","revision"]),
         tool("render_sequence","Render an inclusive frame range at the composition frame rate into a new directory. Choose png (default SDR) or exr (linear HDR); frames use zero-based names; sequence.json records timing and completion. Existing directories are rejected; at most 10000 frames.",json!({"path":{"type":"string"},"revision":revision,"start":{"type":"integer"},"end":{"type":"integer"},"format":{"enum":["png","exr"]},"node":{"type":"string","format":"uuid"},"region":{"type":"object","properties":{"x":{"type":"integer","minimum":0},"y":{"type":"integer","minimum":0},"width":{"type":"integer","minimum":1},"height":{"type":"integer","minimum":1}},"required":["x","y","width","height"],"additionalProperties":false}}),&["path","revision","start","end"]),
-        tool("preview_image","Render an inline PNG image for visual inspection without writing a file. max_edge defaults to 512 (1..1024); area filtering uses linear premultiplied color. This bounds the returned image, not GPU render resolution. HDR is clipped to SDR and PNG preserves alpha.",json!({"max_edge":{"type":"integer","minimum":1,"maximum":1024},"revision":revision,"ticks":{"type":"integer"},"rate":{"type":"integer","minimum":1,"maximum":u32::MAX},"node":{"type":"string","format":"uuid"},"region":{"type":"object","properties":{"x":{"type":"integer","minimum":0},"y":{"type":"integer","minimum":0},"width":{"type":"integer","minimum":1},"height":{"type":"integer","minimum":1}},"required":["x","y","width","height"],"additionalProperties":false}}),&["revision","ticks","rate"]),
+        tool("preview_image","Render an inline PNG image for visual inspection without writing a file. max_edge defaults to 512 (1..2048); region renders part of the frame, so details can be seen at full size; area filtering uses linear premultiplied color. This bounds the returned image, not GPU render resolution. HDR is clipped to SDR and PNG preserves alpha.",json!({"max_edge":{"type":"integer","minimum":1,"maximum":2048},"revision":revision,"ticks":{"type":"integer"},"rate":{"type":"integer","minimum":1,"maximum":u32::MAX},"node":{"type":"string","format":"uuid"},"region":{"type":"object","properties":{"x":{"type":"integer","minimum":0},"y":{"type":"integer","minimum":0},"width":{"type":"integer","minimum":1},"height":{"type":"integer","minimum":1}},"required":["x","y","width","height"],"additionalProperties":false}}),&["revision","ticks","rate"]),
         tool("render","Render the current revision using Vulkan. Choose .png for SDR or .exr for lossless linear premultiplied RGBA32F. Time is exact ticks/rate seconds.",json!({"path":{"type":"string"},"revision":revision,"ticks":{"type":"integer"},"rate":{"type":"integer","minimum":1,"maximum":u32::MAX},"node":{"type":"string","format":"uuid"},"region":{"type":"object","properties":{"x":{"type":"integer","minimum":0},"y":{"type":"integer","minimum":0},"width":{"type":"integer","minimum":1},"height":{"type":"integer","minimum":1}},"required":["x","y","width","height"],"additionalProperties":false}}),&["path","revision","ticks","rate"])
-    ]})
+    ]});
+    list["tools"]
+        .as_array_mut()
+        .unwrap()
+        .extend(project::tools(&revision));
+    list["tools"].as_array_mut().unwrap().push(tool(
+        "measure",
+        "Read numbers back from a rendered frame instead of a picture: displayed brightness percentiles (0..1 after the display transform and the sRGB curve), scene-linear mean, peak and where it is, the share of pixels above 1.0, how much of the frame is covered and the box round everything that is not transparent (in composition pixels). Use it to check exposure, find where a node's picture lands in the frame, or compare two versions. node measures that node's own picture; region measures part of the frame.",
+        json!({"revision":revision,"ticks":{"type":"integer"},"rate":{"type":"integer","minimum":1,"maximum":u32::MAX},"node":{"type":"string","format":"uuid"},"region":{"type":"object","properties":{"x":{"type":"integer","minimum":0},"y":{"type":"integer","minimum":0},"width":{"type":"integer","minimum":1},"height":{"type":"integer","minimum":1}},"required":["x","y","width","height"],"additionalProperties":false}}),
+        &["revision", "ticks", "rate"],
+    ));
+    for (name, description, mut properties, required) in veylvik_presets::authoring::tools() {
+        properties["revision"] = revision.clone();
+        properties["dry_run"] = json!({"type":"boolean"});
+        let required: Vec<&str> = required.iter().copied().chain(["revision"]).collect();
+        list["tools"]
+            .as_array_mut()
+            .unwrap()
+            .push(tool(name, description, properties, &required));
+    }
+    list
 }
 fn required_u64(args: &Value, name: &str) -> Result<u64> {
     args[name]
@@ -76,7 +99,16 @@ impl Session {
         }
         if !matches!(
             name,
-            "inspect" | "nodes" | "diagnostics" | "graph" | "get_node" | "get_preset" | "materials"
+            "inspect"
+                | "nodes"
+                | "diagnostics"
+                | "graph"
+                | "get_node"
+                | "get_preset"
+                | "materials"
+                | "new_project"
+                | "open_project"
+                | "new_from_media"
         ) && required_u64(args, "revision")? != self.document.revision()
         {
             return Err(format!("revision conflict: current {}", self.document.revision()).into());
@@ -94,7 +126,7 @@ impl Session {
             .transpose()?
             .unwrap_or(512);
         if !(1..=veylvik_io::preview::MAX_PREVIEW_EDGE as u64).contains(&max_edge) {
-            return Err("max_edge must be within 1..1024".into());
+            return Err("max_edge must be within 1..2048".into());
         }
         let (node, time, frame) = self.frame(args, true)?;
         let pixels = veylvik_render::display::apply(
@@ -174,6 +206,50 @@ impl Session {
     }
     fn call(&mut self, name: &str, args: &Value) -> Result<Value> {
         self.validate_call(name, args)?;
+        if let Some(reply) = self.project(name, args)? {
+            return Ok(reply);
+        }
+        if let Some(authored) =
+            veylvik_presets::authoring::build(self.document.snapshot(), name, args)?
+        {
+            let dry_run = args
+                .get("dry_run")
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
+            let revision = self.document.revision();
+            if dry_run {
+                self.document.prepare(revision, &authored.commands)?;
+            } else {
+                self.document.apply(revision, &authored.commands)?;
+            }
+            let mut result = authored.result;
+            result["dry_run"] = json!(dry_run);
+            result["revision"] = json!(self.document.revision());
+            return Ok(result);
+        }
+        if name == "measure" {
+            let (node, time, frame) = self.frame(args, true)?;
+            let doc = self.document.snapshot();
+            let display = if doc.ocio.view.is_some() {
+                veylvik_document::media::DisplayTransform::Standard
+            } else {
+                doc.display
+            };
+            let shown = veylvik_render::display::apply(display, &frame.pixels);
+            let region = frame.region;
+            let mut result = veylvik_io::measure::measure(
+                region.x,
+                region.y,
+                region.width,
+                region.height,
+                &frame.pixels,
+                &shown,
+            )?;
+            result["revision"] = json!(self.document.revision());
+            result["node"] = json!(node);
+            result["time"] = json!(time);
+            return Ok(result);
+        }
         match name {
             "materials" => veylvik_io::materials::library(&veylvik_io::materials::directory()?),
             "apply_material" => {
@@ -392,13 +468,23 @@ impl Session {
             "redo" => Ok(json!({"revision":self.document.redo(self.document.revision())?})),
             "save" => {
                 crate::assets::save(self.document.snapshot(), &self.asset_base, path(args)?)?;
+                self.saved = self.document.revision();
                 Ok(json!({"saved":args["path"],"revision":self.document.revision()}))
             }
             "render_video" => {
                 let doc = self.document.snapshot();
                 let mut settings: crate::assets::video_export::Settings = match args.get("settings")
                 {
-                    Some(value) => serde_json::from_value(value.clone())?,
+                    Some(value) => {
+                        let mut merged = serde_json::to_value(
+                            crate::assets::video_export::Settings::for_document(doc),
+                        )?;
+                        let given = value.as_object().ok_or("settings must be an object")?;
+                        for (key, value) in given {
+                            merged[key.as_str()] = value.clone();
+                        }
+                        serde_json::from_value(merged)?
+                    }
                     None => crate::assets::video_export::Settings::for_document(doc),
                 };
                 settings.audio.base = Some(self.asset_base.clone());
@@ -495,6 +581,7 @@ pub fn serve(
 ) -> Result<()> {
     let mut session = Session {
         document: Document::new(composition)?,
+        saved: 0,
         asset_base,
         renderer: None,
     };

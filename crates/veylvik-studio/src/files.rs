@@ -38,6 +38,8 @@ pub enum Completed {
     PresetLibrary(veylvik_io::presets::Listing),
     PresetLoaded(Box<veylvik_document::presets::Preset>),
     Cancelled,
+    /// The finished result of a live MCP job, reported through `inspect.job`.
+    Live(&'static str, serde_json::Value),
     FontAdded(String),
     Outlined(Box<veylvik_document::Node>),
     TextFont {

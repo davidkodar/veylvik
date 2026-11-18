@@ -1,0 +1,211 @@
+//! Authoring calls shared by the MCP servers: each turns plain arguments into document commands and a result, so the headless and the live server build exactly the same nodes.
+use crate::particles::LOOKS;
+use serde_json::{Value, json};
+use veylvik_document::{
+    Command, Composition, Error, Node, NodeId, NodePosition, Operation, Result, registry::TYPES,
+};
+
+/// What a call adds: the commands for one undo step and the reply's own fields.
+pub struct Authored {
+    pub commands: Vec<Command>,
+    pub result: Value,
+}
+/// The tools as `(name, description, properties, required)`; servers add their own
+/// `revision` (and `session`) and `dry_run`.
+pub fn tools() -> Vec<(&'static str, &'static str, Value, &'static [&'static str])> {
+    let id = json!({"type":"string","format":"uuid"});
+    let kinds: Vec<&str> = TYPES.iter().map(|kind| kind.type_id).collect();
+    let looks: Vec<&str> = LOOKS.iter().map(|look| look.name).collect();
+    vec![
+        (
+            "add_node",
+            "Add one node of a type from nodes and return its id. settings are written over the type's default settings (only name what differs; scalars are {\"kind\":\"constant\",\"value\":N} or keyed curves as in nodes), inputs maps port names to existing node ids, and output true also makes the node the composition's output. One undo step.",
+            json!({"type":{"enum":kinds},"label":{"type":"string","maxLength":256},"settings":{"type":"object"},"inputs":{"type":"object","additionalProperties":id},"position":veylvik_document::schema::position(),"output":{"type":"boolean"}}),
+            &["type"],
+        ),
+        (
+            "gold_title",
+            "Add the Gold title scene, sized to the composition: brushed gold 3D lettering under studio strip lights on a dark wall, as ordinary nodes. It becomes the output and the display transform becomes Filmic. Returns the output node and the Title node whose content holds the words. One undo step.",
+            json!({"text":{"type":"string","minLength":1,"maxLength":256},"subtitle":{"type":"string","maxLength":256}}),
+            &["text"],
+        ),
+        (
+            "particle_look",
+            "Give a Particles node a ready-made look, scaled to the composition: Sparks, Embers, Snow, Rain, Magic dust, Whirlpool, Confetti need nothing; Disintegrate needs the emitter input and Assemble the target input connected. Replaces the node's settings except its seed, position and wiring. One undo step.",
+            json!({"node":id,"look":{"enum":looks}}),
+            &["node", "look"],
+        ),
+    ]
+}
+fn text<'a>(args: &'a Value, name: &str) -> Result<&'a str> {
+    args[name]
+        .as_str()
+        .ok_or_else(|| Error(format!("{name} must be a string")))
+}
+fn node_id(value: &Value, what: &str) -> Result<NodeId> {
+    value
+        .as_str()
+        .and_then(|id| id.parse().ok())
+        .ok_or_else(|| Error(format!("{what} must be a node id")))
+}
+/// The commands for `tool`, or `None` when it is not one of these tools.
+pub fn build(composition: &Composition, tool: &str, args: &Value) -> Result<Option<Authored>> {
+    Ok(Some(match tool {
+        "add_node" => add_node(args)?,
+        "gold_title" => {
+            let subtitle = args.get("subtitle").and_then(Value::as_str).unwrap_or("");
+            let built = crate::gold_title(composition, text(args, "text")?, subtitle)?;
+            Authored {
+                result: json!({"output":built.output,"title":built.edit,"added_nodes":built.commands.iter().filter(|c|matches!(c,Command::Put{..})).count()}),
+                commands: built.commands,
+            }
+        }
+        "particle_look" => {
+            let id = node_id(&args["node"], "node")?;
+            let name = text(args, "look")?;
+            let look = LOOKS
+                .iter()
+                .find(|look| look.name == name)
+                .ok_or_else(|| Error(format!("unknown look {name}")))?;
+            let mut node = composition
+                .nodes
+                .get(&id)
+                .ok_or_else(|| Error("node does not exist".into()))?
+                .clone();
+            let Operation::Particles(particles) = &mut node.operation else {
+                return Err(Error("node is not a Particles node".into()));
+            };
+            look.apply(particles, composition.width, composition.height);
+            Authored {
+                commands: vec![Command::Put {
+                    node: Box::new(node),
+                }],
+                result: json!({"node":id,"look":look.name,"hint":look.hint}),
+            }
+        }
+        _ => return Ok(None),
+    }))
+}
+fn add_node(args: &Value) -> Result<Authored> {
+    let kind = text(args, "type")?;
+    let kind = TYPES
+        .iter()
+        .find(|t| t.type_id == kind)
+        .ok_or_else(|| Error(format!("unknown node type {kind}")))?;
+    let mut operation = kind.default_operation();
+    if let Some(settings) = args.get("settings") {
+        let settings = settings
+            .as_object()
+            .ok_or_else(|| Error("settings must be an object".into()))?;
+        let target = operation.as_object_mut().expect("defaults are objects");
+        for (key, value) in settings {
+            if key == "type" || !target.contains_key(key) {
+                return Err(Error(format!("{} has no setting {key}", kind.type_id)));
+            }
+            target.insert(key.clone(), value.clone());
+        }
+    }
+    let operation: Operation =
+        serde_json::from_value(operation).map_err(|e| Error(format!("settings: {e}")))?;
+    let mut inputs = Vec::new();
+    if let Some(given) = args.get("inputs") {
+        for (port, source) in given
+            .as_object()
+            .ok_or_else(|| Error("inputs must be an object".into()))?
+        {
+            inputs.push((port.as_str(), node_id(source, "an input")?));
+        }
+    }
+    let label = args
+        .get("label")
+        .and_then(Value::as_str)
+        .unwrap_or(kind.label);
+    let mut node = Node::new(label, operation, &inputs);
+    node.position = match args.get("position") {
+        None | Some(Value::Null) => None,
+        Some(position) => Some(
+            serde_json::from_value::<NodePosition>(position.clone())
+                .map_err(|e| Error(format!("position: {e}")))?,
+        ),
+    };
+    let id = node.id;
+    let mut commands = vec![Command::Put {
+        node: Box::new(node),
+    }];
+    let output = args.get("output").and_then(Value::as_bool).unwrap_or(false);
+    if output {
+        commands.push(Command::Output { id });
+    }
+    Ok(Authored {
+        commands,
+        result: json!({"id":id,"type":kind.type_id,"output":output}),
+    })
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use veylvik_document::{Document, Time};
+    fn document() -> Document {
+        Document::new(veylvik_document::blank(1920, 1080, Time::new(30, 1).unwrap()).unwrap())
+            .unwrap()
+    }
+    fn run(document: &mut Document, tool: &str, args: Value) -> Result<Value> {
+        let authored = build(document.snapshot(), tool, &args)?.expect("a known tool");
+        document.apply(document.revision(), &authored.commands)?;
+        Ok(authored.result)
+    }
+    #[test]
+    fn a_node_is_added_from_its_defaults_with_the_named_settings_and_wiring() {
+        let mut doc = document();
+        let back = doc.snapshot().output;
+        let blur = run(
+            &mut doc,
+            "add_node",
+            json!({"type":"blur","settings":{"radius":{"kind":"constant","value":12.0}},"inputs":{"image":back},"output":true}),
+        )
+        .unwrap();
+        let id: NodeId = blur["id"].as_str().unwrap().parse().unwrap();
+        let after = doc.snapshot();
+        assert_eq!(after.output, id);
+        assert_eq!(after.nodes[&id].inputs["image"], back);
+        assert_eq!(after.nodes[&id].label, "Blur");
+        let wrong = build(
+            after,
+            "add_node",
+            &json!({"type":"blur","settings":{"radiuss":1}}),
+        );
+        assert!(
+            wrong
+                .err()
+                .is_some_and(|e| e.0.contains("no setting radiuss"))
+        );
+        assert!(build(after, "save", &json!({})).unwrap().is_none());
+    }
+    #[test]
+    fn a_look_restyles_particles_and_the_gold_title_becomes_the_output() {
+        let mut doc = document();
+        let node = run(&mut doc, "add_node", json!({"type":"particles"})).unwrap();
+        let reply = run(
+            &mut doc,
+            "particle_look",
+            json!({"node":node["id"],"look":"Sparks"}),
+        )
+        .unwrap();
+        assert_eq!(reply["look"], "Sparks");
+        let id: NodeId = node["id"].as_str().unwrap().parse().unwrap();
+        let Operation::Particles(p) = &doc.snapshot().nodes[&id].operation else {
+            panic!("particles")
+        };
+        assert_eq!(
+            serde_json::to_value(&p.rate).unwrap(),
+            json!({"kind":"constant","value":1500.0})
+        );
+        let title = run(&mut doc, "gold_title", json!({"text":"VEYLVIK"})).unwrap();
+        let output: NodeId = title["output"].as_str().unwrap().parse().unwrap();
+        assert_eq!(doc.snapshot().output, output);
+        assert!(names().contains(&"gold_title"));
+    }
+    fn names() -> Vec<&'static str> {
+        tools().into_iter().map(|tool| tool.0).collect()
+    }
+}

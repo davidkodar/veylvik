@@ -4,6 +4,7 @@ use super::*;
 fn targeted_queries_validate_arguments_without_mutation_or_gpu_initialization() {
     let mut session = Session {
         document: Document::new(veylvik_document::motion_demo()).unwrap(),
+        saved: 0,
         asset_base: std::env::temp_dir(),
         renderer: None,
     };
@@ -107,7 +108,15 @@ fn protocol_enforces_lifecycle_and_transaction_revision() {
             "render_video",
             "track_surface",
             "solve_camera",
-            "segment_subject"
+            "segment_subject",
+            "new_project",
+            "open_project",
+            "new_from_media",
+            "import_media",
+            "measure",
+            "add_node",
+            "gold_title",
+            "particle_look"
         ]
         .into()
     );
@@ -126,12 +135,13 @@ mod image_tests {
         assert_eq!(
             apply["inputSchema"]["properties"]["commands"]["items"]["oneOf"][0]["properties"]["node"]
                 ["properties"]["operation"],
-            veylvik_document::registry::operation_schema()
+            veylvik_document::registry::operation_reference()
         );
         let composition = veylvik_document::demo();
         let output = composition.output;
         let mut session = Session {
             document: Document::new(composition).unwrap(),
+            saved: 0,
             asset_base: std::env::temp_dir(),
             renderer: None,
         };
@@ -172,6 +182,7 @@ mod branch_tests {
         let count = composition.nodes.len();
         let mut session = Session {
             document: Document::new(composition).unwrap(),
+            saved: 0,
             asset_base: std::env::temp_dir(),
             renderer: None,
         };
@@ -232,6 +243,7 @@ mod effect_tests {
             let count = composition.nodes.len();
             let mut session = Session {
                 document: Document::new(composition).unwrap(),
+                saved: 0,
                 asset_base: std::env::temp_dir(),
                 renderer: None,
             };
@@ -295,6 +307,7 @@ mod preset_tests {
         let input = composition.output;
         let mut session = Session {
             document: Document::new(composition).unwrap(),
+            saved: 0,
             asset_base: std::env::temp_dir(),
             renderer: None,
         };

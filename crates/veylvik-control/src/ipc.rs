@@ -327,7 +327,38 @@ const CALL_TIMEOUT: Duration = Duration::from_secs(120);
 /// Stdio MCP server for the open editor. It answers the handshake and tool list itself, so an
 /// assistant can start it before Studio. Each tool call opens its own connection to the socket,
 /// so restarts are picked up and Studio's single client slot is free between calls.
+/// This program's file as it was when the relay started, to notice an update.
+struct Build {
+    path: PathBuf,
+    modified: Option<std::time::SystemTime>,
+}
+impl Build {
+    fn now() -> Option<Self> {
+        let path = std::env::current_exe().ok()?;
+        let modified = fs::metadata(&path).and_then(|m| m.modified()).ok();
+        Some(Self { path, modified })
+    }
+    /// Whether the program was replaced since: its tool list is then out of date.
+    fn replaced(&self) -> bool {
+        fs::metadata(&self.path).and_then(|m| m.modified()).ok() != self.modified
+    }
+}
+const UPDATED: &str = "Note: Veylvik was updated after this MCP server started, so its tool list may be out of date. Restart the MCP server (reconnect it in your client) to see the current tools.";
+/// `reply` with the update note added to its text content; unchanged when it is not a tool result.
+fn with_note(reply: Vec<u8>) -> Vec<u8> {
+    let Ok(mut message) = serde_json::from_slice::<Value>(&reply) else {
+        return reply;
+    };
+    let Some(content) = message["result"]["content"].as_array_mut() else {
+        return reply;
+    };
+    content.push(json!({"type":"text","text":UPDATED}));
+    let mut bytes = serde_json::to_vec(&message).unwrap_or(reply);
+    bytes.push(b'\n');
+    bytes
+}
 pub fn relay(socket: &Path, mut input: impl BufRead, mut output: impl Write) -> io::Result<()> {
+    let build = Build::now();
     let mut protocol = Protocol::default();
     let stop = AtomicBool::new(false);
     while let Some(bytes) = read_message(&mut input, &stop)? {
@@ -341,6 +372,11 @@ pub fn relay(socket: &Path, mut input: impl BufRead, mut output: impl Write) -> 
             {
                 match call_studio(socket, &message) {
                     Ok(reply) => {
+                        let reply = if build.as_ref().is_some_and(Build::replaced) {
+                            with_note(reply)
+                        } else {
+                            reply
+                        };
                         output.write_all(&reply)?;
                         output.flush()?;
                         continue;
@@ -462,6 +498,25 @@ fn read_reply(input: &mut impl BufRead, deadline: Instant) -> io::Result<Vec<u8>
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn an_updated_program_adds_a_note_to_tool_results_only() {
+        let reply = br#"{"jsonrpc":"2.0","id":3,"result":{"content":[{"type":"text","text":"{}"}],"isError":false}}
+"#;
+        let noted = with_note(reply.to_vec());
+        assert!(noted.ends_with(b"\n"));
+        let message: Value = serde_json::from_slice(&noted).unwrap();
+        assert_eq!(message["result"]["content"][1]["text"], UPDATED);
+        assert_eq!(message["id"], 3);
+        let other = br#"{"jsonrpc":"2.0","id":3,"error":{"code":1}}"#.to_vec();
+        assert_eq!(with_note(other.clone()), other);
+        let build = Build::now().unwrap();
+        assert!(!build.replaced());
+        let moved = Build {
+            path: build.path.with_extension("gone"),
+            modified: build.modified,
+        };
+        assert!(moved.replaced());
+    }
     use std::os::unix::fs::PermissionsExt;
     /// A fresh path per test, under the runtime directory: a build's scratch TMPDIR can exceed `sun_path`.
     fn directory() -> PathBuf {

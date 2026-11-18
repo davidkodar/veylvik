@@ -36,6 +36,21 @@ fn verdict(rms: f64) -> (&'static str, egui::Color32) {
         _ => ("Rough: 3D may slide", egui::Color32::from_rgb(235, 120, 90)),
     }
 }
+impl Controls {
+    /// The window's settings for a request made over live control.
+    pub(crate) fn configure_live(&mut self, request: &Request) {
+        *self = Self {
+            open: true,
+            source: Some(request.source),
+            start: request.frames[0],
+            end: request.frames[1],
+            lens_known: request.focal_length.is_some(),
+            focal: request.focal_length.unwrap_or(35.0),
+            sensor: request.sensor_width,
+            ..Default::default()
+        };
+    }
+}
 impl Studio {
     pub(crate) fn begin_solve_camera(&mut self) {
         if !self.apply_draft() || self.files.busy() {
@@ -171,7 +186,7 @@ impl Studio {
             self.solve.open = false;
         }
     }
-    fn run_solve_camera(&mut self, ctx: &egui::Context) {
+    pub(crate) fn run_solve_camera(&mut self, ctx: &egui::Context) {
         let Some(source) = self.solve.source else {
             return;
         };
@@ -251,6 +266,7 @@ impl Studio {
         self.project.preview = built.report["composite"]
             .as_str()
             .and_then(|s| s.parse().ok());
+        self.finish_live_job("solve_camera", Ok(built.report.clone()));
         self.solve.report = Some(built.report);
         self.solve.open = true;
         self.refresh_draft();

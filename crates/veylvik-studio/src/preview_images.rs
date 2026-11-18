@@ -7,6 +7,12 @@ pub struct Snapshot {
     pub frame: Arc<GpuFrame>,
     pub metadata: Value,
     pub max_edge: u32,
+    /// Measure the frame (as this display transform shows it, within this region)
+    /// instead of encoding a picture.
+    pub measure: Option<(
+        veylvik_document::media::DisplayTransform,
+        Option<veylvik_render::Region>,
+    )>,
 }
 struct Job {
     request: Request,
@@ -63,6 +69,30 @@ fn encode(renderer: &Renderer, snapshot: Snapshot) -> Result<ToolOutput, String>
     let frame = renderer
         .read_frame(&snapshot.frame)
         .map_err(|error| error.to_string())?;
+    if let Some((display, region)) = snapshot.measure {
+        let whole = frame.region;
+        let part = region.unwrap_or(whole);
+        if part.x < whole.x
+            || part.y < whole.y
+            || part.x + part.width > whole.x + whole.width
+            || part.y + part.height > whole.y + whole.height
+        {
+            return Err("region lies outside the previewed frame".into());
+        }
+        let mut pixels = Vec::with_capacity(part.width as usize * part.height as usize);
+        for y in part.y - whole.y..part.y - whole.y + part.height {
+            let start = (y * whole.width + part.x - whole.x) as usize;
+            pixels.extend_from_slice(&frame.pixels[start..start + part.width as usize]);
+        }
+        let shown = veylvik_render::display::apply(display, &pixels);
+        let mut result =
+            veylvik_io::measure::measure(part.x, part.y, part.width, part.height, &pixels, &shown)
+                .map_err(|error| error.to_string())?;
+        for key in ["session", "revision", "node", "time", "frame"] {
+            result[key] = snapshot.metadata[key].clone();
+        }
+        return Ok(result.into());
+    }
     let thumbnail = veylvik_io::preview::thumbnail(
         frame.region.width,
         frame.region.height,

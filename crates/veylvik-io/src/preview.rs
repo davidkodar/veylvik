@@ -1,6 +1,6 @@
 //! Bounded SDR previews, area-filtered in linear premultiplied color.
 use crate::Result;
-pub const MAX_PREVIEW_EDGE: u32 = 1024;
+pub const MAX_PREVIEW_EDGE: u32 = 2048;
 pub struct Thumbnail {
     pub width: u32,
     pub height: u32,
@@ -15,7 +15,7 @@ pub fn thumbnail(width: u32, height: u32, pixels: &[[f32; 4]], max_edge: u32) ->
         || !(1..=MAX_PREVIEW_EDGE).contains(&max_edge)
     {
         return Err(
-            "preview needs matching dimensions within 1..8192 and max_edge within 1..1024".into(),
+            "preview needs matching dimensions within 1..8192 and max_edge within 1..2048".into(),
         );
     }
     if pixels.iter().any(|pixel| {
@@ -25,7 +25,7 @@ pub fn thumbnail(width: u32, height: u32, pixels: &[[f32; 4]], max_edge: u32) ->
     }
     let longest = width.max(height);
     if longest <= max_edge {
-        return Ok(Thumbnail {
+        return sendable(Thumbnail {
             width,
             height,
             png: crate::encode_png(width, height, pixels)?,
@@ -62,9 +62,21 @@ pub fn thumbnail(width: u32, height: u32, pixels: &[[f32; 4]], max_edge: u32) ->
             );
         }
     }
-    Ok(Thumbnail {
+    sendable(Thumbnail {
         width: out_width,
         height: out_height,
         png: crate::encode_png(out_width, out_height, &filtered)?,
     })
+}
+/// The most a preview's PNG may weigh: encoded as text it must fit one control message.
+pub const MAX_PREVIEW_BYTES: usize = 2_900_000;
+fn sendable(thumbnail: Thumbnail) -> Result<Thumbnail> {
+    if thumbnail.png.len() > MAX_PREVIEW_BYTES {
+        return Err(format!(
+            "this preview is {} bytes, more than one message holds ({MAX_PREVIEW_BYTES}): ask for a smaller max_edge or a region",
+            thumbnail.png.len()
+        )
+        .into());
+    }
+    Ok(thumbnail)
 }

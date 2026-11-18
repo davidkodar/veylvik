@@ -1,4 +1,5 @@
 //! Ready-made scenes as lists of document commands: every scene is ordinary nodes the user can open and change, sized to the composition it is added to.
+pub mod authoring;
 mod gold_title;
 pub mod particles;
 pub use gold_title::gold_title;

@@ -14,7 +14,9 @@ fn validate_arguments(name: &str, args: &Value) -> Result<()> {
         .unwrap()
         .iter()
         .find(|tool| tool["name"] == name)
-        .ok_or("unknown live tool")?;
+        .ok_or_else(|| {
+            format!("this Studio has no tool named {name}: it may be an older build than the MCP server; restart Studio after updating Veylvik")
+        })?;
     let object = args.as_object().ok_or("arguments must be an object")?;
     for key in object.keys() {
         if descriptor["inputSchema"]["properties"].get(key).is_none() {
@@ -38,6 +40,9 @@ pub fn call(
     if let Some(result) = project_files(studio, name, args, ctx)? {
         return Ok(result);
     }
+    if let Some(result) = studio.live_files(name, args)? {
+        return Ok(result);
+    }
     if name == "nodes" {
         return Ok(veylvik_document::registry::catalog());
     }
@@ -48,6 +53,7 @@ pub fn call(
     }
     match name {
         "track_surface" => return studio.live_track_surface(args, ctx),
+        "solve_camera" => return studio.live_solve_camera(args, ctx),
         "segment_subject" => return studio.live_segment_subject(args, ctx),
         _ => {}
     }
@@ -108,7 +114,26 @@ pub fn call(
         return Err("Apply or revert the inspector draft before live edits".into());
     }
     let mut response = None;
+    if let Some(authored) =
+        veylvik_presets::authoring::build(studio.project.document.snapshot(), name, args)?
+    {
+        let mut result = authored.result;
+        result["session"] = json!(session);
+        result["dry_run"] = json!(dry_run);
+        if dry_run {
+            studio
+                .project
+                .document
+                .prepare(revision, &authored.commands)?;
+            result["revision"] = json!(revision);
+            return Ok(result);
+        }
+        studio.project.apply(&authored.commands)?;
+        result["revision"] = json!(studio.project.document.revision());
+        response = Some(result);
+    }
     match name {
+        "add_node" | "gold_title" | "particle_look" => {}
         "insert_preset" => {
             let preset: veylvik_document::presets::Preset =
                 serde_json::from_value(args["preset"].clone())?;
@@ -321,8 +346,8 @@ pub(crate) fn identity(project: &crate::project::Project, args: &Value) -> Resul
     Ok((session, revision))
 }
 
-fn snapshot(studio: &Studio, args: &Value) -> Result<crate::preview_images::Snapshot> {
-    validate_arguments("preview_image", args)?;
+fn snapshot(studio: &Studio, name: &str, args: &Value) -> Result<crate::preview_images::Snapshot> {
+    validate_arguments(name, args)?;
     if studio.draft_dirty
         && matches!(
             studio.draft.operation,
@@ -338,7 +363,7 @@ fn snapshot(studio: &Studio, args: &Value) -> Result<crate::preview_images::Snap
         .transpose()?
         .unwrap_or(512);
     if !(1..=veylvik_io::preview::MAX_PREVIEW_EDGE as u64).contains(&max_edge) {
-        return Err("max_edge must be within 1..1024".into());
+        return Err("max_edge must be within 1..2048".into());
     }
     if studio.playing || studio.preview_pending || studio.displayed_ticket != studio.wanted {
         return Err(
@@ -361,6 +386,21 @@ fn snapshot(studio: &Studio, args: &Value) -> Result<crate::preview_images::Snap
         frame: displayed.frame.clone(),
         metadata,
         max_edge: max_edge as u32,
+        measure: if name == "measure" {
+            let doc = studio.project.document.snapshot();
+            Some((
+                if doc.ocio.view.is_some() {
+                    veylvik_document::media::DisplayTransform::Standard
+                } else {
+                    doc.display
+                },
+                args.get("region")
+                    .map(|region| serde_json::from_value(region.clone()))
+                    .transpose()?,
+            ))
+        } else {
+            None
+        },
     })
 }
 
@@ -369,14 +409,14 @@ pub fn dispatch(
     request: veylvik_control::ipc::Request,
     ctx: &eframe::egui::Context,
 ) {
-    if request.name != "preview_image" {
+    if !matches!(request.name.as_str(), "preview_image" | "measure") {
         let result =
             call(studio, &request.name, &request.arguments, ctx).map_err(|error| error.to_string());
         request.respond(result);
         return;
     }
     let prepared = (|| -> Result<_> {
-        let snapshot = snapshot(studio, &request.arguments)?;
+        let snapshot = snapshot(studio, &request.name, &request.arguments)?;
         if studio.preview_images.is_none() {
             studio.preview_images = Some(crate::preview_images::Worker::new()?);
         }
