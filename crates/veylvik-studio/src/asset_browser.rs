@@ -101,6 +101,13 @@ fn label(entry: builtin::Builtin) -> String {
         .to_owned()
 }
 impl Studio {
+    /// Open the library on its Templates tab.
+    pub(crate) fn show_templates(&mut self) {
+        self.browser.visible = true;
+        self.browser.tab = Tab::Templates;
+        self.browser.category = "All".into();
+        self.browser.selected = None;
+    }
     pub(super) fn asset_browser(&mut self, ui: &mut egui::Ui) {
         if !self.browser.visible {
             egui::Panel::left("library-tool-rail")

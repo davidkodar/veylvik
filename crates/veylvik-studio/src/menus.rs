@@ -32,6 +32,8 @@ impl Studio {
             crate::icons::paint_wordmark(ui.painter(), egui::pos2(word.left(), top), cap, ink);
             ui.separator();
             ui.menu_button("File", |ui| {
+                if item(ui, "Start screen", "", true) { self.show_start(); }
+                ui.separator();
                 if item(ui, "New composition…", "Ctrl+N", true) { self.leave(Leave::New, ui.ctx()); }
                 if item(ui, "New from media…", "", true) { self.leave(Leave::NewFromMedia, ui.ctx()); }
                 if item(ui, "Open…", "Ctrl+O", true) { self.leave(Leave::Open, ui.ctx()); }

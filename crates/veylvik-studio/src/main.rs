@@ -64,6 +64,7 @@ mod shape_animation;
 mod shot_light;
 mod showcase_gallery;
 mod solve_camera;
+mod start;
 mod status_bar;
 mod subject;
 mod surface;
@@ -275,6 +276,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 outline_controls: text_outline::Controls::default(),
                 composition_controls: composition::Controls::default(),
                 pages: Default::default(),
+                start: start::Start::load(false),
                 media_import: None,
                 confirm: None,
                 after_save: None,
@@ -285,6 +287,10 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 theme_checked: Instant::now() - Duration::from_secs(10),
                 accent: egui::Color32::from_rgb(255, 214, 10),
             };
+            // Opened without a file: begin on the start screen.
+            if app.project.path.is_none() {
+                app.show_start();
+            }
             app.apply_preferences(None, &cc.egui_ctx);
             app.request_preview();
             Ok(Box::new(app))
@@ -294,6 +300,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
 }
 #[derive(Clone, Copy)]
 enum Leave {
+    /// A choice made on the start screen (`Start::chosen`).
+    Start,
     Open,
     New,
     NewFromMedia,
@@ -377,6 +385,7 @@ struct Studio {
     outline_controls: text_outline::Controls,
     composition_controls: composition::Controls,
     pages: pages::Pages,
+    start: start::Start,
     media_import: Option<media_import::Pending>,
     confirm: Option<Leave>,
     after_save: Option<Leave>,
@@ -402,6 +411,7 @@ impl Studio {
             || self.node_finder.open
     }
     fn open_project(&mut self, project: Project, ctx: &egui::Context) {
+        self.start.open = false;
         self.portable = portable::Controls::default();
         let recovery = recovery::Recovery::new(self.recovery.store.clone(), &project, ctx.clone());
         self.recovery.finish(true);
@@ -910,6 +920,7 @@ impl Studio {
                 self.file_started(result);
             }
             Leave::Open => self.open_path(None),
+            Leave::Start => self.start_chosen(ctx),
         }
     }
     /// Opens `path`, or asks with the file picker when `None`, on the file worker.
@@ -2780,6 +2791,7 @@ impl Studio {
 impl eframe::App for Studio {
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         files::offer_parent(frame);
+        self.track_recent();
         let ctx = ui.ctx().clone();
         self.theme(&ctx);
         self.scene_record_tick(&ctx);
@@ -3070,6 +3082,13 @@ impl eframe::App for Studio {
                 if !self.viewer_fullscreen {
                 egui::Panel::top("menu_bar").show_inside(ui, |ui| self.menu_bar(ui));
                 egui::Panel::bottom("status").show_inside(ui, |ui| self.status_bar(ui));
+                // The start screen takes the whole window below the top bar.
+                if self.start.open {
+                    egui::CentralPanel::default()
+                        .frame(design::panel(ui.ctx()))
+                        .show_inside(ui, |ui| self.start_screen(ui));
+                    return;
+                }
                 // Compose and Animate keep the library; 3D shares the place between the
                 // scene's contents and the library; Export leaves the room to the picture.
                 match self.pages.page {

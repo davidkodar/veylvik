@@ -2149,6 +2149,26 @@ normal saving. A recovery storage error is shown; normal project saving remains
 available. If storage is unavailable at startup, restart after fixing it to
 re-enable background recovery.
 
+### Start screen
+
+Studio started without a file opens on the start screen, below the top bar;
+**File → Start screen** shows it again, and **Go to the editor**, a page tab or
+opening anything leaves it. **New composition** cards make an empty composition
+at once (HD 1920 × 1080, 4K UHD, Vertical 1080 × 1920 or Square, at 24 frames a
+second and ten seconds); **Custom** opens the New composition dialog and **From
+a video or image** matches a composition to a chosen file. **Recent projects**
+lists up to twelve projects opened or saved here, newest first, each with a
+picture, its folder and how long ago; clicking one opens it, **Open a project**
+asks for a file, and the context menu removes an entry. Projects whose file is
+gone are dropped. **Templates** offers the Gold title in a new HD composition
+and the library's Templates tab. Any choice that replaces the open project asks
+about unsaved changes first. The list is `recent.json` in
+`$XDG_STATE_HOME/veylvik` (`~/.local/state/veylvik`), and the pictures are PNGs
+of at most 480 pixels in `$XDG_CACHE_HOME/veylvik/thumbnails`
+(`~/.cache/veylvik/thumbnails`), named by a hash of the project's path. A
+picture is the frame in the viewer, taken when the project is first shown and
+again after each save, read back and scaled on a worker thread.
+
 ### Pages
 
 The top bar switches the window between four arrangements of the same panels;

@@ -114,6 +114,8 @@ impl Studio {
                 .on_hover_text(page.hint())
                 .clicked()
             {
+                // A page is a place in the editor: choosing one leaves the start screen.
+                self.start.open = false;
                 self.go_to(page);
             }
         }
