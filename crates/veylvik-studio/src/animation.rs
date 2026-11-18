@@ -221,8 +221,26 @@ pub fn scalar_with_default(
     ui.push_id(label, |ui| {
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 3.;
-            ui.add_sized([88., 28.], egui::Label::new(label).truncate())
-                .on_hover_text(label);
+            // An animated setting is named in the accent colour, brighter on a keyframe.
+            let name = match scalar.keys() {
+                Some(keys) => {
+                    let on_key = keys
+                        .iter()
+                        .any(|key| key.time.compare(time).is_ok_and(|order| order.is_eq()));
+                    let accent = crate::design::accent(ui.ctx());
+                    egui::RichText::new(label).color(if on_key {
+                        accent
+                    } else {
+                        accent.gamma_multiply(0.75)
+                    })
+                }
+                None => egui::RichText::new(label),
+            };
+            ui.add_sized([88., 28.], egui::Label::new(name).truncate())
+                .on_hover_text(match scalar.keys().map(<[_]>::len) {
+                    Some(count) => format!("{label}\nAnimated: {count} keyframe(s)"),
+                    None => label.to_owned(),
+                });
             if matches!(scalar, Scalar::Expression { .. }) {
                 changed |= crate::expressions::row(ui, scalar, time);
             } else if let Ok(mut value) = scalar.at(time) {

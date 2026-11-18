@@ -2589,6 +2589,7 @@ impl Studio {
                 self.project.document.snapshot(),
                 span,
                 self.project.selected,
+                self.project.frame,
                 !self.draft_dirty && !self.playing,
             ));
         }

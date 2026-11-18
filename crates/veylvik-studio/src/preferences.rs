@@ -300,6 +300,8 @@ pub struct Preferences {
     pub want_clear_cache: bool,
     pub want_clear_recent: bool,
     pub want_folder: bool,
+    /// A folder being chosen in the system's dialog, and the setting it is for.
+    picking: Option<(u8, std::sync::mpsc::Receiver<Option<PathBuf>>)>,
     section: usize,
     path: Option<PathBuf>,
     error: Option<String>,
@@ -326,6 +328,7 @@ impl Preferences {
             want_clear_cache: false,
             want_clear_recent: false,
             want_folder: false,
+            picking: None,
             values,
             open: false,
             section: 0,
@@ -426,6 +429,65 @@ impl Preferences {
                 self.draft.recovery_enabled = d.recovery_enabled;
                 self.draft.recovery_seconds = d.recovery_seconds;
             }
+        }
+    }
+    fn folder_mut(&mut self, which: u8) -> &mut String {
+        match which {
+            0 => &mut self.draft.projects_folder,
+            1 => &mut self.draft.exports_folder,
+            _ => &mut self.draft.cache_folder,
+        }
+    }
+    /// A folder setting: its path, a button that asks the system for a folder, and a
+    /// note when the path is not one.
+    fn folder_row(&mut self, ui: &mut egui::Ui, which: u8, label: &str, hint: &str) {
+        // A folder chosen in the system's dialog arrives here.
+        if let Some((target, rx)) = &self.picking
+            && let Ok(chosen) = rx.try_recv()
+        {
+            let target = *target;
+            self.picking = None;
+            if let Some(path) = chosen {
+                *self.folder_mut(target) = path.to_string_lossy().into_owned();
+            }
+        }
+        let busy = self.picking.is_some();
+        let mut choose = false;
+        ui.horizontal(|ui| {
+            ui.add_sized([104., 22.], egui::Label::new(label));
+            let folder = self.folder_mut(which);
+            ui.add(
+                egui::TextEdit::singleline(folder)
+                    .hint_text(hint)
+                    .desired_width(250.),
+            );
+            choose = ui
+                .add_enabled(!busy, egui::Button::new("Choose..."))
+                .on_hover_text("Pick the folder in the system's file dialog")
+                .clicked();
+            let path = folder.trim();
+            if !path.is_empty() && !Path::new(path).is_dir() {
+                ui.colored_label(ui.visuals().warn_fg_color, "Not a folder");
+            }
+        });
+        if choose {
+            let current = PathBuf::from(self.folder_mut(which).trim());
+            let start = if current.is_dir() {
+                current
+            } else {
+                std::env::var_os("HOME").map_or_else(|| PathBuf::from("/"), PathBuf::from)
+            };
+            let (tx, rx) = std::sync::mpsc::channel();
+            let ctx = ui.ctx().clone();
+            // The dialog blocks until it is answered, so it runs off the interface thread.
+            std::thread::spawn(move || {
+                let chosen = crate::files::select(crate::files::Choice::Directory, &start, "")
+                    .ok()
+                    .flatten();
+                let _ = tx.send(chosen);
+                ctx.request_repaint();
+            });
+            self.picking = Some((which, rx));
         }
     }
     fn audio_ui(&mut self, ui: &mut egui::Ui) {
@@ -602,24 +664,14 @@ impl Preferences {
                     ui.selectable_value(&mut self.draft.launch, Launch::Empty, "Start empty");
                 });
                 ui.add_space(6.);
-                for (label, folder) in [
-                    ("Projects folder", &mut self.draft.projects_folder),
-                    ("Exports folder", &mut self.draft.exports_folder),
-                ] {
-                    ui.horizontal(|ui| {
-                        ui.add_sized([104., 22.], egui::Label::new(label));
-                        ui.add(
-                            egui::TextEdit::singleline(folder)
-                                .hint_text("The folder Veylvik was started in")
-                                .desired_width(300.),
-                        );
-                        let path = folder.trim();
-                        if !path.is_empty() && !std::path::Path::new(path).is_dir() {
-                            ui.colored_label(ui.visuals().warn_fg_color, "Not a folder");
-                        }
-                    });
-                }
-                ui.weak("Type a full path. Open and Save begin in the projects folder until a project has a place of its own; export dialogs begin in the exports folder.");
+                self.folder_row(
+                    ui,
+                    0,
+                    "Projects folder",
+                    "The folder Veylvik was started in",
+                );
+                self.folder_row(ui, 1, "Exports folder", "The folder Veylvik was started in");
+                ui.weak("Open and Save begin in the projects folder until a project has a place of its own; export dialogs begin in the exports folder.");
             }
             10 => {
                 ui.heading("System");
@@ -629,18 +681,7 @@ impl Preferences {
                 );
                 ui.weak("Lets an assistant or script work in the open project on this computer. Takes effect the next time Veylvik starts; --no-control still turns it off for one session.");
                 ui.add_space(6.);
-                ui.horizontal(|ui| {
-                    ui.add_sized([104., 22.], egui::Label::new("Cache folder"));
-                    ui.add(
-                        egui::TextEdit::singleline(&mut self.draft.cache_folder)
-                            .hint_text("Your cache folder")
-                            .desired_width(300.),
-                    );
-                    let path = self.draft.cache_folder.trim();
-                    if !path.is_empty() && !std::path::Path::new(path).is_dir() {
-                        ui.colored_label(ui.visuals().warn_fg_color, "Not a folder");
-                    }
-                });
+                self.folder_row(ui, 2, "Cache folder", "Your cache folder");
                 ui.horizontal(|ui| {
                     if ui.button("Clear the playback cache now").clicked() {
                         self.want_clear_cache = true;

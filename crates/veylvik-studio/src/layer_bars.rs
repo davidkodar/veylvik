@@ -142,6 +142,29 @@ pub(crate) fn moved(node: &Node, part: Part, by: i64, doc: &Composition) -> Opti
     }
     (bar(&next, fps) != bar(node, fps)).then_some(next)
 }
+/// `by` adjusted so that the edge being dragged lands on a target frame that is within
+/// `reach` frames of it. Dragging the body tries its start first, then its end.
+pub(crate) fn snapped(
+    by: i64,
+    bar: &Bar,
+    part: Part,
+    count: i64,
+    targets: &[i64],
+    reach: i64,
+) -> i64 {
+    let last = bar.last.unwrap_or(count);
+    let edges: &[i64] = match part {
+        Part::Start => &[bar.first],
+        Part::End => &[last],
+        Part::Body => &[bar.first, last],
+    };
+    edges
+        .iter()
+        .flat_map(|edge| targets.iter().map(move |target| target - (edge + by)))
+        .filter(|gap| gap.abs() <= reach)
+        .min_by_key(|gap| gap.abs())
+        .map_or(by, |gap| by + gap)
+}
 #[derive(Default)]
 pub struct LayerBars {
     pub hidden: bool,
@@ -156,6 +179,7 @@ impl LayerBars {
         doc: &Composition,
         span: Rangef,
         selected: NodeId,
+        current: i64,
         editable: bool,
     ) -> Vec<Action> {
         let mut actions = Vec::new();
@@ -167,6 +191,31 @@ impl LayerBars {
         let end = (count - 1).max(1) as f32;
         let x = |frame: i64| span.min + frame as f32 / end * span.span();
         let per_frame = span.span() / end;
+        // What a dragged edge may land on: the composition's ends, the playhead, markers
+        // and the edges of the other bars. Alt drags freely.
+        let free = ui.input(|i| i.modifiers.alt);
+        let reach = (6.0 / per_frame.max(1e-6)).round() as i64;
+        let targets = |dragged: NodeId| -> Vec<i64> {
+            let mut frames = vec![0, count, current];
+            frames.extend(
+                crate::timeline_markers::frames(doc)
+                    .into_iter()
+                    .map(|(frame, _)| frame),
+            );
+            for other in all.iter().filter(|other| other.id != dragged) {
+                frames.push(other.first);
+                frames.extend(other.last);
+            }
+            frames
+        };
+        let steps = |bar: &Bar, part: Part, by: f32| {
+            let by = (by / per_frame).round() as i64;
+            if free || by == 0 {
+                by
+            } else {
+                snapped(by, bar, part, count, &targets(bar.id), reach)
+            }
+        };
         for bar in all.iter().take(ROWS) {
             let (row, _) =
                 ui.allocate_exact_size(egui::vec2(ui.available_width(), ROW), egui::Sense::hover());
@@ -177,7 +226,7 @@ impl LayerBars {
             let dragged = self
                 .drag
                 .filter(|(id, ..)| *id == bar.id)
-                .and_then(|(_, part, by)| moved(node, part, (by / per_frame).round() as i64, doc));
+                .and_then(|(_, part, by)| moved(node, part, steps(bar, part, by), doc));
             let shown = dragged
                 .as_ref()
                 .and_then(|node| self::bar(node, doc.frame_rate))
@@ -264,7 +313,7 @@ impl LayerBars {
                         egui::CursorIcon::ResizeHorizontal
                     })
                     .on_hover_text(match part {
-                        Part::Body => "Drag to slide this layer in time; click to select it",
+                        Part::Body => "Drag to slide this layer in time; click to select it. Edges snap to the playhead, markers and other layers; hold Alt to drag freely",
                         Part::Start => "Drag to trim where this layer starts",
                         Part::End => "Drag to trim where this layer ends",
                     });
@@ -288,7 +337,7 @@ impl LayerBars {
                     && let Some((id, held, by)) = self.drag.take()
                     && id == bar.id
                     && held == part
-                    && let Some(node) = moved(node, part, (by / per_frame).round() as i64, doc)
+                    && let Some(node) = moved(node, part, steps(bar, part, by), doc)
                 {
                     actions.push(Action::Commit(vec![Command::Put {
                         node: Box::new(node),
@@ -375,6 +424,49 @@ mod tests {
             span(&moved(&open, Part::End, -24, &doc).unwrap()),
             (24, Some(216))
         );
+    }
+    #[test]
+    fn a_dragged_edge_lands_on_a_nearby_target_and_not_on_a_far_one() {
+        let bar = Bar {
+            id: uuid_like(),
+            label: String::new(),
+            first: 24,
+            last: Some(96),
+            footage: true,
+        };
+        let targets = [0, 240, 50, 120];
+        // The start, 3 frames short of the marker at 50, lands on it.
+        assert_eq!(snapped(23, &bar, Part::Start, 240, &targets, 4), 26);
+        // Too far from anything: left alone.
+        assert_eq!(snapped(10, &bar, Part::Start, 240, &targets, 4), 10);
+        // The end near 120.
+        assert_eq!(snapped(22, &bar, Part::End, 240, &targets, 4), 24);
+        // The body: whichever edge is closest to a target decides.
+        assert_eq!(
+            snapped(22, &bar, Part::Body, 240, &targets, 4),
+            24,
+            "the end reaches 120"
+        );
+        assert_eq!(
+            snapped(-23, &bar, Part::Body, 240, &targets, 4),
+            -24,
+            "the start reaches 0"
+        );
+        // An open-ended bar's end is the composition's end.
+        let open = Bar {
+            last: None,
+            ..bar.clone()
+        };
+        assert_eq!(snapped(-118, &open, Part::End, 240, &targets, 4), -120);
+        assert_eq!(snapped(5, &bar, Part::Start, 240, &[], 4), 5);
+    }
+    fn uuid_like() -> NodeId {
+        Node::new(
+            "x",
+            Operation::Solid(veylvik_document::nodes::Solid { color: [0.0; 4] }),
+            &[],
+        )
+        .id
     }
     #[test]
     fn fades_move_with_both_ends_and_bars_list_only_timed_layers() {

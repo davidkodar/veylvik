@@ -2173,8 +2173,8 @@ default), opens the project used most recently (the start screen if there is
 none), or starts with an empty composition of the default size. The
 **Projects folder** is where Open, Save and Import begin while the project has
 no folder of its own, and the **Exports folder** is where frame, video and
-sequence exports begin; each is a typed path, used only if it is an existing
-folder, and left empty means the folder Veylvik was started in. These are kept
+sequence exports begin; each is typed or picked with **Choose...** in the
+system's file dialog, used only if it is an existing folder, and left empty means the folder Veylvik was started in. These are kept
 as `new_width`, `new_height`, `new_rate`, `new_frames`, `launch`,
 `projects_folder` and `exports_folder`.
 
@@ -2208,8 +2208,8 @@ composition's start and do not move.
 
 **System** holds: whether Studio **listens for live control** (MCP), which
 takes effect at the next start and which `--control-dir` overrides
-(`live_control`); the **cache folder** for the playback disk cache, a typed
-path used only if it is an existing folder (`cache_folder`), with a button
+(`live_control`); the **cache folder** for the playback disk cache, typed or
+picked with **Choose...**, used only if it is an existing folder (`cache_folder`), with a button
 that clears the playback cache now; how many **recent projects** the start
 screen lists, 1 to 30 (`recent_kept`), with a button that clears the list
 (the projects are untouched); **Reset all preferences**, which sets every
@@ -2324,6 +2324,10 @@ has no key:
   inspector's **Apply** and Ctrl+Enter keep it as a keyframe in one undo step.
 - **On**: the change adds a keyframe at the current position, and the status
   line says where.
+
+In the inspector the name of an animated setting is drawn in the accent
+colour, brighter at a position that has a key, and its hover text gives the
+number of keyframes.
 
 At a position that has a key the change edits that key, whichever way the
 option is set. The key buttons (the diamond beside a setting, **Add key at
@@ -2446,8 +2450,10 @@ together, so the end stays where it was; trimming the end sets `source_out`
 (a clip with no `source_out` first gets one where the composition ends). For
 a Fade, sliding moves `start` and `end` together and the ends move `start`
 or `end`. A layer never starts before time zero, never becomes shorter than
-one frame, and a Fade keeps room for its fade-in and fade-out. Clicking a
-bar selects its node. A bar with a lighter end is open-ended: it runs as long
+one frame, and a Fade keeps room for its fade-in and fade-out. While
+dragging, an edge that comes within six points of the playhead, a marker,
+another bar's edge or the composition's start or end lands on it; holding Alt
+drags freely. Clicking a bar selects its node. A bar with a lighter end is open-ended: it runs as long
 as the media or the composition does.
 
 ### Viewer aids
