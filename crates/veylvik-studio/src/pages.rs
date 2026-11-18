@@ -237,7 +237,7 @@ impl Studio {
                                 crate::design::primary(ui, "Export")
                             })
                             .inner
-                            .on_hover_text("Choose where to save; rendering starts straight away")
+                            .on_hover_text("Choose where to save, then it renders")
                             .clicked()
                         {
                             match self.pages.export {
@@ -302,31 +302,15 @@ impl Studio {
                         }
                     }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        // One click: choose where to save, and it renders.
-                        let doc = self.project.document.snapshot();
-                        let ready = match self.pages.export {
-                            ExportKind::Video => self.video_export.request(doc).is_some(),
-                            ExportKind::Sequence => self
-                                .export_controls
-                                .request(doc.frame_rate, doc.frame_count)
-                                .is_some(),
-                        };
+                        // Exporting always goes through the dialog first: keep the
+                        // default or choose how, then export.
                         if ui
-                            .add_enabled_ui(enabled && ready, |ui| {
-                                crate::design::primary(ui, "Export")
-                            })
+                            .add_enabled_ui(enabled, |ui| crate::design::primary(ui, "Export"))
                             .inner
-                            .on_hover_text("Choose where to save; rendering starts straight away")
+                            .on_hover_text("Choose what to make, then where to save it")
                             .clicked()
                         {
-                            match self.pages.export {
-                                ExportKind::Video => video = self.video_export.request(doc),
-                                ExportKind::Sequence => {
-                                    sequence = self
-                                        .export_controls
-                                        .request(doc.frame_rate, doc.frame_count)
-                                }
-                            }
+                            self.pages.quick = true;
                         }
                         if ui
                             .button("Render queue")
