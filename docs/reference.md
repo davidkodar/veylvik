@@ -2149,6 +2149,29 @@ normal saving. A recovery storage error is shown; normal project saving remains
 available. If storage is unavailable at startup, restart after fixing it to
 re-enable background recovery.
 
+### Undo history and messages
+
+Every undo step is named when it is made, from its commands and the
+composition before them: "Add Glow", "Change softness of Shadow", "Key radius
+of Blur", "Arrange 6 nodes", "Add a marker", "Change the length". A step of
+several commands is named after the node it added, or its first change, with
+"and N more"; names are cut at 80 characters. The names are for reading only
+and are not saved with the project. **Edit > Undo history** (also a command)
+lists the earliest kept state, the steps that can be undone in order, the
+current state (marked) and the steps that can be redone (dimmed). Clicking a
+row undoes or redoes as many steps as it takes to reach the composition as it
+was after that step, stopping at the first step that cannot be done. Up to 64
+steps are kept within the history's memory limit, and a new change forgets
+the steps that could be redone, as before.
+
+The status line shows the latest message only. The last 300 messages are kept
+in **Help > Messages** (also opened by clicking the status line), each with how
+long ago it appeared and errors in red; **Copy all** puts them on the
+clipboard and **Clear** empties the list. Texts that only say work is under
+way or finished ("Ready", "Rendering...") are not kept. While the window is
+closed, the status line counts the errors that arrived since it was last open.
+Messages are kept for the session and not written to disk.
+
 ### Automatic keyframes
 
 A setting without keyframes is never animated by changing it: its value simply

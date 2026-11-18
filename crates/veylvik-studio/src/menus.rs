@@ -69,6 +69,7 @@ impl Studio {
                 let ready = !self.draft_dirty && !self.graph.dragging() && !self.animation_editor.dragging();
                 if item(ui, "Undo", "Ctrl+Z", ready && history.undo_steps > 0) { self.history(false); }
                 if item(ui, "Redo", "Ctrl+Shift+Z", ready && history.redo_steps > 0) { self.history(true); }
+                if item(ui, "Undo history…", "", true) { self.log.history = true; }
                 ui.separator();
                 if item(ui, "Apply inspector changes", "Ctrl+Enter", self.draft_dirty) { self.keep_tryout(); }
                 if item(ui, "Revert inspector changes", "", self.draft_dirty) {
@@ -179,6 +180,7 @@ impl Studio {
             ui.menu_button("Help", |ui| {
                 if item(ui, "Find a command…", "Ctrl+P", true) { let ctx = ui.ctx().clone(); self.run(crate::commands::Cmd::CommandSearch, &ctx); }
                 if item(ui, "Keyboard shortcuts…", "?", true) { self.commands.editor = true; }
+                if item(ui, "Messages…", "", true) { self.log.messages = true; }
                 ui.separator();
                 if item(ui, "About Veylvik…", "", true) { self.about.begin(); }
             });

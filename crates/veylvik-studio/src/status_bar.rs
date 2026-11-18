@@ -41,7 +41,13 @@ impl Studio {
                 let slow=self.preview_pending&&self.preview_started.is_some_and(|t|t.elapsed()>=SLOW);
                 if self.preview_pending&&!slow {ui.ctx().request_repaint_after(SLOW);}
                 let message=if self.files.busy(){"File operation in progress…"}else if slow{"Rendering preview…"}else{&self.status};
-                ui.add_sized([ui.available_width().max(0.),22.],egui::Label::new(egui::RichText::new(message).color(if self.error {egui::Color32::LIGHT_RED}else{ui.visuals().weak_text_color()})).truncate()).on_hover_text(message);
+                // The line shows the latest message; a click opens the ones before it.
+                let unseen = self.log.unseen;
+                let shown = if unseen > 0 && !self.error { format!("{message}  ·  {unseen} earlier error(s)") } else { message.to_owned() };
+                let colour = if self.error || unseen > 0 { egui::Color32::LIGHT_RED } else { ui.visuals().weak_text_color() };
+                if ui.add_sized([ui.available_width().max(0.),22.],egui::Label::new(egui::RichText::new(shown).color(colour)).truncate().sense(egui::Sense::click())).on_hover_text(format!("{message}\nClick to see earlier messages")).clicked() {
+                    self.log.messages = true;
+                }
             });
         });
     }

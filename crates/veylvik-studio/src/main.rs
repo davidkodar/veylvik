@@ -26,6 +26,7 @@ mod grain_measure;
 mod graph;
 mod graph_layout;
 mod handles;
+mod history_log;
 mod icons;
 mod key_timeline;
 mod layer_bars;
@@ -283,6 +284,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 layer_bars: Default::default(),
                 thumbnails: Default::default(),
                 commands: Default::default(),
+                log: Default::default(),
                 overlay_hidden: None,
                 tryout: None,
                 keys_accepted: None,
@@ -405,6 +407,7 @@ struct Studio {
     layer_bars: layer_bars::LayerBars,
     thumbnails: node_thumbnails::Thumbnails,
     commands: command_ui::Commands,
+    log: history_log::Log,
     /// The node whose frame and handles in the viewer were put away by a click beside it.
     overlay_hidden: Option<veylvik_document::NodeId>,
     /// The frame of a pending try-out on an animated setting (automatic keyframes off).
@@ -2876,6 +2879,7 @@ impl Studio {
         diagnostics::show(ctx, &mut self.statistics, &self.renderer);
         self.about.show(ctx, &self.renderer);
         self.command_windows(ctx);
+        self.log_windows(ctx);
     }
 }
 impl eframe::App for Studio {
@@ -2919,6 +2923,7 @@ impl eframe::App for Studio {
         self.grain_measure_tick(&ctx);
         light_guides::begin_frame(&ctx);
         self.fonts.poll(&ctx);
+        self.log_tick();
         self.autokey_tick(&ctx);
         self.tryout_bar(&ctx);
         if self.draft_dirty

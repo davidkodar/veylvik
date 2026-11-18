@@ -9,6 +9,7 @@ mod procedural;
 pub mod recipes;
 pub use procedural::procedural_demo;
 pub mod annotations;
+pub mod describe;
 pub mod inspection;
 pub mod limits;
 pub mod markers;

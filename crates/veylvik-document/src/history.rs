@@ -14,6 +14,8 @@ pub struct HistoryStats {
 struct Snapshot {
     composition: Composition,
     bytes: usize,
+    /// The step between this state and the next newer one, named for people.
+    label: String,
 }
 /// Only this owner publishes revisions. Renderers receive immutable snapshots.
 pub struct Document {
@@ -50,6 +52,14 @@ impl Document {
     }
     pub fn revision(&self) -> u64 {
         self.revision
+    }
+    /// The names of the steps that can be undone, oldest first, and of those that can
+    /// be redone, nearest first.
+    pub fn steps(&self) -> (Vec<String>, Vec<String>) {
+        (
+            self.undo.iter().map(|s| s.label.clone()).collect(),
+            self.redo.iter().rev().map(|s| s.label.clone()).collect(),
+        )
     }
     pub fn history(&self) -> HistoryStats {
         HistoryStats {
@@ -261,6 +271,7 @@ impl Document {
         Snapshot {
             composition: std::mem::replace(&mut self.composition, next.composition),
             bytes: std::mem::replace(&mut self.bytes, next.bytes),
+            label: next.label,
         }
     }
     fn trim(&mut self, prefer_undo: bool) {
@@ -283,9 +294,11 @@ impl Document {
         let revision = self.next_revision()?;
         let next = self.prepare(expected, commands)?;
         let bytes = next.encoded_size()?;
+        let label = crate::describe::step(commands, &self.composition);
         let previous = self.replace(Snapshot {
             composition: next,
             bytes,
+            label,
         });
         self.history_bytes -= self
             .redo

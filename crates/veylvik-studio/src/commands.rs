@@ -35,6 +35,7 @@ commands! {
     Quit, "quit", "File", "Quit", "Q";
     Undo, "undo", "Edit", "Undo", "Ctrl+Z";
     Redo, "redo", "Edit", "Redo", "Ctrl+Shift+Z";
+    History, "history", "Edit", "Undo history", "";
     Duplicate, "duplicate", "Edit", "Duplicate selected node", "Ctrl+D";
     DuplicateBranch, "duplicate_branch", "Edit", "Duplicate upstream branch", "Ctrl+Shift+D";
     DeleteNode, "delete_node", "Edit", "Delete selected node", "";
@@ -81,6 +82,7 @@ commands! {
     ColourReadout, "colour_readout", "View", "Viewer: colour under the pointer", "";
     CommandSearch, "command_search", "Help", "Find a command", "Ctrl+P";
     Shortcuts, "shortcuts", "Help", "Keyboard shortcuts", "";
+    Messages, "messages", "Help", "Messages", "";
     About, "about", "Help", "About Veylvik", "";
 }
 /// A key with its modifiers.

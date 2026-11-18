@@ -235,6 +235,8 @@ impl Studio {
                 self.commands.focus = true;
             }
             Cmd::Shortcuts => self.commands.editor = true,
+            Cmd::History => self.log.history = true,
+            Cmd::Messages => self.log.messages = true,
             Cmd::About => self.about.begin(),
         }
     }
