@@ -44,6 +44,9 @@ impl Studio {
         let insets = [p.safe_action, p.safe_title]
             .map(|percent| (100 - percent.clamp(50, 100)) as f32 / 200.0);
         self.overlays.insets = insets;
+        self.start.kept = p.recent_kept as usize;
+        crate::timecode::set_start_hour(p.timecode_hour);
+        crate::autokey::set_smooth_first_keys(p.smooth_keys);
         self.text_viewer.insets = insets;
     }
     /// Save a switch that was flipped in the interface. Called once a frame.

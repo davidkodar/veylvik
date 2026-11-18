@@ -12,12 +12,17 @@ pub fn key_controls(ui: &mut egui::Ui, scalar: &mut Scalar, time: Time) -> bool 
         return false;
     };
     crate::autokey::asked();
+    let constant = scalar.keys().is_none();
     let result = if here {
         scalar.remove_key_at(time)
     } else {
-        scalar
+        let added = scalar
             .at(time)
-            .and_then(|value| scalar.set_key_at(time, value))
+            .and_then(|value| scalar.set_key_at(time, value));
+        if added.is_ok() {
+            crate::autokey::first_key(scalar, constant);
+        }
+        added
     };
     report(ui, result)
 }
@@ -364,8 +369,12 @@ pub fn details(
                 let can_add = scalar.keys().is_none_or(|keys| keys.len() < MAX_KEYS && !keys.iter().any(|key| key.time.compare(time).is_ok_and(|order| order.is_eq())));
                 if ui.add_enabled(can_add, egui::Button::new("Add key at playhead").small()).clicked() {
                     crate::autokey::asked();
+                    let constant = scalar.keys().is_none();
                     match scalar.set_key_at(time, value) {
-                        Ok(()) => changed = true,
+                        Ok(()) => {
+                            crate::autokey::first_key(scalar, constant);
+                            changed = true;
+                        }
                         Err(error) => { ui.colored_label(egui::Color32::LIGHT_RED, error.to_string()); }
                     }
                 }

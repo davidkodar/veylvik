@@ -128,6 +128,16 @@ pub struct Values {
     pub new_rate: (i64, u32),
     pub new_frames: u32,
     pub launch: Launch,
+    /// A setting's first keyframe makes a smooth curve (otherwise linear).
+    pub smooth_keys: bool,
+    /// The hour timecode reads at the composition's first frame.
+    pub timecode_hour: u32,
+    /// Listen for live control (MCP) from the next start.
+    pub live_control: bool,
+    /// Where the playback disk cache is kept; empty for the user's cache folder.
+    pub cache_folder: String,
+    /// Recent projects listed on the start screen.
+    pub recent_kept: u32,
     /// Undo steps kept, and the memory they may use in MiB.
     pub undo_steps: u32,
     pub undo_memory_mib: u32,
@@ -178,6 +188,11 @@ impl Default for Values {
             new_rate: (24, 1),
             new_frames: 240,
             launch: Launch::default(),
+            smooth_keys: false,
+            timecode_hour: 0,
+            live_control: true,
+            cache_folder: String::new(),
+            recent_kept: 12,
             undo_steps: 64,
             undo_memory_mib: 128,
             apply_after_pause: true,
@@ -210,6 +225,9 @@ impl Values {
                 .iter()
                 .any(|(_, ticks, base)| (*ticks, *base) == self.new_rate)
             || self.projects_folder.len() > 4096
+            || self.cache_folder.len() > 4096
+            || self.timecode_hour > 23
+            || !(1..=30).contains(&self.recent_kept)
             || !(8..=256).contains(&self.undo_steps)
             || !(16..=128).contains(&self.undo_memory_mib)
             || !(100..=3000).contains(&self.apply_delay_ms)
@@ -277,6 +295,11 @@ pub struct Preferences {
     opened: Values,
     /// The window asked for the shortcut editor.
     pub want_shortcuts: bool,
+    /// The window asked to empty the playback cache, the recent list, or to show the
+    /// folder preferences are kept in.
+    pub want_clear_cache: bool,
+    pub want_clear_recent: bool,
+    pub want_folder: bool,
     section: usize,
     path: Option<PathBuf>,
     error: Option<String>,
@@ -300,6 +323,9 @@ impl Preferences {
             draft: values.clone(),
             opened: values.clone(),
             want_shortcuts: false,
+            want_clear_cache: false,
+            want_clear_recent: false,
+            want_folder: false,
             values,
             open: false,
             section: 0,
@@ -309,6 +335,13 @@ impl Preferences {
             audio_scan: None,
             audio_status: String::new(),
         }
+    }
+    /// The folder preferences are kept in.
+    pub fn folder(&self) -> Option<PathBuf> {
+        self.path
+            .as_deref()
+            .and_then(Path::parent)
+            .map(Path::to_path_buf)
     }
     pub fn begin(&mut self) {
         self.draft = self.values.clone();
@@ -361,6 +394,7 @@ impl Preferences {
                 self.draft.undo_memory_mib = d.undo_memory_mib;
                 self.draft.apply_after_pause = d.apply_after_pause;
                 self.draft.apply_delay_ms = d.apply_delay_ms;
+                self.draft.smooth_keys = d.smooth_keys;
             }
             7 => {
                 self.draft.time_display = d.time_display;
@@ -371,8 +405,14 @@ impl Preferences {
                 self.draft.backdrop = d.backdrop;
                 self.draft.safe_action = d.safe_action;
                 self.draft.safe_title = d.safe_title;
+                self.draft.timecode_hour = d.timecode_hour;
             }
             8 => {}
+            10 => {
+                self.draft.live_control = d.live_control;
+                self.draft.cache_folder = d.cache_folder;
+                self.draft.recent_kept = d.recent_kept;
+            }
             9 => {
                 self.draft.new_width = d.new_width;
                 self.draft.new_height = d.new_height;
@@ -581,6 +621,53 @@ impl Preferences {
                 }
                 ui.weak("Type a full path. Open and Save begin in the projects folder until a project has a place of its own; export dialogs begin in the exports folder.");
             }
+            10 => {
+                ui.heading("System");
+                ui.checkbox(
+                    &mut self.draft.live_control,
+                    "Listen for live control (MCP) while Veylvik is open",
+                );
+                ui.weak("Lets an assistant or script work in the open project on this computer. Takes effect the next time Veylvik starts; --no-control still turns it off for one session.");
+                ui.add_space(6.);
+                ui.horizontal(|ui| {
+                    ui.add_sized([104., 22.], egui::Label::new("Cache folder"));
+                    ui.add(
+                        egui::TextEdit::singleline(&mut self.draft.cache_folder)
+                            .hint_text("Your cache folder")
+                            .desired_width(300.),
+                    );
+                    let path = self.draft.cache_folder.trim();
+                    if !path.is_empty() && !std::path::Path::new(path).is_dir() {
+                        ui.colored_label(ui.visuals().warn_fg_color, "Not a folder");
+                    }
+                });
+                ui.horizontal(|ui| {
+                    if ui.button("Clear the playback cache now").clicked() {
+                        self.want_clear_cache = true;
+                    }
+                    ui.weak("Frees cached preview frames in memory and on disk.");
+                });
+                ui.add_space(6.);
+                ui.add(
+                    egui::Slider::new(&mut self.draft.recent_kept, 1..=30)
+                        .text("Recent projects listed"),
+                );
+                if ui.button("Clear the recent list now").on_hover_text("Forgets the list on the start screen; the projects themselves are untouched").clicked() {
+                    self.want_clear_recent = true;
+                }
+                ui.add_space(6.);
+                ui.horizontal(|ui| {
+                    if ui.button("Reset all preferences").on_hover_text("Every section back to its original values, including changed shortcuts and saved layouts. Nothing is saved until Apply").clicked() {
+                        self.draft = Values::default();
+                    }
+                    if ui.button("Open the preferences folder").clicked() {
+                        self.want_folder = true;
+                    }
+                });
+                if self.draft == Values::default() && self.values != self.draft {
+                    ui.colored_label(ui.visuals().warn_fg_color, "All preferences are reset in this window. Apply to keep that, Cancel to leave things as they were.");
+                }
+            }
             6 => {
                 ui.heading("Editing");
                 ui.checkbox(&mut self.draft.auto_key, "Automatic keyframes");
@@ -612,6 +699,12 @@ impl Preferences {
                 );
                 ui.weak("Either way the viewer shows the change at once. Without the pause a change waits for Apply or Ctrl+Enter, and is applied when you move on to another frame or node.");
                 ui.add_space(6.);
+                ui.horizontal(|ui| {
+                    ui.label("A setting's first keyframe makes a curve that is");
+                    ui.selectable_value(&mut self.draft.smooth_keys, false, "Linear");
+                    ui.selectable_value(&mut self.draft.smooth_keys, true, "Smooth");
+                });
+                ui.add_space(6.);
                 ui.add(
                     egui::Slider::new(&mut self.draft.undo_steps, 8..=256).text("Undo steps kept"),
                 );
@@ -634,6 +727,14 @@ impl Preferences {
                         &mut self.draft.time_display,
                         crate::timecode::Display::Frames,
                         "Frame numbers",
+                    );
+                });
+                ui.horizontal(|ui| {
+                    ui.label("Timecode at the first frame");
+                    ui.add(
+                        egui::DragValue::new(&mut self.draft.timecode_hour)
+                            .range(0..=23)
+                            .custom_formatter(|v, _| format!("{:02}:00:00:00", v as u32)),
                     );
                 });
                 ui.checkbox(
@@ -832,6 +933,7 @@ impl Preferences {
                                 (6, "Editing"),
                                 (7, "Viewer and timeline"),
                                 (8, "Keyboard and layouts"),
+                                (10, "System"),
                             ] {
                                 ui.selectable_value(&mut self.section, i, label);
                             }
@@ -982,6 +1084,34 @@ mod tests {
         assert_eq!(
             (set.backdrop, set.apply_after_pause, set.undo_steps),
             (Backdrop::White, false, 200)
+        );
+        for bad in [
+            Values {
+                timecode_hour: 24,
+                ..Values::default()
+            },
+            Values {
+                recent_kept: 0,
+                ..Values::default()
+            },
+            Values {
+                recent_kept: 31,
+                ..Values::default()
+            },
+        ] {
+            assert!(bad.validate().is_err());
+        }
+        // Resetting everything in the window and applying gives the defaults back, even
+        // for settings changed elsewhere while it was open.
+        let mut changed = Values::default();
+        changed
+            .shortcuts
+            .insert("save".into(), "Ctrl+Shift+S".into());
+        changed.timecode_hour = 1;
+        changed.live_control = false;
+        assert_eq!(
+            merged(&changed, &Values::default(), &changed),
+            Values::default()
         );
         // Preferences written before the newer settings existed still load, with defaults.
         let old: Values = serde_json::from_str(r#"{"scale":1.25,"loop_playback":false}"#).unwrap();

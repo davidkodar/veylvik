@@ -10,6 +10,17 @@ static ASKED: AtomicBool = AtomicBool::new(false);
 pub fn asked() {
     ASKED.store(true, Ordering::Relaxed);
 }
+/// A setting's first keyframe makes a smooth curve and not a linear one.
+static SMOOTH: AtomicBool = AtomicBool::new(false);
+pub fn set_smooth_first_keys(smooth: bool) {
+    SMOOTH.store(smooth, Ordering::Relaxed);
+}
+/// Give a setting that has just received its first key the default curve.
+pub fn first_key(scalar: &mut veylvik_document::Scalar, was_constant: bool) {
+    if was_constant && SMOOTH.load(Ordering::Relaxed) {
+        scalar.set_interpolation(veylvik_document::animation::Interpolation::Smooth);
+    }
+}
 /// Keys held anywhere in `operation`: animated numbers, colours, vectors and shapes.
 pub(crate) fn keys(operation: &Operation) -> usize {
     fn count(value: &serde_json::Value) -> usize {

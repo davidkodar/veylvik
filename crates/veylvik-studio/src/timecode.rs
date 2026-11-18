@@ -17,8 +17,32 @@ fn counting(rate: Time) -> (i64, i64) {
     let drop = rate.rate == 1001 && matches!(rate.ticks, 30000 | 60000);
     (nominal, if drop { nominal / 15 } else { 0 })
 }
-/// `frame` as HH:MM:SS:FF (HH:MM:SS;FF in drop-frame).
+/// The hour that frame 0 reads as, from preferences.
+static START_HOUR: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+pub fn set_start_hour(hour: u32) {
+    START_HOUR.store(hour.min(23), std::sync::atomic::Ordering::Relaxed);
+}
+fn start_hour() -> i64 {
+    i64::from(START_HOUR.load(std::sync::atomic::Ordering::Relaxed))
+}
+/// The frame count that `hour` o'clock is from zero, at `rate`.
+fn hour_frames(hour: i64, rate: Time) -> i64 {
+    plain(&[hour, 0, 0, 0], rate).unwrap_or(0)
+}
+/// `frame` as timecode with frame 0 at the start hour set in preferences.
 pub fn format(frame: i64, rate: Time) -> String {
+    format_from(frame, rate, start_hour())
+}
+/// `frame` as timecode with frame 0 reading `hour`:00:00:00.
+pub fn format_from(frame: i64, rate: Time, hour: i64) -> String {
+    from_zero(frame + hour_frames(hour, rate), rate)
+}
+/// A length of `frames` as timecode; a duration does not move with the start hour.
+pub fn duration(frames: i64, rate: Time) -> String {
+    from_zero(frames, rate)
+}
+/// `frame` as HH:MM:SS:FF (HH:MM:SS;FF in drop-frame), counted from zero.
+fn from_zero(frame: i64, rate: Time) -> String {
     let (nominal, dropped) = counting(rate);
     let mut number = frame.unsigned_abs() as i64;
     if dropped > 0 {
@@ -43,13 +67,19 @@ pub fn format(frame: i64, rate: Time) -> String {
 }
 /// A shorter label for rulers: leading zero hours and minutes are left out.
 pub fn short(frame: i64, rate: Time) -> String {
-    let full = format(frame, rate);
+    // Rulers count from the composition's start, whatever hour timecode starts at.
+    let full = from_zero(frame, rate);
     let trimmed = full.strip_prefix("00:").unwrap_or(&full);
     trimmed.strip_prefix("00:").unwrap_or(trimmed).to_owned()
 }
 /// The frame a typed position means: a timecode (any of HH:MM:SS:FF, MM:SS:FF, SS:FF),
 /// or a plain frame number.
 pub fn parse(text: &str, rate: Time) -> Option<i64> {
+    parse_from(text, rate, start_hour())
+}
+/// As `parse`, with frame 0 at `hour`:00:00:00; a timecode typed without hours is
+/// taken to be within that hour.
+pub fn parse_from(text: &str, rate: Time, hour: i64) -> Option<i64> {
     let text = text.trim();
     let (negative, text) = text
         .strip_prefix('-')
@@ -59,14 +89,19 @@ pub fn parse(text: &str, rate: Time) -> Option<i64> {
         .map(|part| part.trim().parse::<i64>().ok().filter(|v| *v >= 0))
         .collect::<Option<_>>()?;
     let sign = if negative { -1 } else { 1 };
-    let (nominal, dropped) = counting(rate);
-    let [hours, minutes, seconds, frames] = match parts[..] {
+    let fields = match parts[..] {
         [frames] => return Some(sign * frames),
-        [seconds, frames] => [0, 0, seconds, frames],
-        [minutes, seconds, frames] => [0, minutes, seconds, frames],
+        [seconds, frames] => [hour, 0, seconds, frames],
+        [minutes, seconds, frames] => [hour, minutes, seconds, frames],
         [hours, minutes, seconds, frames] => [hours, minutes, seconds, frames],
         _ => return None,
     };
+    Some(sign * plain(&fields, rate)? - hour_frames(hour, rate))
+}
+/// The frame count from zero of hours, minutes, seconds and frames.
+fn plain(fields: &[i64; 4], rate: Time) -> Option<i64> {
+    let [hours, minutes, seconds, frames] = *fields;
+    let (nominal, dropped) = counting(rate);
     let total_minutes = hours.checked_mul(60)?.checked_add(minutes)?;
     let mut number = total_minutes
         .checked_mul(60)?
@@ -76,7 +111,7 @@ pub fn parse(text: &str, rate: Time) -> Option<i64> {
     if dropped > 0 {
         number -= dropped * (total_minutes - total_minutes / 10);
     }
-    Some(sign * number)
+    Some(number)
 }
 
 #[cfg(test)]
@@ -84,6 +119,34 @@ mod tests {
     use super::*;
     fn rate(ticks: i64, per: u32) -> Time {
         Time::new(ticks, per).unwrap()
+    }
+    #[test]
+    fn a_start_hour_shifts_what_is_shown_and_what_is_typed() {
+        let r = rate(24, 1);
+        assert_eq!(format_from(0, r, 1), "01:00:00:00");
+        assert_eq!(format_from(24 * 65 + 3, r, 1), "01:01:05:03");
+        assert_eq!(parse_from("01:00:00:00", r, 1), Some(0));
+        assert_eq!(parse_from("01:01:05:03", r, 1), Some(24 * 65 + 3));
+        // Typed without hours: within the start hour. A plain number is a frame.
+        assert_eq!(parse_from("5:12", r, 1), Some(5 * 24 + 12));
+        assert_eq!(parse_from("240", r, 1), Some(240));
+        // Before the start hour is before frame 0.
+        assert_eq!(parse_from("00:59:59:00", r, 1), Some(-24));
+        // Drop-frame: an hour of timecode is an hour of frames, and typing round-trips.
+        let d = rate(30000, 1001);
+        assert_eq!(format_from(0, d, 10), "10:00:00;00");
+        for frame in [0, 1, 1799, 1800, 17_982, 107_892] {
+            assert_eq!(
+                parse_from(&format_from(frame, d, 10), d, 10),
+                Some(frame),
+                "{frame}"
+            );
+        }
+        // Rulers count from the composition's start regardless.
+        assert_eq!(short(48, r), "02:00");
+        for frame in [0, 5, 1000] {
+            assert_eq!(format_from(frame, r, 0), format(frame, r));
+        }
     }
     #[test]
     fn whole_rates_count_plainly_and_typing_round_trips() {

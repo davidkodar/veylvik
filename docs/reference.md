@@ -2197,6 +2197,26 @@ each 50 to 100), used by the viewer's Safe areas and by the text guides. Guide
 lines are drawn with a dark edge so they read on any picture. Kept as
 `preview_quality`, `backdrop`, `safe_action` and `safe_title`.
 
+**Editing** also sets the curve a setting's **first keyframe** makes: linear
+(the default) or smooth (`smooth_keys`). It applies to keys added with the
+key buttons; a curve's interpolation can still be changed afterwards.
+**Viewer and timeline** sets the **timecode at the first frame**, a whole hour
+from 00 to 23 (`timecode_hour`): position fields show and accept timecode
+from that hour, a timecode typed without hours is taken to be within it, and a
+plain number is still a frame. Lengths and the ruler's labels count from the
+composition's start and do not move.
+
+**System** holds: whether Studio **listens for live control** (MCP), which
+takes effect at the next start and which `--control-dir` overrides
+(`live_control`); the **cache folder** for the playback disk cache, a typed
+path used only if it is an existing folder (`cache_folder`), with a button
+that clears the playback cache now; how many **recent projects** the start
+screen lists, 1 to 30 (`recent_kept`), with a button that clears the list
+(the projects are untouched); **Reset all preferences**, which sets every
+section in the window back to its original values, changed shortcuts and
+saved layouts included, and saves nothing until Apply; and **Open the
+preferences folder**.
+
 **Apply** saves only what was changed in the window since it opened. A
 setting changed elsewhere while the window was open, such as a shortcut, a
 saved layout or the timecode switch, keeps its new value; where both changed

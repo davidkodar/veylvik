@@ -36,6 +36,8 @@ pub struct Start {
     recorded: Option<PathBuf>,
     pictured: Option<PathBuf>,
     was_dirty: bool,
+    /// How many recent projects are listed; 0 until preferences say.
+    pub kept: usize,
     pictures: Option<mpsc::Receiver<(PathBuf, egui::ColorImage)>>,
     textures: BTreeMap<PathBuf, egui::TextureHandle>,
     gold: Option<egui::TextureHandle>,
@@ -125,7 +127,14 @@ impl Start {
                 opened: now(),
             },
         );
-        self.entries.truncate(KEPT);
+        self.entries
+            .truncate(if self.kept > 0 { self.kept } else { KEPT });
+        self.store();
+    }
+    /// Forget the whole list; the projects are untouched.
+    pub fn clear(&mut self) {
+        self.entries.clear();
+        self.textures.clear();
         self.store();
     }
     fn forget(&mut self, path: &Path) {

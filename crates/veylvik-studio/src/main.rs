@@ -142,6 +142,9 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
     let preferences = preferences::Preferences::new();
+    // Preferences may switch live control off; an explicit directory still asks for it.
+    let no_control =
+        no_control || (!preferences.values.live_control && control_directory.is_none());
     let render_limits = veylvik_io::runtime::RenderLimits::from_env_with_default(
         preferences.values.gpu_budget_mib,
     )?;
@@ -1636,6 +1639,13 @@ impl Studio {
                     std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join(".cache"))
                 })
                 .map(|p| p.join("veylvik/playback"));
+            // A cache folder of the artist's choice, when it exists.
+            let chosen = std::path::PathBuf::from(p.cache_folder.trim());
+            let directory = if !p.cache_folder.trim().is_empty() && chosen.is_dir() {
+                Some(chosen.join("veylvik-playback"))
+            } else {
+                directory
+            };
             scheduler
                 .playback_cache()
                 .configure(veylvik_preview::playback::Settings {
@@ -2491,7 +2501,7 @@ impl Studio {
                 self.request_preview();
             }
             if timecode {
-                ui.label(format!("of {}", timecode::format(i64::from(count), rate)));
+                ui.label(format!("of {}", timecode::duration(i64::from(count), rate)));
             } else {
                 ui.label(format!("of {count} frames"));
             }
@@ -2919,6 +2929,30 @@ impl Studio {
         }
         if std::mem::take(&mut self.preferences.want_shortcuts) {
             self.commands.editor = true;
+        }
+        if std::mem::take(&mut self.preferences.want_clear_cache) {
+            if let Some(scheduler) = &self.scheduler {
+                scheduler.playback_cache().clear();
+            }
+            self.request_preview();
+            self.status = "Playback cache cleared".into();
+            self.error = false;
+        }
+        if std::mem::take(&mut self.preferences.want_clear_recent) {
+            self.start.clear();
+            self.status = "Recent list cleared".into();
+            self.error = false;
+        }
+        if std::mem::take(&mut self.preferences.want_folder) {
+            match self.preferences.folder() {
+                Some(folder) => {
+                    if let Err(error) = std::process::Command::new("xdg-open").arg(&folder).spawn()
+                    {
+                        self.fail(format!("Could not open {}: {error}", folder.display()));
+                    }
+                }
+                None => self.fail("Preferences have no folder on this system."),
+            }
         }
         self.theme(ctx);
         self.effect_dialog(ctx);
