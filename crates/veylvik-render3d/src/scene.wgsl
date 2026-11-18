@@ -240,7 +240,15 @@ fn lit(in: Varying) -> @location(0) vec4<f32> {
         let f = fract(q);
         let t = mix(mix(wrapped(i.x, i.y), wrapped(i.x + 1, i.y), f.x),
                     mix(wrapped(i.x, i.y + 1), wrapped(i.x + 1, i.y + 1), f.x), f.y);
-        base *= t.rgb;
+        if object.counts.w > 1.5 {
+            // A shape's picture is premultiplied; under half opaque it is a hole.
+            if t.a < 0.5 {
+                discard;
+            }
+            base *= t.rgb / t.a;
+        } else {
+            base *= t.rgb;
+        }
     }
     // Wear changes the polish from place to place.
     let polish = clamp(object.surface.a * (1.0 + blotch * 1.1 * worn), 0.03, 1.0);

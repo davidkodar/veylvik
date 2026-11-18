@@ -68,8 +68,10 @@ impl Placement {
 }
 fn validate_colour(colour: &Track3) -> Result<()> {
     colour.validate()?;
-    if !track::values(colour).all(|v| v.iter().all(|x| (0.0..=1.0).contains(x))) {
-        return fail("3D colours are linear RGB 0–1");
+    // Above 1 a surface gives back more light than falls on it: a way to brighten a
+    // texture, or to make a thing glow under bloom.
+    if !track::values(colour).all(|v| v.iter().all(|x| (0.0..=64.0).contains(x))) {
+        return fail("3D colours are linear RGB 0–64");
     }
     Ok(())
 }
@@ -179,7 +181,7 @@ pub static SHAPE_3D: NodeType = NodeType {
     type_id: "shape_3d",
     version: 1,
     label: "3D shape",
-    description: "A cube, sphere, plane, cylinder, cone, torus or flat ring (size x and y its outer diameters, size z its width inwards; a planet's rings, or a disc when the width reaches the middle) in a 3D scene, sized in pixels and centred on the frame at depth 0. Detail sets how many segments curved shapes use (3–256). Placement offsets, rotates (degrees, X then Y then Z) and scales it; colour (linear RGB), roughness and metallic shade it, unless a Look (any library material) is set, which shades it like a title. As a Shadow catcher it is invisible except for the shadows falling on it: lay a plane on the ground of the footage so 3D objects shadow the real floor. Outputs a scene for Merge scenes, 3D transform or Render scene. Finish, each 0 to 1 and 0 by default: brushed scatters light across the grain so reflections stretch that way, brush_angle (degrees) turns the grain, grain shows it as fine streaks, ridges add long shallow undulations along the grain that break reflections into bands, imperfections add uneven polish and faint scratches; they shade the plain surface, not a look. Shadow strength (0 to 1) sets how dark a shadow catcher's shadows are. An image on the optional Texture input colours the surface, wrapped once round it (for a sphere, a map of the whole globe: left to right round the equator, top to bottom from pole to pole), multiplied by Colour; a library look takes its place.",
+    description: "A cube, sphere, plane, cylinder, cone, torus or flat ring (size x and y its outer diameters, size z its width inwards; a planet's rings, or a disc when the width reaches the middle) in a 3D scene, sized in pixels and centred on the frame at depth 0. Detail sets how many segments curved shapes use (3–256). Placement offsets, rotates (degrees, X then Y then Z) and scales it; colour (linear RGB), roughness and metallic shade it, unless a Look (any library material) is set, which shades it like a title. As a Shadow catcher it is invisible except for the shadows falling on it: lay a plane on the ground of the footage so 3D objects shadow the real floor. Outputs a scene for Merge scenes, 3D transform or Render scene. Finish, each 0 to 1 and 0 by default: brushed scatters light across the grain so reflections stretch that way, brush_angle (degrees) turns the grain, grain shows it as fine streaks, ridges add long shallow undulations along the grain that break reflections into bands, imperfections add uneven polish and faint scratches; they shade the plain surface, not a look. Shadow strength (0 to 1) sets how dark a shadow catcher's shadows are. An image on the optional Texture input colours the surface, wrapped once round it (for a sphere, a map of the whole globe: left to right round the equator, top to bottom from pole to pole), multiplied by Colour (which may go above 1, to 64, to brighten it); where the image is less than half opaque the surface is cut away, so a ring can have gaps (the cut-away parts still cast shadows); a library look takes its place.",
     inputs: &["texture"],
     optional: &["texture"],
     output: PortKind::Scene,

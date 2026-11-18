@@ -1330,8 +1330,10 @@ and `colour`.
   ring facing the viewer: size x and y are its outer diameters, size z its width
   inwards, a disc when that reaches the middle), sized in pixels, with an
   optional **Texture** input (an image wrapped once round the shape and
-  multiplied by its colour: for a sphere a map of the whole globe; a look takes
-  its place), with
+  multiplied by its colour: round a sphere or cylinder it reads left to right
+  from outside with its middle facing the viewer, for a sphere a map of the whole
+  globe; where it is less than half opaque the surface is cut away, though the
+  cut-away parts still cast shadows; a look takes its place), with
   detail (segments, 3–256), colour, roughness and metallic. Shapes and 3D text
   also take a finish, each setting separate and 0 by default: **Brushed** (0–1)
   makes the surface scatter light across its grain, so reflections and

@@ -197,9 +197,9 @@ fn placement_and_colour_are_keyable_through_commands() {
     assert_eq!(s.objects[0].surface.colour, [1.0, 0.0, 0.0]);
     assert!(
         document
-            .apply(1, &[key("colour", 1, [2.0, 0.0, 0.0])])
+            .apply(1, &[key("colour", 1, [65.0, 0.0, 0.0])])
             .is_err(),
-        "colours stay 0-1"
+        "colours stay 0-64"
     );
     let keyed: Vec<String> = document.snapshot().nodes[&shape]
         .operation

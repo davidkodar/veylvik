@@ -639,7 +639,12 @@ impl SceneRenderer for Engine {
                     lights.len() as f32,
                     strength,
                     turn,
-                    f32::from(texture.is_some() || wrapped.is_some()),
+                    // 1: a model part's own texture; 2: a shape's picture, whose alpha cuts.
+                    if wrapped.is_some() {
+                        2.0
+                    } else {
+                        f32::from(texture.is_some())
+                    },
                 ],
                 finish: [
                     object.surface.finish[0],

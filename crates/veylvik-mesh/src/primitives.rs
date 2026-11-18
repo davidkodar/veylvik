@@ -72,7 +72,9 @@ pub fn primitive(kind: Primitive, size: [f32; 3], segments: u32) -> Result<Mesh>
         Primitive::Sphere => {
             let rings = n.div_ceil(2).max(2);
             grid(&mut mesh, n, rings, |i, j| {
-                let (theta, phi) = (i as f32 / n as f32 * TAU, j as f32 / rings as f32 * PI);
+                // A picture wrapped round reads the right way from outside, its middle
+                // facing the viewer and its seam at the back.
+                let (theta, phi) = (around(i, n), j as f32 / rings as f32 * PI);
                 let d = [phi.sin() * theta.cos(), -phi.cos(), phi.sin() * theta.sin()];
                 (
                     [d[0] * hx, d[1] * hy, d[2] * hz],
@@ -89,7 +91,7 @@ pub fn primitive(kind: Primitive, size: [f32; 3], segments: u32) -> Result<Mesh>
             // Side: radius shrinks from the base (y = +hy) to the top (y = -hy).
             let slope = (1.0 - top) * hx.max(hz) / (2.0 * hy).max(1e-6);
             grid(&mut mesh, n, 1, |i, j| {
-                let theta = i as f32 / n as f32 * TAU;
+                let theta = around(i, n);
                 let r = if j == 0 { top } else { 1.0 };
                 let (c, s) = (theta.cos(), theta.sin());
                 (
@@ -136,6 +138,12 @@ pub fn primitive(kind: Primitive, size: [f32; 3], segments: u32) -> Result<Mesh>
     }
     mesh.cap_indices = mesh.indices.len();
     Ok(mesh)
+}
+/// The angle of column `i` of `n` round the vertical axis, from +x towards +z: uv
+/// runs left to right as seen from the viewer (+z), 0.5 at the front and the seam
+/// (0 and 1) at the back.
+fn around(i: usize, n: usize) -> f32 {
+    (0.75 - i as f32 / n as f32) * TAU
 }
 fn normalize(v: [f32; 3]) -> [f32; 3] {
     let l = (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt().max(1e-12);

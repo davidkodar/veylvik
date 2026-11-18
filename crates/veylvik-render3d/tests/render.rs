@@ -938,3 +938,73 @@ fn an_area_light_casts_a_soft_shadow_and_lights_a_look() {
         total(&dark)
     );
 }
+#[test]
+#[ignore = "requires Vulkan"]
+fn a_texture_wraps_a_shape_the_right_way_round_and_its_alpha_cuts_holes() {
+    let renderer = renderer();
+    // Red on the left, a see-through band in the middle, green on the right.
+    let pixels: Vec<[f32; 4]> = (0..W * H)
+        .map(|i| match i % W {
+            0..70 => [0.5, 0.0, 0.0, 1.0],
+            70..90 => [0.0; 4],
+            _ => [0.0, 0.5, 0.0, 1.0],
+        })
+        .collect();
+    let mut inputs = ImageInputs::default();
+    inputs.insert("picture", Arc::new(Image::new(W, H, pixels).unwrap()));
+    let shot = |kind: ShapeKind, colour: f32| {
+        let mut doc = blank(W, H, Time::new(24, 1).unwrap()).unwrap();
+        let image = add(
+            &mut doc,
+            Operation::Image(nodes::Image {
+                asset: "picture".into(),
+            }),
+            &[],
+        );
+        let mut shape = op(&SHAPE_3D);
+        if let Operation::Shape3d(s) = &mut shape {
+            s.kind = kind;
+            s.size_x = 80.0.into();
+            s.size_y = 80.0.into();
+            s.size_z = 80.0.into();
+            s.colour = [colour; 3].into();
+            s.roughness = 1.0.into();
+        }
+        let shape = add(&mut doc, shape, &[("texture", image)]);
+        let mut light = op(&LIGHT_3D);
+        if let Operation::Light3d(l) = &mut light {
+            l.placement.position = [0.0, 0.0, 600.0].into();
+            l.colour = [1.0; 3].into();
+        }
+        let light = add(&mut doc, light, &[]);
+        let merged = add(
+            &mut doc,
+            op(&MERGE_SCENES),
+            &[("scene", shape), ("scene_2", light)],
+        );
+        let out = add(&mut doc, op(&RENDER_SCENE), &[("scene", merged)]);
+        doc.output = out;
+        render(&renderer, &doc, &inputs)
+    };
+    let at = |p: &[[f32; 4]], x: u32| p[(45 * W + x) as usize];
+    // A plane shows the picture as it is: red, a hole, green.
+    let plane = shot(ShapeKind::Plane, 1.0);
+    let (left, hole, right) = (at(&plane, 50), at(&plane, 80), at(&plane, 110));
+    assert!(
+        left[0] > 4.0 * left[1].max(1e-4) && left[3] > 0.99,
+        "{left:?}"
+    );
+    assert!(
+        right[1] > 4.0 * right[0].max(1e-4) && right[3] > 0.99,
+        "{right:?}"
+    );
+    assert!(hole[3] < 0.01, "{hole:?}");
+    // A colour above 1 brightens the picture.
+    let bright = at(&shot(ShapeKind::Plane, 3.0), 50);
+    assert!(bright[0] > 2.0 * left[0], "{bright:?} {left:?}");
+    // Round a sphere it reads left to right from outside, its middle facing the viewer.
+    let ball = shot(ShapeKind::Sphere, 1.0);
+    let (left, right) = (at(&ball, 60), at(&ball, 100));
+    assert!(left[0] > 4.0 * left[1].max(1e-4), "{left:?}");
+    assert!(right[1] > 4.0 * right[0].max(1e-4), "{right:?}");
+}
