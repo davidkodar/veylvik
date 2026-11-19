@@ -120,6 +120,119 @@ pub fn input(srgb: &[[u8; 3]], width: usize, crop: Crop, trimap: &[u8]) -> (Vec<
     }
     (bytes, w, h)
 }
+/// Side of a full-size matting tile, and how far neighbours overlap. A multiple of 32,
+/// as the model needs, and small enough that the larger model fits beside the tracker.
+pub const TILE: usize = 1024;
+pub const OVERLAP: usize = 160;
+/// Tiles of at most [`TILE`] pixels a side covering `crop` with [`OVERLAP`] between
+/// neighbours, each given relative to the crop: only those that hold some of the
+/// trimap's unknown band, since the rest stays as tracked.
+pub fn tiles(crop: Crop, trimap: &[u8]) -> Vec<Crop> {
+    let starts = |length: usize| -> Vec<usize> {
+        if length <= TILE {
+            return vec![0];
+        }
+        let count = (length - OVERLAP).div_ceil(TILE - OVERLAP);
+        (0..count)
+            .map(|k| (k * (length - TILE)) / (count - 1))
+            .collect()
+    };
+    let mut tiles = Vec::new();
+    for y in starts(crop.height) {
+        for x in starts(crop.width) {
+            let tile = Crop {
+                x,
+                y,
+                width: TILE.min(crop.width),
+                height: TILE.min(crop.height),
+            };
+            let band = (tile.y..tile.y + tile.height).any(|row| {
+                trimap[row * crop.width + tile.x..row * crop.width + tile.x + tile.width]
+                    .contains(&128)
+            });
+            if band {
+                tiles.push(tile);
+            }
+        }
+    }
+    tiles
+}
+/// Model input for one tile of a crop, at full size: sRGB colour with the trimap as alpha.
+pub fn tile_input(
+    srgb: &[[u8; 3]],
+    width: usize,
+    crop: Crop,
+    trimap: &[u8],
+    tile: Crop,
+) -> Vec<u8> {
+    let mut bytes = Vec::with_capacity(tile.width * tile.height * 4);
+    for y in tile.y..tile.y + tile.height {
+        for x in tile.x..tile.x + tile.width {
+            let c = srgb[(crop.y + y) * width + crop.x + x];
+            bytes.extend_from_slice(&[c[0], c[1], c[2], trimap[y * crop.width + x]]);
+        }
+    }
+    bytes
+}
+/// Matted tiles gathered over a crop, each fading out towards its inner edges so
+/// neighbours cross-fade over their overlap and no seam shows.
+pub struct Mosaic {
+    crop: Crop,
+    sum: Vec<f32>,
+    weight: Vec<f32>,
+}
+impl Mosaic {
+    pub fn new(crop: Crop) -> Self {
+        Self {
+            crop,
+            sum: vec![0.0; crop.width * crop.height],
+            weight: vec![0.0; crop.width * crop.height],
+        }
+    }
+    /// Adds `matted` (the tile's alpha, row-major).
+    pub fn add(&mut self, tile: Crop, matted: &[f32]) -> Result<()> {
+        if matted.len() != tile.width * tile.height {
+            return Err("matted tile does not match its size".into());
+        }
+        // Full weight at a side that is the crop's own; a ramp over the overlap elsewhere.
+        let ramp = |p: usize, start: usize, length: usize, whole: usize| -> f32 {
+            let near = if start == 0 {
+                f32::INFINITY
+            } else {
+                (p + 1) as f32
+            };
+            let far = if start + length == whole {
+                f32::INFINITY
+            } else {
+                (length - p) as f32
+            };
+            (near.min(far) / OVERLAP as f32).clamp(1e-3, 1.0)
+        };
+        for y in 0..tile.height {
+            let wy = ramp(y, tile.y, tile.height, self.crop.height);
+            for x in 0..tile.width {
+                let w = wy * ramp(x, tile.x, tile.width, self.crop.width);
+                let i = (tile.y + y) * self.crop.width + tile.x + x;
+                self.sum[i] += matted[y * tile.width + x] * w;
+                self.weight[i] += w;
+            }
+        }
+        Ok(())
+    }
+    /// Writes the gathered alpha into `alpha` (`width` × frame), only inside the trimap's
+    /// unknown band; sure pixels keep their tracked values.
+    pub fn merge(&self, alpha: &mut [f32], width: usize, trimap: &[u8]) {
+        for y in 0..self.crop.height {
+            for x in 0..self.crop.width {
+                let i = y * self.crop.width + x;
+                if trimap[i] == 128 && self.weight[i] > 0.0 {
+                    alpha[(self.crop.y + y) * width + self.crop.x + x] =
+                        (self.sum[i] / self.weight[i]).clamp(0.0, 1.0);
+                }
+            }
+        }
+    }
+}
 /// Writes matted alpha (`mw` × `mh`, covering the crop) into `alpha`, but only inside the
 /// trimap's unknown band; sure pixels keep their tracked values.
 pub fn merge(
@@ -175,6 +288,44 @@ mod tests {
                 }
             })
             .collect()
+    }
+    #[test]
+    fn tiles_cover_a_large_crop_and_cross_fade_without_a_seam() {
+        let crop = Crop {
+            x: 3,
+            y: 5,
+            width: 1500,
+            height: 1100,
+        };
+        // Everything unknown: every tile is needed, and together they cover the crop.
+        let trimap = vec![128_u8; crop.width * crop.height];
+        let tiles = tiles(crop, &trimap);
+        assert_eq!(tiles.len(), 4);
+        assert!(tiles.iter().all(|t| t.width == TILE && t.height == TILE));
+        assert_eq!(tiles[3].x + tiles[3].width, crop.width);
+        assert_eq!(tiles[3].y + tiles[3].height, crop.height);
+        // Tiles that all say 0.25 merge to exactly 0.25 everywhere: no seam, no gap.
+        let mut mosaic = Mosaic::new(crop);
+        for tile in &tiles {
+            mosaic
+                .add(*tile, &vec![0.25; tile.width * tile.height])
+                .unwrap();
+        }
+        let (width, height) = (1600, 1200);
+        let mut alpha = vec![1.0_f32; width * height];
+        mosaic.merge(&mut alpha, width, &trimap);
+        for y in 0..height {
+            for x in 0..width {
+                let inside = (crop.x..crop.x + crop.width).contains(&x)
+                    && (crop.y..crop.y + crop.height).contains(&y);
+                let expected = if inside { 0.25 } else { 1.0 };
+                assert!((alpha[y * width + x] - expected).abs() < 1e-6);
+            }
+        }
+        // A tile with nothing unknown in it is left out.
+        let mut sure = vec![255_u8; crop.width * crop.height];
+        sure[0] = 128;
+        assert_eq!(super::tiles(crop, &sure).len(), 1);
     }
     #[test]
     fn trimap_marks_a_band_around_the_edge_and_sure_regions_elsewhere() {

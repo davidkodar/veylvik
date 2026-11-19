@@ -170,9 +170,20 @@ pub fn analyse(
             let started = std::time::Instant::now();
             let trimap = edges::trimap(&alpha, width, crop, band);
             let srgb = matte::srgb_pixels(&pixels);
-            let (bytes, w, h) = edges::input(&srgb, width, crop, &trimap);
-            let matted = worker.matte(model, &bytes, w, h)?;
-            edges::merge(&mut alpha, width, crop, &trimap, &matted, w, h)?;
+            if model == crate::models::VITMATTE_FINE.id {
+                // Full size, tile by tile.
+                let mut mosaic = edges::Mosaic::new(crop);
+                for tile in edges::tiles(crop, &trimap) {
+                    let bytes = edges::tile_input(&srgb, width, crop, &trimap, tile);
+                    let matted = worker.matte(model, &bytes, tile.width, tile.height)?;
+                    mosaic.add(tile, &matted)?;
+                }
+                mosaic.merge(&mut alpha, width, &trimap);
+            } else {
+                let (bytes, w, h) = edges::input(&srgb, width, crop, &trimap);
+                let matted = worker.matte(model, &bytes, w, h)?;
+                edges::merge(&mut alpha, width, crop, &trimap, &matted, w, h)?;
+            }
             matting_time += started.elapsed().as_secs_f64();
         }
         matte::write_png(&dir.join(file_name(frame)), doc.width, doc.height, &alpha)?;

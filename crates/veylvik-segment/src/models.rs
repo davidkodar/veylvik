@@ -139,6 +139,36 @@ pub static VITMATTE: Model = Model {
         sha256: "bf28d2e0be2c073286e88d60ad649d7123da2749a2d99133fd1098d5887e0225",
     }],
 };
+/// The larger matting model, run at the picture's full size in tiles: curls and single
+/// strands where the small one gives a soft rim.
+pub static VITMATTE_FINE: Model = Model {
+    id: "vitmatte-fine",
+    title: "ViTMatte Fine",
+    summary: "The larger matting model, run at the picture's full size: resolves curls and single strands of hair where the standard one gives a soft rim.",
+    licence: "Apache-2.0",
+    homepage: "https://huggingface.co/hustvl/vitmatte-base-distinctions-646",
+    uses: "Fine edges for subject masks: curly and flyaway hair, fur, lace, against busy or dark backgrounds.",
+    pros: &[
+        "Resolves individual curls and strands that the standard matting model blurs together",
+        "Works at the picture's own resolution, in overlapping tiles, so 4K subjects keep their detail",
+        "Only tiles that hold part of the edge band are processed",
+        "Apache-2.0 weights, runs entirely on this computer",
+    ],
+    cons: &[
+        "About three times the matting time of the standard model",
+        "Trained on an academic matting dataset (Distinctions-646) whose terms are research-oriented; check them before commercial use",
+        "Needs an NVIDIA GPU with CUDA and cuDNN",
+    ],
+    speed: "≈1 s per frame for a head and shoulders at 1080 × 1920 (RTX 4080), six tiles",
+    memory: "≈2 GB more, whatever the picture's size",
+    files: &[File {
+        name: "model.onnx",
+        url: "https://huggingface.co/Xenova/vitmatte-base-distinctions-646/resolve/80e3f7360e710e7719979206ad00a49cf1fe5ce8/onnx/model.onnx",
+        range: None,
+        size: 387_371_620,
+        sha256: "161f71cd6ac6b336a67e8b83bee0c3b9c039292b16b3db867035a65dbcb3df32",
+    }],
+};
 macro_rules! sam21_file {
     ($repo:literal, $rev:literal, $path:literal, $name:literal, $size:expr, $sha:literal) => {
         File {
@@ -294,7 +324,13 @@ pub static SAM21_LARGE: Model = Model {
         ),
     ],
 };
-pub static MODELS: &[&Model] = &[&EDGETAM, &SAM21_BASE, &SAM21_LARGE, &VITMATTE];
+pub static MODELS: &[&Model] = &[
+    &EDGETAM,
+    &SAM21_BASE,
+    &SAM21_LARGE,
+    &VITMATTE,
+    &VITMATTE_FINE,
+];
 
 pub fn find(id: &str) -> Result<&'static Model> {
     MODELS

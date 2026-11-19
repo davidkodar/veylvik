@@ -14,6 +14,8 @@ use veylvik_segment::{Point, analysis, matte, models, worker::Worker};
 const TRACKERS: [&str; 3] = ["edgetam", "sam2.1-base-plus", "sam2.1-large"];
 /// The model that refines the edge band.
 const MATTING: &str = "vitmatte";
+/// The larger matting model, run at full size in tiles.
+const MATTING_FINE: &str = "vitmatte-fine";
 /// Longest side of the preview overlay, in pixels.
 const PREVIEW_SIDE: usize = 960;
 type Shared = Arc<Mutex<Option<Worker>>>;
@@ -61,6 +63,8 @@ pub struct Controls {
     model: &'static str,
     /// Edge-band matting for hair and soft edges, when the model is ready.
     matting: bool,
+    /// Use the fine matting model (curls, single strands) when it is ready.
+    fine: bool,
     show_mask: bool,
     worker: Shared,
     preview: Option<Preview>,
@@ -89,6 +93,7 @@ impl Controls {
         self.detail = request.analysis.detail;
         self.model = model;
         self.matting = request.matting.unwrap_or(true);
+        self.fine = request.fine.unwrap_or(true);
         self.preview = None;
         self.done = None;
         Ok(())
@@ -218,7 +223,9 @@ impl Studio {
         self.subject.show_mask = true;
         self.subject.detail = true;
         self.subject.matting = true;
+        self.subject.fine = true;
         self.models.status(MATTING);
+        self.models.status(MATTING_FINE);
         self.subject.points.clear();
         self.subject.preview = None;
         self.subject.done = None;
@@ -371,7 +378,13 @@ impl Studio {
         let Some(source) = self.subject.source else {
             return;
         };
-        let use_matting = self.subject.matting && self.model_ready(MATTING);
+        // Fine edges when asked for and installed, else the standard matting model.
+        let matting = if self.subject.fine && self.model_ready(MATTING_FINE) {
+            MATTING_FINE
+        } else {
+            MATTING
+        };
+        let use_matting = self.subject.matting && self.model_ready(matting);
         let doc = self.project.document.snapshot();
         let plan = match Plan::compile_output(doc, source) {
             Ok(plan) => plan,
@@ -388,7 +401,7 @@ impl Studio {
                 && self.subject.end >= self.subject.frame)
                 .then_some(0),
             detail: self.subject.detail,
-            matting: use_matting.then_some(MATTING),
+            matting: use_matting.then_some(matting),
         };
         let total = match analysis::schedule(&request, doc.frame_count) {
             Ok(schedule) => schedule.len() * if request.detail { 2 } else { 1 },
@@ -641,9 +654,12 @@ impl Studio {
             })
             .collect();
         let mut install = false;
-        let matting_ready = self.model_ready(MATTING);
+        let matting_ready = self.model_ready(MATTING) || self.model_ready(MATTING_FINE);
         let matting_installing = self.models.busy(MATTING);
         let mut install_matting = false;
+        let fine_ready = self.model_ready(MATTING_FINE);
+        let fine_installing = self.models.busy(MATTING_FINE);
+        let mut install_fine = false;
         let mut open = true;
         let (mut track, mut cancel, mut result, mut changed, mut models) =
             (false, false, None, false, false);
@@ -770,6 +786,18 @@ impl Studio {
                             ui.spinner();
                         }
                     });
+                    ui.horizontal(|ui| {
+                        ui.add_enabled(
+                            fine_ready && self.subject.matting,
+                            egui::Checkbox::new(&mut self.subject.fine, "Fine edges"),
+                        )
+                        .on_hover_text("Use the larger matting model at the picture's full size: curls and single strands instead of a soft rim, and cleaner against busy backgrounds. About three times the matting time");
+                        if !fine_ready && !fine_installing && ui.button("Install ViTMatte Fine (387 MB)").clicked() {
+                            install_fine = true;
+                        } else if fine_installing {
+                            ui.spinner();
+                        }
+                    });
                     ui.checkbox(&mut self.subject.detail, "Detail pass for small parts")
                         .on_hover_text("Track a second time, zoomed in on the subject, so feet, hands and hair get more model pixels. About twice the analysis time; skipped automatically when the subject already fills the frame.");
                     let can = !self.subject.points.is_empty()
@@ -822,6 +850,9 @@ impl Studio {
             self.preview_subject(ctx);
         }
         if install_matting && let Ok(model) = models::find(MATTING) {
+            self.models.install(model, ctx);
+        }
+        if install_fine && let Ok(model) = models::find(MATTING_FINE) {
             self.models.install(model, ctx);
         }
         if changed {

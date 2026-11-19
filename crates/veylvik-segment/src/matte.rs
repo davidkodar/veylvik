@@ -184,7 +184,9 @@ pub fn write_png(path: &Path, width: u32, height: u32, alpha: &[f32]) -> Result<
     let partial = path.with_extension("png.partial");
     // Fast compression: a matte is mostly flat, so it packs well either way, and one is
     // written for every frame of the shot.
-    let bytes: Vec<u8> = data.iter().flat_map(|v| v.to_be_bytes()).collect();
+    // The encoder takes 16-bit samples in this machine's byte order and writes them as
+    // the file needs.
+    let bytes: Vec<u8> = data.iter().flat_map(|v| v.to_ne_bytes()).collect();
     let file = std::io::BufWriter::new(std::fs::File::create(&partial)?);
     image::ImageEncoder::write_image(
         image::codecs::png::PngEncoder::new_with_quality(
@@ -205,6 +207,21 @@ pub fn write_png(path: &Path, width: u32, height: u32, alpha: &[f32]) -> Result<
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn a_written_matte_reads_back_as_the_same_values() {
+        let dir = std::env::temp_dir().join(format!("veylvik-matte-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("matte.png");
+        // Values whose two bytes differ, so a byte-order mistake cannot pass.
+        let alpha: Vec<f32> = (0..64).map(|i| i as f32 / 63.0 * 0.999).collect();
+        write_png(&path, 8, 8, &alpha).unwrap();
+        let read = image::open(&path).unwrap().into_luma_alpha16();
+        for (pixel, a) in read.pixels().zip(&alpha) {
+            assert_eq!(pixel.0[0], u16::MAX);
+            assert_eq!(pixel.0[1], (a * 65535.0 + 0.5) as u16);
+        }
+        std::fs::remove_dir_all(dir).unwrap();
+    }
     #[test]
     fn model_frame_area_averages_in_linear_light_and_encodes_srgb() {
         // 2048 wide halves of 0 and 1 average to linear 0.5 only where they meet.

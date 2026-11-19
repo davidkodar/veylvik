@@ -115,7 +115,12 @@ pub fn run(
         .into());
     }
     analysis::schedule(&request.analysis, doc.frame_count)?;
-    let matting = &models::VITMATTE;
+    let matting = match request.fine {
+        Some(true) => &models::VITMATTE_FINE,
+        Some(false) => &models::VITMATTE,
+        None if models::ready(&models::VITMATTE_FINE)? => &models::VITMATTE_FINE,
+        None => &models::VITMATTE,
+    };
     let use_matting = match request.matting {
         Some(false) => false,
         None => models::ready(matting)?,

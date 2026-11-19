@@ -8,6 +8,9 @@ pub struct Request {
     pub analysis: analysis::Request,
     /// Edge matting: `None` uses the matting model when it is installed and switched on.
     pub matting: Option<bool>,
+    /// Which matting model: `Some(true)` the fine one, `Some(false)` the standard one,
+    /// `None` the fine one when it is installed and switched on.
+    pub fine: Option<bool>,
     pub model: String,
 }
 impl Request {
@@ -48,6 +51,12 @@ impl Request {
                 .get("matting")
                 .map(|v| v.as_bool().ok_or("matting must be boolean"))
                 .transpose()?,
+            fine: match args.get("edges").map(Value::as_str) {
+                None => None,
+                Some(Some("fine")) => Some(true),
+                Some(Some("standard")) => Some(false),
+                Some(_) => return Err("edges must be standard or fine".into()),
+            },
             model: args
                 .get("model")
                 .and_then(Value::as_str)

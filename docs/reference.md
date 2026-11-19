@@ -194,6 +194,15 @@ untouched and only the colour is cleaned: that is how a cut-out made with edge m
 set up, since the matting model has already resolved the edge, and re-estimating it from
 colour breaks down when the background is as dark or as busy as the hair in front of it.
 
+Edge matting comes in two grades. The standard model (ViTMatte, 104 MB) works on the
+subject scaled to at most 1536 pixels a side and gives hair a soft rim. **Fine edges**
+(ViTMatte Fine, 387 MB, installed from the subject window or Tools > AI models) is a
+larger model run at the picture's full size in overlapping 1024-pixel tiles that
+cross-fade, only where a tile holds part of the edge band: it resolves curls and single
+strands and is steadier against busy or dark backgrounds, at about three times the
+matting time (about a second a frame for a head and shoulders at 1080 × 1920). It is
+used when it is installed; `edges: "standard"` or `"fine"` on `segment_subject` chooses.
+
 A subject cut-out writes its mattes (one 16-bit PNG a frame and a `.veyseq`) to a
 `Subject mattes` folder beside the project; through the headless MCP server that is
 beside the file the session last saved, when it has saved one.
