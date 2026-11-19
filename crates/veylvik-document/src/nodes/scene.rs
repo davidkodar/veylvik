@@ -210,7 +210,7 @@ pub static SHAPE_3D: NodeType = NodeType {
         scalar("imperfections", "factor", 0.0, 1.0, 0.0),
         other("look", ParameterKind::Look, "library material"),
         other("shadow_catcher", ParameterKind::Boolean, "shadows only"),
-        scalar("shadow_strength", "factor", 0.0, 1.0, 1.0),
+        scalar("shadow_strength", "factor", 0.0, 8.0, 1.0),
         other("aim_at", ParameterKind::NodeRef, "thing faced"),
     ],
 };

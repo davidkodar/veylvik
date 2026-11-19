@@ -1068,6 +1068,20 @@ clamps sampling to the requested crop, composites transparency over a checkerboa
 and applies an SDR display transform. A previous preview stays visible while rendering, explicitly marked
 when it no longer matches the requested frame.
 
+### The Gold title's shadow
+
+The Gold title's letters cast a shadow on the wall behind them. It is made of two nodes of
+its own in the title's scene: **Shadow on the wall**, a plane that shows only the shadows
+falling on it, and **Shadow light**, the light that throws them down and to the right. To
+do without the shadow, select Shadow on the wall and untick **In the scene** (or set its
+**Shadow strength** to 0); through MCP, `gold_title` takes `shadow: false`. Move or turn
+Shadow light to send the shadow elsewhere. A shadow only shows where the wall has light to
+lose, so on the darkest parts of the wall it is invisible.
+
+A shadow catcher's **Shadow strength** now runs from 0 to 8. Values above 1 deepen a
+shadow that the scene's other lights wash out: a catcher darkens by the share of light
+that is blocked, and with many lights one light's share is small.
+
 ### Seeing where light lands
 
 **Reflections** in the 3D toolbar shows the scene as a map of its lights' reflections

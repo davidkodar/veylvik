@@ -492,5 +492,6 @@ fn catcher(in: Varying) -> @location(0) vec4<f32> {
     let ambient_light = dot(environment_specular(turned(n), 1.0), vec3<f32>(0.2126, 0.7152, 0.0722)) * object.counts.y;
     let enclosed = ambient_light * (1.0 - sky_visibility(in.world, n));
     let shade = clamp((blocked + enclosed) / max(direct + ambient_light, 1e-4), 0.0, 1.0);
-    return vec4<f32>(0.0, 0.0, 0.0, shade * clamp(object.relief.z, 0.0, 1.0));
+    // Strength above 1 deepens a shadow that the scene's other lights wash out.
+    return vec4<f32>(0.0, 0.0, 0.0, clamp(shade * clamp(object.relief.z, 0.0, 8.0), 0.0, 1.0));
 }

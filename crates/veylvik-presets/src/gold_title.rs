@@ -7,6 +7,17 @@ use veylvik_document::{Command, Composition, Result, media::DisplayTransform, no
 /// under it (empty for none). The display transform becomes Filmic, which the look
 /// relies on, and the scene becomes the output.
 pub fn gold_title(composition: &Composition, text: &str, subtitle: &str) -> Result<Built> {
+    gold_title_with(composition, text, subtitle, true)
+}
+/// As [`gold_title`]; `shadow` adds the letters' shadow on the wall behind them (a wall
+/// plane that only catches shadows, and the soft light that casts them). Both are nodes
+/// of their own, so the shadow can also be faded or removed afterwards.
+pub fn gold_title_with(
+    composition: &Composition,
+    text: &str,
+    subtitle: &str,
+    shadow: bool,
+) -> Result<Built> {
     let (w, h) = (composition.width as f32, composition.height as f32);
     let s = w / 1920.0;
     let (cx, cy) = (w * 0.5, h * 0.5);
@@ -128,6 +139,32 @@ pub fn gold_title(composition: &Composition, text: &str, subtitle: &str) -> Resu
             json!({
                 "kind": "sun", "shadows": false, "colour": [1.0, 0.93, 0.8],
                 "placement": light([0.0, 0.0, 1000.0], rotation), "intensity": c(1.7),
+            }),
+            &[],
+        )?);
+    }
+    if shadow {
+        // The wall the letters stand in front of, as something their shadow falls on:
+        // it shows only the shadow, over the painted wall behind the scene.
+        parts.push(scene.add(
+            "Shadow on the wall",
+            &SHAPE_3D,
+            json!({
+                "kind": "plane", "shadow_catcher": true, "shadow_strength": c(8.0),
+                "size_x": c(w * 2.4), "size_y": c(h * 2.4),
+                "placement": light([0.0, 0.0, -50.0], [0.0; 3]),
+            }),
+            &[],
+        )?);
+        // A modest light from the upper left front, to throw that shadow down and to the
+        // right. The scene's many other lights wash a shadow out, so the wall's Shadow
+        // strength is raised well above 1 to keep it.
+        parts.push(scene.add(
+            "Shadow light",
+            &LIGHT_3D,
+            json!({
+                "kind": "sun", "shadows": true, "colour": [1.0, 0.93, 0.8],
+                "placement": light([0.0, 0.0, 1000.0], [22.0, -24.0, 0.0]), "intensity": c(0.5),
             }),
             &[],
         )?);

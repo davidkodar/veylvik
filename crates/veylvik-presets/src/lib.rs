@@ -2,7 +2,7 @@
 pub mod authoring;
 mod gold_title;
 pub mod particles;
-pub use gold_title::gold_title;
+pub use gold_title::{gold_title, gold_title_with};
 use serde_json::{Value, json};
 use veylvik_document::{
     Command, Composition, Error, Node, NodeId, NodePosition, Operation, Result, registry::NodeType,
