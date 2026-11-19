@@ -1455,3 +1455,40 @@ fn a_followed_object_is_seen_less_as_another_slides_in_front() {
     assert!(half > 0.2 && half < 0.9, "{half}");
     assert_eq!(shot(Some(60.0)), 1.0);
 }
+#[test]
+#[ignore = "requires Vulkan"]
+fn an_image_card_in_front_hides_a_followed_object_unless_faded_out() {
+    let renderer = renderer();
+    let code = "fn shade(at: vec2<f32>) -> vec4<f32> {
+    return vec4<f32>(follow_seen, 0.0, 0.0, 1.0);
+}";
+    let shot = |opacity: f32, in_front: bool| {
+        let mut doc = blank(W, H, Time::new(24, 1).unwrap()).unwrap();
+        let target = add(&mut doc, cube(20.0, [0.0; 3]), &[]);
+        let image = add(&mut doc, op(&SOLID), &[]);
+        let mut card = op(&IMAGE_CARD);
+        if let Operation::ImageCard(c) = &mut card {
+            // The card is the frame's size at z 0; move it towards or away from the camera.
+            c.placement.position = [0.0, 0.0, if in_front { 100.0 } else { -100.0 }].into();
+            c.opacity = opacity.into();
+        }
+        let card = add(&mut doc, card, &[("image", image)]);
+        let scene = add(
+            &mut doc,
+            op(&MERGE_SCENES),
+            &[("scene", target), ("scene_2", card)],
+        );
+        let mut shader = op(&SHADER);
+        if let Operation::Shader(s) = &mut shader {
+            s.code = code.into();
+            s.follow = Some(target);
+        }
+        doc.output = add(&mut doc, shader, &[("scene", scene)]);
+        doc.validate().unwrap();
+        render(&renderer, &doc, &ImageInputs::default())[0][0]
+    };
+    // In front it hides by its rectangle; behind it does not; nearly faded out it does not.
+    assert_eq!(shot(1.0, true), 0.0);
+    assert_eq!(shot(1.0, false), 1.0);
+    assert_eq!(shot(0.2, true), 1.0);
+}

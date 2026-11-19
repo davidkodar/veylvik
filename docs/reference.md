@@ -1940,8 +1940,9 @@ settles on the wrong kind of motion can still look sure. The
   when it is in front of the camera, also when outside the frame; -1 when it is
   behind the camera, not in that scene or no scene is connected; 0 when nothing
   is followed), and `follow_seen` (0 to 1: how much of it shows past the
-  scene's other solid objects, falling as one slides in front of its middle;
-  image cards and shadow catchers do not hide it). The scene is only read, not
+  scene's other objects, falling as one slides in front of its middle; an image
+  card hides by its whole rectangle, whatever its picture's transparent areas,
+  unless its opacity is below one half; shadow catchers do not hide it). The scene is only read, not
   rendered. `follow`, `followed` and `follow_seen` are therefore names a shader
   cannot use for its own variables. To be safe on every pixel, the text may not use
   attributes (`@…`), global variables, `while`, `loop` or `continuing`, must be

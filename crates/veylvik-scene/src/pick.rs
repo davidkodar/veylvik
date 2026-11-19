@@ -42,8 +42,8 @@ pub fn hit_ground(scene: &Scene, origin: [f32; 3], direction: [f32; 3]) -> Resul
 }
 /// How much of node `target`'s object at `point` an eye at `eye` sees past the other
 /// solid objects: 1 in the open, 0 behind one, between as one slides across (nine rays
-/// to a small disc on the object, a quarter of its size). Cards and shadow catchers do
-/// not hide it.
+/// to a small disc on the object, a quarter of its size). An image card hides it by its
+/// whole rectangle, unless the card is mostly faded out; shadow catchers do not.
 pub fn seen(scene: &Scene, eye: [f32; 3], point: [f32; 3], target: NodeId) -> Result<f32> {
     let towards = sub(point, eye);
     let distance = dot(towards, towards).sqrt();
@@ -87,9 +87,12 @@ pub fn seen(scene: &Scene, eye: [f32; 3], point: [f32; 3], target: NodeId) -> Re
         let ray = sub(aim, eye);
         let far = dot(ray, ray).sqrt();
         let blocked = hit_where(scene, eye, ray, |object| {
+            // An image card hides by its whole rectangle (its picture's transparent
+            // parts are not known here), unless it is mostly faded out.
             object.node != target
                 && !object.surface.catcher
-                && !matches!(object.geometry, Geometry::Card { .. })
+                && (!matches!(object.geometry, Geometry::Card { .. })
+                    || object.surface.opacity >= 0.5)
         })?
         .is_some_and(|hit| hit.distance < far - 1e-2);
         open += usize::from(!blocked);
