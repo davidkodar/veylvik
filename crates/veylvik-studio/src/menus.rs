@@ -230,6 +230,7 @@ pub(crate) const ADD_MENU: [(&str, &[&registry::NodeType]); 10] = [
         "Masks and shapes",
         &[
             &registry::ELLIPSE,
+            &registry::RECTANGLE,
             &registry::PATH,
             &registry::CHANNEL_MASK,
             &registry::MORPHOLOGY,

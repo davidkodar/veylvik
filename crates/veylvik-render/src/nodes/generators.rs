@@ -212,6 +212,29 @@ impl RenderNode for veylvik_document::nodes::Atmosphere {
         Ok(())
     }
 }
+impl RenderNode for veylvik_document::nodes::Rectangle {
+    fn passes(&self) -> Passes {
+        Passes::One(Kernel::Rectangle)
+    }
+    fn shareable(&self) -> bool {
+        true
+    }
+    fn params(
+        &self,
+        _cx: &Cx<'_>,
+        sample: &dyn Fn(&str) -> Result<f32>,
+        p: &mut Params,
+    ) -> Result<()> {
+        p.values = [
+            sample("x")?,
+            sample("y")?,
+            sample("width")? * 0.5,
+            sample("height")? * 0.5,
+        ];
+        p.extra = [sample("corner")?, sample("feather")?.max(1.0), 0.0, 0.0];
+        Ok(())
+    }
+}
 impl RenderNode for veylvik_document::nodes::Ellipse {
     fn passes(&self) -> Passes {
         Passes::One(Kernel::Ellipse)

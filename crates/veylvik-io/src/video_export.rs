@@ -18,16 +18,29 @@ pub enum Codec {
     #[default]
     H264,
     Hevc10,
+    /// ProRes 422 HQ in a MOV: an editing codec, for handing a shot to an editor that
+    /// will cut and grade it further. Ten-bit 4:2:2, every frame a key frame, large files.
+    #[serde(rename = "prores")]
+    ProRes,
 }
 impl Codec {
     pub fn label(self) -> &'static str {
         match self {
             Self::H264 => "H.264 · MP4",
             Self::Hevc10 => "HEVC · 10-bit MP4",
+            Self::ProRes => "ProRes 422 HQ · MOV",
         }
     }
     pub fn ten_bit(self) -> bool {
-        self == Self::Hevc10
+        self != Self::H264
+    }
+    /// An editing codec: software encoded, in a MOV.
+    pub fn intermediate(self) -> bool {
+        self == Self::ProRes
+    }
+    /// The file extension its videos carry.
+    pub fn extension(self) -> &'static str {
+        if self.intermediate() { "mov" } else { "mp4" }
     }
 }
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -257,6 +270,18 @@ impl Backend {
                     &quality,
                 ]);
             }
+            Self::Software if s.codec.intermediate() => {
+                c.args([
+                    "-c:v",
+                    "prores_ks",
+                    "-profile:v",
+                    "3",
+                    "-vendor",
+                    "apl0",
+                    "-pix_fmt",
+                    "yuv422p10le",
+                ]);
+            }
             Self::Software => {
                 c.args([
                     "-c:v",
@@ -283,7 +308,8 @@ impl Backend {
                 }
             }
         }
-        if s.codec.ten_bit() {
+        if s.codec.intermediate() {
+        } else if s.codec.ten_bit() {
             c.args(["-profile:v", "main10"]);
         } else {
             c.args(["-profile:v", "high"]);
@@ -301,9 +327,13 @@ impl Backend {
             "center",
         ]);
         if let Some(path) = destination {
-            c.args(["-movflags", "+faststart", "-f", "mp4"]);
-            if s.codec.ten_bit() {
-                c.args(["-tag:v", "hvc1"]);
+            if s.codec.intermediate() {
+                c.args(["-f", "mov"]);
+            } else {
+                c.args(["-movflags", "+faststart", "-f", "mp4"]);
+                if s.codec.ten_bit() {
+                    c.args(["-tag:v", "hvc1"]);
+                }
             }
             c.arg(path);
         } else {
@@ -494,9 +524,14 @@ pub fn render(
     let times = settings.times(doc)?;
     if !path
         .extension()
-        .is_some_and(|s| s.eq_ignore_ascii_case("mp4"))
+        .is_some_and(|s| s.eq_ignore_ascii_case(settings.codec.extension()))
     {
-        return Err("Video output must end in .mp4".into());
+        return Err(format!(
+            "A {} video must end in .{}",
+            settings.codec.label(),
+            settings.codec.extension()
+        )
+        .into());
     }
     match fs::symlink_metadata(path) {
         Err(_) => {}
@@ -508,8 +543,19 @@ pub fn render(
         .parent()
         .filter(|p| !p.as_os_str().is_empty())
         .unwrap_or(Path::new("."))
-        .canonicalize()?;
+        .canonicalize()
+        .map_err(|e| format!("The folder for {} cannot be used: {e}", path.display()))?;
     let target = parent.join(path.file_name().ok_or("Missing output filename")?);
+    // Find out now, not after rendering, that the folder cannot be written to.
+    let probe = parent.join(format!(".veylvik-write-test-{}", std::process::id()));
+    match fs::File::create(&probe) {
+        Ok(_) => {
+            let _ = fs::remove_file(&probe);
+        }
+        Err(e) => {
+            return Err(format!("Cannot write into {}: {e}", parent.display()).into());
+        }
+    }
     let total = times.len() as u32;
     let mut notify = |completed, backend: &str, phase: &str| {
         progress(Progress {
@@ -545,7 +591,13 @@ pub fn render(
     let native = native_settings(settings);
     let trial = temporary.0.join("trial.mp4");
     let mut direct_failures = Vec::new();
-    for backend in backends(false) {
+    // An editing codec has no GPU encoder: it goes straight to the staged path.
+    let direct = if settings.codec.intermediate() {
+        Vec::new()
+    } else {
+        backends(false)
+    };
+    for backend in direct {
         if !notify(0, backend.label(), "Checking direct GPU encoder") {
             return Ok(cancelled(backend.label(), true, 0));
         }
@@ -593,7 +645,12 @@ pub fn render(
     drop(frame);
     let mut selected = None;
     let mut failures = Vec::new();
-    for backend in backends(settings.allow_software) {
+    let staged = if settings.codec.intermediate() {
+        vec![Backend::Software]
+    } else {
+        backends(settings.allow_software)
+    };
+    for backend in staged {
         if !notify(0, backend.label(), "Checking encoder") {
             return Ok(cancelled(backend.label(), false, 0));
         }
@@ -616,7 +673,9 @@ pub fn render(
     }
     let backend = selected.ok_or_else(|| format!("No usable encoder. {}", failures.join("; ")))?;
     let hardware = !matches!(backend, Backend::Software);
-    let output = temporary.0.join("video.mp4");
+    let output = temporary
+        .0
+        .join(format!("video.{}", settings.codec.extension()));
     let mut encoder = Encoder::start(&mut backend.command(settings, Some(&output)))?;
     let mut first = Some(first);
     for (n, time) in times.iter().enumerate() {
@@ -726,7 +785,11 @@ impl Soundtrack {
         if self.clips.is_empty() && self.music.is_none() {
             return Ok(Some(video.to_owned()));
         }
-        let mixed = video.with_file_name("with-audio.mp4");
+        // The same container as the picture.
+        let mixed = video.with_file_name(format!(
+            "with-audio.{}",
+            video.extension().and_then(|e| e.to_str()).unwrap_or("mp4")
+        ));
         let music = self.music.as_ref().map(|(p, g)| (p.as_path(), *g));
         Ok(
             crate::export_audio::mux(video, &mixed, &self.clips, music, self.duration, keep)?

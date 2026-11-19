@@ -154,6 +154,19 @@ fn ellipse(@builtin(global_invocation_id) gid:vec3<u32>) {
     }
     result[index(gid)]=vec4<f32>(alpha);
 }
+// Rounded rectangle: values = centre, half size; extra = corner radius, feather.
+@compute @workgroup_size(8,8)
+fn rectangle(@builtin(global_invocation_id) gid:vec3<u32>) {
+    if !inside(gid) {return;}
+    var alpha=0.0;
+    if p.values.z>0.0 && p.values.w>0.0 {
+        let corner=min(p.extra.x,min(p.values.z,p.values.w));
+        let q=abs(vec2<f32>(gid.xy)+vec2<f32>(0.5)-p.values.xy)-(p.values.zw-vec2<f32>(corner));
+        let distance=length(max(q,vec2<f32>(0.0)))+min(max(q.x,q.y),0.0)-corner;
+        alpha=1.0-smoothstep(-p.extra.y*0.5,p.extra.y*0.5,distance);
+    }
+    result[index(gid)]=vec4<f32>(alpha);
+}
 @compute @workgroup_size(8,8)
 fn mask(@builtin(global_invocation_id) gid:vec3<u32>) {
     if !inside(gid) {return;}

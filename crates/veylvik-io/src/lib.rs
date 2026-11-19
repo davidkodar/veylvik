@@ -91,8 +91,29 @@ pub fn load_png(path: &Path, budget: u64) -> Result<Image> {
         }
         None => None,
     };
-    if info.coding_independent_code_points.is_some()
-        || (info.srgb.is_none()
+    // A cICP chunk says how the picture is coded and overrides gAMA and cHRM. Frames
+    // written from video (ffmpeg and others) carry one: Rec.709 primaries with the
+    // Rec.709, Rec.601 or sRGB curve at full range are read with that curve, exactly as
+    // the same frame would be read from the video. Anything else is refused.
+    let coded = match info.coding_independent_code_points {
+        Some(c)
+            if c.color_primaries == 1
+                && matches!(c.transfer_function, 1 | 6 | 13)
+                && c.matrix_coefficients == 0
+                && c.is_video_full_range_image =>
+        {
+            Some(u32::from(c.transfer_function))
+        }
+        Some(_) => {
+            return Err(
+                "PNG colour metadata requires an unsupported input transform; supply an sRGB PNG"
+                    .into(),
+            );
+        }
+        None => None,
+    };
+    if coded.is_none()
+        && (info.srgb.is_none()
             && (info.gama_chunk.is_some_and(|g| g.into_scaled() != 45455)
                 || info
                     .source_chromaticities
@@ -120,6 +141,8 @@ pub fn load_png(path: &Path, budget: u64) -> Result<Image> {
     let decode = |x: f32| {
         if let Some(gamma) = profile_gamma {
             x.powf(gamma)
+        } else if let Some(code) = coded.filter(|code| *code != 13) {
+            video::colour::tagged(code, f64::from(x)) as f32
         } else if x <= 0.04045 {
             x / 12.92
         } else {
@@ -157,7 +180,7 @@ pub fn inspect_inputs(plan: &Plan, base: &Path) -> Result<u64> {
     let mut bytes = 0;
     for key in plan.required_assets() {
         let image = footage::load_key(base, &key, MAX_IMAGE_BYTES)
-            .map_err(|error| format!("image {}: {error}", key.replace('\0', " layer ")))?;
+            .map_err(|error| media_error(base, &key, &*error))?;
         bytes += image.byte_size();
     }
     Ok(bytes)
@@ -173,8 +196,8 @@ pub fn load_inputs(plan: &Plan, base: &Path, budget: u64) -> Result<ImageInputs>
     let mut inputs = ImageInputs::default();
     inputs.set_base_directory(base);
     for key in plan.required_assets() {
-        let image = footage::load_key(base, &key, remaining)
-            .map_err(|e| format!("image {}: {e}", key.replace('\0', " layer ")))?;
+        let image =
+            footage::load_key(base, &key, remaining).map_err(|e| media_error(base, &key, &*e))?;
         remaining -= image.byte_size();
         image.insert(&mut inputs, key.into_owned());
     }
@@ -184,7 +207,21 @@ pub fn load_inputs(plan: &Plan, base: &Path, budget: u64) -> Result<ImageInputs>
     }
     Ok(inputs)
 }
+/// A media file that could not be loaded: says when it is simply not there.
+fn media_error(base: &Path, key: &str, error: &dyn std::error::Error) -> String {
+    let (path, _) = veylvik_document::split_source_key(key);
+    let name = key.replace('\0', " layer ");
+    if !base.join(path).exists() {
+        format!(
+            "Media file is missing: {name} (moved, renamed or deleted? Relink it, or put it back)"
+        )
+    } else {
+        format!("Media {name}: {error}")
+    }
+}
 /// Save-as rebases relative assets without changing the live document or its origin.
+/// Media that lies inside the destination's folder is named relative to it too, so the
+/// folder can be moved or copied as a whole.
 pub fn save(composition: &Composition, base: &Path, destination: &Path) -> Result<()> {
     save_tracked(composition, base, destination, None).map(|_| ())
 }
@@ -205,7 +242,7 @@ pub fn save_tracked(
     let mut saved = composition.clone();
     for node in saved.nodes.values_mut() {
         if let Some(asset) = node.operation.asset_mut()
-            && Path::new(asset).is_relative()
+            && (Path::new(asset).is_relative() || Path::new(asset).starts_with(&parent))
         {
             let resolved = base.join(&*asset);
             let relative = pathdiff::diff_paths(&resolved, &parent).ok_or("cannot rebase asset")?;
@@ -541,7 +578,8 @@ impl FileStamp {
     pub fn load(path: &Path) -> Result<(Composition, Self)> {
         let path = path.canonicalize()?;
         let bytes = Self::read(&path)?;
-        let composition: Composition = serde_json::from_slice(&bytes)?;
+        let composition: Composition =
+            serde_json::from_slice(&bytes).map_err(|e| veylvik_document::explain_parse(&e))?;
         composition.validate()?;
         Ok((
             composition,

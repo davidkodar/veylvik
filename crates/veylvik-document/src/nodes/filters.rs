@@ -217,9 +217,9 @@ pub static SHADOW: NodeType = NodeType {
     type_id: "shadow",
     version: 1,
     label: "Shadow",
-    description: "Black premultiplied shadow on a flat receiving plane. Manual offset or area-light projection from the nearest material in the lighting input. Environment reflections do not cast directional shadows. Outputs shadow only; merge behind the original image.",
+    description: "Black premultiplied shadow on a flat receiving plane. Manual offset or area-light projection from the nearest material in the lighting input. Environment reflections do not cast directional shadows. The Lighting input is optional: without it the manual offset is used. Outputs shadow only; merge behind the original image.",
     inputs: &["image", "lighting"],
-    optional: &[],
+    optional: &["lighting"],
     output: PortKind::Image,
     parameters: &[
         other("follow_lighting", ParameterKind::Boolean, "lighting"),

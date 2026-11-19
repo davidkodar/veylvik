@@ -54,6 +54,7 @@ pub fn save_frame(path: &Path, width: u32, height: u32, pixels: &[[f32; 4]]) -> 
         FrameFormat::Png => crate::save_png(path, width, height, pixels),
         FrameFormat::Exr => save_exr(path, width, height, pixels),
     }
+    .map_err(|e| format!("Cannot write {}: {e}", path.display()).into())
 }
 /// Publish a new frame without replacing an existing file or symlink.
 pub fn save_frame_new(path: &Path, width: u32, height: u32, pixels: &[[f32; 4]]) -> Result<()> {

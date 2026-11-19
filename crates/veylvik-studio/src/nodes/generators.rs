@@ -81,6 +81,7 @@ impl Inspect for veylvik_document::nodes::Atmosphere {
     }
 }
 impl Inspect for veylvik_document::nodes::Ellipse {}
+impl Inspect for veylvik_document::nodes::Rectangle {}
 
 impl Inspect for veylvik_document::nodes::Dust {
     fn inspect(&mut self, ui: &mut egui::Ui, cx: &mut InspectCx<'_>) {

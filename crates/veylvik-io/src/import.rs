@@ -20,10 +20,63 @@ pub fn load_image_layer(path: &Path, layer: Option<&str>, budget: u64) -> Result
         load_exr_layer(path, layer, budget)
     } else if let Some(layer) = layer {
         Err(format!("only OpenEXR files have layers, not {layer}").into())
+    } else if is_photo(path) {
+        load_photo(path, budget)
     } else {
         // Preserve PNG signature-based loading for existing asset keys.
         crate::load_png(path, budget)
     }
+}
+/// JPEG, TIFF and WebP stills, by extension.
+pub fn is_photo(path: &Path) -> bool {
+    path.extension().and_then(|s| s.to_str()).is_some_and(|s| {
+        ["jpg", "jpeg", "tif", "tiff", "webp"]
+            .iter()
+            .any(|e| s.eq_ignore_ascii_case(e))
+    })
+}
+/// A JPEG, TIFF or WebP still, read as sRGB (these formats' convention; an embedded
+/// profile is not applied) into linear premultiplied pixels. Up to 8192 pixels a side.
+fn load_photo(path: &Path, budget: u64) -> Result<Image> {
+    let mut reader = image::ImageReader::open(path)?.with_guessed_format()?;
+    let mut limits = image::Limits::default();
+    limits.max_image_width = Some(8192);
+    limits.max_image_height = Some(8192);
+    limits.max_alloc = Some(budget.min(crate::MAX_IMAGE_BYTES));
+    reader.limits(limits);
+    let (width, height) = reader.into_dimensions()?;
+    if width == 0 || height == 0 || width > 8192 || height > 8192 {
+        return Err("image dimensions exceed 8192 pixels".into());
+    }
+    if u64::from(width) * u64::from(height) * 16 > budget.min(crate::MAX_IMAGE_BYTES) {
+        return Err("image dimensions exceed image input budget".into());
+    }
+    let decoded = image::ImageReader::open(path)?
+        .with_guessed_format()?
+        .decode()
+        .map_err(|e| format!("{}: {e}", path.display()))?
+        .into_rgba32f();
+    let linear = |x: f32| {
+        let x = x.clamp(0.0, 1.0);
+        if x <= 0.04045 {
+            x / 12.92
+        } else {
+            ((x + 0.055) / 1.055).powf(2.4)
+        }
+    };
+    let pixels = decoded
+        .pixels()
+        .map(|p| {
+            let a = p.0[3].clamp(0.0, 1.0);
+            [
+                linear(p.0[0]) * a,
+                linear(p.0[1]) * a,
+                linear(p.0[2]) * a,
+                a,
+            ]
+        })
+        .collect();
+    Ok(Image::new(width, height, pixels)?)
 }
 pub fn is_exr(path: &Path) -> bool {
     path.extension()

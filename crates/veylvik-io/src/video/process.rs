@@ -61,7 +61,11 @@ pub fn capture(command: &mut Command, limit: usize) -> Result<Vec<u8>> {
         return Err("Video index exceeds its memory limit; use a shorter shot".into());
     }
     if !status.success() {
-        return Err(format!("Cannot read video: {errors}").into());
+        return Err(format!(
+            "this is not a readable video: the file is damaged, incomplete or of another kind ({})",
+            errors.replace('\n', "; ")
+        )
+        .into());
     }
     Ok(bytes)
 }

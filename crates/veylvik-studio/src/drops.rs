@@ -19,9 +19,9 @@ pub(crate) fn kind(path: &Path) -> Option<Kind> {
     let extension = path.extension()?.to_str()?.to_ascii_lowercase();
     match extension.as_str() {
         "veylvik" => Some(Kind::Project),
-        "png" | "exr" | "svg" | "mp4" | "mov" | "m4v" | "mkv" | "webm" | "avi" | "mpg" | "mpeg"
-        | "veyseq" | "wav" | "mp3" | "flac" | "ogg" | "oga" | "opus" | "m4a" | "aac" | "aiff"
-        | "aif" => Some(Kind::Media),
+        "png" | "exr" | "jpg" | "jpeg" | "tif" | "tiff" | "webp" | "svg" | "mp4" | "mov"
+        | "m4v" | "mkv" | "webm" | "avi" | "mpg" | "mpeg" | "veyseq" | "wav" | "mp3" | "flac"
+        | "ogg" | "oga" | "opus" | "m4a" | "aac" | "aiff" | "aif" => Some(Kind::Media),
         _ => None,
     }
 }
@@ -194,6 +194,8 @@ mod tests {
             "plate.MOV",
             "frame.png",
             "pass.exr",
+            "photo.jpg",
+            "scan.TIFF",
             "shot.veyseq",
             "/out/sequence.json",
         ] {
@@ -203,7 +205,7 @@ mod tests {
             "notes.txt",
             "model.glb",
             "other.json",
-            "photo.jpg",
+            "raw.cr3",
             "noextension",
         ] {
             assert_eq!(kind(Path::new(name)), None, "{name}");

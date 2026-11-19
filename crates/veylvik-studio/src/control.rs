@@ -20,7 +20,23 @@ fn validate_arguments(name: &str, args: &Value) -> Result<()> {
     let object = args.as_object().ok_or("arguments must be an object")?;
     for key in object.keys() {
         if descriptor["inputSchema"]["properties"].get(key).is_none() {
-            return Err(format!("unknown argument {key}").into());
+            let takes: Vec<&str> = descriptor["inputSchema"]["properties"]
+                .as_object()
+                .map(|p| p.keys().map(String::as_str).collect())
+                .unwrap_or_default();
+            // The headless server takes a time on these; here they show Studio's viewer.
+            let hint = if matches!(key.as_str(), "ticks" | "rate")
+                && matches!(name, "preview_image" | "measure" | "render")
+            {
+                ". The live server works on Studio's own viewer: call preview with frame (and node) first, then this tool without a time (render takes frame)"
+            } else {
+                ""
+            };
+            return Err(format!(
+                "{name} has no argument {key}; it takes {}{hint}",
+                takes.join(", ")
+            )
+            .into());
         }
     }
     for key in descriptor["inputSchema"]["required"].as_array().unwrap() {

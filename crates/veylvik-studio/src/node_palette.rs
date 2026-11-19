@@ -270,6 +270,18 @@ pub fn operation(kind: &NodeType, width: u32, height: u32) -> Operation {
             *w = (width as f32 * 0.65).into();
             *h = (height as f32 * 0.5).into();
         }
+        Operation::Rectangle(veylvik_document::nodes::Rectangle {
+            x,
+            y,
+            width: w,
+            height: h,
+            ..
+        }) => {
+            *x = (width as f32 * 0.5).into();
+            *y = (height as f32 * 0.5).into();
+            *w = (width as f32 * 0.4).into();
+            *h = (height as f32 * 0.3).into();
+        }
         Operation::Ellipse(veylvik_document::nodes::Ellipse {
             x,
             y,

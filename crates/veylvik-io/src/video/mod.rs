@@ -1,5 +1,5 @@
 //! Timestamp-indexed FFmpeg footage. Rust owns bounds, caching and source identity.
-mod colour;
+pub(crate) mod colour;
 mod hardware;
 pub(crate) mod process;
 mod session;

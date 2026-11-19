@@ -1068,6 +1068,35 @@ clamps sampling to the requested crop, composites transparency over a checkerboa
 and applies an SDR display transform. A previous preview stays visible while rendering, explicitly marked
 when it no longer matches the requested frame.
 
+### Formats, hand-off and what is skipped
+
+Stills may be PNG, OpenEXR, JPEG, TIFF or WebP. JPEG, TIFF and WebP are read as sRGB
+(8 or 16 bit, with alpha where the file has it; an embedded profile is not applied). A
+PNG that declares its coding with a cICP chunk, as frames written from video by ffmpeg
+do, is read with the curve it names when that is Rec.709, Rec.601 or sRGB at full range
+with Rec.709 primaries; other codings are refused.
+
+`render_video` (and `veylvik render-video --codec`) can write **ProRes 422 HQ** in a
+`.mov` (`codec: "prores"`): ten-bit 4:2:2, every frame a key frame, encoded in software,
+for handing a shot to an editor that will cut and grade it further. Its file must end in
+`.mov`; H.264 and HEVC stay `.mp4`. Sound is carried the same way. Timecode and alpha are
+not written, and values outside the legal video range are not kept.
+
+A project saved beside its media names that media relative to itself, so the folder can
+be moved or copied as a whole. When a media file cannot be found the error says it is
+missing and names it; a damaged project file says whether it is cut short, not a project,
+or saved by a newer version.
+
+Nodes that cannot reach the picture at the frame being rendered are not run: everything
+upstream of a Fade that is fully out, for example, including its text and shape rasters
+and its footage decoding. A long timeline of layers that take turns costs what is on
+screen, not what is in the project.
+
+**Rectangle** (Add > Masks and shapes) is white coverage centred on x, y with a width, a
+height, a corner radius (up to half the shorter side: a pill or a circle) and a feather;
+all animatable. **Shadow**'s Lighting input is optional: without it the manual offset is
+used.
+
 ### Working directly in Studio
 
 New things join the picture when they are added, so the viewer can stay on the

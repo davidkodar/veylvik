@@ -18,7 +18,7 @@ veylvik-scene.workspace = true
 png = "0.18"
 pathdiff = "0.2"
 serde_json.workspace = true
-image = { workspace = true, features = ["hdr"] }
+image = { workspace = true, features = ["hdr", "jpeg", "tiff", "webp"] }
 exr = { version = "=1.74.2", default-features = false }
 usvg = { version = "=0.48.1", default-features = false }
 gltf = { version = "=1.4.1", default-features = false, features = ["import", "utils", "names"] }

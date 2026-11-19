@@ -48,6 +48,7 @@ fn offset(op: &Operation, parameter: &str, m: Mapping) -> f32 {
             op,
             Operation::Text(crate::nodes::Text { .. })
                 | Operation::Ellipse(crate::nodes::Ellipse { .. })
+                | Operation::Rectangle(crate::nodes::Rectangle { .. })
                 | Operation::Fire(crate::nodes::Fire { .. })
                 | Operation::MetallicShine(crate::nodes::MetallicShine { .. })
                 | Operation::Atmosphere(crate::nodes::Atmosphere { .. })
@@ -59,6 +60,7 @@ fn offset(op: &Operation, parameter: &str, m: Mapping) -> f32 {
             op,
             Operation::Text(crate::nodes::Text { .. })
                 | Operation::Ellipse(crate::nodes::Ellipse { .. })
+                | Operation::Rectangle(crate::nodes::Rectangle { .. })
                 | Operation::Fire(crate::nodes::Fire { .. })
                 | Operation::MetallicShine(crate::nodes::MetallicShine { .. })
                 | Operation::Atmosphere(crate::nodes::Atmosphere { .. })

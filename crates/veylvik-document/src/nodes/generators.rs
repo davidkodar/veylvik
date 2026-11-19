@@ -165,6 +165,36 @@ pub static ATMOSPHERE: NodeType = NodeType {
         scalar("lighting", "factor", 0.0, 4.0, 1.0),
     ],
 };
+/// A rectangle with optionally rounded corners, as coverage.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Rectangle {
+    /// Its centre.
+    pub x: Scalar,
+    pub y: Scalar,
+    pub width: Scalar,
+    pub height: Scalar,
+    /// Corner radius, at most half the shorter side.
+    pub corner: Scalar,
+    pub feather: Scalar,
+}
+pub static RECTANGLE: NodeType = NodeType {
+    type_id: "rectangle",
+    version: 1,
+    label: "Rectangle",
+    description: "White premultiplied rectangle coverage, centred on x, y. Corner rounds the corners by that radius in pixels, up to half the shorter side (a pill or a circle). Feather is the width in pixels of the soft edge, centred on the outline, at least 1 pixel. Zero width or height is transparent. Colour it with a Solid through a Mask, or with Colorize; animate width and height for bars, plates and wipes.",
+    inputs: &[],
+    optional: &[],
+    output: PortKind::Image,
+    parameters: &[
+        scalar("x", "pixels", -1_000_000.0, 1_000_000.0, 320.0),
+        scalar("y", "pixels", -1_000_000.0, 1_000_000.0, 180.0),
+        scalar("width", "pixels", 0.0, 16384.0, 300.0),
+        scalar("height", "pixels", 0.0, 16384.0, 200.0),
+        scalar("corner", "pixels", 0.0, 8192.0, 0.0),
+        scalar("feather", "pixels", 0.0, 8192.0, 1.0),
+    ],
+};
 pub static ELLIPSE: NodeType = NodeType {
     type_id: "ellipse",
     version: 1,
@@ -208,6 +238,7 @@ node!(
     [x, y, width, height, evolution, density, detail, lighting]
 );
 node!(Ellipse, ELLIPSE, [x, y, radius_x, radius_y, feather]);
+node!(Rectangle, RECTANGLE, [x, y, width, height, corner, feather]);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

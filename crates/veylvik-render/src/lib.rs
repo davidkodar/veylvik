@@ -877,7 +877,29 @@ impl Renderer {
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("frame"),
             });
+        // Nodes that cannot reach the picture at this time (behind a faded-out layer, say)
+        // are not run. What reads them ignores their content, but must not meet whatever
+        // an earlier pass left in the slot (a stray infinity times zero is not zero), so a
+        // skipped slot is cleared when, and only when, something that runs reads it.
+        let visible = plan.visible_at(time)?;
+        let mut stale = vec![false; plan.slot_count];
         for scheduled in &plan.passes {
+            if !visible.contains(&plan.nodes[scheduled.node].id) {
+                stale[scheduled.output] = true;
+                continue;
+            }
+            for input in scheduled
+                .inputs
+                .iter()
+                .chain(scheduled.cards.iter().map(|(_, input)| input))
+            {
+                if let plan::Input::Value(slot) = input
+                    && std::mem::take(&mut stale[*slot])
+                {
+                    encoder.clear_buffer(&buffers[*slot], 0, None);
+                }
+            }
+            stale[scheduled.output] = false;
             if scheduled.kernel == Kernel::RenderScene {
                 let renderer = self
                     .scene_renderer

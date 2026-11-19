@@ -130,6 +130,7 @@ macro_rules! each_node {
             $crate::Operation::OpticalFlow($node) => $body,
             $crate::Operation::Affine($node) => $body,
             $crate::Operation::Ellipse($node) => $body,
+            $crate::Operation::Rectangle($node) => $body,
             $crate::Operation::Mask($node) => $body,
             $crate::Operation::CombineMask($node) => $body,
             $crate::Operation::ChannelMask($node) => $body,
@@ -216,6 +217,7 @@ pub enum Operation {
     OpticalFlow(nodes::OpticalFlow),
     Affine(nodes::Affine),
     Ellipse(nodes::Ellipse),
+    Rectangle(nodes::Rectangle),
     Mask(nodes::Mask),
     CombineMask(nodes::CombineMask),
     ChannelMask(nodes::ChannelMask),
@@ -580,10 +582,28 @@ impl Composition {
         if bytes.len() > limits::MAX_DOCUMENT_BYTES {
             return fail("document exceeds 16 MiB");
         }
-        let doc: Self = serde_json::from_slice(&bytes).map_err(|e| Error(e.to_string()))?;
+        let doc: Self = serde_json::from_slice(&bytes).map_err(|e| Error(explain_parse(&e)))?;
         doc.validate()?;
         Ok(doc)
     }
+}
+/// Why a project file could not be read, in words a person can act on, with the
+/// parser's own detail after it.
+pub fn explain_parse(error: &serde_json::Error) -> String {
+    use serde_json::error::Category;
+    let text = error.to_string();
+    let reason = match error.classify() {
+        Category::Eof => {
+            "The project file is cut short or empty: it may not have been saved or copied completely"
+        }
+        Category::Syntax => "This is not a Veylvik project file, or it is damaged",
+        Category::Data if text.contains("unknown field") || text.contains("unknown variant") => {
+            "The project uses something this version of Veylvik does not know: it was probably saved by a newer version"
+        }
+        Category::Data => "The project file holds a value Veylvik cannot use",
+        Category::Io => "The project file could not be read",
+    };
+    format!("{reason} ({text})")
 }
 /// Same-directory replacement keeps readers from observing partial saves.
 pub fn atomic_write(path: &Path, data: &[u8]) -> Result<()> {

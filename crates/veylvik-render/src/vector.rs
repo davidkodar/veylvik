@@ -206,7 +206,13 @@ impl Renderer {
         }) - plan.vector_bytes()
             + self.source_bytes(plan, inputs)?;
         let mut keys = Vec::new();
+        // A text or shape that cannot reach the picture at this time is not drawn: its
+        // passes are skipped too (see `encode_and_read`).
+        let visible = plan.visible_at(request.time)?;
         for (index, node) in plan.nodes.iter().enumerate() {
+            if !visible.contains(&node.id) {
+                continue;
+            }
             let geometry = match &node.operation {
                 veylvik_document::Operation::Path(veylvik_document::nodes::Path { geometry }) => {
                     geometry.at(request.time)?

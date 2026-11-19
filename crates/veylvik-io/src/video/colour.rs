@@ -65,7 +65,7 @@ fn gamut_primaries(gamut: Gamut) -> [[f64; 2]; 3] {
     }
 }
 /// Decoding curves for tagged transfers (H.273 codes); unknown codes use BT.709.
-fn tagged(transfer: u32, v: f64) -> f64 {
+pub(crate) fn tagged(transfer: u32, v: f64) -> f64 {
     match transfer {
         8 => v,
         13 => {
