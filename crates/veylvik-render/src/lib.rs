@@ -264,6 +264,7 @@ impl Renderer {
                     include_str!("environment.wgsl"),
                     include_str!("working_space.wgsl"),
                     include_str!("matte.wgsl"),
+                    include_str!("keyer.wgsl"),
                     include_str!("grain.wgsl"),
                     include_str!("lens.wgsl"),
                     include_str!("lens_depth.wgsl"),

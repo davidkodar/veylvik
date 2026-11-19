@@ -6,6 +6,7 @@ fn targeted_queries_validate_arguments_without_mutation_or_gpu_initialization() 
         document: Document::new(veylvik_document::motion_demo()).unwrap(),
         saved: 0,
         asset_base: std::env::temp_dir(),
+        saved_dir: None,
         renderer: None,
     };
     let id = session.document.snapshot().output;
@@ -146,6 +147,7 @@ mod image_tests {
             document: Document::new(composition).unwrap(),
             saved: 0,
             asset_base: std::env::temp_dir(),
+            saved_dir: None,
             renderer: None,
         };
         let diagnostics = session.call("diagnostics", &json!({})).unwrap();
@@ -187,6 +189,7 @@ mod branch_tests {
             document: Document::new(composition).unwrap(),
             saved: 0,
             asset_base: std::env::temp_dir(),
+            saved_dir: None,
             renderer: None,
         };
         let dry = session
@@ -248,6 +251,7 @@ mod effect_tests {
                 document: Document::new(composition).unwrap(),
                 saved: 0,
                 asset_base: std::env::temp_dir(),
+                saved_dir: None,
                 renderer: None,
             };
             let dry = session
@@ -312,6 +316,7 @@ mod preset_tests {
             document: Document::new(composition).unwrap(),
             saved: 0,
             asset_base: std::env::temp_dir(),
+            saved_dir: None,
             renderer: None,
         };
         let loaded = session

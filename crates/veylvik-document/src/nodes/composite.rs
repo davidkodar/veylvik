@@ -149,7 +149,7 @@ pub static BLEND: NodeType = NodeType {
     type_id: "blend",
     version: 1,
     label: "Blend",
-    description: "Scene-linear blending with source-over alpha and animated foreground opacity. RGB is not clamped; Add sums premultiplied RGB with union alpha.",
+    description: "Scene-linear blending with source-over alpha and animated foreground opacity. RGB is not clamped; Add sums premultiplied RGB with union alpha. Overlay and Soft light let the background's texture show through the foreground (paint on a wall, a logo on cloth): they work on perceptual values of colours within 0..1, so brighter HDR values are held at 1 where the two overlap.",
     inputs: &["background", "foreground"],
     optional: &[],
     output: PortKind::Image,

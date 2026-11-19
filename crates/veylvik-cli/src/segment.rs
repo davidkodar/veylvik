@@ -162,7 +162,13 @@ pub fn run(
         .ok_or("cannot express the matte path relative to the project")?
         .to_string_lossy()
         .into_owned();
-    let added = analysis::matte_nodes(doc, request.source, asset, outcome.first_frame)?;
+    let added = analysis::matte_nodes(
+        doc,
+        request.source,
+        asset,
+        outcome.first_frame,
+        outcome.matting.is_some(),
+    )?;
     let mut report = serde_json::to_value(&outcome)?;
     report["device"] = json!(worker.device);
     report["model"] = json!(model.id);

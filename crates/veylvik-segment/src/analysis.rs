@@ -232,6 +232,7 @@ pub fn matte_nodes(
     source: NodeId,
     asset: String,
     first_frame: i64,
+    matted: bool,
 ) -> Result<Added> {
     let Operation::Footage(mut footage) =
         serde_json::from_value(veylvik_document::registry::FOOTAGE.default_operation())?
@@ -242,8 +243,13 @@ pub fn matte_nodes(
     footage.timing.start =
         Time::at_frame(first_frame, doc.frame_rate).map_err(|e| e.to_string())?;
     let matte = Node::new("Subject matte", Operation::Footage(footage), &[]);
-    let refine: Operation =
+    let mut refine: Operation =
         serde_json::from_value(veylvik_document::registry::REFINE_MATTE.default_operation())?;
+    // A matting model has already resolved the edge: its alpha stands, and the node
+    // only removes the old background's colour from it.
+    if matted && let Operation::RefineMatte(refine) = &mut refine {
+        refine.detail = 0.0.into();
+    }
     let cutout = Node::new(
         "Subject cutout",
         refine,
@@ -308,7 +314,8 @@ mod tests {
     fn analysis_adds_the_matte_and_a_cutout_wired_to_the_source() {
         let rate = Time { ticks: 30, rate: 1 };
         let doc = veylvik_document::blank(64, 64, rate).unwrap();
-        let added = matte_nodes(&doc, doc.output, "mattes/subject.veyseq".into(), 12).unwrap();
+        let added =
+            matte_nodes(&doc, doc.output, "mattes/subject.veyseq".into(), 12, false).unwrap();
         let mut document = veylvik_document::Document::new(doc.clone()).unwrap();
         document
             .apply(document.revision(), &added.commands)

@@ -88,12 +88,16 @@ fn matte_join(@builtin(global_invocation_id) gid:vec3<u32>) {
 @compute @workgroup_size(8,8)
 fn fuse_foreground(@builtin(global_invocation_id) gid:vec3<u32>) {
     if !inside(gid) {return;} let i=index(gid); let c=source[i];
-    result[i]=vec4<f32>(c.rgb*c.a,c.a);
+    // Weighted towards what is surely subject: a half-transparent rim pixel still holds
+    // the old background's colour and would carry it into the estimate.
+    let w=c.a*c.a*c.a;
+    result[i]=vec4<f32>(c.rgb*w,w);
 }
 @compute @workgroup_size(8,8)
 fn fuse_background(@builtin(global_invocation_id) gid:vec3<u32>) {
     if !inside(gid) {return;} let i=index(gid); let c=source[i];
-    result[i]=vec4<f32>(c.rgb*(1.0-c.a),1.0-c.a);
+    let w=(1.0-c.a)*(1.0-c.a)*(1.0-c.a);
+    result[i]=vec4<f32>(c.rgb*w,w);
 }
 @compute @workgroup_size(8,8)
 fn fuse_box_horizontal(@builtin(global_invocation_id) gid:vec3<u32>) {
@@ -103,6 +107,12 @@ fn fuse_box_horizontal(@builtin(global_invocation_id) gid:vec3<u32>) {
 fn fuse_box_vertical(@builtin(global_invocation_id) gid:vec3<u32>) {
     if !inside(gid) {return;} result[index(gid)]=box_axis(gid,vec2<i32>(0,1),i32(p.values.y));
 }
+// How far a pixel's own colour is trusted as subject detail: fully where it is mostly
+// opaque, not at all where it is mostly transparent, and fully when no surely-subject
+// colour is near to stand in for it.
+fn fuse_trust(a:f32,known:f32)->f32 {
+    return mix(1.0,smoothstep(0.3,0.9,a),smoothstep(0.0,1e-3,known));
+}
 // F = F̂ + α(I − αF̂ − (1−α)B̂), split over two passes: here F̂(1−α²) + αI, blended with I by
 // the decontaminate amount; fuse_finish subtracts the background term.
 @compute @workgroup_size(8,8)
@@ -111,7 +121,11 @@ fn fuse_estimate(@builtin(global_invocation_id) gid:vec3<u32>) {
     let i=index(gid); let c=second[i]; let a=c.a; let blurred=source[i];
     var estimate=c.rgb;
     if blurred.a>1e-4 {estimate=blurred.rgb/blurred.a;}
-    let partial=estimate*(1.0-a*a)+a*c.rgb;
+    // The fused colour keeps the pixel's own detail, which is right where the subject
+    // dominates. A mostly transparent pixel shows mostly the old background, so its
+    // detail is background too: there the surrounding subject colour stands instead.
+    let trust=fuse_trust(a,blurred.a);
+    let partial=mix(estimate,estimate*(1.0-a*a)+a*c.rgb,trust);
     result[i]=vec4<f32>(mix(c.rgb,partial,p.values.w),a);
 }
 @compute @workgroup_size(8,8)
@@ -122,7 +136,8 @@ fn fuse_finish(@builtin(global_invocation_id) gid:vec3<u32>) {
     if blurred.a>1e-4 {background=blurred.rgb/blurred.a;}
     // Interior pixels keep the image exactly; HDR values are preserved, only negatives from
     // the estimate are clipped at the edge.
-    var colour=t.rgb-p.values.w*a*(1.0-a)*background;
+    // third: the surely-subject average, for the same trust as the estimate used.
+    var colour=t.rgb-p.values.w*fuse_trust(a,third[i].a)*a*(1.0-a)*background;
     if a<1.0 {colour=max(colour,vec3<f32>(0.0));}
     result[i]=vec4<f32>(colour*a,a);
 }

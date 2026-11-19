@@ -115,7 +115,11 @@ adapter does not yet expose mid-request cancellation or progress notifications.
 ## Blend controls
 
 **Blend** combines foreground and background with Normal, Add, Multiply, Screen,
-Darken, Lighten or Difference. Its opacity scales foreground RGB and alpha and
+Darken, Lighten, Difference, Overlay or Soft light. Overlay darkens where the
+background is dark and brightens where it is bright, so the background's texture
+shows through the foreground (paint on a wall, a logo on cloth); Soft light is a
+gentler version. Both work on perceptual (square-root) values of colours within
+0..1, so brighter HDR values are held at 1 where the two overlap. Its opacity scales foreground RGB and alpha and
 can be keyframed. All modes use source-over union alpha. Add sums premultiplied
 RGB; its alpha remains in [0,1]. Blending operates in scene-linear Rec.709 without
 RGB clamping, so HDR and negative values remain available downstream. Screen
@@ -148,7 +152,22 @@ least 1 − **Tolerance** as much as the key become transparent, and over a furt
 **Softness** they fade back to opaque. Skin, greys and colours without that bias stay
 opaque, and near-black pixels, which carry no reliable colour, are kept. **Despill**
 limits the key's channel in what remains to the average of the other two, removing
-coloured fringes and bounce light. **Luma key** keys by Rec.709 luminance instead:
+coloured fringes and bounce light.
+
+The key's matte can then be shaped, best while looking at it: **Show** set to
+**Matte** gives the matte in grey (white is subject, black is gone) instead of the
+picture. **Keep darks** treats pixels far darker than the screen as subject
+whatever their colour leans to: the share of the screen's brightness below which a
+pixel counts as subject (0.05 for a new node; 0 keys by colour alone, as files
+from before it do). It holds dark hair and shadow detail that a soft key would
+otherwise eat into. **Clip black** makes matte values at or below it fully
+transparent, clearing a veil of leftover screen; **Clip white** makes values at or
+above it fully opaque, filling thin spots in the subject. **Shrink** moves the
+edge inwards by that many pixels (negative grows it) and **Soften** blurs it, each
+up to 32 pixels. Two optional mask inputs override the key: **Keep** (its alpha is
+always subject) and **Garbage** (its alpha is always removed: rigging, the edge of
+the screen). A key that uses none of these is one pass, exactly as before; each
+adds a pass. **Luma key** keys by Rec.709 luminance instead:
 transparent at or below **Low**, opaque at or above **High**, with a linear ramp between;
 set Low above High to key out bright areas such as a white backdrop. Both keep input
 alpha, output premultiplied colour, work on HDR values and can be keyframed.
@@ -167,7 +186,28 @@ background grains that happen to match the subject stay out. The confident inter
 stays opaque. **Decontaminate** then re-estimates the subject's colour at semi-transparent
 edges by blur-fusion foreground estimation, so no trace of the old background shows over a
 new one. Output is the premultiplied subject; HDR values are kept, and only negative colour
-that the estimate would introduce at edges is clipped.
+that the estimate would introduce at edges is clipped. The subject's colour is taken from
+pixels the matte is sure of (weighted by the cube of their opacity), and a mostly
+transparent pixel, whose own colour is mostly the old background, takes that surrounding
+subject colour instead of keeping its detail. At **Detail** 0 the matte's own alpha stands
+untouched and only the colour is cleaned: that is how a cut-out made with edge matting is
+set up, since the matting model has already resolved the edge, and re-estimating it from
+colour breaks down when the background is as dark or as busy as the hair in front of it.
+
+A subject cut-out writes its mattes (one 16-bit PNG a frame and a `.veyseq`) to a
+`Subject mattes` folder beside the project; through the headless MCP server that is
+beside the file the session last saved, when it has saved one.
+
+**Planar warp** places a picture with a Planar track in one of four ways: **Follow
+surface** keeps the picture where it lies on the reference frame and moves it with the
+surface; **Fit image to surface** stretches the whole frame onto the tracked corners;
+**Fit inside surface, keeping shape** puts the whole frame inside them without squeezing
+it, as large as fits and centred, judging the surface's proportions from its edges on the
+reference frame (a surface seen at a steep angle looks narrower than it is, so draw the
+corners to the shape wanted); **Stabilize surface** holds the tracked surface still. To
+make a tracked graphic belong to its surface, merge it with **Surface blend** (the
+surface's light, fine detail and recesses, softness, grain and wear) or with a Blend set
+to Overlay or Soft light rather than a plain Merge.
 
 **Pick** beside a colour parameter (Chroma key's Key colour, Solid, Colorize's Shadows and
 Highlights) is an eyedropper: click in the viewer to sample a 5 × 5 area, or drag to
@@ -2907,7 +2947,9 @@ file export. Supply the current `revision` and exact `ticks`/`rate`; optional
 The result includes a standard MCP PNG image content block and small structured
 metadata containing revision, node, time, image dimensions, and source region.
 Image data is excluded from the text/structured metadata. `max_edge` defaults to
-512 and accepts 1..2048; images are never enlarged. A picture whose PNG would not
+512 and accepts 1..2048; images are never enlarged. `alpha: true` (also on
+`render`) shows the picture's alpha as grey instead of its colour: a matte check
+for any node. A picture whose PNG would not
 fit one message (2.9 MB) is refused with advice to lower `max_edge` or to ask
 for a `region`, which shows part of the frame at full size. Area filtering happens in
 linear premultiplied color before conversion to straight-alpha sRGB PNG. HDR is

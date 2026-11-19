@@ -181,12 +181,23 @@ pub fn write_png(path: &Path, width: u32, height: u32, alpha: &[f32]) -> Result<
         .iter()
         .flat_map(|a| [u16::MAX, (a.clamp(0.0, 1.0) * 65535.0 + 0.5) as u16])
         .collect();
-    let image = image::ImageBuffer::<image::LumaA<u16>, _>::from_raw(width, height, data)
-        .ok_or("matte buffer has the wrong size")?;
     let partial = path.with_extension("png.partial");
-    image
-        .save_with_format(&partial, image::ImageFormat::Png)
-        .map_err(|e| format!("cannot write {}: {e}", path.display()))?;
+    // Fast compression: a matte is mostly flat, so it packs well either way, and one is
+    // written for every frame of the shot.
+    let bytes: Vec<u8> = data.iter().flat_map(|v| v.to_be_bytes()).collect();
+    let file = std::io::BufWriter::new(std::fs::File::create(&partial)?);
+    image::ImageEncoder::write_image(
+        image::codecs::png::PngEncoder::new_with_quality(
+            file,
+            image::codecs::png::CompressionType::Fast,
+            image::codecs::png::FilterType::Sub,
+        ),
+        &bytes,
+        width,
+        height,
+        image::ExtendedColorType::La16,
+    )
+    .map_err(|e| format!("cannot write {}: {e}", path.display()))?;
     std::fs::rename(partial, path)?;
     Ok(())
 }

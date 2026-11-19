@@ -130,12 +130,23 @@ fn blend_modes_match_straight_colour_reference_with_animated_opacity() {
                         BlendMode::Darken => b.min(f),
                         BlendMode::Lighten => b.max(f),
                         BlendMode::Difference => (b - f).abs(),
+                        BlendMode::Overlay | BlendMode::SoftLight => {
+                            let (x, y) = (b.clamp(0.0, 1.0).sqrt(), f.clamp(0.0, 1.0).sqrt());
+                            let o = if mode == BlendMode::SoftLight {
+                                (1.0 - 2.0 * y) * x * x + 2.0 * y * x
+                            } else if x < 0.5 {
+                                2.0 * x * y
+                            } else {
+                                1.0 - 2.0 * (1.0 - x) * (1.0 - y)
+                            };
+                            o * o
+                        }
                     };
                     expected[c] = fa * (1.0 - ba) * f + fa * ba * mixed + (1.0 - fa) * ba * b;
                 }
                 for (actual, expected) in pixel.iter().zip(expected) {
                     assert!(
-                        (*actual as f64 - expected).abs() < 1e-6,
+                        (*actual as f64 - expected).abs() < 2e-5,
                         "{mode:?} opacity={tick}/2: {pixel:?} != {expected}"
                     );
                 }

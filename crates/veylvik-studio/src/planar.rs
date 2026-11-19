@@ -503,7 +503,7 @@ impl Studio {
                     ui.separator();
                     egui::ComboBox::from_id_salt("planar-target").selected_text(self.planar.target.and_then(|id|doc.nodes.get(&id)).map_or("Choose text, image or layer",|n|n.label.as_str())).show_ui(ui,|ui| {for node in doc.nodes.values() {ui.selectable_value(&mut self.planar.target,Some(node.id),&node.label);}});
                     egui::ComboBox::from_id_salt("planar-mode").selected_text(self.planar.mode.label()).show_ui(ui,|ui| {for mode in WarpMode::ALL {ui.selectable_value(&mut self.planar.mode,mode,mode.label());}});
-                    ui.weak(match self.planar.mode {WarpMode::Follow=>"Position the layer on the reference frame first. Its placement follows the surface.",WarpMode::Fit=>"Maps the layer's entire canvas into the four surface corners.",WarpMode::Stabilize=>"Locks the tracked source surface to its reference position."});
+                    ui.weak(match self.planar.mode {WarpMode::Follow=>"Position the layer on the reference frame first. Its placement follows the surface.",WarpMode::Fit=>"Maps the layer's entire canvas into the four surface corners.",WarpMode::FitInside=>"The whole image is placed inside the surface without squeezing it: as large as fits, centred, by the surface's shape on the reference frame.",WarpMode::Stabilize=>"Locks the tracked source surface to its reference position."});
                     if self.planar.mode!=WarpMode::Stabilize {
                         ui.checkbox(&mut self.planar.blend_surface,"Match surface appearance");
                         if self.planar.blend_surface {

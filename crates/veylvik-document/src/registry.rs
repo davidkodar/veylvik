@@ -9,6 +9,7 @@ pub enum ParameterKind {
     FrameRate,
     FlowQuality,
     BlurFilter,
+    KeyView,
     OcioTransform,
     Brushing,
     StudioRig,
@@ -76,6 +77,7 @@ impl Parameter {
             ParameterKind::FrameRate => json!(crate::Time { ticks: 24, rate: 1 }),
             ParameterKind::FlowQuality => json!(crate::nodes::FlowQuality::Balanced),
             ParameterKind::BlurFilter => json!(crate::nodes::BlurFilter::Box),
+            ParameterKind::KeyView => json!(crate::nodes::KeyView::Result),
             ParameterKind::OcioTransform => {
                 json!(crate::color_management::OcioTransform::default())
             }
@@ -137,6 +139,9 @@ impl Parameter {
             }
             ParameterKind::BlurFilter => {
                 json!({"type":"string","enum":crate::nodes::BlurFilter::ALL})
+            }
+            ParameterKind::KeyView => {
+                json!({"type":"string","enum":crate::nodes::KeyView::ALL})
             }
             ParameterKind::OcioTransform => crate::color_management::OcioTransform::schema(),
             ParameterKind::Brushing => {

@@ -11,6 +11,9 @@ struct Session {
     /// The revision last opened or saved: anything else is unsaved work.
     saved: u64,
     asset_base: std::path::PathBuf,
+    /// The folder the project was last saved in, when that is not `asset_base`: files
+    /// made for the project (subject mattes) belong beside it.
+    saved_dir: Option<std::path::PathBuf>,
     renderer: Option<Renderer>,
 }
 fn tool(name: &str, description: &str, properties: Value, required: &[&str]) -> Value {
@@ -45,8 +48,8 @@ fn build_tools() -> Value {
         tool("replace_sound","Give a finished video the composition's sound as it is now, without rendering the picture again: video's picture is copied as it stands into the new MP4 at path, with the sound of every Sound node and of the footage feeding the output mixed for the composition's length (AAC 48 kHz). Use it after changing or adding sound once the picture is right. Both paths are absolute; path must not exist. The result lists the sound sources.",json!({"video":{"type":"string"},"path":{"type":"string"},"revision":revision}),&["video","path","revision"]),
         tool("render_video","Export composition output to a new MP4 using hardware-first encoding. Defaults to composition size/rate/range, H.264 high quality, black matte, hardware required. settings names only what differs from those defaults. Audio: the sound of every Footage node feeding the output is mixed in at its timeline position and trims (AAC 48 kHz); settings.audio may set mute, music (an extra file starting at the first exported frame) and music_gain_db (-60..12). The result lists the audio sources. Video is SDR Rec.709; Vulkan resizes and converts, compatible NVIDIA devices transfer planes directly on GPU to in-process NVENC; AMD/Intel can trial experimental DMA-BUF to VA-API; unsupported paths explicitly report RAM staging. An existing file is refused unless settings.replace is true.",json!({"path":{"type":"string"},"revision":revision,"settings":{"type":"object","additionalProperties":false,"properties":{"width":{"type":"integer","minimum":2,"maximum":8192},"height":{"type":"integer","minimum":2,"maximum":8192},"frame_rate":{"type":"object","properties":{"ticks":{"type":"integer","minimum":1},"rate":{"type":"integer","minimum":1}},"required":["ticks","rate"],"additionalProperties":false},"start":{"type":"integer","minimum":0},"end":{"type":"integer","minimum":0},"codec":{"enum":["h264","hevc10"]},"quality":{"enum":["draft","high","master"]},"allow_software":{"type":"boolean"},"matte":{"type":"array","minItems":3,"maxItems":3,"items":{"type":"number","minimum":0,"maximum":1}},"replace":{"type":"boolean"},"audio":{"type":"object","additionalProperties":false,"properties":{"mute":{"type":"boolean"},"music":{"type":"string"},"music_gain_db":{"type":"number","minimum":-60,"maximum":12}}}}}}),&["path","revision"]),
         tool("render_sequence","Render an inclusive frame range at the composition frame rate into a new directory. Choose png (default SDR) or exr (linear HDR); frames use zero-based names; sequence.json records timing and completion. Existing directories are rejected; at most 10000 frames.",json!({"path":{"type":"string"},"revision":revision,"start":{"type":"integer"},"end":{"type":"integer"},"format":{"enum":["png","exr"]},"node":{"type":"string","format":"uuid"},"region":{"type":"object","properties":{"x":{"type":"integer","minimum":0},"y":{"type":"integer","minimum":0},"width":{"type":"integer","minimum":1},"height":{"type":"integer","minimum":1}},"required":["x","y","width","height"],"additionalProperties":false}}),&["path","revision","start","end"]),
-        tool("preview_image","Render an inline PNG image for visual inspection without writing a file. max_edge defaults to 512 (1..2048); region renders part of the frame, so details can be seen at full size; area filtering uses linear premultiplied color. This bounds the returned image, not GPU render resolution. HDR is clipped to SDR and PNG preserves alpha.",json!({"max_edge":{"type":"integer","minimum":1,"maximum":2048},"revision":revision,"ticks":{"type":"integer"},"rate":{"type":"integer","minimum":1,"maximum":u32::MAX},"node":{"type":"string","format":"uuid"},"region":{"type":"object","properties":{"x":{"type":"integer","minimum":0},"y":{"type":"integer","minimum":0},"width":{"type":"integer","minimum":1},"height":{"type":"integer","minimum":1}},"required":["x","y","width","height"],"additionalProperties":false}}),&["revision","ticks","rate"]),
-        tool("render","Render the current revision using Vulkan. Choose .png for SDR or .exr for lossless linear premultiplied RGBA32F. Time is exact ticks/rate seconds.",json!({"path":{"type":"string"},"revision":revision,"ticks":{"type":"integer"},"rate":{"type":"integer","minimum":1,"maximum":u32::MAX},"node":{"type":"string","format":"uuid"},"region":{"type":"object","properties":{"x":{"type":"integer","minimum":0},"y":{"type":"integer","minimum":0},"width":{"type":"integer","minimum":1},"height":{"type":"integer","minimum":1}},"required":["x","y","width","height"],"additionalProperties":false}}),&["path","revision","ticks","rate"])
+        tool("preview_image","Render an inline PNG image for visual inspection without writing a file. max_edge defaults to 512 (1..2048); region renders part of the frame, so details can be seen at full size; area filtering uses linear premultiplied color. This bounds the returned image, not GPU render resolution. HDR is clipped to SDR and PNG preserves alpha. alpha true shows the picture's alpha as grey instead (a matte check for any node).",json!({"max_edge":{"type":"integer","minimum":1,"maximum":2048},"revision":revision,"ticks":{"type":"integer"},"rate":{"type":"integer","minimum":1,"maximum":u32::MAX},"node":{"type":"string","format":"uuid"},"alpha":{"type":"boolean","description":"show the alpha alone as grey: white is opaque, black transparent"},"region":{"type":"object","properties":{"x":{"type":"integer","minimum":0},"y":{"type":"integer","minimum":0},"width":{"type":"integer","minimum":1},"height":{"type":"integer","minimum":1}},"required":["x","y","width","height"],"additionalProperties":false}}),&["revision","ticks","rate"]),
+        tool("render","Render the current revision using Vulkan. Choose .png for SDR or .exr for lossless linear premultiplied RGBA32F. Time is exact ticks/rate seconds. alpha true writes the picture's alpha as grey instead (a matte check for any node).",json!({"path":{"type":"string"},"revision":revision,"ticks":{"type":"integer"},"rate":{"type":"integer","minimum":1,"maximum":u32::MAX},"node":{"type":"string","format":"uuid"},"alpha":{"type":"boolean","description":"show the alpha alone as grey: white is opaque, black transparent"},"region":{"type":"object","properties":{"x":{"type":"integer","minimum":0},"y":{"type":"integer","minimum":0},"width":{"type":"integer","minimum":1},"height":{"type":"integer","minimum":1}},"required":["x","y","width","height"],"additionalProperties":false}}),&["path","revision","ticks","rate"])
     ]});
     list["tools"]
         .as_array_mut()
@@ -213,6 +216,14 @@ impl Session {
                 &inputs,
             )?
         };
+        // The alpha alone, as opaque grey: what a node keeps and what it lets through.
+        let mut frame = frame;
+        if args.get("alpha").and_then(Value::as_bool) == Some(true) {
+            for pixel in &mut frame.pixels {
+                let a = pixel[3].clamp(0.0, 1.0);
+                *pixel = [a, a, a, 1.0];
+            }
+        }
         Ok((output, time, frame))
     }
     #[cfg(test)]
@@ -457,14 +468,30 @@ impl Session {
                 if self.renderer.is_none() {
                     self.renderer = Some(crate::assets::runtime::renderer()?);
                 }
-                let (node, commands, mut report) = crate::segment::run(
+                // The mattes go beside the saved project; the node names them from the
+                // session's own base, which is what every other path here is relative to.
+                let home = self
+                    .saved_dir
+                    .clone()
+                    .unwrap_or_else(|| self.asset_base.clone());
+                let (node, mut commands, mut report) = crate::segment::run(
                     self.renderer.as_ref().unwrap(),
                     self.document.snapshot(),
                     &self.asset_base,
-                    &self.asset_base,
+                    &home,
                     &request,
                     &mut |done, total| progress(done as u64, total as u64, "cutting out frames"),
                 )?;
+                if home != self.asset_base {
+                    for command in &mut commands {
+                        if let Command::Put { node } = command
+                            && let Some(asset) = node.operation.asset_mut()
+                            && std::path::Path::new(asset.as_str()).is_relative()
+                        {
+                            *asset = home.join(asset.as_str()).to_string_lossy().into_owned();
+                        }
+                    }
+                }
                 self.document.apply(self.document.revision(), &commands)?;
                 report["node"] = json!(node);
                 report["revision"] = json!(self.document.revision());
@@ -512,6 +539,7 @@ impl Session {
             "save" => {
                 crate::assets::save(self.document.snapshot(), &self.asset_base, path(args)?)?;
                 self.saved = self.document.revision();
+                self.saved_dir = path(args)?.parent().and_then(|dir| dir.canonicalize().ok());
                 Ok(json!({"saved":args["path"],"revision":self.document.revision()}))
             }
             "replace_sound" => {
@@ -653,6 +681,7 @@ pub fn serve(
         document: Document::new(composition)?,
         saved: 0,
         asset_base,
+        saved_dir: None,
         renderer: None,
     };
     veylvik_control::serve_reporting(input, output, tools(), |name, args, progress| {

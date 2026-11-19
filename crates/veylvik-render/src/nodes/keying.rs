@@ -6,18 +6,84 @@ impl RenderNode for veylvik_document::nodes::ChromaKey {
     fn passes(&self) -> Passes {
         Passes::One(Kernel::ChromaKey)
     }
+    /// The plain key is one pass, exactly as it always was. Shaping the matte, masks
+    /// and the matte view add passes: the matte alone, shrink, soften, then the picture.
+    fn passes_for(&self, node: &veylvik_document::Node) -> Passes {
+        use super::{From, Step};
+        use veylvik_document::nodes::KeyView;
+        let rests = |scalar: &veylvik_document::Scalar, at: f32| matches!(scalar, veylvik_document::Scalar::Constant { value } if *value == at);
+        let (keep, garbage) = (
+            node.inputs.contains_key("keep"),
+            node.inputs.contains_key("garbage"),
+        );
+        let (shrink, soften) = (!rests(&self.shrink, 0.0), !rests(&self.soften, 0.0));
+        if rests(&self.darks, 0.0)
+            && rests(&self.clip_black, 0.0)
+            && rests(&self.clip_white, 1.0)
+            && !shrink
+            && !soften
+            && !keep
+            && !garbage
+            && self.show == KeyView::Result
+        {
+            return self.passes();
+        }
+        let step = |kernel, from| Step {
+            kernel,
+            inputs: [from, From::None, From::None, From::None],
+        };
+        let mut steps = vec![step(Kernel::ChromaMatte, From::Port(0))];
+        if shrink {
+            steps.push(step(
+                Kernel::KeyShrinkHorizontal,
+                From::Step(steps.len() - 1),
+            ));
+            steps.push(step(Kernel::KeyShrinkVertical, From::Step(steps.len() - 1)));
+        }
+        if soften {
+            steps.push(step(
+                Kernel::KeySoftenHorizontal,
+                From::Step(steps.len() - 1),
+            ));
+            steps.push(step(Kernel::KeySoftenVertical, From::Step(steps.len() - 1)));
+        }
+        steps.push(Step {
+            kernel: Kernel::ChromaApply,
+            inputs: [
+                From::Port(0),
+                From::Step(steps.len() - 1),
+                if keep { From::Port(1) } else { From::None },
+                if garbage { From::Port(2) } else { From::None },
+            ],
+        });
+        Passes::Chain(steps.into())
+    }
     fn shareable(&self) -> bool {
         true
     }
     fn params(
         &self,
-        _cx: &Cx<'_>,
+        cx: &Cx<'_>,
         sample: &dyn Fn(&str) -> Result<f32>,
         p: &mut Params,
     ) -> Result<()> {
         let [r, g, b, _] = self.key_color;
         p.values = [r, g, b, sample("tolerance")?];
-        p.extra = [sample("softness")?, sample("despill")?, 0.0, 0.0];
+        // The single-pass key reads only the first two of `extra`.
+        p.extra = [
+            sample("softness")?,
+            sample("despill")?,
+            sample("clip_black")?,
+            sample("clip_white")?,
+        ];
+        let shrink = sample("shrink")?.round();
+        p.size_op[2] = sample("darks")?.to_bits();
+        p.size_op[3] = (shrink.abs() as u32).min(32)
+            | u32::from(shrink < 0.0) << 6
+            | (sample("soften")?.round() as u32).min(32) << 7
+            | u32::from(self.show == veylvik_document::nodes::KeyView::Matte) << 13
+            | u32::from(cx.node.inputs.contains_key("keep")) << 14
+            | u32::from(cx.node.inputs.contains_key("garbage")) << 15;
         Ok(())
     }
 }
@@ -66,7 +132,7 @@ const REFINE: &[Step] = {
         step(FuseBoxHorizontal, S(12), N, N),
         step(FuseBoxVertical, S(13), N, N),
         step(FuseEstimate, S(11), S(8), N),
-        step(FuseFinish, S(15), S(14), N),
+        step(FuseFinish, S(15), S(14), S(11)),
     ]
 };
 const fn step(kernel: Kernel, a: From, b: From, c: From) -> Step {
@@ -91,7 +157,13 @@ impl RenderNode for veylvik_document::nodes::RefineMatte {
         let radius = sample("radius")?.round().clamp(1.0, 64.0);
         // Detail 0..1 lowers the colour difference (in sqrt-encoded RGB) that subject and
         // background need before their edge is re-estimated, from 0.25 to 0.04.
-        let separation = 0.25 - 0.21 * sample("detail")?.clamp(0.0, 1.0);
+        // At Detail 0 the matte's own alpha stands (for a matte a matting model made).
+        let detail = sample("detail")?.clamp(0.0, 1.0);
+        let separation = if detail > 0.0 {
+            0.25 - 0.21 * detail
+        } else {
+            1e9
+        };
         // Colours are estimated from a wider neighbourhood than the edge window.
         let fusion = (radius * 4.0).clamp(8.0, 96.0);
         p.values = [

@@ -70,6 +70,7 @@ impl Session {
     fn replace(&mut self, composition: Composition, base: PathBuf) -> Result<Value> {
         self.document = Document::new(composition)?;
         self.asset_base = base;
+        self.saved_dir = None;
         self.saved = 0;
         Ok(
             json!({"revision":0,"summary":veylvik_document::inspection::summary(self.document.snapshot())}),

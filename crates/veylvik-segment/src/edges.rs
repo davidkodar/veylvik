@@ -49,19 +49,29 @@ pub fn crop(alpha: &[f32], width: usize, height: usize, margin: usize) -> Option
         }
     })
 }
-/// Square max (or min) filter of radius `r` over a `w` × `h` mask, separably.
+/// Square max (or min) filter of radius `r` over a `w` × `h` mask, separably. Each line
+/// is answered from running counts, so the cost does not grow with the radius.
 fn morph(mask: &[bool], w: usize, h: usize, r: usize, grow: bool) -> Vec<bool> {
     let pass = |src: &[bool], horizontal: bool| -> Vec<bool> {
         let mut out = vec![!grow; w * h];
-        for y in 0..h {
-            for x in 0..w {
-                let (pos, len) = if horizontal { (x, w) } else { (y, h) };
-                let (lo, hi) = (pos.saturating_sub(r), (pos + r).min(len - 1));
-                let hit = (lo..=hi).any(|p| {
-                    let i = if horizontal { y * w + p } else { p * w + x };
-                    src[i] == grow
-                });
-                out[y * w + x] = if hit { grow } else { !grow };
+        let (lines, len) = if horizontal { (h, w) } else { (w, h) };
+        let mut counts = vec![0_u32; len + 1];
+        for line in 0..lines {
+            let index = |p: usize| {
+                if horizontal {
+                    line * w + p
+                } else {
+                    p * w + line
+                }
+            };
+            for p in 0..len {
+                counts[p + 1] = counts[p] + u32::from(src[index(p)] == grow);
+            }
+            for p in 0..len {
+                let (lo, hi) = (p.saturating_sub(r), (p + r).min(len - 1));
+                if counts[hi + 1] > counts[lo] {
+                    out[index(p)] = grow;
+                }
             }
         }
         out

@@ -23,7 +23,19 @@ impl Inspect for veylvik_document::nodes::ChromaKey {
             crate::eyedropper::button(ui, cx, "key_color");
         });
         cx.dirty |= animation::color(ui, &mut self.key_color);
-        ui.weak("Pixels leaning towards the key colour's dominant channel become transparent. Raise Tolerance to remove more of an unevenly lit screen, Softness for gentler edges, and use Despill against coloured fringes. Check the matte with Show alpha in the View menu.");
+        ui.horizontal(|ui| {
+            ui.add_sized([88., 22.], egui::Label::new("Show"));
+            egui::ComboBox::from_id_salt("key-show")
+                .selected_text(self.show.label())
+                .show_ui(ui, |ui| {
+                    for view in veylvik_document::nodes::KeyView::ALL {
+                        cx.dirty |= ui.selectable_value(&mut self.show, view, view.label()).changed();
+                    }
+                })
+                .response
+                .on_hover_text("Matte shows what the key keeps in white and removes in black. Set it back to Keyed picture when the matte is right");
+        });
+        ui.weak("Pixels leaning towards the key colour's dominant channel become transparent. Raise Tolerance to remove more of an unevenly lit screen, Softness for gentler edges, and use Despill against coloured fringes. Then shape the matte while looking at it (Show: Matte): Keep darks holds dark hair, Clip black clears leftover screen, Clip white fills thin spots, Shrink and Soften treat the edge. Connect masks to Keep and Garbage for what must always stay or go.");
     }
 }
 impl Inspect for veylvik_document::nodes::LumaKey {

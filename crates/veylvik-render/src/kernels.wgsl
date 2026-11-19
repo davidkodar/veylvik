@@ -327,6 +327,17 @@ fn blend(@builtin(global_invocation_id) gid:vec3<u32>) {
             case 4u: { overlap=min(f.rgb*b.a,b.rgb*f.a); }
             case 5u: { overlap=max(f.rgb*b.a,b.rgb*f.a); }
             case 6u: { overlap=abs(f.rgb*b.a-b.rgb*f.a); }
+            case 7u, 8u: {
+                // Overlay and soft light work on perceptual (square-root) values of the
+                // straight colours, 0..1, as the eye judges dark and bright.
+                let x=sqrt(clamp(b.rgb/max(b.a,1e-6),vec3<f32>(0.0),vec3<f32>(1.0)));
+                let y=sqrt(clamp(f.rgb/max(f.a,1e-6),vec3<f32>(0.0),vec3<f32>(1.0)));
+                var o=(1.0-2.0*y)*x*x+2.0*y*x;
+                if p.size_op.w==7u {
+                    o=select(1.0-2.0*(1.0-x)*(1.0-y),2.0*x*y,x<vec3<f32>(0.5));
+                }
+                overlap=o*o*f.a*b.a;
+            }
             default: {}
         }
         rgb=f.rgb*(1.0-b.a)+b.rgb*(1.0-f.a)+overlap;

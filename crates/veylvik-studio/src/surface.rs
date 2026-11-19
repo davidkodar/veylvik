@@ -9,6 +9,7 @@ impl Studio {
             Operation::PlanarWarp(veylvik_document::nodes::PlanarWarp {
                 mode: veylvik_document::planar::WarpMode::Follow
                     | veylvik_document::planar::WarpMode::Fit
+                    | veylvik_document::planar::WarpMode::FitInside
             })
         ) && ui
             .button("Blend onto tracked surface…")

@@ -51,6 +51,28 @@ impl RenderNode for veylvik_document::nodes::PlanarWarp {
                         data.reference,
                     )?)
                 }
+                veylvik_document::planar::WarpMode::FitInside => {
+                    // The surface's proportions from its edges on the reference frame
+                    // (in pixels); the picture is the frame's shape. The picture sits
+                    // in the middle of the larger rectangle that fills the surface.
+                    let side = |a: usize, b: usize| {
+                        let (p, q) = (data.reference[a], data.reference[b]);
+                        ((p[0] - q[0]) * f64::from(width)).hypot((p[1] - q[1]) * f64::from(height))
+                    };
+                    let surface = (side(0, 1) + side(3, 2)) / (side(0, 3) + side(1, 2)).max(1e-9);
+                    let picture = f64::from(width) / f64::from(height);
+                    let (fx, fy) = if picture > surface {
+                        (1.0, (surface / picture).max(1e-6))
+                    } else {
+                        ((picture / surface).max(1e-6), 1.0)
+                    };
+                    let (x0, x1) = (0.5 - 0.5 / fx, 0.5 + 0.5 / fx);
+                    let (y0, y1) = (0.5 - 0.5 / fy, 0.5 + 0.5 / fy);
+                    forward.compose(veylvik_document::planar::Homography::between(
+                        [[x0, y0], [x1, y0], [x1, y1], [x0, y1]],
+                        data.reference,
+                    )?)
+                }
                 veylvik_document::planar::WarpMode::Stabilize => forward
                     .inverse()
                     .ok_or_else(|| error("Singular planar motion"))?,

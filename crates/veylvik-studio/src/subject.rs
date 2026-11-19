@@ -474,6 +474,7 @@ impl Studio {
             result.source,
             asset.clone(),
             result.outcome.first_frame,
+            result.outcome.matting.is_some(),
         ) {
             Ok(added) => added,
             Err(e) => {

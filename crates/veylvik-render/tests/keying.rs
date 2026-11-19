@@ -101,6 +101,12 @@ fn chroma_key_removes_lit_shadowed_and_hdr_screen_keeps_subject_and_despills_edg
             tolerance: c(tolerance),
             softness: c(softness),
             despill: c(despill),
+            clip_black: c(0.0),
+            clip_white: c(1.0),
+            shrink: c(0.0),
+            soften: c(0.0),
+            darks: c(0.0),
+            show: veylvik_document::nodes::KeyView::Result,
         });
         operation.validate().unwrap();
         let pixels = render(&renderer, &source, operation);
@@ -130,6 +136,12 @@ fn chroma_key_removes_lit_shadowed_and_hdr_screen_keeps_subject_and_despills_edg
         tolerance: c(0.5),
         softness: c(0.2),
         despill: c(1.0),
+        clip_black: c(0.0),
+        clip_white: c(1.0),
+        shrink: c(0.0),
+        soften: c(0.0),
+        darks: c(0.0),
+        show: veylvik_document::nodes::KeyView::Result,
     });
     assert!(invalid.validate().is_err());
 }
@@ -168,5 +180,86 @@ fn luma_key_ramps_between_thresholds_and_inverts_when_swapped() {
                 );
             }
         }
+    }
+}
+
+#[test]
+#[ignore = "requires Vulkan"]
+fn a_shaped_key_keeps_darks_clips_shrinks_and_shows_its_matte() {
+    use veylvik_document::nodes::{ChromaKey, KeyView};
+    let renderer = Renderer::new().unwrap();
+    let c = |v: f32| Scalar::Constant { value: v };
+    let key = |change: &dyn Fn(&mut ChromaKey)| {
+        let mut key = ChromaKey {
+            key_color: [0.08, 0.45, 0.12, 1.0],
+            tolerance: c(0.5),
+            softness: c(1.0),
+            despill: c(1.0),
+            clip_black: c(0.0),
+            clip_white: c(1.0),
+            shrink: c(0.0),
+            soften: c(0.0),
+            darks: c(0.0),
+            show: KeyView::Result,
+        };
+        change(&mut key);
+        Operation::ChromaKey(key)
+    };
+    let source = vec![
+        [0.08, 0.45, 0.12, 1.0],    // lit screen
+        [0.08, 0.45, 0.12, 1.0],    // lit screen
+        [0.004, 0.009, 0.004, 1.0], // dark hair leaning green
+        [0.30, 0.36, 0.30, 1.0],    // a veil: leans a little to the screen
+        [0.6, 0.4, 0.3, 1.0],       // skin
+        [0.6, 0.4, 0.3, 1.0],       // skin
+        [0.6, 0.4, 0.3, 1.0],       // skin
+        [0.6, 0.4, 0.3, 1.0],       // skin
+    ];
+    // By colour alone, the dark hair goes partly and the veil stays partly.
+    let plain = render(&renderer, &source, key(&|_| {}));
+    assert!(
+        plain[2][3] < 0.9 && plain[3][3] > 0.05 && plain[3][3] < 0.95,
+        "{plain:?}"
+    );
+    // Keep darks holds the hair; the screen still goes.
+    let darks = render(&renderer, &source, key(&|k| k.darks = c(0.05)));
+    assert_eq!(darks[2][3], 1.0);
+    assert_eq!(darks[0][3], 0.0);
+    // Clip black clears the veil, clip white would fill it.
+    let veil = plain[3][3];
+    let cleared = render(&renderer, &source, key(&|k| k.clip_black = c(veil + 0.02)));
+    assert_eq!(cleared[3][3], 0.0);
+    let filled = render(&renderer, &source, key(&|k| k.clip_white = c(veil - 0.02)));
+    assert_eq!(filled[3][3], 1.0);
+    // Shrink eats two pixels into the skin; growing gives them back to the veil's side.
+    let shrunk = render(
+        &renderer,
+        &source,
+        key(&|k| {
+            k.clip_black = c(veil + 0.02);
+            k.shrink = c(2.0);
+        }),
+    );
+    assert_eq!([shrunk[4][3], shrunk[5][3], shrunk[6][3]], [0.0, 0.0, 1.0]);
+    // Soften turns the hard step into a ramp.
+    let soft = render(
+        &renderer,
+        &source,
+        key(&|k| {
+            k.clip_black = c(veil + 0.02);
+            k.soften = c(2.0);
+        }),
+    );
+    assert!(
+        soft[3][3] > 0.0 && soft[3][3] < soft[4][3] && soft[4][3] < 1.0,
+        "{soft:?}"
+    );
+    // The matte view: opaque grey equal to the alpha of the keyed picture.
+    let matte = render(&renderer, &source, key(&|k| k.show = KeyView::Matte));
+    for (grey, keyed) in matte.iter().zip(&plain) {
+        assert!(
+            (grey[0] - keyed[3]).abs() < 1e-6 && grey[3] == 1.0,
+            "{grey:?} {keyed:?}"
+        );
     }
 }

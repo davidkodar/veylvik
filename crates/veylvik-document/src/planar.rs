@@ -15,13 +15,17 @@ pub enum WarpMode {
     Follow,
     Fit,
     Stabilize,
+    /// The whole picture inside the surface without squeezing it: as large as fits,
+    /// centred, by the surface's proportions on the reference frame.
+    FitInside,
 }
 impl WarpMode {
-    pub const ALL: [Self; 3] = [Self::Follow, Self::Fit, Self::Stabilize];
+    pub const ALL: [Self; 4] = [Self::Follow, Self::Fit, Self::FitInside, Self::Stabilize];
     pub fn label(self) -> &'static str {
         match self {
             Self::Follow => "Follow surface",
             Self::Fit => "Fit image to surface",
+            Self::FitInside => "Fit inside surface, keeping shape",
             Self::Stabilize => "Stabilize surface",
         }
     }

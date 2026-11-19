@@ -52,7 +52,9 @@ pub fn integrate(doc: &Composition, warp: NodeId, look: Look) -> Result<(NodeId,
     if !matches!(
         node.operation,
         Operation::PlanarWarp(crate::nodes::PlanarWarp {
-            mode: crate::planar::WarpMode::Follow | crate::planar::WarpMode::Fit
+            mode: crate::planar::WarpMode::Follow
+                | crate::planar::WarpMode::Fit
+                | crate::planar::WarpMode::FitInside
         })
     ) {
         return fail("Select a Follow or Fit planar warp");
