@@ -28,10 +28,9 @@ impl Editor {
             .unwrap();
         ui.add(
             egui::Label::new(format!(
-                "{} / {} ({})",
+                "{} / {}",
                 node.label.chars().take(80).collect::<String>(),
-                parameter,
-                descriptor.unit
+                crate::names::setting(parameter, descriptor.unit)
             ))
             .truncate(),
         );

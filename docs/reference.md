@@ -1068,6 +1068,29 @@ clamps sampling to the requested crop, composites transparency over a checkerboa
 and applies an SDR display transform. A previous preview stays visible while rendering, explicitly marked
 when it no longer matches the requested frame.
 
+### Working directly in Studio
+
+New things join the picture when they are added, so the viewer can stay on the
+composition. A node with one input (a key, a blur, a grade) goes in line after the
+selected node: whatever read the selection now reads the new node, and if the
+selection was the composition's output the new node becomes the output. Imported or
+pasted media takes the place of the empty starting background when the composition
+still has one, under everything made so far; otherwise it is laid over the present
+output with a Merge. Nodes with several inputs, and anything added inside an effect
+group, are placed beside the graph and shown on their own, as before. Each is one
+undo step.
+
+A text moves by dragging anywhere on it, not only by its border or centre cross;
+a double-click on it still edits the words, and dragging outside it pans the view.
+One click on a material in the library puts it on the selected text or shape (a
+second click on the same card does not apply it again). **Reset view** restores
+exposure, channel and filtering and also re-fits the picture. While the viewer shows
+the selected node it goes on showing whichever node is selected; its label reads
+Composition output, Selected node, or Viewing with the node's name when it is held on
+another one. Slider rows and animation tracks name settings in words (Clip black,
+Shrink (px)) and keep a unit only where it says something. An empty composition says
+where to begin on the picture itself.
+
 ## Composition and rendering
 
 **Display transform.** A composition's `display` setting decides how scene-linear light

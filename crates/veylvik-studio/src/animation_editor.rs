@@ -399,7 +399,7 @@ impl Editor {
                                                 });
                                             let label = format!(
                                                 "{}  {}",
-                                                parameter.name,
+                                                crate::names::setting(parameter.name, ""),
                                                 scalar.keys().map_or(String::from("—"), |k| k
                                                     .len()
                                                     .to_string())

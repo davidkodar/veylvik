@@ -168,14 +168,16 @@ impl Renderer {
             .lines()
             .find(|l| !l.trim().is_empty())
             .unwrap_or("Aa")
+            .trim()
             .chars()
-            .take(24)
+            .take(crate::SWATCH_LETTERS)
             .collect();
         let chars = line.chars().count().max(2) as f32;
         let mut words = text.clone();
         words.content = line;
-        // Fit the line's width roughly, then cap so short words do not overflow.
-        words.size = (230.0 / (chars * 0.62)).clamp(18.0, 84.0).into();
+        // The first few letters, large: a whole word shrinks until its surface cannot be
+        // judged. Fit their width roughly, then cap so they do not overflow the height.
+        words.size = (230.0 / (chars * 0.62)).clamp(18.0, 104.0).into();
         words.x = (width as f32 * 0.5).into();
         words.y = (height as f32 * 0.5).into();
         words.alignment = veylvik_document::TextAlignment::Center;

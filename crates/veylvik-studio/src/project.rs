@@ -328,12 +328,70 @@ impl Project {
         let mut node = Node::new(operation.descriptor().label, operation.clone(), &ports);
         node.position = position;
         let id = node.id;
-        self.apply(&[Command::Put {
+        let put = Command::Put {
             node: Box::new(node),
-        }])?;
+        };
+        // A node with one input goes in line after the selected node: whatever read the
+        // selection now reads the new node, so it shows in the picture at once. Where
+        // that cannot be done (inside an effect group, say) it is added beside it.
+        let source = self.selected;
+        let doc = self.document.snapshot();
+        let in_line: Vec<Command> = if ports.len() == 1
+            && operation.descriptor().output == veylvik_document::registry::PortKind::Image
+        {
+            let mut commands: Vec<Command> = doc
+                .nodes
+                .values()
+                .flat_map(|consumer| {
+                    consumer
+                        .inputs
+                        .iter()
+                        .filter(|(_, from)| **from == source)
+                        .map(|(port, _)| Command::Connect {
+                            id: consumer.id,
+                            input: port.clone(),
+                            source: Some(id),
+                        })
+                        .collect::<Vec<_>>()
+                })
+                .collect();
+            if doc.output == source {
+                commands.push(Command::Output { id });
+            }
+            commands
+        } else {
+            Vec::new()
+        };
+        let spliced =
+            !in_line.is_empty() && self.apply(&[vec![put.clone()], in_line].concat()).is_ok();
+        if !spliced {
+            self.apply(&[put])?;
+        }
         self.selected = id;
-        self.preview = Some(id);
+        // In the picture: keep looking at the composition. Beside it: look at the node.
+        self.preview = if spliced && self.feeds_output(id) {
+            None
+        } else {
+            Some(id)
+        };
         Ok(id)
+    }
+    /// Whether `id` is the composition's output or somewhere upstream of it.
+    fn feeds_output(&self, id: NodeId) -> bool {
+        let doc = self.document.snapshot();
+        let mut pending = vec![doc.output];
+        let mut seen = std::collections::BTreeSet::new();
+        while let Some(node) = pending.pop() {
+            if node == id {
+                return true;
+            }
+            if seen.insert(node)
+                && let Some(node) = doc.nodes.get(&node)
+            {
+                pending.extend(node.inputs.values().copied());
+            }
+        }
+        false
     }
     pub fn duplicate_at(&mut self, position: veylvik_document::NodePosition) -> Result<NodeId> {
         let mut node = self.document.snapshot().nodes[&self.selected].clone();
@@ -426,6 +484,51 @@ impl Project {
             && doc.groups.is_empty()
             && matches!(doc.nodes[&doc.output].operation, Operation::Solid(veylvik_document::nodes::Solid { color }) if color == [0.0; 4])
     }
+    /// Commands that put new media `id` into the picture. Where the composition still
+    /// stands on its empty starting background, the media takes that background's place,
+    /// under everything already made; otherwise it is laid over the present output.
+    fn layer_commands(&self, id: NodeId) -> Vec<Command> {
+        let doc = self.document.snapshot();
+        let blank = doc.nodes.values().find(|node| {
+            node.id != doc.output
+                && node.inputs.is_empty()
+                && matches!(node.operation, Operation::Solid(veylvik_document::nodes::Solid { color }) if color == [0.0; 4])
+        });
+        if let Some(blank) = blank {
+            let mut commands: Vec<Command> = doc
+                .nodes
+                .values()
+                .flat_map(|consumer| {
+                    consumer
+                        .inputs
+                        .iter()
+                        .filter(|(_, from)| **from == blank.id)
+                        .map(|(port, _)| Command::Connect {
+                            id: consumer.id,
+                            input: port.clone(),
+                            source: Some(id),
+                        })
+                        .collect::<Vec<_>>()
+                })
+                .collect();
+            if !commands.is_empty() {
+                commands.push(Command::Remove { id: blank.id });
+                return commands;
+            }
+        }
+        let merge = Node::new(
+            "Media over scene",
+            Operation::Merge(veylvik_document::nodes::Merge {}),
+            &[("background", doc.output), ("foreground", id)],
+        );
+        let output = merge.id;
+        vec![
+            Command::Put {
+                node: Box::new(merge),
+            },
+            Command::Output { id: output },
+        ]
+    }
     pub fn import(
         &mut self,
         path: &Path,
@@ -462,10 +565,13 @@ impl Project {
             commands.push(Command::Remove {
                 id: previous_output,
             });
+        } else {
+            commands.extend(self.layer_commands(id));
         }
         self.apply(&commands)?;
         self.selected = id;
-        self.preview = Some(id);
+        // It is in the picture now: keep looking at the composition.
+        self.preview = None;
         image.insert(&mut self.inputs, asset);
         Ok(())
     }
@@ -847,7 +953,7 @@ mod tests {
         );
     }
     #[test]
-    fn preview_is_not_output_and_invalid_connections_are_atomic() {
+    fn a_new_node_goes_in_line_after_the_selection_and_invalid_connections_are_atomic() {
         let mut project = Project::open(None).unwrap();
         let output = project.document.snapshot().output;
         let added = project
@@ -855,8 +961,31 @@ mod tests {
                 stops: 1.0.into(),
             }))
             .unwrap();
-        assert_eq!(project.preview, Some(added));
-        assert_eq!(project.document.snapshot().output, output);
+        // Added after the output, it reads the old output and becomes the output, so it
+        // is in the picture and the viewer stays on the composition.
+        assert_eq!(
+            project.document.snapshot().nodes[&added].inputs["image"],
+            output
+        );
+        assert_eq!(project.document.snapshot().output, added);
+        assert_eq!(project.preview, None);
+        // Added after a node in the middle, whatever read that node reads the new one.
+        project.selected = output;
+        let between = project
+            .add(Operation::Exposure(veylvik_document::nodes::Exposure {
+                stops: 0.5.into(),
+            }))
+            .unwrap();
+        assert_eq!(
+            project.document.snapshot().nodes[&added].inputs["image"],
+            between
+        );
+        assert_eq!(
+            project.document.snapshot().nodes[&between].inputs["image"],
+            output
+        );
+        assert_eq!(project.document.snapshot().output, added);
+        project.undo(false).unwrap();
         let revision = project.document.revision();
         let mut node = project.document.snapshot().nodes[&added].clone();
         node.inputs.insert("image".into(), added);
@@ -868,11 +997,13 @@ mod tests {
                 .is_err()
         );
         assert_eq!(project.document.revision(), revision);
+        // One undo step takes the node and its wiring away together.
         project.undo(false).unwrap();
-        assert_eq!(project.selected, output);
-        assert_eq!(project.preview, None);
+        assert_eq!(project.document.snapshot().output, output);
+        assert!(!project.document.snapshot().nodes.contains_key(&added));
         project.undo(true).unwrap();
         assert!(project.document.snapshot().nodes.contains_key(&added));
+        assert_eq!(project.document.snapshot().output, added);
     }
 }
 

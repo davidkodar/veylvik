@@ -35,6 +35,9 @@ impl Inspect for veylvik_document::nodes::ChromaKey {
                 .response
                 .on_hover_text("Matte shows what the key keeps in white and removes in black. Set it back to Keyed picture when the matte is right");
         });
+        if self.show == veylvik_document::nodes::KeyView::Matte {
+            ui.label("The matte shows where the viewer is on this node: press Selected node below. Set Show back to Keyed picture when the matte is right.");
+        }
         ui.weak("Pixels leaning towards the key colour's dominant channel become transparent. Raise Tolerance to remove more of an unevenly lit screen, Softness for gentler edges, and use Despill against coloured fringes. Then shape the matte while looking at it (Show: Matte): Keep darks holds dark hair, Clip black clears leftover screen, Clip white fills thin spots, Shrink and Soften treat the edge. Connect masks to Keep and Garbage for what must always stay or go.");
     }
 }

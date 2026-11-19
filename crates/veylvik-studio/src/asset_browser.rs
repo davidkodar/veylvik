@@ -310,11 +310,15 @@ impl Studio {
                                 };
                                 for response in [&response,&caption] {response.dnd_set_drag_payload(payload);}
                                 let response=response.union(caption);
+                                let material=payload.saved.is_some()||builtin::is_material(payload.id);
+                                // One click puts a material on the selected text or shape. A card
+                                // that is already chosen is not applied again by a second click.
+                                let one_click=material&&can_fill_text&&!payload.template;
                                 if response.clicked() {
                                     match card {Card::Builtin(entry)=>{chosen=Some(entry.id);},Card::Saved(_)=>{chosen_saved=Some(key.clone());}}
+                                    if one_click&&!is_selected {use_action=Some((payload,Use::Text));}
                                 }
-                                let material=payload.saved.is_some()||builtin::is_material(payload.id);
-                                if response.double_clicked() {use_action=Some((payload,if payload.template {Use::Example}else if material&&can_fill_text {Use::Text}else if payload.saved.is_some() {Use::Background}else{Use::Configure}));}
+                                if response.double_clicked()&&!one_click {use_action=Some((payload,if payload.template {Use::Example}else if material&&can_fill_text {Use::Text}else if payload.saved.is_some() {Use::Background}else{Use::Configure}));}
                                 response.context_menu(|ui| {
                                     if let Some(action)=usage_options(ui,payload,can_fill_text) {use_action=Some((payload,action));ui.close();}
                                     if materials_tab {
@@ -325,7 +329,7 @@ impl Studio {
                                         }
                                     }
                                 });
-                                response.on_hover_text(format!("{description}\nDouble-click to use · right-click for actions · drag to viewer or nodes"));
+                                response.on_hover_text(if one_click {format!("{description}\nClick to put it on the selected layer · right-click for actions · drag to viewer or nodes")} else {format!("{description}\nDouble-click to use · right-click for actions · drag to viewer or nodes")});
                             });
                         }});
                     }

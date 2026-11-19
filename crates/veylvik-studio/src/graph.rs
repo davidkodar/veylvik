@@ -1083,7 +1083,7 @@ impl Graph {
                     ui.close();
                 }
                 let bypass_allowed=doc.nodes[&node.id].operation.descriptor().required().count()==1 && node.group.is_none_or(|id| doc.groups[&id].members.len()==1);
-                if ui.add_enabled(bypass_allowed,egui::Button::new(if doc.nodes[&node.id].bypass { "Enable node" } else { "Bypass node" })).on_hover_text("Bypass is available for single-input nodes. Open compound groups to edit their nodes.").clicked() {
+                if ui.add_enabled(bypass_allowed,egui::Button::new(if doc.nodes[&node.id].bypass { "Enable node" } else { "Bypass node" })).on_disabled_hover_text("Bypass is available for single-input nodes. Open compound groups to edit their nodes.").clicked() {
                     actions.push(Action::Node { id:node.id,action:NodeAction::Bypass }); ui.close();
                 }
                 ui.separator();
@@ -1113,7 +1113,7 @@ impl Graph {
                 if ui.add_enabled(node.id!=doc.output,egui::Button::new("Set as composition output")).clicked() { actions.push(Action::Node { id:node.id,action:NodeAction::Output }); ui.close(); }
                 ui.separator();
                 let can_delete=node.id!=doc.output && !doc.nodes.values().any(|n| n.inputs.values().any(|id| *id==node.id)) && !doc.groups.values().any(|g|g.members.contains(&node.id));
-                if ui.add_enabled(can_delete,egui::Button::new("Delete node")).on_hover_text("Disconnect consumers and remove group membership before deleting. The composition output cannot be deleted.").clicked() {
+                if ui.add_enabled(can_delete,egui::Button::new("Delete node")).on_disabled_hover_text("Something still reads this node, it is inside an effect group, or it is the composition's output. Disconnect what reads it (or take it out of the group) first.").clicked() {
                     actions.push(Action::Node { id:node.id,action:NodeAction::Delete }); ui.close();
                 }
             });
@@ -1291,7 +1291,16 @@ impl Graph {
                 );
             }
             if self.zoom >= 0.9 {
-                for (index, (key, _)) in node.inputs.iter().enumerate() {
+                // Rows closer than a line of text cannot all be named: then only the
+                // connected inputs are, and of those only ones a line apart.
+                let crowded = (NODE_SIZE.y - 60.0) / ((node.inputs.len() + 1) as f32) < 11.0;
+                let mut last = f32::NEG_INFINITY;
+                for (index, (key, source)) in node.inputs.iter().enumerate() {
+                    let row = input_y(index, node.inputs.len());
+                    if crowded && (source.is_none() || row - last < 11.0) {
+                        continue;
+                    }
+                    last = row;
                     let label = node.group.map_or_else(
                         || presentation::port_label(key),
                         |id| doc.groups[&id].inputs[key].label.clone(),

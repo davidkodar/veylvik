@@ -166,8 +166,13 @@ fn delivery_cards(ui: &mut egui::Ui, s: &mut Settings, doc: &Composition) {
         ),
     ];
     ui.horizontal_wrapped(|ui| {
+        // Only the first card that matches is lit: when the composition is itself Full
+        // HD, "Composition" and "Web 1080p" are the same delivery.
+        let mut lit = false;
         for (name, detail, size, codec, quality, hint) in deliveries {
-            let chosen = (s.width, s.height) == size && s.codec == codec && s.quality == quality;
+            let chosen =
+                !lit && (s.width, s.height) == size && s.codec == codec && s.quality == quality;
+            lit |= chosen;
             if format_card(
                 ui,
                 name,

@@ -207,7 +207,8 @@ pub fn show(
         egui::vec2(-1., 0.),
     ];
     let mut changed = false;
-    // A narrow hit region follows the rotated border, never its empty interior.
+    // The whole box moves the text: its border and everything inside it. A double-click
+    // inside still edits the words (that is read from the pointer, not from this area).
     let border_id = ui.id().with("text-box-border");
     let pointer = ui.input(|i| {
         if i.pointer.primary_pressed() {
@@ -217,14 +218,25 @@ pub fn show(
         }
     });
     let border_hit = pointer.filter(|p| {
-        canvas.contains(*p)
-            && corners.windows(2).any(|edge| {
+        let on_border = corners.windows(2).any(|edge| {
+            let a = screen(edge[0].to_vec2());
+            let b = screen(edge[1].to_vec2());
+            let span = b - a;
+            let t = ((*p - a).dot(span) / span.length_sq().max(0.001)).clamp(0., 1.);
+            p.distance(a + span * t) <= 5.
+        });
+        // Inside the (possibly rotated) box: on the same side of all four edges.
+        let turns: Vec<f32> = corners
+            .windows(2)
+            .map(|edge| {
                 let a = screen(edge[0].to_vec2());
                 let b = screen(edge[1].to_vec2());
-                let span = b - a;
-                let t = ((*p - a).dot(span) / span.length_sq().max(0.001)).clamp(0., 1.);
-                p.distance(a + span * t) <= 5.
+                (b - a).x * (*p - a).y - (b - a).y * (*p - a).x
             })
+            .collect();
+        let inside = turns.iter().all(|t| *t >= 0.0) || turns.iter().all(|t| *t <= 0.0);
+        canvas.contains(*p)
+            && (on_border || inside)
             && !handles.iter().any(|h| {
                 let point = screen(local.center().to_vec2() + *h * local.size() * 0.5);
                 Rect::from_center_size(point, Vec2::splat(20.)).contains(*p)
@@ -236,7 +248,7 @@ pub fn show(
         Rect::from_center_size(p, Vec2::splat(10.)).intersect(canvas)
     });
     let border = crate::handles::interact(ui, hit, border_id)
-        .on_hover_text("Move text · drag the border to reposition the whole text layer");
+        .on_hover_text("Move text · drag anywhere on it · double-click to edit the words");
     if border.hovered() || border.dragged() {
         ui.ctx().set_cursor_icon(egui::CursorIcon::Move);
     }

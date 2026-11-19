@@ -6,6 +6,8 @@ mod material_preview;
 pub use material_preview::material_preview_revision;
 pub mod custom;
 pub mod flow;
+/// How many letters of the user's text a material swatch shows (the first ones, large).
+pub const SWATCH_LETTERS: usize = 3;
 mod history;
 pub mod ocio;
 mod shadow_lighting;

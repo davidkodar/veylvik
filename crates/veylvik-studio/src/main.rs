@@ -41,6 +41,7 @@ mod media_import;
 mod menus;
 mod model_import;
 mod models_window;
+mod names;
 mod node_clipboard;
 mod node_finder;
 mod node_palette;
@@ -743,6 +744,22 @@ impl Studio {
                     }
                     Err(error) => self.fail(error),
                 }
+            }
+        }
+    }
+    /// While the viewer shows the selected node, it goes on showing whichever node is
+    /// selected: picking another one in the graph changes the picture with it.
+    fn follow_selection(&mut self, ctx: &egui::Context) {
+        let memory = egui::Id::new("viewer-followed-selection");
+        let before: Option<veylvik_document::NodeId> = ctx.data(|d| d.get_temp(memory));
+        let now = self.project.selected;
+        if before != Some(now) {
+            ctx.data_mut(|d| d.insert_temp(memory, now));
+            if let Some(before) = before
+                && self.project.preview == Some(before)
+            {
+                self.project.preview = Some(now);
+                self.request_preview();
             }
         }
     }
@@ -2196,7 +2213,7 @@ impl Studio {
                     }
                     .to_owned()
                 } else {
-                    format!("{} ({})", parameter.name.replace('_', " "), parameter.unit)
+                    names::setting(parameter.name, parameter.unit)
                 };
                 let changed = animation::scalar_with_default(
                     ui,
@@ -3151,6 +3168,7 @@ impl eframe::App for Studio {
         self.fonts.poll(&ctx);
         self.remember_tick();
         self.log_tick();
+        self.follow_selection(&ctx);
         self.autokey_tick(&ctx);
         self.tryout_bar(&ctx);
         if self.draft_dirty
@@ -3388,7 +3406,7 @@ impl eframe::App for Studio {
                 } else {
                     match self.layouts.editor_height() {
                         Some(height) => egui::Panel::bottom("graph").exact_size(height.min(room.max(130.0))).resizable(true),
-                        None => egui::Panel::bottom("graph").default_size(420.0_f32.min(room.max(130.0))).min_size(130.0).max_size(room.max(130.0)).resizable(true),
+                        None => egui::Panel::bottom("graph").default_size((ctx.content_rect().height() * 0.42).max(420.0).min(room.max(130.0))).min_size(130.0).max_size(room.max(130.0)).resizable(true),
                     }
                 }).frame(design::panel(ui.ctx()))
                     .show_inside(ui, |ui| {
@@ -3445,11 +3463,20 @@ impl eframe::App for Studio {
                             ui.checkbox(&mut self.text_viewer.snap, "Snap");
                             });
                         }
-                        ui.weak(if self.project.preview.is_some() {
-                            "Selected node preview"
-                        } else {
-                            "Composition output"
-                        });
+                        // Says what the picture is: the composition, the selected node, or
+                        // another node that is being looked at while something else is selected.
+                        let viewing = match self.project.preview {
+                            None => "Composition output".to_owned(),
+                            Some(id) if id == self.project.selected => "Selected node".to_owned(),
+                            Some(id) => self
+                                .project
+                                .document
+                                .snapshot()
+                                .nodes
+                                .get(&id)
+                                .map_or("Another node".to_owned(), |n| format!("Viewing {}", n.label)),
+                        };
+                        ui.weak(viewing);
                         ui.separator();
                         self.channel_choice(ui);
                         self.overlays_menu(ui);
@@ -3477,6 +3504,9 @@ impl eframe::App for Studio {
                         }
                         if ui.button("Reset view").clicked() {
                             self.view = ViewSettings {fast_filter:self.preferences.values.fast_view,..Default::default()};
+                            // Everything about the view: where the picture sits and its size too.
+                            self.navigation.fit();
+                            self.comparison.fit();
                         }
                     });
                     self.comparison_toolbar(ui);
@@ -3577,7 +3607,8 @@ impl eframe::App for Studio {
                             .pointer_hover_pos()
                             .is_some_and(|pos| ctx.layer_id_at(pos) == Some(response.layer_id));
                         if viewer_on_top && !matches!(self.draft.operation, Operation::Text(_)) {
-                            response.on_hover_text(format!(
+                            // At the pointer: below the viewer it would cover the transport.
+                            response.on_hover_text_at_pointer(format!(
                                 "{:.0}% · scroll to zoom · drag to pan · double-click to fit",
                                 self.navigation.scale(canvas, image, ctx.pixels_per_point())
                                     * 100.0
@@ -3600,6 +3631,16 @@ impl eframe::App for Studio {
                         if !self.viewer_fullscreen {
                             let pointer = ctx.pointer_hover_pos().filter(|pos| viewer_on_top && canvas.contains(*pos));
                             self.viewer_overlays(ui, canvas, transform, image, &frame.frame, pointer);
+                        }
+                        // Nothing made yet: say where to begin, on the empty picture itself.
+                        if self.project.is_empty() {
+                            ui.painter().with_clip_rect(canvas).text(
+                                canvas.center(),
+                                egui::Align2::CENTER_CENTER,
+                                "Start from the Add menu (a text, footage, a shape),\ndrop or paste a file here, or pick a look in the library.",
+                                egui::FontId::proportional(15.0),
+                                ui.visuals().weak_text_color(),
+                            );
                         }
                         self.light_overlay(ui, canvas, transform, image);
                         if navigating_3d {

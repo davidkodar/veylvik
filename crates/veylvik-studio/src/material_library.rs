@@ -440,11 +440,21 @@ impl crate::Studio {
     }
 }
 
-/// A cheap identity for a text layer's preview: its words and font, not the font data.
+/// A cheap identity for a text layer's preview: the letters shown and its font, not the
+/// font data.
 pub(crate) fn text_key(text: &veylvik_document::nodes::Text) -> u64 {
     use std::hash::{Hash, Hasher};
     let mut h = std::collections::hash_map::DefaultHasher::new();
-    text.content.hash(&mut h);
+    // Only the letters a swatch shows: typing further into the text re-renders nothing.
+    text.content
+        .lines()
+        .find(|l| !l.trim().is_empty())
+        .unwrap_or("")
+        .trim()
+        .chars()
+        .take(veylvik_render::SWATCH_LETTERS)
+        .collect::<String>()
+        .hash(&mut h);
     match &*text.font {
         veylvik_document::TextFont::Embedded { name, index, data } => {
             (name, index, data.len()).hash(&mut h)

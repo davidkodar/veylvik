@@ -680,8 +680,12 @@ impl Studio {
             .default_width(340.0)
             .collapsible(false)
 
-            .pivot(egui::Align2::CENTER_CENTER)
-            .default_pos(ctx.content_rect().center())
+            // Beside the viewer, like the tracking windows: the subject to click on is in
+            // the middle of the picture.
+            .default_pos(egui::pos2(
+                (ctx.content_rect().width() - 360.0).max(20.0),
+                110.0,
+            ))
             .show(ctx, |ui| {
                 ui.label(format!("Source: {source_label}"));
                 ui.horizontal(|ui| {
