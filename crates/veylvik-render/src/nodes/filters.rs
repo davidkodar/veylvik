@@ -582,11 +582,14 @@ impl RenderNode for veylvik_document::nodes::Shader {
                 )
                 .map_err(error)?;
                 let camera = scene.camera(1, cx.width, cx.height);
-                if let Some((at, _)) = scene
-                    .centre(target)
-                    .and_then(|centre| camera.project(centre, cx.width, cx.height))
+                if let Some(centre) = scene.centre(target)
+                    && let Some((at, _)) = camera.project(centre, cx.width, cx.height)
                 {
-                    p.anchor = [at[0], at[1], 1.0, 0.0];
+                    // How much of it shows past the scene's other solid objects.
+                    let eye = veylvik_scene::math::point(&camera.world, [0.0; 3]);
+                    let seen =
+                        veylvik_scene::pick::seen(&scene, eye, centre, target).map_err(error)?;
+                    p.anchor = [at[0], at[1], 1.0, seen];
                 }
             }
         }

@@ -18,8 +18,8 @@ fn band(r: f32, centre: f32, width: f32) -> f32 {
 // ring round it (warm on the inside, teal on the outside, strongest to the sides),
 // and soft coloured ghosts on the line from the light through the frame's middle.
 // Key x and y to move the light, or connect a scene and set Follow to one of its
-// objects: the flare then sits on that object, fades as it nears the frame's edge and
-// goes out when it is behind the camera. Everything else moves with the light.
+// objects: the flare then sits on that object, fades as it nears the frame's edge or
+// slides behind another object, and goes out when it is behind the camera. Everything else moves with the light.
 fn shade(at: vec2<f32>) -> vec4<f32> {
     let p = (at - size * 0.5) / size.y;
     if followed < -0.5 {
@@ -30,7 +30,7 @@ fn shade(at: vec2<f32>) -> vec4<f32> {
     if followed > 0.5 {
         spot = follow / size;
         let inside = min(min(spot.x, 1.0 - spot.x), min(spot.y, 1.0 - spot.y));
-        seen = smoothstep(-0.02, 0.06, inside);
+        seen = smoothstep(-0.02, 0.06, inside) * follow_seen;
     }
     let light = (spot - vec2<f32>(0.5)) * vec2<f32>(size.x / size.y, 1.0);
     let d = p - light;

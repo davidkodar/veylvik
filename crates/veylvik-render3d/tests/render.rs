@@ -1418,3 +1418,40 @@ fn a_shader_is_told_where_a_scene_object_is_in_the_frame() {
     // Nothing followed.
     assert_eq!(shot([0.0, 0.0, 0.0], false, true)[2], 0.0);
 }
+#[test]
+#[ignore = "requires Vulkan"]
+fn a_followed_object_is_seen_less_as_another_slides_in_front() {
+    let renderer = renderer();
+    let code = "fn shade(at: vec2<f32>) -> vec4<f32> {
+    return vec4<f32>(follow_seen, 0.0, 0.0, 1.0);
+}";
+    // A wall 100 in front of the followed cube, its left edge at `edge`.
+    let shot = |edge: Option<f32>| {
+        let mut doc = blank(W, H, Time::new(24, 1).unwrap()).unwrap();
+        let target = add(&mut doc, cube(40.0, [0.0; 3]), &[]);
+        let mut parts = vec![("scene".to_string(), target)];
+        if let Some(edge) = edge {
+            let at = [edge + 100.0, 0.0, 100.0];
+            let mut wall = cube(200.0, at);
+            if let Operation::Shape3d(s) = &mut wall {
+                s.placement.position = at.into();
+            }
+            parts.push(("scene_2".into(), add(&mut doc, wall, &[])));
+        }
+        let parts: Vec<(&str, NodeId)> = parts.iter().map(|(k, v)| (k.as_str(), *v)).collect();
+        let scene = add(&mut doc, op(&MERGE_SCENES), &parts);
+        let mut shader = op(&SHADER);
+        if let Operation::Shader(s) = &mut shader {
+            s.code = code.into();
+            s.follow = Some(target);
+        }
+        doc.output = add(&mut doc, shader, &[("scene", scene)]);
+        doc.validate().unwrap();
+        render(&renderer, &doc, &ImageInputs::default())[0][0]
+    };
+    assert_eq!(shot(None), 1.0);
+    assert_eq!(shot(Some(-100.0)), 0.0);
+    let half = shot(Some(3.0));
+    assert!(half > 0.2 && half < 0.9, "{half}");
+    assert_eq!(shot(Some(60.0)), 1.0);
+}

@@ -3070,6 +3070,7 @@ impl Studio {
         self.theme(ctx);
         self.effect_dialog(ctx);
         self.preset_library(ctx);
+        self.save_effect_window(ctx);
         self.library_drop_options(ctx);
         self.materials.dialogs(ctx);
         if let Some(e) = self.materials.error.take() {

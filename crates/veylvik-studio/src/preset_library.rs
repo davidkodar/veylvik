@@ -26,6 +26,14 @@ pub struct Library {
     connect: bool,
     anchor: Option<NodeId>,
     identity: Option<(NodeId, u64)>,
+    /// Save to library, waiting for the choice of sounds to bring.
+    saving: Option<Saving>,
+}
+/// An effect about to be saved, and the composition's sounds it may bring.
+struct Saving {
+    group: NodeId,
+    /// Sound node, its name, its file, and whether it is brought.
+    sounds: Vec<(NodeId, String, String, bool)>,
 }
 #[derive(Clone)]
 enum Source {
@@ -73,11 +81,97 @@ impl Studio {
         });
         self.file_started(result);
     }
+    /// Save to library: at once when the composition has no sounds, else after asking
+    /// which of them the effect brings.
     pub(super) fn save_effect_preset(&mut self, id: NodeId) {
         if self.files.busy() || !self.can_change_selection() {
             return;
         }
-        let preset = match Preset::capture(self.project.document.snapshot(), id) {
+        let sounds: Vec<_> = self
+            .project
+            .document
+            .snapshot()
+            .nodes
+            .values()
+            .filter_map(|node| match &node.operation {
+                veylvik_document::Operation::Sound(sound) if !sound.file.trim().is_empty() => {
+                    Some((node.id, node.label.clone(), sound.file.clone(), false))
+                }
+                _ => None,
+            })
+            .collect();
+        if sounds.is_empty() {
+            self.store_effect(id, &[]);
+        } else {
+            self.library.saving = Some(Saving { group: id, sounds });
+        }
+    }
+    /// The window that asks which sounds an effect brings.
+    pub(super) fn save_effect_window(&mut self, ctx: &egui::Context) {
+        let Some(saving) = &mut self.library.saving else {
+            return;
+        };
+        let (mut save, mut cancel) = (false, false);
+        egui::Window::new("Save effect to library")
+            .id(egui::Id::new("save-effect"))
+            .collapsible(false)
+            .resizable(false)
+            .pivot(egui::Align2::CENTER_CENTER)
+            .default_pos(ctx.content_rect().center())
+            .show(ctx, |ui| {
+                ui.label("Sounds the effect brings with it");
+                ui.weak("A sound you tick is copied into the library and comes back as a Sound node each time the effect is used. Audio files of at most 4 MiB, eight at most.");
+                ui.add_space(6.0);
+                let chosen = saving.sounds.iter().filter(|s| s.3).count();
+                egui::ScrollArea::vertical().max_height(260.0).show(ui, |ui| {
+                    for (_, label, file, bring) in &mut saving.sounds {
+                        let name = std::path::Path::new(file.as_str())
+                            .file_name()
+                            .map_or(file.clone(), |n| n.to_string_lossy().into_owned());
+                        ui.add_enabled_ui(*bring || chosen < veylvik_document::presets::MAX_CUES, |ui| {
+                            ui.checkbox(bring, format!("{label}  ({name})"));
+                        });
+                    }
+                });
+                ui.add_space(8.0);
+                ui.horizontal(|ui| {
+                    save = crate::design::primary(ui, "Save").clicked();
+                    cancel = ui.button("Cancel").clicked();
+                });
+            });
+        if cancel {
+            self.library.saving = None;
+        } else if save && let Some(saving) = self.library.saving.take() {
+            let bring: Vec<_> = saving.sounds.iter().filter(|s| s.3).map(|s| s.0).collect();
+            self.store_effect(saving.group, &bring);
+        }
+    }
+    fn store_effect(&mut self, id: NodeId, bring: &[NodeId]) {
+        if self.files.busy() || !self.can_change_selection() {
+            return;
+        }
+        let doc = self.project.document.snapshot();
+        let preset = Preset::capture(doc, id).and_then(|mut preset| {
+            for sound in bring {
+                let veylvik_document::Operation::Sound(node) = &doc.nodes[sound].operation else {
+                    continue;
+                };
+                // Named in full here; the library copies the file in.
+                let file = if node.file.starts_with(veylvik_io::sounds::PREFIX) {
+                    node.file.clone()
+                } else {
+                    self.project
+                        .base
+                        .join(&node.file)
+                        .to_string_lossy()
+                        .into_owned()
+                };
+                preset.sounds.push(Preset::cue(doc, *sound, file)?);
+            }
+            preset.validate()?;
+            Ok(preset)
+        });
+        let preset = match preset {
             Ok(p) => p,
             Err(e) => {
                 self.fail(e);

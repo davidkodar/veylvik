@@ -436,10 +436,14 @@ The expanded set includes:
   code can be opened and changed. To keep a shader of your own, group its node
   and choose Save to library. The Lens Flare follows a 3D object when its
   shader node is given a scene and a Follow object (see the Shader node): it
-  then ignores its own x and y, fades as the object nears the frame's edge and
-  goes out behind the camera. Inside the library effect's group the node has no
-  scene input exposed, so open the group, or add a Shader node with the flare's
-  code.
+  then ignores its own x and y, fades as the object nears the frame's edge or
+  slides behind another object, and goes out behind the camera. In the library
+  effect, open the group and connect the scene to the shader inside: the effect
+  gains a Scene input of its own.
+
+A connection made to a node inside an effect group from outside it becomes one
+of the group's inputs at once, named after the port, and an input whose
+connections are all removed is dropped; no second step is needed.
 - **Surface:** Edge Engrave, Duotone Print, Silver Relief, Ink Bleed, Film Grain,
   Scanlines and Hologram.
 - **Distortion:** Frosted Glass, Heat Haze, Underwater and Glitch Slices (plus Liquid Shimmer).
@@ -457,8 +461,11 @@ so far. A Sound node may name a bundled sound the same way. To keep effects
 light, a sound an effect brings must be an audio file (wav, mp3, flac, ogg,
 opus, m4a, aac or aiff) of at most 4 MiB; an effect file naming a larger or
 other file is refused when it is loaded. A longer sound is added as a Sound
-node of your own. An effect saved from a group in Studio carries no sound
-yet.
+node of your own. **Save to library** in Studio asks which of the composition's
+Sound nodes the effect brings (none unless ticked, eight at most): each ticked
+sound is copied into the library's `sounds` folder, named by its contents, and
+keeps its start, level and trims, so the effect still works when the project
+it came from is gone. Removing a saved effect leaves its sound file there.
 - **Particles:** Dust Motes, Fireflies, Embers, Snowfall and Starfield.
 - **Materials:** Gold, Silver, Aluminium, Bronze,
   Phosphor, Carved Wood, Light/Dark Oak, White Marble, Light/Red Brick,
@@ -1793,9 +1800,11 @@ settles on the wrong kind of motion can still look sure. The
   scene's first camera, or the home view when it has none) and `followed` (1
   when it is in front of the camera, also when outside the frame; -1 when it is
   behind the camera, not in that scene or no scene is connected; 0 when nothing
-  is followed). The scene is only read, not rendered, and nothing hides the
-  point when another object stands in front of it. `follow` and `followed` are
-  therefore names a shader cannot use for its own variables. To be safe on every pixel, the text may not use
+  is followed), and `follow_seen` (0 to 1: how much of it shows past the
+  scene's other solid objects, falling as one slides in front of its middle;
+  image cards and shadow catchers do not hide it). The scene is only read, not
+  rendered. `follow`, `followed` and `follow_seen` are therefore names a shader
+  cannot use for its own variables. To be safe on every pixel, the text may not use
   attributes (`@…`), global variables, `while`, `loop` or `continuing`, must be
   ASCII outside comments and at most 16000 characters, and may not redefine
   `image`, `second` or `custom`; `for` loops are allowed only inside `shade`,

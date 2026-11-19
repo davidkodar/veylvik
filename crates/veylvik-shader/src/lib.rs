@@ -479,6 +479,7 @@ var<private> size: vec2<f32>;
 var<private> time: f32;
 var<private> follow: vec2<f32>;
 var<private> followed: f32;
+var<private> follow_seen: f32;
 fn texel_of(which: u32, q: vec2<i32>) -> vec4<f32> {{
     let s = vec2<i32>(p.size_op.xy);
     if (p.size_op.w & which) == 0u || q.x < 0 || q.y < 0 || q.x >= s.x || q.y >= s.y {{ return vec4<f32>(0.0); }}
@@ -507,6 +508,7 @@ fn custom(@builtin(global_invocation_id) gid: vec3<u32>) {{
     time = bitcast<f32>(p.size_op.z);
     follow = p.anchor.xy;
     followed = p.anchor.z;
+    follow_seen = p.anchor.w;
 {fill}    result[gid.y * p.size_op.x + gid.x] = shade(vec2<f32>(gid.xy) + vec2<f32>(0.5));
 }}
 "

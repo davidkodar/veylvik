@@ -292,6 +292,7 @@ impl Document {
                 }
             }
         }
+        crate::groups::follow_edges(&mut next);
         next.resolve_expressions()?;
         next.validate()?;
         Ok(next)

@@ -832,6 +832,8 @@ pub fn build(id: &str) -> Result<Preset> {
                 rate: 20,
             },
             gain: 0.0,
+            source_in: None,
+            source_out: None,
         });
     }
     Ok(preset)

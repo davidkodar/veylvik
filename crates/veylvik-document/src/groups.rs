@@ -39,6 +39,57 @@ pub struct Group {
     pub inputs: BTreeMap<String, Input>,
     pub controls: BTreeMap<String, Control>,
 }
+/// Keeps every group's public inputs in step with its members' edges from outside:
+/// a new one (a scene given to a shader inside an effect, say) becomes an input named
+/// after its port, and an input whose edges are gone is dropped. Run on each
+/// transaction, so connecting to a node inside a group needs no second step.
+pub fn follow_edges(doc: &mut Composition) {
+    let nodes = &doc.nodes;
+    for group in doc.groups.values_mut() {
+        let outside: BTreeSet<Port> = group
+            .members
+            .iter()
+            .filter_map(|member| nodes.get(member).map(|node| (member, node)))
+            .flat_map(|(member, node)| {
+                node.inputs
+                    .iter()
+                    .filter(|(_, source)| !group.members.contains(source))
+                    .map(|(port, _)| Port {
+                        node: *member,
+                        port: port.clone(),
+                    })
+            })
+            .collect();
+        for input in group.inputs.values_mut() {
+            input.targets.retain(|target| outside.contains(target));
+        }
+        group.inputs.retain(|_, input| !input.targets.is_empty());
+        let exposed: BTreeSet<Port> = group
+            .inputs
+            .values()
+            .flat_map(|input| input.targets.iter().cloned())
+            .collect();
+        for port in outside.difference(&exposed) {
+            let mut key = port.port.clone();
+            let mut k = 2;
+            while group.inputs.contains_key(&key) {
+                key = format!("{}_{k}", port.port);
+                k += 1;
+            }
+            let mut label: String = port.port.replace('_', " ");
+            if let Some(first) = label.get_mut(0..1) {
+                first.make_ascii_uppercase();
+            }
+            group.inputs.insert(
+                key,
+                Input {
+                    label,
+                    targets: vec![port.clone()],
+                },
+            );
+        }
+    }
+}
 fn name(value: &str) -> Result<()> {
     if value.trim().is_empty() || value.chars().count() > 128 || value.chars().any(char::is_control)
     {

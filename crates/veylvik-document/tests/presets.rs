@@ -281,3 +281,71 @@ fn material_layers_fill_canvas_preserve_graph_and_undo_atomically() {
         .is_err()
     );
 }
+#[test]
+fn a_connection_to_a_node_inside_an_effect_becomes_one_of_its_inputs() {
+    let preset = builtin::build("lens_flare").unwrap();
+    let mut owner = Document::new(blank(640, 360, Time::new(30, 1).unwrap()).unwrap()).unwrap();
+    let source = owner.snapshot().output;
+    let bindings = preset
+        .group
+        .inputs
+        .keys()
+        .map(|key| (key.clone(), source))
+        .collect();
+    let instance = preset
+        .instantiate(owner.snapshot(), &bindings, None)
+        .unwrap();
+    owner.apply(0, &instance.commands).unwrap();
+    let before = owner.snapshot().groups[&instance.group].inputs.len();
+    let shader = *owner.snapshot().groups[&instance.group]
+        .members
+        .iter()
+        .find(|id| matches!(owner.snapshot().nodes[id].operation, Operation::Shader(_)))
+        .unwrap();
+    // A scene for the flare's shader: connecting it needs no second step.
+    let cube = Node::new(
+        "Cube",
+        serde_json::from_value(registry::SHAPE_3D.default_operation()).unwrap(),
+        &[],
+    );
+    owner
+        .apply(
+            1,
+            &[
+                Command::Put {
+                    node: Box::new(cube.clone()),
+                },
+                Command::Connect {
+                    id: shader,
+                    input: "scene".into(),
+                    source: Some(cube.id),
+                },
+            ],
+        )
+        .unwrap();
+    let group = &owner.snapshot().groups[&instance.group];
+    assert_eq!(group.inputs.len(), before + 1);
+    assert_eq!(group.inputs["scene"].label, "Scene");
+    assert_eq!(group.inputs["scene"].targets[0].node, shader);
+    // Taking it away again drops the input; undo brings both back.
+    owner
+        .apply(
+            2,
+            &[Command::Connect {
+                id: shader,
+                input: "scene".into(),
+                source: None,
+            }],
+        )
+        .unwrap();
+    assert_eq!(
+        owner.snapshot().groups[&instance.group].inputs.len(),
+        before
+    );
+    owner.undo(3).unwrap();
+    assert!(
+        owner.snapshot().groups[&instance.group]
+            .inputs
+            .contains_key("scene")
+    );
+}

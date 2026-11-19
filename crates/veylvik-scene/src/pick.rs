@@ -40,6 +40,62 @@ pub fn hit(scene: &Scene, origin: [f32; 3], direction: [f32; 3]) -> Result<Optio
 pub fn hit_ground(scene: &Scene, origin: [f32; 3], direction: [f32; 3]) -> Result<Option<Hit>> {
     hit_where(scene, origin, direction, |object| object.surface.catcher)
 }
+/// How much of node `target`'s object at `point` an eye at `eye` sees past the other
+/// solid objects: 1 in the open, 0 behind one, between as one slides across (nine rays
+/// to a small disc on the object, a quarter of its size). Cards and shadow catchers do
+/// not hide it.
+pub fn seen(scene: &Scene, eye: [f32; 3], point: [f32; 3], target: NodeId) -> Result<f32> {
+    let towards = sub(point, eye);
+    let distance = dot(towards, towards).sqrt();
+    if distance < 1e-3 {
+        return Ok(1.0);
+    }
+    let forward = towards.map(|c| c / distance);
+    let reach = scene
+        .objects
+        .iter()
+        .find(|o| o.node == target)
+        .map_or(0.0, |o| o.sphere().1 * 0.25);
+    // Two directions across the view.
+    let side = unit(cross(
+        forward,
+        if forward[1].abs() < 0.9 {
+            [0.0, 1.0, 0.0]
+        } else {
+            [1.0, 0.0, 0.0]
+        },
+    ));
+    let up = cross(forward, side);
+    let rays: &[[f32; 2]] = if reach > 0.0 {
+        &[
+            [0.0, 0.0],
+            [1.0, 0.0],
+            [-1.0, 0.0],
+            [0.0, 1.0],
+            [0.0, -1.0],
+            [0.7, 0.7],
+            [-0.7, 0.7],
+            [0.7, -0.7],
+            [-0.7, -0.7],
+        ]
+    } else {
+        &[[0.0, 0.0]]
+    };
+    let mut open = 0;
+    for [x, y] in rays {
+        let aim = [0, 1, 2].map(|k| point[k] + (side[k] * x + up[k] * y) * reach);
+        let ray = sub(aim, eye);
+        let far = dot(ray, ray).sqrt();
+        let blocked = hit_where(scene, eye, ray, |object| {
+            object.node != target
+                && !object.surface.catcher
+                && !matches!(object.geometry, Geometry::Card { .. })
+        })?
+        .is_some_and(|hit| hit.distance < far - 1e-2);
+        open += usize::from(!blocked);
+    }
+    Ok(open as f32 / rays.len() as f32)
+}
 /// The corners of the box round `scene`'s solid objects in the world; None without any.
 pub fn bounds(scene: &Scene) -> Option<([f32; 3], [f32; 3])> {
     let mut found: Option<([f32; 3], [f32; 3])> = None;

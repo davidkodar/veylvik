@@ -37,9 +37,14 @@ pub fn load(path: &Path) -> Result<Preset> {
     let preset: Preset = serde_json::from_slice(&data)?;
     preset.validate()?;
     // A sound the effect brings is small and of a known kind, or the effect is refused.
+    // One kept beside the effect is named in full, so any project finds it.
     let beside = path.parent().unwrap_or(Path::new("."));
-    for cue in &preset.sounds {
+    let mut preset = preset;
+    for cue in &mut preset.sounds {
         crate::sounds::check_effect_sound(beside, &cue.file)?;
+        if !cue.file.starts_with(crate::sounds::PREFIX) {
+            cue.file = beside.join(&cue.file).to_string_lossy().into_owned();
+        }
     }
     Ok(preset)
 }
@@ -52,9 +57,46 @@ pub fn save_new(path: &Path, preset: &Preset) -> Result<()> {
     veylvik_document::atomic_create(path, &data)?;
     Ok(())
 }
+/// Stores `preset` in the library. A sound it brings (named by its full path) is
+/// checked and copied into the library's `sounds` folder, so the effect keeps working
+/// when the project it came from is moved or deleted.
 pub fn add(directory: &Path, preset: &Preset) -> Result<PathBuf> {
     preset.validate()?;
     std::fs::create_dir_all(directory)?;
+    let mut kept = preset.clone();
+    for cue in &mut kept.sounds {
+        if cue.file.starts_with(crate::sounds::PREFIX) {
+            crate::sounds::check_effect_sound(directory, &cue.file)?;
+            continue;
+        }
+        let source = PathBuf::from(&cue.file);
+        if !source.is_absolute() {
+            return Err(format!("{}: name the sound by its full path", cue.file).into());
+        }
+        crate::sounds::check_effect_sound(Path::new("/"), &cue.file)?;
+        let data = std::fs::read(&source)?;
+        if data.len() as u64 > crate::sounds::MAX_EFFECT_SOUND_BYTES {
+            return Err(format!("{} grew past 4 MiB while it was read", cue.file).into());
+        }
+        // Named by its contents: the same sound is stored once.
+        let mut hash = 0xcbf2_9ce4_8422_2325_u64;
+        for byte in &data {
+            hash = (hash ^ u64::from(*byte)).wrapping_mul(0x0100_0000_01b3);
+        }
+        let extension = source
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("wav")
+            .to_ascii_lowercase();
+        let name = format!("sounds/{hash:016x}.{extension}");
+        let target = directory.join(&name);
+        if !target.exists() {
+            std::fs::create_dir_all(directory.join("sounds"))?;
+            veylvik_document::atomic_create(&target, &data)?;
+        }
+        cue.file = name;
+    }
+    let preset = &kept;
     let path = directory.join(format!("{}.veyfx", NodeId::new_v4()));
     save_new(&path, preset)?;
     Ok(path)

@@ -103,6 +103,17 @@ mod tests {
         big.set_len(MAX_EFFECT_SOUND_BYTES + 1).unwrap();
         let refused = check_effect_sound(&dir, "big.wav").unwrap_err().to_string();
         assert!(refused.contains("at most 4 MiB"), "{refused}");
+        // Saved to the library, an effect's sound is copied in and found again in full.
+        let mut preset = veylvik_document::presets::builtin::build("switch_off").unwrap();
+        preset.sounds[0].file = dir.join("small.wav").to_string_lossy().into_owned();
+        let library = dir.join("library");
+        let stored = crate::presets::add(&library, &preset).unwrap();
+        let loaded = crate::presets::load(&stored).unwrap();
+        let kept = PathBuf::from(&loaded.sounds[0].file);
+        assert!(kept.starts_with(library.join("sounds")) && kept.is_file());
+        assert_eq!(std::fs::read(&kept).unwrap(), [0_u8; 64]);
+        preset.sounds[0].file = dir.join("big.wav").to_string_lossy().into_owned();
+        assert!(crate::presets::add(&library, &preset).is_err());
         std::fs::remove_dir_all(dir).unwrap();
     }
 }

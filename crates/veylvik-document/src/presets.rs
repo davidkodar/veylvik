@@ -42,6 +42,11 @@ pub struct Cue {
     pub start: Time,
     /// Its level in decibels.
     pub gain: f32,
+    /// Where in the file it starts and stops, when it is trimmed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_in: Option<Time>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_out: Option<Time>,
 }
 /// The most sounds one effect may bring.
 pub const MAX_CUES: usize = 8;
@@ -177,6 +182,24 @@ impl Preset {
         self.adapted(doc.width, doc.height, sizing)?
             .instantiate(doc, inputs, position)
     }
+    /// The cue that brings Sound node `id` of `doc` with the effect, as it stands on
+    /// the timeline; `file` is where its sound is.
+    pub fn cue(doc: &Composition, id: NodeId, file: String) -> Result<Cue> {
+        let Some(node) = doc.nodes.get(&id) else {
+            return fail("the sound to bring does not exist");
+        };
+        let Operation::Sound(sound) = &node.operation else {
+            return fail("an effect brings Sound nodes only");
+        };
+        Ok(Cue {
+            label: node.label.clone(),
+            file,
+            start: sound.timing.start,
+            gain: sound.gain.at(sound.timing.start)?,
+            source_in: (sound.timing.source_in.ticks != 0).then_some(sound.timing.source_in),
+            source_out: sound.timing.source_out,
+        })
+    }
     /// The Sound node a cue becomes.
     fn sound(&self, cue: &Cue) -> Node {
         Node::new(
@@ -185,7 +208,8 @@ impl Preset {
                 file: cue.file.clone(),
                 timing: crate::media::Timing {
                     start: cue.start,
-                    ..Default::default()
+                    source_in: cue.source_in.unwrap_or(Time { ticks: 0, rate: 1 }),
+                    source_out: cue.source_out,
                 },
                 gain: cue.gain.into(),
             }),
