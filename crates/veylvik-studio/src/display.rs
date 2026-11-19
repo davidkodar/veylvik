@@ -280,6 +280,7 @@ mod tests {
                             height: 1,
                         }),
                         scene_view: None,
+                        scene_reflections: false,
                     },
                     &inputs,
                 )

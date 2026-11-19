@@ -12,7 +12,7 @@ struct Object {
     counts: vec4<f32>,
     // brushed strength, grain direction (radians), imperfections, visible grain
     finish: vec4<f32>,
-    // ridges, unused
+    // ridges, frame width / 1920, shadow strength, reflections view (1)
     relief: vec4<f32>,
 }
 struct Light {
@@ -258,8 +258,15 @@ fn lit(in: Varying) -> @location(0) vec4<f32> {
     let ax = a;
     let ay = clamp(a + brushed * 0.12, 0.0, 1.0);
     let metal = clamp(object.params.x, 0.0, 1.0);
-    let f0 = mix(vec3<f32>(0.04), base, metal);
-    let diffuse = base * (1.0 - metal);
+    var f0 = mix(vec3<f32>(0.04), base, metal);
+    var diffuse = base * (1.0 - metal);
+    // The reflections view: every surface a neutral mirror, so only where light lands
+    // shows, each light in a colour of its own.
+    let mapping = object.relief.w > 0.5;
+    if mapping {
+        f0 = vec3<f32>(0.9);
+        diffuse = vec3<f32>(0.0);
+    }
     let nv = max(dot(n, v), 1e-4);
     // The same prefiltered studio that lights 2D materials.
     let fresnel = f0 + (max(vec3<f32>(1.0 - rough), f0) - f0) * pow(1.0 - nv, 5.0);
@@ -310,7 +317,15 @@ fn lit(in: Varying) -> @location(0) vec4<f32> {
     var colour = (environment_specular(turned(n), 1.0) * diffuse * strength
         + mirrored * fresnel * strength)
         * sky_visibility(in.world, n);
+    // For the reflections view: what each light added, painted in its own colour.
+    let surroundings = colour;
+    var painted = vec3<f32>(0.0);
+    var mark = colour;
     for (var i = 0u; i < u32(object.counts.x); i++) {
+        if i > 0u {
+            painted += light_hue(u32(lights[i - 1u].shadow_info.w)) * min(dot(colour - mark, vec3<f32>(0.2126, 0.7152, 0.0722)), 1.5);
+        }
+        mark = colour;
         let light = lights[i];
         if light.position.w > 2.5 {
             // An area light: a glowing panel. Its mirror image shows in the surface,
@@ -385,7 +400,23 @@ fn lit(in: Varying) -> @location(0) vec4<f32> {
         let specular = lobe * smith(nv, nl, sqrt(ax * ay)) * f / max(4.0 * nv * nl, 1e-4);
         colour += (diffuse / 3.14159265 * (vec3<f32>(1.0) - f) + specular) * radiance * nl * 3.14159265;
     }
+    if mapping {
+        let count = u32(object.counts.x);
+        if count > 0u {
+            painted += light_hue(u32(lights[count - 1u].shadow_info.w)) * min(dot(colour - mark, vec3<f32>(0.2126, 0.7152, 0.0722)), 1.5);
+        }
+        // The surroundings (studio or panorama) as a faint grey, so the form still reads.
+        let grey = 0.1 * min(dot(surroundings, vec3<f32>(0.2126, 0.7152, 0.0722)), 1.0) + 0.012;
+        return vec4<f32>(painted + vec3<f32>(grey), 1.0);
+    }
     return vec4<f32>(colour, 1.0);
+}
+// A colour for light number `i` (its node's number): well separated hues, the same as
+// `veylvik_scene::light_hue`, which the viewer's guides use.
+fn light_hue(i: u32) -> vec3<f32> {
+    let h = fract(f32(i) * 0.61803399 + 0.08) * 6.0;
+    let rgb = clamp(abs(vec3<f32>(h - 3.0, h - 2.0, h - 4.0)) * vec3<f32>(1.0, -1.0, -1.0) + vec3<f32>(-1.0, 2.0, 2.0), vec3<f32>(0.0), vec3<f32>(1.0));
+    return mix(vec3<f32>(1.0), rgb, 0.85);
 }
 // A texel of a repeating texture of params.zw pixels.
 fn wrapped(x: i32, y: i32) -> vec4<f32> {

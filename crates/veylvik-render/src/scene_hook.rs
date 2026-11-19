@@ -28,6 +28,8 @@ pub struct SceneJob<'a> {
     pub height: u32,
     /// Write each pixel's distance from the camera instead of the picture.
     pub depth: bool,
+    /// Paint each light's reflection in a colour of its own instead of the picture.
+    pub reflections: bool,
     /// Imported models by file path (`Geometry::Model { path }`).
     pub models: &'a std::collections::BTreeMap<String, std::sync::Arc<veylvik_scene::Model>>,
     /// Image card pictures by their source node (`Geometry::Card { image }`).

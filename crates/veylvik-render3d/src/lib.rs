@@ -45,7 +45,8 @@ struct LightUniform {
     direction: [f32; 4],
     colour: [f32; 4],
     shadow: [[f32; 4]; 4],
-    /// Shadow map layer (-1: none), normal offset, filter width in texels, unused.
+    /// Shadow map layer (-1: none), normal offset, filter width in texels, and the
+    /// light node's number (for the reflections view's colours).
     shadow_info: [f32; 4],
     /// An area light's half-width and half-height axes.
     right: [f32; 4],
@@ -439,6 +440,15 @@ impl SceneRenderer for Engine {
             .zip(&shadows)
             .map(|(light, shadow)| light_uniform(light, *shadow))
             .collect();
+        // For the reflections view: each light carries its node's number.
+        let numbers = scene.light_numbers();
+        let mut lights = lights;
+        for (uniform, light) in lights.iter_mut().zip(&scene.lights) {
+            uniform.shadow_info[3] = numbers
+                .iter()
+                .find(|(node, _)| *node == light.node)
+                .map_or(0.0, |(_, n)| *n as f32);
+        }
         let light_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("3D lights"),
             contents: if lights.is_empty() {
@@ -523,7 +533,8 @@ impl SceneRenderer for Engine {
                 .surface
                 .look
                 .as_ref()
-                .filter(|_| !object.surface.catcher)
+                // The reflections view reads every surface as a plain mirror.
+                .filter(|_| !object.surface.catcher && !job.reflections)
             {
                 let (params, lighting) =
                     veylvik_render::material_uniforms(look, width, height, time, look_environment)?;
@@ -674,7 +685,7 @@ impl SceneRenderer for Engine {
                     object.surface.finish[4],
                     job.width as f32 / 1920.0,
                     object.surface.shadow,
-                    0.0,
+                    f32::from(u8::from(job.reflections)),
                 ],
             };
             let uniform = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {

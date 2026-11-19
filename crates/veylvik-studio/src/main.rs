@@ -276,6 +276,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 error: false,
                 playing: false,
                 scene_view: None,
+                scene_reflections: false,
                 playback: Instant::now(),
                 playback_frame: 0,
                 files: Tasks::new(cc.egui_ctx.clone()),
@@ -403,6 +404,8 @@ struct Studio {
     playing: bool,
     /// The free 3D view the preview films with (see `viewport3d`).
     scene_view: Option<veylvik_scene::Camera>,
+    /// The 3D viewer shows where each light's reflection lands instead of the picture.
+    scene_reflections: bool,
     playback: Instant,
     playback_frame: i64,
     files: Tasks,
@@ -861,6 +864,7 @@ impl Studio {
                 plan,
                 RenderRequest {
                     scene_view: self.scene_view.filter(|_| self.viewed_scene().is_some()),
+                    scene_reflections: self.scene_reflections && self.viewed_scene().is_some(),
                     ..RenderRequest::full(self.project.time()?)
                 },
                 self.project.inputs.clone(),

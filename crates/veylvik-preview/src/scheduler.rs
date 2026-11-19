@@ -124,8 +124,10 @@ impl PreviewScheduler<Arc<GpuFrame>> {
                     cache.prepare(&job.plan, &job.inputs)?;
                     // The playback cache holds frames by time alone, so a free 3D view
                     // (which films the same time differently) bypasses it both ways.
-                    let cacheable =
-                        job.request.region.is_none() && job.request.scene_view.is_none();
+                    // The reflections view is another picture of the same time, too.
+                    let cacheable = job.request.region.is_none()
+                        && job.request.scene_view.is_none()
+                        && !job.request.scene_reflections;
                     if cacheable && let Some(frame) = cache.lookup(&renderer, job.request.time)? {
                         return Ok(frame);
                     }

@@ -219,6 +219,7 @@ impl Session {
                     time,
                     region,
                     scene_view: None,
+                    scene_reflections: false,
                 },
                 &inputs,
             )?;
@@ -230,6 +231,7 @@ impl Session {
                     time,
                     region,
                     scene_view: None,
+                    scene_reflections: false,
                 },
                 &inputs,
             )?

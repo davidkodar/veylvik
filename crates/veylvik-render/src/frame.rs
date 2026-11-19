@@ -427,6 +427,10 @@ pub struct RenderRequest {
     /// Films every Render scene through this camera instead of its own: the
     /// editor's free view while navigating a scene. Never set for output renders.
     pub scene_view: Option<veylvik_scene::Camera>,
+    /// Shows every Render scene as a map of its lights' reflections, each light in a
+    /// colour of its own, instead of the picture: the editor's view for placing lights.
+    /// Never set for output renders.
+    pub scene_reflections: bool,
 }
 impl RenderRequest {
     pub fn full(time: Time) -> Self {
@@ -434,6 +438,7 @@ impl RenderRequest {
             time,
             region: None,
             scene_view: None,
+            scene_reflections: false,
         }
     }
 }

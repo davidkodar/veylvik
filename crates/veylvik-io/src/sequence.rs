@@ -98,6 +98,7 @@ fn export(
                 time,
                 region: Some(region),
                 scene_view: None,
+                scene_reflections: false,
             },
             &inputs,
         )?;

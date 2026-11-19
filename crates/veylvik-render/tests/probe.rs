@@ -30,6 +30,7 @@ fn one_pixel_reads_match_the_whole_frame_in_full_and_cropped_frames() {
             time,
             region: Some(crop),
             scene_view: None,
+            scene_reflections: false,
         },
     ] {
         let frame = renderer.render_gpu_cached(&plan, request, &inputs).unwrap();

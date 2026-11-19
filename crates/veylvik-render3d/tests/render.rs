@@ -256,6 +256,7 @@ fn a_free_view_films_the_scene_without_changing_it() {
                 &plan,
                 RenderRequest {
                     scene_view: view,
+                    scene_reflections: false,
                     ..RenderRequest::full(Time::new(0, 1).unwrap())
                 },
                 &inputs,
@@ -308,6 +309,7 @@ fn the_preview_scheduler_shows_the_free_view_not_a_cached_frame() {
                 plan.clone(),
                 RenderRequest {
                     scene_view: view,
+                    scene_reflections: false,
                     ..RenderRequest::full(Time::new(0, 1).unwrap())
                 },
                 inputs.clone(),
@@ -1491,4 +1493,68 @@ fn an_image_card_in_front_hides_a_followed_object_unless_faded_out() {
     assert_eq!(shot(1.0, true), 0.0);
     assert_eq!(shot(1.0, false), 1.0);
     assert_eq!(shot(0.2, true), 1.0);
+}
+#[test]
+#[ignore = "requires Vulkan"]
+fn the_reflections_view_paints_each_lights_reflection_in_its_own_colour() {
+    let renderer = renderer();
+    let mut doc = blank(W, H, Time::new(24, 1).unwrap()).unwrap();
+    // A red matte cube: in the picture it is red; as a map of reflections it is not.
+    let mut solid = cube(60.0, [0.0; 3]);
+    if let Operation::Shape3d(s) = &mut solid {
+        s.colour = [0.8, 0.05, 0.05].into();
+        s.placement.rotation = [25.0, 35.0, 0.0].into();
+    }
+    let solid = add(&mut doc, solid, &[]);
+    let mut light = op(&LIGHT_3D);
+    if let Operation::Light3d(l) = &mut light {
+        l.placement.position = [-200.0, -200.0, 400.0].into();
+        l.colour = [1.0; 3].into();
+    }
+    let light = add(&mut doc, light, &[]);
+    let merged = add(
+        &mut doc,
+        op(&MERGE_SCENES),
+        &[("scene", solid), ("scene_2", light)],
+    );
+    doc.output = add(&mut doc, op(&RENDER_SCENE), &[("scene", merged)]);
+    let plan = Plan::compile(&doc).unwrap();
+    let shot = |reflections: bool| {
+        renderer
+            .render_frame(
+                &plan,
+                RenderRequest {
+                    scene_reflections: reflections,
+                    ..RenderRequest::full(Time::new(0, 1).unwrap())
+                },
+                &ImageInputs::default(),
+            )
+            .unwrap()
+            .pixels
+    };
+    let (picture, map) = (shot(false), shot(true));
+    let middle = ((H / 2) * W + W / 2) as usize;
+    assert!(
+        picture[middle][0] > picture[middle][1] * 3.0,
+        "{:?}",
+        picture[middle]
+    );
+    // The first light's colour is the first hue, not the cube's red and not the light's white.
+    let hue = veylvik_scene::light_hue(0);
+    let lit = map
+        .iter()
+        .filter(|p| p[3] > 0.5)
+        .max_by(|a, b| (a[0] + a[1] + a[2]).total_cmp(&(b[0] + b[1] + b[2])))
+        .unwrap();
+    let strength = lit[1] / hue[1];
+    assert!(strength > 0.05, "{lit:?}");
+    for c in 0..3 {
+        assert!(
+            (lit[c] - hue[c] * strength).abs() < 0.03 * strength.max(1.0),
+            "{lit:?} {hue:?}"
+        );
+    }
+    // Nothing outside the cube changed, and the ordinary picture is as before.
+    assert_eq!(map[0], picture[0]);
+    assert_eq!(shot(false), picture);
 }

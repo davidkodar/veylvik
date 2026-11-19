@@ -613,7 +613,12 @@ impl Renderer {
         let allocation = self.device.push_error_scope(wgpu::ErrorFilter::OutOfMemory);
         let result = self.encode_and_read(
             plan,
-            (&evaluated, request.time, request.scene_view),
+            (
+                &evaluated,
+                request.time,
+                request.scene_view,
+                request.scene_reflections,
+            ),
             inputs,
             &vectors,
             &mut pool,
@@ -810,10 +815,11 @@ impl Renderer {
     fn encode_and_read(
         &self,
         plan: &Plan,
-        (evaluated, time, scene_view): (
+        (evaluated, time, scene_view, scene_reflections): (
             &[Params],
             veylvik_document::Time,
             Option<veylvik_scene::Camera>,
+            bool,
         ),
         inputs: &ImageInputs,
         vectors: &BTreeMap<usize, Arc<GpuFrame>>,
@@ -946,6 +952,7 @@ impl Renderer {
                         width: plan.width,
                         height: plan.height,
                         depth: scene_hook::shows_depth(plan, scheduled.node),
+                        reflections: scene_reflections,
                         images: &images,
                         models: inputs.models(),
                         environment: &self.studio_environment,

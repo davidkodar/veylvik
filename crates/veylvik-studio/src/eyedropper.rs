@@ -149,6 +149,7 @@ pub fn sample(
                 time,
                 region: Some(region),
                 scene_view: None,
+                scene_reflections: false,
             },
             inputs,
         )

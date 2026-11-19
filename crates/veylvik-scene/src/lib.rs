@@ -196,6 +196,30 @@ pub fn home_distance(width: u32, focal_length: f32, sensor_width: f32) -> f32 {
     width as f32 * focal_length / sensor_width.max(1e-6)
 }
 /// The camera that sees the 2D frame exactly.
+/// The colour the reflections view gives light number `n`: well separated hues, the
+/// same in the renderer's shader and in the viewer's guides.
+pub fn light_hue(n: u32) -> [f32; 3] {
+    let h = (n as f32 * 0.618_034 + 0.08).fract() * 6.0;
+    let rgb = [
+        ((h - 3.0).abs() - 1.0).clamp(0.0, 1.0),
+        (2.0 - (h - 2.0).abs()).clamp(0.0, 1.0),
+        (2.0 - (h - 4.0).abs()).clamp(0.0, 1.0),
+    ];
+    rgb.map(|c| 1.0 + (c - 1.0) * 0.85)
+}
+impl Scene {
+    /// Each light node's number in the order the scene lists them: a row of strips is
+    /// one node and so one number. The reflections view colours by it.
+    pub fn light_numbers(&self) -> Vec<(NodeId, u32)> {
+        let mut numbers: Vec<(NodeId, u32)> = Vec::new();
+        for light in &self.lights {
+            if !numbers.iter().any(|(node, _)| *node == light.node) {
+                numbers.push((light.node, numbers.len() as u32));
+            }
+        }
+        numbers
+    }
+}
 pub fn home_camera(width: u32, height: u32) -> Camera {
     let (focal_length, sensor_width) = (50.0, 36.0);
     Camera {

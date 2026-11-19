@@ -560,7 +560,22 @@ impl Studio {
                 if !drawn.insert(light.node) {
                     continue;
                 }
-                let colour = tint(light.colour);
+                // In the reflections view a light's guide wears the colour its reflection
+                // is painted in.
+                let colour = if self.scene_reflections {
+                    let hue = scene
+                        .light_numbers()
+                        .iter()
+                        .find(|(node, _)| *node == light.node)
+                        .map_or([1.0; 3], |(_, n)| veylvik_scene::light_hue(*n));
+                    Color32::from_rgb(
+                        (hue[0].sqrt() * 255.0) as u8,
+                        (hue[1].sqrt() * 255.0) as u8,
+                        (hue[2].sqrt() * 255.0) as u8,
+                    )
+                } else {
+                    tint(light.colour)
+                };
                 let selected_light = light.node == selected;
                 let ring = Stroke::new(if selected_light { 2.0_f32 } else { 1.2_f32 }, colour);
                 let row: Vec<[f32; 3]> = scene

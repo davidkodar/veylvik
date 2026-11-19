@@ -50,6 +50,9 @@ impl Key {
                     pass.node,
                     request.time,
                 )?);
+                if request.scene_reflections {
+                    words.push(4);
+                }
                 if let Some(view) = request.scene_view {
                     words.push(3);
                     words.extend(view.world.iter().flatten().map(|v| v.to_bits()));

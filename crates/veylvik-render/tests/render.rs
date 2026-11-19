@@ -351,6 +351,7 @@ fn gpu_image_injection_preview_and_crop_match_full_frame() {
                 time,
                 region: Some(region),
                 scene_view: None,
+                scene_reflections: false,
             },
             &inputs,
         )
@@ -606,6 +607,7 @@ fn gpu_frames_remain_immutable_and_held_allocations_count_against_budget() {
             height: 2,
         }),
         scene_view: None,
+        scene_reflections: false,
     };
     renderer.budget_bytes = plan.gpu_working_bytes();
     let first = renderer
@@ -1087,6 +1089,7 @@ fn gpu_frame_inputs_preserve_crops_ownership_cache_and_budget() {
                     time: Time::new(0, 1).unwrap(),
                     region: Some(crop),
                     scene_view: None,
+                    scene_reflections: false,
                 },
                 &cpu,
             )
@@ -1149,6 +1152,7 @@ fn gpu_frame_inputs_preserve_crops_ownership_cache_and_budget() {
                     time: request.time,
                     region: Some(crop),
                     scene_view: None,
+                    scene_reflections: false,
                 },
                 &ImageInputs::default(),
             )

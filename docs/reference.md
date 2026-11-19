@@ -1068,6 +1068,19 @@ clamps sampling to the requested crop, composites transparency over a checkerboa
 and applies an SDR display transform. A previous preview stays visible while rendering, explicitly marked
 when it no longer matches the requested frame.
 
+### Seeing where light lands
+
+**Reflections** in the 3D toolbar shows the scene as a map of its lights' reflections
+instead of the picture. Every surface is treated as a neutral mirror (its own colour,
+texture and material look are left out), and what each light adds is painted in a colour
+of its own; the light's guide and name in the viewer take the same colour, and a row of
+strips counts as one light. A face with no colour on it reflects no light, which is why
+it looks dark in the picture. The surroundings (the studio or a panorama) show only as a
+faint grey so the form still reads. Anything composited after the scene, such as glow,
+still lies over it. It is a view for working: it is never part of an export, a saved
+frame or a render through the CLI or MCP. Use it with **Shine here**: find the dark
+face, select a light, and click the face.
+
 ### Formats, hand-off and what is skipped
 
 Stills may be PNG, OpenEXR, JPEG, TIFF or WebP. JPEG, TIFF and WebP are read as sRGB

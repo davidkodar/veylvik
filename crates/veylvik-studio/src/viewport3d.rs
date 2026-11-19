@@ -220,6 +220,14 @@ impl Studio {
             self.surface_buttons(ui);
             self.shot_button(ui);
             self.shine_button(ui);
+            if ui
+                .add(egui::Button::selectable(self.scene_reflections, "Reflections"))
+                .on_hover_text("Show where light lands: every surface becomes a mirror and each light's reflection is painted in a colour of its own. A dark face reflects no light. For working only; exports are never affected")
+                .clicked()
+            {
+                self.scene_reflections = !self.scene_reflections;
+                self.request_preview();
+            }
             ui.menu_button("Moves", |ui| {
                 ui.weak("A smooth camera move from this view over the play range:");
                 for (label, hint, kind) in [
