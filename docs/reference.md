@@ -434,7 +434,12 @@ The expanded set includes:
   Lens Flare, Distant Galaxy, Distant Sun and Deep Sky (a whole sky of stars and
   gas, added to the image as light) are each one Custom shader node: their controls are the shader's own sliders, and the
   code can be opened and changed. To keep a shader of your own, group its node
-  and choose Save to library.
+  and choose Save to library. The Lens Flare follows a 3D object when its
+  shader node is given a scene and a Follow object (see the Shader node): it
+  then ignores its own x and y, fades as the object nears the frame's edge and
+  goes out behind the camera. Inside the library effect's group the node has no
+  scene input exposed, so open the group, or add a Shader node with the flare's
+  code.
 - **Surface:** Edge Engrave, Duotone Print, Silver Relief, Ink Bleed, Film Grain,
   Scanlines and Hologram.
 - **Distortion:** Frosted Glass, Heat Haze, Underwater and Glitch Slices (plus Liquid Shimmer).
@@ -1781,7 +1786,16 @@ settles on the wrong kind of motion can still look sure. The
   in the order declared, a slider using one and a colour three (sixteen in all;
   the second eight read as 0 in files from before them);
   each can be keyed or follow an expression, and Studio shows them under the
-  declared names and ranges. To be safe on every pixel, the text may not use
+  declared names and ranges. To make an effect stay on something in 3D, connect
+  a scene to the optional **Scene** input and set **Follow** to one of its
+  objects (a shape, text, card, model or light): the code then reads `follow`
+  (vec2, where that object's middle is in the frame, in pixels, through the
+  scene's first camera, or the home view when it has none) and `followed` (1
+  when it is in front of the camera, also when outside the frame; -1 when it is
+  behind the camera, not in that scene or no scene is connected; 0 when nothing
+  is followed). The scene is only read, not rendered, and nothing hides the
+  point when another object stands in front of it. `follow` and `followed` are
+  therefore names a shader cannot use for its own variables. To be safe on every pixel, the text may not use
   attributes (`@…`), global variables, `while`, `loop` or `continuing`, must be
   ASCII outside comments and at most 16000 characters, and may not redefine
   `image`, `second` or `custom`; `for` loops are allowed only inside `shade`,

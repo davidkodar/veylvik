@@ -17,10 +17,22 @@ fn band(r: f32, centre: f32, width: f32) -> f32 {
 // burst of thin rays of uneven length, a long streak across it, a wide faint coloured
 // ring round it (warm on the inside, teal on the outside, strongest to the sides),
 // and soft coloured ghosts on the line from the light through the frame's middle.
-// Key x and y to follow the light; everything else moves with it.
+// Key x and y to move the light, or connect a scene and set Follow to one of its
+// objects: the flare then sits on that object, fades as it nears the frame's edge and
+// goes out when it is behind the camera. Everything else moves with the light.
 fn shade(at: vec2<f32>) -> vec4<f32> {
     let p = (at - size * 0.5) / size.y;
-    let light = (vec2<f32>(u.x, u.y) - vec2<f32>(0.5)) * vec2<f32>(size.x / size.y, 1.0);
+    if followed < -0.5 {
+        return vec4<f32>(0.0);
+    }
+    var spot = vec2<f32>(u.x, u.y);
+    var seen = 1.0;
+    if followed > 0.5 {
+        spot = follow / size;
+        let inside = min(min(spot.x, 1.0 - spot.x), min(spot.y, 1.0 - spot.y));
+        seen = smoothstep(-0.02, 0.06, inside);
+    }
+    let light = (spot - vec2<f32>(0.5)) * vec2<f32>(size.x / size.y, 1.0);
     let d = p - light;
     let r = length(d);
     let turn = atan2(d.y, d.x) / 6.2831853 + 0.5;
@@ -56,7 +68,7 @@ fn shade(at: vec2<f32>) -> vec4<f32> {
         let hue = vec3<f32>(0.5 + 0.5 * cos(t * 1.9 + 2.0), 0.5 + 0.5 * cos(t * 1.9 + 0.2), 0.5 + 0.5 * cos(t * 1.9 + 4.4));
         sum += mix(u.tint, hue, 0.7) * disc * 0.020 * u.ghosts;
     }
-    let light_out = sum * u.bright;
+    let light_out = sum * u.bright * seen;
     // Mostly added to what is behind: only the hot middle covers it.
     let alpha = clamp(max(light_out.r, max(light_out.g, light_out.b)) - 0.6, 0.0, 1.0);
     return vec4<f32>(light_out, alpha);

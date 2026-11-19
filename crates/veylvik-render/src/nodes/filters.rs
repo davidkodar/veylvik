@@ -564,6 +564,32 @@ impl RenderNode for veylvik_document::nodes::Shader {
         {
             *value = sample(name)?;
         }
+        // Where the followed object is in the frame, through the scene's first camera.
+        if let Some(target) = self.follow {
+            p.anchor = [0.0, 0.0, -1.0, 0.0];
+            if let Some(root) = cx.node.inputs.get("scene") {
+                let by_id: std::collections::BTreeMap<_, _> =
+                    cx.nodes.iter().map(|n| (n.id, n)).collect();
+                let lookup = |id| by_id.get(&id).copied();
+                let scene = veylvik_scene::evaluate_in(
+                    &veylvik_scene::Graph {
+                        width: cx.width,
+                        height: cx.height,
+                        node: &lookup,
+                    },
+                    *root,
+                    cx.time,
+                )
+                .map_err(error)?;
+                let camera = scene.camera(1, cx.width, cx.height);
+                if let Some((at, _)) = scene
+                    .centre(target)
+                    .and_then(|centre| camera.project(centre, cx.width, cx.height))
+                {
+                    p.anchor = [at[0], at[1], 1.0, 0.0];
+                }
+            }
+        }
         Ok(())
     }
 }

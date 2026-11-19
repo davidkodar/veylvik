@@ -1376,3 +1376,45 @@ fn in_a_depth_picture_a_cards_solid_parts_are_an_object() {
     // Where both cards are less than half there, nothing stands in the way.
     assert_eq!(at(10)[3], 0.0, "{:?}", at(10));
 }
+#[test]
+#[ignore = "requires Vulkan"]
+fn a_shader_is_told_where_a_scene_object_is_in_the_frame() {
+    let renderer = renderer();
+    let code = "fn shade(at: vec2<f32>) -> vec4<f32> {
+    return vec4<f32>(follow.x, follow.y, followed, 1.0);
+}";
+    let shot = |position: [f32; 3], followed: bool, wired: bool| {
+        let mut doc = blank(W, H, Time::new(24, 1).unwrap()).unwrap();
+        let mut cube = cube(10.0, position);
+        if let Operation::Shape3d(s) = &mut cube {
+            s.placement.position = position.into();
+        }
+        let cube = add(&mut doc, cube, &[]);
+        let camera = add(&mut doc, op(&CAMERA_3D), &[]);
+        let scene = add(
+            &mut doc,
+            op(&MERGE_SCENES),
+            &[("scene", cube), ("scene_2", camera)],
+        );
+        let mut shader = op(&SHADER);
+        if let Operation::Shader(s) = &mut shader {
+            s.code = code.into();
+            s.follow = followed.then_some(cube);
+        }
+        let inputs: &[(&str, NodeId)] = if wired { &[("scene", scene)] } else { &[] };
+        doc.output = add(&mut doc, shader, inputs);
+        doc.validate().unwrap();
+        render(&renderer, &doc, &ImageInputs::default())[0]
+    };
+    // The untouched camera sees the frame as it is: 40 right and 20 up of its middle.
+    let seen = shot([40.0, -20.0, 0.0], true, true);
+    assert!(
+        (seen[0] - 120.0).abs() < 0.01 && (seen[1] - 25.0).abs() < 0.01 && seen[2] == 1.0,
+        "{seen:?}"
+    );
+    // Behind the camera, and with no scene to look in: not seen.
+    assert_eq!(shot([0.0, 0.0, 5000.0], true, true)[2], -1.0);
+    assert_eq!(shot([0.0, 0.0, 0.0], true, false)[2], -1.0);
+    // Nothing followed.
+    assert_eq!(shot([0.0, 0.0, 0.0], false, true)[2], 0.0);
+}

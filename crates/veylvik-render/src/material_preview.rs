@@ -306,7 +306,7 @@ impl Renderer {
             size_op: [256, 256, 0, kind as u32],
             values: [80., 32., roughness, 0.],
             extra: [grain, emission, 1., f32::from(brushed)],
-            more: [0.0; 8],
+            ..bytemuck::Zeroable::zeroed()
         };
         self.queue
             .write_buffer(&uniform, 0, &bytemuck::bytes_of(&params)[..48]);

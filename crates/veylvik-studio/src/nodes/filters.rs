@@ -96,6 +96,27 @@ impl Inspect for veylvik_document::nodes::LightWrap {
 impl Inspect for veylvik_document::nodes::Shader {
     fn inspect(&mut self, ui: &mut egui::Ui, cx: &mut InspectCx<'_>) {
         cx.dirty |= crate::shader_editor::show(ui, cx.node_id, self);
+        ui.horizontal(|ui| {
+            ui.add_sized([88., 22.], egui::Label::new("Follow"));
+            let shown = match self.follow {
+                None => "Nothing".to_string(),
+                Some(id) => cx
+                    .things
+                    .iter()
+                    .find(|(o, _)| *o == id)
+                    .map_or("Missing object".into(), |(_, label)| label.clone()),
+            };
+            egui::ComboBox::from_id_salt("shader-follow")
+                .selected_text(shown)
+                .show_ui(ui, |ui| {
+                    cx.dirty |= ui.selectable_value(&mut self.follow, None, "Nothing").changed();
+                    for (id, label) in cx.things {
+                        cx.dirty |= ui.selectable_value(&mut self.follow, Some(*id), label).changed();
+                    }
+                })
+                .response
+                .on_hover_text("With a scene on the Scene input, the shader is told where this object is in the frame (follow) through the scene's first camera, so a flare or a glow stays on it as the camera moves");
+        });
     }
 }
 impl Inspect for veylvik_document::nodes::GridWarp {

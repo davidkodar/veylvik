@@ -26,6 +26,7 @@ fn shader(code: &str, values: [f32; 8]) -> nodes::Shader {
         p14: 0.0.into(),
         p15: 0.0.into(),
         p16: 0.0.into(),
+        follow: None,
     }
 }
 /// A composition of a ramp image (red = x, green = y, alpha 1) through `shader`.

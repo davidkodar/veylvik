@@ -72,6 +72,7 @@ pub fn material_uniforms(
         values: [0.0; 4],
         extra: [0.0; 4],
         more: [0.0; 8],
+        anchor: [0.0; 4],
     };
     let cx = nodes::Cx {
         node: &node,
@@ -138,6 +139,10 @@ struct Params {
     /// Eight more values, read only by custom shaders (other kernels declare the
     /// first three fields; a longer buffer is allowed).
     more: [f32; 8],
+    /// For a custom shader that follows a scene object: where it is in the frame
+    /// (pixels) and whether it is seen (1), not there or behind the camera (-1), or
+    /// nothing is followed (0).
+    anchor: [f32; 4],
 }
 fn params(
     node: &Node,
@@ -159,6 +164,7 @@ fn params(
         values: [0.0; 4],
         extra: [0.0; 4],
         more: [0.0; 8],
+        anchor: [0.0; 4],
     };
     let cx = nodes::Cx {
         node,

@@ -467,7 +467,7 @@ pub fn assemble(code: &str, controls: &[Control]) -> (String, usize) {
         fields.push_str("    unused: f32,\n");
     }
     let prelude = format!(
-        "struct Params {{ size_op: vec4<u32>, values: vec4<f32>, extra: vec4<f32>, third: vec4<f32>, fourth: vec4<f32> }}
+        "struct Params {{ size_op: vec4<u32>, values: vec4<f32>, extra: vec4<f32>, third: vec4<f32>, fourth: vec4<f32>, anchor: vec4<f32> }}
 @group(0) @binding(0) var<uniform> p: Params;
 @group(0) @binding(1) var<storage, read> source: array<vec4<f32>>;
 @group(0) @binding(2) var<storage, read> other: array<vec4<f32>>;
@@ -477,6 +477,8 @@ struct Controls {{
 var<private> u: Controls;
 var<private> size: vec2<f32>;
 var<private> time: f32;
+var<private> follow: vec2<f32>;
+var<private> followed: f32;
 fn texel_of(which: u32, q: vec2<i32>) -> vec4<f32> {{
     let s = vec2<i32>(p.size_op.xy);
     if (p.size_op.w & which) == 0u || q.x < 0 || q.y < 0 || q.x >= s.x || q.y >= s.y {{ return vec4<f32>(0.0); }}
@@ -503,6 +505,8 @@ fn custom(@builtin(global_invocation_id) gid: vec3<u32>) {{
     if gid.x >= p.size_op.x || gid.y >= p.size_op.y {{ return; }}
     size = vec2<f32>(p.size_op.xy);
     time = bitcast<f32>(p.size_op.z);
+    follow = p.anchor.xy;
+    followed = p.anchor.z;
 {fill}    result[gid.y * p.size_op.x + gid.x] = shade(vec2<f32>(gid.xy) + vec2<f32>(0.5));
 }}
 "
