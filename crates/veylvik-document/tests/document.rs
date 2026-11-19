@@ -527,7 +527,7 @@ fn an_own_size_picture_feeds_only_what_takes_any_size() {
     );
     doc.apply(2, &[put(card), put(shape), put(around)]).unwrap();
     // Sizes are bounded.
-    for (width, height) in [(0, 64), (64, 0), (8193, 64)] {
+    for (width, height) in [(0, 64), (64, 0), (16385, 64), (12288, 12288)] {
         let mut bad = doc.snapshot().nodes[&id].clone();
         bad.operation = Operation::OwnSize(nodes::OwnSize {
             width,

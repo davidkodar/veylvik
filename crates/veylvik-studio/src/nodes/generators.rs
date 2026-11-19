@@ -119,6 +119,16 @@ impl Inspect for veylvik_document::nodes::Particles {
         .on_hover_text(
             "Set every setting for a ready-made effect, scaled to this frame; then adjust",
         );
+        ui.horizontal_wrapped(|ui| {
+            cx.dirty |= ui
+                .checkbox(&mut self.points, "Points")
+                .on_hover_text("In a 3D scene: the same size on screen at any distance, as stars are points however near. Unticked, particles grow as they come close")
+                .changed();
+            cx.dirty |= ui
+                .checkbox(&mut self.in_focus, "Always in focus")
+                .on_hover_text("In a 3D scene: the camera's depth of field does not blur these particles")
+                .changed();
+        });
         // Only an emitter image can move out from under its particles.
         let boxed: bool = ui
             .data(|d| d.get_temp(egui::Id::new("particles-box")))

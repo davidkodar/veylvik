@@ -1272,3 +1272,67 @@ fn an_unblurred_backdrop_shows_its_panorama_at_full_sharpness() {
     assert!(crisp(&sharp) > 0.5, "sharp {}", crisp(&sharp));
     assert!(crisp(&soft) < 0.3, "blurred {}", crisp(&soft));
 }
+#[test]
+#[ignore = "requires Vulkan"]
+fn particles_in_a_scene_can_stay_points_and_stay_in_focus_and_live_long() {
+    let renderer = renderer();
+    // Dots close to the camera, which is focused far behind them with a wide lens.
+    let shot = |points: bool, in_focus: bool, f_stop: f32| {
+        let mut doc = blank(W, H, Time::new(24, 1).unwrap()).unwrap();
+        let mut camera = op(&CAMERA_3D);
+        if let Operation::Camera3d(c) = &mut camera {
+            c.f_stop = f_stop.into();
+            c.focus_distance = 2000.0.into();
+        }
+        let camera = add(&mut doc, camera, &[]);
+        let mut value = registry::PARTICLES.default_operation();
+        for (name, number) in [
+            ("x", 80.0),
+            ("y", 45.0),
+            ("width", 60.0),
+            ("height", 30.0),
+            ("z", 150.0),
+            ("rate", 0.2),
+            ("life", 120.0),
+            ("start", -120.0),
+            ("size", 1.5),
+            ("speed", 0.0),
+            ("gravity", 0.0),
+            ("variation", 0.0),
+            ("fade", 0.0),
+        ] {
+            value[name] = serde_json::json!({"kind": "constant", "value": number});
+        }
+        value["points"] = points.into();
+        value["in_focus"] = in_focus.into();
+        doc.output = add(
+            &mut doc,
+            serde_json::from_value(value).unwrap(),
+            &[("scene", camera)],
+        );
+        doc.validate().unwrap();
+        let plan = Plan::compile(&doc).unwrap();
+        let pixels = renderer
+            .render_gpu_temporal(
+                &plan,
+                RenderRequest::full(Time::new(1, 1).unwrap()),
+                &ImageInputs::default(),
+                false,
+                || false,
+            )
+            .unwrap()
+            .map(|frame| renderer.read_frame(&frame).unwrap().pixels)
+            .unwrap();
+        pixels.iter().filter(|p| p[3] > 0.02).count()
+    };
+    // Twenty-four particles, each born once in two minutes and still there.
+    let (grown, points) = (shot(false, false, 0.0), shot(true, false, 0.0));
+    assert!(grown > 0 && points > 0, "{grown} {points}");
+    assert!(
+        points * 3 < grown * 2,
+        "near dots grow {grown}, points do not {points}"
+    );
+    let (blurred, sharp) = (shot(true, false, 1.4), shot(true, true, 1.4));
+    assert_eq!(sharp, points, "in focus, the lens changes nothing");
+    assert!(blurred > sharp * 2, "blurred {blurred}, sharp {sharp}");
+}

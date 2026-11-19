@@ -473,9 +473,11 @@ fn particle_splat(@builtin(global_invocation_id) gid: vec3<u32>) {
     if hues > 0.0 {
         colour = vec4<f32>(turned(colour.rgb, (random(thread, generation, 12u) - 0.5) * 6.2831853 * hues), colour.a);
     }
-    // Near particles are drawn larger, up to a limit that keeps one particle affordable.
+    // Near particles are drawn larger, up to a limit that keeps one particle affordable;
+    // points (the camera row's 31st value) are the same size at any distance.
+    let nearness = mix(seen.z, 1.0, third[tiles() + ROWS * COUNT + 31u].w);
     let sharp = min(setting(SIZE, birth) * (1.0 - 0.6 * variation * random(thread, generation, 7u))
-        * mix(1.0, setting(GROW, birth), share) * seen.z, 48.0);
+        * mix(1.0, setting(GROW, birth), share) * nearness, 48.0);
     if sharp <= 0.0 { return; }
     // Out of focus it spreads over a larger disc and dims by as much.
     let radius = min(sharp + lens_blur(away), 48.0);

@@ -215,13 +215,15 @@ fn camera(node: &Particles, cx: &Cx<'_>) -> Result<[f32; COUNT]> {
     row[12] = veylvik_scene::home_distance(cx.width, camera.focal_length, camera.sensor_width);
     // As the 3D render's lens: one scene unit is a millimetre, and a point at
     // distance d blurs by f^2 / N / (s - f) * |1 - s / d| on the sensor.
-    if camera.f_stop > 0.0 {
+    // In focus: the lens leaves these particles alone.
+    if camera.f_stop > 0.0 && !node.in_focus {
         let f = camera.focal_length.max(1.0);
         row[13] = f * f / camera.f_stop * (cx.width as f32 / camera.sensor_width.max(1e-3)) * 0.5;
         row[14] = focus;
         row[15] = f;
         row[16] = 64.0 * cx.width as f32 / 1920.0;
     }
+    row[31] = f32::from(node.points);
     if let Some(before) = earlier {
         row[17] = shutter;
         let view = veylvik_scene::math::rigid_inverse(&before.world);

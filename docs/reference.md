@@ -424,15 +424,15 @@ input names, defaults and controls save with the composition. Nested groups are 
 **Add → Effect library…** opens searchable starter and saved effects. The bundled
 **Prismatic Glow** adds cyan/rose light spill; **Neon Outline** adds luminous
 contours; **Liquid Shimmer** adds a smooth four-second flow loop with protected
-frame edges. The library contains **77 starter effects**, searchable by name,
+frame edges. The library contains **78 starter effects**, searchable by name,
 description or category, with category counts in the left sidebar and a search field above the results. Every starter remains an editable group with public controls.
 
 The expanded set includes:
 
 - **Light:** Soft Bloom, Anamorphic Streaks, Dream Focus, Light Sweep, Soft Vignette,
   Spotlight and Metallic Shine (plus Prismatic Glow and Neon Outline).
-  Lens Flare, Distant Galaxy and Distant Sun are each one Custom shader node
-  laid over the image: their controls are the shader's own sliders, and the
+  Lens Flare, Distant Galaxy, Distant Sun and Deep Sky (a whole sky of stars and
+  gas, added to the image as light) are each one Custom shader node: their controls are the shader's own sliders, and the
   code can be opened and changed. To keep a shader of your own, group its node
   and choose Save to library.
 - **Surface:** Edge Engrave, Duotone Print, Silver Relief, Ink Bleed, Film Grain,
@@ -1382,7 +1382,8 @@ and `colour`.
   that faces the camera never shows its edge. A 3D text turns as a whole. If the
   named thing is not in the scene, the rotation stays in charge.
 - **Own size** (`own_size`, input image): renders everything connected to it at
-  its own **width** and **height** (1–8192 pixels each) instead of the
+  its own **width** and **height** (1–16384 pixels each, at most 96 million
+  pixels together, for example a 12288 × 6144 sky) instead of the
   composition's, so a small picture costs a small picture's memory and time: a
   1024 × 1024 picture is a sixteenth of a 4K frame. Inside the branch the frame
   is the node's size, so pixel settings there are in its pixels. An Image card
@@ -1635,7 +1636,12 @@ settles on the wrong kind of motion can still look sure. The
     it, **Towards** launches particles at the viewer (away when negative), and
     **Reach** is how far from the camera they are drawn, fading over its last
     quarter (0: any distance), so a volume of stars shows no far end. The box
-    may be up to a million pixels wide and high. **Shutter** is an exposure in
+    may be up to a million pixels wide, high and deep. **Points** keeps every
+    particle the same size on screen at any distance, as a star is a point
+    however near (otherwise particles grow as they come close), and **Always
+    in focus** keeps the camera's depth of field from blurring them. **Life**
+    may be up to an hour, so a field can simply stand; rate times life is still
+    at most 2,000,000 particles. **Shutter** is an exposure in
     seconds: with a scene connected, the camera's own move during it streaks
     each particle. Particles exist from **Start** on: set it to minus their
     life for a full cloud at the first frame. Large soft dots are round.
@@ -1770,6 +1776,10 @@ settles on the wrong kind of motion can still look sure. The
   (24 kept). In Studio the inspector has a code field that reports "Compiles"
   or the error as you type; **Use this code** runs it, starting newly declared
   controls at their defaults, and **Revert** returns to the running code.
+  Some ordinary-looking names are reserved by the shading language and cannot
+  name a variable or function: among them `move`, `from`, `patch`, `where`,
+  `filter`, `sample`, `target`, `texture`, `box`, `loop`, `ref`, `self` and
+  `type`. The compiler's message names the word; choose another.
 - **Bloom** (`bloom`, input image): light brighter than **Threshold**
   (scene-linear luminance; **Knee** softens where it starts) spreads as glow in
   its own colour times **Tint**. The bright part is blurred with a wide gaussian

@@ -8,6 +8,7 @@ fn source(id: &str) -> Option<(&'static str, &'static str)> {
         "spiral_galaxy" => ("Galaxy", include_str!("galaxy.wgsl")),
         "distant_sun" => ("Sun", include_str!("sun.wgsl")),
         "lens_flare" => ("Lens flare", include_str!("flare.wgsl")),
+        "deep_sky" => ("Sky", include_str!("deep_sky.wgsl")),
         _ => return None,
     })
 }
@@ -48,9 +49,19 @@ pub(super) fn build(id: &str, b: &mut Builder, image: NodeId) -> Result<NodeId> 
             }
         }
     }
+    // A whole sky is opaque, so its light is added to the image; the others are laid
+    // over it.
+    let operation = if id == "deep_sky" {
+        Operation::Blend(crate::nodes::Blend {
+            mode: crate::BlendMode::Add,
+            opacity: 1.0.into(),
+        })
+    } else {
+        Operation::Merge(crate::nodes::Merge {})
+    };
     Ok(b.add(
         &format!("{label} over image"),
-        Operation::Merge(crate::nodes::Merge {}),
+        operation,
         &[("background", image), ("foreground", node)],
     ))
 }

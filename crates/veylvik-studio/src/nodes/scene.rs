@@ -422,6 +422,7 @@ impl Inspect for Camera3d {
         ui.weak("Untouched, the camera sees exactly the 2D frame at depth 0. Move and turn it from there.");
         cx.dirty |= placement(ui, &mut self.placement, cx);
         aim_row(ui, &mut self.aim_at, cx, "camera");
+        ui.weak("Only what is in the scene turns and moves with the camera. A sky or backdrop composited outside the scene stays fixed to the screen: put it in an Environment with Background on.");
         ui.horizontal(|ui| {
             ui.add_sized([88., 22.], egui::Label::new("Focus on"));
             let name = |id: Option<veylvik_document::NodeId>| match id {

@@ -16,7 +16,12 @@ pub struct Builtin {
     pub label: &'static str,
     pub description: &'static str,
 }
-pub const ALL: [Builtin; 77] = [
+pub const ALL: [Builtin; 78] = [
+    Builtin {
+        id: "deep_sky",
+        label: "Deep Sky",
+        description: "Far stars coloured by how hot they are, many faint and few bright, a denser band of them across the sky, and faint clouds of gas, added to the image as light. It is made as a whole-sky panorama: for a sky that turns with a 3D camera, give its shader an Own size node of 8192 by 4096 and connect that to a scene Environment with Background on.",
+    },
     Builtin {
         id: "lens_flare",
         label: "Lens Flare",

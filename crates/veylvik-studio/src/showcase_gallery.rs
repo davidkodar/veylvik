@@ -216,6 +216,8 @@ fn bytes(id: &str, before: bool) -> &'static [u8] {
         ("spiral_galaxy", true) => include_bytes!("../assets/showcase/spiral_galaxy-before.png"),
         ("distant_sun", false) => include_bytes!("../assets/showcase/distant_sun-after.png"),
         ("distant_sun", true) => include_bytes!("../assets/showcase/distant_sun-before.png"),
+        ("deep_sky", false) => include_bytes!("../assets/showcase/deep_sky-after.png"),
+        ("deep_sky", true) => include_bytes!("../assets/showcase/deep_sky-before.png"),
         _ => unreachable!("only built-in gallery entries"),
     }
 }

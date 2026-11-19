@@ -208,15 +208,19 @@ pub struct Renderer {
     pub budget_bytes: u64,
 }
 /// Request native frame buffers beyond WebGPU's conservative 128 MiB default.
-/// UHD fits that default narrowly; DCI 4K requires larger bindings. Cap requests
-/// to the adapter's advertised support, retaining explicit render-time checks.
+/// UHD fits that default narrowly; DCI 4K requires larger bindings, and a whole-sky
+/// picture of its own size (12288 by 6144 is 1.2 GiB) larger still. Cap requests to
+/// the adapter's advertised support and 2 GiB, retaining explicit render-time checks;
+/// the render budget still bounds what is held at once.
+/// The largest single picture the renderer asks the adapter for.
+const PICTURE_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 pub fn device_limits(adapter: &wgpu::Adapter) -> wgpu::Limits {
     let available = adapter.limits();
     wgpu::Limits {
         max_storage_buffer_binding_size: available
             .max_storage_buffer_binding_size
-            .min(512 * 1024 * 1024),
-        max_buffer_size: available.max_buffer_size.min(512 * 1024 * 1024),
+            .min(PICTURE_BYTES as _),
+        max_buffer_size: available.max_buffer_size.min(PICTURE_BYTES),
         ..Default::default()
     }
 }
