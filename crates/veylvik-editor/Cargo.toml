@@ -1,0 +1,37 @@
+[package]
+name = "veylvik-editor"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Veylvik's editor as a library: the viewer, node graph, inspector, timeline and tools as egui panels drawn into an area a host gives them."
+[dependencies]
+veylvik-color = { path = "../veylvik-color" }
+ttf-parser = "=0.25.1"
+veylvik-control.workspace = true
+veylvik-document.workspace = true
+veylvik-text.workspace = true
+veylvik-render.workspace = true
+veylvik-render3d.workspace = true
+veylvik-scene.workspace = true
+veylvik-track.workspace = true
+veylvik-solve.workspace = true
+veylvik-expr.workspace = true
+veylvik-preview.workspace = true
+veylvik-presets.workspace = true
+veylvik-shader.workspace = true
+veylvik-warp.workspace = true
+veylvik-segment.workspace = true
+veylvik-audio.workspace = true
+veylvik-io.workspace = true
+wgpu.workspace = true
+bytemuck.workspace = true
+image.workspace = true
+pollster.workspace = true
+serde_json.workspace = true
+serde.workspace = true
+ashpd = { version = "=0.12.3", default-features = false, features = ["async-std", "raw_handle", "wayland"] }
+raw-window-handle = "=0.6.2"
+eframe = { version = "=0.34.1", default-features = false, features = ["default_fonts", "wgpu_no_default_features", "wayland", "x11"] }
+[lints]
+workspace = true

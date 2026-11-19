@@ -4261,6 +4261,39 @@ dependencies = [
 ]
 
 [[package]]
+name = "veylvik-editor"
+version = "0.1.0"
+dependencies = [
+ "ashpd",
+ "bytemuck",
+ "eframe",
+ "image",
+ "pollster",
+ "raw-window-handle",
+ "serde",
+ "serde_json",
+ "ttf-parser",
+ "veylvik-audio",
+ "veylvik-color",
+ "veylvik-control",
+ "veylvik-document",
+ "veylvik-expr",
+ "veylvik-io",
+ "veylvik-presets",
+ "veylvik-preview",
+ "veylvik-render",
+ "veylvik-render3d",
+ "veylvik-scene",
+ "veylvik-segment",
+ "veylvik-shader",
+ "veylvik-solve",
+ "veylvik-text",
+ "veylvik-track",
+ "veylvik-warp",
+ "wgpu",
+]
+
+[[package]]
 name = "veylvik-expr"
 version = "0.1.0"
 
@@ -4402,33 +4435,7 @@ version = "0.1.0"
 name = "veylvik-studio"
 version = "0.1.0"
 dependencies = [
- "ashpd",
- "bytemuck",
- "eframe",
- "image",
- "pollster",
- "raw-window-handle",
- "serde",
- "serde_json",
- "ttf-parser",
- "veylvik-audio",
- "veylvik-color",
- "veylvik-control",
- "veylvik-document",
- "veylvik-expr",
- "veylvik-io",
- "veylvik-presets",
- "veylvik-preview",
- "veylvik-render",
- "veylvik-render3d",
- "veylvik-scene",
- "veylvik-segment",
- "veylvik-shader",
- "veylvik-solve",
- "veylvik-text",
- "veylvik-track",
- "veylvik-warp",
- "wgpu",
+ "veylvik-editor",
 ]
 
 [[package]]

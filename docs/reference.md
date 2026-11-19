@@ -3410,7 +3410,7 @@ them after changing a showcase or starter effect (an optional final starter ID
 regenerates just that entry):
 
 ```sh
-cargo run -p veylvik-io --example showcase_previews -- crates/veylvik-studio/assets/showcase
+cargo run -p veylvik-io --example showcase_previews -- crates/veylvik-editor/assets/showcase
 ```
 
 Gallery textures load only for visible cards and use a six-atlas cache (about 64 MiB
