@@ -130,6 +130,7 @@ impl Studio {
             Cmd::NewFromMedia => self.leave(Leave::NewFromMedia, ctx),
             Cmd::Open => self.leave(Leave::Open, ctx),
             Cmd::Save => self.save_project(false),
+            Cmd::UpdateHost => self.update_host(),
             Cmd::SaveAs => self.save_project(true),
             Cmd::Import => self.import_image(self.graph.insertion_position(ctx)),
             Cmd::ImportSequence => self.import_media(self.graph.insertion_position(ctx), true),

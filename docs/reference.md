@@ -3061,6 +3061,57 @@ last colours, the innermost clip of nested ones is used, no text, embedded
 pictures, patterns or masks (their count is reported as left out), at most 64
 shapes, and the usual 4096 commands per path. Reading uses the `usvg` library.
 
+## Linked to an editor
+
+A video editor can hand one clip of its timeline to Veylvik and get the finished picture
+back in its place. The two stay separate programs: the editor only starts `veylvik` and
+reads its answers, and Veylvik knows nothing about the editor beyond a small file. That
+file is the whole agreement, version 1.
+
+**The link file** is JSON, kept beside the project as `NAME.veylvik.link`:
+`protocol` (1), `host` (the editor's name as shown, such as "Klipp"), `clip` (the clip's
+name as shown), optional `clip_id` (the editor's own, kept and never read), `media` (the
+clip's original file, a full path: the project reads it directly and nothing is copied),
+`source_in` and `source_out` (the part of the media the clip uses, exact seconds as
+`{ticks, rate}`, out exclusive), `handles` (extra frames wanted on each side, at most
+600), `frame_rate` (frames a second as `{ticks, rate}`), `width` and `height` (the
+editor's frame), optional `playhead` (the clip frame to show first), `result` (where the
+picture goes: a full path to a `.mov`), and optional `notify` (`socket`, `message`).
+Fields this build does not know are ignored; a file of a later `protocol` is refused
+with a message to update Veylvik.
+
+**The commands**, each answering with one line of JSON:
+
+- `veylvik link info` says that Veylvik is here: its version, the protocol it speaks
+  and where Studio is.
+- `veylvik link new REQUEST.json PROJECT.veylvik` makes the project: a composition of
+  the editor's size and rate holding the clip's own media, as long as the clip plus the
+  handles the media really has (reported as `before` and `after`), with markers **Clip
+  starts** and **Clip ends**. It never replaces an existing project.
+- `veylvik link send PROJECT.veylvik [--socket PATH]` renders the whole composition,
+  handles included, to `result` as ProRes 4444 with straight alpha and the
+  composition's sound, replaces an earlier result only once the new one is complete,
+  and then tells the editor: `notify.message` is written as one line to `notify.socket`
+  (or to `PATH`) exactly as the editor gave it, and one line is read back as `reply`. An
+  editor that does not answer is not an error: the answer says `notified: false` with a
+  note. Progress goes to standard error, each line ending in `done/total`.
+- `veylvik link show PROJECT.veylvik` prints the stored link, or `null`.
+
+The result's first frame is `before` frames ahead of the clip's first frame, so the
+editor places it with that offset.
+
+**In Studio** a linked project shows **Linked to** and the editor's name beside the
+pages, and opens on the frame the editor was showing. **Update in** the editor (also in
+the File menu, Ctrl+Shift+U) saves the project, renders it with a progress bar and
+Cancel, and tells the editor. The frames outside the two markers are the handles.
+
+Limits: the result is standard range (highlights above white are not carried), its
+sound is AAC, and a moved media file or result breaks the link, whose paths are full
+paths. The
+editor takes the clip's first frame to be at **Clip starts**: moving the footage earlier or
+later inside the composition shifts what the editor shows, and a composition made
+shorter than the clip leaves the clip's end empty in the editor. A project that is not linked is unaffected by all of this.
+
 ## Inline MCP preview images
 
 The headless MCP server exposes `preview_image` for visual feedback without a

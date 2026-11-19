@@ -22,6 +22,7 @@ commands! {
     NewFromMedia, "new_from_media", "File", "New from media", "";
     Open, "open", "File", "Open", "Ctrl+O";
     Save, "save", "File", "Save", "Ctrl+S";
+    UpdateHost, "update_host", "File", "Update in the linked editor", "Ctrl+Shift+U";
     SaveAs, "save_as", "File", "Save as", "Ctrl+Shift+S";
     Import, "import", "File", "Import media", "Ctrl+I";
     ImportSequence, "import_sequence", "File", "Import numbered sequence", "";

@@ -27,6 +27,7 @@ mod graph;
 mod graph_layout;
 mod handles;
 mod history_log;
+mod host_link;
 mod icons;
 mod inspector_tools;
 mod key_timeline;
@@ -295,6 +296,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 thumbnails: Default::default(),
                 commands: Default::default(),
                 log: Default::default(),
+                host_link: Default::default(),
                 tools: Default::default(),
                 layouts: Default::default(),
                 recalled: false,
@@ -425,6 +427,7 @@ struct Studio {
     thumbnails: node_thumbnails::Thumbnails,
     commands: command_ui::Commands,
     log: history_log::Log,
+    host_link: host_link::HostLink,
     tools: inspector_tools::Tools,
     layouts: layouts::Layouts,
     /// Live switches have been set from preferences once.
@@ -3214,6 +3217,7 @@ impl eframe::App for Studio {
         self.fonts.poll(&ctx);
         self.remember_tick();
         self.log_tick();
+        self.link_tick(&ctx);
         self.follow_selection(&ctx);
         self.autokey_tick(&ctx);
         self.tryout_bar(&ctx);

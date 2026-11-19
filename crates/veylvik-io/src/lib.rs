@@ -6,6 +6,7 @@ pub mod footage;
 pub mod host_cache;
 mod icc;
 pub mod import;
+pub mod link;
 pub mod lut;
 pub mod materials;
 pub mod measure;

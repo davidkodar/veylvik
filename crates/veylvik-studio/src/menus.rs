@@ -41,6 +41,8 @@ impl Studio {
                 ui.separator();
                 if item(ui, "Save", "Ctrl+S", true) { self.save_project(false); }
                 if item(ui, "Save as…", "Ctrl+Shift+S", true) { self.save_project(true); }
+                if let Some(host) = self.host_link.host().map(str::to_owned)
+                    && item(ui, &format!("Update in {host}"), "Ctrl+Shift+U", true) { self.update_host(); }
                 if item(ui, "Recover unsaved work…", "", true) {
                     self.recovery.refresh(); self.recovery.open = true;
                 }
@@ -187,6 +189,7 @@ impl Studio {
             });
             ui.separator();
             self.page_bar(ui);
+            self.link_bar(ui);
             ui.separator();
             // Reserve only the remaining space so long filenames never push menus offscreen.
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -198,10 +201,13 @@ impl Studio {
                 let name = self.project.path.as_ref().and_then(|p| p.file_name())
                     .map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "Untitled".into());
                 let title = if self.project.dirty() || self.draft_dirty { format!("{name} •") } else { name };
-                if ui.ctx().content_rect().width()>1200. {
-                    // Centred in the room left of the Render button, clear of the page tabs.
-                    let center=ui.available_rect_before_wrap().center();
-                    ui.painter().text(center,egui::Align2::CENTER_CENTER,title.chars().take(42).collect::<String>(),egui::FontId::proportional(14.),ui.visuals().text_color());
+                // Centred in the room left of the Render button when the whole name fits there
+                // (the page tabs and a link's button take their room first); cut short otherwise.
+                let shown: String = title.chars().take(42).collect();
+                let room = ui.available_rect_before_wrap();
+                let wide = ui.painter().layout_no_wrap(shown.clone(), egui::FontId::proportional(14.), ui.visuals().text_color()).size().x;
+                if ui.ctx().content_rect().width() > 1200. && wide + 24. <= room.width() {
+                    ui.painter().text(room.center(), egui::Align2::CENTER_CENTER, shown, egui::FontId::proportional(14.), ui.visuals().text_color());
                 } else {ui.add(egui::Label::new(&title).truncate()).on_hover_text(title);}
 
             });

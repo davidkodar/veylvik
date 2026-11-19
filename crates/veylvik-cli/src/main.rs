@@ -1,4 +1,5 @@
 use veylvik_io as assets;
+mod link;
 mod mcp;
 mod outline;
 mod segment;
@@ -258,6 +259,7 @@ fn run() -> Result<()> {
             println!("{report}");
         }
         Some("render-video") => video_export::run(&args[2..])?,
+        Some("link") => link::run(&args[2..])?,
         Some("outline-text") => outline::run(&args[2..])?,
         Some("nodes") if args.len() == 2 => println!("{}", veylvik_document::registry::catalog()),
         Some("demo")
