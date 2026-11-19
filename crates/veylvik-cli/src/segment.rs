@@ -139,6 +139,7 @@ pub fn run(
         back_to: request.analysis.back_to,
         detail: request.analysis.detail,
         matting: use_matting.then_some(matting.id),
+        steady: request.analysis.steady,
     };
     let plan = Plan::compile_output(doc, request.source)?;
     let inputs = crate::assets::load_inputs(&plan, base, renderer.budget_bytes)?;

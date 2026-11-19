@@ -72,6 +72,18 @@ fn consistency(kind:u32,other:u32,q:vec2<f32>)->f32 {
     let tolerance=1.5+0.05*length(f.xy);
     return min(f.z,reverse.z)*(1.-smoothstep(tolerance,tolerance*2.,length(f.xy+reverse.xy)));
 }
+// Another frame's picture as this frame sees it: `second` holds that picture, `guess`
+// the motion from this frame to that one, `backward` the motion back. Output: the
+// picture's alpha fetched along the motion, and how far the motion can be trusted there.
+@compute @workgroup_size(8,8)
+fn carry(@builtin(global_invocation_id) id:vec3<u32>) {
+    if any(id.xy>=p.size.xy) {return;}
+    let q=vec2<f32>(id.xy);
+    let f=flow_at(2u,q);
+    let trust=consistency(2u,3u,q);
+    let c=colour(1u,q+f.xy);
+    output[id.y*p.size.x+id.x]=vec4<f32>(c.a,trust,0.,1.);
+}
 @compute @workgroup_size(8,8)
 fn interpolate(@builtin(global_invocation_id) id:vec3<u32>) {
     if any(id.xy>=p.size.xy) {return;}

@@ -65,6 +65,8 @@ pub struct Controls {
     matting: bool,
     /// Use the fine matting model (curls, single strands) when it is ready.
     fine: bool,
+    /// Steady the mattes over time after tracking.
+    steady: bool,
     show_mask: bool,
     worker: Shared,
     preview: Option<Preview>,
@@ -94,6 +96,7 @@ impl Controls {
         self.model = model;
         self.matting = request.matting.unwrap_or(true);
         self.fine = request.fine.unwrap_or(true);
+        self.steady = request.analysis.steady;
         self.preview = None;
         self.done = None;
         Ok(())
@@ -224,6 +227,7 @@ impl Studio {
         self.subject.detail = true;
         self.subject.matting = true;
         self.subject.fine = true;
+        self.subject.steady = true;
         self.models.status(MATTING);
         self.models.status(MATTING_FINE);
         self.subject.points.clear();
@@ -402,6 +406,7 @@ impl Studio {
                 .then_some(0),
             detail: self.subject.detail,
             matting: use_matting.then_some(matting),
+            steady: self.subject.steady,
         };
         let total = match analysis::schedule(&request, doc.frame_count) {
             Ok(schedule) => schedule.len() * if request.detail { 2 } else { 1 },
@@ -798,6 +803,8 @@ impl Studio {
                             ui.spinner();
                         }
                     });
+                    ui.checkbox(&mut self.subject.steady, "Steady edges over time")
+                        .on_hover_text("After tracking, compare each frame's matte with its neighbours, lined up along the footage's motion, so hair and soft edges do not flicker and a patch that appears for one frame goes");
                     ui.checkbox(&mut self.subject.detail, "Detail pass for small parts")
                         .on_hover_text("Track a second time, zoomed in on the subject, so feet, hands and hair get more model pixels. About twice the analysis time; skipped automatically when the subject already fills the frame.");
                     let can = !self.subject.points.is_empty()

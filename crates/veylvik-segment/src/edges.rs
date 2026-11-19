@@ -5,7 +5,6 @@ use crate::Result;
 
 /// Longest side the matting model is given; larger crops are scaled down for it.
 pub const MAX_SIDE: usize = 1536;
-const SURE: f32 = 0.98;
 
 /// A crop of the frame in whole pixels.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -78,8 +77,11 @@ fn morph(mask: &[bool], w: usize, h: usize, r: usize, grow: bool) -> Vec<bool> {
     };
     pass(&pass(mask, true), false)
 }
-/// Trimap of a crop of `alpha`: 255 surely subject, 0 surely background, 128 in the band of
-/// half-width `band` around the edge and wherever the tracked matte is already soft.
+/// Trimap of a crop of `alpha`: 128 in the band of half-width `band` around the tracked
+/// outline, 255 (surely subject) inside it and 0 (surely background) outside. The band is
+/// only ever that wide: where the tracker is unsure far from the outline (a background
+/// that looks like the subject), the matting model is not asked, because its answer
+/// there changes from frame to frame and shows as flicker.
 pub fn trimap(alpha: &[f32], width: usize, crop: Crop, band: usize) -> Vec<u8> {
     let (w, h) = (crop.width, crop.height);
     let at = |x: usize, y: usize| alpha[(crop.y + y) * width + crop.x + x];
@@ -88,10 +90,9 @@ pub fn trimap(alpha: &[f32], width: usize, crop: Crop, band: usize) -> Vec<u8> {
     let shrunk = morph(&inside, w, h, band, false);
     (0..w * h)
         .map(|i| {
-            let a = at(i % w, i / w);
-            if shrunk[i] && a >= SURE {
+            if shrunk[i] {
                 255
-            } else if !grown[i] && a <= 1.0 - SURE {
+            } else if !grown[i] {
                 0
             } else {
                 128
@@ -119,6 +120,21 @@ pub fn input(srgb: &[[u8; 3]], width: usize, crop: Crop, trimap: &[u8]) -> (Vec<
         }
     }
     (bytes, w, h)
+}
+/// Makes the sure parts of a matted crop exactly opaque or transparent, as the trimap
+/// says: a tracked matte is soft wherever the tracker was unsure, and outside the band
+/// that softness is noise, not edge.
+pub fn settle(alpha: &mut [f32], width: usize, crop: Crop, trimap: &[u8]) {
+    for y in 0..crop.height {
+        for x in 0..crop.width {
+            let value = match trimap[y * crop.width + x] {
+                255 => 1.0,
+                0 => 0.0,
+                _ => continue,
+            };
+            alpha[(crop.y + y) * width + crop.x + x] = value;
+        }
+    }
 }
 /// Side of a full-size matting tile, and how far neighbours overlap. A multiple of 32,
 /// as the model needs, and small enough that the larger model fits beside the tracker.

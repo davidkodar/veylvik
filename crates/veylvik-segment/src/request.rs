@@ -46,6 +46,10 @@ impl Request {
                     Some(v) => v.as_bool().ok_or("detail must be boolean")?,
                 },
                 matting: None,
+                steady: match args.get("steady") {
+                    None => true,
+                    Some(v) => v.as_bool().ok_or("steady must be boolean")?,
+                },
             },
             matting: args
                 .get("matting")

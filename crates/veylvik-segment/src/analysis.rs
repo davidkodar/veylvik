@@ -21,6 +21,9 @@ pub struct Request {
     pub detail: bool,
     /// Matting model that refines the edge band (hair, soft edges), if any.
     pub matting: Option<&'static str>,
+    /// Steady the mattes over time afterwards, so edges solved frame by frame do not
+    /// flicker.
+    pub steady: bool,
 }
 #[derive(Debug, Serialize)]
 pub struct Outcome {
@@ -40,6 +43,9 @@ pub struct Outcome {
     /// Matting model used on the edge band, and its time per frame.
     pub matting: Option<&'static str>,
     pub matting_milliseconds: f64,
+    /// Whether the mattes were steadied over time, and its time per frame.
+    pub steadied: bool,
+    pub steady_milliseconds: f64,
 }
 /// The frames to analyse, each with whether it carries the prompt, in processing order.
 pub fn schedule(request: &Request, frame_count: u32) -> Result<Vec<(i64, bool)>> {
@@ -184,6 +190,7 @@ pub fn analyse(
                 let matted = worker.matte(model, &bytes, w, h)?;
                 edges::merge(&mut alpha, width, crop, &trimap, &matted, w, h)?;
             }
+            edges::settle(&mut alpha, width, crop, &trimap);
             matting_time += started.elapsed().as_secs_f64();
         }
         matte::write_png(&dir.join(file_name(frame)), doc.width, doc.height, &alpha)?;
@@ -207,6 +214,14 @@ pub fn analyse(
         last += 1;
     }
     let run = &done[first..=last];
+    // Steady the finished mattes over time, unless stopped.
+    let mut steady_time = 0.0;
+    let steadied = request.steady && !cancelled && run.len() >= 3;
+    if steadied {
+        steady_time = crate::steady::steady(renderer, plan, inputs, doc, dir, run, &mut |_| {
+            progress(total, total)
+        })?;
+    }
     let manifest = dir.join("subject.veyseq");
     let files: Vec<String> = run.iter().map(|f| file_name(*f)).collect();
     let text = serde_json::to_vec_pretty(
@@ -226,6 +241,8 @@ pub fn analyse(
         cancelled,
         zoom: gain,
         matting: request.matting,
+        steadied,
+        steady_milliseconds: steady_time * 1000.0 / run.len() as f64,
         matting_milliseconds: matting_time * 1000.0 / done.len() as f64,
     })
 }
@@ -298,6 +315,7 @@ mod tests {
             back_to,
             detail: true,
             matting: None,
+            steady: false,
         }
     }
     #[test]

@@ -203,6 +203,21 @@ strands and is steadier against busy or dark backgrounds, at about three times t
 matting time (about a second a frame for a head and shoulders at 1080 × 1920). It is
 used when it is installed; `edges: "standard"` or `"fine"` on `segment_subject` chooses.
 
+The matting band is only ever a band around the tracked outline (about 2% of the
+subject's diagonal to each side). Beyond it the matte is exactly opaque or transparent,
+however unsure the tracker was there: a background that looks like the subject would
+otherwise be handed to the matting model, whose answer for it changes from frame to
+frame and shows as flicker.
+
+**Steady edges over time** (on by default; `steady: false` on `segment_subject` turns it
+off) then compares every frame's matte with the frame before and after, each first
+lined up with it along the footage's own motion (optical flow on the GPU), and gives
+each pixel the middle of the three values. An edge that moves consistently is kept; a
+patch that appears or vanishes for one frame goes. Where a neighbour's motion cannot be
+trusted (a fast, blurred hand) it can only fill, never remove: a hole that opens for
+one frame in something opaque before and after is closed, while a fast edge crossing the
+background is left alone. It adds about 70 ms a frame at 1080 × 1920.
+
 A subject cut-out writes its mattes (one 16-bit PNG a frame and a `.veyseq`) to a
 `Subject mattes` folder beside the project; through the headless MCP server that is
 beside the file the session last saved, when it has saved one.

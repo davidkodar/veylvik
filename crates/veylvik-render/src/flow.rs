@@ -36,6 +36,7 @@ pub(crate) struct Engine {
     pyramid: wgpu::ComputePipeline,
     refine: wgpu::ComputePipeline,
     interpolate: wgpu::ComputePipeline,
+    carry: wgpu::ComputePipeline,
     cache: Mutex<Option<Cached>>,
 }
 impl Engine {
@@ -109,6 +110,7 @@ impl Engine {
             let pyramid = pipeline("pyramid");
             let refine = pipeline("refine");
             let interpolate = pipeline("interpolate");
+            let carry = pipeline("carry");
             if let Some(e) = pollster::block_on(scope.pop()) {
                 return Err(error(e));
             }
@@ -117,6 +119,7 @@ impl Engine {
                 pyramid,
                 refine,
                 interpolate,
+                carry,
                 cache: Mutex::new(None),
             })
         })
@@ -291,6 +294,81 @@ impl Engine {
     }
 }
 impl Renderer {
+    /// A picture that belongs to frame `b` (`payload`, row-major, the size of the frames)
+    /// as frame `a` sees it: each pixel of `a` fetches the payload's alpha along the
+    /// motion from `a` to `b`. Returns, for every pixel, that alpha and how far the
+    /// motion can be trusted there (0 where the two directions disagree or it leaves
+    /// the frame). For steadying something made frame by frame, such as a matte.
+    pub fn carry_along_motion(
+        &self,
+        a: &GpuFrame,
+        b: &GpuFrame,
+        payload: &[f32],
+        analysis_edge: u32,
+    ) -> Result<Vec<[f32; 2]>> {
+        if !self.owns(a) || !self.owns(b) || a.width != b.width || a.height != b.height {
+            return Err(error("Motion needs equal-sized frames on this device"));
+        }
+        if payload.len() != a.width as usize * a.height as usize
+            || !(64..=1536).contains(&analysis_edge)
+        {
+            return Err(error("Invalid picture or analysis size for motion"));
+        }
+        let engine = {
+            let mut engine = self
+                .flow_engine
+                .lock()
+                .map_err(|_| error("Flow engine unavailable"))?;
+            if engine.is_none() {
+                *engine = Some(Arc::new(Engine::new(self)?));
+            }
+            engine.as_ref().unwrap().clone()
+        };
+        let mut never = || false;
+        let missing = || error("Motion analysis stopped");
+        let ap = engine
+            .pyramid(self, a, analysis_edge, &mut never)?
+            .ok_or_else(missing)?;
+        let bp = engine
+            .pyramid(self, b, analysis_edge, &mut never)?
+            .ok_or_else(missing)?;
+        let forward = engine
+            .estimate(self, &ap, &bp, &mut never)?
+            .ok_or_else(missing)?;
+        let backward = engine
+            .estimate(self, &bp, &ap, &mut never)?
+            .ok_or_else(missing)?;
+        let picture = self.compute(|scratch| {
+            let bytes: Vec<f32> = payload.iter().flat_map(|v| [*v, *v, *v, *v]).collect();
+            let buffer = scratch.buffer(
+                bytes.len() as u64 * 4,
+                wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+                "Carried picture",
+            )?;
+            scratch
+                .queue()
+                .write_buffer(&buffer, 0, bytemuck::cast_slice(&bytes));
+            scratch.frame(&buffer, a.width, a.height)
+        })?;
+        let p = Params {
+            size: [a.width, a.height, a.width, a.height],
+            other: [b.width, b.height, forward.width, forward.height],
+            values: [0.; 4],
+        };
+        let (frame, _) = engine.run(
+            self,
+            &engine.carry,
+            p,
+            [None, Some(&picture), Some(&forward), Some(&backward)],
+            false,
+        )?;
+        Ok(self
+            .read_frame(&frame)?
+            .pixels
+            .iter()
+            .map(|pixel| [pixel[0], pixel[1]])
+            .collect())
+    }
     /// Interpolate two immutable frames. Uncertain regions use the nearest source;
     /// the diagnostic view visualises reliability. This is not a vector motion blur.
     pub fn interpolate_flow(

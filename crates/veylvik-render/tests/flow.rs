@@ -269,3 +269,32 @@ fn temporal_node_uses_source_cadence_and_reuses_source_frames() {
         .unwrap();
     assert!(diagnostic.flow_report().is_some());
 }
+#[test]
+#[ignore = "requires Vulkan"]
+fn a_picture_of_the_next_frame_is_carried_back_along_the_motion() {
+    let renderer = Renderer::new().unwrap();
+    let a = frame(&renderer, 96, 64, texture(0));
+    let b = frame(&renderer, 96, 64, texture(6));
+    // A matte that belongs to frame b: opaque right of column 46 (40 in frame a, moved 6).
+    let payload: Vec<f32> = (0..96 * 64)
+        .map(|i| if i % 96 >= 46 { 1.0 } else { 0.0 })
+        .collect();
+    let carried = renderer.carry_along_motion(&a, &b, &payload, 512).unwrap();
+    // Seen from frame a, the edge is back at column 40, and the motion is trusted there.
+    for y in 16..48 {
+        let row = |x: usize| carried[y * 96 + x];
+        assert!(
+            row(36)[0] < 0.1 && row(44)[0] > 0.9,
+            "{:?} {:?}",
+            row(36),
+            row(44)
+        );
+        assert!(row(40)[1] > 0.5, "trust {:?}", row(40));
+    }
+    // Sizes must agree.
+    assert!(
+        renderer
+            .carry_along_motion(&a, &b, &payload[1..], 512)
+            .is_err()
+    );
+}
