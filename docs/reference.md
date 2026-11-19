@@ -1441,6 +1441,11 @@ and `colour`.
   library look light and reflect from it unchanged; the image wraps around
   horizontally and its alpha is divided out. An Image node placed with Fit
   letterboxes a non-16:9 panorama, so stretch it to the frame for a full sky.
+  With Background on and Blur at 0 the backdrop is the panorama itself at its own
+  sharpness, not that 1024 × 512 copy, so a sky of stars stays sharp: give it a
+  large picture, for example an Own size node of 8192 × 4096. A sky belongs here
+  when the camera turns: a layer composited outside the scene does not turn with
+  it.
   With **A frame of the shot** (`frame`) the image is ordinary footage, not a
   panorama: every direction looks at the picture as the camera did, its middle
   straight ahead, its top from above, its bottom from below and its sides a

@@ -478,6 +478,12 @@ impl SceneRenderer for Engine {
         // The scene's environment: a converted panorama, or the studio, with its
         // strength and turn for plain surfaces, looks and the backdrop.
         let surround = scene.environment;
+        // The picture itself, for an unblurred backdrop of a panorama.
+        let sharp = surround
+            .filter(|e| e.background && !e.frame && e.blur <= 0.0)
+            .and_then(|e| e.image)
+            .and_then(|source| images.iter().find(|(id, ..)| *id == source))
+            .map(|(_, image, size)| (*image, *size));
         let panorama = match surround.and_then(|e| e.image) {
             Some(source) => match images.iter().find(|(id, ..)| *id == source) {
                 Some((_, image, [across, down])) => Some(self.panorama(
@@ -720,7 +726,12 @@ impl SceneRenderer for Engine {
                     veylvik_scene::home_distance(width, camera.focal_length, camera.sensor_width),
                     strength,
                 ],
-                more: [turn, e.blur * 8.0, 0.0, 0.0],
+                more: [
+                    turn,
+                    e.blur * 8.0,
+                    sharp.map_or(0.0, |(_, size)| size[0] as f32),
+                    sharp.map_or(0.0, |(_, size)| size[1] as f32),
+                ],
             };
             let uniform = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("3D sky"),
@@ -738,6 +749,12 @@ impl SceneRenderer for Engine {
                     wgpu::BindGroupEntry {
                         binding: 1,
                         resource: environment.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: sharp
+                            .map_or(environment, |(image, _)| image)
+                            .as_entire_binding(),
                     },
                 ],
             })

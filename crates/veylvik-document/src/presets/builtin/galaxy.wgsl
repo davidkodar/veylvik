@@ -11,14 +11,25 @@
 // slider seed 0 50 3
 
 fn hash(p: vec2<f32>) -> f32 {
-    return fract(sin(dot(p, vec2<f32>(127.1, 311.7))) * 43758.5453);
+    // Steady at any size of p (a sine of a large number is not).
+    var q = fract(vec3<f32>(p.x, p.y, p.x) * 0.1031);
+    q += dot(q, q.yzx + vec3<f32>(33.33));
+    return fract((q.x + q.y) * q.z);
 }
+fn slope(i: vec2<f32>) -> vec2<f32> {
+    let turn = hash(i) * 6.2831853;
+    return vec2<f32>(cos(turn), sin(turn));
+}
+// Smooth noise about 0.5, from slopes at the grid's corners, so it has no facets.
 fn noise(p: vec2<f32>) -> f32 {
     let i = floor(p);
     let f = fract(p);
-    let w = f * f * (3.0 - 2.0 * f);
-    return mix(mix(hash(i), hash(i + vec2<f32>(1.0, 0.0)), w.x),
-               mix(hash(i + vec2<f32>(0.0, 1.0)), hash(i + vec2<f32>(1.0, 1.0)), w.x), w.y);
+    let w = f * f * f * (f * (f * 6.0 - 15.0) + 10.0);
+    let a = dot(slope(i), f);
+    let b = dot(slope(i + vec2<f32>(1.0, 0.0)), f - vec2<f32>(1.0, 0.0));
+    let c = dot(slope(i + vec2<f32>(0.0, 1.0)), f - vec2<f32>(0.0, 1.0));
+    let d = dot(slope(i + vec2<f32>(1.0, 1.0)), f - vec2<f32>(1.0, 1.0));
+    return clamp(0.5 + 0.75 * mix(mix(a, b, w.x), mix(c, d, w.x), w.y), 0.0, 1.0);
 }
 // A far galaxy as a telescope shows it: faint, soft and without an edge. Open ragged
 // arms (arms 0 gives an elliptical), dust on the arms' inner sides, a small warm bulge,
@@ -37,10 +48,13 @@ fn shade(at: vec2<f32>) -> vec4<f32> {
     var cloud = 0.0;
     var clumps = 0.0;
     var scale = 1.0;
+    // Each finer layer of noise is turned against the one before, so no grid shows.
+    var q = p;
     for (var k = 0; k < 5; k++) {
-        cloud += noise(p * 3.0 * scale + vec2<f32>(u.seed * 7.0)) / scale;
-        clumps += noise(p * 14.0 * scale + vec2<f32>(u.seed * 3.0)) / scale;
+        cloud += noise(q * 3.0 * scale + vec2<f32>(u.seed * 7.0)) / scale;
+        clumps += noise(q * 14.0 * scale + vec2<f32>(u.seed * 3.0)) / scale;
         scale *= 2.0;
+        q = vec2<f32>(q.x * 0.7986 - q.y * 0.6018, q.x * 0.6018 + q.y * 0.7986);
     }
     cloud = cloud / 1.94;
     clumps = clumps / 1.94;

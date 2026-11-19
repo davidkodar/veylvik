@@ -1206,3 +1206,69 @@ fn an_own_size_picture_meets_the_frame_as_its_fit_says_wherever_an_image_goes() 
     let lit = |p: &[[f32; 4]]| p.iter().filter(|p| p[3] > 0.0).count();
     assert!(lit(&dots) > 0, "no particle drawn");
 }
+#[test]
+#[ignore = "requires Vulkan"]
+fn an_unblurred_backdrop_shows_its_panorama_at_full_sharpness() {
+    let renderer = renderer();
+    // A panorama of six-pixel squares, finer than the 1024 by 512 copy that lights
+    // the scene can hold.
+    let code = "fn shade(at: vec2<f32>) -> vec4<f32> {
+    let cell = floor(at / 6.0);
+    let on = (cell.x + cell.y) - 2.0 * floor((cell.x + cell.y) / 2.0);
+    return vec4<f32>(vec3<f32>(on), 1.0);
+}";
+    let shot = |blur: f32| {
+        let mut doc = blank(W, H, Time::new(24, 1).unwrap()).unwrap();
+        let mut shader = op(&SHADER);
+        if let Operation::Shader(s) = &mut shader {
+            s.code = code.into();
+        }
+        let picture = add(&mut doc, shader, &[]);
+        let sky = add(
+            &mut doc,
+            Operation::OwnSize(OwnSize {
+                width: 8192,
+                height: 4096,
+                fit: Fit::Fit,
+            }),
+            &[("image", picture)],
+        );
+        let mut around = op(&ENVIRONMENT_3D);
+        if let Operation::Environment3d(e) = &mut around {
+            e.background = true;
+            e.blur = blur.into();
+        }
+        let around = add(&mut doc, around, &[("image", sky)]);
+        // A long lens: each square of the panorama covers several pixels.
+        let mut camera = op(&CAMERA_3D);
+        if let Operation::Camera3d(c) = &mut camera {
+            c.focal_length = 800.0.into();
+        }
+        let camera = add(&mut doc, camera, &[]);
+        let scene = add(
+            &mut doc,
+            op(&MERGE_SCENES),
+            &[("scene", around), ("scene_2", camera)],
+        );
+        doc.output = add(&mut doc, op(&RENDER_SCENE), &[("scene", scene)]);
+        let plan = Plan::compile(&doc).unwrap();
+        renderer
+            .render_gpu_temporal(
+                &plan,
+                RenderRequest::full(Time::new(0, 1).unwrap()),
+                &ImageInputs::default(),
+                false,
+                || false,
+            )
+            .unwrap()
+            .map(|frame| renderer.read_frame(&frame).unwrap().pixels)
+            .unwrap()
+    };
+    // The share of pixels that are clearly one square or the other.
+    let crisp = |p: &[[f32; 4]]| {
+        p.iter().filter(|p| p[0] < 0.2 || p[0] > 0.8).count() as f32 / p.len() as f32
+    };
+    let (sharp, soft) = (shot(0.0), shot(0.05));
+    assert!(crisp(&sharp) > 0.5, "sharp {}", crisp(&sharp));
+    assert!(crisp(&soft) < 0.3, "blurred {}", crisp(&soft));
+}
