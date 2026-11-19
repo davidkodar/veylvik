@@ -1,6 +1,8 @@
 //! Ready-made scenes as lists of document commands: every scene is ordinary nodes the user can open and change, sized to the composition it is added to.
 pub mod authoring;
 mod gold_title;
+mod surround_lights;
+pub use surround_lights::surround_lights;
 pub mod particles;
 pub use gold_title::{gold_title, gold_title_with};
 use serde_json::{Value, json};

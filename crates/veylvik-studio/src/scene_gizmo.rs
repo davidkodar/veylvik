@@ -98,6 +98,11 @@ impl Studio {
     }
     fn gizmo_target(&self, scene: &Scene) -> Option<Target> {
         let id = self.project.selected;
+        // Manual handles cannot edit a procedural orbit's evaluated pose.
+        if matches!(&self.draft.operation, veylvik_document::Operation::Camera3d(c) if c.orbit.is_some_and(|o| o.enabled))
+        {
+            return None;
+        }
         let rs = |node: &veylvik_document::Node| -> Option<math::Mat4> {
             let placement = match &node.operation {
                 veylvik_document::Operation::Shape3d(n) => &n.placement,

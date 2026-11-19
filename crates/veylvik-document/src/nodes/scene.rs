@@ -551,6 +551,8 @@ pub struct Camera3d {
     /// placement's rotation while the object is in the scene.
     #[serde(default)]
     pub aim_at: Option<NodeId>,
+    #[serde(default)]
+    pub orbit: Option<super::CameraOrbit>,
 }
 pub static CAMERA_3D: NodeType = NodeType {
     type_id: "camera_3d",
@@ -561,6 +563,7 @@ pub static CAMERA_3D: NodeType = NodeType {
     optional: &[],
     output: PortKind::Scene,
     parameters: &[
+        other("orbit", ParameterKind::CameraOrbit, "camera motion"),
         other("placement", ParameterKind::Placement, "transform"),
         scalar("focal_length", "millimetres", 1.0, 2000.0, 50.0),
         scalar("sensor_width", "millimetres", 1.0, 100.0, 36.0),
@@ -576,7 +579,11 @@ node!(
     [focal_length, sensor_width, f_stop, focus_distance],
     {
         fn validate(&self) -> Result<()> {
-            self.placement.validate()
+            self.placement.validate()?;
+            if let Some(orbit) = &self.orbit {
+                orbit.validate()?;
+            }
+            Ok(())
         }
     }
 );

@@ -18,6 +18,12 @@ pub fn tools() -> Vec<(&'static str, &'static str, Value, &'static [&'static str
     let looks: Vec<&str> = LOOKS.iter().map(|look| look.name).collect();
     vec![
         (
+            "surround_lights",
+            "Add four broad softboxes around an existing Render scene for full-orbit reflections, as editable nodes. Existing lights and compositing are preserved. warm false gives neutral studio light; true gives warm product lighting. One undo step.",
+            json!({"render":id,"warm":{"type":"boolean"}}),
+            &["render"],
+        ),
+        (
             "add_node",
             "Add one node of a type from nodes and return its id. settings are written over the type's default settings (only name what differs, also inside a setting made of parts such as placement, timing or a Text's typography; scalars are {\"kind\":\"constant\",\"value\":N} or keyed curves as in nodes), inputs maps port names to existing node ids, and output true also makes the node the composition's output. One undo step.",
             json!({"type":{"enum":kinds},"label":{"type":"string","maxLength":256},"settings":{"type":"object"},"inputs":{"type":"object","additionalProperties":id},"position":veylvik_document::schema::position(),"output":{"type":"boolean"}}),
@@ -60,6 +66,11 @@ fn node_id(value: &Value, what: &str) -> Result<NodeId> {
 pub fn build(composition: &Composition, tool: &str, args: &Value) -> Result<Option<Authored>> {
     Ok(Some(match tool {
         "add_node" => add_node(args)?,
+        "surround_lights" => crate::surround_lights(
+            composition,
+            node_id(&args["render"], "render")?,
+            args.get("warm").and_then(Value::as_bool).unwrap_or(false),
+        )?,
         "gold_title" => {
             let subtitle = args.get("subtitle").and_then(Value::as_str).unwrap_or("");
             let shadow = args.get("shadow").and_then(Value::as_bool).unwrap_or(true);
@@ -180,6 +191,28 @@ mod tests {
         let authored = build(document.snapshot(), tool, &args)?.expect("a known tool");
         document.apply(document.revision(), &authored.commands)?;
         Ok(authored.result)
+    }
+    #[test]
+    fn surround_rig_preserves_existing_scene_and_output() {
+        let mut doc = document();
+        run(&mut doc, "gold_title", json!({"text":"ORBIT"})).unwrap();
+        let output = doc.snapshot().output;
+        let render = doc
+            .snapshot()
+            .nodes
+            .values()
+            .find(|n| matches!(n.operation, Operation::RenderScene(_)))
+            .unwrap()
+            .id;
+        let before = doc.snapshot().nodes[&render].inputs["scene"];
+        let count = doc.snapshot().nodes.len();
+        let reply = run(&mut doc, "surround_lights", json!({"render":render})).unwrap();
+        let rig: NodeId = reply["rig"].as_str().unwrap().parse().unwrap();
+        assert_eq!(doc.snapshot().output, output);
+        assert_eq!(doc.snapshot().nodes[&render].inputs["scene"], rig);
+        assert_eq!(doc.snapshot().nodes[&rig].inputs["scene"], before);
+        assert_eq!(doc.snapshot().nodes.len(), count + 5);
+        assert!(build(doc.snapshot(), "surround_lights", &json!({"render":output})).is_err());
     }
     #[test]
     fn a_node_is_added_from_its_defaults_with_the_named_settings_and_wiring() {

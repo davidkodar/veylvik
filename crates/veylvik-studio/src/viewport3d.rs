@@ -24,6 +24,37 @@ fn state(ctx: &egui::Context) -> State {
 fn store(ctx: &egui::Context, s: State) {
     ctx.data_mut(|d| d.insert_temp(id(), s));
 }
+/// Resolve a scene element to its nearest downstream renderer, never traversing
+/// image compositing branches. Unconnected elements have no image to show.
+pub(crate) fn scene_preview(
+    doc: &veylvik_document::Composition,
+    selected: NodeId,
+) -> Option<NodeId> {
+    use veylvik_document::registry::PortKind;
+    if doc.nodes.get(&selected)?.operation.descriptor().output != PortKind::Scene {
+        return None;
+    }
+    let mut pending = std::collections::VecDeque::from([selected]);
+    let mut seen = std::collections::BTreeSet::new();
+    while let Some(id) = pending.pop_front() {
+        if !seen.insert(id) {
+            continue;
+        }
+        for node in doc.nodes.values() {
+            if node.inputs.iter().any(|(port, source)| {
+                *source == id && node.operation.descriptor().port_kind(port) == PortKind::Scene
+            }) {
+                if matches!(node.operation, Operation::RenderScene(_)) {
+                    return Some(node.id);
+                }
+                if node.operation.descriptor().output == PortKind::Scene {
+                    pending.push_back(node.id);
+                }
+            }
+        }
+    }
+    None
+}
 /// Degrees of turn per pixel of mouse movement.
 const TURN: f32 = 0.25;
 impl Studio {
@@ -229,9 +260,17 @@ impl Studio {
                 self.request_preview();
             }
             ui.menu_button("Moves", |ui| {
+                if ui.button("Full orbit (editable)").on_hover_text("Create a continuous 360-degree orbit over the play range; adjust it in the Camera inspector").clicked() {
+                    match self.full_camera_orbit() {
+                        Ok(()) => { s.view = None; changed = true; self.status = "Full orbit added; adjust Orbit camera in the Camera inspector".into(); }
+                        Err(e) => self.fail(e),
+                    }
+                    ui.close();
+                }
+                ui.separator();
                 ui.weak("A smooth camera move from this view over the play range:");
                 for (label, hint, kind) in [
-                    ("Orbit", "Circle a quarter turn around the selection", Move::Orbit),
+                    ("Quarter orbit", "Circle a quarter turn around the selection", Move::Orbit),
                     ("Push in", "Glide towards the selection", Move::PushIn),
                     ("Pull out", "Glide back to reveal the scene", Move::PullOut),
                     ("Crane up", "Rise while looking at the selection", Move::Crane),
@@ -484,6 +523,40 @@ impl Studio {
             Err(e) => self.fail(e),
         }
     }
+    fn full_camera_orbit(&mut self) -> Result<(), String> {
+        let doc = self.project.document.snapshot();
+        let range = self.playback_controls.range(doc.frame_count);
+        let start = Time::at_frame(range.0, doc.frame_rate)
+            .map_err(|e| e.to_string())?
+            .seconds()
+            .map_err(|e| e.to_string())? as f32;
+        let duration = Time::at_frame((range.1 - range.0).max(1), doc.frame_rate)
+            .map_err(|e| e.to_string())?
+            .seconds()
+            .map_err(|e| e.to_string())? as f32;
+        let radius = veylvik_scene::home_distance(doc.width, 50., 36.) * 1.1;
+        let height = doc.height as f32 * 0.15;
+        let target = crate::scene_focus::objects(doc)
+            .iter()
+            .find(|(id, _)| *id == self.project.selected)
+            .map(|(id, _)| *id);
+        self.edit_scene_camera(|c| {
+            c.aim_at = target.or(c.aim_at);
+            c.orbit = Some(veylvik_document::nodes::CameraOrbit {
+                start,
+                duration,
+                radius,
+                height,
+                ..Default::default()
+            });
+            Ok(())
+        })?;
+        if let Some((_, Some(id))) = self.scene_camera() {
+            self.project.selected = id;
+            self.refresh_draft();
+        }
+        Ok(())
+    }
     /// A ready-made camera move from the current view over the play range.
     fn camera_move(&mut self, kind: Move, s: &State) -> Result<(), String> {
         let doc = self.project.document.snapshot();
@@ -553,6 +626,9 @@ impl Studio {
     /// merged into what Render scene films. One undo step.
     fn write_camera(&mut self, poses: &[veylvik_scene::Pose], keyed: bool) -> Result<(), String> {
         self.edit_scene_camera(|c| {
+            if let Some(orbit) = &mut c.orbit {
+                orbit.enabled = false;
+            }
             for (time, position, rotation) in poses {
                 if keyed {
                     c.placement
@@ -644,4 +720,31 @@ enum Move {
     PullOut,
     Crane,
     FlyBy,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn scene_element_preview_finds_renderer_without_changing_the_output() {
+        use veylvik_document::{Node, registry};
+        let mut doc = veylvik_document::blank(640, 360, Time::new(24, 1).unwrap()).unwrap();
+        let output = doc.output;
+        let mut add = |kind: &registry::NodeType, inputs: &[(&str, NodeId)]| {
+            let n = Node::new(
+                kind.label,
+                serde_json::from_value(kind.default_operation()).unwrap(),
+                inputs,
+            );
+            let id = n.id;
+            doc.nodes.insert(id, n);
+            id
+        };
+        let camera = add(&registry::CAMERA_3D, &[]);
+        let scene = add(&registry::MERGE_SCENES, &[("scene", camera)]);
+        let render = add(&registry::RENDER_SCENE, &[("scene", scene)]);
+        assert_eq!(scene_preview(&doc, camera), Some(render));
+        assert_eq!(scene_preview(&doc, output), None);
+        assert_eq!(doc.output, output);
+    }
 }

@@ -420,8 +420,11 @@ fn aim_row(
 impl Inspect for Camera3d {
     fn inspect(&mut self, ui: &mut egui::Ui, cx: &mut InspectCx<'_>) {
         ui.weak("Untouched, the camera sees exactly the 2D frame at depth 0. Move and turn it from there.");
-        cx.dirty |= placement(ui, &mut self.placement, cx);
+        ui.add_enabled_ui(!self.orbit.is_some_and(|o| o.enabled), |ui| {
+            cx.dirty |= placement(ui, &mut self.placement, cx);
+        });
         aim_row(ui, &mut self.aim_at, cx, "camera");
+        super::camera_orbit::controls(self, ui, cx);
         ui.weak("Only what is in the scene turns and moves with the camera. A sky or backdrop composited outside the scene stays fixed to the screen: put it in an Environment with Background on.");
         ui.horizontal(|ui| {
             ui.add_sized([88., 22.], egui::Label::new("Focus on"));
@@ -535,7 +538,15 @@ impl Inspect for Environment3d {
     }
 }
 impl Inspect for RenderScene {
-    fn inspect(&mut self, ui: &mut egui::Ui, _cx: &mut InspectCx<'_>) {
+    fn inspect(&mut self, ui: &mut egui::Ui, cx: &mut InspectCx<'_>) {
+        ui.label(egui::RichText::new("3D scene to 2D image").strong()).on_hover_text("Only objects inside the Scene input respond to its camera. Images merged after this render are screen-fixed overlays.");
+        ui.menu_button("Add surround lighting", |ui| {
+            for (warm, label) in [(false, "Neutral studio"), (true, "Warm product studio")] {
+                if ui.button(label).on_hover_text("Add four editable softboxes around the scene for reflections throughout a full orbit; preserves current lights").clicked() {
+                    cx.surround_lights = Some(warm); ui.close();
+                }
+            }
+        });
         ui.weak("Films the scene on its Scene input. Camera 1 is the first camera in the scene; 0 is the home view that matches 2D. Occlusion shades the environment light where surfaces meet, so objects sit on the floor (0 = off).");
     }
 }

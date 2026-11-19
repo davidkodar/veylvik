@@ -832,6 +832,13 @@ impl Studio {
         self.request_preview_inner();
     }
     fn request_preview_inner(&mut self) {
+        if let Some(render) = self
+            .project
+            .preview
+            .and_then(|id| viewport3d::scene_preview(self.project.document.snapshot(), id))
+        {
+            self.project.preview = Some(render);
+        }
         self.wanted = None;
         self.preview_pending = false;
         let result = (|| {
@@ -1909,6 +1916,15 @@ impl Studio {
             return;
         }
         self.inspector_tools(ui);
+        match self.draft.operation.descriptor().output {
+            veylvik_document::registry::PortKind::Scene => {
+                ui.weak("3D scene element").on_hover_text("Merge into a scene and film with Render scene. Its appearance responds to the scene camera.");
+            }
+            veylvik_document::registry::PortKind::Image => {
+                ui.weak("2D image layer").on_hover_text("Merged after Render scene, this stays fixed on screen. To place it in 3D, connect it to an Image card, or use it as a Text 3D outline or material input.");
+            }
+            _ => {}
+        }
         if !matches!(self.draft.operation, Operation::Text(_)) {
             ui.label(
                 if matches!(
@@ -1974,6 +1990,7 @@ impl Studio {
             objects: &focus_objects,
             things: &scene_things,
             pick_focus: false,
+            surround_lights: None,
             plated: self.draft.inputs.contains_key("plate"),
             measure_grain: false,
             choose_model: false,
@@ -2004,6 +2021,7 @@ impl Studio {
             error,
             pick,
             pick_focus,
+            surround_lights,
             measure_grain,
             choose_model,
             select: select_other,
@@ -2015,6 +2033,28 @@ impl Studio {
             self.project.selected = id;
             self.project.preview = None;
             self.refresh_draft();
+            return;
+        }
+        if let Some(warm) = surround_lights {
+            if self.draft_dirty || dirty {
+                self.status = "Apply or revert the inspector before adding lights".into();
+            } else {
+                match veylvik_presets::surround_lights(
+                    self.project.document.snapshot(),
+                    self.draft.id,
+                    warm,
+                ) {
+                    Ok(rig) => match self.project.apply(&rig.commands) {
+                        Ok(_) => {
+                            self.refresh_draft();
+                            self.request_preview();
+                            self.status = "Added surround lighting".into();
+                        }
+                        Err(e) => self.status = e.to_string(),
+                    },
+                    Err(e) => self.status = e.to_string(),
+                }
+            }
             return;
         }
         if choose_model {
@@ -3151,7 +3191,11 @@ impl eframe::App for Studio {
                 s.playback_cache().clear();
             }
         }
+        let exporting = self.render_queue.busy();
         self.render_queue.tick(&self.renderer, &ctx);
+        if exporting && !self.render_queue.busy() && self.status == "Exporting" {
+            self.status = "Ready".into();
+        }
         if let Some(action) = self.render_queue.show(&ctx) {
             match action {
                 render_queue::Action::Frame => self.export_frame(),

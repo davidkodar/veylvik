@@ -120,7 +120,8 @@ fn protocol_enforces_lifecycle_and_transaction_revision() {
             "add_node",
             "gold_title",
             "particle_look",
-            "stand_on_ground"
+            "stand_on_ground",
+            "surround_lights"
         ]
         .into()
     );

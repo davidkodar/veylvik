@@ -48,6 +48,8 @@ macro_rules! node {
         }
     };
 }
+mod camera_orbit;
+pub use camera_orbit::CameraOrbit;
 mod color;
 mod composite;
 mod custom;

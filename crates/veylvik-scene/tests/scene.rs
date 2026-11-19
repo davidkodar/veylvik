@@ -635,3 +635,60 @@ fn objects_face_a_camera_or_another_object_and_a_card_carries_its_tint() {
     assert_eq!(written["colour"], serde_json::json!([1.0, 1.0, 1.0]));
     assert!(written["aim_at"].is_null());
 }
+
+#[test]
+fn procedural_orbit_follows_target_at_subframes_and_preserves_manual_camera() {
+    let mut doc = scene();
+    let object = add(&mut doc, "target", op(&SHAPE_3D), &[]);
+    let camera = add(&mut doc, "camera", op(&CAMERA_3D), &[]);
+    let root = add(
+        &mut doc,
+        "scene",
+        op(&MERGE_SCENES),
+        &[("scene", object), ("scene_2", camera)],
+    );
+    let Operation::Camera3d(c) = &mut doc.nodes.get_mut(&camera).unwrap().operation else {
+        panic!()
+    };
+    c.aim_at = Some(object);
+    c.placement.position = [123., 45., 67.].into();
+    c.orbit = Some(CameraOrbit {
+        radius: 2000.,
+        height: 100.,
+        duration: 4.,
+        ease: false,
+        ..Default::default()
+    });
+    let mut previous = None;
+    for time in [
+        at(0),
+        Time { ticks: 1, rate: 48 },
+        at(1),
+        at(2),
+        at(3),
+        at(4),
+    ] {
+        let s = evaluate(&doc, root, time).unwrap();
+        let target = s.centre(object).unwrap();
+        let cam = s.camera(1, W, H);
+        let p = math::point(&cam.world, [0.; 3]);
+        let radius = ((p[0] - target[0]).powi(2) + (p[2] - target[2]).powi(2)).sqrt();
+        assert!((radius - 2000.).abs() < 0.01);
+        assert!((p[1] - target[1] + 100.).abs() < 0.01);
+        assert!(close(
+            cam.project(target, W, H).unwrap().0,
+            [W as f32 / 2., H as f32 / 2.]
+        ));
+        if let Some(prev) = previous {
+            assert_ne!(p, prev);
+        }
+        previous = Some(p);
+    }
+    let Operation::Camera3d(c) = &mut doc.nodes.get_mut(&camera).unwrap().operation else {
+        panic!()
+    };
+    c.orbit.as_mut().unwrap().enabled = false;
+    let s = evaluate(&doc, root, at(1)).unwrap();
+    let p = math::point(&s.camera(1, W, H).world, [0.; 3]);
+    assert!((p[0] - W as f32 / 2. - 123.).abs() < 0.01);
+}

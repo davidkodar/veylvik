@@ -214,6 +214,7 @@ impl Studio {
                 focus_distance: 0.0,
                 focus_on: None,
                 aim_at: None,
+                orbit: None,
             };
             chosen = Some(Some(FreeView::from_camera(
                 &camera,
@@ -327,7 +328,7 @@ impl Studio {
             let Operation::Camera3d(c) = &n.operation else {
                 continue;
             };
-            if !c.placement.position.is_animated() {
+            if !c.placement.position.is_animated() && !c.orbit.is_some_and(|o| o.enabled) {
                 continue;
             }
             let position = |time: Time| {

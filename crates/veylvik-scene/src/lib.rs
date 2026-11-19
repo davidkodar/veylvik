@@ -96,6 +96,8 @@ pub struct Camera {
     pub focus_on: Option<NodeId>,
     /// An object the camera keeps looking at; applied once the whole scene is known.
     pub aim_at: Option<NodeId>,
+    /// Evaluated world-space orbit offset and fallback target.
+    pub orbit: Option<([f32; 3], [f32; 3])>,
 }
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Light {
@@ -235,6 +237,7 @@ pub fn home_camera(width: u32, height: u32) -> Camera {
         focus_distance: 0.0,
         focus_on: None,
         aim_at: None,
+        orbit: None,
     }
 }
 impl Object {
@@ -313,6 +316,18 @@ impl Scene {
     fn aim(&mut self) {
         let mut centres: Vec<(NodeId, [f32; 3])> = self.anchors.clone();
         centres.extend(self.objects.iter().map(|o| (o.node, o.sphere().0)));
+        // Resolve orbit positions before collecting camera targets: billboards and
+        // lights aimed at a moving camera must see its actual position this frame.
+        for camera in &mut self.cameras {
+            if let Some((offset, fallback)) = camera.orbit {
+                let target = camera
+                    .aim_at
+                    .and_then(|id| centres.iter().find(|c| c.0 == id).map(|c| c.1))
+                    .unwrap_or(fallback);
+                camera.world = translate(std::array::from_fn(|i| target[i] + offset[i]));
+                camera.world = math::aimed(&camera.world, &camera.world, target);
+            }
+        }
         let own = centres.len();
         // Objects may also face a camera or a light.
         centres.extend(
@@ -661,6 +676,10 @@ fn node(doc: &Graph<'_>, id: NodeId, time: Time, depth: usize) -> Result<Scene> 
                 focus_distance: c.focus_distance.at(time)?.max(0.0),
                 focus_on: c.focus_on,
                 aim_at: c.aim_at,
+                orbit: c
+                    .orbit
+                    .filter(|o| o.enabled)
+                    .map(|o| (o.offset(time), [centre[0], centre[1], 0.])),
             });
         }
         Operation::Light3d(l) => {

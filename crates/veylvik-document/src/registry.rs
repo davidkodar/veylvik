@@ -47,6 +47,7 @@ pub enum ParameterKind {
     PatinaKind,
     ReflectionKind,
     Placement,
+    CameraOrbit,
     Colour3,
     ShapeKind,
     Fit,
@@ -118,6 +119,7 @@ impl Parameter {
             ParameterKind::Path => {
                 serde_json::to_value(crate::vector::PathMask::default()).unwrap()
             }
+            ParameterKind::CameraOrbit => json!(null),
             ParameterKind::Placement => json!(crate::nodes::Placement::default()),
             ParameterKind::Colour3 => json!([0.6_f32, 0.6_f32, 0.6_f32]),
             ParameterKind::ShapeKind => json!(crate::nodes::ShapeKind::default()),
@@ -131,6 +133,7 @@ impl Parameter {
     }
     fn schema(&self) -> Value {
         match self.kind {
+            ParameterKind::CameraOrbit => crate::nodes::CameraOrbit::schema(),
             ParameterKind::FrameRate => {
                 json!({"type":"object","properties":{"ticks":{"type":"integer","minimum":1},"rate":{"type":"integer","minimum":1}},"required":["ticks","rate"],"additionalProperties":false})
             }
@@ -448,7 +451,7 @@ pub fn operation_reference() -> Value {
     json!({"type":"object","properties":{"type":{"enum":TYPES.iter().map(|node|node.type_id).collect::<Vec<_>>()}},"required":["type"],"description":"A complete operation: its type and every setting. The nodes tool lists each type's default_operation (a valid starting point) and operation_schema; add_node fills the defaults in for you."})
 }
 pub fn catalog() -> Value {
-    json!({"recipes":crate::recipes::catalog(),"nodes":TYPES.iter().map(|node|json!({"descriptor":node,"default_operation":node.default_operation(),"operation_schema":node.schema()})).collect::<Vec<_>>(),"image_contract":"scene-linear Rec.709, premultiplied RGBA32F","time_contract":"Two forms, by what the value is. A point on the timeline that must be exact (keyframe times, a Fade's or Footage's timing, markers, render times) is {ticks, rate}: ticks / rate seconds, so frame 45 at 30 fps is {\"ticks\":45,\"rate\":30}. A duration or start used as an ordinary number (a Text's typography and a 3D text's letters: start, duration, stagger, exit; Particles: start, duration, life) is plain seconds, as its unit says. Frame numbers appear only as tool arguments (preview, render_sequence, markers shown in Studio).","scalar_contract":"constant, linear, step, smooth or monotone keyframes; smooth uses cubic smoothstep per interval; monotone uses bounded cubic Hermite with shared harmonic interior slopes and secant endpoint slopes; time is ticks/rate seconds; 1..4096 strictly increasing keys"})
+    json!({"recipes":crate::recipes::catalog(),"nodes":TYPES.iter().map(|node|json!({"descriptor":node,"default_operation":node.default_operation(),"operation_schema":node.schema()})).collect::<Vec<_>>(),"scene_contract":"Scene coordinates are composition pixels: x right, y down, z toward the viewer. Objects use offsets from their natural placement; camera home is [width/2,height/2,width*focal_length/sensor_width]. Camera placement.position is an offset from home. placement position/rotation/scale support vector tracks {interpolation,keys:[{time:{ticks,rate},value:[x,y,z]}]}; set_track_key accepts these placement paths. aim_at is an object UUID in the same scene. Optional camera orbit overrides placement position/rotation while enabled, follows aim_at, and evaluates continuously including motion-blur subframes. 2D image branches composited after Render scene remain screen-fixed; use Image card or Environment with background for camera-relative content.","image_contract":"scene-linear Rec.709, premultiplied RGBA32F","time_contract":"Two forms, by what the value is. A point on the timeline that must be exact (keyframe times, a Fade's or Footage's timing, markers, render times) is {ticks, rate}: ticks / rate seconds, so frame 45 at 30 fps is {\"ticks\":45,\"rate\":30}. A duration or start used as an ordinary number (a Text's typography and a 3D text's letters: start, duration, stagger, exit; Particles: start, duration, life) is plain seconds, as its unit says. Frame numbers appear only as tool arguments (preview, render_sequence, markers shown in Studio).","scalar_contract":"constant, linear, step, smooth or monotone keyframes; smooth uses cubic smoothstep per interval; monotone uses bounded cubic Hermite with shared harmonic interior slopes and secant endpoint slopes; time is ticks/rate seconds; 1..4096 strictly increasing keys"})
 }
 
 /// An exact rational time.

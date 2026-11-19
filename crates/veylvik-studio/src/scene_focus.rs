@@ -23,7 +23,10 @@ pub(crate) fn objects(doc: &veylvik_document::Composition) -> Vec<(NodeId, Strin
         .filter(|n| {
             matches!(
                 n.operation,
-                Operation::Shape3d(_) | Operation::Text3d(_) | Operation::ImageCard(_)
+                Operation::Shape3d(_)
+                    | Operation::Text3d(_)
+                    | Operation::ImageCard(_)
+                    | Operation::Model3d(_)
             )
         })
         .map(|n| (n.id, n.label.clone()))

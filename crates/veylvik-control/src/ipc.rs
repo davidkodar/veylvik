@@ -24,21 +24,36 @@ pub const MAX_SOCKET_PATH_BYTES: usize = 107;
 /// Overrides where Studio listens and where the relay connects.
 pub const SOCKET_ENV: &str = "VEYLVIK_CONTROL_SOCKET";
 /// `$VEYLVIK_CONTROL_SOCKET`, else `$XDG_RUNTIME_DIR/veylvik/control.sock`.
-/// There is no shared-temp fallback: without a runtime directory live control needs an explicit path.
+/// If the launcher omits XDG_RUNTIME_DIR, use the verified private /run/user/<uid>.
+/// There is no shared-temp fallback.
 pub fn default_socket() -> io::Result<PathBuf> {
     if let Some(path) = std::env::var_os(SOCKET_ENV).filter(|path| !path.is_empty()) {
         return Ok(PathBuf::from(path));
     }
-    let runtime = std::env::var_os("XDG_RUNTIME_DIR")
-        .map(PathBuf::from)
-        .filter(|dir| dir.is_absolute() && dir.is_dir())
-        .ok_or_else(|| {
-            io::Error::new(
-                io::ErrorKind::NotFound,
-                format!("XDG_RUNTIME_DIR is not set; set {SOCKET_ENV} to a socket path"),
-            )
-        })?;
+    let runtime = match std::env::var_os("XDG_RUNTIME_DIR") {
+        Some(path) if !path.is_empty() => PathBuf::from(path),
+        _ => PathBuf::from(format!("/run/user/{}", current_uid()?)),
+    };
+    validate_runtime(&runtime)?;
     Ok(runtime.join("veylvik").join(SOCKET_NAME))
+}
+/// Never fall back to a shared temporary directory or follow a runtime symlink.
+fn validate_runtime(path: &Path) -> io::Result<()> {
+    let metadata = fs::symlink_metadata(path)?;
+    if !path.is_absolute()
+        || !metadata.is_dir()
+        || metadata.uid() != current_uid()?
+        || metadata.mode() & 0o077 != 0
+    {
+        return Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            format!(
+                "{} must be an absolute private runtime directory owned by you; set {SOCKET_ENV} explicitly otherwise",
+                path.display()
+            ),
+        ));
+    }
+    Ok(())
 }
 /// Accepts a socket path, or a directory holding `control.sock`.
 pub fn resolve_socket(path: &Path) -> PathBuf {
@@ -498,6 +513,20 @@ fn read_reply(input: &mut impl BufRead, deadline: Instant) -> io::Result<Vec<u8>
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn runtime_directory_must_be_private_and_not_a_symlink() {
+        let path = directory();
+        fs::DirBuilder::new().mode(0o700).create(&path).unwrap();
+        assert!(validate_runtime(&path).is_ok());
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
+        assert!(validate_runtime(&path).is_err());
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o700)).unwrap();
+        let link = path.with_extension("link");
+        std::os::unix::fs::symlink(&path, &link).unwrap();
+        assert!(validate_runtime(&link).is_err());
+        fs::remove_file(link).unwrap();
+        fs::remove_dir(path).unwrap();
+    }
     #[test]
     fn an_updated_program_adds_a_note_to_tool_results_only() {
         let reply = br#"{"jsonrpc":"2.0","id":3,"result":{"content":[{"type":"text","text":"{}"}],"isError":false}}

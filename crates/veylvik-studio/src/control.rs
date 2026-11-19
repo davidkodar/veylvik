@@ -154,7 +154,7 @@ pub fn call(
         response = Some(result);
     }
     match name {
-        "add_node" | "gold_title" | "particle_look" | "stand_on_ground" => {}
+        "add_node" | "gold_title" | "particle_look" | "stand_on_ground" | "surround_lights" => {}
         "match_shot" => {
             let node = |name: &str| -> Result<Option<NodeId>> {
                 args.get(name)

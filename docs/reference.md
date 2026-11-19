@@ -3450,3 +3450,54 @@ recover detail missing from a low-resolution composition enlarged beyond 100%.
 **Colour management** under View separates preview and output OCIO transforms. Preview never changes exported pixels; enabled output transforms affect all exports, including EXR. An OCIO node supplies explicit branch conversions. Configurations can be built-in `ocio://` URIs or local config files with their LUTs. Native OpenColorIO 2.5 generates the GPU transform; unsupported dynamic uniforms fail explicitly. Config/LUT changes invalidate cached processors. External assets must accompany custom configurations; portable presets reject external config references.
 
 The default working domain is linear Rec.709. ACEScg project mode converts compositing, grading and spatial passes to AP1 with D60 adaptation; materials keep their authored Rec.709 interpretation through explicit boundaries. Public frames and EXR remain linear Rec.709 unless an explicit output transform changes them. AgX requires a config that supplies it, such as Blender's; it is a view transform, not a working colour space.
+
+
+### Camera orbit and surround lighting
+
+The viewer's **Moves → Full orbit (editable)** command sets a complete orbit over
+the play range and selects the camera. Camera's **Orbit camera** controls create continuous motion without generating
+position keys. Choose **Aim at**, then set radius, height above the target, start
+and duration in seconds, start angle and sweep in degrees, clockwise direction,
+and optional ease in/out. A 360-degree sweep makes a complete revolution.
+Before the start and after the end the camera holds the endpoint. With no target
+(or a missing target) it orbits the frame centre at depth zero. The orbit follows
+a moving target in world coordinates; it overrides manual camera placement while
+enabled. Disable it to restore the untouched manual tracks. Orbit is evaluated
+at fractional shutter times for Render scene motion blur, and its path appears
+in the scene guides. To include the exact endpoint in a 240-frame, 24 fps clip,
+use duration 239/24 seconds; 10 seconds puts that endpoint at frame 240.
+
+The optional `camera_3d.orbit` object is exposed in `nodes`, with fields `enabled`,
+`radius`, `height`, `start`, `duration`, `start_angle`, `sweep`, `clockwise`, and
+`ease`. Omitted fields use defaults. `apply`/`set_parameter` can set `orbit` in
+one transaction; `null` removes it. The `nodes` catalogue includes `scene_contract`
+with coordinate and vector-animation conventions. Placement vector keys use
+`set_track_key` paths `placement.position`, `placement.rotation`, and
+`placement.scale` on scene nodes.
+
+Render scene's **Add surround lighting** menu offers neutral and warm studio
+presets. Four broad editable softboxes surround the composition centre, providing
+reflection bands on the front, sides and back. Existing lights are preserved;
+balance their intensities for the particular scene. This is a starting lighting
+rig, not an automatic exposure or physically calibrated studio. MCP
+`surround_lights` takes `render` (the Render scene node UUID) and optional `warm`.
+It connects the rig in one undo step without changing downstream compositing.
+
+Inspector labels distinguish 3D scene elements from 2D image layers. Images
+merged after Render scene stay fixed on screen. Use Image card for an image in
+the scene, Text 3D for extruded lettering, or Environment with Background enabled
+for surroundings that respond to camera direction.
+
+### MCP launch environment
+
+When an MCP launcher omits `XDG_RUNTIME_DIR`, the relay also checks
+`/run/user/<current uid>`. This directory must be owned by the current user,
+private (no group/other permissions), and not a symlink. It never falls back to
+a shared temporary directory. `VEYLVIK_CONTROL_SOCKET` or an explicit socket
+argument still takes precedence. The relay answers initialization and tool
+listing without Studio running; actual project calls require the editor.
+
+After adding or changing a server in Codex, reload its MCP connection or restart
+and resume the task. An inventory handshake alone does not establish that the
+current conversation has attached the tools. Studio's **MCP ready** means its
+local socket is listening, not that a client has attached.

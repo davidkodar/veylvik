@@ -47,6 +47,7 @@ pub(crate) struct InspectCx<'a> {
     pub things: &'a [(veylvik_document::NodeId, String)],
     /// The user asked to pick the object in focus in the viewer.
     pub pick_focus: bool,
+    pub surround_lights: Option<bool>,
     /// The node's Plate input is connected.
     pub plated: bool,
     /// The user asked to measure the plate's grain.
@@ -71,6 +72,7 @@ mod generators;
 mod keying;
 mod materials;
 pub(crate) use materials::{colour_controls, finish_controls, lighting_controls, look_slider};
+mod camera_orbit;
 mod media;
 mod scene;
 mod text;
