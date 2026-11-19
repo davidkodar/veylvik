@@ -1079,8 +1079,15 @@ with Rec.709 primaries; other codings are refused.
 `render_video` (and `veylvik render-video --codec`) can write **ProRes 422 HQ** in a
 `.mov` (`codec: "prores"`): ten-bit 4:2:2, every frame a key frame, encoded in software,
 for handing a shot to an editor that will cut and grade it further. Its file must end in
-`.mov`; H.264 and HEVC stay `.mp4`. Sound is carried the same way. Timecode and alpha are
-not written, and values outside the legal video range are not kept.
+`.mov`; H.264 and HEVC stay `.mp4`. Sound is carried the same way. Values outside the
+legal video range are not kept.
+
+`codec: "prores4444"` writes **ProRes 4444 with alpha** in a `.mov`: a title, lower third
+or cut-out that an editor lays over other footage. The alpha is **straight** (colour is
+not multiplied by coverage), which is what editors expect from this codec; the matte
+colour is not used. Every finished frame is read back from the graphics card and handed
+to the encoder whole, with full colour detail, so it is slower than the other codecs
+(about 13 frames a second at HD on an RTX 4080) and best kept for short overlay shots.
 
 A project saved beside its media names that media relative to itself, so the folder can
 be moved or copied as a whole. When a media file cannot be found the error says it is
@@ -1092,9 +1099,25 @@ upstream of a Fade that is fully out, for example, including its text and shape 
 and its footage decoding. A long timeline of layers that take turns costs what is on
 screen, not what is in the project.
 
-**Rectangle** (Add > Masks and shapes) is white coverage centred on x, y with a width, a
-height, a corner radius (up to half the shorter side: a pill or a circle) and a feather;
-all animatable. **Shadow**'s Lighting input is optional: without it the manual offset is
+**Rectangle** (Add > Masks and shapes) is a filled rectangle centred on x, y with a
+width, a height, a corner radius (up to half the shorter side: a pill or a circle), a
+feather and a fill colour (white for plain coverage to use as a mask); the numbers are
+animatable. **Repeat** (Add > Transform and distort) lays copies of its image in a grid:
+columns and rows (up to 32 each, 256 copies in all), a step in pixels across and down,
+and a fade from copy to copy.
+
+A text can show a number that changes: give its typography a `number` (any animatable
+value) and write `{n}` where it should appear, as in `{n}%`; `decimals` (0 to 6) sets
+the digits after the point. The words are laid out afresh on every frame, so a centred
+label stays centred as it counts. This is set in the project file or through MCP; the
+inspector has no control for it yet.
+
+`render_video` takes `timecode` (`HH:MM:SS:FF`), written into the file as its start so
+an editor can place the shot; with it the export uses the staged encoder. A video whose
+frames are unevenly spaced says so when imported: each frame is shown at its own time,
+and only the composition's rate is the average. The headless server's `render`,
+`preview_image` and `measure` take either `ticks` and `rate` or a `frame` number, as the
+live server does. **Shadow**'s Lighting input is optional: without it the manual offset is
 used.
 
 ### Working directly in Studio

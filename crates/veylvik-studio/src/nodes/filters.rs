@@ -45,6 +45,7 @@ impl Inspect for veylvik_document::nodes::Displace {
     }
 }
 impl Inspect for veylvik_document::nodes::Transform {}
+impl Inspect for veylvik_document::nodes::Repeat {}
 impl Inspect for veylvik_document::nodes::Affine {}
 
 impl Inspect for veylvik_document::nodes::ContactShadow {

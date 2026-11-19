@@ -3,7 +3,7 @@ use std::path::Path;
 use veylvik_document::{Composition, Time};
 pub fn run(args: &[String]) -> Result<()> {
     if args.len() < 2 {
-        return Err("render-video needs FILE OUTPUT.mp4|.mov [--codec h264|hevc10|prores] [--size W H] [--fps N D] [--range FIRST LAST] [--quality draft|high|master] [--allow-software] [--no-audio] [--audio FILE] [--audio-gain DB]".into());
+        return Err("render-video needs FILE OUTPUT.mp4|.mov [--codec h264|hevc10|prores|prores4444] [--size W H] [--fps N D] [--range FIRST LAST] [--quality draft|high|master] [--allow-software] [--no-audio] [--audio FILE] [--audio-gain DB]".into());
     }
     let doc = Composition::load(Path::new(&args[0]))?;
     let base = assets::document_base(Path::new(&args[0]))?;

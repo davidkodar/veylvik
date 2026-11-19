@@ -231,7 +231,10 @@ impl RenderNode for veylvik_document::nodes::Rectangle {
             sample("width")? * 0.5,
             sample("height")? * 0.5,
         ];
-        p.extra = [sample("corner")?, sample("feather")?.max(1.0), 0.0, 0.0];
+        let [r, g, b, a] = self.color;
+        p.extra = [sample("corner")?, sample("feather")?.max(1.0), r, g];
+        p.size_op[2] = b.to_bits();
+        p.size_op[3] = a.to_bits();
         Ok(())
     }
 }

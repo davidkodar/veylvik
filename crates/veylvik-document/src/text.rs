@@ -161,6 +161,28 @@ pub struct Typography {
     /// None means hold indefinitely; otherwise start the exit at this time.
     pub exit: Option<f32>,
     pub ease: bool,
+    /// A number the words show: every `{n}` in the text is replaced by this value at
+    /// the frame's time, so a label can count with what it measures.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub number: Option<crate::Scalar>,
+    /// Digits after the decimal point of that number (0 to 6).
+    #[serde(skip_serializing_if = "is_zero")]
+    pub decimals: u8,
+}
+fn is_zero(value: &u8) -> bool {
+    *value == 0
+}
+impl Typography {
+    /// `content` with every `{n}` replaced by the number at `time`.
+    pub fn counted(&self, content: &str, time: crate::Time) -> Result<String> {
+        match &self.number {
+            Some(number) if content.contains("{n}") => {
+                let digits = usize::from(self.decimals.min(6));
+                Ok(content.replace("{n}", &format!("{:.digits$}", number.at(time)?)))
+            }
+            _ => Ok(content.to_owned()),
+        }
+    }
 }
 impl Default for Typography {
     fn default() -> Self {
@@ -177,6 +199,8 @@ impl Default for Typography {
             stagger: 0.04,
             exit: None,
             ease: true,
+            number: None,
+            decimals: 0,
         }
     }
 }

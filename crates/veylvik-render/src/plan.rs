@@ -89,6 +89,7 @@ pub enum Kernel {
     PlanarWarp,
     Ellipse,
     Rectangle,
+    Repeat,
     Mask,
     CombineMask,
     ChannelMask,
@@ -110,7 +111,7 @@ pub enum Kernel {
     Lut,
 }
 impl Kernel {
-    pub(crate) const ALL: [Self; 98] = [
+    pub(crate) const ALL: [Self; 99] = [
         Self::ToAcescg,
         Self::FromAcescg,
         Self::Text,
@@ -190,6 +191,7 @@ impl Kernel {
         Self::PlanarWarp,
         Self::Ellipse,
         Self::Rectangle,
+        Self::Repeat,
         Self::Mask,
         Self::CombineMask,
         Self::ChannelMask,
@@ -293,6 +295,7 @@ impl Kernel {
             Self::PlanarWarp => "planar_warp",
             Self::Ellipse => "ellipse",
             Self::Rectangle => "rectangle",
+            Self::Repeat => "repeat",
             Self::ChannelMask => "channel_mask",
             Self::Colorize => "colorize",
             Self::Gradient => "gradient",

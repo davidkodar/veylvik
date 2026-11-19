@@ -205,6 +205,16 @@ fn details(ui: &mut egui::Ui, s: &mut Settings, doc: &Composition) {
                 "HEVC 10-bit",
                 "Smaller files and smoother gradients; needs a recent player",
             ),
+            (
+                Codec::ProRes,
+                "ProRes 422 HQ",
+                "An editing codec in a .mov, for handing the shot to an editor: large files, every frame a key frame",
+            ),
+            (
+                Codec::ProRes4444,
+                "ProRes 4444 + alpha",
+                "A .mov that keeps transparency (straight alpha), for titles and cut-outs an editor lays over other footage. Slower to export",
+            ),
         ] {
             if chip(ui, label, s.codec == codec)
                 .on_hover_text(hint)

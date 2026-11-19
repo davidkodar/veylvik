@@ -69,6 +69,9 @@ fn outlined(operation: &Operation, time: Time) -> Result<(PathMask, Vec<GlyphUni
         return Err(error("Expected editable text"));
     };
     operation.validate().map_err(error)?;
+    // The words as they read at this time: `{n}` shows the typography's number.
+    let counted = typography.counted(content, time).map_err(error)?;
+    let content = &counted;
     let (bytes, index) = font_data(font)?;
     let font = Font::from_bytes(bytes, index)?;
     let sample = |value: &veylvik_document::Scalar| value.at(time).map_err(error);

@@ -177,12 +177,18 @@ pub struct Rectangle {
     /// Corner radius, at most half the shorter side.
     pub corner: Scalar,
     pub feather: Scalar,
+    /// Its fill: straight scene-linear RGB and opacity. White is plain coverage.
+    #[serde(default = "white")]
+    pub color: [f32; 4],
+}
+fn white() -> [f32; 4] {
+    [1.0; 4]
 }
 pub static RECTANGLE: NodeType = NodeType {
     type_id: "rectangle",
     version: 1,
     label: "Rectangle",
-    description: "White premultiplied rectangle coverage, centred on x, y. Corner rounds the corners by that radius in pixels, up to half the shorter side (a pill or a circle). Feather is the width in pixels of the soft edge, centred on the outline, at least 1 pixel. Zero width or height is transparent. Colour it with a Solid through a Mask, or with Colorize; animate width and height for bars, plates and wipes.",
+    description: "A filled rectangle, centred on x, y: Colour is its fill (white for plain coverage to use as a mask). Corner rounds the corners by that radius in pixels, up to half the shorter side (a pill or a circle). Feather is the width in pixels of the soft edge, centred on the outline, at least 1 pixel. Zero width or height is transparent. Animate width and height for bars, plates and wipes.",
     inputs: &[],
     optional: &[],
     output: PortKind::Image,
@@ -193,6 +199,7 @@ pub static RECTANGLE: NodeType = NodeType {
         scalar("height", "pixels", 0.0, 16384.0, 200.0),
         scalar("corner", "pixels", 0.0, 8192.0, 0.0),
         scalar("feather", "pixels", 0.0, 8192.0, 1.0),
+        other("color", ParameterKind::Color, "linear RGBA"),
     ],
 };
 pub static ELLIPSE: NodeType = NodeType {
@@ -238,7 +245,24 @@ node!(
     [x, y, width, height, evolution, density, detail, lighting]
 );
 node!(Ellipse, ELLIPSE, [x, y, radius_x, radius_y, feather]);
-node!(Rectangle, RECTANGLE, [x, y, width, height, corner, feather]);
+node!(
+    Rectangle,
+    RECTANGLE,
+    [x, y, width, height, corner, feather],
+    {
+        fn validate(&self) -> Result<()> {
+            let [r, g, b, a] = self.color;
+            if [r, g, b]
+                .iter()
+                .any(|v| !v.is_finite() || !(0.0..=64.0).contains(v))
+                || !(0.0..=1.0).contains(&a)
+            {
+                return fail("rectangle fill needs RGB within 0..=64 and opacity within 0..=1");
+            }
+            Ok(())
+        }
+    }
+);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

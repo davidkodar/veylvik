@@ -195,6 +195,14 @@ impl Video {
         }
         let first = timestamps[0];
         let last = *timestamps.last().unwrap();
+        // Frames keep their own times; say so when their spacing is uneven, because the
+        // composition's rate can then only be the average.
+        let gaps = timestamps.windows(2).map(|p| p[1] - p[0]);
+        let uneven = gaps
+            .clone()
+            .min()
+            .zip(gaps.max())
+            .is_some_and(|(least, most)| most * 10 > least * 11);
         let tail = frames.last().unwrap()["duration"]
             .as_i64()
             .filter(|d| *d > 0)
@@ -342,7 +350,12 @@ impl Video {
             frame_rate: rate,
             frames: Some(timestamps.len() as u32),
             description: format!(
-                "Video · {}{}",
+                "Video{} · {}{}",
+                if uneven {
+                    " · variable frame rate, each frame at its own time"
+                } else {
+                    ""
+                },
                 if assumed {
                     "colour tags incomplete; standard defaults assumed"
                 } else {

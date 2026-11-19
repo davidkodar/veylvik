@@ -158,6 +158,29 @@ impl RenderNode for veylvik_document::nodes::Displace {
         Ok(())
     }
 }
+impl RenderNode for veylvik_document::nodes::Repeat {
+    fn passes(&self) -> Passes {
+        Passes::One(Kernel::Repeat)
+    }
+    fn shareable(&self) -> bool {
+        true
+    }
+    fn params(
+        &self,
+        _cx: &Cx<'_>,
+        sample: &dyn Fn(&str) -> Result<f32>,
+        p: &mut Params,
+    ) -> Result<()> {
+        p.values = [
+            sample("columns")?.round(),
+            sample("rows")?.round(),
+            sample("step_x")?,
+            sample("step_y")?,
+        ];
+        p.extra[0] = sample("fade")?;
+        Ok(())
+    }
+}
 impl RenderNode for veylvik_document::nodes::Transform {
     fn passes(&self) -> Passes {
         Passes::One(Kernel::Transform)

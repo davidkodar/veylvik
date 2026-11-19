@@ -320,6 +320,9 @@ impl NodeType {
         for param in self.parameters {
             value[param.name] = param.default_value();
         }
+        if self.type_id == "rectangle" {
+            value["color"] = json!([1.0_f32, 1.0_f32, 1.0_f32, 1.0_f32]);
+        }
         // A card's tint starts white: the picture as it is.
         if self.type_id == "image_card" {
             value["colour"] = json!([1.0_f32, 1.0_f32, 1.0_f32]);
@@ -357,7 +360,7 @@ pub use crate::nodes::{
     LENS_DISTORTION, LIGHT_3D, LIGHT_RIG, LUMA_KEY, LUT, MASK, MATCH_GRAIN, MATERIAL,
     MATERIAL_LAYERS, MERGE, MERGE_SCENES, METALLIC_SHINE, MODEL_3D, MORPHOLOGY, MOTION_BLUR, NOISE,
     OCIO, OPTICAL_FLOW, PARTICLES, PATH, PATINA, PLANAR_TRACK, PLANAR_WARP, POINT_CLOUD, RECTANGLE,
-    REFINE_MATTE, RENDER_SCENE, SHADER, SHAPE_3D, SHAPE_WARP, SOLID, SOUND, SUN_GLINTS,
+    REFINE_MATTE, RENDER_SCENE, REPEAT, SHADER, SHAPE_3D, SHAPE_WARP, SOLID, SOUND, SUN_GLINTS,
     SURFACE_BLEND, SURFACE_REFLECTION, TEXT, TEXT_3D, TIME_REMAP, TRANSFORM, TRANSFORM_3D,
 };
 pub static TYPES: &[&NodeType] = &[
@@ -406,6 +409,7 @@ pub static TYPES: &[&NodeType] = &[
     &PLANAR_WARP,
     &ELLIPSE,
     &RECTANGLE,
+    &REPEAT,
     &MASK,
     &TEXT,
     &PATH,

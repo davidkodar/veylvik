@@ -241,7 +241,7 @@ pub fn select(choice: Choice, folder: &Path, name: &str) -> Result<Option<PathBu
             "PNG or OpenEXR image",
             "*.png",
         ),
-        Choice::Video => ("Export video", "MP4 video", "*.mp4"),
+        Choice::Video => ("Export video", "MP4 or MOV video", "*.mp4"),
         Choice::Directory => ("Choose folder", "Folders", "*"),
         Choice::Source => ("Locate source", "Source files", "*"),
         Choice::Folder => ("Choose parent folder for image sequence", "Folders", "*"),
@@ -281,6 +281,8 @@ pub fn select(choice: Choice, folder: &Path, name: &str) -> Result<Option<PathBu
             .glob("sequence.json")
     } else if matches!(choice, Choice::Model) {
         FileFilter::new(label).glob("*.glb").glob("*.gltf")
+    } else if matches!(choice, Choice::Video) {
+        FileFilter::new(label).glob("*.mp4").glob("*.mov")
     } else if matches!(choice, Choice::Export | Choice::ImportSequence) {
         FileFilter::new(label).glob("*.png").glob("*.exr")
     } else {

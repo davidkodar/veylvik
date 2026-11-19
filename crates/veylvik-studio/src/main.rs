@@ -1383,10 +1383,8 @@ impl Studio {
         _: &egui::Context,
     ) {
         settings.audio.base = Some(self.project.base.clone());
-        self.queue_export(
-            render_queue::Output::Video(Box::new(settings)),
-            "composition.mp4".into(),
-        );
+        let name = format!("composition.{}", settings.codec.extension());
+        self.queue_export(render_queue::Output::Video(Box::new(settings)), name);
     }
     fn export_sequence(&mut self, settings: sequence::Settings, _: &egui::Context) {
         self.queue_export(

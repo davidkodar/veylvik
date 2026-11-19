@@ -62,6 +62,18 @@ pub struct Transform {
     pub x: Scalar,
     pub y: Scalar,
 }
+/// Copies of the image laid out in a grid, each over the one before.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Repeat {
+    pub columns: Scalar,
+    pub rows: Scalar,
+    /// Pixels from one copy to the next, across and down.
+    pub step_x: Scalar,
+    pub step_y: Scalar,
+    /// How much each further copy fades (0 keeps them all alike).
+    pub fade: Scalar,
+}
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Affine {
@@ -138,6 +150,22 @@ pub static TRANSFORM: NodeType = NodeType {
         scalar("y", "pixels", -1_000_000.0, 1_000_000.0, 0.0),
     ],
 };
+pub static REPEAT: NodeType = NodeType {
+    type_id: "repeat",
+    version: 1,
+    label: "Repeat",
+    description: "Copies of the image in a grid: Columns across and Rows down (whole numbers, up to 32 each and 256 copies in all), each Step pixels from the one before, the first where the image is. Later copies lie over earlier ones. Fade makes each further copy that much fainter (0.1 leaves the tenth at about a third). Animate the steps to spread or gather the copies. One copy is the image itself.",
+    inputs: &["image"],
+    optional: &[],
+    output: PortKind::Image,
+    parameters: &[
+        scalar("columns", "count", 1.0, 32.0, 4.0),
+        scalar("rows", "count", 1.0, 32.0, 1.0),
+        scalar("step_x", "pixels", -8192.0, 8192.0, 200.0),
+        scalar("step_y", "pixels", -8192.0, 8192.0, 200.0),
+        scalar("fade", "amount", 0.0, 1.0, 0.0),
+    ],
+};
 pub static AFFINE: NodeType = NodeType {
     type_id: "affine",
     version: 1,
@@ -168,6 +196,7 @@ node!(LensBlur, LENS_BLUR, [radius, highlights, threshold, focus]);
 node!(Morphology, MORPHOLOGY, [radius]);
 node!(Displace, DISPLACE, [x, y]);
 node!(Transform, TRANSFORM, [x, y]);
+node!(Repeat, REPEAT, [columns, rows, step_x, step_y, fade]);
 node!(
     Affine,
     AFFINE,

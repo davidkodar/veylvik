@@ -22,6 +22,11 @@ pub enum Codec {
     /// will cut and grade it further. Ten-bit 4:2:2, every frame a key frame, large files.
     #[serde(rename = "prores")]
     ProRes,
+    /// ProRes 4444 in a MOV with straight alpha: an overlay (a title, a cut-out) an
+    /// editor lays over other footage. Frames are read back from the graphics card and
+    /// handed over whole, so it is slower than the other codecs.
+    #[serde(rename = "prores4444")]
+    ProRes4444,
 }
 impl Codec {
     pub fn label(self) -> &'static str {
@@ -29,6 +34,7 @@ impl Codec {
             Self::H264 => "H.264 · MP4",
             Self::Hevc10 => "HEVC · 10-bit MP4",
             Self::ProRes => "ProRes 422 HQ · MOV",
+            Self::ProRes4444 => "ProRes 4444 with alpha · MOV",
         }
     }
     pub fn ten_bit(self) -> bool {
@@ -36,7 +42,11 @@ impl Codec {
     }
     /// An editing codec: software encoded, in a MOV.
     pub fn intermediate(self) -> bool {
-        self == Self::ProRes
+        matches!(self, Self::ProRes | Self::ProRes4444)
+    }
+    /// Carries transparency instead of a matte.
+    pub fn alpha(self) -> bool {
+        self == Self::ProRes4444
     }
     /// The file extension its videos carry.
     pub fn extension(self) -> &'static str {
@@ -67,6 +77,10 @@ pub struct Settings {
     pub allow_software: bool,
     #[serde(default)]
     pub matte: [f32; 3],
+    /// Start timecode written into the file (`HH:MM:SS:FF`, or `;FF` for drop-frame), so
+    /// an editor can place the shot by it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub timecode: Option<String>,
     #[serde(default)]
     pub audio: crate::export_audio::Audio,
     /// Replace a file already at the destination (the user agreed to in the save
@@ -76,6 +90,9 @@ pub struct Settings {
     /// The composition's SDR display transform; filled in by [`render`], never saved.
     #[serde(skip)]
     pub display: veylvik_document::media::DisplayTransform,
+    /// The composition's own size, for codecs handed whole frames; filled in by [`render`].
+    #[serde(skip)]
+    source: [u32; 2],
 }
 impl Settings {
     fn look(&self) -> veylvik_render::Look {
@@ -95,9 +112,11 @@ impl Settings {
             quality: Quality::High,
             allow_software: false,
             matte: [0.; 3],
+            timecode: None,
             audio: Default::default(),
             replace: false,
             display: doc.output_display(),
+            source: [doc.width, doc.height],
         }
     }
     pub fn times(&self, doc: &Composition) -> Result<Vec<Time>> {
@@ -200,13 +219,25 @@ impl Backend {
         if let Self::Vaapi(device) = self {
             c.arg("-vaapi_device").arg(device);
         }
+        // An alpha codec is handed whole straight-alpha frames at the composition's size.
+        let size = if s.codec.alpha() {
+            s.source
+        } else {
+            [s.width, s.height]
+        };
         c.args([
             "-f",
             "rawvideo",
             "-pixel_format",
-            if s.codec.ten_bit() { "p010le" } else { "nv12" },
+            if s.codec.alpha() {
+                "rgba64le"
+            } else if s.codec.ten_bit() {
+                "p010le"
+            } else {
+                "nv12"
+            },
             "-video_size",
-            &format!("{}x{}", s.width, s.height),
+            &format!("{}x{}", size[0], size[1]),
             "-framerate",
             &format!("{}/{}", s.frame_rate.ticks, s.frame_rate.rate),
             "-color_primaries",
@@ -270,6 +301,23 @@ impl Backend {
                     &quality,
                 ]);
             }
+            Self::Software if s.codec.alpha() => {
+                c.args([
+                    "-vf",
+                    &format!(
+                        "scale={}:{}:flags=bicubic:in_range=full:out_range=tv:out_color_matrix=bt709",
+                        s.width, s.height
+                    ),
+                    "-c:v",
+                    "prores_ks",
+                    "-profile:v",
+                    "4",
+                    "-vendor",
+                    "apl0",
+                    "-pix_fmt",
+                    "yuva444p10le",
+                ]);
+            }
             Self::Software if s.codec.intermediate() => {
                 c.args([
                     "-c:v",
@@ -327,6 +375,9 @@ impl Backend {
             "center",
         ]);
         if let Some(path) = destination {
+            if let Some(timecode) = &s.timecode {
+                c.args(["-timecode", timecode]);
+            }
             if s.codec.intermediate() {
                 c.args(["-f", "mov"]);
             } else {
@@ -519,6 +570,7 @@ pub fn render(
 ) -> Result<Outcome> {
     let settings = &Settings {
         display: doc.output_display(),
+        source: [doc.width, doc.height],
         ..settings.clone()
     };
     let times = settings.times(doc)?;
@@ -592,7 +644,18 @@ pub fn render(
     let trial = temporary.0.join("trial.mp4");
     let mut direct_failures = Vec::new();
     // An editing codec has no GPU encoder: it goes straight to the staged path.
-    let direct = if settings.codec.intermediate() {
+    if let Some(timecode) = &settings.timecode {
+        let parts: Vec<&str> = timecode.split([':', ';']).collect();
+        if parts.len() != 4
+            || parts
+                .iter()
+                .any(|p| p.len() != 2 || p.parse::<u8>().is_err())
+        {
+            return Err("Timecode must read HH:MM:SS:FF (or HH:MM:SS;FF for drop-frame)".into());
+        }
+    }
+    // The direct GPU encoder writes no timecode either.
+    let direct = if settings.codec.intermediate() || settings.timecode.is_some() {
         Vec::new()
     } else {
         backends(false)
@@ -635,13 +698,26 @@ pub fn render(
         result.interop_fallback = interop_fallback.clone();
         result
     };
-    let first = renderer.encode_video_planes(
-        &frame,
-        settings.width,
-        settings.height,
-        settings.codec.ten_bit(),
-        settings.look(),
-    )?;
+    // What the encoder is fed for one frame: compact planes made on the graphics card,
+    // or for an alpha codec the whole frame read back with its transparency.
+    let planes = |frame: &veylvik_render::GpuFrame| -> Result<Vec<u8>> {
+        if settings.codec.alpha() {
+            let pixels = renderer.read_frame(frame)?.pixels;
+            Ok(straight_alpha(&veylvik_render::display::apply(
+                settings.display,
+                &pixels,
+            )))
+        } else {
+            Ok(renderer.encode_video_planes(
+                frame,
+                settings.width,
+                settings.height,
+                settings.codec.ten_bit(),
+                settings.look(),
+            )?)
+        }
+    };
+    let first = planes(&frame)?;
     drop(frame);
     let mut selected = None;
     let mut failures = Vec::new();
@@ -690,13 +766,7 @@ pub fn render(
             first
         } else {
             let frame = renderer.render_gpu_export(&plan, RenderRequest::full(*time), inputs)?;
-            renderer.encode_video_planes(
-                &frame,
-                settings.width,
-                settings.height,
-                settings.codec.ten_bit(),
-                settings.look(),
-            )?
+            planes(&frame)?
         };
         if !encoder.push(bytes, &mut || notify(n as u32, backend.label(), "Encoding"))? {
             return Ok(cancelled(backend.label(), hardware, n as u32));
@@ -798,6 +868,28 @@ impl Soundtrack {
     }
 }
 
+/// Premultiplied scene-linear pixels as 16-bit straight-alpha RGBA in the Rec.709 video
+/// curve: colour divided by its coverage, held within 0..1, alpha as it is.
+fn straight_alpha(pixels: &[[f32; 4]]) -> Vec<u8> {
+    let curve = |linear: f32| {
+        let v = linear.clamp(0.0, 1.0);
+        if v < 0.018 {
+            4.5 * v
+        } else {
+            1.099 * v.powf(0.45) - 0.099
+        }
+    };
+    let mut bytes = Vec::with_capacity(pixels.len() * 8);
+    for p in pixels {
+        let a = p[3].clamp(0.0, 1.0);
+        for value in &p[..3] {
+            let straight = if a > 0.0 { value / a } else { 0.0 };
+            bytes.extend(((curve(straight) * 65535.0 + 0.5) as u16).to_le_bytes());
+        }
+        bytes.extend(((a * 65535.0 + 0.5) as u16).to_le_bytes());
+    }
+    bytes
+}
 fn native_settings(s: &Settings) -> veylvik_decode::encode::Settings {
     veylvik_decode::encode::Settings {
         width: s.width,
@@ -921,5 +1013,23 @@ fn prepare_native_frame(
             node,
         )?),
         Backend::Software => Err("No direct GPU frame path for software encoder".into()),
+    }
+}
+#[cfg(test)]
+mod alpha_tests {
+    #[test]
+    fn straight_alpha_divides_colour_by_coverage_and_keeps_alpha() {
+        // Half-covered mid grey, an empty pixel, and an over-bright one.
+        let bytes = super::straight_alpha(&[
+            [0.09, 0.09, 0.09, 0.5],
+            [0.0, 0.0, 0.0, 0.0],
+            [4.0, 0.0, 0.0, 1.0],
+        ]);
+        let at = |i: usize| u16::from_le_bytes([bytes[i * 2], bytes[i * 2 + 1]]);
+        // 0.18 linear in the Rec.709 curve is about 0.409.
+        assert!((f32::from(at(0)) / 65535.0 - 0.409).abs() < 0.002);
+        assert_eq!(at(3), 32768);
+        assert_eq!([at(4), at(5), at(6), at(7)], [0; 4]);
+        assert_eq!([at(8), at(9), at(11)], [65535, 0, 65535]);
     }
 }

@@ -154,7 +154,28 @@ fn ellipse(@builtin(global_invocation_id) gid:vec3<u32>) {
     }
     result[index(gid)]=vec4<f32>(alpha);
 }
-// Rounded rectangle: values = centre, half size; extra = corner radius, feather.
+// Copies of the source in a grid: values = columns, rows, step x, step y; extra.x =
+// fade per copy. Later copies lie over earlier ones.
+@compute @workgroup_size(8,8)
+fn repeat(@builtin(global_invocation_id) gid:vec3<u32>) {
+    if !inside(gid) {return;}
+    let columns=i32(clamp(p.values.x,1.0,32.0)); let rows=i32(clamp(p.values.y,1.0,32.0));
+    let at=vec2<f32>(gid.xy);
+    var colour=vec4<f32>(0.0);
+    var n=0;
+    for(var j=0;j<32;j++) {
+        if j>=rows {break;}
+        for(var i=0;i<32;i++) {
+            if i>=columns || n>=256 {break;}
+            let copy=bilinear(at-vec2<f32>(f32(i),f32(j))*p.values.zw)*pow(1.0-p.extra.x,f32(n));
+            colour=copy+colour*(1.0-copy.a);
+            n+=1;
+        }
+    }
+    result[index(gid)]=colour;
+}
+// Rounded rectangle: values = centre, half size; extra = corner radius, feather, fill
+// red, fill green; size_op.zw = fill blue and opacity as float bits.
 @compute @workgroup_size(8,8)
 fn rectangle(@builtin(global_invocation_id) gid:vec3<u32>) {
     if !inside(gid) {return;}
@@ -165,7 +186,9 @@ fn rectangle(@builtin(global_invocation_id) gid:vec3<u32>) {
         let distance=length(max(q,vec2<f32>(0.0)))+min(max(q.x,q.y),0.0)-corner;
         alpha=1.0-smoothstep(-p.extra.y*0.5,p.extra.y*0.5,distance);
     }
-    result[index(gid)]=vec4<f32>(alpha);
+    let fill=vec4<f32>(p.extra.z,p.extra.w,bitcast<f32>(p.size_op.z),bitcast<f32>(p.size_op.w));
+    let a=alpha*fill.a;
+    result[index(gid)]=vec4<f32>(fill.rgb*a,a);
 }
 @compute @workgroup_size(8,8)
 fn mask(@builtin(global_invocation_id) gid:vec3<u32>) {

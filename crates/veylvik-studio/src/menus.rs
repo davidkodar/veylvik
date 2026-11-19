@@ -242,6 +242,7 @@ pub(crate) const ADD_MENU: [(&str, &[&registry::NodeType]); 10] = [
         &[
             &registry::AFFINE,
             &registry::TRANSFORM,
+            &registry::REPEAT,
             &registry::DISPLACE,
             &registry::LENS_DISTORTION,
             &registry::GRID_WARP,
