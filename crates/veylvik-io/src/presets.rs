@@ -36,6 +36,11 @@ pub fn load(path: &Path) -> Result<Preset> {
     }
     let preset: Preset = serde_json::from_slice(&data)?;
     preset.validate()?;
+    // A sound the effect brings is small and of a known kind, or the effect is refused.
+    let beside = path.parent().unwrap_or(Path::new("."));
+    for cue in &preset.sounds {
+        crate::sounds::check_effect_sound(beside, &cue.file)?;
+    }
     Ok(preset)
 }
 pub fn save_new(path: &Path, preset: &Preset) -> Result<()> {

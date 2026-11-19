@@ -52,6 +52,7 @@ pub fn is_audio(path: &Path) -> bool {
 /// Probed audio facts about a media file: whether it has sound, and its length.
 pub struct Probe {
     pub has_audio: bool,
+    pub has_video: bool,
     pub duration: Option<f64>,
 }
 /// Places a footage node's sound inside the export window `[start, end)` (composition seconds).
@@ -117,6 +118,9 @@ pub fn probe(path: &Path) -> Result<Probe> {
         has_audio: value["streams"]
             .as_array()
             .is_some_and(|s| s.iter().any(|s| s["codec_type"] == "audio")),
+        has_video: value["streams"]
+            .as_array()
+            .is_some_and(|s| s.iter().any(|s| s["codec_type"] == "video")),
         duration: value["format"]["duration"]
             .as_str()
             .and_then(|d| d.parse().ok()),
@@ -155,7 +159,7 @@ pub fn clips(doc: &Composition, base: &Path, window: [f64; 2]) -> Result<Vec<Cli
         if node.bypass || sound.file.trim().is_empty() {
             continue;
         }
-        let path = base.join(&sound.file);
+        let path = crate::sounds::resolve(base, &sound.file)?;
         let probe = probe(&path)?;
         if !probe.has_audio {
             return Err(format!("{}: {} has no sound", node.label, path.display()).into());
@@ -277,6 +281,37 @@ pub fn mux(
         Some(status) if status.success() => Ok(true),
         Some(_) => Err(format!("Could not mix audio: {}", errors.trim()).into()),
     }
+}
+/// Gives a finished export the composition's sound as it now is: `video`'s picture is
+/// copied as it stands (not rendered or encoded again) into the new file `output` with
+/// the sound of `doc`'s footage and Sound nodes mixed for `seconds` from the start.
+pub fn resound(
+    doc: &Composition,
+    base: &Path,
+    video: &Path,
+    output: &Path,
+    seconds: f64,
+) -> Result<Vec<String>> {
+    if output.exists() {
+        return Err(format!("{} already exists; choose a new file", output.display()).into());
+    }
+    if !probe(video)
+        .map_err(|e| format!("Cannot read {}: {e}", video.display()))?
+        .has_video
+    {
+        return Err(format!("{} has no picture", video.display()).into());
+    }
+    let clips = clips(doc, base, [0.0, seconds])?;
+    if clips.is_empty() {
+        return Err(
+            "The composition has no sound to give the video: add a Sound node or footage with sound"
+                .into(),
+        );
+    }
+    if !mux(video, output, &clips, None, seconds, || true)? {
+        return Err("Mixing the sound was stopped".into());
+    }
+    Ok(clips.iter().map(|c| c.path.display().to_string()).collect())
 }
 
 #[cfg(test)]

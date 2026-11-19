@@ -259,11 +259,20 @@ impl Operation {
                 let value = self
                     .scalar(parameter.name)
                     .ok_or_else(|| Error(format!("registry mismatch for {}", parameter.name)))?;
-                value.bounded(
-                    parameter.min.unwrap(),
-                    parameter.max.unwrap(),
-                    parameter.name,
-                )?;
+                // Say which setting, where the check itself does not (key order, say).
+                value
+                    .bounded(
+                        parameter.min.unwrap(),
+                        parameter.max.unwrap(),
+                        parameter.name,
+                    )
+                    .map_err(|e| {
+                        if e.0.contains(parameter.name) {
+                            e
+                        } else {
+                            Error(format!("{}: {}", parameter.name, e.0))
+                        }
+                    })?;
             }
         }
         each_node!(self, node => node.validate())
@@ -442,7 +451,14 @@ impl Composition {
             if *id != node.id || node.version != node.operation.descriptor().version {
                 return fail(format!("invalid identity or version for {id}"));
             }
-            node.operation.validate()?;
+            // Say which node, by the name the user gave it.
+            node.operation.validate().map_err(|e| {
+                if e.0.contains(&node.label) {
+                    e
+                } else {
+                    Error(format!("{}: {}", node.label, e.0))
+                }
+            })?;
             annotations::validate_note(&node.note)?;
             if let Some(position) = node.position {
                 position.validate()?;

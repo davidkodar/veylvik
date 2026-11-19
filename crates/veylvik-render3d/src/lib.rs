@@ -101,6 +101,7 @@ pub struct Engine {
     #[allow(clippy::type_complexity)]
     textures: Mutex<HashMap<usize, (wgpu::Buffer, std::sync::Arc<veylvik_scene::Texture>)>>,
     card: wgpu::RenderPipeline,
+    card_solid: wgpu::RenderPipeline,
     copy: wgpu::ComputePipeline,
     meshes: Mutex<(HashMap<String, GpuMesh>, u64)>,
     /// Panorama to studio-layout conversion.
@@ -607,7 +608,11 @@ impl SceneRenderer for Engine {
             let texture = self.part_texture(device, &object.geometry)?;
             let (pipeline, image) = match &object.geometry {
                 Geometry::Card { image, .. } => (
-                    &self.card,
+                    if show_depth {
+                        &self.card_solid
+                    } else {
+                        &self.card
+                    },
                     images
                         .iter()
                         .find(|(id, ..)| id == image)

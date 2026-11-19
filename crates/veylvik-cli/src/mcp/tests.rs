@@ -106,6 +106,7 @@ fn protocol_enforces_lifecycle_and_transaction_revision() {
             "render",
             "render_sequence",
             "render_video",
+            "replace_sound",
             "track_surface",
             "solve_camera",
             "segment_subject",

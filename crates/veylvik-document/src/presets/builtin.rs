@@ -16,7 +16,12 @@ pub struct Builtin {
     pub label: &'static str,
     pub description: &'static str,
 }
-pub const ALL: [Builtin; 78] = [
+pub const ALL: [Builtin; 79] = [
+    Builtin {
+        id: "switch_off",
+        label: "Television Switch-off",
+        description: "The picture collapses to a bright line across the screen, the line draws in to a point, and the point glows a moment and dies, as an old television does when it is switched off. Off runs from 0 (the picture) to 1 (dark): key it over about a second where the picture should go. It brings its own sound as a Sound node on the timeline (static, the switch's click, a thunk and a falling whine; the click comes 0.45 seconds into it): move that with the keys.",
+    },
     Builtin {
         id: "deep_sky",
         label: "Deep Sky",
@@ -815,7 +820,21 @@ pub fn build(id: &str) -> Result<Preset> {
     }
     let group_id = group.id;
     b.doc.groups.insert(group_id, group);
-    Preset::capture(&b.doc, group_id)
+    let mut preset = Preset::capture(&b.doc, group_id)?;
+    if id == "switch_off" {
+        // Its sound: static, then the click as the switch is thrown at 1.4 seconds
+        // (0.45 seconds into the sound), the thunk and the falling whine.
+        preset.sounds.push(super::Cue {
+            label: "Switch-off sound".into(),
+            file: "builtin:switch_off".into(),
+            start: Time {
+                ticks: 19,
+                rate: 20,
+            },
+            gain: 0.0,
+        });
+    }
+    Ok(preset)
 }
 
 pub const CATEGORIES: [&str; 8] = [
@@ -832,6 +851,7 @@ pub fn category(id: &str) -> &'static str {
     match id {
         id if is_recipe(id) => "Surface",
         "shutter_motion" | "smooth_slow_motion" => "Motion",
+        "switch_off" => "Motion",
         id if sky::is(id) => "Light",
         id if appearance::material_kind(id).is_some() => "Materials",
         "sun_glints" | "metallic_shine" | "soft_bloom" | "anamorphic_streaks" | "dream_focus"

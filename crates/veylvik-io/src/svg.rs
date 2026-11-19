@@ -1,4 +1,4 @@
-//! SVG import: every filled or stroked shape of a drawing becomes closed path geometry in composition pixels with one flat colour, ready to be Path nodes. Text, pictures, clips and masks are not read; a gradient gives the average of its stops.
+//! SVG import: every filled or stroked shape of a drawing becomes closed path geometry in composition pixels, ready to be Path nodes, with its colour or its two-colour gradient and the clip of the group it stands in. Text, pictures, clips and masks are not read; a gradient gives the average of its stops.
 use crate::Result;
 use serde_json::{Value, json};
 use std::path::Path;
@@ -15,13 +15,29 @@ pub fn is_svg(path: &Path) -> bool {
     path.extension()
         .is_some_and(|e| e.eq_ignore_ascii_case("svg"))
 }
+/// A gradient from one colour to another, in composition pixels: along the line from
+/// `start` to `end`, or outwards from `start` as far as `end` when `radial`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Ramp {
+    pub radial: bool,
+    pub start: [f32; 2],
+    pub end: [f32; 2],
+    /// Straight scene-linear RGBA at the start and at the end.
+    pub from: [f32; 4],
+    pub to: [f32; 4],
+}
 /// One shape of the drawing.
 #[derive(Debug, Clone)]
 pub struct Shape {
     pub label: String,
-    /// Straight scene-linear RGBA.
+    /// Straight scene-linear RGBA; for a gradient, the average of its stops.
     pub colour: [f32; 4],
     pub geometry: PathMask,
+    /// The gradient the shape is painted with, from its first stop to its last.
+    pub ramp: Option<Ramp>,
+    /// The outline the shape is cut to (its group's clip path); shapes of one group
+    /// share it.
+    pub clip: Option<std::sync::Arc<PathMask>>,
 }
 fn linear(srgb: u8) -> f32 {
     let v = f32::from(srgb) / 255.0;
@@ -111,15 +127,91 @@ fn geometry(path: &usvg::tiny_skia_path::Path, rule: FillRule) -> Option<PathMas
     };
     mask.validate().is_ok().then_some(mask)
 }
+/// The gradient `paint` in composition pixels, `placed` taking the shape there.
+fn ramp(paint: &usvg::Paint, opacity: f32, placed: usvg::Transform) -> Option<Ramp> {
+    let stop = |stop: &usvg::Stop| {
+        let c = stop.color();
+        [
+            linear(c.red),
+            linear(c.green),
+            linear(c.blue),
+            stop.opacity().get() * opacity,
+        ]
+    };
+    let at = |through: usvg::Transform, x: f32, y: f32| {
+        let mut point = usvg::tiny_skia_path::Point::from_xy(x, y);
+        placed.pre_concat(through).map_point(&mut point);
+        [point.x, point.y]
+    };
+    let (radial, start, end, stops) = match paint {
+        usvg::Paint::LinearGradient(g) => (
+            false,
+            at(g.transform(), g.x1(), g.y1()),
+            at(g.transform(), g.x2(), g.y2()),
+            g.stops(),
+        ),
+        usvg::Paint::RadialGradient(g) => (
+            true,
+            at(g.transform(), g.cx(), g.cy()),
+            at(g.transform(), g.cx() + g.r().get(), g.cy()),
+            g.stops(),
+        ),
+        _ => return None,
+    };
+    Some(Ramp {
+        radial,
+        start,
+        end,
+        from: stop(stops.first()?),
+        to: stop(stops.last()?),
+    })
+}
+/// Every path of a clip, as one outline in composition pixels.
+fn clip_outline(group: &usvg::Group, placed: usvg::Transform, commands: &mut Vec<PathCommand>) {
+    for node in group.children() {
+        match node {
+            usvg::Node::Group(inner) => clip_outline(inner, placed, commands),
+            usvg::Node::Path(path) => {
+                if let Some(part) = path
+                    .data()
+                    .clone()
+                    .transform(placed.pre_concat(path.abs_transform()))
+                    .and_then(|o| geometry(&o, FillRule::NonZero))
+                {
+                    commands.extend(part.commands);
+                }
+            }
+            _ => {}
+        }
+    }
+}
 fn walk(
     group: &usvg::Group,
     fit: usvg::Transform,
+    cut: Option<&std::sync::Arc<PathMask>>,
     shapes: &mut Vec<Shape>,
     skipped: &mut usize,
 ) -> Result<()> {
+    // A group's clip path cuts everything in it (the innermost clip wins).
+    let own = group.clip_path().and_then(|clip| {
+        let mut commands = Vec::new();
+        clip_outline(
+            clip.root(),
+            fit.pre_concat(group.abs_transform())
+                .pre_concat(clip.transform()),
+            &mut commands,
+        );
+        let mask = PathMask {
+            keys: vec![],
+            fill_rule: FillRule::NonZero,
+            commands,
+        };
+        mask.validate().is_ok().then(|| std::sync::Arc::new(mask))
+    });
+    let cut = own.as_ref().or(cut);
     for node in group.children() {
         match node {
-            usvg::Node::Group(inner) => walk(inner, fit, shapes, skipped)?,
+            usvg::Node::Group(inner) => walk(inner, fit, cut, shapes, skipped)?,
             usvg::Node::Path(path) if path.is_visible() => {
                 let placed = fit.pre_concat(path.abs_transform());
                 let base = if path.id().is_empty() {
@@ -152,6 +244,8 @@ fn walk(
                         label,
                         colour,
                         geometry,
+                        ramp: ramp(paint, opacity, placed),
+                        clip: cut.cloned(),
                     });
                     Ok(())
                 };
@@ -206,7 +300,7 @@ pub fn import(path: &Path, width: u32, height: u32, scale: f32) -> Result<(Vec<S
         (height as f32 - h * fit) * 0.5,
     );
     let (mut shapes, mut skipped) = (Vec::new(), 0);
-    walk(tree.root(), fit, &mut shapes, &mut skipped)?;
+    walk(tree.root(), fit, None, &mut shapes, &mut skipped)?;
     if shapes.is_empty() {
         return Err("the SVG has no filled or stroked shapes to import".into());
     }
@@ -220,9 +314,21 @@ pub fn import(path: &Path, width: u32, height: u32, scale: f32) -> Result<(Vec<S
     }
     Ok((shapes, skipped))
 }
+/// Only the shapes numbered in `only` (1 is the first, as their default labels count),
+/// in the drawing's order.
+pub fn keep(shapes: Vec<Shape>, only: &[usize]) -> Vec<Shape> {
+    shapes
+        .into_iter()
+        .enumerate()
+        .filter(|(i, _)| only.contains(&(i + 1)))
+        .map(|(_, shape)| shape)
+        .collect()
+}
 /// The nodes that show `shapes`: for each a Path (its outline, the node to extrude
-/// with 3D text), a Solid of its colour and a Mask joining them, merged back to
-/// front. Returns the commands and a report with every node's id.
+/// with 3D text), its paint (a Solid, or for a gradient a Gradient through a Colorize
+/// of its two colours) and a Mask joining them, merged back to front. A shape cut by
+/// its group's clip takes its mask through a Combine mask with the clip's Path.
+/// Returns the commands and a report with every node's id.
 pub fn commands(composition: &Composition, name: &str, shapes: &[Shape]) -> (Vec<Command>, Value) {
     let top = composition
         .nodes
@@ -242,6 +348,28 @@ pub fn commands(composition: &Composition, name: &str, shapes: &[Shape]) -> (Vec
     };
     let mut report = Vec::new();
     let mut under: Option<NodeId> = None;
+    // One Path for each clip, shared by the shapes it cuts.
+    let mut clips: Vec<(std::sync::Arc<PathMask>, NodeId)> = Vec::new();
+    for shape in shapes {
+        if let Some(clip) = &shape.clip
+            && !clips
+                .iter()
+                .any(|(known, _)| std::sync::Arc::ptr_eq(known, clip))
+        {
+            let node = add(
+                Node::new(
+                    &format!("{name} clip {}", clips.len() + 1),
+                    Operation::Path(veylvik_document::nodes::Path {
+                        geometry: (**clip).clone(),
+                    }),
+                    &[],
+                ),
+                0,
+                shapes.len() + clips.len(),
+            );
+            clips.push((clip.clone(), node));
+        }
+    }
     for (i, shape) in shapes.iter().enumerate() {
         let outline = add(
             Node::new(
@@ -254,27 +382,82 @@ pub fn commands(composition: &Composition, name: &str, shapes: &[Shape]) -> (Vec
             0,
             i,
         );
-        let solid = add(
-            Node::new(
-                &format!("{} colour", shape.label),
-                Operation::Solid(veylvik_document::nodes::Solid {
-                    color: shape.colour,
-                }),
-                &[],
+        let solid = match &shape.ramp {
+            None => add(
+                Node::new(
+                    &format!("{} colour", shape.label),
+                    Operation::Solid(veylvik_document::nodes::Solid {
+                        color: shape.colour,
+                    }),
+                    &[],
+                ),
+                1,
+                i,
             ),
-            1,
-            i,
-        );
+            Some(ramp) => {
+                let grey = add(
+                    Node::new(
+                        &format!("{} gradient", shape.label),
+                        Operation::Gradient(veylvik_document::nodes::Gradient {
+                            mode: if ramp.radial {
+                                veylvik_document::GradientMode::Radial
+                            } else {
+                                veylvik_document::GradientMode::Linear
+                            },
+                            start_x: ramp.start[0].into(),
+                            start_y: ramp.start[1].into(),
+                            end_x: ramp.end[0].into(),
+                            end_y: ramp.end[1].into(),
+                        }),
+                        &[],
+                    ),
+                    0,
+                    shapes.len() + clips.len() + i,
+                );
+                add(
+                    Node::new(
+                        &format!("{} colour", shape.label),
+                        Operation::Colorize(veylvik_document::nodes::Colorize {
+                            low: ramp.from,
+                            high: ramp.to,
+                        }),
+                        &[("image", grey)],
+                    ),
+                    1,
+                    i,
+                )
+            }
+        };
+        // Cut to the group's clip, where it has one.
+        let mut mask = outline;
+        if let Some(clip) = &shape.clip
+            && let Some((_, cutter)) = clips
+                .iter()
+                .find(|(known, _)| std::sync::Arc::ptr_eq(known, clip))
+        {
+            mask = add(
+                Node::new(
+                    &format!("{} clipped", shape.label),
+                    Operation::CombineMask(veylvik_document::nodes::CombineMask {
+                        mode: veylvik_document::MaskMode::Intersect,
+                    }),
+                    &[("mask", outline), ("other", *cutter)],
+                ),
+                1,
+                shapes.len() + i,
+            );
+        }
         let mut layer = add(
             Node::new(
                 &format!("{} layer", shape.label),
                 Operation::Mask(veylvik_document::nodes::Mask {}),
-                &[("image", solid), ("mask", outline)],
+                &[("image", solid), ("mask", mask)],
             ),
             2,
             i,
         );
-        report.push(json!({"label":shape.label,"outline":outline,"colour_node":solid,"layer":layer,"colour":shape.colour}));
+        report.push(json!({"label":shape.label,"outline":outline,"colour_node":solid,"layer":layer,"colour":shape.colour,
+            "gradient":shape.ramp.is_some(),"clipped":shape.clip.is_some()}));
         if let Some(below) = under {
             layer = add(
                 Node::new(
@@ -350,6 +533,60 @@ mod tests {
         document.apply(0, &commands).unwrap();
         assert_eq!(report["shapes"].as_array().unwrap().len(), 2);
         assert!(import(&dir.join("missing.svg"), 10, 10, 1.0).is_err());
+        // A gradient keeps its two colours and its line; a group's clip cuts its shapes.
+        let file = dir.join("badge.svg");
+        std::fs::write(
+            &file,
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100">
+              <defs><linearGradient id="g" x1="10" y1="20" x2="90" y2="20" gradientUnits="userSpaceOnUse">
+                <stop stop-color="#ff0000"/><stop offset="1" stop-color="#0000ff"/></linearGradient>
+              <clipPath id="round"><rect width="50" height="50" rx="10"/></clipPath></defs>
+              <g transform="scale(2)" clip-path="url(#round)"><rect fill="url(#g)" width="50" height="50"/></g>
+              <circle fill="#00ff00" cx="50" cy="50" r="5"/>
+            </svg>"##,
+        )
+        .unwrap();
+        let (shapes, _) = import(&file, 1000, 1000, 1.0).unwrap();
+        assert_eq!(shapes.len(), 2);
+        let ramp = shapes[0].ramp.as_ref().expect("a gradient");
+        // The gradient's ends are in the group's doubled units, then ten times larger.
+        assert!(
+            !ramp.radial && ramp.from == [1.0, 0.0, 0.0, 1.0] && ramp.to == [0.0, 0.0, 1.0, 1.0]
+        );
+        let near =
+            |a: [f32; 2], b: [f32; 2]| (a[0] - b[0]).abs() < 0.5 && (a[1] - b[1]).abs() < 0.5;
+        assert!(
+            near(ramp.start, [200.0, 400.0]) && near(ramp.end, [1800.0, 400.0]),
+            "{ramp:?}"
+        );
+        let clip = shapes[0].clip.as_ref().expect("a clip");
+        // The rounded square, doubled by the group: curves at its corners, 1000 wide.
+        assert!(clip.commands.iter().any(|c| !matches!(
+            c,
+            PathCommand::Move { .. } | PathCommand::Line { .. } | PathCommand::Close {}
+        )));
+        assert!(shapes[1].ramp.is_none() && shapes[1].clip.is_none());
+        let doc =
+            veylvik_document::blank(1000, 1000, veylvik_document::Time { ticks: 24, rate: 1 })
+                .unwrap();
+        let (badge, report) = super::commands(&doc, "Badge", &shapes);
+        let mut document = veylvik_document::Document::new(doc).unwrap();
+        document.apply(0, &badge).unwrap();
+        assert_eq!(report["shapes"][0]["gradient"], true);
+        assert_eq!(report["shapes"][0]["clipped"], true);
+        assert_eq!(report["shapes"][1]["clipped"], false);
+        let kinds: Vec<&str> = document
+            .snapshot()
+            .nodes
+            .values()
+            .map(|n| n.operation.descriptor().type_id)
+            .collect();
+        for kind in ["gradient", "colorize", "combine_mask"] {
+            assert!(kinds.contains(&kind), "{kind} missing from {kinds:?}");
+        }
+        // Keeping only the second shape.
+        let kept = keep(shapes, &[2]);
+        assert!(kept.len() == 1 && kept[0].colour == [0.0, 1.0, 0.0, 1.0]);
         std::fs::remove_dir_all(dir).unwrap();
     }
 }

@@ -26,7 +26,25 @@ pub struct Preset {
     pub group: Group,
     /// Public input edges are omitted; Group.inputs describes where to bind them.
     pub nodes: BTreeMap<NodeId, Node>,
+    /// Sounds the effect brings: each becomes a Sound node on the timeline when the
+    /// effect is inserted. They are not part of the group.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub sounds: Vec<Cue>,
 }
+/// A sound an effect brings with it.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Cue {
+    pub label: String,
+    /// As a Sound node's file: a path, or `builtin:NAME` for a sound Veylvik ships.
+    pub file: String,
+    /// Where it starts on the timeline.
+    pub start: Time,
+    /// Its level in decibels.
+    pub gain: f32,
+}
+/// The most sounds one effect may bring.
+pub const MAX_CUES: usize = 8;
 pub struct Instance {
     pub group: NodeId,
     pub output: NodeId,
@@ -62,6 +80,7 @@ impl Preset {
             frame_count: doc.frame_count,
             group,
             nodes,
+            sounds: Vec::new(),
         };
         preset.validate()?;
         Ok(preset)
@@ -69,6 +88,12 @@ impl Preset {
     pub fn validate(&self) -> Result<()> {
         if self.schema != 1 {
             return fail("unsupported effect preset schema");
+        }
+        if self.sounds.len() > MAX_CUES {
+            return fail("an effect brings at most eight sounds");
+        }
+        for cue in &self.sounds {
+            self.sound(cue).operation.validate()?;
         }
         crate::limits::encoded_size(self)?;
         if self.nodes.keys().copied().collect::<BTreeSet<_>>() != self.group.members {
@@ -152,6 +177,21 @@ impl Preset {
         self.adapted(doc.width, doc.height, sizing)?
             .instantiate(doc, inputs, position)
     }
+    /// The Sound node a cue becomes.
+    fn sound(&self, cue: &Cue) -> Node {
+        Node::new(
+            &cue.label,
+            Operation::Sound(crate::nodes::Sound {
+                file: cue.file.clone(),
+                timing: crate::media::Timing {
+                    start: cue.start,
+                    ..Default::default()
+                },
+                gain: cue.gain.into(),
+            }),
+            &[],
+        )
+    }
     /// Keep authored pixel units and exact animation times. Hosts explicitly bind
     /// every public input; insertion never silently changes the composition output.
     pub fn instantiate(
@@ -165,7 +205,7 @@ impl Preset {
         if inputs.keys().collect::<Vec<_>>() != self.group.inputs.keys().collect::<Vec<_>>() {
             return fail("bind exactly the preset's named inputs");
         }
-        if doc.nodes.len() + self.nodes.len() > crate::limits::MAX_NODES {
+        if doc.nodes.len() + self.nodes.len() + self.sounds.len() > crate::limits::MAX_NODES {
             return fail("preset insertion exceeds the node limit");
         }
         let mut used: BTreeSet<_> = doc.nodes.keys().chain(doc.groups.keys()).copied().collect();
@@ -230,6 +270,18 @@ impl Preset {
         commands.push(Command::PutGroup {
             group: Box::new(group.clone()),
         });
+        // The effect's sounds stand on the timeline as Sound nodes of their own.
+        for (k, cue) in self.sounds.iter().enumerate() {
+            let mut node = self.sound(cue);
+            node.id = allocate();
+            node.position = position.map(|anchor| NodePosition {
+                x: anchor.x,
+                y: anchor.y + 150.0 * (k + 1) as f32,
+            });
+            commands.push(Command::Put {
+                node: Box::new(node),
+            });
+        }
         let owner = crate::Document::new(doc.clone())?;
         owner.prepare(0, &commands)?;
         Ok(Instance {

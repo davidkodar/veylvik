@@ -14,6 +14,7 @@ pub mod placing;
 pub mod presets;
 pub mod preview;
 pub mod relink;
+pub mod sounds;
 pub mod svg;
 pub mod video;
 pub mod video_export;

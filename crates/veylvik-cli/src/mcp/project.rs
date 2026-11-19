@@ -27,8 +27,11 @@ pub(super) fn tools(revision: &Value) -> Vec<Value> {
         ),
         tool(
             "import_media",
-            "Add a video, PNG, OpenEXR or sequence manifest (.veyseq, sequence.json) as a Footage node and return its id and the media's size, rate and duration. match_composition also gives the composition the media's size, frame rate and duration; output true makes the node the output. An audio file (wav, mp3, flac, ogg, opus, m4a, aac, aiff) is added as a Sound node that plays from the first frame (set timing.start to place it; it is mixed into render_video). An SVG drawing is added as vector shapes instead, fitted to 80% of the frame: per shape a Path (its outline: connect it to text_3d to extrude it), a Solid of its colour and a Mask layer, merged back to front; the reply lists every node (result is the merged drawing) and left_out counts text, pictures and patterns that were not read. One undo step.",
-            json!({"revision":revision,"path":{"type":"string"},"match_composition":{"type":"boolean"},"output":{"type":"boolean"}}),
+            "Add a video, PNG, OpenEXR or sequence manifest (.veyseq, sequence.json) as a Footage node and return its id and the media's size, rate and duration. match_composition also gives the composition the media's size, frame rate and duration; output true makes the node the output. An audio file (wav, mp3, flac, ogg, opus, m4a, aac, aiff) is added as a Sound node that plays from the first frame (set timing.start to place it; it is mixed into render_video). An SVG drawing is added as vector shapes instead, fitted to 80% of the frame: per shape a Path (its outline: connect it to text_3d to extrude it), its paint (a Solid, or for a gradient a Gradient through a Colorize from its first stop's colour to its last) and a Mask layer, merged back to front; a shape cut by its group's clip path takes its mask through a Combine mask with the clip. The reply lists every node (result is the merged drawing) and left_out counts text, pictures and patterns that were not read. shapes keeps only the shapes with those numbers (1 is the first); scale (0.05 to 1) sets how much of the frame it fills; width and height fit it to a frame of another size, as inside an Own size branch of that size. One undo step.",
+            json!({"revision":revision,"path":{"type":"string"},"match_composition":{"type":"boolean"},"output":{"type":"boolean"},
+                "shapes":{"type":"array","items":{"type":"integer","minimum":1,"maximum":64},"maxItems":64},
+                "scale":{"type":"number","minimum":0.05,"maximum":1.0},
+                "width":{"type":"integer","minimum":1,"maximum":16384},"height":{"type":"integer","minimum":1,"maximum":16384}}),
             &["revision", "path"],
         ),
     ]
@@ -161,8 +164,46 @@ impl Session {
             _ if crate::assets::svg::is_svg(&media(args)?) => {
                 let path = media(args)?;
                 let doc = self.document.snapshot();
-                let (shapes, skipped) =
-                    crate::assets::svg::import(&path, doc.width, doc.height, 0.8)?;
+                // Fitted to the composition, or to a frame of another size (as an Own
+                // size branch has), filling `scale` of it.
+                let side =
+                    |key: &str, default: u32| -> Result<u32> {
+                        match args.get(key) {
+                            None => Ok(default),
+                            Some(value) => Ok(u32::try_from(
+                                value.as_u64().filter(|v| (1..=16384).contains(v)).ok_or(
+                                    format!("{key} must be a whole number of pixels, 1 to 16384"),
+                                )?,
+                            )?),
+                        }
+                    };
+                let scale = match args.get("scale") {
+                    None => 0.8,
+                    Some(value) => value
+                        .as_f64()
+                        .filter(|v| (0.05..=1.0).contains(v))
+                        .ok_or("scale must be 0.05 to 1")?
+                        as f32,
+                };
+                let (mut shapes, skipped) = crate::assets::svg::import(
+                    &path,
+                    side("width", doc.width)?,
+                    side("height", doc.height)?,
+                    scale,
+                )?;
+                if let Some(only) = args.get("shapes") {
+                    let only: Vec<usize> = only
+                        .as_array()
+                        .ok_or("shapes must be a list of shape numbers")?
+                        .iter()
+                        .map(|n| n.as_u64().map(|n| n as usize))
+                        .collect::<Option<_>>()
+                        .ok_or("shapes must be a list of shape numbers")?;
+                    shapes = crate::assets::svg::keep(shapes, &only);
+                    if shapes.is_empty() {
+                        return Err("none of those shape numbers is in the drawing".into());
+                    }
+                }
                 let name = path
                     .file_stem()
                     .map(|s| s.to_string_lossy().into_owned())

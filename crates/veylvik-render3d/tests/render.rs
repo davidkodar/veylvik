@@ -1336,3 +1336,43 @@ fn particles_in_a_scene_can_stay_points_and_stay_in_focus_and_live_long() {
     assert_eq!(sharp, points, "in focus, the lens changes nothing");
     assert!(blurred > sharp * 2, "blurred {blurred}, sharp {sharp}");
 }
+#[test]
+#[ignore = "requires Vulkan"]
+fn in_a_depth_picture_a_cards_solid_parts_are_an_object() {
+    let renderer = renderer();
+    // The gradient picture: half see-through in its first twenty columns, solid after.
+    let (mut doc, inputs, _, image) = gradient();
+    let mut card = op(&IMAGE_CARD);
+    if let Operation::ImageCard(c) = &mut card {
+        c.placement.position = [0.0, 0.0, -100.0].into();
+        c.opacity = 0.4.into();
+    }
+    let faint = add(&mut doc, card, &[("image", image)]);
+    // The near card at nine tenths: solid where the picture is, under half where it is not.
+    let mut near = op(&IMAGE_CARD);
+    if let Operation::ImageCard(c) = &mut near {
+        c.opacity = 0.9.into();
+    }
+    let solid = add(&mut doc, near, &[("image", image)]);
+    let scene = add(
+        &mut doc,
+        op(&MERGE_SCENES),
+        &[("scene", faint), ("scene_2", solid)],
+    );
+    let mut depth = op(&RENDER_SCENE);
+    if let Operation::RenderScene(r) = &mut depth {
+        r.depth = true;
+    }
+    doc.output = add(&mut doc, depth, &[("scene", scene)]);
+    let out = render(&renderer, &doc, &inputs);
+    let at = |x: u32| out[(45 * W + x) as usize];
+    // Where the near card is solid, the distance is its own: the frame's home distance.
+    let home = veylvik_scene::home_distance(W, 50.0, 36.0);
+    let middle = at(100);
+    assert!(
+        middle[3] > 0.99 && (middle[0] - home).abs() < 1.0,
+        "{middle:?} {home}"
+    );
+    // Where both cards are less than half there, nothing stands in the way.
+    assert_eq!(at(10)[3], 0.0, "{:?}", at(10));
+}

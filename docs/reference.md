@@ -424,7 +424,7 @@ input names, defaults and controls save with the composition. Nested groups are 
 **Add → Effect library…** opens searchable starter and saved effects. The bundled
 **Prismatic Glow** adds cyan/rose light spill; **Neon Outline** adds luminous
 contours; **Liquid Shimmer** adds a smooth four-second flow loop with protected
-frame edges. The library contains **78 starter effects**, searchable by name,
+frame edges. The library contains **79 starter effects**, searchable by name,
 description or category, with category counts in the left sidebar and a search field above the results. Every starter remains an editable group with public controls.
 
 The expanded set includes:
@@ -438,7 +438,22 @@ The expanded set includes:
 - **Surface:** Edge Engrave, Duotone Print, Silver Relief, Ink Bleed, Film Grain,
   Scanlines and Hologram.
 - **Distortion:** Frosted Glass, Heat Haze, Underwater and Glitch Slices (plus Liquid Shimmer).
-- **Motion:** Chromatic Echo, Radial Echo and Orbit Echo.
+- **Motion:** Chromatic Echo, Radial Echo and Orbit Echo, and Television
+  Switch-off (a Custom shader: key its Off control from 0 to 1 where the picture
+  should collapse to a line, then a point, then dark). It brings its own sound.
+
+An effect may bring sounds with it (`sounds` in the preset: a label, a file, a
+start time and a level). Inserting the effect adds each as a **Sound** node on
+the timeline, outside the effect's group, so it can be moved, trimmed, turned
+down or deleted like any other; removing the effect leaves it. The file is a
+path beside the effect, or `builtin:NAME` for a sound Veylvik ships (written
+once to `$XDG_CACHE_HOME/veylvik/sounds`); `builtin:switch_off` is the only one
+so far. A Sound node may name a bundled sound the same way. To keep effects
+light, a sound an effect brings must be an audio file (wav, mp3, flac, ogg,
+opus, m4a, aac or aiff) of at most 4 MiB; an effect file naming a larger or
+other file is refused when it is loaded. A longer sound is added as a Sound
+node of your own. An effect saved from a group in Studio carries no sound
+yet.
 - **Particles:** Dust Motes, Fireflies, Embers, Snowfall and Starfield.
 - **Materials:** Gold, Silver, Aluminium, Bronze,
   Phosphor, Carved Wood, Light/Dark Oak, White Marble, Light/Red Brick,
@@ -1507,7 +1522,9 @@ and `colour`.
 - **Depth output** (on Render scene): with **Depth** on, the node outputs the
   scene's depth instead of its picture: each pixel's distance from the camera
   in scene units (red, green and blue alike), opaque where an object is and
-  empty elsewhere, with no lighting and no lens blur. It feeds the Depth input
+  empty elsewhere, with no lighting and no lens blur. An image card counts as
+  an object where it is more than half opaque, so particles behind a picture
+  are hidden by it. It feeds the Depth input
   of **Particles** and the depth input of **Lens blur**. Use a second Render
   scene on the same scene and camera for it.
 - **Camera solve** (`veylvik solve-camera`, MCP `solve_camera`): recovers the
@@ -1639,7 +1656,10 @@ settles on the wrong kind of motion can still look sure. The
     may be up to a million pixels wide, high and deep. **Points** keeps every
     particle the same size on screen at any distance, as a star is a point
     however near (otherwise particles grow as they come close), and **Always
-    in focus** keeps the camera's depth of field from blurring them. **Life**
+    in focus** keeps the camera's depth of field from blurring them. With Points
+    on, no particle shrinks away with distance, so every one inside Reach shows
+    at full size: a field looks about ten times denser than the same settings
+    without it, and rates should come down to match. **Life**
     may be up to an hour, so a field can simply stand; rate times life is still
     at most 2,000,000 particles. **Shutter** is an exposure in
     seconds: with a scene connected, the camera's own move during it streaks
@@ -1972,7 +1992,8 @@ The server uses newline-delimited JSON-RPC on stdio and MCP protocol version
 2025-11-25. Initialize, then send `notifications/initialized` before using tools.
 The tools are `inspect`, `graph`, `get_node`, `nodes`, `diagnostics`, `outline_text`,
 `apply`, `add_node`, `gold_title`, `particle_look`, `duplicate_branch`, `add_effect`, `undo`,
-`redo`, `save`, `render`, `render_sequence`, `render_video`, `preview_image`, `measure`,
+`redo`, `save`, `render`, `render_sequence`, `render_video`, `replace_sound`,
+`preview_image`, `measure`,
 `new_project`, `open_project`, `new_from_media` and `import_media`.
 `new_project`, `open_project` and `new_from_media` replace the session's project
 (revision 0) and refuse to drop changes made since it was opened or saved unless
@@ -2016,7 +2037,11 @@ and always the last. `solve_camera`, `track_surface`, `segment_subject`,
 `render_video` and `render_sequence` send them; a call without a token gets its
 result only. `render_video` takes
 `settings` naming only what differs from the composition's defaults, including
-`audio` (`mute`, `music`, `music_gain_db`) and `replace`. Every mutation, save, or render
+`audio` (`mute`, `music`, `music_gain_db`) and `replace`. `replace_sound` gives a
+finished video the composition's sound as it is now without rendering the picture
+again: the picture of `video` is copied as it stands into the new file at `path`
+with the Sound nodes and footage sound mixed in, which takes about a second where
+an export takes minutes. Every mutation, save, or render
 requires the current revision from `inspect`. A batch is validated atomically
 and becomes one undo step. `apply` with `dry_run: true` changes nothing.
 
@@ -2824,17 +2849,27 @@ copy sound files yet.
 MCP servers accept an `.svg` drawing (up to 16 MiB) and add it as vector shapes,
 fitted to 80% of the frame and centred. Every filled shape and every stroked
 line becomes closed path geometry in composition pixels (a line is turned into
-its outline), with groups' transforms applied. Each shape gets three nodes: a
-**Path** (its outline), a **Solid** of its colour and a **Mask** joining them;
-the layers are merged back to front, and the last merge is the drawing. A
+its outline), with groups' transforms applied. Each shape gets a **Path** (its
+outline), its paint and a **Mask** joining them; the layers are merged back to
+front, and the last merge is the drawing. The paint is a **Solid** of the
+shape's colour, or for a gradient a **Gradient** through a **Colorize** from its
+first stop's colour to its last, along the gradient's own line (or out from its
+centre). A group's clip path becomes one more Path, and each shape in the group
+takes its mask through a **Combine mask** (intersect) with it, so a tile rounded
+by a clip stays rounded. A
 shape's Path is ordinary editable geometry: connect it to the Outline input of
 **3D text** to extrude it, so a logo becomes a 3D object, one piece per shape
 with its own depth and material.
 
-Limits, stated rather than guessed around: one flat colour per shape (a
-gradient gives the average of its stops), no text, embedded pictures, patterns,
-clips or masks (their count is reported as left out), at most 64 shapes, and the
-usual 4096 commands per path. Reading uses the `usvg` library.
+The headless `import_media` takes three options for drawings: `shapes` keeps
+only the shapes with those numbers (1 is the first), `scale` (0.05–1) sets how
+much of the frame the drawing fills, and `width` and `height` fit it to a frame
+of another size, so it can stand inside an **Own size** branch of that size.
+
+Limits, stated rather than guessed around: a gradient keeps only its first and
+last colours, the innermost clip of nested ones is used, no text, embedded
+pictures, patterns or masks (their count is reported as left out), at most 64
+shapes, and the usual 4096 commands per path. Reading uses the `usvg` library.
 
 ## Inline MCP preview images
 

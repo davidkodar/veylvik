@@ -7,7 +7,8 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Sound {
-    /// The file, absolute or relative to the project.
+    /// The file, absolute or relative to the project, or `builtin:NAME` for a sound
+    /// Veylvik ships.
     pub file: String,
     #[serde(default)]
     pub timing: media::Timing,

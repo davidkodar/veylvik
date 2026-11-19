@@ -163,6 +163,8 @@ impl Engine {
             Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
             false,
         );
+        // In a depth picture a card's solid parts stand in front of what is behind.
+        let card_solid = pipeline("card_solid", None, true);
         // Library looks: the material kernels' bindings in group 0, the object in 1.
         let entry = |binding, ty, writable: bool| wgpu::BindGroupLayoutEntry {
             binding,
@@ -361,6 +363,7 @@ impl Engine {
             look,
             lit,
             card,
+            card_solid,
             copy,
             meshes: Mutex::new((HashMap::new(), 0)),
         }

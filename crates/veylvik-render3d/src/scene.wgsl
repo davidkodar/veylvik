@@ -399,9 +399,8 @@ fn texel(x: i32, y: i32) -> vec4<f32> {
     if x < 0 || y < 0 || x >= w || y >= h { return vec4<f32>(0.0); }
     return image[u32(y * w + x)];
 }
-@fragment
-fn card(in: Varying) -> @location(0) vec4<f32> {
-    // Bilinear at the picture's own pixel centres; premultiplied, unlit.
+// A card's picture: bilinear at its own pixel centres; premultiplied, unlit.
+fn card_colour(in: Varying) -> vec4<f32> {
     let q = in.uv * object.params.zw - vec2<f32>(0.5);
     let i = vec2<i32>(floor(q));
     let f = fract(q);
@@ -409,6 +408,19 @@ fn card(in: Varying) -> @location(0) vec4<f32> {
                 mix(texel(i.x, i.y + 1), texel(i.x + 1, i.y + 1), f.x), f.y);
     // The card's tint, and its opacity in place of a roughness.
     return vec4<f32>(c.rgb * object.surface.rgb, c.a) * object.surface.a;
+}
+@fragment
+fn card(in: Varying) -> @location(0) vec4<f32> {
+    return card_colour(in);
+}
+// For the depth picture: the card is an object where it is more than half opaque.
+@fragment
+fn card_solid(in: Varying) -> @location(0) vec4<f32> {
+    let c = card_colour(in);
+    if c.a < 0.5 {
+        discard;
+    }
+    return c;
 }
 
 // A shadow catcher: transparent where lit, darkening by the share of the direct
