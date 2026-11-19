@@ -376,6 +376,9 @@ pub struct Plan {
     link_data: Vec<Node>,
     pub(crate) curves: Vec<BTreeMap<&'static str, CompiledScalar>>,
     pub(crate) passes: Vec<Pass>,
+    /// Nodes that use another node's pass because they are the same thing (owner, user):
+    /// the owner's pass has to run whenever a user can reach the picture.
+    shared_with: Vec<(NodeId, NodeId)>,
     pub(crate) output_slot: usize,
     pub(crate) slot_count: usize,
 }
@@ -609,7 +612,8 @@ impl Plan {
                 nodes.insert(0, composition.nodes[&id].clone());
             }
         }
-        let mut passes = Vec::new();
+        let mut passes: Vec<Pass> = Vec::new();
+        let mut shared_with = Vec::new();
         let mut stretches = BTreeMap::new();
         let mut outputs = BTreeMap::new();
         let mut domains = BTreeMap::new();
@@ -741,6 +745,9 @@ impl Plan {
                 && let Some(value) = shared.get(key)
             {
                 outputs.insert(node.id, *value);
+                if let Some(owner) = passes.get(*value) {
+                    shared_with.push((nodes[owner.node].id, node.id));
+                }
                 continue;
             }
             let mut cards = Vec::new();
@@ -1008,6 +1015,7 @@ impl Plan {
             nodes,
             link_data,
             light_data,
+            shared_with,
             passes,
             output_slot: slots[final_value],
             slot_count,
@@ -1048,6 +1056,12 @@ impl Plan {
                     .filter(|(port, _)| !idle.contains(&port.as_str()))
                     .map(|(_, id)| *id),
             );
+        }
+        // A node that stands in for an identical one runs on that one's behalf.
+        for (owner, user) in &self.shared_with {
+            if visible.contains(user) {
+                visible.insert(*owner);
+            }
         }
         Ok(visible)
     }

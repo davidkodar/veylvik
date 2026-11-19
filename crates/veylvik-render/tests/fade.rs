@@ -73,3 +73,65 @@ fn fade_scales_premultiplied_pixels_by_its_envelope_and_skips_hidden_layers() {
         renderer.render_frame(&plan, RenderRequest::full(at(50)), &ImageInputs::default());
     assert!(visible.is_err());
 }
+
+#[test]
+#[ignore = "requires Vulkan"]
+fn a_hidden_layer_does_not_take_an_identical_visible_one_with_it() {
+    // Identical nodes share one result. When the one that owns it sits behind a
+    // faded-out layer, the visible twin must still get its picture.
+    let renderer = Renderer::new().unwrap();
+    let rate = Time { ticks: 24, rate: 1 };
+    let at = |frame| Time::at_frame(frame, rate).unwrap();
+    let colour = [0.2, 0.4, 0.6, 1.0];
+    let solid = || {
+        Node::new(
+            "Solid",
+            Operation::Solid(veylvik_document::nodes::Solid { color: colour }),
+            &[],
+        )
+    };
+    for hidden_side in ["background", "foreground"] {
+        let mut doc = blank(4, 2, rate).unwrap();
+        let first = doc.output;
+        doc.nodes.get_mut(&first).unwrap().operation = solid().operation;
+        let (a, b) = (solid(), solid());
+        let fade = Node::new(
+            "Fade",
+            Operation::Fade(veylvik_document::nodes::Fade {
+                opacity: Scalar::Constant { value: 1.0 },
+                timing: FadeTiming {
+                    start: at(24),
+                    end: None,
+                    fade_in: at(0),
+                    fade_out: at(0),
+                },
+            }),
+            &[("image", a.id)],
+        );
+        let other = if hidden_side == "background" {
+            "foreground"
+        } else {
+            "background"
+        };
+        let merge = Node::new(
+            "Merge",
+            Operation::Merge(veylvik_document::nodes::Merge {}),
+            &[(hidden_side, fade.id), (other, b.id)],
+        );
+        doc.output = merge.id;
+        for node in [a, b, fade, merge] {
+            doc.nodes.insert(node.id, node);
+        }
+        let plan = Plan::compile(&doc).unwrap();
+        let pixels = renderer
+            .render_frame(&plan, RenderRequest::full(at(0)), &ImageInputs::default())
+            .unwrap()
+            .pixels;
+        for (actual, expected) in pixels[0].iter().zip(colour) {
+            assert!(
+                (actual - expected).abs() < 1e-6,
+                "hidden {hidden_side}: {actual} vs {expected}"
+            );
+        }
+    }
+}
