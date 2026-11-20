@@ -66,15 +66,16 @@ impl HostPixels {
             to_rec709: m.map(|row| row.map(|v| v as f32)),
         })
     }
-    /// ACEScg (AP1) by the ACES reference matrix, which adapts its D60 white to D65 with
-    /// CAT02: `AP1_2_REC709_PRI_MAT` of aces-dev, as OCIO's ACES configs use.
+    /// ACEScg (AP1) as OpenColorIO's ACES configuration converts it, its D60 white
+    /// adapted to D65 by Bradford: the matrix this renderer's own ACEScg working space
+    /// uses. A host whose matrix differs in the last digits passes its own.
     pub fn acescg(straight: bool) -> Self {
         Self {
             straight,
             to_rec709: [
-                [1.7050523622, -0.6217957415, -0.0832566207],
-                [-0.1302600472, 1.1408029888, -0.0105430932],
-                [-0.0239638781, -0.1289693959, 1.1529332720_f64],
+                [1.7050509453, -0.6217921376, -0.0832588747],
+                [-0.1302564144, 1.1408047676, -0.0105483187],
+                [-0.0240033567, -0.1289689690, 1.1529723406_f64],
             ]
             .map(|row| row.map(|v| v as f32)),
         }
@@ -258,13 +259,14 @@ mod tests {
     use super::*;
     #[test]
     fn a_host_states_its_colour_space_by_its_own_white() {
-        // ACEScg is the ACES reference matrix (CAT02 from D60 to D65), to the last digit a
-        // float holds.
+        // ACEScg is what OpenColorIO's ACES configuration gives (measured through its
+        // processor from ACEScg to Linear Rec.709), to the last digit a float holds; it is
+        // also the Bradford adaptation worked out from the two spaces' chromaticities.
         let ap1 = HostPixels::acescg(true).to_rec709;
         let want: [[f64; 3]; 3] = [
-            [1.7050523622, -0.6217957415, -0.0832566207],
-            [-0.1302600472, 1.1408029888, -0.0105430932],
-            [-0.0239638781, -0.1289693959, 1.1529332720],
+            [1.7050509453, -0.6217921376, -0.0832588747],
+            [-0.1302564144, 1.1408047676, -0.0105483187],
+            [-0.0240033567, -0.1289689690, 1.1529723406],
         ];
         for r in 0..3 {
             for c in 0..3 {
