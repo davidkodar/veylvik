@@ -184,6 +184,12 @@ fn words<'a>(text: &'a str, word: &'a str) -> impl Iterator<Item = usize> + 'a {
         (i == 0 || !part(bytes[i - 1])) && bytes.get(i + word.len()).is_none_or(|b| !part(*b))
     })
 }
+/// Whether the shader's picture can change from one moment to the next with nothing else
+/// changing: it reads `time`. One that does not gives the same picture at every time, so
+/// it need not be made again.
+pub fn reads_time(code: &str) -> bool {
+    words(&without_comments(code), "time").next().is_some()
+}
 /// The offset of the bracket closing the one at `open`.
 fn closing(text: &str, open: usize) -> Option<usize> {
     let bytes = text.as_bytes();

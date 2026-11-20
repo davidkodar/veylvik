@@ -209,3 +209,55 @@ fn mistakes_are_errors_with_the_users_line_not_device_faults() {
             .contains("instead of while")
     );
 }
+
+#[test]
+#[ignore = "requires Vulkan"]
+fn a_shader_that_does_not_read_time_is_made_once_and_one_that_does_is_made_again() {
+    let renderer = Renderer::new().unwrap();
+    let at = |ticks| RenderRequest::full(Time { ticks, rate: 24 });
+    let hits = || renderer.try_diagnostics().unwrap().unwrap().frames.hits;
+    let pixels = |frame: &GpuFrame| renderer.read_frame(frame).unwrap().pixels;
+    // The same picture at every time: asked again at another time, it comes from the cache.
+    let steady =
+        "fn shade(at: vec2<f32>) -> vec4<f32> { return vec4<f32>(at.x / size.x, 0.25, 0.5, 1.0); }";
+    let (doc, inputs) = scene(shader(steady, [0.0; 8]), false);
+    let plan = Plan::compile(&doc).unwrap();
+    let first = renderer.render_gpu_cached(&plan, at(0), &inputs).unwrap();
+    let before = hits();
+    let later = renderer.render_gpu_cached(&plan, at(31), &inputs).unwrap();
+    assert_eq!(
+        hits(),
+        before + 1,
+        "a shader that reads no time was made again"
+    );
+    assert!(pixels(&first) == pixels(&later));
+    // The word in a comment, or inside another word, is not reading the time.
+    let comment = "// time passes\nfn shade(at: vec2<f32>) -> vec4<f32> { let timeless = 0.5; return vec4<f32>(timeless, 0.0, 0.0, 1.0); }";
+    assert!(!veylvik_shader::reads_time(comment));
+    // One that reads the time gives another picture at another time, never a kept one.
+    let moving = "fn shade(at: vec2<f32>) -> vec4<f32> { return vec4<f32>(time, 0.25, 0.5, 1.0); }";
+    assert!(veylvik_shader::reads_time(moving));
+    let (doc, inputs) = scene(shader(moving, [0.0; 8]), false);
+    let plan = Plan::compile(&doc).unwrap();
+    let early = renderer.render_gpu_cached(&plan, at(0), &inputs).unwrap();
+    let before = hits();
+    let late = renderer.render_gpu_cached(&plan, at(24), &inputs).unwrap();
+    assert_eq!(
+        hits(),
+        before,
+        "a shader that reads the time was served from the cache"
+    );
+    assert!((pixels(&late)[0][0] - 1.0).abs() < 1e-6 && pixels(&early)[0][0] == 0.0);
+    // Two shaders with the same settings and other text are two pictures.
+    let other = "fn shade(at: vec2<f32>) -> vec4<f32> { return vec4<f32>(0.75, 0.25, 0.5, 1.0); }";
+    let (doc, inputs) = scene(shader(other, [0.0; 8]), false);
+    let plan = Plan::compile(&doc).unwrap();
+    let before = hits();
+    let changed = renderer.render_gpu_cached(&plan, at(0), &inputs).unwrap();
+    assert_eq!(
+        hits(),
+        before,
+        "another shader's picture was served for this one"
+    );
+    assert_eq!(pixels(&changed)[0][0], 0.75);
+}

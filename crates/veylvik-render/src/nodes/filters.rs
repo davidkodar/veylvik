@@ -573,8 +573,13 @@ impl RenderNode for veylvik_document::nodes::Shader {
         sample: &dyn Fn(&str) -> Result<f32>,
         p: &mut Params,
     ) -> Result<()> {
-        // The frame's time for the shader, and which inputs are connected.
-        let seconds = cx.time.seconds().map_err(|e| error(e.to_string()))?;
+        // The frame's time, for a shader that reads it; one that does not is the same
+        // picture at every time and is told none, so its result can be kept.
+        let seconds = if veylvik_shader::reads_time(&self.code) {
+            cx.time.seconds().map_err(|e| error(e.to_string()))?
+        } else {
+            0.0
+        };
         p.size_op[2] = (seconds as f32).to_bits();
         p.size_op[3] = u32::from(cx.node.inputs.contains_key("image"))
             | u32::from(cx.node.inputs.contains_key("second")) << 1;

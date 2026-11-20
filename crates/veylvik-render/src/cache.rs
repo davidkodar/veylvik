@@ -43,6 +43,14 @@ impl Key {
                 request.time,
             )?;
             words.extend_from_slice(bytemuck::cast_slice(std::slice::from_ref(&values)));
+            if let veylvik_document::Operation::Shader(shader) = &plan.nodes[pass.node].operation {
+                // A custom shader's own text is part of what makes its picture.
+                use std::hash::{Hash, Hasher};
+                let mut hasher = std::collections::hash_map::DefaultHasher::new();
+                shader.code.hash(&mut hasher);
+                let code = hasher.finish();
+                words.extend([5, code as u32, (code >> 32) as u32]);
+            }
             if pass.kernel == crate::Kernel::RenderScene {
                 // Scene nodes have no passes of their own: key what the scene shows.
                 words.extend(crate::scene_hook::fingerprint(

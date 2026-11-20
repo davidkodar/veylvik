@@ -150,7 +150,7 @@ fn cli_and_headless_mcp_honor_host_budget_and_cpu_inspection_stays_available() {
     assert_eq!(replies[1]["result"]["isError"], false);
     let stats = &replies[2]["result"]["structuredContent"]["snapshot"];
     assert_eq!(stats["budget_bytes"], 128 * 1024 * 1024);
-    assert_eq!(stats["frame_cache_limit_bytes"], 16 * 1024 * 1024);
+    assert_eq!(stats["frame_cache_limit_bytes"], 32 * 1024 * 1024);
     assert_eq!(std::fs::read(&path).unwrap(), original);
     std::fs::remove_dir_all(root).unwrap();
 }

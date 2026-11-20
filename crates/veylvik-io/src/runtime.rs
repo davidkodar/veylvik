@@ -53,7 +53,9 @@ impl RenderLimits {
     pub fn apply(self, renderer: &mut Renderer) {
         renderer.budget_bytes = self.budget_bytes;
         renderer.pool_limit_bytes = renderer.pool_limit_bytes.min(self.budget_bytes / 4);
-        renderer.cache_limit_bytes = renderer.cache_limit_bytes.min(self.budget_bytes / 8);
+        // Finished frames may keep a quarter of the budget: a 4K frame is 127 MiB, and a
+        // picture rendered at its own size can be far larger, so a small fixed cap kept nothing.
+        renderer.cache_limit_bytes = self.budget_bytes / 4;
         renderer.vector_cache_limit_bytes = renderer
             .vector_cache_limit_bytes
             .min(self.budget_bytes / 16);
@@ -213,7 +215,7 @@ mod tests {
         let stats = renderer.try_diagnostics().unwrap().unwrap();
         assert_eq!(stats.budget_bytes, 64 * MIB);
         assert_eq!(stats.idle_limit_bytes, 16 * MIB);
-        assert_eq!(stats.frame_cache_limit_bytes, 8 * MIB);
+        assert_eq!(stats.frame_cache_limit_bytes, 16 * MIB);
         assert_eq!(stats.vector_cache_limit_bytes, 4 * MIB);
         let mut large = Renderer::new().unwrap();
         RenderLimits::parse(Some(OsStr::new("1024")))
@@ -222,7 +224,7 @@ mod tests {
         let stats = large.try_diagnostics().unwrap().unwrap();
         assert_eq!(stats.budget_bytes, 1024 * MIB);
         assert_eq!(stats.idle_limit_bytes, 128 * MIB);
-        assert_eq!(stats.frame_cache_limit_bytes, 64 * MIB);
+        assert_eq!(stats.frame_cache_limit_bytes, 256 * MIB);
         assert_eq!(stats.vector_cache_limit_bytes, 32 * MIB);
     }
     #[test]
