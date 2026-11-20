@@ -181,11 +181,22 @@ impl Project {
                     self.inputs.insert_source(key.into_owned(), source);
                     continue;
                 }
-                match veylvik_io::footage::load_key(
-                    &self.base,
-                    &key,
-                    remaining.min(128 * 1024 * 1024),
-                ) {
+                // A key nobody here knows: the file the composition names beside it.
+                let aside = match &node.operation {
+                    veylvik_document::Operation::Footage(footage)
+                        if !footage.fallback.is_empty() =>
+                    {
+                        Some(self.base.join(&footage.fallback))
+                    }
+                    _ => None,
+                };
+                let budget = remaining.min(128 * 1024 * 1024);
+                match veylvik_io::footage::load_key(&self.base, &key, budget).or_else(|error| {
+                    match &aside {
+                        Some(file) => veylvik_io::footage::load(file, budget),
+                        None => Err(error),
+                    }
+                }) {
                     Ok(image) => {
                         remaining -= image.byte_size();
                         image.insert(&mut self.inputs, key.into_owned());
@@ -493,6 +504,7 @@ impl Project {
                     placement: Default::default(),
                     colour: Default::default(),
                     layer: None,
+                    fallback: String::new(),
                 });
             } else {
                 *node.operation.asset_mut().unwrap() = next.clone();
@@ -580,6 +592,11 @@ impl Project {
                 placement: veylvik_document::media::Placement::Fit,
                 colour: Default::default(),
                 layer: None,
+                // The host's media keeps its own file beside its key, for a reader
+                // that does not know the host.
+                fallback: crate::files::host_file(&asset)
+                    .and_then(|file| file.to_str().map(str::to_owned))
+                    .unwrap_or_default(),
             }),
             &[],
         );

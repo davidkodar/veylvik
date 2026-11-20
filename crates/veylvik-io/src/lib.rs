@@ -197,8 +197,15 @@ pub fn load_inputs(plan: &Plan, base: &Path, budget: u64) -> Result<ImageInputs>
     let mut inputs = ImageInputs::default();
     inputs.set_base_directory(base);
     for key in plan.required_assets() {
-        let image =
-            footage::load_key(base, &key, remaining).map_err(|e| media_error(base, &key, &*e))?;
+        let image = match footage::load_key(base, &key, remaining) {
+            Ok(image) => image,
+            // A key only its host knows: the file the composition names beside it.
+            Err(error) => match plan.fallback(&key) {
+                Some(file) => footage::load(&base.join(file), remaining)
+                    .map_err(|e| media_error(base, file, &*e))?,
+                None => return Err(media_error(base, &key, &*error).into()),
+            },
+        };
         remaining -= image.byte_size();
         image.insert(&mut inputs, key.into_owned());
     }

@@ -159,6 +159,7 @@ fn footage_timing_shares_one_source_without_cross_contaminating_clips() {
                 source_out: Some(Time::new(3, 4).unwrap()),
             },
             layer: None,
+            fallback: String::new(),
         }),
         &[],
     );
@@ -359,6 +360,7 @@ fn hardware_frames_stay_linear_on_gpu_and_seek_in_8_and_10_bit() {
                 placement: Default::default(),
                 colour: Default::default(),
                 layer: None,
+                fallback: String::new(),
             });
         renderer
             .render_gpu(

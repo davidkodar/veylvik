@@ -27,6 +27,7 @@ fn placement_samples_full_source_before_clipping_and_preserves_alpha() {
                 placement: mode,
                 colour: Default::default(),
                 layer: None,
+                fallback: String::new(),
             });
         let plan = Plan::compile(&doc).unwrap();
         let result = renderer
@@ -73,6 +74,7 @@ fn placement_samples_full_source_before_clipping_and_preserves_alpha() {
             placement: Placement::Fit,
             colour: Default::default(),
             layer: None,
+            fallback: String::new(),
         });
     let result = renderer
         .render_frame(

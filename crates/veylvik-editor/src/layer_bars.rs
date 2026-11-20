@@ -371,6 +371,7 @@ mod tests {
             placement: Default::default(),
             colour: Default::default(),
             layer: None,
+            fallback: String::new(),
         };
         (
             footage.timing.start,

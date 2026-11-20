@@ -220,6 +220,7 @@ pub fn create(request: &Path, project: &Path) -> Result<Link> {
             placement: veylvik_document::media::Placement::Fit,
             colour: Default::default(),
             layer: None,
+            fallback: String::new(),
         }),
         &[],
     );

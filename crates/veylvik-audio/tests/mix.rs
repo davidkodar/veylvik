@@ -53,6 +53,7 @@ fn preview_mix_places_footage_sound_on_the_timeline() {
             placement: Default::default(),
             colour: Default::default(),
             layer: None,
+            fallback: String::new(),
         }),
         &[],
     );

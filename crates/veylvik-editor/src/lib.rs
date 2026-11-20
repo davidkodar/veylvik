@@ -2490,6 +2490,7 @@ impl Studio {
                     placement: Default::default(),
                     colour: Default::default(),
                     layer: None,
+                    fallback: String::new(),
                 });
                 self.draft_dirty = true;
                 text_changed = true;

@@ -55,6 +55,7 @@ impl veylvik_editor::host::Host for Pool {
             Purpose::Import => Ok(Some(Picked::Media {
                 key: "host-media:bars".into(),
                 label: "Colour bars".into(),
+                file: None,
             })),
             _ => Err("this host only offers its own media".into()),
         }

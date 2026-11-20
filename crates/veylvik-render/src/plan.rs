@@ -1065,6 +1065,19 @@ impl Plan {
         }
         Ok(visible)
     }
+    /// The file a footage source may be read from when its key is not at hand: a host
+    /// names its own media by keys only it knows.
+    pub fn fallback(&self, key: &str) -> Option<&str> {
+        self.nodes.iter().find_map(|node| match &node.operation {
+            veylvik_document::Operation::Footage(footage)
+                if !footage.fallback.is_empty()
+                    && node.operation.source_key().as_deref() == Some(key) =>
+            {
+                Some(footage.fallback.as_str())
+            }
+            _ => None,
+        })
+    }
     pub fn matches_composition(&self, composition: &Composition, output: NodeId) -> Result<bool> {
         composition.validate()?;
         if serde_json::to_vec(&self.ocio).map_err(error)?

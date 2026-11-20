@@ -31,6 +31,7 @@ impl Inspect for veylvik_document::nodes::Footage {
             placement,
             colour,
             layer,
+            ..
         } = self;
         {
             ui.label(asset.as_str());

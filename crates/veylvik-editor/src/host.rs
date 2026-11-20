@@ -42,7 +42,13 @@ pub enum Picked {
     File(PathBuf),
     /// Media the host keeps itself, by the host's own name for it. The editor stores the
     /// key in the composition and asks [`Host::media`] for its frames.
-    Media { key: String, label: String },
+    Media {
+        key: String,
+        label: String,
+        /// The media's own file, when it has one: kept beside the key so the composition
+        /// can still be read without this host.
+        file: Option<PathBuf>,
+    },
 }
 pub trait Host: Send + Sync {
     /// Ask the user. Called off the interface thread, so it may wait for them; `None`

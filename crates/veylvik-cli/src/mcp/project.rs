@@ -61,6 +61,7 @@ fn footage(path: &Path) -> Result<(Node, veylvik_render::SourceInfo)> {
             placement: veylvik_document::media::Placement::Fit,
             colour: Default::default(),
             layer: None,
+            fallback: String::new(),
         }),
         &[],
     );

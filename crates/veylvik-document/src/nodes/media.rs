@@ -25,6 +25,12 @@ pub struct Footage {
     /// None reads the main image.
     #[serde(default)]
     pub layer: Option<String>,
+    /// A file to read when nobody knows `asset`: a host names its own media by keys of
+    /// its own, and this keeps the composition readable without that host. Empty: none,
+    /// and then it is not written, so a file without one reads in builds from before it.
+    /// It is the host's to set, not a setting of the node, so the registry does not list it.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub fallback: String,
 }
 
 pub static IMAGE: NodeType = NodeType {
@@ -74,6 +80,11 @@ node!(Image, IMAGE, [], {
 });
 node!(Footage, FOOTAGE, [], {
     fn validate(&self) -> Result<()> {
+        if self.fallback.chars().count() > crate::registry::MAX_ASSET_NAME
+            || self.fallback.contains('\0')
+        {
+            return fail("a footage fallback is a file path without NUL, at most 4096 characters");
+        }
         let asset = &self.asset;
         if asset.trim().is_empty()
             || asset.chars().count() > crate::registry::MAX_ASSET_NAME

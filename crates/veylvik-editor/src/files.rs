@@ -219,14 +219,22 @@ pub fn set_host(host: Option<std::sync::Arc<dyn crate::host::Host>>) {
 fn host() -> Option<std::sync::Arc<dyn crate::host::Host>> {
     HOST.read().ok().and_then(|slot| slot.clone())
 }
-static LABELS: std::sync::Mutex<std::collections::BTreeMap<String, String>> =
+type Named = (String, Option<PathBuf>);
+static LABELS: std::sync::Mutex<std::collections::BTreeMap<String, Named>> =
     std::sync::Mutex::new(std::collections::BTreeMap::new());
 /// The name the host gave media it handed out under `key`.
 pub fn host_label(key: &str) -> Option<String> {
     LABELS
         .lock()
         .ok()
-        .and_then(|labels| labels.get(key).cloned())
+        .and_then(|labels| labels.get(key).map(|named| named.0.clone()))
+}
+/// The file the host named for media it handed out under `key`.
+pub fn host_file(key: &str) -> Option<PathBuf> {
+    LABELS
+        .lock()
+        .ok()
+        .and_then(|labels| labels.get(key).and_then(|named| named.1.clone()))
 }
 /// The frames of a media key, when a host is there and knows it.
 pub fn host_media(key: &str) -> Option<std::sync::Arc<dyn veylvik_render::FrameSource>> {
@@ -275,12 +283,12 @@ pub fn pick(choice: Choice, folder: &Path, name: &str) -> Result<Option<Chosen>,
     Ok(match host.pick(&request)? {
         None => None,
         Some(crate::host::Picked::File(path)) => Some(Chosen::Path(path)),
-        Some(crate::host::Picked::Media { key, label }) => {
+        Some(crate::host::Picked::Media { key, label, file }) => {
             let source = host
                 .media(&key)
                 .ok_or_else(|| format!("the host named media it does not have: {key}"))?;
             if let Ok(mut labels) = LABELS.lock() {
-                labels.insert(key.clone(), label.clone());
+                labels.insert(key.clone(), (label.clone(), file));
             }
             Some(Chosen::Media { key, label, source })
         }
