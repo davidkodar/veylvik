@@ -96,12 +96,24 @@ pub fn load_layer(path: &Path, layer: Option<&str>, budget: u64) -> Result<Media
         Ok(Media::Sequence(Arc::new(Sequence::open_layer(
             path, layer, budget,
         )?)))
-    } else if crate::lut::is_lut(path) {
-        Ok(Media::Still(Arc::new(crate::lut::load(path)?)))
     } else {
-        Ok(Media::Still(Arc::new(crate::load_image_layer(
-            path, layer, budget,
-        )?)))
+        // A still is named by its file as it stands on disk, so it is the same picture
+        // whenever it is loaded.
+        let meta = std::fs::metadata(path)?;
+        let mut text = path.to_string_lossy().into_owned();
+        text.push('\0');
+        text.push_str(layer.unwrap_or_default());
+        let stamp = meta
+            .modified()?
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_nanos() as u64);
+        let name = veylvik_render::fnv(text.as_bytes(), meta.len() ^ stamp.rotate_left(17));
+        let image = if crate::lut::is_lut(path) {
+            crate::lut::load(path)?
+        } else {
+            crate::load_image_layer(path, layer, budget)?
+        };
+        Ok(Media::Still(Arc::new(image.named(name))))
     }
 }
 

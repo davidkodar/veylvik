@@ -12,10 +12,15 @@ pub struct CacheStats {
     pub bytes: u64,
 }
 #[derive(PartialEq, Eq)]
-pub(crate) struct Key(Vec<u32>);
+/// The words a picture is made of, and whether every input among them is known by a
+/// name of its maker's: then the words mean the same picture in any session.
+pub(crate) struct Key(Vec<u32>, bool);
 impl Key {
     pub fn words(&self) -> &[u32] {
         &self.0
+    }
+    pub fn portable(&self) -> bool {
+        self.1
     }
     pub fn new(plan: &Plan, request: RenderRequest, images: &ImageInputs) -> Result<Self> {
         request.time.seconds()?;
@@ -26,6 +31,7 @@ impl Key {
             height: plan.height,
         });
         region.validate(plan.width, plan.height)?;
+        let mut portable = true;
         let mut words = vec![
             plan.width,
             plan.height,
@@ -159,12 +165,13 @@ impl Key {
                             .source(asset)
                             .ok_or_else(|| error(format!("missing image input: {asset}")))?;
                         let id = image.identity();
+                        portable &= crate::frame::is_named(id);
                         words.extend([2, id as u32, (id >> 32) as u32]);
                     }
                 }
             }
         }
-        Ok(Self(words))
+        Ok(Self(words, portable))
     }
 }
 pub(crate) struct FrameCache<K = Key> {

@@ -57,6 +57,8 @@ pub struct Control(
     Arc<Mutex<(Settings, u64, Status)>>,
     Arc<Mutex<VecDeque<Arc<GpuFrame>>>>,
     Arc<Mutex<Option<crate::screen::Look>>>,
+    /// Asked to delete the lasting pictures on disk too, at the next clear.
+    Arc<std::sync::atomic::AtomicBool>,
 );
 impl Control {
     /// While playing, with the viewer's look: frames may be answered with pictures kept
@@ -99,6 +101,8 @@ impl Control {
         self.configure(settings);
     }
     pub fn clear(&self) {
+        // Asked for by the artist: the pictures kept between sessions go as well.
+        self.3.store(true, std::sync::atomic::Ordering::SeqCst);
         if let Ok(mut s) = self.0.lock() {
             s.1 = s.1.wrapping_add(1);
             s.2 = Status::default();
@@ -178,6 +182,25 @@ pub(crate) struct Store {
     /// Pictures handed to the packer and not back yet.
     packing: Vec<Moment>,
     available: (Instant, Option<u64>),
+    /// The folder of pictures that last between sessions of this build, once looked in.
+    lasting: Option<PathBuf>,
+}
+/// What tells one build from another: a picture's lasting name means the same picture
+/// only as long as the program that made it is the same.
+fn build_stamp() -> u64 {
+    let stamp = std::env::current_exe().ok().and_then(|path| {
+        let meta = std::fs::metadata(&path).ok()?;
+        let modified = meta
+            .modified()
+            .ok()?
+            .duration_since(std::time::UNIX_EPOCH)
+            .ok()?;
+        Some(veylvik_render::fnv(
+            path.to_string_lossy().as_bytes(),
+            meta.len() ^ (modified.as_nanos() as u64).rotate_left(21),
+        ))
+    });
+    stamp.unwrap_or(0)
 }
 /// `MemAvailable` of this machine in bytes.
 fn machine_memory_available() -> Option<u64> {
@@ -189,7 +212,19 @@ fn machine_memory_available() -> Option<u64> {
     Some(kib * 1024)
 }
 type Moment = (Time, Option<u64>, crate::screen::Look);
-type Packed = (Moment, [u32; 2], Result<Vec<u8>>);
+/// A lasting name and the file to write the packed picture to.
+type Lasting = Option<(u64, PathBuf)>;
+type Packed = (Moment, [u32; 2], Result<Vec<u8>>, Lasting);
+/// Write a packed picture to its lasting file, whole or not at all.
+fn written(packed: &[u8], (lasting, path): (u64, PathBuf)) -> Lasting {
+    let partial = path.with_extension("partial");
+    let done = std::fs::write(&partial, packed).and_then(|()| std::fs::rename(&partial, &path));
+    if done.is_err() {
+        let _ = std::fs::remove_file(&partial);
+        return None;
+    }
+    Some((lasting, path))
+}
 fn alike(a: &Moment, b: &Moment) -> bool {
     a.1 == b.1
         && a.2 == b.2
@@ -197,23 +232,26 @@ fn alike(a: &Moment, b: &Moment) -> bool {
             == i128::from(b.0.ticks) * i128::from(a.0.rate)
 }
 struct Packer {
-    work: std::sync::mpsc::SyncSender<(Moment, [u32; 2], Vec<u8>)>,
+    work: std::sync::mpsc::SyncSender<(Moment, [u32; 2], Vec<u8>, Lasting)>,
     done: std::sync::mpsc::Receiver<Packed>,
 }
 impl Packer {
     fn start() -> Option<Self> {
         // A few pictures may wait; beyond that the worker packs its own, so memory
         // held in pictures not packed yet stays small.
-        let (work, jobs) = std::sync::mpsc::sync_channel::<(Moment, [u32; 2], Vec<u8>)>(3);
+        let (work, jobs) = std::sync::mpsc::sync_channel::<(Moment, [u32; 2], Vec<u8>, Lasting)>(3);
         let (finished, done) = std::sync::mpsc::channel();
         std::thread::Builder::new()
             .name("veylvik-pictures".into())
             .spawn(move || {
-                for (moment, size, picture) in jobs {
-                    if finished
-                        .send((moment, size, crate::pictures::pack(&picture)))
-                        .is_err()
-                    {
+                for (moment, size, picture, lasting) in jobs {
+                    let packed = crate::pictures::pack(&picture);
+                    // A lasting picture goes to its file here, beside the worker.
+                    let lasting = match (&packed, lasting) {
+                        (Ok(packed), Some(lasting)) => written(packed, lasting),
+                        _ => None,
+                    };
+                    if finished.send((moment, size, packed, lasting)).is_err() {
                         break;
                     }
                 }
@@ -243,13 +281,22 @@ impl Store {
             packer: None,
             packing: Vec::new(),
             available: (Instant::now(), machine_memory_available()),
+            lasting: None,
         }
     }
     fn clear_entries(&mut self) {
         // Pictures still being packed belong to what is being cleared.
         self.packer = None;
         self.packing.clear();
-        self.pictures.clear();
+        if self
+            .control
+            .3
+            .swap(false, std::sync::atomic::Ordering::SeqCst)
+        {
+            self.pictures.wipe();
+        } else {
+            self.pictures.clear();
+        }
         self.entries.clear();
         if let Ok(mut frames) = self.control.1.lock() {
             frames.clear();
@@ -376,18 +423,32 @@ impl Store {
         plan: &Plan,
         request: veylvik_render::RenderRequest,
         inputs: &ImageInputs,
-    ) -> Option<u64> {
+    ) -> (Option<u64>, Option<u64>) {
         use std::hash::{Hash, Hasher};
         if plan.has_temporal() || !inputs.steady(plan) {
-            return None;
+            return (None, None);
         }
+        let Ok((identity, lasting)) = renderer.identities(plan, request, inputs) else {
+            return (None, None);
+        };
+        let view = format!("{:?}", plan.ocio_transforms());
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        renderer
-            .identity(plan, request, inputs)
-            .ok()?
-            .hash(&mut hasher);
-        format!("{:?}", plan.ocio_transforms()).hash(&mut hasher);
-        Some(hasher.finish())
+        identity.hash(&mut hasher);
+        view.hash(&mut hasher);
+        // Between sessions a picture also depends on files the renderer reads by path
+        // alone: 3D models, and the files of the viewer's colour transform.
+        let lasting = lasting.and_then(|lasting| {
+            let mut text = view.clone();
+            for stamp in &self.dependencies {
+                text.push_str(&format!("{stamp:?}"));
+            }
+            for model in plan.required_models() {
+                let meta = std::fs::metadata(model).ok()?;
+                text.push_str(&format!("{model}{}{:?}", meta.len(), meta.modified().ok()?));
+            }
+            Some(veylvik_render::fnv(text.as_bytes(), lasting))
+        });
+        (Some(hasher.finish()), lasting)
     }
     pub fn lookup(
         &mut self,
@@ -554,10 +615,12 @@ impl Store {
     pub fn has_picture(
         &mut self,
         time: Time,
-        name: Option<u64>,
+        (name, lasting): (Option<u64>, Option<u64>),
         look: crate::screen::Look,
     ) -> bool {
         self.look = Some(look);
+        self.lasting_folder();
+        self.pictures.take_up(time, name, lasting, look);
         // One still being packed counts: it is on its way.
         let moment = (time, name, look);
         let packing = self.packing.iter().any(|m| match name {
@@ -596,7 +659,7 @@ impl Store {
         &mut self,
         renderer: &Renderer,
         time: Time,
-        name: Option<u64>,
+        (name, lasting): (Option<u64>, Option<u64>),
         look: crate::screen::Look,
     ) -> Result<Option<Arc<GpuFrame>>> {
         self.look = Some(look);
@@ -604,6 +667,8 @@ impl Store {
             return Ok(None);
         }
         self.collect(false);
+        self.lasting_folder();
+        self.pictures.take_up(time, name, lasting, look);
         let Some((picture, [width, height])) = self.pictures.get(time, name, look) else {
             return Ok(None);
         };
@@ -620,13 +685,14 @@ impl Store {
         &mut self,
         renderer: &Renderer,
         time: Time,
-        name: Option<u64>,
+        (name, lasting): (Option<u64>, Option<u64>),
         look: crate::screen::Look,
         frame: &GpuFrame,
     ) {
         self.look = Some(look);
         let limits = self.picture_limits();
         self.collect(false);
+        self.pictures.take_up(time, name, lasting, look);
         let moment = (time, name, look);
         let waiting = self.packing.iter().any(|m| match name {
             Some(_) => m.1 == name && m.2 == look,
@@ -646,6 +712,14 @@ impl Store {
                 None
             };
             let size = [frame.width(), frame.height()];
+            // A picture that means the same in any session goes to the lasting folder.
+            let lasting = lasting.and_then(|lasting| {
+                let folder = self.lasting_folder()?;
+                Some((
+                    lasting,
+                    crate::pictures::lasting_file(&folder, lasting, look, size),
+                ))
+            });
             self.make_room(renderer, u64::from(size[0]) * u64::from(size[1]) * 8)?;
             let screen = self
                 .screen
@@ -655,19 +729,21 @@ impl Store {
                 self.packer = Packer::start();
             }
             // Beside the worker when there is room in the queue, else here and now.
-            let picture = match &self.packer {
-                Some(packer) => match packer.work.try_send((moment, size, picture)) {
+            let (picture, lasting) = match &self.packer {
+                Some(packer) => match packer.work.try_send((moment, size, picture, lasting)) {
                     Ok(()) => {
                         self.packing.push(moment);
                         return Ok(());
                     }
                     Err(std::sync::mpsc::TrySendError::Full(job))
-                    | Err(std::sync::mpsc::TrySendError::Disconnected(job)) => job.2,
+                    | Err(std::sync::mpsc::TrySendError::Disconnected(job)) => (job.2, job.3),
                 },
-                None => picture,
+                None => (picture, lasting),
             };
+            let packed = crate::pictures::pack(&picture)?;
+            let lasting = lasting.and_then(|lasting| written(&packed, lasting));
             self.pictures
-                .put(moment, size, &picture, limits, folder.as_deref())
+                .put_packed(moment, size, packed, lasting, limits, folder.as_deref())
         })();
         if let Err(e) = kept {
             self.warning = Some(format!("Played pictures are not kept: {e}"));
@@ -686,7 +762,7 @@ impl Store {
             } else {
                 packer.done.try_recv().ok()
             };
-            let Some((moment, size, packed)) = next else {
+            let Some((moment, size, packed, lasting)) = next else {
                 if all {
                     self.packing.clear();
                 }
@@ -700,12 +776,37 @@ impl Store {
             };
             let kept = packed.and_then(|packed| {
                 self.pictures
-                    .put_packed(moment, size, packed, limits, folder.as_deref())
+                    .put_packed(moment, size, packed, lasting, limits, folder.as_deref())
             });
             if let Err(e) = kept {
                 self.warning = Some(format!("Played pictures are not kept: {e}"));
             }
         }
+    }
+    /// The folder of pictures that last between sessions of this build, looked in the
+    /// first time; folders of other builds are removed, their names mean nothing here.
+    fn lasting_folder(&mut self) -> Option<PathBuf> {
+        if self.settings.picture_disk_bytes == 0 {
+            return None;
+        }
+        if self.lasting.is_none() {
+            let root = self.settings.directory.clone()?;
+            let folder = root.join(format!("kept-{:016x}", build_stamp()));
+            std::fs::create_dir_all(&folder).ok()?;
+            if let Ok(entries) = std::fs::read_dir(&root) {
+                for entry in entries.take(256).flatten() {
+                    if entry.file_name().to_string_lossy().starts_with("kept-")
+                        && entry.path() != folder
+                        && entry.file_type().is_ok_and(|t| t.is_dir())
+                    {
+                        let _ = std::fs::remove_dir_all(entry.path());
+                    }
+                }
+            }
+            self.pictures.look_in(&folder);
+            self.lasting = Some(folder);
+        }
+        self.lasting.clone()
     }
     /// This session's folder in the cache directory, made when first needed.
     fn session_folder(&mut self) -> Result<PathBuf> {
@@ -966,12 +1067,12 @@ mod tests {
         let at = |frame: i64| veylvik_render::RenderRequest::full(Time::new(frame, 24).unwrap());
         let first = composition(1.0, false);
         store.prepare(&first, &inputs).unwrap();
-        let name = store.name(&renderer, &first, at(0), &inputs);
+        let name = store.name(&renderer, &first, at(0), &inputs).0;
         assert!(name.is_some());
         let frame = Arc::new(renderer.render_gpu(&first, at(0), &inputs).unwrap());
         store.insert(&renderer, at(0).time, name, frame.clone(), &mut || false);
         // A still picture is one picture at every moment.
-        let later = store.name(&renderer, &first, at(30), &inputs);
+        let later = store.name(&renderer, &first, at(30), &inputs).0;
         assert_eq!(later, name);
         let found = store
             .lookup(&renderer, at(30).time, later)
@@ -983,7 +1084,7 @@ mod tests {
         // An edit elsewhere makes another plan; the picture is still the picture.
         let edited = composition(1.0, true);
         store.prepare(&edited, &inputs).unwrap();
-        let name = store.name(&renderer, &edited, at(0), &inputs);
+        let name = store.name(&renderer, &edited, at(0), &inputs).0;
         let found = store.lookup(&renderer, at(0).time, name).unwrap();
         assert!(
             found.is_some_and(|f| Arc::ptr_eq(&f, &frame)),
@@ -995,7 +1096,7 @@ mod tests {
         // An edit that changes the picture is not answered with the old one.
         let regraded = composition(2.0, true);
         store.prepare(&regraded, &inputs).unwrap();
-        let name = store.name(&renderer, &regraded, at(0), &inputs);
+        let name = store.name(&renderer, &regraded, at(0), &inputs).0;
         assert!(store.lookup(&renderer, at(0).time, name).unwrap().is_none());
     }
     #[test]

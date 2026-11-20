@@ -17,6 +17,33 @@ struct Picture {
     size: [u32; 2],
     memory: Option<Arc<Vec<u8>>>,
     disk: Option<(PathBuf, u64)>,
+    /// A name that means this picture in any session of this build: then its file is
+    /// in the lasting folder, under that name, and stays when the session ends.
+    lasting: Option<u64>,
+}
+fn look_bits(look: Look) -> u64 {
+    u64::from(look.exposure.to_bits()) | (u64::from(look.filmic) << 32)
+}
+/// The file of a lasting picture: its name, its look and its size are in the file's name.
+pub(crate) fn lasting_file(
+    folder: &std::path::Path,
+    lasting: u64,
+    look: Look,
+    size: [u32; 2],
+) -> PathBuf {
+    folder.join(format!(
+        "{lasting:016x}-{:x}-{}x{}.picture.zst",
+        look_bits(look),
+        size[0],
+        size[1]
+    ))
+}
+/// A lasting picture's file found in the folder and not asked for yet this session.
+struct Found {
+    path: PathBuf,
+    bytes: u64,
+    size: [u32; 2],
+    modified: std::time::SystemTime,
 }
 /// How many pictures after the one asked for are unpacked beforehand: playing asks for
 /// them in order, and unpacking one takes about as long as showing it may.
@@ -83,6 +110,8 @@ pub(crate) struct Pictures {
     asked: Vec<u64>,
     /// Unpacked and not asked for yet, oldest first.
     waiting: VecDeque<(u64, Vec<u8>)>,
+    /// Lasting pictures on disk from this or an earlier session, by name and look.
+    found: std::collections::BTreeMap<(u64, u64), Found>,
 }
 /// A picture packed without loss.
 pub(crate) fn pack(picture: &[u8]) -> Result<Vec<u8>> {
@@ -92,6 +121,86 @@ fn same(a: Time, b: Time) -> bool {
     i128::from(a.ticks) * i128::from(b.rate) == i128::from(b.ticks) * i128::from(a.rate)
 }
 impl Pictures {
+    /// Read which lasting pictures `folder` holds. They count against the disk limit
+    /// and are taken up as they are asked for.
+    pub fn look_in(&mut self, folder: &std::path::Path) {
+        self.found.clear();
+        let Ok(files) = std::fs::read_dir(folder) else {
+            return;
+        };
+        for file in files.flatten() {
+            let name = file.file_name();
+            let Some(stem) = name
+                .to_string_lossy()
+                .strip_suffix(".picture.zst")
+                .map(str::to_owned)
+            else {
+                continue;
+            };
+            let mut parts = stem.split('-');
+            let (Some(lasting), Some(look), Some(size), None) =
+                (parts.next(), parts.next(), parts.next(), parts.next())
+            else {
+                continue;
+            };
+            let (Ok(lasting), Ok(look)) = (
+                u64::from_str_radix(lasting, 16),
+                u64::from_str_radix(look, 16),
+            ) else {
+                continue;
+            };
+            let Some((Ok(width), Ok(height))) = size
+                .split_once('x')
+                .map(|(w, h)| (w.parse::<u32>(), h.parse::<u32>()))
+            else {
+                continue;
+            };
+            let Ok(meta) = file.metadata() else {
+                continue;
+            };
+            // One already in use this session is not found a second time.
+            if self
+                .entries
+                .iter()
+                .any(|e| e.disk.as_ref().is_some_and(|d| d.0 == file.path()))
+            {
+                continue;
+            }
+            self.found.insert(
+                (lasting, look),
+                Found {
+                    path: file.path(),
+                    bytes: meta.len(),
+                    size: [width, height],
+                    modified: meta.modified().unwrap_or(std::time::UNIX_EPOCH),
+                },
+            );
+        }
+    }
+    /// Take up a lasting picture from disk for this moment, when one is there and none
+    /// is kept for it yet.
+    pub fn take_up(&mut self, time: Time, name: Option<u64>, lasting: Option<u64>, look: Look) {
+        let Some(lasting) = lasting else {
+            return;
+        };
+        if self.position(time, name, look).is_some() {
+            return;
+        }
+        let Some(found) = self.found.remove(&(lasting, look_bits(look))) else {
+            return;
+        };
+        self.serial = self.serial.wrapping_add(1);
+        self.entries.push_back(Picture {
+            id: self.serial,
+            name,
+            times: vec![time],
+            look,
+            size: found.size,
+            memory: None,
+            disk: Some((found.path, found.bytes)),
+            lasting: Some(lasting),
+        });
+    }
     fn position(&self, time: Time, name: Option<u64>, look: Look) -> Option<usize> {
         self.entries.iter().position(|e| {
             e.look == look
@@ -211,6 +320,7 @@ impl Pictures {
     }
     /// Keep `picture` (as the screen packs it) for this moment, then make everything fit
     /// `limits`: the oldest in memory go to `folder`, the oldest there are deleted.
+    #[cfg(test)]
     pub fn put(
         &mut self,
         (time, name, look): (Time, Option<u64>, Look),
@@ -219,7 +329,14 @@ impl Pictures {
         limits: Limits,
         folder: Option<&std::path::Path>,
     ) -> Result<()> {
-        self.put_packed((time, name, look), size, pack(picture)?, limits, folder)
+        self.put_packed(
+            (time, name, look),
+            size,
+            pack(picture)?,
+            None,
+            limits,
+            folder,
+        )
     }
     /// As [`Pictures::put`], with the picture already packed by [`pack`].
     pub fn put_packed(
@@ -227,12 +344,14 @@ impl Pictures {
         (time, name, look): (Time, Option<u64>, Look),
         size: [u32; 2],
         packed: Vec<u8>,
+        written: Option<(u64, PathBuf)>,
         limits: Limits,
         folder: Option<&std::path::Path>,
     ) -> Result<()> {
         if let Some(index) = self.position(time, name, look) {
             self.entries.remove(index);
         }
+        let bytes = packed.len() as u64;
         self.serial = self.serial.wrapping_add(1);
         self.entries.push_back(Picture {
             id: self.serial,
@@ -241,7 +360,8 @@ impl Pictures {
             look,
             size,
             memory: Some(Arc::new(packed)),
-            disk: None,
+            disk: written.as_ref().map(|(_, path)| (path.clone(), bytes)),
+            lasting: written.map(|(lasting, _)| lasting),
         });
         self.fit(limits, folder)
     }
@@ -267,6 +387,21 @@ impl Pictures {
                         failure = Some(error(format!("Disk cache unavailable: {e}")));
                     }
                 }
+            }
+        }
+        // Disk: pictures of earlier sessions that nobody has asked for go first, the
+        // oldest of them first; then this session's own, oldest first.
+        while self.disk_bytes() > limits.disk {
+            let Some(oldest) = self
+                .found
+                .iter()
+                .min_by_key(|(_, found)| found.modified)
+                .map(|(key, _)| *key)
+            else {
+                break;
+            };
+            if let Some(found) = self.found.remove(&oldest) {
+                let _ = std::fs::remove_file(found.path);
             }
         }
         while self.disk_bytes() > limits.disk {
@@ -295,13 +430,36 @@ impl Pictures {
             entry.times.clear();
         }
     }
+    /// Let go of everything this session holds. Lasting pictures stay on disk, to be
+    /// found again; the session's own files are deleted.
     pub fn clear(&mut self) {
         self.waiting.clear();
         self.asked.clear();
         for entry in self.entries.drain(..) {
-            if let Some((path, _)) = entry.disk {
-                let _ = std::fs::remove_file(path);
+            match (entry.lasting, entry.disk) {
+                (Some(lasting), Some((path, bytes))) => {
+                    self.found.insert(
+                        (lasting, look_bits(entry.look)),
+                        Found {
+                            path,
+                            bytes,
+                            size: entry.size,
+                            modified: std::time::SystemTime::now(),
+                        },
+                    );
+                }
+                (_, Some((path, _))) => {
+                    let _ = std::fs::remove_file(path);
+                }
+                _ => {}
             }
+        }
+    }
+    /// Delete everything, the lasting pictures on disk too: the artist asked for it.
+    pub fn wipe(&mut self) {
+        self.clear();
+        for (_, found) in std::mem::take(&mut self.found) {
+            let _ = std::fs::remove_file(found.path);
         }
     }
     /// Every moment whose picture is kept for `look`.
@@ -324,7 +482,8 @@ impl Pictures {
             .iter()
             .filter_map(|e| e.disk.as_ref())
             .map(|d| d.1)
-            .sum()
+            .sum::<u64>()
+            + self.found.values().map(|found| found.bytes).sum::<u64>()
     }
 }
 
@@ -426,6 +585,80 @@ mod tests {
         std::fs::write(file, b"broken").unwrap();
         assert!(pictures.get(at(40), Some(99), look).is_none());
         pictures.clear();
+        assert_eq!(std::fs::read_dir(&folder).unwrap().count(), 0);
+        std::fs::remove_dir(folder).unwrap();
+    }
+    #[test]
+    fn lasting_pictures_are_found_by_the_next_session_and_deleted_only_when_asked() {
+        let folder = std::env::temp_dir().join(format!(
+            "veylvik-lasting-test-{}",
+            veylvik_document::NodeId::new_v4()
+        ));
+        std::fs::create_dir_all(&folder).unwrap();
+        let look = Look {
+            exposure: 0.5,
+            filmic: true,
+        };
+        let at = |frame: i64| Time::new(frame, 24).unwrap();
+        let limits = Limits {
+            memory: 1 << 20,
+            disk: 1 << 20,
+        };
+        let keep = |pictures: &mut Pictures, frame: u8, lasting: u64| {
+            let packed = pack(&picture(frame)).unwrap();
+            let path = lasting_file(&folder, lasting, look, [64, 32]);
+            std::fs::write(&path, &packed).unwrap();
+            pictures
+                .put_packed(
+                    (at(frame.into()), Some(lasting + 1000), look),
+                    [64, 32],
+                    packed,
+                    Some((lasting, path)),
+                    limits,
+                    None,
+                )
+                .unwrap();
+        };
+        // One session keeps two pictures and ends.
+        let mut first = Pictures::default();
+        keep(&mut first, 1, 11);
+        keep(&mut first, 2, 22);
+        first.clear();
+        drop(first);
+        assert_eq!(std::fs::read_dir(&folder).unwrap().count(), 2);
+        // The next finds them on disk, counts them, and takes one up when it is asked
+        // for by its lasting name, whatever this session calls the picture.
+        let mut second = Pictures::default();
+        second.look_in(&folder);
+        assert!(second.disk_bytes() > 0);
+        assert!(second.get(at(5), Some(7), look).is_none());
+        second.take_up(at(5), Some(7), Some(11), look);
+        assert!(
+            second
+                .get(at(5), Some(7), look)
+                .is_some_and(|(bytes, size)| bytes == picture(1) && size == [64, 32])
+        );
+        // Another look, or a name nobody kept, finds nothing.
+        second.take_up(at(6), Some(8), Some(22), Look::NEUTRAL);
+        assert!(second.get(at(6), Some(8), Look::NEUTRAL).is_none());
+        second.take_up(at(6), Some(8), Some(33), look);
+        assert!(second.get(at(6), Some(8), look).is_none());
+        // Over the disk limit, the one nobody asked for goes first.
+        second
+            .fit(
+                Limits {
+                    memory: 1 << 20,
+                    disk: picture(0).len() as u64 + 600,
+                },
+                None,
+            )
+            .unwrap();
+        assert_eq!(std::fs::read_dir(&folder).unwrap().count(), 1);
+        assert!(second.get(at(5), Some(7), look).is_some());
+        // Deleting everything is asked for, never a side effect of ending.
+        second.clear();
+        assert_eq!(std::fs::read_dir(&folder).unwrap().count(), 1);
+        second.wipe();
         assert_eq!(std::fs::read_dir(&folder).unwrap().count(), 0);
         std::fs::remove_dir(folder).unwrap();
     }

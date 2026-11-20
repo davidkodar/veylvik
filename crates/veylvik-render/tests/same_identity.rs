@@ -146,3 +146,50 @@ fn the_same_identity_is_the_same_picture_for_every_node_type() {
         "node types this test could not check: {unexcused:?}"
     );
 }
+
+#[test]
+#[ignore = "requires Vulkan"]
+fn only_a_picture_whose_every_input_has_a_name_is_known_in_another_session() {
+    let rate = Time { ticks: 24, rate: 1 };
+    let pixels = || vec![[0.25_f32, 0.5, 0.75, 1.0]; (W * H) as usize];
+    let mut doc = blank(W, H, rate).unwrap();
+    let still = Node::new(
+        "still",
+        Operation::Image(nodes::Image {
+            asset: "still".into(),
+        }),
+        &[],
+    );
+    doc.output = still.id;
+    doc.nodes.insert(still.id, still);
+    let plan = Plan::compile(&doc).unwrap();
+    let request = RenderRequest::full(Time::at_frame(0, rate).unwrap());
+    let lasting = |image: Image| {
+        // A session of its own: its own renderer, its own count of identities.
+        let renderer = Renderer::new().unwrap();
+        let mut inputs = ImageInputs::default();
+        inputs.insert("still", Arc::new(image));
+        renderer.lasting_identity(&plan, request, &inputs).unwrap()
+    };
+    // Known only by this session's count: two different stills could meet under one
+    // number in two sessions, so such a picture has no lasting identity at all.
+    assert_eq!(lasting(Image::new(W, H, pixels()).unwrap()), None);
+    // Named by its maker, the same name is the same picture in every session, and
+    // another name is another picture.
+    let named = lasting(Image::new(W, H, pixels()).unwrap().named(41));
+    assert!(named.is_some());
+    assert_eq!(
+        lasting(Image::new(W, H, pixels()).unwrap().named(41)),
+        named
+    );
+    assert_ne!(
+        lasting(Image::new(W, H, pixels()).unwrap().named(42)),
+        named
+    );
+    // A node's own data is named by its content.
+    assert_eq!(
+        lasting(Image::data(W, H, pixels()).unwrap()),
+        lasting(Image::data(W, H, pixels()).unwrap())
+    );
+    assert!(lasting(Image::data(W, H, pixels()).unwrap()).is_some());
+}

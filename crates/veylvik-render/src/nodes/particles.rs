@@ -299,7 +299,7 @@ impl RenderNode for Particles {
             .iter()
             .flat_map(|row| row.chunks(3).map(|v| [v[0], v[1], v[2], 1.0]))
             .collect();
-        let image = std::sync::Arc::new(crate::Image::new(
+        let image = std::sync::Arc::new(crate::Image::data(
             (COUNT / 3) as u32,
             ROWS as u32 + 1,
             texels,

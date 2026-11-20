@@ -118,6 +118,14 @@ mod texture;
 mod vector;
 mod video;
 pub use nodes::{Extent, Reach};
+/// A hash that is the same in every build and session (FNV-1a, 64 bits), from `seed`.
+pub fn fnv(bytes: &[u8], seed: u64) -> u64 {
+    let mut hash = 0xcbf2_9ce4_8422_2325 ^ seed;
+    for byte in bytes {
+        hash = (hash ^ u64::from(*byte)).wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    hash
+}
 pub use plan::{Kernel, PassInfo, Plan};
 pub use pool::ResourceStats;
 use std::collections::BTreeMap;
@@ -805,6 +813,41 @@ impl Renderer {
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
         key.words().hash(&mut hasher);
         Ok(hasher.finish())
+    }
+    /// Both identities of a picture at once: [`Renderer::identity`] and
+    /// [`Renderer::lasting_identity`].
+    pub fn identities(
+        &self,
+        plan: &Plan,
+        request: RenderRequest,
+        inputs: &ImageInputs,
+    ) -> Result<(u64, Option<u64>)> {
+        use std::hash::{Hash, Hasher};
+        let resolved = inputs.resolve_on(plan, request.time, Some(self))?;
+        let key = cache::Key::new(plan, request, &resolved)?;
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        key.words().hash(&mut hasher);
+        let lasting = (plan.temporal.is_empty() && key.portable())
+            .then(|| fnv(bytemuck::cast_slice(key.words()), 0));
+        Ok((hasher.finish(), lasting))
+    }
+    /// As [`Renderer::identity`], but one that means the same picture in another session
+    /// of the same build: none when the plan is made of other moments, or when an input
+    /// is known only by this session's count and not by a name.
+    pub fn lasting_identity(
+        &self,
+        plan: &Plan,
+        request: RenderRequest,
+        inputs: &ImageInputs,
+    ) -> Result<Option<u64>> {
+        if !plan.temporal.is_empty() {
+            return Ok(None);
+        }
+        let resolved = inputs.resolve_on(plan, request.time, Some(self))?;
+        let key = cache::Key::new(plan, request, &resolved)?;
+        Ok(key
+            .portable()
+            .then(|| fnv(bytemuck::cast_slice(key.words()), 0)))
     }
     pub fn cache_stats(&self) -> Result<CacheStats> {
         Ok(self

@@ -139,17 +139,18 @@ impl PreviewScheduler<Arc<GpuFrame>> {
                     let cacheable = job.request.region.is_none()
                         && job.request.scene_view.is_none()
                         && !job.request.scene_reflections;
-                    let name = if cacheable {
+                    let names = if cacheable {
                         cache.name(&renderer, &job.plan, job.request, &job.inputs)
                     } else {
-                        None
+                        (None, None)
                     };
+                    let name = names.0;
                     // A picture kept as the screen shows it, when the request allows one.
                     let playing = if cacheable { job.look } else { None };
                     // Made only to be kept: one that is kept already needs nothing.
                     if job.background
                         && let Some(look) = playing
-                        && cache.has_picture(job.request.time, name, look)
+                        && cache.has_picture(job.request.time, names, look)
                     {
                         return Err(error("kept already"));
                     }
@@ -159,13 +160,13 @@ impl PreviewScheduler<Arc<GpuFrame>> {
                         if job.background
                             && let Some(look) = playing
                         {
-                            cache.keep_picture(&renderer, job.request.time, name, look, &frame);
+                            cache.keep_picture(&renderer, job.request.time, names, look, &frame);
                         }
                         return Ok(frame);
                     }
                     if let Some(look) = playing
                         && let Some(frame) =
-                            cache.picture(&renderer, job.request.time, name, look)?
+                            cache.picture(&renderer, job.request.time, names, look)?
                     {
                         screen_ready = true;
                         return Ok(frame);
@@ -188,7 +189,7 @@ impl PreviewScheduler<Arc<GpuFrame>> {
                     if cacheable {
                         cache.insert(&renderer, job.request.time, name, frame.clone(), cancelled);
                         if let Some(look) = playing {
-                            cache.keep_picture(&renderer, job.request.time, name, look, &frame);
+                            cache.keep_picture(&renderer, job.request.time, names, look, &frame);
                         }
                     }
                     Ok(frame)
@@ -850,5 +851,86 @@ mod playback_tests {
         };
         assert!(played.screen_ready, "a prepared frame was rendered again");
         assert_eq!(control.status().ready_frames.len(), 6);
+    }
+    #[test]
+    #[ignore = "requires Vulkan"]
+    fn the_next_session_plays_what_the_last_one_kept() {
+        let directory = std::env::temp_dir().join(format!(
+            "veylvik-sessions-test-{}",
+            veylvik_document::NodeId::new_v4()
+        ));
+        let settings = crate::playback::Settings {
+            gpu_bytes: 0,
+            picture_memory_bytes: 8 << 20,
+            picture_disk_bytes: 64 << 20,
+            memory_reserve_bytes: 0,
+            directory: Some(directory.clone()),
+            ..Default::default()
+        };
+        let look = crate::screen::Look {
+            exposure: 0.0,
+            filmic: false,
+        };
+        let at = |frame: i64| Time::new(frame, 24).unwrap();
+        let plan = || Arc::new(Plan::compile(&veylvik_document::motion_demo()).unwrap());
+        let session = || {
+            let renderer = Arc::new(Renderer::new().unwrap());
+            let scheduler = GpuPreviewScheduler::with_renderer(renderer, || {}).unwrap();
+            scheduler.playback_cache().configure(settings.clone());
+            scheduler
+        };
+        let played = |scheduler: &GpuPreviewScheduler, frame: i64| {
+            scheduler.playback_cache().set_playing(Some(look));
+            scheduler
+                .submit(
+                    1,
+                    plan(),
+                    RenderRequest::full(at(frame)),
+                    ImageInputs::default(),
+                )
+                .unwrap();
+            let deadline = Instant::now() + Duration::from_secs(30);
+            loop {
+                if let Some(result) = scheduler.try_take().unwrap() {
+                    assert!(result.frame.is_ok());
+                    return result.screen_ready;
+                }
+                assert!(Instant::now() < deadline, "timed out");
+                thread::sleep(Duration::from_millis(5));
+            }
+        };
+        // One session prepares four frames, and ends.
+        let first = session();
+        first
+            .prepare(1, plan(), ImageInputs::default(), (0..4).map(at), look)
+            .unwrap();
+        let deadline = Instant::now() + Duration::from_secs(30);
+        while first.preparing() != (0, 4) {
+            assert!(Instant::now() < deadline, "timed out");
+            thread::sleep(Duration::from_millis(5));
+        }
+        thread::sleep(Duration::from_millis(400));
+        drop(first);
+        // Another, with a renderer of its own and the composition compiled anew, plays
+        // one of them from disk without rendering it; a frame nobody kept is rendered.
+        let second = session();
+        assert!(
+            played(&second, 2),
+            "a frame kept by the last session was rendered again"
+        );
+        assert!(!played(&second, 30));
+        // Emptying the store is the artist's word, and takes the files with it.
+        second.playback_cache().clear();
+        assert!(!played(&second, 2));
+        drop(second);
+        let left: usize = std::fs::read_dir(&directory)
+            .unwrap()
+            .flatten()
+            .filter(|entry| entry.file_name().to_string_lossy().starts_with("kept-"))
+            .map(|entry| std::fs::read_dir(entry.path()).unwrap().count())
+            .sum();
+        // Only what the second session kept after the clear: the two frames it played.
+        assert!(left <= 2, "{left} files left after clearing");
+        std::fs::remove_dir_all(directory).unwrap();
     }
 }

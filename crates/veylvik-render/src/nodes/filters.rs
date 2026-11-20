@@ -677,7 +677,7 @@ fn grid_mesh(warp: &veylvik_document::nodes::GridWarp) -> Option<std::sync::Arc<
         return Some(image.clone());
     }
     let image = std::sync::Arc::new(
-        crate::Image::new(
+        crate::Image::data(
             warp.columns,
             warp.rows,
             warp.points.iter().map(|p| [p[0], p[1], 0.0, 1.0]).collect(),
@@ -728,7 +728,7 @@ impl RenderNode for veylvik_document::nodes::ShapeWarp {
             return Ok(Some(image.clone()));
         }
         let field = veylvik_warp::field(&from, &to, width, height, reach).map_err(error)?;
-        let image = std::sync::Arc::new(crate::Image::new(
+        let image = std::sync::Arc::new(crate::Image::data(
             field.columns,
             field.rows,
             field

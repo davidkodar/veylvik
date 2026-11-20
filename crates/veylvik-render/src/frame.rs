@@ -29,6 +29,10 @@ pub struct Image {
 }
 /// Identities given by name live apart from those counted out, so the two never meet.
 const NAMED: u64 = 1 << 63;
+/// Whether an identity is a name of the maker's and not a count of this session's.
+pub(crate) fn is_named(identity: u64) -> bool {
+    identity & NAMED != 0
+}
 impl Image {
     /// The same picture under a name of the maker's: two images with one name are taken
     /// for the same pixels, so a picture made of one is known again when the other
@@ -37,6 +41,15 @@ impl Image {
     pub fn named(mut self, name: u64) -> Self {
         self.identity = name | NAMED;
         self
+    }
+    /// A small image of data a node made (a mesh, a table of settings), named by its
+    /// own content: the same data is the same image whenever and wherever it is made.
+    pub fn data(width: u32, height: u32, pixels: Vec<[f32; 4]>) -> Result<Self> {
+        let name = crate::fnv(
+            bytemuck::cast_slice(&pixels),
+            u64::from(width) << 32 | u64::from(height),
+        );
+        Ok(Self::new(width, height, pixels)?.named(name))
     }
     pub fn new(width: u32, height: u32, pixels: Vec<[f32; 4]>) -> Result<Self> {
         if width == 0
