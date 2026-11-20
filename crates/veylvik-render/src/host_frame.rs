@@ -97,15 +97,28 @@ impl HostPixels {
     }
 }
 const WGSL: &str = "
-struct Exchange { size: vec4<u32>, row0: vec4<f32>, row1: vec4<f32>, row2: vec4<f32> }
+struct Exchange { size: vec4<u32>, origin: vec4<u32>, row0: vec4<f32>, row1: vec4<f32>, row2: vec4<f32> }
 @group(0) @binding(0) var<uniform> p: Exchange;
 @group(0) @binding(1) var<storage, read> source: array<vec4<f32>>;
 @group(0) @binding(2) var<storage, read_write> result: array<vec4<f32>>;
+fn fetch(x: i32, y: i32) -> vec4<f32> {
+    let q = vec2<u32>(clamp(vec2<i32>(x, y), vec2<i32>(0), vec2<i32>(p.origin.xy) - vec2<i32>(1)));
+    return source[q.y * p.origin.x + q.x];
+}
 @compute @workgroup_size(8, 8)
 fn exchange(@builtin(global_invocation_id) id: vec3<u32>) {
     if any(id.xy >= p.size.xy) { return; }
-    let i = id.y * p.size.x + id.x;
-    let c = source[i];
+    var c: vec4<f32>;
+    if all(p.size.xy == p.origin.xy) {
+        // The same size: the very pixel, untouched.
+        c = source[id.y * p.origin.x + id.x];
+    } else {
+        // Another size: the picture is premultiplied here, so it may be averaged.
+        let at = (vec2<f32>(id.xy) + 0.5) * vec2<f32>(p.origin.xy) / vec2<f32>(p.size.xy) - 0.5;
+        let i = vec2<i32>(floor(at));
+        let f = at - floor(at);
+        c = mix(mix(fetch(i.x, i.y), fetch(i.x + 1, i.y), f.x), mix(fetch(i.x, i.y + 1), fetch(i.x + 1, i.y + 1), f.x), f.y);
+    }
     // The matrix is linear, so it means the same on straight and premultiplied colour.
     var rgb = vec3<f32>(dot(p.row0.xyz, c.rgb), dot(p.row1.xyz, c.rgb), dot(p.row2.xyz, c.rgb));
     if p.size.w == 1u {
@@ -116,7 +129,7 @@ fn exchange(@builtin(global_invocation_id) id: vec3<u32>) {
         }
         // Light where alpha is 0 has no straight form: it is passed on as it is.
     }
-    result[i] = vec4<f32>(rgb, c.a);
+    result[id.y * p.size.x + id.x] = vec4<f32>(rgb, c.a);
 }
 ";
 pub(crate) fn pipeline(device: &wgpu::Device) -> wgpu::ComputePipeline {
@@ -139,11 +152,18 @@ impl Renderer {
         scratch: &mut crate::compute::Scratch<'_, '_>,
         source: &wgpu::Buffer,
         result: &wgpu::Buffer,
+        [from_width, from_height]: [u32; 2],
         [width, height]: [u32; 2],
         (outwards, straight, matrix): (bool, bool, [[f32; 3]; 3]),
     ) -> Result<()> {
         let bytes = u64::from(width) * u64::from(height) * 16;
-        if width == 0 || height == 0 || source.size() < bytes || result.size() < bytes {
+        let from_bytes = u64::from(from_width) * u64::from(from_height) * 16;
+        if width == 0
+            || height == 0
+            || from_bytes == 0
+            || source.size() < from_bytes
+            || result.size() < bytes
+        {
             return Err(error("a frame buffer is smaller than its picture"));
         }
         let storage = wgpu::BufferUsages::STORAGE;
@@ -152,8 +172,17 @@ impl Renderer {
                 "frame buffers exchanged with a host must be storage buffers",
             ));
         }
-        let mut words = Vec::with_capacity(64);
-        for v in [width, height, u32::from(outwards), u32::from(straight)] {
+        let mut words = Vec::with_capacity(80);
+        for v in [
+            width,
+            height,
+            u32::from(outwards),
+            u32::from(straight),
+            from_width,
+            from_height,
+            0,
+            0,
+        ] {
             words.extend_from_slice(&v.to_le_bytes());
         }
         for row in matrix {
@@ -164,7 +193,7 @@ impl Renderer {
         let device = scratch.device();
         let settings = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("host frame exchange"),
-            size: 64,
+            size: 80,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -186,7 +215,7 @@ impl Renderer {
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
-                    resource: whole(source, bytes),
+                    resource: whole(source, from_bytes),
                 },
                 wgpu::BindGroupEntry {
                     binding: 2,
@@ -226,6 +255,7 @@ impl Renderer {
                 source,
                 &frame,
                 [width, height],
+                [width, height],
                 (false, pixels.straight, pixels.to_rec709),
             )?;
             scratch.frame(&frame, width, height)
@@ -239,6 +269,18 @@ impl Renderer {
         target: &wgpu::Buffer,
         pixels: &HostPixels,
     ) -> Result<()> {
+        self.frame_to_host_sized(frame, target, [frame.width(), frame.height()], pixels)
+    }
+    /// As [`Renderer::frame_to_host`], the picture scaled to `size` on the way: its own
+    /// size gives every pixel untouched; a smaller one averages neighbours, so sizes
+    /// under half the frame's should be reduced in steps first.
+    pub fn frame_to_host_sized(
+        &self,
+        frame: &GpuFrame,
+        target: &wgpu::Buffer,
+        size: [u32; 2],
+        pixels: &HostPixels,
+    ) -> Result<()> {
         if !self.owns(frame) {
             return Err(error("GPU frame belongs to another renderer"));
         }
@@ -249,6 +291,7 @@ impl Renderer {
                 frame.buffer(),
                 target,
                 [frame.width(), frame.height()],
+                size,
                 (true, pixels.straight, matrix),
             )
         })

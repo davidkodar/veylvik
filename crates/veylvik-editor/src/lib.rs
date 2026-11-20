@@ -4,6 +4,7 @@ mod animation_editor;
 mod asset_browser;
 mod audio_preview;
 mod autokey;
+mod clip_source;
 mod color_controls;
 mod command_ui;
 mod commands;
@@ -26,6 +27,7 @@ mod grain_measure;
 mod graph;
 mod graph_layout;
 mod handles;
+pub use clip_source::ClipSource;
 mod history_log;
 pub mod host;
 mod host_link;
@@ -441,6 +443,11 @@ impl Editor {
         let before = self.revision();
         self.studio.history(redo);
         self.revision() != before
+    }
+    /// The renderer the editor draws with, for a [`ClipSource`] that shares its memory
+    /// budget and caches.
+    pub fn renderer(&self) -> Arc<Renderer> {
+        self.studio.renderer.clone()
     }
     /// Whether there is work that has not been saved.
     pub fn unsaved(&self) -> bool {

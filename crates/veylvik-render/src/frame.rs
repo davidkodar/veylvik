@@ -255,6 +255,19 @@ impl ImageInputs {
     ) -> Result<Self> {
         let mut result = self.clone();
         let mut decoded_bytes = 0u64;
+        // The footage of one frame may take half the renderer's budget, and never less
+        // than 256 MiB; going over fails the frame and says by how much.
+        let allowed = renderer.map_or(256 * 1024 * 1024, |r| {
+            (r.budget_bytes / 2).max(256 * 1024 * 1024)
+        });
+        let mut sources = 0u32;
+        let over = |bytes: u64, sources: u32| {
+            error(format!(
+                "the footage of this frame needs {} MiB for {sources} sources and {} MiB are allowed (half the GPU budget): use fewer or smaller sources, or raise the GPU budget",
+                bytes.div_ceil(1024 * 1024),
+                allowed / (1024 * 1024)
+            ))
+        };
         // Hidden branches (behind a fully transparent blend) get an empty stand-in, not a decode.
         let visible = plan.visible_at(time)?;
         for node in &plan.nodes {
@@ -289,10 +302,9 @@ impl ImageInputs {
                                 source.gpu_frame_with(time, renderer, target, *colour)?
                         {
                             decoded_bytes += frame.byte_size();
-                            if decoded_bytes > 256 * 1024 * 1024 {
-                                return Err(error(
-                                    "Decoded footage sources exceed 256 MiB per frame",
-                                ));
+                            sources += 1;
+                            if decoded_bytes > allowed {
+                                return Err(over(decoded_bytes, sources));
                             }
                             result.insert_gpu(key, frame);
                             continue;
@@ -312,8 +324,9 @@ impl ImageInputs {
                         .clone()
                 };
                 decoded_bytes += image.byte_size();
-                if decoded_bytes > 256 * 1024 * 1024 {
-                    return Err(error("Decoded footage sources exceed 256 MiB per frame"));
+                sources += 1;
+                if decoded_bytes > allowed {
+                    return Err(over(decoded_bytes, sources));
                 }
                 result.insert(key, image);
             } else if let veylvik_document::Operation::Image(veylvik_document::nodes::Image {
@@ -326,16 +339,18 @@ impl ImageInputs {
                     && let Some(frame) = source.gpu_frame(time, renderer)?
                 {
                     decoded_bytes += frame.byte_size();
-                    if decoded_bytes > 256 * 1024 * 1024 {
-                        return Err(error("Decoded footage sources exceed 256 MiB per frame"));
+                    sources += 1;
+                    if decoded_bytes > allowed {
+                        return Err(over(decoded_bytes, sources));
                     }
                     result.insert_gpu(asset, frame);
                     continue;
                 }
                 let image = source.frame(time)?;
                 decoded_bytes += image.byte_size();
-                if decoded_bytes > 256 * 1024 * 1024 {
-                    return Err(error("Decoded footage sources exceed 256 MiB per frame"));
+                sources += 1;
+                if decoded_bytes > allowed {
+                    return Err(over(decoded_bytes, sources));
                 }
                 result.insert(asset, image);
             }
