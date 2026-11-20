@@ -120,6 +120,7 @@ impl crate::Studio {
             if ui.add(crate::icons::Button::new(crate::icons::Icon::Reset, "Clear playback cache"))
                 .on_hover_text("Release cached playback frames and session disk files").clicked() {
                 if let Some(s) = &self.scheduler { s.playback_cache().clear(); }
+                self.fill_again();
                 self.request_preview();
             }
             if let Some(scheduler) = &self.scheduler {
@@ -128,7 +129,7 @@ impl crate::Studio {
                 let valid = !self.draft_dirty && cache.revision == self.project.document.revision()
                     && cache.output == self.project.preview.unwrap_or(doc.output)
                     && cache.size == [doc.width.div_ceil(self.playback_controls.divisor()), doc.height.div_ceil(self.playback_controls.divisor())];
-                let frames: std::collections::BTreeSet<_> = cache.gpu_frames.iter().chain(&cache.disk_frames)
+                let frames: std::collections::BTreeSet<_> = cache.gpu_frames.iter().chain(&cache.disk_frames).chain(&cache.ready_frames)
                     .filter_map(|t|crate::key_timeline::frame(*t, doc.frame_rate, count))
                     .filter(|f| valid && *f>=range.0 && *f<=range.1).collect();
                 ui.add_sized([166.,22.], egui::Label::new(egui::RichText::new(format!("{:>4}/{:<4} cached",frames.len(),range.1-range.0+1)).monospace().weak()).truncate())

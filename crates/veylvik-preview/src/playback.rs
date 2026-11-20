@@ -19,6 +19,9 @@ pub struct Settings {
     pub picture_memory_bytes: u64,
     /// Disk for the same, in `directory`, once memory is full.
     pub picture_disk_bytes: u64,
+    /// Memory the machine must still have available: played pictures give way (to disk,
+    /// or let go) before the rest of the machine goes short, whatever their own limit.
+    pub memory_reserve_bytes: u64,
 }
 impl Default for Settings {
     fn default() -> Self {
@@ -29,6 +32,7 @@ impl Default for Settings {
             directory: None,
             picture_memory_bytes: 0,
             picture_disk_bytes: 0,
+            memory_reserve_bytes: 4 << 30,
         }
     }
 }
@@ -173,6 +177,16 @@ pub(crate) struct Store {
     packer: Option<Packer>,
     /// Pictures handed to the packer and not back yet.
     packing: Vec<Moment>,
+    available: (Instant, Option<u64>),
+}
+/// `MemAvailable` of this machine in bytes.
+fn machine_memory_available() -> Option<u64> {
+    let text = std::fs::read_to_string("/proc/meminfo").ok()?;
+    let line = text
+        .lines()
+        .find_map(|line| line.strip_prefix("MemAvailable:"))?;
+    let kib: u64 = line.trim().trim_end_matches("kB").trim().parse().ok()?;
+    Some(kib * 1024)
 }
 type Moment = (Time, Option<u64>, crate::screen::Look);
 type Packed = (Moment, [u32; 2], Result<Vec<u8>>);
@@ -228,6 +242,7 @@ impl Store {
             look: None,
             packer: None,
             packing: Vec::new(),
+            available: (Instant::now(), machine_memory_available()),
         }
     }
     fn clear_entries(&mut self) {
@@ -535,12 +550,39 @@ impl Store {
         self.entries
             .retain(|e| e.gpu.as_ref().is_some_and(|w| w.strong_count() > 0) || e.disk.is_some());
     }
-    pub fn playing(&self) -> Option<crate::screen::Look> {
-        self.control.playing()
+    /// Whether this moment's picture is kept for `look` (the moment is noted if so).
+    pub fn has_picture(
+        &mut self,
+        time: Time,
+        name: Option<u64>,
+        look: crate::screen::Look,
+    ) -> bool {
+        self.look = Some(look);
+        // One still being packed counts: it is on its way.
+        let moment = (time, name, look);
+        let packing = self.packing.iter().any(|m| match name {
+            Some(_) => m.1 == name && m.2 == look,
+            None => alike(m, &moment),
+        });
+        self.eligible && (packing || self.pictures.has(time, name, look))
     }
-    fn picture_limits(&self) -> crate::pictures::Limits {
+    /// The machine's available memory, read at most twice a second; none when unknown.
+    fn available_memory(&mut self) -> Option<u64> {
+        if self.available.0.elapsed() >= Duration::from_millis(500) {
+            self.available = (Instant::now(), machine_memory_available());
+        }
+        self.available.1
+    }
+    fn picture_limits(&mut self) -> crate::pictures::Limits {
+        // Never more than leaves the reserve free: what is held already, plus what the
+        // machine has beyond its reserve.
+        let fair = self.available_memory().map_or(u64::MAX, |available| {
+            self.pictures
+                .memory_bytes()
+                .saturating_add(available.saturating_sub(self.settings.memory_reserve_bytes))
+        });
         crate::pictures::Limits {
-            memory: self.settings.picture_memory_bytes,
+            memory: self.settings.picture_memory_bytes.min(fair),
             disk: if self.settings.directory.is_some() {
                 self.settings.picture_disk_bytes
             } else {
@@ -734,6 +776,16 @@ impl Store {
     }
     pub fn publish(&mut self, revision: u64) {
         self.collect(false);
+        // The machine may have got tighter since the last picture was kept.
+        let limits = self.picture_limits();
+        if self.pictures.memory_bytes() > limits.memory {
+            let folder = if limits.disk > 0 {
+                self.session_folder().ok()
+            } else {
+                None
+            };
+            let _ = self.pictures.fit(limits, folder.as_deref());
+        }
         if let Ok(mut c) = self.control.0.lock()
             && c.1 == self.generation
         {

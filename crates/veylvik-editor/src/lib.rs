@@ -28,6 +28,7 @@ mod graph;
 mod graph_layout;
 mod handles;
 pub use clip_source::ClipSource;
+mod fill;
 mod history_log;
 pub mod host;
 mod host_link;
@@ -555,6 +556,7 @@ impl Studio {
             preview_started: None,
             displayed_time: None,
             pictures_shown: 0,
+            fill: Default::default(),
             draft,
             draft_dirty: false,
             draft_preview_deadline: None,
@@ -689,6 +691,7 @@ struct Studio {
     /// Finished previews put in the viewer since the start: how smoothly it plays is
     /// this over time, whoever is asking and however often.
     pictures_shown: u64,
+    fill: fill::Fill,
     draft: Node,
     draft_dirty: bool,
     draft_preview_deadline: Option<Instant>,
@@ -2139,6 +2142,7 @@ impl Studio {
                     directory,
                     picture_memory_bytes: p.played_memory_mib * 1024 * 1024,
                     picture_disk_bytes: p.played_disk_mib * 1024 * 1024,
+                    memory_reserve_bytes: p.played_reserve_mib * 1024 * 1024,
                 });
         }
         if !design::guest(ctx) {
@@ -3066,6 +3070,7 @@ impl Studio {
         self.key_timeline.cached_gpu = cache
             .gpu_frames
             .iter()
+            .chain(&cache.ready_frames)
             .filter_map(|t| {
                 key_timeline::frame(*t, self.project.document.snapshot().frame_rate, count)
             })
@@ -3667,6 +3672,7 @@ impl Studio {
                 _ => {}
             }
         }
+        self.fill_tick(&ctx);
         // Playing is over and the viewer still holds a played picture: ask for the frame
         // itself, so values read off it are the renderer's.
         if !self.playing
@@ -4033,7 +4039,11 @@ impl Studio {
                         let viewer_on_top = ctx
                             .pointer_hover_pos()
                             .is_some_and(|pos| ctx.layer_id_at(pos) == Some(response.layer_id));
-                        if viewer_on_top && !matches!(self.draft.operation, Operation::Text(_)) {
+                        // Nothing over the picture when it is shown alone.
+                        if viewer_on_top
+                            && !self.viewer_fullscreen
+                            && !matches!(self.draft.operation, Operation::Text(_))
+                        {
                             // At the pointer: below the viewer it would cover the transport.
                             response.on_hover_text_at_pointer(format!(
                                 "{:.0}% · scroll to zoom · drag to pan · double-click to fit",

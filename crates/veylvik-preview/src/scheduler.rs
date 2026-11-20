@@ -20,6 +20,11 @@ struct Job {
     plan: Arc<Plan>,
     request: RenderRequest,
     inputs: ImageInputs,
+    /// The viewer's look when the frame may be answered with, and kept as, a picture as
+    /// the screen shows it; none when it must be the renderer's own frame.
+    look: Option<crate::screen::Look>,
+    /// Made to be kept, not to be shown: nobody waits for it.
+    background: bool,
 }
 fn render_gpu_job(
     renderer: &Renderer,
@@ -139,13 +144,25 @@ impl PreviewScheduler<Arc<GpuFrame>> {
                     } else {
                         None
                     };
+                    // A picture kept as the screen shows it, when the request allows one.
+                    let playing = if cacheable { job.look } else { None };
+                    // Made only to be kept: one that is kept already needs nothing.
+                    if job.background
+                        && let Some(look) = playing
+                        && cache.has_picture(job.request.time, name, look)
+                    {
+                        return Err(error("kept already"));
+                    }
                     if cacheable
                         && let Some(frame) = cache.lookup(&renderer, job.request.time, name)?
                     {
+                        if job.background
+                            && let Some(look) = playing
+                        {
+                            cache.keep_picture(&renderer, job.request.time, name, look, &frame);
+                        }
                         return Ok(frame);
                     }
-                    // Only while playing: a picture kept as the screen shows it.
-                    let playing = if cacheable { cache.playing() } else { None };
                     if let Some(look) = playing
                         && let Some(frame) =
                             cache.picture(&renderer, job.request.time, name, look)?
@@ -210,11 +227,47 @@ impl<F: Send + 'static> PreviewScheduler<F> {
             plan,
             request,
             inputs,
+            look: self.playback.playing(),
+            background: false,
         })?;
         Ok(PreviewTicket {
             generation,
             revision,
         })
+    }
+    /// Frames to make when nothing is asked for the viewer, in this order, each kept as
+    /// the screen shows it with `look` and never shown. It replaces any list given
+    /// before. A frame asked for the viewer always goes first; a frame already being
+    /// made is finished, so the viewer waits at most one render.
+    pub fn prepare(
+        &self,
+        revision: u64,
+        plan: Arc<Plan>,
+        inputs: ImageInputs,
+        times: impl IntoIterator<Item = veylvik_document::Time>,
+        look: crate::screen::Look,
+    ) -> Result<()> {
+        self.worker.set_background(
+            times
+                .into_iter()
+                .map(|time| Job {
+                    revision,
+                    plan: plan.clone(),
+                    request: RenderRequest::full(time),
+                    inputs: inputs.clone(),
+                    look: Some(look),
+                    background: true,
+                })
+                .collect(),
+        )
+    }
+    /// Hold back the frames given to [`PreviewScheduler::prepare`], or let them go on.
+    pub fn pause_preparing(&self, paused: bool) -> Result<()> {
+        self.worker.pause_background(paused)
+    }
+    /// Frames still to prepare, and how many have been prepared since the start.
+    pub fn preparing(&self) -> (usize, u64) {
+        self.worker.background()
     }
     /// Invalidates pending and completed previews, without waiting for GPU work.
     pub fn cancel(&self) -> Result<()> {
@@ -230,6 +283,10 @@ struct State<I, O> {
     pending: Option<(u64, I)>,
     completed: Option<O>,
     closed: bool,
+    /// Work for when nothing is pending, oldest first; its results are not published.
+    background: std::collections::VecDeque<I>,
+    paused: bool,
+    made: u64,
 }
 struct Shared<I, O> {
     state: Mutex<State<I, O>>,
@@ -256,6 +313,9 @@ impl<I: Send + 'static, O: Send + 'static> LatestWorker<I, O> {
                 pending: None,
                 completed: None,
                 closed: false,
+                background: Default::default(),
+                paused: false,
+                made: 0,
             }),
             ready: Condvar::new(),
         });
@@ -267,16 +327,45 @@ impl<I: Send + 'static, O: Send + 'static> LatestWorker<I, O> {
                 let mut waking = false;
                 let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                     loop {
-                        let (generation, input) = {
+                        let (generation, input, background) = {
                             let mut lock = state.state.lock().unwrap_or_else(|e| e.into_inner());
-                            while !lock.closed && lock.pending.is_none() {
+                            while !lock.closed
+                                && lock.pending.is_none()
+                                && (lock.paused || lock.background.is_empty())
+                            {
                                 lock = state.ready.wait(lock).unwrap_or_else(|e| e.into_inner());
                             }
                             if lock.closed {
                                 return;
                             }
-                            lock.pending.take().unwrap()
+                            // What is asked for the viewer always goes first.
+                            match lock.pending.take() {
+                                Some((generation, input)) => (generation, input, false),
+                                None => {
+                                    let input = lock.background.pop_front().unwrap();
+                                    (lock.generation, input, true)
+                                }
+                            }
                         };
+                        if background {
+                            // Nobody waits for this one. It gives way, where the work can
+                            // be left, as soon as something is asked for the viewer.
+                            drop(render(generation, input, &mut || {
+                                let lock = state.state.lock().unwrap_or_else(|e| e.into_inner());
+                                lock.closed || lock.pending.is_some()
+                            }));
+                            let mut lock = state.state.lock().unwrap_or_else(|e| e.into_inner());
+                            lock.made += 1;
+                            let last = lock.background.is_empty();
+                            drop(lock);
+                            // Now and then, and at the end: whoever shows progress redraws.
+                            if last || state.state.lock().is_ok_and(|l| l.made % 8 == 0) {
+                                waking = true;
+                                wake();
+                                waking = false;
+                            }
+                            continue;
+                        }
                         let output = render(generation, input, &mut || {
                             let lock = state.state.lock().unwrap_or_else(|e| e.into_inner());
                             lock.closed || lock.generation != generation
@@ -346,6 +435,35 @@ impl<I: Send + 'static, O: Send + 'static> LatestWorker<I, O> {
             .map_err(|_| error("preview state poisoned"))?;
         Self::advance(&mut lock)?;
         Ok(())
+    }
+    fn set_background(&self, work: std::collections::VecDeque<I>) -> Result<()> {
+        let mut lock = self
+            .shared
+            .state
+            .lock()
+            .map_err(|_| error("preview state poisoned"))?;
+        if lock.closed {
+            return Err(error("preview worker has stopped"));
+        }
+        lock.background = work;
+        self.shared.ready.notify_one();
+        Ok(())
+    }
+    fn pause_background(&self, paused: bool) -> Result<()> {
+        let mut lock = self
+            .shared
+            .state
+            .lock()
+            .map_err(|_| error("preview state poisoned"))?;
+        lock.paused = paused;
+        self.shared.ready.notify_one();
+        Ok(())
+    }
+    fn background(&self) -> (usize, u64) {
+        self.shared
+            .state
+            .lock()
+            .map_or((0, 0), |lock| (lock.background.len(), lock.made))
     }
     fn try_take(&self) -> Result<Option<O>> {
         let mut lock = self
@@ -530,6 +648,8 @@ mod playback_tests {
         control.configure(crate::playback::Settings {
             gpu_bytes: 0,
             picture_memory_bytes: 1 << 20,
+            // Whatever else this machine is doing while the test runs.
+            memory_reserve_bytes: 0,
             ..Default::default()
         });
         let plan = Arc::new(Plan::compile(&veylvik_document::motion_demo()).unwrap());
@@ -604,5 +724,131 @@ mod playback_tests {
             filmic: false,
         }));
         assert!(!render(3).1);
+    }
+    #[test]
+    #[ignore = "requires Vulkan"]
+    fn pictures_give_way_when_the_machine_is_short_of_memory() {
+        let renderer = Arc::new(Renderer::new().unwrap());
+        let scheduler = GpuPreviewScheduler::with_renderer(renderer, || {}).unwrap();
+        let control = scheduler.playback_cache();
+        // A reserve no machine has free: nothing may be kept in memory, whatever the limit.
+        control.configure(crate::playback::Settings {
+            gpu_bytes: 0,
+            picture_memory_bytes: 1 << 30,
+            memory_reserve_bytes: u64::MAX,
+            ..Default::default()
+        });
+        control.set_playing(Some(crate::screen::Look::NEUTRAL));
+        let plan = Arc::new(Plan::compile(&veylvik_document::motion_demo()).unwrap());
+        for frame in [3, 9, 3] {
+            scheduler
+                .submit(
+                    1,
+                    plan.clone(),
+                    RenderRequest::full(Time::new(frame, 24).unwrap()),
+                    ImageInputs::default(),
+                )
+                .unwrap();
+            let deadline = Instant::now() + Duration::from_secs(20);
+            loop {
+                if let Some(result) = scheduler.try_take().unwrap() {
+                    assert!(result.frame.is_ok() && !result.screen_ready);
+                    break;
+                }
+                assert!(Instant::now() < deadline, "preview timed out");
+                thread::sleep(Duration::from_millis(5));
+            }
+            thread::sleep(Duration::from_millis(150));
+        }
+        assert_eq!(control.status().picture_memory_bytes, 0);
+        assert!(control.status().ready_frames.is_empty());
+    }
+    #[test]
+    #[ignore = "requires Vulkan"]
+    fn frames_are_prepared_behind_what_the_viewer_asks_for_and_never_shown() {
+        let renderer = Arc::new(Renderer::new().unwrap());
+        let scheduler = GpuPreviewScheduler::with_renderer(renderer, || {}).unwrap();
+        let control = scheduler.playback_cache();
+        control.configure(crate::playback::Settings {
+            gpu_bytes: 0,
+            picture_memory_bytes: 8 << 20,
+            memory_reserve_bytes: 0,
+            ..Default::default()
+        });
+        let plan = Arc::new(Plan::compile(&veylvik_document::motion_demo()).unwrap());
+        let look = crate::screen::Look {
+            exposure: 0.0,
+            filmic: false,
+        };
+        let at = |frame: i64| Time::new(frame, 24).unwrap();
+        let wait = |until: &dyn Fn() -> bool| {
+            let deadline = Instant::now() + Duration::from_secs(30);
+            while !until() {
+                assert!(Instant::now() < deadline, "timed out");
+                thread::sleep(Duration::from_millis(5));
+            }
+        };
+        // Held back, nothing is made.
+        scheduler.pause_preparing(true).unwrap();
+        scheduler
+            .prepare(
+                1,
+                plan.clone(),
+                ImageInputs::default(),
+                (0..6).map(at),
+                look,
+            )
+            .unwrap();
+        thread::sleep(Duration::from_millis(200));
+        assert_eq!(scheduler.preparing(), (6, 0));
+        // What the viewer asks for is answered though six frames wait, and is the
+        // renderer's own frame: the viewer is not playing.
+        scheduler
+            .submit(
+                1,
+                plan.clone(),
+                RenderRequest::full(at(20)),
+                ImageInputs::default(),
+            )
+            .unwrap();
+        wait(&|| scheduler.preparing().1 == 0 && control.status().revision == 1);
+        let shown = loop {
+            if let Some(result) = scheduler.try_take().unwrap() {
+                break result;
+            }
+            thread::sleep(Duration::from_millis(5));
+        };
+        assert!(shown.frame.is_ok() && !shown.screen_ready);
+        assert_eq!(scheduler.preparing(), (6, 0));
+        // Let go, all six are made and kept, and none of them is handed to the viewer.
+        scheduler.pause_preparing(false).unwrap();
+        wait(&|| scheduler.preparing() == (0, 6));
+        assert!(scheduler.try_take().unwrap().is_none());
+        // Asking for them again makes nothing: they are kept (the list runs through).
+        scheduler
+            .prepare(
+                1,
+                plan.clone(),
+                ImageInputs::default(),
+                (0..6).map(at),
+                look,
+            )
+            .unwrap();
+        wait(&|| scheduler.preparing() == (0, 12));
+        // Pictures are packed beside the worker: the last ones arrive a moment later.
+        thread::sleep(Duration::from_millis(300));
+        // While playing, such a frame comes from the kept pictures.
+        control.set_playing(Some(look));
+        scheduler
+            .submit(1, plan, RenderRequest::full(at(4)), ImageInputs::default())
+            .unwrap();
+        let played = loop {
+            if let Some(result) = scheduler.try_take().unwrap() {
+                break result;
+            }
+            thread::sleep(Duration::from_millis(5));
+        };
+        assert!(played.screen_ready, "a prepared frame was rendered again");
+        assert_eq!(control.status().ready_frames.len(), 6);
     }
 }

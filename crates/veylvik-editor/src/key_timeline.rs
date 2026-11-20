@@ -339,12 +339,27 @@ impl Keys {
                 rect.bottom() - 4.,
             ),
         ] {
-            for f in frames {
-                painter.hline(
-                    x(*f)..=x((*f + 1).min(i64::from(count - 1))).max(x(*f) + 1.),
-                    y,
-                    (2_f32, colour),
+            // Runs of neighbouring frames as one solid stretch: a line a frame is a row
+            // of dashes when a frame is narrower than a pixel.
+            let mut sorted: Vec<i64> = frames.clone();
+            sorted.sort_unstable();
+            sorted.dedup();
+            let mut at = 0;
+            while at < sorted.len() {
+                let mut end = at;
+                while end + 1 < sorted.len() && sorted[end + 1] == sorted[end] + 1 {
+                    end += 1;
+                }
+                let right = x((sorted[end] + 1).min(i64::from(count - 1))).max(x(sorted[at]) + 1.);
+                painter.rect_filled(
+                    egui::Rect::from_min_max(
+                        egui::pos2(x(sorted[at]), y - 1.5),
+                        egui::pos2(right, y + 1.5),
+                    ),
+                    0.,
+                    colour,
                 );
+                at = end + 1;
             }
         }
         let mut step = tick_step(count, rect.width());

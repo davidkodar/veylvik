@@ -107,6 +107,10 @@ pub struct Values {
     /// Memory and disk for played pictures kept as the screen shows them.
     pub played_memory_mib: u64,
     pub played_disk_mib: u64,
+    /// Memory the machine keeps available whatever the store's own limit.
+    pub played_reserve_mib: u64,
+    /// Make the frames of the playback range that are not kept yet while nobody is working.
+    pub fill_while_idle: bool,
     pub recovery_enabled: bool,
     pub recovery_seconds: u64,
     /// Play the composition's sound during playback.
@@ -180,6 +184,8 @@ impl Default for Values {
             playback_disk_mib: 0,
             played_memory_mib: quarter_of_memory_mib(),
             played_disk_mib: 50 * 1024,
+            played_reserve_mib: 4096,
+            fill_while_idle: true,
             recovery_enabled: true,
             recovery_seconds: 10,
             audio_enabled: true,
@@ -224,6 +230,7 @@ impl Values {
             || self.playback_disk_mib > 65536
             || self.played_memory_mib > 65536
             || self.played_disk_mib > 1024 * 1024
+            || self.played_reserve_mib > 65536
             || !(64..=16384).contains(&self.gpu_budget_mib)
             || !(10..=300).contains(&self.recovery_seconds)
             || !(0.0..=2.0).contains(&self.audio_volume)
@@ -397,6 +404,8 @@ impl Preferences {
                 self.draft.playback_disk_mib = d.playback_disk_mib;
                 self.draft.played_memory_mib = d.played_memory_mib;
                 self.draft.played_disk_mib = d.played_disk_mib;
+                self.draft.played_reserve_mib = d.played_reserve_mib;
+                self.draft.fill_while_idle = d.fill_while_idle;
             }
             5 => {
                 self.draft.audio_enabled = d.audio_enabled;
@@ -945,6 +954,11 @@ impl Preferences {
                 );
                 ui.separator();
                 ui.label("Played pictures");
+                ui.checkbox(
+                    &mut self.draft.fill_while_idle,
+                    "Prepare playback while idle",
+                );
+                ui.weak("When you stop working for a moment, the frames of the playback range that are not kept yet are made in the background, from the playhead on, and give way the instant you do anything.");
                 ui.add(
                     egui::Slider::new(&mut self.draft.played_memory_mib, 0..=65536)
                         .logarithmic(true)
@@ -955,6 +969,12 @@ impl Preferences {
                         .logarithmic(true)
                         .text("Disk (MiB)"),
                 );
+                ui.add(
+                    egui::Slider::new(&mut self.draft.played_reserve_mib, 0..=65536)
+                        .logarithmic(true)
+                        .text("Leave free for other programs (MiB)"),
+                );
+                ui.weak("The memory store gives way, to disk or by letting the oldest pictures go, before the machine has less than this available, whatever its own limit.");
                 ui.weak("Frames you have played are kept as the screen shows them, packed without loss, so they play again at full rate: first in memory, then on disk in the cache folder, the oldest removed first. A 4K frame takes about 17 MiB. Zero switches a store off.");
                 ui.weak("Zero disables that cache. GPU cache uses at most half the renderer budget and yields memory to rendering. Disk cache is lossless, session-only, and requires GPU readback/upload on the preview worker. It never renders effects on the CPU. Changes apply without restart.");
             }
