@@ -554,6 +554,7 @@ impl Studio {
             preview_pending: false,
             preview_started: None,
             displayed_time: None,
+            pictures_shown: 0,
             draft,
             draft_dirty: false,
             draft_preview_deadline: None,
@@ -685,6 +686,9 @@ struct Studio {
     /// When the pending preview was submitted; the status bar names slow renders only.
     preview_started: Option<Instant>,
     displayed_time: Option<veylvik_document::Time>,
+    /// Finished previews put in the viewer since the start: how smoothly it plays is
+    /// this over time, whoever is asking and however often.
+    pictures_shown: u64,
     draft: Node,
     draft_dirty: bool,
     draft_preview_deadline: Option<Instant>,
@@ -3631,6 +3635,7 @@ impl Studio {
                                 result.screen_ready,
                             ));
                             self.displayed_ticket = Some(result.ticket);
+                            self.pictures_shown += 1;
                             self.displayed_time = Some(result.request.time);
                             if !self.error && !self.files.busy() {
                                 self.last_render_ms = Some(result.elapsed.as_secs_f64() * 1000.);

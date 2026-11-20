@@ -1,6 +1,6 @@
 //! Played pictures as the screen shows them, packed without loss: the newest in memory, older ones on disk, the oldest let go, each within its own limit. A picture is known by what it is made of and the look it was packed with.
 use crate::{Result, error, screen::Look};
-use std::{collections::VecDeque, path::PathBuf};
+use std::{collections::VecDeque, path::PathBuf, sync::Arc};
 use veylvik_document::Time;
 
 /// How hard to pack: the fastest setting already halves a grainy 4K picture in about
@@ -10,12 +10,64 @@ const LEVEL: i32 = 1;
 const MOMENTS: usize = 16384;
 
 struct Picture {
+    id: u64,
     name: Option<u64>,
     times: Vec<Time>,
     look: Look,
     size: [u32; 2],
-    memory: Option<Vec<u8>>,
+    memory: Option<Arc<Vec<u8>>>,
     disk: Option<(PathBuf, u64)>,
+}
+/// How many pictures after the one asked for are unpacked beforehand: playing asks for
+/// them in order, and unpacking one takes about as long as showing it may.
+const AHEAD: usize = 8;
+/// Unpacked pictures waiting to be asked for, each a quarter of a frame in memory.
+const WAITING: usize = 12;
+type Job = (u64, Option<Arc<Vec<u8>>>, Option<PathBuf>, usize);
+/// Threads that read and unpack pictures before they are asked for.
+struct Unpackers {
+    work: std::sync::mpsc::Sender<Job>,
+    done: std::sync::mpsc::Receiver<(u64, Option<Vec<u8>>)>,
+}
+impl Unpackers {
+    fn start() -> Option<Self> {
+        let (work, jobs) = std::sync::mpsc::channel::<Job>();
+        let (finished, done) = std::sync::mpsc::channel();
+        let jobs = Arc::new(std::sync::Mutex::new(jobs));
+        for n in 0..4 {
+            let (jobs, finished) = (jobs.clone(), finished.clone());
+            std::thread::Builder::new()
+                .name(format!("veylvik-unpack-{n}"))
+                .spawn(move || {
+                    loop {
+                        let job = match jobs.lock() {
+                            Ok(jobs) => jobs.recv(),
+                            Err(_) => return,
+                        };
+                        let Ok((id, memory, path, expected)) = job else {
+                            return;
+                        };
+                        if finished.send((id, unpack(memory, path, expected))).is_err() {
+                            return;
+                        }
+                    }
+                })
+                .ok()?;
+        }
+        Some(Self { work, done })
+    }
+}
+fn unpack(memory: Option<Arc<Vec<u8>>>, path: Option<PathBuf>, expected: usize) -> Option<Vec<u8>> {
+    let packed = match memory {
+        Some(bytes) => bytes,
+        None => Arc::new(std::fs::read(path?).ok()?),
+    };
+    zstd::bulk::decompress(&packed, expected)
+        .ok()
+        .filter(|bytes| bytes.len() == expected)
+}
+fn seconds(time: Time) -> f64 {
+    time.ticks as f64 / f64::from(time.rate.max(1))
 }
 #[derive(Clone, Copy, Default)]
 pub(crate) struct Limits {
@@ -26,6 +78,11 @@ pub(crate) struct Limits {
 pub(crate) struct Pictures {
     entries: VecDeque<Picture>,
     serial: u64,
+    unpackers: Option<Unpackers>,
+    /// Asked of the unpackers and not back yet.
+    asked: Vec<u64>,
+    /// Unpacked and not asked for yet, oldest first.
+    waiting: VecDeque<(u64, Vec<u8>)>,
 }
 /// A picture packed without loss.
 pub(crate) fn pack(picture: &[u8]) -> Result<Vec<u8>> {
@@ -52,17 +109,23 @@ impl Pictures {
         name: Option<u64>,
         look: Look,
     ) -> Option<(Vec<u8>, [u32; 2])> {
+        self.take_unpacked();
         let index = self.position(time, name, look)?;
         let mut entry = self.entries.remove(index)?;
         let expected = entry.size[0] as usize * entry.size[1] as usize * 4;
-        let packed = match (&entry.memory, &entry.disk) {
-            (Some(bytes), _) => Some(std::borrow::Cow::Borrowed(bytes.as_slice())),
-            (None, Some((path, _))) => std::fs::read(path).ok().map(std::borrow::Cow::Owned),
-            _ => None,
-        };
-        let picture = packed
-            .and_then(|packed| zstd::bulk::decompress(&packed, expected).ok())
-            .filter(|bytes| bytes.len() == expected);
+        let ready = self
+            .waiting
+            .iter()
+            .position(|(id, _)| *id == entry.id)
+            .and_then(|at| self.waiting.remove(at))
+            .map(|(_, picture)| picture);
+        let picture = ready.or_else(|| {
+            unpack(
+                entry.memory.clone(),
+                entry.disk.as_ref().map(|d| d.0.clone()),
+                expected,
+            )
+        });
         let Some(picture) = picture else {
             if let Some((path, _)) = entry.disk {
                 let _ = std::fs::remove_file(path);
@@ -74,7 +137,66 @@ impl Pictures {
         }
         let size = entry.size;
         self.entries.push_back(entry);
+        self.unpack_ahead(time, look);
         Some((picture, size))
+    }
+    fn take_unpacked(&mut self) {
+        let Some(unpackers) = &self.unpackers else {
+            return;
+        };
+        while let Ok((id, picture)) = unpackers.done.try_recv() {
+            self.asked.retain(|asked| *asked != id);
+            if let Some(picture) = picture {
+                self.waiting.push_back((id, picture));
+            }
+        }
+        while self.waiting.len() > WAITING {
+            self.waiting.pop_front();
+        }
+    }
+    /// Start unpacking the pictures of the moments that follow `time`.
+    fn unpack_ahead(&mut self, time: Time, look: Look) {
+        if self.unpackers.is_none() {
+            self.unpackers = Unpackers::start();
+        }
+        let Some(unpackers) = &self.unpackers else {
+            return;
+        };
+        let now = seconds(time);
+        let mut next: Vec<(f64, usize)> = self
+            .entries
+            .iter()
+            .enumerate()
+            .filter(|(_, e)| e.look == look)
+            .filter_map(|(i, e)| {
+                e.times
+                    .iter()
+                    .map(|t| seconds(*t))
+                    .filter(|t| *t > now)
+                    .min_by(f64::total_cmp)
+                    .map(|t| (t, i))
+            })
+            .collect();
+        next.sort_by(|a, b| a.0.total_cmp(&b.0));
+        for (_, index) in next.into_iter().take(AHEAD) {
+            let entry = &self.entries[index];
+            if self.asked.contains(&entry.id)
+                || self.waiting.iter().any(|(id, _)| *id == entry.id)
+                || self.asked.len() + self.waiting.len() >= WAITING
+            {
+                continue;
+            }
+            let expected = entry.size[0] as usize * entry.size[1] as usize * 4;
+            let job = (
+                entry.id,
+                entry.memory.clone(),
+                entry.disk.as_ref().map(|d| d.0.clone()),
+                expected,
+            );
+            if unpackers.work.send(job).is_ok() {
+                self.asked.push(entry.id);
+            }
+        }
     }
     /// Whether this moment's picture is already kept (and note the moment if it is).
     pub fn has(&mut self, time: Time, name: Option<u64>, look: Look) -> bool {
@@ -111,12 +233,14 @@ impl Pictures {
         if let Some(index) = self.position(time, name, look) {
             self.entries.remove(index);
         }
+        self.serial = self.serial.wrapping_add(1);
         self.entries.push_back(Picture {
+            id: self.serial,
             name,
             times: vec![time],
             look,
             size,
-            memory: Some(packed),
+            memory: Some(Arc::new(packed)),
             disk: None,
         });
         self.fit(limits, folder)
@@ -129,13 +253,14 @@ impl Pictures {
                 break;
             };
             let bytes = entry.memory.take().unwrap_or_default();
+            let bytes = bytes.as_slice();
             if entry.disk.is_none()
                 && let Some(folder) = folder
                 && bytes.len() as u64 <= limits.disk
             {
                 self.serial = self.serial.wrapping_add(1);
                 let path = folder.join(format!("{}.picture.zst", self.serial));
-                match std::fs::write(&path, &bytes) {
+                match std::fs::write(&path, bytes) {
                     Ok(()) => entry.disk = Some((path, bytes.len() as u64)),
                     Err(e) => {
                         let _ = std::fs::remove_file(path);
@@ -171,6 +296,8 @@ impl Pictures {
         }
     }
     pub fn clear(&mut self) {
+        self.waiting.clear();
+        self.asked.clear();
         for entry in self.entries.drain(..) {
             if let Some((path, _)) = entry.disk {
                 let _ = std::fs::remove_file(path);
