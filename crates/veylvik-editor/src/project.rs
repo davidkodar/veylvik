@@ -176,6 +176,11 @@ impl Project {
                 && !self.inputs.contains_key(&key)
                 && !self.asset_errors.contains_key(&*key)
             {
+                // Media the host keeps is asked of the host, never looked for on disk.
+                if let Some(source) = crate::files::host_media(&key) {
+                    self.inputs.insert_source(key.into_owned(), source);
+                    continue;
+                }
                 match veylvik_io::footage::load_key(
                     &self.base,
                     &key,

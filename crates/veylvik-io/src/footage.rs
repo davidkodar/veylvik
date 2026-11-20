@@ -14,6 +14,8 @@ pub enum Media {
     Still(Arc<Image>),
     Sequence(Arc<Sequence>),
     Video(Arc<crate::video::Video>),
+    /// Frames someone else decodes: a host's own media.
+    Source(Arc<dyn FrameSource>),
 }
 impl From<Arc<Image>> for Media {
     fn from(image: Arc<Image>) -> Self {
@@ -33,6 +35,7 @@ impl Media {
             }),
             Self::Sequence(s) => s.info(),
             Self::Video(v) => v.info(),
+            Self::Source(s) => s.info(),
         }
     }
 
@@ -41,6 +44,8 @@ impl Media {
             Self::Still(i) => i.byte_size(),
             Self::Sequence(s) => s.byte_budget(),
             Self::Video(v) => v.byte_budget(),
+            // Held by whoever decodes it, not by us.
+            Self::Source(_) => 0,
         }
     }
     pub fn insert(self, inputs: &mut ImageInputs, key: impl Into<String>) {
@@ -48,6 +53,7 @@ impl Media {
             Self::Still(i) => inputs.insert(key, i),
             Self::Sequence(s) => inputs.insert_source(key, s),
             Self::Video(v) => inputs.insert_source(key, v),
+            Self::Source(s) => inputs.insert_source(key, s),
         }
     }
 }

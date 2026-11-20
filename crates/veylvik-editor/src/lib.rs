@@ -27,6 +27,7 @@ mod graph;
 mod graph_layout;
 mod handles;
 mod history_log;
+pub mod host;
 mod host_link;
 mod icons;
 mod inspector_tools;
@@ -192,6 +193,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                     (false, None) => LiveControl::Usual,
                 },
                 capabilities: Capabilities::standalone(),
+                host: None,
             })
             .map_err(|error| error.to_string())?;
             Ok(Box::new(app))
@@ -287,6 +289,9 @@ pub struct Setup {
     pub opens: Opens,
     pub live_control: LiveControl,
     pub capabilities: Capabilities,
+    /// Who answers for files and for media of its own; none leaves both to the system's
+    /// file dialog and the disk.
+    pub host: Option<Arc<dyn host::Host>>,
 }
 /// What the editor keeps about being a guest.
 struct Guest {
@@ -466,6 +471,7 @@ impl Studio {
             } => Project::hosted(*composition, assets)?,
         };
         let capabilities = setup.capabilities;
+        files::set_host(setup.host.clone());
         // A guest keeps its look to itself: the style it makes here is its own, put in
         // place only while it draws, and the host's is put back at once.
         let guest = !setup.capabilities.own_window;
@@ -1618,10 +1624,22 @@ impl Studio {
                     } else {
                         Choice::Import
                     };
-                    let Some(path) = files::select(choice, &folder, "")? else {
-                        return Ok(Completed::Cancelled);
-                    };
-                    path
+                    match files::pick(choice, &folder, "")? {
+                        None => return Ok(Completed::Cancelled),
+                        Some(files::Chosen::Path(path)) => path,
+                        // The host's own media: no file of ours to read, its frames
+                        // come from the host.
+                        Some(files::Chosen::Media { key, source, .. }) => {
+                            return Ok(Completed::Imported {
+                                session,
+                                revision,
+                                position,
+                                path: PathBuf::from(key),
+                                image: veylvik_io::footage::Media::Source(source),
+                                matching,
+                            });
+                        }
+                    }
                 }
             };
             let path = path.canonicalize().map_err(|e| e.to_string())?;

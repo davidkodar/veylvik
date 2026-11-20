@@ -207,7 +207,84 @@ pub(crate) fn starting_folder(
     }
     offered.to_owned()
 }
+static HOST: std::sync::RwLock<Option<std::sync::Arc<dyn crate::host::Host>>> =
+    std::sync::RwLock::new(None);
+/// Whoever shows the editor answers for files from now on; `None` gives them back to the
+/// system's own dialog.
+pub fn set_host(host: Option<std::sync::Arc<dyn crate::host::Host>>) {
+    if let Ok(mut slot) = HOST.write() {
+        *slot = host;
+    }
+}
+fn host() -> Option<std::sync::Arc<dyn crate::host::Host>> {
+    HOST.read().ok().and_then(|slot| slot.clone())
+}
+/// The frames of a media key, when a host is there and knows it.
+pub fn host_media(key: &str) -> Option<std::sync::Arc<dyn veylvik_render::FrameSource>> {
+    host().and_then(|host| host.media(key))
+}
+impl From<&Choice> for crate::host::Purpose {
+    fn from(choice: &Choice) -> Self {
+        use crate::host::Purpose;
+        match choice {
+            Choice::Open => Purpose::Open,
+            Choice::PresetOpen => Purpose::PresetOpen,
+            Choice::PresetSave => Purpose::PresetSave,
+            Choice::Import => Purpose::Import,
+            Choice::ImportSequence => Purpose::ImportSequence,
+            Choice::Save => Purpose::Save,
+            Choice::Export => Purpose::Export,
+            Choice::Video => Purpose::Video,
+            Choice::Folder => Purpose::Folder,
+            Choice::Directory => Purpose::Directory,
+            Choice::Source => Purpose::Source,
+            Choice::Font => Purpose::Font,
+            Choice::Lut => Purpose::Lut,
+            Choice::Model => Purpose::Model,
+        }
+    }
+}
+/// What the user chose: a file, or media the host keeps itself.
+pub enum Chosen {
+    Path(PathBuf),
+    Media {
+        key: String,
+        label: String,
+        source: std::sync::Arc<dyn veylvik_render::FrameSource>,
+    },
+}
+/// Ask for a file where the answer may also be the host's own media.
+pub fn pick(choice: Choice, folder: &Path, name: &str) -> Result<Option<Chosen>, String> {
+    let Some(host) = host() else {
+        return Ok(select(choice, folder, name)?.map(Chosen::Path));
+    };
+    let request = crate::host::Pick {
+        purpose: (&choice).into(),
+        folder: folder.to_owned(),
+        name: name.to_owned(),
+    };
+    Ok(match host.pick(&request)? {
+        None => None,
+        Some(crate::host::Picked::File(path)) => Some(Chosen::Path(path)),
+        Some(crate::host::Picked::Media { key, label }) => {
+            let source = host
+                .media(&key)
+                .ok_or_else(|| format!("the host named media it does not have: {key}"))?;
+            Some(Chosen::Media { key, label, source })
+        }
+    })
+}
 pub fn select(choice: Choice, folder: &Path, name: &str) -> Result<Option<PathBuf>, String> {
+    if host().is_some() {
+        // Only a file on disk will do here.
+        return match pick(choice, folder, name)? {
+            None => Ok(None),
+            Some(Chosen::Path(path)) => Ok(Some(path)),
+            Some(Chosen::Media { label, .. }) => Err(format!(
+                "{label} is kept by the host, and a file on disk is needed here"
+            )),
+        };
+    }
     let begin = {
         let defaults = DEFAULTS.lock().map(|d| d.clone()).unwrap_or_default();
         starting_folder(
