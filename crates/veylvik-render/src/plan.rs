@@ -1028,7 +1028,7 @@ impl Plan {
     /// The entire candidate is validated, including disconnected nodes.
     /// Nodes that can contribute to the output at `time`, following every input except those
     /// a node ignores then (see `RenderNode::idle_inputs`).
-    pub(crate) fn visible_at(&self, time: veylvik_document::Time) -> Result<BTreeSet<NodeId>> {
+    pub fn visible_at(&self, time: veylvik_document::Time) -> Result<BTreeSet<NodeId>> {
         let index: BTreeMap<NodeId, usize> = self
             .nodes
             .iter()
@@ -1036,10 +1036,11 @@ impl Plan {
             .map(|(i, n)| (n.id, i))
             .collect();
         let mut visible = BTreeSet::new();
+        let mut seen = BTreeSet::new();
         let mut pending = vec![self.root];
         while let Some(id) = pending.pop() {
             let Some(&i) = index.get(&id) else { continue };
-            if !visible.insert(id) {
+            if !seen.insert(id) {
                 continue;
             }
             let node = &self.nodes[i];
@@ -1051,6 +1052,13 @@ impl Plan {
                     .at(time)
                     .map_err(Into::into)
             };
+            // A node whose picture is clear whatever it is given is not run, and nothing
+            // above it is looked at; what reads it finds a clear picture.
+            if veylvik_document::each_node!(&node.operation, n => crate::nodes::RenderNode::empty(n, &sample, time))?
+            {
+                continue;
+            }
+            visible.insert(id);
             let idle = veylvik_document::each_node!(&node.operation, n => crate::nodes::RenderNode::idle_inputs(n, &sample, time))?;
             pending.extend(
                 node.inputs

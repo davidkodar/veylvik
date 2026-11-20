@@ -56,9 +56,10 @@ impl RenderLimits {
         // Finished frames may keep a quarter of the budget: a 4K frame is 127 MiB, and a
         // picture rendered at its own size can be far larger, so a small fixed cap kept nothing.
         renderer.cache_limit_bytes = self.budget_bytes / 4;
-        renderer.vector_cache_limit_bytes = renderer
-            .vector_cache_limit_bytes
-            .min(self.budget_bytes / 16);
+        // Drawn shapes and text may keep a quarter too: each is kept as a whole frame
+        // (127 MiB at 4K), so the fixed 32 MiB held none, and a logo of fourteen shapes
+        // was drawn again for every frame. It gives way to rendering like the rest.
+        renderer.vector_cache_limit_bytes = self.budget_bytes / 4;
     }
 }
 /// The budget when nothing sets one: half the card's memory, between 256 MiB and
@@ -216,7 +217,7 @@ mod tests {
         assert_eq!(stats.budget_bytes, 64 * MIB);
         assert_eq!(stats.idle_limit_bytes, 16 * MIB);
         assert_eq!(stats.frame_cache_limit_bytes, 16 * MIB);
-        assert_eq!(stats.vector_cache_limit_bytes, 4 * MIB);
+        assert_eq!(stats.vector_cache_limit_bytes, 16 * MIB);
         let mut large = Renderer::new().unwrap();
         RenderLimits::parse(Some(OsStr::new("1024")))
             .unwrap()
@@ -225,7 +226,7 @@ mod tests {
         assert_eq!(stats.budget_bytes, 1024 * MIB);
         assert_eq!(stats.idle_limit_bytes, 128 * MIB);
         assert_eq!(stats.frame_cache_limit_bytes, 256 * MIB);
-        assert_eq!(stats.vector_cache_limit_bytes, 32 * MIB);
+        assert_eq!(stats.vector_cache_limit_bytes, 256 * MIB);
     }
     #[test]
     fn source_budget_scales_with_ram_within_bounds() {

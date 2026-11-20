@@ -159,6 +159,12 @@ pub(crate) trait RenderNode {
     fn identity(&self) -> bool {
         false
     }
+    /// The output is clear at this time whatever the inputs are (a layer faded right
+    /// out, a particle system with none alive): then the node is not run at all, nothing
+    /// upstream of it is, and what reads it reads a clear picture.
+    fn empty(&self, _sample: &dyn Fn(&str) -> Result<f32>, _time: Time) -> Result<bool> {
+        Ok(false)
+    }
     /// Input ports whose content cannot affect the output at this time, such as a fully
     /// transparent blend's foreground; footage reached only through them is not decoded.
     fn idle_inputs(

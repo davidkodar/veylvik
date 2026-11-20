@@ -50,6 +50,45 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "frame {frame}: the whole picture {whole:.1} ms ({:.1} a second)",
             1000.0 / whole
         );
+        // Each pass on its own, finished on the card before the next: where the time goes.
+        if std::env::var_os("PROFILE_PASSES").is_some() {
+            let at = Time::at_frame(frame, doc.frame_rate)?;
+            renderer.time_passes(&plan, RenderRequest::full(at), &inputs)?;
+            let mut times = renderer.time_passes(&plan, RenderRequest::full(at), &inputs)?;
+            let sum: f64 = times.iter().map(|t| t.milliseconds).sum();
+            println!(
+                "  {} passes, {sum:.1} ms when each waits for the one before",
+                times.len()
+            );
+            times.sort_by(|a, b| b.milliseconds.total_cmp(&a.milliseconds));
+            for t in times.iter().take(24) {
+                println!(
+                    "  {:6.2} ms  {:4.1}%  {}  ({}: {})",
+                    t.milliseconds,
+                    100.0 * t.milliseconds / sum,
+                    t.node,
+                    t.kind,
+                    t.pass
+                );
+            }
+            let mut by_kind = std::collections::BTreeMap::<&str, (f64, usize)>::new();
+            for t in &times {
+                let entry = by_kind.entry(t.kind).or_default();
+                entry.0 += t.milliseconds;
+                entry.1 += 1;
+            }
+            let mut kinds: Vec<_> = by_kind.into_iter().collect();
+            kinds.sort_by(|a, b| b.1.0.total_cmp(&a.1.0));
+            println!(
+                "  by kind of node: {}",
+                kinds
+                    .iter()
+                    .map(|(kind, (ms, n))| format!("{kind} {ms:.1} ms in {n}"))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+            continue;
+        }
         if std::env::var_os("PROFILE_WHOLE").is_some() {
             // Only the whole picture, a few more times, to see how steady the figure is.
             for _ in 0..4 {

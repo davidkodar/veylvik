@@ -274,6 +274,21 @@ static STEPS: [Step; 4] = [
     },
 ];
 impl RenderNode for Particles {
+    /// No particle is alive: none is born before Start, and with a Duration the last
+    /// born is gone one Life after it ends. Only said when those three are not keyed,
+    /// since a particle lives by the settings of its own birth.
+    fn empty(&self, _: &dyn Fn(&str) -> Result<f32>, time: veylvik_document::Time) -> Result<bool> {
+        use veylvik_document::Scalar::Constant;
+        let (Constant { value: start }, Constant { value: duration }, Constant { value: life }) =
+            (&self.start, &self.duration, &self.life)
+        else {
+            return Ok(false);
+        };
+        let now = time.seconds()?;
+        Ok(now < f64::from(*start)
+            || (*duration > 0.0
+                && now >= f64::from(*start) + f64::from(*duration) + f64::from(*life)))
+    }
     fn passes(&self) -> Passes {
         Passes::chain(&STEPS)
     }

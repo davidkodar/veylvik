@@ -191,3 +191,105 @@ fn what_a_node_says_about_space_is_what_it_does() {
         );
     }
 }
+
+#[test]
+#[ignore = "requires Vulkan"]
+fn a_node_that_shows_nothing_is_not_run_and_the_picture_is_the_same() {
+    let renderer = Renderer::new().unwrap();
+    let rate = Time { ticks: 24, rate: 1 };
+    let of = |kind: &str| {
+        registry::TYPES
+            .iter()
+            .find(|t| t.type_id == kind)
+            .unwrap()
+            .default_operation()
+    };
+    // A picture, with a layer over it that is faded right out for the first second,
+    // and a particle system that starts after two.
+    let mut doc = blank(W, H, rate).unwrap();
+    doc.frame_count = 96;
+    let base = Node::new(
+        "base",
+        Operation::Image(nodes::Image {
+            asset: "src".into(),
+        }),
+        &[],
+    );
+    let over = Node::new("over", serde_json::from_value(of("noise")).unwrap(), &[]);
+    let mut fade = of("fade");
+    // On screen from the first second.
+    fade["timing"]["start"] = serde_json::json!({"ticks": 1, "rate": 1});
+    let Ok(fade) = serde_json::from_value::<Operation>(fade) else {
+        panic!("a fade with a start could not be made");
+    };
+    let fade = Node::new("fade", fade, &[("image", over.id)]);
+    let merged = Node::new(
+        "merged",
+        serde_json::from_value(of("merge")).unwrap(),
+        &[("background", base.id), ("foreground", fade.id)],
+    );
+    let mut system = of("particles");
+    system["start"] = serde_json::json!({"kind": "constant", "value": 2.0});
+    let system = Node::new("particles", serde_json::from_value(system).unwrap(), &[]);
+    let all = Node::new(
+        "all",
+        serde_json::from_value(of("merge")).unwrap(),
+        &[("background", merged.id), ("foreground", system.id)],
+    );
+    doc.output = all.id;
+    let (fade_id, system_id, over_id) = (fade.id, system.id, over.id);
+    for node in [base, over, fade, merged, system, all] {
+        doc.nodes.insert(node.id, node);
+    }
+    let plan = Plan::compile(&doc).unwrap();
+    let mut inputs = ImageInputs::default();
+    inputs.insert("src", picture(None));
+    let at = |frame| Time::at_frame(frame, rate).unwrap();
+    // In the first second neither the faded layer, nor what is behind it, nor the
+    // particles are part of the picture; later each is.
+    let early = plan.visible_at(at(6)).unwrap();
+    assert!(!early.contains(&fade_id) && !early.contains(&over_id) && !early.contains(&system_id));
+    let between = plan.visible_at(at(36)).unwrap();
+    assert!(
+        between.contains(&fade_id) && between.contains(&over_id) && !between.contains(&system_id)
+    );
+    assert!(plan.visible_at(at(60)).unwrap().contains(&system_id));
+    // And the picture then is the base alone, exactly: what was not run reads as clear.
+    let shown = renderer
+        .render_frame(&plan, RenderRequest::full(at(6)), &inputs)
+        .unwrap()
+        .pixels;
+    let base_alone = {
+        let mut alone = doc.clone();
+        alone.output = *alone
+            .nodes
+            .iter()
+            .find(|(_, n)| n.label == "base")
+            .unwrap()
+            .0;
+        renderer
+            .render_frame(
+                &Plan::compile(&alone).unwrap(),
+                RenderRequest::full(at(6)),
+                &inputs,
+            )
+            .unwrap()
+            .pixels
+    };
+    assert!(
+        shown == base_alone,
+        "skipping what shows nothing changed the picture"
+    );
+    // A clear picture as the output itself is clear, not whatever was left in memory.
+    let mut only = doc.clone();
+    only.output = system_id;
+    let nothing = renderer
+        .render_frame(
+            &Plan::compile(&only).unwrap(),
+            RenderRequest::full(at(6)),
+            &inputs,
+        )
+        .unwrap()
+        .pixels;
+    assert!(nothing.iter().all(|pixel| *pixel == [0.0; 4]));
+}

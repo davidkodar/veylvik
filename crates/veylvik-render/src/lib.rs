@@ -118,6 +118,14 @@ mod texture;
 mod vector;
 mod video;
 pub use nodes::{Extent, Reach};
+/// How long one pass of a render took on the card ([`Renderer::time_passes`]).
+#[derive(Debug, Clone)]
+pub struct PassTime {
+    pub node: String,
+    pub kind: &'static str,
+    pub pass: String,
+    pub milliseconds: f64,
+}
 /// A hash that is the same in every build and session (FNV-1a, 64 bits), from `seed`.
 pub fn fnv(bytes: &[u8], seed: u64) -> u64 {
     let mut hash = 0xcbf2_9ce4_8422_2325 ^ seed;
@@ -223,6 +231,9 @@ pub struct Renderer {
     cache: Mutex<cache::FrameCache>,
     flow_engine: Mutex<Option<Arc<flow::Engine>>>,
     scene_renderer: std::sync::RwLock<Option<Arc<dyn SceneRenderer>>>,
+    /// While set, each pass of a render is finished on the card before the next begins
+    /// and its time is put here: slower, and only for finding where a frame's time goes.
+    pass_times: Mutex<Option<Vec<PassTime>>>,
     ocio_cache: Mutex<std::collections::VecDeque<ocio::CachedProcessor>>,
     pub cache_limit_bytes: u64,
     owner: Arc<frame::DeviceIdentity>,
@@ -472,6 +483,7 @@ impl Renderer {
             ocio_cache: Mutex::new(Default::default()),
             flow_engine: Mutex::new(None),
             scene_renderer: std::sync::RwLock::new(None),
+            pass_times: Mutex::new(None),
             cache_limit_bytes: 64 * 1024 * 1024,
             owner: Arc::new(frame::DeviceIdentity),
             pool_limit_bytes: 128 * 1024 * 1024,
@@ -710,6 +722,29 @@ impl Renderer {
         };
         Ok(crop(full, region, plan.width, plan.height))
     }
+    /// Render once with every pass finished on the card before the next begins, and say
+    /// how long each took. The sum is more than an ordinary render takes (the card
+    /// cannot overlap anything), so read it for the shares, not the total. Plans made
+    /// of other moments are timed as their outermost plan only.
+    pub fn time_passes(
+        &self,
+        plan: &Plan,
+        request: RenderRequest,
+        inputs: &ImageInputs,
+    ) -> Result<Vec<PassTime>> {
+        *self
+            .pass_times
+            .lock()
+            .map_err(|_| error("pass times poisoned"))? = Some(Vec::new());
+        let rendered = self.render_gpu(plan, request, inputs);
+        let times = self
+            .pass_times
+            .lock()
+            .map_err(|_| error("pass times poisoned"))?
+            .take()
+            .unwrap_or_default();
+        rendered.map(|_| times)
+    }
     /// Evaluate without any pixel readback. Held outputs count against the budget
     /// of later renders until their handles are dropped.
     pub fn render_gpu(
@@ -947,11 +982,40 @@ impl Renderer {
         // skipped slot is cleared when, and only when, something that runs reads it.
         let visible = plan.visible_at(time)?;
         let mut stale = vec![false; plan.slot_count];
+        // Only when asked to time the passes: what ran since the last mark is finished
+        // on the card and timed, then the next pass begins on a new encoder.
+        let timing = self.pass_times.lock().is_ok_and(|times| times.is_some());
+        let mut running: Option<(usize, Kernel, std::time::Instant)> = None;
+        let mut mark =
+            |encoder: &mut wgpu::CommandEncoder, next: Option<(usize, Kernel)>| -> Result<()> {
+                if !timing {
+                    return Ok(());
+                }
+                let done = std::mem::replace(
+                    encoder,
+                    self.device.create_command_encoder(&Default::default()),
+                );
+                self.wait(self.queue.submit([done.finish()]))?;
+                if let Some((node, kernel, begun)) = running.take()
+                    && let Ok(mut times) = self.pass_times.lock()
+                    && let Some(times) = times.as_mut()
+                {
+                    times.push(PassTime {
+                        node: plan.nodes[node].label.clone(),
+                        kind: plan.nodes[node].operation.descriptor().type_id,
+                        pass: format!("{kernel:?}"),
+                        milliseconds: begun.elapsed().as_secs_f64() * 1000.0,
+                    });
+                }
+                running = next.map(|(node, kernel)| (node, kernel, std::time::Instant::now()));
+                Ok(())
+            };
         for scheduled in &plan.passes {
             if !visible.contains(&plan.nodes[scheduled.node].id) {
                 stale[scheduled.output] = true;
                 continue;
             }
+            mark(&mut encoder, Some((scheduled.node, scheduled.kernel)))?;
             for input in scheduled
                 .inputs
                 .iter()
@@ -1142,6 +1206,11 @@ impl Renderer {
                     }
                 }
             }
+        }
+        mark(&mut encoder, None)?;
+        // The picture itself was not run (it is clear at this time): give a clear one.
+        if stale[plan.output_slot] {
+            encoder.clear_buffer(&buffers[plan.output_slot], 0, None);
         }
         let readback = if download {
             let buffer = resources.take(

@@ -244,6 +244,14 @@ impl RenderNode for veylvik_document::nodes::Fade {
         p.values[0] = (f64::from(sample("opacity")?) * self.timing.envelope(cx.time)?) as f32;
         Ok(())
     }
+    /// Fully faded out: the picture is clear, so the fade itself is not run either.
+    fn empty(
+        &self,
+        sample: &dyn Fn(&str) -> Result<f32>,
+        time: veylvik_document::Time,
+    ) -> Result<bool> {
+        Ok(f64::from(sample("opacity")?) * self.timing.envelope(time)? == 0.0)
+    }
     /// Fully faded out: nothing upstream is rendered or decoded.
     fn idle_inputs(
         &self,
