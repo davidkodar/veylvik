@@ -360,6 +360,8 @@ pub(crate) struct TemporalBranch {
     pub plan: Box<Plan>,
     pub key: String,
 }
+#[path = "space.rs"]
+mod space;
 pub struct Plan {
     pub(crate) ocio: veylvik_document::color_management::OcioViews,
     pub(crate) temporal: Vec<TemporalBranch>,

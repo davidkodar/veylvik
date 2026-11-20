@@ -45,7 +45,85 @@ pub(crate) struct Cx<'a> {
     pub height: u32,
     pub time: Time,
 }
+/// Where a picture can be other than clear: nowhere, within a rectangle of the frame
+/// (`[left, top, right, bottom]` in pixels, right and bottom not included), or anywhere.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Extent {
+    Nothing,
+    Area([i32; 4]),
+    Everything,
+}
+impl Extent {
+    pub fn union(self, other: Self) -> Self {
+        match (self, other) {
+            (Self::Everything, _) | (_, Self::Everything) => Self::Everything,
+            (Self::Nothing, e) | (e, Self::Nothing) => e,
+            (Self::Area(a), Self::Area(b)) => Self::Area([
+                a[0].min(b[0]),
+                a[1].min(b[1]),
+                a[2].max(b[2]),
+                a[3].max(b[3]),
+            ]),
+        }
+    }
+    /// Wider on every side by `pixels`.
+    pub fn grown(self, pixels: i32) -> Self {
+        match self {
+            Self::Area(a) => {
+                Self::Area([a[0] - pixels, a[1] - pixels, a[2] + pixels, a[3] + pixels])
+            }
+            other => other,
+        }
+    }
+    pub fn contains(self, x: i32, y: i32) -> bool {
+        match self {
+            Self::Nothing => false,
+            Self::Everything => true,
+            Self::Area(a) => x >= a[0] && y >= a[1] && x < a[2] && y < a[3],
+        }
+    }
+}
+/// How much of an input an area of the output is made from: the same area, that area
+/// and so many pixels round it, or possibly any of it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Reach {
+    Same,
+    Around(u32),
+    Everything,
+}
+impl Reach {
+    /// Through one node and then another.
+    pub fn then(self, next: Self) -> Self {
+        match (self, next) {
+            (Self::Everything, _) | (_, Self::Everything) => Self::Everything,
+            (Self::Same, r) | (r, Self::Same) => r,
+            (Self::Around(a), Self::Around(b)) => Self::Around(a.saturating_add(b)),
+        }
+    }
+    /// By either of two ways: the further of them.
+    pub fn or(self, other: Self) -> Self {
+        match (self, other) {
+            (Self::Everything, _) | (_, Self::Everything) => Self::Everything,
+            (Self::Same, r) | (r, Self::Same) => r,
+            (Self::Around(a), Self::Around(b)) => Self::Around(a.max(b)),
+        }
+    }
+}
 pub(crate) trait RenderNode {
+    /// Where the output can be other than clear, given where each input can be. A node
+    /// that does not say is taken to fill the frame: more work later, never a wrong picture.
+    fn extent(
+        &self,
+        _sample: &dyn Fn(&str) -> Result<f32>,
+        _input: &dyn Fn(&str) -> Extent,
+    ) -> Result<Extent> {
+        Ok(Extent::Everything)
+    }
+    /// How much of the input at `port` an area of the output is made from. A node that
+    /// does not say is taken to need all of it.
+    fn reach(&self, _sample: &dyn Fn(&str) -> Result<f32>, _port: &str) -> Result<Reach> {
+        Ok(Reach::Everything)
+    }
     fn passes(&self) -> Passes {
         Passes::Special
     }

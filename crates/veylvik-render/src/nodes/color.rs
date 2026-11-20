@@ -7,6 +7,17 @@ use crate::{Kernel, Params, Result, error};
 use veylvik_document::{Operation, Scalar};
 
 impl RenderNode for veylvik_document::nodes::Exposure {
+    // Colour multiplied in place; clear stays clear.
+    fn reach(&self, _: &dyn Fn(&str) -> Result<f32>, _: &str) -> Result<crate::nodes::Reach> {
+        Ok(crate::nodes::Reach::Same)
+    }
+    fn extent(
+        &self,
+        _: &dyn Fn(&str) -> Result<f32>,
+        input: &dyn Fn(&str) -> crate::nodes::Extent,
+    ) -> Result<crate::nodes::Extent> {
+        Ok(input("image"))
+    }
     fn passes(&self) -> Passes {
         Passes::One(Kernel::Exposure)
     }
@@ -40,6 +51,17 @@ impl RenderNode for veylvik_document::nodes::Exposure {
     }
 }
 impl RenderNode for veylvik_document::nodes::Colorize {
+    // Coloured in place by its own brightness; clear stays clear.
+    fn reach(&self, _: &dyn Fn(&str) -> Result<f32>, _: &str) -> Result<crate::nodes::Reach> {
+        Ok(crate::nodes::Reach::Same)
+    }
+    fn extent(
+        &self,
+        _: &dyn Fn(&str) -> Result<f32>,
+        input: &dyn Fn(&str) -> crate::nodes::Extent,
+    ) -> Result<crate::nodes::Extent> {
+        Ok(input("image"))
+    }
     fn passes(&self) -> Passes {
         Passes::One(Kernel::Colorize)
     }
@@ -69,6 +91,17 @@ impl RenderNode for veylvik_document::nodes::Colorize {
     }
 }
 impl RenderNode for veylvik_document::nodes::ColorCorrect {
+    // Graded in place; a clear pixel is passed on as it is.
+    fn reach(&self, _: &dyn Fn(&str) -> Result<f32>, _: &str) -> Result<crate::nodes::Reach> {
+        Ok(crate::nodes::Reach::Same)
+    }
+    fn extent(
+        &self,
+        _: &dyn Fn(&str) -> Result<f32>,
+        input: &dyn Fn(&str) -> crate::nodes::Extent,
+    ) -> Result<crate::nodes::Extent> {
+        Ok(input("image"))
+    }
     fn passes(&self) -> Passes {
         Passes::One(Kernel::ColorCorrect)
     }

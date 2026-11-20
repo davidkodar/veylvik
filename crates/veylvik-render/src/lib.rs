@@ -115,6 +115,7 @@ pub use scene_hook::{SceneJob, SceneRenderer};
 mod texture;
 mod vector;
 mod video;
+pub use nodes::{Extent, Reach};
 pub use plan::{Kernel, PassInfo, Plan};
 pub use pool::ResourceStats;
 use std::collections::BTreeMap;

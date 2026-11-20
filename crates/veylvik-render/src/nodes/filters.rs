@@ -7,6 +7,19 @@ use crate::{Kernel, Params, Result, error};
 use veylvik_document::{Operation, Scalar};
 
 impl RenderNode for veylvik_document::nodes::Blur {
+    // Each pixel is an average over its radius, along the row and then the column.
+    fn reach(&self, sample: &dyn Fn(&str) -> Result<f32>, _: &str) -> Result<crate::nodes::Reach> {
+        Ok(crate::nodes::Reach::Around(
+            sample("radius")?.max(0.0).ceil() as u32,
+        ))
+    }
+    fn extent(
+        &self,
+        sample: &dyn Fn(&str) -> Result<f32>,
+        input: &dyn Fn(&str) -> crate::nodes::Extent,
+    ) -> Result<crate::nodes::Extent> {
+        Ok(input("image").grown(sample("radius")?.max(0.0).ceil() as i32))
+    }
     fn passes(&self) -> Passes {
         Passes::Separable(Kernel::BlurHorizontal, Kernel::BlurVertical)
     }

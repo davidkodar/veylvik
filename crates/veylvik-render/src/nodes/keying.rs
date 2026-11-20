@@ -88,6 +88,17 @@ impl RenderNode for veylvik_document::nodes::ChromaKey {
     }
 }
 impl RenderNode for veylvik_document::nodes::LumaKey {
+    // Kept or cut by its own brightness; clear stays clear.
+    fn reach(&self, _: &dyn Fn(&str) -> Result<f32>, _: &str) -> Result<crate::nodes::Reach> {
+        Ok(crate::nodes::Reach::Same)
+    }
+    fn extent(
+        &self,
+        _: &dyn Fn(&str) -> Result<f32>,
+        input: &dyn Fn(&str) -> crate::nodes::Extent,
+    ) -> Result<crate::nodes::Extent> {
+        Ok(input("image"))
+    }
     fn passes(&self) -> Passes {
         Passes::One(Kernel::LumaKey)
     }

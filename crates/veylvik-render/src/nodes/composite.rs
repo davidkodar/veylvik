@@ -7,6 +7,17 @@ use crate::{Kernel, Params, Result, error};
 use veylvik_document::{Operation, Scalar};
 
 impl RenderNode for veylvik_document::nodes::Merge {
+    // Each pixel is made of the two pixels at its own place.
+    fn reach(&self, _: &dyn Fn(&str) -> Result<f32>, _: &str) -> Result<crate::nodes::Reach> {
+        Ok(crate::nodes::Reach::Same)
+    }
+    fn extent(
+        &self,
+        _: &dyn Fn(&str) -> Result<f32>,
+        input: &dyn Fn(&str) -> crate::nodes::Extent,
+    ) -> Result<crate::nodes::Extent> {
+        Ok(input("background").union(input("foreground")))
+    }
     fn passes(&self) -> Passes {
         Passes::One(Kernel::Merge)
     }
@@ -15,6 +26,16 @@ impl RenderNode for veylvik_document::nodes::Merge {
     }
 }
 impl RenderNode for veylvik_document::nodes::Blend {
+    fn reach(&self, _: &dyn Fn(&str) -> Result<f32>, _: &str) -> Result<crate::nodes::Reach> {
+        Ok(crate::nodes::Reach::Same)
+    }
+    fn extent(
+        &self,
+        _: &dyn Fn(&str) -> Result<f32>,
+        input: &dyn Fn(&str) -> crate::nodes::Extent,
+    ) -> Result<crate::nodes::Extent> {
+        Ok(input("background").union(input("foreground")))
+    }
     /// At zero opacity the result is exactly the background.
     fn idle_inputs(
         &self,
@@ -56,6 +77,17 @@ impl RenderNode for veylvik_document::nodes::Blend {
     }
 }
 impl RenderNode for veylvik_document::nodes::Mask {
+    // The image, kept or let through pixel by pixel: never more than the image.
+    fn reach(&self, _: &dyn Fn(&str) -> Result<f32>, _: &str) -> Result<crate::nodes::Reach> {
+        Ok(crate::nodes::Reach::Same)
+    }
+    fn extent(
+        &self,
+        _: &dyn Fn(&str) -> Result<f32>,
+        input: &dyn Fn(&str) -> crate::nodes::Extent,
+    ) -> Result<crate::nodes::Extent> {
+        Ok(input("image"))
+    }
     fn passes(&self) -> Passes {
         Passes::One(Kernel::Mask)
     }
@@ -64,6 +96,10 @@ impl RenderNode for veylvik_document::nodes::Mask {
     }
 }
 impl RenderNode for veylvik_document::nodes::CombineMask {
+    // The two coverages at the same place.
+    fn reach(&self, _: &dyn Fn(&str) -> Result<f32>, _: &str) -> Result<crate::nodes::Reach> {
+        Ok(crate::nodes::Reach::Same)
+    }
     fn passes(&self) -> Passes {
         Passes::One(Kernel::CombineMask)
     }
@@ -92,6 +128,10 @@ impl RenderNode for veylvik_document::nodes::CombineMask {
     }
 }
 impl RenderNode for veylvik_document::nodes::ChannelMask {
+    // Coverage read from the pixel at the same place.
+    fn reach(&self, _: &dyn Fn(&str) -> Result<f32>, _: &str) -> Result<crate::nodes::Reach> {
+        Ok(crate::nodes::Reach::Same)
+    }
     fn passes(&self) -> Passes {
         Passes::One(Kernel::ChannelMask)
     }
@@ -175,6 +215,16 @@ impl RenderNode for veylvik_document::nodes::SurfaceBlend {
     }
 }
 impl RenderNode for veylvik_document::nodes::Fade {
+    fn reach(&self, _: &dyn Fn(&str) -> Result<f32>, _: &str) -> Result<crate::nodes::Reach> {
+        Ok(crate::nodes::Reach::Same)
+    }
+    fn extent(
+        &self,
+        _: &dyn Fn(&str) -> Result<f32>,
+        input: &dyn Fn(&str) -> crate::nodes::Extent,
+    ) -> Result<crate::nodes::Extent> {
+        Ok(input("image"))
+    }
     fn passes(&self) -> Passes {
         Passes::One(Kernel::Fade)
     }
