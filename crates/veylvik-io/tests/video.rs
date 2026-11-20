@@ -582,3 +582,101 @@ fn software_decode_of_10_bit_limited_range_is_exact() {
         assert!((c - 0.5555).abs() < 0.0005, "{p:?}");
     }
 }
+
+#[test]
+#[ignore = "requires FFmpeg and Vulkan"]
+fn a_video_frame_decoded_again_is_known_as_the_same_frame() {
+    use veylvik_document::{Node, Operation};
+    use veylvik_render::{ImageInputs, Plan, RenderRequest, Renderer};
+    let scratch = Scratch::new();
+    let path = scratch.0.join("clip.mp4");
+    assert!(
+        Command::new("ffmpeg")
+            .args([
+                "-v",
+                "error",
+                "-f",
+                "lavfi",
+                "-i",
+                "testsrc2=size=64x32:rate=24:duration=1",
+                "-c:v",
+                "libx264",
+                "-pix_fmt",
+                "yuv420p"
+            ])
+            .arg(&path)
+            .status()
+            .unwrap()
+            .success()
+    );
+    let mut doc = veylvik_document::blank(64, 32, Time::new(24, 1).unwrap()).unwrap();
+    let clip = Node::new(
+        "Clip",
+        Operation::Footage(veylvik_document::nodes::Footage {
+            placement: Default::default(),
+            colour: Default::default(),
+            asset: path.to_str().unwrap().into(),
+            timing: Default::default(),
+            layer: None,
+            fallback: String::new(),
+        }),
+        &[],
+    );
+    doc.output = clip.id;
+    doc.nodes.insert(clip.id, clip);
+    let plan = Plan::compile(&doc).unwrap();
+    let renderer = Renderer::new().unwrap();
+    let mut inputs = ImageInputs::default();
+    veylvik_io::footage::load(&path, 1024 * 1024)
+        .unwrap()
+        .insert(&mut inputs, path.to_str().unwrap());
+    assert!(inputs.steady(&plan));
+    let at = |frame: i64| RenderRequest::full(Time::new(frame, 24).unwrap());
+    let look = |frame| {
+        let made = renderer
+            .render_gpu_cached(&plan, at(frame), &inputs)
+            .unwrap();
+        renderer.read_frame(&made).unwrap().pixels
+    };
+    let (third, name) = (look(3), renderer.identity(&plan, at(3), &inputs).unwrap());
+    // Other frames in between: the decoder lets the third go and has to decode it anew.
+    let ninth = look(9);
+    assert!(ninth != third);
+    assert_ne!(renderer.identity(&plan, at(9), &inputs).unwrap(), name);
+    look(15);
+    let hits = renderer.cache_stats().unwrap().hits;
+    // The same frame of the same file is the same picture, and is found, not made again.
+    assert_eq!(renderer.identity(&plan, at(3), &inputs).unwrap(), name);
+    assert!(look(3) == third);
+    assert!(
+        renderer.cache_stats().unwrap().hits > hits,
+        "the frame was made again"
+    );
+    // The file changes on disk: reloaded, its frames are other frames.
+    std::thread::sleep(std::time::Duration::from_millis(1100));
+    assert!(
+        Command::new("ffmpeg")
+            .args([
+                "-y",
+                "-v",
+                "error",
+                "-f",
+                "lavfi",
+                "-i",
+                "testsrc=size=64x32:rate=24:duration=1",
+                "-c:v",
+                "libx264",
+                "-pix_fmt",
+                "yuv420p"
+            ])
+            .arg(&path)
+            .status()
+            .unwrap()
+            .success()
+    );
+    let mut reloaded = ImageInputs::default();
+    veylvik_io::footage::load(&path, 1024 * 1024)
+        .unwrap()
+        .insert(&mut reloaded, path.to_str().unwrap());
+    assert_ne!(renderer.identity(&plan, at(3), &reloaded).unwrap(), name);
+}

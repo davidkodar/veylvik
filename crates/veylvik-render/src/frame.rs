@@ -27,7 +27,17 @@ pub struct Image {
     height: u32,
     pixels: Vec<[f32; 4]>,
 }
+/// Identities given by name live apart from those counted out, so the two never meet.
+const NAMED: u64 = 1 << 63;
 impl Image {
+    /// The same picture under a name of the maker's: two images with one name are taken
+    /// for the same pixels, so a picture made of one is known again when the other
+    /// comes. Name only what cannot differ: a file's frame, with the file's stamp, the
+    /// frame's number and everything that decides how it is read.
+    pub fn named(mut self, name: u64) -> Self {
+        self.identity = name | NAMED;
+        self
+    }
     pub fn new(width: u32, height: u32, pixels: Vec<[f32; 4]>) -> Result<Self> {
         if width == 0
             || height == 0
@@ -125,9 +135,10 @@ pub trait FrameSource: Send + Sync {
         None
     }
     fn byte_budget(&self) -> u64;
-    /// Whether a frame asked for again is the very frame given before, for as long as
-    /// its content is the same: then a picture made of it can be known again by what it
-    /// is made of. A source that makes a new frame for every request says no.
+    /// Whether a frame asked for again is known as the frame given before, for as long
+    /// as its content is the same (it is the very frame, or carries the same name:
+    /// [`Image::named`]): then a picture made of it can be known again by what it is made
+    /// of. A source that makes a new, unnamed frame for every request says no.
     fn steady(&self) -> bool {
         false
     }
@@ -493,6 +504,11 @@ pub struct GpuFrame {
 }
 pub(crate) struct DeviceIdentity;
 impl GpuFrame {
+    /// As [`Image::named`], for a frame on the graphics card.
+    pub fn named(mut self, name: u64) -> Self {
+        self.identity = name | NAMED;
+        self
+    }
     /// Carry a flow report on a frame rebuilt from stored pixels.
     pub fn set_flow_report(&mut self, report: Option<crate::flow::FlowReport>) {
         self.flow_report = report;

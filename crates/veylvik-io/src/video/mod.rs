@@ -672,7 +672,29 @@ impl Drop for Video {
         crate::host_cache::forget(self.owner, None);
     }
 }
+impl Video {
+    /// A name for one frame as it is handed to the renderer: the file as it stands on
+    /// disk, the frame's number, the size it is converted to and how its colour is read.
+    fn name(
+        &self,
+        index: impl std::hash::Hash,
+        target: Option<[u32; 2]>,
+        input: InputColour,
+        gpu: bool,
+    ) -> u64 {
+        use std::hash::{Hash, Hasher};
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        (&self.path, self.stamp, target, gpu).hash(&mut hasher);
+        index.hash(&mut hasher);
+        format!("{input:?}").hash(&mut hasher);
+        hasher.finish()
+    }
+}
 impl FrameSource for Video {
+    // Every frame carries a name made of the file and the frame's number.
+    fn steady(&self) -> bool {
+        true
+    }
     fn cache_dependencies(&self) -> Option<Vec<PathBuf>> {
         Some(vec![self.path.clone()])
     }
@@ -787,7 +809,7 @@ impl FrameSource for Video {
                     renderer.import_video_sized(&staged, encoding, &transform.lut, target)?
                 }
             };
-            let frame = Arc::new(frame);
+            let frame = Arc::new(frame.named(self.name(index, target, input, true)));
             state.gpu_conversions += 1;
             state.gpu = Some((index, target, input, frame.clone()));
             self.publish(&state);
@@ -823,7 +845,10 @@ impl FrameSource for Video {
             }
             let bytes = bytes.stage()?;
             let pixels = transform.decoded_pixels(&bytes, encoding);
-            let image = Arc::new(Image::new(self.info.width, self.info.height, pixels)?);
+            let image = Arc::new(
+                Image::new(self.info.width, self.info.height, pixels)?
+                    .named(self.name(index, None, input, false)),
+            );
             self.clear_raw(&mut state);
             state.cache.retain(|entry| *entry != (index, input));
             while state.cache.len() >= 2 {

@@ -262,6 +262,10 @@ impl Drop for Sequence {
     }
 }
 impl FrameSource for Sequence {
+    // Every frame carries a name made of its file as it stands on disk.
+    fn steady(&self) -> bool {
+        true
+    }
     fn cache_dependencies(&self) -> Option<Vec<PathBuf>> {
         Some(self.files.clone())
     }
@@ -297,11 +301,20 @@ impl FrameSource for Sequence {
             {
                 return Ok(image);
             }
-            let image = Arc::new(crate::load_image_layer(
-                &self.files[index],
-                self.layer.as_deref(),
-                self.frame_limit,
-            )?);
+            let name = {
+                use std::hash::{Hash, Hasher};
+                let mut hasher = std::collections::hash_map::DefaultHasher::new();
+                (&self.files[index], self.stamps[index], &self.layer).hash(&mut hasher);
+                hasher.finish()
+            };
+            let image = Arc::new(
+                crate::load_image_layer(
+                    &self.files[index],
+                    self.layer.as_deref(),
+                    self.frame_limit,
+                )?
+                .named(name),
+            );
             let after = std::fs::metadata(&self.files[index])?;
             if (after.len(), after.modified()?) != self.stamps[index] {
                 return Err("Sequence frame changed during decoding; reload sources".into());
