@@ -15,6 +15,18 @@ pub fn guest(ctx: &egui::Context) -> bool {
     ctx.data(|d| d.get_temp::<bool>(egui::Id::new("veylvik-guest")))
         .unwrap_or(false)
 }
+/// As a guest: the area the host gave the editor this frame.
+pub fn area(ctx: &egui::Context) -> Option<egui::Rect> {
+    ctx.data(|d| d.get_temp::<egui::Rect>(egui::Id::new("veylvik-area")))
+}
+pub fn set_area(ctx: &egui::Context, area: Option<egui::Rect>) {
+    ctx.data_mut(|d| match area {
+        Some(area) => {
+            d.insert_temp(egui::Id::new("veylvik-area"), area);
+        }
+        None => d.remove::<egui::Rect>(egui::Id::new("veylvik-area")),
+    });
+}
 pub fn set_guest(ctx: &egui::Context, guest: bool) {
     ctx.data_mut(|d| d.insert_temp(egui::Id::new("veylvik-guest"), guest));
 }

@@ -234,6 +234,15 @@ pub struct Setup {
     pub live_control: LiveControl,
     pub capabilities: Capabilities,
 }
+/// What the editor keeps about being a guest.
+struct Guest {
+    look: Arc<egui::Style>,
+    /// The pass it was made in: its fonts are there from the next one.
+    made: u64,
+    /// The last pass it was drawn in.
+    drawn: u64,
+    keyboard: bool,
+}
 /// Veylvik's editor: viewer, node graph, inspector, timeline, library and tools, drawn
 /// into whatever area it is given each frame.
 pub struct Editor {
@@ -255,25 +264,88 @@ impl Editor {
     }
     /// Draw the editor into `ui`, filling it, and do one frame of its work.
     pub fn ui(&mut self, ui: &mut egui::Ui) {
-        let Some((ours, made)) = self.studio.guest_look.clone() else {
+        let Some(guest) = self.studio.guest.as_mut() else {
             return self.studio.editor_ui(ui);
         };
         let ctx = ui.ctx().clone();
-        if ctx.cumulative_pass_nr() <= made {
+        let pass = ctx.cumulative_pass_nr();
+        if pass <= guest.made {
             // Its fonts arrive with the next pass.
             ctx.request_repaint();
             return;
         }
+        // Whose the keyboard is: the editor's when it comes back into view, and from then
+        // on whoever was last pressed on. A press on a floating window or a menu changes
+        // nothing: it belongs to whoever opened it.
+        let area = ui.max_rect();
+        if guest.drawn + 1 != pass {
+            guest.keyboard = true;
+        }
+        guest.drawn = pass;
+        if let Some(at) = ctx.input(|i| {
+            i.pointer
+                .any_pressed()
+                .then(|| i.pointer.interact_pos())
+                .flatten()
+        }) && ctx
+            .layer_id_at(at)
+            .is_none_or(|layer| layer.order == egui::Order::Background)
+        {
+            guest.keyboard = area.contains(at);
+        }
+        design::set_area(&ctx, Some(area));
+        // While the keyboard is the host's, the editor sees no keys, typing or pasting;
+        // the host gets them back untouched.
+        let withheld = (!guest.keyboard).then(|| {
+            ctx.input_mut(|input| {
+                let (theirs, rest) =
+                    std::mem::take(&mut input.events)
+                        .into_iter()
+                        .partition(|event| {
+                            matches!(
+                                event,
+                                egui::Event::Key { .. }
+                                    | egui::Event::Text(_)
+                                    | egui::Event::Paste(_)
+                                    | egui::Event::Copy
+                                    | egui::Event::Cut
+                                    | egui::Event::Ime(_)
+                            )
+                        });
+                input.events = rest;
+                theirs
+            })
+        });
         // The editor's look is the context's only while the editor draws: its panels,
         // windows, menus and tooltips take it, and the host's own are left as they were.
         let hosts = ctx.global_style();
-        ctx.set_global_style(ours);
+        ctx.set_global_style(guest.look.clone());
         ui.scope(|ui| {
             ui.set_style(ctx.global_style());
             self.studio.editor_ui(ui);
         });
-        self.studio.guest_look = Some((ctx.global_style(), made));
+        if let Some(guest) = self.studio.guest.as_mut() {
+            guest.look = ctx.global_style();
+        }
         ctx.set_global_style(hosts);
+        if let Some(theirs) = withheld {
+            let theirs: Vec<egui::Event> = theirs;
+            ctx.input_mut(|input| input.events.extend(theirs));
+        }
+    }
+    /// As a guest: whether keys, typing and pasting go to the editor (it was the last
+    /// thing pressed on, or has just come into view). Always true in a window of its own.
+    pub fn has_keyboard(&self) -> bool {
+        self.studio
+            .guest
+            .as_ref()
+            .is_none_or(|guest| guest.keyboard)
+    }
+    /// Give the keyboard to the editor, or take it for the host.
+    pub fn set_keyboard(&mut self, editors: bool) {
+        if let Some(guest) = self.studio.guest.as_mut() {
+            guest.keyboard = editors;
+        }
     }
     /// The composition as it stands, and the number that grows with every change to it.
     pub fn composition(&self) -> &veylvik_document::Composition {
@@ -426,7 +498,12 @@ impl Studio {
             commands: Default::default(),
             log: Default::default(),
             host_link: Default::default(),
-            guest_look,
+            guest: guest_look.map(|(look, made)| Guest {
+                look,
+                made,
+                drawn: 0,
+                keyboard: true,
+            }),
             tools: Default::default(),
             layouts: Default::default(),
             recalled: false,
@@ -556,9 +633,8 @@ struct Studio {
     commands: command_ui::Commands,
     log: history_log::Log,
     host_link: host_link::HostLink,
-    /// As a guest: the editor's own look, and the pass it was made in (its fonts are
-    /// there from the next one).
-    guest_look: Option<(Arc<egui::Style>, u64)>,
+    /// As a guest in a host's window: the editor's own look and whether the keyboard is its.
+    guest: Option<Guest>,
     tools: inspector_tools::Tools,
     layouts: layouts::Layouts,
     /// Live switches have been set from preferences once.

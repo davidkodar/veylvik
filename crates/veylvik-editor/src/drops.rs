@@ -71,10 +71,14 @@ impl Studio {
     /// Collect files dropped on the window, and files pasted while no text is being
     /// typed. Called early in the frame, before anything else reads pasted text.
     pub(crate) fn gather_files(&mut self, ctx: &egui::Context) {
+        // In a host's window only what is dropped on the editor's own area is the editor's.
+        let on_us = crate::design::area(ctx)
+            .is_none_or(|area| ctx.pointer_latest_pos().is_some_and(|at| area.contains(at)));
         let mut found: Vec<PathBuf> = ctx.input(|i| {
             i.raw
                 .dropped_files
                 .iter()
+                .filter(|_| on_us)
                 .filter_map(|file| file.path.clone())
                 .collect()
         });
@@ -152,7 +156,8 @@ impl Studio {
                 .filter_map(|f| f.path.clone())
                 .collect()
         });
-        if held.is_empty() {
+        let area = crate::design::area(ctx).unwrap_or_else(|| ctx.content_rect());
+        if held.is_empty() || !ctx.pointer_latest_pos().is_none_or(|at| area.contains(at)) {
             return;
         }
         let text = match held.first().and_then(|p| kind(p)) {
@@ -161,7 +166,6 @@ impl Studio {
             Some(Kind::Media) => "Drop to add this to the composition",
             None => "Veylvik cannot open this kind of file",
         };
-        let area = ctx.content_rect();
         let painter = ctx.layer_painter(egui::LayerId::new(
             egui::Order::Foreground,
             egui::Id::new("drop-hint"),

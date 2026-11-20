@@ -5,6 +5,7 @@ use veylvik_editor::{Capabilities, Editor, HOST_INTERFACE, LiveControl, Setup};
 struct Host {
     editor: Editor,
     tab: usize,
+    notes: String,
 }
 impl eframe::App for Host {
     fn ui(&mut self, ui: &mut egui::Ui, _: &mut eframe::Frame) {
@@ -37,6 +38,13 @@ impl eframe::App for Host {
                 ui.heading("The host");
                 ui.label("The host's own panel, in the host's own look.");
                 let _ = ui.button("A host button");
+                ui.label("Typing here is the host's:");
+                ui.text_edit_singleline(&mut self.notes);
+                ui.label(if self.editor.has_keyboard() {
+                    "Keys go to Veylvik."
+                } else {
+                    "Keys go to the host."
+                });
                 ui.label("Everything right of here, under the host's tabs, is Veylvik's editor.");
             });
         if self.tab == 2 {
@@ -98,7 +106,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 capabilities: Capabilities { own_window: false },
             })
             .map_err(|error| error.to_string())?;
-            Ok(Box::new(Host { editor, tab: 2 }))
+            Ok(Box::new(Host {
+                editor,
+                tab: 2,
+                notes: String::new(),
+            }))
         }),
     )?;
     Ok(())
