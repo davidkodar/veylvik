@@ -86,7 +86,11 @@ impl Control {
     }
 }
 struct Entry {
-    time: Time,
+    /// Every moment known to show this picture under the plan in use.
+    times: Vec<Time>,
+    /// What the picture is made of ([`Store::name`]); none when that cannot be told, and
+    /// then it belongs to the one moment and the one plan it was made for.
+    name: Option<u64>,
     gpu: Option<Weak<GpuFrame>>,
     disk: Option<(PathBuf, u64)>,
     width: u32,
@@ -195,8 +199,28 @@ impl Store {
                 .is_ok_and(|s| s != self.dependencies);
         let missing = self.checked.elapsed() >= Duration::from_secs(2)
             && self.dependencies.iter().any(|s| !s.0.is_file());
+        // Another plan over the same sources and settings: a picture known by what it is
+        // made of is the same picture under any plan that makes it, so it stays; only
+        // which moments show it has to be found again.
+        let edited = !(stale || missing)
+            && self.generation == generation
+            && self
+                .scope
+                .as_ref()
+                .is_some_and(|(p, i)| !Arc::ptr_eq(p, plan) && i.same_sources(inputs));
         if changed || stale || missing {
-            self.clear_entries();
+            if edited {
+                self.entries.retain(|e| e.name.is_some());
+                for e in &mut self.entries {
+                    e.times.clear();
+                }
+                let kept: Vec<_> = self.entries.iter().filter_map(|e| e.gpu.clone()).collect();
+                if let Ok(mut frames) = self.control.1.lock() {
+                    frames.retain(|f| kept.iter().any(|w| Weak::ptr_eq(&Arc::downgrade(f), w)));
+                }
+            } else {
+                self.clear_entries();
+            }
             self.settings = settings;
             self.generation = generation;
             self.warning = None;
@@ -254,13 +278,44 @@ impl Store {
             .retain(|e| e.gpu.as_ref().is_some_and(|w| w.strong_count() > 0) || e.disk.is_some());
         Ok(())
     }
-    pub fn lookup(&mut self, renderer: &Renderer, time: Time) -> Result<Option<Arc<GpuFrame>>> {
+    /// What the picture for `request` is made of, when that can be told: the renderer's
+    /// identity for it, with what is done to it afterwards for the viewer. Plans made of
+    /// other moments, and sources that make a new frame every time, cannot be told yet.
+    pub fn name(
+        &self,
+        renderer: &Renderer,
+        plan: &Plan,
+        request: veylvik_render::RenderRequest,
+        inputs: &ImageInputs,
+    ) -> Option<u64> {
+        use std::hash::{Hash, Hasher};
+        if plan.has_temporal() || !inputs.steady(plan) {
+            return None;
+        }
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        renderer
+            .identity(plan, request, inputs)
+            .ok()?
+            .hash(&mut hasher);
+        format!("{:?}", plan.ocio_transforms()).hash(&mut hasher);
+        Some(hasher.finish())
+    }
+    pub fn lookup(
+        &mut self,
+        renderer: &Renderer,
+        time: Time,
+        name: Option<u64>,
+    ) -> Result<Option<Arc<GpuFrame>>> {
         if !self.eligible {
             return Ok(None);
         }
-        let Some(index) = self.entries.iter().position(|e| {
-            i128::from(e.time.ticks) * i128::from(time.rate)
-                == i128::from(time.ticks) * i128::from(e.time.rate)
+        let same = |t: &Time| {
+            i128::from(t.ticks) * i128::from(time.rate)
+                == i128::from(time.ticks) * i128::from(t.rate)
+        };
+        let Some(index) = self.entries.iter().position(|e| match name {
+            Some(_) => e.name == name,
+            None => e.name.is_none() && e.times.iter().any(same),
         }) else {
             return Ok(None);
         };
@@ -275,6 +330,9 @@ impl Store {
                 self.hits += 1;
                 self.retain_gpu(&frame);
                 entry.gpu = Some(Arc::downgrade(&frame));
+                if !entry.times.iter().any(same) && entry.times.len() < 4096 {
+                    entry.times.push(time);
+                }
                 self.entries.push_back(entry);
                 self.trim_gpu(renderer);
                 Ok(Some(frame))
@@ -337,6 +395,7 @@ impl Store {
         &mut self,
         renderer: &Renderer,
         time: Time,
+        name: Option<u64>,
         frame: Arc<GpuFrame>,
         cancelled: &mut dyn FnMut() -> bool,
     ) {
@@ -344,7 +403,8 @@ impl Store {
             return;
         }
         let mut entry = Entry {
-            time,
+            times: vec![time],
+            name,
             width: frame.width(),
             height: frame.height(),
             flow: frame.flow_report(),
@@ -483,13 +543,13 @@ impl Store {
                     .entries
                     .iter()
                     .filter(|e| e.gpu.as_ref().is_some_and(|w| w.strong_count() > 0))
-                    .map(|e| e.time)
+                    .flat_map(|e| e.times.iter().copied())
                     .collect(),
                 disk_frames: self
                     .entries
                     .iter()
                     .filter(|e| e.disk.is_some())
-                    .map(|e| e.time)
+                    .flat_map(|e| e.times.iter().copied())
                     .collect(),
                 gpu_bytes: self.gpu_bytes(),
                 disk_bytes: self.disk_bytes(),
@@ -540,17 +600,17 @@ mod tests {
                 .unwrap(),
         );
         let expected = renderer.read_frame(&frame).unwrap().pixels;
-        store.insert(&renderer, time, frame.clone(), &mut || false);
+        store.insert(&renderer, time, None, frame.clone(), &mut || false);
         drop(frame);
         store.publish(7);
         assert_eq!(control.status().gpu_bytes, 0);
         assert_eq!(control.status().disk_frames.len(), 1);
-        let restored = store.lookup(&renderer, time).unwrap().unwrap();
+        let restored = store.lookup(&renderer, time, None).unwrap().unwrap();
         assert_eq!(renderer.read_frame(&restored).unwrap().pixels, expected);
         drop(restored);
         let path = store.entries[0].disk.as_ref().unwrap().0.clone();
         std::fs::write(path, b"broken").unwrap();
-        assert!(store.lookup(&renderer, time).unwrap().is_none());
+        assert!(store.lookup(&renderer, time, None).unwrap().is_none());
         assert!(store.warning.is_some());
         control.configure(Settings {
             divisor: 1,
@@ -566,7 +626,7 @@ mod tests {
                     .render_gpu(&plan, veylvik_render::RenderRequest::full(t), &inputs)
                     .unwrap(),
             );
-            store.insert(&renderer, t, frame, &mut || false);
+            store.insert(&renderer, t, None, frame, &mut || false);
         }
         store.publish(8);
         assert_eq!(control.status().gpu_frames.len(), 2);
@@ -579,6 +639,88 @@ mod tests {
         drop(store);
         assert_eq!(std::fs::read_dir(&root).unwrap().count(), 0);
         std::fs::remove_dir(root).unwrap();
+    }
+    #[test]
+    #[ignore = "requires Vulkan"]
+    fn a_picture_is_kept_through_an_edit_that_does_not_change_it() {
+        use veylvik_document::{Node, Operation, registry};
+        let renderer = Renderer::new().unwrap();
+        let inputs = ImageInputs::default();
+        // A still picture: a solid colour, graded.
+        let composition = |gain: f32, extra: bool| {
+            let mut doc = veylvik_document::blank(32, 16, Time::new(24, 1).unwrap()).unwrap();
+            doc.frame_count = 48;
+            let of = |kind: &str| {
+                let mut value = registry::TYPES
+                    .iter()
+                    .find(|t| t.type_id == kind)
+                    .unwrap()
+                    .default_operation();
+                if kind == "exposure" {
+                    let name = registry::TYPES
+                        .iter()
+                        .find(|t| t.type_id == kind)
+                        .unwrap()
+                        .parameters[0]
+                        .name;
+                    value[name] = serde_json::json!({"kind": "constant", "value": gain});
+                }
+                serde_json::from_value::<Operation>(value).unwrap()
+            };
+            let solid = Node::new("solid", of("solid"), &[]);
+            let grade = Node::new("grade", of("exposure"), &[("image", solid.id)]);
+            doc.output = grade.id;
+            if extra {
+                // A node nothing reads: an edit that changes no picture.
+                let aside = Node::new("aside", of("noise"), &[]);
+                doc.nodes.insert(aside.id, aside);
+            }
+            doc.nodes.insert(solid.id, solid);
+            doc.nodes.insert(grade.id, grade);
+            Arc::new(Plan::compile(&doc).unwrap())
+        };
+        let control = Control::default();
+        control.configure(Settings {
+            divisor: 1,
+            gpu_bytes: 1 << 20,
+            disk_bytes: 0,
+            directory: None,
+        });
+        let mut store = Store::new(control.clone());
+        let at = |frame: i64| veylvik_render::RenderRequest::full(Time::new(frame, 24).unwrap());
+        let first = composition(1.0, false);
+        store.prepare(&first, &inputs).unwrap();
+        let name = store.name(&renderer, &first, at(0), &inputs);
+        assert!(name.is_some());
+        let frame = Arc::new(renderer.render_gpu(&first, at(0), &inputs).unwrap());
+        store.insert(&renderer, at(0).time, name, frame.clone(), &mut || false);
+        // A still picture is one picture at every moment.
+        let later = store.name(&renderer, &first, at(30), &inputs);
+        assert_eq!(later, name);
+        let found = store
+            .lookup(&renderer, at(30).time, later)
+            .unwrap()
+            .unwrap();
+        assert!(Arc::ptr_eq(&found, &frame));
+        store.publish(1);
+        assert_eq!(control.status().gpu_frames.len(), 2);
+        // An edit elsewhere makes another plan; the picture is still the picture.
+        let edited = composition(1.0, true);
+        store.prepare(&edited, &inputs).unwrap();
+        let name = store.name(&renderer, &edited, at(0), &inputs);
+        let found = store.lookup(&renderer, at(0).time, name).unwrap();
+        assert!(
+            found.is_some_and(|f| Arc::ptr_eq(&f, &frame)),
+            "an edit that changed nothing threw the picture away"
+        );
+        // Only the moment just asked for is known to show it under the new plan.
+        store.publish(2);
+        assert_eq!(control.status().gpu_frames.len(), 1);
+        // An edit that changes the picture is not answered with the old one.
+        let regraded = composition(2.0, true);
+        store.prepare(&regraded, &inputs).unwrap();
+        let name = store.name(&renderer, &regraded, at(0), &inputs);
+        assert!(store.lookup(&renderer, at(0).time, name).unwrap().is_none());
     }
     #[test]
     fn changed_sources_and_dependencies_invalidate_scope() {

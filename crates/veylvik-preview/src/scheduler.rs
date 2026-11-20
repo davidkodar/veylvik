@@ -128,7 +128,14 @@ impl PreviewScheduler<Arc<GpuFrame>> {
                     let cacheable = job.request.region.is_none()
                         && job.request.scene_view.is_none()
                         && !job.request.scene_reflections;
-                    if cacheable && let Some(frame) = cache.lookup(&renderer, job.request.time)? {
+                    let name = if cacheable {
+                        cache.name(&renderer, &job.plan, job.request, &job.inputs)
+                    } else {
+                        None
+                    };
+                    if cacheable
+                        && let Some(frame) = cache.lookup(&renderer, job.request.time, name)?
+                    {
                         return Ok(frame);
                     }
                     cache.make_room(
@@ -147,7 +154,7 @@ impl PreviewScheduler<Arc<GpuFrame>> {
                     }
                     let frame = frame?;
                     if cacheable {
-                        cache.insert(&renderer, job.request.time, frame.clone(), cancelled);
+                        cache.insert(&renderer, job.request.time, name, frame.clone(), cancelled);
                     }
                     Ok(frame)
                 })();
@@ -449,7 +456,7 @@ mod playback_tests {
     use veylvik_document::Time;
     #[test]
     #[ignore = "requires Vulkan"]
-    fn gpu_scheduler_reuses_frames_and_invalidates_resolution_and_plan() {
+    fn gpu_scheduler_reuses_frames_through_a_new_plan_and_invalidates_resolution() {
         let renderer = Arc::new(Renderer::new().unwrap());
         let scheduler = GpuPreviewScheduler::with_renderer(renderer, || {}).unwrap();
         let control = scheduler.playback_cache();
@@ -484,10 +491,13 @@ mod playback_tests {
         assert!(!Arc::ptr_eq(&first, &half));
         assert_eq!(control.status().size, [16, 8]);
         assert_eq!(control.status().hits, 0);
-        render(plan);
+        let half_again = render(plan);
         assert_eq!(control.status().hits, 1);
-        render(make_plan());
-        assert_eq!(control.status().hits, 0);
+        // The same composition compiled again is another plan making the same picture:
+        // it is found, not made again (a new plan used to empty the store).
+        let again = render(make_plan());
+        assert!(Arc::ptr_eq(&half_again, &again));
+        assert_eq!(control.status().hits, 1);
         scheduler.cancel().unwrap();
         assert!(scheduler.try_take().unwrap().is_none());
     }

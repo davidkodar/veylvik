@@ -112,4 +112,8 @@ impl<M: HostMedia> FrameSource for HostSource<M> {
     fn byte_budget(&self) -> u64 {
         self.budget
     }
+    // A frame is kept under the host's name for it and handed out again.
+    fn steady(&self) -> bool {
+        true
+    }
 }

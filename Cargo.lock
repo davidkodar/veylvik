@@ -4354,6 +4354,7 @@ dependencies = [
  "bytemuck",
  "flate2",
  "serde",
+ "serde_json",
  "veylvik-color",
  "veylvik-document",
  "veylvik-render",

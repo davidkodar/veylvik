@@ -125,6 +125,12 @@ pub trait FrameSource: Send + Sync {
         None
     }
     fn byte_budget(&self) -> u64;
+    /// Whether a frame asked for again is the very frame given before, for as long as
+    /// its content is the same: then a picture made of it can be known again by what it
+    /// is made of. A source that makes a new frame for every request says no.
+    fn steady(&self) -> bool {
+        false
+    }
 }
 /// The host supplies immutable images; a later render can supply new content under the same key.
 #[derive(Default, Clone)]
@@ -173,6 +179,15 @@ impl ImageInputs {
     }
     /// The files a cache of rendered frames depends on; None when a source cannot
     /// name its files, so its frames must not be cached.
+    /// Whether every source `plan` reads gives the same frame again for the same content
+    /// ([`FrameSource::steady`]); stills always do.
+    pub fn steady(&self, plan: &crate::Plan) -> bool {
+        plan.required_assets().iter().all(|key| {
+            self.2
+                .get(key.as_ref())
+                .is_none_or(|source| source.steady())
+        })
+    }
     pub fn playback_dependencies(&self) -> Option<Vec<std::path::PathBuf>> {
         let mut paths = Vec::new();
         for source in self.2.values() {

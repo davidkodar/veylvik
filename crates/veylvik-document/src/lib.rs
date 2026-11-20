@@ -763,6 +763,49 @@ pub enum Command {
     },
 }
 
+impl Composition {
+    /// The composition a host starts from when one of its clips first gets one: the
+    /// clip itself and nothing else, so it looks exactly as the clip did. One Footage
+    /// node reads the host's media by `key` (and the file beside it, when there is one,
+    /// so the composition stays readable without that host), untouched in time and
+    /// placed as it comes, and is the output.
+    pub fn from_host_footage(
+        key: &str,
+        label: &str,
+        file: Option<&std::path::Path>,
+        size: [u32; 2],
+        frame_rate: Time,
+        frames: u32,
+    ) -> Result<Self> {
+        let mut composition = blank(size[0], size[1], frame_rate)?;
+        let fallback = match file {
+            None => String::new(),
+            Some(file) => file
+                .to_str()
+                .ok_or_else(|| {
+                    Error("the file beside a host's media must have a readable name".into())
+                })?
+                .to_owned(),
+        };
+        let node = Node::new(
+            label,
+            Operation::Footage(nodes::Footage {
+                asset: key.into(),
+                timing: Default::default(),
+                placement: Default::default(),
+                colour: Default::default(),
+                layer: None,
+                fallback,
+            }),
+            &[],
+        );
+        composition.frame_count = frames;
+        composition.output = node.id;
+        composition.nodes = [(node.id, node)].into();
+        composition.validate()?;
+        Ok(composition)
+    }
+}
 /// A transparent composition with one editable background generator.
 pub fn blank(width: u32, height: u32, frame_rate: Time) -> Result<Composition> {
     let node = Node::new(
