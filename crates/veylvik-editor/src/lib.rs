@@ -255,7 +255,25 @@ impl Editor {
     }
     /// Draw the editor into `ui`, filling it, and do one frame of its work.
     pub fn ui(&mut self, ui: &mut egui::Ui) {
-        self.studio.editor_ui(ui);
+        let Some((ours, made)) = self.studio.guest_look.clone() else {
+            return self.studio.editor_ui(ui);
+        };
+        let ctx = ui.ctx().clone();
+        if ctx.cumulative_pass_nr() <= made {
+            // Its fonts arrive with the next pass.
+            ctx.request_repaint();
+            return;
+        }
+        // The editor's look is the context's only while the editor draws: its panels,
+        // windows, menus and tooltips take it, and the host's own are left as they were.
+        let hosts = ctx.global_style();
+        ctx.set_global_style(ours);
+        ui.scope(|ui| {
+            ui.set_style(ctx.global_style());
+            self.studio.editor_ui(ui);
+        });
+        self.studio.guest_look = Some((ctx.global_style(), made));
+        ctx.set_global_style(hosts);
     }
     /// The composition as it stands, and the number that grows with every change to it.
     pub fn composition(&self) -> &veylvik_document::Composition {
@@ -286,8 +304,18 @@ impl Studio {
             (!preferences.values.gpu_budget_auto).then_some(preferences.values.gpu_budget_mib),
         )?;
         let project = Project::open(setup.project.as_deref())?;
+        // A guest keeps its look to itself: the style it makes here is its own, put in
+        // place only while it draws, and the host's is put back at once.
+        let guest = !setup.capabilities.own_window;
+        design::set_guest(&setup.context, guest);
         design::install_fonts(&setup.context);
+        let hosts = setup.context.global_style();
         design::apply(&setup.context);
+        let guest_look = guest.then(|| {
+            let ours = setup.context.global_style();
+            setup.context.set_global_style(hosts);
+            (ours, setup.context.cumulative_pass_nr())
+        });
         let mut renderer = Renderer::from_device(
             setup.device.clone(),
             setup.queue.clone(),
@@ -398,6 +426,7 @@ impl Studio {
             commands: Default::default(),
             log: Default::default(),
             host_link: Default::default(),
+            guest_look,
             tools: Default::default(),
             layouts: Default::default(),
             recalled: false,
@@ -527,6 +556,9 @@ struct Studio {
     commands: command_ui::Commands,
     log: history_log::Log,
     host_link: host_link::HostLink,
+    /// As a guest: the editor's own look, and the pass it was made in (its fonts are
+    /// there from the next one).
+    guest_look: Option<(Arc<egui::Style>, u64)>,
     tools: inspector_tools::Tools,
     layouts: layouts::Layouts,
     /// Live switches have been set from preferences once.
@@ -1893,7 +1925,9 @@ impl Studio {
                     directory,
                 });
         }
-        ctx.set_zoom_factor(p.scale);
+        if !design::guest(ctx) {
+            ctx.set_zoom_factor(p.scale);
+        }
         if before.is_none() {
             // At start only: later it is the transport's own choice.
             self.playback_controls.resolution = p.preview_quality;

@@ -213,17 +213,31 @@ impl Browser {
         if self.preview_font.as_ref() != Some(font)
             && let Ok((bytes, index)) = veylvik_text::font_data(font)
         {
-            let mut definitions = crate::design::font_definitions();
             let mut data = egui::FontData::from_owned(bytes.to_vec());
             data.index = index;
-            definitions
-                .font_data
-                .insert("text-preview".into(), std::sync::Arc::new(data));
-            definitions.families.insert(
-                egui::FontFamily::Name("text-preview".into()),
-                vec!["text-preview".into()],
-            );
-            ui.ctx().set_fonts(definitions);
+            if crate::design::guest(ui.ctx()) {
+                // Beside the host's fonts: each previewed face under its own name, first in
+                // the preview's family.
+                use egui::epaint::text::{FontInsert, FontPriority, InsertFontFamily};
+                ui.ctx().add_font(FontInsert::new(
+                    &format!("text-preview {}", font.label()),
+                    data,
+                    vec![InsertFontFamily {
+                        family: egui::FontFamily::Name("text-preview".into()),
+                        priority: FontPriority::Highest,
+                    }],
+                ));
+            } else {
+                let mut definitions = crate::design::font_definitions();
+                definitions
+                    .font_data
+                    .insert("text-preview".into(), std::sync::Arc::new(data));
+                definitions.families.insert(
+                    egui::FontFamily::Name("text-preview".into()),
+                    vec!["text-preview".into()],
+                );
+                ui.ctx().set_fonts(definitions);
+            }
             self.preview_font = Some(font.clone());
         }
         if changed {

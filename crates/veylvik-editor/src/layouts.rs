@@ -265,7 +265,10 @@ impl Studio {
         let scale = &mut self.preferences.values.scale;
         *scale = ((*scale + if larger { 0.1 } else { -0.1 }) * 20.0).round() / 20.0;
         *scale = scale.clamp(0.75, 2.0);
-        ctx.set_zoom_factor(*scale);
+        // The whole window's scale is its owner's.
+        if !crate::design::guest(ctx) {
+            ctx.set_zoom_factor(*scale);
+        }
         self.status = format!("Interface scale {:.0}%", *scale * 100.0);
         self.error = false;
         if let Err(error) = self.preferences.persist() {

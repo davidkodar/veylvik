@@ -34,20 +34,22 @@ impl eframe::App for Host {
         egui::Panel::left("host side")
             .exact_size(170.0)
             .show_inside(ui, |ui| {
-                ui.label("The host's own panel.");
+                ui.heading("The host");
+                ui.label("The host's own panel, in the host's own look.");
+                let _ = ui.button("A host button");
                 ui.label("Everything right of here, under the host's tabs, is Veylvik's editor.");
             });
-        egui::CentralPanel::default()
-            .frame(egui::Frame::NONE)
-            .show_inside(ui, |ui| {
-                if self.tab == 2 {
-                    self.editor.ui(ui);
-                } else {
-                    ui.centered_and_justified(|ui| {
-                        ui.label("Another page of the host. The Veylvik tab keeps its state.")
-                    });
-                }
+        if self.tab == 2 {
+            egui::CentralPanel::default()
+                .frame(egui::Frame::NONE)
+                .show_inside(ui, |ui| self.editor.ui(ui));
+        } else {
+            egui::CentralPanel::default().show_inside(ui, |ui| {
+                ui.centered_and_justified(|ui| {
+                    ui.label("Another page of the host. The Veylvik tab keeps its state.")
+                });
             });
+        }
     }
     fn on_exit(&mut self) {
         self.editor.close();
@@ -78,6 +80,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "host",
         options,
         Box::new(move |cc| {
+            // A look of the host's own, to show that the editor does not change it.
+            cc.egui_ctx.set_theme(egui::Theme::Light);
             let state = cc
                 .wgpu_render_state
                 .as_ref()

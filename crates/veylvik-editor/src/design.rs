@@ -9,8 +9,48 @@ pub fn canvas(ctx: &egui::Context) -> Color32 {
 pub fn border(ctx: &egui::Context) -> Color32 {
     crate::theme::palette(ctx).border
 }
+/// Whether the editor is a guest in a host's window: its look must then stay in its own
+/// area, and the window's fonts, theme and scale are the host's.
+pub fn guest(ctx: &egui::Context) -> bool {
+    ctx.data(|d| d.get_temp::<bool>(egui::Id::new("veylvik-guest")))
+        .unwrap_or(false)
+}
+pub fn set_guest(ctx: &egui::Context, guest: bool) {
+    ctx.data_mut(|d| d.insert_temp(egui::Id::new("veylvik-guest"), guest));
+}
+/// The family the editor's own text is set in: the window's own where the window is the
+/// editor's, a family of its own beside the host's fonts where it is a guest.
+pub fn body(ctx: &egui::Context) -> egui::FontFamily {
+    if guest(ctx) {
+        egui::FontFamily::Name("veylvik".into())
+    } else {
+        egui::FontFamily::Proportional
+    }
+}
 pub fn install_fonts(ctx: &egui::Context) {
-    ctx.set_fonts(font_definitions());
+    if !guest(ctx) {
+        ctx.set_fonts(font_definitions());
+        return;
+    }
+    // A guest adds its fonts under names of its own and leaves the host's as they are.
+    use egui::epaint::text::{FontInsert, FontPriority, InsertFontFamily};
+    let family = |name: &str, priority| InsertFontFamily {
+        family: egui::FontFamily::Name(name.into()),
+        priority,
+    };
+    ctx.add_font(FontInsert::new(
+        "Veylvik Inter",
+        egui::FontData::from_static(include_bytes!("../assets/fonts/Inter-Regular.ttf")),
+        vec![
+            family("veylvik", FontPriority::Highest),
+            family("heading", FontPriority::Lowest),
+        ],
+    ));
+    ctx.add_font(FontInsert::new(
+        "Veylvik Inter Semibold",
+        egui::FontData::from_static(include_bytes!("../assets/fonts/Inter-SemiBold.ttf")),
+        vec![family("heading", FontPriority::Highest)],
+    ));
 }
 pub fn font_definitions() -> egui::FontDefinitions {
     let mut fonts = egui::FontDefinitions::default();
@@ -37,11 +77,14 @@ pub fn font_definitions() -> egui::FontDefinitions {
 pub fn apply(ctx: &egui::Context) {
     let mut style = (*ctx.global_style()).clone();
     let palette = crate::theme::palette(ctx);
-    ctx.set_theme(if palette.dark {
-        egui::Theme::Dark
-    } else {
-        egui::Theme::Light
-    });
+    // Light or dark for the whole window is the window's owner's to choose.
+    if !guest(ctx) {
+        ctx.set_theme(if palette.dark {
+            egui::Theme::Dark
+        } else {
+            egui::Theme::Light
+        });
+    }
     style.visuals = if palette.dark {
         egui::Visuals::dark()
     } else {
@@ -81,13 +124,13 @@ pub fn apply(ctx: &egui::Context) {
     style.spacing.menu_margin = egui::Margin::same(8);
     style
         .text_styles
-        .insert(egui::TextStyle::Body, egui::FontId::proportional(14.));
+        .insert(egui::TextStyle::Body, egui::FontId::new(14., body(ctx)));
     style
         .text_styles
-        .insert(egui::TextStyle::Button, egui::FontId::proportional(14.));
+        .insert(egui::TextStyle::Button, egui::FontId::new(14., body(ctx)));
     style
         .text_styles
-        .insert(egui::TextStyle::Small, egui::FontId::proportional(11.));
+        .insert(egui::TextStyle::Small, egui::FontId::new(11., body(ctx)));
     style.text_styles.insert(
         egui::TextStyle::Heading,
         egui::FontId::new(16., egui::FontFamily::Name("heading".into())),
