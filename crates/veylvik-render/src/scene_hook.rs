@@ -39,6 +39,9 @@ pub struct SceneJob<'a> {
     /// The area-light LTC table material shading reads (binding 5 of `MATERIAL_WGSL`).
     pub ltc: &'a wgpu::Buffer,
     pub target: &'a wgpu::Buffer,
+    /// A second output of the same render: the other of picture and depth, when two
+    /// Render scene nodes film the same scene the same way. The bool is its `depth`.
+    pub also: Option<(&'a wgpu::Buffer, bool)>,
 }
 /// The scene and camera a Render scene node films at `time`, and its occlusion.
 pub(crate) fn evaluate(
@@ -77,6 +80,46 @@ pub(crate) fn evaluate(
     Ok((scene, camera, occlusion))
 }
 /// Whether the Render scene outputs depth instead of its picture.
+/// The later Render scene pass that films the same scene in the same way at every
+/// moment as `pass` and differs only in giving depth or the picture: one render can
+/// give both. They read the same pictures for their cards, so those are at hand now.
+pub(crate) fn twin(
+    plan: &crate::Plan,
+    pass: usize,
+    time: veylvik_document::Time,
+    visible: &std::collections::BTreeSet<veylvik_document::NodeId>,
+) -> Result<Option<usize>> {
+    let first = &plan.passes[pass];
+    let filmed = |node: usize| -> Result<Vec<String>> {
+        sample_times(plan, node, time)?
+            .into_iter()
+            .map(|at| {
+                let (scene, camera, occlusion) = evaluate(plan, node, at)?;
+                Ok(format!(
+                    "{:?}{scene:?}{camera:?}{occlusion}",
+                    (at.ticks, at.rate)
+                ))
+            })
+            .collect()
+    };
+    let mut mine: Option<Vec<String>> = None;
+    for (other, second) in plan.passes.iter().enumerate().skip(pass + 1) {
+        if second.kernel != crate::Kernel::RenderScene
+            || !visible.contains(&plan.nodes[second.node].id)
+            || shows_depth(plan, second.node) == shows_depth(plan, first.node)
+            || second.cards != first.cards
+        {
+            continue;
+        }
+        if mine.is_none() {
+            mine = Some(filmed(first.node)?);
+        }
+        if Some(filmed(second.node)?) == mine {
+            return Ok(Some(other));
+        }
+    }
+    Ok(None)
+}
 pub(crate) fn shows_depth(plan: &crate::Plan, node: usize) -> bool {
     matches!(&plan.nodes[node].operation, Operation::RenderScene(op) if op.depth)
 }

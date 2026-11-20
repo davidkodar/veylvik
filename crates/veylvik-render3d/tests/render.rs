@@ -1558,3 +1558,76 @@ fn the_reflections_view_paints_each_lights_reflection_in_its_own_colour() {
     assert_eq!(map[0], picture[0]);
     assert_eq!(shot(false), picture);
 }
+
+#[test]
+#[ignore = "requires Vulkan"]
+fn a_picture_and_its_depth_from_one_render_are_the_two_renders_exactly() {
+    // Two see-through cards and a cube, filmed by a picture node and a depth node, and
+    // both shown at once: the picture over its depth, and the other way round.
+    let film = |picture_over_depth: bool, shared: bool| {
+        let mut renderer = renderer();
+        renderer.share_scene_renders = shared;
+        let (mut doc, inputs, _, image) = gradient();
+        let mut far = op(&IMAGE_CARD);
+        if let Operation::ImageCard(c) = &mut far {
+            c.placement.position = [0.0, 0.0, -100.0].into();
+            c.opacity = 0.4.into();
+        }
+        let far = add(&mut doc, far, &[("image", image)]);
+        let mut near = op(&IMAGE_CARD);
+        if let Operation::ImageCard(c) = &mut near {
+            c.opacity = 0.9.into();
+        }
+        let near = add(&mut doc, near, &[("image", image)]);
+        let block = add(&mut doc, cube(30.0, [60.0, 10.0, 40.0]), &[]);
+        let cards = add(
+            &mut doc,
+            op(&MERGE_SCENES),
+            &[("scene", far), ("scene_2", near)],
+        );
+        let scene = add(
+            &mut doc,
+            op(&MERGE_SCENES),
+            &[("scene", cards), ("scene_2", block)],
+        );
+        let picture = add(&mut doc, op(&RENDER_SCENE), &[("scene", scene)]);
+        let mut depth = op(&RENDER_SCENE);
+        if let Operation::RenderScene(r) = &mut depth {
+            r.depth = true;
+        }
+        let depth = add(&mut doc, depth, &[("scene", scene)]);
+        let (under, over) = if picture_over_depth {
+            (depth, picture)
+        } else {
+            (picture, depth)
+        };
+        doc.output = add(
+            &mut doc,
+            op(registry::TYPES
+                .iter()
+                .find(|t| t.type_id == "merge")
+                .unwrap()),
+            &[("background", under), ("foreground", over)],
+        );
+        render(&renderer, &doc, &inputs)
+    };
+    assert!(
+        film(true, false) != film(false, false),
+        "the two orders show the same"
+    );
+    for picture_over_depth in [true, false] {
+        let (apart, together) = (
+            film(picture_over_depth, false),
+            film(picture_over_depth, true),
+        );
+        // There is a picture at all, and the two renders that make it are told apart.
+        assert!(apart.iter().any(|p| p[3] > 0.0));
+        assert!(
+            apart
+                .iter()
+                .zip(&together)
+                .all(|(a, b)| a.map(f32::to_bits) == b.map(f32::to_bits)),
+            "one render for both differs from two (picture over depth: {picture_over_depth})"
+        );
+    }
+}

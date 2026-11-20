@@ -318,7 +318,7 @@ impl Kernel {
         }
     }
 }
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 pub(crate) enum Input {
     Empty,
     Value(usize),

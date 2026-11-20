@@ -277,6 +277,7 @@ impl SceneRenderer for Engine {
             target,
             models,
             depth: show_depth,
+            also,
             ..
         } = job;
         let expanded = self.expand(scene, models)?;
@@ -522,6 +523,10 @@ impl SceneRenderer for Engine {
             rotation: e.rotation.to_radians(),
         });
         let view = math::rigid_inverse(&camera.world);
+        // Picture and depth picture from one render: the scene is drawn as for the
+        // picture, and the cards are then drawn once more, solid, into the depth alone.
+        let both = also.is_some_and(|(_, other)| other != show_depth);
+        let mut solid_cards: Vec<usize> = Vec::new();
         let mut draws = Vec::new();
         let mut looks = Vec::new();
         for object in order {
@@ -619,7 +624,7 @@ impl SceneRenderer for Engine {
             let texture = self.part_texture(device, &object.geometry)?;
             let (pipeline, image) = match &object.geometry {
                 Geometry::Card { image, .. } => (
-                    if show_depth {
+                    if show_depth && !both {
                         &self.card_solid
                     } else {
                         &self.card
@@ -731,6 +736,9 @@ impl SceneRenderer for Engine {
                     },
                 ],
             });
+            if both && matches!(object.geometry, Geometry::Card { .. }) {
+                solid_cards.push(draws.len());
+            }
             draws.push((pipeline, bind, vertices, indices, count));
         }
         let sky = surround.filter(|e| e.background).map(|e| {
@@ -820,37 +828,91 @@ impl SceneRenderer for Engine {
                 pass.draw_indexed(0..*count, 0, 0..1);
             }
         }
-        let lens = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("3D lens"),
-            contents: bytemuck::cast_slice(&lens(&camera, scene, width, blend, show_depth)),
-            usage: wgpu::BufferUsages::UNIFORM,
-        });
-        let copy = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("3D resolve copy"),
-            layout: &self.copy.get_bind_group_layout(0),
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&resolved),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: target.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: wgpu::BindingResource::TextureView(&depth),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 3,
-                    resource: lens.as_entire_binding(),
-                },
-            ],
-        });
-        let mut pass = encoder.begin_compute_pass(&Default::default());
-        pass.set_pipeline(&self.copy);
-        pass.set_bind_group(0, &copy, &[]);
-        pass.dispatch_workgroups(width.div_ceil(8), height.div_ceil(8), 1);
+        // Read the render out into a frame: the picture, or each pixel's distance.
+        let read_out = |encoder: &mut wgpu::CommandEncoder, into: &wgpu::Buffer, as_depth: bool| {
+            let lens = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("3D lens"),
+                contents: bytemuck::cast_slice(&lens(&camera, scene, width, blend, as_depth)),
+                usage: wgpu::BufferUsages::UNIFORM,
+            });
+            let copy = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("3D resolve copy"),
+                layout: &self.copy.get_bind_group_layout(0),
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: wgpu::BindingResource::TextureView(&resolved),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: into.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: wgpu::BindingResource::TextureView(&depth),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 3,
+                        resource: lens.as_entire_binding(),
+                    },
+                ],
+            });
+            let mut pass = encoder.begin_compute_pass(&Default::default());
+            pass.set_pipeline(&self.copy);
+            pass.set_bind_group(0, &copy, &[]);
+            pass.dispatch_workgroups(width.div_ceil(8), height.div_ceil(8), 1);
+        };
+        let Some((second, second_depth)) = also else {
+            read_out(encoder, target, show_depth);
+            return Ok(());
+        };
+        if !both {
+            read_out(encoder, target, show_depth);
+            read_out(encoder, second, second_depth);
+            return Ok(());
+        }
+        // The picture first, while the depth holds the solid objects only, as a picture's
+        // lens needs it; then the cards' solid parts go into the depth, and that is read.
+        let (picture, distance) = if show_depth {
+            (second, target)
+        } else {
+            (target, second)
+        };
+        read_out(encoder, picture, false);
+        if !solid_cards.is_empty() {
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("3D cards into the depth"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &colour,
+                    depth_slice: None,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
+                        store: wgpu::StoreOp::Discard,
+                    },
+                })],
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: &depth,
+                    depth_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Load,
+                        store: wgpu::StoreOp::Store,
+                    }),
+                    stencil_ops: None,
+                }),
+                timestamp_writes: None,
+                occlusion_query_set: None,
+                multiview_mask: None,
+            });
+            pass.set_pipeline(&self.card_solid);
+            for at in &solid_cards {
+                let (_, bind, vertices, indices, count) = &draws[*at];
+                pass.set_bind_group(0, bind, &[]);
+                pass.set_vertex_buffer(0, vertices.slice(..));
+                pass.set_index_buffer(indices.slice(..), wgpu::IndexFormat::Uint32);
+                pass.draw_indexed(0..*count, 0, 0..1);
+            }
+        }
+        read_out(encoder, distance, true);
         Ok(())
     }
 }

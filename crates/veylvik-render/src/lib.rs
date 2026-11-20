@@ -231,6 +231,9 @@ pub struct Renderer {
     cache: Mutex<cache::FrameCache>,
     flow_engine: Mutex<Option<Arc<flow::Engine>>>,
     scene_renderer: std::sync::RwLock<Option<Arc<dyn SceneRenderer>>>,
+    /// One 3D render gives both the picture and the depth picture when two Render scene
+    /// nodes film the same scene the same way. On unless switched off to compare.
+    pub share_scene_renders: bool,
     /// While set, each pass of a render is finished on the card before the next begins
     /// and its time is put here: slower, and only for finding where a frame's time goes.
     pass_times: Mutex<Option<Vec<PassTime>>>,
@@ -484,6 +487,7 @@ impl Renderer {
             flow_engine: Mutex::new(None),
             scene_renderer: std::sync::RwLock::new(None),
             pass_times: Mutex::new(None),
+            share_scene_renders: true,
             cache_limit_bytes: 64 * 1024 * 1024,
             owner: Arc::new(frame::DeviceIdentity),
             pool_limit_bytes: 128 * 1024 * 1024,
@@ -1010,12 +1014,20 @@ impl Renderer {
                 running = next.map(|(node, kernel)| (node, kernel, std::time::Instant::now()));
                 Ok(())
             };
-        for scheduled in &plan.passes {
+        // A Render scene pass whose picture its twin has already made (see below), kept
+        // in a frame of its own until the pass's turn comes.
+        let mut made: Vec<Option<wgpu::Buffer>> = vec![None; plan.passes.len()];
+        for (at_pass, scheduled) in plan.passes.iter().enumerate() {
             if !visible.contains(&plan.nodes[scheduled.node].id) {
                 stale[scheduled.output] = true;
                 continue;
             }
             mark(&mut encoder, Some((scheduled.node, scheduled.kernel)))?;
+            if let Some(ready) = made[at_pass].take() {
+                encoder.copy_buffer_to_buffer(&ready, 0, &buffers[scheduled.output], 0, byte_size);
+                stale[scheduled.output] = false;
+                continue;
+            }
             for input in scheduled
                 .inputs
                 .iter()
@@ -1058,6 +1070,28 @@ impl Renderer {
                     .collect();
                 // Motion blur renders several moments and averages them in place.
                 let moments = scene_hook::sample_times(plan, scheduled.node, time)?;
+                // A picture and a depth picture of the same scene filmed the same way are
+                // one render with two outputs: find the other, if writing it now is safe.
+                // The other's picture goes into a frame of its own, if there is room for one.
+                let twin = if self.share_scene_renders {
+                    scene_hook::twin(plan, at_pass, time, &visible)?
+                } else {
+                    None
+                };
+                let spare = match twin {
+                    Some(other) => resources
+                        .take(
+                            &self.device,
+                            byte_size,
+                            wgpu::BufferUsages::STORAGE
+                                | wgpu::BufferUsages::COPY_SRC
+                                | wgpu::BufferUsages::COPY_DST,
+                            "scene twin",
+                        )
+                        .ok()
+                        .map(|buffer| (other, buffer)),
+                    None => None,
+                };
                 for (k, at) in moments.into_iter().enumerate() {
                     let (scene, camera, occlusion) =
                         scene_hook::evaluate(plan, scheduled.node, at)?;
@@ -1080,7 +1114,16 @@ impl Renderer {
                         environment: &self.studio_environment,
                         ltc: &self.ltc,
                         target: &buffers[scheduled.output],
+                        also: spare.as_ref().map(|(other, buffer)| {
+                            (
+                                buffer,
+                                scene_hook::shows_depth(plan, plan.passes[*other].node),
+                            )
+                        }),
                     })?;
+                }
+                if let Some((other, buffer)) = spare {
+                    made[other] = Some(buffer);
                 }
                 continue;
             }
