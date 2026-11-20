@@ -3817,7 +3817,9 @@ impl Studio {
                         }
                     });
                 }
-                egui::CentralPanel::default().frame(design::panel(ui.ctx())).show_inside(ui, |ui| {
+                egui::CentralPanel::default().frame(if self.viewer_fullscreen { egui::Frame::NONE.fill(egui::Color32::BLACK) } else { design::panel(ui.ctx()) }).show_inside(ui, |ui| {
+                    // Full screen is the picture alone: no toolbars, no tool hints.
+                    if !self.viewer_fullscreen {
                     ui.horizontal_wrapped(|ui| {
                         ui.heading("Viewer");
                         if matches!(self.draft.operation, Operation::Text(veylvik_document::nodes::Text { .. })) {
@@ -3938,6 +3940,7 @@ impl Studio {
                             }
                         });
                     }
+                    }
                     if self.comparison.active() {
                         self.comparison_view(ui);
                     } else if let Some(frame) = self.displayed.clone() {
@@ -4050,12 +4053,15 @@ impl Studio {
                             egui::Color32::WHITE,
                         );
                         let position = canvas.right_bottom() - egui::vec2(8.0, 8.0) - galley.size();
-                        painter.rect_filled(
-                            egui::Rect::from_min_size(position, galley.size()).expand(3.0),
-                            2.0,
-                            egui::Color32::from_black_alpha(190),
-                        );
-                        painter.galley(position, galley, egui::Color32::WHITE);
+                        // Full screen shows the picture and nothing else.
+                        if !self.viewer_fullscreen {
+                            painter.rect_filled(
+                                egui::Rect::from_min_size(position, galley.size()).expand(3.0),
+                                2.0,
+                                egui::Color32::from_black_alpha(190),
+                            );
+                            painter.galley(position, galley, egui::Color32::WHITE);
+                        }
                         // A pending frame must never change the canvas geometry.
                         // During playback, retaining the previous frame is normal.
                         if self.displayed_ticket != self.wanted && (!self.playing || self.error) {

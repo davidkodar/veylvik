@@ -97,6 +97,8 @@ impl Studio {
             return;
         }
         self.viewer_fullscreen = on;
+        // The picture takes the room it now has, in and out of full screen.
+        self.navigation.fit();
         // A window that was full screen already stays that way afterwards.
         if on {
             self.window_was_windowed = !ctx.input(|i| i.viewport().fullscreen.unwrap_or(false));
