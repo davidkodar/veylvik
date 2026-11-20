@@ -632,6 +632,29 @@ fn a_video_frame_decoded_again_is_known_as_the_same_frame() {
         .insert(&mut inputs, path.to_str().unwrap());
     assert!(inputs.steady(&plan));
     let at = |frame: i64| RenderRequest::full(Time::new(frame, 24).unwrap());
+    // What a frame is made of is told from the file and the frame's number: nothing is
+    // decoded for it, however many frames are asked about.
+    let video = veylvik_io::video::Video::open(&path, 1024 * 1024).unwrap();
+    let mut asked = ImageInputs::default();
+    let video = Arc::new(video);
+    asked.insert_source(path.to_str().unwrap(), video.clone());
+    let told: Vec<_> = (0..12)
+        .map(|frame| renderer.identities(&plan, at(frame), &asked).unwrap())
+        .collect();
+    let report = video.diagnostics().unwrap();
+    assert_eq!(
+        (report.gpu_conversions, report.cpu_realizations),
+        (0, 0),
+        "naming a frame decoded it"
+    );
+    assert!(told.iter().all(|(_, lasting)| lasting.is_some()));
+    assert_eq!(
+        told.iter()
+            .map(|(name, _)| name)
+            .collect::<std::collections::BTreeSet<_>>()
+            .len(),
+        12
+    );
     let look = |frame| {
         let made = renderer
             .render_gpu_cached(&plan, at(frame), &inputs)

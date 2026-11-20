@@ -243,3 +243,38 @@ fn a_picture_made_apart_is_part_of_what_the_whole_is_made_of() {
     assert_ne!(bright.0.0, early.0.0);
     assert_ne!(bright.0.1, early.0.1);
 }
+
+#[test]
+#[ignore = "requires Vulkan"]
+fn a_picture_found_again_is_bit_for_bit_the_picture_made() {
+    // What an export writes must not depend on whether the frame was at hand: made
+    // now, or found among the renderer's kept pictures, it is the same numbers.
+    let renderer = Renderer::new().unwrap();
+    let doc = veylvik_document::motion_demo();
+    let plan = Plan::compile(&doc).unwrap();
+    let inputs = ImageInputs::default();
+    for frame in [0, 7, 31] {
+        let request = RenderRequest::full(Time::at_frame(frame, doc.frame_rate).unwrap());
+        let made = renderer
+            .render_frame(&plan, request, &inputs)
+            .unwrap()
+            .pixels;
+        let hits = renderer.cache_stats().unwrap().hits;
+        let first = renderer.render_gpu_cached(&plan, request, &inputs).unwrap();
+        let again = renderer.render_gpu_cached(&plan, request, &inputs).unwrap();
+        assert!(
+            renderer.cache_stats().unwrap().hits > hits,
+            "frame {frame} was not found again"
+        );
+        for found in [first, again] {
+            let pixels = renderer.read_frame(&found).unwrap().pixels;
+            assert!(
+                pixels
+                    .iter()
+                    .zip(&made)
+                    .all(|(a, b)| a.map(f32::to_bits) == b.map(f32::to_bits)),
+                "frame {frame}: a kept picture differs from one made now"
+            );
+        }
+    }
+}

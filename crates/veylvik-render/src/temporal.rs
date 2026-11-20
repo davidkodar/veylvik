@@ -119,7 +119,7 @@ impl Renderer {
                 ),
             );
         }
-        let resolved = inputs.resolve_on(plan, request.time, Some(self))?;
+        let resolved = inputs.resolve_named(plan, request.time, Some(self), Some(&mut names))?;
         crate::cache::Key::with(plan, request, &resolved, &names)
     }
     /// Cancellable evaluation with preview shutter quality. Export APIs use final quality.

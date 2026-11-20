@@ -695,6 +695,13 @@ impl FrameSource for Video {
     fn steady(&self) -> bool {
         true
     }
+    // The same name, told from the file's stamp and the frame's number alone.
+    fn frame_name(&self, time: Time, target: Option<[u32; 2]>, input: InputColour) -> Option<u64> {
+        if stamp(&self.path).ok()? != self.stamp {
+            return None;
+        }
+        Some(self.name(self.index(time).ok()?, target, input, true))
+    }
     fn cache_dependencies(&self) -> Option<Vec<PathBuf>> {
         Some(vec![self.path.clone()])
     }

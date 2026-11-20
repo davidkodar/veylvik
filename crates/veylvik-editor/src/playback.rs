@@ -132,8 +132,8 @@ impl crate::Studio {
                 let frames: std::collections::BTreeSet<_> = cache.gpu_frames.iter().chain(&cache.disk_frames).chain(&cache.ready_frames)
                     .filter_map(|t|crate::key_timeline::frame(*t, doc.frame_rate, count))
                     .filter(|f| valid && *f>=range.0 && *f<=range.1).collect();
-                ui.add_sized([166.,22.], egui::Label::new(egui::RichText::new(format!("{:>4}/{:<4} cached",frames.len(),range.1-range.0+1)).monospace().weak()).truncate())
-                    .on_hover_text(format!("GPU: {} frames / {:.1} MiB; disk: {} frames / {:.1} MiB; cache hits: {}. Green ruler marks = GPU; blue = disk. Change budgets in Preferences > Performance.",cache.gpu_frames.len(),cache.gpu_bytes as f64/1048576.,cache.disk_frames.len(),cache.disk_bytes as f64/1048576.,cache.hits));
+                ui.add_sized([166.,22.], egui::Label::new(egui::RichText::new(format!("{:>4}/{:<4} {}",frames.len(),range.1-range.0+1,if cache.full {"store full"} else {"cached"})).monospace().weak()).truncate())
+                    .on_hover_text(format!("{}Played pictures kept: {:.0} MiB in memory, {:.0} MiB on disk; found again {} times. The green line under the ruler marks the frames that are kept. Limits are in Preferences, under Played pictures.",if cache.full {"The store is full: frames are no longer prepared in the background. Raise its limits, or clear it. "} else {""},cache.picture_memory_bytes as f64/1048576.,cache.picture_disk_bytes as f64/1048576.,cache.hits));
                 if let Some(warning) = cache.warning {
                     ui.colored_label(ui.visuals().warn_fg_color,"Cache notice").on_hover_text(warning);
                 }

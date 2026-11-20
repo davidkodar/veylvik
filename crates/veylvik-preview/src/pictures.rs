@@ -112,6 +112,8 @@ pub(crate) struct Pictures {
     waiting: VecDeque<(u64, Vec<u8>)>,
     /// Lasting pictures on disk from this or an earlier session, by name and look.
     found: std::collections::BTreeMap<(u64, u64), Found>,
+    /// Pictures let go to stay within the limits, since the start.
+    pub dropped: u64,
 }
 /// A picture packed without loss.
 pub(crate) fn pack(picture: &[u8]) -> Result<Vec<u8>> {
@@ -445,6 +447,7 @@ impl Pictures {
             };
             if let Some(found) = self.found.remove(&oldest) {
                 let _ = std::fs::remove_file(found.path);
+                self.dropped += 1;
             }
         }
         while self.disk_bytes() > limits.disk {
@@ -455,8 +458,10 @@ impl Pictures {
                 let _ = std::fs::remove_file(path);
             }
         }
+        let before = self.entries.len();
         self.entries
             .retain(|e| e.memory.is_some() || e.disk.is_some());
+        self.dropped += (before - self.entries.len()) as u64;
         failure.map_or(Ok(()), Err)
     }
     /// Another plan over the same sources: a picture known by what it is made of stays,

@@ -148,6 +148,17 @@ pub trait FrameSource: Send + Sync {
         None
     }
     fn byte_budget(&self) -> u64;
+    /// The name the frame at `time` would carry, when the source can tell without
+    /// decoding it (see [`Image::named`]); then what a picture is made of can be told
+    /// without reading its footage. `target` and `colour` are as for the frame itself.
+    fn frame_name(
+        &self,
+        _time: Time,
+        _target: Option<[u32; 2]>,
+        _colour: veylvik_document::media::InputColour,
+    ) -> Option<u64> {
+        None
+    }
     /// Whether a frame asked for again is known as the frame given before, for as long
     /// as its content is the same (it is the very frame, or carries the same name:
     /// [`Image::named`]): then a picture made of it can be known again by what it is made
@@ -292,6 +303,18 @@ impl ImageInputs {
         time: Time,
         renderer: Option<&crate::Renderer>,
     ) -> Result<Self> {
+        self.resolve_named(plan, time, renderer, None)
+    }
+    /// As `resolve_on`. With `names`, footage whose source can name its frame without
+    /// decoding it is not decoded: its key is given that name there instead, for telling
+    /// what the picture is made of.
+    pub(crate) fn resolve_named(
+        &self,
+        plan: &crate::Plan,
+        time: Time,
+        renderer: Option<&crate::Renderer>,
+        mut names: Option<&mut BTreeMap<String, (u64, bool)>>,
+    ) -> Result<Self> {
         let mut result = self.clone();
         let mut decoded_bytes = 0u64;
         // The footage of one frame may take half the renderer's budget, and never less
@@ -336,6 +359,12 @@ impl ImageInputs {
                 let time = time.filter(|_| visible.contains(&node.id));
                 let image = if let Some(time) = time {
                     if let Some(source) = self.2.get(asset) {
+                        if let Some(names) = names.as_deref_mut()
+                            && let Some(name) = source.frame_name(time, target, *colour)
+                        {
+                            names.insert(key, (name, true));
+                            continue;
+                        }
                         if let Some(renderer) = renderer
                             && let Some(frame) =
                                 source.gpu_frame_with(time, renderer, target, *colour)?

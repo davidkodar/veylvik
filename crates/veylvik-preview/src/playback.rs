@@ -53,6 +53,9 @@ pub struct Status {
     pub picture_disk_bytes: u64,
     /// The store has no room for more prepared pictures.
     pub full: bool,
+    /// Pictures let go to stay within the limits, since the start: a host that shows
+    /// what is kept sees here that something went.
+    pub pictures_dropped: u64,
 }
 #[derive(Clone, Default)]
 pub struct Control(
@@ -970,6 +973,7 @@ impl Store {
                 picture_memory_bytes: self.pictures.memory_bytes(),
                 picture_disk_bytes: self.pictures.disk_bytes(),
                 full: self.full,
+                pictures_dropped: self.pictures.dropped,
             };
         }
     }
