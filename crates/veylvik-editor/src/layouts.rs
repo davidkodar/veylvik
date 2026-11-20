@@ -208,8 +208,9 @@ impl Studio {
             }
         });
         let mut second = self.layouts.second_viewer;
-        if ui
-            .checkbox(&mut second, "Viewer in its own window")
+        if self.capabilities.second_viewer
+            && ui
+                .checkbox(&mut second, "Viewer in its own window")
             .on_hover_text("A second window with the same picture, for another screen. Double-click it for full screen")
             .changed()
         {

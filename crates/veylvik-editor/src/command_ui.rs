@@ -101,7 +101,34 @@ impl Studio {
         self.keys_changed(ctx);
     }
     /// Do what `cmd` names, as its menu item would.
+    /// Whether the host lets the editor do this at all: what belongs to the window, the
+    /// project's files and the export is the host's when the editor is its guest.
+    pub(crate) fn allows(&self, cmd: Cmd) -> bool {
+        let can = &self.capabilities;
+        match cmd {
+            Cmd::StartScreen
+            | Cmd::New
+            | Cmd::NewFromMedia
+            | Cmd::Open
+            | Cmd::Save
+            | Cmd::SaveAs
+            | Cmd::UpdateHost
+            | Cmd::ProjectFiles => can.project_files,
+            Cmd::ExportVideo | Cmd::ExportFrame | Cmd::ExportSequence | Cmd::PageExport => {
+                can.export
+            }
+            Cmd::Preferences | Cmd::Shortcuts => can.preferences,
+            Cmd::Quit => can.own_window,
+            Cmd::ViewerFullScreen => can.full_screen,
+            Cmd::SecondViewer => can.second_viewer,
+            Cmd::About => can.about,
+            _ => true,
+        }
+    }
     pub(crate) fn run(&mut self, cmd: Cmd, ctx: &egui::Context) {
+        if !self.allows(cmd) {
+            return;
+        }
         let ready =
             !self.draft_dirty && !self.graph.dragging() && !self.animation_editor.dragging();
         let needs_ready = matches!(
@@ -365,7 +392,10 @@ impl Studio {
         }
         let mut run = None;
         let mut open = true;
-        let found = search(&self.commands.query);
+        let found: Vec<Cmd> = search(&self.commands.query)
+            .into_iter()
+            .filter(|cmd| self.allows(*cmd))
+            .collect();
         self.commands.chosen = self.commands.chosen.min(found.len().saturating_sub(1));
         egui::Window::new("Find a command")
             .open(&mut open)

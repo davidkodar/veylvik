@@ -93,6 +93,9 @@ impl Studio {
     }
     /// Shows the viewer alone on the whole screen, or brings the panels back.
     pub(crate) fn set_viewer_fullscreen(&mut self, ctx: &egui::Context, on: bool) {
+        if on && !self.capabilities.full_screen {
+            return;
+        }
         self.viewer_fullscreen = on;
         // A window that was full screen already stays that way afterwards.
         if on {

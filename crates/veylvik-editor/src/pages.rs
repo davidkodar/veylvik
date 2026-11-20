@@ -86,6 +86,9 @@ impl Studio {
         ui.spacing_mut().item_spacing.x = 4.0;
         ui.add_space(8.0);
         for page in Page::ALL {
+            if page == Page::Export && !self.capabilities.export {
+                continue;
+            }
             let on = self.pages.page == page;
             let text = egui::RichText::new(page.label()).size(15.5);
             let button = if on {

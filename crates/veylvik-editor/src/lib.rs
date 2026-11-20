@@ -185,13 +185,13 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 queue: state.queue.clone(),
                 adapter: state.adapter.get_info(),
                 target_format: state.target_format,
-                project: path,
+                opens: Opens::File(path),
                 live_control: match (no_control, control_directory) {
                     (true, _) => LiveControl::Off,
                     (false, Some(directory)) => LiveControl::Directory(directory),
                     (false, None) => LiveControl::Usual,
                 },
-                capabilities: Capabilities { own_window: true },
+                capabilities: Capabilities::standalone(),
             })
             .map_err(|error| error.to_string())?;
             Ok(Box::new(app))
@@ -205,8 +205,63 @@ pub const HOST_INTERFACE: u32 = 1;
 /// What the host lets the editor do beyond drawing in its area.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Capabilities {
-    /// The window is the editor's own: it may set the title, go full screen and close it.
+    /// The window is the editor's own: it sets the window's look and scale, takes all
+    /// its input, and may close it.
     pub own_window: bool,
+    /// The editor keeps projects as files itself: start screen, new, open, recent, save,
+    /// autosave and recovery. Without it the host owns the composition and its saving.
+    pub project_files: bool,
+    /// The editor's own export: the Export page, the render queue and exporting frames.
+    pub export: bool,
+    pub preferences: bool,
+    pub about: bool,
+    /// The viewer may take the whole window, or open in a window of its own.
+    pub full_screen: bool,
+    pub second_viewer: bool,
+}
+impl Capabilities {
+    /// Everything: the editor as an app of its own.
+    pub fn standalone() -> Self {
+        Self {
+            own_window: true,
+            project_files: true,
+            export: true,
+            preferences: true,
+            about: true,
+            full_screen: true,
+            second_viewer: true,
+        }
+    }
+    /// A page inside a host that owns the window, the project and the export.
+    pub fn embedded() -> Self {
+        Self {
+            own_window: false,
+            project_files: false,
+            export: false,
+            preferences: false,
+            about: false,
+            full_screen: false,
+            second_viewer: false,
+        }
+    }
+}
+/// Read a composition from a `.veylvik` file, for a host that keeps compositions as files.
+pub fn load_composition(
+    path: &std::path::Path,
+) -> Result<veylvik_document::Composition, Box<dyn std::error::Error>> {
+    Ok(veylvik_document::Composition::load(path)?)
+}
+/// What the editor starts on.
+pub enum Opens {
+    /// A project file; none starts on the start screen.
+    File(Option<PathBuf>),
+    /// A composition the host owns. The editor never writes it anywhere: the host reads
+    /// it back with [`Editor::composition`] when it saves. Relative paths in it, and
+    /// everything the editor itself writes for it (mattes, tracks, caches), are in `assets`.
+    Composition {
+        composition: Box<veylvik_document::Composition>,
+        assets: PathBuf,
+    },
 }
 /// Whether the editor listens for live control (MCP), and where.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -229,8 +284,7 @@ pub struct Setup {
     pub adapter: wgpu::AdapterInfo,
     /// The format of the surface the host's egui paints to.
     pub target_format: wgpu::TextureFormat,
-    /// The project to open; none starts on the start screen.
-    pub project: Option<PathBuf>,
+    pub opens: Opens,
     pub live_control: LiveControl,
     pub capabilities: Capabilities,
 }
@@ -354,6 +408,35 @@ impl Editor {
     pub fn revision(&self) -> u64 {
         self.studio.project.document.revision()
     }
+    /// Replace what is being edited with another composition of the host's (another clip's,
+    /// say). Undo history starts again.
+    pub fn set_composition(
+        &mut self,
+        ctx: &egui::Context,
+        composition: veylvik_document::Composition,
+        assets: PathBuf,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        self.studio
+            .open_project(Project::hosted(composition, assets)?, ctx);
+        Ok(())
+    }
+    /// The names of the steps that can be undone (oldest first) and redone (nearest
+    /// first), for a host that shows one undo list across its pages.
+    pub fn steps(&self) -> (Vec<String>, Vec<String>) {
+        self.studio.project.document.steps()
+    }
+    /// Undo or redo one step; false when there is none or the editor is mid-gesture.
+    pub fn undo(&mut self) -> bool {
+        self.step(false)
+    }
+    pub fn redo(&mut self) -> bool {
+        self.step(true)
+    }
+    fn step(&mut self, redo: bool) -> bool {
+        let before = self.revision();
+        self.studio.history(redo);
+        self.revision() != before
+    }
     /// Whether there is work that has not been saved.
     pub fn unsaved(&self) -> bool {
         self.studio.project.dirty() || self.studio.draft_dirty
@@ -375,7 +458,14 @@ impl Studio {
         let render_limits = veylvik_io::runtime::RenderLimits::from_env_with_default(
             (!preferences.values.gpu_budget_auto).then_some(preferences.values.gpu_budget_mib),
         )?;
-        let project = Project::open(setup.project.as_deref())?;
+        let project = match setup.opens {
+            Opens::File(path) => Project::open(path.as_deref())?,
+            Opens::Composition {
+                composition,
+                assets,
+            } => Project::hosted(*composition, assets)?,
+        };
+        let capabilities = setup.capabilities;
         // A guest keeps its look to itself: the style it makes here is its own, put in
         // place only while it draws, and the host's is put back at once.
         let guest = !setup.capabilities.own_window;
@@ -498,6 +588,7 @@ impl Studio {
             commands: Default::default(),
             log: Default::default(),
             host_link: Default::default(),
+            capabilities,
             guest: guest_look.map(|(look, made)| Guest {
                 look,
                 made,
@@ -532,7 +623,7 @@ impl Studio {
         };
         // Opened without a file: begin on the start screen.
         app.apply_preferences(None, &setup.context);
-        if app.project.path.is_none() {
+        if app.project.path.is_none() && app.capabilities.project_files {
             app.launch(&setup.context);
         }
         app.request_preview();
@@ -633,6 +724,8 @@ struct Studio {
     commands: command_ui::Commands,
     log: history_log::Log,
     host_link: host_link::HostLink,
+    /// What the host lets the editor do.
+    capabilities: Capabilities,
     /// As a guest in a host's window: the editor's own look and whether the keyboard is its.
     guest: Option<Guest>,
     tools: inspector_tools::Tools,
@@ -3466,7 +3559,10 @@ impl Studio {
                 );
             }
         }
-        if let Some(error) = self.recovery.tick(&self.project) {
+        // A host that owns the composition keeps its own safety copies.
+        if self.capabilities.project_files
+            && let Some(error) = self.recovery.tick(&self.project)
+        {
             self.fail(error);
         }
         for _ in 0..8 {

@@ -101,9 +101,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 queue: state.queue.clone(),
                 adapter: state.adapter.get_info(),
                 target_format: state.target_format,
-                project,
+                opens: match project {
+                    // A composition the host holds: read from a file here, as a host would
+                    // read it from its own project.
+                    Some(path) => veylvik_editor::Opens::Composition {
+                        composition: Box::new(
+                            veylvik_editor::load_composition(&path)
+                                .map_err(|error| error.to_string())?,
+                        ),
+                        assets: path.parent().unwrap_or(&path).to_path_buf(),
+                    },
+                    None => veylvik_editor::Opens::File(None),
+                },
                 live_control: LiveControl::Off,
-                capabilities: Capabilities { own_window: false },
+                capabilities: Capabilities::embedded(),
             })
             .map_err(|error| error.to_string())?;
             Ok(Box::new(Host {

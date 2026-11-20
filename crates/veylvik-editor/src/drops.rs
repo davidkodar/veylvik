@@ -121,6 +121,9 @@ impl Studio {
             .file_name()
             .map_or_else(String::new, |n| n.to_string_lossy().into_owned());
         match kind(&path) {
+            Some(Kind::Project) if !self.capabilities.project_files => self.fail(format!(
+                "{name} is a project: open it from the host, which keeps this composition"
+            )),
             Some(Kind::Project) => {
                 // Opening a project replaces everything: the rest would land in it unasked.
                 self.dropped.clear();

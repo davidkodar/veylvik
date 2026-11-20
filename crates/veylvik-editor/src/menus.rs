@@ -33,38 +33,38 @@ impl Studio {
             crate::icons::paint_wordmark(ui.painter(), egui::pos2(word.left(), top), cap, ink);
             ui.separator();
             ui.menu_button("File", |ui| {
-                if item(ui, "Start screen", "", true) { self.show_start(); }
-                ui.separator();
-                if item(ui, "New composition…", "Ctrl+N", true) { self.leave(Leave::New, ui.ctx()); }
-                if item(ui, "New from media…", "", true) { self.leave(Leave::NewFromMedia, ui.ctx()); }
-                if item(ui, "Open…", "Ctrl+O", true) { self.leave(Leave::Open, ui.ctx()); }
-                ui.separator();
-                if item(ui, "Save", "Ctrl+S", true) { self.save_project(false); }
-                if item(ui, "Save as…", "Ctrl+Shift+S", true) { self.save_project(true); }
+                if self.capabilities.project_files && item(ui, "Start screen", "", true) { self.show_start(); }
+                if self.capabilities.project_files { ui.separator(); }
+                if self.capabilities.project_files && item(ui, "New composition…", "Ctrl+N", true) { self.leave(Leave::New, ui.ctx()); }
+                if self.capabilities.project_files && item(ui, "New from media…", "", true) { self.leave(Leave::NewFromMedia, ui.ctx()); }
+                if self.capabilities.project_files && item(ui, "Open…", "Ctrl+O", true) { self.leave(Leave::Open, ui.ctx()); }
+                if self.capabilities.project_files { ui.separator(); }
+                if self.capabilities.project_files && item(ui, "Save", "Ctrl+S", true) { self.save_project(false); }
+                if self.capabilities.project_files && item(ui, "Save as…", "Ctrl+Shift+S", true) { self.save_project(true); }
                 if let Some(host) = self.host_link.host().map(str::to_owned)
                     && item(ui, &format!("Update in {host}"), "Ctrl+Shift+U", true) { self.update_host(); }
-                if item(ui, "Recover unsaved work…", "", true) {
+                if self.capabilities.project_files && item(ui, "Recover unsaved work…", "", true) {
                     self.recovery.refresh(); self.recovery.open = true;
                 }
-                ui.separator();
+                if self.capabilities.project_files { ui.separator(); }
                 if item(ui, "Import media…", "Ctrl+I", true) {
                     self.import_image(self.graph.insertion_position(ui.ctx()));
                 }
                 if item(ui, "Import numbered sequence…", "", true) { self.import_media(self.graph.insertion_position(ui.ctx()), true); }
                 if item(ui, "Reload source images", "Ctrl+R", !self.draft_dirty) { self.reload_images(); }
-                ui.separator();
-                if item(ui, "Project files…", "", true) { self.portable.open = true; }
-                if item(ui, "Render queue…", "", true) { self.go_to(crate::pages::Page::Export); self.pages.quick = false; }
-                if item(ui, "Export video…", "", true) { self.ask_export(crate::pages::ExportKind::Video); }
-                if item(ui, "Export current preview…", "Ctrl+E", true) { self.export_frame(); }
-                if item(ui, "Export image sequence…", "Ctrl+Shift+E", true) { self.ask_export(crate::pages::ExportKind::Sequence); }
+                if self.capabilities.project_files || self.capabilities.export { ui.separator(); }
+                if self.capabilities.project_files && item(ui, "Project files…", "", true) { self.portable.open = true; }
+                if self.capabilities.export && item(ui, "Render queue…", "", true) { self.go_to(crate::pages::Page::Export); self.pages.quick = false; }
+                if self.capabilities.export && item(ui, "Export video…", "", true) { self.ask_export(crate::pages::ExportKind::Video); }
+                if self.capabilities.export && item(ui, "Export current preview…", "Ctrl+E", true) { self.export_frame(); }
+                if self.capabilities.export && item(ui, "Export image sequence…", "Ctrl+Shift+E", true) { self.ask_export(crate::pages::ExportKind::Sequence); }
                 ui.separator();
                 if item(ui, "Composition settings…", "", !self.draft_dirty) {
                     self.playing = false;
                     self.composition_controls.begin(self.project.document.snapshot(), false);
                 }
-                ui.separator();
-                if item(ui, "Quit", "Q", true) { self.leave(Leave::Close, ui.ctx()); }
+                if self.capabilities.own_window { ui.separator(); }
+                if self.capabilities.own_window && item(ui, "Quit", "Q", true) { self.leave(Leave::Close, ui.ctx()); }
             });
             ui.menu_button("Edit", |ui| {
                 let history = self.project.document.history();
@@ -89,7 +89,7 @@ impl Studio {
                 let mut auto_key = self.preferences.values.auto_key;
                 if ui.checkbox(&mut auto_key, "Automatic keyframes").on_hover_text("On: changing an animated setting adds a keyframe at the current position. Off: such a change is a try-out until you add the keyframe").changed() { self.toggle_auto_key(); }
                 ui.separator();
-                if item(ui,"Preferences…","Ctrl+,",true) {self.open_preferences();}
+                if self.capabilities.preferences && item(ui,"Preferences…","Ctrl+,",true) {self.open_preferences();}
             });
             ui.menu_button("Add", |ui| {
                 let ready = !self.draft_dirty && !self.graph.dragging() && !self.animation_editor.dragging();
@@ -125,7 +125,7 @@ impl Studio {
                 let mut layer_bars = !self.layer_bars.hidden;
                 if ui.checkbox(&mut layer_bars, "Layer bars on the timeline").on_hover_text("A bar for each footage clip and fade under the ruler: drag to slide, drag an end to trim").changed() { self.layer_bars.hidden = !layer_bars; }
                 self.layout_menu(ui);
-                if item(ui, "Viewer full screen", "F11", true) { let ctx = ui.ctx().clone(); self.set_viewer_fullscreen(&ctx, true); }
+                if self.capabilities.full_screen && item(ui, "Viewer full screen", "F11", true) { let ctx = ui.ctx().clone(); self.set_viewer_fullscreen(&ctx, true); }
 
                 ui.checkbox(&mut self.browser.visible, "Library panel");
                 ui.checkbox(&mut self.inspector_visible, "Inspector panel");
@@ -182,10 +182,10 @@ impl Studio {
             });
             ui.menu_button("Help", |ui| {
                 if item(ui, "Find a command…", "Ctrl+K", true) { let ctx = ui.ctx().clone(); self.run(crate::commands::Cmd::CommandSearch, &ctx); }
-                if item(ui, "Keyboard shortcuts…", "?", true) { self.commands.editor = true; }
+                if self.capabilities.preferences && item(ui, "Keyboard shortcuts…", "?", true) { self.commands.editor = true; }
                 if item(ui, "Messages…", "", true) { self.log.messages = true; }
                 ui.separator();
-                if item(ui, "About Veylvik…", "", true) { self.about.begin(); }
+                if self.capabilities.about && item(ui, "About Veylvik…", "", true) { self.about.begin(); }
             });
             ui.separator();
             self.page_bar(ui);
@@ -193,7 +193,7 @@ impl Studio {
             ui.separator();
             // Reserve only the remaining space so long filenames never push menus offscreen.
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.add(egui::Button::new(egui::RichText::new("Render").color(crate::theme::ink(crate::theme::palette(ui.ctx()).selection))).fill(crate::theme::palette(ui.ctx()).selection)).clicked() {self.go_to(crate::pages::Page::Export);}
+                if self.capabilities.export && ui.add(egui::Button::new(egui::RichText::new("Render").color(crate::theme::ink(crate::theme::palette(ui.ctx()).selection))).fill(crate::theme::palette(ui.ctx()).selection)).clicked() {self.go_to(crate::pages::Page::Export);}
 
                 let unavailable = self.project.unavailable_assets().len();
                 if unavailable > 0 && ui.button(egui::RichText::new(format!("{unavailable} unavailable")).color(egui::Color32::LIGHT_RED))

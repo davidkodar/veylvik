@@ -61,6 +61,28 @@ impl Project {
         project.load_available_inputs();
         Ok(project)
     }
+    /// A composition a host owns: nothing here knows a file for it, and its relative
+    /// paths are in `assets`.
+    pub fn hosted(composition: veylvik_document::Composition, assets: PathBuf) -> Result<Self> {
+        let selected = composition.output;
+        let mut project = Self {
+            session: NodeId::new_v4(),
+            recovery_origin: None,
+            document: Document::new(composition)?,
+            saved_revision: Some(0),
+            compiled: None,
+            stamp: None,
+            base: assets,
+            path: None,
+            selected,
+            preview: None,
+            inputs: ImageInputs::default(),
+            asset_errors: Default::default(),
+            frame: 0,
+        };
+        project.load_available_inputs();
+        Ok(project)
+    }
     pub fn example(id: &str) -> Result<Self> {
         let scene = veylvik_document::presets::showcase::build(id)?;
         let mut project = Self::blank(960, 540, Time::new(24, 1)?, 96)?;

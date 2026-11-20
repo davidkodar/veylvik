@@ -176,6 +176,9 @@ impl Studio {
     }
     /// Keep the recent list and the open project's picture up to date. Called every frame.
     pub(crate) fn track_recent(&mut self) {
+        if !self.capabilities.project_files {
+            return;
+        }
         let Some(path) = self.project.path.clone() else {
             return;
         };
