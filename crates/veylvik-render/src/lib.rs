@@ -9,6 +9,8 @@ pub mod flow;
 /// How many letters of the user's text a material swatch shows (the first ones, large).
 pub const SWATCH_LETTERS: usize = 3;
 mod history;
+mod host_frame;
+pub use host_frame::HostPixels;
 pub mod ocio;
 mod shadow_lighting;
 mod shutter;
@@ -200,6 +202,8 @@ pub struct Renderer {
     encode_pipeline: wgpu::ComputePipeline,
     shutter_pipeline: wgpu::ComputePipeline,
     history_pipeline: wgpu::ComputePipeline,
+    /// Converts frames exchanged with a host.
+    host_pipeline: wgpu::ComputePipeline,
     preview_pipeline: wgpu::ComputePipeline,
     vector_backend: Mutex<Option<vector::Backend>>,
     vector_cache: Mutex<cache::FrameCache<vector::Key>>,
@@ -424,6 +428,7 @@ impl Renderer {
         let encode_pipeline = encode::pipeline(&device);
         let shutter_pipeline = shutter::pipeline(&device);
         let history_pipeline = history::pipeline(&device);
+        let host_pipeline = host_frame::pipeline(&device);
         let preview_pipeline = preview_scale::pipeline(&device);
         if let Some(e) = pollster::block_on(scope.pop()) {
             return Err(error(e));
@@ -446,6 +451,7 @@ impl Renderer {
             encode_pipeline,
             shutter_pipeline,
             history_pipeline,
+            host_pipeline,
             preview_pipeline,
             vector_backend: Mutex::new(None),
             vector_cache: Mutex::new(cache::FrameCache::default()),

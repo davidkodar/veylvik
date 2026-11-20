@@ -567,8 +567,13 @@ impl Project {
         let asset = path.to_str().ok_or("image path is not UTF-8")?.to_owned();
         let empty = self.is_empty();
         let previous_output = self.document.snapshot().output;
+        // Media a host keeps is called what the host calls it, not by its key.
+        let named = crate::files::host_label(&asset);
         let mut node = Node::new(
-            path.file_name().and_then(|s| s.to_str()).unwrap_or("Media"),
+            named
+                .as_deref()
+                .or_else(|| path.file_name().and_then(|s| s.to_str()))
+                .unwrap_or("Media"),
             Operation::Footage(veylvik_document::nodes::Footage {
                 asset: asset.clone(),
                 timing: Default::default(),

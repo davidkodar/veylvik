@@ -219,6 +219,15 @@ pub fn set_host(host: Option<std::sync::Arc<dyn crate::host::Host>>) {
 fn host() -> Option<std::sync::Arc<dyn crate::host::Host>> {
     HOST.read().ok().and_then(|slot| slot.clone())
 }
+static LABELS: std::sync::Mutex<std::collections::BTreeMap<String, String>> =
+    std::sync::Mutex::new(std::collections::BTreeMap::new());
+/// The name the host gave media it handed out under `key`.
+pub fn host_label(key: &str) -> Option<String> {
+    LABELS
+        .lock()
+        .ok()
+        .and_then(|labels| labels.get(key).cloned())
+}
 /// The frames of a media key, when a host is there and knows it.
 pub fn host_media(key: &str) -> Option<std::sync::Arc<dyn veylvik_render::FrameSource>> {
     host().and_then(|host| host.media(key))
@@ -270,6 +279,9 @@ pub fn pick(choice: Choice, folder: &Path, name: &str) -> Result<Option<Chosen>,
             let source = host
                 .media(&key)
                 .ok_or_else(|| format!("the host named media it does not have: {key}"))?;
+            if let Ok(mut labels) = LABELS.lock() {
+                labels.insert(key.clone(), label.clone());
+            }
             Some(Chosen::Media { key, label, source })
         }
     })
