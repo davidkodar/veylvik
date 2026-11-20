@@ -786,6 +786,23 @@ impl Renderer {
         );
         Ok(frame)
     }
+    /// The identity of the picture `plan` gives for `request`: equal identities are the
+    /// same picture, so one may stand for the other. It is made of everything a pass is
+    /// given (its values at that time, its inputs, a scene's contents, a shader's text),
+    /// never of the time itself unless a pass reads it.
+    pub fn identity(
+        &self,
+        plan: &Plan,
+        request: RenderRequest,
+        inputs: &ImageInputs,
+    ) -> Result<u64> {
+        use std::hash::{Hash, Hasher};
+        let resolved = inputs.resolve_on(plan, request.time, Some(self))?;
+        let key = cache::Key::new(plan, request, &resolved)?;
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        key.words().hash(&mut hasher);
+        Ok(hasher.finish())
+    }
     pub fn cache_stats(&self) -> Result<CacheStats> {
         Ok(self
             .cache

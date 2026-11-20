@@ -50,6 +50,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "frame {frame}: the whole picture {whole:.1} ms ({:.1} a second)",
             1000.0 / whole
         );
+        if std::env::var_os("PROFILE_WHOLE").is_some() {
+            // Only the whole picture, a few more times, to see how steady the figure is.
+            for _ in 0..4 {
+                println!("  again: {:.1} ms", cost(&plan, &inputs, frame)?);
+            }
+            continue;
+        }
         let mut each = Vec::new();
         for (id, node) in &doc.nodes {
             let Ok(plan) = Plan::compile_output(&doc, *id) else {

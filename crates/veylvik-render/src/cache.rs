@@ -14,6 +14,9 @@ pub struct CacheStats {
 #[derive(PartialEq, Eq)]
 pub(crate) struct Key(Vec<u32>);
 impl Key {
+    pub fn words(&self) -> &[u32] {
+        &self.0
+    }
     pub fn new(plan: &Plan, request: RenderRequest, images: &ImageInputs) -> Result<Self> {
         request.time.seconds()?;
         let region = request.region.unwrap_or(Region {
