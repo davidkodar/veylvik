@@ -144,6 +144,74 @@ impl Renderer {
     }
 }
 
+/// The box a path can cover in a frame, `[left, top, width, height]`, a pixel wider on
+/// every side for soft edges: its points and control points bound it. Never empty.
+fn bounds(path: &PathMask, width: u32, height: u32) -> [u32; 4] {
+    let (mut low, mut high) = ([f32::MAX; 2], [f32::MIN; 2]);
+    let mut take = |point: [f32; 2]| {
+        for axis in 0..2 {
+            low[axis] = low[axis].min(point[axis]);
+            high[axis] = high[axis].max(point[axis]);
+        }
+    };
+    for command in &path.commands {
+        match command {
+            PathCommand::Move { to } | PathCommand::Line { to } => take(*to),
+            PathCommand::Quad { control, to } => {
+                take(*control);
+                take(*to);
+            }
+            PathCommand::Cubic {
+                control1,
+                control2,
+                to,
+            } => {
+                take(*control1);
+                take(*control2);
+                take(*to);
+            }
+            PathCommand::Close {} => {}
+        }
+    }
+    let frame = [width as f32, height as f32];
+    let left = (low[0] - 1.0).floor().clamp(0.0, frame[0] - 1.0) as u32;
+    let top = (low[1] - 1.0).floor().clamp(0.0, frame[1] - 1.0) as u32;
+    let right = ((high[0] + 1.0).ceil().clamp(0.0, frame[0]) as u32).max(left + 1);
+    let bottom = ((high[1] + 1.0).ceil().clamp(0.0, frame[1]) as u32).max(top + 1);
+    [left, top, right - left, bottom - top]
+}
+/// The same path with `area`'s corner as its origin.
+fn moved(path: &PathMask, area: [u32; 4]) -> PathMask {
+    let by = |point: [f32; 2]| [point[0] - area[0] as f32, point[1] - area[1] as f32];
+    PathMask {
+        keys: Vec::new(),
+        fill_rule: path.fill_rule,
+        commands: path
+            .commands
+            .iter()
+            .map(|command| match command {
+                PathCommand::Move { to } => PathCommand::Move { to: by(*to) },
+                PathCommand::Line { to } => PathCommand::Line { to: by(*to) },
+                PathCommand::Quad { control, to } => PathCommand::Quad {
+                    control: by(*control),
+                    to: by(*to),
+                },
+                PathCommand::Cubic {
+                    control1,
+                    control2,
+                    to,
+                } => PathCommand::Cubic {
+                    control1: by(*control1),
+                    control2: by(*control2),
+                    to: by(*to),
+                },
+                PathCommand::Close {} => PathCommand::Close {},
+            })
+            .collect(),
+    }
+}
+/// Each drawn node's picture and where its top left corner sits in the frame.
+pub(crate) type Drawn = std::collections::BTreeMap<usize, (std::sync::Arc<GpuFrame>, [u32; 2])>;
 #[derive(Clone, PartialEq)]
 pub(crate) struct Key {
     geometry: PathMask,
@@ -158,12 +226,22 @@ impl Renderer {
             .map_err(|_| error("vector cache poisoned"))?
             .stats())
     }
+    /// What drawn shapes and text may keep: the set limit, or what the last frame drew
+    /// when that is more, up to half the budget.
+    fn vector_room(&self) -> u64 {
+        self.vector_cache_limit_bytes
+            .max(
+                self.vector_wanted
+                    .load(std::sync::atomic::Ordering::Relaxed),
+            )
+            .min(self.budget_bytes / 2)
+    }
     pub(crate) fn trim_vector_cache_to_budget(&self) -> Result<()> {
         let mut cache = self
             .vector_cache
             .lock()
             .map_err(|_| error("vector cache poisoned"))?;
-        cache.trim(self.vector_cache_limit_bytes.min(self.budget_bytes));
+        cache.trim(self.vector_room());
         while self.resource_stats()?.held_bytes > self.budget_bytes && cache.evict() {}
         Ok(())
     }
@@ -173,7 +251,7 @@ impl Renderer {
         request: crate::RenderRequest,
         inputs: &crate::ImageInputs,
         download: bool,
-    ) -> Result<std::collections::BTreeMap<usize, std::sync::Arc<GpuFrame>>> {
+    ) -> Result<Drawn> {
         {
             let mut pool = self
                 .pool
@@ -236,7 +314,15 @@ impl Renderer {
             .vector_cache
             .lock()
             .map_err(|_| error("vector cache poisoned"))?;
-        cache.trim(self.vector_cache_limit_bytes.min(self.budget_bytes));
+        // Room for everything this one frame draws, up to half the budget: with room for
+        // all but one, each shape drawn pushes out the one needed next, and all of them
+        // are drawn again for every frame. It still gives way to rendering below.
+        self.vector_wanted.store(
+            (keys.len() as u64).saturating_mul(frame_bytes),
+            std::sync::atomic::Ordering::Relaxed,
+        );
+        let limit = self.vector_room();
+        cache.trim(limit);
         // A cached source is already a held buffer. Charge only missing masks,
         // and evict unused retained coverage before declaring the render too big.
         loop {
@@ -258,27 +344,31 @@ impl Renderer {
         let mut frames = std::collections::BTreeMap::new();
         let mut prepared: Vec<(Key, std::sync::Arc<GpuFrame>)> = Vec::new();
         for (index, key) in keys {
+            // A shape is drawn and kept over its own box only: a logo's part covers a
+            // thousandth of a 4K frame. Text is kept whole (its pass reads it so).
+            let area = match &plan.nodes[index].operation {
+                veylvik_document::Operation::Path(_) => {
+                    bounds(&key.geometry, key.width, key.height)
+                }
+                _ => [0, 0, key.width, key.height],
+            };
             if let Some((_, frame)) = prepared.iter().find(|(candidate, _)| candidate == &key) {
-                frames.insert(index, frame.clone());
+                frames.insert(index, (frame.clone(), [area[0], area[1]]));
                 continue;
             }
             let frame = if let Some(frame) = cache.lookup(&key) {
                 frame
             } else {
-                let frame = std::sync::Arc::new(self.render_path_mask(
-                    &key.geometry,
-                    key.width,
-                    key.height,
-                )?);
-                cache.insert(
-                    key.clone(),
-                    frame.clone(),
-                    self.vector_cache_limit_bytes.min(self.budget_bytes),
-                );
+                let frame = std::sync::Arc::new(if area == [0, 0, key.width, key.height] {
+                    self.render_path_mask(&key.geometry, key.width, key.height)?
+                } else {
+                    self.render_path_mask(&moved(&key.geometry, area), area[2], area[3])?
+                });
+                cache.insert(key.clone(), frame.clone(), limit);
                 frame
             };
             prepared.push((key, frame.clone()));
-            frames.insert(index, frame);
+            frames.insert(index, (frame, [area[0], area[1]]));
         }
         Ok(frames)
     }

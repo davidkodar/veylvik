@@ -399,3 +399,138 @@ fn animated_path_pixels_and_caches_follow_sampled_shape() {
         .unwrap();
     assert!(std::sync::Arc::ptr_eq(&b, &held));
 }
+
+#[test]
+#[ignore = "requires Vulkan"]
+fn a_shape_kept_over_its_own_box_is_the_shape_drawn_over_the_whole_frame() {
+    use veylvik_document::*;
+    let renderer = Renderer::new().unwrap();
+    let (width, height) = (160u32, 96u32);
+    // Curved, off to one side, at fractions of a pixel, and partly outside the frame.
+    let shapes = [
+        PathMask {
+            keys: vec![],
+            fill_rule: FillRule::NonZero,
+            commands: vec![
+                Move { to: [101.3, 20.7] },
+                Cubic {
+                    control1: [140.2, 10.1],
+                    control2: [150.9, 60.4],
+                    to: [120.5, 70.2],
+                },
+                Quad {
+                    control: [90.6, 80.3],
+                    to: [84.4, 40.9],
+                },
+                Close {},
+            ],
+        },
+        PathMask {
+            keys: vec![],
+            fill_rule: FillRule::EvenOdd,
+            commands: vec![
+                Move { to: [-20.5, 70.25] },
+                Line { to: [30.75, 60.5] },
+                Line { to: [40.25, 120.0] },
+                Line { to: [-10.0, 110.5] },
+                Close {},
+            ],
+        },
+    ];
+    for geometry in shapes {
+        let node = Node::new(
+            "shape",
+            Operation::Path(nodes::Path {
+                geometry: geometry.clone(),
+            }),
+            &[],
+        );
+        let mut doc = blank(width, height, Time::new(24, 1).unwrap()).unwrap();
+        doc.output = node.id;
+        doc.nodes = [(node.id, node)].into();
+        let shown = renderer
+            .render_frame(
+                &Plan::compile(&doc).unwrap(),
+                RenderRequest::full(Time::new(0, 1).unwrap()),
+                &ImageInputs::default(),
+            )
+            .unwrap()
+            .pixels;
+        let whole = renderer
+            .read_frame(&renderer.render_path_mask(&geometry, width, height).unwrap())
+            .unwrap()
+            .pixels;
+        assert!(whole.iter().any(|p| p[3] > 0.0) && whole.iter().any(|p| p[3] == 0.0));
+        let differing = shown.iter().zip(&whole).filter(|(a, b)| a != b).count();
+        assert_eq!(
+            differing, 0,
+            "{differing} pixels differ from the shape drawn over the whole frame"
+        );
+    }
+}
+
+#[test]
+#[ignore = "requires Vulkan"]
+fn a_drawing_of_many_shapes_is_drawn_once_and_found_again() {
+    use veylvik_document::*;
+    let renderer = Renderer::new().unwrap();
+    // Twenty-four squares merged into one picture: more than sixteen, which once was
+    // all that could be kept, so each was drawn again for every frame.
+    let mut doc = blank(256, 144, Time::new(24, 1).unwrap()).unwrap();
+    let mut below = doc.output;
+    for n in 0..24u32 {
+        let (x, y) = (8.0 + (n % 8) as f32 * 30.0, 8.0 + (n / 8) as f32 * 40.0);
+        let shape = Node::new(
+            &format!("square {n}"),
+            Operation::Path(nodes::Path {
+                geometry: PathMask {
+                    keys: vec![],
+                    fill_rule: FillRule::NonZero,
+                    commands: vec![
+                        Move { to: [x, y] },
+                        Line { to: [x + 20.0, y] },
+                        Line {
+                            to: [x + 20.0, y + 25.0],
+                        },
+                        Line { to: [x, y + 25.0] },
+                        Close {},
+                    ],
+                },
+            }),
+            &[],
+        );
+        let merged = Node::new(
+            &format!("with {n}"),
+            Operation::Merge(nodes::Merge {}),
+            &[("background", below), ("foreground", shape.id)],
+        );
+        below = merged.id;
+        doc.nodes.insert(shape.id, shape);
+        doc.nodes.insert(merged.id, merged);
+    }
+    doc.output = below;
+    let plan = Plan::compile(&doc).unwrap();
+    let frame = |n: i64| {
+        renderer
+            .render_frame(
+                &plan,
+                RenderRequest::full(Time::new(n, 24).unwrap()),
+                &ImageInputs::default(),
+            )
+            .unwrap()
+            .pixels
+    };
+    let first = frame(0);
+    let drawn = renderer.vector_cache_stats().unwrap();
+    assert_eq!((drawn.misses, drawn.entries), (24, 24));
+    // Kept over their own boxes they take a small part of what 24 whole frames would.
+    assert!(
+        drawn.bytes < 24 * 256 * 144 * 16 / 8,
+        "{} bytes kept",
+        drawn.bytes
+    );
+    assert!(frame(1) == first && frame(2) == first);
+    let again = renderer.vector_cache_stats().unwrap();
+    assert_eq!(again.misses, 24, "shapes were drawn again");
+    assert_eq!((again.hits, again.evictions), (48, 0));
+}

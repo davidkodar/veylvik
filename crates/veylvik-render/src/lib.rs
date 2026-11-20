@@ -227,6 +227,8 @@ pub struct Renderer {
     vector_backend: Mutex<Option<vector::Backend>>,
     vector_cache: Mutex<cache::FrameCache<vector::Key>>,
     pub vector_cache_limit_bytes: u64,
+    /// What the last frame's shapes and text take when all are kept.
+    vector_wanted: std::sync::atomic::AtomicU64,
     pool: Mutex<pool::Pool>,
     cache: Mutex<cache::FrameCache>,
     flow_engine: Mutex<Option<Arc<flow::Engine>>>,
@@ -237,6 +239,8 @@ pub struct Renderer {
     /// While set, each pass of a render is finished on the card before the next begins
     /// and its time is put here: slower, and only for finding where a frame's time goes.
     pass_times: Mutex<Option<Vec<PassTime>>>,
+    /// When the last thing was noted while timing, for the work between the passes.
+    noted: Mutex<std::time::Instant>,
     ocio_cache: Mutex<std::collections::VecDeque<ocio::CachedProcessor>>,
     pub cache_limit_bytes: u64,
     owner: Arc<frame::DeviceIdentity>,
@@ -481,12 +485,14 @@ impl Renderer {
             vector_backend: Mutex::new(None),
             vector_cache: Mutex::new(cache::FrameCache::default()),
             vector_cache_limit_bytes: 32 * 1024 * 1024,
+            vector_wanted: Default::default(),
             pool: Mutex::new(pool::Pool::default()),
             cache: Mutex::new(cache::FrameCache::default()),
             ocio_cache: Mutex::new(Default::default()),
             flow_engine: Mutex::new(None),
             scene_renderer: std::sync::RwLock::new(None),
             pass_times: Mutex::new(None),
+            noted: Mutex::new(std::time::Instant::now()),
             share_scene_renders: true,
             cache_limit_bytes: 64 * 1024 * 1024,
             owner: Arc::new(frame::DeviceIdentity),
@@ -547,6 +553,7 @@ impl Renderer {
         download: bool,
     ) -> Result<(Executed, Region)> {
         let vectors = self.vector_sources(plan, request, inputs, download)?;
+        self.note("drawing shapes and text");
         let mut pool = self
             .pool
             .lock()
@@ -608,6 +615,19 @@ impl Renderer {
             .zip(&plan.curves)
             .map(|(n, curves)| params(n, &plan.nodes, curves, plan.width, plan.height, time))
             .collect::<Result<_>>()?;
+        // A drawn shape is kept over its own box: its pass is told the box.
+        for (index, (frame, corner)) in &vectors {
+            if matches!(plan.nodes[*index].operation, Operation::Path(_)) {
+                let p = &mut evaluated[*index];
+                p.values = [
+                    frame.width() as f32,
+                    frame.height() as f32,
+                    corner[0] as f32,
+                    corner[1] as f32,
+                ];
+                p.extra[0] = frame.width() as f32;
+            }
+        }
         for (node, p) in plan.nodes.iter().zip(&mut evaluated) {
             if let Some(asset) = node.operation.asset() {
                 let key = if matches!(
@@ -642,6 +662,7 @@ impl Renderer {
                 ];
             }
         }
+        self.note("working out every node's settings");
         let validation = self.device.push_error_scope(wgpu::ErrorFilter::Validation);
         let allocation = self.device.push_error_scope(wgpu::ErrorFilter::OutOfMemory);
         let result = self.encode_and_read(
@@ -671,16 +692,20 @@ impl Renderer {
     /// A kernel's pipeline, compiled on first use: the driver's compile of all of
     /// them took far longer than starting the renderer, and a graph uses a handful.
     fn pipeline(&self, kernel: Kernel) -> Result<wgpu::ComputePipeline> {
-        let mut pipelines = self
+        if let Some(pipeline) = self
             .pipelines
             .lock()
-            .map_err(|_| error("kernel pipelines lock poisoned"))?;
-        if let Some(pipeline) = pipelines.get(&kernel) {
+            .map_err(|_| error("kernel pipelines lock poisoned"))?
+            .get(&kernel)
+        {
             return Ok(pipeline.clone());
         }
         if !Kernel::ALL.contains(&kernel) {
             return Err(error("kernel has no pipeline of its own"));
         }
+        // Compiled with the list unlocked: a driver can take many seconds over one
+        // kernel the first time, and a render that needs another must not wait for it.
+        // Two threads may then compile the same one; the second's is simply used.
         let pipeline = self
             .device
             .create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
@@ -695,8 +720,34 @@ impl Renderer {
                 compilation_options: Default::default(),
                 cache: None,
             });
-        pipelines.insert(kernel, pipeline.clone());
+        self.pipelines
+            .lock()
+            .map_err(|_| error("kernel pipelines lock poisoned"))?
+            .insert(kernel, pipeline.clone());
         Ok(pipeline)
+    }
+    /// Compile the kernels `plan` uses now, those of its branches included, so its first
+    /// frame does not wait for them: the first compile of one kernel can take a driver
+    /// many seconds. Meant for a thread of its own; renders go on meanwhile.
+    pub fn compile_for(&self, plan: &Plan) -> Result<usize> {
+        let mut kernels = std::collections::BTreeSet::new();
+        fn gather(plan: &Plan, kernels: &mut std::collections::BTreeSet<Kernel>) {
+            kernels.extend(plan.passes.iter().map(|pass| pass.kernel));
+            for branch in &plan.temporal {
+                gather(&branch.plan, kernels);
+            }
+        }
+        gather(plan, &mut kernels);
+        let scope = self.device.push_error_scope(wgpu::ErrorFilter::Validation);
+        let built = kernels
+            .into_iter()
+            .filter(|kernel| Kernel::ALL.contains(kernel))
+            .map(|kernel| self.pipeline(kernel))
+            .collect::<Result<Vec<_>>>();
+        if let Some(e) = pollster::block_on(scope.pop()) {
+            return Err(error(e));
+        }
+        Ok(built?.len())
     }
     /// Compile every kernel now, so no later frame waits for one. Errors if any fails.
     pub fn compile_kernels(&self) -> Result<usize> {
@@ -726,6 +777,21 @@ impl Renderer {
         };
         Ok(crop(full, region, plan.width, plan.height))
     }
+    /// While timing: what was done since the last note took this long, outside any pass.
+    fn note(&self, what: &'static str) {
+        let (Ok(mut times), Ok(mut noted)) = (self.pass_times.lock(), self.noted.lock()) else {
+            return;
+        };
+        if let Some(times) = times.as_mut() {
+            times.push(PassTime {
+                node: what.into(),
+                kind: "outside the passes",
+                pass: String::new(),
+                milliseconds: noted.elapsed().as_secs_f64() * 1000.0,
+            });
+            *noted = std::time::Instant::now();
+        }
+    }
     /// Render once with every pass finished on the card before the next begins, and say
     /// how long each took. The sum is more than an ordinary render takes (the card
     /// cannot overlap anything), so read it for the shares, not the total. Plans made
@@ -740,7 +806,11 @@ impl Renderer {
             .pass_times
             .lock()
             .map_err(|_| error("pass times poisoned"))? = Some(Vec::new());
+        if let Ok(mut noted) = self.noted.lock() {
+            *noted = std::time::Instant::now();
+        }
         let rendered = self.render_gpu(plan, request, inputs);
+        self.note("handing the frame back");
         let times = self
             .pass_times
             .lock()
@@ -771,6 +841,7 @@ impl Renderer {
         inputs: &ImageInputs,
     ) -> Result<GpuFrame> {
         let resolved = inputs.resolve_on(plan, request.time, Some(self))?;
+        self.note("reading the inputs");
         let inputs = &resolved;
         let (Executed::Gpu(storage), region) = self.execute(plan, request, inputs, false)? else {
             unreachable!()
@@ -787,7 +858,7 @@ impl Renderer {
     }
     /// Cache completed output by evaluated pass parameters, topology, crop, and
     /// immutable source identities. Labels, unreachable nodes, and equivalent
-    /// animation times do not invalidate it. At most 16 frames are retained.
+    /// animation times do not invalidate it. As many as fit the cache's limit are retained.
     pub fn render_gpu_cached(
         &self,
         plan: &Plan,
@@ -919,7 +990,7 @@ impl Renderer {
             bool,
         ),
         inputs: &ImageInputs,
-        vectors: &BTreeMap<usize, Arc<GpuFrame>>,
+        vectors: &BTreeMap<usize, (Arc<GpuFrame>, [u32; 2])>,
         pool: &mut pool::Pool,
         download: bool,
     ) -> Result<Executed> {
@@ -984,6 +1055,7 @@ impl Renderer {
         // are not run. What reads them ignores their content, but must not meet whatever
         // an earlier pass left in the slot (a stray infinity times zero is not zero), so a
         // skipped slot is cleared when, and only when, something that runs reads it.
+        self.note("taking frames and sending the sources to the card");
         let visible = plan.visible_at(time)?;
         let mut stale = vec![false; plan.slot_count];
         // Only when asked to time the passes: what ran since the last mark is finished
@@ -1012,6 +1084,9 @@ impl Renderer {
                     });
                 }
                 running = next.map(|(node, kernel)| (node, kernel, std::time::Instant::now()));
+                if let Ok(mut noted) = self.noted.lock() {
+                    *noted = std::time::Instant::now();
+                }
                 Ok(())
             };
         // A Render scene pass whose picture its twin has already made (see below), kept
@@ -1163,7 +1238,7 @@ impl Renderer {
                     plan::Input::Empty => &dummy,
                     plan::Input::Value(slot) => &buffers[*slot],
                     plan::Input::Asset(key) => &sources[key.as_str()],
-                    plan::Input::Vector(index) => vectors[index].buffer(),
+                    plan::Input::Vector(index) => vectors[index].0.buffer(),
                 }
             };
             let bind = self.device.create_bind_group(&wgpu::BindGroupDescriptor {

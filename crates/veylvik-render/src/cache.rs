@@ -190,6 +190,8 @@ impl Key {
         Ok(Self(words, portable))
     }
 }
+/// Entries a cache holds at most, whatever their size: enough for any one frame's parts.
+const ENTRIES: usize = 1024;
 pub(crate) struct FrameCache<K = Key> {
     entries: VecDeque<(K, Arc<GpuFrame>)>,
     stats: CacheStats,
@@ -244,7 +246,9 @@ impl<K: PartialEq> FrameCache<K> {
         if frame.byte_size() > limit {
             return;
         }
-        while self.stats.bytes + frame.byte_size() > limit || self.entries.len() >= 16 {
+        // The byte limit is what bounds it. A count of sixteen once did, and a logo of
+        // seventeen shapes then pushed each one out just before it was needed again.
+        while self.stats.bytes + frame.byte_size() > limit || self.entries.len() >= ENTRIES {
             self.evict();
         }
         self.stats.bytes += frame.byte_size();

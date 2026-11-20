@@ -11,7 +11,45 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
     let doc = Composition::load(path)?;
     let base = veylvik_io::document_base(path)?;
+    let begun = Instant::now();
     let renderer = veylvik_io::runtime::renderer()?;
+    // What a first frame costs, part by part, when asked for (a host wants to know what
+    // to do beforehand so its first frame does not wait).
+    if std::env::var_os("PROFILE_START").is_some() {
+        let ms = |since: Instant| since.elapsed().as_secs_f64() * 1000.0;
+        println!("starting the renderer: {:.0} ms", ms(begun));
+        let at = Time::at_frame(args.get(1).map_or(Ok(0), |f| f.parse())?, doc.frame_rate)?;
+        let step = Instant::now();
+        let plan = Plan::compile(&doc)?;
+        println!("compiling the plan: {:.1} ms", ms(step));
+        let step = Instant::now();
+        let inputs = veylvik_io::load_inputs(&plan, &base, renderer.budget_bytes)?;
+        println!("loading the inputs: {:.0} ms", ms(step));
+        if std::env::var_os("PROFILE_WARM").is_some() {
+            let step = Instant::now();
+            let count = renderer.compile_for(&plan)?;
+            println!(
+                "compiling the {count} kernels this plan uses, beforehand: {:.0} ms",
+                ms(step)
+            );
+        }
+        for n in 0..3 {
+            let step = Instant::now();
+            let times = renderer.time_passes(&plan, RenderRequest::full(at), &inputs)?;
+            println!("render {}: {:.0} ms", n + 1, ms(step));
+            if n == 0 {
+                let mut slow: Vec<_> = times.iter().filter(|t| t.milliseconds > 100.0).collect();
+                slow.sort_by(|a, b| b.milliseconds.total_cmp(&a.milliseconds));
+                for t in slow {
+                    println!(
+                        "    {:.0} ms  {}  ({} {})",
+                        t.milliseconds, t.node, t.kind, t.pass
+                    );
+                }
+            }
+        }
+        return Ok(());
+    }
     // Everything submitted so far has finished on the GPU.
     let done = || {
         renderer.compute(|scratch| {
@@ -55,6 +93,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let at = Time::at_frame(frame, doc.frame_rate)?;
             renderer.time_passes(&plan, RenderRequest::full(at), &inputs)?;
             let mut times = renderer.time_passes(&plan, RenderRequest::full(at), &inputs)?;
+            let outside: Vec<_> = times
+                .iter()
+                .filter(|t| t.kind == "outside the passes")
+                .map(|t| format!("{} {:.1} ms", t.node, t.milliseconds))
+                .collect();
+            println!("  outside the passes: {}", outside.join(", "));
+            let shapes = renderer.vector_cache_stats()?;
+            println!(
+                "  drawn shapes and text kept: {} ({} MiB), found again {} times, drawn {} times, let go {} times",
+                shapes.entries,
+                shapes.bytes / (1024 * 1024),
+                shapes.hits,
+                shapes.misses,
+                shapes.evictions
+            );
+            times.retain(|t| t.kind != "outside the passes");
             let sum: f64 = times.iter().map(|t| t.milliseconds).sum();
             println!(
                 "  {} passes, {sum:.1} ms when each waits for the one before",

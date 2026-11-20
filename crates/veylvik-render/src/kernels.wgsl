@@ -322,7 +322,10 @@ fn image(@builtin(global_invocation_id) gid:vec3<u32>) {
     if !inside(gid) {return;}
     if p.size_op.w==0u {
         var color=vec4<f32>(0.0);
-        if gid.x<u32(p.values.x) && gid.y<u32(p.values.y) {color=source[(gid.y+u32(p.extra.w))*u32(p.extra.x)+gid.x+u32(p.extra.z)];}
+        // values.zw: where the picture's top left corner sits in the frame (a drawn
+        // shape is kept over its own box only).
+        let ox=u32(p.values.z);let oy=u32(p.values.w);
+        if gid.x>=ox && gid.y>=oy && gid.x-ox<u32(p.values.x) && gid.y-oy<u32(p.values.y) {color=source[(gid.y-oy+u32(p.extra.w))*u32(p.extra.x)+gid.x-ox+u32(p.extra.z)];}
         result[index(gid)]=color;
         return;
     }
