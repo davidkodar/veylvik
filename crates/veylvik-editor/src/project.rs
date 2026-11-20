@@ -8,6 +8,9 @@ type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
 /// GUI state owns the same transactional document used by headless clients.
 pub struct Project {
+    /// The host asked for media before anyone else: a composition rendered for a host
+    /// with no editor open carries its own.
+    pub host: Option<std::sync::Arc<dyn crate::host::Host>>,
     pub session: NodeId,
     pub recovery_origin: Option<NodeId>,
     pub document: Document,
@@ -43,6 +46,7 @@ impl Project {
         };
         let selected = composition.output;
         let mut project = Self {
+            host: None,
             session: NodeId::new_v4(),
             recovery_origin: None,
             document: Document::new(composition)?,
@@ -64,8 +68,17 @@ impl Project {
     /// A composition a host owns: nothing here knows a file for it, and its relative
     /// paths are in `assets`.
     pub fn hosted(composition: veylvik_document::Composition, assets: PathBuf) -> Result<Self> {
+        Self::hosted_by(composition, assets, None)
+    }
+    /// As [`Project::hosted`], asking `host` for media first.
+    pub fn hosted_by(
+        composition: veylvik_document::Composition,
+        assets: PathBuf,
+        host: Option<std::sync::Arc<dyn crate::host::Host>>,
+    ) -> Result<Self> {
         let selected = composition.output;
         let mut project = Self {
+            host,
             session: NodeId::new_v4(),
             recovery_origin: None,
             document: Document::new(composition)?,
@@ -107,6 +120,7 @@ impl Project {
         composition.frame_count = frame_count;
         let selected = composition.output;
         Ok(Self {
+            host: None,
             session: NodeId::new_v4(),
             recovery_origin: None,
             document: Document::new(composition)?,
@@ -126,6 +140,7 @@ impl Project {
         let composition = store.read(id)?;
         let selected = composition.output;
         let mut project = Self {
+            host: None,
             session: NodeId::new_v4(),
             recovery_origin: Some(id),
             document: Document::new(composition)?,
@@ -177,7 +192,12 @@ impl Project {
                 && !self.asset_errors.contains_key(&*key)
             {
                 // Media the host keeps is asked of the host, never looked for on disk.
-                if let Some(source) = crate::files::host_media(&key) {
+                let theirs = self
+                    .host
+                    .as_ref()
+                    .and_then(|host| host.media(&key))
+                    .or_else(|| crate::files::host_media(&key));
+                if let Some(source) = theirs {
                     self.inputs.insert_source(key.into_owned(), source);
                     continue;
                 }

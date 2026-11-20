@@ -18,16 +18,21 @@ struct Made {
 pub struct ClipSource {
     renderer: Arc<Renderer>,
     assets: PathBuf,
+    host: Option<Arc<dyn crate::host::Host>>,
     made: Mutex<Arc<Made>>,
 }
-fn make(composition: Composition, assets: &std::path::Path) -> Result<Made> {
+fn make(
+    composition: Composition,
+    assets: &std::path::Path,
+    host: &Option<Arc<dyn crate::host::Host>>,
+) -> Result<Made> {
     let (size, frame_rate, frames) = (
         [composition.width, composition.height],
         composition.frame_rate,
         composition.frame_count,
     );
     // The project finds every source: the host's own media through the host, the rest on disk.
-    let mut project = Project::hosted(composition, assets.to_owned())?;
+    let mut project = Project::hosted_by(composition, assets.to_owned(), host.clone())?;
     if let Some((asset, why)) = project.unavailable_assets().into_iter().next() {
         return Err(format!("{asset}: {why}").into());
     }
@@ -42,18 +47,26 @@ fn make(composition: Composition, assets: &std::path::Path) -> Result<Made> {
 impl ClipSource {
     /// `renderer` is the one the host's device belongs to; an editor's own
     /// ([`crate::Editor::renderer`]) shares its memory budget and caches.
-    pub fn new(renderer: Arc<Renderer>, composition: Composition, assets: PathBuf) -> Result<Self> {
-        let made = make(composition, &assets)?;
+    /// `host` is asked for the media the composition names by the host's keys; it needs
+    /// no editor to exist, and each clip source may have its own.
+    pub fn new(
+        renderer: Arc<Renderer>,
+        composition: Composition,
+        assets: PathBuf,
+        host: Option<Arc<dyn crate::host::Host>>,
+    ) -> Result<Self> {
+        let made = make(composition, &assets, &host)?;
         Ok(Self {
             renderer,
             assets,
+            host,
             made: Mutex::new(Arc::new(made)),
         })
     }
     /// The composition changed: frames asked for from now on are of this one. A render
     /// already running finishes with the one it began with.
     pub fn set_composition(&self, composition: Composition) -> Result<()> {
-        let made = Arc::new(make(composition, &self.assets)?);
+        let made = Arc::new(make(composition, &self.assets, &self.host)?);
         *self.made.lock().map_err(|_| "clip source unavailable")? = made;
         Ok(())
     }

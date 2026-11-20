@@ -15,8 +15,13 @@ fn a_composition_gives_a_host_the_same_frame_whoever_else_is_asking() {
     let composition = veylvik_document::motion_demo();
     let (width, height) = (composition.width, composition.height);
     let at = |frame| Time::at_frame(frame, composition.frame_rate).unwrap();
-    let source =
-        ClipSource::new(renderer.clone(), composition.clone(), std::env::temp_dir()).unwrap();
+    let source = ClipSource::new(
+        renderer.clone(),
+        composition.clone(),
+        std::env::temp_dir(),
+        None,
+    )
+    .unwrap();
     assert_eq!(source.format().unwrap().0, [width, height]);
     let buffer = |w: u32, h: u32| {
         renderer.device().create_buffer(&wgpu::BufferDescriptor {
