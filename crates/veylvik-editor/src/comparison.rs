@@ -49,7 +49,7 @@ impl Studio {
     pub(super) fn comparison_toolbar(&mut self, ui: &mut egui::Ui) {
         ui.horizontal_wrapped(|ui| {
             ui.toggle_value(&mut self.scopes.visible,"Scopes").on_hover_text("Show or hide colour scopes: individual plots or Four-up");
-            let ready = self.displayed.is_some() && self.displayed_ticket == self.wanted && !self.preview_pending && !self.draft_dirty;
+            let ready = self.displayed.as_ref().is_some_and(|shown| !shown.baked) && self.displayed_ticket == self.wanted && !self.preview_pending && !self.draft_dirty;
             if ui.add_enabled(ready, egui::Button::new(if self.comparison.reference.is_some() {"Replace A"} else {"Capture A"}))
                 .on_hover_text("Keep this completed preview as a GPU reference. B remains live. Reference includes its preview colour transform; it is not saved in the project.").clicked() {
                 self.comparison.reference = self.displayed.clone();

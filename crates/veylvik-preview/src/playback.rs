@@ -15,6 +15,10 @@ pub struct Settings {
     pub gpu_bytes: u64,
     pub disk_bytes: u64,
     pub directory: Option<PathBuf>,
+    /// Memory for played pictures kept as the screen shows them, packed; none keeps none.
+    pub picture_memory_bytes: u64,
+    /// Disk for the same, in `directory`, once memory is full.
+    pub picture_disk_bytes: u64,
 }
 impl Default for Settings {
     fn default() -> Self {
@@ -23,6 +27,8 @@ impl Default for Settings {
             gpu_bytes: 512 * 1024 * 1024,
             disk_bytes: 0,
             directory: None,
+            picture_memory_bytes: 0,
+            picture_disk_bytes: 0,
         }
     }
 }
@@ -37,13 +43,29 @@ pub struct Status {
     pub disk_bytes: u64,
     pub hits: u64,
     pub warning: Option<String>,
+    /// Moments whose picture is kept as the screen shows it, for the look last played with.
+    pub ready_frames: Vec<Time>,
+    pub picture_memory_bytes: u64,
+    pub picture_disk_bytes: u64,
 }
 #[derive(Clone, Default)]
 pub struct Control(
     Arc<Mutex<(Settings, u64, Status)>>,
     Arc<Mutex<VecDeque<Arc<GpuFrame>>>>,
+    Arc<Mutex<Option<crate::screen::Look>>>,
 );
 impl Control {
+    /// While playing, with the viewer's look: frames may be answered with pictures kept
+    /// as the screen shows them, and new frames are kept that way. `None` when not
+    /// playing: every frame is then the renderer's own, for reading values off it.
+    pub fn set_playing(&self, look: Option<crate::screen::Look>) {
+        if let Ok(mut playing) = self.2.lock() {
+            *playing = look;
+        }
+    }
+    pub fn playing(&self) -> Option<crate::screen::Look> {
+        self.2.lock().ok().and_then(|playing| *playing)
+    }
     pub fn configure(&self, mut settings: Settings) {
         settings.divisor = match settings.divisor {
             2 => 2,
@@ -144,6 +166,47 @@ pub(crate) struct Store {
     hits: u64,
     warning: Option<String>,
     eligible: bool,
+    pictures: crate::pictures::Pictures,
+    screen: Option<crate::screen::Screen>,
+    look: Option<crate::screen::Look>,
+    /// Packing runs beside the worker: a frame is not held up while its picture is packed.
+    packer: Option<Packer>,
+    /// Pictures handed to the packer and not back yet.
+    packing: Vec<Moment>,
+}
+type Moment = (Time, Option<u64>, crate::screen::Look);
+type Packed = (Moment, [u32; 2], Result<Vec<u8>>);
+fn alike(a: &Moment, b: &Moment) -> bool {
+    a.1 == b.1
+        && a.2 == b.2
+        && i128::from(a.0.ticks) * i128::from(b.0.rate)
+            == i128::from(b.0.ticks) * i128::from(a.0.rate)
+}
+struct Packer {
+    work: std::sync::mpsc::SyncSender<(Moment, [u32; 2], Vec<u8>)>,
+    done: std::sync::mpsc::Receiver<Packed>,
+}
+impl Packer {
+    fn start() -> Option<Self> {
+        // A few pictures may wait; beyond that the worker packs its own, so memory
+        // held in pictures not packed yet stays small.
+        let (work, jobs) = std::sync::mpsc::sync_channel::<(Moment, [u32; 2], Vec<u8>)>(3);
+        let (finished, done) = std::sync::mpsc::channel();
+        std::thread::Builder::new()
+            .name("veylvik-pictures".into())
+            .spawn(move || {
+                for (moment, size, picture) in jobs {
+                    if finished
+                        .send((moment, size, crate::pictures::pack(&picture)))
+                        .is_err()
+                    {
+                        break;
+                    }
+                }
+            })
+            .ok()?;
+        Some(Self { work, done })
+    }
 }
 impl Store {
     pub fn new(control: Control) -> Self {
@@ -160,9 +223,18 @@ impl Store {
             hits: 0,
             warning: None,
             eligible: true,
+            pictures: Default::default(),
+            screen: None,
+            look: None,
+            packer: None,
+            packing: Vec::new(),
         }
     }
     fn clear_entries(&mut self) {
+        // Pictures still being packed belong to what is being cleared.
+        self.packer = None;
+        self.packing.clear();
+        self.pictures.clear();
         self.entries.clear();
         if let Ok(mut frames) = self.control.1.lock() {
             frames.clear();
@@ -210,6 +282,8 @@ impl Store {
                 .is_some_and(|(p, i)| !Arc::ptr_eq(p, plan) && i.same_sources(inputs));
         if changed || stale || missing {
             if edited {
+                self.collect(true);
+                self.pictures.edited();
                 self.entries.retain(|e| e.name.is_some());
                 for e in &mut self.entries {
                     e.times.clear();
@@ -461,9 +535,145 @@ impl Store {
         self.entries
             .retain(|e| e.gpu.as_ref().is_some_and(|w| w.strong_count() > 0) || e.disk.is_some());
     }
-    fn write_disk(&mut self, renderer: &Renderer, frame: &GpuFrame) -> Result<(PathBuf, u64)> {
+    pub fn playing(&self) -> Option<crate::screen::Look> {
+        self.control.playing()
+    }
+    fn picture_limits(&self) -> crate::pictures::Limits {
+        crate::pictures::Limits {
+            memory: self.settings.picture_memory_bytes,
+            disk: if self.settings.directory.is_some() {
+                self.settings.picture_disk_bytes
+            } else {
+                0
+            },
+        }
+    }
+    /// This moment's picture as the screen shows it with `look`, as a frame to draw with
+    /// a neutral look.
+    pub fn picture(
+        &mut self,
+        renderer: &Renderer,
+        time: Time,
+        name: Option<u64>,
+        look: crate::screen::Look,
+    ) -> Result<Option<Arc<GpuFrame>>> {
+        self.look = Some(look);
+        if !self.eligible {
+            return Ok(None);
+        }
+        self.collect(false);
+        let Some((picture, [width, height])) = self.pictures.get(time, name, look) else {
+            return Ok(None);
+        };
+        self.make_room(renderer, u64::from(width) * u64::from(height) * 20)?;
+        let screen = self
+            .screen
+            .get_or_insert_with(|| crate::screen::Screen::new(renderer.device()));
+        let frame = screen.unpack(renderer, &picture, width, height)?;
+        self.hits += 1;
+        Ok(Some(Arc::new(frame)))
+    }
+    /// Keep `frame` as the screen shows it with `look`, unless it is kept already.
+    pub fn keep_picture(
+        &mut self,
+        renderer: &Renderer,
+        time: Time,
+        name: Option<u64>,
+        look: crate::screen::Look,
+        frame: &GpuFrame,
+    ) {
+        self.look = Some(look);
+        let limits = self.picture_limits();
+        self.collect(false);
+        let moment = (time, name, look);
+        let waiting = self.packing.iter().any(|m| match name {
+            Some(_) => m.1 == name && m.2 == look,
+            None => alike(m, &moment),
+        });
+        if !self.eligible
+            || limits.memory + limits.disk == 0
+            || waiting
+            || self.pictures.has(time, name, look)
+        {
+            return;
+        }
+        let kept = (|| {
+            let folder = if limits.disk > 0 {
+                Some(self.session_folder()?)
+            } else {
+                None
+            };
+            let size = [frame.width(), frame.height()];
+            self.make_room(renderer, u64::from(size[0]) * u64::from(size[1]) * 8)?;
+            let screen = self
+                .screen
+                .get_or_insert_with(|| crate::screen::Screen::new(renderer.device()));
+            let picture = screen.pack(renderer, frame, look)?;
+            if self.packer.is_none() {
+                self.packer = Packer::start();
+            }
+            // Beside the worker when there is room in the queue, else here and now.
+            let picture = match &self.packer {
+                Some(packer) => match packer.work.try_send((moment, size, picture)) {
+                    Ok(()) => {
+                        self.packing.push(moment);
+                        return Ok(());
+                    }
+                    Err(std::sync::mpsc::TrySendError::Full(job))
+                    | Err(std::sync::mpsc::TrySendError::Disconnected(job)) => job.2,
+                },
+                None => picture,
+            };
+            self.pictures
+                .put(moment, size, &picture, limits, folder.as_deref())
+        })();
+        if let Err(e) = kept {
+            self.warning = Some(format!("Played pictures are not kept: {e}"));
+        }
+    }
+    /// Take in the pictures the packer has finished; `all` waits for those still with it.
+    fn collect(&mut self, all: bool) {
+        let limits = self.picture_limits();
+        loop {
+            let Some(packer) = &self.packer else {
+                self.packing.clear();
+                return;
+            };
+            let next = if all && !self.packing.is_empty() {
+                packer.done.recv_timeout(Duration::from_secs(5)).ok()
+            } else {
+                packer.done.try_recv().ok()
+            };
+            let Some((moment, size, packed)) = next else {
+                if all {
+                    self.packing.clear();
+                }
+                return;
+            };
+            self.packing.retain(|m| !alike(m, &moment));
+            let folder = if limits.disk > 0 {
+                self.session_folder().ok()
+            } else {
+                None
+            };
+            let kept = packed.and_then(|packed| {
+                self.pictures
+                    .put_packed(moment, size, packed, limits, folder.as_deref())
+            });
+            if let Err(e) = kept {
+                self.warning = Some(format!("Played pictures are not kept: {e}"));
+            }
+        }
+    }
+    /// This session's folder in the cache directory, made when first needed.
+    fn session_folder(&mut self) -> Result<PathBuf> {
         if self.folder.is_none() {
-            let root = self.settings.directory.as_ref().unwrap();
+            let root = self
+                .settings
+                .directory
+                .clone()
+                .ok_or_else(|| error("No cache folder"))?;
+            let root = &root;
             std::fs::create_dir_all(root).map_err(error)?;
             // Remove only our recognized session directories whose process no longer exists.
             if let Ok(entries) = std::fs::read_dir(root) {
@@ -491,6 +701,10 @@ impl Store {
             std::fs::create_dir(&path).map_err(error)?;
             self.folder = Some(path);
         }
+        self.folder.clone().ok_or_else(|| error("No cache folder"))
+    }
+    fn write_disk(&mut self, renderer: &Renderer, frame: &GpuFrame) -> Result<(PathBuf, u64)> {
+        self.session_folder()?;
         self.make_room(renderer, frame.byte_size().saturating_mul(2))?;
         let pixels = renderer.read_frame(frame)?;
         self.serial = self.serial.wrapping_add(1);
@@ -518,7 +732,8 @@ impl Store {
         }
         result
     }
-    pub fn publish(&self, revision: u64) {
+    pub fn publish(&mut self, revision: u64) {
+        self.collect(false);
         if let Ok(mut c) = self.control.0.lock()
             && c.1 == self.generation
         {
@@ -555,6 +770,12 @@ impl Store {
                 disk_bytes: self.disk_bytes(),
                 hits: self.hits,
                 warning: self.warning.clone(),
+                ready_frames: self
+                    .look
+                    .map(|look| self.pictures.times(look))
+                    .unwrap_or_default(),
+                picture_memory_bytes: self.pictures.memory_bytes(),
+                picture_disk_bytes: self.pictures.disk_bytes(),
             };
         }
     }
@@ -590,6 +811,7 @@ mod tests {
             gpu_bytes: 0,
             disk_bytes: 1024 * 1024,
             directory: Some(root.clone()),
+            ..Default::default()
         });
         let mut store = Store::new(control.clone());
         store.prepare(&plan, &inputs).unwrap();
@@ -617,6 +839,7 @@ mod tests {
             gpu_bytes: 32 * 16 * 16 * 2,
             disk_bytes: 0,
             directory: None,
+            ..Default::default()
         });
         store.prepare(&plan, &inputs).unwrap();
         for n in 0..6 {
@@ -685,6 +908,7 @@ mod tests {
             gpu_bytes: 1 << 20,
             disk_bytes: 0,
             directory: None,
+            ..Default::default()
         });
         let mut store = Store::new(control.clone());
         let at = |frame: i64| veylvik_render::RenderRequest::full(Time::new(frame, 24).unwrap());

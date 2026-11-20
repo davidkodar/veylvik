@@ -292,11 +292,12 @@ impl Studio {
             std::sync::Arc::ptr_eq(&frame.frame, &shown.frame) && frame.settings == settings
         });
         if !current {
-            self.layouts.second = Some(self.display.frame(
+            self.layouts.second = Some(self.display.frame_as(
                 &self.renderer,
                 shown.frame.clone(),
                 settings,
                 ViewTransform::default(),
+                shown.baked,
             ));
         }
         let frame = self.layouts.second.clone().unwrap();

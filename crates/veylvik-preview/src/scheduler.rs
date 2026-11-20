@@ -53,6 +53,10 @@ pub struct PreviewResult<F = RenderedFrame> {
     pub frame: Result<F>,
     pub elapsed: Duration,
     pub resources: Option<ResourceStats>,
+    /// The frame is a played picture as the screen shows it: exposure and the display
+    /// transform are already in it, so it is drawn with a neutral look and its values
+    /// are not the renderer's.
+    pub screen_ready: bool,
 }
 /// Keeps GPU work off the caller's thread and discards obsolete queued work.
 ///
@@ -98,6 +102,7 @@ impl PreviewScheduler {
                     frame,
                     elapsed: start.elapsed(),
                     resources,
+                    screen_ready: false,
                 }
             },
             wake,
@@ -120,6 +125,7 @@ impl PreviewScheduler<Arc<GpuFrame>> {
         let worker = LatestWorker::new_cancellable(
             move |generation, job: Job, cancelled| {
                 let start = Instant::now();
+                let mut screen_ready = false;
                 let frame = (|| {
                     cache.prepare(&job.plan, &job.inputs)?;
                     // The playback cache holds frames by time alone, so a free 3D view
@@ -136,6 +142,15 @@ impl PreviewScheduler<Arc<GpuFrame>> {
                     if cacheable
                         && let Some(frame) = cache.lookup(&renderer, job.request.time, name)?
                     {
+                        return Ok(frame);
+                    }
+                    // Only while playing: a picture kept as the screen shows it.
+                    let playing = if cacheable { cache.playing() } else { None };
+                    if let Some(look) = playing
+                        && let Some(frame) =
+                            cache.picture(&renderer, job.request.time, name, look)?
+                    {
+                        screen_ready = true;
                         return Ok(frame);
                     }
                     cache.make_room(
@@ -155,6 +170,9 @@ impl PreviewScheduler<Arc<GpuFrame>> {
                     let frame = frame?;
                     if cacheable {
                         cache.insert(&renderer, job.request.time, name, frame.clone(), cancelled);
+                        if let Some(look) = playing {
+                            cache.keep_picture(&renderer, job.request.time, name, look, &frame);
+                        }
                     }
                     Ok(frame)
                 })();
@@ -168,6 +186,7 @@ impl PreviewScheduler<Arc<GpuFrame>> {
                     frame,
                     elapsed: start.elapsed(),
                     resources: renderer.resource_stats().ok(),
+                    screen_ready,
                 }
             },
             wake,
@@ -500,5 +519,90 @@ mod playback_tests {
         assert_eq!(control.status().hits, 1);
         scheduler.cancel().unwrap();
         assert!(scheduler.try_take().unwrap().is_none());
+    }
+    #[test]
+    #[ignore = "requires Vulkan"]
+    fn while_playing_a_frame_seen_before_comes_from_the_kept_pictures() {
+        let renderer = Arc::new(Renderer::new().unwrap());
+        let scheduler = GpuPreviewScheduler::with_renderer(renderer.clone(), || {}).unwrap();
+        let control = scheduler.playback_cache();
+        // No room for frames as the renderer makes them: only pictures can answer.
+        control.configure(crate::playback::Settings {
+            gpu_bytes: 0,
+            picture_memory_bytes: 1 << 20,
+            ..Default::default()
+        });
+        let plan = Arc::new(Plan::compile(&veylvik_document::motion_demo()).unwrap());
+        let render = |frame: i64| {
+            let request = RenderRequest::full(Time::new(frame, 24).unwrap());
+            scheduler
+                .submit(1, plan.clone(), request, ImageInputs::default())
+                .unwrap();
+            let deadline = Instant::now() + Duration::from_secs(20);
+            loop {
+                if let Some(result) = scheduler.try_take().unwrap() {
+                    return (result.frame.unwrap(), result.screen_ready);
+                }
+                assert!(Instant::now() < deadline, "preview timed out");
+                thread::sleep(Duration::from_millis(5));
+            }
+        };
+        let look = crate::screen::Look {
+            exposure: 0.0,
+            filmic: false,
+        };
+        // Not playing: nothing is kept and nothing is answered from pictures.
+        assert!(!render(3).1 && !render(3).1);
+        assert!(control.status().ready_frames.is_empty());
+        control.set_playing(Some(look));
+        let (first, ready) = render(3);
+        assert!(!ready, "the first time a frame is the renderer's own");
+        render(9);
+        // Pictures are packed beside the worker: give the two a moment to arrive.
+        thread::sleep(Duration::from_millis(300));
+        let (again, ready) = render(3);
+        assert!(ready, "a frame seen before was rendered again");
+        assert_eq!(control.status().hits, 1);
+        assert_eq!(control.status().ready_frames.len(), 2);
+        assert!(control.status().picture_memory_bytes > 0);
+        // The picture is the frame as the screen shows it: clipped at white, eight bits.
+        let (was, is) = (
+            renderer.read_frame(&first).unwrap().pixels,
+            renderer.read_frame(&again).unwrap().pixels,
+        );
+        let encoded = |v: f32| {
+            let v = v.clamp(0.0, 1.0);
+            ((if v <= 0.0031308 {
+                12.92 * v
+            } else {
+                1.055 * v.powf(1.0 / 2.4) - 0.055
+            }) * 255.0)
+                .round() as i32
+        };
+        let (mut checked, mut worst) = (0, 0);
+        for (a, b) in was.iter().zip(&is) {
+            if a[3] == 1.0 {
+                checked += 1;
+                worst = worst.max(
+                    (0..3)
+                        .map(|c| (encoded(a[c]) - encoded(b[c])).abs())
+                        .max()
+                        .unwrap(),
+                );
+            }
+        }
+        assert!(
+            checked > 1000 && worst <= 1,
+            "{checked} opaque pixels, worst {worst}"
+        );
+        // Playing stops: the frame is the renderer's own again.
+        control.set_playing(None);
+        assert!(!render(3).1);
+        // Another look is not answered with pictures of this one.
+        control.set_playing(Some(crate::screen::Look {
+            exposure: 1.0,
+            filmic: false,
+        }));
+        assert!(!render(3).1);
     }
 }

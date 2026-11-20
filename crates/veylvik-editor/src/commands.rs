@@ -44,6 +44,7 @@ commands! {
     CreateGroup, "create_group", "Edit", "Create effect group", "";
     FindNode, "find_node", "Edit", "Find node", "Ctrl+F";
     AutoKey, "auto_key", "Edit", "Automatic keyframes on or off", "";
+    CacheRange, "cache_range", "Playback", "Cache the playback range", "";
     CopySettings, "copy_settings", "Edit", "Copy the selected node's settings", "Alt+C";
     PasteSettings, "paste_settings", "Edit", "Paste settings onto the selected nodes", "Alt+V";
     AddNode, "add_node", "Add", "Search and add a node", "Tab";

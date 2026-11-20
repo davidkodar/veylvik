@@ -416,6 +416,8 @@ fn snapshot(studio: &Studio, name: &str, args: &Value) -> Result<crate::preview_
     let displayed = studio
         .displayed
         .as_ref()
+        // A played picture is not the renderer's frame: its values are the screen's.
+        .filter(|shown| !shown.baked)
         .ok_or("no completed preview is available")?;
     let time = studio
         .displayed_time

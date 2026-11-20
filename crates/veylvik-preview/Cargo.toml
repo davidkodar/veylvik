@@ -12,6 +12,7 @@ wgpu.workspace = true
 serde.workspace = true
 bytemuck.workspace = true
 flate2 = "1.1.11"
+zstd = "=0.13.3"
 veylvik-color = { path = "../veylvik-color" }
 [dev-dependencies]
 serde_json.workspace = true

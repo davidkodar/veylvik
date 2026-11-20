@@ -346,6 +346,8 @@ impl Studio {
    let source=if self.scopes.reference {self.comparison.source()} else {self.displayed.clone()};
    let Some(source)=source else {self.scopes.frame=None;ui.weak("Capture A in the viewer to measure a reference.");return;};
    let mut settings=self.effective_view();settings.alpha=false;settings.fast_filter=false;settings.filmic=source.settings.filmic;
+   // A played picture already has exposure and the display transform in it.
+   if source.baked {settings.exposure=0.0;settings.filmic=false;}
    let wide=ui.available_width()>ui.available_height()*2.5;
    let pane_columns=if self.scopes.layout==4 {if wide {4}else{2}}else{1};
    let plot_width=(ui.available_width()/pane_columns as f32-48.)*ui.ctx().pixels_per_point();

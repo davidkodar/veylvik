@@ -200,6 +200,10 @@ impl Studio {
         let (Some(displayed), Some(target)) = (&self.displayed, picture_path(&path)) else {
             return;
         };
+        // A played picture already has the viewer's look in it; wait for the frame itself.
+        if displayed.baked {
+            return;
+        }
         // The frame in the viewer, read back and scaled down on a worker.
         let (renderer, frame) = (self.renderer.clone(), displayed.frame.clone());
         std::thread::spawn(move || {

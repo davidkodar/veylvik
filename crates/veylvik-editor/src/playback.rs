@@ -114,10 +114,8 @@ impl crate::Studio {
             } else if ui.add_enabled(!self.files.busy() && range.1-range.0 < 10000,
                 egui::Button::new("Cache range"))
                 .on_hover_text("Render every frame in the playback range (up to 10,000). Budgets may retain only part of it. Choose Half/Quarter or enable disk cache for longer ranges.")
-                .clicked() && self.apply_draft() {
-                self.playing = false;
-                self.playback_controls.warming = Some(Warm {end:range.1, restore:self.project.frame});
-                self.project.frame = range.0; self.request_preview_inner();
+                .clicked() {
+                self.cache_range();
             }
             if ui.add(crate::icons::Button::new(crate::icons::Icon::Reset, "Clear playback cache"))
                 .on_hover_text("Release cached playback frames and session disk files").clicked() {
@@ -169,6 +167,28 @@ fn frame_control(
             None => egui::DragValue::new(value).range(range).prefix(prefix),
         },
     )
+}
+impl crate::Studio {
+    /// Render every frame of the playback range once, in order, so it plays from the
+    /// store afterwards.
+    pub(crate) fn cache_range(&mut self) {
+        let count = self.project.document.snapshot().frame_count;
+        let range = self.playback_controls.range(count);
+        if self.playback_controls.warming.is_some()
+            || self.files.busy()
+            || range.1 - range.0 >= 10000
+            || !self.apply_draft()
+        {
+            return;
+        }
+        self.playing = false;
+        self.playback_controls.warming = Some(Warm {
+            end: range.1,
+            restore: self.project.frame,
+        });
+        self.project.frame = range.0;
+        self.request_preview_inner();
+    }
 }
 #[cfg(test)]
 mod tests {

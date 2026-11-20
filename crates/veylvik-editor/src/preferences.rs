@@ -104,6 +104,9 @@ pub struct Values {
     pub gpu_budget_mib: u64,
     pub playback_gpu_mib: u64,
     pub playback_disk_mib: u64,
+    /// Memory and disk for played pictures kept as the screen shows them.
+    pub played_memory_mib: u64,
+    pub played_disk_mib: u64,
     pub recovery_enabled: bool,
     pub recovery_seconds: u64,
     /// Play the composition's sound during playback.
@@ -175,6 +178,8 @@ impl Default for Values {
             gpu_budget_mib: 2048,
             playback_gpu_mib: 512,
             playback_disk_mib: 0,
+            played_memory_mib: quarter_of_memory_mib(),
+            played_disk_mib: 50 * 1024,
             recovery_enabled: true,
             recovery_seconds: 10,
             audio_enabled: true,
@@ -217,6 +222,8 @@ impl Values {
             || !(0.75..=2.).contains(&self.scale)
             || self.playback_gpu_mib > 8192
             || self.playback_disk_mib > 65536
+            || self.played_memory_mib > 65536
+            || self.played_disk_mib > 1024 * 1024
             || !(64..=16384).contains(&self.gpu_budget_mib)
             || !(10..=300).contains(&self.recovery_seconds)
             || !(0.0..=2.0).contains(&self.audio_volume)
@@ -388,6 +395,8 @@ impl Preferences {
                 self.draft.gpu_budget_mib = d.gpu_budget_mib;
                 self.draft.playback_gpu_mib = d.playback_gpu_mib;
                 self.draft.playback_disk_mib = d.playback_disk_mib;
+                self.draft.played_memory_mib = d.played_memory_mib;
+                self.draft.played_disk_mib = d.played_disk_mib;
             }
             5 => {
                 self.draft.audio_enabled = d.audio_enabled;
@@ -934,6 +943,19 @@ impl Preferences {
                     egui::Slider::new(&mut self.draft.playback_disk_mib, 0..=65536)
                         .text("Disk cache (MiB)"),
                 );
+                ui.separator();
+                ui.label("Played pictures");
+                ui.add(
+                    egui::Slider::new(&mut self.draft.played_memory_mib, 0..=65536)
+                        .logarithmic(true)
+                        .text("Memory (MiB)"),
+                );
+                ui.add(
+                    egui::Slider::new(&mut self.draft.played_disk_mib, 0..=1024 * 1024)
+                        .logarithmic(true)
+                        .text("Disk (MiB)"),
+                );
+                ui.weak("Frames you have played are kept as the screen shows them, packed without loss, so they play again at full rate: first in memory, then on disk in the cache folder, the oldest removed first. A 4K frame takes about 17 MiB. Zero switches a store off.");
                 ui.weak("Zero disables that cache. GPU cache uses at most half the renderer budget and yields memory to rendering. Disk cache is lossless, session-only, and requires GPU readback/upload on the preview worker. It never renders effects on the CPU. Changes apply without restart.");
             }
             _ => {
@@ -1042,6 +1064,23 @@ impl Preferences {
     }
 }
 
+/// A quarter of the machine's memory in MiB, or 4 GiB when that cannot be read.
+fn quarter_of_memory_mib() -> u64 {
+    std::fs::read_to_string("/proc/meminfo")
+        .ok()
+        .and_then(|text| {
+            text.lines()
+                .find_map(|line| line.strip_prefix("MemTotal:"))
+                .and_then(|rest| {
+                    rest.trim()
+                        .trim_end_matches("kB")
+                        .trim()
+                        .parse::<u64>()
+                        .ok()
+                })
+        })
+        .map_or(4096, |kib| (kib / 1024 / 4).clamp(512, 16384))
+}
 #[cfg(test)]
 mod tests {
     use super::*;

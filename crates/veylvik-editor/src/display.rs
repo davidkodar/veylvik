@@ -88,6 +88,28 @@ impl Display {
         settings: ViewSettings,
         transform: ViewTransform,
     ) -> Arc<DisplayFrame> {
+        self.frame_as(renderer, frame, settings, transform, false)
+    }
+    /// As [`Display::frame`]; `baked` says the frame is a played picture kept as the
+    /// screen shows it, with exposure and the display transform already in it, so those
+    /// two are not applied again. `settings` stay the viewer's own, for comparing.
+    pub fn frame_as(
+        &self,
+        renderer: &Renderer,
+        frame: Arc<GpuFrame>,
+        asked: ViewSettings,
+        transform: ViewTransform,
+        baked: bool,
+    ) -> Arc<DisplayFrame> {
+        let settings = if baked {
+            ViewSettings {
+                exposure: 0.0,
+                filmic: false,
+                ..asked
+            }
+        } else {
+            asked
+        };
         let exposure = if settings.exposure.is_finite() {
             settings.exposure.clamp(-16.0, 16.0)
         } else {
@@ -139,8 +161,9 @@ impl Display {
             bind,
             frame,
             queue: renderer.queue().clone(),
-            settings,
+            settings: asked,
             transform,
+            baked,
         })
     }
 }
@@ -150,6 +173,8 @@ pub struct DisplayFrame {
     pub frame: Arc<GpuFrame>,
     pub settings: ViewSettings,
     pub transform: ViewTransform,
+    /// A played picture kept as the screen shows it: its values are not the renderer's.
+    pub baked: bool,
     queue: wgpu::Queue,
 }
 impl Drop for DisplayFrame {

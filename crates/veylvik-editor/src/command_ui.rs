@@ -186,6 +186,7 @@ impl Studio {
             Cmd::CreateGroup => self.begin_group(false),
             Cmd::FindNode => self.open_node_finder(),
             Cmd::AutoKey => self.toggle_auto_key(),
+            Cmd::CacheRange => self.cache_range(),
             Cmd::CopySettings => self.copy_settings(),
             Cmd::PasteSettings => self.paste_settings(),
             Cmd::AddNode => self.open_node_palette(ctx),

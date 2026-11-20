@@ -1182,6 +1182,22 @@ impl Studio {
                 .as_ref()
                 .ok_or("Preview worker unavailable")?;
             scheduler.cancel()?;
+            // While playing or caching a range, frames may be kept and answered as the
+            // screen shows them with the viewer's look; otherwise every frame is the
+            // renderer's own.
+            let view = self.effective_view();
+            scheduler.playback_cache().set_playing(
+                (self.playing || self.playback_controls.warming.is_some()).then_some(
+                    veylvik_preview::screen::Look {
+                        exposure: if view.exposure.is_finite() {
+                            view.exposure.clamp(-16.0, 16.0)
+                        } else {
+                            0.0
+                        },
+                        filmic: view.filmic,
+                    },
+                ),
+            );
             Ok::<_, Box<dyn std::error::Error>>(scheduler.submit(
                 self.project.document.revision(),
                 plan,
@@ -2117,6 +2133,8 @@ impl Studio {
                     gpu_bytes: p.playback_gpu_mib * 1024 * 1024,
                     disk_bytes: p.playback_disk_mib * 1024 * 1024,
                     directory,
+                    picture_memory_bytes: p.played_memory_mib * 1024 * 1024,
+                    picture_disk_bytes: p.played_disk_mib * 1024 * 1024,
                 });
         }
         if !design::guest(ctx) {
@@ -3605,11 +3623,12 @@ impl Studio {
                     match result.frame {
                         Ok(frame) => {
                             let flow_report = frame.flow_report();
-                            self.displayed = Some(self.display.frame(
+                            self.displayed = Some(self.display.frame_as(
                                 &self.renderer,
                                 frame,
                                 self.effective_view(),
                                 viewer::ViewTransform::default(),
+                                result.screen_ready,
                             ));
                             self.displayed_ticket = Some(result.ticket);
                             self.displayed_time = Some(result.request.time);
@@ -3642,6 +3661,15 @@ impl Studio {
                 }
                 _ => {}
             }
+        }
+        // Playing is over and the viewer still holds a played picture: ask for the frame
+        // itself, so values read off it are the renderer's.
+        if !self.playing
+            && self.playback_controls.warming.is_none()
+            && !self.preview_pending
+            && self.displayed.as_ref().is_some_and(|shown| shown.baked)
+        {
+            self.request_preview();
         }
         if let Some(warm) = self.playback_controls.warming {
             if self.error {
@@ -4009,11 +4037,12 @@ impl Studio {
                             ));
                         }
                         if frame.settings != self.effective_view() || frame.transform != transform {
-                            self.displayed = Some(self.display.frame(
+                            self.displayed = Some(self.display.frame_as(
                                 &self.renderer,
                                 frame.frame.clone(),
                                 self.effective_view(),
                                 transform,
+                                frame.baked,
                             ));
                         }
                         ui.painter().with_clip_rect(canvas).add(
