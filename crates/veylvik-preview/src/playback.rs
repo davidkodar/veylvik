@@ -51,6 +51,8 @@ pub struct Status {
     pub ready_frames: Vec<Time>,
     pub picture_memory_bytes: u64,
     pub picture_disk_bytes: u64,
+    /// The store has no room for more prepared pictures.
+    pub full: bool,
 }
 #[derive(Clone, Default)]
 pub struct Control(
@@ -184,6 +186,9 @@ pub(crate) struct Store {
     available: (Instant, Option<u64>),
     /// The folder of pictures that last between sessions of this build, once looked in.
     lasting: Option<PathBuf>,
+    /// A picture made to be kept found no room: preparing more would only push out
+    /// what is kept, so it rests until the store is cleared or its limits change.
+    full: bool,
 }
 /// What tells one build from another: a picture's lasting name means the same picture
 /// only as long as the program that made it is the same.
@@ -214,7 +219,10 @@ fn machine_memory_available() -> Option<u64> {
 type Moment = (Time, Option<u64>, crate::screen::Look);
 /// A lasting name and the file to write the packed picture to.
 type Lasting = Option<(u64, PathBuf)>;
-type Packed = (Moment, [u32; 2], Result<Vec<u8>>, Lasting);
+/// The last field: whether older pictures may give way for this one.
+type Packed = (Moment, [u32; 2], Result<Vec<u8>>, Lasting, bool);
+/// The same before packing: the picture as the screen packs it.
+type Unpacked = (Moment, [u32; 2], Vec<u8>, Lasting, bool);
 /// Write a packed picture to its lasting file, whole or not at all.
 fn written(packed: &[u8], (lasting, path): (u64, PathBuf)) -> Lasting {
     let partial = path.with_extension("partial");
@@ -232,26 +240,29 @@ fn alike(a: &Moment, b: &Moment) -> bool {
             == i128::from(b.0.ticks) * i128::from(a.0.rate)
 }
 struct Packer {
-    work: std::sync::mpsc::SyncSender<(Moment, [u32; 2], Vec<u8>, Lasting)>,
+    work: std::sync::mpsc::SyncSender<Unpacked>,
     done: std::sync::mpsc::Receiver<Packed>,
 }
 impl Packer {
     fn start() -> Option<Self> {
         // A few pictures may wait; beyond that the worker packs its own, so memory
         // held in pictures not packed yet stays small.
-        let (work, jobs) = std::sync::mpsc::sync_channel::<(Moment, [u32; 2], Vec<u8>, Lasting)>(3);
+        let (work, jobs) = std::sync::mpsc::sync_channel::<Unpacked>(3);
         let (finished, done) = std::sync::mpsc::channel();
         std::thread::Builder::new()
             .name("veylvik-pictures".into())
             .spawn(move || {
-                for (moment, size, picture, lasting) in jobs {
+                for (moment, size, picture, lasting, evict) in jobs {
                     let packed = crate::pictures::pack(&picture);
                     // A lasting picture goes to its file here, beside the worker.
                     let lasting = match (&packed, lasting) {
                         (Ok(packed), Some(lasting)) => written(packed, lasting),
                         _ => None,
                     };
-                    if finished.send((moment, size, packed, lasting)).is_err() {
+                    if finished
+                        .send((moment, size, packed, lasting, evict))
+                        .is_err()
+                    {
                         break;
                     }
                 }
@@ -282,12 +293,14 @@ impl Store {
             packing: Vec::new(),
             available: (Instant::now(), machine_memory_available()),
             lasting: None,
+            full: false,
         }
     }
     fn clear_entries(&mut self) {
         // Pictures still being packed belong to what is being cleared.
         self.packer = None;
         self.packing.clear();
+        self.full = false;
         if self
             .control
             .3
@@ -425,7 +438,7 @@ impl Store {
         inputs: &ImageInputs,
     ) -> (Option<u64>, Option<u64>) {
         use std::hash::{Hash, Hasher};
-        if plan.has_temporal() || !inputs.steady(plan) {
+        if !inputs.steady(plan) {
             return (None, None);
         }
         let Ok((identity, lasting)) = renderer.identities(plan, request, inputs) else {
@@ -611,6 +624,10 @@ impl Store {
         self.entries
             .retain(|e| e.gpu.as_ref().is_some_and(|w| w.strong_count() > 0) || e.disk.is_some());
     }
+    /// Whether a picture made to be kept found no room (see `full`).
+    pub fn full(&self) -> bool {
+        self.full
+    }
     /// Whether this moment's picture is kept for `look` (the moment is noted if so).
     pub fn has_picture(
         &mut self,
@@ -688,6 +705,7 @@ impl Store {
         (name, lasting): (Option<u64>, Option<u64>),
         look: crate::screen::Look,
         frame: &GpuFrame,
+        evict: bool,
     ) {
         self.look = Some(look);
         let limits = self.picture_limits();
@@ -705,7 +723,7 @@ impl Store {
         {
             return;
         }
-        let kept = (|| {
+        let kept: Result<()> = (|| {
             let folder = if limits.disk > 0 {
                 Some(self.session_folder()?)
             } else {
@@ -730,7 +748,10 @@ impl Store {
             }
             // Beside the worker when there is room in the queue, else here and now.
             let (picture, lasting) = match &self.packer {
-                Some(packer) => match packer.work.try_send((moment, size, picture, lasting)) {
+                Some(packer) => match packer
+                    .work
+                    .try_send((moment, size, picture, lasting, evict))
+                {
                     Ok(()) => {
                         self.packing.push(moment);
                         return Ok(());
@@ -742,8 +763,18 @@ impl Store {
             };
             let packed = crate::pictures::pack(&picture)?;
             let lasting = lasting.and_then(|lasting| written(&packed, lasting));
-            self.pictures
-                .put_packed(moment, size, packed, lasting, limits, folder.as_deref())
+            if !self.pictures.put_within(
+                moment,
+                size,
+                packed,
+                lasting,
+                limits,
+                folder.as_deref(),
+                evict,
+            )? {
+                self.full = true;
+            }
+            Ok(())
         })();
         if let Err(e) = kept {
             self.warning = Some(format!("Played pictures are not kept: {e}"));
@@ -762,7 +793,7 @@ impl Store {
             } else {
                 packer.done.try_recv().ok()
             };
-            let Some((moment, size, packed, lasting)) = next else {
+            let Some((moment, size, packed, lasting, evict)) = next else {
                 if all {
                     self.packing.clear();
                 }
@@ -775,11 +806,20 @@ impl Store {
                 None
             };
             let kept = packed.and_then(|packed| {
-                self.pictures
-                    .put_packed(moment, size, packed, lasting, limits, folder.as_deref())
+                self.pictures.put_within(
+                    moment,
+                    size,
+                    packed,
+                    lasting,
+                    limits,
+                    folder.as_deref(),
+                    evict,
+                )
             });
-            if let Err(e) = kept {
-                self.warning = Some(format!("Played pictures are not kept: {e}"));
+            match kept {
+                Ok(true) => {}
+                Ok(false) => self.full = true,
+                Err(e) => self.warning = Some(format!("Played pictures are not kept: {e}")),
             }
         }
     }
@@ -929,6 +969,7 @@ impl Store {
                     .unwrap_or_default(),
                 picture_memory_bytes: self.pictures.memory_bytes(),
                 picture_disk_bytes: self.pictures.disk_bytes(),
+                full: self.full,
             };
         }
     }

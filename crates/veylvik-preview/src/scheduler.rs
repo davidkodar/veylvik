@@ -147,6 +147,10 @@ impl PreviewScheduler<Arc<GpuFrame>> {
                     let name = names.0;
                     // A picture kept as the screen shows it, when the request allows one.
                     let playing = if cacheable { job.look } else { None };
+                    // Made only to be kept, and there is no room: nothing to do.
+                    if job.background && cache.full() {
+                        return Err(error("the store is full"));
+                    }
                     // Made only to be kept: one that is kept already needs nothing.
                     if job.background
                         && let Some(look) = playing
@@ -160,7 +164,15 @@ impl PreviewScheduler<Arc<GpuFrame>> {
                         if job.background
                             && let Some(look) = playing
                         {
-                            cache.keep_picture(&renderer, job.request.time, names, look, &frame);
+                            // Made to be kept: nothing kept gives way for it.
+                            cache.keep_picture(
+                                &renderer,
+                                job.request.time,
+                                names,
+                                look,
+                                &frame,
+                                false,
+                            );
                         }
                         return Ok(frame);
                     }
@@ -189,7 +201,15 @@ impl PreviewScheduler<Arc<GpuFrame>> {
                     if cacheable {
                         cache.insert(&renderer, job.request.time, name, frame.clone(), cancelled);
                         if let Some(look) = playing {
-                            cache.keep_picture(&renderer, job.request.time, names, look, &frame);
+                            // Played frames push the oldest out; prepared ones never do.
+                            cache.keep_picture(
+                                &renderer,
+                                job.request.time,
+                                names,
+                                look,
+                                &frame,
+                                !job.background,
+                            );
                         }
                     }
                     Ok(frame)
@@ -932,5 +952,81 @@ mod playback_tests {
         // Only what the second session kept after the clear: the two frames it played.
         assert!(left <= 2, "{left} files left after clearing");
         std::fs::remove_dir_all(directory).unwrap();
+    }
+    #[test]
+    #[ignore = "requires Vulkan"]
+    fn preparing_never_pushes_out_what_is_kept_and_rests_when_the_store_is_full() {
+        let renderer = Arc::new(Renderer::new().unwrap());
+        let scheduler = GpuPreviewScheduler::with_renderer(renderer, || {}).unwrap();
+        let control = scheduler.playback_cache();
+        let plan = Arc::new(Plan::compile(&veylvik_document::motion_demo()).unwrap());
+        let look = crate::screen::Look {
+            exposure: 0.0,
+            filmic: false,
+        };
+        // Moments far enough apart to be different pictures.
+        let at = |step: i64| Time::new(step * 5, 24).unwrap();
+        let settle = |made: u64| {
+            let deadline = Instant::now() + Duration::from_secs(30);
+            while scheduler.preparing() != (0, made) {
+                assert!(Instant::now() < deadline, "timed out");
+                thread::sleep(Duration::from_millis(5));
+            }
+            thread::sleep(Duration::from_millis(300));
+        };
+        // Find what one picture of this composition takes, with room for many.
+        control.configure(crate::playback::Settings {
+            gpu_bytes: 0,
+            picture_memory_bytes: 64 << 20,
+            memory_reserve_bytes: 0,
+            ..Default::default()
+        });
+        scheduler
+            .prepare(1, plan.clone(), ImageInputs::default(), [at(0)], look)
+            .unwrap();
+        settle(1);
+        // Asked for again it costs nothing, and the store's figures by then include it
+        // (pictures are packed beside the worker and arrive a moment later).
+        scheduler
+            .prepare(1, plan.clone(), ImageInputs::default(), [at(0)], look)
+            .unwrap();
+        settle(2);
+        let one = control.status().picture_memory_bytes;
+        assert!(one > 0);
+        // Room for about three, and twelve asked for.
+        control.configure(crate::playback::Settings {
+            gpu_bytes: 0,
+            picture_memory_bytes: one * 3 + one / 2,
+            memory_reserve_bytes: 0,
+            ..Default::default()
+        });
+        scheduler
+            .prepare(
+                1,
+                plan.clone(),
+                ImageInputs::default(),
+                (0..12).map(at),
+                look,
+            )
+            .unwrap();
+        settle(14);
+        // The first ones are kept and stay kept: later ones did not push them out.
+        scheduler
+            .prepare(1, plan, ImageInputs::default(), [at(0)], look)
+            .unwrap();
+        settle(15);
+        let status = control.status();
+        assert!(status.full, "the store did not say it is full");
+        let kept: Vec<i64> = status
+            .ready_frames
+            .iter()
+            .map(|t| t.ticks * 24 / i64::from(t.rate) / 5)
+            .collect();
+        assert!(
+            kept.contains(&0) && kept.contains(&1),
+            "the first pictures were pushed out: {kept:?}"
+        );
+        assert!(kept.len() <= 4 && !kept.contains(&11), "{kept:?}");
+        assert!(status.picture_memory_bytes <= one * 3 + one / 2);
     }
 }

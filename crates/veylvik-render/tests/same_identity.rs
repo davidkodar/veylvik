@@ -127,15 +127,10 @@ fn the_same_identity_is_the_same_picture_for_every_node_type() {
         "image",
         "footage",
         "ocio",
-        // Made of other moments or of a picture rendered apart (blur over time, a moment
-        // from elsewhere, flow between frames, a size of its own) or needing a track: their
-        // identity is that of the pictures they are made of, which is checked when results
-        // are kept at every node.
-        "own_size",
-        "motion_blur",
-        "time_remap",
-        "optical_flow",
+        // Needs a track to follow.
         "planar_warp",
+        // Takes no plain still inside it; it has a test of its own below.
+        "own_size",
     ];
     let unexcused: Vec<_> = skipped
         .iter()
@@ -192,4 +187,59 @@ fn only_a_picture_whose_every_input_has_a_name_is_known_in_another_session() {
         lasting(Image::data(W, H, pixels()).unwrap())
     );
     assert!(lasting(Image::data(W, H, pixels()).unwrap()).is_some());
+}
+
+#[test]
+#[ignore = "requires Vulkan"]
+fn a_picture_made_apart_is_part_of_what_the_whole_is_made_of() {
+    let renderer = Renderer::new().unwrap();
+    let rate = Time { ticks: 24, rate: 1 };
+    let of = |kind: &str| {
+        registry::TYPES
+            .iter()
+            .find(|t| t.type_id == kind)
+            .unwrap()
+            .default_operation()
+    };
+    // A solid colour made at a size of its own, then shown in the frame.
+    let composition = |red: f32| {
+        let mut doc = blank(W, H, rate).unwrap();
+        doc.frame_count = 48;
+        let mut colour = of("solid");
+        colour["color"] = serde_json::json!([red, 0.25, 0.5, 1.0]);
+        let inner = Node::new("inner", serde_json::from_value(colour).unwrap(), &[]);
+        let sized = Node::new(
+            "sized",
+            serde_json::from_value(of("own_size")).unwrap(),
+            &[("image", inner.id)],
+        );
+        doc.output = sized.id;
+        doc.nodes.insert(inner.id, inner);
+        doc.nodes.insert(sized.id, sized);
+        Plan::compile(&doc).unwrap()
+    };
+    let inputs = ImageInputs::default();
+    let at = |frame| RenderRequest::full(Time::at_frame(frame, rate).unwrap());
+    let look = |plan: &Plan, frame| {
+        (
+            renderer.identities(plan, at(frame), &inputs).unwrap(),
+            renderer
+                .render_gpu(plan, at(frame), &inputs)
+                .and_then(|f| renderer.read_frame(&f))
+                .unwrap()
+                .pixels,
+        )
+    };
+    let dim = composition(0.2);
+    let (early, late) = (look(&dim, 3), look(&dim, 17));
+    // Nothing in it moves: one identity, one picture, and one that holds between sessions.
+    assert_eq!(early.0, late.0);
+    assert!(early.1 == late.1);
+    assert!(early.0.1.is_some());
+    // What is inside changes and nothing outside does: it is another picture, and is
+    // known as another.
+    let bright = look(&composition(0.9), 3);
+    assert!(bright.1 != early.1);
+    assert_ne!(bright.0.0, early.0.0);
+    assert_ne!(bright.0.1, early.0.1);
 }

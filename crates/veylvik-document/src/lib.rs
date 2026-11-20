@@ -768,7 +768,7 @@ impl Composition {
     /// clip itself and nothing else, so it looks exactly as the clip did. One Footage
     /// node reads the host's media by `key` (and the file beside it, when there is one,
     /// so the composition stays readable without that host), untouched in time and
-    /// placed as it comes, and is the output.
+    /// fitted to the frame, and is the output.
     pub fn from_host_footage(
         key: &str,
         label: &str,
@@ -792,7 +792,9 @@ impl Composition {
             Operation::Footage(nodes::Footage {
                 asset: key.into(),
                 timing: Default::default(),
-                placement: Default::default(),
+                // Fitted to the frame: a host may hand its frames over at another size
+                // than the media's own (a proxy), and they must fill the same place.
+                placement: media::Placement::Fit,
                 colour: Default::default(),
                 layer: None,
                 fallback,

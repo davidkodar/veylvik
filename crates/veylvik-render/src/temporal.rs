@@ -10,6 +10,118 @@ struct Work<'a> {
     cancelled: &'a mut dyn FnMut() -> bool,
 }
 impl Renderer {
+    /// What the picture `plan` gives for `request` is made of, its branches of other
+    /// moments included: each branch stands in by what it is made of in turn, at the
+    /// moments it reads. `left` bounds the evaluations, as rendering does.
+    pub(crate) fn key(
+        &self,
+        plan: &Plan,
+        request: RenderRequest,
+        inputs: &ImageInputs,
+        preview: bool,
+        left: &mut u32,
+    ) -> Result<crate::cache::Key> {
+        if *left == 0 {
+            return Err(error("too many moments to name this picture by"));
+        }
+        *left -= 1;
+        let mut names = std::collections::BTreeMap::new();
+        for branch in &plan.temporal {
+            // What decides the branch besides its own pictures, then those pictures.
+            let mut words: Vec<u32> = Vec::new();
+            let mut lasting = true;
+            let mut transformed = false;
+            let mut of = |time: veylvik_document::Time, words: &mut Vec<u32>, left: &mut u32| {
+                let key = self.key(
+                    &branch.plan,
+                    RenderRequest::full(time),
+                    inputs,
+                    preview,
+                    left,
+                )?;
+                let name = crate::fnv(bytemuck::cast_slice(key.words()), 0);
+                words.extend([name as u32, (name >> 32) as u32]);
+                lasting &= key.portable();
+                Ok::<_, crate::Error>(())
+            };
+            match &branch.operation {
+                Operation::MotionBlur(blur) => {
+                    let shutter = Shutter {
+                        angle: blur.angle.at(request.time)?,
+                        phase: blur.phase.at(request.time)?,
+                        samples: if preview {
+                            &blur.preview_samples
+                        } else {
+                            &blur.final_samples
+                        }
+                        .at(request.time)?
+                        .round() as u32,
+                        frame_rate: plan.frame_rate,
+                    };
+                    words.push(1);
+                    for time in shutter.sample_times(request.time)? {
+                        of(time, &mut words, left)?;
+                    }
+                }
+                Operation::TimeRemap(remap) => {
+                    words.push(2);
+                    of(remap.source_at(request.time)?, &mut words, left)?;
+                }
+                Operation::OpticalFlow(flow) => {
+                    let (first, second, fraction) = flow.source_pair(request.time)?;
+                    words.extend([
+                        3,
+                        fraction.to_bits(),
+                        flow.confidence.at(request.time)?.to_bits(),
+                        u32::from(flow.diagnostic),
+                        flow.quality as u32,
+                        u32::from(preview),
+                    ]);
+                    of(first, &mut words, left)?;
+                    if fraction != 0. || flow.diagnostic {
+                        of(second, &mut words, left)?;
+                    }
+                }
+                Operation::Ocio(node) => {
+                    words.push(4);
+                    let text = format!("{:?}", node.transform);
+                    let name = crate::fnv(text.as_bytes(), 0);
+                    words.extend([name as u32, (name >> 32) as u32]);
+                    of(request.time, &mut words, left)?;
+                    // The transform's own files are not part of this name.
+                    transformed = true;
+                }
+                Operation::Particles(particles) => {
+                    let grid = crate::history::grid(particles.history);
+                    words.extend([5, grid]);
+                    for time in crate::history::moments(
+                        request.time,
+                        particles.life.at(request.time)?,
+                        grid,
+                        plan.frame_rate,
+                    )? {
+                        of(time, &mut words, left)?;
+                    }
+                }
+                Operation::OwnSize(_) => {
+                    words.push(6);
+                    of(request.time, &mut words, left)?;
+                    // A picture of its own size is no extra moment in time.
+                    *left = left.saturating_add(1);
+                }
+                _ => unreachable!("compiled temporal boundary"),
+            }
+            names.insert(
+                branch.key.clone(),
+                (
+                    crate::fnv(bytemuck::cast_slice(&words), 0),
+                    lasting && !transformed,
+                ),
+            );
+        }
+        let resolved = inputs.resolve_on(plan, request.time, Some(self))?;
+        crate::cache::Key::with(plan, request, &resolved, &names)
+    }
     /// Cancellable evaluation with preview shutter quality. Export APIs use final quality.
     /// At most 256 branch evaluations per request; nesting is limited when compiling.
     pub fn render_gpu_temporal(

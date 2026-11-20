@@ -29,6 +29,7 @@ pub struct HostSource<M> {
     media: M,
     budget: u64,
     kept: Mutex<Vec<Kept>>,
+    lasting: bool,
 }
 impl<M: HostMedia> HostSource<M> {
     pub fn new(media: M, budget: u64) -> Self {
@@ -36,7 +37,17 @@ impl<M: HostMedia> HostSource<M> {
             media,
             budget,
             kept: Mutex::new(Vec::new()),
+            lasting: false,
         }
+    }
+    /// The host promises that an identity it gives means one frame and no other: not
+    /// another frame of this media, not a frame of any other media it has, and not
+    /// another frame in a later session. Then pictures made of its frames are known
+    /// again across sources and kept between sessions. Without the promise an identity
+    /// only tells this source's own frames apart, which is always safe.
+    pub fn lasting(mut self) -> Self {
+        self.lasting = true;
+        self
     }
     pub fn media(&self) -> &M {
         &self.media
@@ -90,12 +101,20 @@ impl<M: HostMedia> FrameSource for HostSource<M> {
             return Ok(Some(frame));
         }
         let theirs = self.media.frame(time, target)?;
-        let frame = Arc::new(renderer.frame_from_host(
+        let frame = renderer.frame_from_host(
             &theirs.buffer,
             theirs.width,
             theirs.height,
             &theirs.pixels,
-        )?);
+        )?;
+        // Only a host that has promised its names mean one frame everywhere has its
+        // frames named by them; otherwise a frame is known within this source alone.
+        let frame = Arc::new(if self.lasting {
+            let size = target.map_or(0, |[w, h]| u64::from(w) << 32 | u64::from(h));
+            frame.named(crate::fnv(&identity.to_le_bytes(), size))
+        } else {
+            frame
+        });
         kept.insert(0, (identity, target, frame.clone()));
         let mut held = 0;
         let mut keep = 0;

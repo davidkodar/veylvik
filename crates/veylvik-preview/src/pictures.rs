@@ -339,6 +339,7 @@ impl Pictures {
         )
     }
     /// As [`Pictures::put`], with the picture already packed by [`pack`].
+    #[cfg(test)]
     pub fn put_packed(
         &mut self,
         (time, name, look): (Time, Option<u64>, Look),
@@ -348,6 +349,47 @@ impl Pictures {
         limits: Limits,
         folder: Option<&std::path::Path>,
     ) -> Result<()> {
+        self.put_within(
+            (time, name, look),
+            size,
+            packed,
+            written,
+            limits,
+            folder,
+            true,
+        )
+        .map(|_| ())
+    }
+    /// As [`Pictures::put_packed`]. With `evict` false nothing kept gives way for this
+    /// picture: when it does not fit it is not kept, and the answer is false.
+    #[allow(clippy::too_many_arguments)]
+    pub fn put_within(
+        &mut self,
+        (time, name, look): (Time, Option<u64>, Look),
+        size: [u32; 2],
+        packed: Vec<u8>,
+        written: Option<(u64, PathBuf)>,
+        limits: Limits,
+        folder: Option<&std::path::Path>,
+        evict: bool,
+    ) -> Result<bool> {
+        let new = packed.len() as u64;
+        let room_in_memory = self.memory_bytes() + new <= limits.memory;
+        let room_on_disk = self.disk_bytes() + new <= limits.disk;
+        if !evict {
+            // On disk already (a lasting picture) it must fit there; otherwise in
+            // memory, or on a disk there is to move an older one to.
+            let fits = match &written {
+                Some(_) => room_on_disk,
+                None => room_in_memory || (folder.is_some() && room_on_disk),
+            };
+            if !fits {
+                if let Some((_, path)) = written {
+                    let _ = std::fs::remove_file(path);
+                }
+                return Ok(false);
+            }
+        }
         if let Some(index) = self.position(time, name, look) {
             self.entries.remove(index);
         }
@@ -359,11 +401,12 @@ impl Pictures {
             times: vec![time],
             look,
             size,
-            memory: Some(Arc::new(packed)),
+            // One that has its file and no room in memory stays on disk alone.
+            memory: (evict || room_in_memory || written.is_none()).then(|| Arc::new(packed)),
             disk: written.as_ref().map(|(_, path)| (path.clone(), bytes)),
             lasting: written.map(|(lasting, _)| lasting),
         });
-        self.fit(limits, folder)
+        self.fit(limits, folder).map(|()| true)
     }
     pub fn fit(&mut self, limits: Limits, folder: Option<&std::path::Path>) -> Result<()> {
         let mut failure = None;

@@ -807,12 +807,7 @@ impl Renderer {
         request: RenderRequest,
         inputs: &ImageInputs,
     ) -> Result<u64> {
-        use std::hash::{Hash, Hasher};
-        let resolved = inputs.resolve_on(plan, request.time, Some(self))?;
-        let key = cache::Key::new(plan, request, &resolved)?;
-        let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        key.words().hash(&mut hasher);
-        Ok(hasher.finish())
+        Ok(self.identities(plan, request, inputs)?.0)
     }
     /// Both identities of a picture at once: [`Renderer::identity`] and
     /// [`Renderer::lasting_identity`].
@@ -823,11 +818,12 @@ impl Renderer {
         inputs: &ImageInputs,
     ) -> Result<(u64, Option<u64>)> {
         use std::hash::{Hash, Hasher};
-        let resolved = inputs.resolve_on(plan, request.time, Some(self))?;
-        let key = cache::Key::new(plan, request, &resolved)?;
+        // As a preview is made: a motion blur's preview samples, a flow's preview size.
+        let key = self.key(plan, request, inputs, true, &mut 256)?;
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
         key.words().hash(&mut hasher);
-        let lasting = (plan.temporal.is_empty() && key.portable())
+        let lasting = key
+            .portable()
             .then(|| fnv(bytemuck::cast_slice(key.words()), 0));
         Ok((hasher.finish(), lasting))
     }
@@ -840,14 +836,7 @@ impl Renderer {
         request: RenderRequest,
         inputs: &ImageInputs,
     ) -> Result<Option<u64>> {
-        if !plan.temporal.is_empty() {
-            return Ok(None);
-        }
-        let resolved = inputs.resolve_on(plan, request.time, Some(self))?;
-        let key = cache::Key::new(plan, request, &resolved)?;
-        Ok(key
-            .portable()
-            .then(|| fnv(bytemuck::cast_slice(key.words()), 0)))
+        Ok(self.identities(plan, request, inputs)?.1)
     }
     pub fn cache_stats(&self) -> Result<CacheStats> {
         Ok(self

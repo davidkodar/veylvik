@@ -23,6 +23,17 @@ impl Key {
         self.1
     }
     pub fn new(plan: &Plan, request: RenderRequest, images: &ImageInputs) -> Result<Self> {
+        Self::with(plan, request, images, &Default::default())
+    }
+    /// As [`Key::new`], with `names` standing for the pictures the plan makes apart
+    /// (its branches of other moments), by their keys: what each is made of, and
+    /// whether that holds in another session.
+    pub fn with(
+        plan: &Plan,
+        request: RenderRequest,
+        images: &ImageInputs,
+        names: &std::collections::BTreeMap<String, (u64, bool)>,
+    ) -> Result<Self> {
         request.time.seconds()?;
         let region = request.region.unwrap_or(Region {
             x: 0,
@@ -159,6 +170,11 @@ impl Key {
                                 Close {} => words.push(4),
                             }
                         }
+                    }
+                    Input::Asset(asset) if names.contains_key(asset) => {
+                        let (id, lasting) = names[asset];
+                        portable &= lasting;
+                        words.extend([5, id as u32, (id >> 32) as u32]);
                     }
                     Input::Asset(asset) => {
                         let image = images

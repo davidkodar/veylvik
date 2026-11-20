@@ -358,7 +358,8 @@ impl ImageInputs {
                     static EMPTY: std::sync::OnceLock<Arc<Image>> = std::sync::OnceLock::new();
                     EMPTY
                         .get_or_init(|| {
-                            Arc::new(Image::new(1, 1, vec![[0.0; 4]]).expect("valid empty image"))
+                            // Named: nothing is the same nothing in every session.
+                            Arc::new(Image::data(1, 1, vec![[0.0; 4]]).expect("valid empty image"))
                         })
                         .clone()
                 };
