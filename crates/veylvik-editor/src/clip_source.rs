@@ -81,11 +81,11 @@ impl ClipSource {
         pixels: &HostPixels,
     ) -> Result<()> {
         let made = self.made()?;
-        let mut frame = Arc::new(self.renderer.render_gpu(
-            &made.plan,
-            RenderRequest::full(time),
-            &made.inputs,
-        )?);
+        // Through the renderer's kept pictures: a frame asked for again, by this clip, the
+        // editor or another clip of the same composition, is not made again.
+        let mut frame =
+            self.renderer
+                .render_gpu_cached(&made.plan, RenderRequest::full(time), &made.inputs)?;
         // Halve while the picture is still at least twice the size wanted, then the rest
         // in one step, so every source pixel counts.
         for divisor in [4, 2] {
