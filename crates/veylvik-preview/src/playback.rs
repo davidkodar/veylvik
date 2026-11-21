@@ -377,6 +377,13 @@ impl Store {
             } else {
                 self.clear_entries();
             }
+            // Another folder (a host gave its own): pictures and the folders made in the
+            // old one stay there, and this store starts again in the new one.
+            if settings.directory != self.settings.directory {
+                self.pictures.clear();
+                self.folder = None;
+                self.lasting = None;
+            }
             self.settings = settings;
             self.generation = generation;
             self.warning = None;

@@ -1008,6 +1008,65 @@ mod playback_tests {
     }
     #[test]
     #[ignore = "requires Vulkan"]
+    fn a_new_folder_takes_the_pictures_from_then_on() {
+        let root = std::env::temp_dir().join(format!("veylvik-folders-{}", std::process::id()));
+        let (first, second) = (root.join("first"), root.join("second"));
+        let files = |folder: &std::path::Path| -> usize {
+            fn count(folder: &std::path::Path) -> usize {
+                std::fs::read_dir(folder).map_or(0, |entries| {
+                    entries
+                        .flatten()
+                        .map(|entry| {
+                            let path = entry.path();
+                            if path.is_dir() {
+                                count(&path)
+                            } else {
+                                usize::from(path.to_string_lossy().ends_with(".picture.zst"))
+                            }
+                        })
+                        .sum()
+                })
+            }
+            count(folder)
+        };
+        let renderer = Arc::new(Renderer::new().unwrap());
+        let scheduler = GpuPreviewScheduler::with_renderer(renderer, || {}).unwrap();
+        let control = scheduler.playback_cache();
+        // No memory tier: every picture goes to the folder.
+        let settings = |folder: &std::path::Path| crate::playback::Settings {
+            gpu_bytes: 0,
+            picture_memory_bytes: 0,
+            picture_disk_bytes: 64 << 20,
+            memory_reserve_bytes: 0,
+            directory: Some(folder.to_path_buf()),
+            ..Default::default()
+        };
+        let plan = Arc::new(Plan::compile(&veylvik_document::motion_demo()).unwrap());
+        let look = crate::screen::Look {
+            exposure: 0.0,
+            filmic: false,
+        };
+        let at = |frame: i64| Time::new(frame, 24).unwrap();
+        let deadline = Instant::now() + Duration::from_secs(30);
+        let prepared = |times: std::ops::Range<i64>, folder: &std::path::Path, want: usize| {
+            scheduler
+                .prepare(1, plan.clone(), ImageInputs::default(), times.map(at), look)
+                .unwrap();
+            while files(folder) < want {
+                assert!(Instant::now() < deadline, "{} in {folder:?}", files(folder));
+                thread::sleep(Duration::from_millis(5));
+            }
+        };
+        control.configure(settings(&first));
+        prepared(0..3, &first, 3);
+        // A host names its own folder: from then on the pictures go there.
+        control.configure(settings(&second));
+        prepared(10..13, &second, 3);
+        assert_eq!(files(&first), 3, "pictures still went to the old folder");
+        let _ = std::fs::remove_dir_all(root);
+    }
+    #[test]
+    #[ignore = "requires Vulkan"]
     fn the_next_session_plays_what_the_last_one_kept() {
         let directory = std::env::temp_dir().join(format!(
             "veylvik-sessions-test-{}",

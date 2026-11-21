@@ -448,6 +448,14 @@ impl Editor {
     pub fn steps(&self) -> (Vec<String>, Vec<String>) {
         self.studio.project.document.steps()
     }
+    /// Keep the playback store's pictures in `folder` (a host's own cache folder, so its
+    /// clear-cache removes them), or in Veylvik's usual place with `None`. Pictures kept
+    /// in the place before stay there; the store starts again in the new one. Call it
+    /// right after [`Editor::new`] so nothing is kept elsewhere first.
+    pub fn set_playback_folder(&mut self, folder: Option<PathBuf>) {
+        self.studio.playback_folder = folder;
+        self.studio.configure_playback();
+    }
     /// The composition's media that could not be had, by name, with the reason: for a
     /// host to show which clips are missing.
     pub fn unavailable_media(&self) -> std::collections::BTreeMap<String, String> {
@@ -638,6 +646,7 @@ impl Studio {
             waiting: None,
             play_now: false,
             trust_prompt,
+            playback_folder: None,
             viewer_canvas: None,
             files: Tasks::new(setup.context.clone()),
             export_controls: sequence::Controls::default(),
@@ -787,6 +796,8 @@ struct Studio {
     play_now: bool,
     /// The opened project reads files outside its folder: ask whether to allow them.
     trust_prompt: bool,
+    /// Where a host wants the playback store's pictures (its own cache folder).
+    playback_folder: Option<PathBuf>,
     /// Where the viewer's picture was last drawn.
     viewer_canvas: Option<egui::Rect>,
     files: Tasks,
@@ -2180,16 +2191,10 @@ impl Studio {
         }
         self.accent = palette.accent;
     }
-    fn apply_preferences(&mut self, before: Option<&preferences::Values>, ctx: &egui::Context) {
+    /// The playback store's limits and folder, from the preferences; a host's own
+    /// folder (`Editor::set_playback_folder`) comes before both of the others.
+    fn configure_playback(&self) {
         let p = &self.preferences.values;
-        if before.is_none_or(|b| b.auto_arrange != p.auto_arrange) {
-            self.graph.set_auto_arrange(p.auto_arrange);
-        }
-        if before.is_none_or(|b| b.fast_view != p.fast_view) {
-            self.view.fast_filter = p.fast_view;
-        }
-        self.recovery.enabled = p.recovery_enabled;
-        self.recovery.interval = Duration::from_secs(p.recovery_seconds);
         if let Some(scheduler) = &self.scheduler {
             let directory = std::env::var_os("XDG_CACHE_HOME")
                 .map(std::path::PathBuf::from)
@@ -2199,7 +2204,9 @@ impl Studio {
                 .map(|p| p.join("veylvik/playback"));
             // A cache folder of the artist's choice, when it exists.
             let chosen = std::path::PathBuf::from(p.cache_folder.trim());
-            let directory = if !p.cache_folder.trim().is_empty() && chosen.is_dir() {
+            let directory = if let Some(theirs) = &self.playback_folder {
+                Some(theirs.clone())
+            } else if !p.cache_folder.trim().is_empty() && chosen.is_dir() {
                 Some(chosen.join("veylvik-playback"))
             } else {
                 directory
@@ -2216,6 +2223,18 @@ impl Studio {
                     memory_reserve_bytes: p.played_reserve_mib * 1024 * 1024,
                 });
         }
+    }
+    fn apply_preferences(&mut self, before: Option<&preferences::Values>, ctx: &egui::Context) {
+        let p = &self.preferences.values;
+        if before.is_none_or(|b| b.auto_arrange != p.auto_arrange) {
+            self.graph.set_auto_arrange(p.auto_arrange);
+        }
+        if before.is_none_or(|b| b.fast_view != p.fast_view) {
+            self.view.fast_filter = p.fast_view;
+        }
+        self.recovery.enabled = p.recovery_enabled;
+        self.recovery.interval = Duration::from_secs(p.recovery_seconds);
+        self.configure_playback();
         if !design::guest(ctx) {
             ctx.set_zoom_factor(p.scale);
         }
