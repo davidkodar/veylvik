@@ -33,6 +33,7 @@ mod nodes;
 mod pipeline_cache;
 mod plan;
 mod pool;
+mod results;
 pub use pipeline_cache::default_pipeline_folder;
 mod preview_scale;
 mod probe;
@@ -235,6 +236,8 @@ pub struct Renderer {
     vector_wanted: std::sync::atomic::AtomicU64,
     pool: Mutex<pool::Pool>,
     cache: Mutex<cache::FrameCache>,
+    /// Nodes' results kept between frames while they do not change (see results.rs).
+    results: Mutex<results::Results>,
     flow_engine: Mutex<Option<Arc<flow::Engine>>>,
     scene_renderer: std::sync::RwLock<Option<Arc<dyn SceneRenderer>>>,
     /// One 3D render gives both the picture and the depth picture when two Render scene
@@ -502,6 +505,7 @@ impl Renderer {
             vector_wanted: Default::default(),
             pool: Mutex::new(pool::Pool::default()),
             cache: Mutex::new(cache::FrameCache::default()),
+            results: Mutex::new(results::Results::default()),
             ocio_cache: Mutex::new(Default::default()),
             flow_engine: Mutex::new(None),
             scene_renderer: std::sync::RwLock::new(None),
@@ -532,6 +536,10 @@ impl Renderer {
             .lock()
             .map_err(|_| error("renderer resource pool poisoned"))?
             .trim(0);
+        self.results
+            .lock()
+            .map_err(|_| error("kept results lock poisoned"))?
+            .clear();
         Ok(())
     }
     /// The returned pixels remain scene-linear and premultiplied, including values above one.
@@ -607,13 +615,22 @@ impl Renderer {
                 )));
             }
         }
-        let working_bytes = if download {
+        let working = if download {
             plan.working_bytes()
         } else {
             plan.gpu_working_bytes()
         } + source_bytes
             + pool.stats().held_bytes
             - plan.vector_bytes();
+        // Kept node results count too, and give way before a render goes without room.
+        let working_bytes = {
+            let mut results = self
+                .results
+                .lock()
+                .map_err(|_| error("kept results lock poisoned"))?;
+            while working + results.bytes() > self.budget_bytes && results.evict() {}
+            working + results.bytes()
+        };
         if working_bytes > self.budget_bytes {
             let mib = |bytes: u64| bytes.div_ceil(1024 * 1024);
             return Err(error(format!(
@@ -676,6 +693,8 @@ impl Renderer {
                 ];
             }
         }
+        // What each pass makes, to know a node's result again in the next frame.
+        let ids = cache::pass_identities(plan, request, inputs)?;
         self.note("working out every node's settings");
         let validation = self.device.push_error_scope(wgpu::ErrorFilter::Validation);
         let allocation = self.device.push_error_scope(wgpu::ErrorFilter::OutOfMemory);
@@ -691,6 +710,7 @@ impl Renderer {
             &vectors,
             &mut pool,
             download,
+            &ids,
         );
         let allocation_error = pollster::block_on(allocation.pop());
         let validation_error = pollster::block_on(validation.pop());
@@ -981,7 +1001,20 @@ impl Renderer {
             .map_err(|_| error("frame cache poisoned"))?
             .stats())
     }
+    /// Nodes' results kept between frames: how many, their bytes, and how many passes
+    /// they have stood for since the start.
+    pub fn kept_results(&self) -> Result<(usize, u64, u64)> {
+        let results = self
+            .results
+            .lock()
+            .map_err(|_| error("kept results lock poisoned"))?;
+        Ok((results.len(), results.bytes(), results.hits))
+    }
     pub fn clear_frame_cache(&self) -> Result<()> {
+        self.results
+            .lock()
+            .map_err(|_| error("kept results lock poisoned"))?
+            .clear();
         if let Some(engine) = self
             .flow_engine
             .lock()
@@ -1006,6 +1039,7 @@ impl Renderer {
     pub fn queue(&self) -> &wgpu::Queue {
         &self.queue
     }
+    #[allow(clippy::too_many_arguments)]
     fn encode_and_read(
         &self,
         plan: &Plan,
@@ -1019,6 +1053,7 @@ impl Renderer {
         vectors: &BTreeMap<usize, (Arc<GpuFrame>, [u32; 2])>,
         pool: &mut pool::Pool,
         download: bool,
+        ids: &[Option<u64>],
     ) -> Result<Executed> {
         let byte_size = u64::from(plan.width) * u64::from(plan.height) * 16;
         let mut resources = pool.frame(self.budget_bytes);
@@ -1084,6 +1119,16 @@ impl Renderer {
         self.note("taking frames and sending the sources to the card");
         let visible = plan.visible_at(time)?;
         let mut stale = vec![false; plan.slot_count];
+        // Nodes' results from earlier frames that stand for passes now, and those to keep.
+        let room = self.budget_bytes / 8;
+        let decision = self
+            .results
+            .lock()
+            .map_err(|_| error("kept results lock poisoned"))?
+            .decide(plan, ids, &visible, room);
+        let mut keeping: Vec<(u64, wgpu::Buffer)> = Vec::new();
+        // A result to keep is copied out before the next pass can reuse its slot.
+        let mut to_keep: Option<usize> = None;
         // Only when asked to time the passes: what ran since the last mark is finished
         // on the card and timed, then the next pass begins on a new encoder.
         let timing = self.pass_times.lock().is_ok_and(|times| times.is_some());
@@ -1118,9 +1163,43 @@ impl Renderer {
         // A Render scene pass whose picture its twin has already made (see below), kept
         // in a frame of its own until the pass's turn comes.
         let mut made: Vec<Option<wgpu::Buffer>> = vec![None; plan.passes.len()];
+        let keep_now = |encoder: &mut wgpu::CommandEncoder,
+                        at: usize,
+                        keeping: &mut Vec<(u64, wgpu::Buffer)>,
+                        buffers: &[wgpu::Buffer]| {
+            let Some(id) = ids[at] else { return };
+            let buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("kept node result"),
+                size: byte_size,
+                usage: wgpu::BufferUsages::STORAGE
+                    | wgpu::BufferUsages::COPY_SRC
+                    | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            });
+            encoder.copy_buffer_to_buffer(
+                &buffers[plan.passes[at].output],
+                0,
+                &buffer,
+                0,
+                byte_size,
+            );
+            keeping.push((id, buffer));
+        };
         for (at_pass, scheduled) in plan.passes.iter().enumerate() {
-            if !visible.contains(&plan.nodes[scheduled.node].id) {
+            if let Some(at) = to_keep.take() {
+                keep_now(&mut encoder, at, &mut keeping, &buffers);
+            }
+            if !visible.contains(&plan.nodes[scheduled.node].id) || !decision.run[at_pass] {
                 stale[scheduled.output] = true;
+                continue;
+            }
+            if decision.keep[at_pass] {
+                to_keep = Some(at_pass);
+            }
+            if let Some(ready) = &decision.kept[at_pass] {
+                mark(&mut encoder, Some((scheduled.node, scheduled.kernel)))?;
+                encoder.copy_buffer_to_buffer(ready, 0, &buffers[scheduled.output], 0, byte_size);
+                stale[scheduled.output] = false;
                 continue;
             }
             mark(&mut encoder, Some((scheduled.node, scheduled.kernel)))?;
@@ -1353,6 +1432,9 @@ impl Renderer {
         }
         mark(&mut encoder, None)?;
         // The picture itself was not run (it is clear at this time): give a clear one.
+        if let Some(at) = to_keep.take() {
+            keep_now(&mut encoder, at, &mut keeping, &buffers);
+        }
         if stale[plan.output_slot] {
             encoder.clear_buffer(&buffers[plan.output_slot], 0, None);
         }
@@ -1406,6 +1488,15 @@ impl Renderer {
         };
         resources.submitted();
         let submission = self.queue.submit([encoder.finish()]);
+        // Kept only once their frame is on its way to the card: a render that failed
+        // before this leaves nothing half made in the store.
+        if !keeping.is_empty()
+            && let Ok(mut results) = self.results.lock()
+        {
+            for (id, buffer) in keeping {
+                results.insert(id, buffer, room);
+            }
+        }
         let readback = readback.unwrap();
         if download {
             let pixels = self.map_values(&readback, submission)?;

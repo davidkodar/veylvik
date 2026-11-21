@@ -53,142 +53,203 @@ impl Key {
             region.height,
         ];
         for pass in &plan.passes {
-            words.extend([pass.kernel as u32, pass.output as u32]);
-            let values = params(
-                &plan.nodes[pass.node],
-                &plan.nodes,
-                &plan.curves[pass.node],
-                plan.width,
-                plan.height,
-                request.time,
+            pass_words(
+                plan,
+                pass,
+                request,
+                images,
+                names,
+                &mut words,
+                &mut portable,
+                &mut |slot, words| words.push(slot as u32),
             )?;
-            words.extend_from_slice(bytemuck::cast_slice(std::slice::from_ref(&values)));
-            if let veylvik_document::Operation::Shader(shader) = &plan.nodes[pass.node].operation {
-                // A custom shader's own text is part of what makes its picture.
-                use std::hash::{Hash, Hasher};
-                let mut hasher = std::collections::hash_map::DefaultHasher::new();
-                shader.code.hash(&mut hasher);
-                let code = hasher.finish();
-                words.extend([5, code as u32, (code >> 32) as u32]);
-            }
-            if pass.kernel == crate::Kernel::RenderScene {
-                // Scene nodes have no passes of their own: key what the scene shows.
-                words.extend(crate::scene_hook::fingerprint(
-                    plan,
-                    pass.node,
-                    request.time,
-                )?);
-                if request.scene_reflections {
-                    words.push(4);
-                }
-                if let Some(view) = request.scene_view {
-                    words.push(3);
-                    words.extend(view.world.iter().flatten().map(|v| v.to_bits()));
-                    words.extend([view.focal_length.to_bits(), view.sensor_width.to_bits()]);
-                }
-                for (_, input) in &pass.cards {
-                    if let Input::Value(slot) = input {
-                        words.extend([2, *slot as u32]);
-                    }
-                }
-            }
-            if let Some(lighting) =
-                crate::shadow_lighting::for_node(&plan.nodes[pass.node], plan, request.time)?
-            {
-                words.extend_from_slice(bytemuck::cast_slice(std::slice::from_ref(&lighting)));
-            }
-            for input in &pass.inputs {
-                match input {
-                    Input::Empty => words.extend([0, 0, 0]),
-                    Input::Value(slot) => words.extend([1, *slot as u32, 0]),
-                    Input::Vector(index) => {
-                        if let veylvik_document::Operation::Text(veylvik_document::nodes::Text {
-                            ..
-                        }) = &plan.nodes[*index].operation
-                        {
-                            let op = &plan.nodes[*index].operation;
-                            if let veylvik_document::Operation::Text(
-                                veylvik_document::nodes::Text { typography, .. },
-                            ) = op
-                                && typography.motion != veylvik_document::text::TextMotion::None
-                            {
-                                let seconds = request.time.seconds()?.to_bits();
-                                words.extend([seconds as u32, (seconds >> 32) as u32]);
-                            }
-                            let bytes = serde_json::to_vec(op).map_err(error)?;
-                            words.extend([4, bytes.len() as u32]);
-                            for chunk in bytes.chunks(4) {
-                                let mut word = [0u8; 4];
-                                word[..chunk.len()].copy_from_slice(chunk);
-                                words.push(u32::from_le_bytes(word));
-                            }
-                            for parameter in op.descriptor().parameters {
-                                if let Some(value) = op.scalar(parameter.name) {
-                                    words.push(value.at(request.time)?.to_bits());
-                                }
-                            }
-                            continue;
-                        }
-                        use veylvik_document::vector::PathCommand::*;
-                        let veylvik_document::Operation::Path(veylvik_document::nodes::Path {
-                            geometry,
-                        }) = &plan.nodes[*index].operation
-                        else {
-                            unreachable!()
-                        };
-                        let geometry = geometry.at(request.time)?;
-                        words.extend([
-                            3,
-                            geometry.fill_rule as u32,
-                            geometry.commands.len() as u32,
-                        ]);
-                        for command in &geometry.commands {
-                            match command {
-                                Move { to } => {
-                                    words.push(0);
-                                    words.extend(to.map(f32::to_bits));
-                                }
-                                Line { to } => {
-                                    words.push(1);
-                                    words.extend(to.map(f32::to_bits));
-                                }
-                                Quad { control, to } => {
-                                    words.push(2);
-                                    words.extend(control.map(f32::to_bits));
-                                    words.extend(to.map(f32::to_bits));
-                                }
-                                Cubic {
-                                    control1,
-                                    control2,
-                                    to,
-                                } => {
-                                    words.push(3);
-                                    words.extend(control1.map(f32::to_bits));
-                                    words.extend(control2.map(f32::to_bits));
-                                    words.extend(to.map(f32::to_bits));
-                                }
-                                Close {} => words.push(4),
-                            }
-                        }
-                    }
-                    Input::Asset(asset) if names.contains_key(asset) => {
-                        let (id, lasting) = names[asset];
-                        portable &= lasting;
-                        words.extend([5, id as u32, (id >> 32) as u32]);
-                    }
-                    Input::Asset(asset) => {
-                        let image = images
-                            .source(asset)
-                            .ok_or_else(|| error(format!("missing image input: {asset}")))?;
-                        let id = image.identity();
-                        portable &= crate::frame::is_named(id);
-                        words.extend([2, id as u32, (id >> 32) as u32]);
-                    }
-                }
-            }
         }
         Ok(Self(words, portable))
     }
+}
+/// The words that say what one pass makes: its kernel and output, its node's settings
+/// at the time, and each input. `value` writes what stands for a value input read from
+/// a slot (the slot itself in a whole frame's key, the name of what wrote it in a pass's
+/// own identity).
+#[allow(clippy::too_many_arguments)]
+fn pass_words(
+    plan: &Plan,
+    pass: &crate::plan::Pass,
+    request: RenderRequest,
+    images: &ImageInputs,
+    names: &std::collections::BTreeMap<String, (u64, bool)>,
+    words: &mut Vec<u32>,
+    portable: &mut bool,
+    value: &mut dyn FnMut(usize, &mut Vec<u32>),
+) -> Result<()> {
+    words.extend([pass.kernel as u32, pass.output as u32]);
+    let values = params(
+        &plan.nodes[pass.node],
+        &plan.nodes,
+        &plan.curves[pass.node],
+        plan.width,
+        plan.height,
+        request.time,
+    )?;
+    words.extend_from_slice(bytemuck::cast_slice(std::slice::from_ref(&values)));
+    if let veylvik_document::Operation::Shader(shader) = &plan.nodes[pass.node].operation {
+        // A custom shader's own text is part of what makes its picture.
+        use std::hash::{Hash, Hasher};
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        shader.code.hash(&mut hasher);
+        let code = hasher.finish();
+        words.extend([5, code as u32, (code >> 32) as u32]);
+    }
+    if pass.kernel == crate::Kernel::RenderScene {
+        // Scene nodes have no passes of their own: key what the scene shows.
+        words.extend(crate::scene_hook::fingerprint(
+            plan,
+            pass.node,
+            request.time,
+        )?);
+        if request.scene_reflections {
+            words.push(4);
+        }
+        if let Some(view) = request.scene_view {
+            words.push(3);
+            words.extend(view.world.iter().flatten().map(|v| v.to_bits()));
+            words.extend([view.focal_length.to_bits(), view.sensor_width.to_bits()]);
+        }
+        for (_, input) in &pass.cards {
+            if let Input::Value(slot) = input {
+                words.push(2);
+                value(*slot, words);
+            }
+        }
+    }
+    if let Some(lighting) =
+        crate::shadow_lighting::for_node(&plan.nodes[pass.node], plan, request.time)?
+    {
+        words.extend_from_slice(bytemuck::cast_slice(std::slice::from_ref(&lighting)));
+    }
+    for input in &pass.inputs {
+        match input {
+            Input::Empty => words.extend([0, 0, 0]),
+            Input::Value(slot) => {
+                words.push(1);
+                value(*slot, words);
+                words.push(0);
+            }
+            Input::Vector(index) => {
+                if let veylvik_document::Operation::Text(veylvik_document::nodes::Text { .. }) =
+                    &plan.nodes[*index].operation
+                {
+                    let op = &plan.nodes[*index].operation;
+                    if let veylvik_document::Operation::Text(veylvik_document::nodes::Text {
+                        typography,
+                        ..
+                    }) = op
+                        && typography.motion != veylvik_document::text::TextMotion::None
+                    {
+                        let seconds = request.time.seconds()?.to_bits();
+                        words.extend([seconds as u32, (seconds >> 32) as u32]);
+                    }
+                    let bytes = serde_json::to_vec(op).map_err(error)?;
+                    words.extend([4, bytes.len() as u32]);
+                    for chunk in bytes.chunks(4) {
+                        let mut word = [0u8; 4];
+                        word[..chunk.len()].copy_from_slice(chunk);
+                        words.push(u32::from_le_bytes(word));
+                    }
+                    for parameter in op.descriptor().parameters {
+                        if let Some(value) = op.scalar(parameter.name) {
+                            words.push(value.at(request.time)?.to_bits());
+                        }
+                    }
+                    continue;
+                }
+                use veylvik_document::vector::PathCommand::*;
+                let veylvik_document::Operation::Path(veylvik_document::nodes::Path { geometry }) =
+                    &plan.nodes[*index].operation
+                else {
+                    unreachable!()
+                };
+                let geometry = geometry.at(request.time)?;
+                words.extend([3, geometry.fill_rule as u32, geometry.commands.len() as u32]);
+                for command in &geometry.commands {
+                    match command {
+                        Move { to } => {
+                            words.push(0);
+                            words.extend(to.map(f32::to_bits));
+                        }
+                        Line { to } => {
+                            words.push(1);
+                            words.extend(to.map(f32::to_bits));
+                        }
+                        Quad { control, to } => {
+                            words.push(2);
+                            words.extend(control.map(f32::to_bits));
+                            words.extend(to.map(f32::to_bits));
+                        }
+                        Cubic {
+                            control1,
+                            control2,
+                            to,
+                        } => {
+                            words.push(3);
+                            words.extend(control1.map(f32::to_bits));
+                            words.extend(control2.map(f32::to_bits));
+                            words.extend(to.map(f32::to_bits));
+                        }
+                        Close {} => words.push(4),
+                    }
+                }
+            }
+            Input::Asset(asset) if names.contains_key(asset) => {
+                let (id, lasting) = names[asset];
+                *portable &= lasting;
+                words.extend([5, id as u32, (id >> 32) as u32]);
+            }
+            Input::Asset(asset) => {
+                let image = images
+                    .source(asset)
+                    .ok_or_else(|| error(format!("missing image input: {asset}")))?;
+                let id = image.identity();
+                *portable &= crate::frame::is_named(id);
+                words.extend([2, id as u32, (id >> 32) as u32]);
+            }
+        }
+    }
+    Ok(())
+}
+/// Each pass's own identity: what it makes, named through the passes that feed it,
+/// whatever slots they used, so a pass's result can be known again in another frame
+/// when nothing it is made of has changed. `None` for a pass that reads a slot nothing
+/// before it wrote.
+pub(crate) fn pass_identities(
+    plan: &Plan,
+    request: RenderRequest,
+    images: &ImageInputs,
+) -> Result<Vec<Option<u64>>> {
+    let names = Default::default();
+    let mut writer: Vec<Option<usize>> = vec![None; plan.slot_count];
+    let mut ids: Vec<Option<u64>> = Vec::with_capacity(plan.passes.len());
+    let mut portable = true;
+    for (at, pass) in plan.passes.iter().enumerate() {
+        let mut words = vec![plan.width, plan.height];
+        let mut known = true;
+        pass_words(
+            plan,
+            pass,
+            request,
+            images,
+            &names,
+            &mut words,
+            &mut portable,
+            &mut |slot, words| match writer.get(slot).copied().flatten().and_then(|q| ids[q]) {
+                Some(id) => words.extend([id as u32, (id >> 32) as u32]),
+                None => known = false,
+            },
+        )?;
+        ids.push(known.then(|| crate::fnv(bytemuck::cast_slice(&words), 0x5eed)));
+        writer[pass.output] = Some(at);
+    }
+    Ok(ids)
 }
 /// Entries a cache holds at most, whatever their size: enough for any one frame's parts.
 const ENTRIES: usize = 1024;
