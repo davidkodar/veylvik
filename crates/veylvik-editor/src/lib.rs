@@ -588,6 +588,9 @@ impl Studio {
             playback: Instant::now(),
             playback_frame: 0,
             buffering: None,
+            waiting: None,
+            play_now: false,
+            viewer_canvas: None,
             files: Tasks::new(setup.context.clone()),
             export_controls: sequence::Controls::default(),
             video_export: video_export::Controls::default(),
@@ -730,6 +733,12 @@ struct Studio {
     /// Play was pressed and the frames ahead are still being prepared: the playhead
     /// holds, and since when nothing more could be prepared (to give up waiting).
     buffering: Option<Option<Instant>>,
+    /// What the viewer says while playing waits, when it waits.
+    waiting: Option<fill::Waiting>,
+    /// For this play only: play at once, skipping frames, as the artist asked.
+    play_now: bool,
+    /// Where the viewer's picture was last drawn.
+    viewer_canvas: Option<egui::Rect>,
     files: Tasks,
     export_controls: sequence::Controls,
     video_export: video_export::Controls,
@@ -3714,6 +3723,9 @@ impl Studio {
         self.poll_planar_preview();
         if !self.playing {
             self.buffering = None;
+            self.waiting = None;
+            self.play_now = false;
+            self.fill.clear_since();
         }
         // Playing shows every frame at its moment or it does not move: while frames
         // ahead are still being prepared the playhead holds, and goes when they are there.
@@ -4078,6 +4090,8 @@ impl Studio {
                                 Paint(self.displayed.as_ref().unwrap().clone()),
                             ),
                         );
+                        self.viewer_canvas = Some(canvas);
+                        self.wait_panel(&ctx);
                         if !self.viewer_fullscreen {
                             let pointer = ctx.pointer_hover_pos().filter(|pos| viewer_on_top && canvas.contains(*pos));
                             self.viewer_overlays(ui, canvas, transform, image, &frame.frame, pointer);

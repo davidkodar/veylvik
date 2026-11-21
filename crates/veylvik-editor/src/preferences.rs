@@ -371,6 +371,11 @@ impl Preferences {
         self.opened = self.values.clone();
         self.open = true;
     }
+    /// Open at the section holding playback and its store of played pictures.
+    pub fn begin_at_playback(&mut self) {
+        self.begin();
+        self.section = 3;
+    }
     pub fn theme(&self) -> Theme {
         if self.open {
             self.draft.theme

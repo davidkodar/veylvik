@@ -71,6 +71,8 @@ pub struct PreviewResult<F = RenderedFrame> {
 pub struct PreviewScheduler<F = RenderedFrame> {
     worker: LatestWorker<Job, PreviewResult<F>>,
     playback: crate::playback::Control,
+    /// What rendering a frame has taken lately, in milliseconds (f64 bits; 0 = not yet).
+    cost: Arc<std::sync::atomic::AtomicU64>,
 }
 impl PreviewScheduler {
     pub fn new() -> Result<Self> {
@@ -115,6 +117,7 @@ impl PreviewScheduler {
         Ok(Self {
             worker,
             playback: crate::playback::Control::default(),
+            cost: Default::default(),
         })
     }
 }
@@ -126,6 +129,8 @@ impl PreviewScheduler<Arc<GpuFrame>> {
         wake: impl Fn() + Send + 'static,
     ) -> Result<Self> {
         let playback = crate::playback::Control::default();
+        let cost: Arc<std::sync::atomic::AtomicU64> = Default::default();
+        let measured = cost.clone();
         let mut cache = crate::playback::Store::new(playback.clone());
         let worker = LatestWorker::new_cancellable(
             move |generation, job: Job, cancelled| {
@@ -189,7 +194,20 @@ impl PreviewScheduler<Arc<GpuFrame>> {
                             .gpu_working_bytes()
                             .saturating_add(job.inputs.byte_size()),
                     )?;
+                    let rendering = Instant::now();
                     let mut frame = render_gpu_job(&renderer, &job, cache.divisor(), cancelled);
+                    if frame.is_ok() {
+                        // Smoothed, so one slow first use of a kernel does not decide.
+                        let took = rendering.elapsed().as_secs_f64() * 1000.0;
+                        let old =
+                            f64::from_bits(measured.load(std::sync::atomic::Ordering::Relaxed));
+                        let new = if old == 0.0 {
+                            took
+                        } else {
+                            old * 0.8 + took * 0.2
+                        };
+                        measured.store(new.to_bits(), std::sync::atomic::Ordering::Relaxed);
+                    }
                     if frame
                         .as_ref()
                         .is_err_and(|e| e.to_string().contains("budget"))
@@ -229,12 +247,21 @@ impl PreviewScheduler<Arc<GpuFrame>> {
             },
             wake,
         )?;
-        Ok(Self { worker, playback })
+        Ok(Self {
+            worker,
+            playback,
+            cost,
+        })
     }
 }
 impl<F: Send + 'static> PreviewScheduler<F> {
     pub fn playback_cache(&self) -> crate::playback::Control {
         self.playback.clone()
+    }
+    /// What rendering one frame has taken lately (smoothed), once anything was rendered.
+    pub fn frame_cost(&self) -> Option<Duration> {
+        let ms = f64::from_bits(self.cost.load(std::sync::atomic::Ordering::Relaxed));
+        (ms > 0.0).then(|| Duration::from_secs_f64(ms / 1000.0))
     }
     pub fn submit(
         &self,
