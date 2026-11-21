@@ -32,6 +32,7 @@ mod fill;
 mod history_log;
 pub mod host;
 mod host_link;
+mod host_time;
 mod icons;
 mod inspector_tools;
 mod key_timeline;
@@ -494,6 +495,32 @@ impl Editor {
     pub fn take_relink_request(&mut self) -> bool {
         std::mem::take(&mut self.studio.relink_asked)
     }
+    /// Move the playhead to `time` (composition time) and stop playing, as a host does
+    /// when its page opens or another clip is picked; false while an edit is mid-gesture.
+    /// The move is not reported back by [`Editor::take_time_change`].
+    pub fn set_time(&mut self, time: veylvik_document::Time) -> bool {
+        self.studio.host_set_time(time)
+    }
+    /// Where the playhead is, in composition time.
+    pub fn time(&self) -> veylvik_document::Time {
+        self.studio.host_time()
+    }
+    /// Where the playhead went since the last call, when it moved by the artist's hand
+    /// or by playing (never by [`Editor::set_time`]).
+    pub fn take_time_change(&mut self) -> Option<veylvik_document::Time> {
+        self.studio.host_take_time_change()
+    }
+    /// The working range, `start` up to `end` (not included), in composition time: a
+    /// clip's used part. Playing and looping stay inside it; the frames outside stay
+    /// reachable as handles, shown dimmed. `None` uses the whole composition.
+    pub fn set_range(&mut self, range: Option<(veylvik_document::Time, veylvik_document::Time)>) {
+        self.studio.host_set_range(range);
+    }
+    /// The working range, from its first frame up to the frame after its last; `None`
+    /// when the whole composition is used.
+    pub fn range(&self) -> Option<(veylvik_document::Time, veylvik_document::Time)> {
+        self.studio.host_range()
+    }
     /// Keep the playback store's pictures in `folder` (a host's own cache folder, so its
     /// clear-cache removes them), or in Veylvik's usual place with `None`. Pictures kept
     /// in the place before stay there; the store starts again in the new one. Call it
@@ -695,6 +722,8 @@ impl Studio {
             playback_folder: None,
             host_name: None,
             relink_asked: false,
+            reported_frame: 0,
+            host_range: false,
             viewer_canvas: None,
             files: Tasks::new(setup.context.clone()),
             export_controls: sequence::Controls::default(),
@@ -851,6 +880,10 @@ struct Studio {
     host_name: Option<String>,
     /// The "unavailable" button was pressed inside a host, which relinks its own media.
     relink_asked: bool,
+    /// The playhead's frame the host last heard of (see host_time.rs).
+    reported_frame: i64,
+    /// The working range is the host's (a clip's used part): frames outside are dimmed.
+    host_range: bool,
     /// Where the viewer's picture was last drawn.
     viewer_canvas: Option<egui::Rect>,
     files: Tasks,
@@ -3230,6 +3263,7 @@ impl Studio {
             .playback_controls
             .enabled
             .then(|| self.playback_controls.range(count));
+        self.key_timeline.dim_outside = self.host_range && self.playback_controls.enabled;
         self.key_timeline.cached_gpu = cache
             .gpu_frames
             .iter()

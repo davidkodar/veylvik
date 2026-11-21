@@ -209,3 +209,77 @@ fn the_composition_an_editor_opens_with_finds_the_hosts_media() {
         editor.unavailable_media()
     );
 }
+
+#[test]
+#[ignore = "requires Vulkan"]
+fn a_host_carries_its_place_in_and_hears_where_the_artist_moved_it() {
+    use eframe::egui;
+    let (_instance, adapter, device, queue) =
+        pollster::block_on(veylvik_render::create_gpu()).unwrap();
+    let rate = Time::new(24, 1).unwrap();
+    let mut long = composition();
+    long.frame_count = 48;
+    let context = egui::Context::default();
+    let mut editor = Editor::new(Setup {
+        interface: HOST_INTERFACE,
+        context: context.clone(),
+        device,
+        queue,
+        adapter: adapter.get_info(),
+        target_format: wgpu::TextureFormat::Rgba8UnormSrgb,
+        opens: Opens::Composition {
+            composition: Box::new(long),
+            assets: std::env::temp_dir(),
+        },
+        live_control: LiveControl::Off,
+        capabilities: Capabilities::embedded(),
+        host: None,
+        renderer: None,
+    })
+    .unwrap();
+    let at = |frame: i64| Time::at_frame(frame, rate).unwrap();
+    // The frame a moment is (times have no ==: 1/24 and 2/48 are one moment).
+    let frame = |time: Time| (time.ticks as f64 * 24.0 / f64::from(time.rate)).round() as i64;
+    let frames = |range: Option<(Time, Time)>| range.map(|(a, b)| (frame(a), frame(b)));
+    // The host's place comes in, and is not reported back.
+    assert!(editor.set_time(Time::new(1, 1).unwrap()));
+    assert_eq!(frame(editor.time()), 24);
+    assert!(editor.take_time_change().is_none());
+    // Beyond the composition: its last frame.
+    editor.set_time(Time::new(10, 1).unwrap());
+    assert_eq!(frame(editor.time()), 47);
+    editor.take_time_change();
+    // A clip's used part, half a second to a second and a half.
+    let used = (Time::new(1, 2).unwrap(), Time::new(3, 2).unwrap());
+    editor.set_range(Some(used));
+    assert_eq!(frames(editor.range()), Some((12, 36)));
+    editor.set_range(None);
+    assert!(editor.range().is_none());
+    // The artist steps a frame on (the Right arrow): the host hears of it once.
+    editor.set_time(at(20));
+    let input = |events: Vec<egui::Event>| egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1280.0, 720.0),
+        )),
+        events,
+        ..Default::default()
+    };
+    for events in [
+        vec![],
+        vec![],
+        vec![egui::Event::Key {
+            key: egui::Key::ArrowRight,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: egui::Modifiers::NONE,
+        }],
+    ] {
+        let _ = context.run_ui(input(events), |ui| {
+            egui::CentralPanel::default().show_inside(ui, |ui| editor.ui(ui));
+        });
+    }
+    assert_eq!(editor.take_time_change().map(frame), Some(21));
+    assert!(editor.take_time_change().is_none());
+}

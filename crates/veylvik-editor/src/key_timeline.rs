@@ -38,6 +38,8 @@ pub struct Keys {
     /// Where the ruler was last drawn, for rows that line up under it.
     pub span: Option<egui::Rangef>,
     pub playback_range: Option<(i64, i64)>,
+    /// Frames outside the playback range are a host's handles: shown dimmed.
+    pub dim_outside: bool,
     pub cached_gpu: Vec<i64>,
     pub cached_disk: Vec<i64>,
     source: Option<(u64, NodeId, Scope, Vec<u8>)>,
@@ -325,6 +327,21 @@ impl Keys {
             );
             for at in [x(first), x(last)] {
                 painter.vline(at, rect.y_range(), (2_f32, crate::design::accent(ui.ctx())));
+            }
+            if self.dim_outside {
+                let shade = egui::Color32::from_black_alpha(110);
+                for (from, to) in [(rect.left(), x(first)), (x(last), rect.right())] {
+                    if to > from {
+                        painter.rect_filled(
+                            egui::Rect::from_min_max(
+                                egui::pos2(from, rect.top()),
+                                egui::pos2(to, rect.bottom()),
+                            ),
+                            0.,
+                            shade,
+                        );
+                    }
+                }
             }
         }
         for (frames, colour, y) in [
