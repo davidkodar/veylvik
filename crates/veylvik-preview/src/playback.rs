@@ -230,8 +230,14 @@ type Lasting = Option<(Option<u64>, PathBuf)>;
 type Packed = (Moment, [u32; 2], Result<Vec<u8>>, Lasting, bool);
 /// The same before packing: the picture as the screen packs it.
 type Unpacked = (Moment, [u32; 2], Vec<u8>, Lasting, bool);
-/// Write a packed picture to its lasting file, whole or not at all.
+/// Write a packed picture to its lasting file, whole or not at all. Its folder is made
+/// again when it is gone (a host cleared its cache while the store was in use).
 fn written(packed: &[u8], (lasting, path): (Option<u64>, PathBuf)) -> Lasting {
+    if let Some(folder) = path.parent()
+        && !folder.is_dir()
+    {
+        let _ = std::fs::create_dir_all(folder);
+    }
     let partial = path.with_extension("partial");
     let done = std::fs::write(&partial, packed).and_then(|()| std::fs::rename(&partial, &path));
     if done.is_err() {

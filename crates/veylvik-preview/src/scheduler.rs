@@ -1063,6 +1063,9 @@ mod playback_tests {
         control.configure(settings(&second));
         prepared(10..13, &second, 3);
         assert_eq!(files(&first), 3, "pictures still went to the old folder");
+        // The host clears its cache while the store is in use: the folder is made again.
+        std::fs::remove_dir_all(&second).unwrap();
+        prepared(20..23, &second, 3);
         let _ = std::fs::remove_dir_all(root);
     }
     #[test]
