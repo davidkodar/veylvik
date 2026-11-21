@@ -120,6 +120,10 @@ fn particle_fields(@builtin(global_invocation_id) gid: vec3<u32>) {
     if gid.x >= p.size_op.x || gid.y >= p.size_op.y { return; }
     let i = gid.y * p.size_op.x + gid.x;
     let flags = u32(p.extra.z);
+    let count = tiles();
+    // Without a field or an obstacle only the table at the start is ever read (splat
+    // and resolve read the rest only for those): the frame beyond it is left alone.
+    if (flags & 3u) == 0u && i >= count + COUNT * (ROWS + 1u) { return; }
     var out = vec4<f32>(0.0);
     if (flags & 1u) != 0u {
         // The slope of the field's brightness, over a few pixels so it is smooth.
@@ -128,11 +132,13 @@ fn particle_fields(@builtin(global_invocation_id) gid: vec3<u32>) {
         out.y = (field_value(x, y + 3) - field_value(x, y - 3)) / 6.0;
     }
     if (flags & 2u) != 0u { out.z = clamp(second[i].a, 0.0, 1.0); }
-    let count = tiles();
     if i < count {
-        // Cumulative alpha up to and including tile i.
+        // Cumulative alpha up to and including tile i. Without a target every tile's
+        // alpha is nought, so the sum is too: no need to add up thousands of them.
         var sum = 0.0;
-        for (var k = 0u; k <= i; k++) { sum += third[k].x; }
+        if p.extra.y > 0.5 {
+            for (var k = 0u; k <= i; k++) { sum += third[k].x; }
+        }
         out.w = sum;
     } else if i < count + COUNT * (ROWS + 1u) {
         let k = i - count;

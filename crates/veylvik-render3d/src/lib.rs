@@ -112,7 +112,20 @@ pub struct Engine {
     /// The converted panorama, reused between frames.
     panorama: Mutex<Option<wgpu::Buffer>>,
     sky: wgpu::RenderPipeline,
+    /// Render targets kept between frames, by size: a 4K frame's multisampled colour
+    /// and depth are hundreds of MiB, made and let go again every frame before.
+    targets: Mutex<Vec<Targets>>,
 }
+/// What one render draws into: multisampled colour and depth, and the resolved colour.
+struct Targets {
+    size: [u32; 2],
+    colour: wgpu::TextureView,
+    resolved: wgpu::TextureView,
+    depth: wgpu::TextureView,
+}
+/// Targets kept for sizes rendered lately; a render takes its own while it draws, so
+/// renders at the same time never share one.
+const KEPT_TARGETS: usize = 2;
 /// Texels in the studio environment layout (nine levels and the diffuse layer).
 const ENVIRONMENT_TEXELS: u64 = 701_096;
 #[repr(C)]
@@ -261,27 +274,26 @@ fn lens(
 }
 impl SceneRenderer for Engine {
     fn render(&self, job: SceneJob<'_>) -> Result<()> {
-        let SceneJob {
-            device,
-            encoder,
-            scene,
-            camera,
-            width,
-            height,
-            images,
-            environment,
-            ltc,
-            time,
-            occlusion,
-            blend,
-            target,
-            models,
-            depth: show_depth,
-            also,
-            ..
-        } = job;
-        let expanded = self.expand(scene, models)?;
-        let scene = &expanded;
+        let (device, width, height) = (job.device, job.width, job.height);
+        // This size's targets, kept from an earlier frame, or made now.
+        let kept = self.targets.lock().ok().and_then(|mut kept| {
+            let at = kept.iter().position(|t| t.size == [width, height])?;
+            Some(kept.remove(at))
+        });
+        let targets = match kept {
+            Some(targets) => targets,
+            None => Self::targets(device, width, height),
+        };
+        let result = self.render_into(job, &targets);
+        if let Ok(mut kept) = self.targets.lock() {
+            kept.insert(0, targets);
+            kept.truncate(KEPT_TARGETS);
+        }
+        result
+    }
+}
+impl Engine {
+    fn targets(device: &wgpu::Device, width: u32, height: u32) -> Targets {
         let size = wgpu::Extent3d {
             width,
             height,
@@ -319,6 +331,41 @@ impl SceneRenderer for Engine {
             SAMPLES,
             wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
         );
+        Targets {
+            size: [width, height],
+            colour,
+            resolved,
+            depth,
+        }
+    }
+    fn render_into(&self, job: SceneJob<'_>, targets: &Targets) -> Result<()> {
+        let SceneJob {
+            device,
+            encoder,
+            scene,
+            camera,
+            width,
+            height,
+            images,
+            environment,
+            ltc,
+            time,
+            occlusion,
+            blend,
+            target,
+            models,
+            depth: show_depth,
+            also,
+            ..
+        } = job;
+        let expanded = self.expand(scene, models)?;
+        let scene = &expanded;
+        let Targets {
+            colour,
+            resolved,
+            depth,
+            ..
+        } = targets;
         let view_proj = math::mul(
             &projection(&camera, width, height),
             &math::rigid_inverse(&camera.world),
@@ -787,16 +834,16 @@ impl SceneRenderer for Engine {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("3D scene"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &colour,
+                    view: colour,
                     depth_slice: None,
-                    resolve_target: Some(&resolved),
+                    resolve_target: Some(resolved),
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
                         store: wgpu::StoreOp::Discard,
                     },
                 })],
                 depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                    view: &depth,
+                    view: depth,
                     depth_ops: Some(wgpu::Operations {
                         load: wgpu::LoadOp::Clear(0.0),
                         store: wgpu::StoreOp::Store,
@@ -841,7 +888,7 @@ impl SceneRenderer for Engine {
                 entries: &[
                     wgpu::BindGroupEntry {
                         binding: 0,
-                        resource: wgpu::BindingResource::TextureView(&resolved),
+                        resource: wgpu::BindingResource::TextureView(resolved),
                     },
                     wgpu::BindGroupEntry {
                         binding: 1,
@@ -849,7 +896,7 @@ impl SceneRenderer for Engine {
                     },
                     wgpu::BindGroupEntry {
                         binding: 2,
-                        resource: wgpu::BindingResource::TextureView(&depth),
+                        resource: wgpu::BindingResource::TextureView(depth),
                     },
                     wgpu::BindGroupEntry {
                         binding: 3,
@@ -883,7 +930,7 @@ impl SceneRenderer for Engine {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("3D cards into the depth"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &colour,
+                    view: colour,
                     depth_slice: None,
                     resolve_target: None,
                     ops: wgpu::Operations {
@@ -892,7 +939,7 @@ impl SceneRenderer for Engine {
                     },
                 })],
                 depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                    view: &depth,
+                    view: depth,
                     depth_ops: Some(wgpu::Operations {
                         load: wgpu::LoadOp::Load,
                         store: wgpu::StoreOp::Store,

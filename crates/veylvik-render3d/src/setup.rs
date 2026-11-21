@@ -355,6 +355,7 @@ impl Engine {
             reduce,
             irradiance,
             panorama: Mutex::new(None),
+            targets: Mutex::new(Vec::new()),
             sky,
             catcher,
             shadow_pipeline,
