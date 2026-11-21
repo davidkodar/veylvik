@@ -226,6 +226,10 @@ impl Default for Values {
     }
 }
 impl Values {
+    /// Whether every value is within its range, saying which one is not.
+    pub fn check(&self) -> Result<(), String> {
+        self.validate()
+    }
     fn validate(&self) -> Result<(), String> {
         if !self.scale.is_finite()
             || !(0.75..=2.).contains(&self.scale)
@@ -307,7 +311,7 @@ fn path() -> Option<PathBuf> {
         .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")))
         .map(|p| p.join("veylvik/preferences.json"))
 }
-pub struct Preferences {
+pub(crate) struct Preferences {
     pub values: Values,
     pub open: bool,
     draft: Values,
@@ -331,6 +335,8 @@ pub struct Preferences {
     audio_scan: Option<std::sync::mpsc::Receiver<Vec<veylvik_audio::Device>>>,
     /// The device in use, set by the editor each frame.
     pub audio_status: String,
+    /// A host keeps these settings: no file is read or written (see [`Panel`]).
+    hosted: bool,
 }
 impl Preferences {
     pub fn new() -> Self {
@@ -357,6 +363,30 @@ impl Preferences {
             audio_devices: None,
             audio_scan: None,
             audio_status: String::new(),
+            hosted: false,
+        }
+    }
+    /// Settings a host keeps: they start as the defaults until the host gives its own, and
+    /// Studio's file is never read or written.
+    pub fn hosted() -> Self {
+        let values = Values::default();
+        Self {
+            draft: values.clone(),
+            opened: values.clone(),
+            want_shortcuts: false,
+            want_clear_cache: false,
+            want_clear_recent: false,
+            want_folder: false,
+            picking: None,
+            values,
+            open: false,
+            section: 0,
+            path: None,
+            error: None,
+            audio_devices: None,
+            audio_scan: None,
+            audio_status: String::new(),
+            hosted: true,
         }
     }
     /// The folder preferences are kept in.
@@ -384,6 +414,10 @@ impl Preferences {
         }
     }
     pub fn persist(&mut self) -> Result<(), String> {
+        // The host saves them, when it hears of the change.
+        if self.hosted {
+            return Ok(());
+        }
         save(
             self.path
                 .as_deref()
@@ -934,9 +968,12 @@ impl Preferences {
                 );
                 ui.weak("Fast filtering reduces viewer antialiasing cost. It never reduces export quality. Changing this preference also updates the current viewer.");
                 ui.separator();
-                let card = veylvik_io::runtime::card_memory_mib();
-                let automatic = veylvik_io::runtime::automatic_mib(card);
-                ui.checkbox(
+                if self.hosted {
+                    ui.weak("The GPU buffer budget is the host's: its renderer draws this page.");
+                } else {
+                    let card = veylvik_io::runtime::card_memory_mib();
+                    let automatic = veylvik_io::runtime::automatic_mib(card);
+                    ui.checkbox(
                     &mut self.draft.gpu_budget_auto,
                     match card {
                         Some(card) => format!("Set the GPU buffer budget from the graphics card: {automatic} MiB of its {card} MiB"),
@@ -944,12 +981,13 @@ impl Preferences {
                     },
                 )
                 .on_hover_text("Half the card's memory, at most 8192 MiB, leaving the rest for the desktop, video decoding, AI models and other applications");
-                ui.add_enabled(
-                    !self.draft.gpu_budget_auto,
-                    egui::Slider::new(&mut self.draft.gpu_budget_mib, 64..=16384)
-                        .text("GPU buffer budget (MiB)"),
-                );
-                ui.weak("Budget changes require restart. VEYLVIK_GPU_BUDGET_MIB overrides this setting. The budget covers renderer buffers, not total driver or UI memory.");
+                    ui.add_enabled(
+                        !self.draft.gpu_budget_auto,
+                        egui::Slider::new(&mut self.draft.gpu_budget_mib, 64..=16384)
+                            .text("GPU buffer budget (MiB)"),
+                    );
+                    ui.weak("Budget changes require restart. VEYLVIK_GPU_BUDGET_MIB overrides this setting. The budget covers renderer buffers, not total driver or UI memory.");
+                }
                 ui.weak("Composition effects remain GPU-rendered. Shutter sampling and optical-flow quality are controlled on their respective nodes.");
                 ui.separator();
                 ui.label("Playback cache");
@@ -1099,6 +1137,65 @@ impl Preferences {
 }
 
 /// A quarter of the machine's memory in MiB, or 4 GiB when that cannot be read.
+/// Veylvik's settings for a host to show in its own settings: every section but those
+/// a host keeps for itself (appearance, audio, recovery, new projects and the system
+/// section's files and folders). A setting Veylvik adds later shows here too.
+pub struct Panel {
+    inner: Preferences,
+}
+/// The sections a host shows, by their stable ids, in the order Studio lists them.
+const HOST_SECTIONS: [(usize, &str); 6] = [
+    (0, "Playback"),
+    (2, "Workspace"),
+    (3, "Performance"),
+    (6, "Editing"),
+    (7, "Viewer and timeline"),
+    (8, "Keyboard and layouts"),
+];
+impl Default for Panel {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+impl Panel {
+    pub fn new() -> Self {
+        Self {
+            inner: Preferences::hosted(),
+        }
+    }
+    /// Draw the sections for `values`; true when the artist changed one (applied at once,
+    /// when the values are valid). Give them to the editor with `Editor::set_preferences`.
+    pub fn ui(&mut self, ui: &mut egui::Ui, values: &mut Values) -> bool {
+        if !HOST_SECTIONS
+            .iter()
+            .any(|(id, _)| *id == self.inner.section)
+        {
+            self.inner.section = HOST_SECTIONS[0].0;
+        }
+        self.inner.values = values.clone();
+        self.inner.draft = values.clone();
+        ui.horizontal_top(|ui| {
+            ui.vertical(|ui| {
+                ui.set_width(145.);
+                for (id, label) in HOST_SECTIONS {
+                    ui.selectable_value(&mut self.inner.section, id, label);
+                }
+            });
+            ui.separator();
+            ui.vertical(|ui| self.inner.section_ui(ui, ""));
+        });
+        if self.inner.draft != *values && self.inner.draft.validate().is_ok() {
+            *values = self.inner.draft.clone();
+            return true;
+        }
+        false
+    }
+    /// Whether the artist asked for the keyboard shortcuts since the last call: open
+    /// them in the editor with `Editor::open_shortcuts`.
+    pub fn take_want_shortcuts(&mut self) -> bool {
+        std::mem::take(&mut self.inner.want_shortcuts)
+    }
+}
 fn quarter_of_memory_mib() -> u64 {
     std::fs::read_to_string("/proc/meminfo")
         .ok()

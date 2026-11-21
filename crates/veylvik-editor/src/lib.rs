@@ -62,7 +62,7 @@ mod path_transform;
 mod planar;
 mod playback;
 mod portable;
-mod preferences;
+pub mod preferences;
 mod preset_library;
 mod preview_images;
 mod project;
@@ -495,6 +495,42 @@ impl Editor {
     pub fn take_relink_request(&mut self) -> bool {
         std::mem::take(&mut self.studio.relink_asked)
     }
+    /// Use the host's settings (every Veylvik setting; see `preferences::Values`): they
+    /// take effect at once, and the editor never reads or writes Studio's own file inside
+    /// a host. Refused when a value is out of range.
+    pub fn set_preferences(
+        &mut self,
+        ctx: &egui::Context,
+        values: preferences::Values,
+    ) -> Result<(), String> {
+        values.check()?;
+        let before = self.studio.preferences.values.clone();
+        self.studio.preferences.values = values.clone();
+        self.studio.reported_preferences = Some(values);
+        // What the editor took from the settings once is taken again.
+        self.studio.recalled = false;
+        self.studio.commands.keys = None;
+        self.studio.apply_preferences(Some(&before), ctx);
+        Ok(())
+    }
+    /// The settings now, as the host keeps them.
+    pub fn preferences(&self) -> preferences::Values {
+        self.studio.preferences.values.clone()
+    }
+    /// The settings when the artist changed one inside the editor since the last call (a
+    /// saved layout, viewer aids, shortcuts, preview quality…), for the host to keep.
+    pub fn take_preferences_change(&mut self) -> Option<preferences::Values> {
+        let now = &self.studio.preferences.values;
+        if self.studio.reported_preferences.as_ref() == Some(now) {
+            return None;
+        }
+        self.studio.reported_preferences = Some(now.clone());
+        Some(now.clone())
+    }
+    /// Open the editor's keyboard shortcuts (see `preferences::Panel::take_want_shortcuts`).
+    pub fn open_shortcuts(&mut self) {
+        self.studio.commands.editor = true;
+    }
     /// Move the playhead to `time` (composition time) and stop playing, as a host does
     /// when its page opens or another clip is picked; false while an edit is mid-gesture.
     /// The move is not reported back by [`Editor::take_time_change`].
@@ -569,7 +605,12 @@ impl Editor {
 }
 impl Studio {
     fn create(setup: Setup) -> Result<Self, Box<dyn std::error::Error>> {
-        let preferences = preferences::Preferences::new();
+        // Inside a host the settings are the host's: Studio's file is left alone.
+        let preferences = if setup.capabilities.preferences {
+            preferences::Preferences::new()
+        } else {
+            preferences::Preferences::hosted()
+        };
         // Preferences may switch live control off; an explicit directory still asks for it.
         let (no_control, control_directory) = match &setup.live_control {
             LiveControl::Off => (true, None),
@@ -724,6 +765,7 @@ impl Studio {
             relink_asked: false,
             reported_frame: 0,
             host_range: false,
+            reported_preferences: None,
             viewer_canvas: None,
             files: Tasks::new(setup.context.clone()),
             export_controls: sequence::Controls::default(),
@@ -884,6 +926,8 @@ struct Studio {
     reported_frame: i64,
     /// The working range is the host's (a clip's used part): frames outside are dimmed.
     host_range: bool,
+    /// The settings the host last gave or heard of (see `Editor::take_preferences_change`).
+    reported_preferences: Option<preferences::Values>,
     /// Where the viewer's picture was last drawn.
     viewer_canvas: Option<egui::Rect>,
     files: Tasks,

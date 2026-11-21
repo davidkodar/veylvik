@@ -5,7 +5,7 @@ use eframe::egui;
 
 #[derive(Default)]
 pub struct Commands {
-    keys: Option<Keys>,
+    pub(crate) keys: Option<Keys>,
     pub editor: bool,
     filter: String,
     /// The command whose next key press becomes its shortcut.

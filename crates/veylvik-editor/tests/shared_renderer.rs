@@ -283,3 +283,69 @@ fn a_host_carries_its_place_in_and_hears_where_the_artist_moved_it() {
     assert_eq!(editor.take_time_change().map(frame), Some(21));
     assert!(editor.take_time_change().is_none());
 }
+
+#[test]
+#[ignore = "requires Vulkan"]
+fn a_host_keeps_the_settings_and_the_editor_uses_them_as_given() {
+    use eframe::egui;
+    use veylvik_editor::preferences::{Panel, Values};
+    let (_instance, adapter, device, queue) =
+        pollster::block_on(veylvik_render::create_gpu()).unwrap();
+    let context = egui::Context::default();
+    let mut editor = editor_in(&device, &queue, &adapter.get_info(), None, &context);
+    // Inside a host Studio's own file is not read: the defaults until the host speaks.
+    assert_eq!(editor.preferences(), Values::default());
+    let input = || egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1280.0, 720.0),
+        )),
+        ..Default::default()
+    };
+    let draw = |editor: &mut Editor| {
+        for _ in 0..4 {
+            let _ = context.run_ui(input(), |ui| {
+                egui::CentralPanel::default().show_inside(ui, |ui| editor.ui(ui));
+            });
+        }
+    };
+    // The page has been on screen a while before the host's settings change.
+    draw(&mut editor);
+    editor.take_preferences_change();
+    let mut aids = Values::default().aids;
+    aids.grid = true;
+    let theirs = Values {
+        restart_playback: true,
+        loop_playback: true,
+        aids,
+        layer_bars: !Values::default().layer_bars,
+        ..Values::default()
+    };
+    editor.set_preferences(&context, theirs.clone()).unwrap();
+    assert_eq!(editor.preferences(), theirs);
+    assert!(
+        editor.take_preferences_change().is_none(),
+        "the host's own settings came back"
+    );
+    // Drawn for a while, the editor keeps them: nothing it held before is written over them.
+    draw(&mut editor);
+    assert_eq!(editor.preferences(), theirs);
+    assert!(editor.take_preferences_change().is_none());
+    // Out of range: refused, and nothing changes.
+    let mut wrong = theirs.clone();
+    wrong.undo_steps = 0;
+    assert!(editor.set_preferences(&context, wrong).is_err());
+    assert_eq!(editor.preferences(), theirs);
+    // The host's panel draws Veylvik's own sections and reports no change untouched.
+    let mut panel = Panel::new();
+    let mut shown = theirs.clone();
+    let mut changed = false;
+    let panel_context = egui::Context::default();
+    for _ in 0..2 {
+        let _ = panel_context.run_ui(input(), |ui| {
+            changed |= panel.ui(ui, &mut shown);
+        });
+    }
+    assert!(!changed && shown == theirs);
+    assert!(!panel.take_want_shortcuts());
+}
