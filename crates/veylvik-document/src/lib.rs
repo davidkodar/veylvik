@@ -8,6 +8,7 @@ pub mod presets;
 mod procedural;
 pub mod recipes;
 pub use procedural::procedural_demo;
+pub mod access;
 pub mod annotations;
 pub mod describe;
 pub mod inspection;

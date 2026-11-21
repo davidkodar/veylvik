@@ -35,7 +35,8 @@ impl Inspect for veylvik_document::nodes::Footage {
         } = self;
         {
             ui.label(asset.as_str());
-            let path = std::path::PathBuf::from(cx.inputs.resolve_config(asset));
+            let path =
+                std::path::PathBuf::from(cx.inputs.resolve_config(asset).unwrap_or_default());
             if crate::exr_layers::choose(ui, &path, layer) {
                 cx.dirty = true;
                 cx.text_changed = true;

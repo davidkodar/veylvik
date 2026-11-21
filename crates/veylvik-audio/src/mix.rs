@@ -31,6 +31,24 @@ impl Pcm {
 pub fn mix(
     doc: &Composition,
     base: &Path,
+    window: [f64; 2],
+    rate: u32,
+    keep: impl FnMut() -> bool,
+) -> Result<Option<Pcm>> {
+    mix_within(
+        doc,
+        base,
+        &veylvik_document::access::Reach::Anywhere,
+        window,
+        rate,
+        keep,
+    )
+}
+/// As [`mix`], reading only the files `reach` allows (see `veylvik_document::access`).
+pub fn mix_within(
+    doc: &Composition,
+    base: &Path,
+    reach: &veylvik_document::access::Reach,
     [start, end]: [f64; 2],
     rate: u32,
     mut keep: impl FnMut() -> bool,
@@ -43,8 +61,8 @@ pub fn mix(
     if end.partial_cmp(&start) != Some(std::cmp::Ordering::Greater) {
         return Ok(None);
     }
-    let clips =
-        veylvik_io::export_audio::clips(doc, base, [start, end]).map_err(|e| e.to_string())?;
+    let clips = veylvik_io::export_audio::clips_within(doc, base, reach, [start, end])
+        .map_err(|e| e.to_string())?;
     if clips.is_empty() {
         return Ok(None);
     }

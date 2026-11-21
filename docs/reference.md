@@ -3209,6 +3209,14 @@ when a different layout is needed. Live mutations require applied/reverted
 inspector drafts; dry runs inspect the applied document.
 
 
+## Files a composition may read
+
+A composition names files: footage, images and sequences, the file kept beside a host's media key, LUTs, sounds, 3D models and OpenColorIO configurations. Since a project can come from someone else, these names go through one check (`veylvik_document::access::resolve`) before anything is read. A composition that is *confined* reads only inside its own folder. The check refuses empty or absolute names, any `..` or root part, and a link inside the folder that leads out of it (compared after resolving links on both sides). A refused file is an unavailable source with that reason. A queued render or export of a composition that names one is refused before it reads anything. Image sequences already keep their frames inside the sequence's folder.
+
+- **Inside a host** (`Project::hosted_by`, so every `ClipSource`): always confined. The host's own media come through the host, not the disk.
+- **A project file in Studio**: a project opened for the first time that names files outside its folder opens confined, and Studio asks: *Allow* reads them and remembers the project file in `$XDG_STATE_HOME/veylvik/trusted.json`; *Open without them* leaves them unread. Projects saved in Studio, and the ones in the recent list when this check arrived, are trusted. Saving a confined project under a new name does not trust it. A file the artist imports in the session is read wherever it is.
+- **The command line and the MCP servers** act on the artist's own instructions and read anywhere.
+
 ## Compiled GPU programs
 
 The first time a graphics driver compiles one of Veylvik's GPU programs it can take many

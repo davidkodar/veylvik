@@ -109,20 +109,22 @@ impl Studio {
         let cancel = Arc::new(AtomicBool::new(false));
         let stop = cancel.clone();
         let (doc, base, ctx) = (doc.clone(), self.project.base.clone(), ctx.clone());
+        let reach = self.project.reach.clone();
         let spawned = std::thread::Builder::new()
             .name("waveform".into())
             .spawn(move || {
-                let result = veylvik_audio::mix(&doc, &base, [0.0, seconds], RATE, || {
-                    !stop.load(Ordering::Relaxed)
-                })
-                .map(|pcm| {
-                    pcm.map(|pcm| Peaks {
-                        seconds,
-                        levels: levels(&pcm, BINS),
+                let result =
+                    veylvik_audio::mix_within(&doc, &base, &reach, [0.0, seconds], RATE, || {
+                        !stop.load(Ordering::Relaxed)
                     })
-                    .filter(|peaks| peaks.levels.iter().any(|level| *level > 0.0))
-                })
-                .map_err(|e| e.to_string());
+                    .map(|pcm| {
+                        pcm.map(|pcm| Peaks {
+                            seconds,
+                            levels: levels(&pcm, BINS),
+                        })
+                        .filter(|peaks| peaks.levels.iter().any(|level| *level > 0.0))
+                    })
+                    .map_err(|e| e.to_string());
                 let _ = tx.send(result);
                 ctx.request_repaint();
             });

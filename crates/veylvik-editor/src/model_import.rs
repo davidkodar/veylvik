@@ -82,6 +82,7 @@ impl Studio {
             node.label = stem.to_string_lossy().into_owned();
         }
         let parts = chosen.model.parts.len();
+        self.project.allow_added(std::path::Path::new(&path));
         self.project.inputs.insert_model(path, chosen.model);
         match self.project.apply(&[Command::Put {
             node: Box::new(node),

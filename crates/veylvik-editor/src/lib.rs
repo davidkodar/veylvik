@@ -95,6 +95,7 @@ mod timeline_markers;
 mod title_styles;
 mod tracking;
 mod transform_handles;
+mod trust;
 mod vector_editor;
 mod video_export;
 mod viewer;
@@ -478,6 +479,8 @@ impl Studio {
                 assets,
             } => Project::hosted(*composition, assets)?,
         };
+        // A project file given at start that reads files outside its folder: ask first.
+        let trust_prompt = !project.outside.is_empty();
         let capabilities = setup.capabilities;
         files::set_host(setup.host.clone());
         // A guest keeps its look to itself: the style it makes here is its own, put in
@@ -599,6 +602,7 @@ impl Studio {
             buffering: None,
             waiting: None,
             play_now: false,
+            trust_prompt,
             viewer_canvas: None,
             files: Tasks::new(setup.context.clone()),
             export_controls: sequence::Controls::default(),
@@ -746,6 +750,8 @@ struct Studio {
     waiting: Option<fill::Waiting>,
     /// For this play only: play at once, skipping frames, as the artist asked.
     play_now: bool,
+    /// The opened project reads files outside its folder: ask whether to allow them.
+    trust_prompt: bool,
     /// Where the viewer's picture was last drawn.
     viewer_canvas: Option<egui::Rect>,
     files: Tasks,
@@ -817,6 +823,7 @@ impl Studio {
     }
     fn open_project(&mut self, project: Project, ctx: &egui::Context) {
         self.start.open = false;
+        self.trust_prompt = !project.outside.is_empty();
         self.portable = portable::Controls::default();
         let recovery = recovery::Recovery::new(self.recovery.store.clone(), &project, ctx.clone());
         self.recovery.finish(true);
@@ -1331,6 +1338,7 @@ impl Studio {
             .and_then(|p| p.file_name())
             .map(|s| s.to_string_lossy().into_owned())
             .unwrap_or("untitled.veylvik".into());
+        let trusted = self.project.reach == veylvik_document::access::Reach::Anywhere;
         let result = self.files.start(move || {
             let path = if let Some(path) = existing {
                 path
@@ -1340,10 +1348,13 @@ impl Studio {
                 };
                 path
             };
-            snapshot
-                .save(&path)
-                .map(Completed::Saved)
-                .map_err(|e| e.to_string())
+            let saved = snapshot.save(&path).map_err(|e| e.to_string())?;
+            // The artist's own work: trusted from now on. A project held to its folder stays
+            // so under its new name; saving does not allow what it reads elsewhere.
+            if trusted {
+                crate::trust::trust(&path);
+            }
+            Ok(Completed::Saved(saved))
         });
         self.file_started(result);
     }
@@ -1796,6 +1807,7 @@ impl Studio {
             .and_then(|p| p.file_stem())
             .map(|s| s.to_string_lossy().into_owned())
             .unwrap_or_else(|| "Untitled composition".into());
+        let reach = self.project.reach.clone();
         let result = self.files.start(move || {
             let Some(mut path) = files::select(output.choice(), &base, &filename)? else {
                 return Ok(Completed::Cancelled);
@@ -1807,7 +1819,7 @@ impl Studio {
                 // the user agreed: the finished render may take its place.
                 output.agree_to_replace(path.exists());
             }
-            render_queue::Job::prepare(name, document, base, path, output)
+            render_queue::Job::prepare(name, document, base, path, output, reach)
                 .map(|j| Completed::Queued(Box::new(j)))
         });
         self.file_started(result);
@@ -1951,6 +1963,7 @@ impl Studio {
                 position,
                 path,
             }) => {
+                self.project.allow_added(&path);
                 if session != self.project.session || revision != self.project.document.revision() {
                     self.fail("Import became obsolete; import again for the current composition.");
                 } else {
@@ -2023,6 +2036,7 @@ impl Studio {
                 revision,
                 matching,
             }) => {
+                self.project.allow_added(&path);
                 if session != self.project.session || revision != self.project.document.revision() {
                     self.fail("Import became obsolete; import again for the current composition.");
                 } else if let Some(matching) = matching {
@@ -3568,6 +3582,7 @@ impl Studio {
         self.drop_hint(&files_ctx);
         let ctx = ui.ctx().clone();
         self.theme(&ctx);
+        self.trust_dialog(&ctx);
         self.scene_record_tick(&ctx);
         // eframe creates the root UI before our live palette update.
         ui.set_style(ctx.global_style());

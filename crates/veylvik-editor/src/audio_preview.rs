@@ -104,14 +104,16 @@ impl Studio {
             let cancel = Arc::new(AtomicBool::new(false));
             let stop = cancel.clone();
             let (doc, base) = (doc.clone(), self.project.base.clone());
+            let reach = self.project.reach.clone();
             let window = [key.window[0] as f64 / fps, key.window[1] as f64 / fps];
             let spawned = std::thread::Builder::new()
                 .name("audio-mix".into())
                 .spawn(move || {
-                    let result = veylvik_audio::mix(&doc, &base, window, rate, || {
-                        !stop.load(Ordering::Relaxed)
-                    })
-                    .map_err(|e| e.to_string());
+                    let result =
+                        veylvik_audio::mix_within(&doc, &base, &reach, window, rate, || {
+                            !stop.load(Ordering::Relaxed)
+                        })
+                        .map_err(|e| e.to_string());
                     let _ = tx.send(result);
                 });
             if spawned.is_ok() {

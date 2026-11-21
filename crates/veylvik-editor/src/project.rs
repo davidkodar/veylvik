@@ -8,6 +8,12 @@ type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
 /// GUI state owns the same transactional document used by headless clients.
 pub struct Project {
+    /// Where the composition's files may be read from: anywhere for the artist's own
+    /// work, only its own folder for a composition from someone else or from a host.
+    pub reach: veylvik_document::access::Reach,
+    /// What this project names outside its folder and was not read, when it was opened
+    /// confined: for asking the artist.
+    pub outside: Vec<(veylvik_document::access::Named, String)>,
     /// The host asked for media before anyone else: a composition rendered for a host
     /// with no editor open carries its own.
     pub host: Option<std::sync::Arc<dyn crate::host::Host>>,
@@ -44,8 +50,18 @@ impl Project {
                 None,
             )
         };
+        // A project file opened for the first time that reads files elsewhere is read
+        // only inside its folder until the artist allows the rest.
+        let outside = match &path {
+            Some(file) if !crate::trust::is_trusted(file) => {
+                veylvik_document::access::outside(&composition, &base)
+            }
+            _ => Vec::new(),
+        };
         let selected = composition.output;
         let mut project = Self {
+            reach: Default::default(),
+            outside: Vec::new(),
             host: None,
             session: NodeId::new_v4(),
             recovery_origin: None,
@@ -62,6 +78,10 @@ impl Project {
             asset_errors: Default::default(),
             frame: 0,
         };
+        if !outside.is_empty() {
+            project.reach = veylvik_document::access::Reach::Within(Vec::new());
+            project.outside = outside;
+        }
         project.load_available_inputs();
         Ok(project)
     }
@@ -78,6 +98,8 @@ impl Project {
     ) -> Result<Self> {
         let selected = composition.output;
         let mut project = Self {
+            reach: Default::default(),
+            outside: Vec::new(),
             host,
             session: NodeId::new_v4(),
             recovery_origin: None,
@@ -93,6 +115,9 @@ impl Project {
             asset_errors: Default::default(),
             frame: 0,
         };
+        // A host's composition comes from a project that may have been shared: its
+        // files are read only from its own folder.
+        project.reach = veylvik_document::access::Reach::Within(Vec::new());
         project.load_available_inputs();
         Ok(project)
     }
@@ -120,6 +145,8 @@ impl Project {
         composition.frame_count = frame_count;
         let selected = composition.output;
         Ok(Self {
+            reach: Default::default(),
+            outside: Vec::new(),
             host: None,
             session: NodeId::new_v4(),
             recovery_origin: None,
@@ -140,6 +167,8 @@ impl Project {
         let composition = store.read(id)?;
         let selected = composition.output;
         let mut project = Self {
+            reach: Default::default(),
+            outside: Vec::new(),
             host: None,
             session: NodeId::new_v4(),
             recovery_origin: Some(id),
@@ -185,6 +214,7 @@ impl Project {
     }
     fn load_available_inputs(&mut self) {
         self.inputs.set_base_directory(self.base.clone());
+        self.inputs.set_reach(self.reach.clone());
         let mut remaining = veylvik_io::runtime::source_budget();
         for node in self.document.snapshot().nodes.values() {
             if let Some(key) = node.operation.source_key()
@@ -206,16 +236,40 @@ impl Project {
                     veylvik_document::Operation::Footage(footage)
                         if !footage.fallback.is_empty() =>
                     {
-                        Some(self.base.join(&footage.fallback))
+                        Some(veylvik_document::access::resolve(
+                            &self.base,
+                            &footage.fallback,
+                            &self.reach,
+                        ))
                     }
                     _ => None,
                 };
-                let budget = remaining.min(128 * 1024 * 1024);
-                match veylvik_io::footage::load_key(&self.base, &key, budget).or_else(|error| {
-                    match &aside {
-                        Some(file) => veylvik_io::footage::load(file, budget),
-                        None => Err(error),
+                // Read only what the composition may read (see `reach`).
+                let (file, _) = veylvik_document::split_source_key(&key);
+                if let Err(refused) =
+                    veylvik_document::access::resolve(&self.base, file, &self.reach)
+                {
+                    let refused = match aside {
+                        Some(Ok(_)) => None,
+                        _ => Some(refused),
+                    };
+                    if let Some(refused) = refused {
+                        self.asset_errors.insert(key.into_owned(), refused);
+                        continue;
                     }
+                }
+                let aside: Option<PathBuf> = aside.and_then(|file| file.ok());
+                let budget = remaining.min(128 * 1024 * 1024);
+                let named =
+                    veylvik_document::access::resolve(&self.base, file, &self.reach).is_ok();
+                match (if named {
+                    veylvik_io::footage::load_key(&self.base, &key, budget)
+                } else {
+                    Err("outside the composition's folder".into())
+                })
+                .or_else(|error| match &aside {
+                    Some(file) => veylvik_io::footage::load(file, budget),
+                    None => Err(error),
                 }) {
                     Ok(image) => {
                         remaining -= image.byte_size();
@@ -233,13 +287,22 @@ impl Project {
                 && self.inputs.model(&m.model).is_none()
                 && !self.asset_errors.contains_key(m.model.as_str())
             {
-                match veylvik_io::model::load(&self.base.join(&m.model)) {
+                let file = veylvik_document::access::resolve(&self.base, &m.model, &self.reach);
+                match file.and_then(|file| veylvik_io::model::load(&file)) {
                     Ok(model) => self.inputs.insert_model(m.model.clone(), Arc::new(model)),
                     Err(error) => {
                         self.asset_errors.insert(m.model.clone(), error);
                     }
                 }
             }
+        }
+    }
+    /// A file the artist added themselves may be read wherever it is, also in a project
+    /// that is confined to its folder.
+    pub fn allow_added(&mut self, path: &Path) {
+        if let veylvik_document::access::Reach::Within(also) = &mut self.reach {
+            also.push(path.to_string_lossy().into_owned());
+            self.inputs.set_reach(self.reach.clone());
         }
     }
     /// Sources that failed to load, by asset path, with the reason.
@@ -660,6 +723,11 @@ pub fn load_inputs(
         if let Some(key) = node.operation.source_key()
             && seen.insert(key.clone())
         {
+            // A file the composition may not read stays unavailable (see `Project::reach`).
+            let (file, _) = veylvik_document::split_source_key(&key);
+            if veylvik_document::access::resolve(base, file, inputs.reach()).is_err() {
+                continue;
+            }
             let replaced = inputs.source_budget(&key);
             let remaining = budget.saturating_sub(inputs.byte_size().saturating_sub(replaced));
             let image = veylvik_io::footage::load_key(base, &key, remaining.min(128 * 1024 * 1024))
@@ -731,6 +799,136 @@ mod tests {
             before
         );
         assert!(!project.inputs.contains_key("bad.png"));
+    }
+    /// A composition from someone else naming files outside its folder, every way there
+    /// is: an absolute path, `..`, a link inside the folder that leads out, the fallback
+    /// beside a host key, a 3D model and a colour configuration.
+    fn hostile(root: &Path) -> (PathBuf, Composition) {
+        let folder = root.join("shared");
+        std::fs::create_dir_all(&folder).unwrap();
+        let secret = root.join("secret.png");
+        veylvik_io::save_frame(&secret, 1, 1, &[[1.0, 0.0, 0.0, 1.0]]).unwrap();
+        veylvik_io::save_frame(&folder.join("inside.png"), 1, 1, &[[0.0, 1.0, 0.0, 1.0]]).unwrap();
+        std::os::unix::fs::symlink(root, folder.join("away")).unwrap();
+        let mut doc = veylvik_document::blank(1, 1, Time::new(24, 1).unwrap()).unwrap();
+        let image = |asset: &str| {
+            Operation::Image(veylvik_document::nodes::Image {
+                asset: asset.into(),
+            })
+        };
+        doc.nodes.get_mut(&doc.output).unwrap().operation = image("inside.png");
+        // A node of `kind` with its default settings, then the hostile ones put in.
+        let made = |kind: &str, set: serde_json::Value| -> Operation {
+            let mut value = veylvik_document::registry::TYPES
+                .iter()
+                .find(|t| t.type_id == kind)
+                .unwrap()
+                .default_operation();
+            for (key, field) in set.as_object().unwrap() {
+                value[key] = field.clone();
+            }
+            serde_json::from_value(value).unwrap()
+        };
+        let fallback = made(
+            "footage",
+            serde_json::json!({"asset": "host-key-nobody-knows", "fallback": secret}),
+        );
+        let model = made("model_3d", serde_json::json!({"model": "../secret.glb"}));
+        let mut colour = made("ocio", serde_json::json!({}));
+        if let Operation::Ocio(ocio) = &mut colour {
+            ocio.transform.config = "/etc/ocio/config.ocio".into();
+        }
+        for (label, operation) in [
+            ("Absolute", image(&secret.to_string_lossy())),
+            ("Climbing", image("../secret.png")),
+            ("Through a link", image("away/secret.png")),
+            ("Fallback", fallback),
+            ("Model", model),
+            ("Colour", colour),
+        ] {
+            let wired = [("image", doc.output)];
+            let inputs: &[(&str, NodeId)] = if label == "Colour" { &wired } else { &[] };
+            let node = Node::new(label, operation, inputs);
+            doc.nodes.insert(node.id, node);
+        }
+        (folder, doc)
+    }
+    fn secret_name(root: &Path) -> String {
+        root.join("secret.png").to_string_lossy().into_owned()
+    }
+    #[test]
+    fn a_hosts_composition_reads_nothing_outside_its_folder() {
+        let root = std::env::temp_dir().join(format!("veylvik-hostile-{}", NodeId::new_v4()));
+        let (folder, doc) = hostile(&root);
+        let project = Project::hosted_by(doc.clone(), folder.clone(), None).unwrap();
+        let errors = project.unavailable_assets();
+        assert!(project.inputs.contains_key("inside.png"));
+        for name in ["../secret.png", "away/secret.png", "host-key-nobody-knows"] {
+            assert!(!project.inputs.contains_key(name), "{name} was read");
+        }
+        assert!(!project.inputs.contains_key(&secret_name(&root)));
+        assert!(project.inputs.model("../secret.glb").is_none());
+        assert!(
+            errors
+                .values()
+                .any(|why| why.contains("outside the composition's folder")),
+            "{errors:?}"
+        );
+        assert!(
+            project
+                .inputs
+                .resolve_config("/etc/ocio/config.ocio")
+                .is_err()
+        );
+        // Exports of it are refused before anything is read.
+        let error = crate::render_queue::Job::prepare(
+            "hostile".into(),
+            doc,
+            folder.clone(),
+            root.join("out.png"),
+            crate::render_queue::Output::Frame {
+                time: Time::new(0, 1).unwrap(),
+                output: project.document.snapshot().output,
+            },
+            project.reach.clone(),
+        )
+        .err()
+        .unwrap();
+        assert!(error.contains("outside"), "{error}");
+        std::fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn a_project_file_opened_the_first_time_asks_before_reading_outside_its_folder() {
+        let root = std::env::temp_dir().join(format!("veylvik-hostile-{}", NodeId::new_v4()));
+        let (folder, doc) = hostile(&root);
+        let path = folder.join("downloaded.veylvik");
+        doc.save(&path).unwrap();
+        let project = Project::open(Some(&path)).unwrap();
+        assert!(project.inputs.contains_key("inside.png"));
+        assert!(!project.inputs.contains_key(&secret_name(&root)));
+        assert!(project.inputs.model("../secret.glb").is_none());
+        let named: Vec<_> = project
+            .outside
+            .iter()
+            .map(|(named, _)| named.label.as_str())
+            .collect();
+        for label in [
+            "Absolute",
+            "Climbing",
+            "Through a link",
+            "Fallback",
+            "Model",
+            "Colour",
+        ] {
+            assert!(named.contains(&label), "{label} not asked about: {named:?}");
+        }
+        // Allowed once, it is read in full from then on.
+        crate::trust::trust(&path);
+        let project = Project::open(Some(&path)).unwrap();
+        assert!(project.outside.is_empty());
+        assert!(project.inputs.contains_key(&secret_name(&root)));
+        assert!(project.inputs.contains_key("../secret.png"));
+        std::fs::remove_dir_all(root).unwrap();
     }
     #[test]
     fn missing_sources_do_not_prevent_opening_or_recovering_a_valid_graph() {

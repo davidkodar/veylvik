@@ -147,8 +147,9 @@ impl Studio {
             .and_then(|p| p.file_stem())
             .map(|s| s.to_string_lossy().into_owned())
             .unwrap_or_else(|| "Untitled composition".into());
+        let reach = self.project.reach.clone();
         let work = self.files.start(move || {
-            render_queue::Job::prepare(label, document, base, path, output)
+            render_queue::Job::prepare(label, document, base, path, output, reach)
                 .map(|job| Completed::Queued(Box::new(job)))
         });
         let reply = started(self, work)?;

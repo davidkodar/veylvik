@@ -195,7 +195,7 @@ impl Renderer {
         frame: &GpuFrame,
     ) -> Result<GpuFrame> {
         let mut settings = settings.clone();
-        settings.config = inputs.resolve_config(&settings.config);
+        settings.config = inputs.resolve_config(&settings.config)?;
         let key = serde_json::to_string(&settings).map_err(error)?;
         let cached = {
             let cache = self

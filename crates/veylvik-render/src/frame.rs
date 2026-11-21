@@ -176,6 +176,8 @@ pub struct ImageInputs(
     std::path::PathBuf,
     /// Imported 3D models by file path.
     BTreeMap<String, Arc<veylvik_scene::Model>>,
+    /// Where the composition's files may be (see `veylvik_document::access`).
+    veylvik_document::access::Reach,
 );
 impl ImageInputs {
     /// Whether both hold exactly the same images, frames, sources and models.
@@ -234,11 +236,22 @@ impl ImageInputs {
     pub fn set_base_directory(&mut self, base: impl Into<std::path::PathBuf>) {
         self.3 = base.into();
     }
-    pub fn resolve_config(&self, config: &str) -> String {
+    /// Where this composition's files may be read from.
+    pub fn set_reach(&mut self, reach: veylvik_document::access::Reach) {
+        self.5 = reach;
+    }
+    pub fn reach(&self) -> &veylvik_document::access::Reach {
+        &self.5
+    }
+    /// The file a colour configuration names, or the built-in it names. Refused when
+    /// the composition may not read it (see `set_reach`).
+    pub fn resolve_config(&self, config: &str) -> Result<String> {
         if config.starts_with("ocio://") {
-            config.to_owned()
+            Ok(config.to_owned())
         } else {
-            self.3.join(config).to_string_lossy().into_owned()
+            veylvik_document::access::resolve(&self.3, config, &self.5)
+                .map(|path| path.to_string_lossy().into_owned())
+                .map_err(error)
         }
     }
     /// Declared CPU pixel bytes, counting shared images once.

@@ -98,6 +98,9 @@ pub struct Job {
     pub base: PathBuf,
     pub path: PathBuf,
     pub output: Output,
+    /// Where the composition's files may be read from (see `veylvik_document::access`).
+    #[serde(default)]
+    pub reach: veylvik_document::access::Reach,
     state: State,
     detail: String,
     elapsed: f64,
@@ -111,11 +114,13 @@ impl Job {
         base: PathBuf,
         path: PathBuf,
         output: Output,
+        reach: veylvik_document::access::Reach,
     ) -> Result<Self> {
         if matches!(output, Output::Frame { .. }) {
             veylvik_io::FrameFormat::from_path(&path).map_err(|e| e.to_string())?;
         }
         document.validate().map_err(|e| e.to_string())?;
+        veylvik_document::access::check(&document, &base, &reach)?;
         if path.exists() && !output.replaces() {
             return Err(
                 "Choose a new output name; queued renders never replace existing files or folders."
@@ -175,6 +180,7 @@ impl Job {
             base,
             path,
             output,
+            reach,
             state: State::Pending,
             detail: "Snapshot ready".into(),
             elapsed: 0.,
@@ -620,6 +626,7 @@ fn render(
     progress: &Mutex<Progress>,
 ) -> Result<bool> {
     job.verify()?;
+    veylvik_document::access::check(&job.document, &job.base, &job.reach)?;
     veylvik_io::protect_inputs(&job.document, &job.base, &job.path).map_err(|e| e.to_string())?;
     if cancel.load(Ordering::Relaxed) {
         return Ok(false);
@@ -760,6 +767,7 @@ mod tests {
             base.to_path_buf(),
             base.join(format!("{name}.png")),
             output,
+            Default::default(),
         )
         .unwrap()
     }
@@ -818,6 +826,7 @@ mod tests {
                 dir.clone(),
                 path.to_path_buf(),
                 output,
+                Default::default(),
             )
         };
         // Without the user's agreement an existing file is refused, as before.

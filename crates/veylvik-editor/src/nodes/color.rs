@@ -112,7 +112,9 @@ pub(crate) fn ocio_controls(
         .text_edit_singleline(&mut t.config)
         .on_hover_text("OCIO URI or configuration file relative to the project")
         .changed();
-    let path = inputs.resolve_config(&t.config);
+    let path = inputs
+        .resolve_config(&t.config)
+        .unwrap_or_else(|refused| refused.to_string());
     // Config menus are only rebuilt when their path changes, not on mouse movement.
     let id = ui.make_persistent_id(("ocio-menus", &path));
     type Menus = std::result::Result<(Vec<String>, Vec<(String, Vec<String>)>), String>;

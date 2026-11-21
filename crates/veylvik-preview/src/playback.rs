@@ -145,7 +145,7 @@ fn stamps(paths: impl IntoIterator<Item = PathBuf>) -> Result<Vec<Stamp>> {
 }
 fn ocio_paths(plan: &Plan, inputs: &ImageInputs, paths: &mut Vec<PathBuf>) -> Result<()> {
     for transform in plan.ocio_transforms() {
-        let config_path = inputs.resolve_config(&transform.config);
+        let config_path = inputs.resolve_config(&transform.config)?;
         if config_path.starts_with("ocio://") {
             continue;
         }

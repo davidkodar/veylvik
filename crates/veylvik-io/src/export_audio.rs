@@ -128,12 +128,29 @@ pub fn probe(path: &Path) -> Result<Probe> {
 }
 /// Every audible footage clip within the export window of `doc`.
 pub fn clips(doc: &Composition, base: &Path, window: [f64; 2]) -> Result<Vec<Clip>> {
+    clips_within(
+        doc,
+        base,
+        &veylvik_document::access::Reach::Anywhere,
+        window,
+    )
+}
+/// As [`clips`], reading only the files `reach` allows (see `veylvik_document::access`).
+pub fn clips_within(
+    doc: &Composition,
+    base: &Path,
+    reach: &veylvik_document::access::Reach,
+    window: [f64; 2],
+) -> Result<Vec<Clip>> {
     let mut clips = Vec::new();
     for id in footage_nodes(doc) {
         let Operation::Footage(footage) = &doc.nodes[&id].operation else {
             continue;
         };
-        let path = base.join(&footage.asset);
+        // A file the composition may not read is left out, as it is from the picture.
+        let Ok(path) = veylvik_document::access::resolve(base, &footage.asset, reach) else {
+            continue;
+        };
         // An image sequence is a manifest of pictures: it has no sound, and is no
         // media file to probe.
         if crate::footage::is_sequence(&path) {
@@ -157,6 +174,11 @@ pub fn clips(doc: &Composition, base: &Path, window: [f64; 2]) -> Result<Vec<Cli
             continue;
         };
         if node.bypass || sound.file.trim().is_empty() {
+            continue;
+        }
+        if !sound.file.starts_with("builtin:")
+            && veylvik_document::access::resolve(base, &sound.file, reach).is_err()
+        {
             continue;
         }
         let path = crate::sounds::resolve(base, &sound.file)?;
