@@ -196,10 +196,13 @@ impl Studio {
                 if self.capabilities.export && ui.add(egui::Button::new(egui::RichText::new("Render").color(crate::theme::ink(crate::theme::palette(ui.ctx()).selection))).fill(crate::theme::palette(ui.ctx()).selection)).clicked() {self.go_to(crate::pages::Page::Export);}
 
                 let unavailable = self.project.unavailable_assets().len();
+                // A host keeps the project's files: it relinks its own media when asked.
+                let hint = if self.capabilities.project_files { "Open Project files to locate or relink missing media" } else { "Ask the host to locate or relink missing media" };
                 if unavailable > 0 && ui.button(egui::RichText::new(format!("{unavailable} unavailable")).color(egui::Color32::LIGHT_RED))
-                        .on_hover_text("Open Project files to locate or relink missing media").clicked() { self.portable.open = true; }
-                let name = self.project.path.as_ref().and_then(|p| p.file_name())
-                    .map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "Untitled".into());
+                        .on_hover_text(hint).clicked() {
+                    if self.capabilities.project_files { self.portable.open = true; } else { self.relink_asked = true; }
+                }
+                let name = self.title_name();
                 let title = if self.project.dirty() || self.draft_dirty { format!("{name} •") } else { name };
                 // Centred in the room left of the Render button when the whole name fits there
                 // (the page tabs and a link's button take their room first); cut short otherwise.

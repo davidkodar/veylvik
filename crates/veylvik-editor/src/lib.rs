@@ -252,6 +252,41 @@ impl Capabilities {
         }
     }
 }
+/// A name made safe to begin a file name with: no folder separators, control characters
+/// or leading dots; `None` when nothing is left.
+fn safe_stem(name: &str) -> Option<String> {
+    let safe: String = name
+        .chars()
+        .map(|c| {
+            if matches!(c, '/' | '\\') || c.is_control() {
+                '-'
+            } else {
+                c
+            }
+        })
+        .collect();
+    let safe = safe.trim().trim_start_matches('.').trim();
+    (!safe.is_empty()).then(|| safe.to_string())
+}
+#[cfg(test)]
+mod stem_tests {
+    #[test]
+    fn a_hosts_name_begins_file_names_safely() {
+        use super::safe_stem;
+        assert_eq!(safe_stem("Beach at dawn").as_deref(), Some("Beach at dawn"));
+        assert_eq!(
+            safe_stem("take 2/3: wide").as_deref(),
+            Some("take 2-3: wide")
+        );
+        assert_eq!(
+            safe_stem("../../etc/passwd").as_deref(),
+            Some("-..-etc-passwd")
+        );
+        assert_eq!(safe_stem("a\\b\nc").as_deref(), Some("a-b-c"));
+        assert_eq!(safe_stem("  ...  "), None);
+        assert_eq!(safe_stem(""), None);
+    }
+}
 /// Read a composition from a `.veylvik` file, for a host that keeps compositions as files.
 pub fn load_composition(
     path: &std::path::Path,
@@ -447,6 +482,17 @@ impl Editor {
     /// first), for a host that shows one undo list across its pages.
     pub fn steps(&self) -> (Vec<String>, Vec<String>) {
         self.studio.project.document.steps()
+    }
+    /// Name the composition, as a host names it (a clip's name): the editor's title shows
+    /// it and exported files begin with it. `None` goes back to the project file's name.
+    /// A new composition ([`Editor::set_composition`]) keeps the name: give each its own.
+    pub fn set_name(&mut self, name: Option<String>) {
+        self.studio.host_name = name.filter(|name| !name.trim().is_empty());
+    }
+    /// Whether the "unavailable" button was pressed since the last call: inside a host the
+    /// editor does not relink media itself, so the host opens its own relink.
+    pub fn take_relink_request(&mut self) -> bool {
+        std::mem::take(&mut self.studio.relink_asked)
     }
     /// Keep the playback store's pictures in `folder` (a host's own cache folder, so its
     /// clear-cache removes them), or in Veylvik's usual place with `None`. Pictures kept
@@ -647,6 +693,8 @@ impl Studio {
             play_now: false,
             trust_prompt,
             playback_folder: None,
+            host_name: None,
+            relink_asked: false,
             viewer_canvas: None,
             files: Tasks::new(setup.context.clone()),
             export_controls: sequence::Controls::default(),
@@ -798,6 +846,11 @@ struct Studio {
     trust_prompt: bool,
     /// Where a host wants the playback store's pictures (its own cache folder).
     playback_folder: Option<PathBuf>,
+    /// The name a host gives its composition (a clip's name): the title and the stem of
+    /// exported files, in place of the project file's name.
+    host_name: Option<String>,
+    /// The "unavailable" button was pressed inside a host, which relinks its own media.
+    relink_asked: bool,
     /// Where the viewer's picture was last drawn.
     viewer_canvas: Option<egui::Rect>,
     files: Tasks,
@@ -1846,13 +1899,7 @@ impl Studio {
         }
         let document = self.project.document.snapshot().clone();
         let base = self.project.base.clone();
-        let name = self
-            .project
-            .path
-            .as_ref()
-            .and_then(|p| p.file_stem())
-            .map(|s| s.to_string_lossy().into_owned())
-            .unwrap_or_else(|| "Untitled composition".into());
+        let name = self.file_stem();
         let reach = self.project.reach.clone();
         let result = self.files.start(move || {
             let Some(mut path) = files::select(output.choice(), &base, &filename)? else {
@@ -2190,6 +2237,32 @@ impl Studio {
             self.theme_checked = Instant::now();
         }
         self.accent = palette.accent;
+    }
+    /// The composition's name as the title shows it: the host's name for it, else the
+    /// project file's name.
+    pub(crate) fn title_name(&self) -> String {
+        self.host_name.clone().unwrap_or_else(|| {
+            self.project
+                .path
+                .as_ref()
+                .and_then(|p| p.file_name())
+                .map_or_else(|| "Untitled".into(), |s| s.to_string_lossy().into_owned())
+        })
+    }
+    /// The name exported files begin with: the host's name made safe for a file name,
+    /// else the project file's stem.
+    pub(crate) fn file_stem(&self) -> String {
+        if let Some(stem) = self.host_name.as_deref().and_then(safe_stem) {
+            return stem;
+        }
+        self.project
+            .path
+            .as_ref()
+            .and_then(|p| p.file_stem())
+            .map_or_else(
+                || "Untitled composition".into(),
+                |s| s.to_string_lossy().into_owned(),
+            )
     }
     /// The playback store's limits and folder, from the preferences; a host's own
     /// folder (`Editor::set_playback_folder`) comes before both of the others.

@@ -140,13 +140,7 @@ impl Studio {
         };
         let document = doc.clone();
         let base = self.project.base.clone();
-        let label = self
-            .project
-            .path
-            .as_ref()
-            .and_then(|p| p.file_stem())
-            .map(|s| s.to_string_lossy().into_owned())
-            .unwrap_or_else(|| "Untitled composition".into());
+        let label = self.file_stem();
         let reach = self.project.reach.clone();
         let work = self.files.start(move || {
             render_queue::Job::prepare(label, document, base, path, output, reach)
