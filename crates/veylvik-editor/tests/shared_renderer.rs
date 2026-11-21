@@ -349,3 +349,44 @@ fn a_host_keeps_the_settings_and_the_editor_uses_them_as_given() {
     assert!(!changed && shown == theirs);
     assert!(!panel.take_want_shortcuts());
 }
+
+#[test]
+#[ignore = "requires Vulkan"]
+fn asking_for_preferences_inside_a_host_is_handed_to_the_host() {
+    use eframe::egui;
+    let (_instance, adapter, device, queue) =
+        pollster::block_on(veylvik_render::create_gpu()).unwrap();
+    let context = egui::Context::default();
+    let mut editor = editor_in(&device, &queue, &adapter.get_info(), None, &context);
+    let input = |events: Vec<egui::Event>| egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1280.0, 720.0),
+        )),
+        events,
+        ..Default::default()
+    };
+    let ctrl_comma = egui::Event::Key {
+        key: egui::Key::Comma,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        // As a real Ctrl press on Linux: egui sets both.
+        modifiers: egui::Modifiers {
+            ctrl: true,
+            command: true,
+            ..Default::default()
+        },
+    };
+    assert!(!editor.take_preferences_request());
+    for events in [vec![], vec![], vec![ctrl_comma]] {
+        let _ = context.run_ui(input(events), |ui| {
+            egui::CentralPanel::default().show_inside(ui, |ui| editor.ui(ui));
+        });
+    }
+    assert!(
+        editor.take_preferences_request(),
+        "Ctrl+, was not handed over"
+    );
+    assert!(!editor.take_preferences_request(), "handed over twice");
+}

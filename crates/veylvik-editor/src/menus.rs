@@ -89,7 +89,7 @@ impl Studio {
                 let mut auto_key = self.preferences.values.auto_key;
                 if ui.checkbox(&mut auto_key, "Automatic keyframes").on_hover_text("On: changing an animated setting adds a keyframe at the current position. Off: such a change is a try-out until you add the keyframe").changed() { self.toggle_auto_key(); }
                 ui.separator();
-                if self.capabilities.preferences && item(ui,"Preferences…","Ctrl+,",true) {self.open_preferences();}
+                if item(ui,"Preferences…","Ctrl+,",true) {self.open_preferences();}
             });
             ui.menu_button("Add", |ui| {
                 let ready = !self.draft_dirty && !self.graph.dragging() && !self.animation_editor.dragging();

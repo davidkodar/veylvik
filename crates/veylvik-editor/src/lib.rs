@@ -527,6 +527,12 @@ impl Editor {
         self.studio.reported_preferences = Some(now.clone());
         Some(now.clone())
     }
+    /// Whether the artist asked for Preferences (the File menu or Ctrl+,) since the last
+    /// call: inside a host the editor shows no settings of its own, so the host opens its
+    /// own at Veylvik's.
+    pub fn take_preferences_request(&mut self) -> bool {
+        std::mem::take(&mut self.studio.preferences_asked)
+    }
     /// Open the editor's keyboard shortcuts (see `preferences::Panel::take_want_shortcuts`).
     pub fn open_shortcuts(&mut self) {
         self.studio.commands.editor = true;
@@ -766,6 +772,7 @@ impl Studio {
             reported_frame: 0,
             host_range: false,
             reported_preferences: None,
+            preferences_asked: false,
             viewer_canvas: None,
             files: Tasks::new(setup.context.clone()),
             export_controls: sequence::Controls::default(),
@@ -926,6 +933,8 @@ struct Studio {
     reported_frame: i64,
     /// The working range is the host's (a clip's used part): frames outside are dimmed.
     host_range: bool,
+    /// Preferences were asked for inside a host, which shows its own.
+    preferences_asked: bool,
     /// The settings the host last gave or heard of (see `Editor::take_preferences_change`).
     reported_preferences: Option<preferences::Values>,
     /// Where the viewer's picture was last drawn.
@@ -2409,6 +2418,12 @@ impl Studio {
         }
     }
     fn open_preferences(&mut self) {
+        // A host keeps the settings: it opens its own, at Veylvik's (see
+        // `Editor::take_preferences_request`).
+        if !self.capabilities.preferences {
+            self.preferences_asked = true;
+            return;
+        }
         self.playing = false;
         if !self.error {
             self.status = "Paused".into();

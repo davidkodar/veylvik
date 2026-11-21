@@ -117,7 +117,9 @@ impl Studio {
             Cmd::ExportVideo | Cmd::ExportFrame | Cmd::ExportSequence | Cmd::PageExport => {
                 can.export
             }
-            Cmd::Preferences | Cmd::Shortcuts => can.preferences,
+            // Inside a host the press is the host's to answer (its own settings).
+            Cmd::Preferences => true,
+            Cmd::Shortcuts => can.preferences,
             Cmd::Quit => can.own_window,
             Cmd::ViewerFullScreen => can.full_screen,
             Cmd::SecondViewer => can.second_viewer,
