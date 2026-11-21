@@ -498,7 +498,16 @@ impl Studio {
             setup.adapter.clone(),
         )?;
         render_limits.apply(&mut renderer);
-        renderer.set_scene_renderer(Arc::new(veylvik_render3d::Engine::new(renderer.device())));
+        // Compiled programs kept between runs: in a host, only when it names a folder.
+        if setup.capabilities.own_window
+            && let Some(folder) = veylvik_render::default_pipeline_folder()
+        {
+            let _ = renderer.use_pipeline_cache(&folder);
+        }
+        renderer.set_scene_renderer(Arc::new(veylvik_render3d::Engine::with_cache(
+            renderer.device(),
+            renderer.pipeline_cache().as_ref(),
+        )));
         let renderer = Arc::new(renderer);
         let context = setup.context.clone();
         let scheduler = GpuPreviewScheduler::with_renderer(renderer.clone(), move || {
@@ -4458,6 +4467,8 @@ impl Studio {
         }
     }
     fn shut_down(&mut self) {
+        // Programs compiled this session, for the next one.
+        let _ = self.renderer.save_pipeline_cache();
         self.recovery
             .finish(self.allow_close || (!self.project.dirty() && !self.draft_dirty));
         self.control.take();

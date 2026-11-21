@@ -150,8 +150,12 @@ pub fn renderer() -> Result<Renderer> {
     let limits = RenderLimits::from_env()?;
     let mut renderer = Renderer::new()?;
     limits.apply(&mut renderer);
-    renderer.set_scene_renderer(std::sync::Arc::new(veylvik_render3d::Engine::new(
+    if let Some(folder) = veylvik_render::default_pipeline_folder() {
+        let _ = renderer.use_pipeline_cache(&folder);
+    }
+    renderer.set_scene_renderer(std::sync::Arc::new(veylvik_render3d::Engine::with_cache(
         renderer.device(),
+        renderer.pipeline_cache().as_ref(),
     )));
     Ok(renderer)
 }

@@ -3209,6 +3209,27 @@ when a different layout is needed. Live mutations require applied/reverted
 inspector drafts; dry runs inspect the applied document.
 
 
+## Compiled GPU programs
+
+The first time a graphics driver compiles one of Veylvik's GPU programs it can take many
+seconds; the material program alone took 18.7 s on an RTX 4080. Veylvik keeps what the
+driver compiled in a file, so this is paid once per driver and graphics card, not once per
+program start or build: `$XDG_CACHE_HOME/veylvik/pipelines` (else `~/.cache/veylvik/pipelines`),
+one file per card. Measured with the driver's own cache empty: starting a renderer 6.9 s
+without it and 0.45 s with it, compiling one composition's programs 19.7 s and 0.07 s.
+
+The file is read only when whole (a header with its length and a checksum); a damaged or
+foreign file starts an empty cache. It needs `wgpu::Features::PIPELINE_CACHE` on the
+device, which Veylvik asks for where the driver offers it.
+
+A host making its own renderer calls `Renderer::use_pipeline_cache(folder)` right after
+making it, `Renderer::pipeline_cache()` gives the cache to its own GPU code (the 3D renderer
+takes it in `Engine::with_cache`), `Renderer::save_pipeline_cache()` writes it, and
+`Renderer::compile_for(plan)` / `compile_kernels()` compile beforehand on a thread of the
+host's and write the cache when done. `ClipSource::compile()` does this for a host's
+composition; a clip source whose composition films a 3D scene registers the 3D renderer
+itself when the host has none.
+
 ## GPU working-memory budget
 
 CLI renders, headless MCP rendering, and Studio share the optional

@@ -1173,6 +1173,16 @@ impl Plan {
     pub fn has_temporal(&self) -> bool {
         !self.temporal.is_empty()
     }
+    /// Whether the plan films a 3D scene anywhere, its branches included.
+    pub fn films_scenes(&self) -> bool {
+        self.passes
+            .iter()
+            .any(|pass| pass.kernel == Kernel::RenderScene)
+            || self
+                .temporal
+                .iter()
+                .any(|branch| branch.plan.films_scenes())
+    }
     /// Every OCIO transform the plan uses: the viewer's, and those of OCIO nodes in it
     /// and its temporal branches.
     pub fn ocio_transforms(&self) -> Vec<&veylvik_document::color_management::OcioTransform> {

@@ -119,3 +119,61 @@ fn a_composition_gives_a_host_the_same_frame_whoever_else_is_asking() {
     source.set_composition(changed).unwrap();
     assert_eq!(source.format().unwrap().0, [width / 2, height / 2]);
 }
+
+#[test]
+#[ignore = "requires Vulkan"]
+fn a_clip_source_brings_its_own_3d_renderer_and_compiles_what_it_uses() {
+    use veylvik_document::{Node, Operation, registry};
+    let of = |kind: &str| -> Operation {
+        serde_json::from_value(
+            registry::TYPES
+                .iter()
+                .find(|t| t.type_id == kind)
+                .unwrap()
+                .default_operation(),
+        )
+        .unwrap()
+    };
+    // A renderer as a host makes it: no editor, no 3D renderer registered.
+    let renderer = Arc::new(Renderer::new().unwrap());
+    let mut composition = veylvik_document::blank(64, 36, Time::new(24, 1).unwrap()).unwrap();
+    let shape = Node::new("cube", of("shape_3d"), &[]);
+    let film = Node::new("film", of("render_scene"), &[("scene", shape.id)]);
+    // And an ordinary 2D effect over the film (a blur: an untouched exposure is no pass).
+    let graded = Node::new("graded", of("blur"), &[("image", film.id)]);
+    composition.output = graded.id;
+    composition.nodes.insert(shape.id, shape);
+    composition.nodes.insert(film.id, film);
+    composition.nodes.insert(graded.id, graded);
+    let source =
+        ClipSource::new(renderer.clone(), composition, std::env::temp_dir(), None).unwrap();
+    assert!(source.compile().unwrap() > 0);
+    let target = renderer.device().create_buffer(&wgpu::BufferDescriptor {
+        label: Some("the host's frame"),
+        size: 64 * 36 * 16,
+        usage: wgpu::BufferUsages::STORAGE
+            | wgpu::BufferUsages::COPY_SRC
+            | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    });
+    source
+        .render(
+            Time::new(0, 1).unwrap(),
+            [64, 36],
+            &target,
+            &HostPixels::rec709(false),
+        )
+        .expect("a Render scene renders through a clip source with no editor");
+    let pixels = renderer
+        .read_frame(
+            &renderer
+                .frame_from_host(&target, 64, 36, &HostPixels::rec709(false))
+                .unwrap(),
+        )
+        .unwrap()
+        .pixels;
+    assert!(
+        pixels.iter().any(|p| p[3] > 0.0),
+        "the cube is not in the picture"
+    );
+}

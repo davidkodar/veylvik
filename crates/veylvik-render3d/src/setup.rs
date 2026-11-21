@@ -3,6 +3,11 @@ use crate::*;
 
 impl Engine {
     pub fn new(device: &wgpu::Device) -> Self {
+        Self::with_cache(device, None)
+    }
+    /// As [`Engine::new`], compiling its programs into `cache` (the renderer's, from
+    /// `Renderer::pipeline_cache`) so they are kept between runs.
+    pub fn with_cache(device: &wgpu::Device, cache: Option<&wgpu::PipelineCache>) -> Self {
         let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("3D scene"),
             source: wgpu::ShaderSource::Wgsl(
@@ -115,7 +120,7 @@ impl Engine {
                     })],
                 }),
                 multiview_mask: None,
-                cache: None,
+                cache,
             })
         };
         let lit = pipeline("lit", None, true);
@@ -156,7 +161,7 @@ impl Engine {
             multisample: Default::default(),
             fragment: None,
             multiview_mask: None,
-            cache: None,
+            cache,
         });
         let card = pipeline(
             "card",
@@ -267,7 +272,7 @@ impl Engine {
                 })],
             }),
             multiview_mask: None,
-            cache: None,
+            cache,
         });
         let copy_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("3D resolve copy"),
@@ -279,7 +284,7 @@ impl Engine {
             module: &copy_module,
             entry_point: Some("copy"),
             compilation_options: Default::default(),
-            cache: None,
+            cache,
         });
         let env_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("3D environment"),
@@ -292,7 +297,7 @@ impl Engine {
                 module: &env_module,
                 entry_point: Some(entry),
                 compilation_options: Default::default(),
-                cache: None,
+                cache,
             })
         };
         let (resample, reduce, irradiance) = (
@@ -343,7 +348,7 @@ impl Engine {
                 })],
             }),
             multiview_mask: None,
-            cache: None,
+            cache,
         });
         Self {
             resample,

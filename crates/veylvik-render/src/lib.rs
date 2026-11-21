@@ -30,8 +30,10 @@ pub mod display;
 mod encode;
 pub use encode::Look;
 mod nodes;
+mod pipeline_cache;
 mod plan;
 mod pool;
+pub use pipeline_cache::default_pipeline_folder;
 mod preview_scale;
 mod probe;
 mod scene_hook;
@@ -208,6 +210,8 @@ pub struct Renderer {
     /// The particle passes' module: the same layout, with the output as atomics.
     particle_shader: wgpu::ShaderModule,
     pipelines: std::sync::Mutex<BTreeMap<Kernel, wgpu::ComputePipeline>>,
+    /// Compiled programs kept between runs, once the host asks for it.
+    pipeline_cache: std::sync::Mutex<Option<Arc<pipeline_cache::Kept>>>,
     /// The kernels' pipeline layout, for custom shaders compiled later.
     pipeline_layout: wgpu::PipelineLayout,
     custom: custom::Cache,
@@ -270,6 +274,15 @@ impl Renderer {
     pub fn set_scene_renderer(&self, renderer: Arc<dyn SceneRenderer>) {
         if let Ok(mut slot) = self.scene_renderer.write() {
             *slot = Some(renderer);
+        }
+    }
+    /// Register a 3D renderer made by `make` unless one is registered already: two
+    /// callers at once make it once.
+    pub fn ensure_scene_renderer(&self, make: impl FnOnce() -> Arc<dyn SceneRenderer>) {
+        if let Ok(mut slot) = self.scene_renderer.write()
+            && slot.is_none()
+        {
+            *slot = Some(make());
         }
     }
     pub fn new() -> Result<Self> {
@@ -468,6 +481,7 @@ impl Renderer {
             shader,
             particle_shader,
             pipelines: Default::default(),
+            pipeline_cache: Default::default(),
             pipeline_layout,
             custom: Default::default(),
             layout,
@@ -706,6 +720,8 @@ impl Renderer {
         // Compiled with the list unlocked: a driver can take many seconds over one
         // kernel the first time, and a render that needs another must not wait for it.
         // Two threads may then compile the same one; the second's is simply used.
+        let kept = self.kept_pipelines();
+        let compiling = std::time::Instant::now();
         let pipeline = self
             .device
             .create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
@@ -718,12 +734,16 @@ impl Renderer {
                 },
                 entry_point: Some(kernel.entry()),
                 compilation_options: Default::default(),
-                cache: None,
+                cache: kept.as_ref().map(|kept| &kept.cache),
             });
         self.pipelines
             .lock()
             .map_err(|_| error("kernel pipelines lock poisoned"))?
             .insert(kernel, pipeline.clone());
+        // A slow compile is worth keeping at once, written off this thread.
+        if compiling.elapsed() > std::time::Duration::from_millis(200) {
+            self.save_pipelines_later();
+        }
         Ok(pipeline)
     }
     /// Compile the kernels `plan` uses now, those of its branches included, so its first
@@ -747,7 +767,10 @@ impl Renderer {
         if let Some(e) = pollster::block_on(scope.pop()) {
             return Err(error(e));
         }
-        Ok(built?.len())
+        let built = built?.len();
+        // Called on a thread of the host's: write the programs now.
+        let _ = self.save_pipeline_cache();
+        Ok(built)
     }
     /// Compile every kernel now, so no later frame waits for one. Errors if any fails.
     pub fn compile_kernels(&self) -> Result<usize> {
@@ -759,7 +782,10 @@ impl Renderer {
         if let Some(e) = pollster::block_on(scope.pop()) {
             return Err(error(e));
         }
-        Ok(built?.len())
+        let built = built?.len();
+        // Called on a thread of the host's: write the programs now.
+        let _ = self.save_pipeline_cache();
+        Ok(built)
     }
     pub fn render_frame(
         &self,
@@ -1547,6 +1573,8 @@ pub async fn create_gpu() -> Result<(wgpu::Instance, wgpu::Adapter, wgpu::Device
         &wgpu::DeviceDescriptor {
             label: Some("Veylvik"),
             required_limits: device_limits(&adapter),
+            // Compiled programs kept between runs, where the driver allows it.
+            required_features: adapter.features() & wgpu::Features::PIPELINE_CACHE,
             ..Default::default()
         },
     )

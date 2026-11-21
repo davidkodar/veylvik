@@ -439,3 +439,23 @@ mod device;
 pub use device::request_device;
 mod dma;
 pub use dma::{DmaFrame, DmaLayout};
+/// A pipeline cache for `device`, started from `data` when given: compiled GPU programs
+/// kept between runs, so a driver need not compile them again. None when the device was
+/// not made with `wgpu::Features::PIPELINE_CACHE`. Data that the driver does not accept
+/// (another driver, another card) starts an empty cache instead.
+pub fn pipeline_cache(device: &wgpu::Device, data: Option<&[u8]>) -> Option<wgpu::PipelineCache> {
+    if !device.features().contains(wgpu::Features::PIPELINE_CACHE) {
+        return None;
+    }
+    // SAFETY: wgpu requires `data` to be what an earlier `PipelineCache::get_data` gave.
+    // Callers pass only bytes they stored from `get_data` and checked whole on reading
+    // (veylvik-render keeps a length and a checksum beside them); `fallback` makes the
+    // driver's own header check (vendor, device, driver build) start afresh on a mismatch.
+    Some(unsafe {
+        device.create_pipeline_cache(&wgpu::PipelineCacheDescriptor {
+            label: Some("Veylvik"),
+            data,
+            fallback: true,
+        })
+    })
+}

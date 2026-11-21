@@ -56,6 +56,7 @@ impl ClipSource {
         host: Option<Arc<dyn crate::host::Host>>,
     ) -> Result<Self> {
         let made = make(composition, &assets, &host)?;
+        needs_3d(&renderer, &made.plan);
         Ok(Self {
             renderer,
             assets,
@@ -67,8 +68,19 @@ impl ClipSource {
     /// already running finishes with the one it began with.
     pub fn set_composition(&self, composition: Composition) -> Result<()> {
         let made = Arc::new(make(composition, &self.assets, &self.host)?);
+        needs_3d(&self.renderer, &made.plan);
         *self.made.lock().map_err(|_| "clip source unavailable")? = made;
         Ok(())
+    }
+    /// Compile now every GPU program the composition uses, so its first frame does not
+    /// wait for them: a driver's first compile of one can take many seconds. Meant for
+    /// a thread of the host's, before frames are asked for; renders may go on meanwhile.
+    /// The 3D programs are compiled when the 3D renderer is made, which happens when the
+    /// clip source is made or given a composition that films a scene. Returns how many
+    /// kernels it compiled (or found compiled).
+    pub fn compile(&self) -> Result<usize> {
+        let made = self.made()?;
+        Ok(self.renderer.compile_for(&made.plan)?)
     }
     fn made(&self) -> Result<Arc<Made>> {
         Ok(self
@@ -110,5 +122,18 @@ impl ClipSource {
         self.renderer
             .frame_to_host_sized(&frame, target, size, pixels)?;
         Ok(())
+    }
+}
+
+/// A composition that films a 3D scene needs the 3D renderer: a host that has no editor
+/// open has none, and its Render scene nodes would fail. Made once per renderer.
+fn needs_3d(renderer: &Renderer, plan: &Plan) {
+    if plan.films_scenes() {
+        renderer.ensure_scene_renderer(|| {
+            Arc::new(veylvik_render3d::Engine::with_cache(
+                renderer.device(),
+                renderer.pipeline_cache().as_ref(),
+            ))
+        });
     }
 }
