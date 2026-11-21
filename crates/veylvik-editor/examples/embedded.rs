@@ -179,6 +179,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 live_control: LiveControl::Off,
                 capabilities: Capabilities::embedded(),
                 host: Some(Arc::new(Pool)),
+                renderer: None,
             })
             .map_err(|error| error.to_string())?;
             Ok(Box::new(Host {

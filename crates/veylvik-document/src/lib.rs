@@ -15,7 +15,7 @@ pub mod inspection;
 pub mod limits;
 pub mod markers;
 pub mod registry;
-pub use history::{Document, HistoryStats};
+pub use history::{Change, ChangeKind, Document, HistoryStats};
 pub mod blending;
 pub mod channels;
 pub use channels::MaskChannel;

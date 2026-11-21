@@ -17,6 +17,24 @@ struct Snapshot {
     /// The step between this state and the next newer one, named for people.
     label: String,
 }
+/// What made a revision: a new step, or moving back or forward over the steps kept.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+pub enum ChangeKind {
+    Edit,
+    Undo,
+    Redo,
+}
+/// One revision, as an owner that keeps its own list of steps (a host) needs it.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct Change {
+    pub kind: ChangeKind,
+    /// The step made, undone or redone, named for people.
+    pub label: String,
+    /// The revision it made.
+    pub revision: u64,
+}
+/// Changes kept for `take_changes`; the oldest go first when nobody takes them.
+const KEPT_CHANGES: usize = 256;
 /// Only this owner publishes revisions. Renderers receive immutable snapshots.
 pub struct Document {
     composition: Composition,
@@ -27,6 +45,7 @@ pub struct Document {
     history_bytes: usize,
     history_limit: usize,
     step_limit: usize,
+    changes: VecDeque<Change>,
 }
 impl Document {
     pub fn new(composition: Composition) -> Result<Self> {
@@ -47,6 +66,7 @@ impl Document {
             history_bytes: 0,
             history_limit: bytes.min(MAX_HISTORY_BYTES),
             step_limit: DEFAULT_HISTORY_STEPS,
+            changes: VecDeque::new(),
         })
     }
     /// Keep at most `steps` undo and redo steps (1 to 256) within `bytes` of history
@@ -64,6 +84,20 @@ impl Document {
     }
     pub fn snapshot(&self) -> &Composition {
         &self.composition
+    }
+    /// The revisions made since the last call, oldest first (at most the last 256).
+    pub fn take_changes(&mut self) -> Vec<Change> {
+        self.changes.drain(..).collect()
+    }
+    fn record(&mut self, kind: ChangeKind, label: Option<String>) {
+        if self.changes.len() == KEPT_CHANGES {
+            self.changes.pop_front();
+        }
+        self.changes.push_back(Change {
+            kind,
+            label: label.unwrap_or_default(),
+            revision: self.revision,
+        });
     }
     pub fn revision(&self) -> u64 {
         self.revision
@@ -340,6 +374,8 @@ impl Document {
         self.undo.push_back(previous);
         self.trim(true);
         self.revision = revision;
+        let label = self.undo.back().map(|step| step.label.clone());
+        self.record(ChangeKind::Edit, label);
         Ok(revision)
     }
     pub fn undo(&mut self, expected: u64) -> Result<u64> {
@@ -355,6 +391,8 @@ impl Document {
         self.redo.push_back(current);
         self.trim(false);
         self.revision = revision;
+        let label = self.redo.back().map(|step| step.label.clone());
+        self.record(ChangeKind::Undo, label);
         Ok(revision)
     }
     pub fn redo(&mut self, expected: u64) -> Result<u64> {
@@ -370,6 +408,8 @@ impl Document {
         self.undo.push_back(current);
         self.trim(true);
         self.revision = revision;
+        let label = self.undo.back().map(|step| step.label.clone());
+        self.record(ChangeKind::Redo, label);
         Ok(revision)
     }
 }

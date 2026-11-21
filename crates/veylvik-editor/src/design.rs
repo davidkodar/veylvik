@@ -39,6 +39,15 @@ pub fn body(ctx: &egui::Context) -> egui::FontFamily {
         egui::FontFamily::Proportional
     }
 }
+/// Whether the font families a guest editor draws with are loaded in this pass.
+pub fn guest_fonts_loaded(ctx: &egui::Context) -> bool {
+    ctx.fonts(|fonts| {
+        let families = &fonts.definitions().families;
+        ["veylvik", "heading"]
+            .iter()
+            .all(|name| families.contains_key(&egui::FontFamily::Name((*name).into())))
+    })
+}
 pub fn install_fonts(ctx: &egui::Context) {
     if !guest(ctx) {
         ctx.set_fonts(font_definitions());

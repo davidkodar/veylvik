@@ -132,3 +132,32 @@ fn history_can_be_disabled_and_step_limit_still_applies() {
     assert_eq!(Composition::load(&path).unwrap().width, 179);
     std::fs::remove_file(path).unwrap();
 }
+#[test]
+fn every_revision_says_whether_it_was_a_new_step_an_undo_or_a_redo() {
+    use veylvik_document::ChangeKind::{Edit, Redo, Undo};
+    let mut document = Document::new(demo()).unwrap();
+    let resize = |width| Command::Resize { width, height: 50 };
+    document.apply(0, &[resize(100)]).unwrap();
+    document.apply(1, &[resize(200)]).unwrap();
+    document.undo(2).unwrap();
+    document.redo(3).unwrap();
+    // A failed edit makes no revision and no change.
+    assert!(document.apply(0, &[resize(300)]).is_err());
+    let changes = document.take_changes();
+    let kinds: Vec<_> = changes.iter().map(|c| (c.kind, c.revision)).collect();
+    assert_eq!(kinds, [(Edit, 1), (Edit, 2), (Undo, 3), (Redo, 4)]);
+    // The undo and the redo name the step they moved over: the second edit.
+    assert!(!changes[1].label.is_empty());
+    assert_eq!(changes[2].label, changes[1].label);
+    assert_eq!(changes[3].label, changes[1].label);
+    assert!(document.take_changes().is_empty(), "taken twice");
+    // Nobody taking them keeps only the last 256.
+    for n in 0..300 {
+        document
+            .apply(document.revision(), &[resize(10 + n)])
+            .unwrap();
+    }
+    let kept = document.take_changes();
+    assert_eq!(kept.len(), 256);
+    assert_eq!(kept.last().unwrap().revision, document.revision());
+}

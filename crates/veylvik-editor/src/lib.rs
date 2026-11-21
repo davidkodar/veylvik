@@ -198,6 +198,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 },
                 capabilities: Capabilities::standalone(),
                 host: None,
+                renderer: None,
             })
             .map_err(|error| error.to_string())?;
             Ok(Box::new(app))
@@ -296,6 +297,10 @@ pub struct Setup {
     /// Who answers for files and for media of its own; none leaves both to the system's
     /// file dialog and the disk.
     pub host: Option<Arc<dyn host::Host>>,
+    /// The host's own renderer on the same device, to draw with instead of making one: its
+    /// memory budget, pipeline cache and limits are the host's. The editor only adds the 3D
+    /// renderer when it has none. None makes one as a standalone editor does.
+    pub renderer: Option<Arc<Renderer>>,
 }
 /// What the editor keeps about being a guest.
 struct Guest {
@@ -334,6 +339,15 @@ impl Editor {
         let pass = ctx.cumulative_pass_nr();
         if pass <= guest.made {
             // Its fonts arrive with the next pass.
+            ctx.request_repaint();
+            return;
+        }
+        // A host that sets its own fonts drops the families the editor added: add them
+        // again and draw from the next pass, when they are there (egui stops on a family
+        // it does not know).
+        if !design::guest_fonts_loaded(&ctx) {
+            design::install_fonts(&ctx);
+            guest.made = pass;
             ctx.request_repaint();
             return;
         }
@@ -434,6 +448,13 @@ impl Editor {
     pub fn steps(&self) -> (Vec<String>, Vec<String>) {
         self.studio.project.document.steps()
     }
+    /// Every revision made since the last call, oldest first: a new step (Edit), or the
+    /// editor's own undo and redo moving over its steps. For a host that keeps one list
+    /// of steps across its pages; at most the last 256 are kept between calls, and a new
+    /// composition (`set_composition`) starts afresh.
+    pub fn take_changes(&mut self) -> Vec<veylvik_document::Change> {
+        self.studio.project.document.take_changes()
+    }
     /// Undo or redo one step; false when there is none or the editor is mid-gesture.
     pub fn undo(&mut self) -> bool {
         self.step(false)
@@ -495,23 +516,31 @@ impl Studio {
             setup.context.set_global_style(hosts);
             (ours, setup.context.cumulative_pass_nr())
         });
-        let mut renderer = Renderer::from_device(
-            setup.device.clone(),
-            setup.queue.clone(),
-            setup.adapter.clone(),
-        )?;
-        render_limits.apply(&mut renderer);
-        // Compiled programs kept between runs: in a host, only when it names a folder.
-        if setup.capabilities.own_window
-            && let Some(folder) = veylvik_render::default_pipeline_folder()
-        {
-            let _ = renderer.use_pipeline_cache(&folder);
-        }
-        renderer.set_scene_renderer(Arc::new(veylvik_render3d::Engine::with_cache(
-            renderer.device(),
-            renderer.pipeline_cache().as_ref(),
-        )));
-        let renderer = Arc::new(renderer);
+        let renderer = match setup.renderer.clone() {
+            // The host's renderer: one set of caches and one budget for both.
+            Some(theirs) => theirs,
+            None => {
+                let mut renderer = Renderer::from_device(
+                    setup.device.clone(),
+                    setup.queue.clone(),
+                    setup.adapter.clone(),
+                )?;
+                render_limits.apply(&mut renderer);
+                // Compiled programs kept between runs: in a host, only when it names a folder.
+                if setup.capabilities.own_window
+                    && let Some(folder) = veylvik_render::default_pipeline_folder()
+                {
+                    let _ = renderer.use_pipeline_cache(&folder);
+                }
+                Arc::new(renderer)
+            }
+        };
+        renderer.ensure_scene_renderer(|| {
+            Arc::new(veylvik_render3d::Engine::with_cache(
+                renderer.device(),
+                renderer.pipeline_cache().as_ref(),
+            ))
+        });
         let context = setup.context.clone();
         let scheduler = GpuPreviewScheduler::with_renderer(renderer.clone(), move || {
             context.request_repaint()
