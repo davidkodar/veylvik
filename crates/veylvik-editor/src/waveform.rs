@@ -108,7 +108,11 @@ impl Studio {
         let (tx, rx) = mpsc::channel();
         let cancel = Arc::new(AtomicBool::new(false));
         let stop = cancel.clone();
-        let (doc, base, ctx) = (doc.clone(), self.project.base.clone(), ctx.clone());
+        let (doc, base, ctx) = (
+            self.project.sound_composition(),
+            self.project.base.clone(),
+            ctx.clone(),
+        );
         let reach = self.project.reach.clone();
         let spawned = std::thread::Builder::new()
             .name("waveform".into())

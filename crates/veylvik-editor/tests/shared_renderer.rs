@@ -65,6 +65,30 @@ fn editor_in(
     })
     .unwrap()
 }
+/// A host that has one clip, "clip", whose pictures it keeps itself.
+struct Theirs;
+impl veylvik_render::FrameSource for Theirs {
+    fn byte_budget(&self) -> u64 {
+        0
+    }
+    fn frame(&self, _: Time) -> veylvik_render::Result<Arc<veylvik_render::Image>> {
+        Err(veylvik_render::Error::Message(
+            "pictures only on the GPU".into(),
+        ))
+    }
+}
+struct Host;
+impl veylvik_editor::host::Host for Host {
+    fn pick(
+        &self,
+        _: &veylvik_editor::host::Pick,
+    ) -> Result<Option<veylvik_editor::host::Picked>, String> {
+        Ok(None)
+    }
+    fn media(&self, key: &str) -> Option<Arc<dyn veylvik_render::FrameSource>> {
+        (key == "clip").then(|| Arc::new(Theirs) as Arc<dyn veylvik_render::FrameSource>)
+    }
+}
 fn picture(renderer: &Renderer) -> Vec<[f32; 4]> {
     let plan = Plan::compile(&composition()).unwrap();
     renderer
@@ -145,5 +169,43 @@ fn a_hosts_own_fonts_do_not_take_the_editors_away() {
             .families
             .contains_key(&egui::FontFamily::Name("veylvik".into()))),
         "the editor's fonts were not put back"
+    );
+}
+
+#[test]
+#[ignore = "requires Vulkan"]
+fn the_composition_an_editor_opens_with_finds_the_hosts_media() {
+    let (_instance, adapter, device, queue) =
+        pollster::block_on(veylvik_render::create_gpu()).unwrap();
+    let composition = veylvik_document::Composition::from_host_footage(
+        "clip",
+        "Handheld",
+        None,
+        [64, 36],
+        Time::new(24, 1).unwrap(),
+        48,
+    )
+    .unwrap();
+    let editor = Editor::new(Setup {
+        interface: HOST_INTERFACE,
+        context: eframe::egui::Context::default(),
+        device,
+        queue,
+        adapter: adapter.get_info(),
+        target_format: wgpu::TextureFormat::Rgba8UnormSrgb,
+        opens: Opens::Composition {
+            composition: Box::new(composition),
+            assets: std::env::temp_dir(),
+        },
+        live_control: LiveControl::Off,
+        capabilities: Capabilities::embedded(),
+        host: Some(Arc::new(Host)),
+        renderer: None,
+    })
+    .unwrap();
+    assert!(
+        editor.unavailable_media().is_empty(),
+        "{:?}",
+        editor.unavailable_media()
     );
 }

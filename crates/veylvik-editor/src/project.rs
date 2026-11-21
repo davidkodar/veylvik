@@ -14,6 +14,8 @@ pub struct Project {
     /// What this project names outside its folder and was not read, when it was opened
     /// confined: for asking the artist.
     pub outside: Vec<(veylvik_document::access::Named, String)>,
+    /// Media keys a host answered for: they have no file here to read sound from.
+    host_media: std::collections::BTreeSet<String>,
     /// The host asked for media before anyone else: a composition rendered for a host
     /// with no editor open carries its own.
     pub host: Option<std::sync::Arc<dyn crate::host::Host>>,
@@ -62,6 +64,7 @@ impl Project {
         let mut project = Self {
             reach: Default::default(),
             outside: Vec::new(),
+            host_media: Default::default(),
             host: None,
             session: NodeId::new_v4(),
             recovery_origin: None,
@@ -100,6 +103,7 @@ impl Project {
         let mut project = Self {
             reach: Default::default(),
             outside: Vec::new(),
+            host_media: Default::default(),
             host,
             session: NodeId::new_v4(),
             recovery_origin: None,
@@ -147,6 +151,7 @@ impl Project {
         Ok(Self {
             reach: Default::default(),
             outside: Vec::new(),
+            host_media: Default::default(),
             host: None,
             session: NodeId::new_v4(),
             recovery_origin: None,
@@ -169,6 +174,7 @@ impl Project {
         let mut project = Self {
             reach: Default::default(),
             outside: Vec::new(),
+            host_media: Default::default(),
             host: None,
             session: NodeId::new_v4(),
             recovery_origin: Some(id),
@@ -228,6 +234,7 @@ impl Project {
                     .and_then(|host| host.media(&key))
                     .or_else(|| crate::files::host_media(&key));
                 if let Some(source) = theirs {
+                    self.host_media.insert(key.to_string());
                     self.inputs.insert_source(key.into_owned(), source);
                     continue;
                 }
@@ -296,6 +303,17 @@ impl Project {
                 }
             }
         }
+    }
+    /// The composition as the sound mix should read it: footage a host gives has no file
+    /// here, so it is left out until hosts give sound too.
+    pub fn sound_composition(&self) -> veylvik_document::Composition {
+        let mut composition = self.document.snapshot().clone();
+        composition.nodes.retain(|_, node| {
+            node.operation
+                .source_key()
+                .is_none_or(|key| !self.host_media.contains(&*key))
+        });
+        composition
     }
     /// A file the artist added themselves may be read wherever it is, also in a project
     /// that is confined to its folder.
@@ -855,6 +873,60 @@ mod tests {
     }
     fn secret_name(root: &Path) -> String {
         root.join("secret.png").to_string_lossy().into_owned()
+    }
+    #[test]
+    fn a_hosts_media_is_its_own_and_has_no_file_to_read_sound_from() {
+        struct Theirs;
+        impl veylvik_render::FrameSource for Theirs {
+            fn byte_budget(&self) -> u64 {
+                0
+            }
+            fn frame(&self, _: Time) -> veylvik_render::Result<Arc<veylvik_render::Image>> {
+                Err(veylvik_render::Error::Message(
+                    "pictures only on the GPU".into(),
+                ))
+            }
+        }
+        struct Host;
+        impl crate::host::Host for Host {
+            fn pick(
+                &self,
+                _: &crate::host::Pick,
+            ) -> std::result::Result<Option<crate::host::Picked>, String> {
+                Ok(None)
+            }
+            fn media(&self, key: &str) -> Option<Arc<dyn veylvik_render::FrameSource>> {
+                (key == "clip").then(|| Arc::new(Theirs) as Arc<dyn veylvik_render::FrameSource>)
+            }
+        }
+        let composition = Composition::from_host_footage(
+            "clip",
+            "Handheld",
+            None,
+            [64, 36],
+            Time::new(24, 1).unwrap(),
+            48,
+        )
+        .unwrap();
+        let folder = std::env::temp_dir();
+        let project =
+            Project::hosted_by(composition.clone(), folder.clone(), Some(Arc::new(Host))).unwrap();
+        assert!(
+            project.unavailable_assets().is_empty(),
+            "{:?}",
+            project.unavailable_assets()
+        );
+        // The sound mix never looks for a file called "clip" beside the composition.
+        assert!(
+            !project
+                .sound_composition()
+                .nodes
+                .values()
+                .any(|node| matches!(node.operation, Operation::Footage(_)))
+        );
+        // Asked of nobody, the key is a missing file.
+        let alone = Project::hosted_by(composition, folder, None).unwrap();
+        assert!(alone.unavailable_assets().contains_key("clip"));
     }
     #[test]
     fn a_hosts_composition_reads_nothing_outside_its_folder() {

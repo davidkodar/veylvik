@@ -448,6 +448,11 @@ impl Editor {
     pub fn steps(&self) -> (Vec<String>, Vec<String>) {
         self.studio.project.document.steps()
     }
+    /// The composition's media that could not be had, by name, with the reason: for a
+    /// host to show which clips are missing.
+    pub fn unavailable_media(&self) -> std::collections::BTreeMap<String, String> {
+        self.studio.project.unavailable_assets()
+    }
     /// Every revision made since the last call, oldest first: a new step (Edit), or the
     /// editor's own undo and redo moving over its steps. For a host that keeps one list
     /// of steps across its pages; at most the last 256 are kept between calls, and a new
@@ -493,6 +498,8 @@ impl Studio {
         let render_limits = veylvik_io::runtime::RenderLimits::from_env_with_default(
             (!preferences.values.gpu_budget_auto).then_some(preferences.values.gpu_budget_mib),
         )?;
+        // The host answers for media before the first project asks for any.
+        files::set_host(setup.host.clone());
         let project = match setup.opens {
             Opens::File(path) => Project::open(path.as_deref())?,
             Opens::Composition {
@@ -503,7 +510,6 @@ impl Studio {
         // A project file given at start that reads files outside its folder: ask first.
         let trust_prompt = !project.outside.is_empty();
         let capabilities = setup.capabilities;
-        files::set_host(setup.host.clone());
         // A guest keeps its look to itself: the style it makes here is its own, put in
         // place only while it draws, and the host's is put back at once.
         let guest = !setup.capabilities.own_window;

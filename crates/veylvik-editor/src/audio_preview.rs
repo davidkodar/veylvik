@@ -103,7 +103,7 @@ impl Studio {
             let (tx, rx) = mpsc::channel();
             let cancel = Arc::new(AtomicBool::new(false));
             let stop = cancel.clone();
-            let (doc, base) = (doc.clone(), self.project.base.clone());
+            let (doc, base) = (self.project.sound_composition(), self.project.base.clone());
             let reach = self.project.reach.clone();
             let window = [key.window[0] as f64 / fps, key.window[1] as f64 / fps];
             let spawned = std::thread::Builder::new()
