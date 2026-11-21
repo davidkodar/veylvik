@@ -135,4 +135,9 @@ impl<M: HostMedia> FrameSource for HostSource<M> {
     fn steady(&self) -> bool {
         true
     }
+    // No file of ours to watch: a host's frame is known by its identity, which says when
+    // it changes. (None would refuse every picture made of it a place in playback.)
+    fn cache_dependencies(&self) -> Option<Vec<std::path::PathBuf>> {
+        Some(Vec::new())
+    }
 }

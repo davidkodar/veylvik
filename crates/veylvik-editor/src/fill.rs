@@ -177,6 +177,13 @@ impl Studio {
         let frame = Duration::from_secs_f64(f64::from(rate.rate.max(1)) / rate.ticks.max(1) as f64);
         let range = self.playback_controls.range(count);
         let status = scheduler.playback_cache().status();
+        // Nothing can be kept for this composition: preparing would never get anywhere,
+        // so it plays live at once (the transport's counter says why).
+        if status.cannot_keep {
+            self.buffering = None;
+            self.waiting = None;
+            return false;
+        }
         let ready: std::collections::BTreeSet<i64> = status
             .ready_frames
             .iter()
@@ -223,6 +230,9 @@ impl Studio {
             _ => false,
         };
         if stuck {
+            // For the rest of this play: holding again a moment later would stop the
+            // clock each time and the playhead would crawl.
+            self.play_now = true;
             self.buffering = None;
             self.waiting = None;
             if !self.error {

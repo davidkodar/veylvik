@@ -56,6 +56,9 @@ pub struct Status {
     /// Pictures let go to stay within the limits, since the start: a host that shows
     /// what is kept sees here that something went.
     pub pictures_dropped: u64,
+    /// The composition's sources cannot be kept at all (a source that does not say which
+    /// files to watch): nothing is prepared, and playing is live.
+    pub cannot_keep: bool,
 }
 #[derive(Clone, Default)]
 pub struct Control(
@@ -701,6 +704,11 @@ impl Store {
         self.hits += 1;
         Ok(Some(Arc::new(frame)))
     }
+    /// Take every picture still being packed into the store (waiting for the packer): at
+    /// the end of a list to prepare, when nobody waits for the worker.
+    pub fn settle(&mut self) {
+        self.collect(true);
+    }
     /// Keep `frame` as the screen shows it with `look`, unless it is kept already.
     pub fn keep_picture(
         &mut self,
@@ -950,6 +958,7 @@ impl Store {
                 picture_disk_bytes: self.pictures.disk_bytes(),
                 full: self.full,
                 pictures_dropped: self.pictures.dropped,
+                cannot_keep: !self.eligible,
             };
         }
     }

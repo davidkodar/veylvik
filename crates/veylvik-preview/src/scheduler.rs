@@ -25,6 +25,9 @@ struct Job {
     look: Option<crate::screen::Look>,
     /// Made to be kept, not to be shown: nobody waits for it.
     background: bool,
+    /// The last of a list to prepare: once it is done, what is still being packed is
+    /// taken into the store, so the store counts every frame of the list.
+    last: bool,
 }
 fn render_gpu_job(
     renderer: &Renderer,
@@ -232,6 +235,9 @@ impl PreviewScheduler<Arc<GpuFrame>> {
                     }
                     Ok(frame)
                 })();
+                if job.last {
+                    cache.settle();
+                }
                 cache.publish(job.revision);
                 PreviewResult {
                     ticket: PreviewTicket {
@@ -277,6 +283,7 @@ impl<F: Send + 'static> PreviewScheduler<F> {
             inputs,
             look: self.playback.playing(),
             background: false,
+            last: false,
         })?;
         Ok(PreviewTicket {
             generation,
@@ -295,19 +302,22 @@ impl<F: Send + 'static> PreviewScheduler<F> {
         times: impl IntoIterator<Item = veylvik_document::Time>,
         look: crate::screen::Look,
     ) -> Result<()> {
-        self.worker.set_background(
-            times
-                .into_iter()
-                .map(|time| Job {
-                    revision,
-                    plan: plan.clone(),
-                    request: RenderRequest::full(time),
-                    inputs: inputs.clone(),
-                    look: Some(look),
-                    background: true,
-                })
-                .collect(),
-        )
+        let mut jobs: std::collections::VecDeque<Job> = times
+            .into_iter()
+            .map(|time| Job {
+                revision,
+                plan: plan.clone(),
+                request: RenderRequest::full(time),
+                inputs: inputs.clone(),
+                look: Some(look),
+                background: true,
+                last: false,
+            })
+            .collect();
+        if let Some(job) = jobs.back_mut() {
+            job.last = true;
+        }
+        self.worker.set_background(jobs)
     }
     /// Hold back the frames given to [`PreviewScheduler::prepare`], or let them go on.
     pub fn pause_preparing(&self, paused: bool) -> Result<()> {
@@ -898,6 +908,103 @@ mod playback_tests {
         };
         assert!(played.screen_ready, "a prepared frame was rendered again");
         assert_eq!(control.status().ready_frames.len(), 6);
+    }
+    #[test]
+    #[ignore = "requires Vulkan"]
+    fn a_composition_of_a_hosts_media_is_prepared_and_kept() {
+        use veylvik_render::{HostFrame, HostMedia, HostPixels, HostSource, SourceInfo};
+        const W: u32 = 64;
+        const H: u32 = 36;
+        /// A host's clip: a fresh buffer for every frame, a little brighter each frame.
+        struct Clip(wgpu::Device, wgpu::Queue);
+        impl HostMedia for Clip {
+            fn info(&self) -> SourceInfo {
+                SourceInfo {
+                    width: W,
+                    height: H,
+                    duration: None,
+                    frame_rate: None,
+                    frames: None,
+                    description: "a host's clip".into(),
+                }
+            }
+            // Its frame number (times are kept reduced: 2/24 is 1/12).
+            fn identity(&self, time: Time) -> u64 {
+                (time.ticks as f64 * 24.0 / f64::from(time.rate)).round() as u64
+            }
+            fn frame(&self, time: Time, _: Option<[u32; 2]>) -> veylvik_render::Result<HostFrame> {
+                let value = self.identity(time) as f32 / 10.0;
+                let bytes: Vec<u8> = (0..W * H)
+                    .flat_map(|_| [value, 0.2, 0.1, 1.0])
+                    .flat_map(f32::to_le_bytes)
+                    .collect();
+                let buffer = self.0.create_buffer(&wgpu::BufferDescriptor {
+                    label: Some("a host's frame"),
+                    size: bytes.len() as u64,
+                    usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+                    mapped_at_creation: false,
+                });
+                self.1.write_buffer(&buffer, 0, &bytes);
+                Ok(HostFrame {
+                    buffer,
+                    width: W,
+                    height: H,
+                    pixels: HostPixels::rec709(true),
+                })
+            }
+        }
+        let renderer = Arc::new(Renderer::new().unwrap());
+        let clip = HostSource::new(
+            Clip(renderer.device().clone(), renderer.queue().clone()),
+            1 << 20,
+        );
+        let scheduler = GpuPreviewScheduler::with_renderer(renderer, || {}).unwrap();
+        let control = scheduler.playback_cache();
+        control.configure(crate::playback::Settings {
+            gpu_bytes: 0,
+            picture_memory_bytes: 8 << 20,
+            memory_reserve_bytes: 0,
+            ..Default::default()
+        });
+        let rate = Time::new(24, 1).unwrap();
+        let composition = veylvik_document::Composition::from_host_footage(
+            "clip",
+            "Handheld",
+            None,
+            [W, H],
+            rate,
+            12,
+        )
+        .unwrap();
+        let plan = Arc::new(Plan::compile(&composition).unwrap());
+        let mut inputs = ImageInputs::default();
+        inputs.insert_source("clip", Arc::new(clip));
+        let look = crate::screen::Look {
+            exposure: 0.0,
+            filmic: false,
+        };
+        let at = |frame: i64| Time::at_frame(frame, rate).unwrap();
+        scheduler
+            .prepare(1, plan, inputs, (0..6).map(at), look)
+            .unwrap();
+        let deadline = Instant::now() + Duration::from_secs(30);
+        while scheduler.preparing() != (0, 6) {
+            assert!(
+                Instant::now() < deadline,
+                "not prepared: {:?}",
+                scheduler.preparing()
+            );
+            thread::sleep(Duration::from_millis(5));
+        }
+        // Pictures are packed beside the worker: the last ones arrive a moment later.
+        while control.status().ready_frames.len() < 6 {
+            assert!(
+                Instant::now() < deadline,
+                "kept: {:?}",
+                control.status().ready_frames
+            );
+            thread::sleep(Duration::from_millis(5));
+        }
     }
     #[test]
     #[ignore = "requires Vulkan"]
