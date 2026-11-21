@@ -2000,6 +2000,15 @@ settles on the wrong kind of motion can still look sure. The
   soft band and not a hard line along bright horizontal edges. Alpha is unchanged; put Bloom after the merge so a
   title lights its background. It works on HDR values, so it pairs with the
   Filmic display transform, which rolls highlights off to white.
+  The wide glow and the streak's sideways blur are worked out on a grid of cells
+  a twelfth of the radius wide (at most 8 pixels; radii under 24 use pixels).
+  Each pixel is shared between the two nearest cells by its distance, so a light
+  keeps its exact place, and the glow is read back between cell centres. The
+  gaussian comes out under one percent wider than asked for. The tight glow and
+  the streak's height stay pixel by pixel. At 3840 × 2160 with radius 80 this
+  takes the node from about 14 ms to 6 ms. Against the earlier pixel-by-pixel
+  glow, delivered 8-bit frames differ by at most 1 to 2 of 255 (PSNR 77–79 dB),
+  up to 8 of 255 in the hottest point of a streak.
 - **Zoom blur** (`zoom_blur`, input image): smears the picture along lines
   through a point, more the farther from it, as a fast move towards that point
   or a zoom during the exposure does. **Amount** (0–1) is the share of each

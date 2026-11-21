@@ -434,20 +434,41 @@ impl RenderNode for veylvik_document::nodes::Bloom {
         // The combine also takes the sideways-only blur, for lens streaks.
         const COMBINE: Step = Step {
             kernel: Kernel::BloomCombine,
-            inputs: [From::Port(0), From::Step(2), From::Step(4), From::Step(5)],
+            inputs: [From::Port(0), From::Step(3), From::Step(8), From::Step(6)],
         };
-        // The bright part, blurred wide and tight, added back to the image.
-        static STEPS: [Step; 7] = [
+        // The bright part; its wide glow and its streak worked out on cells (see
+        // bloom.wgsl `bloom_step`), its tight glow pixel by pixel; all added to the image.
+        // The order keeps few results alive at once.
+        static STEPS: [Step; 10] = [
             step(Kernel::BloomBright, From::Port(0), From::None, From::None),
+            step(Kernel::BloomWideDown, From::Step(0), From::None, From::None),
             step(
-                Kernel::BloomWideHorizontal,
+                Kernel::BloomWideCellsHorizontal,
+                From::Step(1),
+                From::None,
+                From::None,
+            ),
+            step(
+                Kernel::BloomWideCellsVertical,
+                From::Step(2),
+                From::None,
+                From::None,
+            ),
+            step(
+                Kernel::BloomStreakDown,
                 From::Step(0),
                 From::None,
                 From::None,
             ),
             step(
-                Kernel::BloomWideVertical,
-                From::Step(1),
+                Kernel::BloomStreakCellsHorizontal,
+                From::Step(4),
+                From::None,
+                From::None,
+            ),
+            step(
+                Kernel::BloomStreakCellsVertical,
+                From::Step(5),
                 From::None,
                 From::None,
             ),
@@ -459,13 +480,7 @@ impl RenderNode for veylvik_document::nodes::Bloom {
             ),
             step(
                 Kernel::BloomTightVertical,
-                From::Step(3),
-                From::None,
-                From::None,
-            ),
-            step(
-                Kernel::BloomStreakVertical,
-                From::Step(1),
+                From::Step(7),
                 From::None,
                 From::None,
             ),
