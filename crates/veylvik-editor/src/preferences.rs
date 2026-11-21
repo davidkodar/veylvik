@@ -111,6 +111,8 @@ pub struct Values {
     pub played_reserve_mib: u64,
     /// Make the frames of the playback range that are not kept yet while nobody is working.
     pub fill_while_idle: bool,
+    /// Playing holds until the frames ahead are prepared, so it never runs unevenly.
+    pub wait_for_frames: bool,
     pub recovery_enabled: bool,
     pub recovery_seconds: u64,
     /// Play the composition's sound during playback.
@@ -186,6 +188,7 @@ impl Default for Values {
             played_disk_mib: 50 * 1024,
             played_reserve_mib: 4096,
             fill_while_idle: true,
+            wait_for_frames: true,
             recovery_enabled: true,
             recovery_seconds: 10,
             audio_enabled: true,
@@ -406,6 +409,7 @@ impl Preferences {
                 self.draft.played_disk_mib = d.played_disk_mib;
                 self.draft.played_reserve_mib = d.played_reserve_mib;
                 self.draft.fill_while_idle = d.fill_while_idle;
+                self.draft.wait_for_frames = d.wait_for_frames;
             }
             5 => {
                 self.draft.audio_enabled = d.audio_enabled;
@@ -958,6 +962,11 @@ impl Preferences {
                     &mut self.draft.fill_while_idle,
                     "Prepare playback while idle",
                 );
+                ui.checkbox(
+                    &mut self.draft.wait_for_frames,
+                    "Play only when the frames are ready",
+                );
+                ui.weak("On: pressing play holds until the frames ahead are prepared, then plays every frame at its moment. Off: it plays at once and skips frames it cannot make in time.");
                 ui.weak("When you stop working for a moment, the frames of the playback range that are not kept yet are made in the background, from the playhead on, and give way the instant you do anything.");
                 ui.add(
                     egui::Slider::new(&mut self.draft.played_memory_mib, 0..=65536)

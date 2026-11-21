@@ -347,7 +347,7 @@ impl Pictures {
         (time, name, look): (Time, Option<u64>, Look),
         size: [u32; 2],
         packed: Vec<u8>,
-        written: Option<(u64, PathBuf)>,
+        written: Option<(Option<u64>, PathBuf)>,
         limits: Limits,
         folder: Option<&std::path::Path>,
     ) -> Result<()> {
@@ -370,7 +370,7 @@ impl Pictures {
         (time, name, look): (Time, Option<u64>, Look),
         size: [u32; 2],
         packed: Vec<u8>,
-        written: Option<(u64, PathBuf)>,
+        written: Option<(Option<u64>, PathBuf)>,
         limits: Limits,
         folder: Option<&std::path::Path>,
         evict: bool,
@@ -406,7 +406,7 @@ impl Pictures {
             // One that has its file and no room in memory stays on disk alone.
             memory: (evict || room_in_memory || written.is_none()).then(|| Arc::new(packed)),
             disk: written.as_ref().map(|(_, path)| (path.clone(), bytes)),
-            lasting: written.map(|(lasting, _)| lasting),
+            lasting: written.and_then(|(lasting, _)| lasting),
         });
         self.fit(limits, folder).map(|()| true)
     }
@@ -661,7 +661,7 @@ mod tests {
                     (at(frame.into()), Some(lasting + 1000), look),
                     [64, 32],
                     packed,
-                    Some((lasting, path)),
+                    Some((Some(lasting), path)),
                     limits,
                     None,
                 )

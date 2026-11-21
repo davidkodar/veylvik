@@ -220,14 +220,15 @@ fn machine_memory_available() -> Option<u64> {
     Some(kib * 1024)
 }
 type Moment = (Time, Option<u64>, crate::screen::Look);
-/// A lasting name and the file to write the packed picture to.
-type Lasting = Option<(u64, PathBuf)>;
+/// The file to write the packed picture to, and its lasting name when it lasts
+/// between sessions; none when it is kept in memory only.
+type Lasting = Option<(Option<u64>, PathBuf)>;
 /// The last field: whether older pictures may give way for this one.
 type Packed = (Moment, [u32; 2], Result<Vec<u8>>, Lasting, bool);
 /// The same before packing: the picture as the screen packs it.
 type Unpacked = (Moment, [u32; 2], Vec<u8>, Lasting, bool);
 /// Write a packed picture to its lasting file, whole or not at all.
-fn written(packed: &[u8], (lasting, path): (u64, PathBuf)) -> Lasting {
+fn written(packed: &[u8], (lasting, path): (Option<u64>, PathBuf)) -> Lasting {
     let partial = path.with_extension("partial");
     let done = std::fs::write(&partial, packed).and_then(|()| std::fs::rename(&partial, &path));
     if done.is_err() {
@@ -259,7 +260,7 @@ impl Packer {
                     let packed = crate::pictures::pack(&picture);
                     // A lasting picture goes to its file here, beside the worker.
                     let lasting = match (&packed, lasting) {
-                        (Ok(packed), Some(lasting)) => written(packed, lasting),
+                        (Ok(packed), Some(file)) => written(packed, file),
                         _ => None,
                     };
                     if finished
@@ -726,56 +727,48 @@ impl Store {
         {
             return;
         }
+        // Packing and writing happen beside the worker, never on it: the worker waiting
+        // on a busy disk froze playback for seconds. When the packer is behind, this
+        // picture is not kept; it is kept another time it is played or prepared.
         let kept: Result<()> = (|| {
-            let folder = if limits.disk > 0 {
-                Some(self.session_folder()?)
-            } else {
-                None
-            };
+            if self.packer.is_none() {
+                self.packer = Packer::start();
+            }
+            // A frame made only to be kept may wait for the packer: nobody is watching it.
+            // One that is being played never waits.
+            if !evict && self.packing.len() >= 3 {
+                self.collect(true);
+            }
+            if self.packer.is_none() || self.packing.len() >= 3 {
+                return Ok(());
+            }
             let size = [frame.width(), frame.height()];
-            // A picture that means the same in any session goes to the lasting folder.
-            let lasting = lasting.and_then(|lasting| {
-                let folder = self.lasting_folder()?;
-                Some((
-                    lasting,
+            // Its file: in the lasting folder when it means the same in any session, else
+            // in this session's folder, when there is a disk tier at all.
+            let file = match lasting.and_then(|lasting| Some((lasting, self.lasting_folder()?))) {
+                Some((lasting, folder)) => Some((
+                    Some(lasting),
                     crate::pictures::lasting_file(&folder, lasting, look, size),
-                ))
-            });
+                )),
+                None if limits.disk > 0 => {
+                    let folder = self.session_folder()?;
+                    self.serial = self.serial.wrapping_add(1);
+                    Some((None, folder.join(format!("{}.picture.zst", self.serial))))
+                }
+                None => None,
+            };
             self.make_room(renderer, u64::from(size[0]) * u64::from(size[1]) * 8)?;
             let screen = self
                 .screen
                 .get_or_insert_with(|| crate::screen::Screen::new(renderer.device()));
             let picture = screen.pack(renderer, frame, look)?;
-            if self.packer.is_none() {
-                self.packer = Packer::start();
-            }
-            // Beside the worker when there is room in the queue, else here and now.
-            let (picture, lasting) = match &self.packer {
-                Some(packer) => match packer
+            if self.packer.as_ref().is_some_and(|packer| {
+                packer
                     .work
-                    .try_send((moment, size, picture, lasting, evict))
-                {
-                    Ok(()) => {
-                        self.packing.push(moment);
-                        return Ok(());
-                    }
-                    Err(std::sync::mpsc::TrySendError::Full(job))
-                    | Err(std::sync::mpsc::TrySendError::Disconnected(job)) => (job.2, job.3),
-                },
-                None => (picture, lasting),
-            };
-            let packed = crate::pictures::pack(&picture)?;
-            let lasting = lasting.and_then(|lasting| written(&packed, lasting));
-            if !self.pictures.put_within(
-                moment,
-                size,
-                packed,
-                lasting,
-                limits,
-                folder.as_deref(),
-                evict,
-            )? {
-                self.full = true;
+                    .try_send((moment, size, picture, file, evict))
+                    .is_ok()
+            }) {
+                self.packing.push(moment);
             }
             Ok(())
         })();
@@ -803,21 +796,9 @@ impl Store {
                 return;
             };
             self.packing.retain(|m| !alike(m, &moment));
-            let folder = if limits.disk > 0 {
-                self.session_folder().ok()
-            } else {
-                None
-            };
             let kept = packed.and_then(|packed| {
-                self.pictures.put_within(
-                    moment,
-                    size,
-                    packed,
-                    lasting,
-                    limits,
-                    folder.as_deref(),
-                    evict,
-                )
+                self.pictures
+                    .put_within(moment, size, packed, lasting, limits, None, evict)
             });
             match kept {
                 Ok(true) => {}
@@ -923,12 +904,7 @@ impl Store {
         // The machine may have got tighter since the last picture was kept.
         let limits = self.picture_limits();
         if self.pictures.memory_bytes() > limits.memory {
-            let folder = if limits.disk > 0 {
-                self.session_folder().ok()
-            } else {
-                None
-            };
-            let _ = self.pictures.fit(limits, folder.as_deref());
+            let _ = self.pictures.fit(limits, None);
         }
         if let Ok(mut c) = self.control.0.lock()
             && c.1 == self.generation

@@ -587,6 +587,7 @@ impl Studio {
             scene_reflections: false,
             playback: Instant::now(),
             playback_frame: 0,
+            buffering: None,
             files: Tasks::new(setup.context.clone()),
             export_controls: sequence::Controls::default(),
             video_export: video_export::Controls::default(),
@@ -726,6 +727,9 @@ struct Studio {
     scene_reflections: bool,
     playback: Instant,
     playback_frame: i64,
+    /// Play was pressed and the frames ahead are still being prepared: the playhead
+    /// holds, and since when nothing more could be prepared (to give up waiting).
+    buffering: Option<Option<Instant>>,
     files: Tasks,
     export_controls: sequence::Controls,
     video_export: video_export::Controls,
@@ -3708,7 +3712,15 @@ impl Studio {
             }
         }
         self.poll_planar_preview();
-        if self.playing {
+        if !self.playing {
+            self.buffering = None;
+        }
+        // Playing shows every frame at its moment or it does not move: while frames
+        // ahead are still being prepared the playhead holds, and goes when they are there.
+        if self.playing && self.hold_for_frames(&ctx) {
+            self.playback = Instant::now();
+            self.playback_frame = self.project.frame;
+        } else if self.playing {
             let fps = self.project.document.snapshot().frame_rate;
             let elapsed =
                 (self.playback.elapsed().as_secs_f64() * fps.ticks as f64 / fps.rate as f64) as i64;
