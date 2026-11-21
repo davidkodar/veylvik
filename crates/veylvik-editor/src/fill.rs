@@ -15,12 +15,15 @@ pub(crate) struct Fill {
     /// The last measuring point and frames prepared a second, for the time left.
     since: Option<Since>,
     rate: Option<f64>,
+    /// Windows measured so far: the time left is said once two are.
+    windows: u32,
 }
 impl Fill {
     /// Waiting to play is over: the next wait measures afresh.
     pub(crate) fn clear_since(&mut self) {
         self.since = None;
         self.rate = None;
+        self.windows = 0;
     }
 }
 impl Studio {
@@ -242,15 +245,19 @@ impl Studio {
         if elapsed >= 3.0 {
             let now = have.saturating_sub(since.have) as f64 / elapsed;
             self.fill.rate = Some(self.fill.rate.map_or(now, |rate| rate * 0.5 + now * 0.5));
+            self.fill.windows += 1;
             self.fill.since = Some(Since {
                 at: std::time::Instant::now(),
                 have,
             });
         }
         let missing = (wanted - have) as f64;
+        // Said only once measured over two windows: a first guess jumps about.
         let left = match self.fill.rate {
-            Some(rate) if rate > 0.0 => Some(Duration::from_secs_f64(missing / rate)),
-            _ => cost.map(|cost| cost.mul_f64(missing)),
+            Some(rate) if rate > 0.0 && self.fill.windows >= 2 => {
+                Some(Duration::from_secs_f64(missing / rate))
+            }
+            _ => None,
         };
         self.waiting = Some(Waiting::Preparing {
             have,
@@ -280,8 +287,21 @@ impl Studio {
             .fixed_pos(canvas.center())
             .pivot(egui::Align2::CENTER_CENTER)
             .show(ctx, |ui| {
-                crate::design::panel(ctx).inner_margin(18.0).show(ui, |ui| {
-                    ui.set_max_width(440.0);
+                // Lifted off the picture: a picture is often black, and so is the panel.
+                let palette = crate::theme::palette(ctx);
+                let frame = crate::design::panel(ctx)
+                    .inner_margin(18.0)
+                    .fill(crate::theme::mix(palette.panel, palette.text, 0.06))
+                    .stroke(egui::Stroke::new(1.0_f32, crate::theme::mix(palette.border, palette.text, 0.25)))
+                    .shadow(egui::epaint::Shadow {
+                        offset: [0, 6],
+                        blur: 24,
+                        spread: 0,
+                        color: egui::Color32::from_black_alpha(160),
+                    });
+                frame.show(ui, |ui| {
+                    // One width whatever the numbers, so nothing moves while they change.
+                    ui.set_width(440.0);
                     match waiting {
                         Waiting::Preparing { have, wanted, cost, frame, size, left } => {
                             ui.label(egui::RichText::new("Preparing smooth playback").size(17.0).strong());
@@ -294,10 +314,18 @@ impl Studio {
                                 None => "The frames are made first, then every one is played on time.".into(),
                             });
                             ui.add_space(8.0);
-                            ui.add(egui::ProgressBar::new(*have as f32 / (*wanted).max(1) as f32).desired_width(400.0));
-                            ui.label(match left {
-                                Some(left) => format!("{have} of {wanted} frames, about {} left", spoken(*left)),
-                                None => format!("{have} of {wanted} frames"),
+                            progress(ui, *have as f32 / (*wanted).max(1) as f32, &palette);
+                            ui.add_space(6.0);
+                            // Frames on the left, time on the right, each in its own place.
+                            ui.horizontal(|ui| {
+                                ui.set_width(440.0);
+                                ui.label(format!("{have} of {wanted} frames"));
+                                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                    ui.label(match left {
+                                        Some(left) => format!("about {} left", spoken(*left)),
+                                        None => "working out the time left".into(),
+                                    });
+                                });
                             });
                         }
                         Waiting::TooBig { needed, allowed } => {
@@ -342,13 +370,64 @@ impl Studio {
     }
 }
 /// A duration as people say it: "40 s", "1 min 20 s".
+/// Rounded so it changes in calm steps: 5 s under a minute, 10 s above.
 fn spoken(time: Duration) -> String {
-    let seconds = time.as_secs().max(1);
-    if seconds < 60 {
-        format!("{seconds} s")
-    } else {
-        format!("{} min {} s", seconds / 60, seconds % 60)
+    let seconds = time.as_secs_f64();
+    if seconds < 8.0 {
+        return "a few seconds".into();
     }
+    if seconds < 60.0 {
+        return format!("{} s", ((seconds / 5.0).ceil() * 5.0) as u64);
+    }
+    let rounded = ((seconds / 10.0).ceil() * 10.0) as u64;
+    match rounded % 60 {
+        0 => format!("{} min", rounded / 60),
+        rest => format!("{} min {rest} s", rounded / 60),
+    }
+}
+/// A progress bar in the colours of Veylvik's mark, violet to teal along its length,
+/// on a track that shows on any panel.
+fn progress(ui: &mut egui::Ui, share: f32, palette: &crate::theme::Palette) {
+    const VIOLET: egui::Color32 = egui::Color32::from_rgb(0x9c, 0x8c, 0xff);
+    const TEAL: egui::Color32 = egui::Color32::from_rgb(0x5e, 0xea, 0xd4);
+    let (bar, _) = ui.allocate_exact_size(egui::vec2(440.0, 10.0), egui::Sense::hover());
+    let painter = ui.painter();
+    let radius = bar.height() / 2.0;
+    painter.rect_filled(
+        bar,
+        radius,
+        crate::theme::mix(palette.panel, palette.text, 0.16),
+    );
+    let end = bar.left() + radius * 2.0 + (bar.width() - radius * 2.0) * share.clamp(0.0, 1.0);
+    let colour = |x: f32| {
+        crate::theme::mix(
+            VIOLET,
+            TEAL,
+            ((x - bar.left()) / bar.width()).clamp(0.0, 1.0),
+        )
+    };
+    // Round ends as circles, the run between them as a gradient.
+    let (left, right) = (bar.left() + radius, end - radius);
+    let mut mesh = egui::Mesh::default();
+    for (x, y) in [
+        (left, bar.top()),
+        (right, bar.top()),
+        (right, bar.bottom()),
+        (left, bar.bottom()),
+    ] {
+        mesh.colored_vertex(egui::pos2(x, y), colour(x));
+    }
+    mesh.add_triangle(0, 1, 2);
+    mesh.add_triangle(0, 2, 3);
+    painter.circle_filled(egui::pos2(left, bar.center().y), radius, colour(left));
+    if right > left {
+        painter.add(mesh);
+    }
+    painter.circle_filled(
+        egui::pos2(right.max(left), bar.center().y),
+        radius,
+        colour(right.max(left)),
+    );
 }
 fn gigabytes(bytes: u64) -> String {
     format!("{:.1} GB", bytes as f64 / 1e9)
