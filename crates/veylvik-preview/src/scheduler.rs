@@ -222,6 +222,7 @@ impl PreviewScheduler<Arc<GpuFrame>> {
                                 look,
                                 &frame,
                                 false,
+                                &mut *cancelled,
                             );
                         }
                         return Ok(frame);
@@ -232,6 +233,11 @@ impl PreviewScheduler<Arc<GpuFrame>> {
                     {
                         screen_ready = true;
                         return Ok(frame);
+                    }
+                    // Made only to be kept: wait for room to keep it first, giving way
+                    // to the viewer (a slow disk must not hold up what is played).
+                    if job.background && playing.is_some() && !cache.room_to_keep(&mut *cancelled) {
+                        return Err(error("gave way to the viewer"));
                     }
                     cache.make_room(
                         &renderer,
@@ -267,13 +273,14 @@ impl PreviewScheduler<Arc<GpuFrame>> {
                                 look,
                                 &frame,
                                 !job.background,
+                                &mut *cancelled,
                             );
                         }
                     }
                     Ok(frame)
                 })();
                 if job.last {
-                    cache.settle();
+                    cache.settle(&mut *cancelled);
                 }
                 cache.publish(job.revision);
                 PreviewResult {

@@ -181,6 +181,9 @@ fn ocio_paths(plan: &Plan, inputs: &ImageInputs, paths: &mut Vec<PathBuf>) -> Re
     }
     Ok(())
 }
+/// Pictures handed to the packer and not yet written.
+const PACKING: usize = 3;
+
 pub(crate) struct Store {
     control: Control,
     settings: Settings,
@@ -731,10 +734,35 @@ impl Store {
     }
     /// Take every picture still being packed into the store (waiting for the packer): at
     /// the end of a list to prepare, when nobody waits for the worker.
-    pub fn settle(&mut self) {
-        self.collect(true);
+    /// Wait for the pictures still being packed, to count them as kept, unless
+    /// `give_way` says the worker is wanted (they are counted later then).
+    pub fn settle(&mut self, give_way: &mut dyn FnMut() -> bool) {
+        loop {
+            self.collect(false);
+            if self.packing.is_empty() || give_way() {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(2));
+        }
+    }
+    /// Wait until the packer has room for one more picture, a little at a time; false
+    /// as soon as `give_way` says the worker is wanted. Pictures made only to be kept
+    /// wait here, before they are made: nothing is rendered only to be thrown away, and
+    /// a slow disk never holds up what the viewer asks for.
+    pub fn room_to_keep(&mut self, give_way: &mut dyn FnMut() -> bool) -> bool {
+        loop {
+            self.collect(false);
+            if self.packer.is_none() || self.packing.len() < PACKING {
+                return true;
+            }
+            if give_way() {
+                return false;
+            }
+            std::thread::sleep(Duration::from_millis(2));
+        }
     }
     /// Keep `frame` as the screen shows it with `look`, unless it is kept already.
+    #[allow(clippy::too_many_arguments)]
     pub fn keep_picture(
         &mut self,
         renderer: &Renderer,
@@ -743,6 +771,7 @@ impl Store {
         look: crate::screen::Look,
         frame: &GpuFrame,
         evict: bool,
+        give_way: &mut dyn FnMut() -> bool,
     ) {
         self.look = Some(look);
         let limits = self.picture_limits();
@@ -767,12 +796,12 @@ impl Store {
             if self.packer.is_none() {
                 self.packer = Packer::start();
             }
-            // A frame made only to be kept may wait for the packer: nobody is watching it.
+            // A frame made only to be kept may wait for room, giving way to the viewer.
             // One that is being played never waits.
-            if !evict && self.packing.len() >= 3 {
-                self.collect(true);
+            if !evict && !self.room_to_keep(give_way) {
+                return Ok(());
             }
-            if self.packer.is_none() || self.packing.len() >= 3 {
+            if self.packer.is_none() || self.packing.len() >= PACKING {
                 return Ok(());
             }
             let size = [frame.width(), frame.height()];
@@ -1202,5 +1231,39 @@ mod tests {
         std::fs::remove_file(path).unwrap();
         store.checked = Instant::now() - Duration::from_secs(3);
         assert!(store.prepare(&plan, &inputs).is_err());
+    }
+    #[test]
+    fn a_picture_made_only_to_be_kept_gives_way_while_the_packer_is_behind() {
+        let mut store = Store::new(Control::default());
+        // Without a packer, or with room in it, nothing waits and nobody is asked.
+        let mut asked = 0;
+        assert!(store.room_to_keep(&mut || {
+            asked += 1;
+            true
+        }));
+        assert_eq!(asked, 0);
+        // A packer with as many pictures in hand as it takes, none of them finishing.
+        store.packer = Packer::start();
+        let moment = (Time::new(0, 1).unwrap(), None, crate::screen::Look::NEUTRAL);
+        store.packing = vec![moment; PACKING];
+        let asked_at = Instant::now();
+        let mut asked = 0;
+        assert!(!store.room_to_keep(&mut || {
+            asked += 1;
+            asked == 3
+        }));
+        assert_eq!(
+            asked, 3,
+            "it asks between short waits, and stops at once when told"
+        );
+        assert!(asked_at.elapsed() < Duration::from_millis(200));
+        // Settling gives way the same way, leaving the pictures to be counted later.
+        let mut asked = 0;
+        store.settle(&mut || {
+            asked += 1;
+            true
+        });
+        assert_eq!(asked, 1);
+        assert_eq!(store.packing.len(), PACKING);
     }
 }
