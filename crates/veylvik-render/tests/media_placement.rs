@@ -98,3 +98,55 @@ fn old_footage_defaults_to_legacy_placement() {
         })
     ));
 }
+
+/// Bars an odd number of pixels wide: the picture starts on a whole pixel (the half
+/// rounded down, as editors place it), so every pixel is the source's own, not a blend.
+#[test]
+#[ignore = "requires Vulkan"]
+fn a_fitted_picture_sits_on_whole_pixels() {
+    let renderer = Renderer::new().unwrap();
+    // 15 x 20, each pixel its own value; the frame is 48 x 20, so Fit keeps the size and
+    // leaves 33 px of bars: 16 on the left, 17 on the right.
+    let pixels: Vec<[f32; 4]> = (0..15 * 20)
+        .map(|i| [(i % 15) as f32 / 16.0, (i / 15) as f32 / 32.0, 0.25, 1.0])
+        .collect();
+    let mut inputs = ImageInputs::default();
+    inputs.insert(
+        "portrait",
+        Arc::new(Image::new(15, 20, pixels.clone()).unwrap()),
+    );
+    // Original size centres the same way. (Fill scales the picture, so its pixels are
+    // blends anyway; it rounds its position the same way.)
+    for mode in [Placement::Fit, Placement::Original] {
+        let mut doc = blank(48, 20, Time::new(24, 1).unwrap()).unwrap();
+        doc.nodes.get_mut(&doc.output).unwrap().operation =
+            Operation::Footage(veylvik_document::nodes::Footage {
+                asset: "portrait".into(),
+                timing: Default::default(),
+                placement: mode,
+                colour: Default::default(),
+                layer: None,
+                fallback: String::new(),
+            });
+        let plan = Plan::compile(&doc).unwrap();
+        let out = renderer
+            .render_frame(
+                &plan,
+                RenderRequest::full(Time::new(0, 1).unwrap()),
+                &inputs,
+            )
+            .unwrap()
+            .pixels;
+        for y in 0..20 {
+            for x in 0..48 {
+                let got = out[y * 48 + x];
+                let want = if (16..31).contains(&x) {
+                    pixels[y * 15 + x - 16]
+                } else {
+                    [0.0; 4]
+                };
+                assert_eq!(got, want, "{mode:?} at {x},{y}");
+            }
+        }
+    }
+}

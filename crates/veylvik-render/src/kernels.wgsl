@@ -337,7 +337,9 @@ fn image(@builtin(global_invocation_id) gid:vec3<u32>) {
     if p.size_op.w==2u {scale=vec2<f32>(max(ratio.x,ratio.y));}
     if p.size_op.w==4u {scale=ratio;}
     var offset=vec2<f32>(0.0);
-    if p.size_op.w!=0u {offset=(canvas-native*scale)*0.5;}
+    // Centred on whole pixels, rounded down as editors do: a centre half a pixel off
+    // would make the whole picture half a pixel soft where the bars are an odd width.
+    if p.size_op.w!=0u {offset=floor((canvas-native*scale)*0.5);}
     let pos=(vec2<f32>(gid.xy)+vec2<f32>(0.5)-offset)/scale;
     var color=vec4<f32>(0.0);
     if all(pos>=vec2<f32>(0.0)) && all(pos<native) {
