@@ -204,6 +204,8 @@ fn params(
     Ok(p)
 }
 /// One device and queue own every intermediate. Rendering does not silently fall back to CPU.
+/// GPU programs compiled for rendering in this process (see `Renderer::compiled_programs`).
+pub(crate) static COMPILED: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 pub struct Renderer {
     device: wgpu::Device,
     queue: wgpu::Queue,
@@ -765,6 +767,12 @@ impl Renderer {
         pool.trim(self.pool_limit_bytes.min(available));
         Ok((result?, region))
     }
+    /// How many GPU programs this process has compiled for rendering (kernels and
+    /// custom shaders, as each is first used). A render during which it grew paid for a
+    /// compile, often seconds, which says nothing about what the next frame costs.
+    pub fn compiled_programs(&self) -> u64 {
+        COMPILED.load(std::sync::atomic::Ordering::Relaxed)
+    }
     /// A kernel's pipeline, compiled on first use: the driver's compile of all of
     /// them took far longer than starting the renderer, and a graph uses a handful.
     fn pipeline(&self, kernel: Kernel) -> Result<wgpu::ComputePipeline> {
@@ -798,6 +806,7 @@ impl Renderer {
                 compilation_options: Default::default(),
                 cache: kept.as_ref().map(|kept| &kept.cache),
             });
+        COMPILED.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         self.pipelines
             .lock()
             .map_err(|_| error("kernel pipelines lock poisoned"))?

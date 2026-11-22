@@ -76,3 +76,26 @@ fn compiled_programs_are_kept_in_a_file_and_a_damaged_file_is_ignored() {
     }
     std::fs::remove_dir_all(folder).unwrap();
 }
+
+#[test]
+#[ignore = "requires Vulkan"]
+fn a_render_that_compiles_programs_is_told_apart_from_one_that_does_not() {
+    use veylvik_document::Time;
+    let plan = Plan::compile(&veylvik_document::motion_demo()).unwrap();
+    let request = RenderRequest::full(Time::new(0, 1).unwrap());
+    let renderer = Renderer::new().unwrap();
+    let before = renderer.compiled_programs();
+    renderer
+        .render_frame(&plan, request, &ImageInputs::default())
+        .unwrap();
+    let first = renderer.compiled_programs();
+    assert!(first > before, "the first render compiles its kernels");
+    renderer
+        .render_frame(&plan, request, &ImageInputs::default())
+        .unwrap();
+    assert_eq!(
+        renderer.compiled_programs(),
+        first,
+        "the second finds them compiled"
+    );
+}

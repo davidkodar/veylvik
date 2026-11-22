@@ -124,6 +124,47 @@ impl PreviewScheduler {
         })
     }
 }
+/// What a frame costs to render, from the last few renders: their mean without the
+/// slowest quarter, so a one-off slow frame (a decoder opening, a first use) does not
+/// decide, and a change of cost shows within a few frames.
+#[derive(Default)]
+struct Costs(std::collections::VecDeque<f64>);
+impl Costs {
+    const KEPT: usize = 8;
+    fn add(&mut self, milliseconds: f64) -> f64 {
+        if self.0.len() == Self::KEPT {
+            self.0.pop_front();
+        }
+        self.0.push_back(milliseconds);
+        let mut sorted: Vec<f64> = self.0.iter().copied().collect();
+        sorted.sort_by(f64::total_cmp);
+        let kept = &sorted[..sorted.len() - sorted.len() / 4];
+        kept.iter().sum::<f64>() / kept.len() as f64
+    }
+}
+#[cfg(test)]
+mod cost_tests {
+    #[test]
+    fn a_slow_first_frame_does_not_decide_what_frames_cost() {
+        let mut costs = super::Costs::default();
+        // A start that took seconds, then frames of about 25 ms.
+        let mut cost = costs.add(6500.0);
+        assert_eq!(cost, 6500.0, "with one render, that render is all there is");
+        for took in [24.0, 26.0, 25.0] {
+            cost = costs.add(took);
+        }
+        assert_eq!(cost, 25.0, "four renders in, the slow one is left out");
+        // Frames that really got slower show within a few, and wholly within eight.
+        for _ in 0..3 {
+            cost = costs.add(60.0);
+        }
+        assert!(cost > 35.0, "{cost}");
+        for _ in 0..5 {
+            cost = costs.add(60.0);
+        }
+        assert_eq!(cost, 60.0);
+    }
+}
 /// Preview worker producing GPU-resident output on a host-owned renderer/device.
 pub type GpuPreviewScheduler = PreviewScheduler<Arc<GpuFrame>>;
 impl PreviewScheduler<Arc<GpuFrame>> {
@@ -135,6 +176,7 @@ impl PreviewScheduler<Arc<GpuFrame>> {
         let cost: Arc<std::sync::atomic::AtomicU64> = Default::default();
         let measured = cost.clone();
         let mut cache = crate::playback::Store::new(playback.clone());
+        let mut costs = Costs::default();
         let worker = LatestWorker::new_cancellable(
             move |generation, job: Job, cancelled| {
                 let start = Instant::now();
@@ -198,18 +240,13 @@ impl PreviewScheduler<Arc<GpuFrame>> {
                             .saturating_add(job.inputs.byte_size()),
                     )?;
                     let rendering = Instant::now();
+                    let compiled = renderer.compiled_programs();
                     let mut frame = render_gpu_job(&renderer, &job, cache.divisor(), cancelled);
-                    if frame.is_ok() {
-                        // Smoothed, so one slow first use of a kernel does not decide.
+                    // A render that compiled programs paid a one-time cost: not counted.
+                    if frame.is_ok() && renderer.compiled_programs() == compiled {
                         let took = rendering.elapsed().as_secs_f64() * 1000.0;
-                        let old =
-                            f64::from_bits(measured.load(std::sync::atomic::Ordering::Relaxed));
-                        let new = if old == 0.0 {
-                            took
-                        } else {
-                            old * 0.8 + took * 0.2
-                        };
-                        measured.store(new.to_bits(), std::sync::atomic::Ordering::Relaxed);
+                        let cost = costs.add(took);
+                        measured.store(cost.to_bits(), std::sync::atomic::Ordering::Relaxed);
                     }
                     if frame
                         .as_ref()

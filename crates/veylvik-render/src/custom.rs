@@ -76,6 +76,7 @@ impl Cache {
             compilation_options: Default::default(),
             cache: None,
         });
+        crate::COMPILED.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         if kept.len() >= KEPT {
             kept.remove(0);
         }
