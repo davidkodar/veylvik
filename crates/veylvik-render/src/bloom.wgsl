@@ -18,14 +18,6 @@ fn bloom_bright(@builtin(global_invocation_id) gid:vec3<u32>) {
     result[index(gid)]=vec4<f32>(rgb*amount,0.0);
 }
 @compute @workgroup_size(8,8)
-fn bloom_wide_horizontal(@builtin(global_invocation_id) gid:vec3<u32>) {
-    if !inside(gid) {return;} result[index(gid)]=bloom_blur(gid,vec2<i32>(1,0),p.values.x);
-}
-@compute @workgroup_size(8,8)
-fn bloom_wide_vertical(@builtin(global_invocation_id) gid:vec3<u32>) {
-    if !inside(gid) {return;} result[index(gid)]=bloom_blur(gid,vec2<i32>(0,1),p.values.x);
-}
-@compute @workgroup_size(8,8)
 fn bloom_tight_horizontal(@builtin(global_invocation_id) gid:vec3<u32>) {
     if !inside(gid) {return;} result[index(gid)]=bloom_blur(gid,vec2<i32>(1,0),p.values.x*0.2);
 }
@@ -127,19 +119,23 @@ fn bloom_streak_cells_vertical(@builtin(global_invocation_id) gid:vec3<u32>) {
 }
 // A cell grid read at a pixel: between the four nearest cell centres (two for the
 // streak's, which are one pixel tall).
-fn bloom_between(cells_of:u32,x:u32,y:u32,d:vec2<u32>,cells:vec2<u32>)->vec3<f32> {
+fn bloom_between(cells_of:u32,x:u32,y:u32,d:vec2<u32>,cells:vec2<u32>)->vec4<f32> {
     let at=(vec2<f32>(f32(x),f32(y))+0.5)/vec2<f32>(d)-0.5;
     let lo=clamp(vec2<i32>(floor(at)),vec2<i32>(0),vec2<i32>(cells)-vec2<i32>(1));
     let hi=min(lo+vec2<i32>(1),vec2<i32>(cells)-vec2<i32>(1));
     let f=clamp(at-vec2<f32>(lo),vec2<f32>(0.0),vec2<f32>(1.0));
     let w=p.size_op.x;
-    var a:vec3<f32>;var b:vec3<f32>;var c:vec3<f32>;var e:vec3<f32>;
+    // Cells in second (0), fourth (1) or third (2).
+    var a:vec4<f32>;var b:vec4<f32>;var c:vec4<f32>;var e:vec4<f32>;
     if cells_of==0u {
-        a=second[u32(lo.y)*w+u32(lo.x)].rgb;b=second[u32(lo.y)*w+u32(hi.x)].rgb;
-        c=second[u32(hi.y)*w+u32(lo.x)].rgb;e=second[u32(hi.y)*w+u32(hi.x)].rgb;
+        a=second[u32(lo.y)*w+u32(lo.x)];b=second[u32(lo.y)*w+u32(hi.x)];
+        c=second[u32(hi.y)*w+u32(lo.x)];e=second[u32(hi.y)*w+u32(hi.x)];
+    } else if cells_of==1u {
+        a=fourth[u32(lo.y)*w+u32(lo.x)];b=fourth[u32(lo.y)*w+u32(hi.x)];
+        c=fourth[u32(hi.y)*w+u32(lo.x)];e=fourth[u32(hi.y)*w+u32(hi.x)];
     } else {
-        a=fourth[u32(lo.y)*w+u32(lo.x)].rgb;b=fourth[u32(lo.y)*w+u32(hi.x)].rgb;
-        c=fourth[u32(hi.y)*w+u32(lo.x)].rgb;e=fourth[u32(hi.y)*w+u32(hi.x)].rgb;
+        a=third[u32(lo.y)*w+u32(lo.x)];b=third[u32(lo.y)*w+u32(hi.x)];
+        c=third[u32(hi.y)*w+u32(lo.x)];e=third[u32(hi.y)*w+u32(hi.x)];
     }
     return mix(mix(a,b,f.x),mix(c,e,f.x),f.y);
 }
@@ -150,21 +146,25 @@ fn bloom_combine(@builtin(global_invocation_id) gid:vec3<u32>) {
     if !inside(gid) {return;}
     let i=index(gid);let c=source[i];
     let d=bloom_step(p.values.x);let cells=bloom_cells(d);
-    let wide=bloom_between(0u,gid.x,gid.y,vec2<u32>(d,d),cells);
-    let streak=bloom_between(1u,gid.x,gid.y,vec2<u32>(d,1u),vec2<u32>(cells.x,p.size_op.y));
+    let wide=bloom_between(0u,gid.x,gid.y,vec2<u32>(d,d),cells).rgb;
+    let streak=bloom_between(1u,gid.x,gid.y,vec2<u32>(d,1u),vec2<u32>(cells.x,p.size_op.y)).rgb;
     let glow=(0.55*wide+0.45*third[i].rgb+p.extra.w*streak)*p.extra.rgb*p.values.y;
     result[i]=vec4<f32>(c.rgb+glow,c.a);
 }
 // Light wrap: source = the foreground, second = the background blurred by the radius,
-// third = the foreground blurred by the radius. values = (radius, amount). The
-// background's light is added just inside the foreground's edges, where its blurred
-// alpha has fallen below its own; alpha and everything outside it stay.
+// third = the foreground blurred by the radius, both on cells as the glow's wide blur
+// (see bloom_step). values = (radius, amount). The background's light is added just
+// inside the foreground's edges, where its blurred alpha has fallen below its own;
+// alpha and everything outside it stay.
 @compute @workgroup_size(8,8)
 fn light_wrap_combine(@builtin(global_invocation_id) gid:vec3<u32>) {
     if !inside(gid) {return;}
     let i=index(gid);let c=source[i];
-    let edge=clamp(c.a-third[i].a,0.0,1.0)*2.0;
-    let light=max(second[i].rgb,vec3<f32>(0.0));
+    let d=bloom_step(p.values.x);let cells=bloom_cells(d);
+    let background=bloom_between(0u,gid.x,gid.y,vec2<u32>(d,d),cells);
+    let foreground=bloom_between(2u,gid.x,gid.y,vec2<u32>(d,d),cells);
+    let edge=clamp(c.a-foreground.a,0.0,1.0)*2.0;
+    let light=max(background.rgb,vec3<f32>(0.0));
     result[i]=vec4<f32>(c.rgb+light*min(edge,c.a)*p.values.y,c.a);
 }
 // Zoom blur: values = (amount, x, y). Each pixel is the average of 32 samples along

@@ -50,8 +50,6 @@ pub enum Kernel {
     LensDepthPrefilterVertical,
     LensDepthBlur,
     BloomBright,
-    BloomWideHorizontal,
-    BloomWideVertical,
     BloomTightHorizontal,
     BloomTightVertical,
     BloomWideDown,
@@ -116,7 +114,7 @@ pub enum Kernel {
     Lut,
 }
 impl Kernel {
-    pub(crate) const ALL: [Self; 104] = [
+    pub(crate) const ALL: [Self; 102] = [
         Self::ToAcescg,
         Self::FromAcescg,
         Self::Text,
@@ -157,8 +155,6 @@ impl Kernel {
         Self::LensDepthPrefilterVertical,
         Self::LensDepthBlur,
         Self::BloomBright,
-        Self::BloomWideHorizontal,
-        Self::BloomWideVertical,
         Self::BloomTightHorizontal,
         Self::BloomTightVertical,
         Self::BloomWideDown,
@@ -266,8 +262,6 @@ impl Kernel {
             Self::LensDepthPrefilterVertical => "lens_depth_prefilter_vertical",
             Self::LensDepthBlur => "lens_depth_blur",
             Self::BloomBright => "bloom_bright",
-            Self::BloomWideHorizontal => "bloom_wide_horizontal",
-            Self::BloomWideVertical => "bloom_wide_vertical",
             Self::BloomTightHorizontal => "bloom_tight_horizontal",
             Self::BloomTightVertical => "bloom_tight_vertical",
             Self::BloomWideDown => "bloom_wide_down",

@@ -539,38 +539,40 @@ impl RenderNode for veylvik_document::nodes::LightWrap {
                 inputs: [a, b, c, From::None],
             }
         }
-        // Bloom's wide blur is a plain gaussian of values.x pixels: here it blurs the
-        // background (port 1), then the foreground (port 0), for the combine.
-        static STEPS: [Step; 5] = [
+        // The glow's wide blur, on cells (see bloom.wgsl): here it blurs the background
+        // (port 1), then the foreground (port 0), for the combine.
+        static STEPS: [Step; 7] = [
+            step(Kernel::BloomWideDown, From::Port(1), From::None, From::None),
             step(
-                Kernel::BloomWideHorizontal,
-                From::Port(1),
-                From::None,
-                From::None,
-            ),
-            step(
-                Kernel::BloomWideVertical,
+                Kernel::BloomWideCellsHorizontal,
                 From::Step(0),
                 From::None,
                 From::None,
             ),
             step(
-                Kernel::BloomWideHorizontal,
-                From::Port(0),
+                Kernel::BloomWideCellsVertical,
+                From::Step(1),
+                From::None,
+                From::None,
+            ),
+            step(Kernel::BloomWideDown, From::Port(0), From::None, From::None),
+            step(
+                Kernel::BloomWideCellsHorizontal,
+                From::Step(3),
                 From::None,
                 From::None,
             ),
             step(
-                Kernel::BloomWideVertical,
-                From::Step(2),
+                Kernel::BloomWideCellsVertical,
+                From::Step(4),
                 From::None,
                 From::None,
             ),
             step(
                 Kernel::LightWrapCombine,
                 From::Port(0),
-                From::Step(1),
-                From::Step(3),
+                From::Step(2),
+                From::Step(5),
             ),
         ];
         Passes::chain(&STEPS)
