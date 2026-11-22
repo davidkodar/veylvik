@@ -111,6 +111,9 @@ pub struct Engine {
     irradiance: wgpu::ComputePipeline,
     /// The converted panorama, reused between frames.
     panorama: Mutex<Option<wgpu::Buffer>>,
+    /// What the panorama was converted from (identity, size, a frame of the shot or a
+    /// panorama): converted again only when that changes.
+    converted: Mutex<Option<(u64, [u32; 2], bool)>>,
     sky: wgpu::RenderPipeline,
     /// Render targets kept between frames, by size: a 4K frame's multisampled colour
     /// and depth are hundreds of MiB, made and let go again every frame before.
@@ -542,16 +545,16 @@ impl Engine {
             .filter(|e| e.background && !e.frame && e.blur <= 0.0)
             .and_then(|e| e.image)
             .and_then(|source| images.iter().find(|(id, ..)| *id == source))
-            .map(|(_, image, size)| (*image, *size));
+            .map(|(_, image, size, _)| (*image, *size));
         let panorama = match surround.and_then(|e| e.image) {
             Some(source) => match images.iter().find(|(id, ..)| *id == source) {
-                Some((_, image, [across, down])) => Some(self.panorama(
+                Some((_, image, [across, down], identity)) => Some(self.panorama(
                     device,
                     encoder,
                     image,
-                    *across,
-                    *down,
+                    [*across, *down],
                     surround.is_some_and(|e| e.frame),
+                    *identity,
                 )?),
                 None => None,
             },
@@ -679,7 +682,7 @@ impl Engine {
                     images
                         .iter()
                         .find(|(id, ..)| id == image)
-                        .map(|(_, b, s)| (*b, *s)),
+                        .map(|(_, b, s, _)| (*b, *s)),
                 ),
                 _ if object.surface.catcher => (&self.catcher, None),
                 _ => (&self.lit, texture.as_ref().map(|(b, w, h)| (b, [*w, *h]))),
@@ -689,7 +692,7 @@ impl Engine {
                 .texture
                 .filter(|_| !object.surface.catcher && texture.is_none())
                 .and_then(|source| images.iter().find(|(id, ..)| *id == source))
-                .map(|(_, buffer, size)| (*buffer, *size));
+                .map(|(_, buffer, size, _)| (*buffer, *size));
             let image = image.or(wrapped);
             let picture = image.map_or([width as f32, height as f32], |(_, [w, h])| {
                 [w as f32, h as f32]

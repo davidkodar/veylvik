@@ -10,7 +10,10 @@ pub trait SceneRenderer: Send + Sync {
 /// One Render scene pass. `target` and every image are premultiplied scene-linear
 /// Rec.709 `vec4<f32>` rows of `width * height`; commands go on `encoder`.
 /// A picture a scene reads: the node it comes from, its pixels and its size.
-pub type Picture<'a> = (NodeId, &'a wgpu::Buffer, [u32; 2]);
+/// A picture a scene shows: the node it comes from, its pixels, its size, and what it
+/// is made of when known (the same number means the same pixels), so the 3D renderer
+/// may keep what it made of it.
+pub type Picture<'a> = (NodeId, &'a wgpu::Buffer, [u32; 2], Option<u64>);
 pub struct SceneJob<'a> {
     pub device: &'a wgpu::Device,
     pub queue: &'a wgpu::Queue,

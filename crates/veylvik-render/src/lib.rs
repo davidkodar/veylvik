@@ -1276,7 +1276,12 @@ impl Renderer {
                     .iter()
                     .filter_map(|(source, input)| match input {
                         plan::Input::Value(slot) => {
-                            Some((*source, &buffers[*slot], [plan.width, plan.height]))
+                            // Named by the pass that made it this frame.
+                            let made = (0..at_pass)
+                                .rev()
+                                .find(|&q| plan.passes[q].output == *slot)
+                                .and_then(|q| ids[q]);
+                            Some((*source, &buffers[*slot], [plan.width, plan.height], made))
                         }
                         // A picture of its own size (an Own size node).
                         plan::Input::Asset(key) => {
@@ -1285,6 +1290,7 @@ impl Renderer {
                                 *source,
                                 &sources[key.as_str()],
                                 [picture.region().width, picture.region().height],
+                                Some(picture.identity()),
                             ))
                         }
                         _ => None,

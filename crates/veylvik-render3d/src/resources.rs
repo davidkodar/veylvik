@@ -12,9 +12,9 @@ impl Engine {
         device: &wgpu::Device,
         encoder: &mut wgpu::CommandEncoder,
         image: &wgpu::Buffer,
-        width: u32,
-        height: u32,
+        [width, height]: [u32; 2],
         frame: bool,
+        identity: Option<u64>,
     ) -> Result<wgpu::Buffer> {
         let target = {
             let mut slot = self
@@ -31,6 +31,19 @@ impl Engine {
             })
             .clone()
         };
+        // The same picture as last time: what it was converted to is still there.
+        let key = identity.map(|id| (id, [width, height], frame));
+        {
+            let mut converted = self
+                .converted
+                .lock()
+                .map_err(|_| error("panorama lock poisoned"))?;
+            if key.is_some() && *converted == key {
+                return Ok(target);
+            }
+            // Another picture: what the buffer holds is no one's until it is made.
+            *converted = None;
+        }
         let params = |level: u32| {
             device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("panorama level"),
@@ -73,6 +86,9 @@ impl Engine {
             );
         }
         run(&self.irradiance, &[(2, &target)], (64, 32));
+        if let Ok(mut converted) = self.converted.lock() {
+            *converted = key;
+        }
         Ok(target)
     }
     /// Upload (or reuse) the mesh of an object; meshes are keyed by their geometry.
