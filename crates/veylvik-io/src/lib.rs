@@ -150,28 +150,34 @@ pub fn load_png(path: &Path, budget: u64) -> Result<Image> {
             ((x + 0.055) / 1.055).powf(2.4)
         }
     };
+    // A sample has at most 65536 values: the curve is worked out once for each, and
+    // every pixel looks its colour up (the same value as working it out there).
+    let top = if sample_bytes == 1 { 255 } else { 65535 };
+    let curve: Vec<f32> = (0..=top).map(|v| decode(v as f32 / top as f32)).collect();
     let mut pixels = Vec::with_capacity(width as usize * height as usize);
     for pixel in raw[..frame.buffer_size()].chunks_exact(channels * sample_bytes) {
-        let sample = |i: usize| {
+        let code = |i: usize| {
             if sample_bytes == 1 {
-                pixel[i] as f32 / 255.0
+                usize::from(pixel[i])
             } else {
-                u16::from_be_bytes([pixel[i * 2], pixel[i * 2 + 1]]) as f32 / 65535.0
+                usize::from(u16::from_be_bytes([pixel[i * 2], pixel[i * 2 + 1]]))
             }
         };
-        let (rgb, a) = match frame.color_type {
-            png::ColorType::Grayscale => ([sample(0); 3], 1.0),
-            png::ColorType::GrayscaleAlpha => ([sample(0); 3], sample(1)),
-            png::ColorType::Rgb => ([sample(0), sample(1), sample(2)], 1.0),
-            png::ColorType::Rgba => ([sample(0), sample(1), sample(2)], sample(3)),
+        let alpha = |i: usize| code(i) as f32 / top as f32;
+        let ([r, g, b], a) = match frame.color_type {
+            png::ColorType::Grayscale => {
+                let v = curve[code(0)];
+                ([v; 3], 1.0)
+            }
+            png::ColorType::GrayscaleAlpha => {
+                let v = curve[code(0)];
+                ([v; 3], alpha(1))
+            }
+            png::ColorType::Rgb => ([curve[code(0)], curve[code(1)], curve[code(2)]], 1.0),
+            png::ColorType::Rgba => ([curve[code(0)], curve[code(1)], curve[code(2)]], alpha(3)),
             _ => return Err("PNG palette was not expanded".into()),
         };
-        pixels.push([
-            decode(rgb[0]) * a,
-            decode(rgb[1]) * a,
-            decode(rgb[2]) * a,
-            a,
-        ]);
+        pixels.push([r * a, g * a, b * a, a]);
     }
     Ok(Image::new(width, height, pixels)?)
 }
@@ -451,6 +457,76 @@ mod tests {
             .unwrap()
             .write_image_data(bytes)
             .unwrap();
+    }
+    /// The colour of a PNG sample as the loader always worked it out, one pixel at a time.
+    fn srgb_sample(x: f32) -> f32 {
+        if x <= 0.04045 {
+            x / 12.92
+        } else {
+            ((x + 0.055) / 1.055).powf(2.4)
+        }
+    }
+    #[test]
+    fn a_png_reads_as_it_always_did_through_the_curve_table() {
+        let temp = Temp::new();
+        // 16-bit grey with alpha, as subject mattes are, over many values.
+        let (w, h) = (257u32, 3u32);
+        let samples: Vec<(u16, u16)> = (0..w * h)
+            .map(|i| ((i * 251 % 65536) as u16, (i * 977 % 65536) as u16))
+            .collect();
+        let grey = temp.0.join("grey.png");
+        let mut encoder = png::Encoder::new(File::create(&grey).unwrap(), w, h);
+        encoder.set_color(png::ColorType::GrayscaleAlpha);
+        encoder.set_depth(png::BitDepth::Sixteen);
+        let bytes: Vec<u8> = samples
+            .iter()
+            .flat_map(|(v, a)| [v.to_be_bytes(), a.to_be_bytes()].concat())
+            .collect();
+        encoder
+            .write_header()
+            .unwrap()
+            .write_image_data(&bytes)
+            .unwrap();
+        let image = load_png(&grey, MAX_IMAGE_BYTES).unwrap();
+        for ((v, a), got) in samples.iter().zip(image.pixels()) {
+            let (v, a) = (
+                srgb_sample(f32::from(*v) / 65535.0),
+                f32::from(*a) / 65535.0,
+            );
+            assert_eq!(
+                got.map(f32::to_bits),
+                [v * a, v * a, v * a, a].map(f32::to_bits)
+            );
+        }
+        // 8-bit colour with alpha, every value of each channel.
+        let rgba = temp.0.join("rgba.png");
+        let pixels: Vec<[u8; 4]> = (0..256u32)
+            .map(|i| {
+                [
+                    i as u8,
+                    (255 - i) as u8,
+                    (i * 7 % 256) as u8,
+                    (i * 13 % 256) as u8,
+                ]
+            })
+            .collect();
+        let mut encoder = png::Encoder::new(File::create(&rgba).unwrap(), 256, 1);
+        encoder.set_color(png::ColorType::Rgba);
+        encoder.set_depth(png::BitDepth::Eight);
+        encoder
+            .write_header()
+            .unwrap()
+            .write_image_data(pixels.as_flattened())
+            .unwrap();
+        let image = load_png(&rgba, MAX_IMAGE_BYTES).unwrap();
+        for (p, got) in pixels.iter().zip(image.pixels()) {
+            let a = f32::from(p[3]) / 255.0;
+            let c = |i: usize| srgb_sample(f32::from(p[i]) / 255.0) * a;
+            assert_eq!(
+                got.map(f32::to_bits),
+                [c(0), c(1), c(2), a].map(f32::to_bits)
+            );
+        }
     }
     #[test]
     fn missing_input_paths_stay_protected_through_parent_aliases() {
