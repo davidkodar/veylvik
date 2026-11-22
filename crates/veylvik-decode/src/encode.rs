@@ -190,7 +190,9 @@ impl Encoder {
                 options.set("cq", &s.quality.to_string());
                 options.set("rc-lookahead", "0");
                 options.set("surfaces", "4");
-                options.set("delay", "0");
+                // The encoder works three frames behind what it is given, so the next
+                // frame renders while this one encodes (the same quality, measured).
+                options.set("delay", "3");
                 options.set("zerolatency", "1");
             }
             DeviceKind::Vaapi(_) => {
