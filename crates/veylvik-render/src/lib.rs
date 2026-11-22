@@ -30,6 +30,7 @@ pub mod display;
 mod encode;
 pub use encode::Look;
 mod nodes;
+mod origin;
 mod pipeline_cache;
 mod plan;
 mod pool;
@@ -243,6 +244,17 @@ pub struct Renderer {
     /// One 3D render gives both the picture and the depth picture when two Render scene
     /// nodes film the same scene the same way. On unless switched off to compare.
     pub share_scene_renders: bool,
+    /// A one-pass node that is clear outside a box (a shape, a mask, a merge of small
+    /// layers) is run over that box only, its output cleared elsewhere. On unless
+    /// switched off to compare.
+    pub area_dispatch: bool,
+    /// A node's result unchanged since the frame before is kept and used again (see
+    /// results.rs). On unless switched off to compare.
+    pub keep_results: bool,
+    /// Passes run over a box only, since the start.
+    areas_used: std::sync::atomic::AtomicU64,
+    /// The origin of a pass over the whole frame.
+    whole_frame: wgpu::Buffer,
     /// While set, each pass of a render is finished on the card before the next begins
     /// and its time is put here: slower, and only for finding where a frame's time goes.
     pass_times: Mutex<Option<Vec<PassTime>>>,
@@ -310,7 +322,7 @@ impl Renderer {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("composition kernels"),
             source: wgpu::ShaderSource::Wgsl(
-                concat!(
+                origin::with_origin(concat!(
                     include_str!("kernels.wgsl"),
                     include_str!("environment.wgsl"),
                     include_str!("working_space.wgsl"),
@@ -325,7 +337,7 @@ impl Renderer {
                     include_str!("shadow.wgsl"),
                     include_str!("particles.wgsl"),
                     include_str!("material_layers.wgsl")
-                )
+                ))
                 .into(),
             ),
         });
@@ -340,6 +352,11 @@ impl Renderer {
             contents: include_bytes!("../assets/studio/filtered.bin"),
             usage: wgpu::BufferUsages::STORAGE,
         });
+        let whole_frame = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("whole-frame origin"),
+            contents: &[0; 16],
+            usage: wgpu::BufferUsages::UNIFORM,
+        });
         let default_lighting = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Default studio lighting"),
             contents: bytemuck::bytes_of(&studio_lighting::Lighting::new(
@@ -353,6 +370,17 @@ impl Renderer {
         let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("composition buffers"),
             entries: &[
+                // Where a pass's threads begin (see origin.rs).
+                wgpu::BindGroupLayoutEntry {
+                    binding: origin::BINDING,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: std::num::NonZeroU64::new(16),
+                    },
+                    count: None,
+                },
                 wgpu::BindGroupLayoutEntry {
                     binding: 7,
                     visibility: wgpu::ShaderStages::COMPUTE,
@@ -512,6 +540,10 @@ impl Renderer {
             pass_times: Mutex::new(None),
             noted: Mutex::new(std::time::Instant::now()),
             share_scene_renders: true,
+            area_dispatch: true,
+            keep_results: true,
+            areas_used: Default::default(),
+            whole_frame,
             cache_limit_bytes: 64 * 1024 * 1024,
             owner: Arc::new(frame::DeviceIdentity),
             pool_limit_bytes: 128 * 1024 * 1024,
@@ -1001,6 +1033,10 @@ impl Renderer {
             .map_err(|_| error("frame cache poisoned"))?
             .stats())
     }
+    /// How many passes have run over a box only (see `area_dispatch`), since the start.
+    pub fn areas_used(&self) -> Result<u64> {
+        Ok(self.areas_used.load(std::sync::atomic::Ordering::Relaxed))
+    }
     /// Nodes' results kept between frames: how many, their bytes, and how many passes
     /// they have stood for since the start.
     pub fn kept_results(&self) -> Result<(usize, u64, u64)> {
@@ -1120,13 +1156,19 @@ impl Renderer {
         let visible = plan.visible_at(time)?;
         let mut stale = vec![false; plan.slot_count];
         // Nodes' results from earlier frames that stand for passes now, and those to keep.
-        let room = self.budget_bytes / 8;
+        let room = if self.keep_results {
+            self.budget_bytes / 8
+        } else {
+            0
+        };
         let decision = self
             .results
             .lock()
             .map_err(|_| error("kept results lock poisoned"))?
             .decide(plan, ids, &visible, room);
         let mut keeping: Vec<(u64, wgpu::Buffer)> = Vec::new();
+        // Each pass that runs over a box only: a one-pass node clear outside it.
+        let areas = self.areas(plan, time, vectors)?;
         // A result to keep is copied out before the next pass can reuse its slot.
         let mut to_keep: Option<usize> = None;
         // Only when asked to time the passes: what ran since the last mark is finished
@@ -1346,10 +1388,30 @@ impl Renderer {
                     plan::Input::Vector(index) => vectors[index].0.buffer(),
                 }
             };
+            let begins = match areas[at_pass] {
+                Some([x, y, _, _]) => {
+                    self.areas_used
+                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    let buffer = resources.take(
+                        &self.device,
+                        16,
+                        wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+                        "origin",
+                    )?;
+                    self.queue
+                        .write_buffer(&buffer, 0, bytemuck::cast_slice(&[x, y, 0, 0]));
+                    buffer
+                }
+                None => self.whole_frame.clone(),
+            };
             let bind = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: Some(&node.label),
                 layout: &self.layout,
                 entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: origin::BINDING,
+                        resource: begins.as_entire_binding(),
+                    },
                     wgpu::BindGroupEntry {
                         binding: 7,
                         resource: self.studio_environment.as_entire_binding(),
@@ -1395,8 +1457,9 @@ impl Renderer {
                 ),
                 _ => Some(self.pipeline(scheduled.kernel)?),
             };
-            // Particles add into their output, so it starts from zero.
-            if scheduled.kernel == Kernel::ParticleSplat {
+            // Particles add into their output, so it starts from zero; so does a pass run
+            // over its box only, since it is clear everywhere else.
+            if scheduled.kernel == Kernel::ParticleSplat || areas[at_pass].is_some() {
                 encoder.clear_buffer(output, 0, None);
             }
             {
@@ -1424,9 +1487,18 @@ impl Renderer {
                     Kernel::BlurHorizontal | Kernel::FrostHorizontal => {
                         pass.dispatch_workgroups(plan.width.div_ceil(64), plan.height, 1)
                     }
-                    _ => {
-                        pass.dispatch_workgroups(plan.width.div_ceil(8), plan.height.div_ceil(8), 1)
-                    }
+                    _ => match areas[at_pass] {
+                        Some([_, _, width, height]) => {
+                            if width > 0 && height > 0 {
+                                pass.dispatch_workgroups(width.div_ceil(8), height.div_ceil(8), 1)
+                            }
+                        }
+                        None => pass.dispatch_workgroups(
+                            plan.width.div_ceil(8),
+                            plan.height.div_ceil(8),
+                            1,
+                        ),
+                    },
                 }
             }
         }
@@ -1513,6 +1585,73 @@ impl Renderer {
         }
     }
 
+    /// For each pass of `plan`, the box (`[x, y, width, height]`) it runs over when that
+    /// is less than half the frame: the one pass of a node that is clear outside it. The
+    /// output is cleared first, so it is the picture a full-frame pass makes.
+    fn areas(
+        &self,
+        plan: &Plan,
+        time: veylvik_document::Time,
+        vectors: &BTreeMap<usize, (Arc<GpuFrame>, [u32; 2])>,
+    ) -> Result<Vec<Option<[u32; 4]>>> {
+        let count = plan.passes.len();
+        if !self.area_dispatch {
+            return Ok(vec![None; count]);
+        }
+        use crate::nodes::Extent;
+        // A shape is drawn over its own box (see vector.rs).
+        let known = |i: usize| -> Option<Extent> {
+            if !matches!(plan.nodes[i].operation, Operation::Path(_)) {
+                return None;
+            }
+            let (frame, [x, y]) = vectors.get(&i)?;
+            Some(Extent::Area([
+                *x as i32,
+                *y as i32,
+                (*x + frame.width()) as i32,
+                (*y + frame.height()) as i32,
+            ]))
+        };
+        let extents = plan.extents(time, &|_| Extent::Everything, &known)?;
+        let (width, height) = (plan.width as i32, plan.height as i32);
+        let frame = Extent::Area([0, 0, width, height]);
+        let alone = |at: usize| {
+            let node = plan.passes[at].node;
+            (at == 0 || plan.passes[at - 1].node != node)
+                && plan.passes.get(at + 1).is_none_or(|next| next.node != node)
+        };
+        // Kernels whose threads are pixels of the frame, dispatched eight by eight.
+        let pixels = |kernel: Kernel| {
+            !matches!(
+                kernel,
+                Kernel::ParticleSplat
+                    | Kernel::GlintSeeds
+                    | Kernel::BlurHorizontal
+                    | Kernel::FrostHorizontal
+                    | Kernel::Custom
+                    | Kernel::RenderScene
+            ) && !kernel.entry().starts_with("particle_")
+        };
+        Ok((0..count)
+            .map(|at| {
+                let pass = &plan.passes[at];
+                if !alone(at) || !pixels(pass.kernel) {
+                    return None;
+                }
+                let area = match extents[pass.node].intersect(frame) {
+                    Extent::Nothing => [0, 0, 0, 0],
+                    Extent::Area([l, t, r, b]) => {
+                        [l as u32, t as u32, (r - l) as u32, (b - t) as u32]
+                    }
+                    Extent::Everything => return None,
+                };
+                // Under half the frame: worth a clear and a smaller dispatch.
+                (u64::from(area[2]) * u64::from(area[3]) * 2
+                    < u64::from(plan.width) * u64::from(plan.height))
+                .then_some(area)
+            })
+            .collect())
+    }
     fn wait(&self, submission: wgpu::SubmissionIndex) -> Result<()> {
         self.device
             .poll(wgpu::PollType::Wait {

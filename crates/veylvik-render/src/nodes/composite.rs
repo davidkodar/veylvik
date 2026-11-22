@@ -81,12 +81,13 @@ impl RenderNode for veylvik_document::nodes::Mask {
     fn reach(&self, _: &dyn Fn(&str) -> Result<f32>, _: &str) -> Result<crate::nodes::Reach> {
         Ok(crate::nodes::Reach::Same)
     }
+    /// The image times the mask's coverage: clear where either is.
     fn extent(
         &self,
         _: &dyn Fn(&str) -> Result<f32>,
         input: &dyn Fn(&str) -> crate::nodes::Extent,
     ) -> Result<crate::nodes::Extent> {
-        Ok(input("image"))
+        Ok(input("image").intersect(input("mask")))
     }
     fn passes(&self) -> Passes {
         Passes::One(Kernel::Mask)
@@ -99,6 +100,20 @@ impl RenderNode for veylvik_document::nodes::CombineMask {
     // The two coverages at the same place.
     fn reach(&self, _: &dyn Fn(&str) -> Result<f32>, _: &str) -> Result<crate::nodes::Reach> {
         Ok(crate::nodes::Reach::Same)
+    }
+    /// Added or either but not both: where either is; overlap: where both are; the
+    /// first less the other: where the first is.
+    fn extent(
+        &self,
+        _: &dyn Fn(&str) -> Result<f32>,
+        input: &dyn Fn(&str) -> crate::nodes::Extent,
+    ) -> Result<crate::nodes::Extent> {
+        let (a, b) = (input("mask"), input("other"));
+        Ok(match self.mode as u32 {
+            1 => a.intersect(b),
+            2 => a,
+            _ => a.union(b),
+        })
     }
     fn passes(&self) -> Passes {
         Passes::One(Kernel::CombineMask)

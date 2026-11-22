@@ -12,7 +12,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let doc = Composition::load(path)?;
     let base = veylvik_io::document_base(path)?;
     let begun = Instant::now();
-    let renderer = veylvik_io::runtime::renderer()?;
+    let mut renderer = veylvik_io::runtime::renderer()?;
+    // To compare: PROFILE_NO_AREA=1 runs every pass over the whole frame.
+    if std::env::var_os("PROFILE_NO_AREA").is_some() {
+        renderer.area_dispatch = false;
+    }
+    // PROFILE_NO_KEPT=1: no node's result is kept between frames.
+    if std::env::var_os("PROFILE_NO_KEPT").is_some() {
+        renderer.keep_results = false;
+    }
     // What a first frame costs, part by part, when asked for (a host wants to know what
     // to do beforehand so its first frame does not wait).
     if std::env::var_os("PROFILE_START").is_some() {

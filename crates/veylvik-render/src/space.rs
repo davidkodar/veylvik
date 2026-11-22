@@ -74,6 +74,75 @@ impl Plan {
         }
         of(self, &index, self.root, time, sources, 0)
     }
+    /// Every node's extent at `time`, by node index, as [`Plan::extent`] has it for the
+    /// root; `known` answers first for a node whose extent is known otherwise (a shape's
+    /// drawn box).
+    pub(crate) fn extents(
+        &self,
+        time: veylvik_document::Time,
+        sources: &dyn Fn(&str) -> crate::nodes::Extent,
+        known: &dyn Fn(usize) -> Option<crate::nodes::Extent>,
+    ) -> Result<Vec<crate::nodes::Extent>> {
+        use crate::nodes::Extent;
+        let index: BTreeMap<NodeId, usize> = self
+            .nodes
+            .iter()
+            .enumerate()
+            .map(|(i, n)| (n.id, i))
+            .collect();
+        let mut done: Vec<Option<Extent>> = vec![None; self.nodes.len()];
+        // Inputs before the nodes that read them; a node met again while open (a loop
+        // cannot be in a plan, but nothing is assumed) counts as everything.
+        #[allow(clippy::too_many_arguments)]
+        fn of(
+            plan: &Plan,
+            index: &BTreeMap<NodeId, usize>,
+            i: usize,
+            time: veylvik_document::Time,
+            sources: &dyn Fn(&str) -> Extent,
+            known: &dyn Fn(usize) -> Option<Extent>,
+            done: &mut Vec<Option<Extent>>,
+            depth: u32,
+        ) -> Result<Extent> {
+            if let Some(extent) = done[i] {
+                return Ok(extent);
+            }
+            if depth > 4096 {
+                return Ok(Extent::Everything);
+            }
+            let node = &plan.nodes[i];
+            let extent = if let Some(extent) = known(i) {
+                extent
+            } else if node.inputs.is_empty()
+                && let Some(key) = node.operation.source_key()
+            {
+                if key.starts_with('\0') {
+                    Extent::Everything
+                } else {
+                    sources(&key)
+                }
+            } else {
+                let mut inputs = BTreeMap::new();
+                for (port, source) in &node.inputs {
+                    let extent = match index.get(source) {
+                        Some(&j) => of(plan, index, j, time, sources, known, done, depth + 1)?,
+                        None => Extent::Everything,
+                    };
+                    inputs.insert(port.clone(), extent);
+                }
+                let input = |port: &str| inputs.get(port).copied().unwrap_or(Extent::Nothing);
+                let sample = plan.sampler(i, time);
+                veylvik_document::each_node!(&node.operation, n => crate::nodes::RenderNode::extent(n, &sample, &input))?
+            };
+            done[i] = Some(extent);
+            Ok(extent)
+        }
+        let mut all = Vec::with_capacity(self.nodes.len());
+        for i in 0..self.nodes.len() {
+            all.push(of(self, &index, i, time, sources, known, &mut done, 0)?);
+        }
+        Ok(all)
+    }
     /// How much of the source with asset key `key` an area of the output is made from at
     /// `time`; `None` when the output does not come from that source at all.
     pub fn reach(

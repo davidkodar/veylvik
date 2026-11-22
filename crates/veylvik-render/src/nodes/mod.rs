@@ -66,6 +66,26 @@ impl Extent {
             ]),
         }
     }
+    /// Where both can be other than clear.
+    pub fn intersect(self, other: Self) -> Self {
+        match (self, other) {
+            (Self::Nothing, _) | (_, Self::Nothing) => Self::Nothing,
+            (Self::Everything, e) | (e, Self::Everything) => e,
+            (Self::Area(a), Self::Area(b)) => {
+                let area = [
+                    a[0].max(b[0]),
+                    a[1].max(b[1]),
+                    a[2].min(b[2]),
+                    a[3].min(b[3]),
+                ];
+                if area[0] >= area[2] || area[1] >= area[3] {
+                    Self::Nothing
+                } else {
+                    Self::Area(area)
+                }
+            }
+        }
+    }
     /// Wider on every side by `pixels`.
     pub fn grown(self, pixels: i32) -> Self {
         match self {
