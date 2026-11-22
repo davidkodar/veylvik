@@ -690,6 +690,16 @@ impl Renderer {
                 ];
                 p.extra[0] = frame.width() as f32;
             }
+            // Text is drawn over its own box too: its pass reads the box (extra =
+            // width, height, left, top) and is clear outside it.
+            if matches!(plan.nodes[*index].operation, Operation::Text(_)) {
+                evaluated[*index].extra = [
+                    frame.width() as f32,
+                    frame.height() as f32,
+                    corner[0] as f32,
+                    corner[1] as f32,
+                ];
+            }
         }
         for (node, p) in plan.nodes.iter().zip(&mut evaluated) {
             if let Some(asset) = node.operation.asset() {
@@ -1605,9 +1615,12 @@ impl Renderer {
             return Ok(vec![None; count]);
         }
         use crate::nodes::Extent;
-        // A shape is drawn over its own box (see vector.rs).
+        // A shape or a text is drawn over its own box (see vector.rs).
         let known = |i: usize| -> Option<Extent> {
-            if !matches!(plan.nodes[i].operation, Operation::Path(_)) {
+            if !matches!(
+                plan.nodes[i].operation,
+                Operation::Path(_) | Operation::Text(_)
+            ) {
                 return None;
             }
             let (frame, [x, y]) = vectors.get(&i)?;

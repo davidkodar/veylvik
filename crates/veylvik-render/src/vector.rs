@@ -344,14 +344,11 @@ impl Renderer {
         let mut frames = std::collections::BTreeMap::new();
         let mut prepared: Vec<(Key, std::sync::Arc<GpuFrame>)> = Vec::new();
         for (index, key) in keys {
-            // A shape is drawn and kept over its own box only: a logo's part covers a
-            // thousandth of a 4K frame. Text is kept whole (its pass reads it so).
-            let area = match &plan.nodes[index].operation {
-                veylvik_document::Operation::Path(_) => {
-                    bounds(&key.geometry, key.width, key.height)
-                }
-                _ => [0, 0, key.width, key.height],
-            };
+            // A shape or a text is drawn and kept over its own box only: a logo's part
+            // covers a thousandth of a 4K frame, a title a few percent. Moved to its box,
+            // a curve is flattened with other rounding, so an edge pixel may come out one
+            // step of 255 apart from drawing it over the whole frame.
+            let area = bounds(&key.geometry, key.width, key.height);
             if let Some((_, frame)) = prepared.iter().find(|(candidate, _)| candidate == &key) {
                 frames.insert(index, (frame.clone(), [area[0], area[1]]));
                 continue;

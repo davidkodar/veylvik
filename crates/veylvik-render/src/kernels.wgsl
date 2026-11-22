@@ -1348,7 +1348,11 @@ fn patina(@builtin(global_invocation_id) gid:vec3<u32>) {
 @compute @workgroup_size(8,8)
 fn text_image(@builtin(global_invocation_id) gid:vec3<u32>) {
  if !inside(gid) {return;}
- let a=source[index(gid)].a*p.values.a;
+ // The coverage is kept over the text's own box: extra = (width, height, left, top).
+ let w=u32(p.extra.x);let h=u32(p.extra.y);let ox=u32(p.extra.z);let oy=u32(p.extra.w);
+ var coverage=0.0;
+ if gid.x>=ox && gid.y>=oy && gid.x-ox<w && gid.y-oy<h {coverage=source[(gid.y-oy)*w+gid.x-ox].a;}
+ let a=coverage*p.values.a;
  result[index(gid)]=vec4<f32>(p.values.rgb*a,a);
 }
 
