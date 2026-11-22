@@ -154,8 +154,10 @@ struct Since {
 }
 impl Studio {
     /// While playing: whether the playhead has to hold. It holds only when it must: the
-    /// frames ahead are not all prepared, and this composition renders slower than real
-    /// time (with a margin), so playing live would skip frames. Says why on the viewer.
+    /// frames ahead are not all prepared, and this composition renders far slower than
+    /// real time (over one and a half times a frame's moment). Close to real time it
+    /// plays at once, skipping the odd frame (or, with every frame on, a little slower),
+    /// and keeps what it shows. Says why on the viewer.
     pub(crate) fn hold_for_frames(&mut self, ctx: &egui::Context) -> bool {
         let values = &self.preferences.values;
         let off = !values.wait_for_frames
@@ -199,8 +201,8 @@ impl Studio {
         let wanted = (range.1 - from + 1).max(0) as usize;
         let have = ready.range(from..=range.1).count();
         let cost = scheduler.frame_cost();
-        // All there, or live is fast enough: play at once, nothing to explain.
-        let fast = cost.is_some_and(|cost| cost.as_secs_f64() < frame.as_secs_f64() * 0.8);
+        // All there, or live is close enough to real time: play at once.
+        let fast = cost.is_some_and(|cost| cost.as_secs_f64() < frame.as_secs_f64() * 1.5);
         if have >= wanted || fast {
             self.buffering = None;
             self.waiting = None;

@@ -111,8 +111,12 @@ pub struct Values {
     pub played_reserve_mib: u64,
     /// Make the frames of the playback range that are not kept yet while nobody is working.
     pub fill_while_idle: bool,
-    /// Playing holds until the frames ahead are prepared, so it never runs unevenly.
+    /// A composition far slower than real time holds playback until the frames ahead are
+    /// prepared; one close to real time plays at once.
     pub wait_for_frames: bool,
+    /// When playing cannot keep up: show every frame and run slower than real time (sound
+    /// stays quiet while behind), rather than keep time and skip frames.
+    pub every_frame: bool,
     pub recovery_enabled: bool,
     pub recovery_seconds: u64,
     /// Play the composition's sound during playback.
@@ -189,6 +193,7 @@ impl Default for Values {
             played_reserve_mib: 4096,
             fill_while_idle: true,
             wait_for_frames: true,
+            every_frame: false,
             recovery_enabled: true,
             recovery_seconds: 10,
             audio_enabled: true,
@@ -449,6 +454,7 @@ impl Preferences {
                 self.draft.played_reserve_mib = d.played_reserve_mib;
                 self.draft.fill_while_idle = d.fill_while_idle;
                 self.draft.wait_for_frames = d.wait_for_frames;
+                self.draft.every_frame = d.every_frame;
             }
             5 => {
                 self.draft.audio_enabled = d.audio_enabled;
@@ -1007,9 +1013,14 @@ impl Preferences {
                 );
                 ui.checkbox(
                     &mut self.draft.wait_for_frames,
-                    "Play only when the frames are ready",
+                    "Wait for frames when a composition is far too slow",
                 );
-                ui.weak("On: pressing play holds until the frames ahead are prepared, then plays every frame at its moment. Off: it plays at once and skips frames it cannot make in time.");
+                ui.weak("Pressing play plays at once, and every frame shown is kept, so the next pass plays smoothly. Only when a frame takes more than one and a half times its moment does playing first prepare the frames ahead (with this on).");
+                ui.checkbox(
+                    &mut self.draft.every_frame,
+                    "Show every frame when playing cannot keep up",
+                );
+                ui.weak("Off: playing keeps real time and skips the frames it cannot make in time, with sound. On: it shows every frame and runs slower than real time, quiet while it is behind.");
                 ui.weak("When you stop working for a moment, the frames of the playback range that are not kept yet are made in the background, from the playhead on, and give way the instant you do anything.");
                 ui.add(
                     egui::Slider::new(&mut self.draft.played_memory_mib, 0..=65536)

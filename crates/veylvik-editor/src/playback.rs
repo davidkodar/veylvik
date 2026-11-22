@@ -58,6 +58,47 @@ pub fn frame(start: i64, elapsed: i64, range: (i64, i64), looping: bool) -> (i64
         (first + position.min(length - 1), position >= length - 1)
     }
 }
+/// Playing every frame: where the clock says to be (`clock`, as [`frame`] gives it), seen
+/// from the frame shown now. When the clock has gone past the next frame, playing is
+/// behind: it goes to the next frame (and its end flag) rather than skip; true then.
+pub fn every_frame(
+    clock: (i64, bool),
+    shown: i64,
+    range: (i64, i64),
+    looping: bool,
+) -> ((i64, bool), bool) {
+    let next = frame(shown, 1, range, looping);
+    if clock.0 != shown && clock.0 != next.0 {
+        (next, true)
+    } else {
+        (clock, false)
+    }
+}
+#[cfg(test)]
+mod every_frame_tests {
+    use super::*;
+    #[test]
+    fn playing_every_frame_steps_one_at_a_time_when_behind() {
+        let range = (0, 9);
+        // On time: where the clock says, nothing held back.
+        assert_eq!(
+            every_frame((4, false), 3, range, false),
+            ((4, false), false)
+        );
+        assert_eq!(
+            every_frame((3, false), 3, range, false),
+            ((3, false), false)
+        );
+        // Behind: the next frame, not the one the clock reached.
+        assert_eq!(every_frame((7, false), 3, range, false), ((4, false), true));
+        // At the end of a range that does not loop, the last frame ends it.
+        assert_eq!(every_frame((9, true), 7, range, false), ((8, false), true));
+        assert_eq!(every_frame((9, true), 8, range, false), ((9, true), false));
+        // Looping: from the last frame the next is the first.
+        assert_eq!(every_frame((2, false), 9, range, true), ((0, false), true));
+        assert_eq!(every_frame((0, false), 9, range, true), ((0, false), false));
+    }
+}
 impl crate::Studio {
     pub(super) fn playback_toolbar(&mut self, ui: &mut eframe::egui::Ui) {
         use eframe::egui;

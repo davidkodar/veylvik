@@ -795,6 +795,7 @@ impl Studio {
             buffering: None,
             waiting: None,
             play_now: false,
+            playing_behind: false,
             trust_prompt,
             playback_folder: None,
             host_name: None,
@@ -953,6 +954,8 @@ struct Studio {
     waiting: Option<fill::Waiting>,
     /// For this play only: play at once, skipping frames, as the artist asked.
     play_now: bool,
+    /// Playing shows every frame and has fallen behind real time: the sound waits.
+    playing_behind: bool,
     /// The opened project reads files outside its folder: ask whether to allow them.
     trust_prompt: bool,
     /// Where a host wants the playback store's pictures (its own cache folder).
@@ -4019,6 +4022,7 @@ impl Studio {
         }
         // Playing shows every frame at its moment or it does not move: while frames
         // ahead are still being prepared the playhead holds, and goes when they are there.
+        self.playing_behind &= self.playing;
         if self.playing && self.hold_for_frames(&ctx) {
             self.playback = Instant::now();
             self.playback_frame = self.project.frame;
@@ -4029,12 +4033,21 @@ impl Studio {
             let range = self
                 .playback_controls
                 .range(self.project.document.snapshot().frame_count);
-            let (frame, finished) = playback::frame(
-                self.playback_frame,
-                elapsed,
-                range,
-                self.preferences.values.loop_playback,
-            );
+            let looping = self.preferences.values.loop_playback;
+            let (mut frame, mut finished) =
+                playback::frame(self.playback_frame, elapsed, range, looping);
+            // Every frame: never past the next one; when the clock is ahead, the next
+            // frame starts the clock again, so playing runs slower and skips nothing.
+            if self.preferences.values.every_frame && !self.preview_pending {
+                let (step, behind) =
+                    playback::every_frame((frame, finished), self.project.frame, range, looping);
+                self.playing_behind = behind;
+                if behind {
+                    (frame, finished) = step;
+                    self.playback = Instant::now();
+                    self.playback_frame = frame;
+                }
+            }
             // Playback must let an active frame finish before submitting again.
             // Explicit edits and scrubbing still replace obsolete work immediately.
             if frame != self.project.frame && !self.preview_pending {
