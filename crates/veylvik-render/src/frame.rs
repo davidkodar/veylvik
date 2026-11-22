@@ -159,6 +159,11 @@ pub trait FrameSource: Send + Sync {
     ) -> Option<u64> {
         None
     }
+    /// Whether the names [`FrameSource::frame_name`] gives mean the same frame in every
+    /// session (so pictures made of them may be kept between sessions), or only here.
+    fn names_last(&self) -> bool {
+        true
+    }
     /// Whether a frame asked for again is known as the frame given before, for as long
     /// as its content is the same (it is the very frame, or carries the same name:
     /// [`Image::named`]): then a picture made of it can be known again by what it is made
@@ -375,7 +380,7 @@ impl ImageInputs {
                         if let Some(names) = names.as_deref_mut()
                             && let Some(name) = source.frame_name(time, target, *colour)
                         {
-                            names.insert(key, (name, true));
+                            names.insert(key, (name, source.names_last()));
                             continue;
                         }
                         if let Some(renderer) = renderer

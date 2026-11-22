@@ -161,3 +161,55 @@ fn a_hosts_media_is_read_once_kept_by_its_name_and_read_again_when_it_changes() 
     source.forget();
     assert_eq!(source.held(), 0);
 }
+
+#[test]
+#[ignore = "requires Vulkan"]
+fn a_hosts_frame_is_named_without_asking_the_host_for_it() {
+    let renderer = Renderer::new().unwrap();
+    let clip = || Clip {
+        device: renderer.device().clone(),
+        queue: renderer.queue().clone(),
+        version: AtomicU64::new(1),
+        asked: AtomicU64::new(0),
+    };
+    let colour = Default::default();
+    let at = |frame: i64| Time::new(frame, 24).unwrap();
+    let here = HostSource::new(clip(), 1 << 30);
+    // Named from the host's identity: the host is never asked for the frame.
+    let name = here.frame_name(at(3), None, colour).unwrap();
+    assert_eq!(here.media().asked.load(Ordering::SeqCst), 0);
+    assert_eq!(
+        here.frame_name(at(3), None, colour),
+        Some(name),
+        "one frame, one name"
+    );
+    assert_ne!(here.frame_name(at(4), None, colour), Some(name));
+    assert_ne!(
+        here.frame_name(at(3), Some([8, 4]), colour),
+        Some(name),
+        "another size, another name"
+    );
+    here.media().version.store(2, Ordering::SeqCst);
+    assert_ne!(
+        here.frame_name(at(3), None, colour),
+        Some(name),
+        "a changed frame, another name"
+    );
+    // Without the host's promise its names are this source's alone and do not last.
+    let other = HostSource::new(clip(), 1 << 30);
+    assert!(!here.names_last());
+    assert_ne!(
+        other.frame_name(at(4), None, colour),
+        here.frame_name(at(4), None, colour)
+    );
+    // With it, they mean the same frame for every source, in every session.
+    let (a, b) = (
+        HostSource::new(clip(), 1 << 30).lasting(),
+        HostSource::new(clip(), 1 << 30).lasting(),
+    );
+    assert!(a.names_last());
+    assert_eq!(
+        a.frame_name(at(4), None, colour),
+        b.frame_name(at(4), None, colour)
+    );
+}

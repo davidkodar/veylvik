@@ -30,6 +30,9 @@ pub struct HostSource<M> {
     budget: u64,
     kept: Mutex<Vec<Kept>>,
     lasting: bool,
+    /// Mixed into this source's frame names unless they last: random for each source, so
+    /// identities that only mean something here never meet another source's.
+    salt: u64,
 }
 impl<M: HostMedia> HostSource<M> {
     pub fn new(media: M, budget: u64) -> Self {
@@ -38,6 +41,23 @@ impl<M: HostMedia> HostSource<M> {
             budget,
             kept: Mutex::new(Vec::new()),
             lasting: false,
+            salt: std::hash::BuildHasher::hash_one(
+                &std::collections::hash_map::RandomState::new(),
+                0u8,
+            ),
+        }
+    }
+    /// The name of the frame with `identity` at `target`: the host's identity alone when
+    /// it lasts, else mixed with this source's salt.
+    fn name(&self, identity: u64, target: Option<[u32; 2]>) -> u64 {
+        let size = target.map_or(0, |[w, h]| u64::from(w) << 32 | u64::from(h));
+        if self.lasting {
+            crate::fnv(&identity.to_le_bytes(), size)
+        } else {
+            crate::fnv(
+                &[identity.to_le_bytes(), self.salt.to_le_bytes()].concat(),
+                size,
+            )
         }
     }
     /// The host promises that an identity it gives means one frame and no other: not
@@ -110,8 +130,7 @@ impl<M: HostMedia> FrameSource for HostSource<M> {
         // Only a host that has promised its names mean one frame everywhere has its
         // frames named by them; otherwise a frame is known within this source alone.
         let frame = Arc::new(if self.lasting {
-            let size = target.map_or(0, |[w, h]| u64::from(w) << 32 | u64::from(h));
-            frame.named(crate::fnv(&identity.to_le_bytes(), size))
+            frame.named(self.name(identity, target))
         } else {
             frame
         });
@@ -130,6 +149,19 @@ impl<M: HostMedia> FrameSource for HostSource<M> {
     }
     fn byte_budget(&self) -> u64 {
         self.budget
+    }
+    // Named from the host's identity, so telling what a picture is made of never asks
+    // the host for the frame (a decode and a conversion, each time).
+    fn frame_name(
+        &self,
+        time: Time,
+        target: Option<[u32; 2]>,
+        _colour: veylvik_document::media::InputColour,
+    ) -> Option<u64> {
+        Some(self.name(self.media.identity(time), target))
+    }
+    fn names_last(&self) -> bool {
+        self.lasting
     }
     // A frame is kept under the host's name for it and handed out again.
     fn steady(&self) -> bool {
