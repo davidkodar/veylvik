@@ -119,6 +119,58 @@ pub fn load_layer(path: &Path, layer: Option<&str>, budget: u64) -> Result<Media
 
 /// .veyseq: {"schema":1,"frame_rate":{"ticks":24,"rate":1},"files":["shot0001.png",...]}
 /// Also reads Veylvik's completed sequence.json export manifests.
+/// Frames of a sequence read ahead of the one asked for, when they are asked in order.
+const AHEAD: usize = 3;
+/// Frames a sequence keeps: the current one, the one before, and those read ahead.
+const KEPT: usize = 2 + AHEAD;
+/// One frame of a sequence read from its file, checked to be the file the manifest named.
+#[allow(clippy::too_many_arguments)]
+fn read_frame(
+    file: &Path,
+    stamp: (u64, std::time::SystemTime),
+    layer: Option<&str>,
+    limit: u64,
+    size: (u32, u32),
+) -> Result<Image> {
+    let meta = std::fs::metadata(file)?;
+    if (meta.len(), meta.modified()?) != stamp {
+        return Err("Sequence frame changed on disk; reload sources before continuing".into());
+    }
+    let name = {
+        use std::hash::{Hash, Hasher};
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        (file, stamp, &layer).hash(&mut hasher);
+        hasher.finish()
+    };
+    let image = crate::load_image_layer(file, layer, limit)?.named(name);
+    let after = std::fs::metadata(file)?;
+    if (after.len(), after.modified()?) != stamp {
+        return Err("Sequence frame changed during decoding; reload sources".into());
+    }
+    if (image.width(), image.height()) != size {
+        return Err("All sequence frames must have identical dimensions".into());
+    }
+    Ok(image)
+}
+/// Keep `image` as frame `index` of the sequence owning `cache`, letting its oldest go.
+fn keep_frame(
+    cache: &Mutex<VecDeque<usize>>,
+    key: impl Fn(usize) -> crate::host_cache::Key,
+    index: usize,
+    image: &Arc<Image>,
+) {
+    let Ok(mut cache) = cache.lock() else {
+        return;
+    };
+    cache.retain(|n| *n != index);
+    while cache.len() >= KEPT {
+        if let Some(old) = cache.pop_front() {
+            crate::host_cache::remove(key(old));
+        }
+    }
+    crate::host_cache::put(key(index), image.clone(), image.byte_size());
+    cache.push_back(index);
+}
 pub struct Sequence {
     files: Vec<PathBuf>,
     stamps: Vec<(u64, std::time::SystemTime)>,
@@ -126,8 +178,12 @@ pub struct Sequence {
     size: (u32, u32),
     /// Owner id of this sequence's frames in `host_cache`.
     owner: u64,
-    /// Frames this sequence holds in the shared host cache, oldest first (at most 2).
-    cache: Mutex<VecDeque<usize>>,
+    /// Frames this sequence holds in the shared host cache, oldest first (at most `KEPT`).
+    cache: Arc<Mutex<VecDeque<usize>>>,
+    /// Frames being read ahead on other threads, and the signal that one is done.
+    reading: Arc<(Mutex<std::collections::BTreeSet<usize>>, std::sync::Condvar)>,
+    /// The frame asked for last: the next one in order starts the reading ahead.
+    last: Mutex<Option<usize>>,
     /// Largest single frame the caller accepted when opening.
     frame_limit: u64,
     /// The OpenEXR layer read from every frame; None for the main image.
@@ -152,7 +208,9 @@ impl Sequence {
             rate,
             size,
             owner,
-            cache: Mutex::new(VecDeque::from([0])),
+            cache: Arc::new(Mutex::new(VecDeque::from([0]))),
+            reading: Default::default(),
+            last: Mutex::new(None),
             frame_limit: budget.min(crate::MAX_IMAGE_BYTES),
             layer: layer.map(str::to_owned),
         };
@@ -298,54 +356,102 @@ impl FrameSource for Sequence {
     fn frame(&self, time: Time) -> veylvik_render::Result<Arc<Image>> {
         let work = || -> Result<Arc<Image>> {
             let index = self.index(time)?;
-            let mut cache = self
-                .cache
+            // Asked in order: the frames after it are read on other threads meanwhile.
+            let in_order = self
+                .last
                 .lock()
-                .map_err(|_| "Sequence cache unavailable")?;
-            let meta = std::fs::metadata(&self.files[index])?;
-            if (meta.len(), meta.modified()?) != self.stamps[index] {
-                return Err(
-                    "Sequence frame changed on disk; reload sources before continuing".into(),
-                );
+                .ok()
+                .and_then(|mut last| last.replace(index))
+                .is_some_and(|before| index == before + 1);
+            if in_order {
+                self.read_ahead(index);
             }
-            if cache.contains(&index)
-                && let Some(image) = crate::host_cache::get::<Image>(self.key(index))
+            // A frame being read ahead is waited for, not read twice.
             {
-                return Ok(image);
-            }
-            let name = {
-                use std::hash::{Hash, Hasher};
-                let mut hasher = std::collections::hash_map::DefaultHasher::new();
-                (&self.files[index], self.stamps[index], &self.layer).hash(&mut hasher);
-                hasher.finish()
-            };
-            let image = Arc::new(
-                crate::load_image_layer(
-                    &self.files[index],
-                    self.layer.as_deref(),
-                    self.frame_limit,
-                )?
-                .named(name),
-            );
-            let after = std::fs::metadata(&self.files[index])?;
-            if (after.len(), after.modified()?) != self.stamps[index] {
-                return Err("Sequence frame changed during decoding; reload sources".into());
-            }
-            if (image.width(), image.height()) != self.size {
-                return Err("All sequence frames must have identical dimensions".into());
-            }
-            // At most two frames per sequence; the shared cache bounds all sources together.
-            cache.retain(|n| *n != index);
-            while cache.len() >= 2 {
-                if let Some(old) = cache.pop_front() {
-                    crate::host_cache::remove(self.key(old));
+                let (reading, done) = &*self.reading;
+                let mut reading = reading.lock().map_err(|_| "Sequence reading unavailable")?;
+                while reading.contains(&index) {
+                    reading = done
+                        .wait(reading)
+                        .map_err(|_| "Sequence reading unavailable")?;
                 }
             }
-            crate::host_cache::put(self.key(index), image.clone(), image.byte_size());
-            cache.push_back(index);
+            let held = self
+                .cache
+                .lock()
+                .map_err(|_| "Sequence cache unavailable")?
+                .contains(&index);
+            if held && let Some(image) = crate::host_cache::get::<Image>(self.key(index)) {
+                // Kept frames are still the files the manifest names.
+                let meta = std::fs::metadata(&self.files[index])?;
+                if (meta.len(), meta.modified()?) != self.stamps[index] {
+                    return Err(
+                        "Sequence frame changed on disk; reload sources before continuing".into(),
+                    );
+                }
+                return Ok(image);
+            }
+            let image = Arc::new(read_frame(
+                &self.files[index],
+                self.stamps[index],
+                self.layer.as_deref(),
+                self.frame_limit,
+                self.size,
+            )?);
+            keep_frame(&self.cache, |n| self.key(n), index, &image);
             Ok(image)
         };
         work().map_err(|e| veylvik_render::Error::Message(e.to_string()))
+    }
+}
+impl Sequence {
+    /// Read the frames after `index` that are not kept or being read, each on a thread of
+    /// its own, into the cache; one that fails is simply not kept.
+    fn read_ahead(&self, index: usize) {
+        for next in index + 1..(index + 1 + AHEAD).min(self.files.len()) {
+            let held = self.cache.lock().is_ok_and(|cache| cache.contains(&next));
+            if held {
+                continue;
+            }
+            {
+                let Ok(mut reading) = self.reading.0.lock() else {
+                    return;
+                };
+                if !reading.insert(next) {
+                    continue;
+                }
+            }
+            let (file, stamp, layer, limit, size) = (
+                self.files[next].clone(),
+                self.stamps[next],
+                self.layer.clone(),
+                self.frame_limit,
+                self.size,
+            );
+            let (cache, reading, owner) = (self.cache.clone(), self.reading.clone(), self.owner);
+            let spawned = std::thread::Builder::new()
+                .name("sequence-ahead".into())
+                .spawn(move || {
+                    if let Ok(image) = read_frame(&file, stamp, layer.as_deref(), limit, size) {
+                        let key = |n| crate::host_cache::Key {
+                            owner,
+                            kind: 0,
+                            index: n,
+                            variant: 0,
+                        };
+                        keep_frame(&cache, key, next, &Arc::new(image));
+                    }
+                    if let Ok(mut set) = reading.0.lock() {
+                        set.remove(&next);
+                    }
+                    reading.1.notify_all();
+                });
+            if spawned.is_err()
+                && let Ok(mut set) = self.reading.0.lock()
+            {
+                set.remove(&next);
+            }
+        }
     }
 }
 
@@ -492,7 +598,7 @@ mod tests {
             sequence.frame(Time::new(100, 1).unwrap()).unwrap().pixels()[0],
             [0.0, 0.0, 1.0, 1.0]
         );
-        assert!(sequence.cache.lock().unwrap().len() <= 2);
+        assert!(sequence.cache.lock().unwrap().len() <= KEPT);
         std::fs::write(dir.join("1.png"), b"changed").unwrap();
         assert!(sequence.frame(Time::new(1001, 24000).unwrap()).is_err());
         std::fs::write(
@@ -501,6 +607,53 @@ mod tests {
         )
         .unwrap();
         assert!(Sequence::open(&path, 32).is_err());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+    #[test]
+    fn frames_asked_in_order_are_read_ahead_and_kept_within_bounds() {
+        let dir = std::env::temp_dir().join(format!("veylvik-ahead-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let names: Vec<String> = (0..8).map(|n| format!("{n}.png")).collect();
+        for (n, name) in names.iter().enumerate() {
+            crate::save_png(&dir.join(name), 1, 1, &[[n as f32 / 8.0, 0.0, 0.0, 1.0]]).unwrap();
+        }
+        let path = dir.join("shot.veyseq");
+        std::fs::write(
+            &path,
+            serde_json::json!({"schema": 1, "frame_rate": {"ticks": 24, "rate": 1}, "files": names})
+                .to_string(),
+        )
+        .unwrap();
+        let sequence = Sequence::open(&path, 32).unwrap();
+        let at = |n: i64| Time::at_frame(n, Time::new(24, 1).unwrap()).unwrap();
+        sequence.frame(at(0)).unwrap();
+        sequence.frame(at(1)).unwrap();
+        // In order: frames 2, 3 and 4 are read on other threads.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while !sequence.reading.0.lock().unwrap().is_empty() {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "reading ahead never finished"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        for n in 2..=4 {
+            assert!(
+                sequence.cache.lock().unwrap().contains(&n),
+                "frame {n} not read ahead"
+            );
+        }
+        // The frame read ahead is the one given, and it is the right picture.
+        let kept = crate::host_cache::get::<Image>(sequence.key(2)).unwrap();
+        let two = sequence.frame(at(2)).unwrap();
+        assert!(Arc::ptr_eq(&kept, &two));
+        let direct = crate::load_png(&dir.join("2.png"), 1 << 20).unwrap();
+        assert_eq!(two.pixels()[0], direct.pixels()[0]);
+        // Walked to the end, never more than a sequence keeps.
+        for n in 3..8 {
+            sequence.frame(at(n)).unwrap();
+            assert!(sequence.cache.lock().unwrap().len() <= KEPT);
+        }
         std::fs::remove_dir_all(dir).unwrap();
     }
 }
