@@ -104,7 +104,7 @@ pub(crate) fn fitted(room: egui::Rect, aspect: f32) -> egui::Rect {
 pub struct Layouts {
     /// Panel sizes to impose, and for how many more frames.
     forced: Option<(Layout, u8)>,
-    naming: Option<String>,
+    pub(crate) naming: Option<String>,
     /// The viewer is also shown in a window of its own.
     pub second_viewer: bool,
     second_fullscreen: bool,
@@ -161,60 +161,6 @@ impl Studio {
             library_width: panel_size(ctx, "asset-library", standard.library_width, true),
             inspector_width: panel_size(ctx, "inspector", standard.inspector_width, true),
             editor_height: panel_size(ctx, "graph", standard.editor_height, false),
-        }
-    }
-    /// The Layout submenu of the View menu.
-    pub(crate) fn layout_menu(&mut self, ui: &mut egui::Ui) {
-        ui.menu_button("Layout", |ui| {
-            let mut chosen = None;
-            for layout in Layout::built_in() {
-                if ui.button(&layout.name).clicked() {
-                    chosen = Some(layout);
-                }
-            }
-            let saved = self.preferences.values.layouts.clone();
-            if !saved.is_empty() {
-                ui.separator();
-            }
-            let mut removed = None;
-            for layout in &saved {
-                ui.horizontal(|ui| {
-                    if ui.button(&layout.name).clicked() {
-                        chosen = Some(layout.clone());
-                    }
-                    if ui
-                        .small_button("Remove")
-                        .on_hover_text("Forget this saved layout")
-                        .clicked()
-                    {
-                        removed = Some(layout.name.clone());
-                    }
-                });
-            }
-            ui.separator();
-            if ui.button("Save current layout as...").clicked() {
-                self.layouts.naming = Some(String::new());
-                ui.close();
-            }
-            if let Some(layout) = chosen {
-                self.apply_layout(&layout);
-                ui.close();
-            }
-            if let Some(name) = removed {
-                self.preferences.values.layouts.retain(|l| l.name != name);
-                if let Err(error) = self.preferences.persist() {
-                    self.fail(format!("Preferences: {error}"));
-                }
-            }
-        });
-        let mut second = self.layouts.second_viewer;
-        if self.capabilities.second_viewer
-            && ui
-                .checkbox(&mut second, "Viewer in its own window")
-            .on_hover_text("A second window with the same picture, for another screen. Double-click it for full screen")
-            .changed()
-        {
-            self.layouts.second_viewer = second;
         }
     }
     /// The small window that asks for a new layout's name.

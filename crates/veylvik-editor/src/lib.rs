@@ -44,6 +44,7 @@ mod live_jobs;
 mod material_library;
 mod media_controls;
 mod media_import;
+pub mod menu_model;
 mod menus;
 mod model_import;
 mod models_window;
@@ -226,6 +227,13 @@ pub struct Capabilities {
     /// The viewer may take the whole window, or open in a window of its own.
     pub full_screen: bool,
     pub second_viewer: bool,
+    /// The editor draws its own menu bar (with the workspaces and the title). Without it
+    /// a host shows `Editor::menus`, `workspaces` and `title` in its own bar; the
+    /// editor's keys still work while it has the keyboard.
+    pub menu_bar: bool,
+    /// The host keeps the undo history: Undo and Redo are left out of the menus, and the
+    /// host undoes through `Editor::undo` / `redo` (each edit comes as one change).
+    pub host_history: bool,
 }
 impl Capabilities {
     /// Everything: the editor as an app of its own.
@@ -238,6 +246,8 @@ impl Capabilities {
             about: true,
             full_screen: true,
             second_viewer: true,
+            menu_bar: true,
+            host_history: false,
         }
     }
     /// A page inside a host that owns the window, the project and the export.
@@ -250,6 +260,8 @@ impl Capabilities {
             about: false,
             full_screen: false,
             second_viewer: false,
+            menu_bar: false,
+            host_history: true,
         }
     }
 }
@@ -789,6 +801,7 @@ impl Studio {
             host_range: false,
             reported_preferences: None,
             preferences_asked: false,
+            menu_runs: Vec::new(),
             host_display: None,
             viewer_canvas: None,
             files: Tasks::new(setup.context.clone()),
@@ -952,6 +965,8 @@ struct Studio {
     host_range: bool,
     /// Preferences were asked for inside a host, which shows its own.
     preferences_asked: bool,
+    /// Menu items a host asked to run (`Editor::run_menu_item`), run as the frame begins.
+    menu_runs: Vec<String>,
     /// The host's display, drawing the viewer as the host's own viewer draws.
     host_display: Option<Arc<dyn host::HostDisplay>>,
     /// The settings the host last gave or heard of (see `Editor::take_preferences_change`).
@@ -3820,6 +3835,7 @@ impl Studio {
     fn editor_ui(&mut self, ui: &mut egui::Ui) {
         self.track_recent();
         let files_ctx = ui.ctx().clone();
+        self.run_asked_menu_items(&files_ctx);
         self.record_key(&files_ctx);
         self.gather_files(&files_ctx);
         self.take_next_file(&files_ctx);
@@ -4067,7 +4083,9 @@ impl Studio {
             !self.files.busy() && !self.authoring_dialog_open() && self.confirm.is_none(),
             |ui| {
                 if !self.viewer_fullscreen {
-                egui::Panel::top("menu_bar").show_inside(ui, |ui| self.menu_bar(ui));
+                if self.capabilities.menu_bar {
+                    egui::Panel::top("menu_bar").show_inside(ui, |ui| self.menu_bar(ui));
+                }
                 egui::Panel::bottom("status").show_inside(ui, |ui| self.status_bar(ui));
                 // The start screen takes the whole window below the top bar.
                 if self.start.open {

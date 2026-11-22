@@ -13,6 +13,15 @@ pub enum Page {
 }
 impl Page {
     pub const ALL: [Self; 4] = [Self::Compose, Self::Animate, Self::Scene, Self::Export];
+    /// Stable name for a host (`Editor::workspaces`).
+    pub fn id(self) -> &'static str {
+        match self {
+            Self::Compose => "compose",
+            Self::Animate => "animate",
+            Self::Scene => "scene",
+            Self::Export => "export",
+        }
+    }
     pub fn label(self) -> &'static str {
         match self {
             Self::Compose => "Compose",
