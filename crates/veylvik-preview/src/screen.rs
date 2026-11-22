@@ -9,17 +9,42 @@ pub struct Look {
     pub exposure: f32,
     /// The filmic display transform; otherwise colours clip at white.
     pub filmic: bool,
+    /// A host's own display ([`HostEncode::identity`]) in place of the two above; 0 for
+    /// Veylvik's.
+    pub host: u64,
 }
 impl Look {
     /// The look to draw a restored picture with: everything is already in it.
     pub const NEUTRAL: Self = Self {
         exposure: 0.0,
         filmic: false,
+        host: 0,
     };
+}
+/// A host's display: its own code turns the viewer's picture into what its screen shows,
+/// so a page of the host shows a composition as the host's own viewer would.
+pub trait HostEncode: Send + Sync {
+    /// Says which display this is: the same number for the same display (working space,
+    /// tone map, transfer, viewer LUT…), in any session; never 0.
+    fn identity(&self) -> u64;
+    /// `picture` (`width` x `height`, RGBA 32-bit float, scene-linear Rec.709,
+    /// premultiplied, exposure applied) as the host's screen shows it: a texture of the
+    /// same size in `Rgba8Unorm` or `Rgba8UnormSrgb`, usable as `TEXTURE_BINDING` and
+    /// `COPY_SRC`, its colour premultiplied by its alpha. The work is submitted before
+    /// returning; `picture` is not read after.
+    fn encode(
+        &self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        picture: &wgpu::Buffer,
+        width: u32,
+        height: u32,
+    ) -> std::result::Result<wgpu::Texture, String>;
 }
 pub struct Screen {
     pack: wgpu::ComputePipeline,
     unpack: wgpu::ComputePipeline,
+    expose: wgpu::ComputePipeline,
 }
 impl Screen {
     pub fn new(device: &wgpu::Device) -> Self {
@@ -42,6 +67,7 @@ impl Screen {
         Self {
             pack: pipeline("pack", text(include_str!("screen_pack.wgsl"))),
             unpack: pipeline("unpack", text(include_str!("screen_unpack.wgsl"))),
+            expose: pipeline("expose", text(include_str!("screen_expose.wgsl"))),
         }
     }
     fn run(
@@ -98,6 +124,109 @@ impl Screen {
             pass.dispatch_workgroups(width.div_ceil(8), height.div_ceil(8), 1);
         }
         encoder
+    }
+    /// `frame` with `exposure` as `host` shows it (see [`HostEncode::encode`]).
+    pub fn host_texture(
+        &self,
+        renderer: &Renderer,
+        frame: &GpuFrame,
+        exposure: f32,
+        host: &dyn HostEncode,
+    ) -> Result<wgpu::Texture> {
+        let (width, height) = (frame.width(), frame.height());
+        let region = frame.region();
+        if !renderer.owns(frame) || region.width != width || region.height != height {
+            return Err(error(
+                "only a whole frame of this renderer is shown by a host",
+            ));
+        }
+        let look = Look {
+            exposure,
+            ..Look::NEUTRAL
+        };
+        renderer
+            .compute(|scratch| {
+                let exposed = scratch.buffer(
+                    u64::from(width) * u64::from(height) * 16,
+                    wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
+                    "picture for the host's display",
+                )?;
+                let encoder = Self::run(
+                    scratch,
+                    &self.expose,
+                    [width, height],
+                    look,
+                    frame.buffer(),
+                    &exposed,
+                );
+                scratch.run(encoder)?;
+                let texture = host
+                    .encode(scratch.device(), scratch.queue(), &exposed, width, height)
+                    .map_err(veylvik_render::Error::Message)?;
+                let size = texture.size();
+                if !matches!(
+                    texture.format(),
+                    wgpu::TextureFormat::Rgba8Unorm | wgpu::TextureFormat::Rgba8UnormSrgb
+                ) || [size.width, size.height] != [width, height]
+                {
+                    return Err(veylvik_render::Error::Message(format!(
+                        "the host's display gave a {:?} picture of {} x {}, not Rgba8 of {width} x {height}",
+                        texture.format(),
+                        size.width,
+                        size.height
+                    )));
+                }
+                Ok(texture)
+            })
+            .map_err(error)
+    }
+    /// `frame` as the viewer shows it with `look`: four bytes a pixel, rows top first.
+    /// A host's look is encoded by `host`, which must be the display it names.
+    pub fn pack_with(
+        &self,
+        renderer: &Renderer,
+        frame: &GpuFrame,
+        look: Look,
+        host: Option<&dyn HostEncode>,
+    ) -> Result<Vec<u8>> {
+        if look.host == 0 {
+            return self.pack(renderer, frame, look);
+        }
+        let host = host
+            .filter(|host| host.identity() == look.host)
+            .ok_or_else(|| error("the host's display for this look is gone"))?;
+        let texture = self.host_texture(renderer, frame, look.exposure, host)?;
+        let (width, height) = (frame.width(), frame.height());
+        // Rows of a texture copy are 256-byte aligned.
+        let row = width * 4;
+        let padded = row.div_ceil(256) * 256;
+        renderer
+            .compute(|scratch| {
+                let readback = scratch.buffer(
+                    u64::from(padded) * u64::from(height),
+                    wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+                    "host's screen picture read",
+                )?;
+                let mut encoder = scratch.device().create_command_encoder(&Default::default());
+                encoder.copy_texture_to_buffer(
+                    texture.as_image_copy(),
+                    wgpu::TexelCopyBufferInfo {
+                        buffer: &readback,
+                        layout: wgpu::TexelCopyBufferLayout {
+                            offset: 0,
+                            bytes_per_row: Some(padded),
+                            rows_per_image: Some(height),
+                        },
+                    },
+                    texture.size(),
+                );
+                let bytes = scratch.read::<u8>(encoder, &readback)?;
+                Ok(bytes
+                    .chunks(padded as usize)
+                    .flat_map(|line| line[..row as usize].iter().copied())
+                    .collect())
+            })
+            .map_err(error)
     }
     /// `frame` as the viewer shows it with `look`: four bytes a pixel, rows top first.
     pub fn pack(&self, renderer: &Renderer, frame: &GpuFrame, look: Look) -> Result<Vec<u8>> {
@@ -249,10 +378,12 @@ mod tests {
             Look {
                 exposure: 1.5,
                 filmic: false,
+                host: 0,
             },
             Look {
                 exposure: -0.5,
                 filmic: true,
+                host: 0,
             },
         ] {
             let packed = screen.pack(&renderer, &frame, look).unwrap();
@@ -294,6 +425,7 @@ mod tests {
         let look = Look {
             exposure: 0.0,
             filmic: true,
+            host: 0,
         };
         let mut packed = Vec::new();
         for round in 0..5 {
@@ -310,5 +442,162 @@ mod tests {
             drop(restored);
         }
         assert_eq!(packed.len(), 3840 * 2160 * 4);
+    }
+    /// A stand-in for a host's display: half the light, clamped, as eight bits.
+    pub(crate) struct Halving(pub u64);
+    impl HostEncode for Halving {
+        fn identity(&self) -> u64 {
+            self.0
+        }
+        fn encode(
+            &self,
+            device: &wgpu::Device,
+            queue: &wgpu::Queue,
+            picture: &wgpu::Buffer,
+            width: u32,
+            height: u32,
+        ) -> std::result::Result<wgpu::Texture, String> {
+            let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+                label: Some("a host's display"),
+                source: wgpu::ShaderSource::Wgsl(
+                    "@group(0) @binding(0) var<storage, read> picture: array<vec4<f32>>;
+                     @group(0) @binding(1) var out: texture_storage_2d<rgba8unorm, write>;
+                     @group(0) @binding(2) var<uniform> size: vec4<u32>;
+                     @compute @workgroup_size(8, 8)
+                     fn encode(@builtin(global_invocation_id) g: vec3<u32>) {
+                         if g.x >= size.x || g.y >= size.y { return; }
+                         let p = picture[g.y * size.x + g.x];
+                         textureStore(out, vec2<i32>(g.xy), vec4<f32>(clamp(p.rgb * 0.5, vec3<f32>(0.0), vec3<f32>(1.0)), clamp(p.a, 0.0, 1.0)));
+                     }"
+                    .into(),
+                ),
+            });
+            let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                label: None,
+                layout: None,
+                module: &module,
+                entry_point: Some("encode"),
+                compilation_options: Default::default(),
+                cache: None,
+            });
+            let texture = device.create_texture(&wgpu::TextureDescriptor {
+                label: Some("the host's picture"),
+                size: wgpu::Extent3d {
+                    width,
+                    height,
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: wgpu::TextureFormat::Rgba8Unorm,
+                usage: wgpu::TextureUsages::STORAGE_BINDING
+                    | wgpu::TextureUsages::TEXTURE_BINDING
+                    | wgpu::TextureUsages::COPY_SRC,
+                view_formats: &[],
+            });
+            use wgpu::util::DeviceExt;
+            let size = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: None,
+                contents: bytemuck::cast_slice(&[width, height, 0, 0]),
+                usage: wgpu::BufferUsages::UNIFORM,
+            });
+            let view = texture.create_view(&Default::default());
+            let bind = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: None,
+                layout: &pipeline.get_bind_group_layout(0),
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: picture.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: wgpu::BindingResource::TextureView(&view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: size.as_entire_binding(),
+                    },
+                ],
+            });
+            let mut encoder = device.create_command_encoder(&Default::default());
+            {
+                let mut pass = encoder.begin_compute_pass(&Default::default());
+                pass.set_pipeline(&pipeline);
+                pass.set_bind_group(0, &bind, &[]);
+                pass.dispatch_workgroups(width.div_ceil(8), height.div_ceil(8), 1);
+            }
+            queue.submit([encoder.finish()]);
+            Ok(texture)
+        }
+    }
+    #[test]
+    #[ignore = "requires Vulkan"]
+    fn a_picture_kept_with_a_hosts_look_is_what_the_host_made_of_it() {
+        let renderer = Renderer::new().unwrap();
+        let screen = Screen::new(renderer.device());
+        // 70 wide: rows are not a multiple of 256 bytes, as a texture copy aligns them.
+        let (width, height) = (70u32, 9u32);
+        let pixels: Vec<[f32; 4]> = (0..width * height)
+            .map(|i| {
+                [
+                    (i % width) as f32 / 80.0,
+                    0.4,
+                    (i / width) as f32 / 9.0,
+                    1.0,
+                ]
+            })
+            .collect();
+        let mut doc = veylvik_document::blank(width, height, Time::new(24, 1).unwrap()).unwrap();
+        let node = veylvik_document::Node::new(
+            "picture",
+            veylvik_document::Operation::Image(veylvik_document::nodes::Image {
+                asset: "p".into(),
+            }),
+            &[],
+        );
+        doc.output = node.id;
+        doc.nodes.insert(node.id, node);
+        let mut inputs = ImageInputs::default();
+        inputs.insert(
+            "p",
+            Arc::new(Image::new(width, height, pixels.clone()).unwrap()),
+        );
+        let frame = renderer
+            .render_gpu(
+                &Plan::compile(&doc).unwrap(),
+                RenderRequest::full(Time::new(0, 1).unwrap()),
+                &inputs,
+            )
+            .unwrap();
+        // One stop up, then the host halves: the source values, as eight bits.
+        let look = Look {
+            exposure: 1.0,
+            filmic: true,
+            host: 7,
+        };
+        let host = Halving(7);
+        let packed = screen
+            .pack_with(&renderer, &frame, look, Some(&host))
+            .unwrap();
+        assert_eq!(packed.len() as u32, width * height * 4);
+        // Within one step of eight bits: a value exactly between two steps rounds as
+        // the card rounds.
+        for (i, p) in pixels.iter().enumerate() {
+            let want = [p[0], p[1], p[2], 1.0].map(|v| (v * 255.0).round() as u8);
+            let got = &packed[i * 4..i * 4 + 4];
+            assert!(
+                got.iter().zip(want).all(|(a, b)| a.abs_diff(b) <= 1),
+                "pixel {i}: {got:?} != {want:?}"
+            );
+        }
+        // Another display, or none, is refused rather than kept under the wrong look.
+        assert!(
+            screen
+                .pack_with(&renderer, &frame, look, Some(&Halving(8)))
+                .is_err()
+        );
+        assert!(screen.pack_with(&renderer, &frame, look, None).is_err());
     }
 }

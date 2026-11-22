@@ -1,6 +1,8 @@
 struct Parameters { size: vec4<u32>, region: vec4<u32>, view: vec4<f32> }
 @group(0) @binding(0) var<storage, read> pixels: array<vec4<f32>>;
 @group(0) @binding(1) var<uniform> params: Parameters;
+// A host's display of the same picture (flag 512; 1024: its texels are sRGB-decoded).
+@group(0) @binding(2) var host_picture: texture_2d<f32>;
 struct Vertex { @builtin(position) position: vec4<f32>, @location(0) uv: vec2<f32> }
 @vertex fn vertex(@builtin(vertex_index) index: u32) -> Vertex {
     let uv = vec2<f32>(f32((index << 1u) & 2u), f32(index & 2u));
@@ -40,6 +42,20 @@ fn sample_pixel(position: vec2<i32>) -> vec4<f32> {
         pixel+=filtered_pixel(position+offset);
     }}
     pixel/=f32(count.x*count.y);
+    // The host's display in the colour view: its picture, filtered the same way, over the
+    // same backdrop. (Alpha and the single channels stay the editor's own views.)
+    if (params.size.z & 512u) != 0u && ((params.size.z >> 4u) & 7u) == 0u && (params.size.z & 2u) == 0u {
+        var shown = vec4<f32>(0.0);
+        for(var y=0u;y<count.y;y++) {for(var x=0u;x<count.x;x++) {
+            let offset=(vec2<f32>(f32(x)+0.5,f32(y)+0.5)/vec2<f32>(count)-vec2<f32>(0.5))*footprint;
+            shown+=host_filtered(position+offset);
+        }}
+        shown/=f32(count.x*count.y);
+        let coverage = clamp(shown.a, 0.0, 1.0);
+        var color = shown.rgb + vec3<f32>(backdrop_at(v.position.xy) * (1.0 - coverage));
+        if (params.size.z & 1u) == 0u { color = srgb(color); }
+        return vec4<f32>(color, 1.0);
+    }
     let alpha = clamp(pixel.a, 0.0, 1.0);
     if (params.size.z & 2u) != 0u {
         // Coverage is displayed directly as gray, independent of exposure.
@@ -71,6 +87,28 @@ fn sample_pixel(position: vec2<i32>) -> vec4<f32> {
     return vec4<f32>(color, 1.0);
 }
 
+// What shows through where the picture is clear: the checkerboard or a plain backdrop.
+fn backdrop_at(at: vec2<f32>) -> f32 {
+    let grid = (u32(at.x) / 12u + u32(at.y) / 12u) % 2u;
+    var checker = select(0.045, 0.075, grid == 0u);
+    let backdrop = (params.size.z >> 7u) & 3u;
+    if backdrop == 1u { checker = 0.0; } else if backdrop == 2u { checker = 0.18; } else if backdrop == 3u { checker = 1.0; }
+    return checker;
+}
+// A texel of the host's picture as light (premultiplied), clamped to its edge.
+fn host_texel(position: vec2<i32>) -> vec4<f32> {
+    let size = vec2<i32>(textureDimensions(host_picture));
+    let texel = textureLoad(host_picture, clamp(position, vec2<i32>(0), size - vec2<i32>(1)), 0);
+    if (params.size.z & 1024u) != 0u { return texel; }
+    let decoded = select(pow((texel.rgb + vec3<f32>(0.055)) / 1.055, vec3<f32>(2.4)), texel.rgb / 12.92, texel.rgb <= vec3<f32>(0.04045));
+    return vec4<f32>(decoded, texel.a);
+}
+fn host_filtered(position:vec2<f32>)->vec4<f32> {
+    let base=vec2<i32>(floor(position));let weight=fract(position);
+    let top=mix(host_texel(base),host_texel(base+vec2<i32>(1,0)),weight.x);
+    let bottom=mix(host_texel(base+vec2<i32>(0,1)),host_texel(base+vec2<i32>(1,1)),weight.x);
+    return mix(top,bottom,weight.y);
+}
 fn filtered_pixel(position:vec2<f32>)->vec4<f32> {
     let base=vec2<i32>(floor(position));let weight=fract(position);
     let top=mix(sample_pixel(base),sample_pixel(base+vec2<i32>(1,0)),weight.x);

@@ -50,6 +50,12 @@ pub enum Picked {
         file: Option<PathBuf>,
     },
 }
+/// A host's own display, drawing the editor's viewer as the host's viewer draws its
+/// pictures (see `veylvik_preview::screen::HostEncode`).
+pub trait HostDisplay: veylvik_preview::screen::HostEncode {
+    /// How the viewer names it, e.g. "Klipp: ACEScg, Rec.709 ODT".
+    fn name(&self) -> String;
+}
 pub trait Host: Send + Sync {
     /// Ask the user. Called off the interface thread, so it may wait for them; `None`
     /// means they changed their mind.

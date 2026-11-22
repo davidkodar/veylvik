@@ -63,6 +63,7 @@ impl Studio {
                 0.0
             },
             filmic: view.filmic,
+            host: view.host,
         };
         let doc = self.project.document.snapshot();
         let (rate, count) = (doc.frame_rate, doc.frame_count);

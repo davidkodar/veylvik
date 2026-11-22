@@ -527,6 +527,22 @@ impl Editor {
         self.studio.reported_preferences = Some(now.clone());
         Some(now.clone())
     }
+    /// Draw the viewer with the host's own display (its working space, tone map,
+    /// transfer and viewer LUT) instead of Veylvik's clip, filmic or OCIO view, so a
+    /// picture looks the same on the host's pages; played pictures are kept with it too.
+    /// The single-channel, alpha and backdrop views stay the editor's. Give a new one
+    /// whenever the host's display changes; `None` goes back to Veylvik's.
+    pub fn set_host_display(&mut self, display: Option<Arc<dyn host::HostDisplay>>) {
+        if let Some(scheduler) = &self.studio.scheduler {
+            scheduler.playback_cache().set_host_display(
+                display
+                    .clone()
+                    .map(|d| d as Arc<dyn veylvik_preview::screen::HostEncode>),
+            );
+        }
+        self.studio.display.set_host(display.clone());
+        self.studio.host_display = display;
+    }
     /// Whether the artist asked for Preferences (the File menu or Ctrl+,) since the last
     /// call: inside a host the editor shows no settings of its own, so the host opens its
     /// own at Veylvik's.
@@ -773,6 +789,7 @@ impl Studio {
             host_range: false,
             reported_preferences: None,
             preferences_asked: false,
+            host_display: None,
             viewer_canvas: None,
             files: Tasks::new(setup.context.clone()),
             export_controls: sequence::Controls::default(),
@@ -935,6 +952,8 @@ struct Studio {
     host_range: bool,
     /// Preferences were asked for inside a host, which shows its own.
     preferences_asked: bool,
+    /// The host's display, drawing the viewer as the host's own viewer draws.
+    host_display: Option<Arc<dyn host::HostDisplay>>,
     /// The settings the host last gave or heard of (see `Editor::take_preferences_change`).
     reported_preferences: Option<preferences::Values>,
     /// Where the viewer's picture was last drawn.
@@ -1130,6 +1149,10 @@ impl Studio {
             filmic: self.project.document.snapshot().ocio.view.is_none()
                 && !self.project.document.snapshot().display.is_standard(),
             backdrop: self.preferences.values.backdrop as u8,
+            host: self
+                .host_display
+                .as_ref()
+                .map_or(0, |display| display.identity()),
             ..self.view
         }
     }
@@ -1416,6 +1439,7 @@ impl Studio {
                             0.0
                         },
                         filmic: view.filmic,
+                        host: view.host,
                     },
                 ),
             );

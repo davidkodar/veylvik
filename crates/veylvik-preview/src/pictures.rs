@@ -22,7 +22,9 @@ struct Picture {
     lasting: Option<u64>,
 }
 fn look_bits(look: Look) -> u64 {
-    u64::from(look.exposure.to_bits()) | (u64::from(look.filmic) << 32)
+    // A host's display is a look of its own, whatever exposure it was given.
+    (u64::from(look.exposure.to_bits()) | (u64::from(look.filmic) << 32))
+        ^ look.host.wrapping_mul(0x9e37_79b9_7f4a_7c15)
 }
 /// The file of a lasting picture: its name, its look and its size are in the file's name.
 pub(crate) fn lasting_file(
@@ -558,6 +560,7 @@ mod tests {
         let look = Look {
             exposure: 0.0,
             filmic: true,
+            host: 0,
         };
         let at = |frame: i64| Time::new(frame, 24).unwrap();
         let one = picture(0).len() as u64;
@@ -646,6 +649,7 @@ mod tests {
         let look = Look {
             exposure: 0.5,
             filmic: true,
+            host: 0,
         };
         let at = |frame: i64| Time::new(frame, 24).unwrap();
         let limits = Limits {

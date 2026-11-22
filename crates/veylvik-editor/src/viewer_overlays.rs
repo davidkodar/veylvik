@@ -92,6 +92,11 @@ impl Studio {
             .on_hover_text(
                 "Look at the colour, a single channel, the luminance or the coverage. Only the view changes, never the composition",
             );
+        // Whose display the colour view is: the host's, in place of Veylvik's own.
+        if let Some(display) = &self.host_display {
+            ui.weak(format!("View: {}", display.name()))
+                .on_hover_text("The colour view is drawn by the host's own display (its working space, tone map and viewer LUT), so it looks as it does on the host's other pages. The filmic and OCIO views of this composition do not apply here.");
+        }
     }
     /// The menu of viewer aids.
     pub(crate) fn overlays_menu(&mut self, ui: &mut egui::Ui) {

@@ -67,8 +67,20 @@ pub struct Control(
     Arc<Mutex<Option<crate::screen::Look>>>,
     /// Asked to delete the lasting pictures on disk too, at the next clear.
     Arc<std::sync::atomic::AtomicBool>,
+    /// A host's display, for pictures kept with its look (see `screen::HostEncode`).
+    Arc<Mutex<Option<Arc<dyn crate::screen::HostEncode>>>>,
 );
 impl Control {
+    /// The host's display that pictures with its look are encoded by; `None` for
+    /// Veylvik's own.
+    pub fn set_host_display(&self, display: Option<Arc<dyn crate::screen::HostEncode>>) {
+        if let Ok(mut slot) = self.4.lock() {
+            *slot = display;
+        }
+    }
+    pub fn host_display(&self) -> Option<Arc<dyn crate::screen::HostEncode>> {
+        self.4.lock().ok().and_then(|slot| slot.clone())
+    }
     /// While playing, with the viewer's look: frames may be answered with pictures kept
     /// as the screen shows them, and new frames are kept that way. `None` when not
     /// playing: every frame is then the renderer's own, for reading values off it.
@@ -782,7 +794,8 @@ impl Store {
             let screen = self
                 .screen
                 .get_or_insert_with(|| crate::screen::Screen::new(renderer.device()));
-            let picture = screen.pack(renderer, frame, look)?;
+            let host = self.control.host_display();
+            let picture = screen.pack_with(renderer, frame, look, host.as_deref())?;
             if self.packer.as_ref().is_some_and(|packer| {
                 packer
                     .work

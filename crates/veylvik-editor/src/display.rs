@@ -43,10 +43,22 @@ pub struct ViewSettings {
     pub channel: Channel,
     /// Behind transparent areas: 0 checkerboard, 1 black, 2 grey, 3 white.
     pub backdrop: u8,
+    /// The host's display ([`veylvik_preview::screen::HostEncode::identity`]) in place of
+    /// the clip, filmic or OCIO view; 0 for Veylvik's own.
+    pub host: u64,
 }
+/// The host's picture of a frame, kept while the frame, the exposure and the display
+/// stay the same: panning and zooming draw it again without asking the host.
+type HostPicture = ((usize, u32, u64), wgpu::Texture);
 pub struct Display {
     pipeline: wgpu::RenderPipeline,
     format: wgpu::TextureFormat,
+    host: Option<Arc<dyn crate::host::HostDisplay>>,
+    /// Applies the exposure and asks the host for its picture.
+    screen: veylvik_preview::screen::Screen,
+    host_picture: std::sync::Mutex<Option<HostPicture>>,
+    /// Bound where there is no host picture.
+    nothing: wgpu::TextureView,
 }
 impl Display {
     pub fn new(device: &wgpu::Device, format: wgpu::TextureFormat) -> Self {
@@ -79,7 +91,68 @@ impl Display {
             multiview_mask: None,
             cache: None,
         });
-        Self { pipeline, format }
+        let nothing = device
+            .create_texture(&wgpu::TextureDescriptor {
+                label: Some("no host picture"),
+                size: wgpu::Extent3d {
+                    width: 1,
+                    height: 1,
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: wgpu::TextureFormat::Rgba8Unorm,
+                usage: wgpu::TextureUsages::TEXTURE_BINDING,
+                view_formats: &[],
+            })
+            .create_view(&Default::default());
+        Self {
+            pipeline,
+            format,
+            host: None,
+            screen: veylvik_preview::screen::Screen::new(device),
+            host_picture: std::sync::Mutex::new(None),
+            nothing,
+        }
+    }
+    /// Draw with the host's display (see `Editor::set_host_display`).
+    pub fn set_host(&mut self, host: Option<Arc<dyn crate::host::HostDisplay>>) {
+        self.host = host;
+        if let Ok(mut kept) = self.host_picture.lock() {
+            *kept = None;
+        }
+    }
+    /// The host's picture of `frame` with `exposure`, when the view asks for the host's
+    /// display and it can give one; `None` draws with Veylvik's own.
+    fn host_view(
+        &self,
+        renderer: &Renderer,
+        frame: &Arc<GpuFrame>,
+        exposure: f32,
+        settings: &ViewSettings,
+    ) -> Option<wgpu::Texture> {
+        let host = self
+            .host
+            .as_ref()
+            .filter(|h| settings.host != 0 && h.identity() == settings.host)?;
+        let key = (
+            Arc::as_ptr(frame) as usize,
+            exposure.to_bits(),
+            settings.host,
+        );
+        let mut kept = self.host_picture.lock().ok()?;
+        if let Some((at, texture)) = kept.as_ref()
+            && *at == key
+        {
+            return Some(texture.clone());
+        }
+        let texture = self
+            .screen
+            .host_texture(renderer, frame, exposure, host.as_ref())
+            .ok()?;
+        *kept = Some((key, texture.clone()));
+        Some(texture)
     }
     pub fn frame(
         &self,
@@ -115,6 +188,16 @@ impl Display {
         } else {
             0.0
         };
+        // A played picture already shows what the host's display made of it.
+        let host_picture = if baked {
+            None
+        } else {
+            self.host_view(renderer, &frame, exposure, &settings)
+        };
+        let host_flags = match &host_picture {
+            Some(texture) => 512 | if texture.format().is_srgb() { 1024 } else { 0 },
+            None => 0,
+        };
         let uniform = renderer
             .device()
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -127,7 +210,8 @@ impl Display {
                         | (u32::from(settings.filmic) << 2)
                         | (u32::from(settings.fast_filter) << 3)
                         | ((settings.channel as u32) << 4)
-                        | ((u32::from(settings.backdrop) & 3) << 7),
+                        | ((u32::from(settings.backdrop) & 3) << 7)
+                        | host_flags,
                     exposure.to_bits(),
                     frame.region().x,
                     frame.region().y,
@@ -140,6 +224,10 @@ impl Display {
                 ]),
                 usage: wgpu::BufferUsages::UNIFORM,
             });
+        let host_view = host_picture.as_ref().map_or_else(
+            || self.nothing.clone(),
+            |t| t.create_view(&Default::default()),
+        );
         let bind = renderer
             .device()
             .create_bind_group(&wgpu::BindGroupDescriptor {
@@ -153,6 +241,10 @@ impl Display {
                     wgpu::BindGroupEntry {
                         binding: 1,
                         resource: uniform.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: wgpu::BindingResource::TextureView(&host_view),
                     },
                 ],
             });
@@ -382,6 +474,7 @@ mod tests {
                         filmic: false,
                         channel: Default::default(),
                         backdrop: 0,
+                        host: 0,
                     },
                 );
                 let green = if exposure == -2.0 { 0.1625 } else { 0.5375 };
@@ -407,6 +500,7 @@ mod tests {
                         filmic: false,
                         channel: Default::default(),
                         backdrop: 0,
+                        host: 0,
                     },
                 );
                 for value in &actual[0][..3] {
@@ -566,6 +660,126 @@ mod tests {
             "legacy bilinear misses the stripe footprint: {fast:?}"
         );
     }
+    /// A host's display that shows every picture as one colour, whatever it is given.
+    struct Painted([u8; 4]);
+    impl veylvik_preview::screen::HostEncode for Painted {
+        fn identity(&self) -> u64 {
+            42
+        }
+        fn encode(
+            &self,
+            device: &wgpu::Device,
+            queue: &wgpu::Queue,
+            _: &wgpu::Buffer,
+            width: u32,
+            height: u32,
+        ) -> std::result::Result<wgpu::Texture, String> {
+            let size = wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            };
+            let texture = device.create_texture(&wgpu::TextureDescriptor {
+                label: Some("the host's picture"),
+                size,
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: wgpu::TextureFormat::Rgba8Unorm,
+                usage: wgpu::TextureUsages::TEXTURE_BINDING
+                    | wgpu::TextureUsages::COPY_SRC
+                    | wgpu::TextureUsages::COPY_DST,
+                view_formats: &[],
+            });
+            let texels: Vec<u8> = (0..width * height).flat_map(|_| self.0).collect();
+            queue.write_texture(
+                texture.as_image_copy(),
+                &texels,
+                wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(width * 4),
+                    rows_per_image: Some(height),
+                },
+                size,
+            );
+            queue.submit([]);
+            Ok(texture)
+        }
+    }
+    impl crate::host::HostDisplay for Painted {
+        fn name(&self) -> String {
+            "a host's view".into()
+        }
+    }
+    #[test]
+    #[ignore = "requires Vulkan"]
+    fn the_hosts_display_draws_the_colour_view_and_the_channels_stay_the_editors() {
+        let renderer = Renderer::new().unwrap();
+        let node = Node::new(
+            "Colour",
+            Operation::Solid(veylvik_document::nodes::Solid {
+                color: [0.2, 0.5, 0.8, 1.0],
+            }),
+            &[],
+        );
+        let mut doc = veylvik_document::blank(2, 2, Time::new(24, 1).unwrap()).unwrap();
+        doc.output = node.id;
+        doc.nodes.insert(node.id, node);
+        let frame = Arc::new(
+            renderer
+                .render_gpu(
+                    &Plan::compile(&doc).unwrap(),
+                    RenderRequest::full(Time::new(0, 1).unwrap()),
+                    &ImageInputs::default(),
+                )
+                .unwrap(),
+        );
+        let host: Arc<dyn crate::host::HostDisplay> = Arc::new(Painted([200, 40, 90, 255]));
+        let hosted = ViewSettings {
+            host: 42,
+            ..Default::default()
+        };
+        for format in [
+            wgpu::TextureFormat::Rgba8Unorm,
+            wgpu::TextureFormat::Rgba8UnormSrgb,
+        ] {
+            let paint = |settings: ViewSettings,
+                         host: Option<Arc<dyn crate::host::HostDisplay>>| {
+                paint_hosted(
+                    &renderer,
+                    frame.clone(),
+                    [2, 2],
+                    format,
+                    settings,
+                    ViewTransform::default(),
+                    host,
+                )
+            };
+            // The colour view is the host's picture, as the host made it.
+            for pixel in paint(hosted, Some(host.clone())) {
+                for (a, b) in pixel.iter().zip([200u8, 40, 90, 255]) {
+                    assert!(a.abs_diff(b) <= 1, "{format:?}: {pixel:?}");
+                }
+            }
+            // A single channel is the editor's own view, as without a host.
+            let red = ViewSettings {
+                channel: Channel::Red,
+                ..hosted
+            };
+            assert_eq!(
+                paint(red, Some(host.clone())),
+                paint(
+                    ViewSettings {
+                        channel: Channel::Red,
+                        ..Default::default()
+                    },
+                    None
+                )
+            );
+            // Without the display it names, the editor's own colour view.
+            assert_eq!(paint(hosted, None), paint(ViewSettings::default(), None));
+        }
+    }
     #[test]
     #[ignore = "requires Vulkan"]
     fn a_single_channel_or_the_luminance_shows_as_grey() {
@@ -720,9 +934,29 @@ mod tests {
         settings: ViewSettings,
         transform: ViewTransform,
     ) -> Vec<[u8; 4]> {
+        paint_hosted(
+            renderer,
+            frame,
+            [width, height],
+            format,
+            settings,
+            transform,
+            None,
+        )
+    }
+    fn paint_hosted(
+        renderer: &Renderer,
+        frame: Arc<GpuFrame>,
+        [width, height]: [u32; 2],
+        format: wgpu::TextureFormat,
+        settings: ViewSettings,
+        transform: ViewTransform,
+        host: Option<Arc<dyn crate::host::HostDisplay>>,
+    ) -> Vec<[u8; 4]> {
         let device = renderer.device();
         let scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
-        let display = Display::new(device, format);
+        let mut display = Display::new(device, format);
+        display.set_host(host);
         let frame = display.frame(renderer, frame, settings, transform);
         let target = device.create_texture(&wgpu::TextureDescriptor {
             label: None,

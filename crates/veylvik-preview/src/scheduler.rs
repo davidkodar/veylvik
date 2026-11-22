@@ -728,6 +728,7 @@ mod playback_tests {
         let look = crate::screen::Look {
             exposure: 0.0,
             filmic: false,
+            host: 0,
         };
         // Not playing: nothing is kept and nothing is answered from pictures.
         assert!(!render(3).1 && !render(3).1);
@@ -780,6 +781,7 @@ mod playback_tests {
         control.set_playing(Some(crate::screen::Look {
             exposure: 1.0,
             filmic: false,
+            host: 0,
         }));
         assert!(!render(3).1);
     }
@@ -837,6 +839,7 @@ mod playback_tests {
         let look = crate::screen::Look {
             exposure: 0.0,
             filmic: false,
+            host: 0,
         };
         let at = |frame: i64| Time::new(frame, 24).unwrap();
         let wait = |until: &dyn Fn() -> bool| {
@@ -982,6 +985,7 @@ mod playback_tests {
         let look = crate::screen::Look {
             exposure: 0.0,
             filmic: false,
+            host: 0,
         };
         let at = |frame: i64| Time::at_frame(frame, rate).unwrap();
         scheduler
@@ -1045,6 +1049,7 @@ mod playback_tests {
         let look = crate::screen::Look {
             exposure: 0.0,
             filmic: false,
+            host: 0,
         };
         let at = |frame: i64| Time::new(frame, 24).unwrap();
         let deadline = Instant::now() + Duration::from_secs(30);
@@ -1086,6 +1091,7 @@ mod playback_tests {
         let look = crate::screen::Look {
             exposure: 0.0,
             filmic: false,
+            host: 0,
         };
         let at = |frame: i64| Time::new(frame, 24).unwrap();
         let plan = || Arc::new(Plan::compile(&veylvik_document::motion_demo()).unwrap());
@@ -1159,6 +1165,7 @@ mod playback_tests {
         let look = crate::screen::Look {
             exposure: 0.0,
             filmic: false,
+            host: 0,
         };
         // Moments far enough apart to be different pictures.
         let at = |step: i64| Time::new(step * 5, 24).unwrap();
