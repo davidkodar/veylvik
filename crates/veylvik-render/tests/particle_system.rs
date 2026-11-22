@@ -60,6 +60,7 @@ fn render_with(
     let output = node.id;
     nodes.push(node);
     let doc = Composition {
+        published: Default::default(),
         markers: Default::default(),
         backdrops: Default::default(),
         ocio: Default::default(),
@@ -680,6 +681,7 @@ fn render_filmed(renderer: &Renderer, particles: nodes::Particles, shift: f32) -
         &[("scene", camera.id)],
     );
     let doc = Composition {
+        published: Default::default(),
         markers: Default::default(),
         backdrops: Default::default(),
         ocio: Default::default(),
@@ -769,6 +771,7 @@ fn render_moving(renderer: &Renderer, history: u32) -> Vec<[f32; 4]> {
         &[("emitter", disc.id)],
     );
     let doc = Composition {
+        published: Default::default(),
         markers: Default::default(),
         backdrops: Default::default(),
         ocio: Default::default(),

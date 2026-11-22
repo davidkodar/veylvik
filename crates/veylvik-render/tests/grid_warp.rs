@@ -25,6 +25,7 @@ fn render_operation(operation: Operation) -> Vec<[f32; 4]> {
     );
     let node = Node::new("warp", operation, &[("image", image.id)]);
     let doc = Composition {
+        published: Default::default(),
         markers: Default::default(),
         backdrops: Default::default(),
         ocio: Default::default(),

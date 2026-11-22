@@ -376,6 +376,10 @@ pub struct Composition {
     /// Named frames around nodes in the graph; they never change a render.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub backdrops: Vec<annotations::Backdrop>,
+    /// Settings shown outside the editor, in their order (a host's Edit page shows them
+    /// beside each group's exposed controls; see `groups::published`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub published: Vec<groups::Control>,
 }
 impl Composition {
     pub fn ocio_transforms(&self) -> impl Iterator<Item = &color_management::OcioTransform> {
@@ -568,6 +572,7 @@ impl Composition {
             return fail("graph contains a cycle");
         }
         groups::validate(self)?;
+        groups::validate_published(self)?;
         Ok(order)
     }
     pub fn save(&self, path: &Path) -> Result<()> {
@@ -754,6 +759,10 @@ pub enum Command {
         #[serde(default)]
         note: String,
     },
+    /// Replace the composition's published controls: the whole list, in order.
+    Published {
+        published: Vec<groups::Control>,
+    },
     /// Replace the composition's backdrops.
     Backdrops {
         backdrops: Vec<annotations::Backdrop>,
@@ -817,6 +826,7 @@ pub fn blank(width: u32, height: u32, frame_rate: Time) -> Result<Composition> {
         &[],
     );
     let composition = Composition {
+        published: Default::default(),
         markers: Default::default(),
         backdrops: Default::default(),
         ocio: Default::default(),
@@ -900,6 +910,7 @@ pub fn demo() -> Composition {
         &[("background", background.id), ("foreground", transform.id)],
     );
     Composition {
+        published: Default::default(),
         markers: Default::default(),
         backdrops: Default::default(),
         ocio: Default::default(),
@@ -1043,6 +1054,7 @@ pub fn motion_demo() -> Composition {
         &[("image", output)],
     );
     Composition {
+        published: Default::default(),
         markers: Default::default(),
         backdrops: Default::default(),
         ocio: Default::default(),

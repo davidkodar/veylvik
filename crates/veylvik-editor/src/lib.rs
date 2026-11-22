@@ -11,6 +11,7 @@ mod commands;
 mod comparison;
 mod composition;
 mod control;
+pub mod controls;
 mod curve_preview;
 mod design;
 mod diagnostics;
@@ -67,6 +68,7 @@ pub mod preferences;
 mod preset_library;
 mod preview_images;
 mod project;
+mod published;
 mod recovery;
 mod remembered;
 mod render_queue;
@@ -802,6 +804,7 @@ impl Studio {
             reported_preferences: None,
             preferences_asked: false,
             menu_runs: Vec::new(),
+            published_open: false,
             host_display: None,
             viewer_canvas: None,
             files: Tasks::new(setup.context.clone()),
@@ -967,6 +970,8 @@ struct Studio {
     preferences_asked: bool,
     /// Menu items a host asked to run (`Editor::run_menu_item`), run as the frame begins.
     menu_runs: Vec<String>,
+    /// The window of settings shown on a host's Edit page is open.
+    published_open: bool,
     /// The host's display, drawing the viewer as the host's own viewer draws.
     host_display: Option<Arc<dyn host::HostDisplay>>,
     /// The settings the host last gave or heard of (see `Editor::take_preferences_change`).
@@ -3816,6 +3821,7 @@ impl Studio {
         self.command_windows(ctx);
         self.log_windows(ctx);
         self.layout_windows(ctx);
+        self.published_window(ctx);
         self.second_viewer(ctx);
         self.layout_tick(ctx);
     }

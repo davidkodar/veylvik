@@ -605,6 +605,7 @@ mod tests {
             &[],
         );
         let doc = Composition {
+            published: Default::default(),
             markers: Default::default(),
             backdrops: Default::default(),
             ocio: Default::default(),

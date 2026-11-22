@@ -283,6 +283,7 @@ impl Document {
                         return fail("cannot remove missing node");
                     }
                     crate::annotations::forget(&mut next.backdrops, *id);
+                    next.published.retain(|control| control.node != *id);
                 }
                 Command::FrameRate { frame_rate } => next.frame_rate = *frame_rate,
                 Command::FrameCount { frame_count } => next.frame_count = *frame_count,
@@ -291,6 +292,7 @@ impl Document {
                 Command::Display { display } => next.display = *display,
                 Command::Markers { markers } => next.markers = markers.clone(),
                 Command::Backdrops { backdrops } => next.backdrops = backdrops.clone(),
+                Command::Published { published } => next.published = published.clone(),
                 Command::Connect { id, input, source } => {
                     let node = next
                         .nodes

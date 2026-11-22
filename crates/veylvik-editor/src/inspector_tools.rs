@@ -178,6 +178,7 @@ impl Studio {
             if !self.tools.filter.is_empty() && ui.small_button("Clear").clicked() {
                 self.tools.filter.clear();
             }
+            self.publish_menu(ui);
         });
         let words = self.tools.filter.trim().to_owned();
         ui.ctx().data_mut(|d| {

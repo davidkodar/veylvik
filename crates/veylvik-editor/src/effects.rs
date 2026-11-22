@@ -1,5 +1,5 @@
 //! Group authoring uses ordinary document transactions and the existing inspector draft.
-use crate::{Studio, animation};
+use crate::Studio;
 use eframe::egui;
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
@@ -315,119 +315,12 @@ impl Studio {
                 .get(&edit_key)
                 .cloned()
                 .unwrap_or_else(|| control.value(self.project.document.snapshot()).unwrap());
-            let descriptor = self.project.document.snapshot().nodes[&control.node]
+            let operation = self.project.document.snapshot().nodes[&control.node]
                 .operation
-                .descriptor()
-                .parameters
-                .iter()
-                .find(|p| p.name == control.parameter)
-                .unwrap();
+                .clone();
             let mut changed = false;
             ui.push_id(key, |ui| {
-                match descriptor.kind {
-                    ParameterKind::Scalar => {
-                        let mut scalar = serde_json::from_value(value.clone()).unwrap();
-                        if control.parameter == "light"
-                            && matches!(
-                                self.project.document.snapshot().nodes[&control.node].operation,
-                                veylvik_document::Operation::Shadow(_)
-                            )
-                            && matches!(scalar, veylvik_document::Scalar::Constant { .. })
-                        {
-                            changed = crate::light_guides::source_selector(ui, &mut scalar);
-                            value = serde_json::to_value(scalar).unwrap();
-                            return;
-                        }
-                        let [min, max] = control
-                            .range
-                            .unwrap_or([descriptor.min.unwrap(), descriptor.max.unwrap()]);
-                        let default = serde_json::from_value::<veylvik_document::Scalar>(
-                            control.default.clone(),
-                        )
-                        .ok()
-                        .and_then(|s| s.at(time).ok());
-                        changed = animation::scalar_with_default(
-                            ui,
-                            &control.label,
-                            &mut scalar,
-                            min..=max,
-                            time,
-                            default,
-                        );
-                        value = serde_json::to_value(scalar).unwrap();
-                    }
-                    ParameterKind::FrameRate => {
-                        ui.label(&control.label);
-                        let mut rate: veylvik_document::Time =
-                            serde_json::from_value(value.clone()).unwrap();
-                        ui.horizontal(|ui| {
-                            changed |= ui
-                                .add(egui::DragValue::new(&mut rate.ticks).range(1..=1_000_000))
-                                .on_hover_text("Source frame-rate numerator")
-                                .changed();
-                            ui.label("/");
-                            changed |= ui
-                                .add(egui::DragValue::new(&mut rate.rate).range(1..=1_000_000))
-                                .on_hover_text("Source frame-rate denominator; e.g. 24000 / 1001")
-                                .changed();
-                        });
-                        value = serde_json::to_value(rate).unwrap();
-                    }
-                    ParameterKind::FlowQuality => {
-                        use veylvik_document::nodes::FlowQuality;
-                        ui.label(&control.label);
-                        let mut quality: FlowQuality =
-                            serde_json::from_value(value.clone()).unwrap();
-                        egui::ComboBox::from_id_salt("flow-quality")
-                            .selected_text(format!("{quality:?}"))
-                            .show_ui(ui, |ui| {
-                                for q in
-                                    [FlowQuality::Fast, FlowQuality::Balanced, FlowQuality::Fine]
-                                {
-                                    changed |= ui
-                                        .selectable_value(&mut quality, q, format!("{q:?}"))
-                                        .changed();
-                                }
-                            });
-                        value = serde_json::to_value(quality).unwrap();
-                    }
-                    ParameterKind::BlurFilter => {
-                        use veylvik_document::nodes::BlurFilter;
-                        ui.label(&control.label);
-                        let mut filter: BlurFilter =
-                            serde_json::from_value(value.clone()).unwrap_or_default();
-                        egui::ComboBox::from_id_salt(("blur-filter", &control.label))
-                            .selected_text(filter.label())
-                            .show_ui(ui, |ui| {
-                                for f in BlurFilter::ALL {
-                                    changed |=
-                                        ui.selectable_value(&mut filter, f, f.label()).changed();
-                                }
-                            });
-                        value = serde_json::to_value(filter).unwrap();
-                    }
-                    ParameterKind::Boolean => {
-                        let mut enabled = value.as_bool().unwrap_or(false);
-                        changed = ui.checkbox(&mut enabled, &control.label).changed();
-                        value = enabled.into();
-                    }
-                    ParameterKind::Color => {
-                        ui.label(&control.label);
-                        let mut color = serde_json::from_value(value.clone()).unwrap();
-                        changed = animation::color(ui, &mut color);
-                        value = serde_json::to_value(color).unwrap();
-                    }
-                    ParameterKind::Seed => {
-                        ui.label(&control.label);
-                        let mut seed = value.as_u64().unwrap() as u32;
-                        changed = ui.add(egui::DragValue::new(&mut seed)).changed();
-                        value = seed.into();
-                    }
-                    _ => {
-                        ui.label(&control.label);
-                        ui.weak("Open the group to edit this control's node.");
-                    }
-                }
+                changed = crate::controls::widget(ui, control, &mut value, &operation, time);
                 ui.menu_button("Parameter options", |ui| {
                     if ui.small_button("Reset to default").clicked() {
                         value = control.default.clone();

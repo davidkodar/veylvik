@@ -30,9 +30,17 @@ pub fn command() -> Value {
         json!({"type":"object","properties":{"command":{"const":"markers"},"markers":{"type":"array","maxItems":crate::markers::MAX_MARKERS,"items":{"type":"object","properties":{"time":crate::registry::time_schema(),"label":{"type":"string","maxLength":crate::markers::MAX_LABEL}},"required":["time"],"additionalProperties":false}}},"required":["command","markers"],"additionalProperties":false,"description":"Replace the composition's timeline markers: the whole list, in time order, each on a frame of the composition."}),
         json!({"type":"object","properties":{"command":{"const":"connect"},"id":{"type":"string","format":"uuid"},"input":{"type":"string","minLength":1},"source":{"anyOf":[{"type":"null"},{"type":"string","format":"uuid"}]}},"required":["command","id","input"],"additionalProperties":false,"description":"Connect one input port of a node to a source node, or disconnect it with source null. The node's other inputs and settings stay. Merge scenes takes scene, scene_2 ... scene_8; nodes lists every type's ports."}),
         json!({"type":"object","properties":{"command":{"const":"annotate"},"id":{"type":"string","format":"uuid"},"tag":{"anyOf":[{"type":"null"},{"enum":crate::annotations::Tag::ALL}]},"note":{"type":"string"}},"required":["command","id"],"additionalProperties":false,"description":"Set a node's colour tag and note; leaving one out clears it."}),
+        json!({"type":"object","properties":{"command":{"const":"published"},"published":{"type":"array","maxItems":crate::groups::MAX_CONTROLS,"items":control()}},"required":["command","published"],"additionalProperties":false,"description":"Replace the composition's published controls: the whole list, in order. Each names a node's parameter (label, node, parameter, default = the value a reset returns to, optional range [min,max] for a scalar). A host shows them, then each group's controls, outside the editor."}),
         json!({"type":"object","properties":{"command":{"const":"backdrops"},"backdrops":{"type":"array","items":{"type":"object","properties":{"id":{"type":"string","format":"uuid"},"label":{"type":"string"},"tag":{"anyOf":[{"type":"null"},{"enum":crate::annotations::Tag::ALL}]},"nodes":{"type":"array","uniqueItems":true,"items":{"type":"string","format":"uuid"}}},"required":["id","nodes"],"additionalProperties":false}}},"required":["command","backdrops"],"additionalProperties":false,"description":"Replace the graph's backdrops: the whole list. A backdrop is a named, tagged frame drawn around its member nodes."}),
     ]);
     schema
+}
+
+/// A control: a node's parameter shown by name outside the node.
+pub fn control() -> Value {
+    let id = json!({"type":"string","format":"uuid"});
+    let name = json!({"type":"string","minLength":1,"maxLength":128});
+    json!({"type":"object","properties":{"label":name,"node":id,"parameter":{"type":"string"},"default":{},"range":{"anyOf":[{"type":"null"},{"type":"array","items":{"type":"number"},"minItems":2,"maxItems":2}]}},"required":["label","node","parameter","default"],"additionalProperties":false})
 }
 
 pub fn group() -> Value {
@@ -40,7 +48,7 @@ pub fn group() -> Value {
     let name = json!({"type":"string","minLength":1,"maxLength":128});
     let port = json!({"type":"object","properties":{"node":id,"port":{"type":"string"}},"required":["node","port"],"additionalProperties":false});
     let input = json!({"type":"object","properties":{"label":name,"targets":{"type":"array","minItems":1,"maxItems":8192,"items":port}},"required":["label","targets"],"additionalProperties":false});
-    let control = json!({"type":"object","properties":{"label":name,"node":id,"parameter":{"type":"string"},"default":{},"range":{"anyOf":[{"type":"null"},{"type":"array","items":{"type":"number"},"minItems":2,"maxItems":2}]}},"required":["label","node","parameter","default"],"additionalProperties":false});
+    let control = control();
     json!({"type":"object","properties":{"id":id,"label":name,"members":{"type":"array","minItems":1,"maxItems":4096,"uniqueItems":true,"items":id},"output":id,"inputs":{"type":"object","maxProperties":64,"propertyNames":name,"additionalProperties":input},"controls":{"type":"object","maxProperties":64,"propertyNames":name,"additionalProperties":control}},"required":["id","label","members","output","inputs","controls"],"additionalProperties":false,"description":"Disjoint single-output node group. Every member feeds the output; all external input edges are exposed exactly once. Controls alias existing parameters; defaults and optional narrower scalar ranges are validated."})
 }
 

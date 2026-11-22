@@ -67,6 +67,7 @@ fn fractal_noise_matches_lattice_reference_and_animated_cache_identity() {
                 &[],
             );
             let doc = Composition {
+                published: Default::default(),
                 markers: Default::default(),
                 backdrops: Default::default(),
                 ocio: Default::default(),

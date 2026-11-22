@@ -18,7 +18,7 @@ pub struct Input {
     pub label: String,
     pub targets: Vec<Port>,
 }
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Control {
     pub label: String,
@@ -264,6 +264,82 @@ impl Group {
         Ok((group, commands))
     }
 }
+/// A control's node, parameter, default and range: the parameter is the node's, the
+/// default is a valid value for it, and a range lies within the registered bounds and
+/// holds both the value and the default.
+fn check_control(doc: &Composition, control: &Control) -> Result<()> {
+    if !doc.nodes.contains_key(&control.node) {
+        return fail("a control's node does not exist");
+    }
+    let node = &doc.nodes[&control.node];
+    if !node
+        .operation
+        .descriptor()
+        .parameters
+        .iter()
+        .any(|p| p.name == control.parameter)
+    {
+        return fail("unknown exposed parameter");
+    }
+    let mut default_node = node.clone();
+    let mut value = serde_json::to_value(&node.operation).map_err(|e| Error(e.to_string()))?;
+    value[&control.parameter] = control.default.clone();
+    default_node.operation = serde_json::from_value(value).map_err(|e| Error(e.to_string()))?;
+    default_node.operation.validate()?;
+    if let Some([min, max]) = control.range {
+        let descriptor = node
+            .operation
+            .descriptor()
+            .parameters
+            .iter()
+            .find(|p| p.name == control.parameter)
+            .unwrap();
+        if !min.is_finite()
+            || !max.is_finite()
+            || min > max
+            || descriptor.min.is_none_or(|bound| min < bound)
+            || descriptor.max.is_none_or(|bound| max > bound)
+        {
+            return fail("control range must lie within the registered scalar bounds");
+        }
+        for operation in [&node.operation, &default_node.operation] {
+            operation
+                .scalar(&control.parameter)
+                .ok_or_else(|| Error("only scalar controls have ranges".into()))?
+                .bounded(min, max, &control.label)?;
+        }
+    }
+    Ok(())
+}
+/// The composition's own published controls: at most 64, each naming a distinct
+/// parameter of an existing node, checked as a group's controls are.
+pub(crate) fn validate_published(doc: &Composition) -> Result<()> {
+    if doc.published.len() > MAX_CONTROLS {
+        return fail("a composition publishes at most 64 controls");
+    }
+    let mut targets = BTreeSet::new();
+    for control in &doc.published {
+        name(&control.label)?;
+        if !targets.insert((control.node, &control.parameter)) {
+            return fail("a parameter is published once");
+        }
+        check_control(doc, control)?;
+    }
+    Ok(())
+}
+/// Everything a host shows for a composition: its own published controls in their
+/// order, then each group's exposed controls.
+pub fn published(doc: &Composition) -> Vec<Control> {
+    doc.published
+        .iter()
+        .chain(
+            doc.groups
+                .values()
+                .flat_map(|group| group.controls.values()),
+        )
+        .cloned()
+        .collect()
+}
 pub(crate) fn validate(doc: &Composition) -> Result<()> {
     if doc.groups.len() > 256 {
         return fail("composition exceeds 256 groups");
@@ -341,46 +417,7 @@ pub(crate) fn validate(doc: &Composition) -> Result<()> {
             {
                 return fail("control must reference a unique parameter inside its group");
             }
-            let node = &doc.nodes[&control.node];
-            if !node
-                .operation
-                .descriptor()
-                .parameters
-                .iter()
-                .any(|p| p.name == control.parameter)
-            {
-                return fail("unknown exposed parameter");
-            }
-            let mut default_node = node.clone();
-            let mut value =
-                serde_json::to_value(&node.operation).map_err(|e| Error(e.to_string()))?;
-            value[&control.parameter] = control.default.clone();
-            default_node.operation =
-                serde_json::from_value(value).map_err(|e| Error(e.to_string()))?;
-            default_node.operation.validate()?;
-            if let Some([min, max]) = control.range {
-                let descriptor = node
-                    .operation
-                    .descriptor()
-                    .parameters
-                    .iter()
-                    .find(|p| p.name == control.parameter)
-                    .unwrap();
-                if !min.is_finite()
-                    || !max.is_finite()
-                    || min > max
-                    || descriptor.min.is_none_or(|bound| min < bound)
-                    || descriptor.max.is_none_or(|bound| max > bound)
-                {
-                    return fail("control range must lie within the registered scalar bounds");
-                }
-                for operation in [&node.operation, &default_node.operation] {
-                    operation
-                        .scalar(&control.parameter)
-                        .ok_or_else(|| Error("only scalar controls have ranges".into()))?
-                        .bounded(min, max, &control.label)?;
-                }
-            }
+            check_control(doc, control)?;
         }
     }
     for node in doc.nodes.values() {
@@ -399,4 +436,93 @@ pub(crate) fn validate(doc: &Composition) -> Result<()> {
         return fail("composition output must use the group's public output");
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod published_tests {
+    use super::*;
+    use crate::{Document, Node, Operation, Time, blank};
+    fn blur() -> Operation {
+        serde_json::from_value(
+            crate::registry::TYPES
+                .iter()
+                .find(|t| t.type_id == "blur")
+                .unwrap()
+                .default_operation(),
+        )
+        .unwrap()
+    }
+    fn apply(document: &mut Document, commands: &[Command]) -> Result<u64> {
+        let revision = document.revision();
+        document.apply(revision, commands)
+    }
+    #[test]
+    fn published_controls_validate_save_follow_removed_nodes_and_hold_their_range() {
+        let composition = blank(64, 36, Time::new(24, 1).unwrap()).unwrap();
+        assert!(
+            !serde_json::to_string(&composition)
+                .unwrap()
+                .contains("published")
+        );
+        let source = composition.output;
+        let mut document = Document::new(composition).unwrap();
+        let node = Node::new("Soften", blur(), &[("image", source)]);
+        let id = node.id;
+        apply(
+            &mut document,
+            &[Command::Put {
+                node: Box::new(node),
+            }],
+        )
+        .unwrap();
+        let mut softness = Control::new(document.snapshot(), id, "radius", "Softness").unwrap();
+        let published = |list: Vec<Control>| Command::Published { published: list };
+        apply(&mut document, &[published(vec![softness.clone()])]).unwrap();
+        assert_eq!(published_of(&document), vec![softness.clone()]);
+        assert_eq!(
+            crate::describe::step(&[published(vec![])], document.snapshot()),
+            "Stop showing a setting on Edit"
+        );
+        // Saved and read back as it was.
+        let text = serde_json::to_string(document.snapshot()).unwrap();
+        let back: Composition = serde_json::from_str(&text).unwrap();
+        assert_eq!(back.published, vec![softness.clone()]);
+        // Refused: twice the same parameter, an unknown one, a missing node, no name, a
+        // range beyond the registered bounds, and more than 64.
+        let mut unknown = softness.clone();
+        unknown.parameter = "nothing".into();
+        let mut missing = softness.clone();
+        missing.node = uuid::Uuid::new_v4();
+        let mut unnamed = softness.clone();
+        unnamed.label = " ".into();
+        let mut wide = softness.clone();
+        wide.range = Some([-5.0, 1.0e9]);
+        for bad in [
+            vec![softness.clone(), softness.clone()],
+            vec![unknown],
+            vec![missing],
+            vec![unnamed],
+            vec![wide],
+            vec![softness.clone(); MAX_CONTROLS + 1],
+        ] {
+            assert!(apply(&mut document, &[published(bad)]).is_err());
+        }
+        assert_eq!(published_of(&document), vec![softness.clone()]);
+        // A range is held on every edit of the parameter.
+        softness.range = Some([0.0, 10.0]);
+        apply(&mut document, &[published(vec![softness.clone()])]).unwrap();
+        let set = |value: f32| Command::SetParameter {
+            id,
+            parameter: "radius".into(),
+            value: serde_json::json!({"kind": "constant", "value": value}),
+        };
+        apply(&mut document, &[set(4.0)]).unwrap();
+        assert!(apply(&mut document, &[set(20.0)]).is_err());
+        // Removing the node removes what it published.
+        apply(&mut document, &[Command::Remove { id }]).unwrap();
+        assert!(document.snapshot().published.is_empty());
+    }
+    fn published_of(document: &Document) -> Vec<Control> {
+        published(document.snapshot())
+    }
 }

@@ -30,6 +30,7 @@ fn plan_reuse_tracks_reachable_definitions_and_validates_disconnected_edits() {
         &[("image", image.id)],
     );
     let mut doc = Composition {
+        published: Default::default(),
         markers: Default::default(),
         backdrops: Default::default(),
         ocio: Default::default(),
@@ -111,6 +112,7 @@ fn plan_reuse_preserves_signed_zero_in_authored_parameters() {
         &[],
     );
     let mut doc = Composition {
+        published: Default::default(),
         markers: Default::default(),
         backdrops: Default::default(),
         ocio: Default::default(),

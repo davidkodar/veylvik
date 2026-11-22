@@ -47,6 +47,7 @@ fn depth_drives_the_blur_without_bleeding_sharp_foreground() {
         &[("image", colour.id), ("depth", depth.id)],
     );
     let doc = Composition {
+        published: Default::default(),
         markers: Default::default(),
         backdrops: Default::default(),
         ocio: Default::default(),

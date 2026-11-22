@@ -50,6 +50,7 @@ fn scene(shader: nodes::Shader, connected: bool) -> (Composition, ImageInputs) {
         if connected { &wired[..] } else { &[] },
     );
     let doc = Composition {
+        published: Default::default(),
         markers: Default::default(),
         backdrops: Default::default(),
         ocio: Default::default(),

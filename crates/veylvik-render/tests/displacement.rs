@@ -70,6 +70,7 @@ fn displacement_matches_reference_for_alpha_hdr_borders_animation_and_cache() {
         &[("image", image.id), ("map", field.id)],
     );
     let doc = Composition {
+        published: Default::default(),
         markers: Default::default(),
         backdrops: Default::default(),
         ocio: Default::default(),

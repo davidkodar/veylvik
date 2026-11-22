@@ -209,6 +209,8 @@ impl Studio {
         edit.gap();
         edit.item("edit.find", "Find node…", key("Ctrl+F"), ready);
         edit.item("edit.marker", "Add a marker here", key("M"), true);
+        edit.item("edit.published", "Settings shown on Edit…", None, true)
+            .hint("Settings a host such as Klipp shows on its Edit page, without opening Veylvik");
         edit.check("edit.auto_key", "Automatic keyframes", self.preferences.values.auto_key, true).hint(
             "On: changing an animated setting adds a keyframe at the current position. Off: such a change is a try-out until you add the keyframe",
         );
@@ -489,6 +491,7 @@ impl Studio {
             "edit.find" => {
                 self.open_node_finder();
             }
+            "edit.published" => self.published_open = true,
             "edit.marker" => {
                 self.add_marker();
             }

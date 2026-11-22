@@ -62,6 +62,11 @@ fn one(command: &Command, before: &Composition) -> String {
             name(before, id)
         ),
         Command::Annotate { id, .. } => format!("Tag or note {}", name(before, id)),
+        Command::Published { published } => match published.len().cmp(&before.published.len()) {
+            std::cmp::Ordering::Greater => "Show a setting on Edit".into(),
+            std::cmp::Ordering::Less => "Stop showing a setting on Edit".into(),
+            std::cmp::Ordering::Equal => "Change the settings shown on Edit".into(),
+        },
         Command::Backdrops { backdrops } => match backdrops.len().cmp(&before.backdrops.len()) {
             std::cmp::Ordering::Greater => "Add a backdrop".into(),
             std::cmp::Ordering::Less => "Remove a backdrop".into(),

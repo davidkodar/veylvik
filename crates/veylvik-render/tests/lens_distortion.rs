@@ -37,6 +37,7 @@ fn rendered(redistort: bool, fill: bool) -> Vec<[f32; 4]> {
         &[("image", image.id)],
     );
     let doc = Composition {
+        published: Default::default(),
         markers: Default::default(),
         backdrops: Default::default(),
         ocio: Default::default(),

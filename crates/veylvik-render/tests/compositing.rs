@@ -3,6 +3,7 @@ use veylvik_document::*;
 use veylvik_render::*;
 fn composition(nodes: Vec<Node>, output: NodeId) -> Composition {
     Composition {
+        published: Default::default(),
         markers: Default::default(),
         backdrops: Default::default(),
         ocio: Default::default(),

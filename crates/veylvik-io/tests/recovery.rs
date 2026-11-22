@@ -23,6 +23,7 @@ fn recovery_copies_preserve_assets_and_leave_originals_and_other_sessions_untouc
         &[],
     );
     let mut doc = Composition {
+        published: Default::default(),
         markers: Default::default(),
         backdrops: Default::default(),
         ocio: Default::default(),
