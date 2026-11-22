@@ -77,6 +77,9 @@ fn particle_prepare(@builtin(global_invocation_id) gid: vec3<u32>) {
     if gid.x >= p.size_op.x || gid.y >= p.size_op.y { return; }
     let i = gid.y * p.size_op.x + gid.x;
     let count = tiles();
+    // Without a depth picture only the tile table and the sprite at the start are ever
+    // read (the splat reads the rest only for depth): the frame beyond them is left alone.
+    if (u32(p.extra.z) & 8u) == 0u && i >= count + MIP * MIP { return; }
     var out = vec4<f32>(0.0);
     if i < count {
         if p.extra.y > 0.5 {
