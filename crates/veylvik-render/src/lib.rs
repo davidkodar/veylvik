@@ -1509,7 +1509,9 @@ impl Renderer {
                         );
                     }
                     // One 64-pixel row segment per workgroup.
-                    Kernel::BlurHorizontal | Kernel::FrostHorizontal => {
+                    Kernel::BlurHorizontal
+                    | Kernel::FrostHorizontal
+                    | Kernel::GrainNoiseHorizontal => {
                         pass.dispatch_workgroups(plan.width.div_ceil(64), plan.height, 1)
                     }
                     _ => match areas[at_pass] {
@@ -1656,6 +1658,7 @@ impl Renderer {
                     | Kernel::GlintSeeds
                     | Kernel::BlurHorizontal
                     | Kernel::FrostHorizontal
+                    | Kernel::GrainNoiseHorizontal
                     | Kernel::Custom
                     | Kernel::RenderScene
             ) && !kernel.entry().starts_with("particle_")

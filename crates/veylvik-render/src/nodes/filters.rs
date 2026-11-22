@@ -350,23 +350,20 @@ impl RenderNode for veylvik_document::nodes::MatchGrain {
     }
     fn passes(&self) -> Passes {
         use super::{From, Step};
-        // White noise, blurred to the grain size, added by brightness.
+        // White noise, made and blurred across in one pass, blurred down to the grain
+        // size, added by brightness.
         Passes::chain(&[
             Step {
-                kernel: Kernel::GrainNoise,
+                kernel: Kernel::GrainNoiseHorizontal,
                 inputs: [From::Port(0), From::None, From::None, From::None],
             },
             Step {
-                kernel: Kernel::BlurHorizontal,
+                kernel: Kernel::BlurVertical,
                 inputs: [From::Step(0), From::None, From::None, From::None],
             },
             Step {
-                kernel: Kernel::BlurVertical,
-                inputs: [From::Step(1), From::None, From::None, From::None],
-            },
-            Step {
                 kernel: Kernel::GrainApply,
-                inputs: [From::Port(0), From::Step(2), From::None, From::None],
+                inputs: [From::Port(0), From::Step(1), From::None, From::None],
             },
         ])
     }

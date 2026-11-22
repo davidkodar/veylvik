@@ -8,19 +8,47 @@ fn grain_hash(v:vec3<u32>)->u32 {
     return x;
 }
 fn grain_unit(v:vec3<u32>)->f32 {return (f32(grain_hash(v)>>8u)+0.5)/16777216.0;}
-@compute @workgroup_size(8,8)
-fn grain_noise(@builtin(global_invocation_id) gid:vec3<u32>) {
-    if !inside(gid) {return;}
+// The noise at a pixel; nought outside the frame, as the blur reads beyond its edge.
+fn grain_noise_at(x:i32,y:i32)->vec4<f32> {
+    if x<0 || y<0 || x>=i32(p.size_op.x) || y>=i32(p.size_op.y) {return vec4<f32>(0.0);}
     let seed=p.size_op.z*8u;
     var n=vec4<f32>(0.0);
     for(var k=0u;k<2u;k++) {
-        let u1=grain_unit(vec3<u32>(gid.x,gid.y,seed+2u*k));
-        let u2=grain_unit(vec3<u32>(gid.x,gid.y,seed+2u*k+1u));
+        let u1=grain_unit(vec3<u32>(u32(x),u32(y),seed+2u*k));
+        let u2=grain_unit(vec3<u32>(u32(x),u32(y),seed+2u*k+1u));
         let r=sqrt(-2.0*log(u1));
         n[2u*k]=r*cos(6.28318531*u2);
         n[2u*k+1u]=r*sin(6.28318531*u2);
     }
-    result[index(gid)]=n;
+    return n;
+}
+// The noise made and blurred across in one pass, as the horizontal blur reads a frame
+// of it (blur_row_pass with the noise as its taps): the frame of noise is never written.
+@compute @workgroup_size(64,1)
+fn grain_noise_horizontal(@builtin(global_invocation_id) gid:vec3<u32>,@builtin(local_invocation_id) lid:vec3<u32>) {
+    let radius=u32(round(p.values.x));let gaussian=p.values.y>=0.5;
+    if radius<=2u {
+        if !inside(gid) {return;}
+        var total=vec4<f32>(0.0);var weights=0.0;
+        for (var offset=-i32(radius);offset<=i32(radius);offset++) {
+            let w=blur_weight(offset,i32(radius),gaussian);
+            total+=grain_noise_at(i32(gid.x)+offset,i32(gid.y))*w;weights+=w;
+        }
+        result[index(gid)]=total/weights;
+        return;
+    }
+    let origin=i32(gid.x-lid.x)-i32(radius);
+    for(var item=lid.x;item<64u+2u*radius;item+=64u) {
+        blur_row[item]=grain_noise_at(origin+i32(item),i32(gid.y));
+    }
+    workgroupBarrier();
+    if !inside(gid) {return;}
+    var total=vec4<f32>(0.0);var weights=0.0;
+    for(var tap=0u;tap<=2u*radius;tap++) {
+        let w=blur_weight(i32(tap)-i32(radius),i32(radius),gaussian);
+        total+=blur_row[lid.x+tap]*w;weights+=w;
+    }
+    result[index(gid)]=total/weights;
 }
 // Grain strength at luminance l: linear in log2 luminance between 0.02, 0.18 and 0.9.
 fn grain_sigma(l:f32)->f32 {
