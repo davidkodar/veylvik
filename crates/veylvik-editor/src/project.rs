@@ -33,6 +33,14 @@ pub struct Project {
     stamp: Option<veylvik_io::FileStamp>,
     compiled: Option<(u64, NodeId, Arc<Plan>)>,
 }
+/// A host's footage in the composition (see [`Project::host_footage`]).
+#[derive(Clone)]
+pub struct HostFootage {
+    pub key: String,
+    pub timing: (f64, f64, Option<f64>),
+    pub length: Option<f64>,
+    pub host: std::sync::Arc<dyn crate::host::Host>,
+}
 impl Project {
     pub fn open(path: Option<&Path>) -> Result<Self> {
         let (composition, base, path, stamp) = if let Some(path) = path {
@@ -303,6 +311,47 @@ impl Project {
                 }
             }
         }
+    }
+    /// Footage a host gives, for the preview to play the host's own sound of: its key,
+    /// its timing (start, source in, source out in seconds) and the media's length when
+    /// known, and the host that answers for it.
+    pub fn host_footage(&self) -> Vec<HostFootage> {
+        let Some(host) = self.host.clone().or_else(crate::files::host) else {
+            return Vec::new();
+        };
+        let doc = self.document.snapshot();
+        doc.nodes
+            .values()
+            .filter(|node| !node.bypass)
+            .filter_map(|node| {
+                let Operation::Footage(footage) = &node.operation else {
+                    return None;
+                };
+                let key = node.operation.source_key()?.into_owned();
+                if !self.host_media.contains(&key) {
+                    return None;
+                }
+                let timing = (
+                    footage.timing.start.seconds().ok()?,
+                    footage.timing.source_in.seconds().ok()?,
+                    match footage.timing.source_out {
+                        Some(out) => Some(out.seconds().ok()?),
+                        None => None,
+                    },
+                );
+                let length = self
+                    .inputs
+                    .info(&key)
+                    .and_then(|info| info.duration)
+                    .and_then(|d| d.seconds().ok());
+                Some(HostFootage {
+                    key,
+                    timing,
+                    length,
+                    host: host.clone(),
+                })
+            })
+            .collect()
     }
     /// The composition as the sound mix should read it: footage a host gives has no file
     /// here, so it is left out until hosts give sound too.

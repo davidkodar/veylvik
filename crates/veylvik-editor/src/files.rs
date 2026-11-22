@@ -216,7 +216,7 @@ pub fn set_host(host: Option<std::sync::Arc<dyn crate::host::Host>>) {
         *slot = host;
     }
 }
-fn host() -> Option<std::sync::Arc<dyn crate::host::Host>> {
+pub(crate) fn host() -> Option<std::sync::Arc<dyn crate::host::Host>> {
     HOST.read().ok().and_then(|slot| slot.clone())
 }
 type Named = (String, Option<PathBuf>);

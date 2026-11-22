@@ -65,4 +65,12 @@ pub trait Host: Send + Sync {
     fn media(&self, _key: &str) -> Option<Arc<dyn FrameSource>> {
         None
     }
+    /// The sound of media named `key` (as [`Host::media`] answers it) from `window[0]` to
+    /// `window[1]` seconds of the media's own time, at `rate` samples a second, stereo
+    /// and interleaved, `start` = `window[0]`; for the editor's preview, which plays it
+    /// where the composition places the footage. `None`: no sound, or not given.
+    fn media_sound(&self, key: &str, window: [f64; 2], rate: u32) -> Option<veylvik_audio::Pcm> {
+        let _ = (key, window, rate);
+        None
+    }
 }
