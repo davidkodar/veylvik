@@ -240,25 +240,31 @@ const FIELD: usize = 2;
 const OBSTACLE: usize = 3;
 const SPRITE: usize = 4;
 const DEPTH: usize = 6;
+const PREPARE: Step = Step {
+    kernel: Kernel::ParticlePrepare,
+    inputs: [
+        From::Port(TARGET),
+        From::Port(SPRITE),
+        From::Port(DEPTH),
+        From::None,
+    ],
+};
+const FIELDS: Step = Step {
+    kernel: Kernel::ParticleFields,
+    inputs: [
+        From::Port(FIELD),
+        From::Port(OBSTACLE),
+        From::Step(0),
+        From::Data,
+    ],
+};
+const RESOLVE: Step = Step {
+    kernel: Kernel::ParticleResolve,
+    inputs: [From::Step(2), From::Step(1), From::None, From::None],
+};
 static STEPS: [Step; 4] = [
-    Step {
-        kernel: Kernel::ParticlePrepare,
-        inputs: [
-            From::Port(TARGET),
-            From::Port(SPRITE),
-            From::Port(DEPTH),
-            From::None,
-        ],
-    },
-    Step {
-        kernel: Kernel::ParticleFields,
-        inputs: [
-            From::Port(FIELD),
-            From::Port(OBSTACLE),
-            From::Step(0),
-            From::Data,
-        ],
-    },
+    PREPARE,
+    FIELDS,
     Step {
         kernel: Kernel::ParticleSplat,
         inputs: [
@@ -268,10 +274,23 @@ static STEPS: [Step; 4] = [
             From::Step(0),
         ],
     },
+    RESOLVE,
+];
+/// The same, for depth without a target: the splat reads the depth picture in the
+/// target's place instead of a copy the prepare pass makes over the whole frame.
+static DEPTH_STEPS: [Step; 4] = [
+    PREPARE,
+    FIELDS,
     Step {
-        kernel: Kernel::ParticleResolve,
-        inputs: [From::Step(2), From::Step(1), From::None, From::None],
+        kernel: Kernel::ParticleSplat,
+        inputs: [
+            From::Port(EMITTER),
+            From::Port(DEPTH),
+            From::Step(1),
+            From::Step(0),
+        ],
     },
+    RESOLVE,
 ];
 impl RenderNode for Particles {
     /// No particle is alive: none is born before Start, and with a Duration the last
@@ -291,6 +310,13 @@ impl RenderNode for Particles {
     }
     fn passes(&self) -> Passes {
         Passes::chain(&STEPS)
+    }
+    fn passes_for(&self, node: &veylvik_document::Node) -> Passes {
+        if node.inputs.contains_key("depth") && !node.inputs.contains_key("target") {
+            Passes::chain(&DEPTH_STEPS)
+        } else {
+            Passes::chain(&STEPS)
+        }
     }
     fn has_data(&self) -> bool {
         true
@@ -367,7 +393,8 @@ impl RenderNode for Particles {
                 u8::from(wired("field"))
                     | u8::from(wired("obstacle")) << 1
                     | u8::from(sprite) << 2
-                    | u8::from(wired("depth")) << 3,
+                    | u8::from(wired("depth") && wired("target")) << 3
+                    | u8::from(wired("depth") && !wired("target")) << 4,
             ),
             rows[ROWS - 1][0],
         ];

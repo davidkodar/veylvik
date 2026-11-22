@@ -77,8 +77,9 @@ fn particle_prepare(@builtin(global_invocation_id) gid: vec3<u32>) {
     if gid.x >= p.size_op.x || gid.y >= p.size_op.y { return; }
     let i = gid.y * p.size_op.x + gid.x;
     let count = tiles();
-    // Without a depth picture only the tile table and the sprite at the start are ever
-    // read (the splat reads the rest only for depth): the frame beyond them is left alone.
+    // Without a depth picture to copy (flag 8: depth beside a target; without a target
+    // the splat reads the depth itself, flag 16) only the tile table and the sprite at
+    // the start are ever read: the frame beyond them is left alone.
     if (u32(p.extra.z) & 8u) == 0u && i >= count + MIP * MIP { return; }
     var out = vec4<f32>(0.0);
     if i < count {
@@ -290,10 +291,18 @@ fn distance_to(at: vec3<f32>) -> f32 {
 }
 // The distance of the 3D object at a pixel (0: none, or no depth connected).
 fn occluder(at: vec2<f32>) -> f32 {
-    if (u32(p.extra.z) & 8u) == 0u { return 0.0; }
+    let flags = u32(p.extra.z);
+    if (flags & 24u) == 0u { return 0.0; }
     let q = vec2<i32>(floor(at));
     if q.x < 0 || q.y < 0 || q.x >= i32(p.size_op.x) || q.y >= i32(p.size_op.y) { return 0.0; }
-    return fourth[u32(q.y) * p.size_op.x + u32(q.x)].y;
+    let i = u32(q.y) * p.size_op.x + u32(q.x);
+    // Without a target the depth picture is bound where the target would be, and read
+    // as the prepare pass copies it: the distance where an object is, else nought.
+    if (flags & 16u) != 0u {
+        let there = second[i];
+        return select(0.0, max(there.r, 0.0), there.a > 0.5);
+    }
+    return fourth[i].y;
 }
 // The lens blur in pixels of something `away` from the scene's camera.
 fn lens_blur(away: f32) -> f32 {

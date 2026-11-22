@@ -868,8 +868,39 @@ fn a_depth_picture_hides_the_particles_behind_it() {
     );
     let far = vec![[900.0, 900.0, 900.0, 1.0]; (W * H) as usize];
     assert_eq!(
-        render_with(&renderer, point, vec![("depth", far)], (2, 1)),
+        render_with(&renderer, point.clone(), vec![("depth", far)], (2, 1)),
         open
+    );
+    // Beside a target the depth is read from the prepare pass's copy, without one from
+    // the picture itself: with a target too, the wall hides some and a far wall none.
+    let target = || ("target", vec![[1.0; 4]; (W * H) as usize]);
+    let aimed = render_with(&renderer, point.clone(), vec![target()], (2, 1));
+    let walled = render_with(
+        &renderer,
+        point.clone(),
+        vec![
+            ("depth", vec![[222.2, 222.2, 222.2, 1.0]; (W * H) as usize]),
+            target(),
+        ],
+        (2, 1),
+    );
+    assert!(
+        lit(&walled) < lit(&aimed),
+        "{} of {}",
+        lit(&walled),
+        lit(&aimed)
+    );
+    assert_eq!(
+        render_with(
+            &renderer,
+            point,
+            vec![
+                ("depth", vec![[900.0, 900.0, 900.0, 1.0]; (W * H) as usize]),
+                target()
+            ],
+            (2, 1)
+        ),
+        aimed
     );
 }
 #[test]
