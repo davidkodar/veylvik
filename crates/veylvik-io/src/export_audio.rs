@@ -152,8 +152,10 @@ pub fn clips_within(
             continue;
         };
         // An image sequence is a manifest of pictures: it has no sound, and is no
-        // media file to probe.
-        if crate::footage::is_sequence(&path) {
+        // media file to probe. Footage that is no file here is a host's own media (its
+        // key names it, not a path): the host plays that sound itself, so it is not
+        // mixed, nor the file kept beside the key, which would play it twice.
+        if crate::footage::is_sequence(&path) || !path.is_file() {
             continue;
         }
         let probe = probe(&path)?;
@@ -339,6 +341,66 @@ pub fn resound(
 #[cfg(test)]
 mod tests {
     use super::*;
+    /// A half-second 8 kHz tone as a WAV file.
+    fn tone(path: &Path) {
+        let samples: Vec<i16> = (0..4000)
+            .map(|i| ((i as f32 * 0.2).sin() * 8000.0) as i16)
+            .collect();
+        let data: Vec<u8> = samples.iter().flat_map(|s| s.to_le_bytes()).collect();
+        let mut wav = Vec::new();
+        wav.extend(b"RIFF");
+        wav.extend((36 + data.len() as u32).to_le_bytes());
+        wav.extend(b"WAVEfmt ");
+        wav.extend(16u32.to_le_bytes());
+        wav.extend(1u16.to_le_bytes());
+        wav.extend(1u16.to_le_bytes());
+        wav.extend(8000u32.to_le_bytes());
+        wav.extend(16000u32.to_le_bytes());
+        wav.extend(2u16.to_le_bytes());
+        wav.extend(16u16.to_le_bytes());
+        wav.extend(b"data");
+        wav.extend((data.len() as u32).to_le_bytes());
+        wav.extend(data);
+        std::fs::write(path, wav).unwrap();
+    }
+    #[test]
+    fn a_hosts_footage_is_not_mixed_and_the_compositions_own_sound_is() {
+        let folder = std::env::temp_dir().join(format!(
+            "veylvik-host-mix-{}",
+            veylvik_document::NodeId::new_v4()
+        ));
+        std::fs::create_dir_all(&folder).unwrap();
+        tone(&folder.join("whoosh.wav"));
+        // Klipp's clip: a key the host answers, and a real file kept beside it.
+        tone(&folder.join("the-clip.wav"));
+        let mut doc = Composition::from_host_footage(
+            "clip",
+            "Handheld",
+            Some(&folder.join("the-clip.wav")),
+            [64, 36],
+            veylvik_document::Time::new(24, 1).unwrap(),
+            48,
+        )
+        .unwrap();
+        let mut sound: Operation = serde_json::from_value(
+            veylvik_document::registry::TYPES
+                .iter()
+                .find(|t| t.type_id == "sound")
+                .unwrap()
+                .default_operation(),
+        )
+        .unwrap();
+        if let Operation::Sound(s) = &mut sound {
+            s.file = "whoosh.wav".into();
+        }
+        let node = veylvik_document::Node::new("Whoosh", sound, &[]);
+        doc.nodes.insert(node.id, node);
+        let reach = veylvik_document::access::Reach::Within(Vec::new());
+        let clips = clips_within(&doc, &folder, &reach, [0.0, 2.0]).unwrap();
+        assert_eq!(clips.len(), 1, "{clips:?}");
+        assert!(clips[0].path.ends_with("whoosh.wav"));
+        std::fs::remove_dir_all(folder).unwrap();
+    }
     #[test]
     fn clips_follow_timeline_placement_trims_and_the_export_window() {
         let p = Path::new("clip.mov");
