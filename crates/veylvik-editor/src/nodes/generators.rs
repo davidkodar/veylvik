@@ -135,6 +135,27 @@ impl Inspect for veylvik_document::nodes::Particles {
                 .on_hover_text("In a 3D scene: the camera's depth of field does not blur these particles")
                 .changed();
         });
+        // The colours: at birth, at the end of the life, and of a burst.
+        egui::CollapsingHeader::new("Colours")
+            .id_salt("particle-colours")
+            .show(ui, |ui| {
+                ui.weak("Linear RGBA; values above 1 glow");
+                ui.label("At birth");
+                cx.dirty |= animation::color(ui, &mut self.colour);
+                ui.label("At the end of the life");
+                cx.dirty |= animation::color(ui, &mut self.end_colour);
+                ui.label("Burst");
+                cx.dirty |= animation::color(ui, &mut self.burst_colour);
+            });
+        let obstacle: bool = ui
+            .data(|d| d.get_temp(egui::Id::new("particles-obstacle")))
+            .unwrap_or(false);
+        if obstacle {
+            cx.dirty |= ui
+                .checkbox(&mut self.burst_on_impact, "Burst on the obstacle")
+                .on_hover_text("A particle ends where it first touches the obstacle and its burst is thrown back off it, for splashes and sparks off a surface. Unticked, bursts come at the end of each life")
+                .changed();
+        }
         // Only an emitter image can move out from under its particles.
         let boxed: bool = ui
             .data(|d| d.get_temp(egui::Id::new("particles-box")))

@@ -79,6 +79,25 @@ pub struct ParticleSettings {
     /// In a scene: not blurred by the camera's depth of field.
     #[serde(default)]
     pub in_focus: bool,
+    /// Particles each releases when it ends (0: none), for fireworks and sparks.
+    #[serde(default = "zero")]
+    pub burst: Scalar,
+    #[serde(default = "burst_speed")]
+    pub burst_speed: Scalar,
+    /// Degrees round the way the particle was going (360: all round).
+    #[serde(default = "all_round")]
+    pub burst_spread: Scalar,
+    #[serde(default = "first")]
+    pub burst_life: Scalar,
+    /// A burst particle's size as a factor of the size.
+    #[serde(default = "burst_size")]
+    pub burst_size: Scalar,
+    #[serde(default = "white")]
+    pub burst_colour: [f32; 4],
+    /// Bursts are set off by the obstacle, where a particle first touches it and ends;
+    /// otherwise by the end of a particle's life.
+    #[serde(default)]
+    pub burst_on_impact: bool,
     pub start: Scalar,
     pub duration: Scalar,
     pub x: Scalar,
@@ -95,11 +114,23 @@ fn zero() -> Scalar {
 fn first() -> Scalar {
     1.0.into()
 }
+fn burst_speed() -> Scalar {
+    200.0.into()
+}
+fn all_round() -> Scalar {
+    360.0.into()
+}
+fn burst_size() -> Scalar {
+    0.6.into()
+}
+fn white() -> [f32; 4] {
+    [1.0; 4]
+}
 pub static PARTICLES: NodeType = NodeType {
     type_id: "particles",
     version: 1,
     label: "Particles",
-    description: "Soft dots born over time and moved by a launch speed, gravity, wind and swirling turbulence, on a transparent frame. With emitter connected, particles are born where that image has alpha (text, a shape, a matte), density of them a second for every 100 x 100 pixels of it; otherwise rate a second are born inside the box of width x height centred on x, y (0 x 0 is a point). Each lives life seconds, launched at speed along direction (degrees, 0 right, 90 up) within spread degrees, then pulled by gravity (down) and wind (right) in pixels per second squared and pushed about by turbulence (pixels per second, swirls about turbulence_scale pixels across, never converging or thinning the cloud). Size is the dot's radius; colour runs to end_colour over the life (linear RGBA, values above 1 glow), fading out over the last fade share of it. Glow 1 adds light where dots overlap, 0 lets them cover one another. Variation makes speeds, sizes and lives differ. Emission begins at start seconds and lasts duration seconds (0 is endless; a short duration is a burst). Inherit tints each particle with the colour of the emitter where it was born (1 is fully the picture's own colour, times colour), so an image breaks up into dust of itself. With target connected, each particle is given a place in that image's alpha and steered onto it over the last homing share of its life (1 is the whole life, 0 never), arriving exactly as it dies and, with inherit, taking the target's colour on the way; particles that find no place are not born. Streak draws each particle as a trail back along where it was streak seconds earlier (at most 96 pixels), for sparks and rain. Field is an image that pushes particles: field_push accelerates them from its bright parts towards its dark parts (negative draws them in) and field_flow along its edges, so they stream round a shape. Pull draws them to the point pull_x, pull_y (negative drives them away) and vortex swings them round it. Obstacle is a matte they bounce off, keeping bounce of their speed. Sprite is an image drawn as each particle in place of a dot (the whole frame of that input, size wide either side, tinted by the colours), turning at spin degrees a second; grow is the size at the end of the life as a factor of the size at birth. Colour_variation turns each particle's hue by its own random amount (1 is anywhere round the colour wheel), for confetti. Particles live in the 3D scenes' space: the frame at depth 0, in pixels, z towards the viewer. Depth spreads their births that many pixels in front of and behind the frame, lets the launch spread and the turbulence carry them through depth, and draws near ones larger. They are filmed by the camera numbered camera in the scene connected to scene (as a Render scene node counts them; 0, or no scene, is the view that sees the frame exactly), so they move with a 3D or solved camera and show parallax. Every particle is recomputed from the frame's time alone, so frames render in any order and identically. Keyed settings are followed: a particle is launched with the settings in force when it was born, and forces act as keyed while it flies, sampled 16 times across the last life; target, field, obstacle and sprite images are read as they are at the frame, and so is the emitter unless history is set: then the emitter is rendered at that many earlier moments across the last life (4, 9 or 16 are used, on whole frames, at a half, a third or a quarter of the size) and each particle is born on the emitter as it was nearest its birth, so moving text or footage leaves its particles behind. That costs as many extra renders of the emitter's branch for every frame. At most 2000000 particles from a box. Connect a Render scene with Depth on (same scene and camera) to Depth and 3D objects hide the particles behind them; the scene camera's depth of field blurs particles out of focus. In depth: Z places the box in front of (positive) or behind the frame, Towards launches particles at the viewer (away when negative), and Reach is how far from the camera they are drawn, fading out over its last quarter (0: any distance), so a volume of stars to fly through shows no far end. Shutter is an exposure time in seconds: with a scene connected, the camera's move during it streaks each particle, so a fast flight draws stars as streaks. Particles exist from Start onwards: set Start to minus their Life to have a full cloud at the first frame. Life may be up to an hour, so a field of stars can simply stand (rate times life is still at most 2,000,000 particles). In a scene, Points keeps every particle the same size on screen at any distance, as stars are points however near, and In focus keeps the camera's depth of field from blurring them.",
+    description: "Soft dots born over time and moved by a launch speed, gravity, wind and swirling turbulence, on a transparent frame. With emitter connected, particles are born where that image has alpha (text, a shape, a matte), density of them a second for every 100 x 100 pixels of it; otherwise rate a second are born inside the box of width x height centred on x, y (0 x 0 is a point). Each lives life seconds, launched at speed along direction (degrees, 0 right, 90 up) within spread degrees, then pulled by gravity (down) and wind (right) in pixels per second squared and pushed about by turbulence (pixels per second, swirls about turbulence_scale pixels across, never converging or thinning the cloud). Size is the dot's radius; colour runs to end_colour over the life (linear RGBA, values above 1 glow), fading out over the last fade share of it. Glow 1 adds light where dots overlap, 0 lets them cover one another. Variation makes speeds, sizes and lives differ. Emission begins at start seconds and lasts duration seconds (0 is endless; a short duration is a burst). Inherit tints each particle with the colour of the emitter where it was born (1 is fully the picture's own colour, times colour), so an image breaks up into dust of itself. With target connected, each particle is given a place in that image's alpha and steered onto it over the last homing share of its life (1 is the whole life, 0 never), arriving exactly as it dies and, with inherit, taking the target's colour on the way; particles that find no place are not born. Streak draws each particle as a trail back along where it was streak seconds earlier (at most 96 pixels), for sparks and rain. Field is an image that pushes particles: field_push accelerates them from its bright parts towards its dark parts (negative draws them in) and field_flow along its edges, so they stream round a shape. Pull draws them to the point pull_x, pull_y (negative drives them away) and vortex swings them round it. Obstacle is a matte they bounce off, keeping bounce of their speed. Sprite is an image drawn as each particle in place of a dot (the whole frame of that input, size wide either side, tinted by the colours), turning at spin degrees a second; grow is the size at the end of the life as a factor of the size at birth. Colour_variation turns each particle's hue by its own random amount (1 is anywhere round the colour wheel), for confetti. Particles live in the 3D scenes' space: the frame at depth 0, in pixels, z towards the viewer. Depth spreads their births that many pixels in front of and behind the frame, lets the launch spread and the turbulence carry them through depth, and draws near ones larger. They are filmed by the camera numbered camera in the scene connected to scene (as a Render scene node counts them; 0, or no scene, is the view that sees the frame exactly), so they move with a 3D or solved camera and show parallax. Every particle is recomputed from the frame's time alone, so frames render in any order and identically. Keyed settings are followed: a particle is launched with the settings in force when it was born, and forces act as keyed while it flies, sampled 16 times across the last life; target, field, obstacle and sprite images are read as they are at the frame, and so is the emitter unless history is set: then the emitter is rendered at that many earlier moments across the last life (4, 9 or 16 are used, on whole frames, at a half, a third or a quarter of the size) and each particle is born on the emitter as it was nearest its birth, so moving text or footage leaves its particles behind. That costs as many extra renders of the emitter's branch for every frame. At most 2000000 particles from a box. Connect a Render scene with Depth on (same scene and camera) to Depth and 3D objects hide the particles behind them; the scene camera's depth of field blurs particles out of focus. In depth: Z places the box in front of (positive) or behind the frame, Towards launches particles at the viewer (away when negative), and Reach is how far from the camera they are drawn, fading out over its last quarter (0: any distance), so a volume of stars to fly through shows no far end. Shutter is an exposure time in seconds: with a scene connected, the camera's move during it streaks each particle, so a fast flight draws stars as streaks. Particles exist from Start onwards: set Start to minus their Life to have a full cloud at the first frame. Life may be up to an hour, so a field of stars can simply stand (rate times life is still at most 2,000,000 particles). In a scene, Points keeps every particle the same size on screen at any distance, as stars are points however near, and In focus keeps the camera's depth of field from blurring them. Burst sets off that many particles from each particle as it ends (fireworks, sparks): thrown at burst_speed within burst_spread degrees round the way it was going (360 all round), carrying on its speed, living burst_life seconds, burst_size times the size, in burst_colour, moved by the same forces. With burst_on_impact the obstacle sets them off instead: a particle ends where it first touches the obstacle and its burst is thrown back off it (splashes, sparks off a surface). Burst particles are computed from the frame's time like the others.",
     inputs: &[
         "emitter", "target", "field", "obstacle", "sprite", "scene", "depth",
     ],
@@ -165,6 +196,11 @@ pub static PARTICLES: NodeType = NodeType {
         scalar("reach", "pixels", 0.0, 1_000_000.0, 0.0),
         scalar("towards", "pixels per second", -100_000.0, 100_000.0, 0.0),
         scalar("shutter", "seconds", 0.0, 0.5, 0.0),
+        scalar("burst", "particles", 0.0, 64.0, 0.0),
+        scalar("burst_speed", "pixels per second", 0.0, 8192.0, 200.0),
+        scalar("burst_spread", "degrees", 0.0, 360.0, 360.0),
+        scalar("burst_life", "seconds", 0.05, 60.0, 1.0),
+        scalar("burst_size", "factor", 0.0, 8.0, 0.6),
         scalar("start", "seconds", -3600.0, 3600.0, 0.0),
         scalar("duration", "seconds", 0.0, 3600.0, 0.0),
         scalar("x", "pixels", -1_000_000.0, 1_000_000.0, 960.0),
@@ -187,6 +223,15 @@ pub static PARTICLES: NodeType = NodeType {
             "same size at any distance",
         ),
         other("in_focus", ParameterKind::Boolean, "ignore depth of field"),
+        Parameter {
+            default: 1.0,
+            ..other("burst_colour", ParameterKind::Color, "linear RGBA")
+        },
+        other(
+            "burst_on_impact",
+            ParameterKind::Boolean,
+            "set off by the obstacle",
+        ),
     ],
 };
 node!(
@@ -226,6 +271,11 @@ node!(
         reach,
         towards,
         shutter,
+        burst,
+        burst_speed,
+        burst_spread,
+        burst_life,
+        burst_size,
         start,
         duration,
         x,
@@ -239,6 +289,7 @@ node!(
                 .colour
                 .iter()
                 .chain(&self.end_colour)
+                .chain(&self.burst_colour)
                 .any(|v| !v.is_finite() || !(0.0..=64.0).contains(v))
             {
                 return fail("Particle colours need values in 0..=64");

@@ -937,3 +937,85 @@ fn a_box_sits_in_depth_particles_fly_at_the_viewer_and_a_reach_hides_the_far_one
         "{left} {right}"
     );
 }
+/// Particles born in the first twentieth of a second at the frame's centre, still,
+/// each living half a second.
+fn shells() -> nodes::Particles {
+    let mut shells = still();
+    shells.duration = 0.05.into();
+    shells.life = 0.5.into();
+    shells
+}
+#[test]
+#[ignore = "requires Vulkan"]
+fn a_particle_bursts_into_more_where_it_ends() {
+    let renderer = Renderer::new().unwrap();
+    let lit = |pixels: &[[f32; 4]]| pixels.iter().filter(|p| p[3] > 0.02).count();
+    // Without a burst the shells are gone once their life is over.
+    assert_eq!(lit(&render(&renderer, shells(), None, (9, 10))), 0);
+    let mut fireworks = shells();
+    fireworks.burst = 16.0.into();
+    fireworks.burst_speed = 60.0.into();
+    fireworks.burst_life = 1.0.into();
+    // Before the end: only the shells, at the centre.
+    let early = render(&renderer, fireworks.clone(), None, (4, 10));
+    let (left, right, top, bottom) = span(&early);
+    assert!(
+        right - left <= 8 && bottom - top <= 8,
+        "{left}..{right} {top}..{bottom}"
+    );
+    // After it: a burst thrown all round from where they ended.
+    let late = render(&renderer, fireworks.clone(), None, (9, 10));
+    let (left, right, top, bottom) = span(&late);
+    assert!(lit(&late) > 0, "no burst");
+    assert!(
+        right - left >= 30 && bottom - top >= 30,
+        "{left}..{right} {top}..{bottom}"
+    );
+    assert!(
+        left < 80 && right > 80 && top < 60 && bottom > 60,
+        "round the centre"
+    );
+    // Every frame on its own: the same frame again is the same picture.
+    assert_eq!(render(&renderer, fireworks.clone(), None, (9, 10)), late);
+    // Burst particles live their own life: gone a second after the shells ended.
+    assert_eq!(lit(&render(&renderer, fireworks, None, (17, 10))), 0);
+}
+#[test]
+#[ignore = "requires Vulkan"]
+fn an_obstacle_sets_off_a_burst_thrown_back_off_it() {
+    let renderer = Renderer::new().unwrap();
+    // Shells falling from the centre at 100 px a second onto a floor at row 80.
+    let mut falling = shells();
+    falling.life = 2.0.into();
+    falling.speed = 100.0.into();
+    falling.direction = (-90.0).into();
+    falling.spread = 0.0.into();
+    falling.burst = 12.0.into();
+    falling.burst_speed = 60.0.into();
+    falling.burst_spread = 90.0.into();
+    falling.burst_life = 1.0.into();
+    falling.burst_on_impact = true;
+    let floor: Vec<[f32; 4]> = (0..W * H)
+        .map(|i| if i / W >= 80 { [1.0; 4] } else { [0.0; 4] })
+        .collect();
+    let at = |seconds| {
+        render_with(
+            &renderer,
+            falling.clone(),
+            vec![("obstacle", floor.clone())],
+            seconds,
+        )
+    };
+    // Before reaching the floor: the shells alone, above it.
+    let (_, _, _, bottom) = span(&at((1, 10)));
+    assert!((60..=74).contains(&bottom), "{bottom}");
+    // After: the shells have ended on the floor and their burst flies back up off it.
+    let after = at((5, 10));
+    let (left, right, top, bottom) = span(&after);
+    assert!(after.iter().any(|p| p[3] > 0.02), "no burst off the floor");
+    assert!(bottom <= 81, "nothing goes through the floor: {bottom}");
+    assert!(
+        top < 72 && right - left >= 10,
+        "thrown back up and apart: {left}..{right} {top}..{bottom}"
+    );
+}

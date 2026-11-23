@@ -44,7 +44,7 @@ fn set(node: &mut Particles, values: &[(&str, f32)]) {
         }
     }
 }
-pub static LOOKS: [Look; 9] = [
+pub static LOOKS: [Look; 10] = [
     Look {
         name: "Sparks",
         hint: "A shower of hot streaks thrown up from the emitter and falling back",
@@ -308,6 +308,42 @@ pub static LOOKS: [Look; 9] = [
             );
             n.colour = [1.0, 1.0, 1.0, 1.0];
             n.end_colour = [1.0, 1.0, 1.0, 1.0];
+        },
+    },
+    Look {
+        name: "Fireworks",
+        hint: "Shells rise from the bottom of the frame and burst at the top of their climb into streaking sparks, each shell its own colour, that fall away. Each shell bursts where its life ends: Life sets the height, Burst the sparks in each",
+        needs: Needs::Nothing,
+        apply: |n, w, h| {
+            let s = w / 1920.0;
+            set(
+                n,
+                &[
+                    ("rate", 3.0),
+                    ("life", 2.0),
+                    ("x", w / 2.0),
+                    ("y", h),
+                    ("width", w * 0.6),
+                    ("height", 0.0),
+                    ("speed", 700.0 * s),
+                    ("direction", 90.0),
+                    ("spread", 16.0),
+                    ("gravity", 330.0 * s),
+                    ("size", 2.2 * s),
+                    ("fade", 0.15),
+                    ("variation", 0.3),
+                    ("streak", 0.06),
+                    ("colour_variation", 0.9),
+                    ("burst", 48.0),
+                    ("burst_speed", 360.0 * s),
+                    ("burst_spread", 360.0),
+                    ("burst_life", 1.6),
+                    ("burst_size", 1.0),
+                ],
+            );
+            n.colour = [1.2, 0.9, 0.6, 1.0];
+            n.end_colour = [1.2, 0.7, 0.4, 1.0];
+            n.burst_colour = [1.6, 0.6, 0.25, 1.0];
         },
     },
 ];

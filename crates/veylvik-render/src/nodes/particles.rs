@@ -9,7 +9,7 @@ const SLOTS: f32 = 4.0;
 /// Threads in one dispatch row (1024 workgroups of 64).
 const ROW: u32 = 65536;
 /// Settings in a row, and rows through the last life (as in particle_system.wgsl).
-const COUNT: usize = 45;
+const COUNT: usize = 54;
 const ROWS: usize = 16;
 /// The target's tile size for a frame (as in particle_system.wgsl).
 fn tile(pixels: u64) -> u32 {
@@ -66,11 +66,20 @@ fn settings(node: &Particles, time: Time) -> Result<[f32; COUNT]> {
         at(&node.z)?,
         at(&node.reach)?,
         at(&node.towards)?,
+        at(&node.burst)?,
+        at(&node.burst_speed)?,
+        at(&node.burst_spread)?,
+        at(&node.burst_life)?,
+        at(&node.burst_size)?,
+        node.burst_colour[0],
+        node.burst_colour[1],
+        node.burst_colour[2],
+        node.burst_colour[3],
     ];
     row[..values.len()].copy_from_slice(&values);
     Ok(row)
 }
-fn scalars(node: &Particles) -> [&Scalar; 39] {
+fn scalars(node: &Particles) -> [&Scalar; 44] {
     [
         &node.life,
         &node.speed,
@@ -111,6 +120,11 @@ fn scalars(node: &Particles) -> [&Scalar; 39] {
         &node.towards,
         &node.rate,
         &node.density,
+        &node.burst,
+        &node.burst_speed,
+        &node.burst_spread,
+        &node.burst_life,
+        &node.burst_size,
     ]
 }
 /// The settings in force over the last life before `time`, oldest first. Unkeyed
@@ -152,6 +166,26 @@ fn layout(rows: &[[f32; COUNT]]) -> (u32, u32) {
         16.0
     };
     (threads as u32, stride as u32)
+}
+/// Most threads in one splat, burst particles included.
+const MAX_THREADS: u64 = 4_000_000;
+/// The splat's threads: (particles, burst particles each, all threads). Particles come
+/// first, then each one's burst; a burst too large for the limit is made smaller.
+fn threads(cx: &Cx<'_>, rows: &[[f32; COUNT]]) -> (u32, u32, u32) {
+    let (box_threads, stride) = layout(rows);
+    let parents = if cx.node.inputs.contains_key("emitter") {
+        cx.width.div_ceil(stride) * cx.height.div_ceil(stride) * SLOTS as u32
+    } else {
+        box_threads
+    };
+    let wanted = rows
+        .iter()
+        .map(|r| r[45].round())
+        .fold(0.0f32, f32::max)
+        .clamp(0.0, 64.0) as u64;
+    let room = (MAX_THREADS / u64::from(parents.max(1))).saturating_sub(1);
+    let each = wanted.min(room) as u32;
+    (parents, each, parents + parents * each)
 }
 /// The camera filming the particles at the frame, as a last row: the world-to-camera
 /// matrix's three rows, the focal length in pixels, then its lens: the blur in
@@ -224,6 +258,8 @@ fn camera(node: &Particles, cx: &Cx<'_>) -> Result<[f32; COUNT]> {
         row[16] = 64.0 * cx.width as f32 / 1920.0;
     }
     row[31] = f32::from(node.points);
+    // Row 32 on (particles, burst particles each, set off by impact) are the
+    // splat's thread layout, filled in by `data` from the rows.
     if let Some(before) = earlier {
         row[17] = shutter;
         let view = veylvik_scene::math::rigid_inverse(&before.world);
@@ -294,8 +330,9 @@ static DEPTH_STEPS: [Step; 4] = [
 ];
 impl RenderNode for Particles {
     /// No particle is alive: none is born before Start, and with a Duration the last
-    /// born is gone one Life after it ends. Only said when those three are not keyed,
-    /// since a particle lives by the settings of its own birth.
+    /// born is gone one Life after it ends, and its burst one Burst life after that.
+    /// Only said when those are not keyed, since a particle lives by the settings of its
+    /// own birth.
     fn empty(&self, _: &dyn Fn(&str) -> Result<f32>, time: veylvik_document::Time) -> Result<bool> {
         use veylvik_document::Scalar::Constant;
         let (Constant { value: start }, Constant { value: duration }, Constant { value: life }) =
@@ -303,10 +340,15 @@ impl RenderNode for Particles {
         else {
             return Ok(false);
         };
+        let after = match (&self.burst, &self.burst_life) {
+            (Constant { value: burst }, _) if *burst < 0.5 => 0.0,
+            (Constant { .. }, Constant { value: burst_life }) => f64::from(*burst_life),
+            _ => return Ok(false),
+        };
         let now = time.seconds()?;
         Ok(now < f64::from(*start)
             || (*duration > 0.0
-                && now >= f64::from(*start) + f64::from(*duration) + f64::from(*life)))
+                && now >= f64::from(*start) + f64::from(*duration) + f64::from(*life) + after))
     }
     fn passes(&self) -> Passes {
         Passes::chain(&STEPS)
@@ -328,7 +370,12 @@ impl RenderNode for Particles {
         type Kept = Vec<(Vec<u32>, std::sync::Arc<crate::Image>)>;
         static BLOCKS: std::sync::Mutex<Kept> = std::sync::Mutex::new(Vec::new());
         let mut rows = rows(self, time)?;
-        rows.push(camera(self, cx)?);
+        let (parents, each, _) = threads(cx, &rows);
+        let mut last = camera(self, cx)?;
+        last[32] = parents as f32;
+        last[33] = each as f32;
+        last[34] = f32::from(self.burst_on_impact);
+        rows.push(last);
         let key: Vec<u32> = rows.iter().flatten().map(|v| v.to_bits()).collect();
         let mut kept = BLOCKS
             .lock()
@@ -358,7 +405,8 @@ impl RenderNode for Particles {
         p: &mut Params,
     ) -> Result<()> {
         let rows = rows(self, cx.time)?;
-        let (box_threads, stride) = layout(&rows);
+        let (_, stride) = layout(&rows);
+        let (_, _, threads) = threads(cx, &rows);
         let wired = |port: &str| cx.node.inputs.contains_key(port);
         let pixels = u64::from(cx.width) * u64::from(cx.height);
         let tile = tile(pixels);
@@ -366,11 +414,6 @@ impl RenderNode for Particles {
         if pixels < tiles + (COUNT * (ROWS + 1)) as u64 {
             return Err(error("Particles need a frame of at least 32 x 32 pixels"));
         }
-        let threads = if wired("emitter") {
-            cx.width.div_ceil(stride) * cx.height.div_ceil(stride) * SLOTS as u32
-        } else {
-            box_threads
-        };
         // The sprite's small copy sits after the tile table; without room, dots are drawn.
         let sprite = wired("sprite") && pixels >= tiles + u64::from(MIP * MIP);
         p.size_op[2] = (cx.time.seconds()? as f32).to_bits();

@@ -2856,6 +2856,7 @@ impl Studio {
                 ui.data_mut(|d| {
                     d.insert_temp(egui::Id::new("particles-frame"), [doc.width, doc.height]);
                     d.insert_temp(egui::Id::new("particles-box"), !wired("emitter"));
+                    d.insert_temp(egui::Id::new("particles-obstacle"), wired("obstacle"));
                 });
                 let hidden = match parameter.name {
                     "density" => !wired("emitter"),
@@ -2868,6 +2869,10 @@ impl Studio {
                     "camera" => !wired("scene"),
                     // Offered as a choice by the node's own inspector.
                     "history" => true,
+                    // A burst's own settings once it has particles.
+                    "burst_speed" | "burst_spread" | "burst_life" | "burst_size" => {
+                        matches!(self.draft.operation, Operation::Particles(ref n) if matches!(n.burst, veylvik_document::Scalar::Constant { value } if value < 0.5))
+                    }
                     _ => false,
                 };
                 if hidden {
