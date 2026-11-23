@@ -147,6 +147,47 @@ const PARENTS = 32u; const EACH = 33u; const ON_IMPACT = 34u;
 // How many particles are joined by lines (0: no lines).
 const LINKED = 35u;
 fn camera_row(k: u32) -> f32 { return third[tiles() + ROWS * COUNT + k].w; }
+// The surface particles are born on (see `surface` in nodes/particles.rs), after the
+// camera row.
+fn surface_at(k: u32) -> f32 { return third[tiles() + COUNT * (ROWS + 1u) + k].w; }
+// A place on that surface, picked by area, and its outward direction, where the
+// surface was at `birth`: xyz and the direction in the second value.
+struct OnSurface { at: vec3<f32>, out: vec3<f32> }
+fn on_surface(thread: u32, generation: u32, birth: f32) -> OnSurface {
+    let triangles = u32(surface_at(0u)); let objects = u32(surface_at(1u));
+    let first = 2u + objects * ROWS * 12u;
+    let total = surface_at(first + (triangles - 1u) * 11u + 10u);
+    let wanted = random(thread, generation, 2u) * total;
+    var low = 0u; var high = triangles - 1u;
+    for (var k = 0u; k < 18u; k++) {
+        if low >= high { break; }
+        let middle = (low + high) / 2u;
+        if surface_at(first + middle * 11u + 10u) < wanted { low = middle + 1u; } else { high = middle; }
+    }
+    let t = first + low * 11u;
+    let object = u32(surface_at(t));
+    let corner = vec3<f32>(surface_at(t + 1u), surface_at(t + 2u), surface_at(t + 3u));
+    let e1 = vec3<f32>(surface_at(t + 4u), surface_at(t + 5u), surface_at(t + 6u));
+    let e2 = vec3<f32>(surface_at(t + 7u), surface_at(t + 8u), surface_at(t + 9u));
+    var r1 = random(thread, generation, 3u); var r2 = random(thread, generation, 18u);
+    if r1 + r2 > 1.0 { r1 = 1.0 - r1; r2 = 1.0 - r2; }
+    let local = corner + e1 * r1 + e2 * r2;
+    let normal = normalize(cross(e1, e2));
+    // The object's place at the birth, between the two kept moments around it.
+    let life = p.extra.w;
+    let row = clamp((birth - (bitcast<f32>(p.size_op.z) - life)) / life, 0.0, 1.0) * f32(ROWS - 1u);
+    let a = u32(floor(row)); let b = min(a + 1u, ROWS - 1u); let f = row - floor(row);
+    let ma = 2u + (object * ROWS + a) * 12u; let mb = 2u + (object * ROWS + b) * 12u;
+    var m: array<vec4<f32>, 3>;
+    for (var r = 0u; r < 3u; r++) {
+        m[r] = mix(vec4<f32>(surface_at(ma + 4u * r), surface_at(ma + 4u * r + 1u), surface_at(ma + 4u * r + 2u), surface_at(ma + 4u * r + 3u)),
+                   vec4<f32>(surface_at(mb + 4u * r), surface_at(mb + 4u * r + 1u), surface_at(mb + 4u * r + 2u), surface_at(mb + 4u * r + 3u)), f);
+    }
+    var s: OnSurface;
+    s.at = vec3<f32>(dot(m[0], vec4<f32>(local, 1.0)), dot(m[1], vec4<f32>(local, 1.0)), dot(m[2], vec4<f32>(local, 1.0)));
+    s.out = normalize(vec3<f32>(dot(m[0].xyz, normal), dot(m[1].xyz, normal), dot(m[2].xyz, normal)));
+    return s;
+}
 fn tiles() -> u32 {
     let t = tile();
     return ((p.size_op.x + t - 1u) / t) * ((p.size_op.y + t - 1u) / t);
@@ -246,9 +287,13 @@ fn particle_fields(@builtin(global_invocation_id) gid: vec3<u32>) {
     let i = gid.y * p.size_op.x + gid.x;
     let flags = u32(p.extra.z);
     let count = tiles();
+    // The settings rows, the camera row and the surface particles are born on, which the
+    // camera row says the length of.
+    let at_length = ROWS * COUNT + 112u;
+    let carried = COUNT * (ROWS + 1u) + u32(fourth[at_length / 3u][at_length % 3u]);
     // Without a field or an obstacle only the table at the start is ever read (splat
     // and resolve read the rest only for those): the frame beyond it is left alone.
-    if (flags & 3u) == 0u && i >= count + COUNT * (ROWS + 1u) { return; }
+    if (flags & 3u) == 0u && i >= count + carried { return; }
     var out = vec4<f32>(0.0);
     if (flags & 1u) != 0u {
         // The slope of the field's brightness, over a few pixels so it is smooth.
@@ -265,7 +310,7 @@ fn particle_fields(@builtin(global_invocation_id) gid: vec3<u32>) {
             for (var k = 0u; k <= i; k++) { sum += third[k].x; }
         }
         out.w = sum;
-    } else if i < count + COUNT * (ROWS + 1u) {
+    } else if i < count + carried {
         let k = i - count;
         out.w = fourth[k / 3u][k % 3u];
     }
@@ -530,6 +575,7 @@ fn born(thread: u32, back: u32, now: f32) -> Born {
     b.own_life = life * (1.0 - 0.6 * variation * random(thread, generation, 1u));
     var origin: vec3<f32>;
     var born_on = vec3<f32>(1.0);
+    var surface_out = vec3<f32>(0.0);
     if p.extra.x > 0.5 {
         // One cell of the frame per group of threads; born where the emitter has alpha.
         let stride = u32(p.values.z); let slots = u32(p.values.w);
@@ -551,6 +597,12 @@ fn born(thread: u32, back: u32, now: f32) -> Born {
         let chance = setting(DENSITY, birth) * life / 10000.0 * f32(stride * stride) / f32(slots);
         if random(thread, generation, 4u) >= clamp(at_birth.a, 0.0, 1.0) * chance { return b; }
         born_on = unpremultiplied(at_birth);
+    } else if camera_row(113u) > 0.5 {
+        // On the surface of a 3D object, as it was at the birth.
+        if random(thread, generation, 4u) >= setting(RATE, birth) * life / camera_row(PARENTS) { return b; }
+        let spot = on_surface(thread, generation, birth);
+        origin = spot.at;
+        surface_out = spot.out;
     } else {
         if random(thread, generation, 4u) >= setting(RATE, birth) * life / camera_row(PARENTS) { return b; }
         origin = vec3<f32>(vec2<f32>(setting(BOX_X, birth), setting(BOX_Y, birth))
@@ -560,8 +612,9 @@ fn born(thread: u32, back: u32, now: f32) -> Born {
     // Depth spreads births in front of and behind the frame.
     let depth = setting(DEPTH, birth);
     let towards = setting(TOWARDS, birth);
-    b.deep = depth > 0.0 || setting(BOX_Z, birth) != 0.0 || towards != 0.0;
-    origin.z = setting(BOX_Z, birth) + (random(thread, generation, 13u) - 0.5) * depth;
+    let from_surface = length(surface_out) > 0.5;
+    b.deep = depth > 0.0 || setting(BOX_Z, birth) != 0.0 || towards != 0.0 || from_surface;
+    if !from_surface { origin.z = setting(BOX_Z, birth) + (random(thread, generation, 13u) - 0.5) * depth; }
     // A place on the target, drawn in proportion to its alpha: first the tile, by the
     // cumulative table, then the pixel in it. No particle goes without a place.
     var goal = origin; var lands_on = born_on;
@@ -607,6 +660,19 @@ fn born(thread: u32, back: u32, now: f32) -> Born {
     b.launch = vec3<f32>(cos(heading) * cos(lean), -sin(heading) * cos(lean), sin(lean))
         * setting(SPEED, birth) * (1.0 - 0.7 * variation * random(thread, generation, 6u))
         + vec3<f32>(0.0, 0.0, towards);
+    if from_surface {
+        // Straight out of the surface, within a cone of the spread round its direction.
+        let n = surface_out;
+        var side = cross(n, vec3<f32>(0.0, 0.0, 1.0));
+        if dot(side, side) < 1e-6 { side = cross(n, vec3<f32>(0.0, 1.0, 0.0)); }
+        side = normalize(side);
+        let up = cross(n, side);
+        let half = radians(setting(SPREAD, birth)) * 0.5;
+        let c = 1.0 - random(thread, generation, 5u) * (1.0 - cos(half));
+        let turn = random(thread, generation, 14u) * 6.2831853;
+        let dir = n * c + (side * cos(turn) + up * sin(turn)) * sqrt(max(1.0 - c * c, 0.0));
+        b.launch = dir * setting(SPEED, birth) * (1.0 - 0.7 * variation * random(thread, generation, 6u));
+    }
     b.origin = origin; b.goal = goal; b.born_on = born_on; b.lands_on = lands_on;
     b.ok = true;
     return b;

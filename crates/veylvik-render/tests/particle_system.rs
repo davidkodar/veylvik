@@ -1284,3 +1284,107 @@ fn lit_particles_take_their_light_from_the_scene() {
         sum(&behind, 0)
     );
 }
+/// Particles born on a sphere of radius 20 at the frame's centre (moving from `from` to
+/// `to` pixels across over two seconds), filmed from the home view at `seconds`.
+fn render_on_sphere(
+    renderer: &Renderer,
+    mut particles: nodes::Particles,
+    from: f32,
+    to: f32,
+    seconds: (i64, u32),
+) -> Vec<[f32; 4]> {
+    let camera = Node::new(
+        "camera",
+        serde_json::from_value(registry::CAMERA_3D.default_operation()).unwrap(),
+        &[],
+    );
+    let mut ball = registry::SHAPE_3D.default_operation();
+    ball["kind"] = serde_json::json!("sphere");
+    for size in ["size_x", "size_y", "size_z"] {
+        ball[size] = serde_json::json!({"kind": "constant", "value": 40.0});
+    }
+    ball["placement"]["position"] = serde_json::json!({"interpolation": "linear", "keys": [
+        {"time": {"ticks": 0, "rate": 1}, "value": [from, 0.0, 0.0]},
+        {"time": {"ticks": 2, "rate": 1}, "value": [to, 0.0, 0.0]}]});
+    let ball = Node::new("ball", serde_json::from_value(ball).unwrap(), &[]);
+    let scene = Node::new(
+        "scene",
+        serde_json::from_value(registry::MERGE_SCENES.default_operation()).unwrap(),
+        &[("scene", camera.id), ("scene_2", ball.id)],
+    );
+    particles.emit_from = Some(ball.id);
+    let node = Node::new(
+        "particles",
+        Operation::Particles(particles),
+        &[("scene", scene.id)],
+    );
+    let mut doc = blank(W, H, Time::new(24, 1).unwrap()).unwrap();
+    doc.output = node.id;
+    for n in [camera, ball, scene, node] {
+        doc.nodes.insert(n.id, n);
+    }
+    let plan = Plan::compile(&doc).unwrap();
+    let frame = renderer
+        .render_gpu_cached(
+            &plan,
+            RenderRequest::full(Time::new(seconds.0, seconds.1).unwrap()),
+            &ImageInputs::default(),
+        )
+        .unwrap();
+    renderer.read_frame(&frame).unwrap().pixels
+}
+#[test]
+#[ignore = "requires Vulkan"]
+fn particles_are_born_on_a_3d_object_and_launched_out_of_it() {
+    let renderer = Renderer::new().unwrap();
+    // A burst at the start, living two seconds, small dots.
+    let mut burst = still();
+    burst.rate = 4000.0.into();
+    burst.duration = 0.05.into();
+    burst.life = 2.0.into();
+    burst.size = 0.7.into();
+    let distances = |pixels: &[[f32; 4]], cx: f32| -> Vec<f32> {
+        pixels
+            .iter()
+            .enumerate()
+            .filter(|(_, p)| p[3] > 0.05)
+            .map(|(i, _)| {
+                let (x, y) = ((i as u32 % W) as f32 + 0.5, (i as u32 / W) as f32 + 0.5);
+                ((x - cx).powi(2) + (y - 60.0).powi(2)).sqrt()
+            })
+            .collect()
+    };
+    // Still: on the sphere, so within its outline on the frame, and not all at its middle.
+    let on = distances(
+        &render_on_sphere(&renderer, burst.clone(), 0.0, 0.0, (1, 2)),
+        80.0,
+    );
+    assert!(!on.is_empty(), "nothing born on the sphere");
+    assert!(
+        on.iter().all(|d| *d <= 22.5),
+        "beyond the sphere: {:?}",
+        on.iter().cloned().fold(0.0, f32::max)
+    );
+    assert!(
+        on.iter().any(|d| *d > 15.0),
+        "the sphere's edge is covered too"
+    );
+    // Launched out of it at 30 px a second: a second later all are well away from it.
+    let mut thrown = burst.clone();
+    thrown.speed = 30.0.into();
+    thrown.spread = 0.0.into();
+    let away = distances(&render_on_sphere(&renderer, thrown, 0.0, 0.0, (1, 1)), 80.0);
+    let mean = away.iter().sum::<f32>() / away.len().max(1) as f32;
+    assert!(mean > 26.0, "out of the surface: {mean}");
+    // A moving sphere leaves them where it was at their birth: at the left, not where it
+    // has gone.
+    // (It moves 2 px during the burst's twentieth of a second.)
+    let left = distances(
+        &render_on_sphere(&renderer, burst, -40.0, 40.0, (3, 2)),
+        41.0,
+    );
+    assert!(
+        !left.is_empty() && left.iter().all(|d| *d <= 24.0),
+        "left behind at x 40, where it is now x 100"
+    );
+}

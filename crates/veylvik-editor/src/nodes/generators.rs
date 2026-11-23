@@ -135,6 +135,38 @@ impl Inspect for veylvik_document::nodes::Particles {
                 .on_hover_text("In a 3D scene: the camera's depth of field does not blur these particles")
                 .changed();
         });
+        // Born on a 3D object of the connected scene, in place of the box.
+        let scene: bool = ui
+            .data(|d| d.get_temp(egui::Id::new("particles-scene")))
+            .unwrap_or(false);
+        if scene {
+            ui.horizontal(|ui| {
+                ui.label("Emit from");
+                let shown = match self.emit_from {
+                    None => "The box".to_string(),
+                    Some(id) => cx
+                        .objects
+                        .iter()
+                        .find(|(o, _)| *o == id)
+                        .map_or("Missing object".into(), |(_, label)| label.clone()),
+                };
+                egui::ComboBox::from_id_salt("particle-emit-from")
+                    .selected_text(shown)
+                    .show_ui(ui, |ui| {
+                        cx.dirty |= ui
+                            .selectable_value(&mut self.emit_from, None, "The box")
+                            .on_hover_text("Born in the box of width by height at x, y")
+                            .changed();
+                        for (id, label) in cx.objects.iter() {
+                            cx.dirty |= ui
+                                .selectable_value(&mut self.emit_from, Some(*id), label)
+                                .changed();
+                        }
+                    })
+                    .response
+                    .on_hover_text("Born on the surface of a 3D object of the scene, spread evenly over it and launched straight out of it; a moving object leaves its particles behind. Imported models cannot emit yet");
+            });
+        }
         // The colours: at birth, at the end of the life, and of a burst.
         egui::CollapsingHeader::new("Colours")
             .id_salt("particle-colours")

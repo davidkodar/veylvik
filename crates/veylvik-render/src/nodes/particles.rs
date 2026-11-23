@@ -270,6 +270,131 @@ fn light_values(light: &veylvik_scene::Light) -> [f32; 12] {
         inner.cos().max(outer.cos() + 1e-4),
     ]
 }
+/// Most triangles of a surface particles are born on.
+const SURFACE_MOST: usize = 100_000;
+/// The surface particles are born on, as data after the camera row: how many triangles
+/// and objects; each object's world rows (three of four values) at the ROWS moments of
+/// the last life, as settings are kept; then each triangle in its object's own space:
+/// object, a corner, its two edges from that corner, and the running total of the areas
+/// in the world at the frame. Empty without an object to emit from.
+// The moment `r` decides both when the scene is sampled and where its rows go.
+#[allow(clippy::needless_range_loop)]
+fn surface(node: &Particles, cx: &Cx<'_>, life: f32) -> Result<Vec<f32>> {
+    let (Some(object), Some(root)) = (node.emit_from, cx.node.inputs.get("scene")) else {
+        return Ok(Vec::new());
+    };
+    let by_id: std::collections::BTreeMap<_, _> = cx.nodes.iter().map(|n| (n.id, n)).collect();
+    let lookup = |id| by_id.get(&id).copied();
+    let scene_at = |time: Time| {
+        veylvik_scene::evaluate_in(
+            &veylvik_scene::Graph {
+                width: cx.width,
+                height: cx.height,
+                node: &lookup,
+            },
+            *root,
+            time,
+        )
+        .map_err(error)
+    };
+    let now = scene_at(cx.time)?;
+    let pieces: Vec<&veylvik_scene::Object> =
+        now.objects.iter().filter(|o| o.node == object).collect();
+    if pieces.is_empty() {
+        return Ok(Vec::new());
+    }
+    // Each piece's place at the moments a particle may have been born.
+    let seconds = cx.time.seconds().map_err(error)?;
+    let mut worlds = vec![vec![[[0.0f32; 4]; 3]; ROWS]; pieces.len()];
+    for r in 0..ROWS {
+        let at = seconds - f64::from(life) + f64::from(life) * r as f64 / (ROWS - 1) as f64;
+        let scene = if r == ROWS - 1 {
+            None
+        } else {
+            Some(scene_at(
+                Time::new((at * 24000.0).round() as i64, 24000).map_err(error)?,
+            )?)
+        };
+        let then: Vec<&veylvik_scene::Object> = scene.as_ref().map_or_else(
+            || pieces.clone(),
+            |s| s.objects.iter().filter(|o| o.node == object).collect(),
+        );
+        for (k, piece) in pieces.iter().enumerate() {
+            let world = then.get(k).map_or(piece.world, |o| o.world);
+            worlds[k][r] = [world[0], world[1], world[2]];
+        }
+    }
+    let mut triangles: Vec<[f32; 11]> = Vec::new();
+    let mut total = 0.0f32;
+    for (k, piece) in pieces.iter().enumerate() {
+        let mesh = veylvik_scene::mesh(piece).map_err(error)?;
+        let in_world = |p: [f32; 3]| veylvik_scene::math::point(&piece.world, p);
+        for corners in mesh.indices.as_chunks::<3>().0 {
+            let [a, b, c] = [0, 1, 2].map(|i| mesh.vertices[corners[i] as usize].position);
+            let e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+            let e2 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
+            let [wa, wb, wc] = [in_world(a), in_world(b), in_world(c)];
+            let u = [wb[0] - wa[0], wb[1] - wa[1], wb[2] - wa[2]];
+            let v = [wc[0] - wa[0], wc[1] - wa[1], wc[2] - wa[2]];
+            let cross = [
+                u[1] * v[2] - u[2] * v[1],
+                u[2] * v[0] - u[0] * v[2],
+                u[0] * v[1] - u[1] * v[0],
+            ];
+            let area =
+                0.5 * (cross[0] * cross[0] + cross[1] * cross[1] + cross[2] * cross[2]).sqrt();
+            if area <= 0.0 {
+                continue;
+            }
+            total += area;
+            triangles.push([
+                k as f32, a[0], a[1], a[2], e1[0], e1[1], e1[2], e2[0], e2[1], e2[2], total,
+            ]);
+        }
+    }
+    // Too many to carry: every few, their areas added up again.
+    let room = (u64::from(cx.width) * u64::from(cx.height))
+        .saturating_sub(u64::from(tiles_of(cx.width, cx.height)) + (COUNT * (ROWS + 1)) as u64 + 2)
+        .saturating_sub((pieces.len() * ROWS * 12) as u64)
+        / 11;
+    let most = (room as usize).min(SURFACE_MOST);
+    if triangles.len() > most {
+        let step = triangles.len().div_ceil(most.max(1));
+        let mut kept: Vec<[f32; 11]> = Vec::new();
+        let mut before = 0.0;
+        let mut running = 0.0;
+        for (n, t) in triangles.iter().enumerate() {
+            let own = t[10] - before;
+            before = t[10];
+            if n % step == 0 {
+                running += own;
+                let mut t = *t;
+                t[10] = running;
+                kept.push(t);
+            }
+        }
+        triangles = kept;
+    }
+    if triangles.is_empty() {
+        return Ok(Vec::new());
+    }
+    let mut values = vec![triangles.len() as f32, pieces.len() as f32];
+    for piece in &worlds {
+        for rows in piece {
+            for row in rows {
+                values.extend_from_slice(row);
+            }
+        }
+    }
+    for t in &triangles {
+        values.extend_from_slice(t);
+    }
+    Ok(values)
+}
+fn tiles_of(width: u32, height: u32) -> u32 {
+    let t = tile(u64::from(width) * u64::from(height));
+    width.div_ceil(t) * height.div_ceil(t)
+}
 /// Most threads in one splat, burst particles included.
 const MAX_THREADS: u64 = 4_000_000;
 /// The splat's threads: (particles, burst particles each, all threads). Particles come
@@ -618,12 +743,21 @@ impl RenderNode for Particles {
         last[33] = each as f32;
         last[34] = f32::from(self.burst_on_impact);
         // The first particles (two values each in a frame's buffer) are joined.
+        let surface = surface(self, cx, rows[ROWS - 1][0])?;
+        // How much surface data follows the camera row, and whether there is any.
+        last[112] = surface.len() as f32;
+        last[113] = f32::from(!surface.is_empty());
         last[35] = if linking(self) {
             parents.min(LINKED_MOST).min(cx.width * cx.height / 2) as f32
         } else {
             0.0
         };
         rows.push(last);
+        for chunk in surface.chunks(COUNT) {
+            let mut row = [0.0; COUNT];
+            row[..chunk.len()].copy_from_slice(chunk);
+            rows.push(row);
+        }
         let key: Vec<u32> = rows.iter().flatten().map(|v| v.to_bits()).collect();
         let mut kept = BLOCKS
             .lock()
@@ -637,7 +771,7 @@ impl RenderNode for Particles {
             .collect();
         let image = std::sync::Arc::new(crate::Image::data(
             (COUNT / 3) as u32,
-            ROWS as u32 + 1,
+            rows.len() as u32,
             texels,
         )?);
         if kept.len() >= 32 {

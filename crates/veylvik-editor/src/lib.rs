@@ -2857,6 +2857,7 @@ impl Studio {
                     d.insert_temp(egui::Id::new("particles-frame"), [doc.width, doc.height]);
                     d.insert_temp(egui::Id::new("particles-box"), !wired("emitter"));
                     d.insert_temp(egui::Id::new("particles-obstacle"), wired("obstacle"));
+                    d.insert_temp(egui::Id::new("particles-scene"), wired("scene"));
                 });
                 let hidden = match parameter.name {
                     "density" => !wired("emitter"),
