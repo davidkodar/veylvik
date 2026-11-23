@@ -137,7 +137,10 @@ fn a_failing_render_says_what_the_plugin_said() {
     let lib = Library::open(&bundle("failing")).unwrap();
     let mut instance = lib.instance(0, FILTER, 4, 4).unwrap();
     let error = instance.render(0.0, &[], &[]).unwrap_err();
-    assert!(error.contains("no source"), "{error}");
+    assert!(
+        error.contains("no source, as the support library says it"),
+        "{error}"
+    );
     assert!(
         instance
             .render(0.0, &[("nope".to_string(), Value::Numbers(vec![1.0]))], &[])

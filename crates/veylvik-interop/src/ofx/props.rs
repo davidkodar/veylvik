@@ -165,9 +165,14 @@ unsafe fn take(handle: *mut c_void, property: *const c_char, index: c_int) -> Re
         return Err(ERR_BAD_HANDLE);
     };
     let values = set.lock();
-    let prop = values.get(&property).ok_or(ERR_UNKNOWN)?;
+    let Some(prop) = values.get(&property) else {
+        let kind = values.get("OfxPropType").cloned();
+        super::trace(|| format!("unknown property {property} on {kind:?}"));
+        return Err(ERR_UNKNOWN);
+    };
     let index = usize::try_from(index).map_err(|_| ERR_BAD_INDEX)?;
     if index >= prop.len() {
+        super::trace(|| format!("index {index} beyond {property} ({} values)", prop.len()));
         return Err(ERR_BAD_INDEX);
     }
     Ok(match prop {
@@ -391,6 +396,7 @@ extern "C" fn dimension(h: *mut c_void, p: *const c_char, out: *mut c_int) -> St
         return ERR_BAD_HANDLE;
     };
     let Some(prop) = set.get(&property) else {
+        super::trace(|| format!("unknown property {property} (dimension)"));
         return ERR_UNKNOWN;
     };
     if out.is_null() {

@@ -1,5 +1,7 @@
 //! An OpenFX image-effect host: loads a plugin bundle, describes its plugins in a context and renders them on the CPU in float RGBA. Plugin code runs in this process, so callers run it in a helper process of its own: a crashing plugin must never take the editor with it.
+mod params;
 mod props;
+mod services;
 mod suites;
 pub use props::{Prop, PropSet};
 use std::ffi::{CStr, CString, c_char, c_int, c_uint, c_void};
@@ -18,6 +20,26 @@ pub const ERR_BAD_INDEX: Status = 10;
 pub const ERR_VALUE: Status = 11;
 pub const REPLY_DEFAULT: Status = 14;
 pub type Result<T> = std::result::Result<T, String>;
+/// Appends a line to the file named by `VEYLVIK_OFX_TRACE`, if set: what a plugin asked
+/// for that the host could not give, to find what a plugin needs.
+pub(crate) fn trace(line: impl FnOnce() -> String) {
+    static FILE: std::sync::OnceLock<Option<std::sync::Mutex<std::fs::File>>> =
+        std::sync::OnceLock::new();
+    let file = FILE.get_or_init(|| {
+        let path = std::env::var_os("VEYLVIK_OFX_TRACE")?;
+        let file = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)
+            .ok()?;
+        Some(std::sync::Mutex::new(file))
+    });
+    if let Some(file) = file {
+        use std::io::Write;
+        let mut file = file.lock().unwrap_or_else(|e| e.into_inner());
+        let _ = writeln!(file, "{}", line());
+    }
+}
 
 #[repr(C)]
 struct Host {
@@ -51,13 +73,16 @@ extern "C" fn fetch_suite(
     match (name, version) {
         (b"OfxPropertySuite", 1) => table(&props::SUITE),
         (b"OfxImageEffectSuite", 1) => table(&suites::EFFECT_SUITE),
-        (b"OfxParameterSuite", 1) => table(&suites::PARAM_SUITE),
+        (b"OfxParameterSuite", 1) => table(&params::PARAM_SUITE),
         (b"OfxMemorySuite", 1) => table(&suites::MEMORY_SUITE),
-        (b"OfxMultiThreadSuite", 1) => table(&suites::THREAD_SUITE),
-        (b"OfxMessageSuite", 1 | 2) => table(&suites::MESSAGE_SUITE),
-        (b"OfxProgressSuite", 1) => table(&suites::PROGRESS_SUITE),
-        (b"OfxTimeLineSuite", 1) => table(&suites::TIMELINE_SUITE),
-        _ => std::ptr::null(),
+        (b"OfxMultiThreadSuite", 1) => table(&services::THREAD_SUITE),
+        (b"OfxMessageSuite", 1 | 2) => table(&services::MESSAGE_SUITE),
+        (b"OfxProgressSuite", 1) => table(&services::PROGRESS_SUITE),
+        (b"OfxTimeLineSuite", 1) => table(&services::TIMELINE_SUITE),
+        _ => {
+            trace(|| format!("no suite {} v{version}", String::from_utf8_lossy(name)));
+            std::ptr::null()
+        }
     }
 }
 /// The host's own description, as plugins read it.
@@ -90,12 +115,17 @@ fn host_props() -> PropSet {
         "OfxImageEffectPropSupportedPixelDepths",
         &["OfxBitDepthFloat"],
     );
-    p.int("OfxImageEffectPropSupportsMultipleClipDepths", &[0]);
+    p.int("OfxImageEffectPropMultipleClipDepths", &[0]);
     p.int("OfxImageEffectPropSupportsMultipleClipPARs", &[0]);
     p.int("OfxImageEffectPropSetableFrameRate", &[0]);
     p.int("OfxImageEffectPropSetableFielding", &[0]);
     p.int("OfxImageEffectInstancePropSequentialRender", &[0]);
     p.string("OfxImageEffectPropOpenGLRenderSupported", "false");
+    p.string("OfxImageEffectPropCPURenderSupported", "true");
+    p.string(
+        "OfxImageEffectHostPropNativeOrigin",
+        "kOfxImageEffectHostPropNativeOriginBottomLeft",
+    );
     p.string("OfxImageEffectPropRenderQualityDraft", "false");
     p.int("OfxParamHostPropSupportsCustomInteract", &[0]);
     p.int("OfxParamHostPropSupportsStringAnimation", &[0]);
@@ -320,6 +350,9 @@ impl Library {
                 .props
                 .strings("OfxImageEffectPropSupportedPixelDepths", &[]);
             effect.props.string("OfxImageEffectPluginPropGrouping", "");
+            effect
+                .props
+                .strings("OfxImageEffectPropClipPreferencesSlaveParam", &[]);
             effect.props.string("OfxPropPluginDescription", "");
             effect
                 .props
@@ -343,7 +376,7 @@ impl Library {
                 .int("OfxImageEffectPluginPropFieldRenderTwiceAlways", &[1]);
             effect
                 .props
-                .int("OfxImageEffectPropSupportsMultipleClipDepths", &[0]);
+                .int("OfxImageEffectPropMultipleClipDepths", &[0]);
             effect
                 .props
                 .int("OfxImageEffectPropSupportsMultipleClipPARs", &[0]);
@@ -486,7 +519,7 @@ impl Library {
         p.double("OfxImageEffectPropProjectSize", &[w, h]);
         p.double("OfxImageEffectPropProjectExtent", &[w, h]);
         p.double("OfxImageEffectPropProjectOffset", &[0.0, 0.0]);
-        p.double("OfxImageEffectPropProjectPixelAspectRatio", &[1.0]);
+        p.double("OfxImageEffectPropPixelAspectRatio", &[1.0]);
         p.double("OfxImageEffectInstancePropEffectDuration", &[1.0]);
         p.double("OfxImageEffectPropFrameRate", &[24.0]);
         p.double("OfxImageEffectPropFrameRange", &[0.0, 0.0]);
@@ -495,7 +528,7 @@ impl Library {
         p.pointer("OfxPropInstanceData", std::ptr::null_mut());
         p.double("VeylvikTime", &[0.0]);
         for param in suites_lock(&effect.params.params).values() {
-            *suites_lock(&param.value) = suites::default_value(param);
+            *suites_lock(&param.value) = params::default_value(param);
             param
                 .props
                 .string("OfxPropType", "OfxTypeParameterInstance");
@@ -511,14 +544,14 @@ impl Library {
             );
             c.string(
                 "OfxImageEffectPropPreMultiplication",
-                "OfxImagePreMultiplied",
+                "OfxImageAlphaPremultiplied",
             );
             c.double("OfxImagePropPixelAspectRatio", &[1.0]);
             c.double("OfxImageEffectPropFrameRate", &[24.0]);
             c.double("OfxImageEffectPropFrameRange", &[0.0, 0.0]);
             c.double("OfxImageEffectPropUnmappedFrameRate", &[24.0]);
             c.double("OfxImageEffectPropUnmappedFrameRange", &[0.0, 0.0]);
-            c.string("OfxImageClipPropFieldOrder", "OfxImageFieldNone");
+            c.string("OfxImageClipPropFieldOrder", "OfxFieldNone");
             c.int("OfxImageClipPropContinuousSamples", &[0]);
             c.int("OfxImageClipPropConnected", &[0]);
         }
@@ -550,7 +583,7 @@ fn suites_lock<T>(m: &std::sync::Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 }
 /// What plugins said since last asked, as a suffix for an error.
 fn said() -> String {
-    let messages = std::mem::take(&mut *suites_lock(&suites::MESSAGES));
+    let messages = std::mem::take(&mut *suites_lock(&services::MESSAGES));
     if messages.is_empty() {
         String::new()
     } else {
@@ -559,7 +592,7 @@ fn said() -> String {
 }
 /// Plugins' messages since last asked.
 pub fn messages() -> Vec<String> {
-    std::mem::take(&mut *suites_lock(&suites::MESSAGES))
+    std::mem::take(&mut *suites_lock(&services::MESSAGES))
 }
 impl Drop for Library {
     fn drop(&mut self) {
@@ -677,7 +710,7 @@ impl Instance<'_> {
         sequence.int("OfxImageEffectPropRenderQualityDraft", &[0]);
         let args = PropSet::default();
         args.double("OfxPropTime", &[time]);
-        args.string("OfxImageEffectPropFieldToRender", "OfxImageFieldNone");
+        args.string("OfxImageEffectPropFieldToRender", "OfxFieldNone");
         args.int("OfxImageEffectPropRenderWindow", &window);
         args.double("OfxImageEffectPropRenderScale", &[1.0, 1.0]);
         args.int("OfxImageEffectPropSequentialRenderStatus", &[0]);

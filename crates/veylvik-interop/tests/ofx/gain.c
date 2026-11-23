@@ -106,7 +106,7 @@ static OfxStatus mainEntry(const char *action, const void *handle, H in, H out) 
     props->getInt(dimg, "OfxImagePropRowBytes", 0, &rows);
     if (mode == 0) {
       effects->clipGetHandle(effect, "Source", &src, 0);
-      if (effects->clipGetImage(src, 0.0, 0, &simg)) { messages->message(effect, "OfxMessageError", 0, "no source"); return 1; }
+      if (effects->clipGetImage(src, 0.0, 0, &simg)) { messages->message(effect, "OfxMessageError", 0, "%s", "no source, as the support library says it"); return 1; }
       props->getPointer(simg, "OfxImagePropData", 0, (void **)&sp);
       props->getInt(simg, "OfxImagePropRowBytes", 0, &rowsS);
     }
