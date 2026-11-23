@@ -106,6 +106,7 @@ fn settings(node: &Particles, time: Time) -> Result<[f32; COUNT]> {
     row[122] = at(&node.separation)?;
     row[123] = at(&node.alignment)?;
     row[124] = at(&node.top_speed)?;
+    row[125] = at(&node.sprite_rate)?;
     if let Some(ramp) = node.colour_over_life {
         for (k, colour) in ramp.iter().enumerate() {
             row[85 + 4 * k..89 + 4 * k].copy_from_slice(colour);
@@ -113,7 +114,7 @@ fn settings(node: &Particles, time: Time) -> Result<[f32; COUNT]> {
     }
     Ok(row)
 }
-fn scalars(node: &Particles) -> [&Scalar; 57] {
+fn scalars(node: &Particles) -> [&Scalar; 58] {
     [
         &node.life,
         &node.speed,
@@ -172,6 +173,7 @@ fn scalars(node: &Particles) -> [&Scalar; 57] {
         &node.separation,
         &node.alignment,
         &node.top_speed,
+        &node.sprite_rate,
     ]
 }
 /// Most particles lines may join: each is checked against every later one.
@@ -234,16 +236,20 @@ fn shadowing(node: &Particles, wiring: &veylvik_document::Node) -> bool {
     wiring.inputs.contains_key("scene")
         && !matches!(node.lit, Scalar::Constant { value } if value <= 0.0)
 }
+/// Texels of the prepare pass's copy of the sprite: MIP x MIP for each cell of its sheet.
+pub(crate) fn sheet(node: &Particles) -> u32 {
+    MIP * MIP * node.sprite_columns.clamp(1, 8) * node.sprite_rows.clamp(1, 8)
+}
 /// Where the prepare pass keeps the shadow maps: after the tile table and the sprite.
-pub(crate) fn shadows_at(width: u32, height: u32) -> u32 {
+pub(crate) fn shadows_at(width: u32, height: u32, sheet: u32) -> u32 {
     let t = tile(u64::from(width) * u64::from(height));
-    width.div_ceil(t) * height.div_ceil(t) + MIP * MIP
+    width.div_ceil(t) * height.div_ceil(t) + sheet
 }
 /// The shadow maps' side for `lights` maps in a frame: as large as fits after their
 /// header in the prepare pass's frame-sized buffer, a power of two from 64 to 1024.
-pub(crate) fn shadow_side(width: u32, height: u32, lights: usize) -> u32 {
+pub(crate) fn shadow_side(width: u32, height: u32, sheet: u32, lights: usize) -> u32 {
     let pixels = u64::from(width) * u64::from(height);
-    let room = pixels.saturating_sub(u64::from(shadows_at(width, height)) + 128);
+    let room = pixels.saturating_sub(u64::from(shadows_at(width, height, sheet)) + 128);
     let mut side = 1024u32;
     while side > 64 && (lights.max(1) as u64) * u64::from(side) * u64::from(side) > room {
         side /= 2;
@@ -521,8 +527,8 @@ fn camera(node: &Particles, cx: &Cx<'_>) -> Result<[f32; COUNT]> {
     // Their shadow maps, when the scene's solids are in their way: the maps' side, where
     // the prepare pass keeps them, and whether it does.
     if shadowing(node, cx.node) {
-        row[37] = shadow_side(cx.width, cx.height, shining.len()) as f32;
-        row[38] = shadows_at(cx.width, cx.height) as f32;
+        row[37] = shadow_side(cx.width, cx.height, sheet(node), shining.len()) as f32;
+        row[38] = shadows_at(cx.width, cx.height, sheet(node)) as f32;
         row[39] = 1.0;
     }
     // Row 32 on (particles, burst particles each, set off by impact) are the
@@ -802,7 +808,7 @@ impl RenderNode for Particles {
             return Err(error("Particles need a frame of at least 46 x 46 pixels"));
         }
         // The sprite's small copy sits after the tile table; without room, dots are drawn.
-        let sprite = wired("sprite") && pixels >= tiles + u64::from(MIP * MIP);
+        let sprite = wired("sprite") && pixels >= tiles + u64::from(sheet(self));
         p.size_op[2] = (cx.time.seconds()? as f32).to_bits();
         p.size_op[3] = self.seed;
         p.values = [
@@ -826,7 +832,16 @@ impl RenderNode for Particles {
                     | u8::from(wired("depth") && wired("target")) << 3
                     | u8::from(wired("depth") && !wired("target")) << 4
                     | u8::from(shadowing(self, cx.node)) << 5,
-            ),
+            ) + {
+                // The sprite sheet's cells across and down less one, and how cells play.
+                let play = veylvik_document::nodes::SpritePlay::ALL
+                    .iter()
+                    .position(|p| serde_json::to_value(self.sprite_play).is_ok_and(|v| v == *p))
+                    .unwrap_or(0) as u32;
+                ((self.sprite_columns.clamp(1, 8) - 1) << 8
+                    | (self.sprite_rows.clamp(1, 8) - 1) << 12
+                    | play << 16) as f32
+            },
             rows[ROWS - 1][0],
         ];
         Ok(())

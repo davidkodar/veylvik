@@ -1616,3 +1616,84 @@ fn a_flocks_frame_is_the_same_however_it_is_reached() {
         "and after a seek back"
     );
 }
+/// A sprite sheet of two cells: red on the left, green on the right.
+fn red_green() -> Vec<[f32; 4]> {
+    let mut sheet = block(0..W / 2, 0..H, [1.0, 0.0, 0.0, 1.0]);
+    for (i, p) in sheet.iter_mut().enumerate() {
+        if i as u32 % W >= W / 2 {
+            *p = [0.0, 1.0, 0.0, 1.0];
+        }
+    }
+    sheet
+}
+/// How much red and green light a picture has.
+fn red_and_green(pixels: &[[f32; 4]]) -> (f32, f32) {
+    pixels
+        .iter()
+        .fold((0.0, 0.0), |(r, g), p| (r + p[0], g + p[1]))
+}
+#[test]
+#[ignore = "requires Vulkan"]
+fn a_sprite_sheet_gives_each_particle_a_cell() {
+    let renderer = Renderer::new().unwrap();
+    let mut many = still();
+    many.width = 140.0.into();
+    many.height = 100.0.into();
+    many.rate = 60.0.into();
+    many.duration = 0.05.into();
+    many.life = 2.0.into();
+    many.size = 3.0.into();
+    many.sprite_columns = 2;
+    let shot = |p: &nodes::Particles, t: (i64, u32)| {
+        red_and_green(&render_with(
+            &renderer,
+            p.clone(),
+            vec![("sprite", red_green())],
+            t,
+        ))
+    };
+    // Picked at random: some particles red, some green, and each a whole cell (no
+    // particle is half red, half green: the whole image would be).
+    let (red, green) = shot(&many, (1, 2));
+    assert!(
+        red > 0.25 * (red + green) && green > 0.25 * (red + green),
+        "{red} {green}"
+    );
+    // Over the life: all red in the first half of it, all green in the second.
+    let mut life = many.clone();
+    life.sprite_play = nodes::SpritePlay::OverLife;
+    let (red, green) = shot(&life, (1, 2));
+    assert!(red > 0.0 && green == 0.0, "first half {red} {green}");
+    let (red, green) = shot(&life, (3, 2));
+    assert!(green > 0.0 && red == 0.0, "second half {red} {green}");
+    // At a rate: two cells a second, so each particle has changed cell half a second on.
+    let mut rate = many.clone();
+    rate.sprite_play = nodes::SpritePlay::AtRate;
+    rate.sprite_rate = 2.0.into();
+    let a = render_with(
+        &renderer,
+        rate.clone(),
+        vec![("sprite", red_green())],
+        (5, 4),
+    );
+    let b = render_with(&renderer, rate, vec![("sprite", red_green())], (7, 4));
+    let flipped = a
+        .iter()
+        .zip(&b)
+        .filter(|(x, y)| x[3] > 0.5 && y[3] > 0.5 && (x[0] > 0.5) != (y[0] > 0.5))
+        .count();
+    let held = a
+        .iter()
+        .zip(&b)
+        .filter(|(x, y)| x[3] > 0.5 && y[3] > 0.5)
+        .count();
+    assert!(
+        held > 50 && flipped as f32 > 0.9 * held as f32,
+        "{flipped} of {held}"
+    );
+    // One cell is the whole image, as before: half red, half green in each particle.
+    let mut whole = many;
+    whole.sprite_columns = 1;
+    let (red, green) = shot(&whole, (1, 2));
+    assert!((red / green - 1.0).abs() < 0.2, "{red} {green}");
+}

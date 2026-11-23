@@ -53,6 +53,7 @@ pub enum ParameterKind {
     Fit,
     LightKind,
     ForceKind,
+    SpritePlay,
     Look,
     /// Another node by id, or null.
     NodeRef,
@@ -131,6 +132,7 @@ impl Parameter {
             ParameterKind::Fit => json!(crate::nodes::Fit::default()),
             ParameterKind::LightKind => json!(crate::nodes::LightKind::default()),
             ParameterKind::ForceKind => json!(crate::nodes::ForceKind::default()),
+            ParameterKind::SpritePlay => json!(crate::nodes::SpritePlay::default()),
             ParameterKind::Look | ParameterKind::NodeRef => json!(null),
             ParameterKind::Points3 => json!([]),
             ParameterKind::LifeCurve | ParameterKind::LifeColours => json!(null),
@@ -173,6 +175,9 @@ impl Parameter {
             }
             ParameterKind::ForceKind => {
                 json!({"type":"string","enum":crate::nodes::ForceKind::ALL})
+            }
+            ParameterKind::SpritePlay => {
+                json!({"type":"string","enum":crate::nodes::SpritePlay::ALL})
             }
             ParameterKind::Look => {
                 json!({"anyOf":[{"type":"null"},{"type":"object","description":"A Text surface (material) definition: the parameters of a material node without its type."}]})

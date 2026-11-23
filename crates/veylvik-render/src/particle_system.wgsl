@@ -26,6 +26,12 @@ fn tile() -> u32 {
     return 16u;
 }
 const MIP: u32 = 64u;
+// The sprite sheet: cells across and down (flags bits 8 to 15) and the copy's size.
+fn sheet_columns() -> u32 { return ((u32(p.extra.z) >> 8u) & 15u) + 1u; }
+fn sheet_rows() -> u32 { return ((u32(p.extra.z) >> 12u) & 15u) + 1u; }
+fn sheet_width() -> u32 { return MIP * sheet_columns(); }
+fn sheet_texels() -> u32 { return MIP * MIP * sheet_columns() * sheet_rows(); }
+const SPRITE_RATE = 125u;
 const COUNT: u32 = 126u;
 const ROWS: u32 = 16u;
 // Setting numbers.
@@ -232,7 +238,7 @@ fn particle_prepare(@builtin(global_invocation_id) gid: vec3<u32>) {
     // the tile table and the sprite at the start are ever read: the frame beyond them is
     // left alone.
     let shadowed = (u32(p.extra.z) & 32u) != 0u;
-    if (u32(p.extra.z) & 8u) == 0u && !shadowed && i >= count + MIP * MIP { return; }
+    if (u32(p.extra.z) & 8u) == 0u && !shadowed && i >= count + sheet_texels() { return; }
     var out = vec4<f32>(0.0);
     if i < count {
         if p.extra.y > 0.5 {
@@ -248,18 +254,19 @@ fn particle_prepare(@builtin(global_invocation_id) gid: vec3<u32>) {
             }
             out.x = sum;
         }
-    } else if i < count + MIP * MIP && (u32(p.extra.z) & 4u) != 0u {
-        // The sprite's frame averaged down to MIP x MIP.
+    } else if i < count + sheet_texels() && (u32(p.extra.z) & 4u) != 0u {
+        // The sprite's frame averaged down to MIP x MIP a cell of its sheet.
         let cell = i - count;
-        let x0 = (cell % MIP) * p.size_op.x / MIP; let x1 = max(((cell % MIP) + 1u) * p.size_op.x / MIP, x0 + 1u);
-        let y0 = (cell / MIP) * p.size_op.y / MIP; let y1 = max(((cell / MIP) + 1u) * p.size_op.y / MIP, y0 + 1u);
+        let sw = sheet_width(); let sh = MIP * sheet_rows();
+        let x0 = (cell % sw) * p.size_op.x / sw; let x1 = max(((cell % sw) + 1u) * p.size_op.x / sw, x0 + 1u);
+        let y0 = (cell / sw) * p.size_op.y / sh; let y1 = max(((cell / sw) + 1u) * p.size_op.y / sh, y0 + 1u);
         var sum = vec4<f32>(0.0);
         for (var y = y0; y < min(y1, p.size_op.y); y++) {
             for (var x = x0; x < min(x1, p.size_op.x); x++) { sum += second[y * p.size_op.x + x]; }
         }
         out = sum / f32((x1 - x0) * (y1 - y0));
     }
-    let holds_sprite = i >= count && i < count + MIP * MIP && (u32(p.extra.z) & 4u) != 0u;
+    let holds_sprite = i >= count && i < count + sheet_texels() && (u32(p.extra.z) & 4u) != 0u;
     if (u32(p.extra.z) & 8u) != 0u && !holds_sprite {
         let there = third[i];
         if there.a > 0.5 { out.y = max(there.r, 0.0); }
@@ -267,7 +274,7 @@ fn particle_prepare(@builtin(global_invocation_id) gid: vec3<u32>) {
     // The scene's shadow maps (fourth: the 3D renderer's views, then its maps from byte
     // 1024), one value a pixel in z from just after the sprite: the views' 128 values,
     // then the maps.
-    let at_shadows = count + MIP * MIP;
+    let at_shadows = count + sheet_texels();
     if shadowed && i >= at_shadows {
         let k = i - at_shadows;
         var f = k;
@@ -558,12 +565,26 @@ fn stamp(at: vec2<f32>, radius: f32, light: vec4<f32>) {
         }
     }
 }
-fn sprite_texel(x: i32, y: i32) -> vec4<f32> {
+// A texel of cell `cell` of the sprite sheet (clear beyond the cell).
+fn sprite_texel(cell: u32, x: i32, y: i32) -> vec4<f32> {
     if x < 0 || y < 0 || x >= i32(MIP) || y >= i32(MIP) { return vec4<f32>(0.0); }
-    return fourth[tiles() + u32(y) * MIP + u32(x)];
+    let cx = cell % sheet_columns(); let cy = cell / sheet_columns();
+    return fourth[tiles() + (cy * MIP + u32(y)) * sheet_width() + cx * MIP + u32(x)];
 }
-// The sprite image, `radius` wide either side of `at` and turned by `angle`, tinted.
-fn stamp_sprite(at: vec2<f32>, radius: f32, angle: f32, tint: vec4<f32>) {
+// Which cell of the sprite sheet a particle shows `age` seconds into its life.
+fn sprite_cell(thread: u32, generation: u32, age: f32, own_life: f32, birth: f32) -> u32 {
+    let cells = sheet_columns() * sheet_rows();
+    if cells == 1u { return 0u; }
+    let first = min(u32(random(thread, generation, 25u) * f32(cells)), cells - 1u);
+    switch (u32(p.extra.z) >> 16u) & 3u {
+        case 1u: { return min(u32(age / own_life * f32(cells)), cells - 1u); }
+        case 2u: { return (first + u32(max(floor(age * setting(SPRITE_RATE, birth)), 0.0))) % cells; }
+        default: { return first; }
+    }
+}
+// The sprite image (its cell `cell`), `radius` wide either side of `at` and turned by
+// `angle`, tinted.
+fn stamp_sprite(at: vec2<f32>, radius: f32, angle: f32, tint: vec4<f32>, cell: u32) {
     let half = vec2<f32>(radius, radius * f32(p.size_op.y) / f32(p.size_op.x));
     let reach = i32(ceil(length(half)));
     let centre = vec2<i32>(floor(at));
@@ -576,8 +597,8 @@ fn stamp_sprite(at: vec2<f32>, radius: f32, angle: f32, tint: vec4<f32>) {
             if abs(local.x) >= 1.0 || abs(local.y) >= 1.0 { continue; }
             let uv = (local * 0.5 + 0.5) * f32(MIP) - 0.5;
             let base = vec2<i32>(floor(uv)); let f = uv - floor(uv);
-            let texel = mix(mix(sprite_texel(base.x, base.y), sprite_texel(base.x + 1, base.y), f.x),
-                            mix(sprite_texel(base.x, base.y + 1), sprite_texel(base.x + 1, base.y + 1), f.x), f.y);
+            let texel = mix(mix(sprite_texel(cell, base.x, base.y), sprite_texel(cell, base.x + 1, base.y), f.x),
+                            mix(sprite_texel(cell, base.x, base.y + 1), sprite_texel(cell, base.x + 1, base.y + 1), f.x), f.y);
             add_light(pixel, vec4<f32>(texel.rgb * tint.rgb, texel.a) * tint.a);
         }
     }
@@ -765,7 +786,8 @@ fn draw(origin: vec3<f32>, launch: vec3<f32>, birth: f32, age: f32, own_life: f3
             angle = random(thread, generation, 9u) * 6.2831853
                 + spin * age * (1.0 - variation * random(thread, generation, 10u)) * sign(random(thread, generation, 11u) - 0.5);
         }
-        stamp_sprite(at, radius, angle, vec4<f32>(colour.rgb, colour.a * opacity));
+        let cell = sprite_cell(thread, generation, age, own_life, birth);
+        stamp_sprite(at, radius, angle, vec4<f32>(colour.rgb, colour.a * opacity), cell);
         // A streak leaves fading copies back along the path.
         let ghost_trail = min(setting(STREAK, birth), age);
         if ghost_trail > 0.0 {
@@ -773,7 +795,7 @@ fn draw(origin: vec3<f32>, launch: vec3<f32>, birth: f32, age: f32, own_life: f3
                 let back = f32(g) / 5.0;
                 let was = filmed(place(origin, launch, birth, age - ghost_trail * back, own_life, goal, homing, deep));
                 if was.z <= 0.0 { continue; }
-                stamp_sprite(was.xy, radius * (1.0 - 0.3 * back), angle, vec4<f32>(colour.rgb, colour.a * opacity * 0.5 * (1.0 - back * 0.85)));
+                stamp_sprite(was.xy, radius * (1.0 - 0.3 * back), angle, vec4<f32>(colour.rgb, colour.a * opacity * 0.5 * (1.0 - back * 0.85)), cell);
             }
         }
         return;

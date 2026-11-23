@@ -167,6 +167,53 @@ impl Inspect for veylvik_document::nodes::Particles {
                     .on_hover_text("Born on the surface of a 3D object of the scene, spread evenly over it and launched straight out of it; a moving object leaves its particles behind. Imported models cannot emit yet");
             });
         }
+        // A sprite cut into a sheet of cells.
+        let sprite: bool = ui
+            .data(|d| d.get_temp(egui::Id::new("particles-sprite")))
+            .unwrap_or(false);
+        if sprite {
+            use veylvik_document::nodes::{SPRITE_CELLS_MOST, SpritePlay};
+            ui.horizontal(|ui| {
+                ui.label("Sprite sheet");
+                cx.dirty |= ui
+                    .add(
+                        egui::DragValue::new(&mut self.sprite_columns)
+                            .range(1..=SPRITE_CELLS_MOST)
+                            .suffix(" across"),
+                    )
+                    .on_hover_text("Cells across the sprite image (1: the whole image)")
+                    .changed();
+                cx.dirty |= ui
+                    .add(
+                        egui::DragValue::new(&mut self.sprite_rows)
+                            .range(1..=SPRITE_CELLS_MOST)
+                            .suffix(" down"),
+                    )
+                    .on_hover_text("Cells down the sprite image")
+                    .changed();
+            });
+            if self.sprite_columns * self.sprite_rows > 1 {
+                ui.horizontal(|ui| {
+                    ui.label("Each particle shows");
+                    let choices = [
+                        (SpritePlay::Random, "One cell at random", "A cell picked at random for its whole life: several sprites in one system"),
+                        (SpritePlay::OverLife, "The cells over its life", "The cells in turn from first to last over its life: a sequence"),
+                        (SpritePlay::AtRate, "The cells at a rate", "The cells in turn at Sprite rate a second, from a random one, round and round"),
+                    ];
+                    let current = choices.iter().find(|c| c.0 == self.sprite_play).map_or("", |c| c.1);
+                    egui::ComboBox::from_id_salt("sprite-play")
+                        .selected_text(current)
+                        .show_ui(ui, |ui| {
+                            for (choice, name, hint) in choices {
+                                cx.dirty |= ui
+                                    .selectable_value(&mut self.sprite_play, choice, name)
+                                    .on_hover_text(hint)
+                                    .changed();
+                            }
+                        });
+                });
+            }
+        }
         // The colours: at birth, at the end of the life, and of a burst.
         egui::CollapsingHeader::new("Colours")
             .id_salt("particle-colours")

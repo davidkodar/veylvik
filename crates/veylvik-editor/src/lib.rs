@@ -2870,6 +2870,7 @@ impl Studio {
                     d.insert_temp(egui::Id::new("particles-box"), !wired("emitter"));
                     d.insert_temp(egui::Id::new("particles-obstacle"), wired("obstacle"));
                     d.insert_temp(egui::Id::new("particles-scene"), wired("scene"));
+                    d.insert_temp(egui::Id::new("particles-sprite"), wired("sprite"));
                 });
                 let hidden = match parameter.name {
                     "density" => !wired("emitter"),
@@ -2882,6 +2883,12 @@ impl Studio {
                             && !matches!(self.draft.operation, Operation::Particles(ref n) if n.collide && wired("scene"))
                     }
                     "spin" => !wired("sprite"),
+                    // The sheet is set in the node's own controls; its rate when it plays.
+                    "sprite_columns" | "sprite_rows" | "sprite_play" => true,
+                    "sprite_rate" => {
+                        !wired("sprite")
+                            || !matches!(self.draft.operation, Operation::Particles(ref n) if n.sprite_play == veylvik_document::nodes::SpritePlay::AtRate)
+                    }
                     "camera" => !wired("scene"),
                     // A flock's own settings once it is one.
                     "cohesion" | "separation" | "alignment" | "top_speed" => {

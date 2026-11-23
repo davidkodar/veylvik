@@ -1317,7 +1317,12 @@ impl Renderer {
                 };
                 let scene = scene_hook::scene_of(plan, scheduled.node, time)?;
                 let lights = nodes::particles::shining(&scene.lights);
-                let side = nodes::particles::shadow_side(plan.width, plan.height, lights.len());
+                let sheet = match &plan.nodes[scheduled.node].operation {
+                    Operation::Particles(p) => nodes::particles::sheet(p),
+                    _ => 64 * 64,
+                };
+                let side =
+                    nodes::particles::shadow_side(plan.width, plan.height, sheet, lights.len());
                 renderer.shadows(scene_hook::ShadowJob {
                     device: &self.device,
                     queue: &self.queue,
