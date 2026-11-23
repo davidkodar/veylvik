@@ -177,3 +177,50 @@ fn a_clip_source_brings_its_own_3d_renderer_and_compiles_what_it_uses() {
         "the cube is not in the picture"
     );
 }
+#[test]
+#[ignore = "requires Vulkan"]
+fn a_clip_source_brings_its_own_openfx_host() {
+    use veylvik_document::nodes::{OfxContext, OfxEffect};
+    use veylvik_document::{Node, Operation};
+    // A renderer as a host makes it: no editor, so no OpenFX host registered.
+    let renderer = Arc::new(Renderer::new().unwrap());
+    let mut composition = veylvik_document::blank(16, 9, Time::new(24, 1).unwrap()).unwrap();
+    let under = composition.output;
+    let effect = OfxEffect {
+        bundle: "/nowhere/Missing.ofx.bundle".into(),
+        plugin: "org.example.missing".into(),
+        context: OfxContext::Filter,
+        clips: vec!["Source".into()],
+        settings: Default::default(),
+        other_frames: false,
+    };
+    let node = Node::new("plugin", Operation::OfxEffect(effect), &[("source", under)]);
+    composition.output = node.id;
+    composition.nodes.insert(node.id, node);
+    let source =
+        ClipSource::new(renderer.clone(), composition, std::env::temp_dir(), None).unwrap();
+    let target = renderer.device().create_buffer(&wgpu::BufferDescriptor {
+        label: Some("the host's frame"),
+        size: 16 * 9 * 16,
+        usage: wgpu::BufferUsages::STORAGE
+            | wgpu::BufferUsages::COPY_SRC
+            | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    });
+    // The plugin does not exist, so the render fails, but through the OpenFX host that the
+    // clip source registered, not for want of one.
+    let error = source
+        .render(
+            Time::new(0, 1).unwrap(),
+            [16, 9],
+            &target,
+            &HostPixels::rec709(false),
+        )
+        .unwrap_err()
+        .to_string();
+    assert!(!error.contains("has not loaded"), "{error}");
+    assert!(
+        error.contains("OpenFX effect org.example.missing"),
+        "{error}"
+    );
+}

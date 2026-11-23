@@ -1286,6 +1286,16 @@ impl Plan {
     pub fn has_temporal(&self) -> bool {
         !self.temporal.is_empty()
     }
+    /// Whether the plan runs an OpenFX effect anywhere, its branches included.
+    pub fn runs_effects(&self) -> bool {
+        self.passes
+            .iter()
+            .any(|pass| pass.kernel == Kernel::External)
+            || self
+                .temporal
+                .iter()
+                .any(|branch| branch.plan.runs_effects())
+    }
     /// Whether the plan films a 3D scene anywhere, its branches included.
     pub fn films_scenes(&self) -> bool {
         self.passes

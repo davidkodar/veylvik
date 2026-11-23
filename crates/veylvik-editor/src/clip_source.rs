@@ -56,7 +56,7 @@ impl ClipSource {
         host: Option<Arc<dyn crate::host::Host>>,
     ) -> Result<Self> {
         let made = make(composition, &assets, &host)?;
-        needs_3d(&renderer, &made.plan);
+        needs_hosts(&renderer, &made.plan);
         Ok(Self {
             renderer,
             assets,
@@ -68,7 +68,7 @@ impl ClipSource {
     /// already running finishes with the one it began with.
     pub fn set_composition(&self, composition: Composition) -> Result<()> {
         let made = Arc::new(make(composition, &self.assets, &self.host)?);
-        needs_3d(&self.renderer, &made.plan);
+        needs_hosts(&self.renderer, &made.plan);
         *self.made.lock().map_err(|_| "clip source unavailable")? = made;
         Ok(())
     }
@@ -125,9 +125,13 @@ impl ClipSource {
     }
 }
 
-/// A composition that films a 3D scene needs the 3D renderer: a host that has no editor
-/// open has none, and its Render scene nodes would fail. Made once per renderer.
-fn needs_3d(renderer: &Renderer, plan: &Plan) {
+/// A composition that films a 3D scene needs the 3D renderer, and one with OpenFX effects
+/// the effect host: a host that has no editor open has neither, and those nodes would
+/// fail. Each is made once per renderer.
+fn needs_hosts(renderer: &Renderer, plan: &Plan) {
+    if plan.runs_effects() {
+        renderer.ensure_effect_host(|| Arc::new(veylvik_io::ofx::Runner::new()));
+    }
     if plan.films_scenes() {
         renderer.ensure_scene_renderer(|| {
             Arc::new(veylvik_render3d::Engine::with_cache(
