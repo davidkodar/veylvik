@@ -26,7 +26,7 @@ fn tile() -> u32 {
     return 16u;
 }
 const MIP: u32 = 64u;
-const COUNT: u32 = 60u;
+const COUNT: u32 = 117u;
 const ROWS: u32 = 16u;
 // Setting numbers.
 const SPEED = 1u; const DIRECTION = 2u; const SPREAD = 3u; const GRAVITY = 4u; const WIND = 5u;
@@ -42,6 +42,24 @@ const BURST = 45u; const BURST_SPEED = 46u; const BURST_SPREAD = 47u; const BURS
 const BURST_SIZE = 49u; const BURST_COLOUR = 50u; const BURST_A = 53u;
 const TRAIL = 54u; const TRAIL_WIDTH = 55u;
 const LINK_DISTANCE = 57u; const LINK_OPACITY = 58u; const LINK_WIDTH = 59u;
+// Curves over the life: which are set (1 size, 2 opacity, 4 speed, 8 colour), then eight
+// values each, and eight RGBA colours.
+const CURVES = 60u; const SIZE_CURVE = 61u; const OPACITY_CURVE = 69u; const SPEED_CURVE = 77u;
+const COLOUR_CURVE = 85u;
+fn has_curve(bit: u32, seconds: f32) -> bool { return (u32(setting(CURVES, seconds)) & bit) != 0u; }
+// A curve's value at `share` of the life: its eight values joined by straight lines.
+fn life_curve(base: u32, seconds: f32, share: f32) -> f32 {
+    let x = clamp(share, 0.0, 1.0) * 7.0;
+    let a = u32(floor(x)); let b = min(a + 1u, 7u);
+    return mix(setting(base + a, seconds), setting(base + b, seconds), x - floor(x));
+}
+fn life_colour(seconds: f32, share: f32) -> vec4<f32> {
+    let x = clamp(share, 0.0, 1.0) * 7.0;
+    let a = u32(floor(x)); let b = min(a + 1u, 7u);
+    let ca = vec4<f32>(setting(COLOUR_CURVE + 4u * a, seconds), setting(COLOUR_CURVE + 4u * a + 1u, seconds), setting(COLOUR_CURVE + 4u * a + 2u, seconds), setting(COLOUR_CURVE + 4u * a + 3u, seconds));
+    let cb = vec4<f32>(setting(COLOUR_CURVE + 4u * b, seconds), setting(COLOUR_CURVE + 4u * b + 1u, seconds), setting(COLOUR_CURVE + 4u * b + 2u, seconds), setting(COLOUR_CURVE + 4u * b + 3u, seconds));
+    return mix(ca, cb, x - floor(x));
+}
 // The camera row's values beyond the camera: particles (threads before the bursts'),
 // burst particles each, and whether bursts are set off by the obstacle (else by death).
 const PARENTS = 32u; const EACH = 33u; const ON_IMPACT = 34u;
@@ -218,6 +236,7 @@ fn place(origin: vec3<f32>, launch: vec3<f32>, birth: f32, age: f32, own_life: f
     let step = p.extra.w / f32(steps);
     var done = 0.0;
     var f: Forces;
+    let paced = has_curve(4u, birth);
     for (var k = 0u; k < steps; k++) {
         let dt = min(step, age - done);
         if dt <= 0.0 { break; }
@@ -244,6 +263,8 @@ fn place(origin: vec3<f32>, launch: vec3<f32>, birth: f32, age: f32, own_life: f
             drift += vec3<f32>(swirl(at.xy, birth + done, f), through);
         }
         var next = at + drift * dt;
+        // Speed over the life: how far it travels in this step, at the middle of the step.
+        if paced { next = at + drift * dt * life_curve(SPEED_CURVE, birth, (done + dt * 0.5) / own_life); }
         // Look along the move every two pixels or so, so a thin obstacle is not stepped over.
         var hit = false;
         if (flags & 2u) != 0u && solid(at.xy) <= 0.5 {
@@ -499,7 +520,7 @@ fn born(thread: u32, back: u32, now: f32) -> Born {
 }
 // How one particle looks: its colours over its life (before the emitter's tint and the
 // hue turn), its size at birth, and the random draws its own.
-struct Look { first: vec4<f32>, last: vec4<f32>, tint: vec3<f32>, size: f32, thread: u32, generation: u32, hue: f32 }
+struct Look { first: vec4<f32>, last: vec4<f32>, tint: vec3<f32>, size: f32, thread: u32, generation: u32, hue: f32, ramp: bool }
 // Draw a particle `age` seconds into its life on its path, as a dot, a sprite or a streak.
 fn draw(origin: vec3<f32>, launch: vec3<f32>, birth: f32, age: f32, own_life: f32, goal: vec3<f32>, homing: f32, deep: bool, look: Look) {
     let thread = look.thread; let generation = look.generation;
@@ -522,8 +543,13 @@ fn draw(origin: vec3<f32>, launch: vec3<f32>, birth: f32, age: f32, own_life: f3
     let fade = setting(FADE, birth);
     var opacity = min(share / 0.04, 1.0);
     if reach > 0.0 { opacity *= clamp((reach - away) / (0.25 * reach), 0.0, 1.0); }
-    if fade > 0.0 { opacity *= clamp((1.0 - share) / fade, 0.0, 1.0); }
+    if has_curve(2u, birth) {
+        // Opacity over the life in place of the fade.
+        opacity = life_curve(OPACITY_CURVE, birth, share);
+        if reach > 0.0 { opacity *= clamp((reach - away) / (0.25 * reach), 0.0, 1.0); }
+    } else if fade > 0.0 { opacity *= clamp((1.0 - share) / fade, 0.0, 1.0); }
     var colour = mix(look.first, look.last, share);
+    if look.ramp && has_curve(8u, birth) { colour = life_colour(birth, share); }
     colour = vec4<f32>(colour.rgb * look.tint, colour.a);
     let hues = setting(HUES, birth);
     if hues > 0.0 {
@@ -532,8 +558,10 @@ fn draw(origin: vec3<f32>, launch: vec3<f32>, birth: f32, age: f32, own_life: f3
     // Near particles are drawn larger, up to a limit that keeps one particle affordable;
     // points (the camera row's 31st value) are the same size at any distance.
     let nearness = mix(seen.z, 1.0, camera_row(31u));
+    var growth = mix(1.0, setting(GROW, birth), share);
+    if has_curve(1u, birth) { growth = life_curve(SIZE_CURVE, birth, share); }
     let sharp = min(look.size * (1.0 - 0.6 * variation * random(thread, generation, 7u))
-        * mix(1.0, setting(GROW, birth), share) * nearness, 48.0);
+        * growth * nearness, 48.0);
     if sharp <= 0.0 { return; }
     // Out of focus it spreads over a larger disc and dims by as much.
     let radius = min(sharp + lens_blur(away), 48.0);
@@ -662,7 +690,7 @@ fn particle_splat(@builtin(global_invocation_id) gid: vec3<u32>) {
         if p.extra.y > 0.5 && b.homing > 0.0 { landing = smoothstep(1.0 - b.homing, 1.0, age / b.own_life); }
         let tint = mix(vec3<f32>(1.0), mix(b.born_on, b.lands_on, landing), setting(INHERIT, b.birth));
         draw(b.origin, b.launch, b.birth, age, b.own_life, b.goal, b.homing, b.deep,
-            Look(first_colour, last_colour, tint, setting(SIZE, b.birth), thread, b.generation, random(thread, b.generation, 12u)));
+            Look(first_colour, last_colour, tint, setting(SIZE, b.birth), thread, b.generation, random(thread, b.generation, 12u), true));
         return;
     }
     // A burst particle: the parent's thread and which of its burst this is. It looks
@@ -708,7 +736,7 @@ fn particle_splat(@builtin(global_invocation_id) gid: vec3<u32>) {
         draw(at, launch, death, age, child_life, at, 0.0, b.deep,
             Look(burst_colour, burst_colour, tint, setting(SIZE, b.birth) * setting(BURST_SIZE, b.birth), thread, b.generation,
                 // A burst turns its hue with the particle it came from.
-                random(parent, b.generation, 12u)));
+                random(parent, b.generation, 12u), false));
     }
 }
 // ---- positions: as splat; result = two values for each linked particle: where it is
@@ -732,10 +760,12 @@ fn particle_positions(@builtin(global_invocation_id) gid: vec3<u32>) {
             let share = age / b.own_life;
             let fade = setting(FADE, b.birth);
             var opacity = min(share / 0.04, 1.0);
-            if fade > 0.0 { opacity *= clamp((1.0 - share) / fade, 0.0, 1.0); }
+            if has_curve(2u, b.birth) { opacity = life_curve(OPACITY_CURVE, b.birth, share); }
+            else if fade > 0.0 { opacity *= clamp((1.0 - share) / fade, 0.0, 1.0); }
             let first_colour = vec4<f32>(setting(COLOUR, b.birth), setting(COLOUR + 1u, b.birth), setting(COLOUR + 2u, b.birth), setting(COLOUR_A, b.birth));
             let last_colour = vec4<f32>(setting(END_COLOUR, b.birth), setting(END_COLOUR + 1u, b.birth), setting(END_COLOUR + 2u, b.birth), setting(END_A, b.birth));
             colour = mix(first_colour, last_colour, share);
+            if has_curve(8u, b.birth) { colour = life_colour(b.birth, share); }
             let hues = setting(HUES, b.birth);
             if hues > 0.0 { colour = vec4<f32>(turned(colour.rgb, (random(i, b.generation, 12u) - 0.5) * 6.2831853 * hues), colour.a); }
             spot = vec4<f32>(seen.xy, opacity * colour.a, setting(SIZE, b.birth));

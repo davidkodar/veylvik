@@ -57,6 +57,10 @@ pub enum ParameterKind {
     NodeRef,
     /// A list of [x, y, z] points.
     Points3,
+    /// Eight values over a particle's life (birth to end, evenly), or none.
+    LifeCurve,
+    /// Eight linear RGBA colours over a particle's life, or none.
+    LifeColours,
     /// A file path (string).
     FilePath,
     /// A plain [x, y, z].
@@ -127,6 +131,7 @@ impl Parameter {
             ParameterKind::LightKind => json!(crate::nodes::LightKind::default()),
             ParameterKind::Look | ParameterKind::NodeRef => json!(null),
             ParameterKind::Points3 => json!([]),
+            ParameterKind::LifeCurve | ParameterKind::LifeColours => json!(null),
             ParameterKind::FilePath => json!(""),
             ParameterKind::Vector3 => json!([1.0, 1.0, 1.0]),
         }
@@ -170,6 +175,12 @@ impl Parameter {
             ParameterKind::FilePath => json!({"type":"string","maxLength":4096}),
             ParameterKind::Vector3 => {
                 json!({"type":"array","minItems":3,"maxItems":3,"items":{"type":"number"}})
+            }
+            ParameterKind::LifeCurve => {
+                json!({"anyOf":[{"type":"null"},{"type":"array","minItems":8,"maxItems":8,"items":{"type":"number","minimum":0,"maximum":8}}]})
+            }
+            ParameterKind::LifeColours => {
+                json!({"anyOf":[{"type":"null"},{"type":"array","minItems":8,"maxItems":8,"items":{"type":"array","minItems":4,"maxItems":4,"items":{"type":"number","minimum":0,"maximum":64}}}]})
             }
             ParameterKind::Points3 => {
                 json!({"type":"array","maxItems":crate::nodes::MAX_CLOUD_POINTS,"items":{"type":"array","minItems":3,"maxItems":3,"items":{"type":"number"}}})

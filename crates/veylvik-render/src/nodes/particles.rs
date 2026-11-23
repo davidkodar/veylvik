@@ -9,7 +9,7 @@ const SLOTS: f32 = 4.0;
 /// Threads in one dispatch row (1024 workgroups of 64).
 const ROW: u32 = 65536;
 /// Settings in a row, and rows through the last life (as in particle_system.wgsl).
-const COUNT: usize = 60;
+const COUNT: usize = 117;
 const ROWS: usize = 16;
 /// The target's tile size for a frame (as in particle_system.wgsl).
 fn tile(pixels: u64) -> u32 {
@@ -83,6 +83,26 @@ fn settings(node: &Particles, time: Time) -> Result<[f32; COUNT]> {
         at(&node.link_width)?,
     ];
     row[..values.len()].copy_from_slice(&values);
+    // Curves over the life (not keyed): which are set, then their values and colours.
+    let flags = u8::from(node.size_over_life.is_some())
+        | u8::from(node.opacity_over_life.is_some()) << 1
+        | u8::from(node.speed_over_life.is_some()) << 2
+        | u8::from(node.colour_over_life.is_some()) << 3;
+    row[60] = f32::from(flags);
+    for (base, curve) in [
+        (61, node.size_over_life),
+        (69, node.opacity_over_life),
+        (77, node.speed_over_life),
+    ] {
+        if let Some(curve) = curve {
+            row[base..base + 8].copy_from_slice(&curve);
+        }
+    }
+    if let Some(ramp) = node.colour_over_life {
+        for (k, colour) in ramp.iter().enumerate() {
+            row[85 + 4 * k..89 + 4 * k].copy_from_slice(colour);
+        }
+    }
     Ok(row)
 }
 fn scalars(node: &Particles) -> [&Scalar; 49] {
@@ -495,7 +515,9 @@ impl RenderNode for Particles {
         let tile = tile(pixels);
         let tiles = u64::from(cx.width.div_ceil(tile) * cx.height.div_ceil(tile));
         if pixels < tiles + (COUNT * (ROWS + 1)) as u64 {
-            return Err(error("Particles need a frame of at least 32 x 32 pixels"));
+            return Err(error(
+                "Particles need a frame of at least 45 x 45 pixels (2,040 in all)",
+            ));
         }
         // The sprite's small copy sits after the tile table; without room, dots are drawn.
         let sprite = wired("sprite") && pixels >= tiles + u64::from(MIP * MIP);

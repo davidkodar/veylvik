@@ -1128,3 +1128,67 @@ fn lines_join_particles_nearer_than_the_link_distance() {
         .sum();
     assert!(diff < 1e-3, "{diff}");
 }
+#[test]
+#[ignore = "requires Vulkan"]
+fn curves_shape_size_opacity_colour_and_speed_over_the_life() {
+    let renderer = Renderer::new().unwrap();
+    // Particles born together at the centre and living four seconds.
+    let mut base = still();
+    base.duration = 0.05.into();
+    base.life = 4.0.into();
+    let lit = |pixels: &[[f32; 4]]| pixels.iter().filter(|p| p[3] > 0.02).count();
+    let sum = |pixels: &[[f32; 4]], c: usize| pixels.iter().map(|p| p[c]).sum::<f32>();
+    // Opacity: hidden for the first half of the life, then shown.
+    let mut hidden = base.clone();
+    hidden.opacity_over_life = Some([0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0]);
+    assert_eq!(
+        lit(&render(&renderer, hidden.clone(), None, (1, 2))),
+        0,
+        "hidden early"
+    );
+    assert!(
+        lit(&render(&renderer, hidden, None, (3, 1))) > 0,
+        "shown late"
+    );
+    // Size: four times as large late in the life as early.
+    let mut growing = base.clone();
+    growing.size_over_life = Some([1.0, 1.0, 1.0, 1.0, 4.0, 4.0, 4.0, 4.0]);
+    let (small, large) = (
+        lit(&render(&renderer, growing.clone(), None, (1, 2))),
+        lit(&render(&renderer, growing, None, (3, 1))),
+    );
+    assert!(large > small * 4, "{small} {large}");
+    // Colour: red at birth, blue at the end.
+    let mut ramp = base.clone();
+    ramp.colour_over_life = Some([
+        [1.0, 0.0, 0.0, 1.0],
+        [1.0, 0.0, 0.0, 1.0],
+        [1.0, 0.0, 0.0, 1.0],
+        [1.0, 0.0, 0.0, 1.0],
+        [0.0, 0.0, 1.0, 1.0],
+        [0.0, 0.0, 1.0, 1.0],
+        [0.0, 0.0, 1.0, 1.0],
+        [0.0, 0.0, 1.0, 1.0],
+    ]);
+    let (early, late) = (
+        render(&renderer, ramp.clone(), None, (1, 2)),
+        render(&renderer, ramp, None, (3, 1)),
+    );
+    assert!(sum(&early, 0) > 10.0 * sum(&early, 2), "red early");
+    assert!(sum(&late, 2) > 10.0 * sum(&late, 0), "blue late");
+    // Speed: still for the first half of the life, then away at the launch speed.
+    let mut moving = base.clone();
+    moving.speed = 40.0.into();
+    moving.direction = 0.0.into();
+    moving.spread = 0.0.into();
+    moving.speed_over_life = Some([0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0]);
+    let (_, right_early, ..) = span(&render(&renderer, moving.clone(), None, (3, 2)));
+    let (_, right_late, ..) = span(&render(&renderer, moving, None, (3, 1)));
+    assert!(right_early <= 83, "held still: {right_early}");
+    assert!(right_late >= 100, "then away: {right_late}");
+    // No curves: as the plain settings make it.
+    assert_eq!(
+        render(&renderer, base.clone(), None, (1, 1)),
+        render(&renderer, base, None, (1, 1))
+    );
+}

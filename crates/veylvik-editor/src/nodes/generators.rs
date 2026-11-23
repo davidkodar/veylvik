@@ -147,6 +147,41 @@ impl Inspect for veylvik_document::nodes::Particles {
                 ui.label("Burst");
                 cx.dirty |= animation::color(ui, &mut self.burst_colour);
             });
+        egui::CollapsingHeader::new("Over the life")
+            .id_salt("particle-over-life")
+            .show(ui, |ui| {
+                ui.weak("Shape each particle from birth (left) to its end (right): drag the points");
+                let flat = |v: f32| [v; 8];
+                cx.dirty |= life_curve(ui, "Size", &mut self.size_over_life, 4.0, flat(1.0),
+                    "Size over the life as a factor of the size, in place of Grow");
+                cx.dirty |= life_curve(ui, "Opacity", &mut self.opacity_over_life, 1.0,
+                    [0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.5, 0.0],
+                    "Opacity over the life, in place of Fade");
+                cx.dirty |= life_curve(ui, "Speed", &mut self.speed_over_life, 4.0, flat(1.0),
+                    "How fast particles travel over their life, as a factor: 0 holds them still");
+                let mut ramp = self.colour_over_life.is_some();
+                if ui
+                    .checkbox(&mut ramp, "Colour")
+                    .on_hover_text("Eight colours over the life, in place of the colour at birth and at the end")
+                    .changed()
+                {
+                    let (a, b) = (self.colour, self.end_colour);
+                    self.colour_over_life = ramp.then(|| {
+                        std::array::from_fn(|k| {
+                            let t = k as f32 / 7.0;
+                            std::array::from_fn(|c| a[c] + (b[c] - a[c]) * t)
+                        })
+                    });
+                    cx.dirty = true;
+                }
+                if let Some(colours) = &mut self.colour_over_life {
+                    ui.horizontal(|ui| {
+                        for colour in colours.iter_mut() {
+                            cx.dirty |= ui.color_edit_button_rgba_unmultiplied(colour).changed();
+                        }
+                    });
+                }
+            });
         let obstacle: bool = ui
             .data(|d| d.get_temp(egui::Id::new("particles-obstacle")))
             .unwrap_or(false);
@@ -187,4 +222,75 @@ impl Inspect for veylvik_document::nodes::Particles {
             });
         }
     }
+}
+
+/// A curve over a particle's life, switched on with its checkbox and shaped by dragging
+/// its eight points between 0 and `top`; true when it changed.
+fn life_curve(
+    ui: &mut egui::Ui,
+    name: &str,
+    curve: &mut Option<[f32; 8]>,
+    top: f32,
+    start: [f32; 8],
+    hint: &str,
+) -> bool {
+    let mut on = curve.is_some();
+    let mut changed = false;
+    if ui.checkbox(&mut on, name).on_hover_text(hint).changed() {
+        *curve = on.then_some(start);
+        changed = true;
+    }
+    let Some(values) = curve else {
+        return changed;
+    };
+    let size = egui::vec2(ui.available_width().min(260.0), 64.0);
+    let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click_and_drag());
+    let painter = ui.painter_at(rect);
+    let visuals = ui.visuals();
+    painter.rect_filled(rect, 4.0, visuals.extreme_bg_color);
+    let at = |k: usize, v: f32| {
+        egui::pos2(
+            rect.left() + rect.width() * k as f32 / 7.0,
+            rect.bottom() - rect.height() * (v / top).clamp(0.0, 1.0),
+        )
+    };
+    // Where 1 is, when the curve reaches above it.
+    if top > 1.0 {
+        let y = at(0, 1.0).y;
+        painter.hline(
+            rect.x_range(),
+            y,
+            egui::Stroke::new(1.0_f32, visuals.weak_text_color().gamma_multiply(0.4)),
+        );
+    }
+    let points: Vec<egui::Pos2> = (0..8).map(|k| at(k, values[k])).collect();
+    let accent = crate::design::accent(ui.ctx());
+    painter.add(egui::Shape::line(
+        points.clone(),
+        egui::Stroke::new(1.5_f32, accent),
+    ));
+    for point in &points {
+        painter.circle_filled(*point, 3.5, accent);
+    }
+    if let Some(pointer) = response.interact_pointer_pos()
+        && (response.dragged() || response.clicked())
+    {
+        let k = (((pointer.x - rect.left()) / rect.width()) * 7.0)
+            .round()
+            .clamp(0.0, 7.0) as usize;
+        let v = ((rect.bottom() - pointer.y) / rect.height() * top).clamp(0.0, top);
+        if values[k] != v {
+            values[k] = v;
+            changed = true;
+        }
+    }
+    response.on_hover_text(format!(
+        "{name}: {}",
+        values
+            .iter()
+            .map(|v| format!("{v:.2}"))
+            .collect::<Vec<_>>()
+            .join(", ")
+    ));
+    changed
 }
