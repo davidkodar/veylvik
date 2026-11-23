@@ -100,6 +100,11 @@ fn pass_words(
         let code = hasher.finish();
         words.extend([5, code as u32, (code >> 32) as u32]);
     }
+    if pass.kernel == crate::Kernel::ParticleSimulation {
+        // A flock at a frame is made of its whole path there: key all it depends on.
+        let key = crate::simulation::key(plan, pass.node);
+        words.extend([7, key as u32, (key >> 32) as u32]);
+    }
     if pass.kernel == crate::Kernel::ParticleShadows {
         // Depth maps of the scene the particles are lit in: key what it holds.
         words.push(6);

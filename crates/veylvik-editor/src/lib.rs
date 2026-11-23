@@ -2883,6 +2883,10 @@ impl Studio {
                     }
                     "spin" => !wired("sprite"),
                     "camera" => !wired("scene"),
+                    // A flock's own settings once it is one.
+                    "cohesion" | "separation" | "alignment" | "top_speed" => {
+                        matches!(self.draft.operation, Operation::Particles(ref n) if matches!(n.flock_radius, veylvik_document::Scalar::Constant { value } if value <= 0.0))
+                    }
                     // Offered as a choice by the node's own inspector.
                     "history" => true,
                     // A burst's own settings once it has particles.

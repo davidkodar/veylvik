@@ -26,7 +26,7 @@ fn tile() -> u32 {
     return 16u;
 }
 const MIP: u32 = 64u;
-const COUNT: u32 = 120u;
+const COUNT: u32 = 126u;
 const ROWS: u32 = 16u;
 // Setting numbers.
 const SPEED = 1u; const DIRECTION = 2u; const SPREAD = 3u; const GRAVITY = 4u; const WIND = 5u;
@@ -363,7 +363,10 @@ var<private> impact: f32;
 var<private> recording: bool;
 var<private> path: array<vec4<f32>, 100>;
 var<private> path_count: u32;
+// A flock's simulated place at the frame (w 1), which place() gives in place of a path.
+var<private> held: vec4<f32>;
 fn place(origin: vec3<f32>, launch: vec3<f32>, birth: f32, age: f32, own_life: f32, goal: vec3<f32>, homing: f32, deep: bool) -> vec3<f32> {
+    if held.w > 0.5 { impact = -1.0; path_count = 0u; return held.xyz; }
     var at = origin; var velocity = launch;
     impact = -1.0;
     path_count = 0u;
@@ -712,7 +715,7 @@ struct Look { first: vec4<f32>, last: vec4<f32>, tint: vec3<f32>, size: f32, thr
 fn draw(origin: vec3<f32>, launch: vec3<f32>, birth: f32, age: f32, own_life: f32, goal: vec3<f32>, homing: f32, deep: bool, look: Look) {
     let thread = look.thread; let generation = look.generation;
     let variation = setting(VARIATION, birth);
-    let ribbon = setting(TRAIL, birth) > 0.0 && (u32(p.extra.z) & 4u) == 0u;
+    let ribbon = setting(TRAIL, birth) > 0.0 && (u32(p.extra.z) & 4u) == 0u && !simulated();
     recording = ribbon;
     let where_now = place(origin, launch, birth, age, own_life, goal, homing, deep);
     recording = false;
@@ -867,6 +870,7 @@ fn particle_splat(@builtin(global_invocation_id) gid: vec3<u32>) {
         if !b.ok { return; }
         let age = now - b.birth;
         if age >= b.own_life { return; }
+        if simulated() && !simulated_at(thread, b.generation) { return; }
         // Set off by the obstacle, a particle ends where it first touches it.
         if on_impact {
             _ = place(b.origin, b.launch, b.birth, age, b.own_life, b.goal, b.homing, b.deep);
@@ -937,7 +941,7 @@ fn particle_positions(@builtin(global_invocation_id) gid: vec3<u32>) {
     var spot = vec4<f32>(0.0); var colour = vec4<f32>(0.0);
     let b = born(i, 0u, now);
     let age = now - b.birth;
-    if b.ok && age < b.own_life {
+    if b.ok && age < b.own_life && (!simulated() || simulated_at(i, b.generation)) {
         let where_now = place(b.origin, b.launch, b.birth, age, b.own_life, b.goal, b.homing, b.deep);
         let ended = camera_row(ON_IMPACT) > 0.5 && impact >= 0.0;
         let seen = filmed(where_now);

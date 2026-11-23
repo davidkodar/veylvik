@@ -1,7 +1,7 @@
 //! GPU passes and uniforms for particles: prepare and fields passes pack the inputs, a splat pass runs over particle threads, and a resolve pass over pixels. The node's settings travel in a data image as rows through time, so a particle reads the settings of its own birth.
 use super::{Cx, From, Passes, RenderNode, Step};
 use crate::{Kernel, Params, Result, error};
-use veylvik_document::{Scalar, Time, nodes::Particles};
+use veylvik_document::{Operation, Scalar, Time, nodes::Particles};
 
 /// Most particle threads from a box, and the threads each emitter cell has.
 const MAX_BOX: f32 = 2_000_000.0;
@@ -9,7 +9,7 @@ const SLOTS: f32 = 4.0;
 /// Threads in one dispatch row (1024 workgroups of 64).
 const ROW: u32 = 65536;
 /// Settings in a row, and rows through the last life (as in particle_system.wgsl).
-const COUNT: usize = 120;
+const COUNT: usize = 126;
 pub(crate) const ROWS: usize = 16;
 /// The target's tile size for a frame (as in particle_system.wgsl).
 fn tile(pixels: u64) -> u32 {
@@ -101,6 +101,11 @@ fn settings(node: &Particles, time: Time) -> Result<[f32; COUNT]> {
     row[117] = at(&node.lit)?;
     row[118] = at(&node.ambient)?;
     row[119] = at(&node.scatter)?;
+    row[120] = at(&node.flock_radius)?;
+    row[121] = at(&node.cohesion)?;
+    row[122] = at(&node.separation)?;
+    row[123] = at(&node.alignment)?;
+    row[124] = at(&node.top_speed)?;
     if let Some(ramp) = node.colour_over_life {
         for (k, colour) in ramp.iter().enumerate() {
             row[85 + 4 * k..89 + 4 * k].copy_from_slice(colour);
@@ -108,7 +113,7 @@ fn settings(node: &Particles, time: Time) -> Result<[f32; COUNT]> {
     }
     Ok(row)
 }
-fn scalars(node: &Particles) -> [&Scalar; 52] {
+fn scalars(node: &Particles) -> [&Scalar; 57] {
     [
         &node.life,
         &node.speed,
@@ -162,6 +167,11 @@ fn scalars(node: &Particles) -> [&Scalar; 52] {
         &node.lit,
         &node.ambient,
         &node.scatter,
+        &node.flock_radius,
+        &node.cohesion,
+        &node.separation,
+        &node.alignment,
+        &node.top_speed,
     ]
 }
 /// Most particles lines may join: each is checked against every later one.
@@ -391,7 +401,7 @@ fn surface(node: &Particles, cx: &Cx<'_>, life: f32) -> Result<Vec<f32>> {
     }
     Ok(values)
 }
-fn tiles_of(width: u32, height: u32) -> u32 {
+pub(crate) fn tiles_of(width: u32, height: u32) -> u32 {
     let t = tile(u64::from(width) * u64::from(height));
     width.div_ceil(t) * height.div_ceil(t)
 }
@@ -399,8 +409,22 @@ fn tiles_of(width: u32, height: u32) -> u32 {
 const MAX_THREADS: u64 = 4_000_000;
 /// The splat's threads: (particles, burst particles each, all threads). Particles come
 /// first, then each one's burst; a burst too large for the limit is made smaller.
+/// Most particles in a flock (two values each of the frame's buffer hold its state).
+pub(crate) const FLOCK_MOST: u32 = 65_536;
+/// Whether particles steer by one another, and so are simulated.
+pub(crate) fn simulating(node: &Particles) -> bool {
+    !matches!(node.flock_radius, Scalar::Constant { value } if value <= 0.0)
+}
 fn threads(cx: &Cx<'_>, rows: &[[f32; COUNT]]) -> (u32, u32, u32) {
     let (box_threads, stride) = layout(rows);
+    if let Operation::Particles(node) = &cx.node.operation
+        && simulating(node)
+    {
+        // A flock has no bursts, and its state must fit in a frame's buffer.
+        let most = FLOCK_MOST.min(cx.width * cx.height / 2);
+        let parents = box_threads.min(most);
+        return (parents, 0, parents);
+    }
     let parents = if cx.node.inputs.contains_key("emitter") {
         cx.width.div_ceil(stride) * cx.height.div_ceil(stride) * SLOTS as u32
     } else {
@@ -655,77 +679,27 @@ impl RenderNode for Particles {
         Passes::chain(&STEPS)
     }
     fn passes_for(&self, node: &veylvik_document::Node) -> Passes {
-        let direct_depth = node.inputs.contains_key("depth") && !node.inputs.contains_key("target");
-        if !shadowing(self, node) {
-            return match (direct_depth, linking(self)) {
-                (true, false) => Passes::chain(&DEPTH_STEPS),
-                (false, false) => Passes::chain(&STEPS),
-                (true, true) => Passes::chain(&DEPTH_LINK_STEPS),
-                (false, true) => Passes::chain(&LINK_STEPS),
-            };
+        let passes = plain_passes(self, node);
+        if !simulating(self) {
+            return passes;
         }
-        // Shadows: the scene's depth maps first, which the prepare pass takes in.
-        let seen = if direct_depth { DEPTH } else { TARGET };
-        let mut steps = vec![
-            Step {
-                kernel: Kernel::ParticleShadows,
-                inputs: [From::None; 4],
-            },
-            Step {
-                kernel: Kernel::ParticlePrepare,
-                inputs: [
-                    From::Port(TARGET),
-                    From::Port(SPRITE),
-                    From::Port(DEPTH),
-                    From::Step(0),
-                ],
-            },
-            Step {
-                kernel: Kernel::ParticleFields,
-                inputs: [
-                    From::Port(FIELD),
-                    From::Port(OBSTACLE),
-                    From::Step(1),
-                    From::Data,
-                ],
-            },
-            Step {
-                kernel: Kernel::ParticleSplat,
-                inputs: [
-                    From::Port(EMITTER),
-                    From::Port(seen),
-                    From::Step(2),
-                    From::Step(1),
-                ],
-            },
-        ];
-        if linking(self) {
-            steps.extend([
-                Step {
-                    kernel: Kernel::ParticlePositions,
-                    inputs: [
-                        From::Port(EMITTER),
-                        From::Port(seen),
-                        From::Step(2),
-                        From::Step(1),
-                    ],
-                },
-                Step {
-                    kernel: Kernel::ParticleLinks,
-                    inputs: [From::None, From::Step(4), From::Step(2), From::None],
-                },
-                Step {
-                    kernel: Kernel::ParticleResolve,
-                    inputs: [From::Step(3), From::Step(2), From::Step(5), From::None],
-                },
-            ]);
-        } else {
-            steps.push(Step {
-                kernel: Kernel::ParticleResolve,
-                inputs: [From::Step(3), From::Step(2), From::None, From::None],
-            });
-        }
-        Passes::Chain(std::borrow::Cow::Owned(steps))
+        // A flock: its simulated state first, read in place of the emitter.
+        let Passes::Chain(steps) = passes else {
+            return passes;
+        };
+        let mut chain = vec![Step {
+            kernel: Kernel::ParticleSimulation,
+            inputs: [From::None; 4],
+        }];
+        chain.extend(steps.iter().map(|step| Step {
+            kernel: step.kernel,
+            inputs: step.inputs.map(|from| match from {
+                From::Port(EMITTER) => From::Step(0),
+                From::Step(n) => From::Step(n + 1),
+                other => other,
+            }),
+        }));
+        Passes::Chain(std::borrow::Cow::Owned(chain))
     }
     fn has_data(&self) -> bool {
         true
@@ -765,6 +739,18 @@ impl RenderNode for Particles {
         last[115] = f32::from(!solids.is_empty());
         last[116] = (surface.len() + solids.len()) as f32;
         last[117] = f32::from(!forces.is_empty());
+        // A flock is simulated; it is born only in the box or on a 3D object.
+        last[118] = f32::from(simulating(self));
+        if simulating(self)
+            && let Some(port) = ["emitter", "target", "field", "obstacle"]
+                .into_iter()
+                .find(|port| cx.node.inputs.contains_key(*port))
+        {
+            return Err(error(format!(
+                "{}: a flock (Flock radius above 0) cannot use the {port} input yet; disconnect it or set Flock radius to 0",
+                cx.node.label
+            )));
+        }
         last[35] = if linking(self) {
             parents.min(LINKED_MOST).min(cx.width * cx.height / 2) as f32
         } else {
@@ -845,4 +831,77 @@ impl RenderNode for Particles {
         ];
         Ok(())
     }
+}
+fn plain_passes(this: &Particles, node: &veylvik_document::Node) -> Passes {
+    let direct_depth = node.inputs.contains_key("depth") && !node.inputs.contains_key("target");
+    if !shadowing(this, node) {
+        return match (direct_depth, linking(this)) {
+            (true, false) => Passes::chain(&DEPTH_STEPS),
+            (false, false) => Passes::chain(&STEPS),
+            (true, true) => Passes::chain(&DEPTH_LINK_STEPS),
+            (false, true) => Passes::chain(&LINK_STEPS),
+        };
+    }
+    // Shadows: the scene's depth maps first, which the prepare pass takes in.
+    let seen = if direct_depth { DEPTH } else { TARGET };
+    let mut steps = vec![
+        Step {
+            kernel: Kernel::ParticleShadows,
+            inputs: [From::None; 4],
+        },
+        Step {
+            kernel: Kernel::ParticlePrepare,
+            inputs: [
+                From::Port(TARGET),
+                From::Port(SPRITE),
+                From::Port(DEPTH),
+                From::Step(0),
+            ],
+        },
+        Step {
+            kernel: Kernel::ParticleFields,
+            inputs: [
+                From::Port(FIELD),
+                From::Port(OBSTACLE),
+                From::Step(1),
+                From::Data,
+            ],
+        },
+        Step {
+            kernel: Kernel::ParticleSplat,
+            inputs: [
+                From::Port(EMITTER),
+                From::Port(seen),
+                From::Step(2),
+                From::Step(1),
+            ],
+        },
+    ];
+    if linking(this) {
+        steps.extend([
+            Step {
+                kernel: Kernel::ParticlePositions,
+                inputs: [
+                    From::Port(EMITTER),
+                    From::Port(seen),
+                    From::Step(2),
+                    From::Step(1),
+                ],
+            },
+            Step {
+                kernel: Kernel::ParticleLinks,
+                inputs: [From::None, From::Step(4), From::Step(2), From::None],
+            },
+            Step {
+                kernel: Kernel::ParticleResolve,
+                inputs: [From::Step(3), From::Step(2), From::Step(5), From::None],
+            },
+        ]);
+    } else {
+        steps.push(Step {
+            kernel: Kernel::ParticleResolve,
+            inputs: [From::Step(3), From::Step(2), From::None, From::None],
+        });
+    }
+    Passes::Chain(std::borrow::Cow::Owned(steps))
 }

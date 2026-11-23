@@ -1526,3 +1526,93 @@ fn wind_blows_within_its_reach_and_drag_slows_it() {
     let untouched = centre_x(&forced(&renderer, puff, &[far], (1, 1)));
     assert!((untouched - 40.0).abs() < 1.0, "out of reach: {untouched}");
 }
+/// How far a picture's particles are spread: the mean distance of its light from the
+/// light's middle.
+fn spread_of(pixels: &[[f32; 4]]) -> f32 {
+    let (mut x, mut y, mut w) = (0.0, 0.0, 0.0);
+    for (i, p) in pixels.iter().enumerate() {
+        x += (i as u32 % W) as f32 * p[3];
+        y += (i as u32 / W) as f32 * p[3];
+        w += p[3];
+    }
+    let (cx, cy) = (x / w, y / w);
+    pixels
+        .iter()
+        .enumerate()
+        .map(|(i, p)| {
+            (((i as u32 % W) as f32 - cx).powi(2) + ((i as u32 / W) as f32 - cy).powi(2)).sqrt()
+                * p[3]
+        })
+        .sum::<f32>()
+        / w
+}
+fn render_alone(
+    renderer: &Renderer,
+    particles: &nodes::Particles,
+    seconds: (i64, u32),
+) -> Vec<[f32; 4]> {
+    forced(renderer, particles.clone(), &[], seconds)
+}
+/// A puff of particles flying off every way from the middle, all born at once.
+fn scattering() -> nodes::Particles {
+    let mut puff = still();
+    puff.width = 20.0.into();
+    puff.height = 20.0.into();
+    puff.rate = 6000.0.into();
+    puff.duration = 0.05.into();
+    puff.life = 10.0.into();
+    puff.speed = 25.0.into();
+    puff.spread = 360.0.into();
+    puff.size = 0.7.into();
+    puff
+}
+#[test]
+#[ignore = "requires Vulkan"]
+fn a_flock_keeps_together_and_keeps_its_distance() {
+    let renderer = Renderer::new().unwrap();
+    let free = spread_of(&render_alone(&renderer, &scattering(), (2, 1)));
+    let mut flock = scattering();
+    flock.flock_radius = 30.0.into();
+    flock.cohesion = 120.0.into();
+    flock.alignment = 1.0.into();
+    flock.top_speed = 30.0.into();
+    let together = spread_of(&render_alone(&renderer, &flock, (2, 1)));
+    assert!(
+        together < 0.8 * free,
+        "kept together: {together} against {free}"
+    );
+    let mut apart = flock.clone();
+    apart.separation = 60.0.into();
+    let spaced = spread_of(&render_alone(&renderer, &apart, (2, 1)));
+    assert!(
+        spaced > together * 1.1,
+        "kept their distance: {spaced} against {together}"
+    );
+}
+#[test]
+#[ignore = "requires Vulkan"]
+fn a_flocks_frame_is_the_same_however_it_is_reached() {
+    let mut flock = scattering();
+    flock.flock_radius = 30.0.into();
+    flock.cohesion = 120.0.into();
+    flock.separation = 40.0.into();
+    flock.alignment = 1.0.into();
+    flock.top_speed = 30.0.into();
+    flock.turbulence = 20.0.into();
+    // Straight to 2.5 s in a renderer of its own.
+    let straight = render_alone(&Renderer::new().unwrap(), &flock, (5, 2));
+    // Played on to it, frame after frame, in another.
+    let playing = Renderer::new().unwrap();
+    for frame in 1..=60 {
+        let _ = render_alone(&playing, &flock, (frame, 24));
+    }
+    let played = render_alone(&playing, &flock, (5, 2));
+    assert!(straight.iter().any(|p| p[3] > 0.0), "something is drawn");
+    assert!(straight == played, "played on to it, the frame is the same");
+    // Back to an earlier frame and on again, from what was kept.
+    let _ = render_alone(&playing, &flock, (1, 2));
+    assert!(
+        render_alone(&playing, &flock, (5, 2)) == straight,
+        "and after a seek back"
+    );
+}

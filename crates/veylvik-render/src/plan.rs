@@ -11,6 +11,9 @@ pub enum Kernel {
     /// Depth maps of a scene for particles it lights: made by the 3D renderer, as Render
     /// scene is (not in `ALL`: no program of its own).
     ParticleShadows,
+    /// Where a flock's particles are at the frame, simulated by the renderer over many
+    /// steps of the two kernels below (not in `ALL`: no program of its own).
+    ParticleSimulation,
     /// A custom shader node: its pipeline is compiled from the node's code.
     Custom,
     ToAcescg,
@@ -79,6 +82,8 @@ pub enum Kernel {
     ParticleResolve,
     ParticlePositions,
     ParticleLinks,
+    ParticleFlockGrid,
+    ParticleStep,
     LensPrefilterHorizontal,
     LensPrefilterVertical,
     LensBlur,
@@ -119,7 +124,7 @@ pub enum Kernel {
     Lut,
 }
 impl Kernel {
-    pub(crate) const ALL: [Self; 104] = [
+    pub(crate) const ALL: [Self; 106] = [
         Self::ToAcescg,
         Self::FromAcescg,
         Self::Text,
@@ -186,6 +191,8 @@ impl Kernel {
         Self::ParticleResolve,
         Self::ParticlePositions,
         Self::ParticleLinks,
+        Self::ParticleFlockGrid,
+        Self::ParticleStep,
         Self::LensPrefilterHorizontal,
         Self::LensPrefilterVertical,
         Self::LensBlur,
@@ -229,6 +236,9 @@ impl Kernel {
         match self {
             Self::RenderScene => "render_scene",
             Self::ParticleShadows => "particle_shadows",
+            Self::ParticleSimulation => "particle_simulation",
+            Self::ParticleFlockGrid => "particle_flock_grid",
+            Self::ParticleStep => "particle_step",
             Self::Custom => "custom",
             Self::ToAcescg => "to_acescg",
             Self::FromAcescg => "from_acescg",

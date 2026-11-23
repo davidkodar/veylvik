@@ -1,0 +1,288 @@
+//! Flocks, simulated: stepped forward from their start in fixed steps of a 60th of a second with the kernels in particle_flock.wgsl, a copy kept every so often, so any frame is found from the nearest copy before it and is the same whichever way it was reached.
+use crate::nodes::{self, RenderNode};
+use crate::plan::Plan;
+use crate::{Kernel, Params, Renderer, Result, error};
+use veylvik_document::{NodeId, Operation, Time};
+
+/// Seconds a step.
+const STEP: f64 = 1.0 / 60.0;
+/// Most copies kept of one flock; past it, every other one is let go.
+const KEPT: usize = 128;
+/// Flocks kept at once, the last used first.
+const RUNS: usize = 4;
+/// Cells of the neighbour grid, eight values each.
+const CELLS: u64 = 65_536;
+
+/// The flocks simulated so far and the copies of them kept.
+#[derive(Default)]
+pub(crate) struct Store {
+    runs: Vec<Run>,
+}
+struct Run {
+    key: u64,
+    /// Steps between copies (doubled as the flock grows long).
+    every: u64,
+    /// Copies by step, the step's whole state; and the last step reached.
+    kept: Vec<(u64, wgpu::Buffer)>,
+    last: Option<(u64, wgpu::Buffer)>,
+}
+/// What a flock's path depends on: the node, everything its scene and forces are made
+/// of, and the frame's size.
+pub(crate) fn key(plan: &Plan, node: usize) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let by_id: std::collections::BTreeMap<NodeId, &veylvik_document::Node> = plan
+        .nodes
+        .iter()
+        .chain(&plan.light_data)
+        .map(|n| (n.id, n))
+        .collect();
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    (plan.width, plan.height).hash(&mut hasher);
+    let me = &plan.nodes[node];
+    format!("{:?}", me.operation).hash(&mut hasher);
+    let mut todo: Vec<NodeId> = ["scene", "forces"]
+        .iter()
+        .filter_map(|port| me.inputs.get(*port).copied())
+        .collect();
+    let mut seen = std::collections::BTreeSet::new();
+    while let Some(id) = todo.pop() {
+        if !seen.insert(id) {
+            continue;
+        }
+        if let Some(n) = by_id.get(&id) {
+            format!("{:?}{:?}", n.operation, n.inputs).hash(&mut hasher);
+            todo.extend(n.inputs.values().copied());
+        }
+    }
+    hasher.finish()
+}
+impl Renderer {
+    /// A flock's state at `time` (two values a particle: where and its generation, then
+    /// its velocity and whether it is alive) and its length in bytes.
+    pub(crate) fn simulate(
+        &self,
+        plan: &Plan,
+        node: usize,
+        time: Time,
+    ) -> Result<(wgpu::Buffer, u64)> {
+        let Operation::Particles(particles) = &plan.nodes[node].operation else {
+            return Err(error("only particles are simulated"));
+        };
+        let (width, height) = (plan.width, plan.height);
+        let most = nodes::particles::FLOCK_MOST.min(width * height / 2).max(1);
+        let bytes = u64::from(most) * 32;
+        let state = |label| {
+            self.device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some(label),
+                size: bytes,
+                usage: wgpu::BufferUsages::STORAGE
+                    | wgpu::BufferUsages::COPY_SRC
+                    | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            })
+        };
+        let begins = f64::from(
+            particles
+                .start
+                .at(Time::new(0, 1).map_err(error)?)
+                .map_err(error)?,
+        );
+        let now = time.seconds().map_err(error)?;
+        let out = state("flock at the frame");
+        if now <= begins {
+            return Ok((out, bytes));
+        }
+        let wanted = ((now - begins) / STEP).floor() as u64;
+        let left = now - begins - wanted as f64 * STEP;
+        let key = key(plan, node);
+        let mut store = self
+            .simulations
+            .lock()
+            .map_err(|_| error("flock store lock poisoned"))?;
+        let at = match store.runs.iter().position(|r| r.key == key) {
+            Some(at) => at,
+            None => {
+                if store.runs.len() >= RUNS {
+                    store.runs.pop();
+                }
+                store.runs.insert(
+                    0,
+                    Run {
+                        key,
+                        every: 60,
+                        kept: Vec::new(),
+                        last: None,
+                    },
+                );
+                0
+            }
+        };
+        let run = store.runs.remove(at);
+        store.runs.insert(0, run);
+        let run = &mut store.runs[0];
+        // From the nearest state at or before the step wanted (none: the start, empty).
+        let mut before = state("flock before a step");
+        let mut after = state("flock after a step");
+        let mut first = 0u64;
+        {
+            let mut from = None::<&wgpu::Buffer>;
+            for (step, buffer) in run.kept.iter().chain(run.last.iter()) {
+                if *step <= wanted && *step >= first {
+                    (first, from) = (*step, Some(buffer));
+                }
+            }
+            let mut encoder = self.device.create_command_encoder(&Default::default());
+            match from {
+                Some(buffer) => encoder.copy_buffer_to_buffer(buffer, 0, &before, 0, bytes),
+                None => encoder.clear_buffer(&before, 0, None),
+            }
+            self.queue.submit([encoder.finish()]);
+        }
+        let grid = self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("flock grid"),
+            size: CELLS * 32,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let at_step = |k: u64| begins + k as f64 * STEP;
+        for k in first..wanted {
+            self.flock_step(plan, node, at_step(k + 1), STEP, &before, &after, &grid)?;
+            std::mem::swap(&mut before, &mut after);
+            let step = k + 1;
+            if step % run.every == 0 && !run.kept.iter().any(|(s, _)| *s == step) {
+                let copy = state("kept flock");
+                let mut encoder = self.device.create_command_encoder(&Default::default());
+                encoder.copy_buffer_to_buffer(&before, 0, &copy, 0, bytes);
+                self.queue.submit([encoder.finish()]);
+                run.kept.push((step, copy));
+                if run.kept.len() > KEPT {
+                    run.every *= 2;
+                    let every = run.every;
+                    run.kept.retain(|(s, _)| s % every == 0);
+                }
+            }
+        }
+        // Playing on continues from here.
+        if wanted > first {
+            let copy = state("last flock");
+            let mut encoder = self.device.create_command_encoder(&Default::default());
+            encoder.copy_buffer_to_buffer(&before, 0, &copy, 0, bytes);
+            self.queue.submit([encoder.finish()]);
+            run.last = Some((wanted, copy));
+        }
+        drop(store);
+        if left > 1e-7 {
+            self.flock_step(plan, node, now, left, &before, &out, &grid)?;
+        } else {
+            let mut encoder = self.device.create_command_encoder(&Default::default());
+            encoder.copy_buffer_to_buffer(&before, 0, &out, 0, bytes);
+            self.queue.submit([encoder.finish()]);
+        }
+        Ok((out, bytes))
+    }
+    /// One step of a flock to `seconds`, `span` seconds on from `before` into `after`.
+    #[allow(clippy::too_many_arguments)]
+    fn flock_step(
+        &self,
+        plan: &Plan,
+        node: usize,
+        seconds: f64,
+        span: f64,
+        before: &wgpu::Buffer,
+        after: &wgpu::Buffer,
+        grid: &wgpu::Buffer,
+    ) -> Result<()> {
+        let Operation::Particles(particles) = &plan.nodes[node].operation else {
+            return Err(error("only particles are simulated"));
+        };
+        let time = Time::new((seconds * 24000.0).round() as i64, 24000).map_err(error)?;
+        let cx = nodes::Cx {
+            node: &plan.nodes[node],
+            nodes: &plan.nodes,
+            width: plan.width,
+            height: plan.height,
+            time,
+        };
+        let data = particles
+            .data(&cx)?
+            .ok_or_else(|| error("particles have settings data"))?;
+        let mut p: Params = bytemuck::Zeroable::zeroed();
+        // The frame's size, as every pass is given it before the node's own values.
+        p.size_op[0] = plan.width;
+        p.size_op[1] = plan.height;
+        particles.params(&cx, &|_| Ok(0.0), &mut p)?;
+        p.values[2] = span as f32;
+        // The settings as the fields pass lays them out: after the target's tile table.
+        let tiles = nodes::particles::tiles_of(plan.width, plan.height) as usize;
+        let mut settings = vec![[0.0f32; 4]; tiles];
+        settings.extend(
+            data.pixels()
+                .iter()
+                .flat_map(|t| [t[0], t[1], t[2]])
+                .map(|v| [0.0, 0.0, 0.0, v]),
+        );
+        use wgpu::util::DeviceExt;
+        let make = |label, contents: &[u8], usage| {
+            self.device
+                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some(label),
+                    contents,
+                    usage,
+                })
+        };
+        let settings = make(
+            "flock settings",
+            bytemuck::cast_slice(&settings),
+            wgpu::BufferUsages::STORAGE,
+        );
+        let uniform = make(
+            "flock parameters",
+            &bytemuck::bytes_of(&p)[..48],
+            wgpu::BufferUsages::UNIFORM,
+        );
+        let none = make("nothing", &[0u8; 16], wgpu::BufferUsages::STORAGE);
+        let group = |first: &wgpu::Buffer, result: &wgpu::Buffer| {
+            let entries = [
+                (crate::origin::BINDING, &self.whole_frame),
+                (0, &uniform),
+                (1, first),
+                (2, before),
+                (3, result),
+                (4, &settings),
+                (5, &self.ltc),
+                (6, &self.default_lighting),
+                (7, &self.studio_environment),
+                (8, &none),
+            ];
+            let entries: Vec<wgpu::BindGroupEntry<'_>> = entries
+                .iter()
+                .map(|(binding, buffer)| wgpu::BindGroupEntry {
+                    binding: *binding,
+                    resource: buffer.as_entire_binding(),
+                })
+                .collect();
+            self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("flock step"),
+                layout: &self.layout,
+                entries: &entries,
+            })
+        };
+        let gather = group(&none, grid);
+        let step = group(grid, after);
+        let (threads, row) = (p.values[0] as u32, (p.values[1] as u32).max(1));
+        let mut encoder = self.device.create_command_encoder(&Default::default());
+        encoder.clear_buffer(grid, 0, None);
+        for (kernel, bind) in [
+            (Kernel::ParticleFlockGrid, &gather),
+            (Kernel::ParticleStep, &step),
+        ] {
+            let pipeline = self.pipeline(kernel)?;
+            let mut pass = encoder.begin_compute_pass(&Default::default());
+            pass.set_pipeline(&pipeline);
+            pass.set_bind_group(0, bind, &[]);
+            pass.dispatch_workgroups(row.div_ceil(64), threads.div_ceil(row).max(1), 1);
+        }
+        self.queue.submit([encoder.finish()]);
+        Ok(())
+    }
+}

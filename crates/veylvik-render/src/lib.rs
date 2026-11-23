@@ -39,6 +39,7 @@ pub use pipeline_cache::default_pipeline_folder;
 mod preview_scale;
 mod probe;
 mod scene_hook;
+mod simulation;
 /// WGSL for the prefiltered studio environment (`environment_specular`), for
 /// renderers that light with the same studio as materials.
 pub const ENVIRONMENT_WGSL: &str = include_str!("environment.wgsl");
@@ -259,6 +260,8 @@ pub struct Renderer {
     areas_used: std::sync::atomic::AtomicU64,
     /// The origin of a pass over the whole frame.
     whole_frame: wgpu::Buffer,
+    /// Flocks simulated so far (simulation.rs).
+    simulations: Mutex<simulation::Store>,
     /// While set, each pass of a render is finished on the card before the next begins
     /// and its time is put here: slower, and only for finding where a frame's time goes.
     pass_times: Mutex<Option<Vec<PassTime>>>,
@@ -488,7 +491,8 @@ impl Renderer {
             source: wgpu::ShaderSource::Wgsl(
                 concat!(
                     include_str!("particle_system.wgsl"),
-                    include_str!("particle_solids.wgsl")
+                    include_str!("particle_solids.wgsl"),
+                    include_str!("particle_flock.wgsl")
                 )
                 .into(),
             ),
@@ -554,6 +558,7 @@ impl Renderer {
             keep_results: true,
             areas_used: Default::default(),
             whole_frame,
+            simulations: Mutex::new(simulation::Store::default()),
             cache_limit_bytes: 64 * 1024 * 1024,
             owner: Arc::new(frame::DeviceIdentity),
             pool_limit_bytes: 128 * 1024 * 1024,
@@ -1289,6 +1294,14 @@ impl Renderer {
                 }
             }
             stale[scheduled.output] = false;
+            if scheduled.kernel == Kernel::ParticleSimulation {
+                // A flock's state at the frame, simulated up to it.
+                let (state, bytes) = self.simulate(plan, scheduled.node, time)?;
+                let output = &buffers[scheduled.output];
+                encoder.clear_buffer(output, 0, None);
+                encoder.copy_buffer_to_buffer(&state, 0, output, 0, bytes.min(output.size()));
+                continue;
+            }
             if scheduled.kernel == Kernel::ParticleShadows {
                 // Depth maps of the particles' scene as its lights see it, by the 3D renderer.
                 // Without one loaded there are no maps (a cleared buffer says so): the
