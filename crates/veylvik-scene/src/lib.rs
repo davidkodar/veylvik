@@ -79,6 +79,9 @@ pub struct Object {
     /// A thing the object keeps its front towards, and the frame it turns about
     /// (a 3D text's letters share one); applied once the whole scene is known.
     pub aim: Option<(NodeId, Mat4)>,
+    /// Drawn as copies at the particles of a Particle instances node (this one), centred
+    /// on itself, rather than once where it is.
+    pub instanced: Option<NodeId>,
 }
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Camera {
@@ -372,7 +375,8 @@ impl Scene {
         }
     }
     fn transformed(mut self, m: &Mat4) -> Self {
-        for o in &mut self.objects {
+        // Copies at particles are placed by the particles alone.
+        for o in self.objects.iter_mut().filter(|o| o.instanced.is_none()) {
             o.world = mul(m, &o.world);
             if let Some((_, pivot)) = &mut o.aim {
                 *pivot = mul(m, pivot);
@@ -486,6 +490,7 @@ fn node(doc: &Graph<'_>, id: NodeId, time: Time, depth: usize) -> Result<Scene> 
                 shadow: s.shadow_strength.at(time)?.clamp(0.0, 1.0),
             },
             aim: None,
+            instanced: None,
         }),
         Operation::Text3d(t) => {
             let source =
@@ -574,6 +579,7 @@ fn node(doc: &Graph<'_>, id: NodeId, time: Time, depth: usize) -> Result<Scene> 
                     world: mul(&world, &moved),
                     surface: surface.clone(),
                     aim: t.aim_at.map(|target| (target, world)),
+                    instanced: None,
                 });
             }
         }
@@ -605,6 +611,7 @@ fn node(doc: &Graph<'_>, id: NodeId, time: Time, depth: usize) -> Result<Scene> 
                 shadow: 1.0,
             },
             aim: None,
+            instanced: None,
         }),
         Operation::Model3d(m) if !m.model.is_empty() => scene.objects.push(Object {
             node: id,
@@ -628,6 +635,7 @@ fn node(doc: &Graph<'_>, id: NodeId, time: Time, depth: usize) -> Result<Scene> 
                 shadow: 1.0,
             },
             aim: None,
+            instanced: None,
         }),
         Operation::Model3d(_) => {}
         Operation::Transform3d(t) => {
@@ -637,6 +645,26 @@ fn node(doc: &Graph<'_>, id: NodeId, time: Time, depth: usize) -> Result<Scene> 
                 &translate(centre.map(|v| -v)),
             );
             scene = node(doc, child, time, depth + 1)?.transformed(&m);
+        }
+        // Its objects, centred on themselves, to be drawn at each particle.
+        Operation::ParticleInstances(_) => {
+            if let Some(child) = input("scene") {
+                for mut object in node(doc, child, time, depth + 1)?.objects {
+                    let (a, b) = object.local_bounds();
+                    let middle = math::point(
+                        &object.world,
+                        [
+                            (a[0] + b[0]) * 0.5,
+                            (a[1] + b[1]) * 0.5,
+                            (a[2] + b[2]) * 0.5,
+                        ],
+                    );
+                    object.world = mul(&translate(middle.map(|v| -v)), &object.world);
+                    object.instanced = Some(id);
+                    object.aim = None;
+                    scene.objects.push(object);
+                }
+            }
         }
         Operation::MergeScenes(_) => {
             for port in veylvik_document::nodes::MERGE_PORTS {

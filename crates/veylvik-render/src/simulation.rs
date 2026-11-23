@@ -2,7 +2,7 @@
 use crate::nodes::{self, RenderNode};
 use crate::plan::Plan;
 use crate::{Kernel, Params, Renderer, Result, error};
-use veylvik_document::{NodeId, Operation, Time};
+use veylvik_document::{Node, NodeId, Operation, Time};
 
 /// Seconds a step.
 const STEP: f64 = 1.0 / 60.0;
@@ -29,16 +29,16 @@ struct Run {
 /// What a flock's path depends on: the node, everything its scene and forces are made
 /// of, and the frame's size.
 pub(crate) fn key(plan: &Plan, node: usize) -> u64 {
+    let nodes: Vec<Node> = plan.nodes.iter().chain(&plan.light_data).cloned().collect();
+    key_of(&plan.nodes[node], &nodes, plan.width, plan.height)
+}
+/// The same, for a node among `nodes` in a frame of that size.
+pub(crate) fn key_of(me: &Node, nodes: &[Node], width: u32, height: u32) -> u64 {
     use std::hash::{Hash, Hasher};
-    let by_id: std::collections::BTreeMap<NodeId, &veylvik_document::Node> = plan
-        .nodes
-        .iter()
-        .chain(&plan.light_data)
-        .map(|n| (n.id, n))
-        .collect();
+    let by_id: std::collections::BTreeMap<NodeId, &Node> =
+        nodes.iter().map(|n| (n.id, n)).collect();
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    (plan.width, plan.height).hash(&mut hasher);
-    let me = &plan.nodes[node];
+    (width, height).hash(&mut hasher);
     format!("{:?}", me.operation).hash(&mut hasher);
     let mut todo: Vec<NodeId> = ["scene", "forces"]
         .iter()
@@ -65,10 +65,30 @@ impl Renderer {
         node: usize,
         time: Time,
     ) -> Result<(wgpu::Buffer, u64)> {
-        let Operation::Particles(particles) = &plan.nodes[node].operation else {
+        let nodes: Vec<Node> = plan.nodes.iter().chain(&plan.light_data).cloned().collect();
+        self.simulate_node(
+            &plan.nodes[node],
+            &nodes,
+            key(plan, node),
+            plan.width,
+            plan.height,
+            time,
+        )
+    }
+    /// A flock's state for `me` among `nodes` (where its scene and forces are found),
+    /// known by `key`, in a frame of `width` x `height`.
+    pub(crate) fn simulate_node(
+        &self,
+        me: &Node,
+        nodes: &[Node],
+        key: u64,
+        width: u32,
+        height: u32,
+        time: Time,
+    ) -> Result<(wgpu::Buffer, u64)> {
+        let Operation::Particles(particles) = &me.operation else {
             return Err(error("only particles are simulated"));
         };
-        let (width, height) = (plan.width, plan.height);
         let most = nodes::particles::FLOCK_MOST.min(width * height / 2).max(1);
         let bytes = u64::from(most) * 32;
         let state = |label| {
@@ -94,7 +114,6 @@ impl Renderer {
         }
         let wanted = ((now - begins) / STEP).floor() as u64;
         let left = now - begins - wanted as f64 * STEP;
-        let key = key(plan, node);
         let mut store = self
             .simulations
             .lock()
@@ -146,7 +165,17 @@ impl Renderer {
         });
         let at_step = |k: u64| begins + k as f64 * STEP;
         for k in first..wanted {
-            self.flock_step(plan, node, at_step(k + 1), STEP, &before, &after, &grid)?;
+            self.flock_step(
+                me,
+                nodes,
+                width,
+                height,
+                at_step(k + 1),
+                STEP,
+                &before,
+                &after,
+                &grid,
+            )?;
             std::mem::swap(&mut before, &mut after);
             let step = k + 1;
             if step % run.every == 0 && !run.kept.iter().any(|(s, _)| *s == step) {
@@ -172,7 +201,7 @@ impl Renderer {
         }
         drop(store);
         if left > 1e-7 {
-            self.flock_step(plan, node, now, left, &before, &out, &grid)?;
+            self.flock_step(me, nodes, width, height, now, left, &before, &out, &grid)?;
         } else {
             let mut encoder = self.device.create_command_encoder(&Default::default());
             encoder.copy_buffer_to_buffer(&before, 0, &out, 0, bytes);
@@ -184,23 +213,25 @@ impl Renderer {
     #[allow(clippy::too_many_arguments)]
     fn flock_step(
         &self,
-        plan: &Plan,
-        node: usize,
+        me: &Node,
+        nodes: &[Node],
+        width: u32,
+        height: u32,
         seconds: f64,
         span: f64,
         before: &wgpu::Buffer,
         after: &wgpu::Buffer,
         grid: &wgpu::Buffer,
     ) -> Result<()> {
-        let Operation::Particles(particles) = &plan.nodes[node].operation else {
+        let Operation::Particles(particles) = &me.operation else {
             return Err(error("only particles are simulated"));
         };
         let time = Time::new((seconds * 24000.0).round() as i64, 24000).map_err(error)?;
         let cx = nodes::Cx {
-            node: &plan.nodes[node],
-            nodes: &plan.nodes,
-            width: plan.width,
-            height: plan.height,
+            node: me,
+            nodes,
+            width,
+            height,
             time,
         };
         let data = particles
@@ -208,67 +239,15 @@ impl Renderer {
             .ok_or_else(|| error("particles have settings data"))?;
         let mut p: Params = bytemuck::Zeroable::zeroed();
         // The frame's size, as every pass is given it before the node's own values.
-        p.size_op[0] = plan.width;
-        p.size_op[1] = plan.height;
+        p.size_op[0] = width;
+        p.size_op[1] = height;
         particles.params(&cx, &|_| Ok(0.0), &mut p)?;
         p.values[2] = span as f32;
-        // The settings as the fields pass lays them out: after the target's tile table.
-        let tiles = nodes::particles::tiles_of(plan.width, plan.height) as usize;
-        let mut settings = vec![[0.0f32; 4]; tiles];
-        settings.extend(
-            data.pixels()
-                .iter()
-                .flat_map(|t| [t[0], t[1], t[2]])
-                .map(|v| [0.0, 0.0, 0.0, v]),
-        );
-        use wgpu::util::DeviceExt;
-        let make = |label, contents: &[u8], usage| {
-            self.device
-                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: Some(label),
-                    contents,
-                    usage,
-                })
-        };
-        let settings = make(
-            "flock settings",
-            bytemuck::cast_slice(&settings),
-            wgpu::BufferUsages::STORAGE,
-        );
-        let uniform = make(
-            "flock parameters",
-            &bytemuck::bytes_of(&p)[..48],
-            wgpu::BufferUsages::UNIFORM,
-        );
-        let none = make("nothing", &[0u8; 16], wgpu::BufferUsages::STORAGE);
-        let group = |first: &wgpu::Buffer, result: &wgpu::Buffer| {
-            let entries = [
-                (crate::origin::BINDING, &self.whole_frame),
-                (0, &uniform),
-                (1, first),
-                (2, before),
-                (3, result),
-                (4, &settings),
-                (5, &self.ltc),
-                (6, &self.default_lighting),
-                (7, &self.studio_environment),
-                (8, &none),
-            ];
-            let entries: Vec<wgpu::BindGroupEntry<'_>> = entries
-                .iter()
-                .map(|(binding, buffer)| wgpu::BindGroupEntry {
-                    binding: *binding,
-                    resource: buffer.as_entire_binding(),
-                })
-                .collect();
-            self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some("flock step"),
-                layout: &self.layout,
-                entries: &entries,
-            })
-        };
-        let gather = group(&none, grid);
-        let step = group(grid, after);
+        let settings = self.settings_buffer(width, height, &data);
+        let uniform = self.uniform_of(&p);
+        let none = self.nothing();
+        let gather = self.kernel_group(&uniform, &none, before, grid, &settings, &none);
+        let step = self.kernel_group(&uniform, grid, before, after, &settings, &none);
         let (threads, row) = (p.values[0] as u32, (p.values[1] as u32).max(1));
         let mut encoder = self.device.create_command_encoder(&Default::default());
         encoder.clear_buffer(grid, 0, None);
@@ -284,5 +263,82 @@ impl Renderer {
         }
         self.queue.submit([encoder.finish()]);
         Ok(())
+    }
+    /// A particle system's settings as the fields pass lays them out: after the target's
+    /// tile table, one value a texel in w.
+    pub(crate) fn settings_buffer(
+        &self,
+        width: u32,
+        height: u32,
+        data: &crate::Image,
+    ) -> wgpu::Buffer {
+        use wgpu::util::DeviceExt;
+        let tiles = nodes::particles::tiles_of(width, height) as usize;
+        let mut settings = vec![[0.0f32; 4]; tiles];
+        settings.extend(
+            data.pixels()
+                .iter()
+                .flat_map(|t| [t[0], t[1], t[2]])
+                .map(|v| [0.0, 0.0, 0.0, v]),
+        );
+        self.device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("particle settings"),
+                contents: bytemuck::cast_slice(&settings),
+                usage: wgpu::BufferUsages::STORAGE,
+            })
+    }
+    pub(crate) fn uniform_of(&self, p: &Params) -> wgpu::Buffer {
+        use wgpu::util::DeviceExt;
+        self.device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("particle parameters"),
+                contents: &bytemuck::bytes_of(p)[..48],
+                usage: wgpu::BufferUsages::UNIFORM,
+            })
+    }
+    pub(crate) fn nothing(&self) -> wgpu::Buffer {
+        use wgpu::util::DeviceExt;
+        self.device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("nothing"),
+                contents: &[0u8; 16],
+                usage: wgpu::BufferUsages::STORAGE,
+            })
+    }
+    /// The kernels' bind group for a pass of particle work outside a plan's passes.
+    pub(crate) fn kernel_group(
+        &self,
+        uniform: &wgpu::Buffer,
+        first: &wgpu::Buffer,
+        second: &wgpu::Buffer,
+        result: &wgpu::Buffer,
+        third: &wgpu::Buffer,
+        fourth: &wgpu::Buffer,
+    ) -> wgpu::BindGroup {
+        let entries = [
+            (crate::origin::BINDING, &self.whole_frame),
+            (0, uniform),
+            (1, first),
+            (2, second),
+            (3, result),
+            (4, third),
+            (5, &self.ltc),
+            (6, &self.default_lighting),
+            (7, &self.studio_environment),
+            (8, fourth),
+        ];
+        let entries: Vec<wgpu::BindGroupEntry<'_>> = entries
+            .iter()
+            .map(|(binding, buffer)| wgpu::BindGroupEntry {
+                binding: *binding,
+                resource: buffer.as_entire_binding(),
+            })
+            .collect();
+        self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("particle work"),
+            layout: &self.layout,
+            entries: &entries,
+        })
     }
 }

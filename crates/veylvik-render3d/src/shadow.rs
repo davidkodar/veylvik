@@ -78,11 +78,9 @@ impl Maps {
 pub(crate) fn bounds(scene: &Scene) -> Option<([f32; 3], f32)> {
     let mut lo = [f32::MAX; 3];
     let mut hi = [f32::MIN; 3];
-    for object in scene
-        .objects
-        .iter()
-        .filter(|o| !o.surface.catcher && !matches!(o.geometry, Geometry::Card { .. }))
-    {
+    for object in scene.objects.iter().filter(|o| {
+        !o.surface.catcher && !matches!(o.geometry, Geometry::Card { .. }) && o.instanced.is_none()
+    }) {
         let (a, b) = object.local_bounds();
         for i in 0..8 {
             let p = math::point(
@@ -227,7 +225,11 @@ impl crate::Engine {
         use wgpu::util::DeviceExt;
         let mut casts = Vec::new();
         for object in &scene.objects {
-            if object.surface.catcher || matches!(object.geometry, Geometry::Card { .. }) {
+            // Copies at particles cast no shadows (they are not where the object is).
+            if object.surface.catcher
+                || matches!(object.geometry, Geometry::Card { .. })
+                || object.instanced.is_some()
+            {
                 continue;
             }
             let (vertices, indices, count) = self.mesh(device, object)?;

@@ -30,3 +30,5 @@ impl RenderNode for RenderScene {}
 impl RenderNode for Environment3d {}
 impl RenderNode for PointCloud {}
 impl RenderNode for Model3d {}
+/// Read by Render scene, which draws its objects at the particles' places.
+impl RenderNode for ParticleInstances {}

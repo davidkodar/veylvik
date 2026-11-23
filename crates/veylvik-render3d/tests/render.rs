@@ -1841,3 +1841,98 @@ fn particles_bounce_off_the_letters_of_a_3d_text() {
     );
     assert_eq!(lit(&stopped, inside), 0, "inside the letters");
 }
+
+/// Copies of a small cube (placed at the frame's middle) at particles born in a box on
+/// the left, filmed by a Render scene at `seconds`.
+fn copies_at(renderer: &Renderer, speed: f32, seconds: (i64, u32)) -> Vec<[f32; 4]> {
+    let mut doc = blank(W, H, Time::new(24, 1).unwrap()).unwrap();
+    let camera = add(&mut doc, op(&CAMERA_3D), &[]);
+    let mut cube = op(&SHAPE_3D);
+    if let Operation::Shape3d(s) = &mut cube {
+        for size in [&mut s.size_x, &mut s.size_y, &mut s.size_z] {
+            *size = 6.0.into();
+        }
+        s.colour = [1.0; 3].into();
+        s.roughness = 1.0.into();
+    }
+    let cube = add(&mut doc, cube, &[]);
+    let mut value = registry::PARTICLES.default_operation();
+    for (name, number) in [
+        ("x", 30.0),
+        ("y", 45.0),
+        ("width", 30.0),
+        ("height", 60.0),
+        ("rate", 20.0),
+        ("life", 10.0),
+        ("start", -10.0),
+        ("speed", speed),
+        ("direction", 0.0),
+        ("spread", 0.0),
+        ("gravity", 0.0),
+        ("turbulence", 0.0),
+        ("variation", 0.0),
+    ] {
+        value[name] = serde_json::json!({"kind": "constant", "value": number});
+    }
+    value["colour"] = serde_json::json!([1.0, 0.1, 0.1, 1.0]);
+    value["end_colour"] = serde_json::json!([1.0, 0.1, 0.1, 1.0]);
+    let particles = add(&mut doc, serde_json::from_value(value).unwrap(), &[]);
+    let copies = add(
+        &mut doc,
+        op(&PARTICLE_INSTANCES),
+        &[("scene", cube), ("particles", particles)],
+    );
+    let scene = add(
+        &mut doc,
+        op(&MERGE_SCENES),
+        &[("scene", camera), ("scene_2", copies)],
+    );
+    doc.output = add(&mut doc, op(&RENDER_SCENE), &[("scene", scene)]);
+    renderer
+        .render_frame(
+            &Plan::compile(&doc).unwrap(),
+            RenderRequest::full(Time::new(seconds.0, seconds.1).unwrap()),
+            &Default::default(),
+        )
+        .unwrap()
+        .pixels
+}
+#[test]
+#[ignore = "requires Vulkan"]
+fn a_3d_object_is_copied_at_every_particle() {
+    let renderer = renderer();
+    let still = copies_at(&renderer, 0.0, (0, 1));
+    let solid = |p: &[f32; 4]| p[3] > 0.5;
+    // The box spans x 15 to 45, and a copy at its edge reaches half a cube beyond it.
+    let in_box = |i: usize| (10..51).contains(&(i as u32 % W));
+    let copies = still
+        .iter()
+        .enumerate()
+        .filter(|(i, p)| solid(p) && in_box(*i))
+        .count();
+    let elsewhere = still
+        .iter()
+        .enumerate()
+        .filter(|(i, p)| solid(p) && !in_box(*i))
+        .count();
+    // 200 copies of a 6-pixel cube in the box on the left; none at the cube's own place.
+    assert!(copies > 600, "copies in the box: {copies}");
+    assert_eq!(
+        elsewhere, 0,
+        "nothing outside the box (the cube itself is not drawn)"
+    );
+    // They take the particles' red as a tint.
+    let (r, g) = still
+        .iter()
+        .filter(|p| solid(p))
+        .fold((0.0, 0.0), |(r, g), p| (r + p[0], g + p[1]));
+    assert!(r > 4.0 * g, "tinted red: {r} {g}");
+    // Moving particles carry their copies: at 40 px a second they spread to the right.
+    let moving = copies_at(&renderer, 40.0, (0, 1));
+    let right = moving
+        .iter()
+        .enumerate()
+        .filter(|(i, p)| solid(p) && (i as &usize % W as usize) > 60)
+        .count();
+    assert!(right > 200, "copies carried along: {right}");
+}

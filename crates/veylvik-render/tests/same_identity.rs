@@ -123,6 +123,8 @@ fn the_same_identity_is_the_same_picture_for_every_node_type() {
         "environment_3d",
         "point_cloud",
         "model_3d",
+        // Copies at particles: a scene part, keyed through the Render scene that films it.
+        "particle_instances",
         // Need a file, a model, a scene or a configuration that this test does not have.
         "lut",
         "render_scene",

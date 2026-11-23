@@ -84,6 +84,7 @@ pub enum Kernel {
     ParticleLinks,
     ParticleFlockGrid,
     ParticleStep,
+    ParticleInstances,
     LensPrefilterHorizontal,
     LensPrefilterVertical,
     LensBlur,
@@ -124,7 +125,7 @@ pub enum Kernel {
     Lut,
 }
 impl Kernel {
-    pub(crate) const ALL: [Self; 106] = [
+    pub(crate) const ALL: [Self; 107] = [
         Self::ToAcescg,
         Self::FromAcescg,
         Self::Text,
@@ -193,6 +194,7 @@ impl Kernel {
         Self::ParticleLinks,
         Self::ParticleFlockGrid,
         Self::ParticleStep,
+        Self::ParticleInstances,
         Self::LensPrefilterHorizontal,
         Self::LensPrefilterVertical,
         Self::LensBlur,
@@ -239,6 +241,7 @@ impl Kernel {
             Self::ParticleSimulation => "particle_simulation",
             Self::ParticleFlockGrid => "particle_flock_grid",
             Self::ParticleStep => "particle_step",
+            Self::ParticleInstances => "particle_instances",
             Self::Custom => "custom",
             Self::ToAcescg => "to_acescg",
             Self::FromAcescg => "from_acescg",
@@ -608,6 +611,31 @@ impl Plan {
                         | Operation::Ocio(_)
                         | Operation::OpticalFlow(_)
                 ) {
+                    continue;
+                }
+                // Copies at particles read the particles as data: their places are worked
+                // out for the scene render, and their own picture is never made.
+                if let Operation::ParticleInstances(_) = &node.operation {
+                    let mut more: Vec<NodeId> =
+                        node.inputs.get("particles").copied().into_iter().collect();
+                    while let Some(id) = more.pop() {
+                        if light_data.iter().any(|n| n.id == id) {
+                            continue;
+                        }
+                        let n = &composition.nodes[&id];
+                        light_data.push(n.clone());
+                        match &n.operation {
+                            Operation::Particles(_) => more.extend(
+                                ["scene", "forces"]
+                                    .iter()
+                                    .filter_map(|port| n.inputs.get(*port).copied()),
+                            ),
+                            _ => more.extend(n.inputs.values().copied()),
+                        }
+                    }
+                    if let Some(scene) = node.inputs.get("scene") {
+                        todo.push((*scene, false));
+                    }
                     continue;
                 }
                 // A rig's inputs only carry data for its lights, so their sources

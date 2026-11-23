@@ -14,6 +14,8 @@ struct Object {
     finish: vec4<f32>,
     // ridges, frame width / 1920, shadow strength, reflections view (1)
     relief: vec4<f32>,
+    // copies at particles (1), drawn from `instances`
+    instancing: vec4<f32>,
 }
 struct Light {
     // xyz position, kind (0 point, 1 spot, 2 sun, 3 area)
@@ -37,6 +39,11 @@ struct Light {
 @group(0) @binding(5) var shadow_sampler: sampler_comparison;
 @group(0) @binding(6) var sky_maps: texture_depth_2d_array;
 @group(0) @binding(7) var<uniform> ambient: Ambient;
+// Copies at particles, three values each: where and size, turn (a quaternion), tint.
+@group(0) @binding(8) var<storage, read> instances: array<vec4<f32>>;
+fn turned_by(q: vec4<f32>, v: vec3<f32>) -> vec3<f32> {
+    return v + 2.0 * cross(q.xyz, cross(q.xyz, v) + q.w * v);
+}
 struct AmbientView {
     matrix: mat4x4<f32>,
     // towards the sky, normal offset
@@ -115,13 +122,23 @@ struct Varying {
     // Object-space position and normal, so a finish stays on the surface as it moves.
     @location(3) local: vec3<f32>,
     @location(4) facing: vec3<f32>,
+    // A copy's tint (white for an object drawn once).
+    @location(5) @interpolate(flat) tint: vec4<f32>,
 }
 @vertex
-fn vertex(@location(0) position: vec3<f32>, @location(1) normal: vec3<f32>, @location(2) uv: vec2<f32>) -> Varying {
+fn vertex(@location(0) position: vec3<f32>, @location(1) normal: vec3<f32>, @location(2) uv: vec2<f32>, @builtin(instance_index) copy: u32) -> Varying {
     var out: Varying;
-    let world = object.model * vec4<f32>(position, 1.0);
-    out.world = world.xyz / world.w;
+    var world = object.model * vec4<f32>(position, 1.0);
     out.normal = (object.normal * vec4<f32>(normal, 0.0)).xyz;
+    out.tint = vec4<f32>(1.0);
+    if object.instancing.x > 0.5 {
+        // The object centred on itself, turned and sized by the copy, at its particle.
+        let at = instances[3u * copy]; let q = instances[3u * copy + 1u];
+        out.tint = instances[3u * copy + 2u];
+        world = vec4<f32>(at.xyz + turned_by(q, world.xyz / world.w * at.w), 1.0);
+        out.normal = turned_by(q, out.normal);
+    }
+    out.world = world.xyz / world.w;
     out.uv = uv;
     out.local = position;
     out.facing = normal;
@@ -232,7 +249,7 @@ fn lit(in: Varying) -> @location(0) vec4<f32> {
         g.across = normalize(g.across - n * dot(g.across, n));
         g.along = normalize(cross(g.across, n));
     }
-    var base = object.surface.rgb;
+    var base = object.surface.rgb * in.tint.rgb;
     // A model part's base colour texture (straight linear RGBA, uv repeating).
     if object.counts.w > 0.5 {
         let q = fract(in.uv) * object.params.zw - vec2<f32>(0.5);
@@ -438,7 +455,7 @@ fn card_colour(in: Varying) -> vec4<f32> {
     let c = mix(mix(texel(i.x, i.y), texel(i.x + 1, i.y), f.x),
                 mix(texel(i.x, i.y + 1), texel(i.x + 1, i.y + 1), f.x), f.y);
     // The card's tint, and its opacity in place of a roughness.
-    return vec4<f32>(c.rgb * object.surface.rgb, c.a) * object.surface.a;
+    return vec4<f32>(c.rgb * object.surface.rgb * in.tint.rgb, c.a) * object.surface.a;
 }
 @fragment
 fn card(in: Varying) -> @location(0) vec4<f32> {

@@ -550,3 +550,12 @@ impl Inspect for RenderScene {
         ui.weak("Films the scene on its Scene input. Camera 1 is the first camera in the scene; 0 is the home view that matches 2D. Occlusion shades the environment light where surfaces meet, so objects sit on the floor (0 = off).");
     }
 }
+impl Inspect for veylvik_document::nodes::ParticleInstances {
+    fn inspect(&mut self, ui: &mut egui::Ui, cx: &mut InspectCx<'_>) {
+        ui.weak("Puts a copy of the objects connected to Scene at every particle of the Particles node connected to Particles. Merge it into a scene and film it with Render scene.");
+        cx.dirty |= ui
+            .checkbox(&mut self.tumble, "Tumble")
+            .on_hover_text("Each copy starts turned every way at random; unticked, all start as the object is. They turn at the particles' Spin either way")
+            .changed();
+    }
+}

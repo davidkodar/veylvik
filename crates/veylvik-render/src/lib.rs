@@ -36,10 +36,12 @@ mod plan;
 mod pool;
 mod results;
 pub use pipeline_cache::default_pipeline_folder;
+mod instances;
 mod preview_scale;
 mod probe;
 mod scene_hook;
 mod simulation;
+pub use instances::Instances;
 /// WGSL for the prefiltered studio environment (`environment_specular`), for
 /// renderers that light with the same studio as materials.
 pub const ENVIRONMENT_WGSL: &str = include_str!("environment.wgsl");
@@ -492,7 +494,8 @@ impl Renderer {
                 concat!(
                     include_str!("particle_system.wgsl"),
                     include_str!("particle_solids.wgsl"),
-                    include_str!("particle_flock.wgsl")
+                    include_str!("particle_flock.wgsl"),
+                    include_str!("particle_instances.wgsl")
                 )
                 .into(),
             ),
@@ -1397,6 +1400,7 @@ impl Renderer {
                     let (scene, camera, occlusion) =
                         scene_hook::evaluate(plan, scheduled.node, at)?;
                     let camera = scene_view.unwrap_or(camera);
+                    let copies = self.instances_for(plan, &scene, at)?;
                     renderer.render(SceneJob {
                         device: &self.device,
                         queue: &self.queue,
@@ -1414,6 +1418,7 @@ impl Renderer {
                         models: inputs.models(),
                         environment: &self.studio_environment,
                         ltc: &self.ltc,
+                        instances: &copies,
                         target: &buffers[scheduled.output],
                         also: spare.as_ref().map(|(other, buffer)| {
                             (

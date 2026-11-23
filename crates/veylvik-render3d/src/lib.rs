@@ -37,6 +37,8 @@ struct ObjectUniform {
     /// edge softening are sized for a 1920-wide frame and scale with it, so a
     /// scene looks the same at every resolution.
     relief: [f32; 4],
+    /// Copies at particles (1), drawn from the instances binding.
+    instancing: [f32; 4],
 }
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
@@ -364,6 +366,7 @@ impl Engine {
             models,
             depth: show_depth,
             also,
+            instances,
             ..
         } = job;
         let expanded = self.expand(scene, models)?;
@@ -589,10 +592,20 @@ impl Engine {
             if count == 0 {
                 continue;
             }
+            // An object copied at particles is drawn once for each, from their places
+            // (and not at all where there are none), in its plain surface.
+            let copies = match object.instanced {
+                Some(id) => match instances.iter().find(|i| i.node == id) {
+                    Some(found) if found.count > 0 => Some(found),
+                    _ => continue,
+                },
+                None => None,
+            };
             if let Some(look) = object
                 .surface
                 .look
                 .as_ref()
+                .filter(|_| copies.is_none())
                 // The reflections view reads every surface as a plain mirror.
                 .filter(|_| !object.surface.catcher && !job.reflections)
             {
@@ -747,6 +760,7 @@ impl Engine {
                     object.surface.shadow,
                     f32::from(u8::from(job.reflections)),
                 ],
+                instancing: [f32::from(u8::from(copies.is_some())), 0.0, 0.0, 0.0],
             };
             let uniform = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("3D object"),
@@ -789,12 +803,17 @@ impl Engine {
                         binding: 7,
                         resource: ambient.as_entire_binding(),
                     },
+                    wgpu::BindGroupEntry {
+                        binding: 8,
+                        resource: copies.map_or(&empty, |c| &c.buffer).as_entire_binding(),
+                    },
                 ],
             });
             if both && matches!(object.geometry, Geometry::Card { .. }) {
                 solid_cards.push(draws.len());
             }
-            draws.push((pipeline, bind, vertices, indices, count));
+            let times = copies.map_or(1, |c| c.count);
+            draws.push((pipeline, bind, vertices, indices, count, times));
         }
         let sky = surround.filter(|e| e.background).map(|e| {
             let uniform = SkyUniform {
@@ -875,12 +894,12 @@ impl Engine {
                 pass.set_index_buffer(indices.slice(..), wgpu::IndexFormat::Uint32);
                 pass.draw_indexed(0..*count, 0, 0..1);
             }
-            for (pipeline, bind, vertices, indices, count) in &draws {
+            for (pipeline, bind, vertices, indices, count, times) in &draws {
                 pass.set_pipeline(pipeline);
                 pass.set_bind_group(0, bind, &[]);
                 pass.set_vertex_buffer(0, vertices.slice(..));
                 pass.set_index_buffer(indices.slice(..), wgpu::IndexFormat::Uint32);
-                pass.draw_indexed(0..*count, 0, 0..1);
+                pass.draw_indexed(0..*count, 0, 0..*times);
             }
         }
         // Read the render out into a frame: the picture, or each pixel's distance.
@@ -960,11 +979,11 @@ impl Engine {
             });
             pass.set_pipeline(&self.card_solid);
             for at in &solid_cards {
-                let (_, bind, vertices, indices, count) = &draws[*at];
+                let (_, bind, vertices, indices, count, times) = &draws[*at];
                 pass.set_bind_group(0, bind, &[]);
                 pass.set_vertex_buffer(0, vertices.slice(..));
                 pass.set_index_buffer(indices.slice(..), wgpu::IndexFormat::Uint32);
-                pass.draw_indexed(0..*count, 0, 0..1);
+                pass.draw_indexed(0..*count, 0, 0..*times);
             }
         }
         read_out(encoder, distance, true);

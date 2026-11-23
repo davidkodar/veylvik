@@ -75,7 +75,7 @@ fn solids(scenes: &[Scene], most: usize, grid: usize) -> Vec<f32> {
     let chosen: Vec<(usize, &Object)> = now
         .objects
         .iter()
-        .filter(|o| !o.surface.catcher)
+        .filter(|o| !o.surface.catcher && o.instanced.is_none())
         .enumerate()
         .take(most)
         .collect();
@@ -118,7 +118,7 @@ fn solids(scenes: &[Scene], most: usize, grid: usize) -> Vec<f32> {
             let then = scene
                 .objects
                 .iter()
-                .filter(|o| !o.surface.catcher)
+                .filter(|o| !o.surface.catcher && o.instanced.is_none())
                 .nth(*index)
                 .filter(|o| o.node == object.node)
                 .map_or(world, |o| o.world);

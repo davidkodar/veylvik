@@ -67,6 +67,10 @@ pub struct SceneJob<'a> {
     pub environment: &'a wgpu::Buffer,
     /// The area-light LTC table material shading reads (binding 5 of `MATERIAL_WGSL`).
     pub ltc: &'a wgpu::Buffer,
+    /// Copies of objects at particles: the objects whose `instanced` is a node here are
+    /// drawn `count` times from its buffer (three values a copy: where and size, turn as
+    /// a quaternion, tint), and not where they are.
+    pub instances: &'a [crate::Instances],
     pub target: &'a wgpu::Buffer,
     /// A second output of the same render: the other of picture and depth, when two
     /// Render scene nodes film the same scene the same way. The bool is its `depth`.
@@ -245,6 +249,22 @@ pub(crate) fn fingerprint(
     for at in sample_times(plan, node, time)? {
         let (scene, camera, occlusion) = evaluate(plan, node, at)?;
         format!("{scene:?}{camera:?}{occlusion}{}", shows_depth(plan, node)).hash(&mut hasher);
+        // Copies at particles are made of the particles' whole making.
+        for id in scene.objects.iter().filter_map(|o| o.instanced) {
+            if let Some(source) = plan
+                .nodes
+                .iter()
+                .chain(&plan.light_data)
+                .find(|n| n.id == id)
+                .and_then(|n| n.inputs.get("particles"))
+                && let Some(index) = plan.light_data.iter().position(|n| n.id == *source)
+            {
+                let nodes: Vec<veylvik_document::Node> =
+                    plan.nodes.iter().chain(&plan.light_data).cloned().collect();
+                crate::simulation::key_of(&plan.light_data[index], &nodes, plan.width, plan.height)
+                    .hash(&mut hasher);
+            }
+        }
     }
     let h = hasher.finish();
     Ok([h as u32, (h >> 32) as u32])
