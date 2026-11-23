@@ -8,6 +8,9 @@ use veylvik_document::{CompiledScalar, Composition, Node, NodeId, Operation};
 pub enum Kernel {
     /// A Render scene node, drawn by the registered scene renderer, not a compute kernel.
     RenderScene,
+    /// Depth maps of a scene for particles it lights: made by the 3D renderer, as Render
+    /// scene is (not in `ALL`: no program of its own).
+    ParticleShadows,
     /// A custom shader node: its pipeline is compiled from the node's code.
     Custom,
     ToAcescg,
@@ -225,6 +228,7 @@ impl Kernel {
     pub(crate) fn entry(self) -> &'static str {
         match self {
             Self::RenderScene => "render_scene",
+            Self::ParticleShadows => "particle_shadows",
             Self::Custom => "custom",
             Self::ToAcescg => "to_acescg",
             Self::FromAcescg => "from_acescg",
@@ -1192,7 +1196,7 @@ impl Plan {
     pub fn films_scenes(&self) -> bool {
         self.passes
             .iter()
-            .any(|pass| pass.kernel == Kernel::RenderScene)
+            .any(|pass| matches!(pass.kernel, Kernel::RenderScene | Kernel::ParticleShadows))
             || self
                 .temporal
                 .iter()

@@ -100,6 +100,15 @@ fn pass_words(
         let code = hasher.finish();
         words.extend([5, code as u32, (code >> 32) as u32]);
     }
+    if pass.kernel == crate::Kernel::ParticleShadows {
+        // Depth maps of the scene the particles are lit in: key what it holds.
+        words.push(6);
+        words.extend(crate::scene_hook::scene_fingerprint(
+            plan,
+            pass.node,
+            request.time,
+        )?);
+    }
     if pass.kernel == crate::Kernel::RenderScene {
         // Scene nodes have no passes of their own: key what the scene shows.
         words.extend(crate::scene_hook::fingerprint(

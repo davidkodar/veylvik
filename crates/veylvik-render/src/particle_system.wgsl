@@ -57,6 +57,37 @@ fn eye() -> vec3<f32> {
     let r2 = vec3<f32>(camera_row(8u), camera_row(9u), camera_row(10u));
     return -(r0 * camera_row(3u) + r1 * camera_row(7u) + r2 * camera_row(11u));
 }
+// How much of light `k`'s light reaches `at` past the scene's solids, from its shadow
+// map as 3D surfaces read theirs (1: nothing in the way, or no map).
+fn shadow_seen(k: u32, at: vec3<f32>) -> f32 {
+    if camera_row(39u) < 0.5 { return 1.0; }
+    let base = u32(camera_row(38u)); let side = u32(camera_row(37u));
+    let h = base + 20u * k;
+    if fourth[h + 16u].z < 0.5 { return 1.0; }
+    let a = vec4<f32>(at, 1.0);
+    let m0 = vec4<f32>(fourth[h].z, fourth[h + 1u].z, fourth[h + 2u].z, fourth[h + 3u].z);
+    let m1 = vec4<f32>(fourth[h + 4u].z, fourth[h + 5u].z, fourth[h + 6u].z, fourth[h + 7u].z);
+    let m2 = vec4<f32>(fourth[h + 8u].z, fourth[h + 9u].z, fourth[h + 10u].z, fourth[h + 11u].z);
+    let m3 = vec4<f32>(fourth[h + 12u].z, fourth[h + 13u].z, fourth[h + 14u].z, fourth[h + 15u].z);
+    let q = vec4<f32>(dot(m0, a), dot(m1, a), dot(m2, a), dot(m3, a));
+    if q.w <= 0.0 { return 1.0; }
+    let ndc = q.xyz / q.w;
+    let uv = vec2<f32>(ndc.x * 0.5 + 0.5, 0.5 - ndc.y * 0.5);
+    // Outside the map nothing casts; beyond its far end a point is behind every caster.
+    if uv.x < 0.0 || uv.y < 0.0 || uv.x > 1.0 || uv.y > 1.0 { return 1.0; }
+    let depth = min(ndc.z, 1.0);
+    let map = base + 128u + k * side * side;
+    let centre = vec2<i32>(uv * f32(side));
+    var lit = 0.0;
+    for (var y = -1; y <= 1; y++) {
+        for (var x = -1; x <= 1; x++) {
+            let t = clamp(centre + vec2<i32>(x, y), vec2<i32>(0), vec2<i32>(i32(side) - 1));
+            let stored = fourth[map + u32(t.y) * side + u32(t.x)].z;
+            if depth <= stored + 0.0015 { lit += 1.0; }
+        }
+    }
+    return lit / 9.0;
+}
 // What the scene's lights do to a particle's colour at `at`: 1 when it is not lit;
 // otherwise the light reaching it (as a lit 3D surface there would get it, scattered
 // towards the camera), mixed in by how lit it is.
@@ -87,6 +118,8 @@ fn lighting(at: vec3<f32>, seconds: f32) -> vec3<f32> {
             // A panel lights only what is in front of it.
             if kind > 2.5 { radiance *= max(dot(travel, aim), 0.0); }
         }
+        // What the scene's solids keep of it.
+        radiance *= shadow_seen(i, at);
         // Henyey-Greenstein scattering towards the camera, 1 for every direction at g 0.
         let c = dot(travel, towards_eye);
         let phase = (1.0 - g * g) / pow(max(1.0 + g * g - 2.0 * g * c, 1e-4), 1.5);
@@ -154,9 +187,11 @@ fn particle_prepare(@builtin(global_invocation_id) gid: vec3<u32>) {
     let i = gid.y * p.size_op.x + gid.x;
     let count = tiles();
     // Without a depth picture to copy (flag 8: depth beside a target; without a target
-    // the splat reads the depth itself, flag 16) only the tile table and the sprite at
-    // the start are ever read: the frame beyond them is left alone.
-    if (u32(p.extra.z) & 8u) == 0u && i >= count + MIP * MIP { return; }
+    // the splat reads the depth itself, flag 16) or shadow maps to take in (flag 32) only
+    // the tile table and the sprite at the start are ever read: the frame beyond them is
+    // left alone.
+    let shadowed = (u32(p.extra.z) & 32u) != 0u;
+    if (u32(p.extra.z) & 8u) == 0u && !shadowed && i >= count + MIP * MIP { return; }
     var out = vec4<f32>(0.0);
     if i < count {
         if p.extra.y > 0.5 {
@@ -187,6 +222,16 @@ fn particle_prepare(@builtin(global_invocation_id) gid: vec3<u32>) {
     if (u32(p.extra.z) & 8u) != 0u && !holds_sprite {
         let there = third[i];
         if there.a > 0.5 { out.y = max(there.r, 0.0); }
+    }
+    // The scene's shadow maps (fourth: the 3D renderer's views, then its maps from byte
+    // 1024), one value a pixel in z from just after the sprite: the views' 128 values,
+    // then the maps.
+    let at_shadows = count + MIP * MIP;
+    if shadowed && i >= at_shadows {
+        let k = i - at_shadows;
+        var f = k;
+        if k >= 128u { f = 256u + (k - 128u); }
+        if f / 4u < p.size_op.x * p.size_op.y { out.z = fourth[f / 4u][f % 4u]; }
     }
     store(i, out);
 }

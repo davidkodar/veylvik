@@ -96,6 +96,8 @@ pub struct Engine {
     shadow_pipeline: wgpu::RenderPipeline,
     shadow_maps: Mutex<Option<std::sync::Arc<shadow::Maps>>>,
     sky_maps: Mutex<Option<std::sync::Arc<shadow::Maps>>>,
+    /// Depth maps made for particles lit by the scene's lights.
+    particle_maps: Mutex<Option<shadow::ParticleMaps>>,
     /// The models of the frame being rendered, by file path.
     models: Mutex<std::collections::BTreeMap<String, std::sync::Arc<veylvik_scene::Model>>>,
     /// Model textures on the GPU, by the loaded texture they hold (kept alive with it).
@@ -276,6 +278,9 @@ fn lens(
     ]
 }
 impl SceneRenderer for Engine {
+    fn shadows(&self, job: veylvik_render::ShadowJob<'_>) -> Result<()> {
+        self.particle_shadows(job)
+    }
     fn render(&self, job: SceneJob<'_>) -> Result<()> {
         let (device, width, height) = (job.device, job.width, job.height);
         // This size's targets, kept from an earlier frame, or made now.

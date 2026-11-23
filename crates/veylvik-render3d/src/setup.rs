@@ -362,6 +362,7 @@ impl Engine {
             shadow_pipeline,
             shadow_maps: Mutex::new(None),
             sky_maps: Mutex::new(None),
+            particle_maps: Mutex::new(None),
             models: Mutex::new(Default::default()),
             textures: Mutex::new(Default::default()),
             layout,

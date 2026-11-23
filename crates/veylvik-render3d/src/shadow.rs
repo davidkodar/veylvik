@@ -13,11 +13,15 @@ pub(crate) const SKY_VIEWS: u32 = 16;
 pub(crate) const SKY_SIZE: u32 = 1024;
 /// A depth map array, one layer per view, and its comparison sampler.
 pub(crate) struct Maps {
+    texture: wgpu::Texture,
     pub array: wgpu::TextureView,
     pub layers: Vec<wgpu::TextureView>,
     pub sampler: wgpu::Sampler,
 }
 impl Maps {
+    pub fn texture(&self) -> &wgpu::Texture {
+        &self.texture
+    }
     pub fn new(device: &wgpu::Device) -> Self {
         Self::sized(device, SIZE, MAX_SHADOWS)
     }
@@ -33,7 +37,10 @@ impl Maps {
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: FORMAT,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+            // Copied out, too, for particles lit by the scene (ShadowJob).
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                | wgpu::TextureUsages::TEXTURE_BINDING
+                | wgpu::TextureUsages::COPY_SRC,
             view_formats: &[],
         });
         let array = texture.create_view(&wgpu::TextureViewDescriptor {
@@ -58,6 +65,7 @@ impl Maps {
             ..Default::default()
         });
         Self {
+            texture: texture.clone(),
             array,
             layers,
             sampler,
@@ -266,6 +274,105 @@ impl crate::Engine {
             pass.set_index_buffer(indices.slice(..), wgpu::IndexFormat::Uint32);
             pass.draw_indexed(0..*count, 0, 0..1);
         }
+        Ok(())
+    }
+}
+
+/// Depth maps for lights asked for by a [`veylvik_render::ShadowJob`] (particles lit by
+/// the scene): one layer each, kept between frames for a side.
+pub(crate) struct ParticleMaps {
+    side: u32,
+    maps: std::sync::Arc<Maps>,
+}
+impl crate::Engine {
+    /// The maps of [`veylvik_render::ShadowJob`]: each asked light that casts shadows
+    /// sees the scene as for 3D surfaces (an area light from the middle of its panel, as
+    /// a wide spot), and its view-projection and map are written to the job's target.
+    pub(crate) fn particle_shadows(
+        &self,
+        job: veylvik_render::ShadowJob<'_>,
+    ) -> veylvik_render::Result<()> {
+        use veylvik_render::{SHADOW_HEADER, SHADOW_LIGHTS, SHADOW_VALUES};
+        use wgpu::util::DeviceExt;
+        let side = job.side;
+        let scene = self.expand(job.scene, job.models)?;
+        let maps = {
+            let mut slot = self.particle_maps.lock().map_err(|_| {
+                veylvik_render::Error::Message("particle shadow lock poisoned".into())
+            })?;
+            match slot.as_ref() {
+                Some(kept) if kept.side == side => kept.maps.clone(),
+                _ => {
+                    let maps =
+                        std::sync::Arc::new(Maps::sized(job.device, side, SHADOW_LIGHTS as u32));
+                    *slot = Some(ParticleMaps {
+                        side,
+                        maps: maps.clone(),
+                    });
+                    maps
+                }
+            }
+        };
+        let mut header = vec![0.0f32; SHADOW_VALUES * SHADOW_LIGHTS];
+        if let Some((centre, radius)) = bounds(&scene) {
+            for (k, &index) in job.lights.iter().take(SHADOW_LIGHTS).enumerate() {
+                let Some(light) = job.scene.lights.get(index) else {
+                    continue;
+                };
+                if !light.shadows || light.intensity <= 0.0 {
+                    continue;
+                }
+                let mut seen = *light;
+                if seen.kind == LightKind::Area {
+                    seen.kind = LightKind::Spot;
+                    seen.cone = 170.0;
+                }
+                let Some((matrix, _)) = view(&seen, centre, radius) else {
+                    continue;
+                };
+                self.depth_pass(job.device, job.encoder, &scene, &matrix, &maps.layers[k])?;
+                for (row, values) in matrix.iter().enumerate() {
+                    header[SHADOW_VALUES * k + 4 * row..SHADOW_VALUES * k + 4 * row + 4]
+                        .copy_from_slice(values);
+                }
+                header[SHADOW_VALUES * k + 16] = 1.0;
+                job.encoder.copy_texture_to_buffer(
+                    wgpu::TexelCopyTextureInfo {
+                        texture: maps.texture(),
+                        mip_level: 0,
+                        origin: wgpu::Origin3d {
+                            x: 0,
+                            y: 0,
+                            z: k as u32,
+                        },
+                        aspect: wgpu::TextureAspect::DepthOnly,
+                    },
+                    wgpu::TexelCopyBufferInfo {
+                        buffer: job.target,
+                        layout: wgpu::TexelCopyBufferLayout {
+                            offset: SHADOW_HEADER
+                                + k as u64 * u64::from(side) * u64::from(side) * 4,
+                            bytes_per_row: Some(side * 4),
+                            rows_per_image: Some(side),
+                        },
+                    },
+                    wgpu::Extent3d {
+                        width: side,
+                        height: side,
+                        depth_or_array_layers: 1,
+                    },
+                );
+            }
+        }
+        let values = job
+            .device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("particle shadow views"),
+                contents: bytemuck::cast_slice(&header),
+                usage: wgpu::BufferUsages::COPY_SRC,
+            });
+        job.encoder
+            .copy_buffer_to_buffer(&values, 0, job.target, 0, (header.len() * 4) as u64);
         Ok(())
     }
 }

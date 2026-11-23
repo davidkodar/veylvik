@@ -210,8 +210,36 @@ fn layout(rows: &[[f32; COUNT]]) -> (u32, u32) {
     };
     (threads as u32, stride as u32)
 }
-/// Most scene lights that light particles.
-const LIGHTS: usize = 6;
+/// Most scene lights that light particles (each may have a shadow map).
+const LIGHTS: usize = crate::scene_hook::SHADOW_LIGHTS;
+/// The scene's lights that light particles, by index: those that shine, the first six.
+pub(crate) fn shining(lights: &[veylvik_scene::Light]) -> Vec<usize> {
+    (0..lights.len())
+        .filter(|&i| lights[i].intensity > 0.0)
+        .take(LIGHTS)
+        .collect()
+}
+/// Whether particles may be lit by a scene, and so shadowed by its solids.
+fn shadowing(node: &Particles, wiring: &veylvik_document::Node) -> bool {
+    wiring.inputs.contains_key("scene")
+        && !matches!(node.lit, Scalar::Constant { value } if value <= 0.0)
+}
+/// Where the prepare pass keeps the shadow maps: after the tile table and the sprite.
+pub(crate) fn shadows_at(width: u32, height: u32) -> u32 {
+    let t = tile(u64::from(width) * u64::from(height));
+    width.div_ceil(t) * height.div_ceil(t) + MIP * MIP
+}
+/// The shadow maps' side for `lights` maps in a frame: as large as fits after their
+/// header in the prepare pass's frame-sized buffer, a power of two from 64 to 1024.
+pub(crate) fn shadow_side(width: u32, height: u32, lights: usize) -> u32 {
+    let pixels = u64::from(width) * u64::from(height);
+    let room = pixels.saturating_sub(u64::from(shadows_at(width, height)) + 128);
+    let mut side = 1024u32;
+    while side > 64 && (lights.max(1) as u64) * u64::from(side) * u64::from(side) > room {
+        side /= 2;
+    }
+    side
+}
 /// A light as the particles read it, as the 3D renderer packs it: position and kind (0
 /// point, 1 spot, 2 sun, 3 area), the way it shines and its cone's outer cosine, its
 /// colour times its intensity and the cone's inner cosine.
@@ -336,14 +364,17 @@ fn camera(node: &Particles, cx: &Cx<'_>) -> Result<[f32; COUNT]> {
     }
     row[31] = f32::from(node.points);
     // The scene's lights that light the particles: from 40, twelve values each.
-    let shining: Vec<_> = lights
-        .iter()
-        .filter(|l| l.intensity > 0.0)
-        .take(LIGHTS)
-        .collect();
+    let shining = shining(&lights);
     row[36] = shining.len() as f32;
-    for (i, light) in shining.iter().enumerate() {
-        row[40 + 12 * i..52 + 12 * i].copy_from_slice(&light_values(light));
+    for (i, &light) in shining.iter().enumerate() {
+        row[40 + 12 * i..52 + 12 * i].copy_from_slice(&light_values(&lights[light]));
+    }
+    // Their shadow maps, when the scene's solids are in their way: the maps' side, where
+    // the prepare pass keeps them, and whether it does.
+    if shadowing(node, cx.node) {
+        row[37] = shadow_side(cx.width, cx.height, shining.len()) as f32;
+        row[38] = shadows_at(cx.width, cx.height) as f32;
+        row[39] = 1.0;
     }
     // Row 32 on (particles, burst particles each, set off by impact) are the
     // splat's thread layout, filled in by `data` from the rows.
@@ -500,12 +531,76 @@ impl RenderNode for Particles {
     }
     fn passes_for(&self, node: &veylvik_document::Node) -> Passes {
         let direct_depth = node.inputs.contains_key("depth") && !node.inputs.contains_key("target");
-        match (direct_depth, linking(self)) {
-            (true, false) => Passes::chain(&DEPTH_STEPS),
-            (false, false) => Passes::chain(&STEPS),
-            (true, true) => Passes::chain(&DEPTH_LINK_STEPS),
-            (false, true) => Passes::chain(&LINK_STEPS),
+        if !shadowing(self, node) {
+            return match (direct_depth, linking(self)) {
+                (true, false) => Passes::chain(&DEPTH_STEPS),
+                (false, false) => Passes::chain(&STEPS),
+                (true, true) => Passes::chain(&DEPTH_LINK_STEPS),
+                (false, true) => Passes::chain(&LINK_STEPS),
+            };
         }
+        // Shadows: the scene's depth maps first, which the prepare pass takes in.
+        let seen = if direct_depth { DEPTH } else { TARGET };
+        let mut steps = vec![
+            Step {
+                kernel: Kernel::ParticleShadows,
+                inputs: [From::None; 4],
+            },
+            Step {
+                kernel: Kernel::ParticlePrepare,
+                inputs: [
+                    From::Port(TARGET),
+                    From::Port(SPRITE),
+                    From::Port(DEPTH),
+                    From::Step(0),
+                ],
+            },
+            Step {
+                kernel: Kernel::ParticleFields,
+                inputs: [
+                    From::Port(FIELD),
+                    From::Port(OBSTACLE),
+                    From::Step(1),
+                    From::Data,
+                ],
+            },
+            Step {
+                kernel: Kernel::ParticleSplat,
+                inputs: [
+                    From::Port(EMITTER),
+                    From::Port(seen),
+                    From::Step(2),
+                    From::Step(1),
+                ],
+            },
+        ];
+        if linking(self) {
+            steps.extend([
+                Step {
+                    kernel: Kernel::ParticlePositions,
+                    inputs: [
+                        From::Port(EMITTER),
+                        From::Port(seen),
+                        From::Step(2),
+                        From::Step(1),
+                    ],
+                },
+                Step {
+                    kernel: Kernel::ParticleLinks,
+                    inputs: [From::None, From::Step(4), From::Step(2), From::None],
+                },
+                Step {
+                    kernel: Kernel::ParticleResolve,
+                    inputs: [From::Step(3), From::Step(2), From::Step(5), From::None],
+                },
+            ]);
+        } else {
+            steps.push(Step {
+                kernel: Kernel::ParticleResolve,
+                inputs: [From::Step(3), From::Step(2), From::None, From::None],
+            });
+        }
+        Passes::Chain(std::borrow::Cow::Owned(steps))
     }
     fn has_data(&self) -> bool {
         true
@@ -590,7 +685,8 @@ impl RenderNode for Particles {
                     | u8::from(wired("obstacle")) << 1
                     | u8::from(sprite) << 2
                     | u8::from(wired("depth") && wired("target")) << 3
-                    | u8::from(wired("depth") && !wired("target")) << 4,
+                    | u8::from(wired("depth") && !wired("target")) << 4
+                    | u8::from(shadowing(self, cx.node)) << 5,
             ),
             rows[ROWS - 1][0],
         ];

@@ -1631,3 +1631,77 @@ fn a_picture_and_its_depth_from_one_render_are_the_two_renders_exactly() {
         );
     }
 }
+#[test]
+#[ignore = "requires Vulkan"]
+fn a_solid_between_a_light_and_particles_shadows_them() {
+    let renderer = renderer();
+    // A still particle at the frame's centre, lit wholly by a sun shining from the
+    // camera's side into the scene, with no light everywhere; and maybe a cube.
+    let shot = |cube_at: Option<[f32; 3]>| {
+        let mut doc = blank(W, H, Time::new(24, 1).unwrap()).unwrap();
+        let camera = add(&mut doc, op(&CAMERA_3D), &[]);
+        let mut light = op(&LIGHT_3D);
+        if let Operation::Light3d(l) = &mut light {
+            l.kind = LightKind::Sun;
+            l.colour = [1.0; 3].into();
+            l.shadows = true;
+            // Pointing along -z: from the camera's side straight into the scene.
+            l.placement.rotation = [0.0, 0.0, 0.0].into();
+        }
+        let light = add(&mut doc, light, &[]);
+        let mut parts = vec![("scene", camera), ("scene_2", light)];
+        if let Some(at) = cube_at {
+            let mut cube = op(&SHAPE_3D);
+            if let Operation::Shape3d(s) = &mut cube {
+                s.size_x = 30.0.into();
+                s.size_y = 30.0.into();
+                s.size_z = 30.0.into();
+                s.placement.position = at.into();
+            }
+            parts.push(("scene_3", add(&mut doc, cube, &[])));
+        }
+        let scene = add(&mut doc, op(&MERGE_SCENES), &parts);
+        let mut value = registry::PARTICLES.default_operation();
+        for (name, number) in [
+            ("x", 80.0),
+            ("y", 45.0),
+            ("rate", 2.0),
+            ("life", 60.0),
+            ("start", -60.0),
+            ("size", 2.0),
+            ("speed", 0.0),
+            ("gravity", 0.0),
+            ("variation", 0.0),
+            ("fade", 0.0),
+            ("lit", 1.0),
+            ("ambient", 0.0),
+            ("scatter", 0.0),
+        ] {
+            value[name] = serde_json::json!({"kind": "constant", "value": number});
+        }
+        doc.output = add(
+            &mut doc,
+            serde_json::from_value(value).unwrap(),
+            &[("scene", scene)],
+        );
+        doc.validate().unwrap();
+        let pixels = render(&renderer, &doc, &ImageInputs::default());
+        (
+            pixels.iter().map(|p| p[0]).sum::<f32>(),
+            pixels.iter().map(|p| p[3]).sum::<f32>(),
+        )
+    };
+    let (open, open_alpha) = shot(None);
+    assert!(open > 0.5, "lit: {open}");
+    // A cube between the sun and the particle (objects sit at the frame's centre plus their
+    // placement) keeps its light off it; the particle is still there.
+    let (shaded, shaded_alpha) = shot(Some([0.0, 0.0, 80.0]));
+    assert!(
+        shaded < 0.05 * open,
+        "in the cube's shadow: {shaded} of {open}"
+    );
+    assert!((shaded_alpha - open_alpha).abs() < 0.01 * open_alpha);
+    // The same cube to one side lets the light through again (the maps are made anew).
+    let (aside, _) = shot(Some([-60.0, 0.0, 80.0]));
+    assert!((aside - open).abs() < 0.05 * open, "{aside} {open}");
+}

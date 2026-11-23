@@ -117,7 +117,9 @@ pub fn material_uniforms(
         bytemuck::bytes_of(&lighting).to_vec(),
     ))
 }
-pub use scene_hook::{SceneJob, SceneRenderer};
+pub use scene_hook::{
+    SHADOW_HEADER, SHADOW_LIGHTS, SHADOW_VALUES, SceneJob, SceneRenderer, ShadowJob,
+};
 mod texture;
 mod vector;
 mod video;
@@ -1281,6 +1283,34 @@ impl Renderer {
                 }
             }
             stale[scheduled.output] = false;
+            if scheduled.kernel == Kernel::ParticleShadows {
+                // Depth maps of the particles' scene as its lights see it, by the 3D renderer.
+                // Without one loaded there are no maps (a cleared buffer says so): the
+                // particles are lit, unshadowed.
+                let Some(renderer) = self
+                    .scene_renderer
+                    .read()
+                    .map_err(|_| error("scene renderer lock poisoned"))?
+                    .clone()
+                else {
+                    encoder.clear_buffer(&buffers[scheduled.output], 0, None);
+                    continue;
+                };
+                let scene = scene_hook::scene_of(plan, scheduled.node, time)?;
+                let lights = nodes::particles::shining(&scene.lights);
+                let side = nodes::particles::shadow_side(plan.width, plan.height, lights.len());
+                renderer.shadows(scene_hook::ShadowJob {
+                    device: &self.device,
+                    queue: &self.queue,
+                    encoder: &mut encoder,
+                    scene: &scene,
+                    lights: &lights,
+                    side,
+                    target: &buffers[scheduled.output],
+                    models: inputs.models(),
+                })?;
+                continue;
+            }
             if scheduled.kernel == Kernel::RenderScene {
                 let renderer = self
                     .scene_renderer
@@ -1669,6 +1699,7 @@ impl Renderer {
                     | Kernel::GrainNoiseHorizontal
                     | Kernel::Custom
                     | Kernel::RenderScene
+                    | Kernel::ParticleShadows
             ) && !kernel.entry().starts_with("particle_")
         };
         Ok((0..count)

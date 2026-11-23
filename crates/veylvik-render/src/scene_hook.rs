@@ -6,6 +6,32 @@ use veylvik_document::{NodeId, Operation};
 /// `veylvik-render3d`) with `Renderer::set_scene_renderer`.
 pub trait SceneRenderer: Send + Sync {
     fn render(&self, job: SceneJob<'_>) -> Result<()>;
+    /// Depth maps of the scene's solids as some of its lights see it, for what is lit by
+    /// those lights without being a surface of the scene (particles). See [`ShadowJob`].
+    fn shadows(&self, _job: ShadowJob<'_>) -> Result<()> {
+        Err(error("this 3D renderer makes no shadow maps"))
+    }
+}
+/// Bytes before the first depth map in a [`ShadowJob`]'s target.
+pub const SHADOW_HEADER: u64 = 1024;
+/// Values for each light in that header: its view-projection's four rows, then 1 when it
+/// has a map (0: nothing of the scene is in its way), then three spare.
+pub const SHADOW_VALUES: usize = 20;
+/// Most lights a [`ShadowJob`] asks for.
+pub const SHADOW_LIGHTS: usize = 6;
+/// Depth maps for `lights` (indices into the scene's lights, at most [`SHADOW_LIGHTS`]),
+/// each `side` x `side` texels of light-space depth 0..1 (1 nearest the far end), written
+/// to `target`: from byte 0 [`SHADOW_VALUES`] floats a light, from [`SHADOW_HEADER`] the
+/// maps one after another, rows top first. A light that casts nothing has no map.
+pub struct ShadowJob<'a> {
+    pub device: &'a wgpu::Device,
+    pub queue: &'a wgpu::Queue,
+    pub encoder: &'a mut wgpu::CommandEncoder,
+    pub scene: &'a veylvik_scene::Scene,
+    pub lights: &'a [usize],
+    pub side: u32,
+    pub target: &'a wgpu::Buffer,
+    pub models: &'a std::collections::BTreeMap<String, std::sync::Arc<veylvik_scene::Model>>,
 }
 /// One Render scene pass. `target` and every image are premultiplied scene-linear
 /// Rec.709 `vec4<f32>` rows of `width * height`; commands go on `encoder`.
@@ -81,6 +107,47 @@ pub(crate) fn evaluate(
     let camera = scene.camera(index, plan.width, plan.height);
     let occlusion = op.occlusion.at(time).map_err(error)?.clamp(0.0, 1.0);
     Ok((scene, camera, occlusion))
+}
+/// The scene at `time` connected to `node`'s scene input (a node that films no camera of
+/// its own, such as particles lit by the scene's lights).
+pub(crate) fn scene_of(
+    plan: &crate::Plan,
+    node: usize,
+    time: veylvik_document::Time,
+) -> Result<veylvik_scene::Scene> {
+    let root = *plan.nodes[node]
+        .inputs
+        .get("scene")
+        .ok_or_else(|| error("no scene is connected"))?;
+    let by_id: std::collections::BTreeMap<NodeId, &veylvik_document::Node> = plan
+        .nodes
+        .iter()
+        .chain(&plan.light_data)
+        .map(|n| (n.id, n))
+        .collect();
+    let lookup = |id: NodeId| by_id.get(&id).copied();
+    veylvik_scene::evaluate_in(
+        &veylvik_scene::Graph {
+            width: plan.width,
+            height: plan.height,
+            node: &lookup,
+        },
+        root,
+        time,
+    )
+    .map_err(error)
+}
+/// What the scene connected to `node` holds at `time`, for keying what is made of it.
+pub(crate) fn scene_fingerprint(
+    plan: &crate::Plan,
+    node: usize,
+    time: veylvik_document::Time,
+) -> Result<[u32; 2]> {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    format!("{:?}", scene_of(plan, node, time)?).hash(&mut hasher);
+    let h = hasher.finish();
+    Ok([h as u32, (h >> 32) as u32])
 }
 /// Whether the Render scene outputs depth instead of its picture.
 /// The later Render scene pass that films the same scene in the same way at every
