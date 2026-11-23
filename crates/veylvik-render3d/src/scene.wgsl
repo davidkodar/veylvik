@@ -16,6 +16,14 @@ struct Object {
     relief: vec4<f32>,
     // copies at particles (1), drawn from `instances`
     instancing: vec4<f32>,
+    // A picture cast through a camera (a Camera projection): the camera's view and
+    // projection; where it is; cast (1), lit (1), unseen left out (1).
+    projector: mat4x4<f32>,
+    projector_eye: vec4<f32>,
+    projection: vec4<f32>,
+    // The projecting camera's depth map, as a light's shadow (layer -1: none).
+    projector_shadow: mat4x4<f32>,
+    projector_shadow_info: vec4<f32>,
 }
 struct Light {
     // xyz position, kind (0 point, 1 spot, 2 sun, 3 area)
@@ -265,6 +273,35 @@ fn lit(in: Varying) -> @location(0) vec4<f32> {
             base *= t.rgb / t.a;
         } else {
             base *= t.rgb;
+        }
+    }
+    // A picture cast through a camera: where the camera saw this point, if it did.
+    if object.projection.x > 0.5 {
+        let seen = object.projector * vec4<f32>(in.world, 1.0);
+        var shown = false;
+        var picture = vec4<f32>(0.0);
+        if seen.w > 0.0 {
+            let ndc = seen.xy / seen.w;
+            let uv = vec2<f32>(ndc.x * 0.5 + 0.5, 0.5 - ndc.y * 0.5);
+            let toward = object.projector_eye.xyz - in.world;
+            // In view, facing the camera and not hidden from it behind something else.
+            if all(uv >= vec2<f32>(0.0)) && all(uv <= vec2<f32>(1.0)) && dot(in.normal, toward) > 0.0
+                && shadow_of(in.world, normalize(in.normal), object.projector_shadow, object.projector_shadow_info) > 0.5 {
+                let q = uv * object.params.zw - vec2<f32>(0.5);
+                let i = vec2<i32>(floor(q));
+                let f = fract(q);
+                picture = mix(mix(texel(i.x, i.y), texel(i.x + 1, i.y), f.x),
+                           mix(texel(i.x, i.y + 1), texel(i.x + 1, i.y + 1), f.x), f.y);
+                shown = true;
+            }
+        }
+        if !shown {
+            if object.projection.z > 0.5 { discard; }
+        } else if object.projection.y < 0.5 {
+            // As it is: the picture's own colours, premultiplied.
+            return picture;
+        } else {
+            base = picture.rgb / max(picture.a, 1e-4);
         }
     }
     // Wear changes the polish from place to place.

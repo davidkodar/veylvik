@@ -559,3 +559,20 @@ impl Inspect for veylvik_document::nodes::ParticleInstances {
             .changed();
     }
 }
+impl Inspect for veylvik_document::nodes::CameraProjection {
+    fn inspect(&mut self, ui: &mut egui::Ui, cx: &mut InspectCx<'_>) {
+        ui.weak("Casts the picture on Image through the Camera onto the objects on Scene: lay footage back onto rough geometry of the place and film it again from elsewhere.");
+        cx.dirty |= ui
+            .checkbox(&mut self.lit, "Lit by the scene")
+            .on_hover_text("The picture becomes the surfaces' colour and takes the scene's lights; unticked it shows as it is")
+            .changed();
+        cx.dirty |= ui
+            .checkbox(&mut self.hold, "Hold the camera")
+            .on_hover_text("The projecting camera stays where it was at Hold time, while the picture is whatever Image gives: connect a still or a held frame to project one moment")
+            .changed();
+        cx.dirty |= ui
+            .checkbox(&mut self.hide_unseen, "Leave out what the camera did not see")
+            .on_hover_text("Parts outside the camera's view or turned away from it are left out; unticked they keep their own look")
+            .changed();
+    }
+}

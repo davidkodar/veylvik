@@ -82,6 +82,20 @@ pub struct Object {
     /// Drawn as copies at the particles of a Particle instances node (this one), centred
     /// on itself, rather than once where it is.
     pub instanced: Option<NodeId>,
+    /// Coloured by a picture as a camera saw it (a Camera projection node).
+    pub projection: Option<Projection>,
+}
+/// A picture cast through a camera onto an object.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Projection {
+    /// The node whose picture is cast.
+    pub image: NodeId,
+    /// The projecting camera, where it was when it saw the picture.
+    pub camera: Camera,
+    /// The picture becomes the surface's colour, lit by the scene (else shown as it is).
+    pub lit: bool,
+    /// What the camera did not see is left out (else keeps the object's own look).
+    pub hide_unseen: bool,
 }
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Camera {
@@ -491,6 +505,7 @@ fn node(doc: &Graph<'_>, id: NodeId, time: Time, depth: usize) -> Result<Scene> 
             },
             aim: None,
             instanced: None,
+            projection: None,
         }),
         Operation::Text3d(t) => {
             let source =
@@ -580,6 +595,7 @@ fn node(doc: &Graph<'_>, id: NodeId, time: Time, depth: usize) -> Result<Scene> 
                     surface: surface.clone(),
                     aim: t.aim_at.map(|target| (target, world)),
                     instanced: None,
+                    projection: None,
                 });
             }
         }
@@ -612,6 +628,7 @@ fn node(doc: &Graph<'_>, id: NodeId, time: Time, depth: usize) -> Result<Scene> 
             },
             aim: None,
             instanced: None,
+            projection: None,
         }),
         Operation::Model3d(m) if !m.model.is_empty() => scene.objects.push(Object {
             node: id,
@@ -636,6 +653,7 @@ fn node(doc: &Graph<'_>, id: NodeId, time: Time, depth: usize) -> Result<Scene> 
             },
             aim: None,
             instanced: None,
+            projection: None,
         }),
         Operation::Model3d(_) => {}
         Operation::Transform3d(t) => {
@@ -645,6 +663,36 @@ fn node(doc: &Graph<'_>, id: NodeId, time: Time, depth: usize) -> Result<Scene> 
                 &translate(centre.map(|v| -v)),
             );
             scene = node(doc, child, time, depth + 1)?.transformed(&m);
+        }
+        // Its objects, coloured by the picture as the camera saw it.
+        Operation::CameraProjection(cast) => {
+            let (Some(child), Some(lens), Some(image)) =
+                (input("scene"), input("camera"), input("image"))
+            else {
+                return Err(Error(format!(
+                    "{}: Camera projection needs objects on scene, a Camera on camera and a picture on image",
+                    n.label
+                )));
+            };
+            let at = if cast.hold {
+                let seconds = f64::from(cast.hold_time.at(time)?);
+                Time::new((seconds * 24000.0).round() as i64, 24000)?
+            } else {
+                time
+            };
+            let camera = *node(doc, lens, at, depth + 1)?
+                .cameras
+                .first()
+                .ok_or_else(|| Error(format!("{}: the camera input takes a Camera", n.label)))?;
+            scene = node(doc, child, time, depth + 1)?;
+            for object in &mut scene.objects {
+                object.projection = Some(Projection {
+                    image,
+                    camera,
+                    lit: cast.lit,
+                    hide_unseen: cast.hide_unseen,
+                });
+            }
         }
         // Its objects, centred on themselves, to be drawn at each particle.
         Operation::ParticleInstances(_) => {

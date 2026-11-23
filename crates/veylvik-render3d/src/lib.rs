@@ -39,6 +39,15 @@ struct ObjectUniform {
     relief: [f32; 4],
     /// Copies at particles (1), drawn from the instances binding.
     instancing: [f32; 4],
+    /// A picture cast through a camera: its view and projection, where it is, and cast
+    /// (1), lit (1), unseen left out (1).
+    projector: [[f32; 4]; 4],
+    projector_eye: [f32; 4],
+    projection: [f32; 4],
+    /// The projecting camera's depth map: its view, and layer (-1: none), offset and
+    /// filter width, as a light's shadow.
+    projector_shadow: [[f32; 4]; 4],
+    projector_shadow_info: [f32; 4],
 }
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
@@ -396,6 +405,10 @@ impl Engine {
         let mut layer = 0u32;
         let mut shadows: Vec<Option<(u32, math::Mat4, f32)>> = vec![None; scene.lights.len()];
         let mut cast = Vec::new();
+        // Each projecting camera's depth map, made as a spot light's, so what a camera
+        // could not see behind something else is known: the camera, its map's layer,
+        // view and offset.
+        let mut projectors: Vec<(veylvik_scene::Camera, u32, math::Mat4, f32)> = Vec::new();
         if let Some((centre, radius)) = reach {
             use veylvik_document::nodes::LightKind;
             let casts = |light: &veylvik_scene::Light| light.shadows && light.intensity > 0.0;
@@ -443,6 +456,34 @@ impl Engine {
                     cast.push((layer, matrix));
                     layer += 1;
                 }
+            }
+        }
+        if let Some((centre, radius)) = reach {
+            for object in &scene.objects {
+                let Some(source) = &object.projection else {
+                    continue;
+                };
+                if layer >= shadow::MAX_SHADOWS
+                    || projectors.iter().any(|(c, ..)| *c == source.camera)
+                {
+                    continue;
+                }
+                let eye = math::point(&source.camera.world, [0.0; 3]);
+                let ahead = math::direction(&source.camera.world, [0.0, 0.0, -1.0]);
+                let long = (ahead[0] * ahead[0] + ahead[1] * ahead[1] + ahead[2] * ahead[2]).sqrt();
+                let ahead = ahead.map(|v| v / long.max(1e-6));
+                // Wide enough for the frame's corners.
+                let f = veylvik_scene::home_distance(
+                    width,
+                    source.camera.focal_length,
+                    source.camera.sensor_width,
+                );
+                let corner = ((width as f32 * 0.5).powi(2) + (height as f32 * 0.5).powi(2)).sqrt();
+                let half = ((corner / f).atan() + 2f32.to_radians()).min(85f32.to_radians());
+                let (matrix, offset) = shadow::seen_from(eye, ahead, half, centre, radius);
+                projectors.push((source.camera, layer, matrix, offset));
+                cast.push((layer, matrix));
+                layer += 1;
             }
         }
         for (layer, matrix) in &cast {
@@ -605,7 +646,7 @@ impl Engine {
                 .surface
                 .look
                 .as_ref()
-                .filter(|_| copies.is_none())
+                .filter(|_| copies.is_none() && object.projection.is_none())
                 // The reflections view reads every surface as a plain mirror.
                 .filter(|_| !object.surface.catcher && !job.reflections)
             {
@@ -690,7 +731,16 @@ impl Engine {
                 continue;
             }
             let texture = self.part_texture(device, &object.geometry)?;
+            // A picture cast through a camera: drawn lit, the picture in place of a texture.
+            let cast = object.projection.as_ref().and_then(|cast| {
+                images
+                    .iter()
+                    .find(|(id, ..)| *id == cast.image)
+                    .map(|(_, buffer, size, _)| (cast, *buffer, *size))
+            });
+            let texture = if cast.is_some() { None } else { texture };
             let (pipeline, image) = match &object.geometry {
+                _ if cast.is_some() => (&self.lit, cast.map(|(_, b, s)| (b, s))),
                 Geometry::Card { image, .. } => (
                     if show_depth && !both {
                         &self.card_solid
@@ -708,7 +758,7 @@ impl Engine {
             // A shape's Texture input: that node's picture, at its own size.
             let wrapped = object
                 .texture
-                .filter(|_| !object.surface.catcher && texture.is_none())
+                .filter(|_| !object.surface.catcher && texture.is_none() && cast.is_none())
                 .and_then(|source| images.iter().find(|(id, ..)| *id == source))
                 .map(|(_, buffer, size, _)| (*buffer, *size));
             let image = image.or(wrapped);
@@ -761,6 +811,32 @@ impl Engine {
                     f32::from(u8::from(job.reflections)),
                 ],
                 instancing: [f32::from(u8::from(copies.is_some())), 0.0, 0.0, 0.0],
+                projector: cast.map_or([[0.0; 4]; 4], |(cast, ..)| {
+                    columns(&math::mul(
+                        &projection(&cast.camera, width, height),
+                        &math::rigid_inverse(&cast.camera.world),
+                    ))
+                }),
+                projector_eye: cast.map_or([0.0; 4], |(cast, ..)| {
+                    let p = math::point(&cast.camera.world, [0.0; 3]);
+                    [p[0], p[1], p[2], 1.0]
+                }),
+                projector_shadow: cast
+                    .and_then(|(cast, ..)| projectors.iter().find(|(c, ..)| *c == cast.camera))
+                    .map_or([[0.0; 4]; 4], |(_, _, m, _)| columns(m)),
+                projector_shadow_info: cast
+                    .and_then(|(cast, ..)| projectors.iter().find(|(c, ..)| *c == cast.camera))
+                    .map_or([-1.0, 0.0, 0.0, 0.0], |(_, layer, _, offset)| {
+                        [*layer as f32, *offset, 1.0, 0.0]
+                    }),
+                projection: cast.map_or([0.0; 4], |(cast, ..)| {
+                    [
+                        1.0,
+                        f32::from(u8::from(cast.lit)),
+                        f32::from(u8::from(cast.hide_unseen)),
+                        0.0,
+                    ]
+                }),
             };
             let uniform = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("3D object"),

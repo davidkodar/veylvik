@@ -923,6 +923,7 @@ impl Plan {
                                     n.inputs.get("image")
                                 }
                                 Operation::Shape3d(_) => n.inputs.get("texture"),
+                                Operation::CameraProjection(_) => n.inputs.get("image"),
                                 _ => None,
                             };
                             // A picture of its own size is read as it is.

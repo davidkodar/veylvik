@@ -125,6 +125,8 @@ fn the_same_identity_is_the_same_picture_for_every_node_type() {
         "model_3d",
         // Copies at particles: a scene part, keyed through the Render scene that films it.
         "particle_instances",
+        // A picture cast onto a scene's objects: keyed through the Render scene that films it.
+        "camera_projection",
         // Need a file, a model, a scene or a configuration that this test does not have.
         "lut",
         "render_scene",

@@ -2849,6 +2849,12 @@ impl Studio {
             if looked && matches!(parameter.name, "roughness" | "metallic") {
                 continue;
             }
+            // A projection's hold time only with its camera held.
+            if parameter.name == "hold_time"
+                && matches!(self.draft.operation, Operation::CameraProjection(ref c) if !c.hold)
+            {
+                continue;
+            }
             // A force shows the settings its kind uses.
             if let Operation::Force(force) = &self.draft.operation {
                 use veylvik_document::nodes::ForceKind::*;

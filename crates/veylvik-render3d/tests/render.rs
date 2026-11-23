@@ -1936,3 +1936,284 @@ fn a_3d_object_is_copied_at_every_particle() {
         .count();
     assert!(right > 200, "copies carried along: {right}");
 }
+
+/// A picture with something to recognise anywhere in it: a smooth gradient, and a red
+/// square left of the middle.
+fn marked() -> Vec<[f32; 4]> {
+    (0..W * H)
+        .map(|i| {
+            let (x, y) = (i % W, i / W);
+            if (50..70).contains(&x) && (35..55).contains(&y) {
+                [1.0, 0.0, 0.0, 1.0]
+            } else {
+                // Never mostly blue, so it cannot pass for the plane's own colour.
+                [
+                    0.1 + x as f32 / W as f32 * 0.5,
+                    0.1 + y as f32 / H as f32 * 0.5,
+                    0.05,
+                    1.0,
+                ]
+            }
+        })
+        .collect()
+}
+/// `marked()` cast through `projector` (a camera, maybe keyed) onto a plane filling the
+/// frame at depth 0, filmed by the scene's first camera `filming`, at `seconds`.
+fn projected(
+    renderer: &Renderer,
+    projector: Operation,
+    filming: Operation,
+    cast: CameraProjection,
+    plane: ([f32; 3], f32),
+    seconds: (i64, u32),
+) -> Vec<[f32; 4]> {
+    projected_with(renderer, projector, filming, cast, plane, None, seconds)
+}
+/// As `projected`, with a cube of its own colour (not cast onto) at `blocker`.
+fn projected_with(
+    renderer: &Renderer,
+    projector: Operation,
+    filming: Operation,
+    cast: CameraProjection,
+    plane: ([f32; 3], f32),
+    blocker: Option<[f32; 3]>,
+    seconds: (i64, u32),
+) -> Vec<[f32; 4]> {
+    let (plane_at, plane_scale) = plane;
+    let mut doc = blank(W, H, Time::new(24, 1).unwrap()).unwrap();
+    let mut inputs = ImageInputs::default();
+    inputs.insert("marked.png", Arc::new(Image::new(W, H, marked()).unwrap()));
+    let picture = add(
+        &mut doc,
+        Operation::Image(nodes::Image {
+            asset: "marked.png".into(),
+        }),
+        &[],
+    );
+    let filming = add(&mut doc, filming, &[]);
+    let projector = add(&mut doc, projector, &[]);
+    let mut plane = op(&SHAPE_3D);
+    if let Operation::Shape3d(s) = &mut plane {
+        s.kind = ShapeKind::Plane;
+        s.size_x = (W as f32 * plane_scale).into();
+        s.size_y = (H as f32 * plane_scale).into();
+        s.colour = [0.0, 0.0, 1.0].into();
+        s.placement.position = plane_at.into();
+    }
+    let plane = add(&mut doc, plane, &[]);
+    let cast = add(
+        &mut doc,
+        Operation::CameraProjection(cast),
+        &[("scene", plane), ("camera", projector), ("image", picture)],
+    );
+    let mut parts = vec![("scene", filming), ("scene_2", cast)];
+    if let Some(at) = blocker {
+        let mut cube = op(&SHAPE_3D);
+        if let Operation::Shape3d(s) = &mut cube {
+            for size in [&mut s.size_x, &mut s.size_y, &mut s.size_z] {
+                *size = 40.0.into();
+            }
+            s.placement.position = at.into();
+        }
+        parts.push(("scene_3", add(&mut doc, cube, &[])));
+    }
+    let scene = add(&mut doc, op(&MERGE_SCENES), &parts);
+    doc.output = add(&mut doc, op(&RENDER_SCENE), &[("scene", scene)]);
+    renderer
+        .render_frame(
+            &Plan::compile(&doc).unwrap(),
+            RenderRequest::full(Time::new(seconds.0, seconds.1).unwrap()),
+            &inputs,
+        )
+        .unwrap()
+        .pixels
+}
+fn plain_cast() -> CameraProjection {
+    let Operation::CameraProjection(cast) = op(&CAMERA_PROJECTION) else {
+        unreachable!()
+    };
+    cast
+}
+#[test]
+#[ignore = "requires Vulkan"]
+fn a_picture_cast_through_a_camera_is_seen_again_by_it() {
+    let renderer = renderer();
+    // Cast and filmed by the same camera, onto a plane filling its view: the picture back.
+    let back = projected(
+        &renderer,
+        op(&CAMERA_3D),
+        op(&CAMERA_3D),
+        plain_cast(),
+        ([0.0; 3], 1.0),
+        (0, 1),
+    );
+    let picture = marked();
+    let mut worst = 0.0f32;
+    for y in 2..H - 2 {
+        for x in 2..W - 2 {
+            let i = (y * W + x) as usize;
+            for c in 0..4 {
+                worst = worst.max((back[i][c] - picture[i][c]).abs());
+            }
+        }
+    }
+    assert!(
+        worst < 0.02,
+        "the picture comes back as it was: worst {worst}"
+    );
+}
+#[test]
+#[ignore = "requires Vulkan"]
+fn a_held_projection_stays_on_the_surface_as_the_camera_moves() {
+    let renderer = renderer();
+    // The projecting camera slides right over a second; the scene is filmed from the home view.
+    let mut moving = op(&CAMERA_3D);
+    if let Operation::Camera3d(c) = &mut moving {
+        c.placement.position =
+            serde_json::from_value(serde_json::json!({"interpolation": "linear", "keys": [
+            {"time": {"ticks": 0, "rate": 1}, "value": [0.0, 0.0, 0.0]},
+            {"time": {"ticks": 1, "rate": 1}, "value": [40.0, 0.0, 0.0]}]}))
+            .unwrap();
+    }
+    let red_x = |pixels: &[[f32; 4]]| {
+        let reds: Vec<u32> = pixels
+            .iter()
+            .enumerate()
+            .filter(|(_, p)| p[0] > 0.9 && p[1] < 0.1)
+            .map(|(i, _)| i as u32 % W)
+            .collect();
+        reds.iter().sum::<u32>() as f32 / reds.len().max(1) as f32
+    };
+    let mut held = plain_cast();
+    held.hold = true;
+    let start = red_x(&projected(
+        &renderer,
+        moving.clone(),
+        op(&CAMERA_3D),
+        held.clone(),
+        ([0.0; 3], 1.0),
+        (0, 1),
+    ));
+    let later_held = red_x(&projected(
+        &renderer,
+        moving.clone(),
+        op(&CAMERA_3D),
+        held,
+        ([0.0; 3], 1.0),
+        (1, 1),
+    ));
+    let later_moving = red_x(&projected(
+        &renderer,
+        moving,
+        op(&CAMERA_3D),
+        plain_cast(),
+        ([0.0; 3], 1.0),
+        (1, 1),
+    ));
+    // Held, the square stays where it was cast; following the camera, it moves with it.
+    assert!(
+        (later_held - start).abs() < 0.5,
+        "held: {start} then {later_held}"
+    );
+    assert!(
+        (later_moving - start).abs() > 20.0,
+        "moving: {start} then {later_moving}"
+    );
+}
+#[test]
+#[ignore = "requires Vulkan"]
+fn what_the_camera_did_not_see_keeps_its_own_look_or_is_left_out() {
+    let renderer = renderer();
+    // Filmed from twice as far back as the projector, onto a plane three frames wide: the
+    // middle half of the picture is cast, the rest of the plane the camera did not see.
+    let mut back = op(&CAMERA_3D);
+    if let Operation::Camera3d(c) = &mut back {
+        let home = veylvik_scene::home_camera(W, H);
+        let distance = home.world[2][3];
+        c.placement.position = [0.0, 0.0, distance].into();
+    }
+    let blue = |pixels: &[[f32; 4]]| {
+        pixels
+            .iter()
+            .filter(|p| p[3] > 0.5 && p[2] > 0.02 && p[2] > 3.0 * p[0].max(p[1]))
+            .count()
+    };
+    let clear = |pixels: &[[f32; 4]]| pixels.iter().filter(|p| p[3] < 0.01).count();
+    let kept = projected(
+        &renderer,
+        op(&CAMERA_3D),
+        back.clone(),
+        plain_cast(),
+        ([0.0; 3], 3.0),
+        (0, 1),
+    );
+    let mut hide = plain_cast();
+    hide.hide_unseen = true;
+    let left = projected(
+        &renderer,
+        op(&CAMERA_3D),
+        back,
+        hide,
+        ([0.0; 3], 3.0),
+        (0, 1),
+    );
+    let all = (W * H) as usize;
+    // Kept: the plane fills the frame, blue round the cast middle (three quarters of it).
+    assert_eq!(clear(&kept), 0, "the plane fills the frame");
+    assert!(
+        blue(&kept) > all / 2,
+        "its own colour round the picture: {}",
+        blue(&kept)
+    );
+    // Left out: those parts are clear, the middle still shows the picture.
+    assert_eq!(blue(&left), 0, "nothing of its own colour");
+    assert!(
+        clear(&left) > all / 2,
+        "left out round the picture: {}",
+        clear(&left)
+    );
+    assert!(clear(&left) < all * 7 / 8, "the middle is still cast");
+}
+#[test]
+#[ignore = "requires Vulkan"]
+fn what_was_hidden_from_the_camera_behind_something_is_not_cast_onto() {
+    let renderer = renderer();
+    // A cube stands in front of the wall the picture is cast on; filmed from a camera
+    // moved to the right, part of the wall it hid from the projecting camera shows.
+    let mut aside = op(&CAMERA_3D);
+    if let Operation::Camera3d(c) = &mut aside {
+        c.placement.position = [50.0, 0.0, 0.0].into();
+    }
+    let mut hide = plain_cast();
+    hide.hide_unseen = true;
+    let wall = ([0.0; 3], 3.0);
+    let open = projected_with(
+        &renderer,
+        op(&CAMERA_3D),
+        aside.clone(),
+        hide.clone(),
+        wall,
+        None,
+        (0, 1),
+    );
+    let blocked = projected_with(
+        &renderer,
+        op(&CAMERA_3D),
+        aside,
+        hide,
+        wall,
+        Some([0.0, 0.0, 120.0]),
+        (0, 1),
+    );
+    // Pixels that show the cast picture on the open wall but nothing with the cube there:
+    // wall the cube hid from the projector (the cube itself is drawn, never clear).
+    let holes = open
+        .iter()
+        .zip(&blocked)
+        .filter(|(a, b)| a[3] > 0.5 && b[3] < 0.01)
+        .count();
+    assert!(
+        holes > 100,
+        "the wall hidden behind the cube is left out: {holes}"
+    );
+}

@@ -176,12 +176,16 @@ pub(crate) fn view(light: &Light, centre: [f32; 3], radius: f32) -> Option<(math
             let eye = light.position();
             let to = [0, 1, 2].map(|k| centre[k] - eye[k]);
             let distance = (to[0] * to[0] + to[1] * to[1] + to[2] * to[2]).sqrt();
-            let (forward, half) = if light.kind == LightKind::Spot {
-                (
+            if light.kind == LightKind::Spot {
+                return Some(seen_from(
+                    eye,
                     light.direction(),
                     (light.cone * 0.5 + 5.0).min(85.0).to_radians(),
-                )
-            } else if distance > radius {
+                    centre,
+                    radius,
+                ));
+            }
+            let (forward, half) = if distance > radius {
                 (
                     norm(to),
                     ((radius / distance).min(0.999).asin().to_degrees() + 5.0)
@@ -209,6 +213,32 @@ pub(crate) fn view(light: &Light, centre: [f32; 3], radius: f32) -> Option<(math
             ))
         }
     }
+}
+
+/// A depth view from `eye` along `forward`, `half` radians either side, holding a scene
+/// of `radius` round `centre`: a spot light's, or a projecting camera's.
+pub(crate) fn seen_from(
+    eye: [f32; 3],
+    forward: [f32; 3],
+    half: f32,
+    centre: [f32; 3],
+    radius: f32,
+) -> (math::Mat4, f32) {
+    let to = [0, 1, 2].map(|k| centre[k] - eye[k]);
+    let distance = (to[0] * to[0] + to[1] * to[1] + to[2] * to[2]).sqrt();
+    let near = ((distance - radius) * 0.5).max(1.0);
+    let far = distance + radius * 1.5 + 1.0;
+    let f = 1.0 / half.tan();
+    let projection = [
+        [f, 0.0, 0.0, 0.0],
+        [0.0, -f, 0.0, 0.0],
+        [0.0, 0.0, -far / (far - near), -far * near / (far - near)],
+        [0.0, 0.0, -1.0, 0.0],
+    ];
+    (
+        math::mul(&projection, &math::rigid_inverse(&looking(eye, forward))),
+        2.0 * distance.max(radius) * half.tan() / SIZE as f32 * 1.5,
+    )
 }
 
 impl crate::Engine {

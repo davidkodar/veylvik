@@ -94,6 +94,7 @@ macro_rules! each_node {
             $crate::Operation::LightRig($node) => $body,
             $crate::Operation::Force($node) => $body,
             $crate::Operation::ParticleInstances($node) => $body,
+            $crate::Operation::CameraProjection($node) => $body,
             $crate::Operation::Sound($node) => $body,
             $crate::Operation::Blur($node) => $body,
             $crate::Operation::Shadow($node) => $body,
@@ -177,6 +178,7 @@ pub enum Operation {
     LightRig(nodes::LightRig),
     Force(nodes::Force),
     ParticleInstances(nodes::ParticleInstances),
+    CameraProjection(nodes::CameraProjection),
     Sound(nodes::Sound),
     Blur(nodes::Blur),
     Shadow(nodes::Shadow),
@@ -550,6 +552,18 @@ impl Composition {
                     .is_some_and(|n| matches!(n.operation, Operation::PlanarTrack(_)) && !n.bypass)
             {
                 return fail("A Light rig's track input takes an enabled Planar track");
+            }
+            if let (Operation::CameraProjection(_), Some(camera)) =
+                (&node.operation, node.inputs.get("camera"))
+                && !self
+                    .nodes
+                    .get(camera)
+                    .is_some_and(|n| matches!(n.operation, Operation::Camera3d(_)))
+            {
+                return fail(format!(
+                    "{}: the camera input takes a Camera node",
+                    node.label
+                ));
             }
             if let (Operation::ParticleInstances(_), Some(particles)) =
                 (&node.operation, node.inputs.get("particles"))

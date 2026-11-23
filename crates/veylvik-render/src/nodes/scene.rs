@@ -32,3 +32,5 @@ impl RenderNode for PointCloud {}
 impl RenderNode for Model3d {}
 /// Read by Render scene, which draws its objects at the particles' places.
 impl RenderNode for ParticleInstances {}
+/// Read by Render scene, which colours its objects through the camera.
+impl RenderNode for CameraProjection {}
