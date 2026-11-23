@@ -9,7 +9,7 @@ const SLOTS: f32 = 4.0;
 /// Threads in one dispatch row (1024 workgroups of 64).
 const ROW: u32 = 65536;
 /// Settings in a row, and rows through the last life (as in particle_system.wgsl).
-const COUNT: usize = 54;
+const COUNT: usize = 57;
 const ROWS: usize = 16;
 /// The target's tile size for a frame (as in particle_system.wgsl).
 fn tile(pixels: u64) -> u32 {
@@ -75,11 +75,13 @@ fn settings(node: &Particles, time: Time) -> Result<[f32; COUNT]> {
         node.burst_colour[1],
         node.burst_colour[2],
         node.burst_colour[3],
+        at(&node.trail)?,
+        at(&node.trail_width)?,
     ];
     row[..values.len()].copy_from_slice(&values);
     Ok(row)
 }
-fn scalars(node: &Particles) -> [&Scalar; 44] {
+fn scalars(node: &Particles) -> [&Scalar; 46] {
     [
         &node.life,
         &node.speed,
@@ -125,6 +127,8 @@ fn scalars(node: &Particles) -> [&Scalar; 44] {
         &node.burst_spread,
         &node.burst_life,
         &node.burst_size,
+        &node.trail,
+        &node.trail_width,
     ]
 }
 /// The settings in force over the last life before `time`, oldest first. Unkeyed

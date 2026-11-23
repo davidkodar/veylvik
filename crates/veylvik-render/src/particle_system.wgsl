@@ -26,7 +26,7 @@ fn tile() -> u32 {
     return 16u;
 }
 const MIP: u32 = 64u;
-const COUNT: u32 = 54u;
+const COUNT: u32 = 57u;
 const ROWS: u32 = 16u;
 // Setting numbers.
 const SPEED = 1u; const DIRECTION = 2u; const SPREAD = 3u; const GRAVITY = 4u; const WIND = 5u;
@@ -40,6 +40,7 @@ const SPIN = 38u; const GROW = 39u; const HUES = 40u; const DEPTH = 41u;
 const BOX_Z = 42u; const REACH = 43u; const TOWARDS = 44u;
 const BURST = 45u; const BURST_SPEED = 46u; const BURST_SPREAD = 47u; const BURST_LIFE = 48u;
 const BURST_SIZE = 49u; const BURST_COLOUR = 50u; const BURST_A = 53u;
+const TRAIL = 54u; const TRAIL_WIDTH = 55u;
 // The camera row's values beyond the camera: particles (threads before the bursts'),
 // burst particles each, and whether bursts are set off by the obstacle (else by death).
 const PARENTS = 32u; const EACH = 33u; const ON_IMPACT = 34u;
@@ -198,9 +199,16 @@ fn solid(at: vec2<f32>) -> f32 {
 // off the obstacle, and is steered onto `goal` over the last part of its life.
 // The age at which the last place() first touched the obstacle (-1: it did not).
 var<private> impact: f32;
+// With `recording` set, place() keeps the path it walks: where the particle was after
+// each step (xyz) and at what age (w), from its birth on.
+var<private> recording: bool;
+var<private> path: array<vec4<f32>, 100>;
+var<private> path_count: u32;
 fn place(origin: vec3<f32>, launch: vec3<f32>, birth: f32, age: f32, own_life: f32, goal: vec3<f32>, homing: f32, deep: bool) -> vec3<f32> {
     var at = origin; var velocity = launch;
     impact = -1.0;
+    path_count = 0u;
+    if recording { path[0] = vec4<f32>(origin, 0.0); path_count = 1u; }
     let flags = u32(p.extra.z);
     var steps = 32u;
     if (flags & 2u) != 0u { steps = 96u; }
@@ -257,6 +265,7 @@ fn place(origin: vec3<f32>, launch: vec3<f32>, birth: f32, age: f32, own_life: f
         }
         at = next;
         done += dt;
+        if recording && path_count < 100u { path[path_count] = vec4<f32>(at, done); path_count += 1u; }
     }
     if p.extra.y > 0.5 && homing > 0.0 {
         at = mix(at, goal, smoothstep(1.0 - homing, 1.0, age / own_life));
@@ -492,7 +501,10 @@ struct Look { first: vec4<f32>, last: vec4<f32>, tint: vec3<f32>, size: f32, thr
 fn draw(origin: vec3<f32>, launch: vec3<f32>, birth: f32, age: f32, own_life: f32, goal: vec3<f32>, homing: f32, deep: bool, look: Look) {
     let thread = look.thread; let generation = look.generation;
     let variation = setting(VARIATION, birth);
+    let ribbon = setting(TRAIL, birth) > 0.0 && (u32(p.extra.z) & 4u) == 0u;
+    recording = ribbon;
     let where_now = place(origin, launch, birth, age, own_life, goal, homing, deep);
+    recording = false;
     let seen = filmed(where_now);
     if seen.z <= 0.0 { return; }
     let at = seen.xy;
@@ -545,6 +557,10 @@ fn draw(origin: vec3<f32>, launch: vec3<f32>, birth: f32, age: f32, own_life: f3
         return;
     }
     let light = vec4<f32>(colour.rgb * colour.a, colour.a) * opacity;
+    if ribbon {
+        trail_ribbon(at, radius * setting(TRAIL_WIDTH, birth), light, age, min(setting(TRAIL, birth), age), own_life, goal, homing);
+        return;
+    }
     // A streak is a row of dots back along the path, fading towards the tail.
     var trail = min(setting(STREAK, birth), age);
     // An exposure: the scene camera's own move during it streaks the particle too.
@@ -568,6 +584,57 @@ fn draw(origin: vec3<f32>, launch: vec3<f32>, birth: f32, age: f32, own_life: f3
         if dots == 1u { one = light; }
         stamp(at + back * along, radius * (1.0 - 0.5 * along), one);
     }
+}
+// A trail along the path the particle took (kept by place() as it walked), from its head
+// at `at` back `trail` seconds: unbroken, narrowing and fading towards the tail.
+fn trail_ribbon(at: vec2<f32>, width: f32, light: vec4<f32>, age: f32, trail: f32, own_life: f32, goal: vec3<f32>, homing: f32) {
+    if trail <= 0.0 || width <= 0.0 { stamp(at, width, light); return; }
+    let spacing = max(width, 1.0) * 0.5;
+    // Overlapping dots add up: share the light so the ribbon is as bright as the head.
+    let each = light * min(1.0, 1.1 * spacing / max(width, 1.0));
+    var head = at;
+    var head_age = age;
+    var drawn = 0u;
+    stamp(at, width, each);
+    // From the newest point of the path back, while it is within the trail.
+    var k = i32(path_count) - 1;
+    loop {
+        if k < 0 || drawn >= 640u { break; }
+        var point = path[k];
+        // The last step may end past the present: it is where the particle is now.
+        if point.w >= age { k -= 1; continue; }
+        var tail_age = point.w;
+        var where_then = point.xyz;
+        if p.extra.y > 0.5 && homing > 0.0 {
+            where_then = mix(where_then, goal, smoothstep(1.0 - homing, 1.0, tail_age / own_life));
+        }
+        // The trail ends part way along this step.
+        if age - tail_age > trail {
+            let keep = (trail - (age - head_age)) / max(head_age - tail_age, 1e-6);
+            let seen_then = filmed(where_then);
+            if seen_then.z <= 0.0 { break; }
+            let end = mix(head, seen_then.xy, clamp(keep, 0.0, 1.0));
+            drawn += ribbon_segment(head, end, head_age, age - trail, age, trail, width, each);
+            break;
+        }
+        let seen_then = filmed(where_then);
+        if seen_then.z <= 0.0 { break; }
+        drawn += ribbon_segment(head, seen_then.xy, head_age, tail_age, age, trail, width, each);
+        head = seen_then.xy; head_age = tail_age;
+        k -= 1;
+    }
+}
+// Dots from `start` to `finish` (ages `start_age` to `finish_age`), narrowing and fading with how far
+// back along the trail they are; how many were drawn.
+fn ribbon_segment(start: vec2<f32>, finish: vec2<f32>, start_age: f32, finish_age: f32, age: f32, trail: f32, width: f32, each: vec4<f32>) -> u32 {
+    let spacing = max(width, 1.0) * 0.5;
+    let dots = clamp(u32(ceil(length(finish - start) / spacing)), 1u, 160u);
+    for (var d = 1u; d <= dots; d++) {
+        let f = f32(d) / f32(dots);
+        let back = clamp((age - mix(start_age, finish_age, f)) / trail, 0.0, 1.0);
+        stamp(mix(start, finish, f), width * (1.0 - 0.8 * back), each * (1.0 - back));
+    }
+    return dots;
 }
 @compute @workgroup_size(64)
 fn particle_splat(@builtin(global_invocation_id) gid: vec3<u32>) {

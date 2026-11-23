@@ -312,7 +312,7 @@ pub static LOOKS: [Look; 10] = [
     },
     Look {
         name: "Fireworks",
-        hint: "Shells rise from the bottom of the frame and burst at the top of their climb into streaking sparks, each shell its own colour, that fall away. Each shell bursts where its life ends: Life sets the height, Burst the sparks in each",
+        hint: "Shells rise from the bottom of the frame and burst at the top of their climb into sparks trailing curved ribbons, each shell its own colour, that fall away. Each shell bursts where its life ends: Life sets the height, Burst the sparks in each",
         needs: Needs::Nothing,
         apply: |n, w, h| {
             let s = w / 1920.0;
@@ -332,7 +332,8 @@ pub static LOOKS: [Look; 10] = [
                     ("size", 2.2 * s),
                     ("fade", 0.15),
                     ("variation", 0.3),
-                    ("streak", 0.06),
+                    ("trail", 0.35),
+                    ("trail_width", 0.8),
                     ("colour_variation", 0.9),
                     ("burst", 48.0),
                     ("burst_speed", 360.0 * s),

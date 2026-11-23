@@ -1019,3 +1019,73 @@ fn an_obstacle_sets_off_a_burst_thrown_back_off_it() {
         "thrown back up and apart: {left}..{right} {top}..{bottom}"
     );
 }
+#[test]
+#[ignore = "requires Vulkan"]
+fn a_trail_follows_the_path_the_particle_took() {
+    let renderer = Renderer::new().unwrap();
+    // Thrown right from the left at 120 px a second and falling: a curve.
+    let mut thrown = still();
+    thrown.x = 20.0.into();
+    thrown.y = 20.0.into();
+    thrown.duration = 0.05.into();
+    thrown.life = 3.0.into();
+    thrown.speed = 120.0.into();
+    thrown.direction = 0.0.into();
+    thrown.spread = 0.0.into();
+    thrown.gravity = 60.0.into();
+    let centre = |pixels: &[[f32; 4]]| {
+        let lit: Vec<(f32, f32)> = pixels
+            .iter()
+            .enumerate()
+            .filter(|(_, p)| p[3] > 0.05)
+            .map(|(i, _)| ((i as u32 % W) as f32, (i as u32 / W) as f32))
+            .collect();
+        let n = lit.len().max(1) as f32;
+        (
+            lit.iter().map(|p| p.0).sum::<f32>() / n,
+            lit.iter().map(|p| p.1).sum::<f32>() / n,
+        )
+    };
+    // Where the particles were half a second before, drawn alone.
+    let (bx, by) = centre(&render(&renderer, thrown.clone(), None, (5, 10)));
+    let (ax, ay) = centre(&render(&renderer, thrown.clone(), None, (10, 10)));
+    thrown.trail = 0.7.into();
+    let trailed = render(&renderer, thrown.clone(), None, (10, 10));
+    // The trail passes where they were (within a pixel or two), not along a chord.
+    let lit_near = |x: f32, y: f32| {
+        (-2..=2).any(|dy| {
+            (-2..=2).any(|dx| {
+                let (px, py) = (
+                    (x.round() as i32 + dx) as u32,
+                    (y.round() as i32 + dy) as u32,
+                );
+                trailed[(py * W + px) as usize][3] > 0.02
+            })
+        })
+    };
+    assert!(
+        lit_near(bx, by),
+        "the trail misses where they were: ({bx}, {by})"
+    );
+    // Unbroken from there to the head: every column between is lit.
+    let row_lit = |x: u32| (0..H).any(|y| trailed[(y * W + x) as usize][3] > 0.02);
+    assert!(
+        (bx.round() as u32..=ax.round() as u32).all(row_lit),
+        "the trail is broken"
+    );
+    // The curve sags: half way along in time it is lower than the straight line would be.
+    assert!(by < ay, "falling: {by} {ay}");
+    // Without a trail nothing is drawn back there.
+    let plain = render(
+        &renderer,
+        {
+            let mut p = thrown.clone();
+            p.trail = 0.0.into();
+            p
+        },
+        None,
+        (10, 10),
+    );
+    let (px, py) = (bx.round() as u32, by.round() as u32);
+    assert!(plain[(py * W + px) as usize][3] < 0.02);
+}
