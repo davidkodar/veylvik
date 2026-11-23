@@ -85,6 +85,7 @@ mod shape_animation;
 mod shot_light;
 mod showcase_gallery;
 mod solve_camera;
+mod solve_projection;
 mod start;
 mod status_bar;
 mod subject;

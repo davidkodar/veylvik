@@ -79,6 +79,7 @@ impl Studio {
         let mut cancel = false;
         let mut view = None;
         let mut test_cube = false;
+        let mut project = None;
         let last = i64::from(
             self.project
                 .document
@@ -179,6 +180,24 @@ impl Studio {
                             test_cube = true;
                         }
                     });
+                    ui.horizontal(|ui| {
+                        ui.label("Project the footage at the playhead");
+                        if ui
+                            .add_enabled(!report["ground"].is_null(), egui::Button::new("onto the ground"))
+                            .on_hover_text("Casts the frame at the playhead through the solved camera onto a copy of the solved ground, held there: move or swap the camera for parallax")
+                            .on_disabled_hover_text("No ground was found: project onto a backdrop")
+                            .clicked()
+                        {
+                            project = Some(crate::solve_projection::Onto::Ground);
+                        }
+                        if ui
+                            .button("onto a backdrop")
+                            .on_hover_text("Casts the frame at the playhead through the solved camera onto a card facing it at the depth of the solved points, filling its view")
+                            .clicked()
+                        {
+                            project = Some(crate::solve_projection::Onto::Backdrop);
+                        }
+                    });
                 }
             });
         if cancel && let Some(progress) = &self.solve.active {
@@ -193,6 +212,15 @@ impl Studio {
         }
         if test_cube && let Err(e) = self.add_test_cube() {
             self.fail(e);
+        }
+        if let Some(onto) = project {
+            let made = match (self.solve.report.clone(), self.solve.source) {
+                (Some(report), Some(source)) => self.project_solved_footage(&report, source, onto),
+                _ => Err("Solve the camera first".to_string()),
+            };
+            if let Err(e) = made {
+                self.fail(e);
+            }
         }
         if !open && self.solve.active.is_none() {
             self.solve.open = false;
