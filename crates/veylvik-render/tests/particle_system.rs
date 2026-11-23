@@ -1192,3 +1192,95 @@ fn curves_shape_size_opacity_colour_and_speed_over_the_life() {
         render(&renderer, base, None, (1, 1))
     );
 }
+/// Particles filmed from the home view of a scene that holds a light.
+fn render_lit(
+    renderer: &Renderer,
+    particles: nodes::Particles,
+    light: serde_json::Value,
+) -> Vec<[f32; 4]> {
+    let camera = Node::new(
+        "camera",
+        serde_json::from_value(registry::CAMERA_3D.default_operation()).unwrap(),
+        &[],
+    );
+    let mut lamp = registry::LIGHT_3D.default_operation();
+    for (key, value) in light.as_object().unwrap() {
+        lamp[key] = value.clone();
+    }
+    let lamp = Node::new("lamp", serde_json::from_value(lamp).unwrap(), &[]);
+    let merged = Node::new(
+        "scene",
+        serde_json::from_value(registry::MERGE_SCENES.default_operation()).unwrap(),
+        &[("scene", camera.id), ("scene_2", lamp.id)],
+    );
+    let node = Node::new(
+        "particles",
+        Operation::Particles(particles),
+        &[("scene", merged.id)],
+    );
+    let mut doc = blank(W, H, Time::new(24, 1).unwrap()).unwrap();
+    doc.output = node.id;
+    for n in [camera, lamp, merged, node] {
+        doc.nodes.insert(n.id, n);
+    }
+    let plan = Plan::compile(&doc).unwrap();
+    let frame = renderer
+        .render_gpu_cached(
+            &plan,
+            RenderRequest::full(Time::new(2, 1).unwrap()),
+            &ImageInputs::default(),
+        )
+        .unwrap();
+    renderer.read_frame(&frame).unwrap().pixels
+}
+#[test]
+#[ignore = "requires Vulkan"]
+fn lit_particles_take_their_light_from_the_scene() {
+    let renderer = Renderer::new().unwrap();
+    let mut point = still();
+    point.size = 1.5.into();
+    let sum = |pixels: &[[f32; 4]], c: usize| pixels.iter().map(|p| p[c]).sum::<f32>();
+    let sun = |colour: [f32; 3], rotation: [f32; 3], intensity: f32| {
+        serde_json::json!({
+            "kind": "sun",
+            "colour": colour,
+            "intensity": {"kind": "constant", "value": intensity},
+            "placement": {"position": [0.0, 0.0, 400.0], "rotation": rotation, "scale": [1.0, 1.0, 1.0]},
+        })
+    };
+    let glowing = render_lit(&renderer, point.clone(), sun([1.0; 3], [0.0; 3], 1.0));
+    // Lit wholly, no light everywhere, no scattering: a white sun of 1 lights them as
+    // they glow by themselves.
+    point.lit = 1.0.into();
+    point.ambient = 0.0.into();
+    point.scatter = 0.0.into();
+    let white = render_lit(&renderer, point.clone(), sun([1.0; 3], [0.0; 3], 1.0));
+    let (a, b) = (sum(&glowing, 0), sum(&white, 0));
+    assert!((a - b).abs() < 0.02 * a, "{a} {b}");
+    // A red sun makes them red.
+    let red = render_lit(
+        &renderer,
+        point.clone(),
+        sun([1.0, 0.0, 0.0], [0.0; 3], 1.0),
+    );
+    assert!(
+        sum(&red, 0) > 0.9 * a && sum(&red, 1) < 0.01 * a,
+        "{} {}",
+        sum(&red, 0),
+        sum(&red, 1)
+    );
+    // No light reaching them: dark, but still there.
+    let dark = render_lit(&renderer, point.clone(), sun([1.0; 3], [0.0; 3], 0.0));
+    assert!(sum(&dark, 0) < 0.01 * a && sum(&dark, 3) > 0.5 * sum(&glowing, 3));
+    // Scattering forwards: looking into the light (a sun shining at the camera) they are
+    // brighter than with the light behind the camera.
+    point.scatter = 0.6.into();
+    let behind = render_lit(&renderer, point.clone(), sun([1.0; 3], [0.0; 3], 1.0));
+    let facing = render_lit(&renderer, point, sun([1.0; 3], [0.0, 180.0, 0.0], 1.0));
+    assert!(
+        sum(&facing, 0) > 4.0 * sum(&behind, 0),
+        "{} {}",
+        sum(&facing, 0),
+        sum(&behind, 0)
+    );
+}

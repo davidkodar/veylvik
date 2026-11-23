@@ -9,7 +9,7 @@ const SLOTS: f32 = 4.0;
 /// Threads in one dispatch row (1024 workgroups of 64).
 const ROW: u32 = 65536;
 /// Settings in a row, and rows through the last life (as in particle_system.wgsl).
-const COUNT: usize = 117;
+const COUNT: usize = 120;
 const ROWS: usize = 16;
 /// The target's tile size for a frame (as in particle_system.wgsl).
 fn tile(pixels: u64) -> u32 {
@@ -98,6 +98,9 @@ fn settings(node: &Particles, time: Time) -> Result<[f32; COUNT]> {
             row[base..base + 8].copy_from_slice(&curve);
         }
     }
+    row[117] = at(&node.lit)?;
+    row[118] = at(&node.ambient)?;
+    row[119] = at(&node.scatter)?;
     if let Some(ramp) = node.colour_over_life {
         for (k, colour) in ramp.iter().enumerate() {
             row[85 + 4 * k..89 + 4 * k].copy_from_slice(colour);
@@ -105,7 +108,7 @@ fn settings(node: &Particles, time: Time) -> Result<[f32; COUNT]> {
     }
     Ok(row)
 }
-fn scalars(node: &Particles) -> [&Scalar; 49] {
+fn scalars(node: &Particles) -> [&Scalar; 52] {
     [
         &node.life,
         &node.speed,
@@ -156,6 +159,9 @@ fn scalars(node: &Particles) -> [&Scalar; 49] {
         &node.link_distance,
         &node.link_opacity,
         &node.link_width,
+        &node.lit,
+        &node.ambient,
+        &node.scatter,
     ]
 }
 /// Most particles lines may join: each is checked against every later one.
@@ -204,6 +210,38 @@ fn layout(rows: &[[f32; COUNT]]) -> (u32, u32) {
     };
     (threads as u32, stride as u32)
 }
+/// Most scene lights that light particles.
+const LIGHTS: usize = 6;
+/// A light as the particles read it, as the 3D renderer packs it: position and kind (0
+/// point, 1 spot, 2 sun, 3 area), the way it shines and its cone's outer cosine, its
+/// colour times its intensity and the cone's inner cosine.
+fn light_values(light: &veylvik_scene::Light) -> [f32; 12] {
+    use veylvik_document::nodes::LightKind;
+    let p = light.position();
+    let d = light.direction();
+    let outer = (light.cone * 0.5).to_radians();
+    let inner = outer * (1.0 - light.softness).max(0.0);
+    let kind = match light.kind {
+        LightKind::Point => 0.0,
+        LightKind::Spot => 1.0,
+        LightKind::Sun => 2.0,
+        LightKind::Area => 3.0,
+    };
+    [
+        p[0],
+        p[1],
+        p[2],
+        kind,
+        d[0],
+        d[1],
+        d[2],
+        outer.cos(),
+        light.colour[0] * light.intensity,
+        light.colour[1] * light.intensity,
+        light.colour[2] * light.intensity,
+        inner.cos().max(outer.cos() + 1e-4),
+    ]
+}
 /// Most threads in one splat, burst particles included.
 const MAX_THREADS: u64 = 4_000_000;
 /// The splat's threads: (particles, burst particles each, all threads). Particles come
@@ -233,6 +271,7 @@ fn threads(cx: &Cx<'_>, rows: &[[f32; COUNT]]) -> (u32, u32, u32) {
 fn camera(node: &Particles, cx: &Cx<'_>) -> Result<[f32; COUNT]> {
     let home = veylvik_scene::home_camera(cx.width, cx.height);
     let mut focus = 0.0;
+    let mut lights = Vec::new();
     let shutter = node.shutter.at(cx.time).map_err(error)?.clamp(0.0, 0.5);
     let mut earlier = None;
     let camera = match cx.node.inputs.get("scene") {
@@ -258,6 +297,7 @@ fn camera(node: &Particles, cx: &Cx<'_>) -> Result<[f32; COUNT]> {
                 .clamp(0.0, 64.0);
             let camera = scene.camera(index as usize, cx.width, cx.height);
             focus = camera.focus(&scene);
+            lights = scene.lights.clone();
             if shutter > 0.0 {
                 // The camera as it was when the exposure began.
                 let seconds = cx.time.seconds().map_err(error)? - f64::from(shutter);
@@ -295,6 +335,16 @@ fn camera(node: &Particles, cx: &Cx<'_>) -> Result<[f32; COUNT]> {
         row[16] = 64.0 * cx.width as f32 / 1920.0;
     }
     row[31] = f32::from(node.points);
+    // The scene's lights that light the particles: from 40, twelve values each.
+    let shining: Vec<_> = lights
+        .iter()
+        .filter(|l| l.intensity > 0.0)
+        .take(LIGHTS)
+        .collect();
+    row[36] = shining.len() as f32;
+    for (i, light) in shining.iter().enumerate() {
+        row[40 + 12 * i..52 + 12 * i].copy_from_slice(&light_values(light));
+    }
     // Row 32 on (particles, burst particles each, set off by impact) are the
     // splat's thread layout, filled in by `data` from the rows.
     if let Some(before) = earlier {
@@ -515,9 +565,7 @@ impl RenderNode for Particles {
         let tile = tile(pixels);
         let tiles = u64::from(cx.width.div_ceil(tile) * cx.height.div_ceil(tile));
         if pixels < tiles + (COUNT * (ROWS + 1)) as u64 {
-            return Err(error(
-                "Particles need a frame of at least 45 x 45 pixels (2,040 in all)",
-            ));
+            return Err(error("Particles need a frame of at least 46 x 46 pixels"));
         }
         // The sprite's small copy sits after the tile table; without room, dots are drawn.
         let sprite = wired("sprite") && pixels >= tiles + u64::from(MIP * MIP);

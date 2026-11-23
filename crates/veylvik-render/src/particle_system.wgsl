@@ -26,7 +26,7 @@ fn tile() -> u32 {
     return 16u;
 }
 const MIP: u32 = 64u;
-const COUNT: u32 = 117u;
+const COUNT: u32 = 120u;
 const ROWS: u32 = 16u;
 // Setting numbers.
 const SPEED = 1u; const DIRECTION = 2u; const SPREAD = 3u; const GRAVITY = 4u; const WIND = 5u;
@@ -46,6 +46,54 @@ const LINK_DISTANCE = 57u; const LINK_OPACITY = 58u; const LINK_WIDTH = 59u;
 // values each, and eight RGBA colours.
 const CURVES = 60u; const SIZE_CURVE = 61u; const OPACITY_CURVE = 69u; const SPEED_CURVE = 77u;
 const COLOUR_CURVE = 85u;
+const LIT = 117u; const AMBIENT = 118u; const SCATTER = 119u;
+// The camera row's lights: how many at 36, then twelve values each from 40.
+const LIGHT_COUNT = 36u; const LIGHT_BASE = 40u;
+// Where the camera is in the scene: the world-to-camera rows' rotation turned back on
+// their offset.
+fn eye() -> vec3<f32> {
+    let r0 = vec3<f32>(camera_row(0u), camera_row(1u), camera_row(2u));
+    let r1 = vec3<f32>(camera_row(4u), camera_row(5u), camera_row(6u));
+    let r2 = vec3<f32>(camera_row(8u), camera_row(9u), camera_row(10u));
+    return -(r0 * camera_row(3u) + r1 * camera_row(7u) + r2 * camera_row(11u));
+}
+// What the scene's lights do to a particle's colour at `at`: 1 when it is not lit;
+// otherwise the light reaching it (as a lit 3D surface there would get it, scattered
+// towards the camera), mixed in by how lit it is.
+fn lighting(at: vec3<f32>, seconds: f32) -> vec3<f32> {
+    let lit = setting(LIT, seconds);
+    if lit <= 0.0 { return vec3<f32>(1.0); }
+    var light = vec3<f32>(setting(AMBIENT, seconds));
+    let g = setting(SCATTER, seconds);
+    let towards_eye = normalize(eye() - at);
+    let count = min(u32(camera_row(LIGHT_COUNT)), 6u);
+    for (var i = 0u; i < count; i++) {
+        let base = LIGHT_BASE + 12u * i;
+        let kind = camera_row(base + 3u);
+        let source_at = vec3<f32>(camera_row(base), camera_row(base + 1u), camera_row(base + 2u));
+        let aim = vec3<f32>(camera_row(base + 4u), camera_row(base + 5u), camera_row(base + 6u));
+        var radiance = vec3<f32>(camera_row(base + 8u), camera_row(base + 9u), camera_row(base + 10u));
+        // Which way the light travels when it reaches the particle.
+        var travel = aim;
+        if kind < 1.5 || kind > 2.5 {
+            let to = at - source_at;
+            let d2 = max(dot(to, to), 1.0);
+            travel = to / sqrt(d2);
+            // Inverse square, normalised to 1000 pixels, as for 3D surfaces.
+            radiance *= 1.0e6 / d2;
+            if kind > 0.5 && kind < 1.5 {
+                radiance *= smoothstep(camera_row(base + 7u), camera_row(base + 11u), dot(travel, aim));
+            }
+            // A panel lights only what is in front of it.
+            if kind > 2.5 { radiance *= max(dot(travel, aim), 0.0); }
+        }
+        // Henyey-Greenstein scattering towards the camera, 1 for every direction at g 0.
+        let c = dot(travel, towards_eye);
+        let phase = (1.0 - g * g) / pow(max(1.0 + g * g - 2.0 * g * c, 1e-4), 1.5);
+        light += radiance * phase;
+    }
+    return mix(vec3<f32>(1.0), light, lit);
+}
 fn has_curve(bit: u32, seconds: f32) -> bool { return (u32(setting(CURVES, seconds)) & bit) != 0u; }
 // A curve's value at `share` of the life: its eight values joined by straight lines.
 fn life_curve(base: u32, seconds: f32, share: f32) -> f32 {
@@ -550,6 +598,7 @@ fn draw(origin: vec3<f32>, launch: vec3<f32>, birth: f32, age: f32, own_life: f3
     } else if fade > 0.0 { opacity *= clamp((1.0 - share) / fade, 0.0, 1.0); }
     var colour = mix(look.first, look.last, share);
     if look.ramp && has_curve(8u, birth) { colour = life_colour(birth, share); }
+    colour = vec4<f32>(colour.rgb * lighting(where_now, birth), colour.a);
     colour = vec4<f32>(colour.rgb * look.tint, colour.a);
     let hues = setting(HUES, birth);
     if hues > 0.0 {
@@ -766,6 +815,7 @@ fn particle_positions(@builtin(global_invocation_id) gid: vec3<u32>) {
             let last_colour = vec4<f32>(setting(END_COLOUR, b.birth), setting(END_COLOUR + 1u, b.birth), setting(END_COLOUR + 2u, b.birth), setting(END_A, b.birth));
             colour = mix(first_colour, last_colour, share);
             if has_curve(8u, b.birth) { colour = life_colour(b.birth, share); }
+            colour = vec4<f32>(colour.rgb * lighting(where_now, b.birth), colour.a);
             let hues = setting(HUES, b.birth);
             if hues > 0.0 { colour = vec4<f32>(turned(colour.rgb, (random(i, b.generation, 12u) - 0.5) * 6.2831853 * hues), colour.a); }
             spot = vec4<f32>(seen.xy, opacity * colour.a, setting(SIZE, b.birth));

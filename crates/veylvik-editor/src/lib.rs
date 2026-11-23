@@ -2877,6 +2877,12 @@ impl Studio {
                     "trail_width" => {
                         matches!(self.draft.operation, Operation::Particles(ref n) if matches!(n.trail, veylvik_document::Scalar::Constant { value } if value <= 0.0))
                     }
+                    // Lighting comes from a scene; its details once particles are lit.
+                    "lit" => !wired("scene"),
+                    "ambient" | "scatter" => {
+                        !wired("scene")
+                            || matches!(self.draft.operation, Operation::Particles(ref n) if matches!(n.lit, veylvik_document::Scalar::Constant { value } if value <= 0.0))
+                    }
                     "link_opacity" | "link_width" => {
                         matches!(self.draft.operation, Operation::Particles(ref n) if matches!(n.link_distance, veylvik_document::Scalar::Constant { value } if value <= 0.0))
                     }
