@@ -32,7 +32,10 @@ pub static PARTICLE_INSTANCES: NodeType = NodeType {
     output: PortKind::Scene,
     parameters: &[
         scalar("scale", "factor", 0.0, 1000.0, 1.0),
-        other("tumble", ParameterKind::Boolean, "turned at random"),
+        crate::registry::Parameter {
+            default: 1.0,
+            ..other("tumble", ParameterKind::Boolean, "turned at random")
+        },
     ],
 };
 

@@ -10,14 +10,22 @@ const CELLS = 65536u;
 // a second.
 const PLACE_UNITS = 4096.0; const SPEED_UNITS = 16.0;
 fn simulated() -> bool { return camera_row(118u) > 0.5; }
-fn flock_cell(at: vec3<f32>, r: f32) -> vec3<i32> { return vec3<i32>(floor(at / r)); }
+// The grid is shifted by a different amount at every step (from the step's time, so
+// the same at every run): cell borders never stay put, so particles kept clear of the
+// cells' crowds do not settle into bands along them.
+fn grid_shift(r: f32) -> vec3<f32> {
+    let step = p.size_op.z;
+    return vec3<f32>(f32(hash(step) >> 8u), f32(hash(step ^ 0x5bd1e995u) >> 8u), f32(hash(step ^ 0x27d4eb2du) >> 8u))
+        / 16777216.0 * r;
+}
+fn flock_cell(at: vec3<f32>, r: f32) -> vec3<i32> { return vec3<i32>(floor((at + grid_shift(r)) / r)); }
 fn cell_slot(c: vec3<i32>) -> u32 {
     return hash(bitcast<u32>(c.x) * 73856093u ^ bitcast<u32>(c.y) * 19349663u ^ bitcast<u32>(c.z) * 83492791u) & (CELLS - 1u);
 }
 fn add_signed(k: u32, v: i32) { atomicAdd(&result[k], bitcast<u32>(v)); }
 // What a particle adds to its cell, in fixed point.
 fn place_units(at: vec3<f32>, c: vec3<i32>, r: f32) -> vec3<i32> {
-    return vec3<i32>(round((at - vec3<f32>(c) * r) / r * PLACE_UNITS));
+    return vec3<i32>(round((at + grid_shift(r) - vec3<f32>(c) * r) / r * PLACE_UNITS));
 }
 fn speed_units(v: vec3<f32>) -> vec3<i32> {
     return vec3<i32>(round(clamp(v, vec3<f32>(-100000.0), vec3<f32>(100000.0)) * SPEED_UNITS));
@@ -57,7 +65,7 @@ fn flocking(at: vec3<f32>, v: vec3<f32>, now: f32, deep: bool) -> vec3<f32> {
                     places -= vec3<f32>(place_units(at, c, r)); speeds -= vec3<f32>(speed_units(v));
                 }
                 if n < 0.5 { continue; }
-                let centre = vec3<f32>(c) * r + places / n * (r / PLACE_UNITS);
+                let centre = vec3<f32>(c) * r + places / n * (r / PLACE_UNITS) - grid_shift(r);
                 count += n; middle += centre * n; heading += speeds / SPEED_UNITS;
                 // Keep clear of the cell's crowd, the harder the nearer.
                 let away = at - centre; let far = length(away);
