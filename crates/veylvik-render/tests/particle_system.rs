@@ -1388,3 +1388,141 @@ fn particles_are_born_on_a_3d_object_and_launched_out_of_it() {
         "left behind at x 40, where it is now x 100"
     );
 }
+/// Particles driven by a chain of forces (each a JSON object over the force defaults),
+/// rendered at `seconds`.
+fn forced(
+    renderer: &Renderer,
+    particles: nodes::Particles,
+    forces: &[serde_json::Value],
+    seconds: (i64, u32),
+) -> Vec<[f32; 4]> {
+    let mut doc = blank(W, H, Time::new(24, 1).unwrap()).unwrap();
+    let mut next: Option<NodeId> = None;
+    for settings in forces.iter().rev() {
+        let mut value = registry::FORCE.default_operation();
+        for (k, v) in settings.as_object().unwrap() {
+            value[k] = if v.is_number() {
+                serde_json::json!({"kind": "constant", "value": v})
+            } else {
+                v.clone()
+            };
+        }
+        let inputs: Vec<(&str, NodeId)> = next.iter().map(|id| ("forces", *id)).collect();
+        let node = Node::new("force", serde_json::from_value(value).unwrap(), &inputs);
+        next = Some(node.id);
+        doc.nodes.insert(node.id, node);
+    }
+    let inputs: Vec<(&str, NodeId)> = next.iter().map(|id| ("forces", *id)).collect();
+    let node = Node::new("particles", Operation::Particles(particles), &inputs);
+    doc.output = node.id;
+    doc.nodes.insert(node.id, node);
+    let plan = Plan::compile(&doc).unwrap();
+    renderer
+        .render_frame(
+            &plan,
+            RenderRequest::full(Time::new(seconds.0, seconds.1).unwrap()),
+            &ImageInputs::default(),
+        )
+        .unwrap()
+        .pixels
+}
+fn centre_x(pixels: &[[f32; 4]]) -> f32 {
+    let (mut sum, mut weight) = (0.0, 0.0);
+    for (i, p) in pixels.iter().enumerate() {
+        sum += (i as u32 % W) as f32 * p[3];
+        weight += p[3];
+    }
+    sum / weight.max(1e-6)
+}
+#[test]
+#[ignore = "requires Vulkan"]
+fn chained_forces_pull_particles_into_two_clumps() {
+    let renderer = Renderer::new().unwrap();
+    // A still cloud over the whole frame, there from the first frame.
+    let mut cloud = still();
+    cloud.width = 160.0.into();
+    cloud.height = 120.0.into();
+    // Sparse, so dots seldom overlap and coverage still grows where they gather.
+    cloud.rate = 400.0.into();
+    cloud.life = 3.0.into();
+    cloud.start = (-3.0).into();
+    cloud.size = 0.7.into();
+    let near = |pixels: &[[f32; 4]], cx: f32| {
+        pixels
+            .iter()
+            .enumerate()
+            .filter(|(i, p)| {
+                let (x, y) = ((*i as u32 % W) as f32, (*i as u32 / W) as f32);
+                p[3] > 0.05 && (x - cx).powi(2) + (y - 60.0).powi(2) < 64.0
+            })
+            .map(|(_, p)| p[3])
+            .sum::<f32>()
+    };
+    let corner = |pixels: &[[f32; 4]]| {
+        pixels
+            .iter()
+            .enumerate()
+            .filter(|(i, p)| (*i as u32 % W) < 12 && (*i as u32 / W) < 12 && p[3] > 0.05)
+            .count()
+    };
+    let free = forced(&renderer, cloud.clone(), &[], (0, 1));
+    let pulled = forced(
+        &renderer,
+        cloud,
+        &[
+            serde_json::json!({"kind": "attract", "strength": 3000.0, "x": 40.0, "y": 60.0, "radius": 45.0, "softness": 0.0}),
+            serde_json::json!({"kind": "attract", "strength": 3000.0, "x": 120.0, "y": 60.0, "radius": 45.0, "softness": 0.0}),
+            serde_json::json!({"kind": "drag", "strength": 4.0}),
+        ],
+        (0, 1),
+    );
+    for x in [40.0, 120.0] {
+        assert!(
+            near(&pulled, x) > 4.0 * near(&free, x),
+            "clumped at x {x}: {} against {}",
+            near(&pulled, x),
+            near(&free, x)
+        );
+    }
+    // Out of both reaches nothing moves them.
+    assert_eq!(corner(&pulled), corner(&free), "the corner is out of reach");
+}
+#[test]
+#[ignore = "requires Vulkan"]
+fn wind_blows_within_its_reach_and_drag_slows_it() {
+    let renderer = Renderer::new().unwrap();
+    // A puff at x 40 at the start, looked at a second later.
+    let mut puff = still();
+    puff.x = 40.0.into();
+    puff.rate = 2000.0.into();
+    puff.duration = 0.05.into();
+    puff.life = 2.0.into();
+    puff.start = 0.0.into();
+    puff.size = 1.0.into();
+    let wind = serde_json::json!({"kind": "wind", "strength": 100.0, "direction": 0.0});
+    let blown = centre_x(&forced(
+        &renderer,
+        puff.clone(),
+        std::slice::from_ref(&wind),
+        (1, 1),
+    ));
+    // Half of 100 px/s² for about a second: some 50 px to the right.
+    assert!((80.0..96.0).contains(&blown), "blown to {blown}");
+    let slowed = centre_x(&forced(
+        &renderer,
+        puff.clone(),
+        &[
+            wind.clone(),
+            serde_json::json!({"kind": "drag", "strength": 3.0}),
+        ],
+        (1, 1),
+    ));
+    assert!(slowed < blown - 15.0 && slowed > 45.0, "slowed to {slowed}");
+    // A wind whose reach ends before the puff does nothing to it.
+    let mut far = wind;
+    far["x"] = 140.0.into();
+    far["y"] = 60.0.into();
+    far["radius"] = 30.0.into();
+    let untouched = centre_x(&forced(&renderer, puff, &[far], (1, 1)));
+    assert!((untouched - 40.0).abs() < 1.0, "out of reach: {untouched}");
+}

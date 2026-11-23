@@ -108,8 +108,10 @@ fn the_same_identity_is_the_same_picture_for_every_node_type() {
     // A node type may be left out only for a reason written here; a new type is checked, or
     // someone decides why not.
     let excused = [
-        // No picture of their own: parts of a scene, lights, sound.
+        // No picture of their own: parts of a scene, lights, sound, forces on particles
+        // (they reach the particles' identity through their data image).
         "light_rig",
+        "force",
         "sound",
         "shape_3d",
         "text_3d",

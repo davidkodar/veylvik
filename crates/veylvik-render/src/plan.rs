@@ -439,6 +439,11 @@ impl Plan {
                     "A Light rig has no image of its own; view a surface it lights",
                 ));
             }
+            veylvik_document::registry::PortKind::Forces => {
+                return Err(error(
+                    "A Force has no image of its own; view the Particles it drives",
+                ));
+            }
             veylvik_document::registry::PortKind::Scene => {
                 return Err(error(
                     "A 3D scene has no image of its own; view the Render scene node that films it",

@@ -335,3 +335,56 @@ fn life_curve(
     ));
     changed
 }
+impl Inspect for veylvik_document::nodes::Force {
+    fn inspect(&mut self, ui: &mut egui::Ui, cx: &mut InspectCx<'_>) {
+        use veylvik_document::nodes::ForceKind::*;
+        let choices = [
+            (
+                Attract,
+                "Attract",
+                "Draws particles to its point; a negative strength drives them away",
+            ),
+            (
+                Vortex,
+                "Vortex",
+                "Swings particles round an axis through its point (pointing at you; Lean tilts it towards Direction)",
+            ),
+            (
+                Wind,
+                "Wind",
+                "Blows particles along Direction, leaned Lean towards you",
+            ),
+            (
+                Turbulence,
+                "Turbulence",
+                "Stirs particles in swirls about Scale pixels across, never bunching them",
+            ),
+            (
+                Drag,
+                "Drag",
+                "Slows particles down: 1 loses about two thirds of their speed in a second",
+            ),
+        ];
+        ui.horizontal(|ui| {
+            ui.label("Force");
+            let current = choices
+                .iter()
+                .find(|c| c.0 == self.kind)
+                .map_or("", |c| c.1);
+            egui::ComboBox::from_id_salt("force-kind")
+                .selected_text(current)
+                .show_ui(ui, |ui| {
+                    for (choice, name, hint) in choices {
+                        cx.dirty |= ui
+                            .selectable_value(&mut self.kind, choice, name)
+                            .on_hover_text(hint)
+                            .changed();
+                    }
+                });
+        });
+        if let Some((_, _, hint)) = choices.iter().find(|c| c.0 == self.kind) {
+            ui.weak(*hint);
+        }
+        ui.weak("Connect to a Particles node's Forces input; chain more forces into this one's Forces input. Radius 0 acts everywhere.");
+    }
+}

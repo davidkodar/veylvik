@@ -371,6 +371,7 @@ fn place(origin: vec3<f32>, launch: vec3<f32>, birth: f32, age: f32, own_life: f
     let flags = u32(p.extra.z);
     var steps = 32u;
     let solids = solid_count() > 0u;
+    let forced = force_count() > 0u;
     if (flags & 2u) != 0u || solids { steps = 96u; }
     let step = p.extra.w / f32(steps);
     var done = 0.0;
@@ -380,7 +381,10 @@ fn place(origin: vec3<f32>, launch: vec3<f32>, birth: f32, age: f32, own_life: f
         let dt = min(step, age - done);
         if dt <= 0.0 { break; }
         // Forces follow their keys, re-read a few times over the life.
-        if k % 8u == 0u { f = forces_at(birth + done); }
+        if k % 8u == 0u {
+            f = forces_at(birth + done);
+            if forced { forces_now(birth + done); }
+        }
         var push = f.pull;
         if (flags & 1u) != 0u && at.x >= 0.0 && at.y >= 0.0 && at.x < f32(p.size_op.x) && at.y < f32(p.size_op.y) {
             let slope = field_at(at.xy).xy * 100.0;
@@ -394,7 +398,12 @@ fn place(origin: vec3<f32>, launch: vec3<f32>, birth: f32, age: f32, own_life: f
             }
         }
         velocity += vec3<f32>(push, 0.0) * dt;
-        var drift = velocity;
+        var stir = vec3<f32>(0.0);
+        if forced {
+            let pushed = forces_push(at, velocity, birth + done, dt);
+            velocity = pushed.velocity; stir = pushed.stir;
+        }
+        var drift = velocity + stir;
         if f.turbulence > 0.0 {
             // In depth the swirl also carries particles towards and away from the viewer.
             var through = 0.0;

@@ -2849,6 +2849,18 @@ impl Studio {
             if looked && matches!(parameter.name, "roughness" | "metallic") {
                 continue;
             }
+            // A force shows the settings its kind uses.
+            if let Operation::Force(force) = &self.draft.operation {
+                use veylvik_document::nodes::ForceKind::*;
+                let hidden = match parameter.name {
+                    "direction" | "lean" => !matches!(force.kind, Wind | Vortex),
+                    "scale" => force.kind != Turbulence,
+                    _ => false,
+                };
+                if hidden {
+                    continue;
+                }
+            }
             // Particles show the settings that apply to how they are wired.
             if kind.type_id == "particles" {
                 let wired = |port: &str| self.draft.inputs.contains_key(port);

@@ -92,6 +92,7 @@ macro_rules! each_node {
             $crate::Operation::Morphology($node) => $body,
             $crate::Operation::LensBlur($node) => $body,
             $crate::Operation::LightRig($node) => $body,
+            $crate::Operation::Force($node) => $body,
             $crate::Operation::Sound($node) => $body,
             $crate::Operation::Blur($node) => $body,
             $crate::Operation::Shadow($node) => $body,
@@ -173,6 +174,7 @@ pub enum Operation {
     Morphology(nodes::Morphology),
     LensBlur(nodes::LensBlur),
     LightRig(nodes::LightRig),
+    Force(nodes::Force),
     Sound(nodes::Sound),
     Blur(nodes::Blur),
     Shadow(nodes::Shadow),
@@ -496,6 +498,9 @@ impl Composition {
                     return fail(match kind {
                         registry::PortKind::Lights => {
                             format!("{}: the {port} input takes a Light rig", node.label)
+                        }
+                        registry::PortKind::Forces => {
+                            format!("{}: the {port} input takes a Force", node.label)
                         }
                         registry::PortKind::Scene => format!(
                             "{}: the {port} input takes a 3D scene (an object, camera, light, 3D transform or Merge scenes)",

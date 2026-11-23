@@ -52,6 +52,7 @@ pub enum ParameterKind {
     ShapeKind,
     Fit,
     LightKind,
+    ForceKind,
     Look,
     /// Another node by id, or null.
     NodeRef,
@@ -129,6 +130,7 @@ impl Parameter {
             ParameterKind::ShapeKind => json!(crate::nodes::ShapeKind::default()),
             ParameterKind::Fit => json!(crate::nodes::Fit::default()),
             ParameterKind::LightKind => json!(crate::nodes::LightKind::default()),
+            ParameterKind::ForceKind => json!(crate::nodes::ForceKind::default()),
             ParameterKind::Look | ParameterKind::NodeRef => json!(null),
             ParameterKind::Points3 => json!([]),
             ParameterKind::LifeCurve | ParameterKind::LifeColours => json!(null),
@@ -168,6 +170,9 @@ impl Parameter {
             ParameterKind::Fit => json!({"type":"string","enum":crate::nodes::Fit::ALL}),
             ParameterKind::LightKind => {
                 json!({"type":"string","enum":crate::nodes::LightKind::ALL})
+            }
+            ParameterKind::ForceKind => {
+                json!({"type":"string","enum":crate::nodes::ForceKind::ALL})
             }
             ParameterKind::Look => {
                 json!({"anyOf":[{"type":"null"},{"type":"object","description":"A Text surface (material) definition: the parameters of a material node without its type."}]})
@@ -283,6 +288,8 @@ pub enum PortKind {
     Lights,
     /// Objects, cameras and lights in 3D; rendered back to an image by Render scene.
     Scene,
+    /// Forces on particles: no picture; Particles and other forces take them.
+    Forces,
     /// Sound on the timeline: no picture, and no input takes it.
     Sound,
     /// An image of a size of its own (an Own size node): used as it is by inputs
@@ -309,6 +316,8 @@ impl NodeType {
     pub fn port_kind(&self, port: &str) -> PortKind {
         if port == "lights" {
             PortKind::Lights
+        } else if port == "forces" {
+            PortKind::Forces
         } else if port == "scene" || port.starts_with("scene_") {
             PortKind::Scene
         } else {
@@ -370,8 +379,8 @@ impl NodeType {
 pub use crate::nodes::{
     AFFINE, ATMOSPHERE, BLEND, BLOOM, BLUR, CAMERA_3D, CHANNEL_MASK, CHROMA_KEY, COLOR_CORRECT,
     COLORIZE, COMBINE_MASK, CONDENSATION, DISPLACE, DRIP, DUST, ELLIPSE, ENVIRONMENT_3D, EXPOSURE,
-    FADE, FIRE, FOOTAGE, FRACTAL_NOISE, GLASS, GRADIENT, GRID_WARP, IMAGE, IMAGE_CARD, LENS_BLUR,
-    LENS_DISTORTION, LIGHT_3D, LIGHT_RIG, LUMA_KEY, LUT, MASK, MATCH_GRAIN, MATERIAL,
+    FADE, FIRE, FOOTAGE, FORCE, FRACTAL_NOISE, GLASS, GRADIENT, GRID_WARP, IMAGE, IMAGE_CARD,
+    LENS_BLUR, LENS_DISTORTION, LIGHT_3D, LIGHT_RIG, LUMA_KEY, LUT, MASK, MATCH_GRAIN, MATERIAL,
     MATERIAL_LAYERS, MERGE, MERGE_SCENES, METALLIC_SHINE, MODEL_3D, MORPHOLOGY, MOTION_BLUR, NOISE,
     OCIO, OPTICAL_FLOW, PARTICLES, PATH, PATINA, PLANAR_TRACK, PLANAR_WARP, POINT_CLOUD, RECTANGLE,
     REFINE_MATTE, RENDER_SCENE, REPEAT, SHADER, SHAPE_3D, SHAPE_WARP, SOLID, SOUND, SUN_GLINTS,
@@ -387,6 +396,7 @@ pub static TYPES: &[&NodeType] = &[
     &BLUR,
     &LENS_BLUR,
     &LIGHT_RIG,
+    &crate::nodes::FORCE,
     &SOUND,
     &crate::nodes::SHADOW,
     &crate::nodes::CONTACT_SHADOW,

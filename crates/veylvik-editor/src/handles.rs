@@ -97,6 +97,16 @@ fn move_handle(operation: &mut Operation, handle: usize, delta: Vec2, time: Time
                 }
             }
         }
+        // A force's point, and the rim of its reach.
+        Operation::Force(force) => {
+            let far = 1_000_000.0;
+            if handle == 0 {
+                edit(&mut force.x, time, delta.x, -far, far)?;
+                edit(&mut force.y, time, delta.y, -far, far)?;
+            } else {
+                edit(&mut force.radius, time, delta.x, 0.0, far)?;
+            }
+        }
         Operation::GridWarp(warp) => {
             let reach = veylvik_document::nodes::GRID_REACH;
             if let Some(point) = warp.points.get_mut(handle) {
@@ -304,6 +314,23 @@ pub fn show(
                 points.push((
                     pull,
                     "Drag the point particles are pulled to or swung round. Apply commits; Revert discards.",
+                ));
+            }
+            points
+        }
+        Operation::Force(force) => {
+            let point = origin + egui::vec2(force.x.at(time)?, force.y.at(time)?) * scale;
+            let radius = force.radius.at(time)? * scale.x;
+            ellipse(point, Vec2::splat(10.0));
+            let mut points = vec![(
+                point,
+                "Drag the force's point. Apply commits; Revert discards.",
+            )];
+            if radius > 0.0 {
+                painter.circle_stroke(point, radius, Stroke::new(1.0_f32, color));
+                points.push((
+                    point + egui::vec2(radius, 0.0),
+                    "Drag to size how far the force reaches. Apply commits; Revert discards.",
                 ));
             }
             points

@@ -757,18 +757,21 @@ impl RenderNode for Particles {
             }
             _ => Vec::new(),
         };
-        // How much data follows the camera row: the surface, then the solids.
-        last[112] = (surface.len() + solids.len()) as f32;
+        let forces = super::particle_forces::forces(cx, rows[ROWS - 1][0])?;
+        // How much data follows the camera row: the surface, the solids, the forces.
+        last[112] = (surface.len() + solids.len() + forces.len()) as f32;
         last[113] = f32::from(!surface.is_empty());
         last[114] = surface.len() as f32;
         last[115] = f32::from(!solids.is_empty());
+        last[116] = (surface.len() + solids.len()) as f32;
+        last[117] = f32::from(!forces.is_empty());
         last[35] = if linking(self) {
             parents.min(LINKED_MOST).min(cx.width * cx.height / 2) as f32
         } else {
             0.0
         };
         rows.push(last);
-        let extra: Vec<f32> = surface.into_iter().chain(solids).collect();
+        let extra: Vec<f32> = surface.into_iter().chain(solids).chain(forces).collect();
         for chunk in extra.chunks(COUNT) {
             let mut row = [0.0; COUNT];
             row[..chunk.len()].copy_from_slice(chunk);

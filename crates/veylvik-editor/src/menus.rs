@@ -151,6 +151,7 @@ pub(crate) const ADD_MENU: [(&str, &[&registry::NodeType]); 10] = [
             &registry::FIRE,
             &registry::DUST,
             &registry::PARTICLES,
+            &veylvik_document::nodes::FORCE,
             &registry::DRIP,
             &registry::ATMOSPHERE,
         ],

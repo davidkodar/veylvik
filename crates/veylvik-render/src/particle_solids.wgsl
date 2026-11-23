@@ -110,3 +110,68 @@ fn solid_hit(at: vec3<f32>, next: vec3<f32>, t: f32) -> vec2<f32> {
     }
     return vec2<f32>(-1.0, 0.0);
 }
+// Force nodes (see nodes/particle_forces.rs), after the solids: how many, then each
+// one's kind and its values at the ROWS moments of the last life.
+const FORCE_VALUES = 12u;
+fn force_value(k: u32) -> f32 { return surface_at(u32(camera_row(116u)) + k); }
+fn force_count() -> u32 {
+    if camera_row(117u) < 0.5 { return 0u; }
+    return min(u32(force_value(0u)), 8u);
+}
+fn force_base(i: u32) -> u32 { return 1u + i * (1u + ROWS * FORCE_VALUES); }
+// The forces as they are at `t`, refreshed by place() every few steps.
+var<private> force_kind: array<u32, 8>;
+var<private> force_now: array<array<f32, 12>, 8>;
+fn forces_now(t: f32) {
+    let life = p.extra.w;
+    let row = clamp((t - (bitcast<f32>(p.size_op.z) - life)) / life, 0.0, 1.0) * f32(ROWS - 1u);
+    let a = u32(floor(row)); let b = min(a + 1u, ROWS - 1u); let f = row - floor(row);
+    for (var i = 0u; i < force_count(); i++) {
+        let base = force_base(i);
+        force_kind[i] = u32(force_value(base));
+        for (var k = 0u; k < FORCE_VALUES; k++) {
+            force_now[i][k] = mix(force_value(base + 1u + a * FORCE_VALUES + k), force_value(base + 1u + b * FORCE_VALUES + k), f);
+        }
+    }
+}
+// How much of force `i` reaches a point `far` from its own point.
+fn force_reach(i: u32, far: f32) -> f32 {
+    let radius = force_now[i][4];
+    if radius <= 0.0 { return 1.0; }
+    let inner = radius * (1.0 - clamp(force_now[i][5], 0.0, 1.0));
+    if far >= radius { return 0.0; }
+    if far <= inner { return 1.0; }
+    return 1.0 - smoothstep(inner, radius, far);
+}
+// What the forces do to a particle at `at` over a step of `dt` at the moment `t`: its
+// velocity after them, and (in w-less form) the stirring added to its drift.
+struct Pushed { velocity: vec3<f32>, stir: vec3<f32> }
+fn forces_push(at: vec3<f32>, velocity: vec3<f32>, t: f32, dt: f32) -> Pushed {
+    var out = Pushed(velocity, vec3<f32>(0.0));
+    for (var i = 0u; i < force_count(); i++) {
+        let point = vec3<f32>(force_now[i][0], force_now[i][1], force_now[i][2]);
+        let strength = force_now[i][3];
+        let way = vec3<f32>(force_now[i][6], force_now[i][7], force_now[i][8]);
+        let d = at - point; let far = length(d);
+        let w = force_reach(i, far);
+        if w <= 0.0 { continue; }
+        switch force_kind[i] {
+            case 0u: {
+                if far > 0.001 { out.velocity += -d / far * strength * (far / (far + 40.0)) * w * dt; }
+            }
+            case 1u: {
+                let across = d - way * dot(d, way); let off = length(across);
+                if off > 0.001 { out.velocity += cross(way, across) / off * strength * (off / (off + 40.0)) * w * dt; }
+            }
+            case 2u: { out.velocity += way * strength * w * dt; }
+            case 3u: {
+                var g: Forces;
+                g.turbulence = strength * w; g.scale = max(force_now[i][9], 1.0);
+                // Each force stirs its own swirls.
+                out.stir += vec3<f32>(swirl(at.xy + vec2<f32>(f32(i) * 1731.0, f32(i) * 913.0), t, g), 0.0);
+            }
+            default: { out.velocity *= exp(-max(strength, 0.0) * w * dt); }
+        }
+    }
+    return out;
+}
