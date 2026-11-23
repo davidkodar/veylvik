@@ -118,6 +118,12 @@ fn pass_words(
                     n.iter().for_each(|v| v.to_bits().hash(&mut hasher))
                 }
                 veylvik_document::nodes::OfxValue::Text(t) => t.hash(&mut hasher),
+                veylvik_document::nodes::OfxValue::Curves(c) => c.iter().for_each(|curve| {
+                    curve
+                        .iter()
+                        .flatten()
+                        .for_each(|v| v.to_bits().hash(&mut hasher))
+                }),
             }
         }
         let made = hasher.finish();

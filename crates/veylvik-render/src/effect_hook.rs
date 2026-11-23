@@ -5,9 +5,10 @@ use veylvik_document::nodes::{OfxEffect, OfxValue};
 /// Runs OpenFX effects. Studio and the CLI register one (over the plugin helper
 /// process) with `Renderer::set_effect_host`.
 pub trait EffectHost: Send + Sync {
-    /// The effect's picture: `width * height` premultiplied scene-linear Rec.709 RGBA
-    /// floats, top row first, like each input.
-    fn render(&self, job: EffectJob<'_>) -> Result<Vec<f32>>;
+    /// Makes the effect's picture and hands it to `deliver` once: `width * height`
+    /// premultiplied scene-linear Rec.709 RGBA floats, top row first, like each input.
+    /// (Handed over where it lies, so it is copied once, to the graphics card.)
+    fn render(&self, job: EffectJob<'_>, deliver: &mut dyn FnMut(&[f32])) -> Result<()>;
 }
 pub struct EffectJob<'a> {
     pub effect: &'a OfxEffect,

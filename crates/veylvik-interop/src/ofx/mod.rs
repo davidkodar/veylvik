@@ -1,4 +1,7 @@
 //! An OpenFX image-effect host: loads a plugin bundle, describes its plugins in a context and renders them on the CPU in float RGBA. Plugin code runs in this process, so callers run it in a helper process of its own: a crashing plugin must never take the editor with it.
+mod parametric;
+/// A curve setting's value at `x`, as the host evaluates it for plugins.
+pub use parametric::evaluate as curve_value;
 mod params;
 mod props;
 mod services;
@@ -79,6 +82,7 @@ extern "C" fn fetch_suite(
         (b"OfxMessageSuite", 1 | 2) => table(&services::MESSAGE_SUITE),
         (b"OfxProgressSuite", 1) => table(&services::PROGRESS_SUITE),
         (b"OfxTimeLineSuite", 1) => table(&services::TIMELINE_SUITE),
+        (b"OfxParametricParameterSuite", 1) => table(&parametric::SUITE),
         _ => {
             trace(|| format!("no suite {} v{version}", String::from_utf8_lossy(name)));
             std::ptr::null()
@@ -167,6 +171,10 @@ pub struct ParamInfo {
     pub display_max: Vec<f64>,
     pub options: Vec<String>,
     pub secret: bool,
+    /// A curve setting's default points per curve, its key range and curve names.
+    pub curves: Vec<Vec<[f64; 2]>>,
+    pub range: [f64; 2],
+    pub curve_labels: Vec<String>,
 }
 #[derive(Debug, Clone)]
 pub struct ClipInfo {
@@ -185,6 +193,8 @@ pub struct Description {
 pub enum Value {
     Numbers(Vec<f64>),
     Text(String),
+    /// A curve setting's points ([key, value]) per curve.
+    Curves(Vec<Vec<[f64; 2]>>),
 }
 /// A loaded bundle. Its plugins stay loaded until it is dropped.
 pub struct Library {
@@ -489,6 +499,15 @@ impl Library {
                         .copied()
                         .unwrap_or(0.0)
                         != 0.0,
+                    curves: match &*suites_lock(&p.value) {
+                        suites::Value::Curves(c) => c.clone(),
+                        _ => Vec::new(),
+                    },
+                    range: match props.get_numbers("OfxParamPropParametricRange")[..] {
+                        [low, high] if low < high => [low, high],
+                        _ => [0.0, 1.0],
+                    },
+                    curve_labels: props.get_strings("OfxParamPropDimensionLabel"),
                 })
             })
             .collect();
@@ -653,6 +672,7 @@ impl Instance<'_> {
         Some(match value {
             suites::Value::Numbers(n) => Value::Numbers(n),
             suites::Value::Text(t) => Value::Text(t.to_string_lossy().into_owned()),
+            suites::Value::Curves(c) => Value::Curves(c),
         })
     }
     /// Renders at `time` with `values` (by parameter name; others keep their value), from
@@ -690,6 +710,7 @@ impl Instance<'_> {
                 *suites_lock(&p.value) = match value {
                     Value::Numbers(n) => suites::Value::Numbers(n.clone()),
                     Value::Text(t) => suites::Value::Text(c(t)),
+                    Value::Curves(curves) => suites::Value::Curves(curves.clone()),
                 };
             }
         }

@@ -208,7 +208,7 @@ fn numbers(
 ) -> (Vec<f64>, bool) {
     match effect.settings.get(&param.name) {
         Some(OfxSetting::Numbers(n)) => {
-            let keyed = n.iter().any(|s| !matches!(s, Scalar::Constant { .. }));
+            let keyed = n.iter().any(|s| s.keys().is_some());
             (
                 n.iter()
                     .map(|s| s.at(time).map_or(0.0, f64::from))
@@ -219,15 +219,108 @@ fn numbers(
         _ => (param.default.clone(), false),
     }
 }
-fn set(effect: &mut OfxEffect, name: &str, values: &[f64], cx: &mut InspectCx<'_>) {
-    let scalars = values
-        .iter()
-        .map(|v| Scalar::Constant { value: *v as f32 })
-        .collect();
+/// Stores `values`: as constants, or, when the setting is keyed, as keys at `time`;
+/// whether anything changed.
+fn set(
+    effect: &mut OfxEffect,
+    name: &str,
+    values: &[f64],
+    keyed: bool,
+    time: veylvik_document::Time,
+) -> bool {
+    let mut scalars = match effect.settings.get(name) {
+        Some(OfxSetting::Numbers(n)) if keyed => n.clone(),
+        _ => Vec::new(),
+    };
+    if keyed {
+        scalars.resize(values.len(), Scalar::Constant { value: 0.0 });
+        for (scalar, v) in scalars.iter_mut().zip(values) {
+            if scalar.set_key_at(time, *v as f32).is_err() {
+                return false;
+            }
+        }
+    } else {
+        scalars = values
+            .iter()
+            .map(|v| Scalar::Constant { value: *v as f32 })
+            .collect();
+    }
     effect
         .settings
         .insert(name.to_string(), OfxSetting::Numbers(scalars));
-    cx.dirty = true;
+    true
+}
+/// What the key button does: removes the key at `time`, or adds one with `values`.
+fn toggle_key(
+    effect: &mut OfxEffect,
+    name: &str,
+    values: &[f64],
+    time: veylvik_document::Time,
+) -> bool {
+    if !key_here(effect, name, time) {
+        let was_constant = !matches!(
+            effect.settings.get(name),
+            Some(OfxSetting::Numbers(n)) if n.iter().any(|s| s.keys().is_some())
+        );
+        if !set(effect, name, values, true, time) {
+            return false;
+        }
+        // A setting's first key takes the curve the artist prefers for first keys.
+        if let Some(OfxSetting::Numbers(n)) = effect.settings.get_mut(name) {
+            for scalar in n.iter_mut() {
+                crate::autokey::first_key(scalar, was_constant);
+            }
+        }
+        return true;
+    }
+    let Some(OfxSetting::Numbers(n)) = effect.settings.get_mut(name) else {
+        return false;
+    };
+    for scalar in n.iter_mut() {
+        let _ = scalar.remove_key_at(time);
+    }
+    true
+}
+/// Whether any channel of a setting has a key exactly at `time`.
+fn key_here(effect: &OfxEffect, name: &str, time: veylvik_document::Time) -> bool {
+    let Some(OfxSetting::Numbers(n)) = effect.settings.get(name) else {
+        return false;
+    };
+    n.iter().any(|s| {
+        s.keys().is_some_and(|keys| {
+            keys.iter()
+                .any(|k| k.time.compare(time).ok() == Some(std::cmp::Ordering::Equal))
+        })
+    })
+}
+/// The key button: adds a key with the values shown, or removes the key at the playhead.
+fn key_button(
+    ui: &mut egui::Ui,
+    effect: &mut OfxEffect,
+    name: &str,
+    values: &[f64],
+    keyed: bool,
+    cx: &mut InspectCx<'_>,
+) {
+    // Key times of all channels, so the strip steps between any of them.
+    let mut times: Vec<veylvik_document::Time> = match effect.settings.get(name) {
+        Some(OfxSetting::Numbers(n)) => n
+            .iter()
+            .filter_map(|s| s.keys())
+            .flatten()
+            .map(|k| k.time)
+            .collect(),
+        _ => Vec::new(),
+    };
+    times.sort_by(|a, b| a.compare(*b).unwrap_or(std::cmp::Ordering::Equal));
+    times.dedup_by(|a, b| a.compare(*b).is_ok_and(|o| o.is_eq()));
+    if crate::animation::key_strip(ui, &times, keyed, cx.time).is_some()
+        && toggle_key(effect, name, values, cx.time)
+    {
+        // Keys from a key button are the artist's own, not a try-out.
+        crate::autokey::asked();
+        cx.dirty = true;
+    }
 }
 fn range(param: &veylvik_ofx::Param, k: usize) -> std::ops::RangeInclusive<f64> {
     let pick = |a: &[f64], b: &[f64], fallback: f64| {
@@ -248,11 +341,11 @@ fn setting(
     cx: &mut InspectCx<'_>,
 ) {
     let kind = param.kind.trim_start_matches("OfxParamType");
-    if matches!(
-        kind,
-        "Group" | "Page" | "PushButton" | "Custom" | "Parametric" | "Camera"
-    ) || param.secret
-    {
+    if param.secret || matches!(kind, "Group" | "Page" | "PushButton" | "Custom" | "Camera") {
+        return;
+    }
+    if kind == "Parametric" {
+        crate::ofx_curves::editor(ui, effect, param, cx);
         return;
     }
     ui.horizontal(|ui| {
@@ -276,9 +369,9 @@ fn setting(
             return;
         }
         let (mut values, keyed) = numbers(effect, param, cx.time);
-        if keyed {
-            ui.label(format!("{values:.3?} (keyed)"));
-            return;
+        // The host tells plugins that switches and choices do not animate.
+        if !matches!(kind, "Boolean" | "Choice") {
+            key_button(ui, effect, &param.name, &values, keyed, cx);
         }
         let before = values.clone();
         match kind {
@@ -342,8 +435,8 @@ fn setting(
                 }
             }
         }
-        if values != before {
-            set(effect, &param.name, &values, cx);
+        if values != before && set(effect, &param.name, &values, keyed, cx.time) {
+            cx.dirty = true;
         }
         if effect.settings.contains_key(&param.name)
             && ui
@@ -416,5 +509,82 @@ pub(crate) fn inspect(effect: &mut OfxEffect, ui: &mut egui::Ui, cx: &mut Inspec
                 setting(ui, effect, param, cx);
             }
         }
+    }
+}
+/// What an OpenFX effect's port feeds, named by the plugin's own clip ("A", "Mask"),
+/// or that it feeds nothing; None for other nodes (they keep their port names).
+pub(crate) fn port_name(operation: &veylvik_document::Operation, port: &str) -> Option<String> {
+    let veylvik_document::Operation::OfxEffect(effect) = operation else {
+        return None;
+    };
+    if effect.plugin.is_empty() || effect.clips.is_empty() {
+        return None;
+    }
+    let at = OFX_PORTS.iter().position(|p| *p == port)?;
+    Some(match effect.clips.get(at).map(String::as_str) {
+        Some(clip) if !clip.is_empty() => clip.to_string(),
+        _ => format!("{} (not used)", crate::graph_port_label(port)),
+    })
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn ports_are_named_by_the_clips_they_feed() {
+        let mut effect = OfxEffect {
+            bundle: "/b.ofx.bundle".into(),
+            plugin: "net.sf.openfx.MergePlugin".into(),
+            context: OfxContext::Filter,
+            clips: vec!["Source".into(), "A".into(), String::new(), "Mask".into()],
+            settings: Default::default(),
+        };
+        let name = |e: &OfxEffect, p: &str| {
+            port_name(&veylvik_document::Operation::OfxEffect(e.clone()), p)
+        };
+        assert_eq!(name(&effect, "source").as_deref(), Some("Source"));
+        assert_eq!(name(&effect, "input_2").as_deref(), Some("A"));
+        assert_eq!(
+            name(&effect, "input_3").as_deref(),
+            Some("Input 3 (not used)")
+        );
+        assert_eq!(name(&effect, "mask").as_deref(), Some("Mask"));
+        // Before a plugin is chosen, the ports keep their own names.
+        effect.plugin.clear();
+        assert_eq!(name(&effect, "source"), None);
+    }
+    #[test]
+    fn a_setting_is_animated_by_keys_at_the_playhead_and_back_to_constant() {
+        use veylvik_document::nodes::OfxValue;
+        let rate = veylvik_document::Time { ticks: 24, rate: 1 };
+        let at = |f| veylvik_document::Time::at_frame(f, rate).unwrap();
+        let mut effect = OfxEffect {
+            bundle: String::new(),
+            plugin: "p".into(),
+            context: OfxContext::Filter,
+            clips: Vec::new(),
+            settings: Default::default(),
+        };
+        // An edit before animating is a constant.
+        assert!(set(&mut effect, "gain", &[2.0, 3.0], false, at(0)));
+        assert!(!key_here(&effect, "gain", at(0)));
+        // The key button keys every channel; an edit elsewhere adds a key there.
+        assert!(toggle_key(&mut effect, "gain", &[2.0, 3.0], at(0)));
+        assert!(key_here(&effect, "gain", at(0)));
+        assert!(set(&mut effect, "gain", &[4.0, 5.0], true, at(10)));
+        assert_eq!(
+            effect.values_at(at(5)).unwrap()[0].1,
+            OfxValue::Numbers(vec![3.0, 4.0])
+        );
+        // Removing both keys leaves a constant at the last value removed.
+        assert!(toggle_key(&mut effect, "gain", &[], at(10)));
+        assert!(toggle_key(&mut effect, "gain", &[], at(0)));
+        let Some(OfxSetting::Numbers(n)) = effect.settings.get("gain") else {
+            panic!()
+        };
+        assert!(n.iter().all(|s| s.keys().is_none()), "{n:?}");
+        assert_eq!(
+            effect.values_at(at(7)).unwrap()[0].1,
+            OfxValue::Numbers(vec![2.0, 3.0])
+        );
     }
 }

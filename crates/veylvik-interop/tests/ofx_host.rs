@@ -42,7 +42,7 @@ fn a_plugin_describes_itself_and_its_settings() {
     assert_eq!(
         names,
         [
-            "gain", "lift", "mode", "colour", "note", "steps", "centre", "written"
+            "gain", "lift", "mode", "colour", "note", "steps", "centre", "written", "curve"
         ]
     );
     let gain = &d.params[0];
@@ -131,6 +131,54 @@ fn a_plugin_sets_values_of_every_kind_itself() {
     };
     let out = instance.render(0.0, &[], &[("Source", frame)]).unwrap();
     assert!((out[0] - (1.0 + 0.125 * 0.5)).abs() < 1e-6, "{}", out[0]);
+}
+#[test]
+fn a_curve_setting_keeps_its_default_points_and_renders_through_the_hosts_curve() {
+    let lib = Library::open(&bundle("curves")).unwrap();
+    let d = lib.describe(0, FILTER).unwrap();
+    let curve = d.params.iter().find(|p| p.name == "curve").unwrap();
+    assert_eq!(curve.curves, vec![vec![[0.0, 0.0], [1.0, 0.5]]]);
+    assert_eq!(
+        (curve.range, curve.curve_labels.clone()),
+        ([0.0, 1.0], vec!["master".to_string()])
+    );
+    let source: Vec<f32> = (0..16).map(|i| i as f32 / 15.0).collect();
+    let frame = || Frame {
+        pixels: &source,
+        width: 2,
+        height: 2,
+    };
+    let mut instance = lib.instance(0, FILTER, 2, 2).unwrap();
+    let mode = ("mode".to_string(), Value::Numbers(vec![3.0]));
+    // The default curve halves the source (a straight line through its two points).
+    let out = instance
+        .render(0.0, std::slice::from_ref(&mode), &[("Source", frame())])
+        .unwrap();
+    // OpenFX rows are bottom-up but this source is per-row symmetric only by value; compare sorted.
+    let mut got: Vec<f32> = out.clone();
+    let mut want: Vec<f32> = source.iter().map(|v| v * 0.5).collect();
+    got.sort_by(f32::total_cmp);
+    want.sort_by(f32::total_cmp);
+    assert!(
+        got.iter().zip(&want).all(|(a, b)| (a - b).abs() < 1e-6),
+        "{got:?}"
+    );
+    // Curves given for a render replace the default.
+    let inverted = (
+        "curve".to_string(),
+        Value::Curves(vec![vec![[0.0, 1.0], [1.0, 0.0]]]),
+    );
+    let out = instance
+        .render(0.0, &[mode, inverted], &[("Source", frame())])
+        .unwrap();
+    let mut got: Vec<f32> = out;
+    let mut want: Vec<f32> = source.iter().map(|v| 1.0 - v).collect();
+    got.sort_by(f32::total_cmp);
+    want.sort_by(f32::total_cmp);
+    assert!(
+        got.iter().zip(&want).all(|(a, b)| (a - b).abs() < 1e-6),
+        "{got:?}"
+    );
 }
 #[test]
 fn a_failing_render_says_what_the_plugin_said() {

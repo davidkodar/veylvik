@@ -6,6 +6,10 @@ use veylvik_document::{Composition, NodeId, NodePosition};
 mod annotations;
 #[path = "graph_presentation.rs"]
 mod presentation;
+/// A port's name as the graph shows it.
+pub(crate) fn port_label(key: &str) -> String {
+    presentation::port_label(key)
+}
 pub(super) const NODE_SIZE: Vec2 = egui::vec2(200.0, 108.0);
 fn input_y(index: usize, count: usize) -> f32 {
     56.0 + (NODE_SIZE.y - 60.0) * (index + 1) as f32 / (count + 1) as f32
@@ -1302,7 +1306,12 @@ impl Graph {
                     }
                     last = row;
                     let label = node.group.map_or_else(
-                        || presentation::port_label(key),
+                        || {
+                            doc.nodes
+                                .get(&node.id)
+                                .and_then(|n| crate::ofx_inspector::port_name(&n.operation, key))
+                                .unwrap_or_else(|| presentation::port_label(key))
+                        },
                         |id| doc.groups[&id].inputs[key].label.clone(),
                     );
                     presentation::line(
@@ -1345,7 +1354,12 @@ impl Graph {
                     let optional = node.group.is_none()
                         && doc.nodes[id].operation.descriptor().is_optional(key);
                     let label = node.group.map_or_else(
-                        || presentation::port_label(key),
+                        || {
+                            doc.nodes
+                                .get(&node.id)
+                                .and_then(|n| crate::ofx_inspector::port_name(&n.operation, key))
+                                .unwrap_or_else(|| presentation::port_label(key))
+                        },
                         |id| doc.groups[&id].inputs[key].label.clone(),
                     );
                     match (optional, node.inputs[*index].1.is_some()) {

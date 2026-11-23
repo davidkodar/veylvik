@@ -58,7 +58,12 @@ mod node_thumbnails;
 mod nodes;
 mod nuke_import;
 mod occlusion;
+mod ofx_curves;
 mod ofx_inspector;
+/// A port's name as the node graph shows it.
+pub(crate) fn graph_port_label(key: &str) -> String {
+    graph::port_label(key)
+}
 mod pages;
 mod path_edit;
 mod path_handles;
@@ -3052,9 +3057,11 @@ impl Studio {
                 })
                 .to_owned();
             let before = current;
+            let named = crate::ofx_inspector::port_name(&self.draft.operation, port)
+                .unwrap_or_else(|| (*port).to_owned());
             egui::ComboBox::from_id_salt(("port", port))
                 .selected_text(format!(
-                    "{port}{}: {label}",
+                    "{named}{}: {label}",
                     if optional { " (optional)" } else { "" }
                 ))
                 .show_ui(ui, |ui| {

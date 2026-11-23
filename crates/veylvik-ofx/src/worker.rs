@@ -93,6 +93,9 @@ impl State {
                             display_max: p.display_max,
                             options: p.options,
                             secret: p.secret,
+                            curves: p.curves,
+                            range: p.range,
+                            curve_labels: p.curve_labels,
                         })
                         .collect(),
                 });

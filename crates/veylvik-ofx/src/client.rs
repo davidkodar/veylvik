@@ -192,6 +192,32 @@ impl Worker {
         values: &[(String, Value)],
         inputs: &[(&str, &[f32])],
     ) -> Result<(Vec<f32>, Vec<String>)> {
+        let mut out = Vec::new();
+        let said = self.render_with(
+            plugin,
+            context,
+            [width, height],
+            time,
+            values,
+            inputs,
+            &mut |p| out = p.to_vec(),
+        )?;
+        Ok((out, said))
+    }
+    /// As [`Worker::render`], handing the picture to `deliver` where it lies (in the
+    /// shared memory when the frames went that way), so a caller that copies it on
+    /// anyway (to the graphics card) needs no frame of its own; returns what the plugin said.
+    #[allow(clippy::too_many_arguments)]
+    pub fn render_with(
+        &mut self,
+        plugin: &Plugin,
+        context: &str,
+        [width, height]: [u32; 2],
+        time: f64,
+        values: &[(String, Value)],
+        inputs: &[(&str, &[f32])],
+        deliver: &mut dyn FnMut(&[f32]),
+    ) -> Result<Vec<String>> {
         let pixels = width as usize * height as usize * 4;
         if let Some((name, _)) = inputs.iter().find(|(_, p)| p.len() != pixels) {
             return Err(format!("input {name} is not {width} x {height}"));
@@ -227,19 +253,20 @@ impl Worker {
         } else {
             inputs.iter().map(|(_, p)| *p).collect()
         };
-        let (reply, mut out) = self.call(&request, &payload, RENDER_TIMEOUT)?;
+        let (reply, out) = self.call(&request, &payload, RENDER_TIMEOUT)?;
         if shared {
             let memory = self
                 .running
                 .as_ref()
                 .and_then(|r| r.shared.as_ref())
                 .ok_or("the OpenFX helper stopped")?;
-            out = memory.floats(inputs.len() * pixels, pixels)?.to_vec();
-        }
-        if out.len() != pixels {
+            deliver(memory.floats(inputs.len() * pixels, pixels)?);
+        } else if out.len() == pixels {
+            deliver(&out);
+        } else {
             return Err("the helper sent a picture of the wrong size".into());
         }
-        Ok((out, reply.messages))
+        Ok(reply.messages)
     }
 }
 impl Drop for Worker {

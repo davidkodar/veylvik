@@ -14,7 +14,11 @@ struct Gain {
     calls: Mutex<Vec<Call>>,
 }
 impl EffectHost for Gain {
-    fn render(&self, job: EffectJob<'_>) -> veylvik_render::Result<Vec<f32>> {
+    fn render(
+        &self,
+        job: EffectJob<'_>,
+        deliver: &mut dyn FnMut(&[f32]),
+    ) -> veylvik_render::Result<()> {
         let gain = job
             .values
             .iter()
@@ -29,10 +33,12 @@ impl EffectHost for Gain {
             .unwrap()
             .push((job.frame, job.values.clone(), clips));
         let pixels = job.width as usize * job.height as usize * 4;
-        Ok(match job.inputs.first() {
+        let picture: Vec<f32> = match job.inputs.first() {
             Some((_, source)) => source.iter().map(|v| v * gain).collect(),
             None => vec![0.25; pixels],
-        })
+        };
+        deliver(&picture);
+        Ok(())
     }
 }
 fn effect(gain: Scalar) -> OfxEffect {

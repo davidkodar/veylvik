@@ -53,6 +53,8 @@ pub struct Clip {
 pub enum Value {
     Numbers(Vec<f64>),
     Text(CString),
+    /// A curve setting's control points ([key, value], in key order) per curve.
+    Curves(Vec<Vec<[f64; 2]>>),
 }
 pub struct Param {
     pub kind: String,

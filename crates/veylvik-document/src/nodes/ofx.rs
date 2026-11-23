@@ -16,6 +16,8 @@ pub const OFX_PORTS: [&str; 4] = ["source", "input_2", "input_3", "mask"];
 pub enum OfxSetting {
     Numbers(Vec<Scalar>),
     Text(String),
+    /// A curve setting: [key, value] points per curve, in key order (not animated).
+    Curves(Vec<Vec<[f32; 2]>>),
 }
 /// The contexts Veylvik runs a plugin in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -62,6 +64,16 @@ impl OfxEffect {
                             .collect::<Result<_>>()?,
                     ),
                     OfxSetting::Text(t) => OfxValue::Text(t.clone()),
+                    OfxSetting::Curves(c) => OfxValue::Curves(
+                        c.iter()
+                            .map(|curve| {
+                                curve
+                                    .iter()
+                                    .map(|[k, v]| [f64::from(*k), f64::from(*v)])
+                                    .collect()
+                            })
+                            .collect(),
+                    ),
                 };
                 Ok((name.clone(), value))
             })
@@ -73,6 +85,7 @@ impl OfxEffect {
 pub enum OfxValue {
     Numbers(Vec<f64>),
     Text(String),
+    Curves(Vec<Vec<[f64; 2]>>),
 }
 pub static OFX_EFFECT: NodeType = NodeType {
     type_id: "ofx_effect",
@@ -127,6 +140,24 @@ node!(OfxEffect, OFX_EFFECT, [], {
                 OfxSetting::Numbers(n) => {
                     for s in n {
                         s.validate()?;
+                    }
+                }
+                OfxSetting::Curves(c)
+                    if c.len() > 16 || c.iter().any(|curve| curve.len() > 256) =>
+                {
+                    return crate::fail(format!(
+                        "OpenFX setting {name} has too many curves or points (16 and 256)"
+                    ));
+                }
+                OfxSetting::Curves(c) => {
+                    for curve in c {
+                        if curve.iter().flatten().any(|v| !v.is_finite())
+                            || curve.windows(2).any(|w| w[0][0] > w[1][0])
+                        {
+                            return crate::fail(format!(
+                                "OpenFX setting {name}: curve points must be finite and in key order"
+                            ));
+                        }
                     }
                 }
                 OfxSetting::Text(t) if t.len() > 65_536 => {

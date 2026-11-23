@@ -53,7 +53,14 @@ fn report(ui: &mut egui::Ui, result: veylvik_document::Result<()>) -> bool {
 }
 /// Previous key, the key diamond and next key for a property keyed at `times`.
 /// Returns Some(key is at this frame) when the diamond was clicked.
-fn key_strip(ui: &mut egui::Ui, times: &[Time], animated: bool, time: Time) -> Option<bool> {
+/// The key mark with previous/next key buttons; Some(whether a key is at `time`) when
+/// the mark is clicked.
+pub(crate) fn key_strip(
+    ui: &mut egui::Ui,
+    times: &[Time],
+    animated: bool,
+    time: Time,
+) -> Option<bool> {
     let here = times
         .iter()
         .any(|t| t.compare(time).is_ok_and(|o| o.is_eq()));

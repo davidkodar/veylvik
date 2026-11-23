@@ -206,7 +206,9 @@ impl Parameter {
                 "type":"object","maxProperties":crate::nodes::OFX_MAX_SETTINGS,
                 "additionalProperties":{"oneOf":[
                     {"type":"array","minItems":1,"maxItems":4,"items":scalar_schema(None, None)},
-                    {"type":"string","maxLength":65536}
+                    {"type":"string","maxLength":65536},
+                    {"type":"array","maxItems":16,"items":{"type":"array","maxItems":256,"items":{
+                        "type":"array","minItems":2,"maxItems":2,"items":{"type":"number"}}}}
                 ]}
             }),
             ParameterKind::Vector3 => {

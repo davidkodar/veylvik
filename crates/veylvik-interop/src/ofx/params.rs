@@ -67,6 +67,17 @@ fn param_props(kind: &str, name: &str) -> PropSet {
     if kind == "OfxParamTypePage" {
         p.strings("OfxParamPropPageChild", &[]);
     }
+    if kind == "OfxParamTypeParametric" {
+        p.int("OfxParamPropParametricDimension", &[1]);
+        p.double("OfxParamPropParametricRange", &[0.0, 1.0]);
+        p.double("OfxParamPropParametricUIColour", &[]);
+        p.pointer(
+            "OfxParamPropParametricInteractBackground",
+            std::ptr::null_mut(),
+        );
+        p.strings("OfxParamPropDimensionLabel", &[]);
+        p.int("OfxParamPropAnimates", &[0]);
+    }
     if kind == "OfxParamTypeGroup" {
         p.int("OfxParamPropGroupOpen", &[1]);
     }
@@ -74,6 +85,13 @@ fn param_props(kind: &str, name: &str) -> PropSet {
 }
 /// A parameter's value at first: its default.
 pub fn default_value(param: &Param) -> Value {
+    // A curve setting's default is the points the plugin added while describing itself.
+    if param.kind == "OfxParamTypeParametric" {
+        return match &*lock(&param.value) {
+            Value::Curves(c) => Value::Curves(c.clone()),
+            _ => Value::Curves(Vec::new()),
+        };
+    }
     if is_text(&param.kind) {
         Value::Text(
             CString::new(
@@ -167,6 +185,7 @@ unsafe fn write_value(p: &Param, outs: [*mut c_void; 4]) -> Status {
             // SAFETY: a text parameter's out pointer is a `const char **`.
             unsafe { out(outs[0].cast::<*const c_char>(), kept.as_ptr()) }
         }
+        Value::Curves(_) => ERR_UNKNOWN,
         Value::Numbers(n) => {
             let Some((count, ints)) = shape(&p.kind) else {
                 return ERR_UNKNOWN;

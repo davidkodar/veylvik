@@ -1448,22 +1448,34 @@ impl Renderer {
                 for (clip, read) in &reads {
                     pictures.push((*clip, self.map_values::<f32>(read, submission.clone())?));
                 }
-                let picture = host.render(effect_hook::EffectJob {
-                    effect,
-                    values: effect.values_at(time)?,
-                    frame: time.seconds()? * plan.frame_rate.seconds()?,
-                    width: plan.width,
-                    height: plan.height,
-                    inputs: pictures,
-                })?;
-                if picture.len() as u64 * 4 != byte_size {
-                    return Err(error("the OpenFX effect gave a picture of the wrong size"));
+                let mut delivered = None;
+                host.render(
+                    effect_hook::EffectJob {
+                        effect,
+                        values: effect.values_at(time)?,
+                        frame: time.seconds()? * plan.frame_rate.seconds()?,
+                        width: plan.width,
+                        height: plan.height,
+                        inputs: pictures,
+                    },
+                    &mut |picture| {
+                        delivered = Some(picture.len() as u64 * 4 == byte_size);
+                        if delivered == Some(true) {
+                            self.queue.write_buffer(
+                                &buffers[scheduled.output],
+                                0,
+                                bytemuck::cast_slice(picture),
+                            );
+                        }
+                    },
+                )?;
+                match delivered {
+                    Some(true) => {}
+                    Some(false) => {
+                        return Err(error("the OpenFX effect gave a picture of the wrong size"));
+                    }
+                    None => return Err(error("the OpenFX effect gave no picture")),
                 }
-                self.queue.write_buffer(
-                    &buffers[scheduled.output],
-                    0,
-                    bytemuck::cast_slice(&picture),
-                );
                 stale[scheduled.output] = false;
                 continue;
             }

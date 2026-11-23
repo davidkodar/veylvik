@@ -5,6 +5,8 @@ mod worker;
 pub use client::Worker;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
+/// A curve setting's value at a key, as the host evaluates it for plugins.
+pub use veylvik_interop::ofx::curve_value;
 pub use worker::serve;
 
 pub type Result<T> = std::result::Result<T, String>;
@@ -51,6 +53,14 @@ pub struct Param {
     pub display_max: Vec<f64>,
     pub options: Vec<String>,
     pub secret: bool,
+    /// A curve setting's default points ([key, value]) per curve, its key range and the
+    /// curves' names.
+    #[serde(default)]
+    pub curves: Vec<Vec<[f64; 2]>>,
+    #[serde(default)]
+    pub range: [f64; 2],
+    #[serde(default)]
+    pub curve_labels: Vec<String>,
 }
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Clip {
@@ -77,12 +87,15 @@ impl Description {
 pub enum Value {
     Numbers(Vec<f64>),
     Text(String),
+    /// A curve setting's points per curve.
+    Curves(Vec<Vec<[f64; 2]>>),
 }
 impl From<Value> for veylvik_interop::ofx::Value {
     fn from(v: Value) -> Self {
         match v {
             Value::Numbers(n) => Self::Numbers(n),
             Value::Text(t) => Self::Text(t),
+            Value::Curves(c) => Self::Curves(c),
         }
     }
 }

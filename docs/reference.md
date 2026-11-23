@@ -3088,21 +3088,29 @@ What a plugin sees:
   resolution (render scale 1), whatever the working space (inputs are converted to Rec.709);
 - time in frames of the composition (frame 0 is its start);
 - its settings as stored on the node (`settings`, by the plugin's own names): numbers as a list of
-  values per channel, each of which can be keyed in the file or over MCP, and text. Settings left
-  out keep the plugin's defaults. In Studio, changed settings are stored as constants, and
-  "Default" removes one again; keyed numbers are shown, not edited, in the inspector.
+  values per channel, each keyable; text; and curves (a curve setting's `[key, value]` points per
+  curve, in key order, not animated). Settings left out keep the plugin's defaults. The host
+  evaluates curves for the plugin with a monotone cubic through the points (no overshoot, flat
+  beyond the ends).
+
+In Studio the inspector shows the plugin's settings. A number setting's key button adds a key at
+the playhead (or removes the one there); once keyed, changing it where it has no key is a try-out,
+kept with Add keyframe or Ctrl+Enter, as for every other setting. Switches and choices do not
+animate (the host tells plugins so). A curve setting has a curve editor: drag a point, double-click
+to add one, right-click to remove one. "Default" returns a setting to the plugin's own. Keys on
+OpenFX settings are not shown on the timeline or in the curve editor yet. Ports are named by the
+plugin clip they feed (Source, A, Mask, ...), or "(not used)".
 
 Ports: `source`, `input_2`, `input_3` and `mask`, in that order, feed the plugin clips named in
 `clips` (in Studio: its picture inputs in order, then its mask). With no plugin chosen the source
 passes on unchanged; with nothing connected either, the node is clear.
 
 Not supported yet: plugins that read other frames (FrameHold, Retime and the like refuse to load),
-curve (parametric) settings, on-screen handles, OpenGL, CUDA or Metal rendering, stereo views, and
-8- or 16-bit-only plugins. `VEYLVIK_OFX_TRACE=FILE` records whatever a plugin asks of the host that
+on-screen handles, OpenGL, CUDA or Metal rendering, stereo views, and 8- or 16-bit-only plugins. `VEYLVIK_OFX_TRACE=FILE` records whatever a plugin asks of the host that
 the host does not have.
 
 Speed: each OpenFX node reads its inputs back from the graphics card and uploads its result. With
-shared memory, a plugin that does nothing costs about 7 ms a frame at 1080p and about 60 ms at 4K
+shared memory, a plugin that does nothing costs about 8 ms a frame at 1080p and about 33 ms at 4K
 (release build, measured with openfx-misc's NoOp); the plugin's own work comes on top.
 
 ## Nuke scripts

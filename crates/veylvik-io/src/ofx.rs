@@ -33,7 +33,7 @@ impl Runner {
             plugins: Mutex::new(HashMap::new()),
         }
     }
-    fn run(&self, job: EffectJob<'_>) -> Result<Vec<f32>, String> {
+    fn run(&self, job: EffectJob<'_>, deliver: &mut dyn FnMut(&[f32])) -> Result<(), String> {
         let effect = job.effect;
         let exe = self
             .exe
@@ -69,6 +69,7 @@ impl Runner {
                 let value = match value {
                     OfxValue::Numbers(n) => Value::Numbers(n),
                     OfxValue::Text(t) => Value::Text(t),
+                    OfxValue::Curves(c) => Value::Curves(c),
                 };
                 (name, value)
             })
@@ -78,15 +79,16 @@ impl Runner {
             .iter()
             .map(|(clip, p)| (*clip, p.as_slice()))
             .collect();
-        let (pixels, _) = worker.render(
+        worker.render_with(
             &plugin,
             effect.context.name(),
             [job.width, job.height],
             job.frame,
             &values,
             &inputs,
+            deliver,
         )?;
-        Ok(pixels)
+        Ok(())
     }
 }
 impl Default for Runner {
@@ -95,9 +97,13 @@ impl Default for Runner {
     }
 }
 impl EffectHost for Runner {
-    fn render(&self, job: EffectJob<'_>) -> veylvik_render::Result<Vec<f32>> {
+    fn render(
+        &self,
+        job: EffectJob<'_>,
+        deliver: &mut dyn FnMut(&[f32]),
+    ) -> veylvik_render::Result<()> {
         let plugin = job.effect.plugin.clone();
-        self.run(job)
+        self.run(job, deliver)
             .map_err(|e| Error::Message(format!("OpenFX effect {plugin}: {e}")))
     }
 }

@@ -31,7 +31,10 @@ typedef struct { OfxStatus (*paramDefine)(H,const char*,const char*,H*); OfxStat
   OfxStatus (*paramGetDerivative)(H,double,...); OfxStatus (*paramGetIntegral)(H,double,double,...);
   OfxStatus (*paramSetValue)(H,...); OfxStatus (*paramSetValueAtTime)(H,double,...); void *rest[8]; } ParamSuite;
 typedef struct { OfxStatus (*message)(H,const char*,const char*,const char*,...); } MessageSuite;
-static OfxHost *host; static PropSuite *props; static EffectSuite *effects; static ParamSuite *params; static MessageSuite *messages;
+typedef struct { OfxStatus (*getValue)(H,int,double,double,double*); OfxStatus (*getCount)(H,int,double,int*);
+  OfxStatus (*getNth)(H,int,double,int,double*,double*); OfxStatus (*setNth)(H,int,double,int,double,double,int);
+  OfxStatus (*add)(H,int,double,double,double,int); void *rest[2]; } CurveSuite;
+static OfxHost *host; static PropSuite *props; static EffectSuite *effects; static ParamSuite *params; static MessageSuite *messages; static CurveSuite *curves;
 static void setHost(OfxHost *h) { host = h; }
 static OfxStatus mainEntry(const char *action, const void *handle, H in, H out) {
   H effect = (H)handle, p, ps, param;
@@ -41,6 +44,7 @@ static OfxStatus mainEntry(const char *action, const void *handle, H in, H out) 
     effects = (EffectSuite *)host->fetchSuite(host->host, "OfxImageEffectSuite", 1);
     params = (ParamSuite *)host->fetchSuite(host->host, "OfxParameterSuite", 1);
     messages = (MessageSuite *)host->fetchSuite(host->host, "OfxMessageSuite", 1);
+    curves = (CurveSuite *)host->fetchSuite(host->host, "OfxParametricParameterSuite", 1);
     return props && effects && params && messages ? 0 : 4;
   }
   if (!strcmp(action, "OfxActionDescribe")) {
@@ -76,6 +80,13 @@ static OfxStatus mainEntry(const char *action, const void *handle, H in, H out) 
     params->paramDefine(ps, "OfxParamTypeInteger", "steps", &p);
     params->paramDefine(ps, "OfxParamTypeDouble2D", "centre", &p);
     params->paramDefine(ps, "OfxParamTypeString", "written", &p);
+    /* A curve: default points (0, 0) and (1, 0.5), added to the descriptor. */
+    params->paramDefine(ps, "OfxParamTypeParametric", "curve", &p);
+    props->setInt(p, "OfxParamPropParametricDimension", 0, 1);
+    props->setString(p, "OfxParamPropDimensionLabel", 0, "master");
+    params->paramGetHandle(ps, "curve", &param, 0);
+    curves->add(param, 0, 0.0, 0.0, 0.0, 0);
+    curves->add(param, 0, 0.0, 1.0, 0.5, 0);
     return 0;
   }
   if (!strcmp(action, "OfxActionCreateInstance")) {
@@ -104,7 +115,7 @@ static OfxStatus mainEntry(const char *action, const void *handle, H in, H out) 
     props->getPointer(dimg, "OfxImagePropData", 0, (void **)&dp);
     props->getIntN(dimg, "OfxImagePropBounds", 4, b);
     props->getInt(dimg, "OfxImagePropRowBytes", 0, &rows);
-    if (mode == 0) {
+    if (mode == 0 || mode == 3) {
       effects->clipGetHandle(effect, "Source", &src, 0);
       if (effects->clipGetImage(src, 0.0, 0, &simg)) { messages->message(effect, "OfxMessageError", 0, "%s", "no source, as the support library says it"); return 1; }
       props->getPointer(simg, "OfxImagePropData", 0, (void **)&sp);
@@ -117,6 +128,16 @@ static OfxStatus mainEntry(const char *action, const void *handle, H in, H out) 
       for (int x = 0; x < b[2] - b[0]; x++)
         for (int k = 0; k < 4; k++)
           d[x * 4 + k] = mode == 0 ? (float)(s[x * 4 + k] * gain + (k < 3 ? up : 0.0)) : (float)c[k];
+    if (mode == 3) {
+      /* The curve applied to the source: read through the host's evaluation. */
+      H curve; double v;
+      params->paramGetHandle(ps, "curve", &curve, 0);
+      for (int y = b[1]; y < b[3]; y++) {
+        float *d = (float *)((char *)dp + (size_t)(y - b[1]) * rows);
+        float *s = (float *)((char *)sp + (size_t)(y - b[1]) * rowsS);
+        for (int x = 0; x < (b[2] - b[0]) * 4; x++) { curves->getValue(curve, 0, 0.0, s[x], &v); d[x] = (float)v; }
+      }
+    }
     }
     if (simg) effects->clipReleaseImage(simg);
     effects->clipReleaseImage(dimg);
