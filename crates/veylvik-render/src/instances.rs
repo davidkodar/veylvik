@@ -119,7 +119,8 @@ impl Renderer {
         let row = (p.values[1] as u32).max(1);
         let mut encoder = self.device.create_command_encoder(&Default::default());
         {
-            let pipeline = self.pipeline(Kernel::ParticleInstances)?;
+            let pipeline =
+                self.pipeline_for(Kernel::ParticleInstances, nodes::particles::features_of(me))?;
             let mut pass = encoder.begin_compute_pass(&Default::default());
             pass.set_pipeline(&pipeline);
             pass.set_bind_group(0, &group, &[]);

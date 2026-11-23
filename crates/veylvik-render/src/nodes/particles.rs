@@ -415,6 +415,22 @@ pub(crate) fn tiles_of(width: u32, height: u32) -> u32 {
 const MAX_THREADS: u64 = 4_000_000;
 /// The splat's threads: (particles, burst particles each, all threads). Particles come
 /// first, then each one's burst; a burst too large for the limit is made smaller.
+/// Particle features compiled into a particle program only when a system uses them:
+/// bouncing off a scene's solids, and Force nodes.
+pub(crate) const SOLIDS: u32 = 1;
+pub(crate) const FORCES: u32 = 2;
+pub(crate) const ALL_FEATURES: u32 = SOLIDS | FORCES;
+/// The features a node's particle programs need (none for other nodes).
+pub(crate) fn features_of(node: &veylvik_document::Node) -> u32 {
+    match &node.operation {
+        Operation::Particles(p) => {
+            let scene = node.inputs.contains_key("scene");
+            (u32::from(p.collide && scene) * SOLIDS)
+                | (u32::from(node.inputs.contains_key("forces")) * FORCES)
+        }
+        _ => 0,
+    }
+}
 /// Most particles in a flock (two values each of the frame's buffer hold its state).
 pub(crate) const FLOCK_MOST: u32 = 65_536;
 /// Whether particles steer by one another, and so are simulated.

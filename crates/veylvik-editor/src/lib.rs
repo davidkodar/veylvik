@@ -4588,6 +4588,14 @@ impl Studio {
                                     Operation::Text(veylvik_document::nodes::Text { .. }) | Operation::Path(veylvik_document::nodes::Path { .. })
                                 ))
                             && (self.text_viewer.active || root == self.draft.id
+                                // Particles and the forces on them have handles in the frame's
+                                // pixels, which line up wherever their particles are merged.
+                                || (matches!(self.draft.operation, Operation::Particles(_) | Operation::Force(_))
+                                    && veylvik_document::occlusion::depends_on(
+                                        self.project.document.snapshot(),
+                                        root,
+                                        self.draft.id,
+                                    ))
                                 || veylvik_document::occlusion::find(
                                     self.project.document.snapshot(),
                                     self.draft.id,

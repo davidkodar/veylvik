@@ -255,7 +255,7 @@ impl Renderer {
             (Kernel::ParticleFlockGrid, &gather),
             (Kernel::ParticleStep, &step),
         ] {
-            let pipeline = self.pipeline(kernel)?;
+            let pipeline = self.pipeline_for(kernel, nodes::particles::features_of(me))?;
             let mut pass = encoder.begin_compute_pass(&Default::default());
             pass.set_pipeline(&pipeline);
             pass.set_bind_group(0, bind, &[]);

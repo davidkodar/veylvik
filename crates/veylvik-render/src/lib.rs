@@ -218,7 +218,8 @@ pub struct Renderer {
     shader: wgpu::ShaderModule,
     /// The particle passes' module: the same layout, with the output as atomics.
     particle_shader: wgpu::ShaderModule,
-    pipelines: std::sync::Mutex<BTreeMap<Kernel, wgpu::ComputePipeline>>,
+    /// Compiled kernels, by kernel and the particle features compiled in (see `features`).
+    pipelines: std::sync::Mutex<BTreeMap<(Kernel, u32), wgpu::ComputePipeline>>,
     /// Compiled programs kept between runs, once the host asks for it.
     pipeline_cache: std::sync::Mutex<Option<Arc<pipeline_cache::Kept>>>,
     /// The kernels' pipeline layout, for custom shaders compiled later.
@@ -792,11 +793,27 @@ impl Renderer {
     /// A kernel's pipeline, compiled on first use: the driver's compile of all of
     /// them took far longer than starting the renderer, and a graph uses a handful.
     fn pipeline(&self, kernel: Kernel) -> Result<wgpu::ComputePipeline> {
+        self.pipeline_for(kernel, nodes::particles::ALL_FEATURES)
+    }
+    /// A kernel's pipeline with only the particle `features` compiled in (other kernels
+    /// have none): a particle program without collisions or forces compiles in a sixth
+    /// of the time, as the driver leaves that code out.
+    pub(crate) fn pipeline_for(
+        &self,
+        kernel: Kernel,
+        features: u32,
+    ) -> Result<wgpu::ComputePipeline> {
+        let particle = kernel.entry().starts_with("particle_");
+        let features = if particle {
+            features & nodes::particles::ALL_FEATURES
+        } else {
+            0
+        };
         if let Some(pipeline) = self
             .pipelines
             .lock()
             .map_err(|_| error("kernel pipelines lock poisoned"))?
-            .get(&kernel)
+            .get(&(kernel, features))
         {
             return Ok(pipeline.clone());
         }
@@ -807,6 +824,13 @@ impl Renderer {
         // kernel the first time, and a render that needs another must not wait for it.
         // Two threads may then compile the same one; the second's is simply used.
         let kept = self.kept_pipelines();
+        let constants = [
+            ("SOLIDS", f64::from(features & nodes::particles::SOLIDS)),
+            (
+                "FORCES",
+                f64::from((features & nodes::particles::FORCES) >> 1),
+            ),
+        ];
         let compiling = std::time::Instant::now();
         let pipeline = self
             .device
@@ -819,14 +843,17 @@ impl Renderer {
                     &self.shader
                 },
                 entry_point: Some(kernel.entry()),
-                compilation_options: Default::default(),
+                compilation_options: wgpu::PipelineCompilationOptions {
+                    constants: if particle { &constants } else { &[] },
+                    ..Default::default()
+                },
                 cache: kept.as_ref().map(|kept| &kept.cache),
             });
         COMPILED.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         self.pipelines
             .lock()
             .map_err(|_| error("kernel pipelines lock poisoned"))?
-            .insert(kernel, pipeline.clone());
+            .insert((kernel, features), pipeline.clone());
         // A slow compile is worth keeping at once, written off this thread.
         if compiling.elapsed() > std::time::Duration::from_millis(200) {
             self.save_pipelines_later();
@@ -838,8 +865,13 @@ impl Renderer {
     /// many seconds. Meant for a thread of its own; renders go on meanwhile.
     pub fn compile_for(&self, plan: &Plan) -> Result<usize> {
         let mut kernels = std::collections::BTreeSet::new();
-        fn gather(plan: &Plan, kernels: &mut std::collections::BTreeSet<Kernel>) {
-            kernels.extend(plan.passes.iter().map(|pass| pass.kernel));
+        fn gather(plan: &Plan, kernels: &mut std::collections::BTreeSet<(Kernel, u32)>) {
+            kernels.extend(plan.passes.iter().map(|pass| {
+                (
+                    pass.kernel,
+                    nodes::particles::features_of(&plan.nodes[pass.node]),
+                )
+            }));
             for branch in &plan.temporal {
                 gather(&branch.plan, kernels);
             }
@@ -848,8 +880,8 @@ impl Renderer {
         let scope = self.device.push_error_scope(wgpu::ErrorFilter::Validation);
         let built = kernels
             .into_iter()
-            .filter(|kernel| Kernel::ALL.contains(kernel))
-            .map(|kernel| self.pipeline(kernel))
+            .filter(|(kernel, _)| Kernel::ALL.contains(kernel))
+            .map(|(kernel, features)| self.pipeline_for(kernel, features))
             .collect::<Result<Vec<_>>>();
         if let Some(e) = pollster::block_on(scope.pop()) {
             return Err(error(e));
@@ -1539,7 +1571,9 @@ impl Renderer {
                     self.custom
                         .pipeline(&self.device, &self.pipeline_layout, &shader.code)?,
                 ),
-                _ => Some(self.pipeline(scheduled.kernel)?),
+                _ => {
+                    Some(self.pipeline_for(scheduled.kernel, nodes::particles::features_of(node))?)
+                }
             };
             // Particles add into their output, so it starts from zero; so does a pass run
             // over its box only, since it is clear everywhere else.

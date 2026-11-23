@@ -4,7 +4,7 @@
 const SOLID_HEAD = 12u;
 fn solid_value(k: u32) -> f32 { return surface_at(u32(camera_row(114u)) + k); }
 fn solid_count() -> u32 {
-    if camera_row(115u) < 0.5 { return 0u; }
+    if !SOLIDS || camera_row(115u) < 0.5 { return 0u; }
     return u32(solid_value(0u));
 }
 fn solid_base(i: u32) -> u32 { return 1u + i * (SOLID_HEAD + ROWS * 12u); }
@@ -115,7 +115,7 @@ fn solid_hit(at: vec3<f32>, next: vec3<f32>, t: f32) -> vec2<f32> {
 const FORCE_VALUES = 12u;
 fn force_value(k: u32) -> f32 { return surface_at(u32(camera_row(116u)) + k); }
 fn force_count() -> u32 {
-    if camera_row(117u) < 0.5 { return 0u; }
+    if !FORCES || camera_row(117u) < 0.5 { return 0u; }
     return min(u32(force_value(0u)), 8u);
 }
 fn force_base(i: u32) -> u32 { return 1u + i * (1u + ROWS * FORCE_VALUES); }
