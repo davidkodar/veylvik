@@ -575,6 +575,8 @@ impl Library {
             index,
             effect,
             size: [width, height],
+            scratch: Vec::new(),
+            output: Vec::new(),
         })
     }
 }
@@ -615,17 +617,30 @@ pub struct Instance<'l> {
     index: usize,
     effect: Box<Effect>,
     size: [u32; 2],
+    /// Each input's picture in the plugin's row order, and the output, kept between
+    /// renders so a frame costs no fresh allocation.
+    scratch: Vec<Vec<f32>>,
+    output: Vec<f32>,
 }
-/// Rows in the other order (OpenFX counts rows from the bottom).
-fn flipped(pixels: &[f32], width: u32, height: u32) -> Vec<f32> {
+/// Copies `from` into `to` with its rows in the other order (OpenFX counts rows from
+/// the bottom), on a few threads: a 4K frame is 133 MB.
+fn flip_into(from: &[f32], to: &mut [f32], width: u32) {
     let row = width as usize * 4;
-    pixels
-        .chunks_exact(row)
-        .take(height as usize)
-        .rev()
-        .flatten()
-        .copied()
-        .collect()
+    let rows = to.len() / row.max(1);
+    let threads = std::thread::available_parallelism()
+        .map_or(1, |n| n.get())
+        .clamp(1, 8);
+    let band = rows.div_ceil(threads).max(1);
+    std::thread::scope(|s| {
+        for (k, part) in to.chunks_mut(band * row).enumerate() {
+            s.spawn(move || {
+                for (r, line) in part.chunks_exact_mut(row).enumerate() {
+                    let source = rows - 1 - (k * band + r);
+                    line.copy_from_slice(&from[source * row..(source + 1) * row]);
+                }
+            });
+        }
+    });
 }
 impl Instance<'_> {
     pub fn size(&self) -> [u32; 2] {
@@ -649,7 +664,23 @@ impl Instance<'_> {
         inputs: &[(&str, Frame<'_>)],
     ) -> Result<Vec<f32>> {
         let [w, h] = self.size;
+        let mut out = vec![0.0f32; w as usize * h as usize * 4];
+        self.render_into(time, values, inputs, &mut out)?;
+        Ok(out)
+    }
+    /// As [`Instance::render`], into `out` (a frame of the instance's size, top row first).
+    pub fn render_into(
+        &mut self,
+        time: f64,
+        values: &[(String, Value)],
+        inputs: &[(&str, Frame<'_>)],
+        out: &mut [f32],
+    ) -> Result<()> {
+        let [w, h] = self.size;
         let pixels = w as usize * h as usize * 4;
+        if out.len() != pixels {
+            return Err(format!("the output is not {w} x {h}"));
+        }
         {
             let params = suites_lock(&self.effect.params.params);
             for (name, value) in values {
@@ -663,9 +694,13 @@ impl Instance<'_> {
             }
         }
         self.effect.props.double("VeylvikTime", &[time]);
-        // Inputs stay in these buffers (bottom row first) for the length of the render.
-        let mut kept: Vec<Vec<f32>> = Vec::new();
-        let mut output = vec![0.0f32; pixels];
+        // Inputs stay in these buffers (bottom row first) for the length of the render;
+        // the output starts clear, as a plugin may leave parts of it untouched.
+        if self.scratch.len() < inputs.len() {
+            self.scratch.resize_with(inputs.len(), Vec::new);
+        }
+        self.output.resize(pixels, 0.0);
+        self.output.fill(0.0);
         {
             let clips = suites_lock(&self.effect.clips);
             for clip in clips.values() {
@@ -682,8 +717,11 @@ impl Instance<'_> {
                         frame.width, frame.height
                     ));
                 }
-                kept.push(flipped(frame.pixels, w, h));
-                let data = kept.last().map_or(0, |k| k.as_ptr() as usize);
+                let k = inputs.iter().position(|(n, _)| n == name).unwrap_or(0);
+                let scratch = &mut self.scratch[k];
+                scratch.resize(pixels, 0.0);
+                flip_into(frame.pixels, scratch, w);
+                let data = scratch.as_ptr() as usize;
                 *suites_lock(&clip.pixels) = Some(Pixels {
                     data,
                     width: w as i32,
@@ -693,7 +731,7 @@ impl Instance<'_> {
             }
             let out = clips.get("Output").ok_or("the effect has no Output clip")?;
             *suites_lock(&out.pixels) = Some(Pixels {
-                data: output.as_mut_ptr() as usize,
+                data: self.output.as_mut_ptr() as usize,
                 width: w as i32,
                 height: h as i32,
             });
@@ -745,9 +783,11 @@ impl Instance<'_> {
         for clip in suites_lock(&self.effect.clips).values() {
             *suites_lock(&clip.pixels) = None;
         }
-        drop(kept);
         match status {
-            OK | REPLY_DEFAULT => Ok(flipped(&output, w, h)),
+            OK | REPLY_DEFAULT => {
+                flip_into(&self.output, out, w);
+                Ok(())
+            }
             s => Err(format!("the render failed (status {s}){}", said())),
         }
     }

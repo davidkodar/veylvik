@@ -12,6 +12,7 @@ pub mod lut;
 pub mod materials;
 pub mod measure;
 pub mod model;
+pub mod ofx;
 pub mod placing;
 pub mod presets;
 pub mod preview;

@@ -14,6 +14,9 @@ pub enum Kernel {
     /// Where a flock's particles are at the frame, simulated by the renderer over many
     /// steps of the two kernels below (not in `ALL`: no program of its own).
     ParticleSimulation,
+    /// A node computed outside the renderer by the registered effect host (an OpenFX
+    /// plugin), not a compute kernel (not in `ALL`).
+    External,
     /// A custom shader node: its pipeline is compiled from the node's code.
     Custom,
     ToAcescg,
@@ -239,6 +242,7 @@ impl Kernel {
             Self::RenderScene => "render_scene",
             Self::ParticleShadows => "particle_shadows",
             Self::ParticleSimulation => "particle_simulation",
+            Self::External => "external",
             Self::ParticleFlockGrid => "particle_flock_grid",
             Self::ParticleStep => "particle_step",
             Self::ParticleInstances => "particle_instances",
@@ -779,10 +783,10 @@ impl Plan {
             }
             // Preserve authored nodes, but alias exact constant identity effects
             // before lifetime assignment so they need no dispatch or image slot.
-            if identity(&node.operation) {
-                let Input::Value(value) = inputs[0] else {
-                    unreachable!()
-                };
+            // (Only with something to pass on: an optional first input may be unwired.)
+            if identity(&node.operation)
+                && let Input::Value(value) = inputs[0]
+            {
                 outputs.insert(node.id, value);
                 continue;
             }

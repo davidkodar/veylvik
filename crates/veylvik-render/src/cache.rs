@@ -100,6 +100,29 @@ fn pass_words(
         let code = hasher.finish();
         words.extend([5, code as u32, (code >> 32) as u32]);
     }
+    if let veylvik_document::Operation::OfxEffect(effect) = &plan.nodes[pass.node].operation {
+        // Which plugin, how it is wired and its settings at this moment make its picture.
+        use std::hash::{Hash, Hasher};
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        (
+            &effect.bundle,
+            &effect.plugin,
+            effect.context.name(),
+            &effect.clips,
+        )
+            .hash(&mut hasher);
+        for (name, value) in effect.values_at(request.time)? {
+            name.hash(&mut hasher);
+            match value {
+                veylvik_document::nodes::OfxValue::Numbers(n) => {
+                    n.iter().for_each(|v| v.to_bits().hash(&mut hasher))
+                }
+                veylvik_document::nodes::OfxValue::Text(t) => t.hash(&mut hasher),
+            }
+        }
+        let made = hasher.finish();
+        words.extend([8, made as u32, (made >> 32) as u32]);
+    }
     if pass.kernel == crate::Kernel::ParticleSimulation {
         // A flock at a frame is made of its whole path there: key all it depends on.
         let key = crate::simulation::key(plan, pass.node);

@@ -58,6 +58,7 @@ mod node_thumbnails;
 mod nodes;
 mod nuke_import;
 mod occlusion;
+mod ofx_inspector;
 mod pages;
 mod path_edit;
 mod path_handles;
@@ -709,6 +710,7 @@ impl Studio {
                 renderer.pipeline_cache().as_ref(),
             ))
         });
+        renderer.ensure_effect_host(|| Arc::new(veylvik_io::ofx::Runner::new()));
         let context = setup.context.clone();
         let scheduler = GpuPreviewScheduler::with_renderer(renderer.clone(), move || {
             context.request_repaint()

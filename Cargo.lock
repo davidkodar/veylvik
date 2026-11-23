@@ -4282,6 +4282,7 @@ dependencies = [
  "veylvik-expr",
  "veylvik-io",
  "veylvik-nuke",
+ "veylvik-ofx",
  "veylvik-presets",
  "veylvik-preview",
  "veylvik-render",
@@ -4306,8 +4307,11 @@ name = "veylvik-interop"
 version = "0.1.0"
 dependencies = [
  "ash",
+ "bytemuck",
  "cudarc",
  "libloading 0.8.9",
+ "memmap2",
+ "rustix 1.1.6",
  "wgpu",
 ]
 
@@ -4329,6 +4333,7 @@ dependencies = [
  "veylvik-decode",
  "veylvik-document",
  "veylvik-mesh",
+ "veylvik-ofx",
  "veylvik-render",
  "veylvik-render3d",
  "veylvik-scene",

@@ -36,6 +36,7 @@ mod plan;
 mod pool;
 mod results;
 pub use pipeline_cache::default_pipeline_folder;
+pub mod effect_hook;
 mod instances;
 mod preview_scale;
 mod probe;
@@ -254,6 +255,7 @@ pub struct Renderer {
     results: Mutex<results::Results>,
     flow_engine: Mutex<Option<Arc<flow::Engine>>>,
     scene_renderer: std::sync::RwLock<Option<Arc<dyn SceneRenderer>>>,
+    effect_host: std::sync::RwLock<Option<Arc<dyn effect_hook::EffectHost>>>,
     /// One 3D render gives both the picture and the depth picture when two Render scene
     /// nodes film the same scene the same way. On unless switched off to compare.
     pub share_scene_renders: bool,
@@ -301,6 +303,20 @@ pub fn device_limits(adapter: &wgpu::Adapter) -> wgpu::Limits {
 }
 impl Renderer {
     /// Register what draws Render scene nodes (the host's 3D renderer).
+    /// Registers what runs OpenFX effects; without one they fail with a clear error.
+    pub fn set_effect_host(&self, host: Arc<dyn effect_hook::EffectHost>) {
+        if let Ok(mut slot) = self.effect_host.write() {
+            *slot = Some(host);
+        }
+    }
+    /// Registers an effect host made by `make` unless one is registered already.
+    pub fn ensure_effect_host(&self, make: impl FnOnce() -> Arc<dyn effect_hook::EffectHost>) {
+        if let Ok(mut slot) = self.effect_host.write()
+            && slot.is_none()
+        {
+            *slot = Some(make());
+        }
+    }
     pub fn set_scene_renderer(&self, renderer: Arc<dyn SceneRenderer>) {
         if let Ok(mut slot) = self.scene_renderer.write() {
             *slot = Some(renderer);
@@ -560,6 +576,7 @@ impl Renderer {
             ocio_cache: Mutex::new(Default::default()),
             flow_engine: Mutex::new(None),
             scene_renderer: std::sync::RwLock::new(None),
+            effect_host: std::sync::RwLock::new(None),
             pass_times: Mutex::new(None),
             noted: Mutex::new(std::time::Instant::now()),
             share_scene_renders: true,
@@ -1379,6 +1396,77 @@ impl Renderer {
                 })?;
                 continue;
             }
+            if scheduled.kernel == Kernel::External {
+                // No plugin chosen and nothing to pass on (else the plan passed it on).
+                if matches!(&plan.nodes[scheduled.node].operation, Operation::OfxEffect(e) if e.plugin.is_empty())
+                {
+                    encoder.clear_buffer(&buffers[scheduled.output], 0, None);
+                    stale[scheduled.output] = false;
+                    continue;
+                }
+                // Computed by the host: what came before is finished on the card, the
+                // inputs are read back, and the host's picture is uploaded in its place.
+                let host = self
+                    .effect_host
+                    .read()
+                    .map_err(|_| error("effect host lock poisoned"))?
+                    .clone()
+                    .ok_or_else(|| {
+                        error("OpenFX effects need the effect host, which this host has not loaded")
+                    })?;
+                let Operation::OfxEffect(effect) = &plan.nodes[scheduled.node].operation else {
+                    return Err(error("an external pass belongs to an OpenFX effect"));
+                };
+                let mut reads = Vec::new();
+                for (port, input) in scheduled.inputs.iter().enumerate() {
+                    let clip = effect.clips.get(port).map(String::as_str).unwrap_or("");
+                    match input {
+                        plan::Input::Value(slot) if !clip.is_empty() => {
+                            let read = self.device.create_buffer(&wgpu::BufferDescriptor {
+                                label: Some("effect input"),
+                                size: byte_size,
+                                usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+                                mapped_at_creation: false,
+                            });
+                            encoder.copy_buffer_to_buffer(&buffers[*slot], 0, &read, 0, byte_size);
+                            reads.push((clip, read));
+                        }
+                        plan::Input::Empty | plan::Input::Value(_) => {}
+                        _ => {
+                            return Err(error(
+                                "an OpenFX effect reads only pictures of the frame's size",
+                            ));
+                        }
+                    }
+                }
+                let done = std::mem::replace(
+                    &mut encoder,
+                    self.device.create_command_encoder(&Default::default()),
+                );
+                let submission = self.queue.submit([done.finish()]);
+                let mut pictures = Vec::with_capacity(reads.len());
+                for (clip, read) in &reads {
+                    pictures.push((*clip, self.map_values::<f32>(read, submission.clone())?));
+                }
+                let picture = host.render(effect_hook::EffectJob {
+                    effect,
+                    values: effect.values_at(time)?,
+                    frame: time.seconds()? * plan.frame_rate.seconds()?,
+                    width: plan.width,
+                    height: plan.height,
+                    inputs: pictures,
+                })?;
+                if picture.len() as u64 * 4 != byte_size {
+                    return Err(error("the OpenFX effect gave a picture of the wrong size"));
+                }
+                self.queue.write_buffer(
+                    &buffers[scheduled.output],
+                    0,
+                    bytemuck::cast_slice(&picture),
+                );
+                stale[scheduled.output] = false;
+                continue;
+            }
             if scheduled.kernel == Kernel::RenderScene {
                 let renderer = self
                     .scene_renderer
@@ -1772,6 +1860,7 @@ impl Renderer {
                     | Kernel::GrainNoiseHorizontal
                     | Kernel::Custom
                     | Kernel::RenderScene
+                    | Kernel::External
                     | Kernel::ParticleShadows
             ) && !kernel.entry().starts_with("particle_")
         };

@@ -3070,6 +3070,41 @@ last colours, the innermost clip of nested ones is used, no text, embedded
 pictures, patterns or masks (their count is reported as left out), at most 64
 shapes, and the usual 4096 commands per path. Reading uses the `usvg` library.
 
+## OpenFX plugins
+
+The **OpenFX effect** node runs an OpenFX image-effect plugin (`.ofx.bundle`). Plugins are
+looked for in `OFX_PLUGIN_PATH` (folders separated by `:`), `/usr/OFX/Plugins` and
+`/usr/local/OFX/Plugins`; `veylvik ofx list [FOLDER...]` lists what is found and
+`veylvik ofx describe BUNDLE INDEX` prints a plugin's inputs and settings.
+
+Plugins run in a helper process, `veylvik ofx-worker`, never in Studio or the renderer itself: a
+plugin that crashes or hangs (two minutes a frame) fails that node's render with a message and
+the next render starts a new helper. Frames go to the helper and back in shared memory (a memory
+file only the two processes share), falling back to pipes if it cannot be made.
+
+What a plugin sees:
+
+- premultiplied, scene-linear Rec.709 RGBA float frames of the composition's size, at full
+  resolution (render scale 1), whatever the working space (inputs are converted to Rec.709);
+- time in frames of the composition (frame 0 is its start);
+- its settings as stored on the node (`settings`, by the plugin's own names): numbers as a list of
+  values per channel, each of which can be keyed in the file or over MCP, and text. Settings left
+  out keep the plugin's defaults. In Studio, changed settings are stored as constants, and
+  "Default" removes one again; keyed numbers are shown, not edited, in the inspector.
+
+Ports: `source`, `input_2`, `input_3` and `mask`, in that order, feed the plugin clips named in
+`clips` (in Studio: its picture inputs in order, then its mask). With no plugin chosen the source
+passes on unchanged; with nothing connected either, the node is clear.
+
+Not supported yet: plugins that read other frames (FrameHold, Retime and the like refuse to load),
+curve (parametric) settings, on-screen handles, OpenGL, CUDA or Metal rendering, stereo views, and
+8- or 16-bit-only plugins. `VEYLVIK_OFX_TRACE=FILE` records whatever a plugin asks of the host that
+the host does not have.
+
+Speed: each OpenFX node reads its inputs back from the graphics card and uploads its result. With
+shared memory, a plugin that does nothing costs about 7 ms a frame at 1080p and about 60 ms at 4K
+(release build, measured with openfx-misc's NoOp); the plugin's own work comes on top.
+
 ## Nuke scripts
 
 `veylvik import-nuke SCRIPT.nk NEW_FILE` (or File > Import Nuke script in Studio) rebuilds a Nuke

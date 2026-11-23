@@ -192,6 +192,7 @@ pub(crate) const ADD_MENU: [(&str, &[&registry::NodeType]); 10] = [
             &veylvik_document::nodes::LIGHT_WRAP,
             &veylvik_document::nodes::ZOOM_BLUR,
             &registry::SHADER,
+            &veylvik_document::nodes::OFX_EFFECT,
             &registry::MATCH_GRAIN,
             &registry::LENS_BLUR,
         ],

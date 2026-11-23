@@ -67,6 +67,14 @@ pub enum ParameterKind {
     FilePath,
     /// A plain [x, y, z].
     Vector3,
+    /// An OpenFX plugin's identifier.
+    OfxPlugin,
+    /// filter, general or generator.
+    OfxContext,
+    /// The plugin clip each port feeds.
+    OfxClips,
+    /// An OpenFX plugin's settings by name.
+    OfxSettings,
 }
 #[derive(Debug, Clone, Copy, Serialize)]
 pub struct Parameter {
@@ -137,6 +145,10 @@ impl Parameter {
             ParameterKind::Points3 => json!([]),
             ParameterKind::LifeCurve | ParameterKind::LifeColours => json!(null),
             ParameterKind::FilePath => json!(""),
+            ParameterKind::OfxPlugin => json!(""),
+            ParameterKind::OfxContext => json!(crate::nodes::OfxContext::Filter),
+            ParameterKind::OfxClips => json!(["Source"]),
+            ParameterKind::OfxSettings => json!({}),
             ParameterKind::Vector3 => json!([1.0, 1.0, 1.0]),
         }
     }
@@ -183,6 +195,20 @@ impl Parameter {
                 json!({"anyOf":[{"type":"null"},{"type":"object","description":"A Text surface (material) definition: the parameters of a material node without its type."}]})
             }
             ParameterKind::FilePath => json!({"type":"string","maxLength":4096}),
+            ParameterKind::OfxPlugin => json!({"type":"string","maxLength":1024}),
+            ParameterKind::OfxContext => {
+                json!({"type":"string","enum":["filter","general","generator"]})
+            }
+            ParameterKind::OfxClips => {
+                json!({"type":"array","maxItems":4,"items":{"type":"string","maxLength":256}})
+            }
+            ParameterKind::OfxSettings => json!({
+                "type":"object","maxProperties":crate::nodes::OFX_MAX_SETTINGS,
+                "additionalProperties":{"oneOf":[
+                    {"type":"array","minItems":1,"maxItems":4,"items":scalar_schema(None, None)},
+                    {"type":"string","maxLength":65536}
+                ]}
+            }),
             ParameterKind::Vector3 => {
                 json!({"type":"array","minItems":3,"maxItems":3,"items":{"type":"number"}})
             }
@@ -406,6 +432,7 @@ pub static TYPES: &[&NodeType] = &[
     &crate::nodes::PARTICLE_INSTANCES,
     &crate::nodes::CAMERA_PROJECTION,
     &crate::nodes::GAUSSIAN_SPLATS,
+    &crate::nodes::OFX_EFFECT,
     &SOUND,
     &crate::nodes::SHADOW,
     &crate::nodes::CONTACT_SHADOW,

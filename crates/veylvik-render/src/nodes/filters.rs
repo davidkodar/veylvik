@@ -768,3 +768,14 @@ impl RenderNode for veylvik_document::nodes::ShapeWarp {
         Ok(())
     }
 }
+
+/// Computed by the registered effect host (see `effect_hook`); with no plugin chosen the
+/// source passes on.
+impl RenderNode for veylvik_document::nodes::OfxEffect {
+    fn passes(&self) -> Passes {
+        Passes::One(Kernel::External)
+    }
+    fn identity(&self) -> bool {
+        self.plugin.is_empty()
+    }
+}

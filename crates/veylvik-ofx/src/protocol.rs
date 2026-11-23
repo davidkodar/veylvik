@@ -18,7 +18,9 @@ pub enum Request {
         index: usize,
         context: String,
     },
-    /// The payload is one picture per name in `inputs`, in that order.
+    /// The payload is one picture per name in `inputs`, in that order; with `shared`
+    /// the pictures are in the shared memory instead, one after another, and the
+    /// output goes after them.
     Render {
         bundle: String,
         index: usize,
@@ -28,6 +30,8 @@ pub enum Request {
         time: f64,
         values: Vec<(String, Value)>,
         inputs: Vec<String>,
+        #[serde(default)]
+        shared: bool,
     },
     Quit,
 }

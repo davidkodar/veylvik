@@ -145,7 +145,8 @@ fn mem_total_bytes(meminfo: &str) -> Option<u64> {
 fn source_budget_for(total: Option<u64>) -> u64 {
     total.map_or(256 * MIB, |total| (total / 16).clamp(256 * MIB, 2048 * MIB))
 }
-/// A headless renderer with its limits applied and the 3D renderer registered.
+/// A headless renderer with its limits applied and the 3D renderer and OpenFX host
+/// registered.
 pub fn renderer() -> Result<Renderer> {
     let limits = RenderLimits::from_env()?;
     let mut renderer = Renderer::new()?;
@@ -157,6 +158,7 @@ pub fn renderer() -> Result<Renderer> {
         renderer.device(),
         renderer.pipeline_cache().as_ref(),
     )));
+    renderer.set_effect_host(std::sync::Arc::new(crate::ofx::Runner::new()));
     Ok(renderer)
 }
 #[cfg(test)]

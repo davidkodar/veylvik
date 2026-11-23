@@ -8,6 +8,9 @@ rust-version.workspace = true
 wgpu.workspace = true
 ash = "=0.38.0"
 libloading = "=0.8.9"
+memmap2 = "=0.9.12"
+rustix = { version = "=1.1.6", features = ["fs"] }
+bytemuck.workspace = true
 cudarc = { version = "=0.13.9", default-features = false, features = ["std", "driver", "cuda-12000"] }
 [lints.rust]
 unsafe_op_in_unsafe_fn = "deny"

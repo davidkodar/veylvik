@@ -10,6 +10,7 @@ type Key = (String, usize, String, u32, u32);
 struct State {
     libraries: HashMap<String, &'static Library>,
     instances: HashMap<Key, Instance<'static>>,
+    shared: Option<veylvik_interop::shm::Shared>,
 }
 impl State {
     fn library(&mut self, bundle: &str) -> Result<&'static Library> {
@@ -105,9 +106,16 @@ impl State {
                 time,
                 values,
                 inputs,
+                shared,
             } => {
                 let pixels = width as usize * height as usize * 4;
-                if payload.len() != pixels * inputs.len() {
+                if shared {
+                    let memory = self
+                        .shared
+                        .as_mut()
+                        .ok_or("this helper has no shared memory")?;
+                    memory.reserve(((inputs.len() + 1) * pixels * 4) as u64, false)?;
+                } else if payload.len() != pixels * inputs.len() {
                     return Err("the pictures sent do not match the size asked for".into());
                 }
                 let lib = self.library(&bundle)?;
@@ -117,21 +125,47 @@ impl State {
                     self.instances.insert(key.clone(), instance);
                 }
                 let instance = self.instances.get_mut(&key).ok_or("no instance")?;
-                let frames: Vec<(&str, Frame<'_>)> = inputs
-                    .iter()
-                    .zip(payload.chunks_exact(pixels.max(1)))
-                    .map(|(name, pixels)| {
+                let values: Vec<_> = values.into_iter().map(|(n, v)| (n, v.into())).collect();
+                let framed = |source: &[f32]| -> Vec<(usize, std::ops::Range<usize>)> {
+                    (0..inputs.len())
+                        .map(|k| (k, k * pixels..(k + 1) * pixels))
+                        .filter(|(_, r)| r.end <= source.len())
+                        .collect()
+                };
+                // Straight into the shared memory when the frames came that way: the inputs
+                // are read where they lie and the output written after them.
+                if shared && let Some(memory) = self.shared.as_mut() {
+                    let (source, out) = memory.parts(inputs.len() * pixels, pixels)?;
+                    let frames: Vec<(&str, Frame<'_>)> = framed(source)
+                        .into_iter()
+                        .map(|(k, r)| {
+                            (
+                                inputs[k].as_str(),
+                                Frame {
+                                    pixels: &source[r],
+                                    width,
+                                    height,
+                                },
+                            )
+                        })
+                        .collect();
+                    instance.render_into(time, &values, &frames, out)?;
+                    reply.messages = veylvik_interop::ofx::messages();
+                    return Ok((reply, Vec::new()));
+                }
+                let frames: Vec<(&str, Frame<'_>)> = framed(&payload)
+                    .into_iter()
+                    .map(|(k, r)| {
                         (
-                            name.as_str(),
+                            inputs[k].as_str(),
                             Frame {
-                                pixels,
+                                pixels: &payload[r],
                                 width,
                                 height,
                             },
                         )
                     })
                     .collect();
-                let values: Vec<_> = values.into_iter().map(|(n, v)| (n, v.into())).collect();
                 let out = instance.render(time, &values, &frames)?;
                 reply.messages = veylvik_interop::ofx::messages();
                 return Ok((reply, out));
@@ -142,13 +176,15 @@ impl State {
         Ok((reply, Vec::new()))
     }
 }
-/// Serves requests until stdin closes or `Quit` arrives.
-pub fn serve() -> Result<()> {
+/// Serves requests until stdin closes or `Quit` arrives; `shared` is the path of the
+/// parent's shared memory, if it made one.
+pub fn serve(shared: Option<&std::path::Path>) -> Result<()> {
     let mut input = BufReader::new(std::io::stdin().lock());
     let mut output = BufWriter::new(std::io::stdout().lock());
     let mut state = State {
         libraries: HashMap::new(),
         instances: HashMap::new(),
+        shared: shared.map(veylvik_interop::shm::Shared::open).transpose()?,
     };
     while let Some((request, payload)) = protocol::read::<Request>(&mut input)? {
         let quit = matches!(request, Request::Quit);

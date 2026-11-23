@@ -14,6 +14,8 @@ const RENDER_TIMEOUT: Duration = Duration::from_secs(120);
 
 type Message = Result<(Reply, Vec<f32>)>;
 struct Running {
+    /// Frames go to and from the helper here; without it, through the pipes.
+    shared: Option<veylvik_interop::shm::Shared>,
     child: Child,
     input: BufWriter<ChildStdin>,
     replies: mpsc::Receiver<Message>,
@@ -23,6 +25,8 @@ struct Running {
 pub struct Worker {
     exe: PathBuf,
     running: Option<Running>,
+    /// Whether frames may go through shared memory (else always the pipes).
+    share: bool,
 }
 impl Worker {
     /// A worker run by `exe` (the `veylvik` program).
@@ -30,12 +34,28 @@ impl Worker {
         Self {
             exe: exe.to_path_buf(),
             running: None,
+            share: true,
         }
+    }
+    /// A worker that sends frames through the pipes only (the fallback when shared
+    /// memory cannot be made; kept for comparison).
+    pub fn without_shared_memory(exe: &Path) -> Self {
+        let mut worker = Self::new(exe);
+        worker.share = false;
+        worker
     }
     fn start(&mut self) -> Result<&mut Running> {
         if self.running.is_none() {
-            let mut child = Command::new(&self.exe)
-                .arg(SUBCOMMAND)
+            let shared = self
+                .share
+                .then(veylvik_interop::shm::Shared::create)
+                .and_then(|made| made.ok());
+            let mut command = Command::new(&self.exe);
+            command.arg(SUBCOMMAND);
+            if let Some(memory) = &shared {
+                command.arg("--shared").arg(memory.path());
+            }
+            let mut child = command
                 .stdin(Stdio::piped())
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
@@ -84,6 +104,7 @@ impl Worker {
             });
             let input = BufWriter::new(child.stdin.take().ok_or("the helper has no stdin")?);
             self.running = Some(Running {
+                shared,
                 child,
                 input,
                 replies,
@@ -175,6 +196,21 @@ impl Worker {
         if let Some((name, _)) = inputs.iter().find(|(_, p)| p.len() != pixels) {
             return Err(format!("input {name} is not {width} x {height}"));
         }
+        // In shared memory when there is some: the inputs one after another, then the output.
+        let running = self.start()?;
+        let shared = match running.shared.as_mut() {
+            Some(memory) => memory
+                .reserve(((inputs.len() + 1) * pixels * 4) as u64, true)
+                .is_ok(),
+            None => false,
+        };
+        if shared && let Some(memory) = running.shared.as_mut() {
+            for (k, (_, picture)) in inputs.iter().enumerate() {
+                memory
+                    .floats_mut(k * pixels, pixels)?
+                    .copy_from_slice(picture);
+            }
+        }
         let request = Request::Render {
             bundle: plugin.bundle.to_string_lossy().into_owned(),
             index: plugin.index,
@@ -184,9 +220,22 @@ impl Worker {
             time,
             values: values.to_vec(),
             inputs: inputs.iter().map(|(n, _)| n.to_string()).collect(),
+            shared,
         };
-        let payload: Vec<&[f32]> = inputs.iter().map(|(_, p)| *p).collect();
-        let (reply, out) = self.call(&request, &payload, RENDER_TIMEOUT)?;
+        let payload: Vec<&[f32]> = if shared {
+            Vec::new()
+        } else {
+            inputs.iter().map(|(_, p)| *p).collect()
+        };
+        let (reply, mut out) = self.call(&request, &payload, RENDER_TIMEOUT)?;
+        if shared {
+            let memory = self
+                .running
+                .as_ref()
+                .and_then(|r| r.shared.as_ref())
+                .ok_or("the OpenFX helper stopped")?;
+            out = memory.floats(inputs.len() * pixels, pixels)?.to_vec();
+        }
         if out.len() != pixels {
             return Err("the helper sent a picture of the wrong size".into());
         }

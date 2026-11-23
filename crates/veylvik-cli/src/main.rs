@@ -189,7 +189,10 @@ fn run() -> Result<()> {
             report["saved"] = serde_json::json!(output);
             println!("{report}");
         }
-        Some(veylvik_ofx::SUBCOMMAND) if args.len() == 2 => veylvik_ofx::serve()?,
+        Some(veylvik_ofx::SUBCOMMAND) if args.len() == 2 => veylvik_ofx::serve(None)?,
+        Some(veylvik_ofx::SUBCOMMAND) if args.len() == 4 && args[2] == "--shared" => {
+            veylvik_ofx::serve(Some(Path::new(&args[3])))?
+        }
         Some("ofx") => ofx::command(&args[2..])?,
         Some(veylvik_segment::worker::SUBCOMMAND) if args.len() == 2 => {
             veylvik_segment::worker::serve(std::io::stdin().lock(), std::io::stdout().lock())?

@@ -186,3 +186,9 @@ impl Inspect for veylvik_document::nodes::ShapeWarp {
         });
     }
 }
+/// The plugin's settings are drawn from its own description (see `ofx_inspector`).
+impl Inspect for veylvik_document::nodes::OfxEffect {
+    fn inspect(&mut self, ui: &mut egui::Ui, cx: &mut InspectCx<'_>) {
+        crate::ofx_inspector::inspect(self, ui, cx);
+    }
+}
