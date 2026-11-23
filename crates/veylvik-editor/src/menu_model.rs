@@ -92,6 +92,7 @@ impl Studio {
             file.gap();
             file.item("file.new", "New composition…", key("Ctrl+N"), true);
             file.item("file.new_from_media", "New from media…", None, true);
+            file.item("file.import_nuke", "Import Nuke script…", None, true);
             file.item("file.open", "Open…", key("Ctrl+O"), true);
             file.gap();
             file.item("file.save", "Save", key("Ctrl+S"), true);
@@ -411,6 +412,9 @@ impl Studio {
             }
             "file.new_from_media" => {
                 self.leave(Leave::NewFromMedia, ctx);
+            }
+            "file.import_nuke" => {
+                self.leave(Leave::ImportNuke, ctx);
             }
             "file.open" => {
                 self.leave(Leave::Open, ctx);

@@ -20,6 +20,7 @@ commands! {
     StartScreen, "start_screen", "File", "Start screen", "";
     New, "new", "File", "New composition", "Ctrl+N";
     NewFromMedia, "new_from_media", "File", "New from media", "";
+    ImportNuke, "import_nuke", "File", "Import Nuke script", "";
     Open, "open", "File", "Open", "Ctrl+O";
     Save, "save", "File", "Save", "Ctrl+S";
     UpdateHost, "update_host", "File", "Update in the linked editor", "Ctrl+Shift+U";

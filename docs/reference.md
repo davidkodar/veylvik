@@ -3070,6 +3070,30 @@ last colours, the innermost clip of nested ones is used, no text, embedded
 pictures, patterns or masks (their count is reported as left out), at most 64
 shapes, and the usual 4096 commands per path. Reading uses the `usvg` library.
 
+## Nuke scripts
+
+`veylvik import-nuke SCRIPT.nk NEW_FILE` (or File > Import Nuke script in Studio) rebuilds a Nuke
+script as a new composition. Size, frame rate and frame range come from the Root; nodes are wired
+as the script's stack wires them (the most recent push is input 0, so a Merge's B is its
+background and A its foreground) and keep their places in the node graph.
+
+| Nuke | Veylvik | Carried over |
+|---|---|---|
+| Read | Footage | file; a sequence (`%04d`, `####`) stands in with its first frame: import it with Import sequence |
+| Constant | Solid | colour |
+| Merge2 | Merge, or Blend | over; plus, multiply, screen, difference, max, min, overlay, soft-light and `mix` become a Blend; other operations are laid over and noted |
+| Grade, ColorCorrect | Colour correct | gain (times multiply), lift, gamma; ColorCorrect also saturation and contrast. Per-channel values take their red channel; black point, white point and offset are noted, not carried |
+| Transform | Affine | translate, rotate, scale, center; y and turns are flipped to Veylvik's top-down, clockwise convention. Skew is noted |
+| Blur | Blur (gaussian) | size as radius (size / 2) |
+| Text2 | Text over its input | the message, centred; place it by hand |
+| Write | the output | |
+| Dot, NoOp, Viewer | passed through | |
+
+Keyed knobs (`{{curve x1001 1 x1050 2}}`) become smooth keys, with the script's first frame at
+Veylvik's frame 0. Every other node, groups and gizmos included, passes its first input on and is
+named in the report (`not_rebuilt`), with what was carried over only roughly in `notes`: nothing is
+dropped silently. Expressions are not evaluated.
+
 ## Linked to an editor
 
 A video editor can hand one clip of its timeline to Veylvik and get the finished picture

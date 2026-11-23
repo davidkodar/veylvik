@@ -28,6 +28,8 @@ pub enum Choice {
     Model,
     /// A Gaussian splat .ply file (asked of a host as a model).
     Splats,
+    /// A Nuke script to rebuild as a new composition (only with project files).
+    Nuke,
 }
 pub enum Completed {
     /// An eyedropper sample, to apply to the draft colour it was taken for.
@@ -67,6 +69,8 @@ pub enum Completed {
         node: Box<veylvik_document::Node>,
     },
     Opened(Box<Project>),
+    /// A Nuke script rebuilt, with what did not come over.
+    NukeImported(Box<crate::nuke_import::Imported>),
     NewFromMedia {
         session: veylvik_document::NodeId,
         revision: u64,
@@ -262,6 +266,7 @@ impl From<&Choice> for crate::host::Purpose {
             Choice::Font => Purpose::Font,
             Choice::Lut => Purpose::Lut,
             Choice::Model | Choice::Splats => Purpose::Model,
+            Choice::Nuke => Purpose::Open,
         }
     }
 }
@@ -327,6 +332,7 @@ pub fn select(choice: Choice, folder: &Path, name: &str) -> Result<Option<PathBu
         Choice::Font => ("Choose font", "Font", "*.ttf"),
         Choice::Lut => ("Choose a 3D LUT", "Cube LUT", "*.cube"),
         Choice::Model => ("Choose a 3D model", "glTF model", "*.glb"),
+        Choice::Nuke => ("Import a Nuke script", "Nuke script", "*.nk"),
         Choice::Splats => (
             "Choose Gaussian splats",
             "Gaussian splats (.ply or .splat)",
@@ -409,6 +415,7 @@ pub fn select(choice: Choice, folder: &Path, name: &str) -> Result<Option<PathBu
                 | Choice::Lut
                 | Choice::Model
                 | Choice::Splats
+                | Choice::Nuke
         ) {
             SelectedFiles::open_file()
                 .identifier(parent())

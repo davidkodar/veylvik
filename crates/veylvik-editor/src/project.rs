@@ -226,7 +226,7 @@ impl Project {
         self.compiled = Some((revision, output, plan.clone()));
         Ok(plan)
     }
-    fn load_available_inputs(&mut self) {
+    pub(crate) fn load_available_inputs(&mut self) {
         self.inputs.set_base_directory(self.base.clone());
         self.inputs.set_reach(self.reach.clone());
         let mut remaining = veylvik_io::runtime::source_budget();

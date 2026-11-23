@@ -56,6 +56,7 @@ mod node_finder;
 mod node_palette;
 mod node_thumbnails;
 mod nodes;
+mod nuke_import;
 mod occlusion;
 mod pages;
 mod path_edit;
@@ -878,6 +879,7 @@ enum Leave {
     Open,
     New,
     NewFromMedia,
+    ImportNuke,
     Recover(veylvik_document::NodeId),
     Example(&'static str),
     Close,
@@ -1641,6 +1643,7 @@ impl Studio {
                 Err(e) => self.fail(e),
             },
             Leave::NewFromMedia => self.new_from_media(),
+            Leave::ImportNuke => self.import_nuke(),
             Leave::New => self
                 .composition_controls
                 .begin(self.project.document.snapshot(), true),
@@ -2172,6 +2175,11 @@ impl Studio {
                 }
             }
             Ok(Completed::Opened(project)) => self.open_project(*project, ctx),
+            Ok(Completed::NukeImported(imported)) => {
+                let crate::nuke_import::Imported { project, summary } = *imported;
+                self.open_project(project, ctx);
+                self.status = summary;
+            }
             Ok(Completed::Picked(sample)) => {
                 if sample.session == self.project.session
                     && sample.node == self.draft.id

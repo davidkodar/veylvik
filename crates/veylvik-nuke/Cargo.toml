@@ -1,0 +1,12 @@
+[package]
+name = "veylvik-nuke"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Reads Nuke scripts (.nk) and rebuilds what maps onto Veylvik nodes, listing what does not."
+[dependencies]
+veylvik-document.workspace = true
+serde_json.workspace = true
+[lints]
+workspace = true

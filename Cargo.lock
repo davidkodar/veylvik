@@ -4211,6 +4211,7 @@ dependencies = [
  "veylvik-control",
  "veylvik-document",
  "veylvik-io",
+ "veylvik-nuke",
  "veylvik-presets",
  "veylvik-render",
  "veylvik-scene",
@@ -4279,6 +4280,7 @@ dependencies = [
  "veylvik-document",
  "veylvik-expr",
  "veylvik-io",
+ "veylvik-nuke",
  "veylvik-presets",
  "veylvik-preview",
  "veylvik-render",
@@ -4341,6 +4343,14 @@ dependencies = [
  "serde_json",
  "veylvik-document",
  "veylvik-text",
+]
+
+[[package]]
+name = "veylvik-nuke"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "veylvik-document",
 ]
 
 [[package]]

@@ -109,6 +109,7 @@ impl Studio {
             Cmd::StartScreen
             | Cmd::New
             | Cmd::NewFromMedia
+            | Cmd::ImportNuke
             | Cmd::Open
             | Cmd::Save
             | Cmd::SaveAs
@@ -157,6 +158,7 @@ impl Studio {
             Cmd::StartScreen => self.show_start(),
             Cmd::New => self.leave(Leave::New, ctx),
             Cmd::NewFromMedia => self.leave(Leave::NewFromMedia, ctx),
+            Cmd::ImportNuke => self.leave(Leave::ImportNuke, ctx),
             Cmd::Open => self.leave(Leave::Open, ctx),
             Cmd::Save => self.save_project(false),
             Cmd::UpdateHost => self.update_host(),
