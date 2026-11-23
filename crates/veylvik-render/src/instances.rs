@@ -19,6 +19,7 @@ impl Renderer {
         plan: &Plan,
         scene: &veylvik_scene::Scene,
         time: Time,
+        inputs: Option<&crate::ImageInputs>,
     ) -> Result<Vec<Instances>> {
         let mut wanted: Vec<NodeId> = scene.objects.iter().filter_map(|o| o.instanced).collect();
         wanted.sort();
@@ -29,7 +30,7 @@ impl Renderer {
         let nodes: Vec<Node> = plan.nodes.iter().chain(&plan.light_data).cloned().collect();
         wanted
             .into_iter()
-            .map(|id| self.instances(&nodes, id, plan.width, plan.height, time))
+            .map(|id| self.instances(&nodes, id, plan.width, plan.height, time, inputs))
             .collect()
     }
     fn instances(
@@ -39,6 +40,7 @@ impl Renderer {
         width: u32,
         height: u32,
         time: Time,
+        inputs: Option<&crate::ImageInputs>,
     ) -> Result<Instances> {
         let by_id = |id: NodeId| nodes.iter().find(|n| n.id == id);
         let copier = by_id(id).ok_or_else(|| error("a Particle instances node is missing"))?;
@@ -95,7 +97,15 @@ impl Renderer {
         p.values[3] = f32::from(u8::from(copies.tumble));
         let state = if nodes::particles::simulating(particles) {
             let key = crate::simulation::key_of(me, nodes, width, height);
-            Some(self.simulate_node(me, nodes, key, width, height, time)?.0)
+            {
+                let bake = inputs
+                    .and_then(|i| i.flock(&particles.bake))
+                    .map(|b| b.as_ref());
+                match self.read_bake(bake, key, time, width, height)? {
+                    Some((read, _)) => Some(read),
+                    None => Some(self.simulate_node(me, nodes, key, width, height, time)?.0),
+                }
+            }
         } else {
             None
         };

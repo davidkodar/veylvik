@@ -183,6 +183,8 @@ pub struct ImageInputs(
     BTreeMap<String, Arc<veylvik_scene::Model>>,
     /// Where the composition's files may be (see `veylvik_document::access`).
     veylvik_document::access::Reach,
+    /// Baked flocks by file path (a Particles node's `bake`).
+    BTreeMap<String, Arc<dyn crate::BakedFlock>>,
 );
 impl ImageInputs {
     /// Whether both hold exactly the same images, frames, sources and models.
@@ -208,6 +210,11 @@ impl ImageInputs {
                 .4
                 .iter()
                 .all(|(k, v)| other.4.get(k).is_some_and(|w| Arc::ptr_eq(v, w)))
+            && self.6.len() == other.6.len()
+            && self
+                .6
+                .iter()
+                .all(|(k, v)| other.6.get(k).is_some_and(|w| Arc::ptr_eq(v, w)))
     }
     /// Hold an imported model under its file path.
     pub fn insert_model(&mut self, path: impl Into<String>, model: Arc<veylvik_scene::Model>) {
@@ -215,6 +222,13 @@ impl ImageInputs {
     }
     pub fn model(&self, path: &str) -> Option<&Arc<veylvik_scene::Model>> {
         self.4.get(path)
+    }
+    pub fn insert_flock(&mut self, path: impl Into<String>, flock: Arc<dyn crate::BakedFlock>) {
+        self.6.insert(path.into(), flock);
+    }
+    /// The baked flock read from `path`, when loaded.
+    pub fn flock(&self, path: &str) -> Option<&Arc<dyn crate::BakedFlock>> {
+        self.6.get(path)
     }
     pub fn models(&self) -> &BTreeMap<String, Arc<veylvik_scene::Model>> {
         &self.4

@@ -37,6 +37,10 @@ pub(crate) struct InspectCx<'a> {
     /// Refresh the viewer preview soon, for continuous edits such as path dragging.
     pub preview_soon: bool,
     pub error: Option<String>,
+    /// A flock's bake, in a line (None: not a flock).
+    pub flock_bake: Option<&'a str>,
+    /// Bake the flock (true) or go back to simulating it (false).
+    pub bake_flock: Option<bool>,
     /// The colour field this node is currently sampling with the eyedropper, if any.
     pub picking: Option<&'static str>,
     /// An eyedropper request for this colour field.

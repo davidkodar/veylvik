@@ -2,6 +2,7 @@
 pub mod collect;
 pub mod export;
 pub mod export_audio;
+pub mod flock;
 pub mod footage;
 pub mod host_cache;
 mod icc;
@@ -218,6 +219,12 @@ pub fn load_inputs(plan: &Plan, base: &Path, budget: u64) -> Result<ImageInputs>
     for path in plan.required_models() {
         let loaded = model::load(&base.join(path)).map_err(|e| format!("3D model {path}: {e}"))?;
         inputs.insert_model(path, std::sync::Arc::new(loaded));
+    }
+    // A baked flock that cannot be read is simulated instead; nothing is lost but time.
+    for path in plan.required_flocks() {
+        if let Ok(bake) = flock::Bake::open(&base.join(path)) {
+            inputs.insert_flock(path, std::sync::Arc::new(bake));
+        }
     }
     Ok(inputs)
 }

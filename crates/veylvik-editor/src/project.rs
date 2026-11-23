@@ -296,6 +296,16 @@ impl Project {
                     }
                 }
             }
+            // A baked flock loads with the project; one that cannot be read is simulated.
+            if let veylvik_document::Operation::Particles(p) = &node.operation
+                && !p.bake.is_empty()
+                && self.inputs.flock(&p.bake).is_none()
+                && let Ok(file) =
+                    veylvik_document::access::resolve(&self.base, &p.bake, &self.reach)
+                && let Ok(bake) = veylvik_io::flock::Bake::open(&file)
+            {
+                self.inputs.insert_flock(p.bake.clone(), Arc::new(bake));
+            }
             // 3D models load with the project, by absolute path.
             if let veylvik_document::Operation::Model3d(m) = &node.operation
                 && !m.model.is_empty()

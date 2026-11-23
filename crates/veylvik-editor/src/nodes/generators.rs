@@ -214,6 +214,27 @@ impl Inspect for veylvik_document::nodes::Particles {
                 });
             }
         }
+        // A flock's bake.
+        if let Some(status) = cx.flock_bake {
+            ui.weak(status);
+            ui.horizontal(|ui| {
+                if ui
+                    .button(if self.bake.is_empty() { "Bake the flock" } else { "Bake again" })
+                    .on_hover_text("Simulates it over the whole composition once and writes where every particle is at every frame to a file beside the project; it is read from there from now on, exactly as it is")
+                    .clicked()
+                {
+                    cx.bake_flock = Some(true);
+                }
+                if !self.bake.is_empty()
+                    && ui
+                        .button("Simulate again")
+                        .on_hover_text("Stops reading the bake (the file stays) and simulates the flock")
+                        .clicked()
+                {
+                    cx.bake_flock = Some(false);
+                }
+            });
+        }
         // The colours: at birth, at the end of the life, and of a burst.
         egui::CollapsingHeader::new("Colours")
             .id_salt("particle-colours")

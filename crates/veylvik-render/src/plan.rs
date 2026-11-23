@@ -1206,6 +1206,17 @@ impl Plan {
             .chain(self.temporal.iter().flat_map(|b| b.plan.required_assets()))
             .collect()
     }
+    /// The baked flocks the plan's particles read (their `bake` files).
+    pub fn required_flocks(&self) -> BTreeSet<&str> {
+        self.nodes
+            .iter()
+            .chain(&self.light_data)
+            .filter_map(|n| match &n.operation {
+                Operation::Particles(p) if !p.bake.is_empty() => Some(p.bake.as_str()),
+                _ => None,
+            })
+            .collect()
+    }
     /// The model files the plan's 3D models read.
     pub fn required_models(&self) -> BTreeSet<&str> {
         self.nodes

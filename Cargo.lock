@@ -4310,6 +4310,7 @@ dependencies = [
 name = "veylvik-io"
 version = "0.1.0"
 dependencies = [
+ "bytemuck",
  "exr",
  "gltf",
  "image",
@@ -4327,6 +4328,7 @@ dependencies = [
  "veylvik-render3d",
  "veylvik-scene",
  "veylvik-text",
+ "zstd",
 ]
 
 [[package]]

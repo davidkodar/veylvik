@@ -5,6 +5,8 @@ edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 [dependencies]
+zstd = "=0.13.3"
+bytemuck.workspace = true
 sha2 = "=0.10.9"
 veylvik-color = {path="../veylvik-color"}
 veylvik-decode = { path = "../veylvik-decode" }

@@ -42,6 +42,11 @@ mod probe;
 mod scene_hook;
 mod simulation;
 pub use instances::Instances;
+pub use simulation::BakedFlock;
+/// How many particles a flock holds in a frame of this size (as a bake records them).
+pub fn flock_capacity(width: u32, height: u32) -> u32 {
+    nodes::particles::FLOCK_MOST.min(width * height / 2).max(1)
+}
 /// WGSL for the prefiltered studio environment (`environment_specular`), for
 /// renderers that light with the same studio as materials.
 pub const ENVIRONMENT_WGSL: &str = include_str!("environment.wgsl");
@@ -1331,7 +1336,11 @@ impl Renderer {
             stale[scheduled.output] = false;
             if scheduled.kernel == Kernel::ParticleSimulation {
                 // A flock's state at the frame, simulated up to it.
-                let (state, bytes) = self.simulate(plan, scheduled.node, time)?;
+                let bake = match &plan.nodes[scheduled.node].operation {
+                    Operation::Particles(p) if !p.bake.is_empty() => inputs.flock(&p.bake).cloned(),
+                    _ => None,
+                };
+                let (state, bytes) = self.simulate(plan, scheduled.node, time, bake.as_deref())?;
                 let output = &buffers[scheduled.output];
                 encoder.clear_buffer(output, 0, None);
                 encoder.copy_buffer_to_buffer(&state, 0, output, 0, bytes.min(output.size()));
@@ -1432,7 +1441,7 @@ impl Renderer {
                     let (scene, camera, occlusion) =
                         scene_hook::evaluate(plan, scheduled.node, at)?;
                     let camera = scene_view.unwrap_or(camera);
-                    let copies = self.instances_for(plan, &scene, at)?;
+                    let copies = self.instances_for(plan, &scene, at, Some(inputs))?;
                     renderer.render(SceneJob {
                         device: &self.device,
                         queue: &self.queue,

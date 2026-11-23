@@ -30,6 +30,7 @@ mod graph_layout;
 mod handles;
 pub use clip_source::ClipSource;
 mod fill;
+mod flock_bake;
 mod history_log;
 pub mod host;
 mod host_link;
@@ -817,6 +818,7 @@ impl Studio {
             tracking: tracking::Controls::default(),
             planar: planar::Controls::default(),
             solve: solve_camera::Controls::default(),
+            flock_baking: flock_bake::Baking::default(),
             live_job: None,
             start_queued: false,
             audio: Default::default(),
@@ -990,6 +992,8 @@ struct Studio {
     tracking: tracking::Controls,
     planar: planar::Controls,
     solve: solve_camera::Controls,
+    /// A flock being baked.
+    flock_baking: flock_bake::Baking,
     live_job: Option<live_jobs::LiveJob>,
     /// A render queued over live MCP starts as soon as it is prepared.
     start_queued: bool,
@@ -2097,6 +2101,7 @@ impl Studio {
             Ok(Completed::Portable(result)) => self.portable_finished(*result),
             Ok(Completed::PlanarTracked(result)) => self.planar_completed(result),
             Ok(Completed::CameraSolved(result)) => self.camera_solved(*result),
+            Ok(Completed::FlockBaked(result)) => self.flock_baked(*result),
             Ok(Completed::Live(tool, result)) => {
                 self.finish_live_job(tool, Ok(result));
                 self.status = "Done".into();
@@ -2611,6 +2616,7 @@ impl Studio {
             self.project.document.snapshot().height as f32,
         ];
         let unavailable = self.project.unavailable_assets();
+        let flock_status = self.flock_bake_status();
         let lit_by = self
             .draft
             .inputs
@@ -2655,6 +2661,8 @@ impl Studio {
             choose_model: false,
             outline: self.draft.inputs.get("outline").copied(),
             select: None,
+            flock_bake: flock_status.as_deref(),
+            bake_flock: None,
         };
         match &mut self.draft.operation {
             op @ Operation::Text(veylvik_document::nodes::Text { .. }) => {
@@ -2684,8 +2692,14 @@ impl Studio {
             measure_grain,
             choose_model,
             select: select_other,
+            bake_flock,
             ..
         } = cx;
+        match bake_flock {
+            Some(true) => self.bake_flock(ui.ctx()),
+            Some(false) => self.unbake_flock(),
+            None => {}
+        }
         if let Some(id) = select_other
             && self.can_change_selection()
         {

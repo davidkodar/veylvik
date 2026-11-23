@@ -33,6 +33,7 @@ pub enum Completed {
     Tracked(crate::tracking::Tracked),
     PlanarTracked(crate::planar::Tracked),
     CameraSolved(Box<crate::solve_camera::Solved>),
+    FlockBaked(Box<crate::flock_bake::Baked>),
     ModelChosen(Box<crate::model_import::Chosen>),
     Segmented(Box<crate::subject::Segmented>),
     PresetLibrary(veylvik_io::presets::Listing),
