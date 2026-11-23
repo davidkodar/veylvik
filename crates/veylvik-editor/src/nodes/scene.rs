@@ -576,3 +576,21 @@ impl Inspect for veylvik_document::nodes::CameraProjection {
             .changed();
     }
 }
+impl Inspect for veylvik_document::nodes::GaussianSplats {
+    fn inspect(&mut self, ui: &mut egui::Ui, cx: &mut InspectCx<'_>) {
+        ui.weak("A scanned place or object as Gaussian splats, from a .ply or .splat file. Merge it into a scene and film it with Render scene; turn it with Placement if it comes in turned.");
+        ui.horizontal(|ui| {
+            ui.label("File");
+            cx.dirty |= ui
+                .add(egui::TextEdit::singleline(&mut self.file).hint_text("scan.ply"))
+                .on_hover_text(
+                    "The splat file (.ply or .splat), relative to the project or absolute",
+                )
+                .changed();
+            if ui.button("Choose…").clicked() {
+                cx.choose_splats = true;
+            }
+        });
+        cx.dirty |= placement(ui, &mut self.placement, cx);
+    }
+}

@@ -1,0 +1,14 @@
+[package]
+name = "veylvik-splat"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Gaussian splats for Veylvik: reads the .ply files capture tools write and draws them on the GPU, sorted back to front, into a 3D scene."
+[dependencies]
+wgpu.workspace = true
+bytemuck.workspace = true
+[dev-dependencies]
+pollster.workspace = true
+[lints]
+workspace = true

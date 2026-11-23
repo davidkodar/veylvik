@@ -75,7 +75,11 @@ fn solids(scenes: &[Scene], most: usize, grid: usize) -> Vec<f32> {
     let chosen: Vec<(usize, &Object)> = now
         .objects
         .iter()
-        .filter(|o| !o.surface.catcher && o.instanced.is_none())
+        .filter(|o| {
+            !o.surface.catcher
+                && o.instanced.is_none()
+                && !matches!(o.geometry, Geometry::Splats { .. })
+        })
         .enumerate()
         .take(most)
         .collect();
@@ -118,7 +122,11 @@ fn solids(scenes: &[Scene], most: usize, grid: usize) -> Vec<f32> {
             let then = scene
                 .objects
                 .iter()
-                .filter(|o| !o.surface.catcher && o.instanced.is_none())
+                .filter(|o| {
+                    !o.surface.catcher
+                        && o.instanced.is_none()
+                        && !matches!(o.geometry, Geometry::Splats { .. })
+                })
                 .nth(*index)
                 .filter(|o| o.node == object.node)
                 .map_or(world, |o| o.world);
@@ -166,6 +174,8 @@ fn measure(object: &Object, grid: usize) -> (Kind, [f32; 3], Option<std::sync::A
         }
         Geometry::Card { size, .. } => (Kind::Box, [size[0] * 0.5, size[1] * 0.5, 1.0], None),
         Geometry::Model { size, extent, .. } => (Kind::Box, extent.map(|e| e * size * 0.5), None),
+        // Not solid (left out of the solids above).
+        Geometry::Splats { .. } => (Kind::Box, [0.0; 3], None),
         Geometry::Text { depth, .. } => match text_map(object, grid) {
             Some(map) => (Kind::Text, [depth * 0.5, 0.0, 0.0], Some(map)),
             None => (Kind::Box, [0.0; 3], None),

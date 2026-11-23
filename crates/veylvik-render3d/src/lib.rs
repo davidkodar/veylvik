@@ -131,7 +131,19 @@ pub struct Engine {
     /// Render targets kept between frames, by size: a 4K frame's multisampled colour
     /// and depth are hundreds of MiB, made and let go again every frame before.
     targets: Mutex<Vec<Targets>>,
+    /// Gaussian splats: their programs (made on first use) and the sets on the GPU, by
+    /// the loaded splats they hold (kept alive with them).
+    splat_programs: std::sync::OnceLock<veylvik_splat::Renderer>,
+    #[allow(clippy::type_complexity)]
+    splat_sets: Mutex<
+        Vec<(
+            std::sync::Arc<veylvik_splat::Splats>,
+            std::sync::Arc<veylvik_splat::Uploaded>,
+        )>,
+    >,
 }
+/// Splat sets kept on the GPU at once, the last used first.
+const KEPT_SPLATS: usize = 4;
 /// What one render draws into: multisampled colour and depth, and the resolved colour.
 struct Targets {
     size: [u32; 2],
@@ -376,6 +388,7 @@ impl Engine {
             depth: show_depth,
             also,
             instances,
+            splats,
             ..
         } = job;
         let expanded = self.expand(scene, models)?;
@@ -891,6 +904,72 @@ impl Engine {
             let times = copies.map_or(1, |c| c.count);
             draws.push((pipeline, bind, vertices, indices, count, times));
         }
+        // Gaussian splats, projected and sorted for this view before the pass (not in a
+        // depth picture: they are no solids).
+        let mut splatted = Vec::new();
+        if !show_depth {
+            for object in &scene.objects {
+                let Geometry::Splats {
+                    path,
+                    size,
+                    brightness,
+                } = &object.geometry
+                else {
+                    continue;
+                };
+                let Some(data) = splats.get(path) else {
+                    continue;
+                };
+                let programs = self
+                    .splat_programs
+                    .get_or_init(|| veylvik_splat::Renderer::new(device, COLOUR, DEPTH, SAMPLES));
+                let set = {
+                    let mut sets = self
+                        .splat_sets
+                        .lock()
+                        .map_err(|_| error("splat lock poisoned"))?;
+                    let found = sets
+                        .iter()
+                        .position(|(s, _)| std::sync::Arc::ptr_eq(s, data));
+                    let set = match found {
+                        Some(at) => sets.remove(at).1,
+                        None => std::sync::Arc::new(programs.upload(device, data)),
+                    };
+                    sets.insert(0, (data.clone(), set.clone()));
+                    sets.truncate(KEPT_SPLATS);
+                    set
+                };
+                // Centred on the box most of its splats lie in, its largest side `size`.
+                let (middle, side) = data.extent();
+                let model = math::mul(
+                    &object.world,
+                    &math::mul(
+                        &math::scale([size / side; 3]),
+                        &math::translate(middle.map(|v| -v)),
+                    ),
+                );
+                let prepared = programs.prepare(
+                    device,
+                    encoder,
+                    &set,
+                    &veylvik_splat::Draw {
+                        view: math::rigid_inverse(&camera.world),
+                        projection: projection(&camera, width, height),
+                        model,
+                        width,
+                        height,
+                        focal: veylvik_scene::home_distance(
+                            width,
+                            camera.focal_length,
+                            camera.sensor_width,
+                        ),
+                        eye,
+                        brightness: *brightness,
+                    },
+                );
+                splatted.push(prepared);
+            }
+        }
         let sky = surround.filter(|e| e.background).map(|e| {
             let uniform = SkyUniform {
                 camera: columns(&camera.world),
@@ -976,6 +1055,12 @@ impl Engine {
                 pass.set_vertex_buffer(0, vertices.slice(..));
                 pass.set_index_buffer(indices.slice(..), wgpu::IndexFormat::Uint32);
                 pass.draw_indexed(0..*count, 0, 0..*times);
+            }
+            // Splats over the solids, which hide what is behind them.
+            if let Some(programs) = self.splat_programs.get() {
+                for prepared in &splatted {
+                    programs.draw(&mut pass, prepared);
+                }
             }
         }
         // Read the render out into a frame: the picture, or each pixel's distance.

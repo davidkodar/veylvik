@@ -296,6 +296,22 @@ impl Project {
                     }
                 }
             }
+            // Gaussian splats load with the project, like 3D models.
+            if let veylvik_document::Operation::GaussianSplats(g) = &node.operation
+                && !g.file.is_empty()
+                && self.inputs.splats(&g.file).is_none()
+                && !self.asset_errors.contains_key(g.file.as_str())
+            {
+                let read = veylvik_document::access::resolve(&self.base, &g.file, &self.reach)
+                    .and_then(|file| std::fs::read(file).map_err(|e| e.to_string()))
+                    .and_then(|bytes| veylvik_splat::parse(&bytes));
+                match read {
+                    Ok(splats) => self.inputs.insert_splats(g.file.clone(), Arc::new(splats)),
+                    Err(error) => {
+                        self.asset_errors.insert(g.file.clone(), error);
+                    }
+                }
+            }
             // A baked flock loads with the project; one that cannot be read is simulated.
             if let veylvik_document::Operation::Particles(p) = &node.operation
                 && !p.bake.is_empty()

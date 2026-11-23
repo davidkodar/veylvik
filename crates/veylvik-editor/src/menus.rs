@@ -231,6 +231,7 @@ pub(crate) const ADD_MENU: [(&str, &[&registry::NodeType]); 10] = [
             &registry::POINT_CLOUD,
             &registry::PARTICLE_INSTANCES,
             &registry::CAMERA_PROJECTION,
+            &registry::GAUSSIAN_SPLATS,
             &registry::RENDER_SCENE,
         ],
     ),

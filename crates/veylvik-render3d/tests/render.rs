@@ -2217,3 +2217,94 @@ fn what_was_hidden_from_the_camera_behind_something_is_not_cast_onto() {
         "the wall hidden behind the cube is left out: {holes}"
     );
 }
+
+/// Gaussian splats from `splats` (place, colour, opacity, size, turn) in a scene filmed
+/// from the home view, their box `size` pixels, maybe with a cube at `cube`.
+fn splatted(
+    renderer: &Renderer,
+    splats: &[veylvik_splat::Described],
+    size: f32,
+    cube: Option<[f32; 3]>,
+) -> Vec<[f32; 4]> {
+    let mut doc = blank(W, H, Time::new(24, 1).unwrap()).unwrap();
+    let mut inputs = ImageInputs::default();
+    let parsed = veylvik_splat::parse(&veylvik_splat::write_ply(splats)).unwrap();
+    inputs.insert_splats("scan.ply", Arc::new(parsed));
+    let camera = add(&mut doc, op(&CAMERA_3D), &[]);
+    let mut node = op(&GAUSSIAN_SPLATS);
+    if let Operation::GaussianSplats(g) = &mut node {
+        g.file = "scan.ply".into();
+        g.size = size.into();
+    }
+    let node = add(&mut doc, node, &[]);
+    let mut parts = vec![("scene", camera), ("scene_2", node)];
+    if let Some(at) = cube {
+        let mut c = op(&SHAPE_3D);
+        if let Operation::Shape3d(s) = &mut c {
+            for side in [&mut s.size_x, &mut s.size_y, &mut s.size_z] {
+                *side = 30.0.into();
+            }
+            s.colour = [0.0, 1.0, 0.0].into();
+            s.placement.position = at.into();
+        }
+        parts.push(("scene_3", add(&mut doc, c, &[])));
+    }
+    let scene = add(&mut doc, op(&MERGE_SCENES), &parts);
+    doc.output = add(&mut doc, op(&RENDER_SCENE), &[("scene", scene)]);
+    render(renderer, &doc, &inputs)
+}
+const STILL: [f32; 4] = [0.0, 0.0, 0.0, 1.0];
+#[test]
+#[ignore = "requires Vulkan"]
+fn a_splat_is_drawn_soft_and_where_it_is() {
+    let renderer = renderer();
+    // One red splat at the middle of its box: at the frame's middle, fading out.
+    let one = splatted(
+        &renderer,
+        &[([0.0; 3], [1.0, 0.0, 0.0], 0.9, [1.0; 3], STILL)],
+        40.0,
+        None,
+    );
+    let at = |x: u32, y: u32| one[(y * W + x) as usize];
+    let middle = at(W / 2, H / 2);
+    assert!(
+        middle[0] > 0.6 && middle[1] < 0.05 && middle[3] > 0.6,
+        "red and nearly solid at its middle: {middle:?}"
+    );
+    let edge = at(W / 2 + 12, H / 2);
+    assert!(
+        edge[3] > 0.0 && edge[3] < middle[3],
+        "softer away from it: {edge:?}"
+    );
+    assert!(at(5, 5)[3] < 0.001, "nothing far from it");
+}
+#[test]
+#[ignore = "requires Vulkan"]
+fn splats_are_drawn_back_to_front_and_solids_hide_them() {
+    let renderer = renderer();
+    // Blue behind and red in front (z towards the viewer), written blue first: the
+    // front one covers the back one whatever their order in the file.
+    let pair = [
+        ([0.0, 0.0, -1.0], [0.0, 0.0, 1.0], 0.95, [1.0; 3], STILL),
+        ([0.0, 0.0, 1.0], [1.0, 0.0, 0.0], 0.95, [1.0; 3], STILL),
+    ];
+    let both = splatted(&renderer, &pair, 40.0, None);
+    let middle = both[((H / 2) * W + W / 2) as usize];
+    assert!(
+        middle[0] > 4.0 * middle[2],
+        "the front splat covers the back one: {middle:?}"
+    );
+    let swapped = splatted(&renderer, &[pair[1], pair[0]], 40.0, None);
+    let again = swapped[((H / 2) * W + W / 2) as usize];
+    assert!(
+        (again[0] - middle[0]).abs() < 0.02,
+        "the file's order does not matter: {again:?}"
+    );
+    // A cube in front of them hides them: green, not red.
+    let hidden = splatted(&renderer, &pair, 40.0, Some([0.0, 0.0, 60.0]));
+    let front = hidden[((H / 2) * W + W / 2) as usize];
+    assert!(
+        front[1] > 4.0 * front[0],
+        "the cube in front hides the splats: {front:?}"
+    );
+}

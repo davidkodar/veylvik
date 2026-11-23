@@ -87,6 +87,7 @@ mod shot_light;
 mod showcase_gallery;
 mod solve_camera;
 mod solve_projection;
+mod splat_import;
 mod start;
 mod status_bar;
 mod subject;
@@ -2108,6 +2109,7 @@ impl Studio {
                 self.error = false;
             }
             Ok(Completed::ModelChosen(chosen)) => self.model_chosen(*chosen),
+            Ok(Completed::SplatsChosen(chosen)) => self.splats_chosen(*chosen),
             Ok(Completed::Segmented(result)) => self.subject_completed(*result),
             Ok(Completed::Tracked(result)) => self.tracking_completed(result),
             Ok(Completed::Cancelled) => {
@@ -2663,6 +2665,7 @@ impl Studio {
             select: None,
             flock_bake: flock_status.as_deref(),
             bake_flock: None,
+            choose_splats: false,
         };
         match &mut self.draft.operation {
             op @ Operation::Text(veylvik_document::nodes::Text { .. }) => {
@@ -2693,8 +2696,12 @@ impl Studio {
             choose_model,
             select: select_other,
             bake_flock,
+            choose_splats,
             ..
         } = cx;
+        if choose_splats {
+            self.choose_splats();
+        }
         match bake_flock {
             Some(true) => self.bake_flock(ui.ctx()),
             Some(false) => self.unbake_flock(),

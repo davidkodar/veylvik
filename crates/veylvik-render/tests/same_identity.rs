@@ -127,6 +127,8 @@ fn the_same_identity_is_the_same_picture_for_every_node_type() {
         "particle_instances",
         // A picture cast onto a scene's objects: keyed through the Render scene that films it.
         "camera_projection",
+        // Splats from a file: a scene part, keyed through the Render scene that films it.
+        "gaussian_splats",
         // Need a file, a model, a scene or a configuration that this test does not have.
         "lut",
         "render_scene",

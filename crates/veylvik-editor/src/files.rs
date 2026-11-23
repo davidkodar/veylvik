@@ -26,6 +26,8 @@ pub enum Choice {
     Font,
     Lut,
     Model,
+    /// A Gaussian splat .ply file (asked of a host as a model).
+    Splats,
 }
 pub enum Completed {
     /// An eyedropper sample, to apply to the draft colour it was taken for.
@@ -35,6 +37,7 @@ pub enum Completed {
     CameraSolved(Box<crate::solve_camera::Solved>),
     FlockBaked(Box<crate::flock_bake::Baked>),
     ModelChosen(Box<crate::model_import::Chosen>),
+    SplatsChosen(Box<crate::splat_import::Chosen>),
     Segmented(Box<crate::subject::Segmented>),
     PresetLibrary(veylvik_io::presets::Listing),
     PresetLoaded(Box<veylvik_document::presets::Preset>),
@@ -258,7 +261,7 @@ impl From<&Choice> for crate::host::Purpose {
             Choice::Source => Purpose::Source,
             Choice::Font => Purpose::Font,
             Choice::Lut => Purpose::Lut,
-            Choice::Model => Purpose::Model,
+            Choice::Model | Choice::Splats => Purpose::Model,
         }
     }
 }
@@ -324,6 +327,11 @@ pub fn select(choice: Choice, folder: &Path, name: &str) -> Result<Option<PathBu
         Choice::Font => ("Choose font", "Font", "*.ttf"),
         Choice::Lut => ("Choose a 3D LUT", "Cube LUT", "*.cube"),
         Choice::Model => ("Choose a 3D model", "glTF model", "*.glb"),
+        Choice::Splats => (
+            "Choose Gaussian splats",
+            "Gaussian splats (.ply or .splat)",
+            "*.ply",
+        ),
         Choice::ImportSequence => (
             "Choose the first numbered frame",
             "PNG or OpenEXR sequence",
@@ -379,6 +387,8 @@ pub fn select(choice: Choice, folder: &Path, name: &str) -> Result<Option<PathBu
             .glob("sequence.json")
     } else if matches!(choice, Choice::Model) {
         FileFilter::new(label).glob("*.glb").glob("*.gltf")
+    } else if matches!(choice, Choice::Splats) {
+        FileFilter::new(label).glob("*.ply").glob("*.splat")
     } else if matches!(choice, Choice::Video) {
         FileFilter::new(label).glob("*.mp4").glob("*.mov")
     } else if matches!(choice, Choice::Export | Choice::ImportSequence) {
@@ -398,6 +408,7 @@ pub fn select(choice: Choice, folder: &Path, name: &str) -> Result<Option<PathBu
                 | Choice::Font
                 | Choice::Lut
                 | Choice::Model
+                | Choice::Splats
         ) {
             SelectedFiles::open_file()
                 .identifier(parent())

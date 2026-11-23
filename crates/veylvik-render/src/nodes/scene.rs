@@ -34,3 +34,5 @@ impl RenderNode for Model3d {}
 impl RenderNode for ParticleInstances {}
 /// Read by Render scene, which colours its objects through the camera.
 impl RenderNode for CameraProjection {}
+/// Read by Render scene, which draws its splats.
+impl RenderNode for GaussianSplats {}

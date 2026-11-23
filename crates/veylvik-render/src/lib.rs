@@ -1457,6 +1457,7 @@ impl Renderer {
                         reflections: scene_reflections,
                         images: &images,
                         models: inputs.models(),
+                        splats: inputs.all_splats(),
                         environment: &self.studio_environment,
                         ltc: &self.ltc,
                         instances: &copies,

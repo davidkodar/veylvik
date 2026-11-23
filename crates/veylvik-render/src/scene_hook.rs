@@ -61,6 +61,8 @@ pub struct SceneJob<'a> {
     pub reflections: bool,
     /// Imported models by file path (`Geometry::Model { path }`).
     pub models: &'a std::collections::BTreeMap<String, std::sync::Arc<veylvik_scene::Model>>,
+    /// Gaussian splats by file path (`Geometry::Splats { path }`).
+    pub splats: &'a std::collections::BTreeMap<String, std::sync::Arc<veylvik_splat::Splats>>,
     /// Image card pictures by their source node (`Geometry::Card { image }`).
     pub images: &'a [Picture<'a>],
     /// The prefiltered studio environment, laid out as `environment_layer` reads it.

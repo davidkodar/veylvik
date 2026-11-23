@@ -220,6 +220,13 @@ pub fn load_inputs(plan: &Plan, base: &Path, budget: u64) -> Result<ImageInputs>
         let loaded = model::load(&base.join(path)).map_err(|e| format!("3D model {path}: {e}"))?;
         inputs.insert_model(path, std::sync::Arc::new(loaded));
     }
+    for path in plan.required_splats() {
+        let bytes =
+            std::fs::read(base.join(path)).map_err(|e| format!("Gaussian splats {path}: {e}"))?;
+        let splats =
+            veylvik_splat::parse(&bytes).map_err(|e| format!("Gaussian splats {path}: {e}"))?;
+        inputs.insert_splats(path, std::sync::Arc::new(splats));
+    }
     // A baked flock that cannot be read is simulated instead; nothing is lost but time.
     for path in plan.required_flocks() {
         if let Ok(bake) = flock::Bake::open(&base.join(path)) {

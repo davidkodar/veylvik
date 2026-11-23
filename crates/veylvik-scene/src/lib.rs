@@ -37,6 +37,13 @@ pub enum Geometry {
         bevel: f32,
         round: bool,
     },
+    /// Gaussian splats from a file, its box's largest side `size` pixels, shown at
+    /// `brightness` times their captured colours.
+    Splats {
+        path: String,
+        size: f32,
+        brightness: f32,
+    },
     /// A card the size of the frame showing the image of node `image`.
     Card { image: NodeId, size: [f32; 2] },
     /// An imported model (its file path), scaled so its largest side is `size`
@@ -287,6 +294,8 @@ pub fn local_bounds(geometry: &Geometry) -> ([f32; 3], [f32; 3]) {
             extent.map(|v| -v * size * 0.5),
             extent.map(|v| v * size * 0.5),
         ),
+        // The box most of its splats lie in, at its size (its proportions are the file's).
+        Geometry::Splats { size, .. } => ([-size * 0.5; 3], [size * 0.5; 3]),
     }
 }
 impl Camera {
@@ -656,6 +665,31 @@ fn node(doc: &Graph<'_>, id: NodeId, time: Time, depth: usize) -> Result<Scene> 
             projection: None,
         }),
         Operation::Model3d(_) => {}
+        Operation::GaussianSplats(g) if !g.file.is_empty() => scene.objects.push(Object {
+            node: id,
+            texture: None,
+            geometry: Geometry::Splats {
+                path: g.file.clone(),
+                size: g.size.at(time)?.max(1.0),
+                brightness: g.brightness.at(time)?.max(0.0),
+            },
+            world: placed(&g.placement, time, centre)?,
+            surface: Surface {
+                colour: [1.0; 3],
+                opacity: 1.0,
+                roughness: 1.0,
+                metallic: 0.0,
+                finish: [0.0; 5],
+                unlit: true,
+                look: None,
+                catcher: false,
+                shadow: 1.0,
+            },
+            aim: None,
+            instanced: None,
+            projection: None,
+        }),
+        Operation::GaussianSplats(_) => {}
         Operation::Transform3d(t) => {
             let child = input("scene").ok_or_else(|| Error("3D transform needs a scene".into()))?;
             let m = mul(
@@ -907,6 +941,7 @@ pub fn mesh(object: &Object) -> Result<Mesh> {
             veylvik_mesh::primitive(P::Plane, [size[0], size[1], 0.0], 3)
         }
         // Model meshes come from the loaded file, which the renderer holds.
-        Geometry::Model { .. } => Ok(Mesh::default()),
+        // Models are split into parts, splats drawn by their own renderer.
+        Geometry::Model { .. } | Geometry::Splats { .. } => Ok(Mesh::default()),
     }
 }

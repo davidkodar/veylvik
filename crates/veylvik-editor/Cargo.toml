@@ -14,6 +14,7 @@ veylvik-text.workspace = true
 veylvik-render.workspace = true
 veylvik-render3d.workspace = true
 veylvik-scene.workspace = true
+veylvik-splat.workspace = true
 veylvik-track.workspace = true
 veylvik-solve.workspace = true
 veylvik-expr.workspace = true

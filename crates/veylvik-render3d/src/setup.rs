@@ -368,6 +368,8 @@ impl Engine {
             panorama: Mutex::new(None),
             converted: Mutex::new(None),
             targets: Mutex::new(Vec::new()),
+            splat_programs: std::sync::OnceLock::new(),
+            splat_sets: Mutex::new(Vec::new()),
             sky,
             catcher,
             shadow_pipeline,

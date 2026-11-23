@@ -1206,6 +1206,17 @@ impl Plan {
             .chain(self.temporal.iter().flat_map(|b| b.plan.required_assets()))
             .collect()
     }
+    /// The Gaussian splat files the plan's scenes show.
+    pub fn required_splats(&self) -> BTreeSet<&str> {
+        self.nodes
+            .iter()
+            .chain(&self.light_data)
+            .filter_map(|n| match &n.operation {
+                Operation::GaussianSplats(g) if !g.file.is_empty() => Some(g.file.as_str()),
+                _ => None,
+            })
+            .collect()
+    }
     /// The baked flocks the plan's particles read (their `bake` files).
     pub fn required_flocks(&self) -> BTreeSet<&str> {
         self.nodes

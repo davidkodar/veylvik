@@ -39,6 +39,8 @@ pub(crate) struct InspectCx<'a> {
     pub error: Option<String>,
     /// A flock's bake, in a line (None: not a flock).
     pub flock_bake: Option<&'a str>,
+    /// The user asked to choose a splat file.
+    pub choose_splats: bool,
     /// Bake the flock (true) or go back to simulating it (false).
     pub bake_flock: Option<bool>,
     /// The colour field this node is currently sampling with the eyedropper, if any.

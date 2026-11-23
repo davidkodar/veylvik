@@ -9,6 +9,7 @@ description = "Rasterises Veylvik 3D scenes on the GPU for Render scene nodes."
 veylvik-document.workspace = true
 veylvik-render.workspace = true
 veylvik-scene.workspace = true
+veylvik-splat.workspace = true
 wgpu.workspace = true
 bytemuck.workspace = true
 [dev-dependencies]

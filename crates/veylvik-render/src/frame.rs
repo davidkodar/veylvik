@@ -185,6 +185,8 @@ pub struct ImageInputs(
     veylvik_document::access::Reach,
     /// Baked flocks by file path (a Particles node's `bake`).
     BTreeMap<String, Arc<dyn crate::BakedFlock>>,
+    /// Gaussian splats by file path (a Gaussian splats node's `file`).
+    BTreeMap<String, Arc<veylvik_splat::Splats>>,
 );
 impl ImageInputs {
     /// Whether both hold exactly the same images, frames, sources and models.
@@ -210,6 +212,11 @@ impl ImageInputs {
                 .4
                 .iter()
                 .all(|(k, v)| other.4.get(k).is_some_and(|w| Arc::ptr_eq(v, w)))
+            && self.7.len() == other.7.len()
+            && self
+                .7
+                .iter()
+                .all(|(k, v)| other.7.get(k).is_some_and(|w| Arc::ptr_eq(v, w)))
             && self.6.len() == other.6.len()
             && self
                 .6
@@ -222,6 +229,16 @@ impl ImageInputs {
     }
     pub fn model(&self, path: &str) -> Option<&Arc<veylvik_scene::Model>> {
         self.4.get(path)
+    }
+    pub fn insert_splats(&mut self, path: impl Into<String>, splats: Arc<veylvik_splat::Splats>) {
+        self.7.insert(path.into(), splats);
+    }
+    /// Gaussian splats read from `path`, when loaded.
+    pub fn splats(&self, path: &str) -> Option<&Arc<veylvik_splat::Splats>> {
+        self.7.get(path)
+    }
+    pub fn all_splats(&self) -> &BTreeMap<String, Arc<veylvik_splat::Splats>> {
+        &self.7
     }
     pub fn insert_flock(&mut self, path: impl Into<String>, flock: Arc<dyn crate::BakedFlock>) {
         self.6.insert(path.into(), flock);

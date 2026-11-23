@@ -4287,6 +4287,7 @@ dependencies = [
  "veylvik-segment",
  "veylvik-shader",
  "veylvik-solve",
+ "veylvik-splat",
  "veylvik-text",
  "veylvik-track",
  "veylvik-warp",
@@ -4327,6 +4328,7 @@ dependencies = [
  "veylvik-render",
  "veylvik-render3d",
  "veylvik-scene",
+ "veylvik-splat",
  "veylvik-text",
  "zstd",
 ]
@@ -4382,6 +4384,7 @@ dependencies = [
  "veylvik-preview",
  "veylvik-scene",
  "veylvik-shader",
+ "veylvik-splat",
  "veylvik-text",
  "veylvik-warp",
  "wgpu",
@@ -4398,6 +4401,7 @@ dependencies = [
  "veylvik-preview",
  "veylvik-render",
  "veylvik-scene",
+ "veylvik-splat",
  "wgpu",
 ]
 
@@ -4434,6 +4438,15 @@ version = "0.1.0"
 [[package]]
 name = "veylvik-solve"
 version = "0.1.0"
+
+[[package]]
+name = "veylvik-splat"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "pollster",
+ "wgpu",
+]
 
 [[package]]
 name = "veylvik-studio"
