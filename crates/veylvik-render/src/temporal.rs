@@ -103,6 +103,17 @@ impl Renderer {
                         of(time, &mut words, left)?;
                     }
                 }
+                Operation::OfxEffect(effect) => {
+                    // Its own frame, then each other frame the plugin names.
+                    words.push(7);
+                    let others = self.ofx_other_frames(plan, &branch.key, effect, request.time)?;
+                    of(request.time, &mut words, left)?;
+                    for other in others {
+                        let bits = other.to_bits();
+                        words.extend([bits as u32, (bits >> 32) as u32]);
+                        of(time_of(other, plan.frame_rate)?, &mut words, left)?;
+                    }
+                }
                 Operation::OwnSize(_) => {
                     words.push(6);
                     of(request.time, &mut words, left)?;
@@ -299,6 +310,47 @@ impl Renderer {
                     work.remaining = work.remaining.saturating_add(1);
                     frame?
                 }
+                Operation::OfxEffect(effect) => {
+                    // The input at the frames the plugin names, then at its own.
+                    let previous = work.cache_sources;
+                    work.cache_sources = true;
+                    for other in self.ofx_other_frames(plan, &branch.key, effect, request.time)? {
+                        let at = time_of(other, plan.frame_rate)?;
+                        let Some(made) = self.temporal_frame(
+                            &branch.plan,
+                            RenderRequest::full(at),
+                            inputs,
+                            work,
+                        )?
+                        else {
+                            work.cache_sources = previous;
+                            return Ok(None);
+                        };
+                        let port = branch.key.rsplit(':').next().unwrap_or_default();
+                        let id = plan
+                            .nodes
+                            .iter()
+                            .find(|n| {
+                                n.operation.descriptor().type_id == "ofx_effect"
+                                    && crate::plan::ofx_key(n.id, port) == branch.key
+                            })
+                            .map(|n| n.id);
+                        if let Some(id) = id {
+                            resolved.insert_gpu(
+                                crate::plan::ofx_frame_key(id, port, other),
+                                Arc::new(made),
+                            );
+                        }
+                    }
+                    let frame = self.temporal_frame(
+                        &branch.plan,
+                        RenderRequest::full(request.time),
+                        inputs,
+                        work,
+                    );
+                    work.cache_sources = previous;
+                    frame?
+                }
                 _ => unreachable!("compiled temporal boundary"),
             };
             let Some(frame) = frame else {
@@ -312,4 +364,84 @@ impl Renderer {
         let frame = self.render_gpu_resolved(plan, request, &resolved)?;
         Ok((!(work.cancelled)()).then_some(frame))
     }
+}
+
+impl Renderer {
+    /// The frames other than its own that an OpenFX effect needs of the input `branch`
+    /// feeds, asked of the effect host.
+    pub(crate) fn ofx_other_frames(
+        &self,
+        plan: &Plan,
+        branch_key: &str,
+        effect: &veylvik_document::nodes::OfxEffect,
+        time: veylvik_document::Time,
+    ) -> Result<Vec<f64>> {
+        let host = self.effect_host().ok_or_else(|| {
+            error("OpenFX effects need the effect host, which this host has not loaded")
+        })?;
+        let port = branch_key.rsplit(':').next().unwrap_or_default();
+        let at = veylvik_document::nodes::OFX_PORTS
+            .iter()
+            .position(|p| *p == port);
+        let clip = at
+            .and_then(|k| effect.clips.get(k))
+            .cloned()
+            .unwrap_or_default();
+        let now = frame_of(time, plan.frame_rate)?;
+        // The clips the effect's wired ports feed.
+        let node = plan.nodes.iter().find(|n| {
+            veylvik_document::nodes::OFX_PORTS
+                .iter()
+                .any(|p| crate::plan::ofx_key(n.id, p) == branch_key)
+        });
+        let connected: Vec<&str> = match node {
+            Some(node) => veylvik_document::nodes::OFX_PORTS
+                .iter()
+                .zip(&effect.clips)
+                .filter(|(p, c)| !c.is_empty() && node.inputs.contains_key(**p))
+                .map(|(_, c)| c.as_str())
+                .collect(),
+            None => vec![clip.as_str()],
+        };
+        let needed = host.frames_needed(crate::effect_hook::FramesJob {
+            effect,
+            connected,
+            values: effect.values_at(time)?,
+            frame: now,
+            width: plan.width,
+            height: plan.height,
+            duration: plan.frame_count,
+        })?;
+        Ok(needed
+            .into_iter()
+            .filter(|(c, _)| *c == clip)
+            .flat_map(|(_, frames)| frames)
+            .filter(|f| (f - now).abs() > 1e-6)
+            .collect())
+    }
+}
+/// The frame number of `time`.
+pub(crate) fn frame_of(time: veylvik_document::Time, rate: veylvik_document::Time) -> Result<f64> {
+    Ok(time.seconds()? * rate.seconds()?)
+}
+/// The time of frame number `frame`: exact for whole frames, rational to a thousandth
+/// of a frame otherwise.
+pub(crate) fn time_of(frame: f64, rate: veylvik_document::Time) -> Result<veylvik_document::Time> {
+    if !frame.is_finite() {
+        return Err(error(
+            "an OpenFX effect asked for a frame that is not a number",
+        ));
+    }
+    if frame.fract() == 0.0 {
+        return Ok(veylvik_document::Time::at_frame(frame as i64, rate)?);
+    }
+    // seconds = frame / fps = frame * rate.rate / rate.ticks
+    let ticks = (frame * 1000.0).round() as i64 * i64::from(rate.rate);
+    let per = u32::try_from(
+        rate.ticks
+            .checked_mul(1000)
+            .ok_or_else(|| error("frame rate too fine"))?,
+    )
+    .map_err(|_| error("frame rate too fine"))?;
+    Ok(veylvik_document::Time::new(ticks, per)?)
 }

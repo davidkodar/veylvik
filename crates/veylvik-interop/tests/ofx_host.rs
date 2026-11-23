@@ -77,6 +77,7 @@ fn a_plugin_renders_with_the_settings_given_and_the_right_way_up() {
         pixels: &source,
         width: w,
         height: h,
+        time: None,
     };
     let out = instance.render(0.0, &values, &[("Source", frame)]).unwrap();
     // OpenFX counts rows from the bottom: our top row is its row h - 1, lifted most.
@@ -128,6 +129,7 @@ fn a_plugin_sets_values_of_every_kind_itself() {
         pixels: &one,
         width: 2,
         height: 2,
+        time: None,
     };
     let out = instance.render(0.0, &[], &[("Source", frame)]).unwrap();
     assert!((out[0] - (1.0 + 0.125 * 0.5)).abs() < 1e-6, "{}", out[0]);
@@ -147,6 +149,7 @@ fn a_curve_setting_keeps_its_default_points_and_renders_through_the_hosts_curve(
         pixels: &source,
         width: 2,
         height: 2,
+        time: None,
     };
     let mut instance = lib.instance(0, FILTER, 2, 2).unwrap();
     let mode = ("mode".to_string(), Value::Numbers(vec![3.0]));
@@ -203,4 +206,60 @@ fn what_is_not_a_plugin_is_refused() {
     std::fs::write(&file, b"not a library").unwrap();
     assert!(Library::open(&file).is_err());
     assert!(Library::open(&dir.join("Missing.ofx.bundle")).is_err());
+}
+#[test]
+fn a_plugin_names_the_other_frames_it_needs_and_renders_from_them() {
+    let lib = Library::open(&bundle("other-frames")).unwrap();
+    let mut instance = lib.instance(0, FILTER, 2, 1).unwrap();
+    instance.set_duration(48);
+    let mode = |m: f64| vec![("mode".to_string(), Value::Numbers(vec![m]))];
+    // Without the previous-frame mode only its own frame is needed.
+    assert_eq!(
+        instance
+            .frames_needed(10.0, &mode(0.0), &["Source"])
+            .unwrap(),
+        vec![("Source".to_string(), vec![10.0])]
+    );
+    assert_eq!(
+        instance
+            .frames_needed(10.0, &mode(4.0), &["Source"])
+            .unwrap(),
+        vec![("Source".to_string(), vec![9.0])]
+    );
+    // Rendering frame 10 it reads the picture of frame 9, whatever frame 10 holds.
+    let now = vec![0.25f32; 8];
+    let before = vec![0.75f32; 8];
+    let frames = [
+        (
+            "Source",
+            Frame {
+                pixels: &now,
+                width: 2,
+                height: 1,
+                time: None,
+            },
+        ),
+        (
+            "Source",
+            Frame {
+                pixels: &before,
+                width: 2,
+                height: 1,
+                time: Some(9.0),
+            },
+        ),
+    ];
+    let out = instance.render(10.0, &mode(4.0), &frames).unwrap();
+    assert_eq!(out, before);
+    // A frame it needs but was not given fails, with the plugin's message.
+    let only_now = [(
+        "Source",
+        Frame {
+            pixels: &now,
+            width: 2,
+            height: 1,
+            time: None,
+        },
+    )];
+    assert!(instance.render(10.0, &mode(4.0), &only_now).is_err());
 }

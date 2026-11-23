@@ -115,6 +115,7 @@ fn an_openfx_node_renders_through_the_helper_in_a_composition() {
         plugin: "org.veylvik.test.gain".into(),
         context: OfxContext::Filter,
         clips: vec!["Source".into()],
+        other_frames: false,
         settings: [
             ("gain".to_string(), constant(3.0)),
             ("lift".to_string(), constant(0.0)),
@@ -191,4 +192,85 @@ fn frames_through_shared_memory_and_through_the_pipes_are_the_same() {
     let at = |x: u32, y: u32, k: u32| results[0][((y * w + x) * 4 + k) as usize];
     let expected = source[((5 * w + 2) * 4) as usize] * 1.5 + 0.25 * (h - 1 - 5) as f32 / h as f32;
     assert!((at(2, 5, 0) - expected).abs() < 1e-6);
+}
+#[test]
+#[ignore = "requires Vulkan"]
+fn a_plugin_that_reads_another_frame_gets_its_input_rendered_at_that_frame() {
+    use veylvik_document::nodes::{OfxContext, OfxEffect, OfxSetting};
+    use veylvik_document::{Key, Node, Operation, Scalar, Time, blank};
+    use veylvik_render::{ImageInputs, Plan, RenderRequest, Renderer};
+    let (_, bundle) = bundle("other-frames");
+    let renderer = Renderer::new().unwrap();
+    renderer.set_effect_host(std::sync::Arc::new(veylvik_io::ofx::Runner::with_program(
+        Some(PathBuf::from(env!("CARGO_BIN_EXE_veylvik"))),
+    )));
+    let rate = Time { ticks: 24, rate: 1 };
+    let mut doc = blank(4, 2, rate).unwrap();
+    let solid = doc.output;
+    doc.nodes.get_mut(&solid).unwrap().operation =
+        Operation::Solid(veylvik_document::nodes::Solid {
+            color: [0.25, 0.25, 0.25, 1.0],
+        });
+    // Brighter by a tenth of a stop each frame.
+    let stops = Scalar::Linear {
+        keys: vec![
+            Key {
+                segment: None,
+                time: Time::at_frame(0, rate).unwrap(),
+                value: 0.0,
+            },
+            Key {
+                segment: None,
+                time: Time::at_frame(20, rate).unwrap(),
+                value: 2.0,
+            },
+        ],
+    };
+    let exposure = Node::new(
+        "Brighter",
+        Operation::Exposure(veylvik_document::nodes::Exposure { stops }),
+        &[("image", solid)],
+    );
+    let mut effect = OfxEffect {
+        bundle: bundle.to_string_lossy().into_owned(),
+        plugin: "org.veylvik.test.gain".into(),
+        context: OfxContext::Filter,
+        clips: vec!["Source".into()],
+        settings: [(
+            "mode".to_string(),
+            OfxSetting::Numbers(vec![Scalar::Constant { value: 4.0 }]),
+        )]
+        .into(),
+        other_frames: true,
+    };
+    let node = Node::new(
+        "Previous frame",
+        Operation::OfxEffect(effect.clone()),
+        &[("source", exposure.id)],
+    );
+    doc.output = node.id;
+    doc.nodes.insert(exposure.id, exposure);
+    doc.nodes.insert(node.id, node.clone());
+    let plan = Plan::compile(&doc).unwrap();
+    let at = |f| RenderRequest::full(Time::at_frame(f, rate).unwrap());
+    for frame in [10, 11, 3] {
+        let pixels = renderer
+            .render_frame(&plan, at(frame), &ImageInputs::default())
+            .unwrap()
+            .pixels;
+        let want = 0.25 * 2f32.powf(0.1 * (frame - 1) as f32);
+        assert!(
+            (pixels[0][0] - want).abs() < 1e-4,
+            "frame {frame}: {} vs {want}",
+            pixels[0][0]
+        );
+    }
+    // Without other frames the plugin is not given the frame it asks for, and says so.
+    effect.other_frames = false;
+    doc.nodes.get_mut(&node.id).unwrap().operation = Operation::OfxEffect(effect);
+    let plan = Plan::compile(&doc).unwrap();
+    match renderer.render_frame(&plan, at(10), &ImageInputs::default()) {
+        Err(e) => assert!(e.to_string().contains("no source"), "{e}"),
+        Ok(_) => panic!("rendered without the frame the plugin needs"),
+    }
 }

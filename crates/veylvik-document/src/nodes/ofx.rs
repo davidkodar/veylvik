@@ -50,6 +50,10 @@ pub struct OfxEffect {
     pub clips: Vec<String>,
     /// Settings by the plugin's names; those not here keep the plugin's defaults.
     pub settings: BTreeMap<String, OfxSetting>,
+    /// The plugin reads other frames of its inputs (it names them before rendering);
+    /// its inputs are then rendered at those frames too.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub other_frames: bool,
 }
 impl OfxEffect {
     /// The settings' values at `time`.

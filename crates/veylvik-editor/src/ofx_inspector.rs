@@ -189,6 +189,7 @@ fn chooser(ui: &mut egui::Ui, effect: &mut OfxEffect, cx: &mut InspectCx<'_>) {
                             effect.bundle = plugin.bundle.to_string_lossy().into_owned();
                             effect.plugin = plugin.identifier.clone();
                             effect.context = context_of(plugin);
+                            effect.other_frames = plugin.temporal;
                             effect.clips.clear();
                             effect.settings.clear();
                             cx.dirty = true;
@@ -536,6 +537,7 @@ mod tests {
             plugin: "net.sf.openfx.MergePlugin".into(),
             context: OfxContext::Filter,
             clips: vec!["Source".into(), "A".into(), String::new(), "Mask".into()],
+            other_frames: false,
             settings: Default::default(),
         };
         let name = |e: &OfxEffect, p: &str| {
@@ -562,6 +564,7 @@ mod tests {
             plugin: "p".into(),
             context: OfxContext::Filter,
             clips: Vec::new(),
+            other_frames: false,
             settings: Default::default(),
         };
         // An edit before animating is a constant.

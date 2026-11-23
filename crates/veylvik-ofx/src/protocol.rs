@@ -32,6 +32,26 @@ pub enum Request {
         inputs: Vec<String>,
         #[serde(default)]
         shared: bool,
+        /// Each input's frame (None: the render's own).
+        #[serde(default)]
+        times: Vec<Option<f64>>,
+        /// The composition's length in frames.
+        #[serde(default)]
+        duration: u32,
+    },
+    /// The frames of each input clip the plugin needs to render `time`.
+    FramesNeeded {
+        bundle: String,
+        index: usize,
+        context: String,
+        width: u32,
+        height: u32,
+        time: f64,
+        values: Vec<(String, Value)>,
+        duration: u32,
+        /// The input clips that are wired.
+        #[serde(default)]
+        connected: Vec<String>,
     },
     Quit,
 }
@@ -47,6 +67,9 @@ pub struct Reply {
     pub refused: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<Description>,
+    /// Frames needed, per input clip.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub frames: Vec<(String, Vec<f64>)>,
     /// What the plugin said.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub messages: Vec<String>,

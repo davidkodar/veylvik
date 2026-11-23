@@ -402,6 +402,8 @@ pub struct Plan {
     pub(crate) ocio: veylvik_document::color_management::OcioViews,
     pub(crate) temporal: Vec<TemporalBranch>,
     pub(crate) frame_rate: veylvik_document::Time,
+    /// The composition's length in frames.
+    pub(crate) frame_count: u32,
     working_space: veylvik_document::color_management::WorkingSpace,
     root: NodeId,
     pub(crate) width: u32,
@@ -592,6 +594,20 @@ impl Plan {
                 } else {
                     // A node that wants an input's recent past gets it as a branch
                     // rendered at other times; the node itself stays.
+                    // An OpenFX plugin that reads other frames gets each input as a
+                    // branch, rendered at the frames it names.
+                    for (port, source) in ofx_branches(node) {
+                        temporal.push(TemporalBranch {
+                            operation: node.operation.clone(),
+                            plan: Box::new(Self::compile_branch(
+                                composition,
+                                source,
+                                depth + 1,
+                                remaining,
+                            )?),
+                            key: ofx_key(node.id, port),
+                        });
+                    }
                     if let Some(source) = history_source(node) {
                         temporal.push(TemporalBranch {
                             operation: node.operation.clone(),
@@ -657,6 +673,9 @@ impl Plan {
                 for port in node.operation.inputs().iter().rev() {
                     // An input read through its history is planned as a branch instead.
                     if *port == HISTORY_PORT && history_source(node).is_some() {
+                        continue;
+                    }
+                    if ofx_branches(node).iter().any(|(p, _)| p == port) {
                         continue;
                     }
                     if let Some(source) = node.inputs.get(*port) {
@@ -749,6 +768,10 @@ impl Plan {
                 }
                 if *port == HISTORY_PORT && history_source(node).is_some() {
                     inputs[i] = Input::Asset(history_key(node.id));
+                    continue;
+                }
+                if ofx_branches(node).iter().any(|(p, _)| p == port) {
+                    inputs[i] = Input::Asset(ofx_key(node.id, port));
                     continue;
                 }
                 // An unconnected optional port stays an empty input.
@@ -1076,6 +1099,7 @@ impl Plan {
             ocio: composition.ocio.clone(),
             temporal,
             frame_rate: composition.frame_rate,
+            frame_count: composition.frame_count,
             working_space: composition.working_space,
             root: output,
             curves,
@@ -1356,6 +1380,28 @@ pub(crate) fn history_source(node: &Node) -> Option<NodeId> {
         }
         _ => None,
     }
+}
+/// The wired ports of an OpenFX effect that reads other frames, with their sources.
+pub(crate) fn ofx_branches(node: &Node) -> Vec<(&'static str, NodeId)> {
+    match &node.operation {
+        Operation::OfxEffect(effect) if effect.other_frames && !effect.plugin.is_empty() => {
+            veylvik_document::nodes::OFX_PORTS
+                .iter()
+                .zip(&effect.clips)
+                .filter(|(_, clip)| !clip.is_empty())
+                .filter_map(|(port, _)| node.inputs.get(*port).map(|source| (*port, *source)))
+                .collect()
+        }
+        _ => Vec::new(),
+    }
+}
+/// The input key of an OpenFX effect's port read as a branch, at its own frame.
+pub(crate) fn ofx_key(id: NodeId, port: &str) -> String {
+    format!("\0temporal:{id}:{port}")
+}
+/// The input key of that branch at another frame.
+pub(crate) fn ofx_frame_key(id: NodeId, port: &str, frame: f64) -> String {
+    format!("\0temporal:{id}:{port}@{}", frame.to_bits())
 }
 pub(crate) fn history_key(id: veylvik_document::NodeId) -> String {
     format!("\0temporal:{id}")

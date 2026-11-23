@@ -27,6 +27,9 @@ pub struct Plugin {
     pub grouping: String,
     pub description: String,
     pub contexts: Vec<String>,
+    /// It reads other frames of its inputs.
+    #[serde(default)]
+    pub temporal: bool,
 }
 impl Plugin {
     /// The context Veylvik runs it in: a filter if it can be one, else general, else a

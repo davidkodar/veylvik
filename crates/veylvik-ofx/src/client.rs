@@ -193,13 +193,16 @@ impl Worker {
         inputs: &[(&str, &[f32])],
     ) -> Result<(Vec<f32>, Vec<String>)> {
         let mut out = Vec::new();
+        let inputs: Vec<(&str, Option<f64>, &[f32])> =
+            inputs.iter().map(|(c, p)| (*c, None, *p)).collect();
         let said = self.render_with(
             plugin,
             context,
             [width, height],
             time,
+            1,
             values,
-            inputs,
+            &inputs,
             &mut |p| out = p.to_vec(),
         )?;
         Ok((out, said))
@@ -214,12 +217,13 @@ impl Worker {
         context: &str,
         [width, height]: [u32; 2],
         time: f64,
+        duration: u32,
         values: &[(String, Value)],
-        inputs: &[(&str, &[f32])],
+        inputs: &[(&str, Option<f64>, &[f32])],
         deliver: &mut dyn FnMut(&[f32]),
     ) -> Result<Vec<String>> {
         let pixels = width as usize * height as usize * 4;
-        if let Some((name, _)) = inputs.iter().find(|(_, p)| p.len() != pixels) {
+        if let Some((name, _, _)) = inputs.iter().find(|(_, _, p)| p.len() != pixels) {
             return Err(format!("input {name} is not {width} x {height}"));
         }
         // In shared memory when there is some: the inputs one after another, then the output.
@@ -231,7 +235,7 @@ impl Worker {
             None => false,
         };
         if shared && let Some(memory) = running.shared.as_mut() {
-            for (k, (_, picture)) in inputs.iter().enumerate() {
+            for (k, (_, _, picture)) in inputs.iter().enumerate() {
                 memory
                     .floats_mut(k * pixels, pixels)?
                     .copy_from_slice(picture);
@@ -245,13 +249,15 @@ impl Worker {
             height,
             time,
             values: values.to_vec(),
-            inputs: inputs.iter().map(|(n, _)| n.to_string()).collect(),
+            inputs: inputs.iter().map(|(n, _, _)| n.to_string()).collect(),
             shared,
+            times: inputs.iter().map(|(_, t, _)| *t).collect(),
+            duration,
         };
         let payload: Vec<&[f32]> = if shared {
             Vec::new()
         } else {
-            inputs.iter().map(|(_, p)| *p).collect()
+            inputs.iter().map(|(_, _, p)| *p).collect()
         };
         let (reply, out) = self.call(&request, &payload, RENDER_TIMEOUT)?;
         if shared {
@@ -267,6 +273,34 @@ impl Worker {
             return Err("the helper sent a picture of the wrong size".into());
         }
         Ok(reply.messages)
+    }
+}
+impl Worker {
+    /// The frames of each input clip `plugin` needs to render `time` with `values`.
+    #[allow(clippy::too_many_arguments)]
+    pub fn frames_needed(
+        &mut self,
+        plugin: &Plugin,
+        context: &str,
+        [width, height]: [u32; 2],
+        time: f64,
+        duration: u32,
+        values: &[(String, Value)],
+        connected: &[&str],
+    ) -> Result<Vec<(String, Vec<f64>)>> {
+        let request = Request::FramesNeeded {
+            connected: connected.iter().map(|c| c.to_string()).collect(),
+            bundle: plugin.bundle.to_string_lossy().into_owned(),
+            index: plugin.index,
+            context: context.to_string(),
+            width,
+            height,
+            time,
+            values: values.to_vec(),
+            duration,
+        };
+        let (reply, _) = self.call(&request, &[], DESCRIBE_TIMEOUT)?;
+        Ok(reply.frames)
     }
 }
 impl Drop for Worker {

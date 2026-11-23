@@ -46,7 +46,9 @@ pub struct Pixels {
 }
 pub struct Clip {
     pub props: PropSet,
-    pub pixels: Mutex<Option<Pixels>>,
+    /// Its pictures during a render, by time (the render's own time, and any other
+    /// frames the plugin asked for).
+    pub pixels: Mutex<Vec<(f64, Pixels)>>,
 }
 /// A parameter's value: numbers (ints too), or text.
 #[derive(Debug, Clone)]
@@ -138,7 +140,7 @@ impl Effect {
             lock(&self.clip_order).push(name.to_string());
             Box::new(Clip {
                 props,
-                pixels: Mutex::new(None),
+                pixels: Mutex::new(Vec::new()),
             })
         });
         clip.props.handle()
@@ -231,7 +233,7 @@ extern "C" fn clip_get_property_set(c: *mut c_void, props: *mut *mut c_void) -> 
 }
 extern "C" fn clip_get_image(
     c: *mut c_void,
-    _time: c_double,
+    time: c_double,
     _region: *const RectD,
     image: *mut *mut c_void,
 ) -> Status {
@@ -239,7 +241,20 @@ extern "C" fn clip_get_image(
     let Some(c) = (unsafe { clip(c) }) else {
         return ERR_BAD_HANDLE;
     };
-    let Some(pixels) = *lock(&c.pixels) else {
+    // Only the frames handed over for this render (the plugin names the others it
+    // needs before it renders).
+    let found = lock(&c.pixels)
+        .iter()
+        .find(|(t, _)| (t - time).abs() < 1e-4)
+        .map(|(_, p)| *p);
+    let Some(pixels) = found else {
+        let had: Vec<f64> = lock(&c.pixels).iter().map(|(t, _)| *t).collect();
+        super::trace(|| {
+            format!(
+                "image at {time} asked of {:?}, which holds {had:?}",
+                c.props.get_string("OfxPropName", 0)
+            )
+        });
         return FAILED;
     };
     let p = Box::new(PropSet::default());
@@ -286,7 +301,9 @@ extern "C" fn clip_get_region_of_definition(
     let Some(c) = (unsafe { clip(c) }) else {
         return ERR_BAD_HANDLE;
     };
-    let (w, h) = lock(&c.pixels).map_or((0, 0), |p| (p.width, p.height));
+    let (w, h) = lock(&c.pixels)
+        .first()
+        .map_or((0, 0), |(_, p)| (p.width, p.height));
     let rect = RectD {
         x1: 0.0,
         y1: 0.0,

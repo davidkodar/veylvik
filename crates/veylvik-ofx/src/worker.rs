@@ -35,6 +35,7 @@ impl State {
             grouping: info.grouping,
             description: info.description,
             contexts: info.contexts,
+            temporal: info.temporal,
         })
     }
     fn answer(&mut self, request: Request, payload: Vec<f32>) -> Result<(Reply, Vec<f32>)> {
@@ -110,6 +111,8 @@ impl State {
                 values,
                 inputs,
                 shared,
+                times,
+                duration,
             } => {
                 let pixels = width as usize * height as usize * 4;
                 if shared {
@@ -128,6 +131,8 @@ impl State {
                     self.instances.insert(key.clone(), instance);
                 }
                 let instance = self.instances.get_mut(&key).ok_or("no instance")?;
+                instance.set_duration(duration.max(1));
+                let at = |k: usize| times.get(k).copied().flatten();
                 let values: Vec<_> = values.into_iter().map(|(n, v)| (n, v.into())).collect();
                 let framed = |source: &[f32]| -> Vec<(usize, std::ops::Range<usize>)> {
                     (0..inputs.len())
@@ -148,6 +153,7 @@ impl State {
                                     pixels: &source[r],
                                     width,
                                     height,
+                                    time: at(k),
                                 },
                             )
                         })
@@ -165,6 +171,7 @@ impl State {
                                 pixels: &payload[r],
                                 width,
                                 height,
+                                time: at(k),
                             },
                         )
                     })
@@ -172,6 +179,29 @@ impl State {
                 let out = instance.render(time, &values, &frames)?;
                 reply.messages = veylvik_interop::ofx::messages();
                 return Ok((reply, out));
+            }
+            Request::FramesNeeded {
+                bundle,
+                index,
+                context,
+                width,
+                height,
+                time,
+                values,
+                duration,
+                connected,
+            } => {
+                let lib = self.library(&bundle)?;
+                let key = (bundle, index, context.clone(), width, height);
+                if !self.instances.contains_key(&key) {
+                    let instance = lib.instance(index, &context, width, height)?;
+                    self.instances.insert(key.clone(), instance);
+                }
+                let instance = self.instances.get_mut(&key).ok_or("no instance")?;
+                instance.set_duration(duration.max(1));
+                let values: Vec<_> = values.into_iter().map(|(n, v)| (n, v.into())).collect();
+                let connected: Vec<&str> = connected.iter().map(String::as_str).collect();
+                reply.frames = instance.frames_needed(time, &values, &connected)?;
             }
             Request::Quit => {}
         }

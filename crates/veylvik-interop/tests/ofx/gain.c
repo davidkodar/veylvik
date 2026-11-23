@@ -53,6 +53,18 @@ static OfxStatus mainEntry(const char *action, const void *handle, H in, H out) 
     props->setString(p, "OfxImageEffectPluginPropGrouping", 0, "Veylvik tests");
     props->setString(p, "OfxImageEffectPropSupportedContexts", 0, "OfxImageEffectContextFilter");
     props->setString(p, "OfxImageEffectPropSupportedPixelDepths", 0, "OfxBitDepthFloat");
+    props->setInt(p, "OfxImageEffectPropTemporalClipAccess", 0, 1);
+    return 0;
+  }
+  if (!strcmp(action, "OfxImageEffectActionGetFramesNeeded")) {
+    /* Mode 4 shows the previous frame: it needs the source one frame back. */
+    double t = 0; int mode = 0;
+    props->getDouble(in, "OfxPropTime", 0, &t);
+    effects->getParamSet(effect, &ps);
+    params->paramGetHandle(ps, "mode", &param, 0); params->paramGetValue(param, &mode);
+    if (mode != 4) return 14;
+    double range[2] = {t - 1.0, t - 1.0};
+    props->setDoubleN(out, "OfxImageClipPropFrameRange_Source", 2, range);
     return 0;
   }
   if (!strcmp(action, "OfxImageEffectActionDescribeInContext")) {
@@ -111,13 +123,15 @@ static OfxStatus mainEntry(const char *action, const void *handle, H in, H out) 
     if (!note || strcmp(note, "hello")) messages->message(effect, "OfxMessageError", 0, "note was not hello");
     if (mode == 2) { volatile int *nowhere = 0; *nowhere = 1; } /* a plugin that crashes */
     effects->clipGetHandle(effect, "Output", &dst, 0);
-    if (effects->clipGetImage(dst, 0.0, 0, &dimg)) return 1;
+    double now = 0;
+    props->getDouble(in, "OfxPropTime", 0, &now);
+    if (effects->clipGetImage(dst, now, 0, &dimg)) return 1;
     props->getPointer(dimg, "OfxImagePropData", 0, (void **)&dp);
     props->getIntN(dimg, "OfxImagePropBounds", 4, b);
     props->getInt(dimg, "OfxImagePropRowBytes", 0, &rows);
-    if (mode == 0 || mode == 3) {
+    if (mode == 0 || mode == 3 || mode == 4) {
       effects->clipGetHandle(effect, "Source", &src, 0);
-      if (effects->clipGetImage(src, 0.0, 0, &simg)) { messages->message(effect, "OfxMessageError", 0, "%s", "no source, as the support library says it"); return 1; }
+      if (effects->clipGetImage(src, mode == 4 ? now - 1.0 : now, 0, &simg)) { messages->message(effect, "OfxMessageError", 0, "%s", "no source, as the support library says it"); return 1; }
       props->getPointer(simg, "OfxImagePropData", 0, (void **)&sp);
       props->getInt(simg, "OfxImagePropRowBytes", 0, &rowsS);
     }
@@ -127,7 +141,7 @@ static OfxStatus mainEntry(const char *action, const void *handle, H in, H out) 
       double up = lift * (double)y / (double)(b[3] - b[1]);
       for (int x = 0; x < b[2] - b[0]; x++)
         for (int k = 0; k < 4; k++)
-          d[x * 4 + k] = mode == 0 ? (float)(s[x * 4 + k] * gain + (k < 3 ? up : 0.0)) : (float)c[k];
+          d[x * 4 + k] = mode == 4 ? s[x * 4 + k] : mode == 0 ? (float)(s[x * 4 + k] * gain + (k < 3 ? up : 0.0)) : (float)c[k];
     if (mode == 3) {
       /* The curve applied to the source: read through the host's evaluation. */
       H curve; double v;

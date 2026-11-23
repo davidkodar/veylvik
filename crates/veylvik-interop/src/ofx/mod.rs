@@ -102,7 +102,8 @@ fn host_props() -> PropSet {
     p.int("OfxImageEffectPropSupportsOverlays", &[0]);
     p.int("OfxImageEffectPropSupportsMultiResolution", &[0]);
     p.int("OfxImageEffectPropSupportsTiles", &[0]);
-    p.int("OfxImageEffectPropTemporalClipAccess", &[0]);
+    // Plugins may read other frames: they name them before rendering (frames needed).
+    p.int("OfxImageEffectPropTemporalClipAccess", &[1]);
     p.strings(
         "OfxImageEffectPropSupportedComponents",
         &["OfxImageComponentRGBA"],
@@ -153,6 +154,8 @@ pub struct PluginInfo {
     pub description: String,
     pub contexts: Vec<String>,
     pub depths: Vec<String>,
+    /// The plugin reads other frames of its inputs (it says which before rendering).
+    pub temporal: bool,
 }
 /// A parameter as a plugin defines it in a context.
 #[derive(Debug, Clone)]
@@ -426,6 +429,11 @@ impl Library {
             depths: d
                 .props
                 .get_strings("OfxImageEffectPropSupportedPixelDepths"),
+            temporal: d
+                .props
+                .get_numbers("OfxImageEffectPropTemporalClipAccess")
+                .first()
+                .is_some_and(|v| *v != 0.0),
         })
     }
     /// The plugin's clips and parameters in `context`, on a copy of its descriptor.
@@ -629,6 +637,8 @@ pub struct Frame<'a> {
     pub pixels: &'a [f32],
     pub width: u32,
     pub height: u32,
+    /// The frame this picture is of; None: the render's own.
+    pub time: Option<f64>,
 }
 /// An effect instance.
 pub struct Instance<'l> {
@@ -664,6 +674,104 @@ fn flip_into(from: &[f32], to: &mut [f32], width: u32) {
 impl Instance<'_> {
     pub fn size(&self) -> [u32; 2] {
         self.size
+    }
+    /// The composition's length in frames, as the plugin sees its clips' frame range.
+    pub fn set_duration(&self, frames: u32) {
+        let last = f64::from(frames.max(1) - 1);
+        let p = &self.effect.props;
+        p.double(
+            "OfxImageEffectInstancePropEffectDuration",
+            &[f64::from(frames.max(1))],
+        );
+        p.double("OfxImageEffectPropFrameRange", &[0.0, last]);
+        for clip in suites_lock(&self.effect.clips).values() {
+            clip.props
+                .double("OfxImageEffectPropFrameRange", &[0.0, last]);
+            clip.props
+                .double("OfxImageEffectPropUnmappedFrameRange", &[0.0, last]);
+        }
+    }
+    /// Sets settings by name, as a render does.
+    fn set_values(&self, values: &[(String, Value)]) -> Result<()> {
+        let params = suites_lock(&self.effect.params.params);
+        for (name, value) in values {
+            let Some(p) = params.get(name) else {
+                return Err(format!("the effect has no parameter {name}"));
+            };
+            *suites_lock(&p.value) = match value {
+                Value::Numbers(n) => suites::Value::Numbers(n.clone()),
+                Value::Text(t) => suites::Value::Text(c(t)),
+                Value::Curves(curves) => suites::Value::Curves(curves.clone()),
+            };
+        }
+        Ok(())
+    }
+    /// The frames of each input clip the plugin needs to render `time` with `values`
+    /// (its own frame unless it says otherwise), at most 64 a clip.
+    /// `connected` names the input clips that are wired: a plugin asks for frames only of
+    /// clips that are.
+    pub fn frames_needed(
+        &mut self,
+        time: f64,
+        values: &[(String, Value)],
+        connected: &[&str],
+    ) -> Result<Vec<(String, Vec<f64>)>> {
+        self.set_values(values)?;
+        self.effect.props.double("VeylvikTime", &[time]);
+        for (name, clip) in suites_lock(&self.effect.clips).iter() {
+            let wired = name == "Output" || connected.contains(&name.as_str());
+            clip.props
+                .int("OfxImageClipPropConnected", &[i32::from(wired)]);
+        }
+        let names: Vec<String> = suites_lock(&self.effect.clip_order)
+            .iter()
+            .filter(|n| *n != "Output")
+            .cloned()
+            .collect();
+        let args = PropSet::default();
+        args.double("OfxPropTime", &[time]);
+        let out = PropSet::default();
+        for name in &names {
+            out.double(&format!("OfxImageClipPropFrameRange_{name}"), &[time, time]);
+        }
+        match self.library.action(
+            self.index,
+            "OfxImageEffectActionGetFramesNeeded",
+            self.effect.handle(),
+            Some(&args),
+            Some(&out),
+        ) {
+            OK | REPLY_DEFAULT => {}
+            s => {
+                return Err(format!(
+                    "asking for the frames needed failed (status {s}){}",
+                    said()
+                ));
+            }
+        }
+        let mut needed = Vec::new();
+        for name in names {
+            let ranges = out.get_numbers(&format!("OfxImageClipPropFrameRange_{name}"));
+            let mut frames = Vec::new();
+            for [a, b] in ranges.as_chunks::<2>().0 {
+                let (first, last) = (a.min(*b), a.max(*b));
+                if !first.is_finite() || !last.is_finite() || last - first > 64.0 {
+                    return Err(format!("the plugin asks for more than 64 frames of {name}"));
+                }
+                let mut at = first;
+                while at <= last + 1e-9 {
+                    if !frames.iter().any(|f: &f64| (f - at).abs() < 1e-6) {
+                        frames.push(at);
+                    }
+                    at += 1.0;
+                }
+            }
+            if frames.len() > 64 {
+                return Err(format!("the plugin asks for more than 64 frames of {name}"));
+            }
+            needed.push((name, frames));
+        }
+        Ok(needed)
     }
     /// A parameter's current value (as given, or as the plugin set it).
     pub fn value(&self, name: &str) -> Option<Value> {
@@ -701,19 +809,7 @@ impl Instance<'_> {
         if out.len() != pixels {
             return Err(format!("the output is not {w} x {h}"));
         }
-        {
-            let params = suites_lock(&self.effect.params.params);
-            for (name, value) in values {
-                let Some(p) = params.get(name) else {
-                    return Err(format!("the effect has no parameter {name}"));
-                };
-                *suites_lock(&p.value) = match value {
-                    Value::Numbers(n) => suites::Value::Numbers(n.clone()),
-                    Value::Text(t) => suites::Value::Text(c(t)),
-                    Value::Curves(curves) => suites::Value::Curves(curves.clone()),
-                };
-            }
-        }
+        self.set_values(values)?;
         self.effect.props.double("VeylvikTime", &[time]);
         // Inputs stay in these buffers (bottom row first) for the length of the render;
         // the output starts clear, as a plugin may leave parts of it untouched.
@@ -725,10 +821,10 @@ impl Instance<'_> {
         {
             let clips = suites_lock(&self.effect.clips);
             for clip in clips.values() {
-                *suites_lock(&clip.pixels) = None;
+                suites_lock(&clip.pixels).clear();
                 clip.props.int("OfxImageClipPropConnected", &[0]);
             }
-            for (name, frame) in inputs {
+            for (k, (name, frame)) in inputs.iter().enumerate() {
                 let Some(clip) = clips.get(*name) else {
                     return Err(format!("the effect has no input {name}"));
                 };
@@ -738,24 +834,29 @@ impl Instance<'_> {
                         frame.width, frame.height
                     ));
                 }
-                let k = inputs.iter().position(|(n, _)| n == name).unwrap_or(0);
                 let scratch = &mut self.scratch[k];
                 scratch.resize(pixels, 0.0);
                 flip_into(frame.pixels, scratch, w);
                 let data = scratch.as_ptr() as usize;
-                *suites_lock(&clip.pixels) = Some(Pixels {
-                    data,
-                    width: w as i32,
-                    height: h as i32,
-                });
+                suites_lock(&clip.pixels).push((
+                    frame.time.unwrap_or(time),
+                    Pixels {
+                        data,
+                        width: w as i32,
+                        height: h as i32,
+                    },
+                ));
                 clip.props.int("OfxImageClipPropConnected", &[1]);
             }
             let out = clips.get("Output").ok_or("the effect has no Output clip")?;
-            *suites_lock(&out.pixels) = Some(Pixels {
-                data: self.output.as_mut_ptr() as usize,
-                width: w as i32,
-                height: h as i32,
-            });
+            suites_lock(&out.pixels).push((
+                time,
+                Pixels {
+                    data: self.output.as_mut_ptr() as usize,
+                    width: w as i32,
+                    height: h as i32,
+                },
+            ));
             out.props.int("OfxImageClipPropConnected", &[1]);
         }
         let window = [0, 0, w as i32, h as i32];
@@ -802,7 +903,7 @@ impl Instance<'_> {
         }
         // Nothing may point into these buffers once the render is over.
         for clip in suites_lock(&self.effect.clips).values() {
-            *suites_lock(&clip.pixels) = None;
+            suites_lock(&clip.pixels).clear();
         }
         match status {
             OK | REPLY_DEFAULT => {

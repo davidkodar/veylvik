@@ -2,10 +2,10 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Mutex;
-use veylvik_document::nodes::OfxValue;
+use veylvik_document::nodes::{OfxEffect, OfxValue};
 use veylvik_ofx::{Plugin, Value, Worker};
 use veylvik_render::Error;
-use veylvik_render::effect_hook::{EffectHost, EffectJob};
+use veylvik_render::effect_hook::{EffectHost, EffectJob, FramesJob};
 
 pub struct Runner {
     exe: Option<PathBuf>,
@@ -21,6 +21,19 @@ pub fn program() -> Option<PathBuf> {
     let beside = me.with_file_name("veylvik");
     beside.is_file().then_some(beside)
 }
+fn values_of(values: Vec<(String, OfxValue)>) -> Vec<(String, Value)> {
+    values
+        .into_iter()
+        .map(|(name, value)| {
+            let value = match value {
+                OfxValue::Numbers(n) => Value::Numbers(n),
+                OfxValue::Text(t) => Value::Text(t),
+                OfxValue::Curves(c) => Value::Curves(c),
+            };
+            (name, value)
+        })
+        .collect()
+}
 impl Runner {
     pub fn new() -> Self {
         Self::with_program(program())
@@ -33,8 +46,12 @@ impl Runner {
             plugins: Mutex::new(HashMap::new()),
         }
     }
-    fn run(&self, job: EffectJob<'_>, deliver: &mut dyn FnMut(&[f32])) -> Result<(), String> {
-        let effect = job.effect;
+    /// Runs `f` with the helper and the effect's plugin, found in its bundle once.
+    fn with<T>(
+        &self,
+        effect: &OfxEffect,
+        f: impl FnOnce(&mut Worker, &Plugin) -> Result<T, String>,
+    ) -> Result<T, String> {
         let exe = self
             .exe
             .as_ref()
@@ -62,33 +79,7 @@ impl Runner {
                 plugin
             }
         };
-        let values: Vec<(String, Value)> = job
-            .values
-            .into_iter()
-            .map(|(name, value)| {
-                let value = match value {
-                    OfxValue::Numbers(n) => Value::Numbers(n),
-                    OfxValue::Text(t) => Value::Text(t),
-                    OfxValue::Curves(c) => Value::Curves(c),
-                };
-                (name, value)
-            })
-            .collect();
-        let inputs: Vec<(&str, &[f32])> = job
-            .inputs
-            .iter()
-            .map(|(clip, p)| (*clip, p.as_slice()))
-            .collect();
-        worker.render_with(
-            &plugin,
-            effect.context.name(),
-            [job.width, job.height],
-            job.frame,
-            &values,
-            &inputs,
-            deliver,
-        )?;
-        Ok(())
+        f(worker, &plugin)
     }
 }
 impl Default for Runner {
@@ -96,14 +87,51 @@ impl Default for Runner {
         Self::new()
     }
 }
+fn failed(effect: &OfxEffect) -> impl FnOnce(String) -> Error + '_ {
+    move |e| Error::Message(format!("OpenFX effect {}: {e}", effect.plugin))
+}
 impl EffectHost for Runner {
     fn render(
         &self,
         job: EffectJob<'_>,
         deliver: &mut dyn FnMut(&[f32]),
     ) -> veylvik_render::Result<()> {
-        let plugin = job.effect.plugin.clone();
-        self.run(job, deliver)
-            .map_err(|e| Error::Message(format!("OpenFX effect {plugin}: {e}")))
+        let effect = job.effect;
+        let values = values_of(job.values);
+        let inputs: Vec<(&str, Option<f64>, &[f32])> = job
+            .inputs
+            .iter()
+            .map(|(clip, at, p)| (*clip, *at, p.as_slice()))
+            .collect();
+        self.with(effect, |worker, plugin| {
+            worker.render_with(
+                plugin,
+                effect.context.name(),
+                [job.width, job.height],
+                job.frame,
+                job.duration,
+                &values,
+                &inputs,
+                deliver,
+            )?;
+            Ok(())
+        })
+        .map_err(failed(effect))
+    }
+    fn frames_needed(&self, job: FramesJob<'_>) -> veylvik_render::Result<Vec<(String, Vec<f64>)>> {
+        let effect = job.effect;
+        let values = values_of(job.values);
+        self.with(effect, |worker, plugin| {
+            worker.frames_needed(
+                plugin,
+                effect.context.name(),
+                [job.width, job.height],
+                job.frame,
+                job.duration,
+                &values,
+                &job.connected,
+            )
+        })
+        .map_err(failed(effect))
     }
 }

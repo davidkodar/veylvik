@@ -303,6 +303,9 @@ pub fn device_limits(adapter: &wgpu::Adapter) -> wgpu::Limits {
 }
 impl Renderer {
     /// Register what draws Render scene nodes (the host's 3D renderer).
+    pub(crate) fn effect_host(&self) -> Option<Arc<dyn effect_hook::EffectHost>> {
+        self.effect_host.read().ok().and_then(|h| h.clone())
+    }
     /// Registers what runs OpenFX effects; without one they fail with a clear error.
     pub fn set_effect_host(&self, host: Arc<dyn effect_hook::EffectHost>) {
         if let Ok(mut slot) = self.effect_host.write() {
@@ -1418,20 +1421,49 @@ impl Renderer {
                     return Err(error("an external pass belongs to an OpenFX effect"));
                 };
                 let mut reads = Vec::new();
+                let read_back = |encoder: &mut wgpu::CommandEncoder, from: &wgpu::Buffer| {
+                    let read = self.device.create_buffer(&wgpu::BufferDescriptor {
+                        label: Some("effect input"),
+                        size: byte_size,
+                        usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+                        mapped_at_creation: false,
+                    });
+                    encoder.copy_buffer_to_buffer(from, 0, &read, 0, byte_size);
+                    read
+                };
                 for (port, input) in scheduled.inputs.iter().enumerate() {
                     let clip = effect.clips.get(port).map(String::as_str).unwrap_or("");
                     match input {
                         plan::Input::Value(slot) if !clip.is_empty() => {
-                            let read = self.device.create_buffer(&wgpu::BufferDescriptor {
-                                label: Some("effect input"),
-                                size: byte_size,
-                                usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
-                                mapped_at_creation: false,
-                            });
-                            encoder.copy_buffer_to_buffer(&buffers[*slot], 0, &read, 0, byte_size);
-                            reads.push((clip, read));
+                            reads.push((clip, None, read_back(&mut encoder, &buffers[*slot])));
                         }
-                        plan::Input::Empty | plan::Input::Value(_) => {}
+                        // An input read as a branch (the plugin reads other frames): its
+                        // own frame, then each other frame it named.
+                        plan::Input::Asset(key)
+                            if !clip.is_empty() && sources.contains_key(key.as_str()) =>
+                        {
+                            reads.push((
+                                clip,
+                                None,
+                                read_back(&mut encoder, &sources[key.as_str()]),
+                            ));
+                            let name = veylvik_document::nodes::OFX_PORTS[port];
+                            for other in self.ofx_other_frames(plan, key, effect, time)? {
+                                let extra =
+                                    plan::ofx_frame_key(plan.nodes[scheduled.node].id, name, other);
+                                let Some(frame::Source::Gpu(made)) = inputs.source(&extra) else {
+                                    return Err(error(format!(
+                                        "frame {other} of {clip} was not made for the OpenFX effect"
+                                    )));
+                                };
+                                reads.push((
+                                    clip,
+                                    Some(other),
+                                    read_back(&mut encoder, made.buffer()),
+                                ));
+                            }
+                        }
+                        plan::Input::Empty | plan::Input::Value(_) | plan::Input::Asset(_) => {}
                         _ => {
                             return Err(error(
                                 "an OpenFX effect reads only pictures of the frame's size",
@@ -1445,8 +1477,12 @@ impl Renderer {
                 );
                 let submission = self.queue.submit([done.finish()]);
                 let mut pictures = Vec::with_capacity(reads.len());
-                for (clip, read) in &reads {
-                    pictures.push((*clip, self.map_values::<f32>(read, submission.clone())?));
+                for (clip, at, read) in &reads {
+                    pictures.push((
+                        *clip,
+                        *at,
+                        self.map_values::<f32>(read, submission.clone())?,
+                    ));
                 }
                 let mut delivered = None;
                 host.render(
@@ -1456,6 +1492,7 @@ impl Renderer {
                         frame: time.seconds()? * plan.frame_rate.seconds()?,
                         width: plan.width,
                         height: plan.height,
+                        duration: plan.frame_count,
                         inputs: pictures,
                     },
                     &mut |picture| {

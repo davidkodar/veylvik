@@ -27,14 +27,14 @@ impl EffectHost for Gain {
                 _ => None,
             })
             .unwrap_or(1.0);
-        let clips = job.inputs.iter().map(|(c, _)| c.to_string()).collect();
+        let clips = job.inputs.iter().map(|(c, _, _)| c.to_string()).collect();
         self.calls
             .lock()
             .unwrap()
             .push((job.frame, job.values.clone(), clips));
         let pixels = job.width as usize * job.height as usize * 4;
         let picture: Vec<f32> = match job.inputs.first() {
-            Some((_, source)) => source.iter().map(|v| v * gain).collect(),
+            Some((_, _, source)) => source.iter().map(|v| v * gain).collect(),
             None => vec![0.25; pixels],
         };
         deliver(&picture);
@@ -47,6 +47,7 @@ fn effect(gain: Scalar) -> OfxEffect {
         plugin: "org.veylvik.test.gain".into(),
         context: OfxContext::Filter,
         clips: vec!["Source".into()],
+        other_frames: false,
         settings: BTreeMap::from([("gain".to_string(), OfxSetting::Numbers(vec![gain]))]),
     }
 }

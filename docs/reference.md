@@ -3105,8 +3105,16 @@ Ports: `source`, `input_2`, `input_3` and `mask`, in that order, feed the plugin
 `clips` (in Studio: its picture inputs in order, then its mask). With no plugin chosen the source
 passes on unchanged; with nothing connected either, the node is clear.
 
-Not supported yet: plugins that read other frames (FrameHold, Retime and the like refuse to load),
-on-screen handles, OpenGL, CUDA or Metal rendering, stereo views, and 8- or 16-bit-only plugins. `VEYLVIK_OFX_TRACE=FILE` records whatever a plugin asks of the host that
+Plugins that read other frames (frame holds, time offsets, retimes, time blurs) work: such a
+plugin names, before each render, which frames of each input it needs, and with `other_frames`
+set on the node (Studio sets it from the plugin's own description) Veylvik renders each of those
+inputs at those frames as well and hands all of them over. They are kept like any other frames
+in the caches, and a frame's name includes the frames it was made from. At most 64 frames of an
+input a render; a fractional frame of footage is the frame at or before it. The plugin sees the
+composition's length as its clips' frame range.
+
+Not supported yet: on-screen handles, OpenGL, CUDA or Metal rendering, stereo views, and 8- or
+16-bit-only plugins. `VEYLVIK_OFX_TRACE=FILE` records whatever a plugin asks of the host that
 the host does not have.
 
 Speed: each OpenFX node reads its inputs back from the graphics card and uploads its result. With
