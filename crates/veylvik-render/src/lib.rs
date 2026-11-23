@@ -485,7 +485,13 @@ impl Renderer {
         });
         let particle_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("particles"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("particle_system.wgsl").into()),
+            source: wgpu::ShaderSource::Wgsl(
+                concat!(
+                    include_str!("particle_system.wgsl"),
+                    include_str!("particle_solids.wgsl")
+                )
+                .into(),
+            ),
         });
         let validation_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("finite output validation"),

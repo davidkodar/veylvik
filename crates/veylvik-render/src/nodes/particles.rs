@@ -10,7 +10,7 @@ const SLOTS: f32 = 4.0;
 const ROW: u32 = 65536;
 /// Settings in a row, and rows through the last life (as in particle_system.wgsl).
 const COUNT: usize = 120;
-const ROWS: usize = 16;
+pub(crate) const ROWS: usize = 16;
 /// The target's tile size for a frame (as in particle_system.wgsl).
 fn tile(pixels: u64) -> u32 {
     if pixels > 2_500_000 { 32 } else { 16 }
@@ -744,16 +744,32 @@ impl RenderNode for Particles {
         last[34] = f32::from(self.burst_on_impact);
         // The first particles (two values each in a frame's buffer) are joined.
         let surface = surface(self, cx, rows[ROWS - 1][0])?;
-        // How much surface data follows the camera row, and whether there is any.
-        last[112] = surface.len() as f32;
+        // The solids particles bounce off, in the room the frame's buffer has left.
+        let solids = match (self.collide, cx.node.inputs.get("scene")) {
+            (true, Some(root)) => {
+                let room = (u64::from(cx.width) * u64::from(cx.height)).saturating_sub(
+                    u64::from(tiles_of(cx.width, cx.height))
+                        + (COUNT * (ROWS + 1)) as u64
+                        + surface.len() as u64,
+                );
+                let scenes = super::particle_solids::scenes(cx, *root, rows[ROWS - 1][0])?;
+                super::particle_solids::fitting(&scenes, room as usize)
+            }
+            _ => Vec::new(),
+        };
+        // How much data follows the camera row: the surface, then the solids.
+        last[112] = (surface.len() + solids.len()) as f32;
         last[113] = f32::from(!surface.is_empty());
+        last[114] = surface.len() as f32;
+        last[115] = f32::from(!solids.is_empty());
         last[35] = if linking(self) {
             parents.min(LINKED_MOST).min(cx.width * cx.height / 2) as f32
         } else {
             0.0
         };
         rows.push(last);
-        for chunk in surface.chunks(COUNT) {
+        let extra: Vec<f32> = surface.into_iter().chain(solids).collect();
+        for chunk in extra.chunks(COUNT) {
             let mut row = [0.0; COUNT];
             row[..chunk.len()].copy_from_slice(chunk);
             rows.push(row);

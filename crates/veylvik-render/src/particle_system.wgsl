@@ -370,7 +370,8 @@ fn place(origin: vec3<f32>, launch: vec3<f32>, birth: f32, age: f32, own_life: f
     if recording { path[0] = vec4<f32>(origin, 0.0); path_count = 1u; }
     let flags = u32(p.extra.z);
     var steps = 32u;
-    if (flags & 2u) != 0u { steps = 96u; }
+    let solids = solid_count() > 0u;
+    if (flags & 2u) != 0u || solids { steps = 96u; }
     let step = p.extra.w / f32(steps);
     var done = 0.0;
     var f: Forces;
@@ -424,6 +425,24 @@ fn place(origin: vec3<f32>, launch: vec3<f32>, birth: f32, age: f32, own_life: f
             out = normalize(out);
             velocity = vec3<f32>(velocity.xy - 2.0 * min(dot(velocity.xy, out), 0.0) * out, velocity.z) * f.bounce;
             next = at;
+        }
+        // Bounce off the scene's solids: met within a pixel along the move, or already
+        // inside one that moved onto it, it is set on the surface and turned back.
+        if solids && !hit {
+            let t = birth + done + dt;
+            let met = solid_hit(at, next, t);
+            if met.x >= 0.0 {
+                if impact < 0.0 { impact = done; }
+                let i = u32(met.y);
+                var on = mix(at, next, met.x);
+                let out = solid_out(i, on, t);
+                on += out * max(1.0 - solid_distance(i, on, t), 0.0);
+                // Back off it with bounce of the speed it hit it at; along it, it slides on,
+                // for the rest of the step.
+                velocity -= (1.0 + f.bounce) * min(dot(velocity, out), 0.0) * out;
+                at = on;
+                next = on + velocity * dt * (1.0 - met.x);
+            }
         }
         at = next;
         done += dt;

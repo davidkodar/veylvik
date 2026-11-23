@@ -1705,3 +1705,139 @@ fn a_solid_between_a_light_and_particles_shadows_them() {
     let (aside, _) = shot(Some([-60.0, 0.0, 80.0]));
     assert!((aside - open).abs() < 0.05 * open, "{aside} {open}");
 }
+
+/// Falling particles (a box across the top, a full cloud at the first frame) in a scene
+/// of `solids`, maybe bouncing off them; the scene's own picture too.
+fn rain_on(
+    renderer: &Renderer,
+    doc: &mut Composition,
+    solids: &[NodeId],
+    collide: bool,
+) -> (Vec<[f32; 4]>, Vec<[f32; 4]>) {
+    let camera = add(doc, op(&CAMERA_3D), &[]);
+    let names = ["scene_2", "scene_3", "scene_4"];
+    let mut parts = vec![("scene", camera)];
+    parts.extend(solids.iter().zip(names).map(|(id, name)| (name, *id)));
+    let scene = add(doc, op(&MERGE_SCENES), &parts);
+    let mut value = registry::PARTICLES.default_operation();
+    for (name, number) in [
+        ("x", 80.0),
+        ("y", 4.0),
+        ("width", 110.0),
+        ("height", 2.0),
+        ("rate", 4000.0),
+        ("life", 1.5),
+        ("start", -1.5),
+        ("size", 1.0),
+        ("speed", 0.0),
+        ("gravity", 300.0),
+        ("turbulence", 0.0),
+        ("variation", 0.0),
+        ("fade", 0.0),
+        ("bounce", 0.2),
+    ] {
+        value[name] = serde_json::json!({"kind": "constant", "value": number});
+    }
+    value["collide"] = serde_json::json!(collide);
+    let particles = add(
+        doc,
+        serde_json::from_value(value).unwrap(),
+        &[("scene", scene)],
+    );
+    let picture = add(doc, op(&RENDER_SCENE), &[("scene", scene)]);
+    doc.output = particles;
+    let rain = render(renderer, doc, &Default::default());
+    doc.output = picture;
+    (rain, render(renderer, doc, &Default::default()))
+}
+fn lit(pixels: &[[f32; 4]], keep: impl Fn(u32, u32) -> bool) -> usize {
+    pixels
+        .iter()
+        .enumerate()
+        .filter(|(i, p)| p[3] > 0.3 && keep(*i as u32 % W, *i as u32 / W))
+        .count()
+}
+#[test]
+#[ignore = "requires Vulkan"]
+fn particles_bounce_off_the_scenes_solids() {
+    let renderer = renderer();
+    // A slab across the frame whose top is at y 55 (the frame's middle is 45).
+    let slab = |doc: &mut Composition| {
+        let mut slab = op(&SHAPE_3D);
+        if let Operation::Shape3d(s) = &mut slab {
+            s.size_x = 140.0.into();
+            s.size_y = 10.0.into();
+            s.size_z = 200.0.into();
+            s.placement.position = [0.0, 15.0, 0.0].into();
+        }
+        add(doc, slab, &[])
+    };
+    let mut doc = blank(W, H, Time::new(24, 1).unwrap()).unwrap();
+    let solid = slab(&mut doc);
+    let (passing, _) = rain_on(&renderer, &mut doc, &[solid], false);
+    let mut doc = blank(W, H, Time::new(24, 1).unwrap()).unwrap();
+    let solid = slab(&mut doc);
+    let (stopped, _) = rain_on(&renderer, &mut doc, &[solid], true);
+    let under = |x: u32, y: u32| (30..130).contains(&x) && y > 67;
+    // Just above the top: 4 rows of 100 pixels, which they pile up and cover.
+    let on_top = |x: u32, y: u32| (30..130).contains(&x) && (51..55).contains(&y);
+    assert!(
+        lit(&passing, under) > 200,
+        "without collide they fall through: {}",
+        lit(&passing, under)
+    );
+    assert_eq!(lit(&stopped, under), 0, "under the slab");
+    assert!(
+        lit(&stopped, on_top) > 380 && lit(&passing, on_top) < 250,
+        "gathered on its top: {} (falling through: {})",
+        lit(&stopped, on_top),
+        lit(&passing, on_top)
+    );
+}
+#[test]
+#[ignore = "requires Vulkan"]
+fn particles_bounce_off_the_letters_of_a_3d_text() {
+    let renderer = renderer();
+    let title = |doc: &mut Composition| {
+        let mut text = op(&registry::TEXT);
+        if let Operation::Text(t) = &mut text {
+            t.content = "HI".into();
+            t.size = 70.0.into();
+            t.x = 80.0.into();
+            t.y = 70.0.into();
+        }
+        let text = add(doc, text, &[]);
+        let mut title = op(&TEXT_3D);
+        if let Operation::Text3d(t) = &mut title {
+            t.depth = 40.0.into();
+            t.bevel = 0.0.into();
+        }
+        add(doc, title, &[("outline", text)])
+    };
+    let mut doc = blank(W, H, Time::new(24, 1).unwrap()).unwrap();
+    let solid = title(&mut doc);
+    let (passing, letters) = rain_on(&renderer, &mut doc, &[solid], false);
+    let mut doc = blank(W, H, Time::new(24, 1).unwrap()).unwrap();
+    let solid = title(&mut doc);
+    let (stopped, _) = rain_on(&renderer, &mut doc, &[solid], true);
+    // Well inside the letters as filmed: covered three pixels round.
+    let covered = |x: i32, y: i32| {
+        x >= 0
+            && y >= 0
+            && x < W as i32
+            && y < H as i32
+            && letters[(y as u32 * W + x as u32) as usize][3] > 0.5
+    };
+    let inside = |x: u32, y: u32| {
+        (-3..=3).all(|dy| (-3..=3).all(|dx| covered(x as i32 + dx, y as i32 + dy)))
+    };
+    assert!(
+        lit(&letters, |_, _| true) > 500,
+        "the letters are in the frame"
+    );
+    assert!(
+        lit(&passing, inside) > 50,
+        "without collide they fall through the letters"
+    );
+    assert_eq!(lit(&stopped, inside), 0, "inside the letters");
+}

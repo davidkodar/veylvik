@@ -217,9 +217,18 @@ impl Inspect for veylvik_document::nodes::Particles {
         let obstacle: bool = ui
             .data(|d| d.get_temp(egui::Id::new("particles-obstacle")))
             .unwrap_or(false);
-        if obstacle {
+        let scene: bool = ui
+            .data(|d| d.get_temp(egui::Id::new("particles-scene")))
+            .unwrap_or(false);
+        if scene {
             cx.dirty |= ui
-                .checkbox(&mut self.burst_on_impact, "Burst on the obstacle")
+                .checkbox(&mut self.collide, "Bounce off the scene's solids")
+                .on_hover_text("Particles bounce off the 3D shapes, texts, cards and models of the connected scene (the first 16), coming back with Bounce of the speed they hit them at and sliding along them. A 3D text is met by its letters' outline, a model by its box")
+                .changed();
+        }
+        if obstacle || (scene && self.collide) {
+            cx.dirty |= ui
+                .checkbox(&mut self.burst_on_impact, "Burst on impact")
                 .on_hover_text("A particle ends where it first touches the obstacle and its burst is thrown back off it, for splashes and sparks off a surface. Unticked, bursts come at the end of each life")
                 .changed();
         }

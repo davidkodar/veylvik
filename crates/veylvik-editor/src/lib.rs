@@ -2865,7 +2865,10 @@ impl Studio {
                     "homing" => !wired("target"),
                     "inherit" => !wired("emitter") && !wired("target"),
                     "field_push" | "field_flow" => !wired("field"),
-                    "bounce" => !wired("obstacle"),
+                    "bounce" => {
+                        !wired("obstacle")
+                            && !matches!(self.draft.operation, Operation::Particles(ref n) if n.collide && wired("scene"))
+                    }
                     "spin" => !wired("sprite"),
                     "camera" => !wired("scene"),
                     // Offered as a choice by the node's own inspector.

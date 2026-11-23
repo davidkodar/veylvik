@@ -203,6 +203,7 @@ mod generators;
 mod keying;
 mod materials;
 mod media;
+mod particle_solids;
 pub(crate) mod particles;
 mod scene;
 mod text;
