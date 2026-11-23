@@ -11,6 +11,7 @@ path = "src/main.rs"
 veylvik-control.workspace = true
 veylvik-document.workspace = true
 veylvik-nuke.workspace = true
+veylvik-ofx.workspace = true
 veylvik-presets.workspace = true
 veylvik-render.workspace = true
 veylvik-scene.workspace = true

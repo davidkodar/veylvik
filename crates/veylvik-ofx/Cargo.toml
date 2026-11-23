@@ -1,0 +1,13 @@
+[package]
+name = "veylvik-ofx"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "OpenFX plugins for Veylvik, run in a helper process: discovery, descriptions and CPU renders."
+[dependencies]
+veylvik-interop = { path = "../veylvik-interop" }
+serde.workspace = true
+serde_json.workspace = true
+[lints]
+workspace = true

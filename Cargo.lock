@@ -4212,6 +4212,7 @@ dependencies = [
  "veylvik-document",
  "veylvik-io",
  "veylvik-nuke",
+ "veylvik-ofx",
  "veylvik-presets",
  "veylvik-render",
  "veylvik-scene",
@@ -4306,6 +4307,7 @@ version = "0.1.0"
 dependencies = [
  "ash",
  "cudarc",
+ "libloading 0.8.9",
  "wgpu",
 ]
 
@@ -4351,6 +4353,15 @@ version = "0.1.0"
 dependencies = [
  "serde_json",
  "veylvik-document",
+]
+
+[[package]]
+name = "veylvik-ofx"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "veylvik-interop",
 ]
 
 [[package]]

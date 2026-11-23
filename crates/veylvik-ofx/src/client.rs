@@ -1,0 +1,203 @@
+//! The editor's side of the helper: one child process, bounded messages, hard timeouts. A helper that crashes or stops answering is killed and started again on the next call, and the call that found it so fails with what the helper last wrote.
+use crate::protocol::{self, Reply, Request};
+use crate::{Description, Plugin, Result, SUBCOMMAND, Value};
+use std::io::{BufReader, BufWriter, Read};
+use std::path::{Path, PathBuf};
+use std::process::{Child, ChildStdin, Command, Stdio};
+use std::sync::{Arc, Mutex, mpsc};
+use std::time::Duration;
+
+/// Loading and describing may run a plugin's initialisation (licence checks, GPU probes).
+const DESCRIBE_TIMEOUT: Duration = Duration::from_secs(60);
+/// A render of one frame.
+const RENDER_TIMEOUT: Duration = Duration::from_secs(120);
+
+type Message = Result<(Reply, Vec<f32>)>;
+struct Running {
+    child: Child,
+    input: BufWriter<ChildStdin>,
+    replies: mpsc::Receiver<Message>,
+    log: Arc<Mutex<String>>,
+}
+/// A helper process, started when first needed.
+pub struct Worker {
+    exe: PathBuf,
+    running: Option<Running>,
+}
+impl Worker {
+    /// A worker run by `exe` (the `veylvik` program).
+    pub fn new(exe: &Path) -> Self {
+        Self {
+            exe: exe.to_path_buf(),
+            running: None,
+        }
+    }
+    fn start(&mut self) -> Result<&mut Running> {
+        if self.running.is_none() {
+            let mut child = Command::new(&self.exe)
+                .arg(SUBCOMMAND)
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn()
+                .map_err(|e| {
+                    format!(
+                        "could not start the OpenFX helper ({}): {e}",
+                        self.exe.display()
+                    )
+                })?;
+            let stdout = child.stdout.take().ok_or("the helper has no stdout")?;
+            let mut stderr = child.stderr.take().ok_or("the helper has no stderr")?;
+            let log = Arc::new(Mutex::new(String::new()));
+            let sink = log.clone();
+            std::thread::spawn(move || {
+                let mut chunk = [0; 2048];
+                while let Ok(n) = stderr.read(&mut chunk) {
+                    if n == 0 {
+                        break;
+                    }
+                    if let Ok(mut log) = sink.lock() {
+                        log.push_str(&String::from_utf8_lossy(&chunk[..n]));
+                        if log.len() > 8192 {
+                            let cut = (log.len() - 8192..log.len())
+                                .find(|i| log.is_char_boundary(*i))
+                                .unwrap_or(0);
+                            log.drain(..cut);
+                        }
+                    }
+                }
+            });
+            let (sender, replies) = mpsc::sync_channel(1);
+            std::thread::spawn(move || {
+                let mut stdout = BufReader::new(stdout);
+                loop {
+                    let message = protocol::read::<Reply>(&mut stdout).and_then(|m| {
+                        m.ok_or_else(|| {
+                            "the OpenFX helper exited (the plugin may have crashed)".to_string()
+                        })
+                    });
+                    let failed = message.is_err();
+                    if sender.send(message).is_err() || failed {
+                        break;
+                    }
+                }
+            });
+            let input = BufWriter::new(child.stdin.take().ok_or("the helper has no stdin")?);
+            self.running = Some(Running {
+                child,
+                input,
+                replies,
+                log,
+            });
+        }
+        self.running
+            .as_mut()
+            .ok_or_else(|| "the OpenFX helper is not running".into())
+    }
+    /// Stops the helper; the next call starts a new one.
+    pub fn stop(&mut self) {
+        if let Some(mut running) = self.running.take() {
+            let _ = running.child.kill();
+            let _ = running.child.wait();
+        }
+    }
+    fn call(&mut self, request: &Request, payload: &[&[f32]], timeout: Duration) -> Message {
+        let running = self.start()?;
+        let reply = protocol::write(&mut running.input, request, payload).and_then(|_| {
+            running
+                .replies
+                .recv_timeout(timeout)
+                .map_err(|_| {
+                    format!(
+                        "the OpenFX helper did not answer within {} s",
+                        timeout.as_secs()
+                    )
+                })
+                .and_then(|m| m)
+        });
+        match reply {
+            Ok((reply, pixels)) => match reply.error {
+                Some(error) => Err(error),
+                None => Ok((reply, pixels)),
+            },
+            Err(error) => {
+                let log = running
+                    .log
+                    .lock()
+                    .map(|l| l.trim().to_string())
+                    .unwrap_or_default();
+                self.stop();
+                let last = log
+                    .lines()
+                    .rev()
+                    .find(|l| !l.trim().is_empty())
+                    .unwrap_or("");
+                Err(if last.is_empty() {
+                    error
+                } else {
+                    format!("{error}: {last}")
+                })
+            }
+        }
+    }
+    /// The image effects in a bundle, and why any others could not be used.
+    pub fn list(&mut self, bundle: &Path) -> Result<(Vec<Plugin>, Vec<String>)> {
+        let request = Request::List {
+            bundle: bundle.to_string_lossy().into_owned(),
+        };
+        let (reply, _) = self.call(&request, &[], DESCRIBE_TIMEOUT)?;
+        Ok((reply.plugins, reply.refused))
+    }
+    pub fn describe(&mut self, plugin: &Plugin, context: &str) -> Result<Description> {
+        let request = Request::Describe {
+            bundle: plugin.bundle.to_string_lossy().into_owned(),
+            index: plugin.index,
+            context: context.to_string(),
+        };
+        let (reply, _) = self.call(&request, &[], DESCRIBE_TIMEOUT)?;
+        reply
+            .description
+            .ok_or_else(|| "the helper sent no description".into())
+    }
+    /// Renders `width` x `height` at `time` with `values`, from `inputs` (clip name and
+    /// picture), into a new picture; also what the plugin said.
+    #[allow(clippy::too_many_arguments)]
+    pub fn render(
+        &mut self,
+        plugin: &Plugin,
+        context: &str,
+        [width, height]: [u32; 2],
+        time: f64,
+        values: &[(String, Value)],
+        inputs: &[(&str, &[f32])],
+    ) -> Result<(Vec<f32>, Vec<String>)> {
+        let pixels = width as usize * height as usize * 4;
+        if let Some((name, _)) = inputs.iter().find(|(_, p)| p.len() != pixels) {
+            return Err(format!("input {name} is not {width} x {height}"));
+        }
+        let request = Request::Render {
+            bundle: plugin.bundle.to_string_lossy().into_owned(),
+            index: plugin.index,
+            context: context.to_string(),
+            width,
+            height,
+            time,
+            values: values.to_vec(),
+            inputs: inputs.iter().map(|(n, _)| n.to_string()).collect(),
+        };
+        let payload: Vec<&[f32]> = inputs.iter().map(|(_, p)| *p).collect();
+        let (reply, out) = self.call(&request, &payload, RENDER_TIMEOUT)?;
+        if out.len() != pixels {
+            return Err("the helper sent a picture of the wrong size".into());
+        }
+        Ok((out, reply.messages))
+    }
+}
+impl Drop for Worker {
+    fn drop(&mut self) {
+        if let Some(running) = self.running.as_mut() {
+            let _ = protocol::write(&mut running.input, &Request::Quit, &[]);
+        }
+        self.stop();
+    }
+}

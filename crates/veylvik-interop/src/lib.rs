@@ -9,6 +9,7 @@ use std::{
     ptr,
     sync::{Arc, OnceLock},
 };
+pub mod ofx;
 pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 /// Completion could not be established. Callers must stop using this renderer
 /// rather than retry transfers and accumulate unreclaimable GPU allocations.
