@@ -1089,3 +1089,42 @@ fn a_trail_follows_the_path_the_particle_took() {
     let (px, py) = (bx.round() as u32, by.round() as u32);
     assert!(plain[(py * W + px) as usize][3] < 0.02);
 }
+#[test]
+#[ignore = "requires Vulkan"]
+fn lines_join_particles_nearer_than_the_link_distance() {
+    let renderer = Renderer::new().unwrap();
+    // A dozen still particles scattered along a row, all alive at the frame.
+    let mut row = still();
+    row.width = 120.0.into();
+    row.height = 0.0.into();
+    row.rate = 3.0.into();
+    row.life = 4.0.into();
+    row.start = (-4.0).into();
+    row.size = 1.0.into();
+    let filled = |pixels: &[[f32; 4]]| {
+        let lit: Vec<u32> = (0..W)
+            .filter(|x| pixels[(60 * W + x) as usize][3] > 0.02)
+            .collect();
+        let (first, last) = (*lit.first().unwrap(), *lit.last().unwrap());
+        lit.len() as f32 / (last - first + 1) as f32
+    };
+    let plain = render(&renderer, row.clone(), None, (0, 1));
+    assert!(
+        filled(&plain) < 0.6,
+        "dots alone leave gaps: {}",
+        filled(&plain)
+    );
+    // Lines longer than the gaps join them all along the row.
+    row.link_distance = 80.0.into();
+    let linked = render(&renderer, row.clone(), None, (0, 1));
+    assert!(filled(&linked) > 0.95, "joined: {}", filled(&linked));
+    // Lines shorter than any gap join nothing: the picture is the dots alone.
+    row.link_distance = 0.5.into();
+    let short = render(&renderer, row, None, (0, 1));
+    let diff: f32 = short
+        .iter()
+        .zip(&plain)
+        .map(|(a, b)| (a[3] - b[3]).abs())
+        .sum();
+    assert!(diff < 1e-3, "{diff}");
+}

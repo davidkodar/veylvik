@@ -74,6 +74,8 @@ pub enum Kernel {
     ParticleFields,
     ParticleSplat,
     ParticleResolve,
+    ParticlePositions,
+    ParticleLinks,
     LensPrefilterHorizontal,
     LensPrefilterVertical,
     LensBlur,
@@ -114,7 +116,7 @@ pub enum Kernel {
     Lut,
 }
 impl Kernel {
-    pub(crate) const ALL: [Self; 102] = [
+    pub(crate) const ALL: [Self; 104] = [
         Self::ToAcescg,
         Self::FromAcescg,
         Self::Text,
@@ -179,6 +181,8 @@ impl Kernel {
         Self::ParticleFields,
         Self::ParticleSplat,
         Self::ParticleResolve,
+        Self::ParticlePositions,
+        Self::ParticleLinks,
         Self::LensPrefilterHorizontal,
         Self::LensPrefilterVertical,
         Self::LensBlur,
@@ -286,6 +290,8 @@ impl Kernel {
             Self::ParticleFields => "particle_fields",
             Self::ParticleSplat => "particle_splat",
             Self::ParticleResolve => "particle_resolve",
+            Self::ParticlePositions => "particle_positions",
+            Self::ParticleLinks => "particle_links",
             Self::LensPrefilterHorizontal => "lens_prefilter_horizontal",
             Self::LensPrefilterVertical => "lens_prefilter_vertical",
             Self::LensBlur => "lens_blur",

@@ -9,7 +9,7 @@ const SLOTS: f32 = 4.0;
 /// Threads in one dispatch row (1024 workgroups of 64).
 const ROW: u32 = 65536;
 /// Settings in a row, and rows through the last life (as in particle_system.wgsl).
-const COUNT: usize = 57;
+const COUNT: usize = 60;
 const ROWS: usize = 16;
 /// The target's tile size for a frame (as in particle_system.wgsl).
 fn tile(pixels: u64) -> u32 {
@@ -77,11 +77,15 @@ fn settings(node: &Particles, time: Time) -> Result<[f32; COUNT]> {
         node.burst_colour[3],
         at(&node.trail)?,
         at(&node.trail_width)?,
+        0.0,
+        at(&node.link_distance)?,
+        at(&node.link_opacity)?,
+        at(&node.link_width)?,
     ];
     row[..values.len()].copy_from_slice(&values);
     Ok(row)
 }
-fn scalars(node: &Particles) -> [&Scalar; 46] {
+fn scalars(node: &Particles) -> [&Scalar; 49] {
     [
         &node.life,
         &node.speed,
@@ -129,7 +133,16 @@ fn scalars(node: &Particles) -> [&Scalar; 46] {
         &node.burst_size,
         &node.trail,
         &node.trail_width,
+        &node.link_distance,
+        &node.link_opacity,
+        &node.link_width,
     ]
+}
+/// Most particles lines may join: each is checked against every later one.
+pub(crate) const LINKED_MOST: u32 = 8192;
+/// Whether this node may draw lines at all (then it runs the passes that draw them).
+fn linking(node: &Particles) -> bool {
+    !matches!(node.link_distance, Scalar::Constant { value } if value <= 0.0)
 }
 /// The settings in force over the last life before `time`, oldest first. Unkeyed
 /// settings give equal rows without sampling each.
@@ -332,6 +345,64 @@ static DEPTH_STEPS: [Step; 4] = [
     },
     RESOLVE,
 ];
+/// With lines: positions of the linked particles after the splat, then the lines, whose
+/// light the resolve adds.
+const LINKS: Step = Step {
+    kernel: Kernel::ParticleLinks,
+    inputs: [From::None, From::Step(3), From::Step(1), From::None],
+};
+const RESOLVE_LINKED: Step = Step {
+    kernel: Kernel::ParticleResolve,
+    inputs: [From::Step(2), From::Step(1), From::Step(4), From::None],
+};
+static LINK_STEPS: [Step; 6] = [
+    PREPARE,
+    FIELDS,
+    Step {
+        kernel: Kernel::ParticleSplat,
+        inputs: [
+            From::Port(EMITTER),
+            From::Port(TARGET),
+            From::Step(1),
+            From::Step(0),
+        ],
+    },
+    Step {
+        kernel: Kernel::ParticlePositions,
+        inputs: [
+            From::Port(EMITTER),
+            From::Port(TARGET),
+            From::Step(1),
+            From::Step(0),
+        ],
+    },
+    LINKS,
+    RESOLVE_LINKED,
+];
+static DEPTH_LINK_STEPS: [Step; 6] = [
+    PREPARE,
+    FIELDS,
+    Step {
+        kernel: Kernel::ParticleSplat,
+        inputs: [
+            From::Port(EMITTER),
+            From::Port(DEPTH),
+            From::Step(1),
+            From::Step(0),
+        ],
+    },
+    Step {
+        kernel: Kernel::ParticlePositions,
+        inputs: [
+            From::Port(EMITTER),
+            From::Port(DEPTH),
+            From::Step(1),
+            From::Step(0),
+        ],
+    },
+    LINKS,
+    RESOLVE_LINKED,
+];
 impl RenderNode for Particles {
     /// No particle is alive: none is born before Start, and with a Duration the last
     /// born is gone one Life after it ends, and its burst one Burst life after that.
@@ -358,10 +429,12 @@ impl RenderNode for Particles {
         Passes::chain(&STEPS)
     }
     fn passes_for(&self, node: &veylvik_document::Node) -> Passes {
-        if node.inputs.contains_key("depth") && !node.inputs.contains_key("target") {
-            Passes::chain(&DEPTH_STEPS)
-        } else {
-            Passes::chain(&STEPS)
+        let direct_depth = node.inputs.contains_key("depth") && !node.inputs.contains_key("target");
+        match (direct_depth, linking(self)) {
+            (true, false) => Passes::chain(&DEPTH_STEPS),
+            (false, false) => Passes::chain(&STEPS),
+            (true, true) => Passes::chain(&DEPTH_LINK_STEPS),
+            (false, true) => Passes::chain(&LINK_STEPS),
         }
     }
     fn has_data(&self) -> bool {
@@ -379,6 +452,12 @@ impl RenderNode for Particles {
         last[32] = parents as f32;
         last[33] = each as f32;
         last[34] = f32::from(self.burst_on_impact);
+        // The first particles (two values each in a frame's buffer) are joined.
+        last[35] = if linking(self) {
+            parents.min(LINKED_MOST).min(cx.width * cx.height / 2) as f32
+        } else {
+            0.0
+        };
         rows.push(last);
         let key: Vec<u32> = rows.iter().flatten().map(|v| v.to_bits()).collect();
         let mut kept = BLOCKS

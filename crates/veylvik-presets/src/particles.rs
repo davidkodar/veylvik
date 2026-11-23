@@ -44,7 +44,7 @@ fn set(node: &mut Particles, values: &[(&str, f32)]) {
         }
     }
 }
-pub static LOOKS: [Look; 10] = [
+pub static LOOKS: [Look; 11] = [
     Look {
         name: "Sparks",
         hint: "A shower of hot streaks thrown up from the emitter and falling back",
@@ -345,6 +345,39 @@ pub static LOOKS: [Look; 10] = [
             n.colour = [1.2, 0.9, 0.6, 1.0];
             n.end_colour = [1.2, 0.7, 0.4, 1.0];
             n.burst_colour = [1.6, 0.6, 0.25, 1.0];
+        },
+    },
+    Look {
+        name: "Network",
+        hint: "Points drifting slowly across the frame, joined by lines wherever they come near one another: a web that forms and breaks as they move",
+        needs: Needs::Nothing,
+        apply: |n, w, h| {
+            let s = w / 1920.0;
+            set(
+                n,
+                &[
+                    ("rate", 30.0),
+                    ("life", 12.0),
+                    ("start", -12.0),
+                    ("x", w / 2.0),
+                    ("y", h / 2.0),
+                    ("width", w * 1.1),
+                    ("height", h * 1.1),
+                    ("speed", 25.0 * s),
+                    ("spread", 360.0),
+                    ("gravity", 0.0),
+                    ("turbulence", 12.0 * s),
+                    ("turbulence_scale", 600.0 * s),
+                    ("size", 2.5 * s),
+                    ("fade", 0.15),
+                    ("variation", 0.5),
+                    ("link_distance", 170.0 * s),
+                    ("link_opacity", 0.55),
+                    ("link_width", 1.2 * s),
+                ],
+            );
+            n.colour = [0.55, 0.85, 1.0, 1.0];
+            n.end_colour = [0.55, 0.85, 1.0, 1.0];
         },
     },
 ];

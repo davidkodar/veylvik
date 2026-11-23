@@ -1484,7 +1484,11 @@ impl Renderer {
             };
             // Particles add into their output, so it starts from zero; so does a pass run
             // over its box only, since it is clear everywhere else.
-            if scheduled.kernel == Kernel::ParticleSplat || areas[at_pass].is_some() {
+            if matches!(
+                scheduled.kernel,
+                Kernel::ParticleSplat | Kernel::ParticleLinks
+            ) || areas[at_pass].is_some()
+            {
                 encoder.clear_buffer(output, 0, None);
             }
             {
@@ -1499,6 +1503,10 @@ impl Renderer {
                     Kernel::ParticleSplat => {
                         let (threads, row) = (p.values[0] as u32, (p.values[1] as u32).max(1));
                         pass.dispatch_workgroups(row.div_ceil(64), threads.div_ceil(row).max(1), 1);
+                    }
+                    // One thread per particle that lines may join.
+                    Kernel::ParticlePositions | Kernel::ParticleLinks => {
+                        pass.dispatch_workgroups(nodes::particles::LINKED_MOST.div_ceil(64), 1, 1);
                     }
                     Kernel::GlintSeeds => {
                         let cell = (p.values[0] * 2.).max(8.).ceil() as u32;

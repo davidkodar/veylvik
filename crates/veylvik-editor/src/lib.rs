@@ -2873,6 +2873,13 @@ impl Studio {
                     "burst_speed" | "burst_spread" | "burst_life" | "burst_size" => {
                         matches!(self.draft.operation, Operation::Particles(ref n) if matches!(n.burst, veylvik_document::Scalar::Constant { value } if value < 0.5))
                     }
+                    // A trail's width and the lines' look once there is a trail or lines.
+                    "trail_width" => {
+                        matches!(self.draft.operation, Operation::Particles(ref n) if matches!(n.trail, veylvik_document::Scalar::Constant { value } if value <= 0.0))
+                    }
+                    "link_opacity" | "link_width" => {
+                        matches!(self.draft.operation, Operation::Particles(ref n) if matches!(n.link_distance, veylvik_document::Scalar::Constant { value } if value <= 0.0))
+                    }
                     _ => false,
                 };
                 if hidden {

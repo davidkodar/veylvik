@@ -26,7 +26,7 @@ fn tile() -> u32 {
     return 16u;
 }
 const MIP: u32 = 64u;
-const COUNT: u32 = 57u;
+const COUNT: u32 = 60u;
 const ROWS: u32 = 16u;
 // Setting numbers.
 const SPEED = 1u; const DIRECTION = 2u; const SPREAD = 3u; const GRAVITY = 4u; const WIND = 5u;
@@ -41,9 +41,12 @@ const BOX_Z = 42u; const REACH = 43u; const TOWARDS = 44u;
 const BURST = 45u; const BURST_SPEED = 46u; const BURST_SPREAD = 47u; const BURST_LIFE = 48u;
 const BURST_SIZE = 49u; const BURST_COLOUR = 50u; const BURST_A = 53u;
 const TRAIL = 54u; const TRAIL_WIDTH = 55u;
+const LINK_DISTANCE = 57u; const LINK_OPACITY = 58u; const LINK_WIDTH = 59u;
 // The camera row's values beyond the camera: particles (threads before the bursts'),
 // burst particles each, and whether bursts are set off by the obstacle (else by death).
 const PARENTS = 32u; const EACH = 33u; const ON_IMPACT = 34u;
+// How many particles are joined by lines (0: no lines).
+const LINKED = 35u;
 fn camera_row(k: u32) -> f32 { return third[tiles() + ROWS * COUNT + k].w; }
 fn tiles() -> u32 {
     let t = tile();
@@ -708,12 +711,86 @@ fn particle_splat(@builtin(global_invocation_id) gid: vec3<u32>) {
                 random(parent, b.generation, 12u)));
     }
 }
-// ---- resolve: source = splat sums, second = fields ----
+// ---- positions: as splat; result = two values for each linked particle: where it is
+// on the frame (xy), how visible (z, 0 when not drawn) and its size; then its colour ----
+@compute @workgroup_size(64)
+fn particle_positions(@builtin(global_invocation_id) gid: vec3<u32>) {
+    let i = gid.x;
+    if i >= u32(camera_row(LINKED)) { return; }
+    let now = bitcast<f32>(p.size_op.z);
+    var spot = vec4<f32>(0.0); var colour = vec4<f32>(0.0);
+    let b = born(i, 0u, now);
+    let age = now - b.birth;
+    if b.ok && age < b.own_life {
+        let where_now = place(b.origin, b.launch, b.birth, age, b.own_life, b.goal, b.homing, b.deep);
+        let ended = camera_row(ON_IMPACT) > 0.5 && impact >= 0.0;
+        let seen = filmed(where_now);
+        let away = distance_to(where_now);
+        let wall = occluder(seen.xy);
+        let hidden = wall > 0.0 && away > wall * 1.002 + 1.0;
+        if !ended && !hidden && seen.z > 0.0 {
+            let share = age / b.own_life;
+            let fade = setting(FADE, b.birth);
+            var opacity = min(share / 0.04, 1.0);
+            if fade > 0.0 { opacity *= clamp((1.0 - share) / fade, 0.0, 1.0); }
+            let first_colour = vec4<f32>(setting(COLOUR, b.birth), setting(COLOUR + 1u, b.birth), setting(COLOUR + 2u, b.birth), setting(COLOUR_A, b.birth));
+            let last_colour = vec4<f32>(setting(END_COLOUR, b.birth), setting(END_COLOUR + 1u, b.birth), setting(END_COLOUR + 2u, b.birth), setting(END_A, b.birth));
+            colour = mix(first_colour, last_colour, share);
+            let hues = setting(HUES, b.birth);
+            if hues > 0.0 { colour = vec4<f32>(turned(colour.rgb, (random(i, b.generation, 12u) - 0.5) * 6.2831853 * hues), colour.a); }
+            spot = vec4<f32>(seen.xy, opacity * colour.a, setting(SIZE, b.birth));
+        }
+    }
+    store(2u * i, spot);
+    store(2u * i + 1u, colour);
+}
+// ---- links: second = positions, third = fields; result = light summed as the splat's ----
+// A line from each linked particle to every later one nearer than the link distance,
+// stronger the nearer they are, in the two particles' colours.
+@compute @workgroup_size(64)
+fn particle_links(@builtin(global_invocation_id) gid: vec3<u32>) {
+    let i = gid.x;
+    let n = u32(camera_row(LINKED));
+    if i >= n { return; }
+    let a = second[2u * i];
+    if a.z <= 0.0 { return; }
+    let now = bitcast<f32>(p.size_op.z);
+    let reach = setting(LINK_DISTANCE, now);
+    if reach <= 0.0 { return; }
+    let strength = setting(LINK_OPACITY, now);
+    let radius = max(setting(LINK_WIDTH, now) * 0.5, 0.35);
+    let ca = second[2u * i + 1u];
+    var made = 0u;
+    for (var j = i + 1u; j < n; j++) {
+        let b = second[2u * j];
+        if b.z <= 0.0 { continue; }
+        let apart = length(b.xy - a.xy);
+        if apart >= reach || apart < 0.5 { continue; }
+        let near = 1.0 - apart / reach;
+        let cb = second[2u * j + 1u];
+        let colour = (ca.rgb + cb.rgb) * 0.5;
+        let alpha = near * near * strength * min(a.z, b.z);
+        let spacing = max(radius, 0.5) * 1.2;
+        let dots = clamp(u32(ceil(apart / spacing)), 1u, 512u);
+        // Dots along the line overlap: each gives its share so the line is as bright as set.
+        let each = vec4<f32>(colour * alpha, alpha) * min(1.0, 1.1 * spacing / max(radius * 2.0, 1.0));
+        for (var d = 0u; d <= dots; d++) {
+            stamp(mix(a.xy, b.xy, f32(d) / f32(dots)), radius, each);
+        }
+        made += 1u;
+        if made >= 48u { break; }
+    }
+}
+// ---- resolve: source = splat sums, second = fields, third = lines' sums (when linked) ----
 @compute @workgroup_size(8, 8)
 fn particle_resolve(@builtin(global_invocation_id) gid: vec3<u32>) {
     if gid.x >= p.size_op.x || gid.y >= p.size_op.y { return; }
     let i = gid.y * p.size_op.x + gid.x;
-    let sum = vec4<f32>(first[i]) / SCALE;
+    var sum = vec4<f32>(first[i]) / SCALE;
+    // Lines between particles add their light (their sums come in as the third input).
+    if second[tiles() + ROWS * COUNT + LINKED].w > 0.0 {
+        sum += vec4<f32>(bitcast<vec4<u32>>(third[i])) / SCALE;
+    }
     // Glow adds the light; without it dots cover one another and alpha saturates softly.
     let glow = second[tiles() + (ROWS - 1u) * COUNT + GLOW].w;
     let covered = 1.0 - exp(-sum.a);
