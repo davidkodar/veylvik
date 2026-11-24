@@ -40,14 +40,11 @@ impl Studio {
         // composition, or while frames are already being made in order.
         let hold = !wanted
             // Playing from the store holds preparing back; waiting to play needs it.
-            || (self.playing && self.buffering.is_none())
+            || (self.transport.playing && self.transport.buffering.is_none())
             || self.playback_controls.warming.is_some()
-            || self.draft_dirty
+            || !self.shows_saved()
             || self.error
-            || self.files.busy()
-            || self.scene_view.is_some()
-            || self.scene_reflections
-            || self.key_timeline.preview_commands().is_some();
+            || self.files.busy();
         let Some(scheduler) = &self.scheduler else {
             return;
         };
@@ -55,16 +52,7 @@ impl Studio {
         if hold {
             return;
         }
-        let view = self.effective_view();
-        let look = veylvik_preview::screen::Look {
-            exposure: if view.exposure.is_finite() {
-                view.exposure.clamp(-16.0, 16.0)
-            } else {
-                0.0
-            },
-            filmic: view.filmic,
-            host: view.host,
-        };
+        let look = self.screen_look();
         let doc = self.project.document.snapshot();
         let (rate, count) = (doc.frame_rate, doc.frame_count);
         let range = self.playback_controls.range(count);
@@ -163,7 +151,7 @@ impl Studio {
         let off = !values.wait_for_frames
             || !values.fill_while_idle
             || values.played_memory_mib + values.played_disk_mib == 0
-            || self.play_now
+            || self.transport.play_now
             || self.draft_dirty
             || self.error
             || self.scene_view.is_some()
@@ -171,8 +159,7 @@ impl Studio {
         let allowed = (values.played_memory_mib + values.played_disk_mib) * 1024 * 1024;
         let looping = values.loop_playback;
         let Some(scheduler) = self.scheduler.as_ref().filter(|_| !off) else {
-            self.buffering = None;
-            self.waiting = None;
+            self.transport.stop_waiting();
             return false;
         };
         let doc = self.project.document.snapshot();
@@ -183,8 +170,7 @@ impl Studio {
         // Nothing can be kept for this composition: preparing would never get anywhere,
         // so it plays live at once (the transport's counter says why).
         if status.cannot_keep {
-            self.buffering = None;
-            self.waiting = None;
+            self.transport.stop_waiting();
             return false;
         }
         let ready: std::collections::BTreeSet<i64> = status
@@ -204,8 +190,7 @@ impl Studio {
         // All there, or live is close enough to real time: play at once.
         let fast = cost.is_some_and(|cost| cost.as_secs_f64() < frame.as_secs_f64() * 1.5);
         if have >= wanted || fast {
-            self.buffering = None;
-            self.waiting = None;
+            self.transport.stop_waiting();
             return false;
         }
         // Too long for the store: say so and let the artist choose; waiting would not end.
@@ -217,8 +202,8 @@ impl Studio {
         };
         let needed = each.saturating_mul(wanted as u64);
         if needed > allowed || status.full {
-            self.buffering = Some(None);
-            self.waiting = Some(Waiting::TooBig { needed, allowed });
+            self.transport.buffering = Some(None);
+            self.transport.waiting = Some(Waiting::TooBig { needed, allowed });
             if !self.error {
                 self.status = "Playing waits: this range needs more room than the store has".into();
             }
@@ -228,22 +213,21 @@ impl Studio {
         // Nothing left being prepared and frames still missing for a while: waiting
         // longer would be for nothing, so play as frames render and say why.
         let (left, _) = scheduler.preparing();
-        let stuck = match self.buffering {
+        let stuck = match self.transport.buffering {
             Some(Some(since)) if left == 0 => since.elapsed() > Duration::from_millis(1500),
             _ => false,
         };
         if stuck {
             // For the rest of this play: holding again a moment later would stop the
             // clock each time and the playhead would crawl.
-            self.play_now = true;
-            self.buffering = None;
-            self.waiting = None;
+            self.transport.play_now = true;
+            self.transport.stop_waiting();
             if !self.error {
                 self.status = "Playing as frames render: this range could not be prepared".into();
             }
             return false;
         }
-        self.buffering = Some(match self.buffering {
+        self.transport.buffering = Some(match self.transport.buffering {
             Some(since) if left == 0 => since.or(Some(std::time::Instant::now())),
             _ if left == 0 => Some(std::time::Instant::now()),
             _ => None,
@@ -272,7 +256,7 @@ impl Studio {
             }
             _ => None,
         };
-        self.waiting = Some(Waiting::Preparing {
+        self.transport.waiting = Some(Waiting::Preparing {
             have,
             wanted,
             cost,
@@ -288,10 +272,10 @@ impl Studio {
     }
     /// The panel over the viewer while playing waits: why, how far, and the ways out.
     pub(crate) fn wait_panel(&mut self, ctx: &egui::Context) {
-        let (Some(waiting), Some(canvas)) = (&self.waiting, self.viewer_canvas) else {
+        let (Some(waiting), Some(canvas)) = (&self.transport.waiting, self.viewer_canvas) else {
             return;
         };
-        if !self.playing {
+        if !self.transport.playing {
             return;
         }
         let mut choice = None;
@@ -370,9 +354,8 @@ impl Studio {
         match choice {
             Some(0) => self.toggle_play(),
             Some(1) => {
-                self.play_now = true;
-                self.waiting = None;
-                self.buffering = None;
+                self.transport.play_now = true;
+                self.transport.stop_waiting();
             }
             Some(2) => {
                 self.toggle_play();

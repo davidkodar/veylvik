@@ -217,7 +217,7 @@ impl Studio {
         if !self.apply_draft() {
             return;
         }
-        self.playing = false;
+        self.transport.pause();
         let doc = self.project.document.snapshot();
         self.subject.source = Some(self.project.selected);
         self.subject.open = true;

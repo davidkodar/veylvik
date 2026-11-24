@@ -23,7 +23,7 @@ impl crate::Studio {
         if !self.apply_draft() {
             return false;
         }
-        self.playing = false;
+        self.transport.pause();
         let frame = self.frame_at(time);
         self.project.frame = frame;
         // The host's own move is not reported back to it.

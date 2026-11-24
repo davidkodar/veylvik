@@ -4,11 +4,7 @@ use eframe::egui;
 use veylvik_document::{NodePosition, clipboard::NodeClipboard};
 impl Studio {
     pub(super) fn copy_graph_nodes(&mut self, ctx: &egui::Context) {
-        if self.files.busy()
-            || self.authoring_dialog_open()
-            || self.graph.dragging()
-            || !self.can_change_selection()
-        {
+        if !self.ready() || !self.can_change_selection() {
             return;
         }
         let result = (|| -> Result<String, Box<dyn std::error::Error>> {
@@ -42,11 +38,7 @@ impl Studio {
         }
     }
     pub(super) fn paste_graph_nodes(&mut self, text: &str, position: NodePosition) {
-        if self.files.busy()
-            || self.authoring_dialog_open()
-            || self.graph.dragging()
-            || !self.can_change_selection()
-        {
+        if !self.ready() || !self.can_change_selection() {
             return;
         }
         let result = (|| -> Result<(), Box<dyn std::error::Error>> {
@@ -63,7 +55,7 @@ impl Studio {
             self.project.apply(&copy.into_commands())?;
             self.project.selected = root;
             self.project.preview = Some(root);
-            self.playing = false;
+            self.transport.pause();
             self.refresh_draft();
             self.graph.select_pasted(ids, root);
             self.request_preview();

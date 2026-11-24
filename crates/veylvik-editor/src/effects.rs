@@ -173,14 +173,10 @@ impl Controls {
 }
 impl Studio {
     pub(super) fn begin_group(&mut self, edit: bool) {
-        if !self.can_change_selection()
-            || self.authoring_dialog_open()
-            || self.graph.dragging()
-            || self.animation_editor.dragging()
-        {
+        if !self.ready() || !self.can_change_selection() {
             return;
         }
-        self.playing = false;
+        self.transport.pause();
         let doc = self.project.document.snapshot();
         let existing = edit
             .then(|| {
@@ -302,7 +298,7 @@ impl Studio {
                 self.effects.connections.insert(edit_key, source);
                 self.queue_draft_preview(ui.ctx());
                 self.draft_dirty = true;
-                self.playing = false;
+                self.transport.pause();
             }
         }
         ui.separator();
@@ -345,7 +341,7 @@ impl Studio {
                 self.effects.edits.insert(edit_key, value);
                 self.queue_draft_preview(ui.ctx());
                 self.draft_dirty = true;
-                self.playing = false;
+                self.transport.pause();
             }
         }
         if group.controls.is_empty() {

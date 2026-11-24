@@ -64,7 +64,7 @@ impl Studio {
     /// Adds the Gold title scene to the composition and selects its Title node, so
     /// the words are in the inspector.
     pub(crate) fn add_gold_title(&mut self) {
-        self.playing = false;
+        self.transport.pause();
         let built = veylvik_presets::gold_title(
             self.project.document.snapshot(),
             "YOUR TITLE",
@@ -245,7 +245,7 @@ impl Studio {
                         s.view = self.current_view();
                     }
                     s.recording = Some(Vec::new());
-                    if !self.playing {
+                    if !self.transport.playing {
                         let range = self.playback_controls.range(self.project.document.snapshot().frame_count);
                         self.project.frame = range.0;
                         self.toggle_play();
@@ -420,7 +420,7 @@ impl Studio {
             lines.push("Free view: preview only, renders use the scene camera".into());
         }
         if s.recording.is_some() {
-            lines.push(if self.playing {
+            lines.push(if self.transport.playing {
                 "REC  Recording the walk".to_owned()
             } else {
                 "REC  Recording: press play and walk".to_owned()
@@ -459,17 +459,17 @@ impl Studio {
         let wrapped = samples
             .last()
             .is_some_and(|(t, _)| time.compare(*t).is_ok_and(|o| o.is_lt()));
-        if (!self.playing && !samples.is_empty()) || wrapped {
+        if (!self.transport.playing && !samples.is_empty()) || wrapped {
             let samples = std::mem::take(samples);
             s.recording = None;
             store(ctx, s);
-            if self.playing {
+            if self.transport.playing {
                 self.toggle_play();
             }
             self.finish_recording(samples);
             return;
         }
-        if self.playing
+        if self.transport.playing
             && samples
                 .last()
                 .is_none_or(|(t, _)| t.compare(time).is_ok_and(|o| o.is_ne()))

@@ -306,7 +306,12 @@ impl Studio {
         view.item("view.reset_display", "Reset display settings", None, true);
         view.gap();
         if let Some(item) = view.cmd(self, "view.play", Cmd::Play) {
-            item.label = if self.playing { "Pause" } else { "Play" }.into();
+            item.label = if self.transport.playing {
+                "Pause"
+            } else {
+                "Play"
+            }
+            .into();
         }
         view.gap();
         view.check(
@@ -487,7 +492,7 @@ impl Studio {
         true
     }
     fn add_chosen(&mut self, ctx: &egui::Context, choice: node_palette::Choice) {
-        self.playing = false;
+        self.transport.pause();
         self.add_from_palette(choice, self.graph.insertion_position(ctx));
     }
     fn apply_menu_command(&mut self, command: veylvik_document::Command) {

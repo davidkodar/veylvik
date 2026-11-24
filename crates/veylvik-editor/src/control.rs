@@ -55,7 +55,7 @@ pub fn call(
             .map(|value| value.as_bool().ok_or("summary must be boolean"))
             .transpose()?
             .unwrap_or(false);
-        let mut result = json!({"session":project.session,"revision":project.document.revision(),"history":project.document.history(),"selected":project.selected,"preview":{"pictures_shown":studio.pictures_shown,"node":project.preview.unwrap_or(project.document.snapshot().output),"frame":project.frame,"displayed_time":studio.displayed_time,"rendering":studio.preview_pending,"playing":studio.playing},"viewer":{"exposure":studio.view.exposure,"alpha":studio.view.alpha,"scale":studio.navigation.manual_scale(),"pan":studio.navigation.pan()},"unavailable_assets":project.unavailable_assets(),"inspector_draft":studio.draft_dirty,"busy":studio.files.busy() || studio.authoring_dialog_open() || (studio.graph.dragging() || studio.animation_editor.dragging()),"status":studio.status,"error":studio.error});
+        let mut result = json!({"session":project.session,"revision":project.document.revision(),"history":project.document.history(),"selected":project.selected,"preview":{"pictures_shown":studio.pictures_shown,"node":project.preview.unwrap_or(project.document.snapshot().output),"frame":project.frame,"displayed_time":studio.displayed_time,"rendering":studio.preview_pending,"playing":studio.transport.playing},"viewer":{"exposure":studio.view.exposure,"alpha":studio.view.alpha,"scale":studio.navigation.manual_scale(),"pan":studio.navigation.pan()},"unavailable_assets":project.unavailable_assets(),"inspector_draft":studio.draft_dirty,"busy":!studio.ready(),"busy_because":studio.busy().map(|b| b.message()),"status":studio.status,"error":studio.error});
         result["job"] = studio.live_job_report();
         result["comparison"] = studio.comparison.status();
         result["scopes"] = studio.scopes.status();
@@ -81,12 +81,8 @@ pub fn call(
         })?);
     }
     let (session, revision) = identity(project, args)?;
-    if studio.files.busy()
-        || studio.authoring_dialog_open()
-        || studio.confirm.is_some()
-        || (studio.graph.dragging() || studio.animation_editor.dragging())
-    {
-        return Err("editor is busy; finish the current interaction first".into());
+    if let Some(busy) = studio.busy() {
+        return Err(busy.message().into());
     }
     let dry_run = args
         .get("dry_run")
@@ -190,7 +186,7 @@ pub fn call(
         }
         _ => return Err("unknown live tool".into()),
     }
-    studio.playing = false;
+    studio.transport.pause();
     studio.refresh_draft();
     studio.request_preview();
     let mut result = response.unwrap_or_else(
@@ -242,7 +238,10 @@ fn snapshot(studio: &Studio, name: &str, args: &Value) -> Result<crate::preview_
     if !(1..=veylvik_io::preview::MAX_PREVIEW_EDGE as u64).contains(&max_edge) {
         return Err("max_edge must be within 1..2048".into());
     }
-    if studio.playing || studio.preview_pending || studio.displayed_ticket != studio.wanted {
+    if studio.transport.playing
+        || studio.preview_pending
+        || studio.displayed_ticket != studio.wanted
+    {
         return Err(
             "preview is not ready; pause/seek with preview and wait for rendering to finish".into(),
         );
@@ -325,13 +324,8 @@ fn project_files(
     ) {
         return Ok(None);
     }
-    if studio.files.busy()
-        || studio.authoring_dialog_open()
-        || studio.confirm.is_some()
-        || studio.graph.dragging()
-        || studio.animation_editor.dragging()
-    {
-        return Err("editor is busy; finish the current interaction first".into());
+    if let Some(busy) = studio.busy() {
+        return Err(busy.message().into());
     }
     let path = || -> Result<std::path::PathBuf> {
         let path = std::path::PathBuf::from(args["path"].as_str().ok_or("path must be a string")?);

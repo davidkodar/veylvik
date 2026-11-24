@@ -177,7 +177,7 @@ impl Studio {
             Cmd::ExportFrame => self.export_frame(),
             Cmd::ExportSequence => self.ask_export(pages::ExportKind::Sequence),
             Cmd::CompositionSettings => {
-                self.playing = false;
+                self.transport.pause();
                 self.composition_controls
                     .begin(self.project.document.snapshot(), false);
             }
@@ -207,7 +207,7 @@ impl Studio {
             Cmd::PreviousKey => self.seek_key(false),
             Cmd::NextKey => self.seek_key(true),
             Cmd::SetIn | Cmd::SetOut => {
-                self.playing = false;
+                self.transport.pause();
                 self.playback_controls.warming = None;
                 if cmd == Cmd::SetIn {
                     self.playback_controls.set_in(self.project.frame, frames);

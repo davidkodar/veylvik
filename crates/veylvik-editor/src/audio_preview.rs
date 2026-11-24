@@ -49,7 +49,10 @@ impl Studio {
     pub(crate) fn audio_tick(&mut self) {
         let prefs = &self.preferences.values;
         // Holding for frames is silence: sound and picture start together.
-        if !prefs.audio_enabled || !self.playing || self.buffering.is_some() || self.playing_behind
+        if !prefs.audio_enabled
+            || !self.transport.playing
+            || self.transport.buffering.is_some()
+            || self.transport.behind
         {
             self.audio.stop();
             return;

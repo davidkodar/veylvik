@@ -482,7 +482,7 @@ impl Studio {
         }
         let _ = t.node;
         self.draft_dirty = true;
-        self.playing = false;
+        self.transport.pause();
         self.queue_draft_preview(ctx);
     }
 }

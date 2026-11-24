@@ -156,7 +156,7 @@ impl Studio {
         let Some((id, key)) = next else {
             return;
         };
-        let idle = !self.playing
+        let idle = !self.transport.playing
             && !self.draft_dirty
             && self.displayed_ticket == self.wanted
             && !self.graph.dragging()

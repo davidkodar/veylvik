@@ -54,7 +54,7 @@ impl Studio {
         if !self.apply_draft() || self.files.busy() {
             return;
         }
-        self.playing = false;
+        self.transport.pause();
         let doc = self.project.document.snapshot();
         self.solve = Controls {
             open: true,

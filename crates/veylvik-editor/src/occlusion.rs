@@ -81,7 +81,7 @@ impl super::Studio {
         }
     }
     fn begin_occlusion(&mut self, source: NodeId, redraw: bool) {
-        self.playing = false;
+        self.transport.pause();
         self.occlusion.pending = Some(Pending {
             owner: self.draft.id,
             source,

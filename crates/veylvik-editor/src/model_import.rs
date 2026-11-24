@@ -28,7 +28,7 @@ impl Studio {
         ) {
             return;
         }
-        self.playing = false;
+        self.transport.pause();
         let (folder, session, revision) = (
             self.project.base.clone(),
             self.project.session,

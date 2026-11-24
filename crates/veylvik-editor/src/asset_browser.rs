@@ -597,7 +597,7 @@ impl Studio {
         position: Option<veylvik_document::NodePosition>,
         ctx: &egui::Context,
     ) {
-        if self.files.busy() || self.authoring_dialog_open() {
+        if !self.ready() {
             return;
         }
         let saved = match item.saved {
@@ -678,7 +678,7 @@ impl Studio {
         }
     }
     pub(super) fn library_drop_target(&mut self, ui: &egui::Ui, rect: egui::Rect, graph: bool) {
-        if self.files.busy() || self.authoring_dialog_open() {
+        if !self.ready() {
             return;
         }
         if let Some(payload) = egui::DragAndDrop::payload::<LibraryDrag>(ui.ctx())

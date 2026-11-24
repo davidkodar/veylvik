@@ -171,7 +171,7 @@ impl Studio {
         ) && self.apply_draft()
         {
             self.project.frame = frame;
-            self.playing = false;
+            self.transport.pause();
             self.request_preview();
         }
     }

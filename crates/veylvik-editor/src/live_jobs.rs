@@ -14,8 +14,8 @@ pub struct LiveJob {
 impl Studio {
     fn live_job_ready(&self, args: &Value) -> Result<()> {
         crate::control::identity(&self.project, args)?;
-        if self.files.busy() || self.authoring_dialog_open() || self.confirm.is_some() {
-            return Err("editor is busy; finish the current interaction first".into());
+        if let Some(busy) = self.busy() {
+            return Err(busy.message().into());
         }
         if self.planar.active.is_some()
             || self.subject.active.is_some()
@@ -52,9 +52,7 @@ impl Studio {
         self.live_job_ready(args)?;
         let doc = self.project.document.snapshot();
         let request = veylvik_track::camera::Request::from_json(args, doc.frame_count)?;
-        if !doc.nodes.contains_key(&request.source) {
-            return Err("the footage node does not exist".into());
-        }
+        request.check(doc)?;
         self.solve.configure_live(&request);
         self.run_solve_camera(ctx);
         let running = self.solve.active.is_some();
@@ -67,18 +65,11 @@ impl Studio {
     ) -> Result<Value> {
         self.live_job_ready(args)?;
         let request = veylvik_track::request::Request::from_json(args)?;
-        let doc = self.project.document.snapshot();
-        let last = i64::from(doc.frame_count.saturating_sub(1));
-        if !doc.nodes.contains_key(&request.source) {
-            return Err("tracking source node does not exist".into());
-        }
-        if request.frames.iter().any(|f| *f > last) || request.frames[0] == request.frames[1] {
-            return Err(format!("start and end must differ and lie within 0..={last}").into());
-        }
+        // Live, back_to can only be 0: Studio's window tracks backward to the first frame.
         if request.back_to.is_some_and(|f| f != 0) {
             return Err("live back_to must be 0: Studio tracks backward to the first frame".into());
         }
-        veylvik_document::planar::validate_quad(request.surface)?;
+        request.check(self.project.document.snapshot())?;
         self.project.frame = request.frames[0];
         self.planar.configure_live(&request);
         self.run_planar(ctx);
@@ -93,21 +84,10 @@ impl Studio {
         self.live_job_ready(args)?;
         let doc = self.project.document.snapshot();
         let request = veylvik_segment::request::Request::from_json(args, doc.frame_count)?;
-        if !doc.nodes.contains_key(&request.source) {
-            return Err("segmentation source node does not exist".into());
-        }
         if request.analysis.back_to.is_some_and(|f| f != 0) {
             return Err("live back_to must be 0: Studio tracks backward to the first frame".into());
         }
-        let last = i64::from(doc.frame_count.saturating_sub(1));
-        if request
-            .analysis
-            .frames
-            .iter()
-            .any(|f| !(0..=last).contains(f))
-        {
-            return Err(format!("frame and end must lie within 0..={last}").into());
-        }
+        request.check(doc)?;
         self.subject.configure_live(&request)?;
         self.project.frame = request.analysis.frames[0];
         self.track_subject(ctx);

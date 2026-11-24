@@ -352,12 +352,12 @@ impl Studio {
    let pane_columns=if self.scopes.layout==4 {if wide {4}else{2}}else{1};
    let plot_width=(ui.available_width()/pane_columns as f32-48.)*ui.ctx().pixels_per_point();
    let mut step=1;
-   while self.playing && u64::from(source.frame.width().div_ceil(step*2))*u64::from(source.frame.height().div_ceil(step*2))>=2_000_000 {step*=2;}
+   while self.transport.playing && u64::from(source.frame.width().div_ceil(step*2))*u64::from(source.frame.height().div_ceil(step*2))>=2_000_000 {step*=2;}
    while u64::from(source.frame.width().div_ceil(step))*u64::from(source.frame.height().div_ceil(step))>16_000_000 {step*=2;}
    let measure=Measure {cols:(plot_width.ceil() as u32).clamp(256,4096),step,low_pass:self.scopes.low_pass};
    let changed=self.scopes.frame.as_ref().is_none_or(|f| f.view!=settings || f.measure!=measure);
    let new_source=self.scopes.frame.as_ref().is_none_or(|f| !Arc::ptr_eq(&f.source,&source.frame));
-   if changed || new_source && (!self.playing || self.scopes.updated.elapsed()>=std::time::Duration::from_millis(66)) {
+   if changed || new_source && (!self.transport.playing || self.scopes.updated.elapsed()>=std::time::Duration::from_millis(66)) {
     self.scopes.frame=Some(self.scopes.engine.frame(self.renderer.device(),source.frame.clone(),settings,measure));
     self.scopes.updated=std::time::Instant::now();
    }

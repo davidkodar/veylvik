@@ -15,8 +15,8 @@ fn absolute(args: &Value) -> Result<PathBuf> {
 impl Studio {
     fn live_files_ready(&self, args: &Value) -> Result<()> {
         crate::control::identity(&self.project, args)?;
-        if self.files.busy() || self.authoring_dialog_open() || self.confirm.is_some() {
-            return Err("editor is busy; finish the current interaction first".into());
+        if let Some(busy) = self.busy() {
+            return Err(busy.message().into());
         }
         if self.draft_dirty {
             return Err("Apply or revert the inspector draft first".into());

@@ -82,7 +82,7 @@ impl Studio {
             && eyedropper::apply(&mut self.draft.operation, sample.field, sample.rgb)
         {
             self.draft_dirty = true;
-            self.playing = false;
+            self.transport.pause();
             let [r, g, b] = sample.rgb;
             self.status = format!(
                 "Sampled R {r:.4} G {g:.4} B {b:.4} (scene-linear) from {} pixels · Apply to keep",

@@ -59,10 +59,10 @@ enum Action {
 }
 impl Studio {
     pub(super) fn open_preset_library(&mut self, ctx: &egui::Context) {
-        if self.files.busy() || self.authoring_dialog_open() || !self.can_change_selection() {
+        if !self.ready() || !self.can_change_selection() {
             return;
         }
-        self.playing = false;
+        self.transport.pause();
         self.error = false;
         self.library = Library {
             open: true,

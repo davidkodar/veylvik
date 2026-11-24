@@ -305,7 +305,7 @@ impl Studio {
             && self.apply_draft()
         {
             self.project.frame = frame;
-            self.playing = false;
+            self.transport.pause();
             self.request_preview();
         }
     }
@@ -314,7 +314,7 @@ impl Studio {
         if !self.apply_draft() || self.files.busy() {
             return;
         }
-        self.playing = false;
+        self.transport.pause();
         self.tracking.open = false;
         let doc = self.project.document.snapshot();
         self.planar = Controls {
@@ -716,7 +716,7 @@ impl Studio {
         };
         progress.total.store(span.max(1) as u32, Ordering::Relaxed);
         let worker = progress.clone();
-        self.playing = false;
+        self.transport.pause();
         self.planar.result = None;
         let work = self.files.start(move || {
             let run = || -> Result<Tracked, Box<dyn std::error::Error>> {

@@ -135,7 +135,7 @@ impl crate::Studio {
                     self.playback_controls.last = None; changed = true; ui.close();
                 }
             }).response.on_hover_text("Set playback range from the current frame, or reset it");
-            if changed { self.playing = false; self.playback_controls.warming = None; }
+            if changed { self.transport.pause(); self.playback_controls.warming = None; }
             let old = self.playback_controls.divisor();
             egui::ComboBox::from_id_salt("preview-resolution").width(110.)
                 .selected_text(match old {2 => "Preview: Half", 4 => "Preview: Quarter", _ => "Preview: Full"})
@@ -145,7 +145,7 @@ impl crate::Studio {
                     }
                 }).response.on_hover_text("Cache and display completed previews at reduced resolution. Effects evaluate at full project resolution; exports stay unchanged.");
             if old != self.playback_controls.divisor() {
-                self.playing = false;
+                self.transport.pause();
                 if let Some(s) = &self.scheduler { s.playback_cache().set_resolution(self.playback_controls.divisor()); }
                 self.request_preview();
             }
@@ -223,7 +223,7 @@ impl crate::Studio {
         {
             return;
         }
-        self.playing = false;
+        self.transport.pause();
         self.playback_controls.warming = Some(Warm {
             end: range.1,
             restore: self.project.frame,

@@ -113,7 +113,7 @@ impl Studio {
         if !self.apply_draft() || self.files.busy() {
             return;
         }
-        self.playing = false;
+        self.transport.pause();
         self.planar.open = false;
         self.tracking = Controls {
             open: true,
@@ -253,7 +253,7 @@ impl Studio {
             .total
             .store((start.abs_diff(end) + 1) as u32, Ordering::Relaxed);
         let worker = progress.clone();
-        self.playing = false;
+        self.transport.pause();
         self.tracking.result = None;
         let work=self.files.start(move || {
             let run=|| -> Result<Tracked,Box<dyn std::error::Error>> {

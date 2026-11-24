@@ -30,6 +30,9 @@ mod graph;
 mod graph_layout;
 mod handles;
 mod inspector_requests;
+mod readiness;
+mod transport;
+mod viewer_source;
 pub use clip_source::ClipSource;
 mod fill;
 mod flock_bake;
@@ -800,15 +803,9 @@ impl Studio {
             status: String::new(),
             last_render_ms: None,
             error: false,
-            playing: false,
+            transport: Default::default(),
             scene_view: None,
             scene_reflections: false,
-            playback: Instant::now(),
-            playback_frame: 0,
-            buffering: None,
-            waiting: None,
-            play_now: false,
-            playing_behind: false,
             trust_prompt,
             playback_folder: None,
             host_name: None,
@@ -955,22 +952,11 @@ struct Studio {
     status: String,
     last_render_ms: Option<f64>,
     error: bool,
-    playing: bool,
+    transport: transport::Transport,
     /// The free 3D view the preview films with (see `viewport3d`).
     scene_view: Option<veylvik_scene::Camera>,
     /// The 3D viewer shows where each light's reflection lands instead of the picture.
     scene_reflections: bool,
-    playback: Instant,
-    playback_frame: i64,
-    /// Play was pressed and the frames ahead are still being prepared: the playhead
-    /// holds, and since when nothing more could be prepared (to give up waiting).
-    buffering: Option<Option<Instant>>,
-    /// What the viewer says while playing waits, when it waits.
-    waiting: Option<fill::Waiting>,
-    /// For this play only: play at once, skipping frames, as the artist asked.
-    play_now: bool,
-    /// Playing shows every frame and has fallen behind real time: the sound waits.
-    playing_behind: bool,
     /// The opened project reads files outside its folder: ask whether to allow them.
     trust_prompt: bool,
     /// Where a host wants the playback store's pictures (its own cache folder).
@@ -1230,28 +1216,18 @@ impl Studio {
         }
     }
     fn open_node_finder(&mut self) {
-        if self.files.busy()
-            || self.authoring_dialog_open()
-            || !self.can_change_selection()
-            || self.graph.dragging()
-            || self.animation_editor.dragging()
-        {
+        if !self.ready() || !self.can_change_selection() {
             return;
         }
-        self.playing = false;
+        self.transport.pause();
         self.node_finder
             .open(self.project.document.snapshot(), self.project.selected);
     }
     fn open_node_palette(&mut self, ctx: &egui::Context) {
-        if self.files.busy()
-            || self.authoring_dialog_open()
-            || !self.can_change_selection()
-            || self.graph.dragging()
-            || self.animation_editor.dragging()
-        {
+        if !self.ready() || !self.can_change_selection() {
             return;
         }
-        self.playing = false;
+        self.transport.pause();
         self.node_palette
             .open_at(self.graph.insertion_position(ctx));
     }
@@ -1371,7 +1347,7 @@ impl Studio {
         {
             return;
         }
-        self.playing = false;
+        self.transport.pause();
         if let Some(group) = self
             .graph
             .selected_group(self.project.document.snapshot(), self.project.selected)
@@ -1395,7 +1371,7 @@ impl Studio {
         {
             return;
         }
-        self.playing = false;
+        self.transport.pause();
         let result = (|| -> Result<(), Box<dyn std::error::Error>> {
             let mut copy = veylvik_document::editing::copy_branch(
                 self.project.document.snapshot(),
@@ -1446,20 +1422,16 @@ impl Studio {
                 .project
                 .preview
                 .unwrap_or(self.project.document.snapshot().output);
-            let plan = if let Some(commands) = self.key_timeline.preview_commands() {
-                let doc = self
-                    .project
-                    .document
-                    .prepare(self.project.document.revision(), commands)?;
-                std::sync::Arc::new(veylvik_render::Plan::compile_output(&doc, output)?)
-            } else if self.draft_dirty {
-                let doc = self
-                    .project
-                    .document
-                    .prepare(self.project.document.revision(), &self.draft_commands())?;
-                std::sync::Arc::new(veylvik_render::Plan::compile_output(&doc, output)?)
-            } else {
-                self.project.plan()?
+            let plan = match self.viewer_source() {
+                viewer_source::Source::KeyPreview(commands)
+                | viewer_source::Source::Draft(commands) => {
+                    let doc = self
+                        .project
+                        .document
+                        .prepare(self.project.document.revision(), &commands)?;
+                    std::sync::Arc::new(veylvik_render::Plan::compile_output(&doc, output)?)
+                }
+                viewer_source::Source::Saved => self.project.plan()?,
             };
             let scheduler = self
                 .scheduler
@@ -1469,19 +1441,9 @@ impl Studio {
             // While playing or caching a range, frames may be kept and answered as the
             // screen shows them with the viewer's look; otherwise every frame is the
             // renderer's own.
-            let view = self.effective_view();
             scheduler.playback_cache().set_playing(
-                (self.playing || self.playback_controls.warming.is_some()).then_some(
-                    veylvik_preview::screen::Look {
-                        exposure: if view.exposure.is_finite() {
-                            view.exposure.clamp(-16.0, 16.0)
-                        } else {
-                            0.0
-                        },
-                        filmic: view.filmic,
-                        host: view.host,
-                    },
-                ),
+                (self.transport.playing || self.playback_controls.warming.is_some())
+                    .then(|| self.screen_look()),
             );
             Ok::<_, Box<dyn std::error::Error>>(scheduler.submit(
                 self.project.document.revision(),
@@ -1502,13 +1464,13 @@ impl Studio {
                 }
                 self.preview_pending = true;
                 // Per-frame renders during playback must not make the status line flicker.
-                if !self.playing {
+                if !self.transport.playing {
                     self.status = "Rendering…".into();
                 }
                 self.error = false;
             }
             Err(e) => {
-                self.playing = false;
+                self.transport.pause();
                 self.fail(e);
             }
         }
@@ -1566,7 +1528,7 @@ impl Studio {
             self.after_save = None;
             return;
         }
-        self.playing = false;
+        self.transport.pause();
         let snapshot = self.project.save_snapshot();
         let existing = if save_as {
             None
@@ -1641,7 +1603,7 @@ impl Studio {
         }
     }
     fn leave_now(&mut self, action: Leave, ctx: &egui::Context) {
-        self.playing = false;
+        self.transport.pause();
         match action {
             Leave::Close => {
                 self.allow_close = true;
@@ -1792,7 +1754,7 @@ impl Studio {
             );
             return;
         }
-        self.playing = false;
+        self.transport.pause();
         let folder = self.project.base.clone();
         let position = self.outline_controls.position;
         let result = self.files.start(move || {
@@ -1827,7 +1789,7 @@ impl Studio {
         {
             return;
         }
-        self.playing = false;
+        self.transport.pause();
         let composition = self.project.document.snapshot().clone();
         if !composition.nodes.values().any(|node| {
             matches!(
@@ -1878,7 +1840,7 @@ impl Studio {
         } else {
             Choice::Import
         };
-        self.playing = false;
+        self.transport.pause();
         let folder = self.project.base.clone();
         let session = self.project.session;
         let revision = self.project.document.revision();
@@ -1924,7 +1886,7 @@ impl Studio {
         if self.files.busy() || !self.apply_draft() {
             return;
         }
-        self.playing = false;
+        self.transport.pause();
         let folder = self.project.base.clone();
         let session = self.project.session;
         let revision = self.project.document.revision();
@@ -2244,7 +2206,7 @@ impl Studio {
             self.preferences_asked = true;
             return;
         }
-        self.playing = false;
+        self.transport.pause();
         if !self.error {
             self.status = "Paused".into();
         }
@@ -2657,7 +2619,7 @@ impl Studio {
         }
 
         if self.draft_dirty {
-            self.playing = false;
+            self.transport.pause();
         }
         self.text_connections(ui);
         if matches!(
@@ -2890,7 +2852,7 @@ impl Studio {
         self.sync_key_timeline();
         if let Some(frame) = self.key_timeline.adjacent(self.project.frame, forward) {
             self.project.frame = frame;
-            self.playing = false;
+            self.transport.pause();
             self.request_preview();
         }
     }
@@ -2898,7 +2860,7 @@ impl Studio {
         if !self.apply_draft() {
             return;
         }
-        self.playing = false;
+        self.transport.pause();
         self.project.frame = (self.project.frame + direction).clamp(
             0,
             i64::from(
@@ -2922,7 +2884,7 @@ impl Studio {
             let doc = self.project.document.snapshot();
             if let Some(frame) = key_timeline::frame(time, doc.frame_rate, doc.frame_count) {
                 self.project.frame = frame;
-                self.playing = false;
+                self.transport.pause();
                 self.request_preview();
             }
         }
@@ -2938,12 +2900,12 @@ impl Studio {
             });
             if ui
                 .add(icons::Button::new(
-                    if self.playing {
+                    if self.transport.playing {
                         icons::Icon::Pause
                     } else {
                         icons::Icon::Play
                     },
-                    if self.playing { "Pause" } else { "Play" },
+                    if self.transport.playing { "Pause" } else { "Play" },
                 ))
                 .clicked()
             {
@@ -3040,7 +3002,7 @@ impl Studio {
                 .inner;
             if changed && self.apply_draft() {
                 self.project.frame = frame;
-                self.playing = false;
+                self.transport.pause();
                 self.request_preview();
             }
             if timecode {
@@ -3120,7 +3082,7 @@ impl Studio {
                     ui,
                     self.project.frame,
                     self.project.document.snapshot(),
-                    !self.draft_dirty && !self.playing,
+                    !self.draft_dirty && !self.transport.playing,
                 )
             })
             .inner;
@@ -3135,7 +3097,7 @@ impl Studio {
                 span,
                 self.project.selected,
                 self.project.frame,
-                !self.draft_dirty && !self.playing,
+                !self.draft_dirty && !self.transport.playing,
             ));
         }
         for action in actions {
@@ -3149,7 +3111,7 @@ impl Studio {
                 key_timeline::Action::Seek(frame) => {
                     if self.apply_draft() {
                         self.project.frame = frame;
-                        self.playing = false;
+                        self.transport.pause();
                         self.request_preview();
                     }
                 }
@@ -3177,7 +3139,7 @@ impl Studio {
         self.planar_quality(ui);
     }
     fn animation_workspace(&mut self, ui: &mut egui::Ui) {
-        let ready = !self.draft_dirty && !self.playing;
+        let ready = !self.draft_dirty && !self.transport.playing;
         if !ready {
             ui.weak("Pause playback and apply or revert inspector changes to edit animation.");
         }
@@ -3220,7 +3182,7 @@ impl Studio {
                 }
                 animation_editor::Action::Seek(frame) => {
                     self.project.frame = frame;
-                    self.playing = false;
+                    self.transport.pause();
                     self.request_preview();
                 }
                 animation_editor::Action::Commit {
@@ -3254,12 +3216,12 @@ impl Studio {
             return;
         }
         self.path_pen.cancel();
-        self.playing = !self.playing;
+        self.transport.playing = !self.transport.playing;
         self.playback_controls.warming = None;
         let range = self
             .playback_controls
             .range(self.project.document.snapshot().frame_count);
-        if self.playing
+        if self.transport.playing
             && (self.preferences.values.restart_playback
                 || self.project.frame < range.0
                 || self.project.frame >= range.1)
@@ -3268,10 +3230,14 @@ impl Studio {
             self.request_preview();
         }
         if !self.error {
-            self.status = if self.playing { "Playing" } else { "Paused" }.into();
+            self.status = if self.transport.playing {
+                "Playing"
+            } else {
+                "Paused"
+            }
+            .into();
         }
-        self.playback = Instant::now();
-        self.playback_frame = self.project.frame;
+        self.transport.start_clock(self.project.frame);
     }
     fn graph(&mut self, ui: &mut egui::Ui) {
         let actions = self.graph.show(
@@ -3289,12 +3255,8 @@ impl Studio {
                 graph::Action::Copy => self.copy_graph_nodes(ui.ctx()),
                 graph::Action::Paste { text, position } => self.paste_graph_nodes(&text, position),
                 graph::Action::AddAt(position) => {
-                    if !self.files.busy()
-                        && !self.authoring_dialog_open()
-                        && self.can_change_selection()
-                        && !self.graph.dragging()
-                    {
-                        self.playing = false;
+                    if self.ready() && self.can_change_selection() {
+                        self.transport.pause();
                         self.node_palette.open_at(position);
                     }
                 }
@@ -3673,19 +3635,24 @@ impl Studio {
                                         )
                                     }
                                 } else {
-                                    if self.playing { "Playing" } else { "Ready" }.into()
+                                    if self.transport.playing {
+                                        "Playing"
+                                    } else {
+                                        "Ready"
+                                    }
+                                    .into()
                                 };
                             }
                         }
                         Err(e) => {
-                            self.playing = false;
+                            self.transport.pause();
                             self.fail(e);
                         }
                     }
                 }
                 Err(e) => {
                     self.preview_pending = false;
-                    self.playing = false;
+                    self.transport.pause();
                     self.fail(e);
                 }
                 _ => {}
@@ -3694,7 +3661,7 @@ impl Studio {
         self.fill_tick(&ctx);
         // Playing is over and the viewer still holds a played picture: ask for the frame
         // itself, so values read off it are the renderer's.
-        if !self.playing
+        if !self.transport.playing
             && self.playback_controls.warming.is_none()
             && !self.preview_pending
             && self.displayed.as_ref().is_some_and(|shown| shown.baked)
@@ -3727,38 +3694,33 @@ impl Studio {
             }
         }
         self.poll_planar_preview();
-        if !self.playing {
-            self.buffering = None;
-            self.waiting = None;
-            self.play_now = false;
+        if !self.transport.playing {
+            self.transport.pause();
             self.fill.clear_since();
         }
         // Playing shows every frame at its moment or it does not move: while frames
         // ahead are still being prepared the playhead holds, and goes when they are there.
-        self.playing_behind &= self.playing;
-        if self.playing && self.hold_for_frames(&ctx) {
-            self.playback = Instant::now();
-            self.playback_frame = self.project.frame;
-        } else if self.playing {
+        self.transport.behind &= self.transport.playing;
+        if self.transport.playing && self.hold_for_frames(&ctx) {
+            self.transport.start_clock(self.project.frame);
+        } else if self.transport.playing {
             let fps = self.project.document.snapshot().frame_rate;
-            let elapsed =
-                (self.playback.elapsed().as_secs_f64() * fps.ticks as f64 / fps.rate as f64) as i64;
+            let elapsed = self.transport.elapsed_frames(fps);
             let range = self
                 .playback_controls
                 .range(self.project.document.snapshot().frame_count);
             let looping = self.preferences.values.loop_playback;
             let (mut frame, mut finished) =
-                playback::frame(self.playback_frame, elapsed, range, looping);
+                playback::frame(self.transport.from(), elapsed, range, looping);
             // Every frame: never past the next one; when the clock is ahead, the next
             // frame starts the clock again, so playing runs slower and skips nothing.
             if self.preferences.values.every_frame && !self.preview_pending {
                 let (step, behind) =
                     playback::every_frame((frame, finished), self.project.frame, range, looping);
-                self.playing_behind = behind;
+                self.transport.behind = behind;
                 if behind {
                     (frame, finished) = step;
-                    self.playback = Instant::now();
-                    self.playback_frame = frame;
+                    self.transport.start_clock(frame);
                 }
             }
             // Playback must let an active frame finish before submitting again.
@@ -3768,7 +3730,7 @@ impl Studio {
                 self.request_preview();
             }
             if finished && !self.preview_pending {
-                self.playing = false;
+                self.transport.pause();
                 if !self.error {
                     self.status = "Ready".into();
                 }
@@ -3776,19 +3738,12 @@ impl Studio {
             ctx.request_repaint_after(Duration::from_millis(16));
         }
         // Consume early, apply after widgets have processed this frame's text edits.
-        let apply_inspector = !self.files.busy()
-            && !self.authoring_dialog_open()
-            && self.confirm.is_none()
-            && !self.graph.dragging()
-            && !self.animation_editor.dragging()
+        let apply_inspector = self.ready()
             && ctx.input_mut(|input| input.consume_key(egui::Modifiers::CTRL, egui::Key::Enter));
-        if !self.files.busy()
-            && !self.authoring_dialog_open()
-            && self.confirm.is_none()
+        if self.ready()
             && (!ctx.egui_wants_keyboard_input()
                 || self.animation_editor.has_focus(&ctx)
                 || self.key_timeline.has_focus(&ctx))
-            && !self.animation_editor.dragging()
             && !self.key_timeline.dragging()
         {
             self.command_keys(&ctx);
@@ -3812,7 +3767,7 @@ impl Studio {
             self.leave(Leave::Close, &ctx);
         }
         ui.add_enabled_ui(
-            !self.files.busy() && !self.authoring_dialog_open() && self.confirm.is_none(),
+            self.ready(),
             |ui| {
                 if !self.viewer_fullscreen {
                 if self.capabilities.menu_bar {
@@ -3855,7 +3810,7 @@ impl Studio {
                             && editable_text::header(ui, &mut self.draft.operation)
                         {
                             self.draft_dirty = true;
-                            self.playing = false;
+                            self.transport.pause();
                             self.queue_draft_preview(ui.ctx());
                         }
                         egui::ScrollArea::vertical()
@@ -3994,7 +3949,7 @@ impl Studio {
                     } else if matches!(self.draft.operation, Operation::Path(veylvik_document::nodes::Path { .. })) {
                         ui.horizontal_wrapped(|ui| {
                             if matches!(self.draft.operation, Operation::Path(veylvik_document::nodes::Path { .. }))
-                                && !self.playing
+                                && !self.transport.playing
                                 && ui.add_enabled_ui(!matches!(&self.draft.operation,Operation::Path(veylvik_document::nodes::Path { geometry }) if !geometry.keys.is_empty()), |ui| self.path_pen.toolbar(ui)).inner
                             {
                                 self.path_transform.active = false;
@@ -4002,7 +3957,7 @@ impl Studio {
                                 self.request_preview();
                             }
                             if matches!(self.draft.operation, Operation::Path(veylvik_document::nodes::Path { .. }))
-                                && !self.playing
+                                && !self.transport.playing
                                 && !self.path_pen.active
                                 && self.path_transform.toolbar(ui)
                             {
@@ -4056,7 +4011,7 @@ impl Studio {
                         if let Some(id)=text_hit
                             && (id==self.draft.id || self.can_change_selection()) {
                             if id!=self.draft.id { self.project.selected=id; self.refresh_draft(); }
-                            if response.double_clicked() { self.playing=false; self.text_viewer.open(id); }
+                            if response.double_clicked() { self.transport.pause(); self.text_viewer.open(id); }
                         }
                         if !navigating_3d
                             && !self.text_viewer.active
@@ -4152,7 +4107,7 @@ impl Studio {
                         }
                         // A pending frame must never change the canvas geometry.
                         // During playback, retaining the previous frame is normal.
-                        if self.displayed_ticket != self.wanted && (!self.playing || self.error) {
+                        if self.displayed_ticket != self.wanted && (!self.transport.playing || self.error) {
                             viewer::paint_status(
                                 ui,
                                 canvas,
@@ -4244,7 +4199,7 @@ impl Studio {
                                 egui::Color32::from_rgb(235, 215, 160),
                             );
                         }
-                        if !self.playing
+                        if !self.transport.playing
                             && !free_3d
                             && !light_guides::active(&ctx)
                             && self.picking.is_none()
@@ -4389,14 +4344,7 @@ impl Studio {
                 });
             },
         );
-        if apply_inspector
-            && !self.files.busy()
-            && !self.authoring_dialog_open()
-            && self.confirm.is_none()
-            && !self.graph.dragging()
-            && !self.animation_editor.dragging()
-            && self.keep_tryout()
-        {
+        if apply_inspector && self.ready() && self.keep_tryout() {
             ctx.memory_mut(|memory| {
                 if let Some(focused) = memory.focused() {
                     memory.surrender_focus(focused);
@@ -4449,10 +4397,7 @@ impl Studio {
         if let Some(settings) = self.composition_controls.show(&ctx) {
             self.apply_composition_settings(settings, &ctx);
         }
-        if let Some(id) = self.recovery.show(
-            &ctx,
-            !self.files.busy() && self.confirm.is_none() && !self.authoring_dialog_open(),
-        ) {
+        if let Some(id) = self.recovery.show(&ctx, self.ready()) {
             self.leave(Leave::Recover(id), &ctx);
         }
         if let Some(request) = self
@@ -4466,11 +4411,10 @@ impl Studio {
         self.solve_camera_window(&ctx);
         self.subject_window(&ctx);
         self.models.show(&ctx);
-        if let Some(settings) = self.video_export.show(
-            &ctx,
-            self.project.document.snapshot(),
-            !self.files.busy() && !self.authoring_dialog_open() && self.confirm.is_none(),
-        ) {
+        if let Some(settings) =
+            self.video_export
+                .show(&ctx, self.project.document.snapshot(), self.ready())
+        {
             self.export_video(settings, &ctx);
         }
 
@@ -4478,7 +4422,7 @@ impl Studio {
             &ctx,
             self.project.document.snapshot().frame_rate,
             self.project.document.snapshot().frame_count,
-            !self.files.busy() && !self.authoring_dialog_open() && self.confirm.is_none(),
+            self.ready(),
         ) {
             self.export_sequence(settings, &ctx);
         }
