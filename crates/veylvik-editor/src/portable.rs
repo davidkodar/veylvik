@@ -271,15 +271,13 @@ impl Studio {
                     report.bytes as f64 / 1048576.,
                     report.project.display()
                 );
-                self.status = "Portable collection complete".into();
-                self.error = false;
+                self.tell("Portable collection complete");
             }
             Finished::Verified(count) => {
                 self.portable.report = format!(
                     "Verified {count} files. Hashes match and all file dependencies are inside this collection."
                 );
-                self.status = "Collection verified".into();
-                self.error = false;
+                self.tell("Collection verified");
             }
             Finished::Located {
                 session,
@@ -290,8 +288,7 @@ impl Studio {
                     self.fail("Project changed during search. Search again for this project.");
                     return;
                 }
-                self.status = "Review relink candidates".into();
-                self.error = false;
+                self.tell("Review relink candidates");
                 self.portable.rows = rows;
                 self.portable.session = Some((session, revision));
                 self.portable.report="Review the proposed paths, then relink the selected sources. Ambiguous matches are never chosen automatically.".into();
@@ -319,8 +316,7 @@ impl Studio {
                 self.request_preview();
                 self.portable.report =
                     "Selected sources relinked. Undo restores their previous paths.".into();
-                self.status = "Sources relinked".into();
-                self.error = false;
+                self.tell("Sources relinked");
             }
         }
     }

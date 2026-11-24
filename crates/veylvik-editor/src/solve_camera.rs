@@ -294,8 +294,7 @@ impl Studio {
             return self.fail(e);
         }
         let rms = built.report["rms_pixels"].as_f64().unwrap_or(f64::INFINITY);
-        self.status = format!("Camera solved: {} ({rms:.2} px)", verdict(rms).0);
-        self.error = false;
+        self.tell(format!("Camera solved: {} ({rms:.2} px)", verdict(rms).0));
         self.project.preview = built.report["composite"]
             .as_str()
             .and_then(|s| s.parse().ok());

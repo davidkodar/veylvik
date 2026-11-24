@@ -7,8 +7,7 @@ use veylvik_io::footage::Media;
 
 impl Studio {
     pub(crate) fn saved(&mut self, saved: Saved, ctx: &egui::Context) {
-        self.status = format!("Saved {}", saved.stamp.path().display());
-        self.error = false;
+        self.tell(format!("Saved {}", saved.stamp.path().display()));
         self.project.mark_saved(saved);
         if let Some(action) = self.after_save.take() {
             self.leave_now(action, ctx);
@@ -23,7 +22,7 @@ impl Studio {
                     // destination renders at once, with its progress shown there.
                     self.render_queue.start();
                     self.render_queue.open = false;
-                    self.status = "Exporting".into();
+                    self.status = crate::EXPORTING.into();
                 } else {
                     self.status = "Added snapshot to render queue".into();
                 }
@@ -33,18 +32,15 @@ impl Studio {
         }
     }
     pub(crate) fn exported(&mut self, path: PathBuf) {
-        self.status = format!("Exported {}", path.display());
-        self.error = false;
+        self.tell(format!("Exported {}", path.display()));
     }
     pub(crate) fn live_done(&mut self, tool: &'static str, result: serde_json::Value) {
         self.finish_live_job(tool, Ok(result));
-        self.status = "Done".into();
-        self.error = false;
+        self.tell("Done");
     }
     pub(crate) fn font_added(&mut self, name: String, ctx: &egui::Context) {
         self.fonts.added(ctx);
-        self.status = format!("Added {name}. Choose it under Added fonts.");
-        self.error = false;
+        self.tell(format!("Added {name}. Choose it under Added fonts."));
     }
     pub(crate) fn text_font(&mut self, node: Box<veylvik_document::Node>) {
         match self.project.apply(&[Command::Put { node }]) {
@@ -73,8 +69,7 @@ impl Studio {
     }
     pub(crate) fn preset_listing(&mut self, listing: veylvik_io::presets::Listing) {
         self.library.listing = listing;
-        self.status = "Effect library updated".into();
-        self.error = false;
+        self.tell("Effect library updated");
     }
     pub(crate) fn picked(&mut self, sample: eyedropper::Sampled) {
         if sample.session == self.project.session
@@ -84,11 +79,10 @@ impl Studio {
             self.draft_dirty = true;
             self.transport.pause();
             let [r, g, b] = sample.rgb;
-            self.status = format!(
+            self.tell(format!(
                 "Sampled R {r:.4} G {g:.4} B {b:.4} (scene-linear) from {} pixels · Apply to keep",
                 sample.pixels
-            );
-            self.error = false;
+            ));
         } else {
             self.fail("The sampled colour no longer matches the selected node; pick again.");
         }
@@ -132,7 +126,7 @@ impl Studio {
                     self.project.selected = id;
                     self.project.preview = Some(id);
                 }
-                self.status = format!(
+                self.tell(format!(
                     "Imported {name}: {} shapes{}. Each shape's outline is a Path node: connect it to 3D text to extrude it",
                     shapes.len(),
                     if skipped > 0 {
@@ -140,8 +134,7 @@ impl Studio {
                     } else {
                         String::new()
                     }
-                );
-                self.error = false;
+                ));
                 self.refresh_draft();
                 self.request_preview();
             }
@@ -173,8 +166,7 @@ impl Studio {
                         .is_some_and(|r| r.compare(doc.frame_rate).is_ok_and(|o| !o.is_eq()))
             })
         {
-            self.status = "Choose whether to match the imported media".into();
-            self.error = false;
+            self.tell("Choose whether to match the imported media");
             self.media_import = image.info().map(|info| {
                 media_import::Pending::new(&self.project, info, Some((path, image, position)))
             });

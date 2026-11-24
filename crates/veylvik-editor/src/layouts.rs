@@ -138,8 +138,7 @@ impl Studio {
         self.node_editor_hidden = !layout.editor;
         // Two frames: the panels take the size, then remember it as their own.
         self.layouts.forced = Some((layout.clone(), 2));
-        self.status = format!("Layout: {}", layout.name);
-        self.error = false;
+        self.tell(format!("Layout: {}", layout.name));
     }
     /// Count down an applied layout. Called once a frame, after the panels were drawn.
     pub(crate) fn layout_tick(&mut self, ctx: &egui::Context) {
@@ -216,8 +215,8 @@ impl Studio {
         if !crate::design::guest(ctx) {
             ctx.set_zoom_factor(*scale);
         }
-        self.status = format!("Interface scale {:.0}%", *scale * 100.0);
-        self.error = false;
+        let shown = format!("Interface scale {:.0}%", *scale * 100.0);
+        self.tell(shown);
         if let Err(error) = self.preferences.persist() {
             self.fail(format!("Preferences: {error}"));
         }

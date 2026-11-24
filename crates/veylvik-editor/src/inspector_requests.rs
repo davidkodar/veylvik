@@ -83,13 +83,11 @@ impl Studio {
                     .as_ref()
                     .is_some_and(|p| p.node == self.draft.id && p.field == field);
                 self.picking = (!active).then(|| eyedropper::Picking::new(self.draft.id, field));
-                self.status = if active {
-                    "Eyedropper cancelled".into()
+                self.tell(if active {
+                    "Eyedropper cancelled"
                 } else {
                     "Eyedropper: click or drag in the viewer to sample a colour · Esc cancels"
-                        .into()
-                };
-                self.error = false;
+                });
             }
         }
         false

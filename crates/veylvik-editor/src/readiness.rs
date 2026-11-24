@@ -6,20 +6,20 @@ use crate::Studio;
 pub(crate) enum Busy {
     /// A file job (import, save, export, tracking...) is running.
     FileJob,
-    /// A dialog that edits the composition is open.
-    Dialog,
+    /// A dialog that edits the composition is open (named).
+    Dialog(&'static str),
     /// A question (save before closing?) waits for an answer.
     Question,
     /// Something is being dragged in the graph or the curves.
     Dragging,
 }
 impl Busy {
-    pub(crate) fn message(self) -> &'static str {
+    pub(crate) fn message(self) -> String {
         match self {
-            Self::FileJob => "editor is busy: a file operation is running",
-            Self::Dialog => "editor is busy: close the open dialog first",
-            Self::Question => "editor is busy: answer the open question first",
-            Self::Dragging => "editor is busy: finish the drag first",
+            Self::FileJob => "editor is busy: a file operation is running".into(),
+            Self::Dialog(name) => format!("editor is busy: close the {name} dialog first"),
+            Self::Question => "editor is busy: answer the open question first".into(),
+            Self::Dragging => "editor is busy: finish the drag first".into(),
         }
     }
 }
@@ -27,7 +27,7 @@ impl Busy {
 #[derive(Debug, Clone, Copy, Default)]
 pub(crate) struct Activity {
     pub file_job: bool,
-    pub dialog: bool,
+    pub dialog: Option<&'static str>,
     pub question: bool,
     pub dragging: bool,
 }
@@ -35,7 +35,7 @@ pub(crate) struct Activity {
 pub(crate) fn busy(now: Activity) -> Option<Busy> {
     [
         (now.file_job, Busy::FileJob),
-        (now.dialog, Busy::Dialog),
+        (now.dialog.is_some(), Busy::Dialog(now.dialog.unwrap_or(""))),
         (now.question, Busy::Question),
         (now.dragging, Busy::Dragging),
     ]
@@ -43,11 +43,33 @@ pub(crate) fn busy(now: Activity) -> Option<Busy> {
     .find_map(|(held, why)| held.then_some(why))
 }
 impl Studio {
+    /// The dialog that edits the composition and is open now, by name. Every such dialog
+    /// is listed here once: while one is open the editor takes no other edits.
+    pub(crate) fn open_dialog(&self) -> Option<&'static str> {
+        [
+            (self.preferences.open, "Preferences"),
+            (self.library.open, "Effect library"),
+            (self.browser.choosing(), "Library choice"),
+            (self.occlusion.open, "Occlusion"),
+            (self.effects.open, "Effect group"),
+            (self.outline_controls.open, "Outline text"),
+            (self.composition_controls.open, "Composition settings"),
+            (self.media_import.is_some(), "Match media"),
+            (self.node_palette.open, "Add node"),
+            (self.graph.renaming(), "Rename node"),
+            (self.node_finder.open, "Find node"),
+        ]
+        .into_iter()
+        .find_map(|(open, name)| open.then_some(name))
+    }
+    pub(crate) fn authoring_dialog_open(&self) -> bool {
+        self.open_dialog().is_some()
+    }
     /// What holds the editor back from an action now, if anything.
     pub(crate) fn busy(&self) -> Option<Busy> {
         busy(Activity {
             file_job: self.files.busy(),
-            dialog: self.authoring_dialog_open(),
+            dialog: self.open_dialog(),
             question: self.confirm.is_some(),
             dragging: self.graph.dragging() || self.animation_editor.dragging(),
         })
@@ -65,7 +87,7 @@ mod tests {
         assert_eq!(busy(Activity::default()), None);
         let all = Activity {
             file_job: true,
-            dialog: true,
+            dialog: Some("Find node"),
             question: true,
             dragging: true,
         };
@@ -84,6 +106,17 @@ mod tests {
             }),
             Some(Busy::Dragging)
         );
-        assert!(Busy::Dialog.message().contains("dialog"));
+        assert_eq!(
+            busy(Activity {
+                dialog: Some("Find node"),
+                ..Default::default()
+            }),
+            Some(Busy::Dialog("Find node"))
+        );
+        assert!(
+            Busy::Dialog("Find node")
+                .message()
+                .contains("Find node dialog")
+        );
     }
 }

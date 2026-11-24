@@ -199,8 +199,7 @@ impl Studio {
     }
     pub(crate) fn copy_settings(&mut self) {
         self.tools.clip = Some((self.draft.label.clone(), self.draft.operation.clone()));
-        self.status = format!("Copied the settings of {}", self.draft.label);
-        self.error = false;
+        self.tell(format!("Copied the settings of {}", self.draft.label));
     }
     /// The node the copied settings came from, when there are any.
     pub(crate) fn copied_from(&self) -> Option<&str> {

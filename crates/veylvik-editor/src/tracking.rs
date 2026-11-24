@@ -128,8 +128,7 @@ impl Studio {
     }
     pub(super) fn tracking_completed(&mut self, result: Tracked) {
         self.tracking.active = None;
-        self.status = result.message.clone();
-        self.error = false;
+        self.tell(result.message.clone());
         self.tracking.source = Some(result.source);
         self.tracking.result = Some(result);
         self.tracking.open = true;

@@ -183,8 +183,7 @@ impl Studio {
             repaint.request_repaint();
         });
         ctx.data_mut(|d| d.insert_temp(id(), Job { result, time }));
-        self.status = "Matching the light to the shot…".into();
-        self.error = false;
+        self.tell("Matching the light to the shot…");
         Ok(())
     }
     fn apply_shot(
@@ -266,12 +265,11 @@ impl Studio {
             });
         }
         self.project.apply(&commands).map_err(|e| e.to_string())?;
-        self.status = match (matched.directional, matched.backlight) {
-            (true, true) => "Sun placed beyond the subject, where the light in the frame is".into(),
-            (true, false) => "Sun placed where the shot's light comes from, with its colour".into(),
-            (false, _) => "The shot's light is soft and even: a soft sun from above".into(),
-        };
-        self.error = false;
+        self.tell(match (matched.directional, matched.backlight) {
+            (true, true) => "Sun placed beyond the subject, where the light in the frame is",
+            (true, false) => "Sun placed where the shot's light comes from, with its colour",
+            (false, _) => "The shot's light is soft and even: a soft sun from above",
+        });
         self.refresh_draft();
         self.request_preview();
         Ok(())

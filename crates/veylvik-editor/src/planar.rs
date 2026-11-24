@@ -366,8 +366,7 @@ impl Studio {
             self.finish_live_job("track_surface", Err(self.status.clone()));
             return;
         }
-        self.status = result.message.clone();
-        self.error = false;
+        self.tell(result.message.clone());
         self.planar.edited = true;
         let message = result.message.clone();
         self.planar.result = Some(result);

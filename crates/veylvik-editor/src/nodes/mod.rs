@@ -10,6 +10,10 @@ pub(crate) struct InspectCx<'a> {
     pub frame_rate: Time,
     pub inputs: &'a veylvik_render::ImageInputs,
     pub unavailable: &'a std::collections::BTreeMap<String, String>,
+    /// The node's connected inputs, by port.
+    pub wired: &'a std::collections::BTreeMap<String, veylvik_document::NodeId>,
+    /// The composition's frame size.
+    pub frame: [u32; 2],
     /// The draft changed and needs Apply.
     pub dirty: bool,
     /// The change affects text or media layout and should refresh the text preview.
@@ -43,6 +47,10 @@ pub(crate) struct InspectCx<'a> {
     pub outline: Option<veylvik_document::NodeId>,
 }
 impl InspectCx<'_> {
+    /// Whether `port` is connected.
+    pub fn is_wired(&self, port: &str) -> bool {
+        self.wired.contains_key(port)
+    }
     /// Ask the editor to do something once the controls are drawn.
     pub fn ask(&mut self, request: Request) {
         self.requests.push(request);
@@ -88,6 +96,8 @@ pub(crate) use color::ocio_controls;
 mod composite;
 mod filters;
 mod generators;
+mod hidden;
+pub(crate) use hidden::hidden;
 mod keying;
 mod materials;
 pub(crate) use materials::{colour_controls, finish_controls, lighting_controls, look_slider};

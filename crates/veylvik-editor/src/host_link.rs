@@ -65,11 +65,10 @@ impl Studio {
                         self.project.frame = (i64::from(found.before)
                             + i64::from(found.playhead.unwrap_or(0)))
                         .clamp(0, last.max(0));
-                        self.status = format!(
+                        self.tell(format!(
                             "Linked to {}: this is \u{201c}{}\u{201d} from its timeline",
                             found.host, found.clip
-                        );
-                        self.error = false;
+                        ));
                         self.request_preview();
                     }
                     self.host_link.link = found;
@@ -117,11 +116,10 @@ impl Studio {
             let host = self.host_link.host().unwrap_or("the editor").to_owned();
             match result {
                 Ok(sent) => {
-                    self.status = match sent.note {
+                    self.tell(match sent.note {
                         Some(note) => format!("Sent {} frames. {note}", sent.frames),
                         None => format!("{host} has the new picture ({} frames)", sent.frames),
-                    };
-                    self.error = false;
+                    });
                 }
                 Err(error) => self.fail(error),
             }

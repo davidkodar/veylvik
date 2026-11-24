@@ -86,8 +86,7 @@ impl Studio {
             node: Box::new(node),
         }]) {
             Ok(()) => {
-                self.status = format!("Model loaded: {parts} parts");
-                self.error = false;
+                self.tell(format!("Model loaded: {parts} parts"));
                 self.refresh_draft();
                 self.request_preview();
             }

@@ -205,8 +205,7 @@ impl Studio {
             .keys()
             .map(|name| (name.clone(), source))
             .collect();
-        self.status = format!("Loaded {}", preset.group.label);
-        self.error = false;
+        self.tell(format!("Loaded {}", preset.group.label));
         self.library.ready = Some(preset);
     }
     pub(super) fn preset_library(&mut self, ctx: &egui::Context) {

@@ -61,8 +61,7 @@ impl Studio {
             repaint.request_repaint();
         });
         ctx.data_mut(|d| d.insert_temp(id(), Job { node, time, result }));
-        self.status = "Measuring the plate's grain…".into();
-        self.error = false;
+        self.tell("Measuring the plate's grain…");
     }
     /// Apply a finished measurement; call every frame.
     pub(crate) fn grain_measure_tick(&mut self, ctx: &egui::Context) {
@@ -107,7 +106,7 @@ impl Studio {
             node: Box::new(node),
         }]) {
             Ok(()) => {
-                self.status = format!(
+                self.tell(format!(
                     "Grain measured: {:.3} in the midtones, size {}, {}",
                     grain.midtones,
                     grain.size,
@@ -116,8 +115,7 @@ impl Studio {
                     } else {
                         "with colour"
                     }
-                );
-                self.error = false;
+                ));
                 self.refresh_draft();
                 self.request_preview();
             }

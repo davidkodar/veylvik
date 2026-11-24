@@ -533,8 +533,7 @@ impl Studio {
             ),
             false,
         ));
-        self.status = "Subject tracked: Subject matte and Subject cutout added".into();
-        self.error = false;
+        self.tell("Subject tracked: Subject matte and Subject cutout added");
         self.project.selected = added.cutout;
         let report = serde_json::json!({"cutout": added.cutout, "first_frame": o.first_frame, "last_frame": o.last_frame, "frames": o.frames, "absent": o.absent, "cancelled": o.cancelled, "passes": o.passes, "milliseconds_per_frame": o.milliseconds_per_frame});
         self.finish_live_job("segment_subject", Ok(report));

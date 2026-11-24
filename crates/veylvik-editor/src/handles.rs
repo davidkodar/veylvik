@@ -134,6 +134,7 @@ pub fn show(
     transform: crate::viewer::ViewTransform,
     image: Vec2,
     operation: &mut Operation,
+    inputs: &std::collections::BTreeMap<String, veylvik_document::NodeId>,
     time: Time,
 ) -> Result<bool> {
     if matches!(
@@ -279,9 +280,7 @@ pub fn show(
         }
         Operation::Particles(particles) => {
             // The emitter box (when nothing is connected as the emitter) and the pull point.
-            let boxed = ui
-                .data(|d| d.get_temp(egui::Id::new("particles-box")))
-                .unwrap_or(true);
+            let boxed = !inputs.contains_key("emitter");
             let centre = origin + egui::vec2(particles.x.at(time)?, particles.y.at(time)?) * scale;
             let half =
                 egui::vec2(particles.width.at(time)?, particles.height.at(time)?) * 0.5 * scale;
@@ -506,6 +505,7 @@ mod interaction_tests {
                             nav.transform(canvas, image, 1.0),
                             image,
                             &mut operation,
+                            &Default::default(),
                             Time::new(0, 1).unwrap(),
                         )
                         .unwrap();

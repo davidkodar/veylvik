@@ -78,8 +78,7 @@ impl crate::Studio {
             ctx.request_repaint();
         });
         self.shot_light.job = Some((target, receive));
-        self.status = "Matching the light to the shot…".into();
-        self.error = false;
+        self.tell("Matching the light to the shot…");
     }
     /// Apply a finished analysis as one undo step.
     pub(crate) fn shot_light_tick(&mut self) {

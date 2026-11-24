@@ -235,8 +235,7 @@ impl Studio {
             });
         });
         if !open || cancel {
-            self.status = "Media matching cancelled".into();
-            self.error = false;
+            self.tell("Media matching cancelled");
             return;
         }
         if let Some(match_size) = action {

@@ -227,6 +227,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
 }
 /// The version of what a host and the editor agree on: a host built for another version
 /// is refused, never guessed at.
+/// What the status line says while the render queue exports.
+pub(crate) const EXPORTING: &str = "Exporting";
 pub const HOST_INTERFACE: u32 = 1;
 /// What the host lets the editor do beyond drawing in its area.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1038,19 +1040,6 @@ struct Studio {
     accent: egui::Color32,
 }
 impl Studio {
-    fn authoring_dialog_open(&self) -> bool {
-        self.preferences.open
-            || self.library.open
-            || self.browser.choosing()
-            || self.occlusion.open
-            || self.effects.open
-            || self.outline_controls.open
-            || self.composition_controls.open
-            || self.media_import.is_some()
-            || self.node_palette.open
-            || self.graph.renaming()
-            || self.node_finder.open
-    }
     fn open_project(&mut self, project: Project, ctx: &egui::Context) {
         self.start.open = false;
         self.trust_prompt = !project.outside.is_empty();
@@ -1185,6 +1174,11 @@ impl Studio {
     fn fail(&mut self, error: impl ToString) {
         self.status = error.to_string();
         self.error = true;
+    }
+    /// Say `message` on the status line, as news, not as an error.
+    pub(crate) fn tell(&mut self, message: impl Into<String>) {
+        self.status = message.into();
+        self.error = false;
     }
     fn refresh_draft(&mut self) {
         self.path_transform.reset_gesture();
@@ -1572,8 +1566,7 @@ impl Studio {
     fn file_started(&mut self, result: Result<(), String>) {
         match result {
             Ok(()) => {
-                self.status = "File operation in progress…".into();
-                self.error = false;
+                self.tell("File operation in progress…");
             }
             Err(e) => {
                 self.after_save = None;
@@ -1798,8 +1791,7 @@ impl Studio {
                     | Operation::Footage(veylvik_document::nodes::Footage { .. })
             )
         }) {
-            self.status = "No image sources to reload".into();
-            self.error = false;
+            self.tell("No image sources to reload");
             return;
         }
         let base = self.project.base.clone();
@@ -2360,6 +2352,11 @@ impl Studio {
             time,
             frame_rate: self.project.document.snapshot().frame_rate,
             inputs: &self.project.inputs,
+            wired: &self.draft.inputs,
+            frame: [
+                self.project.document.snapshot().width,
+                self.project.document.snapshot().height,
+            ],
             unavailable: &unavailable,
             dirty: false,
             text_changed: false,
@@ -2457,112 +2454,14 @@ impl Studio {
             ) {
                 break;
             }
-            if parameter.name == "light"
-                && matches!(&self.draft.operation, Operation::Shadow(s) if matches!(s.light, veylvik_document::Scalar::Constant { .. }))
-            {
+            if nodes::hidden(&self.draft.operation, parameter.name, &|port| {
+                self.draft.inputs.contains_key(port)
+            }) {
                 continue;
-            }
-            // A 3D surface with a look is shaded by it, not these.
-            let looked = match &self.draft.operation {
-                Operation::Shape3d(s) => s.look.is_some(),
-                Operation::Text3d(t) => t.look.is_some(),
-                _ => false,
-            };
-            if looked && matches!(parameter.name, "roughness" | "metallic") {
-                continue;
-            }
-            // A projection's hold time only with its camera held.
-            if parameter.name == "hold_time"
-                && matches!(self.draft.operation, Operation::CameraProjection(ref c) if !c.hold)
-            {
-                continue;
-            }
-            // A force shows the settings its kind uses.
-            if let Operation::Force(force) = &self.draft.operation {
-                use veylvik_document::nodes::ForceKind::*;
-                let hidden = match parameter.name {
-                    "direction" | "lean" => !matches!(force.kind, Wind | Vortex),
-                    "scale" => force.kind != Turbulence,
-                    _ => false,
-                };
-                if hidden {
-                    continue;
-                }
-            }
-            // Particles show the settings that apply to how they are wired.
-            if kind.type_id == "particles" {
-                let wired = |port: &str| self.draft.inputs.contains_key(port);
-                let doc = self.project.document.snapshot();
-                ui.data_mut(|d| {
-                    d.insert_temp(egui::Id::new("particles-frame"), [doc.width, doc.height]);
-                    d.insert_temp(egui::Id::new("particles-box"), !wired("emitter"));
-                    d.insert_temp(egui::Id::new("particles-obstacle"), wired("obstacle"));
-                    d.insert_temp(egui::Id::new("particles-scene"), wired("scene"));
-                    d.insert_temp(egui::Id::new("particles-sprite"), wired("sprite"));
-                });
-                let hidden = match parameter.name {
-                    "density" => !wired("emitter"),
-                    "rate" | "x" | "y" | "width" | "height" => wired("emitter"),
-                    "homing" => !wired("target"),
-                    "inherit" => !wired("emitter") && !wired("target"),
-                    "field_push" | "field_flow" => !wired("field"),
-                    "bounce" => {
-                        !wired("obstacle")
-                            && !matches!(self.draft.operation, Operation::Particles(ref n) if n.collide && wired("scene"))
-                    }
-                    "spin" => !wired("sprite"),
-                    // The sheet is set in the node's own controls; its rate when it plays.
-                    "sprite_columns" | "sprite_rows" | "sprite_play" => true,
-                    "sprite_rate" => {
-                        !wired("sprite")
-                            || !matches!(self.draft.operation, Operation::Particles(ref n) if n.sprite_play == veylvik_document::nodes::SpritePlay::AtRate)
-                    }
-                    "camera" => !wired("scene"),
-                    // A flock's own settings once it is one.
-                    "cohesion" | "separation" | "alignment" | "top_speed" => {
-                        matches!(self.draft.operation, Operation::Particles(ref n) if matches!(n.flock_radius, veylvik_document::Scalar::Constant { value } if value <= 0.0))
-                    }
-                    // Offered as a choice by the node's own inspector.
-                    "history" => true,
-                    // A burst's own settings once it has particles.
-                    "burst_speed" | "burst_spread" | "burst_life" | "burst_size" => {
-                        matches!(self.draft.operation, Operation::Particles(ref n) if matches!(n.burst, veylvik_document::Scalar::Constant { value } if value < 0.5))
-                    }
-                    // A trail's width and the lines' look once there is a trail or lines.
-                    "trail_width" => {
-                        matches!(self.draft.operation, Operation::Particles(ref n) if matches!(n.trail, veylvik_document::Scalar::Constant { value } if value <= 0.0))
-                    }
-                    // Lighting comes from a scene; its details once particles are lit.
-                    "lit" => !wired("scene"),
-                    "ambient" | "scatter" => {
-                        !wired("scene")
-                            || matches!(self.draft.operation, Operation::Particles(ref n) if matches!(n.lit, veylvik_document::Scalar::Constant { value } if value <= 0.0))
-                    }
-                    "link_opacity" | "link_width" => {
-                        matches!(self.draft.operation, Operation::Particles(ref n) if matches!(n.link_distance, veylvik_document::Scalar::Constant { value } if value <= 0.0))
-                    }
-                    _ => false,
-                };
-                if hidden {
-                    continue;
-                }
             }
             // A custom shader's values show as the controls its code declares.
             let declared = shader_editor::slot(&self.draft.operation, parameter.name);
             if kind.type_id == "shader" && declared.is_none() {
-                continue;
-            }
-            // Map controls appear with their map.
-            let needs = match parameter.name {
-                "shot" => "environment",
-                "normal_strength" => "normal_map",
-                "height_depth" => "height_map",
-                _ => "",
-            };
-            if kind.type_id == "material"
-                && !needs.is_empty()
-                && !self.draft.inputs.contains_key(needs)
-            {
                 continue;
             }
             if let Some(value) = self.draft.operation.scalar_mut(parameter.name) {
@@ -3443,13 +3342,11 @@ impl Studio {
                 scheduler.playback_cache().clear();
             }
             self.request_preview();
-            self.status = "Playback cache cleared".into();
-            self.error = false;
+            self.tell("Playback cache cleared");
         }
         if std::mem::take(&mut self.preferences.want_clear_recent) {
             self.start.clear();
-            self.status = "Recent list cleared".into();
-            self.error = false;
+            self.tell("Recent list cleared");
         }
         if std::mem::take(&mut self.preferences.want_folder) {
             match self.preferences.folder() {
@@ -3542,7 +3439,7 @@ impl Studio {
         }
         let exporting = self.render_queue.busy();
         self.render_queue.tick(&self.renderer, &ctx);
-        if exporting && !self.render_queue.busy() && self.status == "Exporting" {
+        if exporting && !self.render_queue.busy() && self.status == EXPORTING {
             self.status = "Ready".into();
         }
         if let Some(action) = self.render_queue.show(&ctx) {
@@ -4274,6 +4171,7 @@ impl Studio {
                                     transform,
                                     image,
                                     &mut self.draft.operation,
+                                    &self.draft.inputs,
                                     time,
                                 ) {
                                     Ok(changed) => {
