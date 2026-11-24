@@ -277,13 +277,7 @@ impl Renderer {
                 compilation_options: Default::default(),
                 cache: None,
             });
-        let mut pool = self
-            .pool
-            .lock()
-            .map_err(|_| error("Resource pool unavailable"))?;
-        if pool.failed {
-            return Err(error("Renderer unavailable after GPU failure"));
-        }
+        let mut pool = self.working_pool()?;
         let mut resources = pool.frame(self.budget_bytes);
         let uniform = resources.take(
             &self.device,

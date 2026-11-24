@@ -88,13 +88,7 @@ impl Renderer {
             .map_err(|_| error("vector renderer poisoned"))?;
         // Serialize device error scopes with compositor work. Release this lock
         // before importing, which performs its own bounded buffer allocation.
-        let mut pool = self
-            .pool
-            .lock()
-            .map_err(|_| error("renderer resource pool poisoned"))?;
-        if pool.failed {
-            return Err(error("renderer unavailable after a GPU failure"));
-        }
+        let mut pool = self.working_pool()?;
         let validation = self.device.push_error_scope(wgpu::ErrorFilter::Validation);
         let allocation = self.device.push_error_scope(wgpu::ErrorFilter::OutOfMemory);
         let current = backend.get_or_insert_with(|| Backend::new(&self.device, width, height));
@@ -120,12 +114,12 @@ impl Renderer {
         let validation_error = pollster::block_on(validation.pop());
         if let Some(e) = allocation_error.or(validation_error) {
             *backend = None;
-            pool.failed = true;
+            crate::gpu_session::unusable(&mut pool);
             return Err(error(e));
         }
         if let Err(e) = completed {
             *backend = None;
-            pool.failed = true;
+            crate::gpu_session::unusable(&mut pool);
             return Err(e);
         }
         result?;
@@ -253,15 +247,7 @@ impl Renderer {
         download: bool,
     ) -> Result<Drawn> {
         {
-            let mut pool = self
-                .pool
-                .lock()
-                .map_err(|_| error("renderer resource pool poisoned"))?;
-            let available = self.budget_bytes.saturating_sub(pool.stats().held_bytes);
-            pool.trim(self.pool_limit_bytes.min(available));
-            if pool.failed {
-                return Err(error("renderer unavailable after a GPU failure"));
-            }
+            drop(self.admit(0)?);
         }
         request.time.seconds()?;
         if let Some(region) = request.region {

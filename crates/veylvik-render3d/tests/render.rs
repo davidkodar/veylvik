@@ -2308,3 +2308,30 @@ fn splats_are_drawn_back_to_front_and_solids_hide_them() {
         "the cube in front hides the splats: {front:?}"
     );
 }
+#[test]
+#[ignore = "requires Vulkan"]
+fn what_the_engine_keeps_between_frames_is_counted_and_can_be_let_go() {
+    use veylvik_render::SceneRenderer;
+    let renderer = Renderer::new().unwrap();
+    let engine = Arc::new(veylvik_render3d::Engine::new(renderer.device()));
+    renderer.set_scene_renderer(engine.clone());
+    let mut doc = blank(W, H, Time::new(24, 1).unwrap()).unwrap();
+    let mut cube = op(&SHAPE_3D);
+    if let Operation::Shape3d(s) = &mut cube {
+        s.size_x = 60.0.into();
+        s.size_y = 60.0.into();
+        s.size_z = 60.0.into();
+        s.placement.rotation = [25.0, 35.0, 0.0].into();
+    }
+    let cube = add(&mut doc, cube, &[]);
+    doc.output = add(&mut doc, op(&RENDER_SCENE), &[("scene", cube)]);
+    assert_eq!(engine.held_bytes(), 0);
+    let first = render(&renderer, &doc, &ImageInputs::default());
+    // Its render targets (multisampled colour and depth, resolved colour) at least.
+    let targets = u64::from(W) * u64::from(H) * (4 * 12 + 8);
+    assert!(engine.held_bytes() >= targets, "{}", engine.held_bytes());
+    engine.release();
+    assert_eq!(engine.held_bytes(), 0);
+    // Made again when needed, the picture is the same.
+    assert_eq!(render(&renderer, &doc, &ImageInputs::default()), first);
+}

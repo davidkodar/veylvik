@@ -111,13 +111,7 @@ impl Renderer {
         {
             return Err(error("texture target exceeds allocation limit"));
         }
-        let _pool = self
-            .pool
-            .lock()
-            .map_err(|_| error("renderer resource pool poisoned"))?;
-        if _pool.failed {
-            return Err(error("renderer unavailable after a GPU failure"));
-        }
+        let _pool = self.working_pool()?;
         let validation = self.device.push_error_scope(wgpu::ErrorFilter::Validation);
         let allocation = self.device.push_error_scope(wgpu::ErrorFilter::OutOfMemory);
         let mut usage = wgpu::TextureUsages::TEXTURE_BINDING
@@ -173,15 +167,7 @@ impl Renderer {
         if size > limits.max_buffer_size || size > limits.max_storage_buffer_binding_size {
             return Err(error("texture import exceeds adapter buffer limits"));
         }
-        let mut pool = self
-            .pool
-            .lock()
-            .map_err(|_| error("renderer resource pool poisoned"))?;
-        if pool.failed {
-            return Err(error("renderer unavailable after a GPU failure"));
-        }
-        let available = self.budget_bytes.saturating_sub(pool.stats().held_bytes);
-        pool.trim(self.pool_limit_bytes.min(available));
+        let (mut pool, available) = self.admit(0)?;
         if size + 24 > available {
             return Err(error("texture import exceeds GPU buffer budget"));
         }
@@ -283,12 +269,10 @@ impl Renderer {
         let allocation_error = pollster::block_on(allocation.pop());
         let validation_error = pollster::block_on(validation.pop());
         if let Some(e) = allocation_error.or(validation_error) {
-            pool.trim(0);
-            pool.failed = true;
+            crate::gpu_session::unusable(&mut pool);
             return Err(error(e));
         }
-        let available = self.budget_bytes.saturating_sub(pool.stats().held_bytes);
-        pool.trim(self.pool_limit_bytes.min(available));
+        self.settle(&mut pool);
         result
     }
 }

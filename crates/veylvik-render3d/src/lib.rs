@@ -304,6 +304,93 @@ impl SceneRenderer for Engine {
     fn shadows(&self, job: veylvik_render::ShadowJob<'_>) -> Result<()> {
         self.particle_shadows(job)
     }
+    fn held_bytes(&self) -> u64 {
+        let texture = |t: &wgpu::Texture| {
+            let size = t.size();
+            u64::from(size.width)
+                * u64::from(size.height)
+                * u64::from(size.depth_or_array_layers)
+                * u64::from(t.sample_count())
+                * u64::from(t.format().block_copy_size(None).unwrap_or(4))
+        };
+        let maps = |m: &Mutex<Option<std::sync::Arc<shadow::Maps>>>| {
+            m.lock()
+                .ok()
+                .and_then(|m| m.as_ref().map(|m| texture(m.texture())))
+                .unwrap_or(0)
+        };
+        // Multisampled colour and depth, and the resolved colour.
+        let targets: u64 = self.targets.lock().map_or(0, |kept| {
+            kept.iter()
+                .map(|t| {
+                    let pixels = u64::from(t.size[0]) * u64::from(t.size[1]);
+                    pixels * (u64::from(SAMPLES) * (8 + 4) + 8)
+                })
+                .sum()
+        });
+        let meshes: u64 = self.meshes.lock().map_or(0, |m| {
+            m.0.values()
+                .map(|g| g.vertices.size() + g.indices.size())
+                .sum()
+        });
+        let textures: u64 = self
+            .textures
+            .lock()
+            .map_or(0, |t| t.values().map(|(b, _)| b.size()).sum());
+        let panorama = self
+            .panorama
+            .lock()
+            .ok()
+            .and_then(|p| p.as_ref().map(|b| b.size()))
+            .unwrap_or(0);
+        let particles = self
+            .particle_maps
+            .lock()
+            .ok()
+            .and_then(|p| p.as_ref().map(|p| texture(p.maps().texture())))
+            .unwrap_or(0);
+        let splats: u64 = self
+            .splat_sets
+            .lock()
+            .map_or(0, |s| s.iter().map(|(_, up)| up.bytes()).sum());
+        targets
+            + meshes
+            + textures
+            + panorama
+            + maps(&self.shadow_maps)
+            + maps(&self.sky_maps)
+            + particles
+            + splats
+    }
+    fn release(&self) {
+        if let Ok(mut kept) = self.targets.lock() {
+            kept.clear();
+        }
+        if let Ok(mut meshes) = self.meshes.lock() {
+            meshes.0.clear();
+        }
+        if let Ok(mut textures) = self.textures.lock() {
+            textures.clear();
+        }
+        if let Ok(mut panorama) = self.panorama.lock() {
+            *panorama = None;
+        }
+        // The panorama is converted again next time.
+        if let Ok(mut converted) = self.converted.lock() {
+            *converted = None;
+        }
+        for maps in [&self.shadow_maps, &self.sky_maps] {
+            if let Ok(mut maps) = maps.lock() {
+                *maps = None;
+            }
+        }
+        if let Ok(mut maps) = self.particle_maps.lock() {
+            *maps = None;
+        }
+        if let Ok(mut sets) = self.splat_sets.lock() {
+            sets.clear();
+        }
+    }
     fn render(&self, job: SceneJob<'_>) -> Result<()> {
         let (device, width, height) = (job.device, job.width, job.height);
         // This size's targets, kept from an earlier frame, or made now.

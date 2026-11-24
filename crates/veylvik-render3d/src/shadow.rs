@@ -316,6 +316,11 @@ pub(crate) struct ParticleMaps {
     side: u32,
     maps: std::sync::Arc<Maps>,
 }
+impl ParticleMaps {
+    pub(crate) fn maps(&self) -> &Maps {
+        &self.maps
+    }
+}
 impl crate::Engine {
     /// The maps of [`veylvik_render::ShadowJob`]: each asked light that casts shadows
     /// sees the scene as for 3D surfaces (an area light from the middle of its panel, as

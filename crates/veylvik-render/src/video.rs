@@ -164,18 +164,7 @@ impl Renderer {
         {
             return Err(error("video conversion exceeds adapter limits"));
         }
-        let mut pool = self
-            .pool
-            .lock()
-            .map_err(|_| error("renderer resource pool poisoned"))?;
-        if pool.failed {
-            return Err(error("renderer unavailable after a GPU failure"));
-        }
-        let available = self.budget_bytes.saturating_sub(pool.stats().held_bytes);
-        pool.trim(
-            self.pool_limit_bytes
-                .min(available.saturating_sub(external_reservation)),
-        );
+        let (mut pool, available) = self.admit(external_reservation)?;
         if size + raw_size.max(external_reservation) + 262144 + 112 > available {
             return Err(error("video conversion exceeds GPU budget"));
         }
@@ -293,11 +282,11 @@ impl Renderer {
             })
         })();
         if interop_failed {
-            pool.failed = true;
+            crate::gpu_session::unusable(&mut pool);
         }
         let failure = pollster::block_on(allocation.pop()).or(pollster::block_on(validation.pop()));
         if let Some(e) = failure {
-            pool.failed = true;
+            crate::gpu_session::unusable(&mut pool);
             return Err(error(e));
         }
         result

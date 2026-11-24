@@ -171,18 +171,7 @@ impl Renderer {
         } else {
             0
         };
-        let mut pool = self
-            .pool
-            .lock()
-            .map_err(|_| error("GPU pool unavailable"))?;
-        if pool.failed {
-            return Err(error("renderer unavailable after GPU failure"));
-        }
-        let available = self.budget_bytes.saturating_sub(pool.stats().held_bytes);
-        pool.trim(
-            self.pool_limit_bytes
-                .min(available.saturating_sub(reservation)),
-        );
+        let (mut pool, available) = self.admit(reservation)?;
         if size + size.max(reservation) + 48 > available {
             return Err(error("video output exceeds GPU budget"));
         }
@@ -316,12 +305,12 @@ impl Renderer {
             prepared
         });
         if interop_failed {
-            pool.failed = true;
+            crate::gpu_session::unusable(&mut pool);
         }
         if let Some(e) =
             pollster::block_on(allocation.pop()).or(pollster::block_on(validation.pop()))
         {
-            pool.failed = true;
+            crate::gpu_session::unusable(&mut pool);
             return Err(error(e));
         }
         result

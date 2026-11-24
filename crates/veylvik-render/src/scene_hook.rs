@@ -11,6 +11,13 @@ pub trait SceneRenderer: Send + Sync {
     fn shadows(&self, _job: ShadowJob<'_>) -> Result<()> {
         Err(error("this 3D renderer makes no shadow maps"))
     }
+    /// GPU bytes it keeps between renders (targets, meshes, textures...), which count
+    /// against the renderer's budget.
+    fn held_bytes(&self) -> u64 {
+        0
+    }
+    /// Let go of everything kept between renders; it is made again when next needed.
+    fn release(&self) {}
 }
 /// Bytes before the first depth map in a [`ShadowJob`]'s target.
 pub const SHADOW_HEADER: u64 = 1024;

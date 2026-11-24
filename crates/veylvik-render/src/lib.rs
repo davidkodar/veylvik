@@ -3,6 +3,7 @@ mod cache;
 pub mod depends;
 mod diagnostics;
 mod environment_bake;
+mod gpu_session;
 mod layers;
 mod material_preview;
 pub use material_preview::material_preview_revision;
@@ -668,17 +669,7 @@ impl Renderer {
     ) -> Result<(Executed, Region)> {
         let vectors = self.vector_sources(plan, request, inputs, download)?;
         self.note("drawing shapes and text");
-        let mut pool = self
-            .pool
-            .lock()
-            .map_err(|_| error("renderer resource pool poisoned"))?;
-        let available = self.budget_bytes.saturating_sub(pool.stats().held_bytes);
-        pool.trim(self.pool_limit_bytes.min(available));
-        if pool.failed {
-            return Err(error(
-                "renderer unavailable after a GPU failure; create a new renderer",
-            ));
-        }
+        let (mut pool, _) = self.admit(0)?;
         let region = request.region.unwrap_or(Region {
             x: 0,
             y: 0,
@@ -742,31 +733,24 @@ impl Renderer {
         // What each pass makes, to know a node's result again in the next frame.
         let ids = cache::pass_identities(plan, request, inputs)?;
         self.note("working out every node's settings");
-        let validation = self.device.push_error_scope(wgpu::ErrorFilter::Validation);
-        let allocation = self.device.push_error_scope(wgpu::ErrorFilter::OutOfMemory);
-        let result = self.encode_and_read(
-            plan,
-            (
-                &evaluated,
-                request.time,
-                request.scene_view,
-                request.scene_reflections,
-            ),
-            inputs,
-            &vectors,
-            &mut pool,
-            download,
-            &ids,
-        );
-        let allocation_error = pollster::block_on(allocation.pop());
-        let validation_error = pollster::block_on(validation.pop());
-        if let Some(e) = allocation_error.or(validation_error) {
-            pool.trim(0);
-            pool.failed = true;
-            return Err(error(e));
-        }
-        let available = self.budget_bytes.saturating_sub(pool.stats().held_bytes);
-        pool.trim(self.pool_limit_bytes.min(available));
+        // An error the device reports fails the render even when the work itself returned.
+        let result = self.guarded(&mut pool, |pool| {
+            Ok(self.encode_and_read(
+                plan,
+                (
+                    &evaluated,
+                    request.time,
+                    request.scene_view,
+                    request.scene_reflections,
+                ),
+                inputs,
+                &vectors,
+                pool,
+                download,
+                &ids,
+            ))
+        })?;
+        self.settle(&mut pool);
         Ok((result?, region))
     }
     /// How many GPU programs this process has compiled for rendering (kernels and
@@ -1007,19 +991,21 @@ impl Renderer {
             .map_err(|_| error("frame cache poisoned"))?;
         cache.trim(self.cache_limit_bytes.min(self.budget_bytes));
         {
-            let mut pool = self
-                .pool
-                .lock()
-                .map_err(|_| error("renderer resource pool poisoned"))?;
-            if pool.failed {
-                return Err(error("renderer unavailable after a GPU failure"));
-            }
-            let available = self.budget_bytes.saturating_sub(pool.stats().held_bytes);
-            pool.trim(self.pool_limit_bytes.min(available));
+            drop(self.admit(0)?);
         }
         self.trim_vector_cache_to_budget()?;
-        // Budget reductions apply even when a previous request is a cache hit.
-        while self.resource_stats()?.held_bytes > self.budget_bytes && cache.evict() {}
+        // Budget reductions apply even when a previous request is a cache hit. What the 3D
+        // renderer keeps between frames counts too: kept frames go first, then its caches.
+        let scene = self.scene_renderer.read().ok().and_then(|s| s.clone());
+        let scene_held = || scene.as_ref().map_or(0, |s| s.held_bytes());
+        while self.resource_stats()?.held_bytes + scene_held() > self.budget_bytes && cache.evict()
+        {
+        }
+        if self.resource_stats()?.held_bytes + scene_held() > self.budget_bytes
+            && let Some(scene) = &scene
+        {
+            scene.release();
+        }
         if self.resource_stats()?.held_bytes > self.budget_bytes {
             return Err(error("held GPU frames exceed budget"));
         }
@@ -1657,21 +1643,11 @@ impl Renderer {
         if !Arc::ptr_eq(&self.owner, &frame.owner) {
             return Err(error("GPU frame belongs to another renderer"));
         }
-        let mut pool = self
-            .pool
-            .lock()
-            .map_err(|_| error("renderer resource pool poisoned"))?;
-        let available = self.budget_bytes.saturating_sub(pool.stats().held_bytes);
-        pool.trim(self.pool_limit_bytes.min(available));
-        if pool.failed {
-            return Err(error("renderer unavailable after a GPU failure"));
-        }
+        let (mut pool, _) = self.admit(0)?;
         if pool.stats().held_bytes + frame.byte_size() > self.budget_bytes {
             return Err(error("GPU readback exceeds budget"));
         }
-        let validation = self.device.push_error_scope(wgpu::ErrorFilter::Validation);
-        let allocation = self.device.push_error_scope(wgpu::ErrorFilter::OutOfMemory);
-        let result = (|| {
+        let result = self.guarded(&mut pool, |pool| {
             let mut resources = pool.frame(self.budget_bytes);
             let buffer = resources.take(
                 &self.device,
@@ -1688,16 +1664,8 @@ impl Renderer {
             resources.completed();
             validate_pixels(&pixels)?;
             Ok(crop(pixels, frame.region, frame.width, frame.height))
-        })();
-        let allocation_error = pollster::block_on(allocation.pop());
-        let validation_error = pollster::block_on(validation.pop());
-        if let Some(e) = allocation_error.or(validation_error) {
-            pool.trim(0);
-            pool.failed = true;
-            return Err(error(e));
-        }
-        let available = self.budget_bytes.saturating_sub(pool.stats().held_bytes);
-        pool.trim(self.pool_limit_bytes.min(available));
+        });
+        self.settle(&mut pool);
         result
     }
 }

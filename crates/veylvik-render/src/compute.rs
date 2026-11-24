@@ -23,13 +23,7 @@ impl Renderer {
     /// recycled only after the work completed; a failure marks the renderer unusable, as
     /// for rendering.
     pub fn compute<R>(&self, work: impl FnOnce(&mut Scratch<'_, '_>) -> Result<R>) -> Result<R> {
-        let mut pool = self
-            .pool
-            .lock()
-            .map_err(|_| error("GPU resource pool unavailable"))?;
-        if pool.failed {
-            return Err(error("Renderer unavailable after GPU failure"));
-        }
+        let mut pool = self.working_pool()?;
         let mut scratch = Scratch {
             renderer: self,
             buffers: pool.frame(self.budget_bytes),

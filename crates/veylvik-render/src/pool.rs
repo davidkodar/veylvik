@@ -214,8 +214,7 @@ impl Drop for FrameBuffers<'_> {
         if !self.reusable {
             // Completion is unknown. Require a new renderer rather than accumulate
             // additional submissions behind a timed-out or lost device.
-            self.pool.failed = true;
-            self.pool.trim(0);
+            crate::gpu_session::unusable(self.pool);
         }
     }
 }
