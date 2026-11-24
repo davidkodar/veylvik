@@ -15,7 +15,9 @@ impl Inspect for veylvik_document::nodes::Image {
             if let Some(reason) = cx.unavailable.get(asset.as_str()) {
                 ui.colored_label(egui::Color32::LIGHT_RED, reason.as_str());
             }
-            cx.replace_image = ui.button("Replace source…").clicked();
+            if ui.button("Replace source…").clicked() {
+                cx.ask(super::Request::ReplaceImage);
+            }
         }
     }
 }
@@ -52,7 +54,9 @@ impl Inspect for veylvik_document::nodes::Footage {
             if let Some(reason) = cx.unavailable.get(asset.as_str()) {
                 ui.colored_label(egui::Color32::LIGHT_RED, reason.as_str());
             }
-            cx.replace_image = ui.button("Replace source…").clicked();
+            if ui.button("Replace source…").clicked() {
+                cx.ask(super::Request::ReplaceImage);
+            }
         }
     }
 }

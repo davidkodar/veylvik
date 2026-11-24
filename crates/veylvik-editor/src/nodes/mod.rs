@@ -14,56 +14,69 @@ pub(crate) struct InspectCx<'a> {
     pub dirty: bool,
     /// The change affects text or media layout and should refresh the text preview.
     pub text_changed: bool,
-    /// The user asked to choose a new source file.
-    pub replace_image: bool,
-    /// The user asked to save this material to My materials.
-    pub save_material: bool,
     /// The node's optional Environment input is connected.
     pub environment: bool,
     /// The node's optional Texture input is connected.
     pub textured: bool,
     /// The node's optional Normal map input is connected.
     pub normal_mapped: bool,
-    /// Connect (true) or disconnect (false) the shot as the material's surroundings.
-    pub reflect_shot: Option<bool>,
     /// Label of the Light rig connected to the node's Lights input.
     pub lit_by: Option<&'a str>,
-    /// Move the material's lights into a shared rig (true) or go back to its own (false).
-    pub share_lights: Option<bool>,
-    /// Light this rig from the shot behind it.
-    pub match_shot: bool,
     /// The node's optional Track input is connected (a Light rig on a planar track).
     pub tracked: bool,
     /// Refresh the viewer preview soon, for continuous edits such as path dragging.
     pub preview_soon: bool,
     pub error: Option<String>,
+    /// What the controls asked the editor to do, in the order asked.
+    pub requests: Vec<Request>,
     /// A flock's bake, in a line (None: not a flock).
     pub flock_bake: Option<&'a str>,
-    /// The user asked to choose a splat file.
-    pub choose_splats: bool,
-    /// Bake the flock (true) or go back to simulating it (false).
-    pub bake_flock: Option<bool>,
     /// The colour field this node is currently sampling with the eyedropper, if any.
     pub picking: Option<&'static str>,
-    /// An eyedropper request for this colour field.
-    pub pick: Option<&'static str>,
     /// The 3D objects in the composition, for a camera's Focus on.
     pub objects: &'a [(veylvik_document::NodeId, String)],
     /// Everything in the scene an object can face: objects, cameras and lights.
     pub things: &'a [(veylvik_document::NodeId, String)],
-    /// The user asked to pick the object in focus in the viewer.
-    pub pick_focus: bool,
-    pub surround_lights: Option<bool>,
     /// The node's Plate input is connected.
     pub plated: bool,
-    /// The user asked to measure the plate's grain.
-    pub measure_grain: bool,
-    /// The user asked to choose a 3D model file.
-    pub choose_model: bool,
     /// The node on this node's Outline input (the words of a 3D text).
     pub outline: Option<veylvik_document::NodeId>,
-    /// The user asked to select this other node.
-    pub select: Option<veylvik_document::NodeId>,
+}
+impl InspectCx<'_> {
+    /// Ask the editor to do something once the controls are drawn.
+    pub fn ask(&mut self, request: Request) {
+        self.requests.push(request);
+    }
+}
+/// Something a node's controls ask of the editor, beyond changing the node's own settings.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) enum Request {
+    /// Choose a new source file (footage, image, LUT).
+    ReplaceImage,
+    /// Keep this material in My materials.
+    SaveMaterial,
+    /// Connect (true) or disconnect (false) the shot as the material's surroundings.
+    ReflectShot(bool),
+    /// Move the material's lights into a shared rig (true) or go back to its own (false).
+    ShareLights(bool),
+    /// Light this rig from the shot behind it.
+    MatchShot,
+    ChooseSplats,
+    ChooseModel,
+    /// Bake the flock (true) or go back to simulating it (false).
+    BakeFlock(bool),
+    /// Start (or cancel) the eyedropper for this colour field.
+    Pick(&'static str),
+    /// Pick the object in focus in the viewer.
+    PickFocus,
+    /// Add surround lighting to this Render scene, warm or neutral.
+    SurroundLights {
+        warm: bool,
+    },
+    /// Measure the plate's grain.
+    MeasureGrain,
+    /// Select this other node instead.
+    Select(veylvik_document::NodeId),
 }
 pub(crate) trait Inspect {
     /// Node-specific controls above the registered parameters; most nodes have none.

@@ -29,6 +29,7 @@ mod grain_measure;
 mod graph;
 mod graph_layout;
 mod handles;
+mod inspector_requests;
 pub use clip_source::ClipSource;
 mod fill;
 mod flock_bake;
@@ -2400,36 +2401,24 @@ impl Studio {
             unavailable: &unavailable,
             dirty: false,
             text_changed: false,
-            replace_image: false,
-            save_material: false,
             environment: self.draft.inputs.contains_key("environment"),
             textured: self.draft.inputs.contains_key("texture"),
             normal_mapped: self.draft.inputs.contains_key("normal_map"),
-            reflect_shot: None,
             lit_by: lit_by.as_deref(),
-            share_lights: None,
-            match_shot: false,
             tracked: self.draft.inputs.contains_key("track"),
             preview_soon: false,
             error: None,
+            requests: Vec::new(),
             picking: self
                 .picking
                 .as_ref()
                 .filter(|p| p.node == self.draft.id)
                 .map(|p| p.field),
-            pick: None,
             objects: &focus_objects,
             things: &scene_things,
-            pick_focus: false,
-            surround_lights: None,
             plated: self.draft.inputs.contains_key("plate"),
-            measure_grain: false,
-            choose_model: false,
             outline: self.draft.inputs.get("outline").copied(),
-            select: None,
             flock_bake: flock_status.as_deref(),
-            bake_flock: None,
-            choose_splats: false,
         };
         match &mut self.draft.operation {
             op @ Operation::Text(veylvik_document::nodes::Text { .. }) => {
@@ -2446,132 +2435,18 @@ impl Studio {
         let nodes::InspectCx {
             dirty,
             text_changed: media_changed,
-            replace_image: replace,
-            save_material,
-            reflect_shot,
-            share_lights,
-            match_shot,
             preview_soon,
             error,
-            pick,
-            pick_focus,
-            surround_lights,
-            measure_grain,
-            choose_model,
-            select: select_other,
-            bake_flock,
-            choose_splats,
+            requests,
             ..
         } = cx;
-        if choose_splats {
-            self.choose_splats();
-        }
-        match bake_flock {
-            Some(true) => self.bake_flock(ui.ctx()),
-            Some(false) => self.unbake_flock(),
-            None => {}
-        }
-        if let Some(id) = select_other
-            && self.can_change_selection()
-        {
-            self.project.selected = id;
-            self.project.preview = None;
-            self.refresh_draft();
-            return;
-        }
-        if let Some(warm) = surround_lights {
-            if self.draft_dirty || dirty {
-                self.status = "Apply or revert the inspector before adding lights".into();
-            } else {
-                match veylvik_presets::surround_lights(
-                    self.project.document.snapshot(),
-                    self.draft.id,
-                    warm,
-                ) {
-                    Ok(rig) => match self.project.apply(&rig.commands) {
-                        Ok(_) => {
-                            self.refresh_draft();
-                            self.request_preview();
-                            self.status = "Added surround lighting".into();
-                        }
-                        Err(e) => self.status = e.to_string(),
-                    },
-                    Err(e) => self.status = e.to_string(),
-                }
+        for request in requests {
+            if request == nodes::Request::ReplaceImage {
+                // After the media buttons below, like the inspector's own Replace.
+                replace_image = true;
+            } else if self.inspector_request(request, ui.ctx(), dirty) {
+                return;
             }
-            return;
-        }
-        if choose_model {
-            self.choose_model();
-        }
-        if measure_grain {
-            self.measure_grain(ui.ctx());
-        }
-        if pick_focus {
-            scene_focus::set_picking(ui.ctx(), true);
-        }
-        if match_shot {
-            self.match_shot(ui.ctx());
-        }
-        match share_lights {
-            Some(true) => self.share_material_lights(),
-            Some(false) => {
-                // Keep the look: the surface takes over the rig's current lights.
-                let rig = self
-                    .draft
-                    .inputs
-                    .remove("lights")
-                    .and_then(|id| self.project.document.snapshot().nodes.get(&id))
-                    .and_then(|n| match &n.operation {
-                        Operation::LightRig(rig) => Some(rig.studio.clone()),
-                        _ => None,
-                    });
-                if let (Some(studio), Operation::Material(m)) = (rig, &mut self.draft.operation) {
-                    m.studio = studio;
-                }
-                self.draft_dirty = true;
-            }
-            None => {}
-        }
-        match reflect_shot {
-            Some(true) => {
-                // The backdrop the material sits on becomes its surroundings.
-                let doc = self.project.document.snapshot();
-                match veylvik_document::presets::background::automatic(doc)
-                    .filter(|id| *id != self.draft.id)
-                {
-                    Some(backdrop) => {
-                        self.draft.inputs.insert("environment".into(), backdrop);
-                        self.draft_dirty = true;
-                    }
-                    None => self.fail(
-                        "No single backdrop found. Pick the shot in the Environment input below.",
-                    ),
-                }
-            }
-            Some(false) => {
-                self.draft.inputs.remove("environment");
-                self.draft_dirty = true;
-            }
-            None => {}
-        }
-        if save_material && let Operation::Material(material) = &self.draft.operation {
-            let label = self.draft.label.trim_start_matches("Text · ").to_owned();
-            self.materials.save(&label, material);
-        }
-        if let Some(field) = pick {
-            // A second press on the active field cancels, like Esc.
-            let active = self
-                .picking
-                .as_ref()
-                .is_some_and(|p| p.node == self.draft.id && p.field == field);
-            self.picking = (!active).then(|| eyedropper::Picking::new(self.draft.id, field));
-            self.status = if active {
-                "Eyedropper cancelled".into()
-            } else {
-                "Eyedropper: click or drag in the viewer to sample a colour · Esc cancels".into()
-            };
-            self.error = false;
         }
         self.draft_dirty |= dirty;
         text_changed |= media_changed;
@@ -2580,7 +2455,6 @@ impl Studio {
             self.draft_dirty |= changed;
             text_changed |= changed;
         }
-        replace_image |= replace;
         if preview_soon {
             self.draft_preview_deadline
                 .get_or_insert_with(|| Instant::now() + Duration::from_millis(32));

@@ -45,7 +45,9 @@ impl Inspect for veylvik_document::nodes::Lut {
             } else {
                 "No LUT chosen"
             });
-            cx.replace_image = ui.button("Choose .cube…").clicked();
+            if ui.button("Choose .cube…").clicked() {
+                cx.ask(super::Request::ReplaceImage);
+            }
         });
         if let Some(reason) = cx.unavailable.get(self.asset.as_str()) {
             ui.colored_label(egui::Color32::LIGHT_RED, reason.as_str());

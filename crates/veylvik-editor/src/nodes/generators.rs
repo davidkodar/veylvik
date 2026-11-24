@@ -223,7 +223,7 @@ impl Inspect for veylvik_document::nodes::Particles {
                     .on_hover_text("Simulates it over the whole composition once and writes where every particle is at every frame to a file beside the project; it is read from there from now on, exactly as it is")
                     .clicked()
                 {
-                    cx.bake_flock = Some(true);
+                    cx.ask(super::Request::BakeFlock(true));
                 }
                 if !self.bake.is_empty()
                     && ui
@@ -231,7 +231,7 @@ impl Inspect for veylvik_document::nodes::Particles {
                         .on_hover_text("Stops reading the bake (the file stays) and simulates the flock")
                         .clicked()
                 {
-                    cx.bake_flock = Some(false);
+                    cx.ask(super::Request::BakeFlock(false));
                 }
             });
         }

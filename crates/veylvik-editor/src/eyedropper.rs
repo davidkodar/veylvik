@@ -15,7 +15,7 @@ pub fn button(ui: &mut egui::Ui, cx: &mut crate::nodes::InspectCx<'_>, field: &'
         .selectable_label(active, "Pick")
         .on_hover_text("Eyedropper: click in the viewer to sample a 5 × 5 area, or drag to average a rectangle. Samples exact scene-linear values from this node's input (or the viewed image for generators). Esc cancels.");
     if response.clicked() {
-        cx.pick = Some(field);
+        cx.ask(crate::nodes::Request::Pick(field));
     }
 }
 /// An eyedropper waiting for a click or drag in the viewer.

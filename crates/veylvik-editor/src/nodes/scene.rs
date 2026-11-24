@@ -150,7 +150,7 @@ impl Inspect for Text3d {
                 .on_hover_text("Select the Text or Path node this 3D text is made from, to change its words, font and size")
                 .clicked()
         {
-            cx.select = Some(outline);
+            cx.ask(super::Request::Select(outline));
         }
         cx.dirty |= ui
             .checkbox(&mut self.round_bevel, "Round bevel")
@@ -456,7 +456,7 @@ impl Inspect for Camera3d {
                 .on_hover_text("Click an object in the viewer to focus on it")
                 .clicked()
             {
-                cx.pick_focus = true;
+                cx.ask(super::Request::PickFocus);
             }
         });
     }
@@ -492,7 +492,7 @@ impl Inspect for veylvik_document::nodes::MatchGrain {
             .on_hover_text("Measure the plate's grain at this frame: its strength in shadows, midtones and highlights, colour and size")
             .clicked()
         {
-            cx.measure_grain = true;
+            cx.ask(super::Request::MeasureGrain);
         }
     }
 }
@@ -510,7 +510,7 @@ impl Inspect for veylvik_document::nodes::Model3d {
                 .on_hover_text("A glTF 2.0 model: .glb, or .gltf with its files")
                 .clicked()
             {
-                cx.choose_model = true;
+                cx.ask(super::Request::ChooseModel);
             }
         });
         cx.dirty |= look(ui, &mut self.look, cx);
@@ -543,7 +543,7 @@ impl Inspect for RenderScene {
         ui.menu_button("Add surround lighting", |ui| {
             for (warm, label) in [(false, "Neutral studio"), (true, "Warm product studio")] {
                 if ui.button(label).on_hover_text("Add four editable softboxes around the scene for reflections throughout a full orbit; preserves current lights").clicked() {
-                    cx.surround_lights = Some(warm); ui.close();
+                    cx.ask(super::Request::SurroundLights { warm }); ui.close();
                 }
             }
         });
@@ -588,7 +588,7 @@ impl Inspect for veylvik_document::nodes::GaussianSplats {
                 )
                 .changed();
             if ui.button("Choose…").clicked() {
-                cx.choose_splats = true;
+                cx.ask(super::Request::ChooseSplats);
             }
         });
         cx.dirty |= placement(ui, &mut self.placement, cx);

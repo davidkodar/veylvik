@@ -48,31 +48,41 @@ impl Inspect for veylvik_document::nodes::Material {
                     .on_hover_text("Disconnect the Environment input and reflect the studio again")
                     .clicked()
                 {
-                    cx.reflect_shot = Some(false);
+                    cx.ask(super::Request::ReflectShot(false));
                 }
             } else if ui
                 .button("Reflect the shot")
                 .on_hover_text("Use the footage behind this layer as its surroundings: reflections, blur by roughness and diffuse light come from the shot. Shot reflection then blends it with the studio.")
                 .clicked()
             {
-                cx.reflect_shot = Some(true);
+                cx.ask(super::Request::ReflectShot(true));
             }
         });
         cx.dirty |= finish_controls(ui, self);
+        let (mut share, mut matched) = (None, false);
         cx.dirty |= lighting_controls(
             ui,
             self,
             cx.node_id,
             cx.lit_by,
-            &mut cx.share_lights,
-            &mut cx.match_shot,
+            &mut share,
+            &mut matched,
             cx.time,
         );
+        if let Some(share) = share {
+            cx.ask(super::Request::ShareLights(share));
+        }
+        if matched {
+            cx.ask(super::Request::MatchShot);
+        }
         ui.add_space(4.);
-        cx.save_material |= ui
+        if ui
             .button("Save as my material…")
             .on_hover_text("Keep this surface, its colours, finish and lighting in My materials in the Library")
-            .clicked();
+            .clicked()
+        {
+            cx.ask(super::Request::SaveMaterial);
+        }
     }
 }
 /// One control from polished to matte; Roughness and Grain stay below for detail.
@@ -141,14 +151,18 @@ impl Inspect for veylvik_document::nodes::LightRig {
     fn inspect(&mut self, ui: &mut egui::Ui, cx: &mut InspectCx<'_>) {
         ui.label("Connect this rig to the Lights input of any Text surface. Moving a light updates every surface it lights and the shadows that follow them.");
         ui.push_id("light-rig", |ui| {
+            let mut matched = false;
             cx.dirty |= rig_controls(
                 ui,
                 &mut self.studio,
                 cx.node_id,
-                &mut cx.match_shot,
+                &mut matched,
                 cx.tracked,
                 cx.time,
             );
+            if matched {
+                cx.ask(super::Request::MatchShot);
+            }
         });
     }
 }
