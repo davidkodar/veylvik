@@ -5,7 +5,7 @@ use std::{
     io::{Read, Write},
     path::PathBuf,
     sync::{Arc, Mutex, Weak},
-    time::{Duration, Instant, SystemTime},
+    time::{Duration, Instant},
 };
 use veylvik_document::Time;
 use veylvik_render::{GpuFrame, ImageInputs, Plan, Renderer};
@@ -147,40 +147,6 @@ struct Entry {
     height: u32,
     flow: Option<veylvik_render::flow::FlowReport>,
 }
-type Stamp = (PathBuf, u64, SystemTime);
-fn stamps(paths: impl IntoIterator<Item = PathBuf>) -> Result<Vec<Stamp>> {
-    paths
-        .into_iter()
-        .map(|p| {
-            let m = std::fs::metadata(&p).map_err(error)?;
-            let modified = m.modified().map_err(error)?;
-            Ok((p, m.len(), modified))
-        })
-        .collect()
-}
-fn ocio_paths(plan: &Plan, inputs: &ImageInputs, paths: &mut Vec<PathBuf>) -> Result<()> {
-    for transform in plan.ocio_transforms() {
-        let config_path = inputs.resolve_config(&transform.config)?;
-        if config_path.starts_with("ocio://") {
-            continue;
-        }
-        paths.push(PathBuf::from(&config_path));
-        let config = veylvik_color::Config::load(&config_path).map_err(error)?;
-        let processor = config
-            .processor(
-                &transform.source,
-                &transform.destination,
-                &transform.display,
-                &transform.view,
-            )
-            .map_err(error)?;
-        let base = std::path::Path::new(&config_path)
-            .parent()
-            .unwrap_or(std::path::Path::new("."));
-        paths.extend(processor.files().iter().map(|p| base.join(p)));
-    }
-    Ok(())
-}
 /// Pictures handed to the packer and not yet written.
 const PACKING: usize = 3;
 
@@ -189,7 +155,7 @@ pub(crate) struct Store {
     settings: Settings,
     generation: u64,
     scope: Option<(Arc<Plan>, ImageInputs)>,
-    dependencies: Vec<Stamp>,
+    dependencies: veylvik_render::depends::Dependencies,
     checked: Instant,
     entries: VecDeque<Entry>,
     folder: Option<PathBuf>,
@@ -306,7 +272,7 @@ impl Store {
             settings: Settings::default(),
             generation: u64::MAX,
             scope: None,
-            dependencies: vec![],
+            dependencies: Default::default(),
             checked: Instant::now(),
             entries: VecDeque::new(),
             folder: None,
@@ -369,21 +335,18 @@ impl Store {
                 .scope
                 .as_ref()
                 .is_none_or(|(p, i)| !Arc::ptr_eq(p, plan) || !i.same_sources(inputs));
-        let stale = self.checked.elapsed() >= Duration::from_secs(2)
-            && stamps(self.dependencies.iter().map(|s| s.0.clone()))
-                .is_ok_and(|s| s != self.dependencies);
-        let missing = self.checked.elapsed() >= Duration::from_secs(2)
-            && self.dependencies.iter().any(|s| !s.0.is_file());
+        // A file the pictures were made from changed or went (looked at now and then).
+        let stale = self.checked.elapsed() >= Duration::from_secs(2) && self.dependencies.changed();
         // Another plan over the same sources and settings: a picture known by what it is
         // made of is the same picture under any plan that makes it, so it stays; only
         // which moments show it has to be found again.
-        let edited = !(stale || missing)
+        let edited = !stale
             && self.generation == generation
             && self
                 .scope
                 .as_ref()
                 .is_some_and(|(p, i)| !Arc::ptr_eq(p, plan) && i.same_sources(inputs));
-        if changed || stale || missing {
+        if changed || stale {
             if edited {
                 self.collect(true);
                 self.pictures.edited();
@@ -410,13 +373,8 @@ impl Store {
             self.warning = None;
             self.hits = 0;
             self.scope = None;
-            let deps = inputs.playback_dependencies();
-            self.eligible = deps.is_some();
-            let mut paths = deps.unwrap_or_default();
-            ocio_paths(plan, inputs, &mut paths)?;
-            paths.sort();
-            paths.dedup();
-            self.dependencies = stamps(paths)?;
+            self.eligible = inputs.playback_dependencies().is_some();
+            self.dependencies = veylvik_render::depends::Dependencies::of(plan, inputs)?;
             self.scope = Some((plan.clone(), inputs.clone()));
             if !self.eligible {
                 self.warning = Some("Source does not support playback caching".into());
@@ -472,31 +430,13 @@ impl Store {
         request: veylvik_render::RenderRequest,
         inputs: &ImageInputs,
     ) -> (Option<u64>, Option<u64>) {
-        use std::hash::{Hash, Hasher};
         if !inputs.steady(plan) {
             return (None, None);
         }
-        let Ok((identity, lasting)) = renderer.identities(plan, request, inputs) else {
-            return (None, None);
-        };
-        let view = format!("{:?}", plan.ocio_transforms());
-        let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        identity.hash(&mut hasher);
-        view.hash(&mut hasher);
-        // Between sessions a picture also depends on files the renderer reads by path
-        // alone: 3D models, and the files of the viewer's colour transform.
-        let lasting = lasting.and_then(|lasting| {
-            let mut text = view.clone();
-            for stamp in &self.dependencies {
-                text.push_str(&format!("{stamp:?}"));
-            }
-            for model in plan.required_models() {
-                let meta = std::fs::metadata(model).ok()?;
-                text.push_str(&format!("{model}{}{:?}", meta.len(), meta.modified().ok()?));
-            }
-            Some(veylvik_render::fnv(text.as_bytes(), lasting))
-        });
-        (Some(hasher.finish()), lasting)
+        match renderer.names(plan, request, inputs, &self.dependencies) {
+            Ok((identity, lasting)) => (Some(identity), lasting),
+            Err(_) => (None, None),
+        }
     }
     pub fn lookup(
         &mut self,
@@ -1224,7 +1164,7 @@ mod tests {
         store.checked = Instant::now() - Duration::from_secs(3);
         store.prepare(&plan, &inputs).unwrap();
         assert_eq!(store.hits, 0);
-        assert_eq!(store.dependencies[0].1, 7);
+        assert_eq!(store.dependencies.stamps()[0].size, 7);
         store.hits = 17;
         store.prepare(&self::plan(), &inputs).unwrap();
         assert_eq!(store.hits, 0);

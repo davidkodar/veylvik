@@ -1,5 +1,6 @@
 //! Whole-frame GPU execution. No window, document mutation, or timeline dependency.
 mod cache;
+pub mod depends;
 mod diagnostics;
 mod environment_bake;
 mod material_preview;
