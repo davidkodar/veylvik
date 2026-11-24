@@ -55,7 +55,7 @@ impl Studio {
             // The same list a host shows in its own bar (menu_model.rs).
             let ctx = ui.ctx().clone();
             let mut clicked = None;
-            for menu in self.menus(&ctx) {
+            for menu in self.menus() {
                 ui.menu_button(&menu.title, |ui| draw(ui, &menu.items, &mut clicked));
             }
             if let Some(id) = clicked {

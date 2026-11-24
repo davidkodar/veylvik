@@ -26,12 +26,11 @@ impl Studio {
         }
         self.commands.keys.as_ref().unwrap()
     }
-    fn keys_changed(&mut self, ctx: &egui::Context) {
+    fn keys_changed(&mut self) {
         let Some(keys) = &self.commands.keys else {
             return;
         };
         self.preferences.values.shortcuts = keys.saved();
-        ctx.data_mut(|d| d.insert_temp(menu_texts_id(), std::sync::Arc::new(keys.menu_texts())));
         if let Err(error) = self.preferences.persist() {
             self.fail(format!("Preferences: {error}"));
         }
@@ -41,10 +40,6 @@ impl Studio {
     pub(crate) fn command_keys(&mut self, ctx: &egui::Context) {
         if self.commands.recording.is_some() {
             return;
-        }
-        if ctx.data(|d| d.get_temp::<std::sync::Arc<std::collections::BTreeMap<String, String>>>(menu_texts_id()).is_none()) {
-            let texts = self.keys().menu_texts();
-            ctx.data_mut(|d| d.insert_temp(menu_texts_id(), std::sync::Arc::new(texts)));
         }
         for (cmd, binding) in self.keys().order() {
             if binding.pressed(ctx) {
@@ -98,7 +93,7 @@ impl Studio {
                 other.label()
             )
         });
-        self.keys_changed(ctx);
+        self.keys_changed();
     }
     /// Do what `cmd` names, as its menu item would.
     /// Whether the host lets the editor do this at all: what belongs to the window, the
@@ -128,13 +123,11 @@ impl Studio {
             _ => true,
         }
     }
-    pub(crate) fn run(&mut self, cmd: Cmd, ctx: &egui::Context) {
-        if !self.allows(cmd) {
-            return;
-        }
-        let ready =
-            !self.draft_dirty && !self.graph.dragging() && !self.animation_editor.dragging();
-        let needs_ready = matches!(
+    /// Whether `cmd` can run now: commands that change the composition wait until nothing
+    /// is mid-gesture or waiting in the inspector. Keys, the command search and the menus
+    /// all ask this, so a greyed-out item is exactly one that would refuse.
+    pub(crate) fn ready_for(&self, cmd: Cmd) -> bool {
+        let waits = matches!(
             cmd,
             Cmd::Undo
                 | Cmd::Redo
@@ -149,7 +142,20 @@ impl Studio {
                 | Cmd::Reload
                 | Cmd::CompositionSettings
         );
-        if needs_ready && !ready {
+        !waits || (!self.draft_dirty && !self.graph.dragging() && !self.animation_editor.dragging())
+    }
+    /// `cmd`'s key as the menus show it, after the person's own shortcuts.
+    pub(crate) fn key_text(&self, cmd: Cmd) -> String {
+        match &self.commands.keys {
+            Some(keys) => keys.shown(cmd),
+            None => Keys::load(&self.preferences.values.shortcuts).shown(cmd),
+        }
+    }
+    pub(crate) fn run(&mut self, cmd: Cmd, ctx: &egui::Context) {
+        if !self.allows(cmd) {
+            return;
+        }
+        if !self.ready_for(cmd) {
             self.fail("Apply or revert the current parameter changes first.");
             return;
         }
@@ -387,7 +393,7 @@ impl Studio {
                 ui.weak("Keys that belong to a tool while it is in use are fixed: Ctrl+Enter applies inspector changes, W, E and R move, rotate and scale in 3D, F frames the selection, Ctrl+C and Ctrl+V copy and paste nodes, and the question mark opens this window.");
             });
         if changed {
-            self.keys_changed(ctx);
+            self.keys_changed();
         }
         self.commands.editor = open;
     }
@@ -484,15 +490,4 @@ impl Studio {
             self.commands.search = false;
         }
     }
-}
-fn menu_texts_id() -> egui::Id {
-    egui::Id::new("command-menu-texts")
-}
-/// What a menu should show for a shortcut written as its default: the current key.
-pub(crate) fn menu_text(ctx: &egui::Context, default: &str) -> String {
-    ctx.data(|d| {
-        d.get_temp::<std::sync::Arc<std::collections::BTreeMap<String, String>>>(menu_texts_id())
-    })
-    .and_then(|texts| texts.get(default).cloned())
-    .unwrap_or_else(|| default.to_owned())
 }

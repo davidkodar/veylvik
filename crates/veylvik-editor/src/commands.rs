@@ -3,7 +3,7 @@ use eframe::egui;
 use std::collections::BTreeMap;
 
 macro_rules! commands {
-    ($($variant:ident, $id:literal, $group:literal, $label:literal, $default:literal;)*) => {
+    ($($variant:ident, $id:literal, $group:literal, $label:literal, $default:literal, $menu:literal;)*) => {
         #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
         pub enum Cmd { $($variant),* }
         impl Cmd {
@@ -13,89 +13,93 @@ macro_rules! commands {
             pub fn group(self) -> &'static str { match self { $(Cmd::$variant => $group),* } }
             pub fn label(self) -> &'static str { match self { $(Cmd::$variant => $label),* } }
             fn default_text(self) -> &'static str { match self { $(Cmd::$variant => $default),* } }
+            /// How a menu names the command (a dialog's ends in "…"); its label when it has none.
+            pub fn menu_label(self) -> &'static str {
+                match self { $(Cmd::$variant => if $menu.is_empty() { $label } else { $menu }),* }
+            }
         }
     };
 }
 commands! {
-    StartScreen, "start_screen", "File", "Start screen", "";
-    New, "new", "File", "New composition", "Ctrl+N";
-    NewFromMedia, "new_from_media", "File", "New from media", "";
-    ImportNuke, "import_nuke", "File", "Import Nuke script", "";
-    Open, "open", "File", "Open", "Ctrl+O";
-    Save, "save", "File", "Save", "Ctrl+S";
-    UpdateHost, "update_host", "File", "Update in the linked editor", "Ctrl+Shift+U";
-    SaveAs, "save_as", "File", "Save as", "Ctrl+Shift+S";
-    Import, "import", "File", "Import media", "Ctrl+I";
-    ImportSequence, "import_sequence", "File", "Import numbered sequence", "";
-    Reload, "reload", "File", "Reload source images", "Ctrl+R";
-    ProjectFiles, "project_files", "File", "Project files", "";
-    ExportVideo, "export_video", "File", "Export video", "";
-    ExportFrame, "export_frame", "File", "Export current preview", "Ctrl+E";
-    ExportSequence, "export_sequence", "File", "Export image sequence", "Ctrl+Shift+E";
-    CompositionSettings, "composition_settings", "File", "Composition settings", "";
-    Preferences, "preferences", "File", "Preferences", "Ctrl+Comma";
-    Quit, "quit", "File", "Quit", "Q";
-    Undo, "undo", "Edit", "Undo", "Ctrl+Z";
-    Redo, "redo", "Edit", "Redo", "Ctrl+Shift+Z";
-    History, "history", "Edit", "Undo history", "";
-    Duplicate, "duplicate", "Edit", "Duplicate selected node", "Ctrl+D";
-    DuplicateBranch, "duplicate_branch", "Edit", "Duplicate upstream branch", "Ctrl+Shift+D";
-    DeleteNode, "delete_node", "Edit", "Delete selected node", "";
-    SetOutput, "set_output", "Edit", "Set selected node as output", "";
-    CreateGroup, "create_group", "Edit", "Create effect group", "";
-    FindNode, "find_node", "Edit", "Find node", "Ctrl+F";
-    AutoKey, "auto_key", "Edit", "Automatic keyframes on or off", "";
-    CacheRange, "cache_range", "Playback", "Cache the playback range", "";
-    CopySettings, "copy_settings", "Edit", "Copy the selected node's settings", "Alt+C";
-    PasteSettings, "paste_settings", "Edit", "Paste settings onto the selected nodes", "Alt+V";
-    AddNode, "add_node", "Add", "Search and add a node", "Tab";
-    EffectLibrary, "effect_library", "Add", "Effect library", "";
-    Play, "play", "Playback", "Play or pause", "Space";
-    StepBack, "step_back", "Playback", "Previous frame", "Left";
-    StepForward, "step_forward", "Playback", "Next frame", "Right";
-    PreviousKey, "previous_key", "Playback", "Previous key of the selected node", "Alt+Left";
-    NextKey, "next_key", "Playback", "Next key of the selected node", "Alt+Right";
-    SetIn, "set_in", "Playback", "Set the range's start here", "I";
-    SetOut, "set_out", "Playback", "Set the range's end here", "O";
-    AddMarker, "add_marker", "Playback", "Add a marker here", "M";
-    PreviousMarker, "previous_marker", "Playback", "Previous marker", "Comma";
-    NextMarker, "next_marker", "Playback", "Next marker", "Period";
-    PageCompose, "page_compose", "View", "Compose page", "Ctrl+1";
-    PageAnimate, "page_animate", "View", "Animate page", "Ctrl+2";
-    PageScene, "page_scene", "View", "3D page", "Ctrl+3";
-    PageExport, "page_export", "View", "Export page", "Ctrl+4";
-    ViewerFullScreen, "viewer_full_screen", "View", "Viewer full screen", "F11";
-    ToggleEditor, "toggle_editor", "View", "Show or hide the node and animation editor", "";
-    ToggleLibrary, "toggle_library", "View", "Show or hide the library panel", "";
-    ToggleInspector, "toggle_inspector", "View", "Show or hide the inspector panel", "";
-    ToggleLayerBars, "toggle_layer_bars", "View", "Show or hide layer bars on the timeline", "";
-    ToggleThumbnails, "toggle_thumbnails", "View", "Show or hide thumbnails on nodes", "";
-    ToggleTimecode, "toggle_timecode", "View", "Switch between timecode and frame numbers", "";
-    LayoutStandard, "layout_standard", "View", "Layout: Standard", "Alt+1";
-    LayoutWideViewer, "layout_wide_viewer", "View", "Layout: Wide viewer", "Alt+2";
-    LayoutViewerOnly, "layout_viewer_only", "View", "Layout: Viewer only", "Alt+3";
-    LayoutGraph, "layout_graph", "View", "Layout: Graph", "Alt+4";
-    SecondViewer, "second_viewer", "View", "Viewer in its own window", "";
-    InterfaceLarger, "interface_larger", "View", "Interface larger", "Ctrl+Plus";
-    InterfaceSmaller, "interface_smaller", "View", "Interface smaller", "Ctrl+Minus";
-    PreviewSelected, "preview_selected", "View", "Preview the selected node", "";
-    ViewOutput, "view_output", "View", "View the composition output", "";
-    FitImage, "fit_image", "View", "Fit the image in the viewer", "";
-    ActualPixels, "actual_pixels", "View", "Show the image at 100%", "";
-    ChannelColour, "channel_colour", "View", "Viewer: show colour", "";
-    ChannelRed, "channel_red", "View", "Viewer: show the red channel", "";
-    ChannelGreen, "channel_green", "View", "Viewer: show the green channel", "";
-    ChannelBlue, "channel_blue", "View", "Viewer: show the blue channel", "";
-    ChannelLuminance, "channel_luminance", "View", "Viewer: show the luminance", "";
-    ChannelAlpha, "channel_alpha", "View", "Viewer: show the alpha", "";
-    SafeAreas, "safe_areas", "View", "Viewer: safe areas", "";
-    Grid, "grid", "View", "Viewer: grid", "";
-    Rulers, "rulers", "View", "Viewer: rulers", "";
-    ColourReadout, "colour_readout", "View", "Viewer: colour under the pointer", "";
-    CommandSearch, "command_search", "Help", "Find a command", "Ctrl+K";
-    Shortcuts, "shortcuts", "Help", "Keyboard shortcuts", "";
-    Messages, "messages", "Help", "Messages", "";
-    About, "about", "Help", "About Veylvik", "";
+    StartScreen, "start_screen", "File", "Start screen", "", "";
+    New, "new", "File", "New composition", "Ctrl+N", "New composition…";
+    NewFromMedia, "new_from_media", "File", "New from media", "", "New from media…";
+    ImportNuke, "import_nuke", "File", "Import Nuke script", "", "Import Nuke script…";
+    Open, "open", "File", "Open", "Ctrl+O", "Open…";
+    Save, "save", "File", "Save", "Ctrl+S", "";
+    UpdateHost, "update_host", "File", "Update in the linked editor", "Ctrl+Shift+U", "";
+    SaveAs, "save_as", "File", "Save as", "Ctrl+Shift+S", "Save as…";
+    Import, "import", "File", "Import media", "Ctrl+I", "Import media…";
+    ImportSequence, "import_sequence", "File", "Import numbered sequence", "", "Import numbered sequence…";
+    Reload, "reload", "File", "Reload source images", "Ctrl+R", "";
+    ProjectFiles, "project_files", "File", "Project files", "", "Project files…";
+    ExportVideo, "export_video", "File", "Export video", "", "Export video…";
+    ExportFrame, "export_frame", "File", "Export current preview", "Ctrl+E", "Export current preview…";
+    ExportSequence, "export_sequence", "File", "Export image sequence", "Ctrl+Shift+E", "Export image sequence…";
+    CompositionSettings, "composition_settings", "File", "Composition settings", "", "Composition settings…";
+    Preferences, "preferences", "File", "Preferences", "Ctrl+Comma", "Preferences…";
+    Quit, "quit", "File", "Quit", "Q", "";
+    Undo, "undo", "Edit", "Undo", "Ctrl+Z", "";
+    Redo, "redo", "Edit", "Redo", "Ctrl+Shift+Z", "";
+    History, "history", "Edit", "Undo history", "", "Undo history…";
+    Duplicate, "duplicate", "Edit", "Duplicate selected node", "Ctrl+D", "";
+    DuplicateBranch, "duplicate_branch", "Edit", "Duplicate upstream branch", "Ctrl+Shift+D", "";
+    DeleteNode, "delete_node", "Edit", "Delete selected node", "", "";
+    SetOutput, "set_output", "Edit", "Set selected node as output", "", "";
+    CreateGroup, "create_group", "Edit", "Create effect group", "", "Create effect group…";
+    FindNode, "find_node", "Edit", "Find node", "Ctrl+F", "Find node…";
+    AutoKey, "auto_key", "Edit", "Automatic keyframes on or off", "", "Automatic keyframes";
+    CacheRange, "cache_range", "Playback", "Cache the playback range", "", "";
+    CopySettings, "copy_settings", "Edit", "Copy the selected node's settings", "Alt+C", "";
+    PasteSettings, "paste_settings", "Edit", "Paste settings onto the selected nodes", "Alt+V", "";
+    AddNode, "add_node", "Add", "Search and add a node", "Tab", "Search nodes…";
+    EffectLibrary, "effect_library", "Add", "Effect library", "", "Effect library…";
+    Play, "play", "Playback", "Play or pause", "Space", "";
+    StepBack, "step_back", "Playback", "Previous frame", "Left", "";
+    StepForward, "step_forward", "Playback", "Next frame", "Right", "";
+    PreviousKey, "previous_key", "Playback", "Previous key of the selected node", "Alt+Left", "";
+    NextKey, "next_key", "Playback", "Next key of the selected node", "Alt+Right", "";
+    SetIn, "set_in", "Playback", "Set the range's start here", "I", "";
+    SetOut, "set_out", "Playback", "Set the range's end here", "O", "";
+    AddMarker, "add_marker", "Playback", "Add a marker here", "M", "";
+    PreviousMarker, "previous_marker", "Playback", "Previous marker", "Comma", "";
+    NextMarker, "next_marker", "Playback", "Next marker", "Period", "";
+    PageCompose, "page_compose", "View", "Compose page", "Ctrl+1", "";
+    PageAnimate, "page_animate", "View", "Animate page", "Ctrl+2", "";
+    PageScene, "page_scene", "View", "3D page", "Ctrl+3", "";
+    PageExport, "page_export", "View", "Export page", "Ctrl+4", "";
+    ViewerFullScreen, "viewer_full_screen", "View", "Viewer full screen", "F11", "";
+    ToggleEditor, "toggle_editor", "View", "Show or hide the node and animation editor", "", "Node / animation editor";
+    ToggleLibrary, "toggle_library", "View", "Show or hide the library panel", "", "Library panel";
+    ToggleInspector, "toggle_inspector", "View", "Show or hide the inspector panel", "", "Inspector panel";
+    ToggleLayerBars, "toggle_layer_bars", "View", "Show or hide layer bars on the timeline", "", "Layer bars on the timeline";
+    ToggleThumbnails, "toggle_thumbnails", "View", "Show or hide thumbnails on nodes", "", "";
+    ToggleTimecode, "toggle_timecode", "View", "Switch between timecode and frame numbers", "", "";
+    LayoutStandard, "layout_standard", "View", "Layout: Standard", "Alt+1", "";
+    LayoutWideViewer, "layout_wide_viewer", "View", "Layout: Wide viewer", "Alt+2", "";
+    LayoutViewerOnly, "layout_viewer_only", "View", "Layout: Viewer only", "Alt+3", "";
+    LayoutGraph, "layout_graph", "View", "Layout: Graph", "Alt+4", "";
+    SecondViewer, "second_viewer", "View", "Viewer in its own window", "", "";
+    InterfaceLarger, "interface_larger", "View", "Interface larger", "Ctrl+Plus", "";
+    InterfaceSmaller, "interface_smaller", "View", "Interface smaller", "Ctrl+Minus", "";
+    PreviewSelected, "preview_selected", "View", "Preview the selected node", "", "Preview selected node";
+    ViewOutput, "view_output", "View", "View the composition output", "", "View composition output";
+    FitImage, "fit_image", "View", "Fit the image in the viewer", "", "Fit image";
+    ActualPixels, "actual_pixels", "View", "Show the image at 100%", "", "Actual pixels (100%)";
+    ChannelColour, "channel_colour", "View", "Viewer: show colour", "", "";
+    ChannelRed, "channel_red", "View", "Viewer: show the red channel", "", "";
+    ChannelGreen, "channel_green", "View", "Viewer: show the green channel", "", "";
+    ChannelBlue, "channel_blue", "View", "Viewer: show the blue channel", "", "";
+    ChannelLuminance, "channel_luminance", "View", "Viewer: show the luminance", "", "";
+    ChannelAlpha, "channel_alpha", "View", "Viewer: show the alpha", "", "";
+    SafeAreas, "safe_areas", "View", "Viewer: safe areas", "", "";
+    Grid, "grid", "View", "Viewer: grid", "", "";
+    Rulers, "rulers", "View", "Viewer: rulers", "", "";
+    ColourReadout, "colour_readout", "View", "Viewer: colour under the pointer", "", "";
+    CommandSearch, "command_search", "Help", "Find a command", "Ctrl+K", "Find a command…";
+    Shortcuts, "shortcuts", "Help", "Keyboard shortcuts", "", "Keyboard shortcuts…";
+    Messages, "messages", "Help", "Messages", "", "Messages…";
+    About, "about", "Help", "About Veylvik", "", "About Veylvik…";
 }
 /// A key with its modifiers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -272,13 +276,6 @@ impl Keys {
         bound.sort_by_key(|(_, binding)| std::cmp::Reverse(binding.count()));
         bound
     }
-    /// Default key text to current key text, for menus written with the defaults.
-    pub fn menu_texts(&self) -> BTreeMap<String, String> {
-        Cmd::ALL
-            .iter()
-            .filter_map(|cmd| Self::default(*cmd).map(|b| (b.shown(), self.shown(*cmd))))
-            .collect()
-    }
 }
 /// The commands matching every word of `query`, in list order.
 pub fn search(query: &str) -> Vec<Cmd> {
@@ -360,9 +357,9 @@ mod tests {
         ]
         .into();
         assert!(!Keys::load(&odd).any_changed());
-        assert_eq!(keys.menu_texts()["Ctrl+S"], "Ctrl+S");
+        assert_eq!(keys.shown(Cmd::Save), "Ctrl+S");
         keys.set(Cmd::Save, None);
-        assert_eq!(keys.menu_texts()["Ctrl+S"], "");
+        assert_eq!(keys.shown(Cmd::Save), "");
     }
     #[test]
     fn search_matches_every_word_in_a_group_or_a_name() {

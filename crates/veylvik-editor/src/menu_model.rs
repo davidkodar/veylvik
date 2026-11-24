@@ -1,5 +1,5 @@
 //! The editor's menus as data: the editor's own bar and a host's bar show one list, built from the editor's state each time, and an item is run by its id, checked against that list.
-use crate::{Leave, Studio, ViewSettings, node_palette};
+use crate::{Studio, ViewSettings, commands::Cmd, node_palette};
 use eframe::egui;
 use veylvik_document::{recipes::Recipe, registry};
 
@@ -25,6 +25,9 @@ pub struct MenuItem {
     pub separator_before: bool,
     /// What the item does, for a tooltip.
     pub hint: Option<String>,
+    /// The command the item runs, when it is one: its label, key, gate and action then
+    /// all come from the command table.
+    pub(crate) cmd: Option<Cmd>,
 }
 
 /// Items being listed: `gap` puts a line before the next one (never first or doubled).
@@ -57,6 +60,20 @@ impl List {
             ..Default::default()
         })
     }
+    /// The item for `cmd`, unless this editor does not offer it (a host's capabilities).
+    fn cmd(&mut self, studio: &Studio, id: &str, cmd: Cmd) -> Option<&mut MenuItem> {
+        if !studio.allows(cmd) {
+            return None;
+        }
+        let item = self.item(
+            id,
+            cmd.menu_label(),
+            Some(studio.key_text(cmd)),
+            studio.ready_for(cmd),
+        );
+        item.cmd = Some(cmd);
+        Some(item)
+    }
     fn check(&mut self, id: &str, label: &str, on: bool, enabled: bool) -> &mut MenuItem {
         let item = self.item(id, label, None, enabled);
         item.checked = Some(on);
@@ -69,6 +86,10 @@ impl List {
     }
 }
 impl MenuItem {
+    fn ticked(&mut self, on: bool) -> &mut Self {
+        self.checked = Some(on);
+        self
+    }
     fn hint(&mut self, hint: &str) -> &mut Self {
         self.hint = Some(hint.into());
         self
@@ -76,108 +97,63 @@ impl MenuItem {
 }
 
 impl Studio {
-    /// Nothing mid-gesture or waiting in the inspector: structural edits may run.
-    fn menus_ready(&self) -> bool {
-        !self.draft_dirty && !self.graph.dragging() && !self.animation_editor.dragging()
-    }
     /// The menus as they are now: the same items, states and keys the bar shows.
-    pub(crate) fn menus(&self, ctx: &egui::Context) -> Vec<Menu> {
-        let key = |default: &str| Some(crate::command_ui::menu_text(ctx, default));
+    pub(crate) fn menus(&self) -> Vec<Menu> {
         let c = &self.capabilities;
-        let ready = self.menus_ready();
+        let ready = self.ready_for(Cmd::Duplicate);
         let snapshot = self.project.document.snapshot();
         let mut file = List::default();
-        if c.project_files {
-            file.item("file.start", "Start screen", None, true);
-            file.gap();
-            file.item("file.new", "New composition…", key("Ctrl+N"), true);
-            file.item("file.new_from_media", "New from media…", None, true);
-            file.item("file.import_nuke", "Import Nuke script…", None, true);
-            file.item("file.open", "Open…", key("Ctrl+O"), true);
-            file.gap();
-            file.item("file.save", "Save", key("Ctrl+S"), true);
-            file.item("file.save_as", "Save as…", key("Ctrl+Shift+S"), true);
-        }
-        if let Some(host) = self.host_link.host() {
-            file.item(
-                "file.update_host",
-                &format!("Update in {host}"),
-                key("Ctrl+Shift+U"),
-                true,
-            );
+        file.cmd(self, "file.start", Cmd::StartScreen);
+        file.gap();
+        file.cmd(self, "file.new", Cmd::New);
+        file.cmd(self, "file.new_from_media", Cmd::NewFromMedia);
+        file.cmd(self, "file.import_nuke", Cmd::ImportNuke);
+        file.cmd(self, "file.open", Cmd::Open);
+        file.gap();
+        file.cmd(self, "file.save", Cmd::Save);
+        file.cmd(self, "file.save_as", Cmd::SaveAs);
+        if let Some(host) = self.host_link.host()
+            && let Some(item) = file.cmd(self, "file.update_host", Cmd::UpdateHost)
+        {
+            item.label = format!("Update in {host}");
         }
         if c.project_files {
             file.item("file.recover", "Recover unsaved work…", None, true);
         }
         file.gap();
-        file.item("file.import_media", "Import media…", key("Ctrl+I"), true);
-        file.item(
-            "file.import_sequence",
-            "Import numbered sequence…",
-            None,
-            true,
-        );
-        file.item(
-            "file.reload",
-            "Reload source images",
-            key("Ctrl+R"),
-            !self.draft_dirty,
-        );
+        file.cmd(self, "file.import_media", Cmd::Import);
+        file.cmd(self, "file.import_sequence", Cmd::ImportSequence);
+        file.cmd(self, "file.reload", Cmd::Reload);
         file.gap();
-        if c.project_files {
-            file.item("file.project_files", "Project files…", None, true);
-        }
+        file.cmd(self, "file.project_files", Cmd::ProjectFiles);
         if c.export {
             file.item("file.render_queue", "Render queue…", None, true);
-            file.item("file.export_video", "Export video…", None, true);
-            file.item(
-                "file.export_frame",
-                "Export current preview…",
-                key("Ctrl+E"),
-                true,
-            );
-            file.item(
-                "file.export_sequence",
-                "Export image sequence…",
-                key("Ctrl+Shift+E"),
-                true,
-            );
         }
+        file.cmd(self, "file.export_video", Cmd::ExportVideo);
+        file.cmd(self, "file.export_frame", Cmd::ExportFrame);
+        file.cmd(self, "file.export_sequence", Cmd::ExportSequence);
         file.gap();
-        file.item(
-            "file.composition_settings",
-            "Composition settings…",
-            None,
-            !self.draft_dirty,
-        );
-        if c.own_window {
-            file.gap();
-            file.item("file.quit", "Quit", key("Q"), true);
-        }
+        file.cmd(self, "file.composition_settings", Cmd::CompositionSettings);
+        file.gap();
+        file.cmd(self, "file.quit", Cmd::Quit);
 
         let mut edit = List::default();
         // A host that keeps the history undoes through its own menu (Editor::undo).
         if !c.host_history {
             let history = self.project.document.history();
-            edit.item(
-                "edit.undo",
-                "Undo",
-                key("Ctrl+Z"),
-                ready && history.undo_steps > 0,
-            );
-            edit.item(
-                "edit.redo",
-                "Redo",
-                key("Ctrl+Shift+Z"),
-                ready && history.redo_steps > 0,
-            );
+            if let Some(undo) = edit.cmd(self, "edit.undo", Cmd::Undo) {
+                undo.enabled &= history.undo_steps > 0;
+            }
+            if let Some(redo) = edit.cmd(self, "edit.redo", Cmd::Redo) {
+                redo.enabled &= history.redo_steps > 0;
+            }
         }
-        edit.item("edit.history", "Undo history…", None, true);
+        edit.cmd(self, "edit.history", Cmd::History);
         edit.gap();
         edit.item(
             "edit.apply",
             "Apply inspector changes",
-            key("Ctrl+Enter"),
+            Some("Ctrl+Enter".into()),
             self.draft_dirty,
         );
         edit.item(
@@ -187,42 +163,34 @@ impl Studio {
             self.draft_dirty,
         );
         edit.gap();
-        edit.item("edit.group", "Create effect group…", None, ready);
-        edit.item(
-            "edit.duplicate",
-            "Duplicate selected node",
-            key("Ctrl+D"),
-            ready,
-        );
-        edit.item(
-            "edit.duplicate_branch",
-            "Duplicate upstream branch",
-            key("Ctrl+Shift+D"),
-            ready,
-        );
-        edit.item("edit.delete", "Delete selected node", None, ready);
-        edit.item(
-            "edit.set_output",
-            "Set selected node as output",
-            None,
-            ready,
-        );
+        edit.cmd(self, "edit.group", Cmd::CreateGroup);
+        edit.cmd(self, "edit.duplicate", Cmd::Duplicate);
+        edit.cmd(self, "edit.duplicate_branch", Cmd::DuplicateBranch);
+        edit.cmd(self, "edit.delete", Cmd::DeleteNode);
+        edit.cmd(self, "edit.set_output", Cmd::SetOutput);
         edit.gap();
-        edit.item("edit.find", "Find node…", key("Ctrl+F"), ready);
-        edit.item("edit.marker", "Add a marker here", key("M"), true);
+        edit.cmd(self, "edit.find", Cmd::FindNode);
+        edit.cmd(self, "edit.marker", Cmd::AddMarker);
         edit.item("edit.published", "Settings shown on Edit…", None, true)
             .hint("Settings a host such as Klipp shows on its Edit page, without opening Veylvik");
-        edit.check("edit.auto_key", "Automatic keyframes", self.preferences.values.auto_key, true).hint(
-            "On: changing an animated setting adds a keyframe at the current position. Off: such a change is a try-out until you add the keyframe",
-        );
+        if let Some(item) = edit.cmd(self, "edit.auto_key", Cmd::AutoKey) {
+            item.ticked(self.preferences.values.auto_key).hint(
+                "On: changing an animated setting adds a keyframe at the current position. Off: such a change is a try-out until you add the keyframe",
+            );
+        }
         edit.gap();
-        edit.item("edit.preferences", "Preferences…", key("Ctrl+,"), true);
+        edit.cmd(self, "edit.preferences", Cmd::Preferences);
 
         let mut add = List::default();
-        add.item("add.library", "Effect library…", None, ready);
-        add.item("add.search", "Search nodes…", key("Tab"), ready);
+        add.cmd(self, "add.library", Cmd::EffectLibrary);
+        add.cmd(self, "add.search", Cmd::AddNode);
         add.gap();
-        add.item("add.image", "Image or footage…", key("Ctrl+I"), ready);
+        add.item(
+            "add.image",
+            "Image or footage…",
+            Some(self.key_text(Cmd::Import)),
+            ready,
+        );
         add.item("add.text", "Text", None, ready);
         add.item("add.text_outlines", "Text outlines…", None, ready);
         add.gap();
@@ -249,14 +217,14 @@ impl Studio {
         }
 
         let mut view = List::default();
-        view.check(
-            "view.node_editor",
-            "Node / animation editor",
-            !self.node_editor_hidden,
-            true,
-        );
-        view.check("view.layer_bars", "Layer bars on the timeline", !self.layer_bars.hidden, true)
-            .hint("A bar for each footage clip and fade under the ruler: drag to slide, drag an end to trim");
+        if let Some(item) = view.cmd(self, "view.node_editor", Cmd::ToggleEditor) {
+            item.ticked(!self.node_editor_hidden);
+        }
+        if let Some(item) = view.cmd(self, "view.layer_bars", Cmd::ToggleLayerBars) {
+            item.ticked(!self.layer_bars.hidden).hint(
+                "A bar for each footage clip and fade under the ruler: drag to slide, drag an end to trim",
+            );
+        }
         let mut layouts = List::default();
         for (n, layout) in crate::layouts::Layout::built_in().iter().enumerate() {
             layouts.item(
@@ -293,25 +261,23 @@ impl Studio {
         layouts.gap();
         layouts.item("view.layout.save", "Save current layout as…", None, true);
         view.sub("view.layout", "Layout", true, layouts);
-        if c.second_viewer {
-            view.check("view.second_viewer", "Viewer in its own window", self.layouts.second_viewer, true)
-                .hint("A second window with the same picture, for another screen. Double-click it for full screen");
+        if let Some(item) = view.cmd(self, "view.second_viewer", Cmd::SecondViewer) {
+            item.ticked(self.layouts.second_viewer).hint(
+                "A second window with the same picture, for another screen. Double-click it for full screen",
+            );
         }
-        if c.full_screen {
-            view.item("view.full_screen", "Viewer full screen", key("F11"), true);
+        view.cmd(self, "view.full_screen", Cmd::ViewerFullScreen);
+        if let Some(item) = view.cmd(self, "view.library", Cmd::ToggleLibrary) {
+            item.ticked(self.browser.visible);
         }
-        view.check("view.library", "Library panel", self.browser.visible, true);
-        view.check(
-            "view.inspector",
-            "Inspector panel",
-            self.inspector_visible,
-            true,
-        );
-        view.item("view.preview_selected", "Preview selected node", None, true);
-        view.item("view.output", "View composition output", None, true);
+        if let Some(item) = view.cmd(self, "view.inspector", Cmd::ToggleInspector) {
+            item.ticked(self.inspector_visible);
+        }
+        view.cmd(self, "view.preview_selected", Cmd::PreviewSelected);
+        view.cmd(self, "view.output", Cmd::ViewOutput);
         view.gap();
-        view.item("view.fit", "Fit image", None, true);
-        view.item("view.actual", "Actual pixels (100%)", None, true);
+        view.cmd(self, "view.fit", Cmd::FitImage);
+        view.cmd(self, "view.actual", Cmd::ActualPixels);
         view.check("view.alpha", "Show alpha", self.view.alpha, true);
         view.item("view.colour_management", "Colour management…", None, true);
         let mut spaces = List::default();
@@ -339,12 +305,9 @@ impl Studio {
         );
         view.item("view.reset_display", "Reset display settings", None, true);
         view.gap();
-        view.item(
-            "view.play",
-            if self.playing { "Pause" } else { "Play" },
-            key("Space"),
-            true,
-        );
+        if let Some(item) = view.cmd(self, "view.play", Cmd::Play) {
+            item.label = if self.playing { "Pause" } else { "Play" }.into();
+        }
         view.gap();
         view.check(
             "view.statistics",
@@ -359,15 +322,16 @@ impl Studio {
         tools.item("tools.models", "AI models…", None, true);
 
         let mut help = List::default();
-        help.item("help.commands", "Find a command…", key("Ctrl+K"), true);
-        if c.preferences {
-            help.item("help.shortcuts", "Keyboard shortcuts…", key("?"), true);
+        help.cmd(self, "help.commands", Cmd::CommandSearch);
+        if let Some(item) = help.cmd(self, "help.shortcuts", Cmd::Shortcuts) {
+            // The question mark is a fixed key of its own (Help).
+            item.shortcut = Some("?".into());
         }
-        help.item("help.messages", "Messages…", None, true);
-        if c.about {
+        help.cmd(self, "help.messages", Cmd::Messages);
+        if self.allows(Cmd::About) {
             help.gap();
-            help.item("help.about", "About Veylvik…", None, true);
         }
+        help.cmd(self, "help.about", Cmd::About);
         [
             ("File", file),
             ("Edit", edit),
@@ -395,81 +359,26 @@ impl Studio {
                 }
             })
         }
-        let menus = self.menus(ctx);
+        let menus = self.menus();
         let Some(item) = menus.iter().find_map(|menu| find(&menu.items, id)) else {
             return false;
         };
         if !item.enabled || !item.children.is_empty() {
             return false;
         }
-        let at = || self.graph.insertion_position(ctx);
+        if let Some(cmd) = item.cmd {
+            self.run(cmd, ctx);
+            return true;
+        }
         match id {
-            "file.start" => {
-                self.show_start();
-            }
-            "file.new" => {
-                self.leave(Leave::New, ctx);
-            }
-            "file.new_from_media" => {
-                self.leave(Leave::NewFromMedia, ctx);
-            }
-            "file.import_nuke" => {
-                self.leave(Leave::ImportNuke, ctx);
-            }
-            "file.open" => {
-                self.leave(Leave::Open, ctx);
-            }
-            "file.save" => {
-                self.save_project(false);
-            }
-            "file.save_as" => {
-                self.save_project(true);
-            }
-            "file.update_host" => {
-                self.update_host();
-            }
             "file.recover" => {
                 self.recovery.refresh();
                 self.recovery.open = true;
             }
-            "file.import_media" => {
-                self.import_image(at());
-            }
-            "file.import_sequence" => {
-                self.import_media(at(), true);
-            }
-            "file.reload" => {
-                self.reload_images();
-            }
-            "file.project_files" => self.portable.open = true,
             "file.render_queue" => {
                 self.go_to(crate::pages::Page::Export);
                 self.pages.quick = false;
             }
-            "file.export_video" => {
-                self.ask_export(crate::pages::ExportKind::Video);
-            }
-            "file.export_frame" => {
-                self.export_frame();
-            }
-            "file.export_sequence" => {
-                self.ask_export(crate::pages::ExportKind::Sequence);
-            }
-            "file.composition_settings" => {
-                self.playing = false;
-                self.composition_controls
-                    .begin(self.project.document.snapshot(), false);
-            }
-            "file.quit" => {
-                self.leave(Leave::Close, ctx);
-            }
-            "edit.undo" => {
-                self.history(false);
-            }
-            "edit.redo" => {
-                self.history(true);
-            }
-            "edit.history" => self.log.history = true,
             "edit.apply" => {
                 self.keep_tryout();
             }
@@ -477,40 +386,7 @@ impl Studio {
                 self.refresh_draft();
                 self.request_preview();
             }
-            "edit.group" => {
-                self.begin_group(false);
-            }
-            "edit.duplicate" => {
-                self.duplicate_selected(ctx);
-            }
-            "edit.duplicate_branch" => {
-                self.duplicate_branch();
-            }
-            "edit.delete" => {
-                self.delete_selected();
-            }
-            "edit.set_output" => {
-                self.set_selected_output();
-            }
-            "edit.find" => {
-                self.open_node_finder();
-            }
             "edit.published" => self.published_open = true,
-            "edit.marker" => {
-                self.add_marker();
-            }
-            "edit.auto_key" => {
-                self.toggle_auto_key();
-            }
-            "edit.preferences" => {
-                self.open_preferences();
-            }
-            "add.library" => {
-                self.open_preset_library(ctx);
-            }
-            "add.search" => {
-                self.open_node_palette(ctx);
-            }
             "add.image" => {
                 self.add_chosen(ctx, node_palette::Choice::Image);
             }
@@ -520,30 +396,8 @@ impl Studio {
             "add.text_outlines" => {
                 self.add_chosen(ctx, node_palette::Choice::Text);
             }
-            "view.node_editor" => self.node_editor_hidden = !self.node_editor_hidden,
-            "view.layer_bars" => self.layer_bars.hidden = !self.layer_bars.hidden,
             "view.layout.save" => {
                 self.layouts.naming = Some(String::new());
-            }
-            "view.second_viewer" => self.layouts.second_viewer = !self.layouts.second_viewer,
-            "view.full_screen" => {
-                self.set_viewer_fullscreen(ctx, true);
-            }
-            "view.library" => self.browser.visible = !self.browser.visible,
-            "view.inspector" => self.inspector_visible = !self.inspector_visible,
-            "view.preview_selected" => {
-                self.project.preview = Some(self.project.selected);
-                self.request_preview();
-            }
-            "view.output" => {
-                self.project.preview = None;
-                self.request_preview();
-            }
-            "view.fit" => {
-                self.navigation.fit();
-            }
-            "view.actual" => {
-                self.navigation.actual_size();
             }
             "view.alpha" => self.view.alpha = !self.view.alpha,
             "view.colour_management" => crate::color_controls::open(
@@ -577,23 +431,12 @@ impl Studio {
                     ..Default::default()
                 };
             }
-            "view.play" => {
-                self.toggle_play();
-            }
             "view.statistics" => self.statistics = !self.statistics,
             "tools.subject" => {
                 self.begin_subject();
             }
             "tools.models" => {
                 self.models.show_window();
-            }
-            "help.commands" => {
-                self.run(crate::commands::Cmd::CommandSearch, ctx);
-            }
-            "help.shortcuts" => self.commands.editor = true,
-            "help.messages" => self.log.messages = true,
-            "help.about" => {
-                self.about.begin();
             }
             _ => {
                 if let Some(type_id) = id.strip_prefix("add.node.") {
@@ -678,16 +521,17 @@ impl crate::Editor {
     /// The editor's menus as its own bar would show them now, for a host that shows them
     /// in its bar (with `Capabilities::menu_bar` off). Build it again each frame the host
     /// draws its menus: items are greyed out, ticked and named by the editor's state.
-    pub fn menus(&self, ctx: &egui::Context) -> Vec<Menu> {
-        self.studio.menus(ctx)
+    /// (`_ctx` is kept so hosts need not change; the menus no longer read it.)
+    pub fn menus(&self, _ctx: &egui::Context) -> Vec<Menu> {
+        self.studio.menus()
     }
     /// Run the item `id` of [`Editor::menus`], as a click on it would, at the editor's
     /// next frame. False, and nothing is run, when no such item is offered now or it is
     /// greyed out or a submenu.
-    pub fn run_menu_item(&mut self, ctx: &egui::Context, id: &str) -> bool {
+    pub fn run_menu_item(&mut self, _ctx: &egui::Context, id: &str) -> bool {
         let found = self
             .studio
-            .menus(ctx)
+            .menus()
             .iter()
             .any(|menu| runnable(&menu.items, id));
         if found {
