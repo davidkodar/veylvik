@@ -8,5 +8,6 @@ description = "Ready-made scenes for Veylvik, built only from document nodes: co
 [dependencies]
 veylvik-document.workspace = true
 serde_json.workspace = true
+serde.workspace = true
 [lints]
 workspace = true

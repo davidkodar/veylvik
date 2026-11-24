@@ -2,6 +2,7 @@
 pub mod authoring;
 mod gold_title;
 mod surround_lights;
+pub mod tools;
 pub use surround_lights::surround_lights;
 pub mod particles;
 pub use gold_title::{gold_title, gold_title_with};

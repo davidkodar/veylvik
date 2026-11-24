@@ -8,42 +8,20 @@ pub fn catalog() -> Value {
 }
 use veylvik_control::live::catalog as catalog_ref;
 fn validate_arguments(name: &str, args: &Value) -> Result<()> {
-    let catalog = catalog_ref();
-    let descriptor = catalog["tools"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|tool| tool["name"] == name)
-        .ok_or_else(|| {
-            format!("this Studio has no tool named {name}: it may be an older build than the MCP server; restart Studio after updating Veylvik")
-        })?;
-    let object = args.as_object().ok_or("arguments must be an object")?;
-    for key in object.keys() {
-        if descriptor["inputSchema"]["properties"].get(key).is_none() {
-            let takes: Vec<&str> = descriptor["inputSchema"]["properties"]
-                .as_object()
-                .map(|p| p.keys().map(String::as_str).collect())
-                .unwrap_or_default();
-            // The headless server takes a time on these; here they show Studio's viewer.
-            let hint = if matches!(key.as_str(), "ticks" | "rate")
-                && matches!(name, "preview_image" | "measure" | "render")
-            {
-                ". The live server works on Studio's own viewer: call preview with frame (and node) first, then this tool without a time (render takes frame)"
-            } else {
-                ""
-            };
-            return Err(format!(
-                "{name} has no argument {key}; it takes {}{hint}",
-                takes.join(", ")
-            )
-            .into());
-        }
+    let tools = catalog_ref()["tools"].as_array().unwrap();
+    if !tools.iter().any(|tool| tool["name"] == name) {
+        return Err(format!("this Studio has no tool named {name}: it may be an older build than the MCP server; restart Studio after updating Veylvik").into());
     }
-    for key in descriptor["inputSchema"]["required"].as_array().unwrap() {
-        if !object.contains_key(key.as_str().unwrap()) {
-            return Err(format!("missing argument {key}").into());
+    // The headless server takes a time on these; here they show Studio's viewer.
+    let hint = |key: &str| {
+        if matches!(key, "ticks" | "rate") && matches!(name, "preview_image" | "measure" | "render")
+        {
+            ". The live server works on Studio's own viewer: call preview with frame (and node) first, then this tool without a time (render takes frame)".to_string()
+        } else {
+            String::new()
         }
-    }
+    };
+    veylvik_presets::tools::check(tools, name, args, &hint)?;
     Ok(())
 }
 pub fn call(
@@ -58,9 +36,6 @@ pub fn call(
     }
     if let Some(result) = studio.live_files(name, args)? {
         return Ok(result);
-    }
-    if name == "nodes" {
-        return Ok(veylvik_document::registry::catalog());
     }
     if name == "diagnostics" {
         return Ok(
@@ -94,24 +69,16 @@ pub fn call(
         }
         return Ok(result);
     }
-    if matches!(name, "graph" | "get_node") {
-        let mut result = read_graph(project.document.snapshot(), name, args)?;
+    if let Some(mut result) = veylvik_presets::tools::read(project.document.snapshot(), name, args)?
+    {
         result["session"] = json!(project.session);
         result["revision"] = json!(project.document.revision());
         return Ok(result);
     }
     if name == "materials" {
-        return veylvik_io::materials::library(&veylvik_io::materials::directory()?);
-    }
-    if name == "get_preset" {
-        let preset = veylvik_document::presets::read(
-            project.document.snapshot(),
-            args.get("group"),
-            args.get("starter"),
-        )?;
-        return Ok(
-            json!({"session":project.session,"revision":project.document.revision(),"preset":preset}),
-        );
+        return Ok(veylvik_presets::tools::Host::materials(&Live {
+            graph: None,
+        })?);
     }
     let (session, revision) = identity(project, args)?;
     if studio.files.busy()
@@ -130,31 +97,55 @@ pub fn call(
         return Err("Apply or revert the inspector draft before live edits".into());
     }
     let mut response = None;
-    let authored = if name == "stand_on_ground" {
-        let (commands, result) =
-            veylvik_io::placing::stand(studio.project.document.snapshot(), args)?;
-        Some(veylvik_presets::authoring::Authored { commands, result })
-    } else {
-        veylvik_presets::authoring::build(studio.project.document.snapshot(), name, args)?
-    };
-    if let Some(authored) = authored {
-        let mut result = authored.result;
+    if name == "apply" {
+        // Live only: the editor must already hold every picture the commands name.
+        let commands: Vec<Command> = serde_json::from_value(args["commands"].clone())?;
+        let candidate = studio.project.document.prepare(revision, &commands)?;
+        let known: std::collections::BTreeSet<_> = studio
+            .project
+            .document
+            .snapshot()
+            .nodes
+            .values()
+            .filter_map(|node| node.operation.asset())
+            .collect();
+        for node in candidate.nodes.values() {
+            if let Some(asset) = node.operation.asset()
+                && !studio.project.inputs.contains_key(asset)
+                && !known.contains(asset)
+            {
+                return Err(format!(
+                    "image asset is not known to the editor: {asset}; import it first"
+                )
+                .into());
+            }
+        }
+    }
+    let edit = veylvik_presets::tools::edit(
+        studio.project.document.snapshot(),
+        revision,
+        name,
+        args,
+        &mut Live {
+            graph: Some(&mut studio.graph),
+        },
+    )?;
+    if let Some(edit) = edit {
+        let focus = edit.focus;
+        let mut result =
+            veylvik_presets::tools::commit(&mut Opened(&mut studio.project), edit, dry_run)?;
         result["session"] = json!(session);
-        result["dry_run"] = json!(dry_run);
         if dry_run {
-            studio
-                .project
-                .document
-                .prepare(revision, &authored.commands)?;
-            result["revision"] = json!(revision);
             return Ok(result);
         }
-        studio.project.apply(&authored.commands)?;
-        result["revision"] = json!(studio.project.document.revision());
+        if let Some(focus) = focus {
+            studio.project.selected = focus;
+            studio.project.preview = Some(focus);
+        }
         response = Some(result);
     }
     match name {
-        "add_node" | "gold_title" | "particle_look" | "stand_on_ground" | "surround_lights" => {}
+        _ if response.is_some() => {}
         "match_shot" => {
             let node = |name: &str| -> Result<Option<NodeId>> {
                 args.get(name)
@@ -176,140 +167,6 @@ pub fn call(
             }
             studio.live_match_shot(render, node("light")?, ctx)?;
             return Ok(json!({"session":session,"started":true}));
-        }
-        "insert_preset" => {
-            let preset: veylvik_document::presets::Preset =
-                serde_json::from_value(args["preset"].clone())?;
-            let inputs = serde_json::from_value(args["inputs"].clone())?;
-            let position = args
-                .get("position")
-                .map(|v| serde_json::from_value(v.clone()))
-                .transpose()?
-                .flatten();
-            let instance = preset.instantiate_sized(
-                studio.project.document.snapshot(),
-                &inputs,
-                position,
-                args.get("sizing")
-                    .map(|v| serde_json::from_value(v.clone()))
-                    .transpose()?
-                    .unwrap_or_default(),
-            )?;
-            let mut result = json!({"session":session,"revision":revision,"group":instance.group,"root":instance.output,"dry_run":dry_run,"valid":true});
-            if dry_run {
-                return Ok(result);
-            }
-            studio.project.apply(&instance.commands)?;
-            studio.project.selected = instance.output;
-            studio.project.preview = Some(instance.output);
-            result["revision"] = json!(studio.project.document.revision());
-            response = Some(result);
-        }
-        "apply_material" => {
-            let target = args["target"]
-                .as_str()
-                .ok_or("target must be a UUID")?
-                .parse()?;
-            let commands = veylvik_io::materials::apply(
-                studio.project.document.snapshot(),
-                target,
-                args["material"]
-                    .as_str()
-                    .ok_or("material must be a string")?,
-                &veylvik_io::materials::directory()?,
-            )?;
-            if dry_run {
-                studio.project.document.prepare(revision, &commands)?;
-                return Ok(
-                    json!({"session":session,"revision":revision,"dry_run":true,"valid":true}),
-                );
-            }
-            studio.project.apply(&commands)?;
-            studio.project.selected = target;
-            studio.project.preview = Some(target);
-            response = Some(
-                json!({"session":session,"revision":studio.project.document.revision(),"dry_run":false,"changed_nodes":commands.len()}),
-            );
-        }
-        "add_effect" => {
-            let input = args["input"]
-                .as_str()
-                .ok_or("input must be a UUID")?
-                .parse()?;
-            let recipe: veylvik_document::recipes::Recipe =
-                serde_json::from_value(args["recipe"].clone())?;
-            let mut effect = recipe.build(studio.project.document.snapshot(), input)?;
-            studio.graph.place_effect(
-                studio.project.document.snapshot(),
-                revision,
-                input,
-                &mut effect,
-                None,
-            )?;
-            let mut result = json!({"session":session,"revision":revision,"root":effect.root,"roles":effect.roles,"added_nodes":effect.nodes.len(),"recipe":recipe,"dry_run":dry_run,"valid":true});
-            if dry_run {
-                studio.project.document.prepare(
-                    revision,
-                    &effect.into_grouped_commands(studio.project.document.snapshot())?,
-                )?;
-                return Ok(result);
-            }
-            studio.project.insert_effect(effect)?;
-            result["revision"] = json!(studio.project.document.revision());
-            response = Some(result);
-        }
-        "duplicate_branch" => {
-            let root = args["node"]
-                .as_str()
-                .ok_or("node must be a UUID")?
-                .parse()?;
-            let mut copy =
-                veylvik_document::editing::copy_branch(studio.project.document.snapshot(), root)?;
-            studio.graph.place_branch_copy(
-                studio.project.document.snapshot(),
-                revision,
-                &mut copy,
-            )?;
-            let mut result = json!({"session":session,"revision":revision,"root":copy.root,"mapping":copy.mapping,"copied_nodes":copy.nodes.len(),"dry_run":dry_run,"valid":true});
-            if dry_run {
-                studio
-                    .project
-                    .document
-                    .prepare(revision, &copy.into_commands())?;
-                return Ok(result);
-            }
-            studio.project.insert_branch(copy)?;
-            result["revision"] = json!(studio.project.document.revision());
-            response = Some(result);
-        }
-        "apply" => {
-            let commands: Vec<Command> = serde_json::from_value(args["commands"].clone())?;
-            let candidate = studio.project.document.prepare(revision, &commands)?;
-            let known: std::collections::BTreeSet<_> = studio
-                .project
-                .document
-                .snapshot()
-                .nodes
-                .values()
-                .filter_map(|node| node.operation.asset())
-                .collect();
-            for node in candidate.nodes.values() {
-                if let Some(asset) = node.operation.asset()
-                    && !studio.project.inputs.contains_key(asset)
-                    && !known.contains(asset)
-                {
-                    return Err(format!(
-                        "image asset is not known to the editor: {asset}; import it first"
-                    )
-                    .into());
-                }
-            }
-            if dry_run {
-                return Ok(
-                    json!({"session":session,"revision":revision,"valid":true,"candidate":candidate}),
-                );
-            }
-            studio.project.apply(&commands)?;
         }
         "undo" => studio.project.undo(false)?,
         "redo" => studio.project.undo(true)?,
@@ -347,29 +204,6 @@ pub fn call(
             .unwrap_or(studio.project.document.snapshot().output)
     );
     Ok(result)
-}
-
-fn read_graph(document: &veylvik_document::Composition, name: &str, args: &Value) -> Result<Value> {
-    if name == "graph" {
-        let offset = args
-            .get("offset")
-            .map(|value| value.as_u64().ok_or("offset must be an unsigned integer"))
-            .transpose()?
-            .unwrap_or(0);
-        let limit = args
-            .get("limit")
-            .map(|value| value.as_u64().ok_or("limit must be an unsigned integer"))
-            .transpose()?
-            .unwrap_or(32);
-        Ok(veylvik_document::inspection::page(document, offset, limit)?)
-    } else {
-        let id = args["id"].as_str().ok_or("id must be a UUID")?.parse()?;
-        let parameter = args
-            .get("parameter")
-            .map(|value| value.as_str().ok_or("parameter must be a string"))
-            .transpose()?;
-        Ok(veylvik_document::inspection::node(document, id, parameter)?)
-    }
 }
 
 pub(crate) fn identity(project: &crate::project::Project, args: &Value) -> Result<(NodeId, u64)> {
@@ -584,5 +418,84 @@ fn project_files(
                 json!({"started": studio.files.busy(), "previous_session": previous}),
             ))
         }
+    }
+}
+
+/// The live editor's own parts of the shared tools: the user's material library and
+/// ground placement, and new effects and copies laid out in Studio's graph.
+struct Live<'a> {
+    graph: Option<&'a mut crate::graph::Graph>,
+}
+impl veylvik_presets::tools::Host for Live<'_> {
+    fn materials(&self) -> veylvik_document::Result<Value> {
+        veylvik_io::materials::directory()
+            .and_then(|dir| veylvik_io::materials::library(&dir))
+            .map_err(|e| veylvik_document::Error(e.to_string()))
+    }
+    fn material(
+        &self,
+        document: &veylvik_document::Composition,
+        target: NodeId,
+        material: &str,
+    ) -> veylvik_document::Result<Vec<Command>> {
+        veylvik_io::materials::directory()
+            .and_then(|dir| veylvik_io::materials::apply(document, target, material, &dir))
+            .map_err(|e| veylvik_document::Error(e.to_string()))
+    }
+    fn stand(
+        &self,
+        document: &veylvik_document::Composition,
+        args: &Value,
+    ) -> veylvik_document::Result<(Vec<Command>, Value)> {
+        veylvik_io::placing::stand(document, args)
+            .map_err(|e| veylvik_document::Error(e.to_string()))
+    }
+    fn place_effect(
+        &mut self,
+        document: &veylvik_document::Composition,
+        revision: u64,
+        input: NodeId,
+        effect: &mut veylvik_document::recipes::Effect,
+    ) -> veylvik_document::Result<()> {
+        match self.graph.as_deref_mut() {
+            Some(graph) => graph
+                .place_effect(document, revision, input, effect, None)
+                .map_err(|e| veylvik_document::Error(e.to_string())),
+            None => Ok(()),
+        }
+    }
+    fn place_copy(
+        &mut self,
+        document: &veylvik_document::Composition,
+        revision: u64,
+        copy: &mut veylvik_document::editing::BranchCopy,
+    ) -> veylvik_document::Result<()> {
+        match self.graph.as_deref_mut() {
+            Some(graph) => graph
+                .place_branch_copy(document, revision, copy)
+                .map_err(|e| veylvik_document::Error(e.to_string())),
+            None => Ok(()),
+        }
+    }
+}
+/// The open project as the shared tools' target: applying goes through the project, so
+/// its media are reconciled as for every edit.
+struct Opened<'a>(&'a mut crate::project::Project);
+impl veylvik_presets::tools::Target for Opened<'_> {
+    fn revision(&self) -> u64 {
+        self.0.document.revision()
+    }
+    fn prepare(
+        &self,
+        commands: &[Command],
+    ) -> veylvik_document::Result<veylvik_document::Composition> {
+        self.0
+            .document
+            .prepare(self.0.document.revision(), commands)
+    }
+    fn apply(&mut self, commands: &[Command]) -> veylvik_document::Result<()> {
+        self.0
+            .apply(commands)
+            .map_err(|e| veylvik_document::Error(e.to_string()))
     }
 }
