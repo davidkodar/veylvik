@@ -3,375 +3,204 @@ use crate::{Result, error};
 use std::collections::{BTreeMap, BTreeSet};
 use veylvik_document::{CompiledScalar, Composition, Node, NodeId, Operation};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum Kernel {
+/// Every kernel on one line: the variant, its entry point in the WGSL, how its threads
+/// are laid out when it runs, and whether it is a compute program of its own (`program`)
+/// or work done another way (`none`: the 3D renderer, the effect host, a node's own code).
+macro_rules! kernels {
+    ($($(#[$doc:meta])* $variant:ident => $entry:literal, $dispatch:ident, $kind:ident;)+) => {
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize)]
+        #[serde(rename_all = "snake_case")]
+        pub enum Kernel {
+            $($(#[$doc])* $variant,)+
+        }
+        impl Kernel {
+            /// Every kernel, in table order.
+            const EVERY: &'static [Self] = &[$(Self::$variant),+];
+            pub(crate) fn entry(self) -> &'static str {
+                match self { $(Self::$variant => $entry),+ }
+            }
+            /// How the kernel's threads are laid out when it runs: the one answer both
+            /// the pass loop's dispatch and area dispatch read.
+            pub(crate) fn dispatch(self) -> Dispatch {
+                match self { $(Self::$variant => Dispatch::$dispatch),+ }
+            }
+            /// Whether it is a compute program of its own, compiled from the WGSL.
+            pub(crate) fn is_program(self) -> bool {
+                match self { $(Self::$variant => kernels!(@program $kind)),+ }
+            }
+        }
+    };
+    (@program program) => { true };
+    (@program none) => { false };
+}
+kernels! {
     /// A Render scene node, drawn by the registered scene renderer, not a compute kernel.
-    RenderScene,
+    RenderScene => "render_scene", Special, none;
     /// Depth maps of a scene for particles it lights: made by the 3D renderer, as Render
-    /// scene is (not in `ALL`: no program of its own).
-    ParticleShadows,
+    /// scene is (no program of its own).
+    ParticleShadows => "particle_shadows", Special, none;
     /// Where a flock's particles are at the frame, simulated by the renderer over many
-    /// steps of the two kernels below (not in `ALL`: no program of its own).
-    ParticleSimulation,
+    /// steps of the two kernels below (no program of its own).
+    ParticleSimulation => "particle_simulation", Special, none;
     /// A node computed outside the renderer by the registered effect host (an OpenFX
-    /// plugin), not a compute kernel (not in `ALL`).
-    External,
+    /// plugin), not a compute kernel.
+    External => "external", Special, none;
     /// A custom shader node: its pipeline is compiled from the node's code.
-    Custom,
-    ToAcescg,
-    FromAcescg,
-    Text,
-    Solid,
-    Noise,
-    FractalNoise,
-    Fire,
-    Dust,
-    DripRoots,
-    Drip,
-    Atmosphere,
-    Material,
-    Condensation,
-    Patina,
-    MaterialLayers,
-    GlintSeeds,
-    SunGlints,
-    Glass,
-    SurfaceReflection,
-    MetallicShine,
-    Exposure,
-    ColorCorrect,
-    Fade,
-    ChromaKey,
-    LumaKey,
-    Transform,
-    Displace,
-    MorphologyHorizontal,
-    MorphologyVertical,
-    Shadow,
-    ContactShadow,
-    BlurHorizontal,
-    BlurVertical,
-    GrainNoiseHorizontal,
-    GrainApply,
-    LensDistortion,
-    LensDepthPrefilterHorizontal,
-    LensDepthPrefilterVertical,
-    LensDepthBlur,
-    BloomBright,
-    BloomTightHorizontal,
-    BloomTightVertical,
-    BloomWideDown,
-    BloomWideCellsHorizontal,
-    BloomWideCellsVertical,
-    BloomStreakDown,
-    BloomStreakCellsHorizontal,
-    BloomStreakCellsVertical,
-    BloomCombine,
-    LightWrapCombine,
-    ChromaMatte,
-    KeyShrinkHorizontal,
-    KeyShrinkVertical,
-    KeySoftenHorizontal,
-    KeySoftenVertical,
-    ChromaApply,
-    ZoomBlur,
-    OwnSizeFit,
-    OwnSizeStretch,
-    GridWarp,
-    ParticlePrepare,
-    ParticleFields,
-    ParticleSplat,
-    ParticleResolve,
-    ParticlePositions,
-    ParticleLinks,
-    ParticleFlockGrid,
-    ParticleStep,
-    ParticleInstances,
-    LensPrefilterHorizontal,
-    LensPrefilterVertical,
-    LensBlur,
-    BevelHeightHorizontal,
-    BevelHeightVertical,
-    EnvironmentPyramid,
-    FrostHorizontal,
-    FrostVertical,
-    TexturePack,
-    SurfaceMaps,
-    Merge,
-    Blend,
-    SurfaceBlend,
-    Image,
-    Affine,
-    PlanarWarp,
-    Ellipse,
-    Rectangle,
-    Repeat,
-    Mask,
-    CombineMask,
-    ChannelMask,
-    Colorize,
-    Gradient,
-    MattePack,
-    KnownSubject,
-    KnownBackground,
-    MatteBoxHorizontal,
-    MatteBoxVertical,
-    MatteProject,
-    MatteJoin,
-    FuseForeground,
-    FuseBackground,
-    FuseBoxHorizontal,
-    FuseBoxVertical,
-    FuseEstimate,
-    FuseFinish,
-    Lut,
+    Custom => "custom", Frame, none;
+    ToAcescg => "to_acescg", Area, program;
+    FromAcescg => "from_acescg", Area, program;
+    Text => "text_image", Area, program;
+    Solid => "solid", Area, program;
+    Noise => "noise", Area, program;
+    FractalNoise => "fractal_noise", Area, program;
+    Fire => "fire", Area, program;
+    Dust => "dust", Area, program;
+    DripRoots => "drip_roots", Area, program;
+    Drip => "drip", Area, program;
+    Atmosphere => "atmosphere", Area, program;
+    Material => "material", Area, program;
+    Condensation => "condensation", Area, program;
+    Patina => "patina", Area, program;
+    MaterialLayers => "material_layers", Area, program;
+    GlintSeeds => "glint_seeds", GlintCells, program;
+    SunGlints => "sun_glints", Area, program;
+    Glass => "glass", Area, program;
+    SurfaceReflection => "surface_reflection", Area, program;
+    MetallicShine => "metallic_shine", Area, program;
+    Exposure => "exposure", Area, program;
+    ColorCorrect => "color_correct", Area, program;
+    Fade => "fade", Area, program;
+    ChromaKey => "chroma_key", Area, program;
+    LumaKey => "luma_key", Area, program;
+    Transform => "transform", Area, program;
+    Displace => "displace", Area, program;
+    MorphologyHorizontal => "morphology_horizontal", Area, program;
+    MorphologyVertical => "morphology_vertical", Area, program;
+    Shadow => "shadow", Area, program;
+    ContactShadow => "contact_shadow", Area, program;
+    BlurHorizontal => "blur_horizontal", Rows, program;
+    BlurVertical => "blur_vertical", Area, program;
+    GrainNoiseHorizontal => "grain_noise_horizontal", Rows, program;
+    GrainApply => "grain_apply", Area, program;
+    LensDistortion => "lens_distortion", Area, program;
+    LensDepthPrefilterHorizontal => "lens_depth_prefilter_horizontal", Area, program;
+    LensDepthPrefilterVertical => "lens_depth_prefilter_vertical", Area, program;
+    LensDepthBlur => "lens_depth_blur", Area, program;
+    BloomBright => "bloom_bright", Area, program;
+    BloomTightHorizontal => "bloom_tight_horizontal", Area, program;
+    BloomTightVertical => "bloom_tight_vertical", Area, program;
+    BloomWideDown => "bloom_wide_down", Area, program;
+    BloomWideCellsHorizontal => "bloom_wide_cells_horizontal", Area, program;
+    BloomWideCellsVertical => "bloom_wide_cells_vertical", Area, program;
+    BloomStreakDown => "bloom_streak_down", Area, program;
+    BloomStreakCellsHorizontal => "bloom_streak_cells_horizontal", Area, program;
+    BloomStreakCellsVertical => "bloom_streak_cells_vertical", Area, program;
+    BloomCombine => "bloom_combine", Area, program;
+    LightWrapCombine => "light_wrap_combine", Area, program;
+    ChromaMatte => "chroma_matte", Area, program;
+    KeyShrinkHorizontal => "key_shrink_horizontal", Area, program;
+    KeyShrinkVertical => "key_shrink_vertical", Area, program;
+    KeySoftenHorizontal => "key_soften_horizontal", Area, program;
+    KeySoftenVertical => "key_soften_vertical", Area, program;
+    ChromaApply => "chroma_apply", Area, program;
+    ZoomBlur => "zoom_blur", Area, program;
+    OwnSizeFit => "own_size_fit", Area, program;
+    OwnSizeStretch => "own_size_stretch", Area, program;
+    GridWarp => "grid_warp", Area, program;
+    ParticlePrepare => "particle_prepare", Frame, program;
+    ParticleFields => "particle_fields", Frame, program;
+    ParticleSplat => "particle_splat", Particles, program;
+    ParticleResolve => "particle_resolve", Frame, program;
+    ParticlePositions => "particle_positions", Linked, program;
+    ParticleLinks => "particle_links", Linked, program;
+    ParticleFlockGrid => "particle_flock_grid", Frame, program;
+    ParticleStep => "particle_step", Frame, program;
+    ParticleInstances => "particle_instances", Frame, program;
+    LensPrefilterHorizontal => "lens_prefilter_horizontal", Area, program;
+    LensPrefilterVertical => "lens_prefilter_vertical", Area, program;
+    LensBlur => "lens_blur", Area, program;
+    BevelHeightHorizontal => "bevel_height_horizontal", Area, program;
+    BevelHeightVertical => "bevel_height_vertical", Area, program;
+    EnvironmentPyramid => "environment_pyramid", Area, program;
+    FrostHorizontal => "frost_horizontal", Rows, program;
+    FrostVertical => "frost_vertical", Area, program;
+    TexturePack => "texture_pack", Area, program;
+    SurfaceMaps => "surface_maps", Area, program;
+    Merge => "merge", Area, program;
+    Blend => "blend", Area, program;
+    SurfaceBlend => "surface_blend", Area, program;
+    Image => "image", Area, program;
+    Affine => "affine", Area, program;
+    PlanarWarp => "planar_warp", Area, program;
+    Ellipse => "ellipse", Area, program;
+    Rectangle => "rectangle", Area, program;
+    Repeat => "repeat", Area, program;
+    Mask => "mask", Area, program;
+    CombineMask => "combine_mask", Area, program;
+    ChannelMask => "channel_mask", Area, program;
+    Colorize => "colorize", Area, program;
+    Gradient => "gradient", Area, program;
+    MattePack => "matte_pack", Area, program;
+    KnownSubject => "known_subject", Area, program;
+    KnownBackground => "known_background", Area, program;
+    MatteBoxHorizontal => "matte_box_horizontal", Area, program;
+    MatteBoxVertical => "matte_box_vertical", Area, program;
+    MatteProject => "matte_project", Area, program;
+    MatteJoin => "matte_join", Area, program;
+    FuseForeground => "fuse_foreground", Area, program;
+    FuseBackground => "fuse_background", Area, program;
+    FuseBoxHorizontal => "fuse_box_horizontal", Area, program;
+    FuseBoxVertical => "fuse_box_vertical", Area, program;
+    FuseEstimate => "fuse_estimate", Area, program;
+    FuseFinish => "fuse_finish", Area, program;
+    Lut => "lut", Area, program;
+}
+#[cfg(test)]
+mod kernel_table_tests {
+    use super::*;
+    /// Every WGSL file a kernel program can come from.
+    const SOURCES: &[&str] = &[
+        include_str!("kernels.wgsl"),
+        include_str!("environment.wgsl"),
+        include_str!("working_space.wgsl"),
+        include_str!("matte.wgsl"),
+        include_str!("keyer.wgsl"),
+        include_str!("grain.wgsl"),
+        include_str!("lens.wgsl"),
+        include_str!("lens_depth.wgsl"),
+        include_str!("bloom.wgsl"),
+        include_str!("warp.wgsl"),
+        include_str!("lut.wgsl"),
+        include_str!("shadow.wgsl"),
+        include_str!("particles.wgsl"),
+        include_str!("material_layers.wgsl"),
+        include_str!("particle_system.wgsl"),
+        include_str!("particle_solids.wgsl"),
+        include_str!("particle_flock.wgsl"),
+        include_str!("particle_instances.wgsl"),
+    ];
+    #[test]
+    fn every_kernel_program_names_an_entry_point_the_wgsl_has() {
+        let missing: Vec<&str> = Kernel::programs()
+            .map(Kernel::entry)
+            .filter(|entry| {
+                let declared = format!("fn {entry}(");
+                !SOURCES.iter().any(|source| source.contains(&declared))
+            })
+            .collect();
+        assert!(missing.is_empty(), "no such entry point: {missing:?}");
+        // Entry points are distinct, so no two kernels run the same program by mistake.
+        let mut entries: Vec<&str> = Kernel::EVERY.iter().map(|k| k.entry()).collect();
+        entries.sort_unstable();
+        let count = entries.len();
+        entries.dedup();
+        assert_eq!(entries.len(), count);
+    }
 }
 impl Kernel {
-    pub(crate) const ALL: [Self; 107] = [
-        Self::ToAcescg,
-        Self::FromAcescg,
-        Self::Text,
-        Self::Solid,
-        Self::Noise,
-        Self::FractalNoise,
-        Self::Fire,
-        Self::Dust,
-        Self::DripRoots,
-        Self::Drip,
-        Self::Atmosphere,
-        Self::Material,
-        Self::Condensation,
-        Self::Patina,
-        Self::MaterialLayers,
-        Self::GlintSeeds,
-        Self::SunGlints,
-        Self::Glass,
-        Self::SurfaceReflection,
-        Self::MetallicShine,
-        Self::Exposure,
-        Self::ColorCorrect,
-        Self::Fade,
-        Self::ChromaKey,
-        Self::LumaKey,
-        Self::Transform,
-        Self::Displace,
-        Self::MorphologyHorizontal,
-        Self::MorphologyVertical,
-        Self::Shadow,
-        Self::ContactShadow,
-        Self::BlurHorizontal,
-        Self::BlurVertical,
-        Self::GrainNoiseHorizontal,
-        Self::GrainApply,
-        Self::LensDistortion,
-        Self::LensDepthPrefilterHorizontal,
-        Self::LensDepthPrefilterVertical,
-        Self::LensDepthBlur,
-        Self::BloomBright,
-        Self::BloomTightHorizontal,
-        Self::BloomTightVertical,
-        Self::BloomWideDown,
-        Self::BloomWideCellsHorizontal,
-        Self::BloomWideCellsVertical,
-        Self::BloomStreakDown,
-        Self::BloomStreakCellsHorizontal,
-        Self::BloomStreakCellsVertical,
-        Self::BloomCombine,
-        Self::LightWrapCombine,
-        Self::ChromaMatte,
-        Self::KeyShrinkHorizontal,
-        Self::KeyShrinkVertical,
-        Self::KeySoftenHorizontal,
-        Self::KeySoftenVertical,
-        Self::ChromaApply,
-        Self::ZoomBlur,
-        Self::OwnSizeFit,
-        Self::OwnSizeStretch,
-        Self::GridWarp,
-        Self::ParticlePrepare,
-        Self::ParticleFields,
-        Self::ParticleSplat,
-        Self::ParticleResolve,
-        Self::ParticlePositions,
-        Self::ParticleLinks,
-        Self::ParticleFlockGrid,
-        Self::ParticleStep,
-        Self::ParticleInstances,
-        Self::LensPrefilterHorizontal,
-        Self::LensPrefilterVertical,
-        Self::LensBlur,
-        Self::BevelHeightHorizontal,
-        Self::BevelHeightVertical,
-        Self::EnvironmentPyramid,
-        Self::FrostHorizontal,
-        Self::FrostVertical,
-        Self::TexturePack,
-        Self::SurfaceMaps,
-        Self::Merge,
-        Self::Blend,
-        Self::SurfaceBlend,
-        Self::Image,
-        Self::Affine,
-        Self::PlanarWarp,
-        Self::Ellipse,
-        Self::Rectangle,
-        Self::Repeat,
-        Self::Mask,
-        Self::CombineMask,
-        Self::ChannelMask,
-        Self::Colorize,
-        Self::Gradient,
-        Self::MattePack,
-        Self::KnownSubject,
-        Self::KnownBackground,
-        Self::MatteBoxHorizontal,
-        Self::MatteBoxVertical,
-        Self::MatteProject,
-        Self::MatteJoin,
-        Self::FuseForeground,
-        Self::FuseBackground,
-        Self::FuseBoxHorizontal,
-        Self::FuseBoxVertical,
-        Self::FuseEstimate,
-        Self::FuseFinish,
-        Self::Lut,
-    ];
-    /// How the kernel's threads are laid out when it runs: the one answer both the pass
-    /// loop's dispatch and area dispatch read.
-    pub(crate) fn dispatch(self) -> Dispatch {
-        match self {
-            Self::ParticleSplat => Dispatch::Particles,
-            Self::ParticlePositions | Self::ParticleLinks => Dispatch::Linked,
-            Self::GlintSeeds => Dispatch::GlintCells,
-            Self::BlurHorizontal | Self::FrostHorizontal | Self::GrainNoiseHorizontal => {
-                Dispatch::Rows
-            }
-            Self::RenderScene
-            | Self::External
-            | Self::ParticleShadows
-            | Self::ParticleSimulation => Dispatch::Special,
-            // A custom shader may read anywhere; particle kernels lay out their own data.
-            Self::Custom => Dispatch::Frame,
-            kernel if kernel.entry().starts_with("particle_") => Dispatch::Frame,
-            _ => Dispatch::Area,
-        }
-    }
-    pub(crate) fn entry(self) -> &'static str {
-        match self {
-            Self::RenderScene => "render_scene",
-            Self::ParticleShadows => "particle_shadows",
-            Self::ParticleSimulation => "particle_simulation",
-            Self::External => "external",
-            Self::ParticleFlockGrid => "particle_flock_grid",
-            Self::ParticleStep => "particle_step",
-            Self::ParticleInstances => "particle_instances",
-            Self::Custom => "custom",
-            Self::ToAcescg => "to_acescg",
-            Self::FromAcescg => "from_acescg",
-            Self::Text => "text_image",
-            Self::Solid => "solid",
-            Self::Fire => "fire",
-            Self::Dust => "dust",
-            Self::DripRoots => "drip_roots",
-            Self::Drip => "drip",
-            Self::Atmosphere => "atmosphere",
-            Self::Material => "material",
-            Self::Condensation => "condensation",
-            Self::Patina => "patina",
-            Self::MaterialLayers => "material_layers",
-            Self::GlintSeeds => "glint_seeds",
-            Self::SunGlints => "sun_glints",
-            Self::Glass => "glass",
-            Self::SurfaceReflection => "surface_reflection",
-            Self::MetallicShine => "metallic_shine",
-            Self::FractalNoise => "fractal_noise",
-            Self::Noise => "noise",
-            Self::Exposure => "exposure",
-            Self::ColorCorrect => "color_correct",
-            Self::Fade => "fade",
-            Self::ChromaKey => "chroma_key",
-            Self::LumaKey => "luma_key",
-            Self::Displace => "displace",
-            Self::Transform => "transform",
-            Self::MorphologyHorizontal => "morphology_horizontal",
-            Self::MorphologyVertical => "morphology_vertical",
-            Self::Shadow => "shadow",
-            Self::ContactShadow => "contact_shadow",
-            Self::BlurHorizontal => "blur_horizontal",
-            Self::BlurVertical => "blur_vertical",
-            Self::GrainNoiseHorizontal => "grain_noise_horizontal",
-            Self::GrainApply => "grain_apply",
-            Self::LensDistortion => "lens_distortion",
-            Self::LensDepthPrefilterHorizontal => "lens_depth_prefilter_horizontal",
-            Self::LensDepthPrefilterVertical => "lens_depth_prefilter_vertical",
-            Self::LensDepthBlur => "lens_depth_blur",
-            Self::BloomBright => "bloom_bright",
-            Self::BloomTightHorizontal => "bloom_tight_horizontal",
-            Self::BloomTightVertical => "bloom_tight_vertical",
-            Self::BloomWideDown => "bloom_wide_down",
-            Self::BloomWideCellsHorizontal => "bloom_wide_cells_horizontal",
-            Self::BloomWideCellsVertical => "bloom_wide_cells_vertical",
-            Self::BloomStreakDown => "bloom_streak_down",
-            Self::BloomStreakCellsHorizontal => "bloom_streak_cells_horizontal",
-            Self::BloomStreakCellsVertical => "bloom_streak_cells_vertical",
-            Self::BloomCombine => "bloom_combine",
-            Self::LightWrapCombine => "light_wrap_combine",
-            Self::ChromaMatte => "chroma_matte",
-            Self::KeyShrinkHorizontal => "key_shrink_horizontal",
-            Self::KeyShrinkVertical => "key_shrink_vertical",
-            Self::KeySoftenHorizontal => "key_soften_horizontal",
-            Self::KeySoftenVertical => "key_soften_vertical",
-            Self::ChromaApply => "chroma_apply",
-            Self::ZoomBlur => "zoom_blur",
-            Self::OwnSizeFit => "own_size_fit",
-            Self::OwnSizeStretch => "own_size_stretch",
-            Self::GridWarp => "grid_warp",
-            Self::ParticlePrepare => "particle_prepare",
-            Self::ParticleFields => "particle_fields",
-            Self::ParticleSplat => "particle_splat",
-            Self::ParticleResolve => "particle_resolve",
-            Self::ParticlePositions => "particle_positions",
-            Self::ParticleLinks => "particle_links",
-            Self::LensPrefilterHorizontal => "lens_prefilter_horizontal",
-            Self::LensPrefilterVertical => "lens_prefilter_vertical",
-            Self::LensBlur => "lens_blur",
-            Self::BevelHeightHorizontal => "bevel_height_horizontal",
-            Self::BevelHeightVertical => "bevel_height_vertical",
-            Self::EnvironmentPyramid => "environment_pyramid",
-            Self::FrostHorizontal => "frost_horizontal",
-            Self::FrostVertical => "frost_vertical",
-            Self::TexturePack => "texture_pack",
-            Self::SurfaceMaps => "surface_maps",
-            Self::Merge => "merge",
-            Self::Blend => "blend",
-            Self::SurfaceBlend => "surface_blend",
-            Self::Image => "image",
-            Self::Affine => "affine",
-            Self::PlanarWarp => "planar_warp",
-            Self::Ellipse => "ellipse",
-            Self::Rectangle => "rectangle",
-            Self::Repeat => "repeat",
-            Self::ChannelMask => "channel_mask",
-            Self::Colorize => "colorize",
-            Self::Gradient => "gradient",
-            Self::MattePack => "matte_pack",
-            Self::KnownSubject => "known_subject",
-            Self::KnownBackground => "known_background",
-            Self::MatteBoxHorizontal => "matte_box_horizontal",
-            Self::MatteBoxVertical => "matte_box_vertical",
-            Self::MatteProject => "matte_project",
-            Self::MatteJoin => "matte_join",
-            Self::FuseForeground => "fuse_foreground",
-            Self::FuseBackground => "fuse_background",
-            Self::FuseBoxHorizontal => "fuse_box_horizontal",
-            Self::FuseBoxVertical => "fuse_box_vertical",
-            Self::FuseEstimate => "fuse_estimate",
-            Self::FuseFinish => "fuse_finish",
-            Self::Lut => "lut",
-            Self::CombineMask => "combine_mask",
-            Self::Mask => "mask",
-        }
+    /// The kernels with a compute program of their own, compiled ahead when asked.
+    pub(crate) fn programs() -> impl Iterator<Item = Self> {
+        Self::EVERY.iter().copied().filter(|k| k.is_program())
     }
 }
 #[derive(Clone, PartialEq)]

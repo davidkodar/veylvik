@@ -844,7 +844,7 @@ impl Renderer {
         {
             return Ok(pipeline.clone());
         }
-        if !Kernel::ALL.contains(&kernel) {
+        if !kernel.is_program() {
             return Err(error("kernel has no pipeline of its own"));
         }
         // Compiled with the list unlocked: a driver can take many seconds over one
@@ -907,7 +907,7 @@ impl Renderer {
         let scope = self.device.push_error_scope(wgpu::ErrorFilter::Validation);
         let built = kernels
             .into_iter()
-            .filter(|(kernel, _)| Kernel::ALL.contains(kernel))
+            .filter(|(kernel, _)| kernel.is_program())
             .map(|(kernel, features)| self.pipeline_for(kernel, features))
             .collect::<Result<Vec<_>>>();
         if let Some(e) = pollster::block_on(scope.pop()) {
@@ -921,8 +921,7 @@ impl Renderer {
     /// Compile every kernel now, so no later frame waits for one. Errors if any fails.
     pub fn compile_kernels(&self) -> Result<usize> {
         let scope = self.device.push_error_scope(wgpu::ErrorFilter::Validation);
-        let built = Kernel::ALL
-            .into_iter()
+        let built = Kernel::programs()
             .map(|kernel| self.pipeline(kernel))
             .collect::<Result<Vec<_>>>();
         if let Some(e) = pollster::block_on(scope.pop()) {

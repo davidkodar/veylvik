@@ -5,9 +5,12 @@ use veylvik_render::{ImageInputs, Plan, RenderRequest, Renderer};
 #[ignore = "requires Vulkan"]
 fn every_kernel_compiles() {
     let renderer = Renderer::new().unwrap();
-    assert!(renderer.compile_kernels().unwrap() >= 82);
+    // Every kernel with a program builds (an error otherwise); that every one is in the
+    // list is checked against the WGSL without a GPU (plan.rs).
+    let built = renderer.compile_kernels().unwrap();
+    assert!(built > 0);
     // A second call finds them all compiled.
-    assert!(renderer.compile_kernels().unwrap() >= 82);
+    assert_eq!(renderer.compile_kernels().unwrap(), built);
 }
 
 #[test]
