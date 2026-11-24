@@ -100,71 +100,8 @@ fn pass_words(
         let code = hasher.finish();
         words.extend([5, code as u32, (code >> 32) as u32]);
     }
-    if let veylvik_document::Operation::OfxEffect(effect) = &plan.nodes[pass.node].operation {
-        // Which plugin, how it is wired and its settings at this moment make its picture.
-        use std::hash::{Hash, Hasher};
-        let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        (
-            &effect.bundle,
-            &effect.plugin,
-            effect.context.name(),
-            &effect.clips,
-        )
-            .hash(&mut hasher);
-        for (name, value) in effect.values_at(request.time)? {
-            name.hash(&mut hasher);
-            match value {
-                veylvik_document::nodes::OfxValue::Numbers(n) => {
-                    n.iter().for_each(|v| v.to_bits().hash(&mut hasher))
-                }
-                veylvik_document::nodes::OfxValue::Text(t) => t.hash(&mut hasher),
-                veylvik_document::nodes::OfxValue::Curves(c) => c.iter().for_each(|curve| {
-                    curve
-                        .iter()
-                        .flatten()
-                        .for_each(|v| v.to_bits().hash(&mut hasher))
-                }),
-            }
-        }
-        let made = hasher.finish();
-        words.extend([8, made as u32, (made >> 32) as u32]);
-    }
-    if pass.kernel == crate::Kernel::ParticleSimulation {
-        // A flock at a frame is made of its whole path there: key all it depends on.
-        let key = crate::simulation::key(plan, pass.node);
-        words.extend([7, key as u32, (key >> 32) as u32]);
-    }
-    if pass.kernel == crate::Kernel::ParticleShadows {
-        // Depth maps of the scene the particles are lit in: key what it holds.
-        words.push(6);
-        words.extend(crate::scene_hook::scene_fingerprint(
-            plan,
-            pass.node,
-            request.time,
-        )?);
-    }
-    if pass.kernel == crate::Kernel::RenderScene {
-        // Scene nodes have no passes of their own: key what the scene shows.
-        words.extend(crate::scene_hook::fingerprint(
-            plan,
-            pass.node,
-            request.time,
-        )?);
-        if request.scene_reflections {
-            words.push(4);
-        }
-        if let Some(view) = request.scene_view {
-            words.push(3);
-            words.extend(view.world.iter().flatten().map(|v| v.to_bits()));
-            words.extend([view.focal_length.to_bits(), view.sensor_width.to_bits()]);
-        }
-        for (_, input) in &pass.cards {
-            if let Input::Value(slot) = input {
-                words.push(2);
-                value(*slot, words);
-            }
-        }
-    }
+    // What a special pass's picture is made of besides its node's settings.
+    crate::special::words(plan, pass, request, words, value)?;
     if let Some(lighting) =
         crate::shadow_lighting::for_node(&plan.nodes[pass.node], plan, request.time)?
     {

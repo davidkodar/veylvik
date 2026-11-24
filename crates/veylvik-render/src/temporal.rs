@@ -1,7 +1,6 @@
 //! Temporal boundaries resolve upstream branches independently, entirely on the GPU.
-use crate::{GpuFrame, ImageInputs, Plan, RenderRequest, Renderer, Result, Shutter, error};
+use crate::{GpuFrame, ImageInputs, Plan, RenderRequest, Renderer, Result, error};
 use std::sync::Arc;
-use veylvik_document::Operation;
 struct Work<'a> {
     remaining: u32,
     preview: bool,
@@ -30,7 +29,6 @@ impl Renderer {
             // What decides the branch besides its own pictures, then those pictures.
             let mut words: Vec<u32> = Vec::new();
             let mut lasting = true;
-            let mut transformed = false;
             let mut of = |time: veylvik_document::Time, words: &mut Vec<u32>, left: &mut u32| {
                 let key = self.key(
                     &branch.plan,
@@ -44,84 +42,19 @@ impl Renderer {
                 lasting &= key.portable();
                 Ok::<_, crate::Error>(())
             };
-            match &branch.operation {
-                Operation::MotionBlur(blur) => {
-                    let shutter = Shutter {
-                        angle: blur.angle.at(request.time)?,
-                        phase: blur.phase.at(request.time)?,
-                        samples: if preview {
-                            &blur.preview_samples
-                        } else {
-                            &blur.final_samples
-                        }
-                        .at(request.time)?
-                        .round() as u32,
-                        frame_rate: plan.frame_rate,
-                    };
-                    words.push(1);
-                    for time in shutter.sample_times(request.time)? {
-                        of(time, &mut words, left)?;
-                    }
+            let need = self.need(plan, branch, request.time, preview)?;
+            for part in need.name() {
+                match part {
+                    crate::moments::Part::Word(word) => words.push(word),
+                    crate::moments::Part::Moment(time) => of(time, &mut words, left)?,
                 }
-                Operation::TimeRemap(remap) => {
-                    words.push(2);
-                    of(remap.source_at(request.time)?, &mut words, left)?;
-                }
-                Operation::OpticalFlow(flow) => {
-                    let (first, second, fraction) = flow.source_pair(request.time)?;
-                    words.extend([
-                        3,
-                        fraction.to_bits(),
-                        flow.confidence.at(request.time)?.to_bits(),
-                        u32::from(flow.diagnostic),
-                        flow.quality as u32,
-                        u32::from(preview),
-                    ]);
-                    of(first, &mut words, left)?;
-                    if fraction != 0. || flow.diagnostic {
-                        of(second, &mut words, left)?;
-                    }
-                }
-                Operation::Ocio(node) => {
-                    words.push(4);
-                    let text = format!("{:?}", node.transform);
-                    let name = crate::fnv(text.as_bytes(), 0);
-                    words.extend([name as u32, (name >> 32) as u32]);
-                    of(request.time, &mut words, left)?;
-                    // The transform's own files are not part of this name.
-                    transformed = true;
-                }
-                Operation::Particles(particles) => {
-                    let grid = crate::history::grid(particles.history);
-                    words.extend([5, grid]);
-                    for time in crate::history::moments(
-                        request.time,
-                        particles.life.at(request.time)?,
-                        grid,
-                        plan.frame_rate,
-                    )? {
-                        of(time, &mut words, left)?;
-                    }
-                }
-                Operation::OfxEffect(effect) => {
-                    // Its own frame, then each other frame the plugin names.
-                    words.push(7);
-                    let others = self.ofx_other_frames(plan, &branch.key, effect, request.time)?;
-                    of(request.time, &mut words, left)?;
-                    for other in others {
-                        let bits = other.to_bits();
-                        words.extend([bits as u32, (bits >> 32) as u32]);
-                        of(time_of(other, plan.frame_rate)?, &mut words, left)?;
-                    }
-                }
-                Operation::OwnSize(_) => {
-                    words.push(6);
-                    of(request.time, &mut words, left)?;
-                    // A picture of its own size is no extra moment in time.
-                    *left = left.saturating_add(1);
-                }
-                _ => unreachable!("compiled temporal boundary"),
             }
+            // A picture of its own size is no extra moment in time.
+            if !need.counts() {
+                *left = left.saturating_add(1);
+            }
+            // The transform's own files are not part of an OCIO branch's name.
+            let transformed = !need.lasting();
             names.insert(
                 branch.key.clone(),
                 (
@@ -178,40 +111,25 @@ impl Renderer {
         }
         let mut resolved = inputs.clone();
         for branch in &plan.temporal {
-            let frame = match &branch.operation {
-                Operation::MotionBlur(blur) => {
-                    let shutter = Shutter {
-                        angle: blur.angle.at(request.time)?,
-                        phase: blur.phase.at(request.time)?,
-                        samples: if work.preview {
-                            &blur.preview_samples
-                        } else {
-                            &blur.final_samples
-                        }
-                        .at(request.time)?
-                        .round() as u32,
-                        frame_rate: plan.frame_rate,
-                    };
-                    self.sample_shutter(
-                        &branch.plan,
-                        RenderRequest::full(request.time),
-                        shutter,
-                        |time| {
-                            self.temporal_frame(
-                                &branch.plan,
-                                RenderRequest::full(time),
-                                inputs,
-                                work,
-                            )
-                        },
-                    )?
-                }
-                Operation::TimeRemap(remap) => {
-                    let time = remap.source_at(request.time)?;
+            use crate::moments::Need;
+            let frame = match self.need(plan, branch, request.time, work.preview)? {
+                Need::Shutter { shutter, .. } => self.sample_shutter(
+                    &branch.plan,
+                    RenderRequest::full(request.time),
+                    shutter,
+                    |time| {
+                        self.temporal_frame(&branch.plan, RenderRequest::full(time), inputs, work)
+                    },
+                )?,
+                Need::At(time) => {
                     self.temporal_frame(&branch.plan, RenderRequest::full(time), inputs, work)?
                 }
-                Operation::OpticalFlow(flow) => {
-                    let (first, second, fraction) = flow.source_pair(request.time)?;
+                Need::Flow {
+                    first,
+                    second,
+                    settings,
+                    ..
+                } => {
                     let previous = work.cache_sources;
                     work.cache_sources = true;
                     let a = self.temporal_frame(
@@ -220,72 +138,43 @@ impl Renderer {
                         inputs,
                         work,
                     )?;
-                    let b = if fraction == 0. && !flow.diagnostic {
-                        None
-                    } else {
-                        self.temporal_frame(
+                    let b = match second {
+                        Some(second) => self.temporal_frame(
                             &branch.plan,
                             RenderRequest::full(second),
                             inputs,
                             work,
-                        )?
+                        )?,
+                        None => None,
                     };
                     work.cache_sources = previous;
                     let Some(a) = a else {
                         return Ok(None);
                     };
-                    if fraction == 0. && !flow.diagnostic {
+                    if second.is_none() {
                         Some(a)
                     } else {
                         let Some(b) = b else {
                             return Ok(None);
                         };
-                        use veylvik_document::nodes::FlowQuality;
-                        let edge = match (flow.quality, work.preview) {
-                            (FlowQuality::Fast, _) => 512,
-                            (FlowQuality::Balanced, true) => 768,
-                            (FlowQuality::Fine, true) => 1024,
-                            (FlowQuality::Balanced, false) => 1024,
-                            (FlowQuality::Fine, false) => 1536,
-                        };
-                        let frame = self.interpolate_flow(
-                            &a,
-                            &b,
-                            crate::flow::FlowSettings {
-                                fraction,
-                                analysis_edge: edge,
-                                confidence: flow.confidence.at(request.time)?,
-                                diagnostic: flow.diagnostic,
-                            },
-                            &mut *work.cancelled,
-                        )?;
+                        let frame =
+                            self.interpolate_flow(&a, &b, settings, &mut *work.cancelled)?;
                         if let Some(report) = frame.as_ref().and_then(|frame| frame.flow_report) {
                             work.report = Some(report);
                         }
                         frame
                     }
                 }
-                Operation::Ocio(node) => {
-                    let Some(frame) = self.temporal_frame(
-                        &branch.plan,
-                        RenderRequest::full(request.time),
-                        inputs,
-                        work,
-                    )?
+                Need::Transformed { transform, time } => {
+                    let Some(frame) =
+                        self.temporal_frame(&branch.plan, RenderRequest::full(time), inputs, work)?
                     else {
                         return Ok(None);
                     };
-                    Some(self.ocio_transform(&node.transform, inputs, &frame)?)
+                    Some(self.ocio_transform(&transform, inputs, &frame)?)
                 }
-                Operation::Particles(particles) => {
+                Need::History { grid, times } => {
                     // The emitter at earlier moments, from the cache where it can be.
-                    let grid = crate::history::grid(particles.history);
-                    let times = crate::history::moments(
-                        request.time,
-                        particles.life.at(request.time)?,
-                        grid,
-                        plan.frame_rate,
-                    )?;
                     let previous = work.cache_sources;
                     work.cache_sources = true;
                     let atlas = self.pack_history(&branch.plan, grid, times, |time| {
@@ -294,28 +183,28 @@ impl Renderer {
                     work.cache_sources = previous;
                     atlas?
                 }
-                Operation::OwnSize(_) => {
+                Need::Resized(time) => {
                     // The branch at its own size, from the cache when nothing in it moved.
                     let previous = work.cache_sources;
                     work.cache_sources = true;
-                    let frame = self.temporal_frame(
-                        &branch.plan,
-                        RenderRequest::full(request.time),
-                        inputs,
-                        work,
-                    );
+                    let frame =
+                        self.temporal_frame(&branch.plan, RenderRequest::full(time), inputs, work);
                     work.cache_sources = previous;
                     // A picture of its own size is no extra moment in time: it does not
                     // use up the request's evaluations.
                     work.remaining = work.remaining.saturating_add(1);
                     frame?
                 }
-                Operation::OfxEffect(effect) => {
+                Need::Frames {
+                    node,
+                    port,
+                    now,
+                    others,
+                } => {
                     // The input at the frames the plugin names, then at its own.
                     let previous = work.cache_sources;
                     work.cache_sources = true;
-                    for other in self.ofx_other_frames(plan, &branch.key, effect, request.time)? {
-                        let at = time_of(other, plan.frame_rate)?;
+                    for (other, at) in others {
                         let Some(made) = self.temporal_frame(
                             &branch.plan,
                             RenderRequest::full(at),
@@ -326,32 +215,16 @@ impl Renderer {
                             work.cache_sources = previous;
                             return Ok(None);
                         };
-                        let port = branch.key.rsplit(':').next().unwrap_or_default();
-                        let id = plan
-                            .nodes
-                            .iter()
-                            .find(|n| {
-                                n.operation.descriptor().type_id == "ofx_effect"
-                                    && crate::plan::ofx_key(n.id, port) == branch.key
-                            })
-                            .map(|n| n.id);
-                        if let Some(id) = id {
-                            resolved.insert_gpu(
-                                crate::plan::ofx_frame_key(id, port, other),
-                                Arc::new(made),
-                            );
-                        }
+                        resolved.insert_gpu(
+                            crate::plan::ofx_frame_key(node, port, other),
+                            Arc::new(made),
+                        );
                     }
-                    let frame = self.temporal_frame(
-                        &branch.plan,
-                        RenderRequest::full(request.time),
-                        inputs,
-                        work,
-                    );
+                    let frame =
+                        self.temporal_frame(&branch.plan, RenderRequest::full(now), inputs, work);
                     work.cache_sources = previous;
                     frame?
                 }
-                _ => unreachable!("compiled temporal boundary"),
             };
             let Some(frame) = frame else {
                 return Ok(None);
@@ -367,19 +240,19 @@ impl Renderer {
 }
 
 impl Renderer {
-    /// The frames other than its own that an OpenFX effect needs of the input `branch`
-    /// feeds, asked of the effect host.
+    /// The frames other than its own that OpenFX effect `node` needs of the input at
+    /// `port`, asked of the effect host.
     pub(crate) fn ofx_other_frames(
         &self,
         plan: &Plan,
-        branch_key: &str,
+        node: veylvik_document::NodeId,
+        port: &str,
         effect: &veylvik_document::nodes::OfxEffect,
         time: veylvik_document::Time,
     ) -> Result<Vec<f64>> {
         let host = self.effect_host().ok_or_else(|| {
             error("OpenFX effects need the effect host, which this host has not loaded")
         })?;
-        let port = branch_key.rsplit(':').next().unwrap_or_default();
         let at = veylvik_document::nodes::OFX_PORTS
             .iter()
             .position(|p| *p == port);
@@ -387,22 +260,18 @@ impl Renderer {
             .and_then(|k| effect.clips.get(k))
             .cloned()
             .unwrap_or_default();
-        let now = frame_of(time, plan.frame_rate)?;
         // The clips the effect's wired ports feed.
-        let node = plan.nodes.iter().find(|n| {
-            veylvik_document::nodes::OFX_PORTS
-                .iter()
-                .any(|p| crate::plan::ofx_key(n.id, p) == branch_key)
-        });
-        let connected: Vec<&str> = match node {
-            Some(node) => veylvik_document::nodes::OFX_PORTS
+        let wired = plan.nodes.iter().find(|n| n.id == node);
+        let connected: Vec<&str> = match wired {
+            Some(wired) => veylvik_document::nodes::OFX_PORTS
                 .iter()
                 .zip(&effect.clips)
-                .filter(|(p, c)| !c.is_empty() && node.inputs.contains_key(**p))
+                .filter(|(p, c)| !c.is_empty() && wired.inputs.contains_key(**p))
                 .map(|(_, c)| c.as_str())
                 .collect(),
             None => vec![clip.as_str()],
         };
+        let now = frame_of(time, plan.frame_rate)?;
         let needed = host.frames_needed(crate::effect_hook::FramesJob {
             effect,
             connected,

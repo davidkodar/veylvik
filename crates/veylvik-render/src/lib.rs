@@ -38,10 +38,12 @@ mod results;
 pub use pipeline_cache::default_pipeline_folder;
 pub mod effect_hook;
 mod instances;
+mod moments;
 mod preview_scale;
 mod probe;
 mod scene_hook;
 mod simulation;
+mod special;
 pub use instances::Instances;
 pub use simulation::BakedFlock;
 /// How many particles a flock holds in a frame of this size (as a bake records them).
@@ -1354,262 +1356,25 @@ impl Renderer {
                 }
             }
             stale[scheduled.output] = false;
-            if scheduled.kernel == Kernel::ParticleSimulation {
-                // A flock's state at the frame, simulated up to it.
-                let bake = match &plan.nodes[scheduled.node].operation {
-                    Operation::Particles(p) if !p.bake.is_empty() => inputs.flock(&p.bake).cloned(),
-                    _ => None,
-                };
-                let (state, bytes) = self.simulate(plan, scheduled.node, time, bake.as_deref())?;
-                let output = &buffers[scheduled.output];
-                encoder.clear_buffer(output, 0, None);
-                encoder.copy_buffer_to_buffer(&state, 0, output, 0, bytes.min(output.size()));
-                continue;
-            }
-            if scheduled.kernel == Kernel::ParticleShadows {
-                // Depth maps of the particles' scene as its lights see it, by the 3D renderer.
-                // Without one loaded there are no maps (a cleared buffer says so): the
-                // particles are lit, unshadowed.
-                let Some(renderer) = self
-                    .scene_renderer
-                    .read()
-                    .map_err(|_| error("scene renderer lock poisoned"))?
-                    .clone()
-                else {
-                    encoder.clear_buffer(&buffers[scheduled.output], 0, None);
-                    continue;
-                };
-                let scene = scene_hook::scene_of(plan, scheduled.node, time)?;
-                let lights = nodes::particles::shining(&scene.lights);
-                let sheet = match &plan.nodes[scheduled.node].operation {
-                    Operation::Particles(p) => nodes::particles::sheet(p),
-                    _ => 64 * 64,
-                };
-                let side =
-                    nodes::particles::shadow_side(plan.width, plan.height, sheet, lights.len());
-                renderer.shadows(scene_hook::ShadowJob {
-                    device: &self.device,
-                    queue: &self.queue,
+            if scheduled.kernel.dispatch() == plan::Dispatch::Special {
+                special::run(&mut special::PassCx {
+                    renderer: self,
+                    plan,
+                    at: at_pass,
+                    pass: scheduled,
+                    time,
+                    inputs,
+                    buffers: &buffers,
+                    sources: &sources,
+                    ids,
+                    visible: &visible,
+                    byte_size,
+                    scene_view,
+                    scene_reflections,
                     encoder: &mut encoder,
-                    scene: &scene,
-                    lights: &lights,
-                    side,
-                    target: &buffers[scheduled.output],
-                    models: inputs.models(),
+                    resources: &mut resources,
+                    made: &mut made,
                 })?;
-                continue;
-            }
-            if scheduled.kernel == Kernel::External {
-                // No plugin chosen and nothing to pass on (else the plan passed it on).
-                if matches!(&plan.nodes[scheduled.node].operation, Operation::OfxEffect(e) if e.plugin.is_empty())
-                {
-                    encoder.clear_buffer(&buffers[scheduled.output], 0, None);
-                    stale[scheduled.output] = false;
-                    continue;
-                }
-                // Computed by the host: what came before is finished on the card, the
-                // inputs are read back, and the host's picture is uploaded in its place.
-                let host = self
-                    .effect_host
-                    .read()
-                    .map_err(|_| error("effect host lock poisoned"))?
-                    .clone()
-                    .ok_or_else(|| {
-                        error("OpenFX effects need the effect host, which this host has not loaded")
-                    })?;
-                let Operation::OfxEffect(effect) = &plan.nodes[scheduled.node].operation else {
-                    return Err(error("an external pass belongs to an OpenFX effect"));
-                };
-                let mut reads = Vec::new();
-                let read_back = |encoder: &mut wgpu::CommandEncoder, from: &wgpu::Buffer| {
-                    let read = self.device.create_buffer(&wgpu::BufferDescriptor {
-                        label: Some("effect input"),
-                        size: byte_size,
-                        usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
-                        mapped_at_creation: false,
-                    });
-                    encoder.copy_buffer_to_buffer(from, 0, &read, 0, byte_size);
-                    read
-                };
-                for (port, input) in scheduled.inputs.iter().enumerate() {
-                    let clip = effect.clips.get(port).map(String::as_str).unwrap_or("");
-                    match input {
-                        plan::Input::Value(slot) if !clip.is_empty() => {
-                            reads.push((clip, None, read_back(&mut encoder, &buffers[*slot])));
-                        }
-                        // An input read as a branch (the plugin reads other frames): its
-                        // own frame, then each other frame it named.
-                        plan::Input::Asset(key)
-                            if !clip.is_empty() && sources.contains_key(key.as_str()) =>
-                        {
-                            reads.push((
-                                clip,
-                                None,
-                                read_back(&mut encoder, &sources[key.as_str()]),
-                            ));
-                            let name = veylvik_document::nodes::OFX_PORTS[port];
-                            for other in self.ofx_other_frames(plan, key, effect, time)? {
-                                let extra =
-                                    plan::ofx_frame_key(plan.nodes[scheduled.node].id, name, other);
-                                let Some(frame::Source::Gpu(made)) = inputs.source(&extra) else {
-                                    return Err(error(format!(
-                                        "frame {other} of {clip} was not made for the OpenFX effect"
-                                    )));
-                                };
-                                reads.push((
-                                    clip,
-                                    Some(other),
-                                    read_back(&mut encoder, made.buffer()),
-                                ));
-                            }
-                        }
-                        plan::Input::Empty | plan::Input::Value(_) | plan::Input::Asset(_) => {}
-                        _ => {
-                            return Err(error(
-                                "an OpenFX effect reads only pictures of the frame's size",
-                            ));
-                        }
-                    }
-                }
-                let done = std::mem::replace(
-                    &mut encoder,
-                    self.device.create_command_encoder(&Default::default()),
-                );
-                let submission = self.queue.submit([done.finish()]);
-                let mut pictures = Vec::with_capacity(reads.len());
-                for (clip, at, read) in &reads {
-                    pictures.push((
-                        *clip,
-                        *at,
-                        self.map_values::<f32>(read, submission.clone())?,
-                    ));
-                }
-                let mut delivered = None;
-                host.render(
-                    effect_hook::EffectJob {
-                        effect,
-                        values: effect.values_at(time)?,
-                        frame: time.seconds()? * plan.frame_rate.seconds()?,
-                        width: plan.width,
-                        height: plan.height,
-                        duration: plan.frame_count,
-                        inputs: pictures,
-                    },
-                    &mut |picture| {
-                        delivered = Some(picture.len() as u64 * 4 == byte_size);
-                        if delivered == Some(true) {
-                            self.queue.write_buffer(
-                                &buffers[scheduled.output],
-                                0,
-                                bytemuck::cast_slice(picture),
-                            );
-                        }
-                    },
-                )?;
-                match delivered {
-                    Some(true) => {}
-                    Some(false) => {
-                        return Err(error("the OpenFX effect gave a picture of the wrong size"));
-                    }
-                    None => return Err(error("the OpenFX effect gave no picture")),
-                }
-                stale[scheduled.output] = false;
-                continue;
-            }
-            if scheduled.kernel == Kernel::RenderScene {
-                let renderer = self
-                    .scene_renderer
-                    .read()
-                    .map_err(|_| error("scene renderer lock poisoned"))?
-                    .clone()
-                    .ok_or_else(|| {
-                        error("Render scene needs the 3D renderer, which this host has not loaded")
-                    })?;
-                let images: Vec<scene_hook::Picture<'_>> = scheduled
-                    .cards
-                    .iter()
-                    .filter_map(|(source, input)| match input {
-                        plan::Input::Value(slot) => {
-                            // Named by the pass that made it this frame.
-                            let made = (0..at_pass)
-                                .rev()
-                                .find(|&q| plan.passes[q].output == *slot)
-                                .and_then(|q| ids[q]);
-                            Some((*source, &buffers[*slot], [plan.width, plan.height], made))
-                        }
-                        // A picture of its own size (an Own size node).
-                        plan::Input::Asset(key) => {
-                            let picture = inputs.source(key)?;
-                            Some((
-                                *source,
-                                &sources[key.as_str()],
-                                [picture.region().width, picture.region().height],
-                                Some(picture.identity()),
-                            ))
-                        }
-                        _ => None,
-                    })
-                    .collect();
-                // Motion blur renders several moments and averages them in place.
-                let moments = scene_hook::sample_times(plan, scheduled.node, time)?;
-                // A picture and a depth picture of the same scene filmed the same way are
-                // one render with two outputs: find the other, if writing it now is safe.
-                // The other's picture goes into a frame of its own, if there is room for one.
-                let twin = if self.share_scene_renders {
-                    scene_hook::twin(plan, at_pass, time, &visible)?
-                } else {
-                    None
-                };
-                let spare = match twin {
-                    Some(other) => resources
-                        .take(
-                            &self.device,
-                            byte_size,
-                            wgpu::BufferUsages::STORAGE
-                                | wgpu::BufferUsages::COPY_SRC
-                                | wgpu::BufferUsages::COPY_DST,
-                            "scene twin",
-                        )
-                        .ok()
-                        .map(|buffer| (other, buffer)),
-                    None => None,
-                };
-                for (k, at) in moments.into_iter().enumerate() {
-                    let (scene, camera, occlusion) =
-                        scene_hook::evaluate(plan, scheduled.node, at)?;
-                    let camera = scene_view.unwrap_or(camera);
-                    let copies = self.instances_for(plan, &scene, at, Some(inputs))?;
-                    renderer.render(SceneJob {
-                        device: &self.device,
-                        queue: &self.queue,
-                        encoder: &mut encoder,
-                        scene: &scene,
-                        camera,
-                        occlusion,
-                        blend: 1.0 / (k + 1) as f32,
-                        time: at,
-                        width: plan.width,
-                        height: plan.height,
-                        depth: scene_hook::shows_depth(plan, scheduled.node),
-                        reflections: scene_reflections,
-                        images: &images,
-                        models: inputs.models(),
-                        splats: inputs.all_splats(),
-                        environment: &self.studio_environment,
-                        ltc: &self.ltc,
-                        instances: &copies,
-                        target: &buffers[scheduled.output],
-                        also: spare.as_ref().map(|(other, buffer)| {
-                            (
-                                buffer,
-                                scene_hook::shows_depth(plan, plan.passes[*other].node),
-                            )
-                        }),
-                    })?;
-                }
-                if let Some((other, buffer)) = spare {
-                    made[other] = Some(buffer);
-                }
                 continue;
             }
             let node = &plan.nodes[scheduled.node];
@@ -1738,17 +1503,15 @@ impl Renderer {
                 });
                 pass.set_pipeline(custom_pipeline.as_ref().expect("every pass has a pipeline"));
                 pass.set_bind_group(0, &bind, &[]);
-                match scheduled.kernel {
-                    // One thread per particle, in rows of `values.y` threads.
-                    Kernel::ParticleSplat => {
+                match scheduled.kernel.dispatch() {
+                    plan::Dispatch::Particles => {
                         let (threads, row) = (p.values[0] as u32, (p.values[1] as u32).max(1));
                         pass.dispatch_workgroups(row.div_ceil(64), threads.div_ceil(row).max(1), 1);
                     }
-                    // One thread per particle that lines may join.
-                    Kernel::ParticlePositions | Kernel::ParticleLinks => {
+                    plan::Dispatch::Linked => {
                         pass.dispatch_workgroups(nodes::particles::LINKED_MOST.div_ceil(64), 1, 1);
                     }
-                    Kernel::GlintSeeds => {
+                    plan::Dispatch::GlintCells => {
                         let cell = (p.values[0] * 2.).max(8.).ceil() as u32;
                         pass.dispatch_workgroups(
                             plan.width.div_ceil(cell),
@@ -1756,13 +1519,12 @@ impl Renderer {
                             1,
                         );
                     }
-                    // One 64-pixel row segment per workgroup.
-                    Kernel::BlurHorizontal
-                    | Kernel::FrostHorizontal
-                    | Kernel::GrainNoiseHorizontal => {
+                    plan::Dispatch::Rows => {
                         pass.dispatch_workgroups(plan.width.div_ceil(64), plan.height, 1)
                     }
-                    _ => match areas[at_pass] {
+                    // Special passes are made before the generic path and never reach here.
+                    plan::Dispatch::Special => {}
+                    plan::Dispatch::Area | plan::Dispatch::Frame => match areas[at_pass] {
                         Some([_, _, width, height]) => {
                             if width > 0 && height > 0 {
                                 pass.dispatch_workgroups(width.div_ceil(8), height.div_ceil(8), 1)
@@ -1898,25 +1660,10 @@ impl Renderer {
             (at == 0 || plan.passes[at - 1].node != node)
                 && plan.passes.get(at + 1).is_none_or(|next| next.node != node)
         };
-        // Kernels whose threads are pixels of the frame, dispatched eight by eight.
-        let pixels = |kernel: Kernel| {
-            !matches!(
-                kernel,
-                Kernel::ParticleSplat
-                    | Kernel::GlintSeeds
-                    | Kernel::BlurHorizontal
-                    | Kernel::FrostHorizontal
-                    | Kernel::GrainNoiseHorizontal
-                    | Kernel::Custom
-                    | Kernel::RenderScene
-                    | Kernel::External
-                    | Kernel::ParticleShadows
-            ) && !kernel.entry().starts_with("particle_")
-        };
         Ok((0..count)
             .map(|at| {
                 let pass = &plan.passes[at];
-                if !alone(at) || !pixels(pass.kernel) {
+                if !alone(at) || pass.kernel.dispatch() != plan::Dispatch::Area {
                     return None;
                 }
                 let area = match extents[pass.node].intersect(frame) {

@@ -237,6 +237,26 @@ impl Kernel {
         Self::FuseFinish,
         Self::Lut,
     ];
+    /// How the kernel's threads are laid out when it runs: the one answer both the pass
+    /// loop's dispatch and area dispatch read.
+    pub(crate) fn dispatch(self) -> Dispatch {
+        match self {
+            Self::ParticleSplat => Dispatch::Particles,
+            Self::ParticlePositions | Self::ParticleLinks => Dispatch::Linked,
+            Self::GlintSeeds => Dispatch::GlintCells,
+            Self::BlurHorizontal | Self::FrostHorizontal | Self::GrainNoiseHorizontal => {
+                Dispatch::Rows
+            }
+            Self::RenderScene
+            | Self::External
+            | Self::ParticleShadows
+            | Self::ParticleSimulation => Dispatch::Special,
+            // A custom shader may read anywhere; particle kernels lay out their own data.
+            Self::Custom => Dispatch::Frame,
+            kernel if kernel.entry().starts_with("particle_") => Dispatch::Frame,
+            _ => Dispatch::Area,
+        }
+    }
     pub(crate) fn entry(self) -> &'static str {
         match self {
             Self::RenderScene => "render_scene",
@@ -392,9 +412,59 @@ pub struct PassInfo {
 }
 /// Immutable device-independent execution plan. UI layout never participates.
 pub(crate) struct TemporalBranch {
-    pub operation: Operation,
+    pub kind: Kind,
     pub plan: Box<Plan>,
     pub key: String,
+}
+/// How a kernel's threads are laid out (see `Kernel::dispatch`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Dispatch {
+    /// A thread a pixel, eight by eight; may run over its node's box only.
+    Area,
+    /// A thread a pixel over the whole frame, always.
+    Frame,
+    /// One 64-pixel row segment a workgroup.
+    Rows,
+    /// A thread a particle, in rows of `values.y` threads.
+    Particles,
+    /// A thread a particle that lines may join.
+    Linked,
+    /// A thread a glint cell of twice `values.x` pixels.
+    GlintCells,
+    /// No compute dispatch: the pass is made by `crate::special`.
+    Special,
+}
+/// What a temporal branch is, decided once when planning: what reads the branch, with
+/// the settings `crate::moments` needs to work out its moments.
+#[derive(Debug, Clone)]
+pub(crate) enum Kind {
+    MotionBlur(veylvik_document::nodes::MotionBlur),
+    TimeRemap(veylvik_document::nodes::TimeRemap),
+    OpticalFlow(veylvik_document::nodes::OpticalFlow),
+    Ocio(veylvik_document::nodes::Ocio),
+    /// A particle system's emitter in its recent past.
+    History(veylvik_document::nodes::Particles),
+    /// A picture made at its own size.
+    OwnSize,
+    /// One input of an OpenFX effect that reads other frames.
+    Frames {
+        node: NodeId,
+        port: &'static str,
+        effect: veylvik_document::nodes::OfxEffect,
+    },
+}
+impl Kind {
+    /// The kind of a node that replaces itself by a branch of its input (motion blur,
+    /// time remap, optical flow, OCIO).
+    fn replacing(operation: &Operation) -> Option<Self> {
+        Some(match operation {
+            Operation::MotionBlur(n) => Kind::MotionBlur(n.clone()),
+            Operation::TimeRemap(n) => Kind::TimeRemap(n.clone()),
+            Operation::OpticalFlow(n) => Kind::OpticalFlow(n.clone()),
+            Operation::Ocio(n) => Kind::Ocio(n.clone()),
+            _ => return None,
+        })
+    }
 }
 #[path = "space.rs"]
 mod space;
@@ -554,7 +624,7 @@ impl Plan {
                         )));
                     }
                     temporal.push(TemporalBranch {
-                        operation: node.operation.clone(),
+                        kind: Kind::OwnSize,
                         plan: Box::new(plan),
                         key: own_size_key(id),
                     });
@@ -568,16 +638,10 @@ impl Plan {
                 *remaining = remaining
                     .checked_sub(1)
                     .ok_or_else(|| error("Temporal graph expansion exceeds 16384 nodes"))?;
-                if matches!(
-                    node.operation,
-                    Operation::MotionBlur(_)
-                        | Operation::TimeRemap(_)
-                        | Operation::Ocio(_)
-                        | Operation::OpticalFlow(_)
-                ) {
+                if let Some(kind) = Kind::replacing(&node.operation) {
                     let key = format!("\0temporal:{}", node.id);
                     temporal.push(TemporalBranch {
-                        operation: node.operation.clone(),
+                        kind,
                         plan: Box::new(Self::compile_branch(
                             composition,
                             node.inputs["image"],
@@ -597,8 +661,15 @@ impl Plan {
                     // An OpenFX plugin that reads other frames gets each input as a
                     // branch, rendered at the frames it names.
                     for (port, source) in ofx_branches(node) {
+                        let Operation::OfxEffect(effect) = &node.operation else {
+                            unreachable!("only OpenFX effects have OpenFX branches")
+                        };
                         temporal.push(TemporalBranch {
-                            operation: node.operation.clone(),
+                            kind: Kind::Frames {
+                                node: node.id,
+                                port,
+                                effect: effect.clone(),
+                            },
                             plan: Box::new(Self::compile_branch(
                                 composition,
                                 source,
@@ -608,9 +679,11 @@ impl Plan {
                             key: ofx_key(node.id, port),
                         });
                     }
-                    if let Some(source) = history_source(node) {
+                    if let Some(source) = history_source(node)
+                        && let Operation::Particles(particles) = &node.operation
+                    {
                         temporal.push(TemporalBranch {
-                            operation: node.operation.clone(),
+                            kind: Kind::History(particles.clone()),
                             plan: Box::new(Self::compile_branch(
                                 composition,
                                 source,
@@ -624,13 +697,7 @@ impl Plan {
                 }
             } else if visited.insert(id) {
                 todo.push((id, true));
-                if matches!(
-                    node.operation,
-                    Operation::MotionBlur(_)
-                        | Operation::TimeRemap(_)
-                        | Operation::Ocio(_)
-                        | Operation::OpticalFlow(_)
-                ) {
+                if Kind::replacing(&node.operation).is_some() {
                     continue;
                 }
                 // Copies at particles read the particles as data: their places are worked
@@ -1316,7 +1383,7 @@ impl Plan {
             }
         }
         for branch in &self.temporal {
-            if let Operation::Ocio(v) = &branch.operation {
+            if let Kind::Ocio(v) = &branch.kind {
                 transforms.push(&v.transform);
             }
             transforms.extend(branch.plan.ocio_transforms());
