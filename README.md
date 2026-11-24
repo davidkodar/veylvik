@@ -15,16 +15,17 @@ Build shots from nodes, animate parameters with keyframes and curves, mask and g
 
 Veylvik is young, but it already works end to end: compose a graph, animate it, preview it live on the GPU, and export HDR frames and sequences. Keep copies of work you care about, because the project format can still change. Build it from source or as a local Arch package.
 
-[![Veylvik Studio: a gold 3D title standing on the sand of a filmed beach shot. The camera was solved from the footage and the sun matched to the shot; the inspector shows the title's 3D controls and the timeline the solved camera's keys.](assets/readme/3d-in-footage.webp)](assets/readme/3d-in-footage.webp)
+[![Veylvik Studio with a 4K title shot open: chrome 3D letters spelling VEYLVIK in a starfield with galaxies, the timeline with its named markers and keys below, and the inspector showing the lettering's depth, bevel and brushed-metal finish.](assets/readme/studio.webp)](assets/readme/studio.webp)
 
 <table>
   <tr>
-    <td><a href="assets/readme/cut-out.webp"><img src="assets/readme/cut-out.webp" alt="Select subject: three clicks mask a person, hair included, with a preview in 77 ms from a local model"></a></td>
-    <td><a href="assets/readme/3d-scene.webp"><img src="assets/readme/3d-scene.webp" alt="A 3D scene from a free view: the scene camera's frustum, the key light and soft shadows, with the camera's lens settings (focus on the marble sphere, f/1.4) in the inspector"></a></td>
+    <td><a href="assets/readme/warp.webp"><img src="assets/readme/warp.webp" alt="A jump to warp speed: stars stream past the camera towards the viewer, with distant galaxies and a bright star with a lens flare"></a></td>
+    <td><a href="assets/readme/sunrise.webp"><img src="assets/readme/sunrise.webp" alt="Flying low over a sea of clouds at first light, with sparks rushing past the camera and the sun about to rise"></a></td>
+    <td><a href="assets/readme/dawn.webp"><img src="assets/readme/dawn.webp" alt="A brushed-metal 3D title standing over a cloud sea at dawn, with the sun and a pale moon behind it"></a></td>
   </tr>
 </table>
 
-*Screenshots of Veylvik Studio: 3D text in a filmed shot with a solved camera, a subject selected with three clicks, and a 3D scene with its camera and light. Beach footage: ["A young woman's portrait at the beach"](https://mixkit.co/free-stock-video/a-young-womans-portrait-at-the-beach-1221/), Mixkit (Mixkit Stock Video Free License).*
+*Made entirely in Veylvik, from nodes only, with no footage: frames from two 4K films, a minute through deep space and a flight over the clouds at sunrise.*
 
 ## What it aims to do well
 
@@ -48,7 +49,7 @@ Many of these tools are new and have been tested on a small set of shots so far.
 - **Tracking and keying:** GPU planar tracking that pins layers to surfaces through occlusions, camera moves and both directions, point tracking, and colour-difference chroma and luma keyers with despill and an eyedropper.
 - **Text and titles:** GPU-rendered editable text with a searchable library of system and personal fonts, layout, styling and animation tools, and outlines, glows and surface materials connected as ordinary effects.
 - **Blur and defocus:** box and gaussian blur, plus a lens blur that turns lights into round bokeh discs and animates for rack focus. Give it a depth pass and it focuses at a chosen distance, like a real lens.
-- **Particles:** up to two million on the GPU, born from a point, a box or any text, shape or footage. They can take the picture's own colours, fly onto a target image to assemble it, leave streaks, follow a painted force field, swirl round a point, bounce off a matte and be drawn as any image. They have depth and are filmed by a scene's 3D camera, so they sit in a solved shot with parallax. Nine ready-made looks; every frame is computed on its own, so scrubbing and out-of-order renders match.
+- **Particles:** up to two million on the GPU, born from a point, a box, any text, shape or footage, or the surface of a 3D object. They can take the picture's own colours, fly onto a target image to assemble it, leave streaks, ribbons or lines between neighbours, burst into more particles when they die or hit something, follow painted force fields and separate Force nodes, bounce off a matte or the solids of a 3D scene, change size, colour and speed over their life and be drawn as any image or sprite sheet. They have depth, take light and shadow from the scene's lights and are filmed by its 3D camera, so they sit in a solved shot with parallax. Flocks steer by their neighbours and can be baked to a file so an approved simulation never changes. Ready-made looks such as sparks, fireworks, snow and a network; scrubbing and out-of-order renders match.
 - **Warps:** lay a mesh over the image and drag its points, or draw a start shape and an end shape and have the picture pulled from one onto the other; either warp can be keyed in and out.
 - **Custom shaders:** write your own effect as a WGSL function in a node, with sliders and colours it declares itself; it is checked and compiled before it runs, with errors on your own line.
 - **Blender passes:** read any layer of multi-layer OpenEXR renders (Combined, Depth, Normal, light groups) as footage, still or sequence.
@@ -59,18 +60,21 @@ Many of these tools are new and have been tested on a small set of shots so far.
 - **67 materials:** metals, chrome and anodised colours, liquid metal, plastics, enamel, car paint with flakes, carbon fibre, holographic foil, pearl, see-through glass, ice and gemstones that bend the shot, neon, marbles, slate, woods, fabrics, brick, leathers and papers.
 - **Image textures and PBR maps:** any image, logo or footage can be a material's surface, with Normal (OpenGL or DirectX), Roughness and Height maps from libraries such as ambientCG.
 - **3D scenes:** extruded and bevelled 3D text, shapes, image cards and imported glTF models, with cameras, lights and HDR or image environments in the node graph. Physically based surfaces or any library material, brushed and worn metal finishes, area lights that reflect as soft bands, bloom, soft shadows, contact occlusion, depth of field (focus follows an object you click) and motion blur, rendered on the GPU and composited like any layer. Orbit, pan, dolly or walk through a scene in the viewer (WASD and mouse look) with camera and light guides, move/rotate/scale handles and one-click camera moves, and record a walk as camera keys.
+- **Camera projection and Gaussian splats:** project footage onto 3D geometry from a solved or keyed camera to move through a still shot, and bring in Gaussian splat captures (`.ply`, `.splat`) as part of a 3D scene.
 - **3D in your footage:** Solve camera finds the camera of a filmed shot, including how its lens bends straight lines, and adds a matching camera, a levelled ground that catches shadows, the footage's lens and its own grain, with a plain verdict on the solve. Put objects and text on the solved points, turn points on a table or wall into a surface, light the scene from the footage with Match the shot (or click the light), and match grain on any clean layer with Match grain.
 - **Grounded titles:** contact shadows make text sit on the surface behind it, dense at the edges and leaning away from its lights, with or without a cast shadow.
 - **Layered and worn materials:** put one material over another through a mask, with automatic edge wear that chips paint off corners and edges first.
 - **Your own materials:** recolour any patterned surface (black marble with gold veins, navy leather), save the whole look as your own material, star favourites, and reuse them on text, backgrounds and layers.
 - **Metal finishes and lighting:** choose Gold, Silver, Bronze or Aluminium, then Polished, Satin, Matte or Brushed. Roughness, grain and directional brushing remain editable, with a Custom state for manual adjustments. Metals start in a studio of strip lights with a brushed, lightly ridged and worn surface, so they look like metal out of the box; Ridges, Imperfections and Brush angle are editable on every material. Environment strength/rotation, up to eight area lights, and the material’s optical response are editable. Tarnish and dirt are separate effects. These are GPU-shaded 2.5D surfaces, not ray-traced 3D objects.
 - **Curated material recipes:** Weathered Bronze combines satin metal and patina; Brushed Light Sweep adds a moving reflection to directional aluminium; Sky-lit Gold supplies animated cloud reflections. All work on text or transparent silhouettes and expose useful controls without duplicating material families.
+- **OpenFX plugins:** run OpenFX image-effect plugins (`.ofx.bundle`) as ordinary nodes, with their settings, keys and curves in the inspector, including plugins that read other frames such as frame holds, time offsets and retimes. Plugins run in a separate helper process, so a crash or hang fails one render, not the editor, and a project from someone else cannot load a plugin from outside the standard plugin folders without your permission.
+- **Nuke scripts:** import a Nuke script as a new composition, with reads, merges, grades, transforms, blurs and text rebuilt as Veylvik nodes and a list of anything that did not come over.
 - **Effect groups and presets:** collapse nodes into reusable effects with named controls and inputs, save them to your library, and share them as portable `.veyfx` files.
 - **Optical-flow retiming:** GPU bidirectional pyramidal motion estimation, confidence diagnostics and source-frame fallback for uncertain or occluded regions and major cuts. Choose source cadence, playback speed, animated source time and Fast/Balanced/Fine analysis. Preview analysis is reduced; output stays at composition resolution. Low texture, large motion and changing illumination can still produce artifacts; this is not learned flow, vector motion blur or audio retiming.
 - **Colour:** full-float premultiplied processing, with linear Rec.709 or ACEScg compositing/grading. Materials retain their authored Rec.709 colour domain through explicit GPU conversions; the public frame and EXR contract remains linear Rec.709. OpenColorIO 2.5 configurations and LUTs run on Vulkan, with separate project preview/output transforms and an explicit OCIO node. Preview transforms never bake into export; an explicitly enabled output transform affects exported pixels, including EXR. Built-in defaults are version-pinned, custom config paths rebase on Save As, and missing or changed LUT files invalidate the processor. AgX works with a configuration that supplies it, such as Blender’s; that configuration is not bundled. HDR video in PQ or HLG (iPhone HDR) imports directly, and camera log footage (Apple Log, Sony S-Log3, ARRI LogC3/LogC4, Panasonic V-Log) decodes to scene light with its camera gamut. Camera and creative `.cube` LUTs apply in scene-linear light with their input and output spaces declared, and the legacy ACES-style filmic display transform rolls HDR highlights off smoothly in the viewer, PNG and video. The viewer has exposure and alpha views, and a colour picker that never rewrites your HDR values.
 - **Portable projects:** collect media, sequences, fonts and colour conversions into a verified folder; search or locate missing sources and apply reviewed relinks in one undo step.
 - **Camera orbits:** continuous target-following camera motion with radius, height, direction, timing and easing; manual camera keys remain available. Neutral and warm surround-light rigs add editable softboxes for reflections throughout a full orbit.
-- **Deliver:** export the current frame or a whole range as SDR PNG or lossless 32-bit float OpenEXR, or encode an MP4 using NVIDIA NVENC or Intel/AMD VA-API, including the footage's sound and optional music. Software encoding is an explicit opt-in if hardware is unavailable. Sequence export writes a manifest that only marks itself complete once every frame is on disk. A persistent render queue holds immutable composition snapshots for stills, sequences and videos, with progress, pause, cancellation, ordering and retry while you keep editing.
+- **Deliver:** export the current frame or a whole range as SDR PNG or lossless 32-bit float OpenEXR, or encode an MP4 using NVIDIA NVENC or Intel/AMD VA-API, including the footage's sound and optional music, or ProRes 422 HQ or ProRes 4444 with alpha in a `.mov` for titles and overlays. Software encoding is an explicit opt-in if hardware is unavailable. Sequence export writes a manifest that only marks itself complete once every frame is on disk. A persistent render queue holds immutable composition snapshots for stills, sequences and videos, with progress, pause, cancellation, ordering and retry while you keep editing.
 - **Preferences:** audio output device and volume with the device in use shown, configurable playback restart and looping, Dark/Light/Midnight Blue/Evergreen themes or live system/Omarchy appearance, interface scale, workspace defaults, hover previews, GPU buffer budget and recovery interval. Open **Edit → Preferences** (`Ctrl+,`); settings stay independent of projects.
 - **Work safely:** atomic saves that check for changes on disk before replacing a file, bounded undo history, crash recovery copies with individual or bulk discard controls, missing-media repair, and **Collect project** to gather a project and its images into one portable folder.
 
@@ -78,7 +82,7 @@ The [feature list](docs/features.md) covers everything Veylvik can do, area by a
 
 ## How it is built and tested
 
-Veylvik is written in Rust as a twenty-two-crate workspace. Application, document and rendering crates forbid `unsafe`; native FFmpeg and GPU-handle access is isolated in `veylvik-decode` and `veylvik-interop`, with explicit unsafe-operation and safety-comment checks. `veylvik-color` isolates the native OpenColorIO C++ interface behind a safe Rust API. Rendering compiles the graph into an immutable plan of compute passes and runs it on the GPU through wgpu and Vulkan. The editor is a native egui app that shows those frames from the same Vulkan device, without copying the preview frame back to the CPU. Document editing, font shaping and orchestration run on the CPU; composition kernels, material shading and vector coverage run on Vulkan. Export and diagnostic readbacks are separate from the live viewer path.
+Veylvik is written in Rust as a twenty-six-crate workspace. Application, document and rendering crates forbid `unsafe`; native FFmpeg and GPU-handle access is isolated in `veylvik-decode` and `veylvik-interop`, with explicit unsafe-operation and safety-comment checks. `veylvik-color` isolates the native OpenColorIO C++ interface behind a safe Rust API. Rendering compiles the graph into an immutable plan of compute passes and runs it on the GPU through wgpu and Vulkan. The editor is a native egui app that shows those frames from the same Vulkan device, without copying the preview frame back to the CPU. Document editing, font shaping and orchestration run on the CPU; composition kernels, material shading and vector coverage run on Vulkan. Export and diagnostic readbacks are separate from the live viewer path.
 
 | Crate | Role |
 | --- | --- |
@@ -93,17 +97,21 @@ Veylvik is written in Rust as a twenty-two-crate workspace. Application, documen
 | `veylvik-render3d` | Draws 3D scenes on the GPU for Render scene, plugged into the renderer through a hook. |
 | `veylvik-warp` | Warp fields: the mesh of offsets that carries one drawn shape onto another. |
 | `veylvik-shader` | Custom shader nodes: control declarations, the rules that keep user code bounded, and the program built around it. No dependencies. |
-| `veylvik-presets` | Ready-made scenes built only from document nodes, kept apart from the engine. |
+| `veylvik-presets` | Content kept apart from the engine: showcase scenes, title styles, the Gold title, particle looks, and the document tools both MCP servers offer. |
+| `veylvik-splat` | Gaussian splat files and their GPU drawing for 3D scenes. |
+| `veylvik-nuke` | Nuke script reading and rebuilding as a composition. |
+| `veylvik-ofx` | The OpenFX helper process and its protocol; the host itself is in `veylvik-interop`. |
 | `veylvik-track` | GPU point and planar tracking, built on the renderer's narrow compute interface. |
 | `veylvik-solve` | Camera solving from feature tracks: camera path, lens, distortion and a point cloud. No dependencies. |
 | `veylvik-segment` | Subject mattes from local AI models, run in an isolated worker process, with a verified model installer. |
 | `veylvik-decode` | Hardware-first video decoding into GPU frames. |
-| `veylvik-interop` | Native CUDA/Vulkan and VA-API/DMA-BUF interoperability boundaries for video frames. |
+| `veylvik-interop` | The native boundaries: CUDA/Vulkan and VA-API/DMA-BUF video frames, shared GPU memory, and the OpenFX plugin host. |
 | `veylvik-io` | PNG and OpenEXR in and out, sequences, presets, recovery and collection. |
 | `veylvik-audio` | Playback sound: the export's audio mix rendered for preview and played through the chosen output device. |
 | `veylvik-control` | MCP framing and the private local socket for live control. |
 | `veylvik-cli` | The `veylvik` command and MCP server. |
-| `veylvik-studio` | Native egui editor, inspectors, graph presentation, playback and asynchronous preview coordination. |
+| `veylvik-editor` | The editor as a library: viewer, graph, inspectors, timeline, playback and live control, drawn into any egui host. |
+| `veylvik-studio` | The Studio program: the editor in a window of its own. |
 
 Hardware video paths are probed at runtime and report fallback reasons. NVIDIA direct GPU transfer is supported; the Intel/AMD DMA-BUF path is implemented but remains experimental pending validation on those devices. Hardware decoding and rendering are separate: unsupported decode/interop paths may use a reported software or RAM-staged fallback, while composition rendering still requires Vulkan.
 
@@ -148,9 +156,10 @@ Read the [MCP reference](docs/reference.md#mcp) for the tools and command schema
 
 ## Roadmap
 
-- **Klipp integration:** use Veylvik compositions and effect presets inside [Klipp](https://github.com/davidkodar/klipp), the native video editor for Linux, using the project's size, frame rate and footage.
+- **Klipp integration (under way):** Veylvik's engine and editor inside [Klipp](https://github.com/davidkodar/klipp), the native video editor for Linux, as a page of its own on one shared GPU engine, the way a compositor sits inside an editor.
 - **Tracking:** smoothing and a forward-backward quality measure for planar tracks.
-- More generators, a general particle emitter, and nested groups.
+- **OpenFX:** on-screen handles for plugins and their keys on the timeline.
+- More generators and nested groups.
 
 ## Documentation and development
 
