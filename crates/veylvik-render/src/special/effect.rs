@@ -15,17 +15,10 @@ pub(super) fn run(cx: &mut super::PassCx<'_, '_>) -> Result<()> {
     }
     // Computed by the host: what came before is finished on the card, the
     // inputs are read back, and the host's picture is uploaded in its place.
-    let host = this
-        .effect_host
-        .read()
-        .map_err(|_| error("effect host lock poisoned"))?
-        .clone()
-        .ok_or_else(|| {
-            error("OpenFX effects need the effect host, which this host has not loaded")
-        })?;
     let Operation::OfxEffect(effect) = &plan.nodes[scheduled.node].operation else {
         return Err(error("an external pass belongs to an OpenFX effect"));
     };
+    let host = this.effect_host_for(effect, inputs)?;
     let mut reads = Vec::new();
     let read_back = |encoder: &mut wgpu::CommandEncoder, from: &wgpu::Buffer| {
         let read = this.device.create_buffer(&wgpu::BufferDescriptor {
@@ -49,7 +42,7 @@ pub(super) fn run(cx: &mut super::PassCx<'_, '_>) -> Result<()> {
                 reads.push((clip, None, read_back(encoder, &sources[key.as_str()])));
                 let name = veylvik_document::nodes::OFX_PORTS[port];
                 let id = plan.nodes[scheduled.node].id;
-                for other in this.ofx_other_frames(plan, id, name, effect, time)? {
+                for other in this.ofx_other_frames(plan, id, name, effect, time, inputs)? {
                     let extra = plan::ofx_frame_key(id, name, other);
                     let Some(frame::Source::Gpu(made)) = inputs.source(&extra) else {
                         return Err(error(format!(

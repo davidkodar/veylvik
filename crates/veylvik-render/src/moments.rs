@@ -109,6 +109,7 @@ impl Renderer {
         branch: &TemporalBranch,
         time: Time,
         preview: bool,
+        inputs: &crate::ImageInputs,
     ) -> Result<Need> {
         Ok(match &branch.kind {
             Kind::MotionBlur(blur) => {
@@ -172,7 +173,7 @@ impl Renderer {
             Kind::OwnSize => Need::Resized(time),
             Kind::Frames { node, port, effect } => {
                 let others = self
-                    .ofx_other_frames(plan, *node, port, effect, time)?
+                    .ofx_other_frames(plan, *node, port, effect, time, inputs)?
                     .into_iter()
                     .map(|frame| Ok((frame, crate::temporal::time_of(frame, plan.frame_rate)?)))
                     .collect::<Result<_>>()?;

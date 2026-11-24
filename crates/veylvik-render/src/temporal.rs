@@ -42,7 +42,7 @@ impl Renderer {
                 lasting &= key.portable();
                 Ok::<_, crate::Error>(())
             };
-            let need = self.need(plan, branch, request.time, preview)?;
+            let need = self.need(plan, branch, request.time, preview, inputs)?;
             for part in need.name() {
                 match part {
                     crate::moments::Part::Word(word) => words.push(word),
@@ -112,7 +112,7 @@ impl Renderer {
         let mut resolved = inputs.clone();
         for branch in &plan.temporal {
             use crate::moments::Need;
-            let frame = match self.need(plan, branch, request.time, work.preview)? {
+            let frame = match self.need(plan, branch, request.time, work.preview, inputs)? {
                 Need::Shutter { shutter, .. } => self.sample_shutter(
                     &branch.plan,
                     RenderRequest::full(request.time),
@@ -249,10 +249,9 @@ impl Renderer {
         port: &str,
         effect: &veylvik_document::nodes::OfxEffect,
         time: veylvik_document::Time,
+        inputs: &ImageInputs,
     ) -> Result<Vec<f64>> {
-        let host = self.effect_host().ok_or_else(|| {
-            error("OpenFX effects need the effect host, which this host has not loaded")
-        })?;
+        let host = self.effect_host_for(effect, inputs)?;
         let at = veylvik_document::nodes::OFX_PORTS
             .iter()
             .position(|p| *p == port);

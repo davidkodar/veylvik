@@ -308,6 +308,18 @@ impl Renderer {
     pub(crate) fn effect_host(&self) -> Option<Arc<dyn effect_hook::EffectHost>> {
         self.effect_host.read().ok().and_then(|h| h.clone())
     }
+    /// The effect host, for `effect`: a plugin is native code, so the only way to it
+    /// checks that the composition may load this one (see `ImageInputs::resolve_plugin`).
+    pub(crate) fn effect_host_for(
+        &self,
+        effect: &veylvik_document::nodes::OfxEffect,
+        inputs: &ImageInputs,
+    ) -> Result<Arc<dyn effect_hook::EffectHost>> {
+        inputs.resolve_plugin(&effect.bundle)?;
+        self.effect_host().ok_or_else(|| {
+            error("OpenFX effects need the effect host, which this host has not loaded")
+        })
+    }
     /// Registers what runs OpenFX effects; without one they fail with a clear error.
     pub fn set_effect_host(&self, host: Arc<dyn effect_hook::EffectHost>) {
         if let Ok(mut slot) = self.effect_host.write() {

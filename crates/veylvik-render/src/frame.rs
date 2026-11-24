@@ -279,6 +279,17 @@ impl ImageInputs {
     pub fn reach(&self) -> &veylvik_document::access::Reach {
         &self.5
     }
+    /// The OpenFX plugin bundle a composition names, if it may load it: one installed in
+    /// the plugin folders, or one the composition may read like any file (see `set_reach`).
+    pub fn resolve_plugin(&self, bundle: &str) -> Result<std::path::PathBuf> {
+        let named = veylvik_document::access::Named {
+            node: None,
+            label: "OpenFX effect".into(),
+            name: bundle.to_owned(),
+            plugin: true,
+        };
+        veylvik_document::access::resolve_named(&self.3, &named, &self.5).map_err(error)
+    }
     /// The file a colour configuration names, or the built-in it names. Refused when
     /// the composition may not read it (see `set_reach`).
     pub fn resolve_config(&self, config: &str) -> Result<String> {

@@ -7,6 +7,7 @@ pub mod footage;
 pub mod host_cache;
 mod icc;
 pub mod import;
+pub mod inputs;
 pub mod link;
 pub mod lut;
 pub mod materials;
@@ -204,34 +205,12 @@ pub fn load_inputs(plan: &Plan, base: &Path, budget: u64) -> Result<ImageInputs>
     })?;
     let mut inputs = ImageInputs::default();
     inputs.set_base_directory(base);
-    for key in plan.required_assets() {
-        let image = match footage::load_key(base, &key, remaining) {
-            Ok(image) => image,
-            // A key only its host knows: the file the composition names beside it.
-            Err(error) => match plan.fallback(&key) {
-                Some(file) => footage::load(&base.join(file), remaining)
-                    .map_err(|e| media_error(base, file, &*e))?,
-                None => return Err(media_error(base, &key, &*error).into()),
-            },
-        };
-        remaining -= image.byte_size();
-        image.insert(&mut inputs, key.into_owned());
-    }
-    for path in plan.required_models() {
-        let loaded = model::load(&base.join(path)).map_err(|e| format!("3D model {path}: {e}"))?;
-        inputs.insert_model(path, std::sync::Arc::new(loaded));
-    }
-    for path in plan.required_splats() {
-        let bytes =
-            std::fs::read(base.join(path)).map_err(|e| format!("Gaussian splats {path}: {e}"))?;
-        let splats =
-            veylvik_splat::parse(&bytes).map_err(|e| format!("Gaussian splats {path}: {e}"))?;
-        inputs.insert_splats(path, std::sync::Arc::new(splats));
-    }
-    // A baked flock that cannot be read is simulated instead; nothing is lost but time.
-    for path in plan.required_flocks() {
-        if let Ok(bake) = flock::Bake::open(&base.join(path)) {
-            inputs.insert_flock(path, std::sync::Arc::new(bake));
+    // Headless renders are the artist's own: read from anywhere (the editor confines).
+    let reach = veylvik_document::access::Reach::Anywhere;
+    for wanted in inputs::wanted_by(plan) {
+        if let Some(loaded) = inputs::load(&wanted, base, &reach, remaining)? {
+            remaining = remaining.saturating_sub(loaded.byte_size());
+            loaded.insert(&mut inputs, wanted.name());
         }
     }
     Ok(inputs)

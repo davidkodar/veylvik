@@ -103,14 +103,9 @@ impl From<Value> for veylvik_interop::ofx::Value {
     }
 }
 /// The folders searched for `.ofx.bundle`s: `OFX_PLUGIN_PATH` first, then the standard
-/// Linux places.
+/// Linux places; the same folders file confinement trusts plugins from.
 pub fn folders() -> Vec<PathBuf> {
-    let mut out: Vec<PathBuf> = std::env::var_os("OFX_PLUGIN_PATH")
-        .map(|v| std::env::split_paths(&v).collect())
-        .unwrap_or_default();
-    out.push("/usr/OFX/Plugins".into());
-    out.push("/usr/local/OFX/Plugins".into());
-    out
+    veylvik_document::access::plugin_folders()
 }
 /// Every `.ofx.bundle` under `folders`, a few levels deep, in name order.
 pub fn bundles(folders: &[PathBuf]) -> Vec<PathBuf> {

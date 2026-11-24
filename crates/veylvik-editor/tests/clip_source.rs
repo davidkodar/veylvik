@@ -187,7 +187,9 @@ fn a_clip_source_brings_its_own_openfx_host() {
     let mut composition = veylvik_document::blank(16, 9, Time::new(24, 1).unwrap()).unwrap();
     let under = composition.output;
     let effect = OfxEffect {
-        bundle: "/nowhere/Missing.ofx.bundle".into(),
+        // Inside the composition's folder: a host's composition is held to it, and a
+        // plugin from elsewhere is refused before the host is asked (plugin_reach.rs).
+        bundle: "Missing.ofx.bundle".into(),
         plugin: "org.example.missing".into(),
         context: OfxContext::Filter,
         clips: vec!["Source".into()],

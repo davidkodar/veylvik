@@ -7,6 +7,7 @@ rust-version.workspace = true
 description = "OpenFX plugins for Veylvik, run in a helper process: discovery, descriptions and CPU renders."
 [dependencies]
 veylvik-interop = { path = "../veylvik-interop" }
+veylvik-document.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 [lints]

@@ -227,113 +227,51 @@ impl Project {
         Ok(plan)
     }
     pub(crate) fn load_available_inputs(&mut self) {
+        use veylvik_io::inputs::{self, Wanted};
         self.inputs.set_base_directory(self.base.clone());
         self.inputs.set_reach(self.reach.clone());
         let mut remaining = veylvik_io::runtime::source_budget();
-        for node in self.document.snapshot().nodes.values() {
-            if let Some(key) = node.operation.source_key()
-                && !self.inputs.contains_key(&key)
-                && !self.asset_errors.contains_key(&*key)
-            {
+        for wanted in inputs::wanted(self.document.snapshot()) {
+            let name = wanted.name();
+            let have = match &wanted {
+                Wanted::Media { .. } => self.inputs.contains_key(name),
+                Wanted::Model(_) => self.inputs.model(name).is_some(),
+                Wanted::Splats(_) => self.inputs.splats(name).is_some(),
+                Wanted::Flock(_) => self.inputs.flock(name).is_some(),
+            };
+            if have || self.asset_errors.contains_key(name) {
+                continue;
+            }
+            let media = matches!(wanted, Wanted::Media { .. });
+            if media {
                 // Media the host keeps is asked of the host, never looked for on disk.
                 let theirs = self
                     .host
                     .as_ref()
-                    .and_then(|host| host.media(&key))
-                    .or_else(|| crate::files::host_media(&key));
+                    .and_then(|host| host.media(name))
+                    .or_else(|| crate::files::host_media(name));
                 if let Some(source) = theirs {
-                    self.host_media.insert(key.to_string());
-                    self.inputs.insert_source(key.into_owned(), source);
+                    self.host_media.insert(name.to_owned());
+                    self.inputs.insert_source(name.to_owned(), source);
                     continue;
                 }
-                // A key nobody here knows: the file the composition names beside it.
-                let aside = match &node.operation {
-                    veylvik_document::Operation::Footage(footage)
-                        if !footage.fallback.is_empty() =>
-                    {
-                        Some(veylvik_document::access::resolve(
-                            &self.base,
-                            &footage.fallback,
-                            &self.reach,
-                        ))
-                    }
-                    _ => None,
-                };
-                // Read only what the composition may read (see `reach`).
-                let (file, _) = veylvik_document::split_source_key(&key);
-                if let Err(refused) =
-                    veylvik_document::access::resolve(&self.base, file, &self.reach)
-                {
-                    let refused = match aside {
-                        Some(Ok(_)) => None,
-                        _ => Some(refused),
-                    };
-                    if let Some(refused) = refused {
-                        self.asset_errors.insert(key.into_owned(), refused);
-                        continue;
-                    }
-                }
-                let aside: Option<PathBuf> = aside.and_then(|file| file.ok());
-                let budget = remaining.min(128 * 1024 * 1024);
-                let named =
-                    veylvik_document::access::resolve(&self.base, file, &self.reach).is_ok();
-                match (if named {
-                    veylvik_io::footage::load_key(&self.base, &key, budget)
-                } else {
-                    Err("outside the composition's folder".into())
-                })
-                .or_else(|error| match &aside {
-                    Some(file) => veylvik_io::footage::load(file, budget),
-                    None => Err(error),
-                }) {
-                    Ok(image) => {
-                        remaining -= image.byte_size();
-                        image.insert(&mut self.inputs, key.into_owned());
-                    }
-                    Err(error) => {
-                        self.asset_errors
-                            .insert(key.into_owned(), error.to_string());
-                    }
-                }
             }
-            // Gaussian splats load with the project, like 3D models.
-            if let veylvik_document::Operation::GaussianSplats(g) = &node.operation
-                && !g.file.is_empty()
-                && self.inputs.splats(&g.file).is_none()
-                && !self.asset_errors.contains_key(g.file.as_str())
-            {
-                let read = veylvik_document::access::resolve(&self.base, &g.file, &self.reach)
-                    .and_then(|file| std::fs::read(file).map_err(|e| e.to_string()))
-                    .and_then(|bytes| veylvik_splat::parse(&bytes));
-                match read {
-                    Ok(splats) => self.inputs.insert_splats(g.file.clone(), Arc::new(splats)),
-                    Err(error) => {
-                        self.asset_errors.insert(g.file.clone(), error);
-                    }
+            // One source may take at most 128 MiB of what is left.
+            let budget = if media {
+                remaining.min(128 * 1024 * 1024)
+            } else {
+                remaining
+            };
+            // Read only what the composition may read (see `reach`).
+            match inputs::load(&wanted, &self.base, &self.reach, budget) {
+                Ok(Some(loaded)) => {
+                    remaining = remaining.saturating_sub(loaded.byte_size());
+                    loaded.insert(&mut self.inputs, name);
                 }
-            }
-            // A baked flock loads with the project; one that cannot be read is simulated.
-            if let veylvik_document::Operation::Particles(p) = &node.operation
-                && !p.bake.is_empty()
-                && self.inputs.flock(&p.bake).is_none()
-                && let Ok(file) =
-                    veylvik_document::access::resolve(&self.base, &p.bake, &self.reach)
-                && let Ok(bake) = veylvik_io::flock::Bake::open(&file)
-            {
-                self.inputs.insert_flock(p.bake.clone(), Arc::new(bake));
-            }
-            // 3D models load with the project, by absolute path.
-            if let veylvik_document::Operation::Model3d(m) = &node.operation
-                && !m.model.is_empty()
-                && self.inputs.model(&m.model).is_none()
-                && !self.asset_errors.contains_key(m.model.as_str())
-            {
-                let file = veylvik_document::access::resolve(&self.base, &m.model, &self.reach);
-                match file.and_then(|file| veylvik_io::model::load(&file)) {
-                    Ok(model) => self.inputs.insert_model(m.model.clone(), Arc::new(model)),
-                    Err(error) => {
-                        self.asset_errors.insert(m.model.clone(), error);
-                    }
+                // A baked flock that cannot be read is simulated instead.
+                Ok(None) => {}
+                Err(error) => {
+                    self.asset_errors.insert(name.to_owned(), error.to_string());
                 }
             }
         }
