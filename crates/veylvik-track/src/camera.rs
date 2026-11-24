@@ -488,3 +488,21 @@ pub fn scene(doc: &Composition, request: &Request, outcome: &Outcome) -> Result<
         points,
     })
 }
+
+impl Request {
+    /// The tool's arguments as a JSON schema's `properties` (a server adds its own
+    /// `revision`, and `session` when live).
+    pub fn schema() -> serde_json::Value {
+        serde_json::json!({"source":{"type":"string","format":"uuid"},"start":{"type":"integer","minimum":0},"end":{"type":"integer","minimum":0},"focal_length":{"type":"number","minimum":1,"maximum":2000},"sensor_width":{"type":"number","minimum":1,"maximum":100}})
+    }
+    /// The arguments a call must give, besides the server's own.
+    pub const REQUIRED: &'static [&'static str] = &["source"];
+    /// Whether the request fits `doc`: the footage node exists (the frames were checked
+    /// against it when parsed).
+    pub fn check(&self, doc: &Composition) -> std::result::Result<(), String> {
+        if !doc.nodes.contains_key(&self.source) {
+            return Err("the footage node does not exist".into());
+        }
+        Ok(())
+    }
+}

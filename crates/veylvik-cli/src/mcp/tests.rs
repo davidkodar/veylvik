@@ -356,3 +356,51 @@ mod preset_tests {
         assert!(session.renderer.is_none());
     }
 }
+#[test]
+fn tracking_solving_and_cut_out_take_the_same_arguments_on_both_servers() {
+    // The live catalogue lives in a light crate that cannot reach the request types, so
+    // its copies are held to them here: the same arguments, plus the live session, with
+    // back_to capped at 0 there (Studio tracks backward to the first frame).
+    let live = veylvik_control::live::catalog()["tools"]
+        .as_array()
+        .unwrap();
+    for (name, own, required) in [
+        (
+            "track_surface",
+            veylvik_track::request::Request::schema(),
+            veylvik_track::request::Request::REQUIRED,
+        ),
+        (
+            "solve_camera",
+            veylvik_track::camera::Request::schema(),
+            veylvik_track::camera::Request::REQUIRED,
+        ),
+        (
+            "segment_subject",
+            veylvik_segment::request::Request::schema(),
+            veylvik_segment::request::Request::REQUIRED,
+        ),
+    ] {
+        let tool = live.iter().find(|t| t["name"] == name).unwrap();
+        let mut properties = tool["inputSchema"]["properties"].clone();
+        let map = properties.as_object_mut().unwrap();
+        map.remove("session");
+        map.remove("revision");
+        if let Some(back) = map.get_mut("back_to") {
+            assert_eq!(back["maximum"], json!(0), "{name}");
+            back.as_object_mut().unwrap().remove("maximum");
+        }
+        assert_eq!(
+            properties, own,
+            "{name}: live arguments differ from the request's"
+        );
+        let wanted: Vec<&str> = tool["inputSchema"]["required"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|r| r.as_str())
+            .filter(|r| !matches!(*r, "session" | "revision"))
+            .collect();
+        assert_eq!(wanted, required, "{name}");
+    }
+}

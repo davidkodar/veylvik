@@ -15,33 +15,7 @@ pub fn run(
     request: &Request,
     progress: &mut dyn FnMut(usize, usize),
 ) -> Result<(NodeId, Vec<Command>, Value)> {
-    veylvik_document::planar::validate_quad(request.surface)?;
-    if !doc.nodes.contains_key(&request.source) {
-        return Err("tracking source node does not exist".into());
-    }
-    let last = i64::from(doc.frame_count.saturating_sub(1));
-    if request.frames.iter().any(|f| *f > last) {
-        return Err(format!("start and end must be within frames 0..={last}").into());
-    }
-    if request.frames[0] == request.frames[1] {
-        return Err("start and end must differ".into());
-    }
-    if let Some(back) = request.back_to
-        && (back >= request.frames[0] || request.frames[1] < request.frames[0] || back > last)
-    {
-        return Err(
-            "back_to must precede start, and end must follow start, when tracking both ways".into(),
-        );
-    }
-    let first_frame = request
-        .back_to
-        .unwrap_or(request.frames[0].min(request.frames[1]));
-    if request.frames[0].max(request.frames[1]) - first_frame >= 4096 {
-        return Err("a tracking range is limited to 4096 frames".into());
-    }
-    if request.frames[0].abs_diff(request.frames[1]) >= 4096 {
-        return Err("a tracking range is limited to 4096 frames".into());
-    }
+    request.check(doc)?;
     let plan = Plan::compile_output(doc, request.source)?;
     let inputs = crate::assets::load_inputs(&plan, base, renderer.budget_bytes)?;
     let occlusion = request

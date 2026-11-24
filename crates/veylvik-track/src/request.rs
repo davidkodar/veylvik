@@ -94,3 +94,43 @@ impl Request {
         })
     }
 }
+
+impl Request {
+    /// The tool's arguments as a JSON schema's `properties` (a server adds its own
+    /// `revision`, and `session` when live).
+    pub fn schema() -> serde_json::Value {
+        serde_json::json!({"source":{"type":"string","format":"uuid"},"surface":{"type":"array","minItems":4,"maxItems":4,"items":{"type":"array","minItems":2,"maxItems":2,"items":{"type":"number"}}},"region":{"type":"array","minItems":4,"maxItems":4,"items":{"type":"array","minItems":2,"maxItems":2,"items":{"type":"number"}}},"start":{"type":"integer","minimum":0},"end":{"type":"integer","minimum":0},"feature_radius":{"type":"integer","minimum":3,"maximum":16},"search_radius":{"type":"integer","minimum":1,"maximum":48},"tolerance":{"type":"number","minimum":0.1,"maximum":32},"reanchor":{"type":"boolean"},"area_follows":{"enum":["surface","screen"],"default":"surface"},"occlusion":{"type":"string","format":"uuid"},"motion":{"enum":["auto","perspective","affine","similarity","translation"],"default":"auto"},"refine":{"type":"boolean","default":true},"back_to":{"type":"integer","minimum":0}})
+    }
+    /// The arguments a call must give, besides the server's own.
+    pub const REQUIRED: &'static [&'static str] = &["source", "surface", "start", "end"];
+    /// Whether the request fits `doc`: the source exists, the frames are inside it and
+    /// differ, tracking both ways runs back then forward, and the range is at most 4096
+    /// frames.
+    pub fn check(&self, doc: &veylvik_document::Composition) -> Result<(), String> {
+        veylvik_document::planar::validate_quad(self.surface).map_err(|e| e.to_string())?;
+        if !doc.nodes.contains_key(&self.source) {
+            return Err("tracking source node does not exist".into());
+        }
+        let last = i64::from(doc.frame_count.saturating_sub(1));
+        let [start, end] = self.frames;
+        if start > last || end > last {
+            return Err(format!("start and end must be within frames 0..={last}"));
+        }
+        if start == end {
+            return Err("start and end must differ".into());
+        }
+        if let Some(back) = self.back_to
+            && (back >= start || end < start || back > last)
+        {
+            return Err(
+                "back_to must precede start, and end must follow start, when tracking both ways"
+                    .into(),
+            );
+        }
+        let first = self.back_to.unwrap_or(start.min(end));
+        if start.max(end) - first >= 4096 {
+            return Err("a tracking range is limited to 4096 frames".into());
+        }
+        Ok(())
+    }
+}

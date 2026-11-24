@@ -69,3 +69,33 @@ impl Request {
         })
     }
 }
+
+impl Request {
+    /// The tool's arguments as a JSON schema's `properties` (a server adds its own
+    /// `revision`, and `session` when live).
+    pub fn schema() -> serde_json::Value {
+        serde_json::json!({"source":{"type":"string","format":"uuid"},"points":{"type":"array","minItems":1,"maxItems":32,"items":{"type":"object","additionalProperties":false,"properties":{"x":{"type":"number","minimum":0,"maximum":1},"y":{"type":"number","minimum":0,"maximum":1},"positive":{"type":"boolean"}},"required":["x","y","positive"]}},"frame":{"type":"integer","minimum":0},"end":{"type":"integer","minimum":0},"back_to":{"type":"integer","minimum":0},"model":{"enum":["edgetam","sam2.1-base-plus","sam2.1-large"],"default":"edgetam"},"detail":{"type":"boolean","default":true},"matting":{"type":"boolean"},"steady":{"type":"boolean","default":true,"description":"steady the mattes over time afterwards (each frame against its neighbours, lined up along the footage's motion), so edges do not flicker"},"edges":{"type":"string","enum":["standard","fine"],"description":"the matting model for hair and soft edges: fine is the larger model at full size in tiles (curls and single strands, about three times the matting time); default is fine when it is installed"}})
+    }
+    /// The arguments a call must give, besides the server's own.
+    pub const REQUIRED: &'static [&'static str] = &["source", "points", "frame"];
+    /// Whether the request fits `doc`: the source exists, the frames are inside it, and
+    /// tracking back runs to an earlier frame.
+    pub fn check(&self, doc: &veylvik_document::Composition) -> Result<(), String> {
+        if !doc.nodes.contains_key(&self.source) {
+            return Err("segmentation source node does not exist".into());
+        }
+        let last = i64::from(doc.frame_count.saturating_sub(1));
+        let frames = self.analysis.frames;
+        if frames
+            .iter()
+            .chain(&self.analysis.back_to)
+            .any(|f| !(0..=last).contains(f))
+        {
+            return Err(format!("frame, end and back_to must lie within 0..={last}"));
+        }
+        if self.analysis.back_to.is_some_and(|back| back >= frames[0]) {
+            return Err("back_to must precede the prompted frame".into());
+        }
+        Ok(())
+    }
+}
