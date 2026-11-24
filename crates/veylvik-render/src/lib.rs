@@ -3,6 +3,7 @@ mod cache;
 pub mod depends;
 mod diagnostics;
 mod environment_bake;
+mod layers;
 mod material_preview;
 pub use material_preview::material_preview_revision;
 pub mod custom;
@@ -737,63 +738,7 @@ impl Renderer {
             .zip(&plan.curves)
             .map(|(n, curves)| params(n, &plan.nodes, curves, plan.width, plan.height, time))
             .collect::<Result<_>>()?;
-        // A drawn shape is kept over its own box: its pass is told the box.
-        for (index, (frame, corner)) in &vectors {
-            if matches!(plan.nodes[*index].operation, Operation::Path(_)) {
-                let p = &mut evaluated[*index];
-                p.values = [
-                    frame.width() as f32,
-                    frame.height() as f32,
-                    corner[0] as f32,
-                    corner[1] as f32,
-                ];
-                p.extra[0] = frame.width() as f32;
-            }
-            // Text is drawn over its own box too: its pass reads the box (extra =
-            // width, height, left, top) and is clear outside it.
-            if matches!(plan.nodes[*index].operation, Operation::Text(_)) {
-                evaluated[*index].extra = [
-                    frame.width() as f32,
-                    frame.height() as f32,
-                    corner[0] as f32,
-                    corner[1] as f32,
-                ];
-            }
-        }
-        for (node, p) in plan.nodes.iter().zip(&mut evaluated) {
-            if let Some(asset) = node.operation.asset() {
-                let key = if matches!(
-                    node.operation,
-                    Operation::Footage(veylvik_document::nodes::Footage { .. })
-                ) {
-                    plan::footage_key(node.id)
-                } else {
-                    asset.to_owned()
-                };
-                let source = inputs.source(&key).unwrap();
-                let region = source.region();
-                if let Operation::Footage(veylvik_document::nodes::Footage { placement, .. }) =
-                    node.operation
-                {
-                    use veylvik_document::media::Placement;
-                    p.size_op[3] = match placement {
-                        Placement::Legacy => 0,
-                        Placement::Fit => 1,
-                        Placement::Fill => 2,
-                        Placement::Original => 3,
-                        Placement::Stretch => 4,
-                    };
-                }
-                p.values[0] = region.width as f32;
-                p.values[1] = region.height as f32;
-                p.extra = [
-                    source.storage_width() as f32,
-                    0.0,
-                    region.x as f32,
-                    region.y as f32,
-                ];
-            }
-        }
+        layers::place(&mut evaluated, plan, &vectors, inputs);
         // What each pass makes, to know a node's result again in the next frame.
         let ids = cache::pass_identities(plan, request, inputs)?;
         self.note("working out every node's settings");
@@ -1649,21 +1594,7 @@ impl Renderer {
         }
         use crate::nodes::Extent;
         // A shape or a text is drawn over its own box (see vector.rs).
-        let known = |i: usize| -> Option<Extent> {
-            if !matches!(
-                plan.nodes[i].operation,
-                Operation::Path(_) | Operation::Text(_)
-            ) {
-                return None;
-            }
-            let (frame, [x, y]) = vectors.get(&i)?;
-            Some(Extent::Area([
-                *x as i32,
-                *y as i32,
-                (*x + frame.width()) as i32,
-                (*y + frame.height()) as i32,
-            ]))
-        };
+        let known = |i: usize| -> Option<Extent> { layers::extent(plan, i, vectors) };
         let extents = plan.extents(time, &|_| Extent::Everything, &known)?;
         let (width, height) = (plan.width as i32, plan.height as i32);
         let frame = Extent::Area([0, 0, width, height]);

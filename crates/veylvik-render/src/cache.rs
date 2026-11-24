@@ -116,69 +116,7 @@ fn pass_words(
                 words.push(0);
             }
             Input::Vector(index) => {
-                if let veylvik_document::Operation::Text(veylvik_document::nodes::Text { .. }) =
-                    &plan.nodes[*index].operation
-                {
-                    let op = &plan.nodes[*index].operation;
-                    if let veylvik_document::Operation::Text(veylvik_document::nodes::Text {
-                        typography,
-                        ..
-                    }) = op
-                        && typography.motion != veylvik_document::text::TextMotion::None
-                    {
-                        let seconds = request.time.seconds()?.to_bits();
-                        words.extend([seconds as u32, (seconds >> 32) as u32]);
-                    }
-                    let bytes = serde_json::to_vec(op).map_err(error)?;
-                    words.extend([4, bytes.len() as u32]);
-                    for chunk in bytes.chunks(4) {
-                        let mut word = [0u8; 4];
-                        word[..chunk.len()].copy_from_slice(chunk);
-                        words.push(u32::from_le_bytes(word));
-                    }
-                    for parameter in op.descriptor().parameters {
-                        if let Some(value) = op.scalar(parameter.name) {
-                            words.push(value.at(request.time)?.to_bits());
-                        }
-                    }
-                    continue;
-                }
-                use veylvik_document::vector::PathCommand::*;
-                let veylvik_document::Operation::Path(veylvik_document::nodes::Path { geometry }) =
-                    &plan.nodes[*index].operation
-                else {
-                    unreachable!()
-                };
-                let geometry = geometry.at(request.time)?;
-                words.extend([3, geometry.fill_rule as u32, geometry.commands.len() as u32]);
-                for command in &geometry.commands {
-                    match command {
-                        Move { to } => {
-                            words.push(0);
-                            words.extend(to.map(f32::to_bits));
-                        }
-                        Line { to } => {
-                            words.push(1);
-                            words.extend(to.map(f32::to_bits));
-                        }
-                        Quad { control, to } => {
-                            words.push(2);
-                            words.extend(control.map(f32::to_bits));
-                            words.extend(to.map(f32::to_bits));
-                        }
-                        Cubic {
-                            control1,
-                            control2,
-                            to,
-                        } => {
-                            words.push(3);
-                            words.extend(control1.map(f32::to_bits));
-                            words.extend(control2.map(f32::to_bits));
-                            words.extend(to.map(f32::to_bits));
-                        }
-                        Close {} => words.push(4),
-                    }
-                }
+                crate::layers::identity_words(&plan.nodes[*index].operation, request.time, words)?
             }
             Input::Asset(asset) if names.contains_key(asset) => {
                 let (id, lasting) = names[asset];
