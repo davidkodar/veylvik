@@ -128,12 +128,6 @@ impl Studio {
     }
     pub(super) fn tracking_completed(&mut self, result: Tracked) {
         self.tracking.active = None;
-        if result.session != self.project.session
-            || result.revision != self.project.document.revision()
-        {
-            self.fail("Tracking result is obsolete because the composition changed. Track again.");
-            return;
-        }
         self.status = result.message.clone();
         self.error = false;
         self.tracking.source = Some(result.source);
@@ -285,7 +279,7 @@ impl Studio {
                 message.push_str(&format!(" · {} accepted frames",samples.len()));
                 Ok(Tracked { session,revision,source,origin,samples,message })
             };
-            run().map(Completed::Tracked).map_err(|e|e.to_string())
+            run().map(|tracked| { let (session, revision) = (tracked.session, tracked.revision); Completed::then(move |s, _| s.tracking_completed(tracked)).unless_changed(session, revision, "Tracking result is obsolete because the composition changed. Track again.") }).map_err(|e|e.to_string())
         });
         if work.is_ok() {
             self.tracking.active = Some(progress);

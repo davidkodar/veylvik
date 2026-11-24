@@ -791,7 +791,7 @@ impl Studio {
                 })
             };
             run()
-                .map(Completed::PlanarTracked)
+                .map(|tracked| Completed::then(move |s, _| s.planar_completed(tracked)))
                 .map_err(|e| e.to_string())
         });
         if work.is_ok() {

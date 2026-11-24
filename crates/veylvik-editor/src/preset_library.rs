@@ -75,9 +75,8 @@ impl Studio {
     fn refresh_presets(&mut self) {
         let result = self.files.start(|| {
             let dir = veylvik_io::presets::directory().map_err(|e| e.to_string())?;
-            Ok(Completed::PresetLibrary(
-                veylvik_io::presets::list(&dir).map_err(|e| e.to_string())?,
-            ))
+            let listing = veylvik_io::presets::list(&dir).map_err(|e| e.to_string())?;
+            Ok(Completed::then(move |s, _| s.preset_listing(listing)))
         });
         self.file_started(result);
     }
@@ -181,9 +180,8 @@ impl Studio {
         let result = self.files.start(move || {
             let dir = veylvik_io::presets::directory().map_err(|e| e.to_string())?;
             veylvik_io::presets::add(&dir, &preset).map_err(|e| e.to_string())?;
-            Ok(Completed::PresetLibrary(
-                veylvik_io::presets::list(&dir).map_err(|e| e.to_string())?,
-            ))
+            let listing = veylvik_io::presets::list(&dir).map_err(|e| e.to_string())?;
+            Ok(Completed::then(move |s, _| s.preset_listing(listing)))
         });
         self.file_started(result);
     }
@@ -396,23 +394,23 @@ impl Studio {
             }
             Some(Action::Refresh) => self.refresh_presets(),
             Some(Action::Load(source)) => {
-                let result = self
-                    .files
-                    .start(move || Ok(Completed::PresetLoaded(Box::new(source.load()?))));
+                let result = self.files.start(move || {
+                    let preset = source.load()?;
+                    Ok(Completed::then(move |s, _| s.loaded_preset(preset)))
+                });
                 self.file_started(result);
             }
             Some(Action::Import) => {
                 let base = self.project.base.clone();
                 let result = self.files.start(move || {
                     let Some(path) = files::select(Choice::PresetOpen, &base, "")? else {
-                        return Ok(Completed::Cancelled);
+                        return Ok(Completed::cancelled());
                     };
                     let preset = veylvik_io::presets::load(&path).map_err(|e| e.to_string())?;
                     let dir = veylvik_io::presets::directory().map_err(|e| e.to_string())?;
                     veylvik_io::presets::add(&dir, &preset).map_err(|e| e.to_string())?;
-                    Ok(Completed::PresetLibrary(
-                        veylvik_io::presets::list(&dir).map_err(|e| e.to_string())?,
-                    ))
+                    let listing = veylvik_io::presets::list(&dir).map_err(|e| e.to_string())?;
+                    Ok(Completed::then(move |s, _| s.preset_listing(listing)))
                 });
                 self.file_started(result);
             }
@@ -422,10 +420,10 @@ impl Studio {
                 let result = self.files.start(move || {
                     let Some(path) = files::select(Choice::PresetSave, &base, "effect.veyfx")?
                     else {
-                        return Ok(Completed::Cancelled);
+                        return Ok(Completed::cancelled());
                     };
                     veylvik_io::presets::save_new(&path, &preset).map_err(|e| e.to_string())?;
-                    Ok(Completed::Exported(path))
+                    Ok(Completed::then(move |s, _| s.exported(path)))
                 });
                 self.file_started(result);
             }

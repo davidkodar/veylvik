@@ -34,8 +34,6 @@ struct Rendered {
 }
 /// A finished analysis, published by `subject_completed`.
 pub struct Segmented {
-    session: NodeId,
-    revision: u64,
     source: NodeId,
     manifest: PathBuf,
     media: veylvik_io::footage::Media,
@@ -460,14 +458,19 @@ impl Studio {
             drop(guard);
             let media = veylvik_io::footage::load(&outcome.manifest, 128 * 1024 * 1024)
                 .map_err(|e| e.to_string())?;
-            Ok(Completed::Segmented(Box::new(Segmented {
-                session,
-                revision,
+            let segmented = Segmented {
                 source,
                 manifest: outcome.manifest.clone(),
                 media,
                 outcome,
-            })))
+            };
+            Ok(Completed::then(move |s, _| s.subject_completed(segmented))
+                .unless_changed(
+                    session,
+                    revision,
+                    "Composition changed during subject tracking; track again.",
+                )
+                .for_live("segment_subject"))
         });
         if work.is_ok() {
             self.subject.active = Some(progress);
@@ -476,13 +479,6 @@ impl Studio {
     }
     pub(super) fn subject_completed(&mut self, result: Segmented) {
         self.subject.active = None;
-        if result.session != self.project.session
-            || result.revision != self.project.document.revision()
-        {
-            self.fail("Composition changed during subject tracking; track again.");
-            self.finish_live_job("segment_subject", Err(self.status.clone()));
-            return;
-        }
         let Some(asset) = result.manifest.to_str().map(str::to_owned) else {
             self.fail("Matte path is not UTF-8");
             return;

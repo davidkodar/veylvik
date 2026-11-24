@@ -69,7 +69,7 @@ impl Studio {
             let work = self.files.start(move || {
                 snapshot
                     .save(&path)
-                    .map(Completed::Saved)
+                    .map(|saved| Completed::then(move |s, ctx| s.saved(saved, ctx)))
                     .map_err(|e| e.to_string())
             });
             return started(self, work).map(Some);
@@ -84,10 +84,8 @@ impl Studio {
             let work = self.files.start(move || {
                 let outlined =
                     veylvik_io::text::outline(&base, &request).map_err(|e| e.to_string())?;
-                Ok(Completed::Live(
-                    "outline_text",
-                    json!({"operation":{"type":"path","geometry":outlined.geometry},"glyph_count":outlined.glyph_count,"advance":outlined.advance,"line_count":outlined.line_count}),
-                ))
+                let result = json!({"operation":{"type":"path","geometry":outlined.geometry},"glyph_count":outlined.glyph_count,"advance":outlined.advance,"line_count":outlined.line_count});
+                Ok(Completed::then(move |s, _| s.live_done("outline_text", result)))
             });
             let reply = started(self, work)?;
             self.begin_live_job("outline_text");
@@ -144,7 +142,7 @@ impl Studio {
         let reach = self.project.reach.clone();
         let work = self.files.start(move || {
             render_queue::Job::prepare(label, document, base, path, output, reach)
-                .map(|job| Completed::Queued(Box::new(job)))
+                .map(|job| Completed::then(move |s, _| s.queued(job)))
         });
         let reply = started(self, work)?;
         self.start_queued = true;

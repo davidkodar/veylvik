@@ -82,7 +82,7 @@ impl Studio {
                 Some(path) => path,
                 None => {
                     let Some(path) = files::select(Choice::Import, &folder, "")? else {
-                        return Ok(Completed::Cancelled);
+                        return Ok(Completed::cancelled());
                     };
                     path
                 }
@@ -115,11 +115,13 @@ impl Studio {
             project
                 .import(&path, image, NodePosition { x: 0.0, y: 0.0 }, None)
                 .map_err(|e| e.to_string())?;
-            Ok(Completed::NewFromMedia {
-                session,
-                revision,
-                project: Box::new(project),
-            })
+            Ok(
+                Completed::then(move |s, ctx| s.open_project(project, ctx)).unless_changed(
+                    session,
+                    revision,
+                    "Composition changed while opening media. Please try again.",
+                ),
+            )
         });
         self.file_started(result);
     }

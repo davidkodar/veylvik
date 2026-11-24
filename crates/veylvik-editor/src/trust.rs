@@ -133,7 +133,11 @@ impl crate::Studio {
                 let result = self.files.start(move || {
                     trust(&path);
                     crate::project::Project::open(Some(&path))
-                        .map(|project| crate::files::Completed::Opened(Box::new(project)))
+                        .map(|project| {
+                            crate::files::Completed::then(move |s, ctx| {
+                                s.open_project(project, ctx)
+                            })
+                        })
                         .map_err(|e| e.to_string())
                 });
                 self.file_started(result);

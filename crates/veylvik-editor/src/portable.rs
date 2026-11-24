@@ -166,7 +166,7 @@ impl Studio {
             let done = match action {
                 Action::Collect => {
                     let Some(parent) = files::select(Choice::Directory, &base, "")? else {
-                        return Ok(Completed::Cancelled);
+                        return Ok(Completed::cancelled());
                     };
                     let report = veylvik_io::collect::collect_with_progress(
                         &document,
@@ -188,7 +188,7 @@ impl Studio {
                 }
                 Action::Verify => {
                     let Some(folder) = files::select(Choice::Directory, &base, "")? else {
-                        return Ok(Completed::Cancelled);
+                        return Ok(Completed::cancelled());
                     };
                     let count = veylvik_io::collect::verify_with_progress(&folder, |n, bytes| {
                         update(format!(
@@ -201,7 +201,7 @@ impl Studio {
                 }
                 Action::Search => {
                     let Some(folder) = files::select(Choice::Directory, &base, "")? else {
-                        return Ok(Completed::Cancelled);
+                        return Ok(Completed::cancelled());
                     };
                     let rows = veylvik_io::relink::scan(&base, &missing, &folder, |n| {
                         update(format!("Searching · {n} entries checked"))
@@ -215,7 +215,7 @@ impl Studio {
                 }
                 Action::Locate(asset) => {
                     let Some(path) = files::select(Choice::Source, &base, "")? else {
-                        return Ok(Completed::Cancelled);
+                        return Ok(Completed::cancelled());
                     };
                     let mut rows = rows;
                     rows.retain(|r| r.asset != asset);
@@ -254,7 +254,7 @@ impl Studio {
                     }
                 }
             };
-            Ok(Completed::Portable(Box::new(done)))
+            Ok(Completed::then(move |s, _| s.portable_finished(done)))
         });
         if result.is_err() {
             self.portable.work = None;

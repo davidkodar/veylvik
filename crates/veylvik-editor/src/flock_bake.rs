@@ -7,11 +7,10 @@ use veylvik_document::{Command, NodeId, Operation, Time};
 /// A bake under way: its node and progress.
 #[derive(Default)]
 pub(crate) struct Baking {
-    active: Option<(NodeId, Arc<Progress>)>,
+    pub(crate) active: Option<(NodeId, Arc<Progress>)>,
 }
 /// A finished bake, to point its node at on the UI thread.
 pub struct Baked {
-    session: NodeId,
     node: NodeId,
     /// The file, as the node names it (relative to the project).
     name: String,
@@ -127,13 +126,14 @@ impl Studio {
                 Ok(states)
             })
             .map(|()| {
-                Completed::FlockBaked(Box::new(Baked {
-                    session,
+                let baked = Baked {
                     node,
                     name,
                     file,
                     frames: header.frames,
-                }))
+                };
+                // A bake for a project that is no longer open is simply not read.
+                Completed::then(move |s, _| s.flock_baked(baked)).in_session(session, "")
             })
         });
         if work.is_ok() {
@@ -143,10 +143,6 @@ impl Studio {
     }
     /// A finished bake: the node reads it from now on.
     pub(crate) fn flock_baked(&mut self, baked: Baked) {
-        self.flock_baking.active = None;
-        if baked.session != self.project.session {
-            return;
-        }
         match veylvik_io::flock::Bake::open(&baked.file) {
             Ok(bake) => self
                 .project

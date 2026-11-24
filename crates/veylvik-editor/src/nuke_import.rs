@@ -1,17 +1,12 @@
 //! File > Import Nuke script: the script is rebuilt on the file worker as a new, unsaved composition beside the script, and what did not come over is said in the status line and the messages.
 use crate::files::{self, Choice, Completed};
 use crate::project::Project;
-
-pub struct Imported {
-    pub project: Project,
-    pub summary: String,
-}
 impl crate::Studio {
     pub(crate) fn import_nuke(&mut self) {
         let folder = self.project.base.clone();
         let result = self.files.start(move || {
             let Some(path) = files::select(Choice::Nuke, &folder, "")? else {
-                return Ok(Completed::Cancelled);
+                return Ok(Completed::cancelled());
             };
             let text =
                 std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
@@ -38,10 +33,10 @@ impl crate::Studio {
             for note in &imported.notes {
                 summary += &format!("; {note}");
             }
-            Ok(Completed::NukeImported(Box::new(Imported {
-                project,
-                summary,
-            })))
+            Ok(Completed::then(move |s, ctx| {
+                s.open_project(project, ctx);
+                s.status = summary;
+            }))
         });
         self.file_started(result);
     }

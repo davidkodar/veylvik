@@ -22,6 +22,7 @@ mod effects;
 mod expressions;
 mod exr_layers;
 mod eyedropper;
+mod file_results;
 mod files;
 mod font_browser;
 mod grain_measure;
@@ -1591,7 +1592,7 @@ impl Studio {
                 path
             } else {
                 let Some(path) = files::select(Choice::Save, &folder, &name)? else {
-                    return Ok(Completed::Cancelled);
+                    return Ok(Completed::cancelled());
                 };
                 path
             };
@@ -1601,7 +1602,7 @@ impl Studio {
             if trusted {
                 crate::trust::trust(&path);
             }
-            Ok(Completed::Saved(saved))
+            Ok(Completed::then(move |s, ctx| s.saved(saved, ctx)))
         });
         self.file_started(result);
     }
@@ -1658,7 +1659,7 @@ impl Studio {
                 let store = self.recovery.store.clone();
                 let result = self.files.start(move || {
                     Project::recover(&store, id)
-                        .map(|project| Completed::Opened(Box::new(project)))
+                        .map(|project| Completed::then(move |s, ctx| s.open_project(project, ctx)))
                         .map_err(|e| e.to_string())
                 });
                 self.file_started(result);
@@ -1675,13 +1676,13 @@ impl Studio {
                 Some(path) => path,
                 None => {
                     let Some(path) = files::select(Choice::Open, &folder, "")? else {
-                        return Ok(Completed::Cancelled);
+                        return Ok(Completed::cancelled());
                     };
                     path
                 }
             };
             Project::open(Some(&path))
-                .map(|project| Completed::Opened(Box::new(project)))
+                .map(|project| Completed::then(move |s, ctx| s.open_project(project, ctx)))
                 .map_err(|e| e.to_string())
         });
         self.file_started(result);
@@ -1717,13 +1718,14 @@ impl Studio {
             let plan = veylvik_render::Plan::compile_output(&document, source)
                 .map_err(|e| e.to_string())?;
             let (rgb, pixels) = eyedropper::sample(&renderer, &plan, &inputs, time, region)?;
-            Ok(Completed::Picked(eyedropper::Sampled {
+            let sample = eyedropper::Sampled {
                 session,
                 node: picking.node,
                 field: picking.field,
                 rgb,
                 pixels,
-            }))
+            };
+            Ok(Completed::then(move |s, _| s.picked(sample)))
         });
         self.file_started(result);
     }
@@ -1747,10 +1749,11 @@ impl Studio {
                 font_browser::Selection::Face(face) => face,
                 font_browser::Selection::File | font_browser::Selection::Add => {
                     let Some(path) = files::select(Choice::Font, &folder, "")? else {
-                        return Ok(Completed::Cancelled);
+                        return Ok(Completed::cancelled());
                     };
                     if matches!(selection, font_browser::Selection::Add) {
-                        return Ok(Completed::FontAdded(font_browser::install(&path)?));
+                        let name = font_browser::install(&path)?;
+                        return Ok(Completed::then(move |s, ctx| s.font_added(name, ctx)));
                     }
                     font_browser::from_file(path)
                 }
@@ -1762,11 +1765,14 @@ impl Studio {
                 **target = font;
             }
             veylvik_text::outline(&node.operation, time).map_err(|e| e.to_string())?;
-            Ok(Completed::TextFont {
-                session,
-                revision,
-                node: Box::new(node),
-            })
+            let node = Box::new(node);
+            Ok(
+                Completed::then(move |s, _| s.text_font(node)).unless_changed(
+                    session,
+                    revision,
+                    "Composition changed while choosing font",
+                ),
+            )
         });
         self.file_started(result);
     }
@@ -1790,7 +1796,7 @@ impl Studio {
         let position = self.outline_controls.position;
         let result = self.files.start(move || {
             let Some(path) = files::select(Choice::Font, &folder, "")? else {
-                return Ok(Completed::Cancelled);
+                return Ok(Completed::cancelled());
             };
             request.font = path.to_str().ok_or("Font path is not UTF-8")?.into();
             let outlined =
@@ -1803,7 +1809,8 @@ impl Studio {
                 &[],
             );
             node.position = position;
-            Ok(Completed::Outlined(Box::new(node)))
+            let node = Box::new(node);
+            Ok(Completed::then(move |s, _| s.outlined(node)))
         });
         self.outline_controls.pending = result.is_ok();
         if result.is_err() {
@@ -1839,11 +1846,13 @@ impl Studio {
         let result = self.files.start(move || {
             let inputs = project::load_inputs(&composition, &base, &previous)
                 .map_err(|error| error.to_string())?;
-            Ok(Completed::Reloaded {
-                session,
-                revision,
-                inputs,
-            })
+            Ok(
+                Completed::then(move |s, _| s.reloaded(inputs)).unless_changed(
+                    session,
+                    revision,
+                    "Source reload became obsolete; reload again for the current project.",
+                ),
+            )
         });
         self.file_started(result);
     }
@@ -1876,7 +1885,7 @@ impl Studio {
         let inputs = self.project.inputs.clone();
         let result = self.files.start(move || {
             let Some(path) = files::select(choice, &folder, "")? else {
-                return Ok(Completed::Cancelled);
+                return Ok(Completed::cancelled());
             };
             let path = path.canonicalize().map_err(|error| error.to_string())?;
             let asset = path.to_str().ok_or("Image path is not UTF-8")?;
@@ -1886,13 +1895,13 @@ impl Studio {
                 .min(128 * 1024 * 1024);
             let image =
                 veylvik_io::footage::load(&path, budget).map_err(|error| error.to_string())?;
-            Ok(Completed::Replaced {
-                session,
-                revision,
-                node,
-                path,
-                image,
-            })
+            Ok(
+                Completed::then(move |s, _| s.replaced(node, path, image)).unless_changed(
+                    session,
+                    revision,
+                    "Image replacement became obsolete; choose the source again.",
+                ),
+            )
         });
         self.file_started(result);
     }
@@ -1936,19 +1945,23 @@ impl Studio {
                         Choice::Import
                     };
                     match files::pick(choice, &folder, "")? {
-                        None => return Ok(Completed::Cancelled),
+                        None => return Ok(Completed::cancelled()),
                         Some(files::Chosen::Path(path)) => path,
                         // The host's own media: no file of ours to read, its frames
                         // come from the host.
                         Some(files::Chosen::Media { key, source, .. }) => {
-                            return Ok(Completed::Imported {
+                            let (path, image) = (
+                                PathBuf::from(key),
+                                veylvik_io::footage::Media::Source(source),
+                            );
+                            return Ok(Completed::then(move |s, _| {
+                                s.imported(path, image, position, matching)
+                            })
+                            .unless_changed(
                                 session,
                                 revision,
-                                position,
-                                path: PathBuf::from(key),
-                                image: veylvik_io::footage::Media::Source(source),
-                                matching,
-                            });
+                                "Import became obsolete; import again for the current composition.",
+                            ));
                         }
                     }
                 }
@@ -1959,26 +1972,27 @@ impl Studio {
                 if !probe.has_audio {
                     return Err(format!("{} has no sound", path.display()));
                 }
-                return Ok(Completed::SoundFile {
-                    session,
-                    revision,
-                    position,
-                    path,
-                });
+                return Ok(Completed::then(move |s, _| s.sound_file(position, path))
+                    .unless_changed(
+                        session,
+                        revision,
+                        "Import became obsolete; import again for the current composition.",
+                    ));
             }
             if !sequence && veylvik_io::svg::is_svg(&path) {
                 let (shapes, skipped) = veylvik_io::svg::import(&path, frame.0, frame.1, 0.8)
                     .map_err(|e| e.to_string())?;
-                return Ok(Completed::Drawing {
-                    session,
-                    revision,
-                    name: path
-                        .file_stem()
-                        .map(|s| s.to_string_lossy().into_owned())
-                        .unwrap_or_else(|| "Drawing".into()),
-                    shapes,
-                    skipped,
-                });
+                let name = path
+                    .file_stem()
+                    .map(|s| s.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| "Drawing".into());
+                return Ok(
+                    Completed::then(move |s, _| s.drawing(name, shapes, skipped)).unless_changed(
+                        session,
+                        revision,
+                        "Import became obsolete; import again for the current composition.",
+                    ),
+                );
             }
             let (path, image) = if sequence {
                 veylvik_io::footage::import_numbered(&path, rate, budget)
@@ -1987,14 +2001,14 @@ impl Studio {
                 let image = veylvik_io::footage::load(&path, budget).map_err(|e| e.to_string())?;
                 (path, image)
             };
-            Ok(Completed::Imported {
-                session,
-                revision,
-                position,
-                path,
-                image,
-                matching,
-            })
+            Ok(
+                Completed::then(move |s, _| s.imported(path, image, position, matching))
+                    .unless_changed(
+                        session,
+                        revision,
+                        "Import became obsolete; import again for the current composition.",
+                    ),
+            )
         });
         self.file_started(result);
     }
@@ -2052,7 +2066,7 @@ impl Studio {
         let reach = self.project.reach.clone();
         let result = self.files.start(move || {
             let Some(mut path) = files::select(output.choice(), &base, &filename)? else {
-                return Ok(Completed::Cancelled);
+                return Ok(Completed::cancelled());
             };
             if matches!(output, render_queue::Output::Sequence { .. }) {
                 path = path.join(filename);
@@ -2062,7 +2076,7 @@ impl Studio {
                 output.agree_to_replace(path.exists());
             }
             render_queue::Job::prepare(name, document, base, path, output, reach)
-                .map(|j| Completed::Queued(Box::new(j)))
+                .map(|job| Completed::then(move |s, _| s.queued(job)))
         });
         self.file_started(result);
     }
@@ -2080,7 +2094,7 @@ impl Studio {
                 .into_owned();
             let folder = job.path.parent().unwrap_or(&job.base);
             let Some(mut path) = files::select(job.output.choice(), folder, &filename)? else {
-                return Ok(Completed::Cancelled);
+                return Ok(Completed::cancelled());
             };
             if matches!(job.output, render_queue::Output::Sequence { .. }) {
                 // A fresh subdirectory preserves partial frames from previous attempts.
@@ -2091,7 +2105,7 @@ impl Studio {
                 ));
             }
             job.retry_to(path)?;
-            Ok(Completed::Queued(Box::new(job)))
+            Ok(Completed::then(move |s, _| s.queued(job)))
         });
         self.file_started(result);
     }
@@ -2104,279 +2118,14 @@ impl Studio {
         self.planar.active = None;
         self.subject.active = None;
         self.solve.active = None;
+        self.flock_baking.active = None;
         if self.outline_controls.pending {
+            // Open again unless the outline arrives (its step closes the window).
             self.outline_controls.pending = false;
-            self.outline_controls.open = !matches!(&result, Ok(Completed::Outlined(_)));
+            self.outline_controls.open = true;
         }
         match result {
-            Ok(Completed::Portable(result)) => self.portable_finished(*result),
-            Ok(Completed::PlanarTracked(result)) => self.planar_completed(result),
-            Ok(Completed::CameraSolved(result)) => self.camera_solved(*result),
-            Ok(Completed::FlockBaked(result)) => self.flock_baked(*result),
-            Ok(Completed::Live(tool, result)) => {
-                self.finish_live_job(tool, Ok(result));
-                self.status = "Done".into();
-                self.error = false;
-            }
-            Ok(Completed::ModelChosen(chosen)) => self.model_chosen(*chosen),
-            Ok(Completed::SplatsChosen(chosen)) => self.splats_chosen(*chosen),
-            Ok(Completed::Segmented(result)) => self.subject_completed(*result),
-            Ok(Completed::Tracked(result)) => self.tracking_completed(result),
-            Ok(Completed::Cancelled) => {
-                self.after_save = None;
-                self.status = "Cancelled".into();
-                self.error = false;
-            }
-            Ok(Completed::FontAdded(name)) => {
-                self.fonts.added(ctx);
-                self.status = format!("Added {name}. Choose it under Added fonts.");
-                self.error = false;
-            }
-            Ok(Completed::TextFont {
-                session,
-                revision,
-                node,
-            }) => {
-                if session != self.project.session || revision != self.project.document.revision() {
-                    self.fail("Composition changed while choosing font");
-                } else {
-                    match self.project.apply(&[Command::Put { node }]) {
-                        Ok(()) => {
-                            self.refresh_draft();
-                            self.request_preview();
-                        }
-                        Err(e) => self.fail(e),
-                    }
-                }
-            }
-            Ok(Completed::Outlined(node)) => {
-                let id = node.id;
-                match self.project.apply(&[Command::Put { node }]) {
-                    Ok(()) => {
-                        self.project.selected = id;
-                        self.project.preview = Some(id);
-                        self.refresh_draft();
-                        self.request_preview();
-                    }
-                    Err(error) => {
-                        self.outline_controls.open = true;
-                        self.fail(error);
-                    }
-                }
-            }
-            Ok(Completed::PresetLibrary(listing)) => {
-                self.library.listing = listing;
-                self.status = "Effect library updated".into();
-                self.error = false;
-            }
-            Ok(Completed::PresetLoaded(preset)) => self.loaded_preset(*preset),
-            Ok(Completed::NewFromMedia {
-                session,
-                revision,
-                project,
-            }) => {
-                if session == self.project.session && revision == self.project.document.revision() {
-                    self.open_project(*project, ctx);
-                } else {
-                    self.fail("Composition changed while opening media. Please try again.");
-                }
-            }
-            Ok(Completed::Opened(project)) => self.open_project(*project, ctx),
-            Ok(Completed::NukeImported(imported)) => {
-                let crate::nuke_import::Imported { project, summary } = *imported;
-                self.open_project(project, ctx);
-                self.status = summary;
-            }
-            Ok(Completed::Picked(sample)) => {
-                if sample.session == self.project.session
-                    && sample.node == self.draft.id
-                    && eyedropper::apply(&mut self.draft.operation, sample.field, sample.rgb)
-                {
-                    self.draft_dirty = true;
-                    self.playing = false;
-                    let [r, g, b] = sample.rgb;
-                    self.status = format!(
-                        "Sampled R {r:.4} G {g:.4} B {b:.4} (scene-linear) from {} pixels · Apply to keep",
-                        sample.pixels
-                    );
-                    self.error = false;
-                } else {
-                    self.fail(
-                        "The sampled colour no longer matches the selected node; pick again.",
-                    );
-                }
-            }
-            Ok(Completed::SoundFile {
-                session,
-                revision,
-                position,
-                path,
-            }) => {
-                self.project.allow_added(&path);
-                if session != self.project.session || revision != self.project.document.revision() {
-                    self.fail("Import became obsolete; import again for the current composition.");
-                } else {
-                    let mut node = veylvik_document::Node::new(
-                        path.file_name().and_then(|s| s.to_str()).unwrap_or("Sound"),
-                        veylvik_document::Operation::Sound(veylvik_document::nodes::Sound {
-                            file: path.to_string_lossy().into_owned(),
-                            timing: Default::default(),
-                            gain: 0.0.into(),
-                        }),
-                        &[],
-                    );
-                    node.position = Some(position);
-                    let id = node.id;
-                    match self.project.apply(&[veylvik_document::Command::Put {
-                        node: Box::new(node),
-                    }]) {
-                        Ok(()) => {
-                            self.project.selected = id;
-                            self.status = "Sound added: it plays from the first frame; drag its bar on the timeline (View > Layer bars) to place it".into();
-                            self.error = false;
-                            self.refresh_draft();
-                        }
-                        Err(error) => self.fail(error),
-                    }
-                }
-            }
-            Ok(Completed::Drawing {
-                session,
-                revision,
-                name,
-                shapes,
-                skipped,
-            }) => {
-                if session != self.project.session || revision != self.project.document.revision() {
-                    self.fail("Import became obsolete; import again for the current composition.");
-                } else {
-                    let (commands, report) =
-                        veylvik_io::svg::commands(self.project.document.snapshot(), &name, &shapes);
-                    match self.project.apply(&commands) {
-                        Ok(()) => {
-                            if let Some(id) =
-                                report["result"].as_str().and_then(|id| id.parse().ok())
-                            {
-                                self.project.selected = id;
-                                self.project.preview = Some(id);
-                            }
-                            self.status = format!(
-                                "Imported {name}: {} shapes{}. Each shape's outline is a Path node: connect it to 3D text to extrude it",
-                                shapes.len(),
-                                if skipped > 0 {
-                                    format!(" ({skipped} parts such as text or pictures left out)")
-                                } else {
-                                    String::new()
-                                }
-                            );
-                            self.error = false;
-                            self.refresh_draft();
-                            self.request_preview();
-                        }
-                        Err(error) => self.fail(error),
-                    }
-                }
-            }
-            Ok(Completed::Imported {
-                path,
-                image,
-                position,
-                session,
-                revision,
-                matching,
-            }) => {
-                self.project.allow_added(&path);
-                if session != self.project.session || revision != self.project.document.revision() {
-                    self.fail("Import became obsolete; import again for the current composition.");
-                } else if let Some(matching) = matching {
-                    let settings = matching.then(|| image.info()).flatten().map(|info| {
-                        media_import::matched_current(self.project.document.snapshot(), &info)
-                    });
-                    self.finish_import(path, image, position, settings);
-                } else if self.project.is_empty()
-                    && image.info().is_some_and(|i| {
-                        let doc = self.project.document.snapshot();
-                        i.width != doc.width
-                            || i.height != doc.height
-                            || i.frame_rate.is_some_and(|r| {
-                                r.compare(doc.frame_rate).is_ok_and(|o| !o.is_eq())
-                            })
-                    })
-                {
-                    self.status = "Choose whether to match the imported media".into();
-                    self.error = false;
-                    self.media_import = image.info().map(|info| {
-                        media_import::Pending::new(
-                            &self.project,
-                            info,
-                            Some((path, image, position)),
-                        )
-                    });
-                } else {
-                    self.finish_import(path, image, position, None);
-                }
-            }
-            Ok(Completed::Reloaded {
-                session,
-                revision,
-                inputs,
-            }) => {
-                if self.project.session == session && self.project.document.revision() == revision {
-                    self.project.inputs = inputs;
-                    self.request_preview();
-                } else {
-                    self.fail(
-                        "Source reload became obsolete; reload again for the current project.",
-                    );
-                }
-            }
-            Ok(Completed::Replaced {
-                session,
-                revision,
-                node,
-                path,
-                image,
-            }) => {
-                if self.project.session != session || self.project.document.revision() != revision {
-                    self.fail("Image replacement became obsolete; choose the source again.");
-                } else {
-                    match self.project.replace_image(node, &path, image) {
-                        Ok(()) => {
-                            self.refresh_draft();
-                            self.request_preview();
-                        }
-                        Err(error) => self.fail(error),
-                    }
-                }
-            }
-            Ok(Completed::Saved(saved)) => {
-                self.status = format!("Saved {}", saved.stamp.path().display());
-                self.error = false;
-                self.project.mark_saved(saved);
-                if let Some(action) = self.after_save.take() {
-                    self.leave_now(action, ctx);
-                }
-            }
-            Ok(Completed::Queued(job)) => match self.render_queue.add(*job) {
-                Ok(()) => {
-                    let asked = std::mem::take(&mut self.start_queued);
-                    if asked || self.pages.page == pages::Page::Export {
-                        // From the Export page, or asked for over live control, a chosen
-                        // destination renders at once, with its progress shown there.
-                        self.render_queue.start();
-                        self.render_queue.open = false;
-                        self.status = "Exporting".into();
-                    } else {
-                        self.status = "Added snapshot to render queue".into();
-                    }
-                    self.error = false;
-                }
-                Err(e) => self.fail(e),
-            },
-            Ok(Completed::Exported(path)) => {
-                self.status = format!("Exported {}", path.display());
-                self.error = false;
-            }
+            Ok(done) => done.finish(self, ctx),
             Err(e) => {
                 self.after_save = None;
                 self.fail(e);

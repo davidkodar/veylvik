@@ -6,8 +6,6 @@ use veylvik_document::{Command, NodeId, Operation};
 
 /// A loaded model for a node, to apply on the UI thread.
 pub struct Chosen {
-    session: NodeId,
-    revision: u64,
     node: NodeId,
     path: PathBuf,
     model: Arc<veylvik_scene::Model>,
@@ -38,26 +36,26 @@ impl Studio {
         );
         let result = self.files.start(move || {
             let Some(path) = files::select(files::Choice::Model, &folder, "")? else {
-                return Ok(Completed::Cancelled);
+                return Ok(Completed::cancelled());
             };
             let path = path.canonicalize().map_err(|e| e.to_string())?;
             let model = veylvik_io::model::load(&path)?;
-            Ok(Completed::ModelChosen(Box::new(Chosen {
-                session,
-                revision,
+            let chosen = Chosen {
                 node,
                 path,
                 model: Arc::new(model),
-            })))
+            };
+            Ok(
+                Completed::then(move |s, _| s.model_chosen(chosen)).unless_changed(
+                    session,
+                    revision,
+                    "The project changed while loading the model; choose it again.",
+                ),
+            )
         });
         self.file_started(result);
     }
     pub(crate) fn model_chosen(&mut self, chosen: Chosen) {
-        if chosen.session != self.project.session
-            || chosen.revision != self.project.document.revision()
-        {
-            return self.fail("The project changed while loading the model; choose it again.");
-        }
         let Some(path) = chosen.path.to_str().map(str::to_owned) else {
             return self.fail("The model's path is not UTF-8");
         };

@@ -1,5 +1,4 @@
 //! One background file operation at a time; file selection uses the desktop portal.
-use crate::project::{Project, Saved};
 use ashpd::desktop::{
     ResponseError,
     file_chooser::{FileFilter, SelectedFiles},
@@ -9,7 +8,6 @@ use std::{
     sync::mpsc,
     thread::JoinHandle,
 };
-use veylvik_io::footage::Media;
 #[derive(Clone, Copy)]
 pub enum Choice {
     Open,
@@ -31,76 +29,91 @@ pub enum Choice {
     /// A Nuke script to rebuild as a new composition (only with project files).
     Nuke,
 }
-pub enum Completed {
-    /// An eyedropper sample, to apply to the draft colour it was taken for.
-    Picked(crate::eyedropper::Sampled),
-    Tracked(crate::tracking::Tracked),
-    PlanarTracked(crate::planar::Tracked),
-    CameraSolved(Box<crate::solve_camera::Solved>),
-    FlockBaked(Box<crate::flock_bake::Baked>),
-    ModelChosen(Box<crate::model_import::Chosen>),
-    SplatsChosen(Box<crate::splat_import::Chosen>),
-    Segmented(Box<crate::subject::Segmented>),
-    PresetLibrary(veylvik_io::presets::Listing),
-    PresetLoaded(Box<veylvik_document::presets::Preset>),
-    Cancelled,
-    /// An audio file checked to hold sound, to add as a Sound node.
-    SoundFile {
+/// What a finished file job does on the UI thread: its own step, run only while the
+/// project it was started for is still open (and, if it says so, unchanged), so each
+/// feature keeps its whole flow and the "is it still this project?" rule lives here once.
+pub struct Completed {
+    then: Then,
+    guard: Option<Guard>,
+}
+type Then = Box<dyn FnOnce(&mut crate::Studio, &eframe::egui::Context) + Send>;
+/// The project a result belongs to: a session, and a revision when any edit makes the
+/// result wrong. `live` names a live MCP job to tell when the result is thrown away.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct Guard {
+    session: veylvik_document::NodeId,
+    revision: Option<u64>,
+    stale: &'static str,
+    live: Option<&'static str>,
+}
+impl Guard {
+    fn holds(&self, session: veylvik_document::NodeId, revision: u64) -> bool {
+        self.session == session && self.revision.is_none_or(|r| r == revision)
+    }
+}
+impl Completed {
+    pub fn then(
+        then: impl FnOnce(&mut crate::Studio, &eframe::egui::Context) + Send + 'static,
+    ) -> Self {
+        Self {
+            then: Box::new(then),
+            guard: None,
+        }
+    }
+    /// The person closed the dialog: nothing happens.
+    pub fn cancelled() -> Self {
+        Self::then(|studio, _| {
+            studio.after_save = None;
+            studio.status = "Cancelled".into();
+            studio.error = false;
+        })
+    }
+    /// Run only while `session` is still open and at `revision`; else say `stale`.
+    pub fn unless_changed(
+        mut self,
         session: veylvik_document::NodeId,
         revision: u64,
-        position: veylvik_document::NodePosition,
-        path: PathBuf,
-    },
-    /// An SVG drawing read as shapes, to add as nodes on the UI thread.
-    Drawing {
-        session: veylvik_document::NodeId,
-        revision: u64,
-        name: String,
-        shapes: Vec<veylvik_io::svg::Shape>,
-        skipped: usize,
-    },
-    /// The finished result of a live MCP job, reported through `inspect.job`.
-    Live(&'static str, serde_json::Value),
-    FontAdded(String),
-    Outlined(Box<veylvik_document::Node>),
-    TextFont {
-        session: veylvik_document::NodeId,
-        revision: u64,
-        node: Box<veylvik_document::Node>,
-    },
-    Opened(Box<Project>),
-    /// A Nuke script rebuilt, with what did not come over.
-    NukeImported(Box<crate::nuke_import::Imported>),
-    NewFromMedia {
-        session: veylvik_document::NodeId,
-        revision: u64,
-        project: Box<Project>,
-    },
-    Imported {
-        session: veylvik_document::NodeId,
-        revision: u64,
-        position: veylvik_document::NodePosition,
-        path: PathBuf,
-        image: Media,
-        /// Whether an empty composition adopts the media's settings; `None` asks the user.
-        matching: Option<bool>,
-    },
-    Reloaded {
-        session: veylvik_document::NodeId,
-        revision: u64,
-        inputs: veylvik_render::ImageInputs,
-    },
-    Replaced {
-        session: veylvik_document::NodeId,
-        revision: u64,
-        node: veylvik_document::NodeId,
-        path: PathBuf,
-        image: Media,
-    },
-    Saved(Saved),
-    Exported(PathBuf),
-    Portable(Box<crate::portable::Finished>),
-    Queued(Box<crate::render_queue::Job>),
+        stale: &'static str,
+    ) -> Self {
+        self.guard = Some(Guard {
+            session,
+            revision: Some(revision),
+            stale,
+            live: None,
+        });
+        self
+    }
+    /// Run only while `session` is still open, whatever was edited since; else say `stale`.
+    pub fn in_session(mut self, session: veylvik_document::NodeId, stale: &'static str) -> Self {
+        self.guard = Some(Guard {
+            session,
+            revision: None,
+            stale,
+            live: None,
+        });
+        self
+    }
+    /// A live MCP job waits on this result: tell it when the result is thrown away.
+    pub fn for_live(mut self, tool: &'static str) -> Self {
+        if let Some(guard) = &mut self.guard {
+            guard.live = Some(tool);
+        }
+        self
+    }
+    pub(crate) fn finish(self, studio: &mut crate::Studio, ctx: &eframe::egui::Context) {
+        if let Some(guard) = self.guard
+            && !guard.holds(studio.project.session, studio.project.document.revision())
+        {
+            if !guard.stale.is_empty() {
+                studio.fail(guard.stale);
+            }
+            if let Some(tool) = guard.live {
+                studio.finish_live_job(tool, Err(studio.status.clone()));
+            }
+            return;
+        }
+        (self.then)(studio, ctx)
+    }
 }
 pub struct Tasks {
     sender: mpsc::SyncSender<Result<Completed, String>>,
@@ -460,6 +473,25 @@ pub fn select(choice: Choice, folder: &Path, name: &str) -> Result<Option<PathBu
 mod tests {
     use super::*;
     #[test]
+    fn a_result_belongs_to_the_project_and_revision_it_was_started_for() {
+        let session = veylvik_document::NodeId::from_u128(1);
+        let other = veylvik_document::NodeId::from_u128(2);
+        let edited = Guard {
+            session,
+            revision: Some(4),
+            stale: "changed",
+            live: None,
+        };
+        assert!(edited.holds(session, 4));
+        assert!(!edited.holds(session, 5), "an edit since makes it stale");
+        assert!(!edited.holds(other, 4), "another project makes it stale");
+        let any = Guard {
+            revision: None,
+            ..edited
+        };
+        assert!(any.holds(session, 9) && !any.holds(other, 9));
+    }
+    #[test]
     fn file_jobs_are_bounded_and_report_worker_failure() {
         let mut tasks = Tasks::new(eframe::egui::Context::default());
         let (tx, rx) = mpsc::channel();
@@ -469,7 +501,7 @@ mod tests {
                 Err("test failure".into())
             })
             .unwrap();
-        assert!(tasks.start(|| Ok(Completed::Cancelled)).is_err());
+        assert!(tasks.start(|| Ok(Completed::cancelled())).is_err());
         tx.send(()).unwrap();
         let result = tasks
             .receiver

@@ -22,8 +22,6 @@ pub struct Controls {
 }
 /// A finished analysis, to turn into nodes on the UI thread.
 pub struct Solved {
-    session: NodeId,
-    revision: u64,
     request: Request,
     outcome: Outcome,
 }
@@ -268,12 +266,12 @@ impl Studio {
             };
             veylvik_track::camera::analyse(&renderer, &plan, &inputs, &request, rate, &mut report)
                 .map(|outcome| {
-                    Completed::CameraSolved(Box::new(Solved {
+                    let solved = Solved { request, outcome };
+                    Completed::then(move |s, _| s.camera_solved(solved)).unless_changed(
                         session,
                         revision,
-                        request,
-                        outcome,
-                    }))
+                        "The project changed while solving; solve again.",
+                    )
                 })
                 .map_err(|e| e.to_string())
         });
@@ -284,11 +282,6 @@ impl Studio {
     }
     pub(crate) fn camera_solved(&mut self, solved: Solved) {
         self.solve.active = None;
-        if solved.session != self.project.session
-            || solved.revision != self.project.document.revision()
-        {
-            return self.fail("The project changed while solving; solve again.");
-        }
         let built = match veylvik_track::camera::scene(
             self.project.document.snapshot(),
             &solved.request,
