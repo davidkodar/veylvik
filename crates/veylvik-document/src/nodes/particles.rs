@@ -1,6 +1,6 @@
 //! Particle systems. A particle's whole life is a function of the frame's time, so any frame renders on its own.
 #[allow(unused_imports)]
-use crate::registry::{NodeType, Parameter, ParameterKind, PortKind, other, scalar};
+use crate::registry::{NodeType, Parameter, ParameterKind, PortKind, integer, other, scalar};
 #[allow(unused_imports)]
 use crate::*;
 use serde::{Deserialize, Serialize};
@@ -341,15 +341,9 @@ pub static PARTICLES: NodeType = NodeType {
             ..other("end_colour", ParameterKind::Color, "linear RGBA")
         },
         other("seed", ParameterKind::Seed, "random seed"),
-        other("history", ParameterKind::Seed, "moments"),
-        Parameter {
-            default: 1.0,
-            ..other("sprite_columns", ParameterKind::Seed, "cells")
-        },
-        Parameter {
-            default: 1.0,
-            ..other("sprite_rows", ParameterKind::Seed, "cells")
-        },
+        integer("history", "moments", 0, 16, 0),
+        integer("sprite_columns", "cells", 1, SPRITE_CELLS_MOST, 1),
+        integer("sprite_rows", "cells", 1, SPRITE_CELLS_MOST, 1),
         other("sprite_play", ParameterKind::SpritePlay, "cell"),
         scalar("sprite_rate", "cells per second", 0.0, 240.0, 12.0),
         other(
@@ -448,11 +442,6 @@ node!(
     ],
     {
         fn validate(&self) -> Result<()> {
-            if !(1..=SPRITE_CELLS_MOST).contains(&self.sprite_columns)
-                || !(1..=SPRITE_CELLS_MOST).contains(&self.sprite_rows)
-            {
-                return fail("A sprite sheet has 1 to 8 cells across and down");
-            }
             if self
                 .colour
                 .iter()
@@ -483,9 +472,6 @@ node!(
                     .any(|v| !v.is_finite() || !(0.0..=64.0).contains(v))
             }) {
                 return fail("Colours over the life need values in 0..=64");
-            }
-            if self.history > 16 {
-                return fail("Particles keep at most 16 moments of the emitter");
             }
             Ok(())
         }

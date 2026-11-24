@@ -1,6 +1,6 @@
 //! Freeform warps of one image.
 #[allow(unused_imports)]
-use crate::registry::{NodeType, Parameter, ParameterKind, PortKind, other, scalar};
+use crate::registry::{NodeType, Parameter, ParameterKind, PortKind, integer, other, scalar};
 #[allow(unused_imports)]
 use crate::*;
 use serde::{Deserialize, Serialize};
@@ -64,23 +64,26 @@ pub static GRID_WARP: NodeType = NodeType {
     optional: &[],
     output: PortKind::Image,
     parameters: &[
-        Parameter {
-            default: 4.0,
-            ..other("columns", ParameterKind::Seed, "points across")
-        },
-        Parameter {
-            default: 4.0,
-            ..other("rows", ParameterKind::Seed, "points down")
-        },
+        integer(
+            "columns",
+            "points across",
+            *GRID_SIDE.start(),
+            *GRID_SIDE.end(),
+            4,
+        ),
+        integer(
+            "rows",
+            "points down",
+            *GRID_SIDE.start(),
+            *GRID_SIDE.end(),
+            4,
+        ),
         other("points", ParameterKind::GridPoints, "pixel offsets"),
         scalar("amount", "factor", 0.0, 1.0, 1.0),
     ],
 };
 node!(GridWarp, GRID_WARP, [amount], {
     fn validate(&self) -> Result<()> {
-        if !GRID_SIDE.contains(&self.columns) || !GRID_SIDE.contains(&self.rows) {
-            return fail("Grid warp needs 2 to 17 points across and down");
-        }
         if self.points.len() != (self.columns * self.rows) as usize {
             return fail("Grid warp needs one offset for each point (columns x rows)");
         }

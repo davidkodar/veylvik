@@ -32,6 +32,7 @@ pub fn drawable(kind: ParameterKind) -> bool {
             | ParameterKind::Color
             | ParameterKind::Colour3
             | ParameterKind::Seed
+            | ParameterKind::Integer
             | ParameterKind::TextContent
             | ParameterKind::FrameRate
             | ParameterKind::FlowQuality
@@ -189,11 +190,17 @@ pub(crate) fn widget(
             changed = crate::animation::colour_track(ui, &control.label, &mut track, time);
             *value = serde_json::to_value(track).unwrap_or_default();
         }
-        ParameterKind::Seed => {
+        ParameterKind::Seed | ParameterKind::Integer => {
             ui.label(&control.label);
-            let mut seed = value.as_u64().unwrap_or(0) as u32;
-            changed = ui.add(egui::DragValue::new(&mut seed)).changed();
-            *value = seed.into();
+            let mut number = value.as_u64().unwrap_or(0) as u32;
+            let (min, max) = (
+                descriptor.min.map_or(0, |m| m as u32),
+                descriptor.max.map_or(u32::MAX, |m| m as u32),
+            );
+            changed = ui
+                .add(egui::DragValue::new(&mut number).range(min..=max))
+                .changed();
+            *value = number.into();
         }
         ParameterKind::TextContent => {
             ui.label(&control.label);

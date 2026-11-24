@@ -269,7 +269,25 @@ impl Operation {
         each_node!(self, node => node.scalar_mut(name))
     }
     pub fn validate(&self) -> Result<()> {
+        let mut written = None;
         for parameter in self.descriptor().parameters {
+            if let registry::ParameterKind::Integer = parameter.kind {
+                // Read as written, so the limits are checked where they are declared.
+                let written = match &mut written {
+                    Some(json) => json,
+                    None => written
+                        .insert(serde_json::to_value(self).map_err(|e| Error(e.to_string()))?),
+                };
+                let (min, max) = (parameter.min.unwrap() as u64, parameter.max.unwrap() as u64);
+                if let Some(value) = written[parameter.name].as_u64()
+                    && !(min..=max).contains(&value)
+                {
+                    return fail(format!(
+                        "{} must be a whole number from {min} to {max}",
+                        parameter.name
+                    ));
+                }
+            }
             if let registry::ParameterKind::Scalar = parameter.kind {
                 let value = self
                     .scalar(parameter.name)

@@ -35,6 +35,8 @@ pub enum ParameterKind {
     TextLanguage,
     Boolean,
     Seed,
+    /// A whole number within the parameter's own min and max (a count or a size).
+    Integer,
     Color,
     Asset,
     Path,
@@ -122,7 +124,7 @@ impl Parameter {
             ParameterKind::AtmosphereKind => json!(crate::AtmosphereKind::Smoke),
             ParameterKind::ReflectionKind => json!(crate::ReflectionKind::Metal),
             ParameterKind::PatinaKind => json!(crate::PatinaKind::Tarnish),
-            ParameterKind::Seed => json!(self.default as u32),
+            ParameterKind::Seed | ParameterKind::Integer => json!(self.default as u32),
             ParameterKind::BlendMode => json!(crate::BlendMode::Normal),
             ParameterKind::MaskChannel => json!(crate::MaskChannel::Luminance),
             ParameterKind::GradientMode => json!(crate::GradientMode::Linear),
@@ -254,6 +256,9 @@ impl Parameter {
             }
             ParameterKind::PatinaKind => json!({"type":"string","enum":crate::PatinaKind::ALL}),
             ParameterKind::Seed => json!({"type":"integer","minimum":0,"maximum":u32::MAX}),
+            ParameterKind::Integer => {
+                json!({"type":"integer","minimum":self.min.map(|m| m as u32),"maximum":self.max.map(|m| m as u32)})
+            }
             ParameterKind::KeyColor => {
                 json!({"type":"array","minItems":4,"maxItems":4,"items":{"type":"number","minimum":0}})
             }
@@ -280,6 +285,24 @@ impl Parameter {
                 json!({"type":"string","minLength":1,"maxLength":MAX_ASSET_NAME})
             }
         }
+    }
+}
+/// A whole number from `min` to `max`: its default and limits, declared once, give the
+/// schema and are what validation enforces.
+pub(crate) const fn integer(
+    name: &'static str,
+    unit: &'static str,
+    min: u32,
+    max: u32,
+    default: u32,
+) -> Parameter {
+    Parameter {
+        name,
+        kind: ParameterKind::Integer,
+        unit,
+        min: Some(min as f32),
+        max: Some(max as f32),
+        default: default as f32,
     }
 }
 pub(crate) const fn scalar(
@@ -525,4 +548,77 @@ pub fn scalar_schema(min: Option<f32>, max: Option<f32>) -> Value {
         {"type":"object","description":"A formula of time (seconds), frame, numbers, + - * / % ^ and functions (sin, cos, noise, random, clamp, mix, smoothstep, ...), with links [Node].parameter to other nodes' animatable parameters by node id or unique label; clamped to the parameter's range","properties":{"kind":{"const":"expression"},"expression":{"type":"string","minLength":1,"maxLength":veylvik_expr::MAX_SOURCE}},"required":["kind","expression"],"additionalProperties":false},
         {"type":"object","properties":{"kind":{"enum":["linear","step","smooth","monotone"]},"keys":{"type":"array","minItems":1,"maxItems":crate::animation::MAX_KEYS,"items":{"type":"object","properties":{"time":time_schema(),"value":number,"segment":crate::schema::segment()},"required":["time","value"],"additionalProperties":false}}},"required":["kind","keys"],"additionalProperties":false}
     ]})
+}
+#[cfg(test)]
+mod bounds_tests {
+    use super::*;
+    /// The limits a number setting's schema states, as (min, max).
+    fn stated(schema: &Value) -> (Option<f64>, Option<f64>) {
+        let number = schema
+            .get("oneOf")
+            .map(|forms| forms[0]["properties"]["value"].clone())
+            .unwrap_or_else(|| schema.clone());
+        (number["minimum"].as_f64(), number["maximum"].as_f64())
+    }
+    fn valid_with(kind: &NodeType, name: &str, value: Value) -> bool {
+        let mut op = kind.default_operation();
+        op[name] = value;
+        // A grid warp holds one offset for each of its points.
+        if kind.type_id == "grid_warp" {
+            let count = op["columns"].as_u64().unwrap_or(0) * op["rows"].as_u64().unwrap_or(0);
+            op["points"] = json!(vec![[0.0f32; 2]; count.min(1024) as usize]);
+        }
+        serde_json::from_value::<crate::Operation>(op).is_ok_and(|op| op.validate().is_ok())
+    }
+    #[test]
+    fn every_number_setting_is_refused_exactly_beyond_the_limits_its_schema_states() {
+        let mut wrong = Vec::new();
+        for kind in TYPES {
+            for parameter in kind.parameters {
+                let wrap = |v: f64| match parameter.kind {
+                    ParameterKind::Scalar => json!({"kind":"constant","value":v}),
+                    _ => json!(v as u64),
+                };
+                if !matches!(
+                    parameter.kind,
+                    ParameterKind::Scalar | ParameterKind::Seed | ParameterKind::Integer
+                ) {
+                    continue;
+                }
+                let (min, max) = stated(&parameter.schema());
+                // A step a stored f32 still tells apart from the limit.
+                let step = |m: f64| match parameter.kind {
+                    ParameterKind::Seed | ParameterKind::Integer => 1.0,
+                    _ => (m.abs() * 1e-5).max(1e-3),
+                };
+                for (edge, inside, outside) in [
+                    ("min", min, min.map(|m| m - step(m))),
+                    ("max", max, max.map(|m| m + step(m))),
+                ] {
+                    let Some(at) = inside else { continue };
+                    if !valid_with(kind, parameter.name, wrap(at)) {
+                        wrong.push(format!(
+                            "{} {}: refuses its stated {edge} {at}",
+                            kind.type_id, parameter.name
+                        ));
+                    }
+                    // Out of range for a u32 cannot even be written.
+                    if let Some(beyond) = outside.filter(|v| *v >= 0.0 && *v <= f64::from(u32::MAX))
+                        && valid_with(kind, parameter.name, wrap(beyond))
+                    {
+                        wrong.push(format!(
+                            "{} {}: accepts {beyond}, beyond its stated {edge}",
+                            kind.type_id, parameter.name
+                        ));
+                    }
+                }
+            }
+        }
+        assert!(
+            wrong.is_empty(),
+            "{} disagreements:\n{}",
+            wrong.len(),
+            wrong.join("\n")
+        );
+    }
 }

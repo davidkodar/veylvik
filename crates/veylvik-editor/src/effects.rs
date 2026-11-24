@@ -101,7 +101,7 @@ impl Controls {
                             let node = &doc.nodes[id];
                             egui::CollapsingHeader::new(&node.label).id_salt(id).show(ui, |ui| {
                                 for p in node.operation.descriptor().parameters {
-                                    if !matches!(p.kind, ParameterKind::Scalar | ParameterKind::Color | ParameterKind::Seed) { continue; }
+                                    if !matches!(p.kind, ParameterKind::Scalar | ParameterKind::Color | ParameterKind::Seed | ParameterKind::Integer) { continue; }
                                     ui.push_id(p.name, |ui| {
                                         let key = group.controls.iter().find(|(_, c)| c.node == *id && c.parameter == p.name).map(|(k, _)| k.clone());
                                         let mut exposed = key.is_some();

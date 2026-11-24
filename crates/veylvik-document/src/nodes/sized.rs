@@ -1,6 +1,6 @@
 //! A branch rendered at a size of its own: what feeds an Own size node is rendered at that node's width and height, and its picture may only go where a picture of any size is wrapped or placed.
 #[allow(unused_imports)]
-use crate::registry::{NodeType, Parameter, ParameterKind, PortKind, other, scalar};
+use crate::registry::{NodeType, Parameter, ParameterKind, PortKind, integer, other, scalar};
 #[allow(unused_imports)]
 use crate::*;
 use serde::{Deserialize, Serialize};
@@ -46,22 +46,13 @@ pub static OWN_SIZE: NodeType = NodeType {
     optional: &[],
     output: PortKind::Picture,
     parameters: &[
-        Parameter {
-            default: 1024.0,
-            ..other("width", ParameterKind::Seed, "pixels")
-        },
-        Parameter {
-            default: 1024.0,
-            ..other("height", ParameterKind::Seed, "pixels")
-        },
+        integer("width", "pixels", 1, OWN_SIZE_MAX, 1024),
+        integer("height", "pixels", 1, OWN_SIZE_MAX, 1024),
         other("fit", ParameterKind::Fit, "meeting the frame"),
     ],
 };
 node!(OwnSize, OWN_SIZE, [], {
     fn validate(&self) -> Result<()> {
-        if !(1..=OWN_SIZE_MAX).contains(&self.width) || !(1..=OWN_SIZE_MAX).contains(&self.height) {
-            return fail("Own size needs a width and height of 1 to 16384 pixels");
-        }
         if u64::from(self.width) * u64::from(self.height) > OWN_SIZE_PIXELS {
             return fail("Own size holds at most 96 million pixels, for example 12288 by 6144");
         }
