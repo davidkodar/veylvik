@@ -109,6 +109,13 @@ pub enum Placement {
     Original,
     Stretch,
 }
+choices!(Placement {
+    Legacy,
+    Fit,
+    Fill,
+    Original,
+    Stretch
+});
 impl Placement {
     pub fn label(self) -> &'static str {
         match self {

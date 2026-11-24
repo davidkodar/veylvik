@@ -79,6 +79,11 @@ pub enum TextAlignment {
     Center,
     Right,
 }
+choices!(TextAlignment {
+    Left,
+    Center,
+    Right
+});
 pub fn validate(content: &str, font: &TextFont, language: &str) -> Result<()> {
     if content
         .as_bytes()

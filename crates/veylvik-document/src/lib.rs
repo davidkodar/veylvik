@@ -1,4 +1,21 @@
 //! Serializable compositions and transactional editing, independent of GPU and UI.
+/// `Type::ALL`, every variant of a choice type in order, for its schema and its menus.
+/// The list is checked against the type: a variant left out does not compile.
+macro_rules! choices {
+    ($ty:ident { $($variant:ident),+ $(,)? }) => {
+        impl $ty {
+            pub const ALL: [Self; <[()]>::len(&[$(choices!(@unit $variant)),+])] =
+                [$(Self::$variant),+];
+            #[allow(dead_code)]
+            const fn every_choice_is_listed(choice: Self) {
+                match choice {
+                    $(Self::$variant => {}),+
+                }
+            }
+        }
+    };
+    (@unit $variant:ident) => { () };
+}
 pub mod clipboard;
 pub mod editing;
 pub mod groups;

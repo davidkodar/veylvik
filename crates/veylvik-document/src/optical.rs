@@ -469,6 +469,11 @@ pub enum Brushing {
     Smooth,
     Directional,
 }
+choices!(Brushing {
+    Auto,
+    Smooth,
+    Directional
+});
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MetalFinish {

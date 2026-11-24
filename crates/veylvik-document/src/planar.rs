@@ -19,8 +19,13 @@ pub enum WarpMode {
     /// centred, by the surface's proportions on the reference frame.
     FitInside,
 }
+choices!(WarpMode {
+    Follow,
+    Fit,
+    FitInside,
+    Stabilize
+});
 impl WarpMode {
-    pub const ALL: [Self; 4] = [Self::Follow, Self::Fit, Self::FitInside, Self::Stabilize];
     pub fn label(self) -> &'static str {
         match self {
             Self::Follow => "Follow surface",

@@ -161,7 +161,7 @@ impl Parameter {
                 json!({"type":"object","properties":{"ticks":{"type":"integer","minimum":1},"rate":{"type":"integer","minimum":1}},"required":["ticks","rate"],"additionalProperties":false})
             }
             ParameterKind::FlowQuality => {
-                json!({"type":"string","enum":["fast","balanced","fine"]})
+                json!({"type":"string","enum":crate::nodes::FlowQuality::ALL})
             }
             ParameterKind::BlurFilter => {
                 json!({"type":"string","enum":crate::nodes::BlurFilter::ALL})
@@ -171,7 +171,7 @@ impl Parameter {
             }
             ParameterKind::OcioTransform => crate::color_management::OcioTransform::schema(),
             ParameterKind::Brushing => {
-                json!({"type":"string","enum":["auto","smooth","directional"]})
+                json!({"type":"string","enum":crate::optical::Brushing::ALL})
             }
             ParameterKind::StudioRig => crate::optical::StudioRig::schema(),
             ParameterKind::SurfaceOptics => {
@@ -199,7 +199,7 @@ impl Parameter {
             ParameterKind::FilePath => json!({"type":"string","maxLength":4096}),
             ParameterKind::OfxPlugin => json!({"type":"string","maxLength":1024}),
             ParameterKind::OfxContext => {
-                json!({"type":"string","enum":["filter","general","generator"]})
+                json!({"type":"string","enum":crate::nodes::OfxContext::ALL})
             }
             ParameterKind::OfxClips => {
                 json!({"type":"array","maxItems":4,"items":{"type":"string","maxLength":256}})
@@ -230,7 +230,7 @@ impl Parameter {
             }
             ParameterKind::PlanarTrack => crate::planar::schema(),
             ParameterKind::PlanarMode => {
-                json!({"type":"string","enum":["follow","fit","stabilize"]})
+                json!({"type":"string","enum":crate::planar::WarpMode::ALL})
             }
             ParameterKind::Typography => crate::text::typography_schema(),
             ParameterKind::Letters => crate::nodes::Letters::schema(),
@@ -238,7 +238,7 @@ impl Parameter {
             ParameterKind::TextContent => json!({"type":"string","maxLength":4096}),
             ParameterKind::TextFont => crate::text::font_schema(),
             ParameterKind::TextAlignment => {
-                json!({"type":"string","enum":["left","center","right"]})
+                json!({"type":"string","enum":crate::TextAlignment::ALL})
             }
             ParameterKind::TextLanguage => json!({"type":"string","maxLength":64}),
             ParameterKind::Boolean => json!({"type":"boolean"}),
@@ -279,7 +279,7 @@ impl Parameter {
             }
             ParameterKind::FadeTiming => crate::nodes::fade_schema(),
             ParameterKind::MediaPlacement => {
-                json!({"type":"string","enum":["legacy","fit","fill","original","stretch"]})
+                json!({"type":"string","enum":crate::media::Placement::ALL})
             }
             ParameterKind::Asset => {
                 json!({"type":"string","minLength":1,"maxLength":MAX_ASSET_NAME})
@@ -569,6 +569,36 @@ mod bounds_tests {
             op["points"] = json!(vec![[0.0f32; 2]; count.min(1024) as usize]);
         }
         serde_json::from_value::<crate::Operation>(op).is_ok_and(|op| op.validate().is_ok())
+    }
+    #[test]
+    fn every_choice_a_schema_lists_is_accepted_and_every_default_is_listed() {
+        let mut wrong = Vec::new();
+        for kind in TYPES {
+            for parameter in kind.parameters {
+                let schema = parameter.schema();
+                let Some(choices) = schema["enum"].as_array() else {
+                    continue;
+                };
+                let default = kind.default_operation()[parameter.name].clone();
+                if !choices.contains(&default) {
+                    wrong.push(format!(
+                        "{} {}: default {default} is not listed",
+                        kind.type_id, parameter.name
+                    ));
+                }
+                for choice in choices {
+                    let mut op = kind.default_operation();
+                    op[parameter.name] = choice.clone();
+                    if serde_json::from_value::<crate::Operation>(op).is_err() {
+                        wrong.push(format!(
+                            "{} {}: lists {choice}, which is refused",
+                            kind.type_id, parameter.name
+                        ));
+                    }
+                }
+            }
+        }
+        assert!(wrong.is_empty(), "{}", wrong.join("\n"));
     }
     #[test]
     fn every_number_setting_is_refused_exactly_beyond_the_limits_its_schema_states() {

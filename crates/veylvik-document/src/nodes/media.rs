@@ -200,6 +200,11 @@ pub enum FlowQuality {
     Balanced,
     Fine,
 }
+choices!(FlowQuality {
+    Fast,
+    Balanced,
+    Fine
+});
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct OpticalFlow {

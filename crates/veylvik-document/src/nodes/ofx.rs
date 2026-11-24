@@ -28,6 +28,11 @@ pub enum OfxContext {
     General,
     Generator,
 }
+choices!(OfxContext {
+    Filter,
+    General,
+    Generator
+});
 impl OfxContext {
     /// The standard's name for it.
     pub fn name(self) -> &'static str {
