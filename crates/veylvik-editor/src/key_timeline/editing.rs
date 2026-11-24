@@ -326,7 +326,7 @@ impl Keys {
 mod tests {
     use super::*;
     fn setup() -> (Composition, NodeId) {
-        let mut doc = veylvik_document::presets::showcase::build("gold_text")
+        let mut doc = veylvik_presets::showcase::build("gold_text")
             .unwrap()
             .composition;
         let node = doc

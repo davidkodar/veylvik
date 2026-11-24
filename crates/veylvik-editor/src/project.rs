@@ -134,7 +134,7 @@ impl Project {
         Ok(project)
     }
     pub fn example(id: &str) -> Result<Self> {
-        let scene = veylvik_document::presets::showcase::build(id)?;
+        let scene = veylvik_presets::showcase::build(id)?;
         let mut project = Self::blank(960, 540, Time::new(24, 1)?, 96)?;
         let label = veylvik_document::presets::builtin::ALL
             .iter()

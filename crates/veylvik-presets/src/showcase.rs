@@ -1,7 +1,7 @@
 //! Portable, editable scenes built around the same presets offered by the library.
 mod art_direction;
 mod surface_paint;
-use crate::{
+use veylvik_document::{
     Composition, Document, Key, Node, NodeId, NodePosition, Operation, Result, Scalar, Time,
     vector::{FillRule, PathCommand, PathMask},
 };
@@ -22,7 +22,7 @@ pub fn title(id: &str) -> &'static str {
         "dust_motes" => "Sands of time",
         "snowfall" => "Deep freeze",
         "starfield" => "Nova ignition",
-        _ => super::builtin::ALL
+        _ => veylvik_document::presets::builtin::ALL
             .iter()
             .find(|e| e.id == id)
             .map_or("Example", |e| e.label),
@@ -57,7 +57,7 @@ pub fn description(id: &str) -> &'static str {
         "starfield" => {
             "A turbulent plasma corona surrounds an eclipsed nova, with a star flight across the title."
         }
-        _ => super::builtin::ALL
+        _ => veylvik_document::presets::builtin::ALL
             .iter()
             .find(|e| e.id == id)
             .map_or("Editable example", |e| e.description),
@@ -99,8 +99,8 @@ fn polygon(commands: &mut Vec<PathCommand>, points: &[[f32; 2]]) {
 // Editable title source shared by the showcase scenes.
 fn title_text(word: &str) -> Operation {
     let mut operation: Operation =
-        serde_json::from_value(crate::registry::TEXT.default_operation()).unwrap();
-    if let Operation::Text(crate::nodes::Text {
+        serde_json::from_value(veylvik_document::registry::TEXT.default_operation()).unwrap();
+    if let Operation::Text(veylvik_document::nodes::Text {
         content,
         size,
         x,
@@ -122,44 +122,45 @@ pub fn build(id: &str) -> Result<Scene> {
     if id == "surface_paint" {
         return surface_paint::build();
     }
-    if matches!(super::builtin::category(id), "Materials" | "Atmosphere")
-        || matches!(
-            id,
-            "condensation"
-                | "wet_drips"
-                | "water_drips"
-                | "metallic_shine"
-                | "sun_glints"
-                | "embers"
-                | "fireflies"
-                | "liquid_shimmer"
-                | "dust_motes"
-                | "snowfall"
-                | "starfield"
-        )
-    {
+    if matches!(
+        veylvik_document::presets::builtin::category(id),
+        "Materials" | "Atmosphere"
+    ) || matches!(
+        id,
+        "condensation"
+            | "wet_drips"
+            | "water_drips"
+            | "metallic_shine"
+            | "sun_glints"
+            | "embers"
+            | "fireflies"
+            | "liquid_shimmer"
+            | "dust_motes"
+            | "snowfall"
+            | "starfield"
+    ) {
         let mut scene = art_direction::build(id)?;
-        super::resolution::map_graph(
+        veylvik_document::presets::resolution::map_graph(
             &mut scene.composition.nodes,
             &mut scene.composition.groups,
             [960, 540],
             [1920, 1080],
-            super::resolution::Sizing::Fit,
+            veylvik_document::presets::resolution::Sizing::Fit,
         )?;
         scene.composition.width = 1920;
         scene.composition.height = 1080;
         scene.composition.validate()?;
         return Ok(scene);
     }
-    let preset = super::builtin::build(id)?;
-    let mut doc = crate::blank(960, 540, Time::new(24, 1)?)?;
+    let preset = veylvik_document::presets::builtin::build(id)?;
+    let mut doc = veylvik_document::blank(960, 540, Time::new(24, 1)?)?;
     doc.frame_count = 96;
     doc.nodes.clear();
     let background = add(
         &mut doc,
         "Midnight background",
-        Operation::Solid(crate::nodes::Solid {
-            color: if super::builtin::is_recipe(id) {
+        Operation::Solid(veylvik_document::nodes::Solid {
+            color: if veylvik_document::presets::builtin::is_recipe(id) {
                 [0.008, 0.008, 0.008, 1.]
             } else {
                 [0.002, 0.004, 0.012, 1.0]
@@ -171,7 +172,7 @@ pub fn build(id: &str) -> Result<Scene> {
     let emblem = matches!(
         id,
         "prismatic_glow" | "radial_echo" | "orbit_echo" | "anamorphic_streaks" | "spotlight"
-    ) || super::builtin::category(id) == "Particles";
+    ) || veylvik_document::presets::builtin::category(id) == "Particles";
     let artwork = if emblem {
         let mut commands = vec![];
         polygon(
@@ -189,7 +190,7 @@ pub fn build(id: &str) -> Result<Scene> {
             &mut commands,
             &[[480.0, 235.0], [565.0, 365.0], [395.0, 365.0]],
         );
-        Operation::Path(crate::nodes::Path {
+        Operation::Path(veylvik_document::nodes::Path {
             geometry: PathMask {
                 keys: vec![],
                 fill_rule: FillRule::NonZero,
@@ -203,8 +204,8 @@ pub fn build(id: &str) -> Result<Scene> {
     let ramp = add(
         &mut doc,
         "Vertical palette ramp",
-        Operation::Gradient(crate::nodes::Gradient {
-            mode: crate::GradientMode::Linear,
+        Operation::Gradient(veylvik_document::nodes::Gradient {
+            mode: veylvik_document::GradientMode::Linear,
             start_x: 0.0.into(),
             start_y: 180.0.into(),
             end_x: 0.0.into(),
@@ -212,7 +213,7 @@ pub fn build(id: &str) -> Result<Scene> {
         }),
         &[],
     );
-    let (low, high) = if super::builtin::category(id) == "Particles" {
+    let (low, high) = if veylvik_document::presets::builtin::category(id) == "Particles" {
         ([0.01, 0.025, 0.05, 1.0], [0.04, 0.09, 0.14, 1.0])
     } else if id == "liquid_shimmer" {
         ([0.04, 0.2, 0.65, 1.0], [0.7, 1.2, 1.3, 1.0])
@@ -224,19 +225,19 @@ pub fn build(id: &str) -> Result<Scene> {
     let ink = add(
         &mut doc,
         "Artwork palette",
-        Operation::Colorize(crate::nodes::Colorize { low, high }),
+        Operation::Colorize(veylvik_document::nodes::Colorize { low, high }),
         &[("image", ramp)],
     );
     let art = add(
         &mut doc,
         "Color inside artwork",
-        Operation::Mask(crate::nodes::Mask {}),
+        Operation::Mask(veylvik_document::nodes::Mask {}),
         &[("image", ink), ("mask", shape)],
     );
     let art = add(
         &mut doc,
         "Artwork motion",
-        Operation::Affine(crate::nodes::Affine {
+        Operation::Affine(veylvik_document::nodes::Affine {
             x: if id == "smooth_slow_motion" {
                 Scalar::Smooth {
                     keys: [(0, -170.), (24, 170.), (48, -170.)]
@@ -260,7 +261,7 @@ pub fn build(id: &str) -> Result<Scene> {
                         (96, 0.),
                     ]
                     .into_iter()
-                    .map(|(frame, value)| crate::Key {
+                    .map(|(frame, value)| veylvik_document::Key {
                         time: Time::new(frame, 24).unwrap(),
                         value,
                         segment: None,
@@ -318,7 +319,7 @@ pub fn build(id: &str) -> Result<Scene> {
         add(
             &mut doc,
             "Title reveal",
-            Operation::Exposure(crate::nodes::Exposure {
+            Operation::Exposure(veylvik_document::nodes::Exposure {
                 stops: cycle(-3.0, 1.0),
             }),
             &[("image", art)],
@@ -329,7 +330,7 @@ pub fn build(id: &str) -> Result<Scene> {
     let before = add(
         &mut doc,
         "Before · artwork on midnight",
-        Operation::Merge(crate::nodes::Merge {}),
+        Operation::Merge(veylvik_document::nodes::Merge {}),
         &[("background", background), ("foreground", art)],
     );
     doc.output = before;
@@ -337,7 +338,7 @@ pub fn build(id: &str) -> Result<Scene> {
         &doc,
         &[(
             "input_1".into(),
-            if super::builtin::is_recipe(id) {
+            if veylvik_document::presets::builtin::is_recipe(id) {
                 art
             } else {
                 before
@@ -348,11 +349,11 @@ pub fn build(id: &str) -> Result<Scene> {
     )?;
     let document = Document::new(doc)?;
     let mut composition = document.prepare(0, &instance.commands)?;
-    composition.output = if super::builtin::is_recipe(id) {
+    composition.output = if veylvik_document::presets::builtin::is_recipe(id) {
         add(
             &mut composition,
             "Material title over neutral background",
-            Operation::Merge(crate::nodes::Merge {}),
+            Operation::Merge(veylvik_document::nodes::Merge {}),
             &[("background", background), ("foreground", instance.output)],
         )
     } else {
@@ -368,7 +369,7 @@ pub fn build(id: &str) -> Result<Scene> {
         add(
             &mut composition,
             "Before: nearest source frames at half speed",
-            Operation::TimeRemap(crate::nodes::TimeRemap {
+            Operation::TimeRemap(veylvik_document::nodes::TimeRemap {
                 rate: 0.0.into(),
                 source_time: Scalar::Step {
                     keys: (0..=96)
@@ -386,12 +387,12 @@ pub fn build(id: &str) -> Result<Scene> {
         before
     };
     // Authored at 960x540 and mapped up, so every showcase opens at full HD.
-    super::resolution::map_graph(
+    veylvik_document::presets::resolution::map_graph(
         &mut composition.nodes,
         &mut composition.groups,
         [960, 540],
         [1920, 1080],
-        super::resolution::Sizing::Fit,
+        veylvik_document::presets::resolution::Sizing::Fit,
     )?;
     composition.width = 1920;
     composition.height = 1080;
@@ -407,16 +408,15 @@ mod tests {
     use super::*;
     #[test]
     fn examples_are_portable_editable_and_use_the_library_effects() {
-        for entry in super::super::builtin::ALL {
+        for entry in veylvik_document::presets::builtin::ALL {
             let scene = build(entry.id).unwrap();
             let doc = &scene.composition;
             doc.validate().unwrap();
             assert_ne!(scene.before, doc.output);
-            assert!(
-                doc.nodes
-                    .values()
-                    .all(|n| !matches!(n.operation, Operation::Image(crate::nodes::Image { .. })))
-            );
+            assert!(doc.nodes.values().all(|n| !matches!(
+                n.operation,
+                Operation::Image(veylvik_document::nodes::Image { .. })
+            )));
             let group = doc
                 .groups
                 .values()
@@ -442,8 +442,8 @@ mod tests {
                 "condensation" | "fireflies" | "liquid_shimmer" | "wet_drips" | "water_drips"
             ) || entry.id == "metallic_shine"
                 || entry.id == "sun_glints"
-                || super::super::builtin::category(entry.id) == "Materials"
-                || super::super::builtin::is_recipe(entry.id)
+                || veylvik_document::presets::builtin::category(entry.id) == "Materials"
+                || veylvik_document::presets::builtin::is_recipe(entry.id)
             {
                 assert_eq!(doc.nodes[&doc.output].inputs["foreground"], group.output);
             } else {
@@ -451,7 +451,7 @@ mod tests {
             }
             assert_eq!(
                 group.members.len(),
-                super::super::builtin::build(
+                veylvik_document::presets::builtin::build(
                     if matches!(entry.id, "fireflies" | "liquid_shimmer") {
                         "wet_drips"
                     } else {
@@ -492,8 +492,8 @@ mod tests {
                             | "water_drips"
                     ) || entry.id == "metallic_shine"
                         || entry.id == "sun_glints"
-                        || super::super::builtin::category(entry.id) == "Materials"
-                        || super::super::builtin::is_recipe(entry.id)
+                        || veylvik_document::presets::builtin::category(entry.id) == "Materials"
+                        || veylvik_document::presets::builtin::is_recipe(entry.id)
                     {
                         doc.nodes[&scene.before].inputs["foreground"]
                     } else if entry.id == "smooth_slow_motion" {

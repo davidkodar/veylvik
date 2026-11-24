@@ -1,22 +1,22 @@
 //! Editable mural example. Camera motion is authored, not claimed as an analyzed track.
 use super::*;
-use crate::planar::{Sample, Track, WarpMode};
+use veylvik_document::planar::{Sample, Track, WarpMode};
 pub(super) fn build() -> Result<Scene> {
-    let mut doc = crate::blank(960, 540, Time::new(24, 1)?)?;
+    let mut doc = veylvik_document::blank(960, 540, Time::new(24, 1)?)?;
     doc.frame_count = 96;
     let white = doc.output;
     doc.nodes.get_mut(&white).unwrap().operation =
-        Operation::Solid(crate::nodes::Solid { color: [1.; 4] });
+        Operation::Solid(veylvik_document::nodes::Solid { color: [1.; 4] });
     let plate = add(
         &mut doc,
         "Brick wall",
-        Operation::Material(crate::nodes::Material {
+        Operation::Material(veylvik_document::nodes::Material {
             smooth_edges: true,
             brushing: Default::default(),
             colours: None,
             optics: None,
             studio: Default::default(),
-            kind: crate::MaterialKind::BrickRed,
+            kind: veylvik_document::MaterialKind::BrickRed,
             scale: 150.0.into(),
             bevel: 3.0.into(),
             roughness: 0.8.into(),
@@ -39,7 +39,7 @@ pub(super) fn build() -> Result<Scene> {
     let track = add(
         &mut doc,
         "Authored camera motion (example)",
-        Operation::PlanarTrack(crate::nodes::PlanarTrack {
+        Operation::PlanarTrack(veylvik_document::nodes::PlanarTrack {
             data: Box::new(Track {
                 reference_time: Time::new(0, 1)?,
                 reference,
@@ -61,13 +61,13 @@ pub(super) fn build() -> Result<Scene> {
     let moving_plate = add(
         &mut doc,
         "Wall follows camera",
-        Operation::PlanarWarp(crate::nodes::PlanarWarp {
+        Operation::PlanarWarp(veylvik_document::nodes::PlanarWarp {
             mode: WarpMode::Follow,
         }),
         &[("image", plate), ("track", track)],
     );
     let mut text = title_text("STAY\nCURIOUS");
-    if let Operation::Text(crate::nodes::Text {
+    if let Operation::Text(veylvik_document::nodes::Text {
         size,
         y,
         tracking,
@@ -84,7 +84,7 @@ pub(super) fn build() -> Result<Scene> {
     let moving_title = add(
         &mut doc,
         "Lettering follows same camera",
-        Operation::PlanarWarp(crate::nodes::PlanarWarp {
+        Operation::PlanarWarp(veylvik_document::nodes::PlanarWarp {
             mode: WarpMode::Follow,
         }),
         &[("image", title), ("track", track)],
@@ -92,11 +92,11 @@ pub(super) fn build() -> Result<Scene> {
     let before = add(
         &mut doc,
         "Before: clean lettering on wall",
-        Operation::Merge(crate::nodes::Merge {}),
+        Operation::Merge(veylvik_document::nodes::Merge {}),
         &[("background", moving_plate), ("foreground", moving_title)],
     );
     doc.output = before;
-    let preset = super::super::builtin::build("surface_paint")?;
+    let preset = veylvik_document::presets::builtin::build("surface_paint")?;
     let bindings = preset
         .group
         .inputs
@@ -113,12 +113,12 @@ pub(super) fn build() -> Result<Scene> {
     let instance = preset.instantiate(&doc, &bindings, None)?;
     let mut composition = Document::new(doc)?.prepare(0, &instance.commands)?;
     composition.output = instance.output;
-    super::super::resolution::map_graph(
+    veylvik_document::presets::resolution::map_graph(
         &mut composition.nodes,
         &mut composition.groups,
         [960, 540],
         [1920, 1080],
-        super::super::resolution::Sizing::Fit,
+        veylvik_document::presets::resolution::Sizing::Fit,
     )?;
     composition.width = 1920;
     composition.height = 1080;

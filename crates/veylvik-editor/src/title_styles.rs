@@ -1,6 +1,7 @@
 use eframe::egui;
 use std::{path::PathBuf, sync::mpsc};
-use veylvik_document::{NodeId, presets::title_style::TitleStyle};
+use veylvik_document::NodeId;
+use veylvik_presets::title_style::TitleStyle;
 type Result<T> = std::result::Result<T, String>;
 enum Completed {
     List(Vec<(PathBuf, String)>),

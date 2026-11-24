@@ -11,6 +11,7 @@ ttf-parser = "=0.25.1"
 thiserror.workspace = true
 epaint_default_fonts = "=0.34.3"
 [dev-dependencies]
+veylvik-presets.workspace = true
 veylvik-render.workspace = true
 [lints]
 workspace = true

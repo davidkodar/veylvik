@@ -1,6 +1,9 @@
 //! Portable typography and procedural appearance, independent of the title wording.
-use crate::{presets::text_style, *};
 use serde::{Deserialize, Serialize};
+use veylvik_document::{presets::text_style, *};
+fn fail<T>(message: impl Into<String>) -> Result<T> {
+    Err(Error(message.into()))
+}
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TitleStyle {
@@ -45,19 +48,19 @@ impl TitleStyle {
             return fail("Invalid title style name or version");
         }
         self.composition.validate()?;
-        if !self
-            .composition
-            .nodes
-            .get(&self.text)
-            .is_some_and(|n| matches!(n.operation, Operation::Text(crate::nodes::Text { .. })))
-        {
+        if !self.composition.nodes.get(&self.text).is_some_and(|n| {
+            matches!(
+                n.operation,
+                Operation::Text(veylvik_document::nodes::Text { .. })
+            )
+        }) {
             return fail("Title style needs an editable text source");
         }
         if self.composition.nodes.values().any(|n| {
             matches!(
                 n.operation,
-                Operation::Image(crate::nodes::Image { .. })
-                    | Operation::Footage(crate::nodes::Footage { .. })
+                Operation::Image(veylvik_document::nodes::Image { .. })
+                    | Operation::Footage(veylvik_document::nodes::Footage { .. })
             )
         }) {
             return fail(
@@ -68,7 +71,7 @@ impl TitleStyle {
     }
     pub fn apply(&self, doc: &Composition, text: NodeId) -> Result<Vec<Command>> {
         self.validate()?;
-        let Operation::Text(crate::nodes::Text { content, x, y, .. }) = &doc
+        let Operation::Text(veylvik_document::nodes::Text { content, x, y, .. }) = &doc
             .nodes
             .get(&text)
             .ok_or_else(|| Error("Select editable text".into()))?
@@ -77,12 +80,12 @@ impl TitleStyle {
             return fail("Select editable text");
         };
         let mut source = self.composition.clone();
-        crate::presets::resolution::map_graph(
+        veylvik_document::presets::resolution::map_graph(
             &mut source.nodes,
             &mut source.groups,
             [self.composition.width, self.composition.height],
             [doc.width, doc.height],
-            crate::presets::resolution::Sizing::Fit,
+            veylvik_document::presets::resolution::Sizing::Fit,
         )?;
         let mut ids: std::collections::BTreeMap<_, _> = source
             .nodes
@@ -100,7 +103,7 @@ impl TitleStyle {
             if node.id == self.text {
                 next.label = doc.nodes[&text].label.clone();
                 next.position = doc.nodes[&text].position;
-                if let Operation::Text(crate::nodes::Text {
+                if let Operation::Text(veylvik_document::nodes::Text {
                     content: wording,
                     typography,
                     x: tx,
@@ -141,6 +144,6 @@ impl TitleStyle {
             .copied()
             .unwrap_or(text_style::output(doc, text)?);
         let output = ids[&source.output];
-        crate::presets::connect_after(doc, previous, output, commands)
+        veylvik_document::presets::connect_after(doc, previous, output, commands)
     }
 }

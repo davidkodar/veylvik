@@ -13,5 +13,7 @@ base64.workspace = true
 ttf-parser = "=0.25.1"
 veylvik-expr.workspace = true
 veylvik-shader.workspace = true
+[dev-dependencies]
+veylvik-presets.workspace = true
 [lints]
 workspace = true

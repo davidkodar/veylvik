@@ -1,8 +1,6 @@
 //! Regenerate bundled gallery loops: cargo run -p veylvik-io --example showcase_previews -- <output-directory>
-use veylvik_document::{
-    Time,
-    presets::{builtin, showcase},
-};
+use veylvik_document::{Time, presets::builtin};
+use veylvik_presets::showcase;
 use veylvik_render::{Plan, Renderer, to_srgba8};
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let output =

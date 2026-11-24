@@ -23,6 +23,7 @@ serde_json.workspace = true
 vello_hybrid = { version = "=0.2.0", default-features = false, features = ["wgpu"] }
 vello_common = { version = "=0.2.0", default-features = false, features = ["std"] }
 [dev-dependencies]
+veylvik-presets.workspace = true
 veylvik-preview.workspace = true
 [lints]
 workspace = true

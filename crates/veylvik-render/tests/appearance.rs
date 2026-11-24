@@ -247,7 +247,7 @@ fn surface_shine_and_atmosphere_presets_render_on_native_uhd_canvas() {
 #[ignore = "requires Vulkan"]
 fn replacing_backdrop_reveals_bricks_and_preserves_opaque_animated_text() {
     use presets::background::{self, Placement};
-    let scene = presets::showcase::build("gold_text").unwrap();
+    let scene = veylvik_presets::showcase::build("gold_text").unwrap();
     let original = &scene.composition;
     let text = original.nodes[&original.output].inputs["foreground"];
     let instance = background::insert("brick_red", original, Placement::Automatic, None).unwrap();

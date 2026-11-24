@@ -1200,7 +1200,7 @@ mod tests {
         let mut widths = Vec::new();
         let mut fonts = crate::font_browser::Browser::default();
         let mut font = veylvik_document::TextFont::Display;
-        let mut text = veylvik_document::presets::showcase::build("gold_text")
+        let mut text = veylvik_presets::showcase::build("gold_text")
             .unwrap()
             .composition
             .nodes
@@ -1298,7 +1298,9 @@ mod tests {
     #[test]
     fn source_handles_and_fill_candidates_respect_downstream_transforms() {
         use veylvik_document::*;
-        let mut doc = presets::showcase::build("gold_text").unwrap().composition;
+        let mut doc = veylvik_presets::showcase::build("gold_text")
+            .unwrap()
+            .composition;
         let text = doc
             .nodes
             .values()

@@ -211,7 +211,7 @@ fn patina_styles_preserve_coverage_and_zero_amounts_restore_clean_surface() {
 #[ignore = "requires Vulkan"]
 fn polished_gold_showcase_keeps_visible_glints_after_antialiasing() {
     let r = Renderer::new().unwrap();
-    let scene = presets::showcase::build("sun_glints").unwrap();
+    let scene = veylvik_presets::showcase::build("sun_glints").unwrap();
     let before = Plan::compile_output(&scene.composition, scene.before).unwrap();
     let after = Plan::compile(&scene.composition).unwrap();
     let time = Time::new(2, 1).unwrap();

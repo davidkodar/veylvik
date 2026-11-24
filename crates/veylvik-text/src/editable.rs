@@ -352,7 +352,7 @@ mod tests {
     use super::*;
     fn text() -> Operation {
         // The registry is also the source of defaults used by MCP and Studio.
-        let node = veylvik_document::presets::showcase::build("gold_text")
+        let node = veylvik_presets::showcase::build("gold_text")
             .unwrap()
             .composition
             .nodes
@@ -507,7 +507,7 @@ pub fn font_data(font: &TextFont) -> Result<(Arc<[u8]>, u32)> {
 mod authoring_tests {
     use super::*;
     fn text() -> Operation {
-        veylvik_document::presets::showcase::build("gold_text")
+        veylvik_presets::showcase::build("gold_text")
             .unwrap()
             .composition
             .nodes
@@ -574,7 +574,7 @@ mod rich_tests {
     use super::*;
     #[test]
     fn mixed_sizes_and_fonts_survive_wrapping_and_unicode_content() {
-        let mut op = veylvik_document::presets::showcase::build("gold_text")
+        let mut op = veylvik_presets::showcase::build("gold_text")
             .unwrap()
             .composition
             .nodes

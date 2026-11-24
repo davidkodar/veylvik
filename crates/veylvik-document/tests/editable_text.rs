@@ -1,7 +1,8 @@
 use veylvik_document::{
-    presets::{self, builtin, showcase},
+    presets::{self, builtin},
     *,
 };
+use veylvik_presets::showcase;
 #[test]
 fn editable_titles_keep_effects_and_background_when_words_change() {
     let scene = showcase::build("gold_text").unwrap().composition;
@@ -296,7 +297,9 @@ fn text_stack_reorders_removes_compound_effects_and_preserves_wording() {
 
 #[test]
 fn saved_title_styles_preserve_words_position_and_are_undoable() {
-    let source = presets::showcase::build("gold_text").unwrap().composition;
+    let source = veylvik_presets::showcase::build("gold_text")
+        .unwrap()
+        .composition;
     let id = source
         .nodes
         .values()
@@ -308,7 +311,8 @@ fn saved_title_styles_preserve_words_position_and_are_undoable() {
         })
         .unwrap()
         .id;
-    let style = presets::title_style::TitleStyle::capture(&source, id, "My gold title").unwrap();
+    let style =
+        veylvik_presets::title_style::TitleStyle::capture(&source, id, "My gold title").unwrap();
     let mut doc = blank(1920, 1080, Time::new(24, 1).unwrap()).unwrap();
     let mut op: Operation = serde_json::from_value(registry::TEXT.default_operation()).unwrap();
     if let Operation::Text(veylvik_document::nodes::Text { content, x, .. }) = &mut op {

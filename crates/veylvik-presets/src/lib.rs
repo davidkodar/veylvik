@@ -5,6 +5,8 @@ mod surround_lights;
 pub mod tools;
 pub use surround_lights::surround_lights;
 pub mod particles;
+pub mod showcase;
+pub mod title_style;
 pub use gold_title::{gold_title, gold_title_with};
 use serde_json::{Value, json};
 use veylvik_document::{

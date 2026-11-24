@@ -432,7 +432,7 @@ mod tests {
     use super::*;
     #[test]
     fn transformed_template_text_is_pickable_at_its_displayed_position() {
-        let mut doc = veylvik_document::presets::showcase::build("neon_outline")
+        let mut doc = veylvik_presets::showcase::build("neon_outline")
             .unwrap()
             .composition;
         let text = doc

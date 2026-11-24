@@ -246,8 +246,8 @@ impl Studio {
                         });
                     } else if let Some(id) = self.library.detail {
                         let entry = builtin::ALL.iter().find(|e| e.id==id).unwrap();
-                        ui.heading(veylvik_document::presets::showcase::title(id));
-                        ui.add(egui::Label::new(veylvik_document::presets::showcase::description(id)).wrap());
+                        ui.heading(veylvik_presets::showcase::title(id));
+                        ui.add(egui::Label::new(veylvik_presets::showcase::description(id)).wrap());
                         ui.horizontal_wrapped(|ui| {
                             if ui.button("Try example").clicked() { action=Some(Action::Example(id)); }
                             if ui.button("Apply to my composition").clicked() { action=Some(Action::Load(Source::Builtin(id))); }
@@ -304,14 +304,14 @@ impl Studio {
                             ui.strong("Starter effects");
                             let mut result_count = 0;
                             for entry in builtin::ALL {
-                                if (self.library.category.is_empty() || self.library.category==builtin::category(entry.id)) && matches(&format!("{} {} {} {} {}", entry.label, entry.description,builtin::category(entry.id),veylvik_document::presets::showcase::title(entry.id),veylvik_document::presets::showcase::description(entry.id))) {
+                                if (self.library.category.is_empty() || self.library.category==builtin::category(entry.id)) && matches(&format!("{} {} {} {} {}", entry.label, entry.description,builtin::category(entry.id),veylvik_presets::showcase::title(entry.id),veylvik_presets::showcase::description(entry.id))) {
                                     result_count += 1;
                                     ui.group(|ui| { ui.horizontal(|ui| {
                                         if self.library.gallery.card(ui,entry.id).clicked() { self.library.detail=Some(entry.id); }
                                         ui.vertical(|ui| {
                                             if ui.button(entry.label).clicked() { self.library.detail=Some(entry.id); }
                                             ui.add(egui::Label::new(entry.description).wrap());
-                                            ui.weak(format!("{} · {}",builtin::category(entry.id),veylvik_document::presets::showcase::title(entry.id)));
+                                            ui.weak(format!("{} · {}",builtin::category(entry.id),veylvik_presets::showcase::title(entry.id)));
                                         });
                                     }); });
                                 }

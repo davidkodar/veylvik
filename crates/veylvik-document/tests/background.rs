@@ -1,10 +1,11 @@
 use veylvik_document::{
     presets::{
         background::{self, Placement},
-        builtin, showcase,
+        builtin,
     },
     *,
 };
+use veylvik_presets::showcase;
 #[test]
 fn every_starter_has_replaceable_backdrop_and_repeated_replacement_undoes() {
     for entry in builtin::ALL {

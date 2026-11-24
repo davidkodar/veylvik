@@ -1,7 +1,7 @@
 //! Art-directed, editable compositions. Particles support a subject, rather than
 //! serving as the entire demonstration. No raster artwork or external fonts.
 use super::*;
-use crate::{BlendMode, GradientMode};
+use veylvik_document::{BlendMode, GradientMode};
 struct Art {
     doc: Composition,
 }
@@ -10,12 +10,16 @@ impl Art {
         add(&mut self.doc, name, op, inputs)
     }
     fn solid(&mut self, name: &str, color: [f32; 4]) -> NodeId {
-        self.node(name, Operation::Solid(crate::nodes::Solid { color }), &[])
+        self.node(
+            name,
+            Operation::Solid(veylvik_document::nodes::Solid { color }),
+            &[],
+        )
     }
     fn path(&mut self, name: &str, commands: Vec<PathCommand>) -> NodeId {
         self.node(
             name,
-            Operation::Path(crate::nodes::Path {
+            Operation::Path(veylvik_document::nodes::Path {
                 geometry: PathMask {
                     keys: vec![],
                     fill_rule: FillRule::NonZero,
@@ -28,21 +32,21 @@ impl Art {
     fn mask(&mut self, name: &str, image: NodeId, mask: NodeId) -> NodeId {
         self.node(
             name,
-            Operation::Mask(crate::nodes::Mask {}),
+            Operation::Mask(veylvik_document::nodes::Mask {}),
             &[("image", image), ("mask", mask)],
         )
     }
     fn over(&mut self, name: &str, bg: NodeId, fg: NodeId) -> NodeId {
         self.node(
             name,
-            Operation::Merge(crate::nodes::Merge {}),
+            Operation::Merge(veylvik_document::nodes::Merge {}),
             &[("background", bg), ("foreground", fg)],
         )
     }
     fn plus(&mut self, name: &str, bg: NodeId, fg: NodeId, amount: f32) -> NodeId {
         self.node(
             name,
-            Operation::Blend(crate::nodes::Blend {
+            Operation::Blend(veylvik_document::nodes::Blend {
                 mode: BlendMode::Add,
                 opacity: amount.into(),
             }),
@@ -52,7 +56,7 @@ impl Art {
     fn blur(&mut self, image: NodeId, r: f32) -> NodeId {
         self.node(
             "Soft diffusion",
-            Operation::Blur(crate::nodes::Blur {
+            Operation::Blur(veylvik_document::nodes::Blur {
                 radius: r.into(),
                 filter: Default::default(),
             }),
@@ -67,7 +71,7 @@ impl Art {
     fn tint(&mut self, name: &str, image: NodeId, low: [f32; 4], high: [f32; 4]) -> NodeId {
         self.node(
             name,
-            Operation::Colorize(crate::nodes::Colorize { low, high }),
+            Operation::Colorize(veylvik_document::nodes::Colorize { low, high }),
             &[("image", image)],
         )
     }
@@ -82,7 +86,7 @@ impl Art {
     ) -> NodeId {
         self.node(
             name,
-            Operation::Ellipse(crate::nodes::Ellipse {
+            Operation::Ellipse(veylvik_document::nodes::Ellipse {
                 x,
                 y,
                 radius_x: rx,
@@ -95,7 +99,7 @@ impl Art {
     fn gradient(&mut self, name: &str, start: f32, end: f32) -> NodeId {
         self.node(
             name,
-            Operation::Gradient(crate::nodes::Gradient {
+            Operation::Gradient(veylvik_document::nodes::Gradient {
                 mode: GradientMode::Linear,
                 start_x: 0.0.into(),
                 start_y: start.into(),
@@ -127,7 +131,7 @@ impl Art {
     ) -> NodeId {
         self.node(
             name,
-            Operation::Affine(crate::nodes::Affine {
+            Operation::Affine(veylvik_document::nodes::Affine {
                 x: offset[0].clone(),
                 y: offset[1].clone(),
                 scale_x: scale[0].clone(),
@@ -142,7 +146,7 @@ impl Art {
     fn noise(&mut self, scale: f32, seed: u32) -> NodeId {
         self.node(
             "Animated material turbulence",
-            Operation::FractalNoise(crate::nodes::FractalNoise {
+            Operation::FractalNoise(veylvik_document::nodes::FractalNoise {
                 seed,
                 scale: scale.into(),
                 octaves: 4.0.into(),
@@ -155,7 +159,7 @@ impl Art {
     fn displace(&mut self, name: &str, image: NodeId, map: NodeId, x: f32, y: f32) -> NodeId {
         self.node(
             name,
-            Operation::Displace(crate::nodes::Displace {
+            Operation::Displace(veylvik_document::nodes::Displace {
                 x: x.into(),
                 y: y.into(),
             }),
@@ -197,7 +201,7 @@ impl Art {
 fn outline(a: &mut Art, mask: NodeId, dx: f32, dy: f32, color: [f32; 4]) -> NodeId {
     let shifted = a.node(
         "Bevel offset",
-        Operation::Transform(crate::nodes::Transform {
+        Operation::Transform(veylvik_document::nodes::Transform {
             x: dx.into(),
             y: dy.into(),
         }),
@@ -205,8 +209,8 @@ fn outline(a: &mut Art, mask: NodeId, dx: f32, dy: f32, color: [f32; 4]) -> Node
     );
     let diff = a.node(
         "Bevel edge",
-        Operation::CombineMask(crate::nodes::CombineMask {
-            mode: crate::MaskMode::Subtract,
+        Operation::CombineMask(veylvik_document::nodes::CombineMask {
+            mode: veylvik_document::MaskMode::Subtract,
         }),
         &[("mask", mask), ("other", shifted)],
     );
@@ -218,13 +222,13 @@ fn gold_fire(a: &mut Art, bg: NodeId, with_fire: bool) -> Result<NodeId> {
     let bg = a.atmosphere(bg, [0.12, 0.012, 0.001, 1.0], 480.0, 300.0, 320.0, 130.0);
     let face = a.node(
         "Polished gold studio reflections",
-        Operation::Material(crate::nodes::Material {
+        Operation::Material(veylvik_document::nodes::Material {
             smooth_edges: true,
             brushing: Default::default(),
             colours: None,
             optics: None,
             studio: Default::default(),
-            kind: crate::MaterialKind::Gold,
+            kind: veylvik_document::MaterialKind::Gold,
             scale: 180.0.into(),
             bevel: 5.0.into(),
             roughness: 0.15.into(),
@@ -247,7 +251,7 @@ fn gold_fire(a: &mut Art, bg: NodeId, with_fire: bool) -> Result<NodeId> {
     for i in (1..=5).rev() {
         let shifted = a.node(
             "Extruded gold depth",
-            Operation::Transform(crate::nodes::Transform {
+            Operation::Transform(veylvik_document::nodes::Transform {
                 x: (i as f32 * 1.5).into(),
                 y: (i as f32 * 2.0).into(),
             }),
@@ -262,7 +266,7 @@ fn gold_fire(a: &mut Art, bg: NodeId, with_fire: bool) -> Result<NodeId> {
         return Ok(face);
     }
     a.doc.output = face;
-    let shine = super::super::builtin::build("metallic_shine")?.instantiate(
+    let shine = veylvik_document::presets::builtin::build("metallic_shine")?.instantiate(
         &a.doc,
         &[("input_1".into(), face)].into(),
         Some(NodePosition { x: 0.0, y: 1200.0 }),
@@ -271,7 +275,7 @@ fn gold_fire(a: &mut Art, bg: NodeId, with_fire: bool) -> Result<NodeId> {
     let face = shine.output;
     let fire = a.node(
         "Fire · rising turbulent volume",
-        Operation::Fire(crate::nodes::Fire {
+        Operation::Fire(veylvik_document::nodes::Fire {
             seed: 297,
             x: 480.0.into(),
             y: 340.0.into(),
@@ -404,8 +408,8 @@ fn nova(a: &mut Art, bg: NodeId) -> NodeId {
     );
     let ring = a.node(
         "Plasma rim",
-        Operation::CombineMask(crate::nodes::CombineMask {
-            mode: crate::MaskMode::Subtract,
+        Operation::CombineMask(veylvik_document::nodes::CombineMask {
+            mode: veylvik_document::MaskMode::Subtract,
         }),
         &[("mask", outer), ("other", inner)],
     );
@@ -488,7 +492,7 @@ fn atmosphere_plate(a: &mut Art, id: &str) -> NodeId {
     plate
 }
 pub(super) fn build(id: &str) -> Result<Scene> {
-    let mut doc = crate::blank(960, 540, Time::new(24, 1)?)?;
+    let mut doc = veylvik_document::blank(960, 540, Time::new(24, 1)?)?;
     doc.frame_count = 96;
     doc.nodes.clear();
     let mut a = Art { doc };
@@ -506,8 +510,8 @@ pub(super) fn build(id: &str) -> Result<Scene> {
         let sky = atmosphere_plate(&mut a, "clouds");
         let clouds = a.node(
             "Animated reflection clouds",
-            Operation::Atmosphere(crate::nodes::Atmosphere {
-                kind: crate::AtmosphereKind::Clouds,
+            Operation::Atmosphere(veylvik_document::nodes::Atmosphere {
+                kind: veylvik_document::AtmosphereKind::Clouds,
                 seed: 397,
                 x: 480.0.into(),
                 y: 420.0.into(),
@@ -546,16 +550,16 @@ pub(super) fn build(id: &str) -> Result<Scene> {
             let mask = a.text("GOLD");
             a.node(
                 "Polished base material",
-                Operation::Material(crate::nodes::Material {
+                Operation::Material(veylvik_document::nodes::Material {
                     smooth_edges: true,
                     brushing: Default::default(),
                     colours: None,
                     optics: None,
                     studio: Default::default(),
                     kind: if id == "metal_patina" {
-                        crate::MaterialKind::Bronze
+                        veylvik_document::MaterialKind::Bronze
                     } else {
-                        crate::MaterialKind::Gold
+                        veylvik_document::MaterialKind::Gold
                     },
                     scale: 180.0.into(),
                     bevel: 5.0.into(),
@@ -578,7 +582,7 @@ pub(super) fn build(id: &str) -> Result<Scene> {
             bg = environment;
             a.text("NOVA")
         }
-        id if super::super::builtin::category(id) == "Materials" => {
+        id if veylvik_document::presets::builtin::category(id) == "Materials" => {
             let word = match id {
                 "gold_text" => "GOLD",
                 "wood_text" | "oak_light" | "oak_dark" => "WOOD",
@@ -587,7 +591,9 @@ pub(super) fn build(id: &str) -> Result<Scene> {
             };
             a.text(word)
         }
-        id if super::super::builtin::category(id) == "Atmosphere" => atmosphere_plate(&mut a, id),
+        id if veylvik_document::presets::builtin::category(id) == "Atmosphere" => {
+            atmosphere_plate(&mut a, id)
+        }
         "embers" => gold_fire(&mut a, bg, true)?,
         "metallic_shine" => gold_fire(&mut a, bg, false)?,
         "fireflies" | "liquid_shimmer" => a.text("DRIP"),
@@ -596,7 +602,7 @@ pub(super) fn build(id: &str) -> Result<Scene> {
         "starfield" => nova(&mut a, bg),
         _ => unreachable!(),
     };
-    let backdrop = if super::super::builtin::category(id) == "Atmosphere" {
+    let backdrop = if veylvik_document::presets::builtin::category(id) == "Atmosphere" {
         before
     } else {
         bg
@@ -618,7 +624,7 @@ pub(super) fn build(id: &str) -> Result<Scene> {
     } else {
         id
     };
-    let mut preset = super::super::builtin::build(preset_id)?;
+    let mut preset = veylvik_document::presets::builtin::build(preset_id)?;
     if id == "fireflies" {
         for node in preset.nodes.values_mut() {
             if let Operation::Colorize(tint) = &mut node.operation {
@@ -652,7 +658,7 @@ pub(super) fn build(id: &str) -> Result<Scene> {
     let before = if liquid
         || id == "metallic_shine"
         || id == "sun_glints"
-        || super::super::builtin::category(id) == "Materials"
+        || veylvik_document::presets::builtin::category(id) == "Materials"
     {
         let mut a = Art { doc: composition };
         let before = a.over("Original lettering over background", bg, before);

@@ -1,7 +1,9 @@
 use veylvik_document::*;
 #[test]
 fn foreground_setup_preserves_text_effects_and_is_one_undoable_transaction() {
-    let doc = presets::showcase::build("gold_text").unwrap().composition;
+    let doc = veylvik_presets::showcase::build("gold_text")
+        .unwrap()
+        .composition;
     let text = doc
         .nodes
         .values()
@@ -58,7 +60,9 @@ fn foreground_setup_preserves_text_effects_and_is_one_undoable_transaction() {
 }
 #[test]
 fn rejects_sources_containing_text_and_disconnected_text_without_mutation() {
-    let mut doc = presets::showcase::build("gold_text").unwrap().composition;
+    let mut doc = veylvik_presets::showcase::build("gold_text")
+        .unwrap()
+        .composition;
     let text = doc
         .nodes
         .values()

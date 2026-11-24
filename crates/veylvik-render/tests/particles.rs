@@ -118,7 +118,7 @@ fn revised_effect_examples_loop_and_move_after_resolution_adaptation() {
         "wet_drips",
         "water_drips",
     ] {
-        let mut scene = presets::showcase::build(id).unwrap();
+        let mut scene = veylvik_presets::showcase::build(id).unwrap();
         let from = [scene.composition.width, scene.composition.height];
         presets::resolution::map_graph(
             &mut scene.composition.nodes,
@@ -222,7 +222,9 @@ fn condensation_keeps_substrate_alpha_and_obeys_amount_and_upstream_lighting() {
 #[ignore = "requires Vulkan"]
 fn green_drip_template_really_changes_to_gold_after_the_mask_stage() {
     let renderer = Renderer::new().unwrap();
-    let mut doc = presets::showcase::build("fireflies").unwrap().composition;
+    let mut doc = veylvik_presets::showcase::build("fireflies")
+        .unwrap()
+        .composition;
     let from = [doc.width, doc.height];
     presets::resolution::map_graph(
         &mut doc.nodes,

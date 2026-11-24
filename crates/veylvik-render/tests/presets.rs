@@ -113,7 +113,7 @@ fn starter_effects_render_identically_after_portable_round_trip_and_shimmer_anim
 fn showcase_scenes_have_visible_effects_motion_and_seamless_endpoints() {
     let renderer = Renderer::new().unwrap();
     for entry in builtin::ALL {
-        let scene = presets::showcase::build(entry.id).unwrap();
+        let scene = veylvik_presets::showcase::build(entry.id).unwrap();
         let after = Plan::compile(&scene.composition).unwrap();
         let before = Plan::compile_output(&scene.composition, scene.before).unwrap();
         let start = renderer.render(&after, Time::new(0, 1).unwrap()).unwrap();
@@ -195,7 +195,7 @@ fn curated_recipes_and_flow_demo_loop_and_remain_visible() {
         "chipping_paint",
         "smooth_slow_motion",
     ] {
-        let scene = presets::showcase::build(id).unwrap();
+        let scene = veylvik_presets::showcase::build(id).unwrap();
         let plan = Plan::compile(&scene.composition).unwrap();
         let before = Plan::compile_output(&scene.composition, scene.before).unwrap();
         let sample = Time::new(37, 24).unwrap();

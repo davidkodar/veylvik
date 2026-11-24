@@ -371,7 +371,7 @@ fn point_rect(p: egui::Pos2) -> Rect {
 mod tests {
     use super::*;
     fn text() -> Operation {
-        veylvik_document::presets::showcase::build("gold_text")
+        veylvik_presets::showcase::build("gold_text")
             .unwrap()
             .composition
             .nodes

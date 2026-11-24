@@ -217,7 +217,7 @@ fn surface_softness_and_distortion_use_transparent_borders() {
 #[ignore = "requires Vulkan"]
 fn mural_example_has_visible_integration_and_shared_camera_motion() {
     let renderer = Renderer::new().unwrap();
-    let scene = veylvik_document::presets::showcase::build("surface_paint").unwrap();
+    let scene = veylvik_presets::showcase::build("surface_paint").unwrap();
     let after = Plan::compile(&scene.composition).unwrap();
     let before = Plan::compile_output(&scene.composition, scene.before).unwrap();
     let start = renderer.render(&after, Time::new(0, 1).unwrap()).unwrap();
