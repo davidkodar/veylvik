@@ -50,6 +50,7 @@ fn movable(operation: &Operation) -> bool {
             | Operation::Text3d(_)
             | Operation::ImageCard(_)
             | Operation::Model3d(_)
+            | Operation::Figure3d(_)
     )
 }
 /// Rotation (degrees) that turns a Plane shape (or the front of text, a card or a
@@ -383,7 +384,10 @@ impl Studio {
             Operation::Text3d(t) => &mut t.placement,
             Operation::ImageCard(c) => &mut c.placement,
             Operation::Model3d(m) => &mut m.placement,
-            _ => return Err("Only 3D shapes, text, cards and models can be placed".into()),
+            Operation::Figure3d(f) => &mut f.placement,
+            _ => {
+                return Err("Only 3D shapes, text, cards, models and figures can be placed".into());
+            }
         };
         let err = |e: veylvik_document::Error| e.to_string();
         let (rotation, scale, position) = (

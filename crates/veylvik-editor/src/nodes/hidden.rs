@@ -36,9 +36,11 @@ pub(crate) fn hidden(operation: &Operation, name: &str, wired: &dyn Fn(&str) -> 
     }
 }
 fn particles(operation: &Operation, name: &str, wired: &dyn Fn(&str) -> bool) -> bool {
+    // A flock born on its emitter counts its birds by rate and keeps them to the box.
+    let flock = matches!(*operation, Operation::Particles(ref n) if !matches!(n.flock_radius, veylvik_document::Scalar::Constant { value } if value <= 0.0));
     match name {
-        "density" => !wired("emitter"),
-        "rate" | "x" | "y" | "width" | "height" => wired("emitter"),
+        "density" => !wired("emitter") || flock,
+        "rate" | "x" | "y" | "width" | "height" => wired("emitter") && !flock,
         "homing" => !wired("target"),
         "inherit" => !wired("emitter") && !wired("target"),
         "field_push" | "field_flow" => !wired("field"),
@@ -100,6 +102,13 @@ mod tests {
         assert!(!hidden(&particles, "width", &none) && hidden(&particles, "density", &none));
         assert!(hidden(&particles, "width", &emitter) && !hidden(&particles, "density", &emitter));
         assert!(hidden(&particles, "camera", &none));
+        // A flock born on its emitter counts its birds by rate and keeps them to the box.
+        let mut flock = particles.clone();
+        if let Operation::Particles(p) = &mut flock {
+            p.flock_radius = 40.0.into();
+        }
+        assert!(!hidden(&flock, "rate", &emitter) && !hidden(&flock, "width", &emitter));
+        assert!(hidden(&flock, "density", &emitter));
         let force = op(&veylvik_document::registry::FORCE);
         assert!(!hidden(&force, "strength", &none));
     }

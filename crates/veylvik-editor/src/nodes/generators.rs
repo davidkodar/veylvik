@@ -113,7 +113,7 @@ impl Inspect for veylvik_document::nodes::Particles {
         ui.menu_button("Start from a look", |ui| {
             for look in &veylvik_presets::particles::LOOKS {
                 if ui.button(look.name).on_hover_text(look.hint).clicked() {
-                    look.apply(self, width, height);
+                    look.apply_wired(self, width, height, cx.is_wired("emitter"));
                     cx.dirty = true;
                     ui.close();
                 }
@@ -297,7 +297,9 @@ impl Inspect for veylvik_document::nodes::Particles {
         }
         // Only an emitter image can move out from under its particles.
         let boxed: bool = !cx.is_wired("emitter");
-        if !boxed {
+        // A flock reads its emitter once, at its start: following it does not apply.
+        let flock = !matches!(self.flock_radius, veylvik_document::Scalar::Constant { value } if value <= 0.0);
+        if !boxed && !flock {
             let name = |moments: u32| match moments {
                 0 => "Off",
                 1..=4 => "4 moments",

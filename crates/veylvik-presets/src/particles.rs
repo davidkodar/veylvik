@@ -21,6 +21,17 @@ pub struct Look {
 impl Look {
     /// The node's settings for this look in a frame of `width` x `height` pixels.
     /// Lengths scale with the frame's width; the seed is kept.
+    /// The look as `apply` gives it, fitted to how the node is wired: a flock born on its
+    /// emitter is born anywhere on that picture, not only inside the look's box (which
+    /// would hold no birds when the picture is elsewhere).
+    pub fn apply_wired(&self, node: &mut Particles, width: u32, height: u32, emitter: bool) {
+        self.apply(node, width, height);
+        let flock = !matches!(node.flock_radius, veylvik_document::Scalar::Constant { value } if value <= 0.0);
+        if emitter && flock {
+            node.width = 0.0.into();
+            node.height = 0.0.into();
+        }
+    }
     pub fn apply(&self, node: &mut Particles, width: u32, height: u32) {
         let seed = node.seed;
         let (x, y) = (node.x.clone(), node.y.clone());

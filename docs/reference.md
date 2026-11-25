@@ -1972,7 +1972,9 @@ settles on the wrong kind of motion can still look sure. The
     birds. At Separation 0 birds fall into one line; much higher and the
     flock thins to a haze. A flock turns in a circle of about Top speed squared over Pull. The
     **Murmuration** look is a tuned starting point: 50,000 dark birds chasing a
-    pull point keyed over a minute. A flock of 50,000 costs about 3.5 ms a
+    pull point keyed over a minute. A look given to a flock whose emitter is
+    connected leaves its box empty, so the birds are born anywhere on the
+    picture. A flock of 50,000 costs about 3.5 ms a
     simulation step on an RTX 4080 (two steps a frame while playing; a jump
     goes from the state kept each second before it).
 - **Shape warp** (`shape_warp`, input image): pulls the image so the start
@@ -2294,7 +2296,8 @@ and supplies input ports to the compiler. The tool list itself stays small (abou
 40 KB): `apply` and `insert_preset` name the operation types and point to `nodes`
 for each type's settings, and every operation is still validated in full when
 applied. `add_node` adds one node from a type's defaults with only the settings
-you name written over them, wires its inputs and returns its id; `gold_title`
+you name written over them (a shader given its code starts each control you do
+not set at the default its code declares), wires its inputs and returns its id; `gold_title`
 adds the Gold title scene (with `as_output` false it is only added, leaving the
 output and the display transform alone; it returns the ids of its 3D letters
 and camera too) and `particle_look` gives a Particles node one of the

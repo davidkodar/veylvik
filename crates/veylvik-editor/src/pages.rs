@@ -149,6 +149,7 @@ impl Studio {
                     Operation::Shape3d(_)
                     | Operation::Text3d(_)
                     | Operation::Model3d(_)
+                    | Operation::Figure3d(_)
                     | Operation::ImageCard(_)
                     | Operation::PointCloud(_) => Some(0),
                     Operation::Camera3d(_) => Some(1),

@@ -112,10 +112,14 @@ pub fn build(composition: &Composition, tool: &str, args: &Value) -> Result<Opti
                 .get(&id)
                 .ok_or_else(|| Error("node does not exist".into()))?
                 .clone();
-            let Operation::Particles(particles) = &mut node.operation else {
+            if !matches!(node.operation, Operation::Particles(_)) {
                 return Err(Error("node is not a Particles node".into()));
+            }
+            let emitter = node.inputs.contains_key("emitter");
+            let Operation::Particles(particles) = &mut node.operation else {
+                unreachable!("checked above")
             };
-            look.apply(particles, composition.width, composition.height);
+            look.apply_wired(particles, composition.width, composition.height, emitter);
             Authored {
                 commands: vec![Command::Put {
                     node: Box::new(node),
@@ -144,6 +148,14 @@ fn merge(default: &mut Value, given: &Value) {
         _ => *default = given.clone(),
     }
 }
+/// A shader's control value by its name (p1 to p16).
+fn operation_scalar<'a>(
+    shader: &'a mut veylvik_document::nodes::Shader,
+    name: &str,
+) -> Option<&'a mut veylvik_document::Scalar> {
+    use veylvik_document::nodes::NodeOp;
+    shader.scalar_mut(name)
+}
 fn add_node(args: &Value) -> Result<Authored> {
     let kind = text(args, "type")?;
     let kind = TYPES
@@ -163,8 +175,24 @@ fn add_node(args: &Value) -> Result<Authored> {
             merge(target.get_mut(key).expect("checked above"), value);
         }
     }
-    let operation: Operation =
+    let mut operation: Operation =
         serde_json::from_value(operation).map_err(|e| Error(format!("settings: {e}")))?;
+    // A shader given its code starts each control the caller left alone at the value the
+    // code declares, as Studio's shader editor does.
+    if let Operation::Shader(shader) = &mut operation
+        && let Ok(controls) = veylvik_shader::check(&shader.code)
+    {
+        let given = args.get("settings").and_then(Value::as_object);
+        for (k, value) in veylvik_shader::defaults(&controls).into_iter().enumerate() {
+            let name = format!("p{}", k + 1);
+            if given.is_some_and(|g| g.contains_key(&name)) {
+                continue;
+            }
+            if let Some(scalar) = operation_scalar(shader, &name) {
+                *scalar = value.into();
+            }
+        }
+    }
     let mut inputs = Vec::new();
     if let Some(given) = args.get("inputs") {
         for (port, source) in given
@@ -337,6 +365,48 @@ mod tests {
             after.nodes[&id("camera")].operation,
             Operation::Camera3d(_)
         ));
+    }
+    #[test]
+    fn a_shader_starts_at_its_codes_defaults_and_a_look_fits_the_wiring() {
+        let mut doc = document();
+        let code = "// slider amount 0 1 0.7\n// slider other 0 4 2.5\nfn shade(at: vec2<f32>) -> vec4<f32> {\n    return vec4<f32>(u.amount, u.other, 0.0, 1.0);\n}\n";
+        let added = run(
+            &mut doc,
+            "add_node",
+            json!({"type":"shader","settings":{"code":code,"p2":{"kind":"constant","value":1.0}}}),
+        )
+        .unwrap();
+        let id: NodeId = added["id"].as_str().unwrap().parse().unwrap();
+        let Operation::Shader(s) = &doc.snapshot().nodes[&id].operation else {
+            panic!("a shader")
+        };
+        let at = |v: &veylvik_document::Scalar| {
+            v.at(veylvik_document::Time::new(0, 1).unwrap()).unwrap()
+        };
+        assert_eq!(
+            (at(&s.p1), at(&s.p2)),
+            (0.7, 1.0),
+            "declared default, then the caller's own value"
+        );
+        // A flock with an emitter given the Murmuration look is born anywhere on the picture.
+        let word = run(&mut doc, "add_node", json!({"type":"text"})).unwrap();
+        let flock = run(
+            &mut doc,
+            "add_node",
+            json!({"type":"particles","inputs":{"emitter":word["id"]}}),
+        )
+        .unwrap();
+        run(
+            &mut doc,
+            "particle_look",
+            json!({"node":flock["id"],"look":"Murmuration"}),
+        )
+        .unwrap();
+        let id: NodeId = flock["id"].as_str().unwrap().parse().unwrap();
+        let Operation::Particles(p) = &doc.snapshot().nodes[&id].operation else {
+            panic!("particles")
+        };
+        assert_eq!((at(&p.width), at(&p.height)), (0.0, 0.0));
     }
     fn names() -> Vec<&'static str> {
         tools().into_iter().map(|tool| tool.0).collect()
