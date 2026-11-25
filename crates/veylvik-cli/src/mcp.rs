@@ -88,6 +88,7 @@ impl Session {
                 | "diagnostics"
                 | "graph"
                 | "get_node"
+                | "sample"
                 | "get_preset"
                 | "materials"
                 | "new_project"

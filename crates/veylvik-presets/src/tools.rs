@@ -1,7 +1,7 @@
 //! The tools both MCP servers offer on a document, defined once: their descriptions and argument schemas, the reads, and for each editing tool the step from arguments to one undoable edit. A server supplies only what is its own through `Host` (the material library, the ground under a 3D object, where new nodes go in its graph) and `Target` (trying and applying commands to its document), so the headless server and the live editor cannot drift apart on these.
 use crate::authoring::{self, Authored};
 use serde_json::{Value, json};
-use veylvik_document::{Command, Composition, Error, NodeId, Result};
+use veylvik_document::{Command, Composition, Error, NodeId, Result, Time};
 
 /// Which server a catalogue is for: the live editor's tools also take its `session`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -33,6 +33,13 @@ fn specs(revision: &Value) -> Vec<Spec> {
             live: None,
             properties: json!({"id":{"type":"string","format":"uuid"},"parameter":{"type":"string"}}),
             required: &["id"],
+        },
+        Spec {
+            name: "sample",
+            headless: "Evaluate one setting of a node at many moments: the values its keys, curves and expressions really give, for timing sound or other work to an animation without copying its curves. parameter is a keyable number's name (e.g. x, p1, opacity) or a path such as placement.position or colour (three values each). Give frames (the composition's frame numbers) or seconds, at most 4096 of them.",
+            live: None,
+            properties: json!({"id":{"type":"string","format":"uuid"},"parameter":{"type":"string","minLength":1},"frames":{"type":"array","items":{"type":"integer"},"maxItems":4096},"seconds":{"type":"array","items":{"type":"number"},"maxItems":4096}}),
+            required: &["id", "parameter"],
         },
         Spec {
             name: "nodes",
@@ -217,8 +224,8 @@ fn node(args: &Value, name: &str) -> Result<NodeId> {
 fn parse<T: serde::de::DeserializeOwned>(value: &Value, what: &str) -> Result<T> {
     serde_json::from_value(value.clone()).map_err(|e| Error(format!("{what}: {e}")))
 }
-/// The read tools that need only the document: `graph`, `get_node`, `nodes` and
-/// `get_preset`. None for any other tool.
+/// The read tools that need only the document: `graph`, `get_node`, `sample`, `nodes`
+/// and `get_preset`. None for any other tool.
 pub fn read(document: &Composition, name: &str, args: &Value) -> Result<Option<Value>> {
     Ok(Some(match name {
         "graph" => {
@@ -247,12 +254,80 @@ pub fn read(document: &Composition, name: &str, args: &Value) -> Result<Option<V
                 .transpose()?;
             veylvik_document::inspection::node(document, node(args, "id")?, parameter)?
         }
+        "sample" => sample(document, args)?,
         "nodes" => veylvik_document::registry::catalog(),
         "get_preset" => {
             json!({"preset": veylvik_document::presets::read(document, args.get("group"), args.get("starter"))?})
         }
         _ => return Ok(None),
     }))
+}
+/// Most moments one `sample` call evaluates.
+const SAMPLES: usize = 4096;
+/// A node's setting evaluated at the moments asked for (`sample`).
+fn sample(document: &Composition, args: &Value) -> Result<Value> {
+    let id = node(args, "id")?;
+    let parameter = args
+        .get("parameter")
+        .and_then(Value::as_str)
+        .ok_or_else(|| Error("parameter must be a string".into()))?;
+    let mut operation = document
+        .nodes
+        .get(&id)
+        .ok_or_else(|| Error("node does not exist".into()))?
+        .operation
+        .clone();
+    let rate = document.frame_rate;
+    let moments: Vec<(f64, Time)> = match (args.get("frames"), args.get("seconds")) {
+        (Some(frames), None) => parse::<Vec<i64>>(frames, "frames")?
+            .into_iter()
+            .map(|f| {
+                let time = Time::new(
+                    f * i64::from(rate.rate),
+                    u32::try_from(rate.ticks)
+                        .map_err(|_| Error("frame rate out of range".into()))?,
+                )?;
+                Ok((time.seconds()?, time))
+            })
+            .collect::<Result<_>>()?,
+        (None, Some(seconds)) => parse::<Vec<f64>>(seconds, "seconds")?
+            .into_iter()
+            .map(|s| {
+                if !s.is_finite() || s.abs() > 1e6 {
+                    return Err(Error(format!("{s} is not a moment")));
+                }
+                Ok((s, Time::new((s * 24000.0).round() as i64, 24000)?))
+            })
+            .collect::<Result<_>>()?,
+        _ => return Err(Error("give frames or seconds (one of them)".into())),
+    };
+    if moments.is_empty() || moments.len() > SAMPLES {
+        return Err(Error(format!("give 1 to {SAMPLES} moments")));
+    }
+    let values: Vec<Value> = if let Some(scalar) = operation.scalar(parameter) {
+        moments
+            .iter()
+            .map(|(_, t)| Ok(json!(scalar.at(*t)?)))
+            .collect::<Result<_>>()?
+    } else {
+        match operation.property_mut(parameter) {
+            Some(veylvik_document::track::Property::Vector(track)) => moments
+                .iter()
+                .map(|(_, t)| Ok(json!(track.at(*t)?)))
+                .collect::<Result<_>>()?,
+            Some(veylvik_document::track::Property::Number(scalar)) => moments
+                .iter()
+                .map(|(_, t)| Ok(json!(scalar.at(*t)?)))
+                .collect::<Result<_>>()?,
+            None => {
+                return Err(Error(format!(
+                    "{parameter} is not a keyable setting of this node (a number by name, or a path such as placement.position)"
+                )));
+            }
+        }
+    };
+    let seconds: Vec<f64> = moments.iter().map(|(s, _)| *s).collect();
+    Ok(json!({"id": id, "parameter": parameter, "seconds": seconds, "values": values}))
 }
 /// What only a server can do for the shared tools.
 pub trait Host {

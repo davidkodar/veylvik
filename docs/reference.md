@@ -1858,8 +1858,13 @@ settles on the wrong kind of motion can still look sure. The
     **Y** (0 x 0 is a point). With an emitter, they are born where that image
     has alpha, **Density** a second for every 100 x 100 pixels of it (the frame
     is divided into cells of 2 to 16 pixels with four particle threads each, so
-    density saturates at about one a pixel). Emission begins at **Start** and
-    lasts **Duration** seconds (0 is endless; a short duration is a burst).
+    density saturates at about one a pixel; Density is at most 10000). Emission
+    begins at **Start** and lasts **Duration** seconds (0 is endless; a short
+    duration is a burst). Density is per area so the same setting looks the same
+    on a small or a large shape; for about N particles from a shape over a burst,
+    set Density to N / (its alpha area in 100 x 100 pixel squares x Duration):
+    a figure covering 170,000 pixels gives about 40,000 in a quarter of a second
+    at 10000.
   - *Motion.* Each lives **Life** seconds, launched at **Speed** along
     **Direction** (degrees, 0 right, 90 up) within **Spread** degrees, then
     accelerated by **Gravity** (down) and **Wind** (right) and carried by
@@ -1916,7 +1921,11 @@ settles on the wrong kind of motion can still look sure. The
     smoothly towards the limit (slope 1 at the bend, the same factor for all
     three channels, so the colour stays), so tens of thousands of overlapping
     sparks or a dense assembled word stay their colour instead of adding up to
-    white; pixels under half the limit are untouched. 0 is no limit.
+    white; pixels under half the limit are untouched. 0 is no limit. It keeps
+    a colour, not a mix: where particles of many different hues (Colour
+    variation) pile up, their light adds to white as light does, and the limit
+    then holds that white. Keep such crowds sparser or darker, or let them
+    cover one another (Glow 0), to keep the colours apart.
   - *Time.* Nothing is simulated from frame to frame: a particle is a function
     of its thread, its generation and the frame's time, so frames render in any
     order and repeat exactly. Motion is integrated in 32 fixed steps of the
@@ -2223,7 +2232,7 @@ one (1920 × 1080, 24 fps):
 
 The server uses newline-delimited JSON-RPC on stdio and MCP protocol version
 2025-11-25. Initialize, then send `notifications/initialized` before using tools.
-The tools are `inspect`, `graph`, `get_node`, `nodes`, `diagnostics`, `outline_text`,
+The tools are `inspect`, `graph`, `get_node`, `sample`, `nodes`, `diagnostics`, `outline_text`,
 `apply`, `add_node`, `gold_title`, `particle_look`, `duplicate_branch`, `add_effect`, `undo`,
 `redo`, `save`, `render`, `render_sequence`, `render_video`, `replace_sound`,
 `preview_image`, `measure`,
@@ -2318,6 +2327,11 @@ headless and live sessions also support these read-only queries:
   list. Labels are capped at 256 Unicode characters with `label_truncated` set
   when needed. Compare returned revisions between pages and restart if changed.
 - `get_node` with `{"id":"UUID"}` returns the complete authored `node`.
+- `sample` with `{"id":"UUID","parameter":"x","frames":[0,12,24]}` (or
+  `"seconds"`, at most 4096 moments) returns the `values` the setting really
+  takes there, keys, curves and expressions evaluated; a path such as
+  `placement.position` gives three values each. Use it to time sound or other
+  work to an animation instead of copying its curves.
 - `get_node` with `{"id":"UUID","parameter":"stops"}` returns that registered
   parameter's exact `value`, including its curve when animated, without the rest
   of the node. Parameter names come from the `nodes` catalog.
@@ -2365,7 +2379,7 @@ up a restarted editor automatically. When no editor is running, a call returns a
 tool error saying so; when another client holds the editor, the call gives up after
 five seconds and says the editor is busy.
 
-Live tools are `inspect`, `graph`, `get_node`, `nodes`, `diagnostics`, `apply`,
+Live tools are `inspect`, `graph`, `get_node`, `sample`, `nodes`, `diagnostics`, `apply`,
 `duplicate_branch`, `add_effect`, `get_preset`, `insert_preset`, `materials`,
 `apply_material`, `undo`, `redo`,
 `preview`, `preview_image`, `new_project`, `open_project`, `new_from_media`,

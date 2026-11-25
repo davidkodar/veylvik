@@ -42,6 +42,50 @@ fn targeted_queries_validate_arguments_without_mutation_or_gpu_initialization() 
     assert!(session.renderer.is_none());
 }
 #[test]
+fn sample_gives_what_a_keyed_setting_is_at_each_moment() {
+    let mut session = Session {
+        document: Document::new(veylvik_document::motion_demo()).unwrap(),
+        saved: 0,
+        asset_base: std::env::temp_dir(),
+        saved_dir: None,
+        renderer: None,
+    };
+    // A node keyed from 100 at frame 0 to 400 at frame 30 (one second at 30 a second).
+    let added = session
+        .call(
+            "add_node",
+            &json!({"revision":0,"type":"ellipse","settings":{"x":{"kind":"linear","keys":[
+                {"time":{"ticks":0,"rate":30},"value":100.0},{"time":{"ticks":30,"rate":30},"value":400.0}]}}}),
+        )
+        .unwrap();
+    let id = added["id"].clone();
+    let rate = session.document.snapshot().frame_rate;
+    let fps = rate.ticks as f64 / f64::from(rate.rate);
+    let by_frames = session
+        .call(
+            "sample",
+            &json!({"id":id,"parameter":"x","frames":[0, (fps / 2.0) as i64]}),
+        )
+        .unwrap();
+    assert_eq!(by_frames["values"][0], json!(100.0));
+    let by_seconds = session
+        .call(
+            "sample",
+            &json!({"id":id,"parameter":"x","seconds":[0.5, 2.0]}),
+        )
+        .unwrap();
+    assert_eq!(by_seconds["values"], json!([250.0, 400.0]));
+    assert_eq!(by_seconds["values"][0], by_frames["values"][1]);
+    for args in [
+        json!({"id":id,"parameter":"x"}),
+        json!({"id":id,"parameter":"x","frames":[0],"seconds":[0.0]}),
+        json!({"id":id,"parameter":"nothing","seconds":[0.0]}),
+        json!({"id":id,"parameter":"x","seconds":[]}),
+    ] {
+        assert!(session.call("sample", &args).is_err(), "{args}");
+    }
+}
+#[test]
 fn protocol_enforces_lifecycle_and_transaction_revision() {
     let messages = [
         json!({"jsonrpc":"2.0","id":0,"method":"tools/list"}),
@@ -108,6 +152,7 @@ fn protocol_enforces_lifecycle_and_transaction_revision() {
             "render_sequence",
             "render_video",
             "replace_sound",
+            "sample",
             "track_surface",
             "solve_camera",
             "segment_subject",
