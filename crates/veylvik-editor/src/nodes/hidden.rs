@@ -10,8 +10,16 @@ pub(crate) fn hidden(operation: &Operation, name: &str, wired: &dyn Fn(&str) -> 
             name == "light" && matches!(s.light, veylvik_document::Scalar::Constant { .. })
         }
         // A 3D surface with a look is shaded by it, not these.
-        Operation::Shape3d(s) => s.look.is_some() && matches!(name, "roughness" | "metallic"),
-        Operation::Text3d(t) => t.look.is_some() && matches!(name, "roughness" | "metallic"),
+        Operation::Shape3d(s) => {
+            s.look.is_some() && matches!(name, "roughness" | "metallic" | "emission")
+        }
+        Operation::Text3d(t) => {
+            t.look.is_some() && matches!(name, "roughness" | "metallic" | "emission")
+        }
+        // A panel's feather only on an area light.
+        Operation::Light3d(l) => {
+            name == "feather" && l.kind != veylvik_document::nodes::LightKind::Area
+        }
         // A projection's hold time only with its camera held.
         Operation::CameraProjection(c) => name == "hold_time" && !c.hold,
         // A force shows the settings its kind uses.

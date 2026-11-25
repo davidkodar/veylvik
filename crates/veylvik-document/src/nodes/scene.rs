@@ -167,6 +167,10 @@ pub struct Shape3d {
     /// (0 is factory-perfect).
     #[serde(default = "zero")]
     pub imperfections: Scalar,
+    /// Light of its own: the surface's colour added unlit, times this (0 none, up to
+    /// 64). Glowing wires, lamps and labels that read without a light on them.
+    #[serde(default = "zero")]
+    pub emission: Scalar,
     /// A library material shading the surface; colour, roughness and metallic then
     /// do not apply.
     #[serde(default)]
@@ -208,6 +212,7 @@ pub static SHAPE_3D: NodeType = NodeType {
         scalar("grain", "factor", 0.0, 1.0, 0.0),
         scalar("ridges", "factor", 0.0, 1.0, 0.0),
         scalar("imperfections", "factor", 0.0, 1.0, 0.0),
+        scalar("emission", "factor", 0.0, 64.0, 0.0),
         other("look", ParameterKind::Look, "library material"),
         other("shadow_catcher", ParameterKind::Boolean, "shadows only"),
         scalar("shadow_strength", "factor", 0.0, 8.0, 1.0),
@@ -229,7 +234,8 @@ node!(
         grain,
         ridges,
         imperfections,
-        shadow_strength
+        shadow_strength,
+        emission
     ],
     {
         fn validate(&self) -> Result<()> {
@@ -367,6 +373,10 @@ pub struct Text3d {
     /// (0 is factory-perfect).
     #[serde(default = "zero")]
     pub imperfections: Scalar,
+    /// Light of its own: the surface's colour added unlit, times this (0 none, up to
+    /// 64). Glowing wires, lamps and labels that read without a light on them.
+    #[serde(default = "zero")]
+    pub emission: Scalar,
     /// A library material shading the surface; colour, roughness and metallic then
     /// do not apply.
     #[serde(default)]
@@ -408,6 +418,7 @@ pub static TEXT_3D: NodeType = NodeType {
         scalar("grain", "factor", 0.0, 1.0, 0.0),
         scalar("ridges", "factor", 0.0, 1.0, 0.0),
         scalar("imperfections", "factor", 0.0, 1.0, 0.0),
+        scalar("emission", "factor", 0.0, 64.0, 0.0),
         other("look", ParameterKind::Look, "library material"),
         other("letters", ParameterKind::Letters, "per-letter animation"),
         other("aim_at", ParameterKind::NodeRef, "thing faced"),
@@ -425,7 +436,8 @@ node!(
         brush_angle,
         grain,
         ridges,
-        imperfections
+        imperfections,
+        emission
     ],
     {
         fn validate(&self) -> Result<()> {
@@ -614,6 +626,10 @@ pub struct Light3d {
     /// How uneven the strips are: their lengths, gaps, heights, tilt and brightness.
     #[serde(default = "zero")]
     pub variation: Scalar,
+    /// How far an area light's panel fades towards its edges, as a share of its half
+    /// size (0: even to the edge, as a bare panel; 1: from its middle, as a softbox).
+    #[serde(default = "zero")]
+    pub feather: Scalar,
     /// Which arrangement of strips; the same seed always gives the same row.
     #[serde(default)]
     pub seed: u32,
@@ -654,6 +670,7 @@ pub static LIGHT_3D: NodeType = NodeType {
         scalar("height", "pixels", 1.0, 100000.0, 150.0),
         scalar("strips", "count", 1.0, 32.0, 1.0),
         scalar("variation", "factor", 0.0, 1.0, 0.0),
+        scalar("feather", "factor", 0.0, 1.0, 0.0),
         other("seed", ParameterKind::Seed, "integer"),
         other("aim_at", ParameterKind::NodeRef, "object pointed at"),
     ],
@@ -661,7 +678,9 @@ pub static LIGHT_3D: NodeType = NodeType {
 node!(
     Light3d,
     LIGHT_3D,
-    [intensity, cone, softness, width, height, strips, variation],
+    [
+        intensity, cone, softness, width, height, strips, variation, feather
+    ],
     {
         fn validate(&self) -> Result<()> {
             self.placement.validate()?;

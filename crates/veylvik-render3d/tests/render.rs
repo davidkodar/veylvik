@@ -1510,6 +1510,10 @@ fn the_reflections_view_paints_each_lights_reflection_in_its_own_colour() {
     if let Operation::Light3d(l) = &mut light {
         l.placement.position = [-200.0, -200.0, 400.0].into();
         l.colour = [1.0; 3].into();
+        // A point light falls off over pixels of a 1920-wide frame: in this tiny frame
+        // its 450 pixels are as far as 5400 would be there, so it is made as strong as
+        // it must be to light the cube plainly.
+        l.intensity = (1920.0 / W as f32).powi(2).into();
     }
     let light = add(&mut doc, light, &[]);
     let merged = add(

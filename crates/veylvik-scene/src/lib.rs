@@ -84,6 +84,8 @@ pub struct Surface {
     pub catcher: bool,
     /// How dark those shadows are, 0 to 1.
     pub shadow: f32,
+    /// Its own light: the colour added unlit, times this.
+    pub emission: f32,
 }
 #[derive(Debug, Clone)]
 pub struct Object {
@@ -143,6 +145,8 @@ pub struct Light {
     pub intensity: f32,
     pub cone: f32,
     pub softness: f32,
+    /// An area light's fade towards its panel's edges, as a share of its half size.
+    pub feather: f32,
     /// An area light's panel size.
     pub size: [f32; 2],
     /// An object the light keeps pointing at, and the frame it turns about (its
@@ -150,6 +154,17 @@ pub struct Light {
     pub aim: Option<(NodeId, Mat4)>,
 }
 impl Light {
+    /// The light's strength as the shaders use it in a frame `width` pixels wide. Point
+    /// and spot lights fall off with the square of their distance in pixels, normalised
+    /// to 1000 pixels of a 1920-wide frame, so the same scene is as bright at any size:
+    /// at 3840 wide every distance is twice as many pixels, and the light four times as
+    /// strong to match.
+    pub fn strength(&self, width: u32) -> f32 {
+        match self.kind {
+            LightKind::Point | LightKind::Spot => self.intensity * (width as f32 / 1920.0).powi(2),
+            _ => self.intensity,
+        }
+    }
     pub fn position(&self) -> [f32; 3] {
         math::point(&self.world, [0.0; 3])
     }
@@ -494,6 +509,7 @@ fn node(doc: &Graph<'_>, id: NodeId, time: Time, depth: usize) -> Result<Scene> 
         Operation::Figure3d(f) => Some(&f.placement),
         Operation::Transform3d(t) => Some(&t.placement),
         Operation::Light3d(l) => Some(&l.placement),
+        Operation::Marker3d(m) => Some(&m.placement),
         _ => None,
     };
     if let Some(placement) = placement
@@ -526,6 +542,7 @@ fn node(doc: &Graph<'_>, id: NodeId, time: Time, depth: usize) -> Result<Scene> 
                 unlit: false,
                 look: s.look.clone(),
                 catcher: s.shadow_catcher,
+                emission: s.emission.at(time)?.max(0.0),
                 shadow: s.shadow_strength.at(time)?.clamp(0.0, 1.0),
             },
             aim: None,
@@ -567,6 +584,7 @@ fn node(doc: &Graph<'_>, id: NodeId, time: Time, depth: usize) -> Result<Scene> 
                 unlit: false,
                 look: t.look.clone(),
                 catcher: false,
+                emission: t.emission.at(time)?.max(0.0),
                 shadow: 1.0,
             };
             // The pieces that arrive one by one, each moved in the outline's own frame.
@@ -649,6 +667,7 @@ fn node(doc: &Graph<'_>, id: NodeId, time: Time, depth: usize) -> Result<Scene> 
                 unlit: true,
                 look: None,
                 catcher: false,
+                emission: 0.0,
                 shadow: 1.0,
             },
             aim: None,
@@ -674,6 +693,7 @@ fn node(doc: &Graph<'_>, id: NodeId, time: Time, depth: usize) -> Result<Scene> 
                 unlit: false,
                 look: m.look.clone(),
                 catcher: false,
+                emission: 0.0,
                 shadow: 1.0,
             },
             aim: None,
@@ -699,6 +719,7 @@ fn node(doc: &Graph<'_>, id: NodeId, time: Time, depth: usize) -> Result<Scene> 
                 unlit: true,
                 look: None,
                 catcher: false,
+                emission: 0.0,
                 shadow: 1.0,
             },
             aim: None,
@@ -735,6 +756,7 @@ fn node(doc: &Graph<'_>, id: NodeId, time: Time, depth: usize) -> Result<Scene> 
                     unlit: false,
                     look: f.look.clone(),
                     catcher: false,
+                    emission: 0.0,
                     shadow: 1.0,
                 },
                 aim: None,
@@ -749,6 +771,22 @@ fn node(doc: &Graph<'_>, id: NodeId, time: Time, depth: usize) -> Result<Scene> 
                 &translate(centre.map(|v| -v)),
             );
             scene = node(doc, child, time, depth + 1)?.transformed(&m);
+            // What cameras and lights aimed at the transform look at: the middle of what
+            // it moves (its objects, else its markers), or where its pivot went when it
+            // moves nothing.
+            let mut middles: Vec<[f32; 3]> = scene.objects.iter().map(|o| o.sphere().0).collect();
+            if middles.is_empty() {
+                // Only markers (or other places) under it: their middle.
+                middles = scene.anchors.iter().map(|a| a.1).collect();
+            }
+            let middle = if middles.is_empty() {
+                math::point(&m, centre)
+            } else {
+                std::array::from_fn(|k| {
+                    middles.iter().map(|p| p[k]).sum::<f32>() / middles.len() as f32
+                })
+            };
+            scene.anchors.push((id, middle));
         }
         // Its objects, coloured by the picture as the camera saw it.
         Operation::CameraProjection(cast) => {
@@ -856,6 +894,7 @@ fn node(doc: &Graph<'_>, id: NodeId, time: Time, depth: usize) -> Result<Scene> 
                 intensity: l.intensity.at(time)?.max(0.0),
                 cone: l.cone.at(time)?.clamp(1.0, 179.0),
                 softness: l.softness.at(time)?.clamp(0.0, 1.0),
+                feather: l.feather.at(time)?.clamp(0.0, 1.0),
                 size: [l.width.at(time)?.max(1.0), l.height.at(time)?.max(1.0)],
             };
             let count = l.strips.at(time)?.round().clamp(1.0, 32.0) as usize;
@@ -881,6 +920,11 @@ fn node(doc: &Graph<'_>, id: NodeId, time: Time, depth: usize) -> Result<Scene> 
                 frame: e.frame,
             })
         }
+        // Nothing to draw: only a place to aim, focus and face at.
+        Operation::Marker3d(m) => scene.anchors.push((
+            id,
+            math::point(&placed(&m.placement, time, centre)?, [0.0, 0.0, 0.0]),
+        )),
         Operation::PointCloud(c) => scene.points.extend(
             c.points
                 .iter()

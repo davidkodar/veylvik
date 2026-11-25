@@ -88,15 +88,19 @@ pub enum Scalar {
         value: f32,
     },
     Linear {
+        #[serde(with = "even")]
         keys: Vec<Key>,
     },
     Step {
+        #[serde(with = "even")]
         keys: Vec<Key>,
     },
     Smooth {
+        #[serde(with = "even")]
         keys: Vec<Key>,
     },
     Monotone {
+        #[serde(with = "even")]
         keys: Vec<Key>,
     },
     /// A formula of time, frame and other parameters (see `crate::expression`); links
@@ -615,5 +619,206 @@ fn monotone_segment(keys: &[Key], index: usize) -> MonotoneSegment {
     MonotoneSegment {
         values: [keys[index].value as f64, keys[index + 1].value as f64],
         tangents: [tangent(keys, index) * span, tangent(keys, index + 1) * span],
+    }
+}
+
+/// Keys a frame apart (a sampled camera path, a solve) are written compactly, as their
+/// first time, the ticks between them and their values, `{"from": {"ticks", "rate"},
+/// "every": ticks, "values": [..]}`, which is a fifth of the size of a list of keys;
+/// any other run of keys is written as a list. Both forms are read: the keys in memory
+/// are the same.
+pub mod even {
+    use super::{Key, Time};
+    use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Error};
+    /// Fewer keys than this are always written as a list.
+    pub const LEAST: usize = 8;
+    /// A key as the compact form holds it: its time and value, nothing per key.
+    pub trait Keyed: Sized {
+        type Value: Copy + Serialize + for<'de> Deserialize<'de>;
+        fn time(&self) -> Time;
+        fn value(&self) -> Self::Value;
+        /// Whether it carries nothing of its own beyond time and value.
+        fn plain(&self) -> bool;
+        fn at(time: Time, value: Self::Value) -> Self;
+    }
+    impl Keyed for Key {
+        type Value = f32;
+        fn time(&self) -> Time {
+            self.time
+        }
+        fn value(&self) -> f32 {
+            self.value
+        }
+        fn plain(&self) -> bool {
+            self.segment.is_none()
+        }
+        fn at(time: Time, value: f32) -> Self {
+            Key {
+                segment: None,
+                time,
+                value,
+            }
+        }
+    }
+    #[derive(Serialize, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct Even<V> {
+        from: Time,
+        every: i64,
+        values: Vec<V>,
+    }
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Form<K, V> {
+        List(Vec<K>),
+        Even(Even<V>),
+    }
+    /// The ticks between keys when every key is plain, at one rate and evenly spaced.
+    fn spacing<K: Keyed>(keys: &[K]) -> Option<i64> {
+        if keys.len() < LEAST || !keys.iter().all(K::plain) {
+            return None;
+        }
+        let (first, second) = (keys[0].time(), keys[1].time());
+        let every = second.ticks.checked_sub(first.ticks)?;
+        (every > 0
+            && keys.windows(2).all(|pair| {
+                pair[0].time().rate == first.rate
+                    && pair[1].time().rate == first.rate
+                    && pair[1].time().ticks.checked_sub(pair[0].time().ticks) == Some(every)
+            }))
+        .then_some(every)
+    }
+    pub fn serialize<K: Keyed + Serialize, S: Serializer>(
+        keys: &[K],
+        out: S,
+    ) -> Result<S::Ok, S::Error> {
+        match spacing(keys) {
+            Some(every) => Even {
+                from: keys[0].time(),
+                every,
+                values: keys.iter().map(K::value).collect(),
+            }
+            .serialize(out),
+            None => keys.serialize(out),
+        }
+    }
+    pub fn deserialize<'de, K, D>(input: D) -> Result<Vec<K>, D::Error>
+    where
+        K: Keyed + Deserialize<'de>,
+        D: Deserializer<'de>,
+    {
+        match Form::<K, K::Value>::deserialize(input)? {
+            Form::List(keys) => Ok(keys),
+            Form::Even(Even {
+                from,
+                every,
+                values,
+            }) => {
+                if every <= 0 {
+                    return Err(D::Error::custom(
+                        "keys: every must be a positive number of ticks",
+                    ));
+                }
+                if values.len() > super::MAX_KEYS {
+                    return Err(D::Error::custom(format!(
+                        "keys: at most {} keys",
+                        super::MAX_KEYS
+                    )));
+                }
+                values
+                    .into_iter()
+                    .enumerate()
+                    .map(|(k, value)| {
+                        let ticks = (k as i64)
+                            .checked_mul(every)
+                            .and_then(|step| from.ticks.checked_add(step))
+                            .ok_or_else(|| D::Error::custom("keys: times overflow"))?;
+                        Ok(K::at(
+                            Time {
+                                ticks,
+                                rate: from.rate,
+                            },
+                            value,
+                        ))
+                    })
+                    .collect()
+            }
+        }
+    }
+}
+#[cfg(test)]
+mod even_tests {
+    use super::*;
+    fn keys(n: usize, every: i64) -> Vec<Key> {
+        (0..n)
+            .map(|k| Key {
+                segment: None,
+                time: Time {
+                    ticks: 3 + every * k as i64,
+                    rate: 30,
+                },
+                value: k as f32 * 0.37 - 2.0,
+            })
+            .collect()
+    }
+    #[test]
+    fn evenly_spaced_keys_are_written_compactly_and_read_back_the_same() {
+        let dense = Scalar::Linear { keys: keys(600, 2) };
+        let text = serde_json::to_string(&dense).unwrap();
+        assert!(
+            text.contains("\"every\":2") && !text.contains("\"ticks\":5"),
+            "{}",
+            &text[..120]
+        );
+        let as_list =
+            serde_json::to_string(&serde_json::json!({"kind": "linear", "keys": keys(600, 2)}))
+                .unwrap();
+        assert!(
+            text.len() * 3 < as_list.len(),
+            "{} against {}",
+            text.len(),
+            as_list.len()
+        );
+        let back: Scalar = serde_json::from_str(&text).unwrap();
+        let (Scalar::Linear { keys: a }, Scalar::Linear { keys: b }) = (&dense, &back) else {
+            panic!()
+        };
+        assert_eq!(a.len(), b.len());
+        for (a, b) in a.iter().zip(b) {
+            assert_eq!(
+                (a.time.ticks, a.time.rate, a.value.to_bits()),
+                (b.time.ticks, b.time.rate, b.value.to_bits())
+            );
+        }
+        // The list form is still read, and a few keys, uneven keys or keys with their own
+        // interpolation are still written as a list.
+        let listed: Scalar = serde_json::from_str(&as_list).unwrap();
+        assert!(matches!(listed, Scalar::Linear { ref keys } if keys.len() == 600));
+        assert!(
+            !serde_json::to_string(&Scalar::Linear { keys: keys(5, 2) })
+                .unwrap()
+                .contains("every")
+        );
+        let mut uneven = keys(20, 2);
+        uneven[7].time.ticks += 1;
+        assert!(
+            !serde_json::to_string(&Scalar::Smooth { keys: uneven })
+                .unwrap()
+                .contains("every")
+        );
+        let mut own = keys(20, 2);
+        own[3].segment = Some(Segment::Hold);
+        assert!(
+            !serde_json::to_string(&Scalar::Smooth { keys: own })
+                .unwrap()
+                .contains("every")
+        );
+        // A compact form that makes no sense is refused.
+        for bad in [
+            r#"{"kind":"linear","keys":{"from":{"ticks":0,"rate":30},"every":0,"values":[1,2]}}"#,
+            r#"{"kind":"linear","keys":{"from":{"ticks":0,"rate":30},"every":2,"values":[1],"extra":1}}"#,
+        ] {
+            assert!(serde_json::from_str::<Scalar>(bad).is_err(), "{bad}");
+        }
     }
 }

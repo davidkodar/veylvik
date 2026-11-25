@@ -260,7 +260,7 @@ pub(crate) fn shadow_side(width: u32, height: u32, sheet: u32, lights: usize) ->
 /// A light as the particles read it, as the 3D renderer packs it: position and kind (0
 /// point, 1 spot, 2 sun, 3 area), the way it shines and its cone's outer cosine, its
 /// colour times its intensity and the cone's inner cosine.
-fn light_values(light: &veylvik_scene::Light) -> [f32; 12] {
+fn light_values(light: &veylvik_scene::Light, width: u32) -> [f32; 12] {
     use veylvik_document::nodes::LightKind;
     let p = light.position();
     let d = light.direction();
@@ -281,9 +281,9 @@ fn light_values(light: &veylvik_scene::Light) -> [f32; 12] {
         d[1],
         d[2],
         outer.cos(),
-        light.colour[0] * light.intensity,
-        light.colour[1] * light.intensity,
-        light.colour[2] * light.intensity,
+        light.colour[0] * light.strength(width),
+        light.colour[1] * light.strength(width),
+        light.colour[2] * light.strength(width),
         inner.cos().max(outer.cos() + 1e-4),
     ]
 }
@@ -549,7 +549,7 @@ fn camera(node: &Particles, cx: &Cx<'_>) -> Result<[f32; COUNT]> {
     let shining = shining(&lights);
     row[36] = shining.len() as f32;
     for (i, &light) in shining.iter().enumerate() {
-        row[40 + 12 * i..52 + 12 * i].copy_from_slice(&light_values(&lights[light]));
+        row[40 + 12 * i..52 + 12 * i].copy_from_slice(&light_values(&lights[light], cx.width));
     }
     // Their shadow maps, when the scene's solids are in their way: the maps' side, where
     // the prepare pass keeps them, and whether it does.

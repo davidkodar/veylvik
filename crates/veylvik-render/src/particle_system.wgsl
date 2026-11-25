@@ -807,16 +807,18 @@ fn draw(origin: vec3<f32>, launch: vec3<f32>, birth: f32, age: f32, own_life: f3
     if hues > 0.0 {
         colour = vec4<f32>(turned(colour.rgb, (look.hue - 0.5) * 6.2831853 * hues), colour.a);
     }
-    // Near particles are drawn larger, up to a limit that keeps one particle affordable;
-    // points (the camera row's 31st value) are the same size at any distance.
+    // Near particles are drawn larger, up to a limit that keeps one particle affordable
+    // (48 pixels at 1920 wide, more in a larger frame so a film looks the same at any
+    // size); points (the camera row's 31st value) are the same size at any distance.
+    let largest = 48.0 * max(f32(p.size_op.x) / 1920.0, 1.0);
     let nearness = mix(seen.z, 1.0, camera_row(31u));
     var growth = mix(1.0, setting(GROW, birth), share);
     if has_curve(1u, birth) { growth = life_curve(SIZE_CURVE, birth, share); }
     let sharp = min(look.size * (1.0 - 0.6 * variation * random(thread, generation, 7u))
-        * growth * nearness, 48.0);
+        * growth * nearness, largest);
     if sharp <= 0.0 { return; }
     // Out of focus it spreads over a larger disc and dims by as much.
-    let radius = min(sharp + lens_blur(away), 48.0);
+    let radius = min(sharp + lens_blur(away), largest);
     colour = vec4<f32>(colour.rgb, colour.a * sharp * sharp / (radius * radius));
     if (u32(p.extra.z) & 4u) != 0u {
         // Spin either way, from a random angle when spinning at all.

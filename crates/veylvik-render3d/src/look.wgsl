@@ -149,6 +149,13 @@ fn look_surface(in: LookVarying) -> @location(0) vec4<f32> {
                 + ax_u * clamp(dot(offset, ax_u), -hh, hh);
             let l = normalize(on - in.world);
             let front = max(dot(-normalize(to), facing_light), 0.0);
+            // A feathered panel fades towards its edges, so its reflection does too.
+            var edge = 1.0;
+            if light.right.w > 0.0 {
+                let across = abs(dot(offset, ax_r)) / max(hw, 1e-3);
+                let down = abs(dot(offset, ax_u)) / max(hh, 1e-3);
+                edge = (1.0 - smoothstep(1.0 - light.right.w, 1.0, across)) * (1.0 - smoothstep(1.0 - light.right.w, 1.0, down));
+            }
             if dot(n, l) > 0.0 && front > 0.0 {
                 let h = normalize(l + v);
                 let f = f0 + (vec3<f32>(1.0) - f0) * pow(1.0 - max(dot(h, v), 0.0), 5.0);
@@ -158,7 +165,7 @@ fn look_surface(in: LookVarying) -> @location(0) vec4<f32> {
                 let seen = min(b * b / (3.14159265 * d * d) * 3.14159265 * b * b, 1.0);
                 let solid = 4.0 * hw * hh * front / max(dot(to, to), 1.0);
                 let fills = clamp(solid / (4.0 * 3.14159265 * b * b), 0.0, 1.0);
-                added += (light.colour.rgb * f * seen * fills
+                added += (light.colour.rgb * f * seen * fills * edge
                     + albedo / 3.14159265 * light.colour.rgb * solid * max(dot(n, normalize(to)), 0.0))
                     * shadow_of(in.world, n, light.shadow, light.shadow_info);
             }

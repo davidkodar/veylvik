@@ -151,7 +151,8 @@ impl Studio {
                     | Operation::Model3d(_)
                     | Operation::Figure3d(_)
                     | Operation::ImageCard(_)
-                    | Operation::PointCloud(_) => Some(0),
+                    | Operation::PointCloud(_)
+                    | Operation::Marker3d(_) => Some(0),
                     Operation::Camera3d(_) => Some(1),
                     Operation::Light3d(_) | Operation::Environment3d(_) => Some(2),
                     Operation::Transform3d(_) | Operation::MergeScenes(_) | Operation::RenderScene(_) => Some(3),

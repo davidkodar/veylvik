@@ -41,6 +41,8 @@ pub(crate) struct InspectCx<'a> {
     pub objects: &'a [(veylvik_document::NodeId, String)],
     /// Everything in the scene an object can face: objects, cameras and lights.
     pub things: &'a [(veylvik_document::NodeId, String)],
+    /// What a camera can keep in focus: objects, markers and 3D transforms.
+    pub targets: &'a [(veylvik_document::NodeId, String)],
     /// The node's Plate input is connected.
     pub plated: bool,
     /// The node on this node's Outline input (the words of a 3D text).

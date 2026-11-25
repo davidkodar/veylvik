@@ -1229,7 +1229,10 @@ outside the authored range. Time differences are computed exactly before float
 conversion, including near the timestamp limits.
 Step holds each value until the next exact key time. Smooth applies cubic
 smoothstep (`3t² − 2t³`) within each interval, easing in and out without
-overshooting the endpoint values. Curves contain 1–4096 keys. Outside
+overshooting the endpoint values. Curves contain 1–4096 keys. A project file writes
+eight or more plain keys an equal number of ticks apart (a sampled camera path, a
+solved camera) compactly, as `{"from": time, "every": ticks, "values": [...]}`, a
+fifth of the size of the list; both forms are read and mean the same keys. Outside
 the key range they hold the nearest endpoint.
 
 A scalar can instead follow an **expression** (`{"kind": "expression",
@@ -1545,6 +1548,13 @@ and `colour`.
   patterns and the softening of sharply curved edges are sized for a
   1920-pixel-wide frame and scale with the frame's width, so the same scene
   looks the same at 1080p and at 4K.
+- **Emission** (3D shape and 3D text, 0 to 64): the surface's colour added as its
+  own light, unlit, times this value: glowing wires, lamps, and labels that read
+  with no light on them. With a library Look the material shades the surface and
+  Emission is not used. For words that sit in a 3D scene (names on objects), 3D
+  text with a little Emission is usually better than a 2D Text on an Image card:
+  it is geometry, sharp at any distance, and costs no frame-sized picture (each
+  card of a whole-frame picture holds one at the frame's size, 127 MiB at 4K).
 - **3D text**: extrudes the Text or Path node on its Outline input Depth pixels
   deep, front face where the 2D layer sits, turning about its own centre.
   **Bevel** (pixels, at most half the depth) rounds the front and back edges in four
@@ -1596,13 +1606,23 @@ and `colour`.
 - **Merge scenes**: combines up to eight scenes.
 - **Camera**: untouched, it frames the composition exactly at depth 0, at the
   distance its focal length and sensor width imply (1920 × 50 / 36 = 2667 pixels for
-  the defaults at 1080p); placement moves and turns it from there. **Aim at**
-  names a 3D object (shape, 3D text, image card or model) the camera keeps
+  the defaults at 1080p); placement moves and turns it from there. So its
+  **position counts from that home**, not from the frame: position z 0 puts the
+  camera 2667 pixels in front of the frame plane, z −2667 on it, and z 700 at
+  3367 pixels. The inspector shows the distance for the camera's lens and frame.
+  (Every other 3D thing is placed from the frame's middle at depth 0.) **Aim at**
+  names a 3D object (shape, 3D text, image card, model or figure), a 3D transform
+  (the middle of what it moves) or another camera or light, that the camera keeps
   looking at, upright, from wherever it is placed and as both move; the
   placement's rotation is then not used. A missing object hands the rotation
   back. Lights have the same setting.
+- **Marker**: an empty point in the scene. It draws nothing and casts nothing;
+  cameras and lights aim at it, a camera focuses on it and objects face it. Key its
+  position to steer where a camera looks along a path; under a 3D transform it
+  moves with what the transform moves. Studio shows it as a small cross in a
+  circle (Guides > Points), which a click selects.
 - **Light**: point, spot (cone and softness), sun or **area**, pointing along −z
-  before rotation, or at its **Aim at** object from wherever it is placed (a row
+  before rotation, or at its **Aim at** object, marker or 3D transform from wherever it is placed (a row
   of strips turns as one, about the row's middle; aiming is worked out after the
   whole scene is put together, so it holds under 3D transforms). An area light is a glowing panel of Width by Height pixels
   (a soft box or strip light): near a surface it lights it unevenly, and glossy
@@ -1616,7 +1636,12 @@ and `colour`.
   **Variation** (0–1) makes them uneven (lengths 0.5–1.5 times the even share,
   gaps up to half a share, heights and brightness up to ±40%, tilt up to ±4
   degrees) and **Seed** picks the arrangement, the same every time. With no
-  variation the strips tile the panel exactly. An area light with Shadows on
+  variation the strips tile the panel exactly. **Feather** (0–1) fades the panel towards its
+  edges over that share of its half size, as a softbox's diffuser does: its
+  reflections then have soft edges instead of the hard rectangle of a bare panel
+  (at grazing angles a glossy floor keeps a reflection sharp from side to side, so
+  an even panel shows there as a block). It changes the reflection, not the light
+  the panel spreads. An area light with Shadows on
   casts a soft shadow from the middle of its panel (a row of strips casts as
   one light, from the middle of the row), through a shadow map with a wide
   view; sun, spot and point lights take the four shadow maps first. Surfaces
@@ -1888,7 +1913,8 @@ settles on the wrong kind of motion can still look sure. The
     filmed by camera number **Camera** of the scene connected to the scene
     input, counted as a Render scene node counts them (0, or no scene, is the
     view that sees the frame exactly), so they follow a 3D or solved camera
-    with parallax. Near particles are drawn larger (radius at most 48 pixels);
+    with parallax. Near particles are drawn larger (radius at most 48 pixels at 1920
+    wide, in proportion in a larger frame: 96 at 3840);
     those behind the camera are not drawn. They are not hidden by the scene's
     objects.
   - *Target.* With a target connected each particle is given a place on it,
@@ -1902,7 +1928,7 @@ settles on the wrong kind of motion can still look sure. The
     exactly where the letters show, from the same view, so the particles land
     on the real letters. The MCP `gold_title` tool returns the ids of its
     letters and camera for this.
-  - *Look.* **Size** is the dot's radius (a gaussian of half that as sigma) and
+  - *Look.* **Size** (0.25 to 96 pixels) is the dot's radius (a gaussian of half that as sigma) and
     **Grow** its size at the end of the life as a factor of that. **Colour**
     runs to **End colour** over the life (linear RGBA; values above 1 are HDR
     and glow under Bloom), with a short fade-in and a fade-out over the last
@@ -2168,7 +2194,8 @@ target copied to the frame as premultiplied scene-linear Rec.709. Surfaces use a
 metallic-roughness model (GGX specular, Lambert diffuse): the same prefiltered
 studio environment that lights 2D materials, at the default rig's strength, plus
 every point, spot and sun light in the scene (point and spot fall off with the
-inverse square, normalised to 1000 pixels; spots blend from the inner to the outer
+inverse square, normalised to 1000 pixels of a 1920-wide frame, so a scene is as
+bright at 960 or 3840 wide as at 1920; lit particles use the same; spots blend from the inner to the outer
 half-angle by softness). Where a surface curves faster than the pixel grid can
 show, such as a tight bevel, its lobe is widened by the change of the normal
 across the pixel, so a highlight thinner than a pixel becomes a soft glint

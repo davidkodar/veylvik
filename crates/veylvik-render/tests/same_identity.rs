@@ -131,6 +131,7 @@ fn the_same_identity_is_the_same_picture_for_every_node_type() {
         "gaussian_splats",
         // A person: a scene part, keyed through the Render scene that films it.
         "figure_3d",
+        "marker_3d",
         // Need a file, a model, a scene or a configuration that this test does not have.
         "lut",
         "render_scene",

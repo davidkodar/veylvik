@@ -437,11 +437,12 @@ pub use crate::nodes::{
     COLOR_CORRECT, COLORIZE, COMBINE_MASK, CONDENSATION, DISPLACE, DRIP, DUST, ELLIPSE,
     ENVIRONMENT_3D, EXPOSURE, FADE, FIGURE_3D, FIRE, FOOTAGE, FORCE, FRACTAL_NOISE,
     GAUSSIAN_SPLATS, GLASS, GRADIENT, GRID_WARP, IMAGE, IMAGE_CARD, LENS_BLUR, LENS_DISTORTION,
-    LIGHT_3D, LIGHT_RIG, LUMA_KEY, LUT, MASK, MATCH_GRAIN, MATERIAL, MATERIAL_LAYERS, MERGE,
-    MERGE_SCENES, METALLIC_SHINE, MODEL_3D, MORPHOLOGY, MOTION_BLUR, NOISE, OCIO, OPTICAL_FLOW,
-    PARTICLE_INSTANCES, PARTICLES, PATH, PATINA, PLANAR_TRACK, PLANAR_WARP, POINT_CLOUD, RECTANGLE,
-    REFINE_MATTE, RENDER_SCENE, REPEAT, SHADER, SHAPE_3D, SHAPE_WARP, SOLID, SOUND, SUN_GLINTS,
-    SURFACE_BLEND, SURFACE_REFLECTION, TEXT, TEXT_3D, TIME_REMAP, TRANSFORM, TRANSFORM_3D,
+    LIGHT_3D, LIGHT_RIG, LUMA_KEY, LUT, MARKER_3D, MASK, MATCH_GRAIN, MATERIAL, MATERIAL_LAYERS,
+    MERGE, MERGE_SCENES, METALLIC_SHINE, MODEL_3D, MORPHOLOGY, MOTION_BLUR, NOISE, OCIO,
+    OPTICAL_FLOW, PARTICLE_INSTANCES, PARTICLES, PATH, PATINA, PLANAR_TRACK, PLANAR_WARP,
+    POINT_CLOUD, RECTANGLE, REFINE_MATTE, RENDER_SCENE, REPEAT, SHADER, SHAPE_3D, SHAPE_WARP,
+    SOLID, SOUND, SUN_GLINTS, SURFACE_BLEND, SURFACE_REFLECTION, TEXT, TEXT_3D, TIME_REMAP,
+    TRANSFORM, TRANSFORM_3D,
 };
 pub static TYPES: &[&NodeType] = &[
     &SOLID,
@@ -458,6 +459,7 @@ pub static TYPES: &[&NodeType] = &[
     &crate::nodes::CAMERA_PROJECTION,
     &crate::nodes::GAUSSIAN_SPLATS,
     &crate::nodes::FIGURE_3D,
+    &crate::nodes::MARKER_3D,
     &crate::nodes::OFX_EFFECT,
     &SOUND,
     &crate::nodes::SHADOW,
@@ -534,12 +536,17 @@ pub fn operation_reference() -> Value {
     json!({"type":"object","properties":{"type":{"enum":TYPES.iter().map(|node|node.type_id).collect::<Vec<_>>()}},"required":["type"],"description":"A complete operation: its type and every setting. The nodes tool lists each type's default_operation (a valid starting point) and operation_schema; add_node fills the defaults in for you."})
 }
 pub fn catalog() -> Value {
-    json!({"recipes":crate::recipes::catalog(),"nodes":TYPES.iter().map(|node|json!({"descriptor":node,"default_operation":node.default_operation(),"operation_schema":node.schema()})).collect::<Vec<_>>(),"scene_contract":"Scene coordinates are composition pixels: x right, y down, z toward the viewer. Objects use offsets from their natural placement; camera home is [width/2,height/2,width*focal_length/sensor_width]. Camera placement.position is an offset from home. placement position/rotation/scale support vector tracks {interpolation,keys:[{time:{ticks,rate},value:[x,y,z]}]}; set_track_key accepts these placement paths. aim_at is an object UUID in the same scene. Optional camera orbit overrides placement position/rotation while enabled, follows aim_at, and evaluates continuously including motion-blur subframes. 2D image branches composited after Render scene remain screen-fixed; use Image card or Environment with background for camera-relative content.","image_contract":"scene-linear Rec.709, premultiplied RGBA32F","time_contract":"Two forms, by what the value is. A point on the timeline that must be exact (keyframe times, a Fade's or Footage's timing, markers, render times) is {ticks, rate}: ticks / rate seconds, so frame 45 at 30 fps is {\"ticks\":45,\"rate\":30}. A duration or start used as an ordinary number (a Text's typography and a 3D text's letters: start, duration, stagger, exit; Particles: start, duration, life) is plain seconds, as its unit says. Frame numbers appear only as tool arguments (preview, render_sequence, markers shown in Studio).","scalar_contract":"constant, linear, step, smooth or monotone keyframes; smooth uses cubic smoothstep per interval; monotone uses bounded cubic Hermite with shared harmonic interior slopes and secant endpoint slopes; time is ticks/rate seconds; 1..4096 strictly increasing keys"})
+    json!({"recipes":crate::recipes::catalog(),"nodes":TYPES.iter().map(|node|json!({"descriptor":node,"default_operation":node.default_operation(),"operation_schema":node.schema()})).collect::<Vec<_>>(),"scene_contract":"Scene coordinates are composition pixels: x right, y down, z toward the viewer. Objects use offsets from their natural placement; camera home is [width/2,height/2,width*focal_length/sensor_width]. Camera placement.position is an offset from home. placement position/rotation/scale support vector tracks {interpolation,keys:[{time:{ticks,rate},value:[x,y,z]}]}; set_track_key accepts these placement paths. aim_at is an object UUID in the same scene. Optional camera orbit overrides placement position/rotation while enabled, follows aim_at, and evaluates continuously including motion-blur subframes. 2D image branches composited after Render scene remain screen-fixed; use Image card or Environment with background for camera-relative content.","image_contract":"scene-linear Rec.709, premultiplied RGBA32F","time_contract":"Two forms, by what the value is. A point on the timeline that must be exact (keyframe times, a Fade's or Footage's timing, markers, render times) is {ticks, rate}: ticks / rate seconds, so frame 45 at 30 fps is {\"ticks\":45,\"rate\":30}. A duration or start used as an ordinary number (a Text's typography and a 3D text's letters: start, duration, stagger, exit; Particles: start, duration, life) is plain seconds, as its unit says. Frame numbers appear only as tool arguments (preview, render_sequence, markers shown in Studio).","scalar_contract":"constant, linear, step, smooth or monotone keyframes; smooth uses cubic smoothstep per interval; monotone uses bounded cubic Hermite with shared harmonic interior slopes and secant endpoint slopes; time is ticks/rate seconds; 1..4096 strictly increasing keys, as a list or, evenly spaced, as {from, every, values}"})
 }
 
 /// An exact rational time.
 pub fn time_schema() -> Value {
     json!({"type":"object","properties":{"ticks":{"type":"integer","minimum":i64::MIN,"maximum":i64::MAX},"rate":{"type":"integer","minimum":1,"maximum":u32::MAX}},"required":["ticks","rate"],"additionalProperties":false})
+}
+/// Evenly spaced keys in their compact form: the first key's time, the ticks between
+/// keys and the values (see `crate::animation::even`).
+pub fn even_schema(value: Value) -> Value {
+    json!({"type":"object","description":"Keys `every` ticks apart from `from`, one per value: the compact form of evenly spaced keys","properties":{"from":time_schema(),"every":{"type":"integer","minimum":1},"values":{"type":"array","minItems":1,"maxItems":crate::animation::MAX_KEYS,"items":value}},"required":["from","every","values"],"additionalProperties":false})
 }
 /// A constant or keyed number within bounds.
 pub fn scalar_schema(min: Option<f32>, max: Option<f32>) -> Value {
@@ -547,7 +554,9 @@ pub fn scalar_schema(min: Option<f32>, max: Option<f32>) -> Value {
     json!({"oneOf":[
         {"type":"object","properties":{"kind":{"const":"constant"},"value":number},"required":["kind","value"],"additionalProperties":false},
         {"type":"object","description":"A formula of time (seconds), frame, numbers, + - * / % ^ and functions (sin, cos, noise, random, clamp, mix, smoothstep, ...), with links [Node].parameter to other nodes' animatable parameters by node id or unique label; clamped to the parameter's range","properties":{"kind":{"const":"expression"},"expression":{"type":"string","minLength":1,"maxLength":veylvik_expr::MAX_SOURCE}},"required":["kind","expression"],"additionalProperties":false},
-        {"type":"object","properties":{"kind":{"enum":["linear","step","smooth","monotone"]},"keys":{"type":"array","minItems":1,"maxItems":crate::animation::MAX_KEYS,"items":{"type":"object","properties":{"time":time_schema(),"value":number,"segment":crate::schema::segment()},"required":["time","value"],"additionalProperties":false}}},"required":["kind","keys"],"additionalProperties":false}
+        {"type":"object","properties":{"kind":{"enum":["linear","step","smooth","monotone"]},"keys":{"anyOf":[
+            {"type":"array","minItems":1,"maxItems":crate::animation::MAX_KEYS,"items":{"type":"object","properties":{"time":time_schema(),"value":number,"segment":crate::schema::segment()},"required":["time","value"],"additionalProperties":false}},
+            even_schema(number)]}},"required":["kind","keys"],"additionalProperties":false}
     ]})
 }
 #[cfg(test)]

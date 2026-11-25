@@ -357,6 +357,12 @@ impl Inspect for Transform3d {
         cx.dirty |= placement(ui, &mut self.placement, cx);
     }
 }
+impl Inspect for veylvik_document::nodes::Marker3d {
+    fn inspect(&mut self, ui: &mut egui::Ui, cx: &mut InspectCx<'_>) {
+        ui.weak("An empty point: it draws nothing. Set a camera's or light's Aim at, a camera's Focus on or an object's Face to it, then key its position to steer where they look.");
+        cx.dirty |= placement(ui, &mut self.placement, cx);
+    }
+}
 impl Inspect for MergeScenes {
     fn inspect(&mut self, ui: &mut egui::Ui, _cx: &mut InspectCx<'_>) {
         ui.weak("Combines up to eight scenes; depth decides what is in front.");
@@ -405,7 +411,7 @@ fn aim_row(
         let shown = match *aim_at {
             None => "Its own rotation".to_string(),
             Some(id) => cx
-                .objects
+                .things
                 .iter()
                 .find(|(o, _)| *o == id)
                 .map_or("Missing object".into(), |(_, label)| label.clone()),
@@ -417,19 +423,31 @@ fn aim_row(
                     .selectable_value(aim_at, None, "Its own rotation")
                     .on_hover_text("Turn it with the rotation above")
                     .changed();
-                for (id, label) in cx.objects {
+                for (id, label) in cx.things.iter().filter(|(id, _)| *id != cx.node_id) {
                     cx.dirty |= ui.selectable_value(aim_at, Some(*id), label).changed();
                 }
             })
             .response
             .on_hover_text(format!(
-                "Keep the {what} pointed at this object wherever both move; the rotation above is then not used"
+                "Keep the {what} pointed at this object (or at the middle of what a 3D transform moves, or a marker) wherever both move; the rotation above is then not used"
             ));
     });
 }
 impl Inspect for Camera3d {
     fn inspect(&mut self, ui: &mut egui::Ui, cx: &mut InspectCx<'_>) {
         ui.weak("Untouched, the camera sees exactly the 2D frame at depth 0. Move and turn it from there.");
+        // Its position counts from that home view, not from the frame: say how far that is.
+        if let (
+            veylvik_document::Scalar::Constant { value: focal },
+            veylvik_document::Scalar::Constant { value: sensor },
+        ) = (&self.focal_length, &self.sensor_width)
+        {
+            let home = veylvik_scene::home_distance(cx.frame[0], *focal, *sensor);
+            ui.weak(format!(
+                "Position counts from this home view, {home:.0} px in front of the frame: z 0 is there, z {:.0} is on the frame.",
+                -home
+            ));
+        }
         ui.add_enabled_ui(!self.orbit.is_some_and(|o| o.enabled), |ui| {
             cx.dirty |= placement(ui, &mut self.placement, cx);
         });
@@ -441,7 +459,7 @@ impl Inspect for Camera3d {
             let name = |id: Option<veylvik_document::NodeId>| match id {
                 None => "Focus distance".to_string(),
                 Some(id) => cx
-                    .objects
+                    .targets
                     .iter()
                     .find(|(o, _)| *o == id)
                     .map_or("Missing object".into(), |(_, label)| label.clone()),
@@ -453,7 +471,7 @@ impl Inspect for Camera3d {
                         .selectable_value(&mut self.focus_on, None, "Focus distance")
                         .on_hover_text("Focus at Focus distance; 0 focuses on whatever is at the frame centre")
                         .changed();
-                    for (id, label) in cx.objects {
+                    for (id, label) in cx.targets {
                         cx.dirty |= ui
                             .selectable_value(&mut self.focus_on, Some(*id), label)
                             .changed();

@@ -344,6 +344,7 @@ fn an_area_light_splits_into_a_repeatable_row_of_strips() {
         intensity: 2.0,
         cone: 40.0,
         softness: 0.2,
+        feather: 0.0,
         size: [1200.0, 20.0],
         aim: None,
     };
@@ -691,4 +692,102 @@ fn procedural_orbit_follows_target_at_subframes_and_preserves_manual_camera() {
     let s = evaluate(&doc, root, at(1)).unwrap();
     let p = math::point(&s.camera(1, W, H).world, [0.; 3]);
     assert!((p[0] - W as f32 / 2. - 123.).abs() < 0.01);
+}
+#[test]
+fn a_camera_aims_at_a_3d_transform_by_the_middle_of_what_it_moves() {
+    let mut doc = scene();
+    let pair: Vec<NodeId> = [[-100.0, 0.0, 0.0], [100.0, 0.0, 0.0]]
+        .into_iter()
+        .map(|p| {
+            let mut cube = op(&SHAPE_3D);
+            let Operation::Shape3d(shape) = &mut cube else {
+                panic!()
+            };
+            shape.placement.position = p.into();
+            add(&mut doc, "cube", cube, &[])
+        })
+        .collect();
+    let both = add(
+        &mut doc,
+        "both",
+        op(&MERGE_SCENES),
+        &[("scene", pair[0]), ("scene_2", pair[1])],
+    );
+    let mut moved = op(&TRANSFORM_3D);
+    let Operation::Transform3d(t) = &mut moved else {
+        panic!()
+    };
+    t.placement.position = [400.0, -150.0, -300.0].into();
+    let moved = add(&mut doc, "moved", moved, &[("scene", both)]);
+    let mut camera = op(&CAMERA_3D);
+    let Operation::Camera3d(c) = &mut camera else {
+        panic!()
+    };
+    c.placement.position = [-500.0, 200.0, 300.0].into();
+    c.aim_at = Some(moved);
+    let camera = add(&mut doc, "camera", camera, &[]);
+    let root = add(
+        &mut doc,
+        "all",
+        op(&MERGE_SCENES),
+        &[("scene", moved), ("scene_2", camera)],
+    );
+    let s = evaluate(&doc, root, at(0)).unwrap();
+    let middle = s.centre(moved).expect("a transform has a centre");
+    let objects: Vec<[f32; 3]> = s.objects.iter().map(|o| o.sphere().0).collect();
+    for k in 0..3 {
+        assert!(
+            (middle[k] - (objects[0][k] + objects[1][k]) / 2.0).abs() < 1e-3,
+            "{middle:?} {objects:?}"
+        );
+    }
+    // The camera has the middle of the pair dead centre.
+    let (p, _) = s.cameras[0].project(middle, W, H).unwrap();
+    assert!(close(p, [960.0, 540.0]), "{p:?}");
+}
+#[test]
+fn a_camera_aims_and_focuses_at_a_marker_that_moves_with_its_transform() {
+    let mut doc = scene();
+    let mut marker = op(&MARKER_3D);
+    let Operation::Marker3d(m) = &mut marker else {
+        panic!()
+    };
+    m.placement.position = [100.0, 50.0, -400.0].into();
+    let marker = add(&mut doc, "marker", marker, &[]);
+    let mut moved = op(&TRANSFORM_3D);
+    let Operation::Transform3d(t) = &mut moved else {
+        panic!()
+    };
+    t.placement.position = [-300.0, 0.0, 0.0].into();
+    let moved = add(&mut doc, "moved", moved, &[("scene", marker)]);
+    let mut camera = op(&CAMERA_3D);
+    let Operation::Camera3d(c) = &mut camera else {
+        panic!()
+    };
+    c.placement.position = [400.0, -300.0, 200.0].into();
+    c.aim_at = Some(marker);
+    c.focus_on = Some(marker);
+    let camera = add(&mut doc, "camera", camera, &[]);
+    let root = add(
+        &mut doc,
+        "all",
+        op(&MERGE_SCENES),
+        &[("scene", moved), ("scene_2", camera)],
+    );
+    let s = evaluate(&doc, root, at(0)).unwrap();
+    assert!(s.objects.is_empty(), "a marker draws nothing");
+    let point = s.centre(marker).expect("a marker is a place in the scene");
+    // Where it was put, moved by the transform above it (positions count from the frame's middle).
+    let middle = s.centre(moved).unwrap();
+    assert!(
+        (point[0] - middle[0]).abs() < 1e-3 && (point[2] - middle[2]).abs() < 1e-3,
+        "{point:?} {middle:?}"
+    );
+    let (p, depth) = s.cameras[0].project(point, W, H).unwrap();
+    assert!(close(p, [960.0, 540.0]), "{p:?}");
+    assert!(
+        (s.cameras[0].focus(&s) - depth).abs() < 1.0,
+        "focus {} against {depth}",
+        s.cameras[0].focus(&s)
+    );
 }

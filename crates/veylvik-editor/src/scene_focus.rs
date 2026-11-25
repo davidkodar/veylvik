@@ -35,7 +35,26 @@ pub(crate) fn objects(doc: &veylvik_document::Composition) -> Vec<(NodeId, Strin
     list.sort_by(|a, b| a.1.cmp(&b.1));
     list
 }
-/// Everything an object can face: the objects, and the cameras, lights and models.
+/// What a camera can keep in focus: the objects, markers and 3D transforms (by the
+/// middle of what they move).
+pub(crate) fn targets(doc: &veylvik_document::Composition) -> Vec<(NodeId, String)> {
+    let mut list = objects(doc);
+    list.extend(
+        doc.nodes
+            .values()
+            .filter(|n| {
+                matches!(
+                    n.operation,
+                    Operation::Marker3d(_) | Operation::Transform3d(_)
+                )
+            })
+            .map(|n| (n.id, n.label.clone())),
+    );
+    list.sort_by(|a, b| a.1.cmp(&b.1));
+    list
+}
+/// Everything an object, camera or light can face or aim at: the objects, the cameras
+/// and lights, and 3D transforms (by the middle of what they move).
 pub(crate) fn things(doc: &veylvik_document::Composition) -> Vec<(NodeId, String)> {
     let mut list: Vec<(NodeId, String)> = doc
         .nodes
@@ -50,6 +69,8 @@ pub(crate) fn things(doc: &veylvik_document::Composition) -> Vec<(NodeId, String
                     | Operation::Figure3d(_)
                     | Operation::Camera3d(_)
                     | Operation::Light3d(_)
+                    | Operation::Transform3d(_)
+                    | Operation::Marker3d(_)
             )
         })
         .map(|n| (n.id, n.label.clone()))

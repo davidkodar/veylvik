@@ -402,6 +402,14 @@ fn lit(in: Varying) -> @location(0) vec4<f32> {
             let on = light.position.xyz
                 + ax_r * clamp(dot(offset, ax_r), -hw, hw)
                 + ax_u * clamp(dot(offset, ax_u), -hh, hh);
+            // A feathered panel fades towards its edges, so its reflection does too.
+            var edge = 1.0;
+            let feather = light.right.w;
+            if feather > 0.0 {
+                let across = abs(dot(offset, ax_r)) / max(hw, 1e-3);
+                let down = abs(dot(offset, ax_u)) / max(hh, 1e-3);
+                edge = (1.0 - smoothstep(1.0 - feather, 1.0, across)) * (1.0 - smoothstep(1.0 - feather, 1.0, down));
+            }
             let lp = on - in.world;
             let d = max(length(lp), 1.0);
             let l = lp / d;
@@ -425,7 +433,7 @@ fn lit(in: Varying) -> @location(0) vec4<f32> {
                 // of the lobe it fills.
                 let fills = clamp(solid / (4.0 * 3.14159265 * bx * by), 0.0, 1.0);
                 let reaches = shadow_of(in.world, n, light.shadow, light.shadow_info);
-                colour += (light.colour.rgb * f * min(seen, 1.0) * fills * grain_gain
+                colour += (light.colour.rgb * f * min(seen, 1.0) * fills * grain_gain * edge
                     + diffuse / 3.14159265 * light.colour.rgb * solid * max(dot(n, normalize(to)), 0.0)) * reaches;
             }
             continue;
@@ -454,6 +462,8 @@ fn lit(in: Varying) -> @location(0) vec4<f32> {
         let specular = lobe * smith(nv, nl, sqrt(ax * ay)) * f / max(4.0 * nv * nl, 1e-4);
         colour += (diffuse / 3.14159265 * (vec3<f32>(1.0) - f) + specular) * radiance * nl * 3.14159265;
     }
+    // Its own light: the colour added as it is, whatever lights the scene.
+    colour += object.surface.rgb * in.tint.rgb * object.instancing.y;
     if mapping {
         let count = u32(object.counts.x);
         if count > 0u {

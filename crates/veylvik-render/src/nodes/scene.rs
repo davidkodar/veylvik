@@ -38,3 +38,4 @@ impl RenderNode for CameraProjection {}
 impl RenderNode for GaussianSplats {}
 /// Read by Render scene, which draws its body.
 impl RenderNode for Figure3d {}
+impl RenderNode for Marker3d {}

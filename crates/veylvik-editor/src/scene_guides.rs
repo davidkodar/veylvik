@@ -685,6 +685,31 @@ impl Studio {
                 hits.push((at, object.node, label));
             }
         }
+        // Markers: a small cross in a circle where each empty point is, to see and pick.
+        if s.points {
+            for (node, at) in &scene.anchors {
+                let Some(n) = doc.nodes.get(node) else {
+                    continue;
+                };
+                if !matches!(n.operation, veylvik_document::Operation::Marker3d(_)) {
+                    continue;
+                }
+                if let Some(c) = p.point(*at) {
+                    let colour = Color32::from_rgb(255, 200, 90);
+                    let stroke = Stroke::new(1.5_f32, colour);
+                    painter.circle_stroke(c, 6.0, stroke);
+                    painter.line_segment(
+                        [c - egui::vec2(10.0, 0.0), c + egui::vec2(10.0, 0.0)],
+                        stroke,
+                    );
+                    painter.line_segment(
+                        [c - egui::vec2(0.0, 10.0), c + egui::vec2(0.0, 10.0)],
+                        stroke,
+                    );
+                    hits.push((c, *node, n.label.clone()));
+                }
+            }
+        }
         self.draw_gizmo(&ctx, &painter, &p, &scene);
         if self.scene_light_pick(&ctx, &painter, &p, response) {
             return;

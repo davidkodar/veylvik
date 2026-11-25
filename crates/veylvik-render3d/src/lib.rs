@@ -37,7 +37,7 @@ struct ObjectUniform {
     /// edge softening are sized for a 1920-wide frame and scale with it, so a
     /// scene looks the same at every resolution.
     relief: [f32; 4],
-    /// Copies at particles (1), drawn from the instances binding.
+    /// Copies at particles (1), drawn from the instances binding; the surface's own light.
     instancing: [f32; 4],
     /// A picture cast through a camera: its view and projection, where it is, and cast
     /// (1), lit (1), unseen left out (1).
@@ -59,7 +59,7 @@ struct LightUniform {
     /// Shadow map layer (-1: none), normal offset, filter width in texels, and the
     /// light node's number (for the reflections view's colours).
     shadow_info: [f32; 4],
-    /// An area light's half-width and half-height axes.
+    /// An area light's half-width and half-height axes; how far its panel fades to the edges (right.w).
     right: [f32; 4],
     up: [f32; 4],
 }
@@ -209,7 +209,11 @@ fn uv_scale(geometry: &Geometry) -> [f32; 4] {
         _ => [1.0, 1.0, 0.0, 0.0],
     }
 }
-fn light_uniform(light: &Light, shadow: Option<(u32, math::Mat4, f32)>) -> LightUniform {
+fn light_uniform(
+    light: &Light,
+    shadow: Option<(u32, math::Mat4, f32)>,
+    width: u32,
+) -> LightUniform {
     use veylvik_document::nodes::LightKind;
     let p = light.position();
     let d = light.direction();
@@ -230,9 +234,9 @@ fn light_uniform(light: &Light, shadow: Option<(u32, math::Mat4, f32)>) -> Light
         ],
         direction: [d[0], d[1], d[2], outer.cos()],
         colour: [
-            light.colour[0] * light.intensity,
-            light.colour[1] * light.intensity,
-            light.colour[2] * light.intensity,
+            light.colour[0] * light.strength(width),
+            light.colour[1] * light.strength(width),
+            light.colour[2] * light.strength(width),
             inner.cos().max(outer.cos() + 1e-4),
         ],
         shadow: shadow.map_or([[0.0; 4]; 4], |(_, m, _)| columns(&m)),
@@ -250,7 +254,7 @@ fn light_uniform(light: &Light, shadow: Option<(u32, math::Mat4, f32)>) -> Light
             ],
             None => [-1.0, 0.0, 0.0, 0.0],
         },
-        right: [panel[0][0], panel[0][1], panel[0][2], 0.0],
+        right: [panel[0][0], panel[0][1], panel[0][2], light.feather],
         up: [panel[1][0], panel[1][1], panel[1][2], 0.0],
     }
 }
@@ -638,7 +642,7 @@ impl Engine {
             .lights
             .iter()
             .zip(&shadows)
-            .map(|(light, shadow)| light_uniform(light, *shadow))
+            .map(|(light, shadow)| light_uniform(light, *shadow, job.width))
             .collect();
         // For the reflections view: each light carries its node's number.
         let numbers = scene.light_numbers();
@@ -910,7 +914,12 @@ impl Engine {
                     object.surface.shadow,
                     f32::from(u8::from(job.reflections)),
                 ],
-                instancing: [f32::from(u8::from(copies.is_some())), 0.0, 0.0, 0.0],
+                instancing: [
+                    f32::from(u8::from(copies.is_some())),
+                    object.surface.emission,
+                    0.0,
+                    0.0,
+                ],
                 projector: cast.map_or([[0.0; 4]; 4], |(cast, ..)| {
                     columns(&math::mul(
                         &projection(&cast.camera, width, height),

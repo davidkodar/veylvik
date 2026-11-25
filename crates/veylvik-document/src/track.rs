@@ -14,6 +14,7 @@ pub enum Track3 {
 #[serde(deny_unknown_fields)]
 pub struct Curve3 {
     pub interpolation: Curve3Mode,
+    #[serde(with = "crate::animation::even")]
     pub keys: Vec<Key3>,
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -400,6 +401,7 @@ impl crate::Operation {
                 | O::Transform3d(_)
                 | O::Camera3d(_)
                 | O::Figure3d(_)
+                | O::Marker3d(_)
         )
     }
     /// Placement and colour of 3D scene nodes.
@@ -413,6 +415,7 @@ impl crate::Operation {
             O::Transform3d(n) => (Some(&mut n.placement), None),
             O::Camera3d(n) => (Some(&mut n.placement), None),
             O::Figure3d(n) => (Some(&mut n.placement), Some(&mut n.colour)),
+            O::Marker3d(n) => (Some(&mut n.placement), None),
             _ => (None, None),
         }
     }
@@ -471,6 +474,22 @@ pub fn schema(lo: f32, hi: f32) -> serde_json::Value {
     let vector = serde_json::json!({"type":"array","minItems":3,"maxItems":3,"items":{"type":"number","minimum":lo,"maximum":hi}});
     serde_json::json!({"oneOf":[vector,{"type":"object","additionalProperties":false,"required":["interpolation","keys"],"properties":{
         "interpolation":{"enum":["linear","step","smooth","monotone"]},
-        "keys":{"type":"array","minItems":1,"maxItems":crate::animation::MAX_KEYS,"items":{"type":"object","additionalProperties":false,
-            "required":["time","value"],"properties":{"time":crate::registry::time_schema(),"value":vector}}}}}]})
+        "keys":{"anyOf":[{"type":"array","minItems":1,"maxItems":crate::animation::MAX_KEYS,"items":{"type":"object","additionalProperties":false,
+            "required":["time","value"],"properties":{"time":crate::registry::time_schema(),"value":vector}}},crate::registry::even_schema(vector.clone())]}}}]})
+}
+
+impl crate::animation::even::Keyed for Key3 {
+    type Value = [f32; 3];
+    fn time(&self) -> Time {
+        self.time
+    }
+    fn value(&self) -> [f32; 3] {
+        self.value
+    }
+    fn plain(&self) -> bool {
+        true
+    }
+    fn at(time: Time, value: [f32; 3]) -> Self {
+        Key3 { time, value }
+    }
 }
