@@ -50,6 +50,7 @@ impl Runner {
     fn with<T>(
         &self,
         effect: &OfxEffect,
+        bundle: &std::path::Path,
         f: impl FnOnce(&mut Worker, &Plugin) -> Result<T, String>,
     ) -> Result<T, String> {
         let exe = self
@@ -61,12 +62,12 @@ impl Runner {
             .lock()
             .map_err(|_| "the OpenFX helper lock is poisoned")?;
         let worker = worker.get_or_insert_with(|| Worker::new(exe));
-        let key = (effect.bundle.clone(), effect.plugin.clone());
+        let key = (bundle.to_string_lossy().into_owned(), effect.plugin.clone());
         let known = self.plugins.lock().ok().and_then(|p| p.get(&key).cloned());
         let plugin = match known {
             Some(plugin) => plugin,
             None => {
-                let (plugins, _) = worker.list(std::path::Path::new(&effect.bundle))?;
+                let (plugins, _) = worker.list(bundle)?;
                 let plugin = plugins
                     .into_iter()
                     .find(|p| p.identifier == effect.plugin)
@@ -96,14 +97,14 @@ impl EffectHost for Runner {
         job: EffectJob<'_>,
         deliver: &mut dyn FnMut(&[f32]),
     ) -> veylvik_render::Result<()> {
-        let effect = job.effect;
+        let (effect, bundle) = (job.effect, job.bundle);
         let values = values_of(job.values);
         let inputs: Vec<(&str, Option<f64>, &[f32])> = job
             .inputs
             .iter()
             .map(|(clip, at, p)| (*clip, *at, p.as_slice()))
             .collect();
-        self.with(effect, |worker, plugin| {
+        self.with(effect, bundle, |worker, plugin| {
             worker.render_with(
                 plugin,
                 effect.context.name(),
@@ -119,9 +120,9 @@ impl EffectHost for Runner {
         .map_err(failed(effect))
     }
     fn frames_needed(&self, job: FramesJob<'_>) -> veylvik_render::Result<Vec<(String, Vec<f64>)>> {
-        let effect = job.effect;
+        let (effect, bundle) = (job.effect, job.bundle);
         let values = values_of(job.values);
-        self.with(effect, |worker, plugin| {
+        self.with(effect, bundle, |worker, plugin| {
             worker.frames_needed(
                 plugin,
                 effect.context.name(),

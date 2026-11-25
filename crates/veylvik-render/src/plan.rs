@@ -285,6 +285,17 @@ pub(crate) enum Kind {
 impl Kind {
     /// The kind of a node that replaces itself by a branch of its input (motion blur,
     /// time remap, optical flow, OCIO).
+    /// Whether `operation` makes a branch in place of its node (see `replacing`), without
+    /// copying it.
+    fn replaces(operation: &Operation) -> bool {
+        matches!(
+            operation,
+            Operation::MotionBlur(_)
+                | Operation::TimeRemap(_)
+                | Operation::OpticalFlow(_)
+                | Operation::Ocio(_)
+        )
+    }
     fn replacing(operation: &Operation) -> Option<Self> {
         Some(match operation {
             Operation::MotionBlur(n) => Kind::MotionBlur(n.clone()),
@@ -526,7 +537,7 @@ impl Plan {
                 }
             } else if visited.insert(id) {
                 todo.push((id, true));
-                if Kind::replacing(&node.operation).is_some() {
+                if Kind::replaces(&node.operation) {
                     continue;
                 }
                 // Copies at particles read the particles as data: their places are worked

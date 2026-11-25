@@ -269,6 +269,10 @@ impl ImageInputs {
         Some(paths)
     }
 
+    /// The folder the composition's relative file names are read from.
+    pub fn base_directory(&self) -> &std::path::Path {
+        &self.3
+    }
     pub fn set_base_directory(&mut self, base: impl Into<std::path::PathBuf>) {
         self.3 = base.into();
     }

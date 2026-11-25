@@ -18,7 +18,7 @@ pub(super) fn run(cx: &mut super::PassCx<'_, '_>) -> Result<()> {
     let Operation::OfxEffect(effect) = &plan.nodes[scheduled.node].operation else {
         return Err(error("an external pass belongs to an OpenFX effect"));
     };
-    let host = this.effect_host_for(effect, inputs)?;
+    let (host, bundle) = this.effect_host_for(effect, inputs)?;
     let mut reads = Vec::new();
     let read_back = |encoder: &mut wgpu::CommandEncoder, from: &wgpu::Buffer| {
         let read = this.device.create_buffer(&wgpu::BufferDescriptor {
@@ -77,6 +77,7 @@ pub(super) fn run(cx: &mut super::PassCx<'_, '_>) -> Result<()> {
     host.render(
         effect_hook::EffectJob {
             effect,
+            bundle: &bundle,
             values: effect.values_at(time)?,
             frame: time.seconds()? * plan.frame_rate.seconds()?,
             width: plan.width,

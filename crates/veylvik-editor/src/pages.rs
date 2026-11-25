@@ -205,7 +205,7 @@ impl Studio {
         if !self.pages.quick {
             return;
         }
-        let enabled = self.ready();
+        let enabled = self.settled();
         let mut open = true;
         let mut close = false;
         let mut video = None;
@@ -331,7 +331,7 @@ impl Studio {
     /// The Export page's right panel: the Export button and what has been exported,
     /// is rendering and is waiting.
     pub(crate) fn export_page(&mut self, ui: &mut egui::Ui) {
-        let enabled = self.ready();
+        let enabled = self.settled();
         let mut action = None;
         egui::Panel::right("export-page")
             .frame(crate::design::panel(ui.ctx()))

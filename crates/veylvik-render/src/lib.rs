@@ -317,11 +317,12 @@ impl Renderer {
         &self,
         effect: &veylvik_document::nodes::OfxEffect,
         inputs: &ImageInputs,
-    ) -> Result<Arc<dyn effect_hook::EffectHost>> {
-        inputs.resolve_plugin(&effect.bundle)?;
-        self.effect_host().ok_or_else(|| {
+    ) -> Result<(Arc<dyn effect_hook::EffectHost>, std::path::PathBuf)> {
+        let bundle = inputs.resolve_plugin(&effect.bundle)?;
+        let host = self.effect_host().ok_or_else(|| {
             error("OpenFX effects need the effect host, which this host has not loaded")
-        })
+        })?;
+        Ok((host, bundle))
     }
     /// Registers what runs OpenFX effects; without one they fail with a clear error.
     pub fn set_effect_host(&self, host: Arc<dyn effect_hook::EffectHost>) {
@@ -994,15 +995,13 @@ impl Renderer {
             drop(self.admit(0)?);
         }
         self.trim_vector_cache_to_budget()?;
-        // Budget reductions apply even when a previous request is a cache hit. What the 3D
-        // renderer keeps between frames counts too: kept frames go first, then its caches.
-        let scene = self.scene_renderer.read().ok().and_then(|s| s.clone());
-        let scene_held = || scene.as_ref().map_or(0, |s| s.held_bytes());
-        while self.resource_stats()?.held_bytes + scene_held() > self.budget_bytes && cache.evict()
-        {
-        }
-        if self.resource_stats()?.held_bytes + scene_held() > self.budget_bytes
-            && let Some(scene) = &scene
+        // Budget reductions apply even when a previous request is a cache hit.
+        while self.resource_stats()?.held_bytes > self.budget_bytes && cache.evict() {}
+        // What the 3D renderer keeps between frames counts too. Kept frames are not given
+        // up for it (that would throw away the frame about to be found); when the two
+        // together pass the budget, the 3D renderer lets its own caches go.
+        if let Some(scene) = self.scene_renderer.read().ok().and_then(|s| s.clone())
+            && self.resource_stats()?.held_bytes + scene.held_bytes() > self.budget_bytes
         {
             scene.release();
         }

@@ -77,6 +77,12 @@ impl Studio {
     pub(crate) fn ready(&self) -> bool {
         self.busy().is_none()
     }
+    /// Nothing holds the editor back but, at most, a drag in progress: what gates whole
+    /// panels and windows, which must stay live while something in them is dragged
+    /// (disabling the widget being dragged would end the drag and never let it finish).
+    pub(crate) fn settled(&self) -> bool {
+        matches!(self.busy(), None | Some(Busy::Dragging))
+    }
 }
 
 #[cfg(test)]

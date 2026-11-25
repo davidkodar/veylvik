@@ -49,15 +49,22 @@ impl Dependencies {
                 .unwrap_or(std::path::Path::new("."));
             paths.extend(processor.files().iter().map(|p| base.join(p)));
         }
-        paths.extend(plan.required_models().into_iter().map(PathBuf::from));
         paths.sort();
         paths.dedup();
-        Ok(Self(
-            paths
+        let mut stamps: Vec<FileStamp> = paths
+            .into_iter()
+            .map(FileStamp::of)
+            .collect::<Result<_>>()?;
+        // 3D models by the name the composition gives, in its folder. One that cannot be
+        // looked at is left out: loading it says why, and a picture made without it has
+        // no lasting name to get wrong.
+        let base = inputs.base_directory();
+        stamps.extend(
+            plan.required_models()
                 .into_iter()
-                .map(FileStamp::of)
-                .collect::<Result<_>>()?,
-        ))
+                .filter_map(|model| FileStamp::of(base.join(model)).ok()),
+        );
+        Ok(Self(stamps))
     }
     pub fn stamps(&self) -> &[FileStamp] {
         &self.0
@@ -102,6 +109,21 @@ impl Renderer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn a_model_is_looked_at_in_the_composition_folder() {
+        let folder = std::env::temp_dir().join(format!(
+            "veylvik-depends-{}",
+            veylvik_document::NodeId::new_v4()
+        ));
+        std::fs::create_dir_all(folder.join("models")).unwrap();
+        std::fs::write(folder.join("models/x.glb"), b"glTF").unwrap();
+        let mut inputs = ImageInputs::default();
+        inputs.set_base_directory(&folder);
+        // Joined with the folder, not the working directory.
+        let stamp = FileStamp::of(inputs.base_directory().join("models/x.glb")).unwrap();
+        assert_eq!(stamp.size, 4);
+        std::fs::remove_dir_all(folder).unwrap();
+    }
     #[test]
     fn a_file_that_changes_or_goes_is_noticed() {
         let path = std::env::temp_dir().join(format!(

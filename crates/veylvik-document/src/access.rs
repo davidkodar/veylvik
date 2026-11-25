@@ -46,8 +46,19 @@ fn resolve_among(
     reach: &Reach,
     folders: &[PathBuf],
 ) -> Result<PathBuf, String> {
-    if named.plugin && installed(&named.name, folders) {
-        return Ok(PathBuf::from(&named.name));
+    // A plugin installed in a plugin folder, by its name as written or within the
+    // composition's folder (never against the process's working directory). A trusted
+    // composition may load it from anywhere, so there is nothing to look up.
+    if named.plugin && *reach != Reach::Anywhere {
+        let path = Path::new(&named.name);
+        let candidate = if path.is_absolute() {
+            path.to_path_buf()
+        } else {
+            base.join(path)
+        };
+        if installed(&candidate, folders) {
+            return Ok(candidate);
+        }
     }
     resolve(base, &named.name, reach).map_err(|why| {
         if named.plugin {
@@ -58,8 +69,8 @@ fn resolve_among(
     })
 }
 /// Whether `bundle` lies inside one of `folders` (links followed).
-fn installed(bundle: &str, folders: &[PathBuf]) -> bool {
-    let Ok(real) = Path::new(bundle).canonicalize() else {
+fn installed(bundle: &Path, folders: &[PathBuf]) -> bool {
+    let Ok(real) = bundle.canonicalize() else {
         return false;
     };
     folders
@@ -258,7 +269,12 @@ mod tests {
         let folders = [folder.clone()];
         let installed = plugin(folder.join("Fx.ofx.bundle").to_string_lossy().into_owned());
         assert!(resolve_among(&base, &installed, &within, &folders).is_ok());
-        assert!(resolve_among(&base, &plugin("Fx.ofx.bundle".into()), &within, &folders).is_ok());
+        // A name relative to the project is the bundle inside it, never one in the
+        // process's working directory.
+        assert_eq!(
+            resolve_among(&base, &plugin("Fx.ofx.bundle".into()), &within, &folders).unwrap(),
+            base.join("Fx.ofx.bundle")
+        );
         // A bundle anywhere else is native code from outside: refused unless trusted.
         let stray = plugin(
             elsewhere

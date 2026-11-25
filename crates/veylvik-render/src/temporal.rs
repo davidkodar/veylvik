@@ -251,7 +251,7 @@ impl Renderer {
         time: veylvik_document::Time,
         inputs: &ImageInputs,
     ) -> Result<Vec<f64>> {
-        let host = self.effect_host_for(effect, inputs)?;
+        let (host, bundle) = self.effect_host_for(effect, inputs)?;
         let at = veylvik_document::nodes::OFX_PORTS
             .iter()
             .position(|p| *p == port);
@@ -273,6 +273,7 @@ impl Renderer {
         let now = frame_of(time, plan.frame_rate)?;
         let needed = host.frames_needed(crate::effect_hook::FramesJob {
             effect,
+            bundle: &bundle,
             connected,
             values: effect.values_at(time)?,
             frame: now,

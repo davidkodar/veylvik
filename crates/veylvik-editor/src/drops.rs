@@ -106,7 +106,7 @@ impl Studio {
     }
     /// Take in the next waiting file, when nothing else is in the way.
     pub(crate) fn take_next_file(&mut self, ctx: &egui::Context) {
-        if self.dropped.is_empty() || !self.ready() || self.media_import.is_some() {
+        if self.dropped.is_empty() || !self.settled() || self.media_import.is_some() {
             return;
         }
         let Some(path) = self.dropped.pop_front() else {

@@ -17,6 +17,9 @@ pub trait EffectHost: Send + Sync {
 }
 pub struct EffectJob<'a> {
     pub effect: &'a OfxEffect,
+    /// The plugin's bundle as checked against where the composition may read: load
+    /// this, never `effect.bundle` (which may name it relative to the project).
+    pub bundle: &'a std::path::Path,
     /// The settings' values at this moment.
     pub values: Vec<(String, OfxValue)>,
     /// The frame number at this moment (OpenFX counts time in frames).
@@ -32,6 +35,8 @@ pub struct EffectJob<'a> {
 /// What an effect that reads other frames is asked before rendering.
 pub struct FramesJob<'a> {
     pub effect: &'a OfxEffect,
+    /// The plugin's bundle as checked (see [`EffectJob::bundle`]).
+    pub bundle: &'a std::path::Path,
     /// The plugin clips whose ports are wired.
     pub connected: Vec<&'a str>,
     pub values: Vec<(String, OfxValue)>,

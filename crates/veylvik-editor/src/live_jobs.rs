@@ -64,7 +64,11 @@ impl Studio {
         ctx: &egui::Context,
     ) -> Result<Value> {
         self.live_job_ready(args)?;
-        let request = veylvik_track::request::Request::from_json(args)?;
+        let mut request = veylvik_track::request::Request::from_json(args)?;
+        // Back to the first frame from the first frame: there is nothing to track back.
+        if request.back_to == Some(0) && request.frames[0] == 0 {
+            request.back_to = None;
+        }
         // Live, back_to can only be 0: Studio's window tracks backward to the first frame.
         if request.back_to.is_some_and(|f| f != 0) {
             return Err("live back_to must be 0: Studio tracks backward to the first frame".into());
@@ -83,7 +87,11 @@ impl Studio {
     ) -> Result<Value> {
         self.live_job_ready(args)?;
         let doc = self.project.document.snapshot();
-        let request = veylvik_segment::request::Request::from_json(args, doc.frame_count)?;
+        let mut request = veylvik_segment::request::Request::from_json(args, doc.frame_count)?;
+        // Back to the first frame from the first frame: there is nothing to track back.
+        if request.analysis.back_to == Some(0) && request.analysis.frames[0] == 0 {
+            request.analysis.back_to = None;
+        }
         if request.analysis.back_to.is_some_and(|f| f != 0) {
             return Err("live back_to must be 0: Studio tracks backward to the first frame".into());
         }

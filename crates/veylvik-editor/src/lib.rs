@@ -873,6 +873,8 @@ impl Studio {
         };
         // Opened without a file: begin on the start screen.
         app.apply_preferences(None, &setup.context);
+        // The shortcuts, read once: the menus show them every time they are built.
+        app.commands.keys = Some(commands::Keys::load(&app.preferences.values.shortcuts));
         if app.project.path.is_none() && app.capabilities.project_files {
             app.launch(&setup.context);
         }
@@ -3637,7 +3639,8 @@ impl Studio {
         // Consume early, apply after widgets have processed this frame's text edits.
         let apply_inspector = self.ready()
             && ctx.input_mut(|input| input.consume_key(egui::Modifiers::CTRL, egui::Key::Enter));
-        if self.ready()
+        if self.settled()
+            && !self.animation_editor.dragging()
             && (!ctx.egui_wants_keyboard_input()
                 || self.animation_editor.has_focus(&ctx)
                 || self.key_timeline.has_focus(&ctx))
@@ -3664,7 +3667,7 @@ impl Studio {
             self.leave(Leave::Close, &ctx);
         }
         ui.add_enabled_ui(
-            self.ready(),
+            self.settled(),
             |ui| {
                 if !self.viewer_fullscreen {
                 if self.capabilities.menu_bar {
@@ -4295,7 +4298,7 @@ impl Studio {
         if let Some(settings) = self.composition_controls.show(&ctx) {
             self.apply_composition_settings(settings, &ctx);
         }
-        if let Some(id) = self.recovery.show(&ctx, self.ready()) {
+        if let Some(id) = self.recovery.show(&ctx, self.settled()) {
             self.leave(Leave::Recover(id), &ctx);
         }
         if let Some(request) = self
@@ -4311,7 +4314,7 @@ impl Studio {
         self.models.show(&ctx);
         if let Some(settings) =
             self.video_export
-                .show(&ctx, self.project.document.snapshot(), self.ready())
+                .show(&ctx, self.project.document.snapshot(), self.settled())
         {
             self.export_video(settings, &ctx);
         }
@@ -4320,7 +4323,7 @@ impl Studio {
             &ctx,
             self.project.document.snapshot().frame_rate,
             self.project.document.snapshot().frame_count,
-            self.ready(),
+            self.settled(),
         ) {
             self.export_sequence(settings, &ctx);
         }
