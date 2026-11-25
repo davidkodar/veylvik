@@ -37,7 +37,7 @@ pub fn tools() -> Vec<(&'static str, &'static str, Value, &'static [&'static str
         ),
         (
             "particle_look",
-            "Give a Particles node a ready-made look, scaled to the composition: Sparks, Embers, Snow, Rain, Magic dust, Whirlpool, Confetti need nothing; Disintegrate needs the emitter input and Assemble the target input connected. Replaces the node's settings except its seed, position and wiring. One undo step.",
+            "Give a Particles node a ready-made look, scaled to the composition: Sparks, Embers, Snow, Rain, Magic dust, Whirlpool, Confetti, Fireworks, Network and Murmuration need nothing; Disintegrate needs the emitter input and Assemble the target input connected. Replaces the node's settings except its seed, position and wiring. One undo step.",
             json!({"node":id,"look":{"enum":looks}}),
             &["node", "look"],
         ),

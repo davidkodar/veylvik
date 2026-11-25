@@ -1736,3 +1736,33 @@ fn a_light_limit_rolls_dense_light_off_and_leaves_sparse_light_alone() {
         "the dot's soft rim should be under half the limit"
     );
 }
+#[test]
+#[ignore = "requires Vulkan"]
+fn a_flock_born_in_a_short_burst_has_every_bird_of_the_burst() {
+    // A thousand birds born in half a second that live thirty: as a flock they used to
+    // get one thread's birth for every life, so only a sixtieth of them were ever born.
+    let renderer = Renderer::new().unwrap();
+    let mut burst = particles();
+    burst.x = 80.0.into();
+    burst.y = 60.0.into();
+    burst.width = 140.0.into();
+    burst.height = 100.0.into();
+    burst.rate = 2000.0.into();
+    burst.duration = 0.5.into();
+    burst.life = 30.0.into();
+    burst.speed = 0.0.into();
+    burst.gravity = 0.0.into();
+    burst.variation = 0.0.into();
+    burst.fade = 0.0.into();
+    burst.size = 0.6.into();
+    let lit = |p: &[[f32; 4]]| p.iter().filter(|p| p[3] > 0.05).count();
+    let free = lit(&render(&renderer, burst.clone(), None, (1, 1)));
+    let mut flock = burst;
+    flock.flock_radius = 6.0.into();
+    let flocked = lit(&render(&renderer, flock, None, (1, 1)));
+    assert!(free > 500, "{free}");
+    assert!(
+        flocked as f32 > free as f32 * 0.85,
+        "flock {flocked} of {free}"
+    );
+}

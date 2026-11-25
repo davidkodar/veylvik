@@ -208,6 +208,11 @@ impl Inspect for veylvik_document::nodes::Particles {
                 });
             }
         }
+        // How a flock's steering settings balance, which is not obvious from their units.
+        if !matches!(self.flock_radius, veylvik_document::Scalar::Constant { value } if value <= 0.0)
+        {
+            ui.weak("Flock: Cohesion draws birds together, Separation keeps them apart and Alignment turns them the same way. Keep Separation small next to Cohesion (the Murmuration look uses 5 to 400): at 0 the birds fall into one line, much higher and they stand in an even grid. Pull and Vortex lead the flock; it turns in a circle of about Top speed squared over Pull.");
+        }
         // A flock's bake.
         if let Some(status) = cx.flock_bake {
             ui.weak(status);

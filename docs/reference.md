@@ -1933,8 +1933,23 @@ settles on the wrong kind of motion can still look sure. The
     inspector shows the settings that apply to the node's wiring, **Start from
     a look** sets every setting for a ready-made effect scaled to the frame
     (Sparks, Embers, Snow, Rain, Confetti, Magic dust, Whirlpool, Disintegrate,
-    Assemble),
+    Assemble, Fireworks, Network, Murmuration),
     and the emitter box and the pull point are dragged in the viewer.
+  - *Flocks.* **Flock radius** above 0 makes the particles a flock, simulated
+    rather than worked out from the time: each bird steers by the birds of the
+    grid cells round it (cells as wide as the radius): towards their middle
+    (**Cohesion**), clear of them (**Separation**) and into their heading
+    (**Alignment**), no faster than **Top speed**; Pull, Vortex, turbulence
+    and Force nodes act on it too. A flock holds at most 65,536 birds. Born
+    endlessly it holds Rate times Life of them; born in a burst shorter than
+    its life (Duration under Life) every bird of the burst is born inside the
+    burst, so a one-second burst of 50,000 birds that live an hour is 50,000
+    birds. Keep Separation small next to Cohesion: at 0 birds fall into one
+    line, much higher and they stand in an even grid; turbulence on the scale
+    of the radius breaks up the grid the cells would otherwise show. A flock
+    turns in a circle of about Top speed squared over Pull. The
+    **Murmuration** look is a tuned starting point: 50,000 dark birds chasing a
+    pull point keyed over a minute.
 - **Shape warp** (`shape_warp`, input image): pulls the image so the start
   shape `from` lands on the end shape `to`. Both are closed paths in pixels
   (the Path mask's geometry format, keys allowed) with the same number of

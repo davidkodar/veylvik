@@ -613,6 +613,12 @@ struct Born {
     ok: bool, generation: u32, birth: f32, own_life: f32, origin: vec3<f32>, launch: vec3<f32>,
     goal: vec3<f32>, homing: f32, deep: bool, born_on: vec3<f32>, lands_on: vec3<f32>,
 }
+// The share of the life a thread's birth may fall in: the burst's, for a flock born in
+// a burst shorter than its life (see `threads` in nodes/particles.rs), else all of it.
+fn burst_window(life: f32, duration: f32) -> f32 {
+    if camera_row(118u) > 0.5 && duration > 0.0 && duration < life { return duration / life; }
+    return 1.0;
+}
 fn born(thread: u32, back: u32, now: f32) -> Born {
     var b: Born; b.ok = false;
     let size = vec2<f32>(p.size_op.xy);
@@ -620,7 +626,13 @@ fn born(thread: u32, back: u32, now: f32) -> Born {
     let start = setting(START, now); let duration = setting(DURATION, now);
     // Each thread emits one particle after another, a life apart, from its own phase.
     // (Worked out as it always was for the life at `now`, so frames stay the same.)
-    let turn = (now - start) / life + random(thread, 0u, 0u);
+    // A flock born in a burst shorter than its life holds one bird a thread, so each
+    // thread's one birth falls inside the burst rather than anywhere in the life, or
+    // most of the threads (and the flock's room) would go unused.
+    let window = burst_window(life, duration);
+    var phase = random(thread, 0u, 0u);
+    if window < 1.0 { phase = 1.0 - phase * window; }
+    let turn = (now - start) / life + phase;
     b.generation = u32(i32(floor(turn)) + 1048576 - i32(back));
     let generation = b.generation;
     let age = fract(turn) * life + f32(back) * life;
@@ -655,12 +667,12 @@ fn born(thread: u32, back: u32, now: f32) -> Born {
         born_on = unpremultiplied(at_birth);
     } else if camera_row(113u) > 0.5 {
         // On the surface of a 3D object, as it was at the birth.
-        if random(thread, generation, 4u) >= setting(RATE, birth) * life / camera_row(PARENTS) { return b; }
+        if random(thread, generation, 4u) >= setting(RATE, birth) * life * window / camera_row(PARENTS) { return b; }
         let spot = on_surface(thread, generation, birth);
         origin = spot.at;
         surface_out = spot.out;
     } else {
-        if random(thread, generation, 4u) >= setting(RATE, birth) * life / camera_row(PARENTS) { return b; }
+        if random(thread, generation, 4u) >= setting(RATE, birth) * life * window / camera_row(PARENTS) { return b; }
         origin = vec3<f32>(vec2<f32>(setting(BOX_X, birth), setting(BOX_Y, birth))
             + (vec2<f32>(random(thread, generation, 2u), random(thread, generation, 3u)) - 0.5)
             * vec2<f32>(setting(BOX_W, birth), setting(BOX_H, birth)), 0.0);

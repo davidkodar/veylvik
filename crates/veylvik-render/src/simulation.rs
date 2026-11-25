@@ -63,6 +63,13 @@ pub(crate) fn key_of(me: &Node, nodes: &[Node], width: u32, height: u32) -> u64 
         _ => me.clone(),
     };
     format!("{:?}", me.operation).hash(&mut hasher);
+    // A flock born in a burst places each bird's birth inside the burst (since the
+    // births were spread over the whole life): bakes made before cannot be found again.
+    if let Operation::Particles(p) = &me.operation
+        && !matches!(p.duration, veylvik_document::Scalar::Constant { value } if value <= 0.0)
+    {
+        "births in the burst".hash(&mut hasher);
+    }
     let mut todo: Vec<NodeId> = ["scene", "forces"]
         .iter()
         .filter_map(|port| me.inputs.get(*port).copied())

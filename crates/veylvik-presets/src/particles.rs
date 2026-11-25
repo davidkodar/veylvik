@@ -44,7 +44,7 @@ fn set(node: &mut Particles, values: &[(&str, f32)]) {
         }
     }
 }
-pub static LOOKS: [Look; 11] = [
+pub static LOOKS: [Look; 12] = [
     Look {
         name: "Sparks",
         hint: "A shower of hot streaks thrown up from the emitter and falling back",
@@ -378,6 +378,66 @@ pub static LOOKS: [Look; 11] = [
             );
             n.colour = [0.55, 0.85, 1.0, 1.0];
             n.end_colour = [0.55, 0.85, 1.0, 1.0];
+        },
+    },
+    Look {
+        name: "Murmuration",
+        hint: "Fifty thousand dark birds born in one burst fly as a flock, folding into ribbons, rings and knots as they chase a point that wanders over the frame for a minute (Pull x and Pull y are keyed: move or rekey them to lead the flock). Keep Separation small: at 0 the birds fall into one line, much higher and they stand in a grid. A flock turns in a circle of about Top speed squared over Pull, so lower Pull lets it leave the frame",
+        needs: Needs::Nothing,
+        apply: |n, w, h| {
+            let s = w / 1920.0;
+            // The point the flock chases: a slow figure over the frame, one key every
+            // 2.5 seconds for a minute.
+            let at = |k: f32| {
+                (
+                    w * (0.5 + 0.28 * (k * 1.1).sin()),
+                    h * (0.45 + 0.18 * (k * 1.7 + 1.0).sin()),
+                )
+            };
+            let path = |pick: fn((f32, f32)) -> f32| veylvik_document::Scalar::Smooth {
+                keys: (0..25)
+                    .map(|k| veylvik_document::Key {
+                        segment: None,
+                        time: veylvik_document::Time::new(k * 5, 2).expect("a valid time"),
+                        value: pick(at(k as f32)),
+                    })
+                    .collect(),
+            };
+            set(
+                n,
+                &[
+                    ("rate", 50_000.0),
+                    ("duration", 1.0),
+                    ("life", 3600.0),
+                    ("start", 0.0),
+                    ("x", at(0.0).0),
+                    ("y", at(0.0).1),
+                    ("width", w * 0.26),
+                    ("height", h * 0.28),
+                    ("speed", 150.0 * s),
+                    ("spread", 360.0),
+                    ("gravity", 0.0),
+                    ("fade", 0.0),
+                    ("variation", 0.3),
+                    ("size", 2.4 * s),
+                    ("glow", 0.0),
+                    ("flock_radius", 40.0 * s),
+                    ("cohesion", 400.0 * s),
+                    ("separation", 5.0 * s),
+                    ("alignment", 4.0),
+                    ("top_speed", 400.0 * s),
+                    ("pull", 700.0 * s),
+                    ("vortex", 250.0 * s),
+                    // Turbulence on the scale of the flock radius breaks up the even
+                    // pattern the steering would otherwise settle the birds into.
+                    ("turbulence", 120.0 * s),
+                    ("turbulence_scale", 60.0 * s),
+                ],
+            );
+            n.pull_x = path(|p| p.0);
+            n.pull_y = path(|p| p.1);
+            n.colour = [0.02, 0.02, 0.025, 1.0];
+            n.end_colour = [0.02, 0.02, 0.025, 1.0];
         },
     },
 ];

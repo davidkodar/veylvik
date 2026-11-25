@@ -443,9 +443,19 @@ fn threads(cx: &Cx<'_>, rows: &[[f32; COUNT]]) -> (u32, u32, u32) {
     if let Operation::Particles(node) = &cx.node.operation
         && simulating(node)
     {
-        // A flock has no bursts, and its state must fit in a frame's buffer.
+        // A flock has no bursts, and its state must fit in a frame's buffer. Born in a
+        // burst shorter than its life, it needs a thread for each bird of the burst only
+        // (each thread's one birth falls inside the burst: `burst_window` in the shader).
         let most = FLOCK_MOST.min(cx.width * cx.height / 2);
-        let parents = box_threads.min(most);
+        let (life, duration) = (rows[ROWS - 1][0], rows[ROWS - 1][13]);
+        let windowed = duration > 0.0 && duration < life;
+        let wanted = if windowed {
+            let rate = rows.iter().map(|r| r[14]).fold(0.0f32, f32::max);
+            (rate * duration).ceil().clamp(1.0, MAX_BOX) as u32
+        } else {
+            box_threads
+        };
+        let parents = wanted.min(most);
         return (parents, 0, parents);
     }
     let parents = if cx.node.inputs.contains_key("emitter") {
