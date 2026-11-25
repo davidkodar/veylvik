@@ -1974,10 +1974,14 @@ settles on the wrong kind of motion can still look sure. The
   cannot use for its own variables. To be safe on every pixel, the text may not use
   attributes (`@…`), global variables, `while`, `loop` or `continuing`, must be
   ASCII outside comments and at most 16000 characters, and may not redefine
-  `image`, `second` or `custom`; `for` loops are allowed only inside `shade`,
-  written `for (var i = 0; i < 16; i++)` (or `<=`, `+= N`) with whole-number
-  bounds, a counter that is only read in the body, at most 1024 iterations
-  each and when nested, and eight loops in all. These rules are checked when
+  `image`, `second` or `custom`; `for` loops, in `shade` or in your own helper
+  functions, are written `for (var i = 0; i < 16; i++)` (or `<=`, `+= N`) with
+  whole-number bounds and a counter that is only read in the body. A loop runs
+  at most 1024 times when nested, counting the loops round every place that
+  calls the function it is in (a 6-step noise helper called inside a 64-step
+  loop runs 384 times); a pixel runs at most 8192 loop iterations in all,
+  every call counted; there are eight loops in all, and no function calls
+  itself. These rules are checked when
   the node is stored; the full program (the node's bindings and helpers, the
   code, and an entry point that fills `u` and calls `shade`) is then parsed and
   validated with naga when the plan is compiled, so a mistake is an error

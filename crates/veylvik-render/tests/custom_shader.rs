@@ -262,3 +262,20 @@ fn a_shader_that_does_not_read_time_is_made_once_and_one_that_does_is_made_again
     );
     assert_eq!(pixels(&changed)[0][0], 0.75);
 }
+#[test]
+#[ignore = "requires Vulkan"]
+fn a_loop_in_a_helper_function_compiles_and_runs_as_its_unrolled_twin() {
+    // A noise-style helper with its own loop, called from a loop in shade, gives the same
+    // pixels as the same sums written out by hand.
+    let looped = "fn bands(p: vec2<f32>) -> f32 {\n    var v = 0.0;\n    for (var i = 1; i <= 4; i++) { v += sin(p.x * f32(i) * 0.3) / f32(i); }\n    return v;\n}\nfn shade(at: vec2<f32>) -> vec4<f32> {\n    var s = 0.0;\n    for (var k = 0; k < 3; k++) { s += bands(at + vec2<f32>(f32(k), 0.0)); }\n    return vec4<f32>(s, at.y * 0.1, 0.0, 1.0);\n}\n";
+    let unrolled = "fn band(p: vec2<f32>) -> f32 {\n    return sin(p.x * 0.3) + sin(p.x * 0.6) / 2.0 + sin(p.x * 0.9) / 3.0 + sin(p.x * 1.2) / 4.0;\n}\nfn shade(at: vec2<f32>) -> vec4<f32> {\n    let s = band(at) + band(at + vec2<f32>(1.0, 0.0)) + band(at + vec2<f32>(2.0, 0.0));\n    return vec4<f32>(s, at.y * 0.1, 0.0, 1.0);\n}\n";
+    let picture = |code: &str| {
+        let (doc, inputs) = scene(shader(code, [0.0; 8]), false);
+        render(&doc, &inputs, 0)
+    };
+    let (a, b) = (picture(looped), picture(unrolled));
+    assert!(a.iter().any(|p| p[0].abs() > 0.5));
+    for (x, y) in a.iter().zip(&b) {
+        assert!((x[0] - y[0]).abs() < 1e-4 && x[1] == y[1], "{x:?} {y:?}");
+    }
+}

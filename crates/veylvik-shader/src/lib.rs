@@ -1,4 +1,4 @@
-//! Custom shader nodes: the user writes one WGSL function, `shade`, and declares its controls in comments. This crate checks the text (bounded size, no bindings or entry points of its own, loops only of a fixed small length) and builds the full compute program around it. No GPU here.
+//! Custom shader nodes: the user writes one WGSL function, `shade`, and declares its controls in comments. This crate checks the text (bounded size, no bindings or entry points of its own, loops only of a fixed small length, also through helper functions) and builds the full compute program around it. No GPU here.
 use std::fmt::Write;
 
 /// Longest accepted source, in bytes.
@@ -9,6 +9,8 @@ pub const SLOTS: usize = 16;
 pub const MAX_LOOP: i64 = 1024;
 /// Most `for` loops in a shader.
 pub const MAX_LOOPS: usize = 8;
+/// Most loop iterations one pixel may run in all, every call of a helper counted.
+pub const MAX_WORK: i64 = MAX_LOOP * MAX_LOOPS as i64;
 /// The code a new shader node starts with.
 pub const EXAMPLE: &str = "// slider amount 0 1 0.5\n// colour tint 1 0.8 0.6\n\n// `at` is the pixel's centre. image(at) reads the input there.\nfn shade(at: vec2<f32>) -> vec4<f32> {\n    let c = image(at);\n    return vec4<f32>(mix(c.rgb, c.rgb * u.tint, u.amount), c.a);\n}\n";
 /// The slot values `EXAMPLE` declares, for the node's defaults.
@@ -298,8 +300,9 @@ fn parse_loop(text: &str, at: usize) -> Result<Loop, String> {
 }
 /// Whether `code` keeps to the rules that make a custom shader safe to run on every
 /// pixel: bounded size, plain ASCII outside comments, a `shade` function, nothing
-/// that reaches outside it (attributes, global variables), and loops only inside
-/// `shade`, each of a fixed length with at most MAX_LOOP iterations when nested.
+/// that reaches outside it (attributes, global variables), and loops of a fixed length:
+/// at most MAX_LOOP iterations when nested, counting the loops round every call of the
+/// function they are in, and at most MAX_WORK iterations a pixel in all.
 pub fn check(code: &str) -> Result<Vec<Control>, String> {
     if code.len() > MAX_SOURCE {
         return fail(format!("a shader is at most {MAX_SOURCE} characters"));
@@ -410,32 +413,128 @@ pub fn check(code: &str) -> Result<Vec<Control>, String> {
     if loops.len() > MAX_LOOPS {
         return fail(format!("a shader has at most {MAX_LOOPS} loops"));
     }
-    let mut parsed: Vec<Loop> = Vec::new();
+    let owner = |at: usize| functions.iter().position(|(_, body)| body.contains(&at));
+    let mut parsed: Vec<(usize, usize, Loop)> = Vec::new();
     for at in loops {
-        let inside = functions
-            .iter()
-            .find(|(_, body)| body.contains(&at))
-            .map(|(name, _)| *name);
-        if inside != Some("shade") {
+        let Some(function) = owner(at) else {
             return fail(format!(
-                "line {}: loops are only allowed inside shade, so their total length is known",
+                "line {}: a loop belongs inside a function",
                 line_of(&text, at)
             ));
-        }
-        let this = parse_loop(&text, at)?;
-        let nested: i64 = parsed
+        };
+        parsed.push((at, function, parse_loop(&text, at)?));
+    }
+    // How often the loops round a place in its function run it.
+    let around = |at: usize| -> i64 {
+        parsed
             .iter()
-            .filter(|outer| outer.body.contains(&at))
-            .map(|outer| outer.count)
-            .product::<i64>()
-            * this.count;
+            .filter(|(_, _, outer)| outer.body.contains(&at))
+            .map(|(_, _, outer)| outer.count)
+            .product()
+    };
+    // Every call of one function from another: (caller, callee, where).
+    let mut calls: Vec<(usize, usize, usize)> = Vec::new();
+    for (caller, (_, body)) in functions.iter().enumerate() {
+        for (callee, (name, _)) in functions.iter().enumerate() {
+            for i in words(&text[body.clone()], name) {
+                let at = body.start + i;
+                if text[at + name.len()..].trim_start().starts_with('(') {
+                    if callee == caller {
+                        return fail(format!(
+                            "line {}: a function may not call itself",
+                            line_of(&text, at)
+                        ));
+                    }
+                    calls.push((caller, callee, at));
+                }
+            }
+        }
+    }
+    // reach: how many times one call of shade can run a function's body at most, through
+    // the loops round every call on the way (0: never called). work: every loop
+    // iteration one run of a function makes, its callees' included. WGSL has no
+    // recursion; a cycle here is refused rather than followed.
+    let shade = functions
+        .iter()
+        .position(|(name, _)| *name == "shade")
+        .unwrap_or(0);
+    let count = functions.len();
+    let mut reach = vec![None::<i64>; count];
+    let mut work = vec![None::<i64>; count];
+    fn reach_of(
+        f: usize,
+        shade: usize,
+        calls: &[(usize, usize, usize)],
+        around: &dyn Fn(usize) -> i64,
+        memo: &mut [Option<i64>],
+        depth: usize,
+    ) -> Result<i64, String> {
+        if f == shade {
+            return Ok(1);
+        }
+        if let Some(r) = memo[f] {
+            return Ok(r);
+        }
+        if depth > memo.len() {
+            return fail("functions may not call one another in a circle");
+        }
+        let mut most = 0i64;
+        for &(caller, _, at) in calls.iter().filter(|c| c.1 == f) {
+            let r = reach_of(caller, shade, calls, around, memo, depth + 1)?;
+            most = most.max(r.saturating_mul(around(at)));
+        }
+        memo[f] = Some(most);
+        Ok(most)
+    }
+    fn work_of(
+        f: usize,
+        loops: &[(usize, usize, Loop)],
+        calls: &[(usize, usize, usize)],
+        around: &dyn Fn(usize) -> i64,
+        memo: &mut [Option<i64>],
+        depth: usize,
+    ) -> Result<i64, String> {
+        if let Some(w) = memo[f] {
+            return Ok(w);
+        }
+        if depth > memo.len() {
+            return fail("functions may not call one another in a circle");
+        }
+        let mut total = loops
+            .iter()
+            .filter(|(_, owner, _)| *owner == f)
+            .map(|(at, _, this)| around(*at).saturating_mul(this.count))
+            .fold(0i64, i64::saturating_add);
+        for &(_, callee, at) in calls.iter().filter(|c| c.0 == f) {
+            let w = work_of(callee, loops, calls, around, memo, depth + 1)?;
+            total = total.saturating_add(around(at).saturating_mul(w));
+        }
+        memo[f] = Some(total);
+        Ok(total)
+    }
+    for (at, function, this) in &parsed {
+        let local = around(*at).saturating_mul(this.count);
+        let r = reach_of(*function, shade, &calls, &around, &mut reach, 0)?.max(1);
+        let nested = local.saturating_mul(r);
         if nested > MAX_LOOP {
-            return fail(format!(
-                "line {}: nested loops run {nested} times in all; the most is {MAX_LOOP}",
-                line_of(&text, at)
-            ));
+            return fail(if r > 1 {
+                format!(
+                    "line {}: this loop runs {nested} times in all, counting the loops round the places that call it; the most is {MAX_LOOP}",
+                    line_of(&text, *at)
+                )
+            } else {
+                format!(
+                    "line {}: nested loops run {nested} times in all; the most is {MAX_LOOP}",
+                    line_of(&text, *at)
+                )
+            });
         }
-        parsed.push(this);
+    }
+    let total = work_of(shade, &parsed, &calls, &around, &mut work, 0)?;
+    if total > MAX_WORK {
+        return fail(format!(
+            "the loops run {total} times in all for one pixel, counting every call; the most is {MAX_WORK}"
+        ));
     }
     Ok(declared)
 }
@@ -564,6 +663,13 @@ mod tests {
                 "const K = 3.0;\nfn helper(x: f32) -> f32 {{ return x * K; }}\n{}",
                 shade("let k = helper(1.0); // while we wait @here")
             ),
+            // A noise helper with its own loop, called a few times, also from a short loop.
+            format!(
+                "fn fbm(p: vec2<f32>) -> f32 {{ var v = 0.0; for (var i = 0; i < 6; i++) {{ v += sin(p.x * f32(i)); }} return v; }}\n{}",
+                shade(
+                    "var s = fbm(at) + fbm(at * 2.0);\nfor (var k = 0; k < 4; k++) { s += fbm(at + vec2<f32>(f32(k))); }"
+                )
+            ),
         ] {
             check(&good).unwrap_or_else(|e| panic!("{e}\n{good}"));
         }
@@ -590,10 +696,28 @@ mod tests {
             (shade("for (;;) { }"), "whole numbers"),
             (
                 format!(
-                    "fn helper() {{ for (var i = 0; i < 4; i++) {{ }} }}\n{}",
-                    shade("")
+                    "fn helper() {{ for (var i = 0; i < 64; i++) {{ }} }}\n{}",
+                    shade("for (var i = 0; i < 64; i++) { helper(); }")
                 ),
-                "only allowed inside shade",
+                "counting the loops round",
+            ),
+            (
+                format!(
+                    "fn inner() {{ for (var i = 0; i < 64; i++) {{ }} }}\nfn outer() {{ for (var i = 0; i < 32; i++) {{ inner(); }} }}\n{}",
+                    shade("outer();")
+                ),
+                "counting the loops round",
+            ),
+            (
+                format!(
+                    "fn heavy() {{ for (var i = 0; i < 1024; i++) {{ }} }}\n{}",
+                    shade(&"heavy(); ".repeat(9))
+                ),
+                "for one pixel",
+            ),
+            (
+                format!("fn again() {{ again(); }}\n{}", shade("")),
+                "call itself",
             ),
             (
                 format!("@group(0) @binding(9) var x: f32;\n{}", shade("")),
