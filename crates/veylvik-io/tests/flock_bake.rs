@@ -74,6 +74,7 @@ fn a_baked_flock_is_read_back_exactly_and_set_aside_when_it_changes() {
                 &plan,
                 id,
                 Time::at_frame(i64::from(k), doc.frame_rate).unwrap(),
+                &veylvik_render::ImageInputs::default(),
             )
             .map_err(|e| e.to_string())
     })
@@ -103,6 +104,7 @@ fn a_baked_flock_is_read_back_exactly_and_set_aside_when_it_changes() {
                 &plan,
                 id,
                 Time::at_frame(i64::from(k), doc.frame_rate).unwrap(),
+                &veylvik_render::ImageInputs::default(),
             )
             .map_err(|e| e.to_string())?;
         for s in &mut states {

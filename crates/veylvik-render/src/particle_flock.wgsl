@@ -225,6 +225,16 @@ fn advance(start: vec3<f32>, launch: vec3<f32>, since: f32, span: f32, deep: boo
 }
 // ---- step: first = the grid, second = the state before; result = the state after,
 // at the time in size_op.z, `values.z` seconds on ----
+// A bird born on its emitter keeps the emitter's colour where it was born in its state's
+// alive value: 1 is alive with no colour of its own, 2 + the colour packed 7 bits a
+// channel (exact in a float) is alive in that colour.
+fn alive_value(b: Born) -> f32 {
+    if p.extra.x > -0.5 { return 1.0; }
+    let c = vec3<u32>(round(clamp(b.born_on, vec3<f32>(0.0), vec3<f32>(1.0)) * 127.0));
+    return 2.0 + f32(c.x | (c.y << 7u) | (c.z << 14u));
+}
+// The colour a simulated bird was born in, read with its place (w 1 when it has one).
+var<private> held_tint: vec4<f32>;
 @compute @workgroup_size(64)
 fn particle_step(@builtin(global_invocation_id) gid: vec3<u32>) {
     let thread = gid.y * u32(p.values.y) + gid.x;
@@ -242,7 +252,7 @@ fn particle_step(@builtin(global_invocation_id) gid: vec3<u32>) {
             // Born during this step: from its birth on, steered by no one yet.
             moved = advance(b.origin, b.launch, b.birth, now - b.birth, b.deep, vec3<f32>(0.0));
         }
-        out0 = vec4<f32>(moved.at, f32(b.generation)); out1 = vec4<f32>(moved.velocity, 1.0);
+        out0 = vec4<f32>(moved.at, f32(b.generation)); out1 = vec4<f32>(moved.velocity, alive_value(b));
     }
     store(2u * thread, out0); store(2u * thread + 1u, out1);
 }
@@ -252,5 +262,10 @@ fn simulated_at(thread: u32, generation: u32) -> bool {
     let s0 = bitcast<vec4<f32>>(first[2u * thread]); let s1 = bitcast<vec4<f32>>(first[2u * thread + 1u]);
     if s1.w < 0.5 || s0.w != f32(generation) { return false; }
     held = vec4<f32>(s0.xyz, 1.0);
+    held_tint = vec4<f32>(0.0);
+    if s1.w >= 1.5 {
+        let code = u32(s1.w - 2.0);
+        held_tint = vec4<f32>(vec3<f32>(f32(code & 127u), f32((code >> 7u) & 127u), f32((code >> 14u) & 127u)) / 127.0, 1.0);
+    }
     return true;
 }

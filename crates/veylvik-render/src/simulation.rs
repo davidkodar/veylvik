@@ -72,7 +72,7 @@ pub(crate) fn key_of(me: &Node, nodes: &[Node], width: u32, height: u32) -> u64 
     {
         "births in the burst".hash(&mut hasher);
     }
-    let mut todo: Vec<NodeId> = ["scene", "forces"]
+    let mut todo: Vec<NodeId> = ["scene", "forces", "emitter"]
         .iter()
         .filter_map(|port| me.inputs.get(*port).copied())
         .collect();
@@ -97,6 +97,7 @@ impl Renderer {
         node: usize,
         time: Time,
         bake: Option<&dyn BakedFlock>,
+        emitter: Option<&wgpu::Buffer>,
     ) -> Result<(wgpu::Buffer, u64)> {
         let key = key(plan, node);
         // Baked, and as it was when baked: read, not simulated.
@@ -111,7 +112,27 @@ impl Renderer {
             plan.width,
             plan.height,
             time,
+            emitter,
         )
+    }
+    /// The picture flock `id` is born on: its emitter as it is at the flock's start (none
+    /// without an emitter).
+    pub(crate) fn flock_emitter(
+        &self,
+        plan: &Plan,
+        id: NodeId,
+        time: Time,
+        inputs: &crate::ImageInputs,
+    ) -> Result<Option<std::sync::Arc<crate::GpuFrame>>> {
+        let key = crate::plan::history_key(id);
+        let Some(branch) = plan.temporal.iter().find(|b| b.key == key) else {
+            return Ok(None);
+        };
+        let crate::moments::Need::At(at) = self.need(plan, branch, time, false, inputs)? else {
+            return Ok(None);
+        };
+        self.render_gpu_cached(&branch.plan, crate::RenderRequest::full(at), inputs)
+            .map(Some)
     }
     /// A flock's state read from its bake, when it is baked as it now is (`key`) and the
     /// bake holds the frame at `time`.
@@ -154,13 +175,21 @@ impl Renderer {
     }
     /// For baking: where each particle of flock `id` is at `time`, and its generation
     /// (negative: not alive), simulated.
-    pub fn flock_states(&self, plan: &Plan, id: NodeId, time: Time) -> Result<Vec<[f32; 4]>> {
+    pub fn flock_states(
+        &self,
+        plan: &Plan,
+        id: NodeId,
+        time: Time,
+        inputs: &crate::ImageInputs,
+    ) -> Result<Vec<[f32; 4]>> {
         let node = plan
             .nodes
             .iter()
             .position(|n| n.id == id)
             .ok_or_else(|| error("the flock is not in the plan"))?;
-        let (state, bytes) = self.simulate(plan, node, time, None)?;
+        let emitter = self.flock_emitter(plan, id, time, inputs)?;
+        let (state, bytes) =
+            self.simulate(plan, node, time, None, emitter.as_ref().map(|f| f.buffer()))?;
         let read = self.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("flock read back"),
             size: bytes,
@@ -199,6 +228,7 @@ impl Renderer {
     }
     /// A flock's state for `me` among `nodes` (where its scene and forces are found),
     /// known by `key`, in a frame of `width` x `height`.
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn simulate_node(
         &self,
         me: &Node,
@@ -207,6 +237,7 @@ impl Renderer {
         width: u32,
         height: u32,
         time: Time,
+        emitter: Option<&wgpu::Buffer>,
     ) -> Result<(wgpu::Buffer, u64)> {
         let Operation::Particles(particles) = &me.operation else {
             return Err(error("only particles are simulated"));
@@ -297,6 +328,7 @@ impl Renderer {
                 &before,
                 &after,
                 &grid,
+                emitter,
             )?;
             std::mem::swap(&mut before, &mut after);
             let step = k + 1;
@@ -323,7 +355,9 @@ impl Renderer {
         }
         drop(store);
         if left > 1e-7 {
-            self.flock_step(me, nodes, width, height, now, left, &before, &out, &grid)?;
+            self.flock_step(
+                me, nodes, width, height, now, left, &before, &out, &grid, emitter,
+            )?;
         } else {
             let mut encoder = self.device.create_command_encoder(&Default::default());
             encoder.copy_buffer_to_buffer(&before, 0, &out, 0, bytes);
@@ -344,6 +378,7 @@ impl Renderer {
         before: &wgpu::Buffer,
         after: &wgpu::Buffer,
         grid: &wgpu::Buffer,
+        emitter: Option<&wgpu::Buffer>,
     ) -> Result<()> {
         let Operation::Particles(particles) = &me.operation else {
             return Err(error("only particles are simulated"));
@@ -365,11 +400,22 @@ impl Renderer {
         p.size_op[1] = height;
         particles.params(&cx, &|_| Ok(0.0), &mut p)?;
         p.values[2] = span as f32;
+        // Born on the emitter (bound fourth): see `born` in particle_system.wgsl.
+        if emitter.is_some() {
+            p.extra[0] = -1.0;
+        }
         let settings = self.settings_buffer(width, height, &data);
         let uniform = self.uniform_of(&p);
         let none = self.nothing();
         let gather = self.kernel_group(&uniform, &none, before, grid, &settings, &none);
-        let step = self.kernel_group(&uniform, grid, before, after, &settings, &none);
+        let step = self.kernel_group(
+            &uniform,
+            grid,
+            before,
+            after,
+            &settings,
+            emitter.unwrap_or(&none),
+        );
         let (threads, row) = (p.values[0] as u32, (p.values[1] as u32).max(1));
         let mut encoder = self.device.create_command_encoder(&Default::default());
         encoder.clear_buffer(grid, 0, None);

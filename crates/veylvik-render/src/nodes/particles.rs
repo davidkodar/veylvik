@@ -716,13 +716,14 @@ impl RenderNode for Particles {
         if !simulating(self) {
             return passes;
         }
-        // A flock: its simulated state first, read in place of the emitter.
+        // A flock: its simulated state first, read in place of the emitter (the simulation
+        // itself reads the emitter: the picture its birds are born on).
         let Passes::Chain(steps) = passes else {
             return passes;
         };
         let mut chain = vec![Step {
             kernel: Kernel::ParticleSimulation,
-            inputs: [From::None; 4],
+            inputs: [From::Port(EMITTER), From::None, From::None, From::None],
         }];
         chain.extend(steps.iter().map(|step| Step {
             kernel: step.kernel,
@@ -772,10 +773,10 @@ impl RenderNode for Particles {
         last[115] = f32::from(!solids.is_empty());
         last[116] = (surface.len() + solids.len()) as f32;
         last[117] = f32::from(!forces.is_empty());
-        // A flock is simulated; it is born only in the box or on a 3D object.
+        // A flock is simulated; it is born in the box, on its emitter or on a 3D object.
         last[118] = f32::from(simulating(self));
         if simulating(self)
-            && let Some(port) = ["emitter", "target", "field", "obstacle"]
+            && let Some(port) = ["target", "field", "obstacle"]
                 .into_iter()
                 .find(|port| cx.node.inputs.contains_key(*port))
         {
@@ -846,7 +847,8 @@ impl RenderNode for Particles {
         ];
         p.extra = [
             // 1: the emitter as it is; 2 to 4: an atlas of its past, that many tiles a side.
-            if wired("emitter") {
+            // (A flock reads its emitter in the simulation, not here: see `born`.)
+            if wired("emitter") && !simulating(self) {
                 crate::history::grid(self.history).max(1) as f32
             } else {
                 0.0

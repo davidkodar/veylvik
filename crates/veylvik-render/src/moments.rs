@@ -158,6 +158,11 @@ impl Renderer {
                 transform: node.transform.clone(),
                 time,
             },
+            // A flock is born on its emitter as it is at the flock's start.
+            Kind::History(particles) if crate::nodes::particles::simulating(particles) => {
+                let start = f64::from(particles.start.at(time)?).max(0.0);
+                Need::At(Time::new((start * 24000.0).round() as i64, 24000)?)
+            }
             Kind::History(particles) => {
                 let grid = crate::history::grid(particles.history);
                 Need::History {

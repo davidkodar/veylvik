@@ -12,7 +12,13 @@ pub(super) fn run(cx: &mut super::PassCx<'_, '_>) -> Result<()> {
         Operation::Particles(p) if !p.bake.is_empty() => inputs.flock(&p.bake).cloned(),
         _ => None,
     };
-    let (state, bytes) = this.simulate(plan, scheduled.node, time, bake.as_deref())?;
+    // A flock born on its emitter: the emitter as it was at the flock's start, bound as
+    // the simulation's first input (see `passes_for` in nodes/particles.rs).
+    let emitter = match &scheduled.inputs[0] {
+        crate::plan::Input::Asset(key) => cx.sources.get(key.as_str()),
+        _ => None,
+    };
+    let (state, bytes) = this.simulate(plan, scheduled.node, time, bake.as_deref(), emitter)?;
     let output = &buffers[scheduled.output];
     encoder.clear_buffer(output, 0, None);
     encoder.copy_buffer_to_buffer(&state, 0, output, 0, bytes.min(output.size()));

@@ -1294,7 +1294,10 @@ pub(crate) const HISTORY_PORT: &str = "emitter";
 /// The source of the input a node reads through its history, when it asks for one.
 pub(crate) fn history_source(node: &Node) -> Option<NodeId> {
     match &node.operation {
-        Operation::Particles(particles) if particles.history > 0 => {
+        // A flock reads its emitter once, as it is at the flock's start (see `crate::moments`).
+        Operation::Particles(particles)
+            if particles.history > 0 || crate::nodes::particles::simulating(particles) =>
+        {
             node.inputs.get(HISTORY_PORT).copied()
         }
         _ => None,

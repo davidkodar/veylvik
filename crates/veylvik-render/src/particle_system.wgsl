@@ -665,6 +665,27 @@ fn born(thread: u32, back: u32, now: f32) -> Born {
         let chance = setting(DENSITY, birth) * life / 10000.0 * f32(stride * stride) / f32(slots);
         if random(thread, generation, 4u) >= clamp(at_birth.a, 0.0, 1.0) * chance { return b; }
         born_on = unpremultiplied(at_birth);
+    } else if p.extra.x < -0.5 {
+        // A flock born on its emitter (bound fourth in its simulation, as the emitter was
+        // at the flock's start): each bird tries places in the box (the whole frame when
+        // the box is empty) and is born at the first its alpha takes, in its colour.
+        if random(thread, generation, 4u) >= setting(RATE, birth) * life * window / camera_row(PARENTS) { return b; }
+        var box_size = vec2<f32>(setting(BOX_W, birth), setting(BOX_H, birth));
+        var box_middle = vec2<f32>(setting(BOX_X, birth), setting(BOX_Y, birth));
+        if box_size.x <= 0.0 || box_size.y <= 0.0 { box_size = size; box_middle = size * 0.5; }
+        var found = false;
+        for (var t = 0u; t < 64u; t++) {
+            let q = box_middle + (vec2<f32>(random(thread, generation, 200u + 3u * t), random(thread, generation, 201u + 3u * t)) - 0.5) * box_size;
+            if q.x < 0.0 || q.y < 0.0 || q.x >= size.x || q.y >= size.y { continue; }
+            let there = fourth[u32(q.y) * p.size_op.x + u32(q.x)];
+            if random(thread, generation, 202u + 3u * t) < clamp(there.a, 0.0, 1.0) {
+                origin = vec3<f32>(q, 0.0);
+                born_on = unpremultiplied(there);
+                found = true;
+                break;
+            }
+        }
+        if !found { return b; }
     } else if camera_row(113u) > 0.5 {
         // On the surface of a 3D object, as it was at the birth.
         if random(thread, generation, 4u) >= setting(RATE, birth) * life * window / camera_row(PARENTS) { return b; }
@@ -926,7 +947,10 @@ fn particle_splat(@builtin(global_invocation_id) gid: vec3<u32>) {
         let last_colour = vec4<f32>(setting(END_COLOUR, b.birth), setting(END_COLOUR + 1u, b.birth), setting(END_COLOUR + 2u, b.birth), setting(END_A, b.birth));
         var landing = 0.0;
         if p.extra.y > 0.5 && b.homing > 0.0 { landing = smoothstep(1.0 - b.homing, 1.0, age / b.own_life); }
-        let tint = mix(vec3<f32>(1.0), mix(b.born_on, b.lands_on, landing), setting(INHERIT, b.birth));
+        // A bird of a flock born on its emitter keeps the colour it was born in.
+        var born_on = b.born_on;
+        if simulated() && held_tint.w > 0.5 { born_on = held_tint.rgb; }
+        let tint = mix(vec3<f32>(1.0), mix(born_on, b.lands_on, landing), setting(INHERIT, b.birth));
         drawn[0] = Drawn(b.origin, b.launch, b.birth, age, b.own_life, b.goal, b.homing, b.deep,
             Look(first_colour, last_colour, tint, setting(SIZE, b.birth), thread, b.generation, random(thread, b.generation, 12u), true, on_impact));
         count = 1u;

@@ -103,7 +103,10 @@ impl Renderer {
                     .map(|b| b.as_ref());
                 match self.read_bake(bake, key, time, width, height)? {
                     Some((read, _)) => Some(read),
-                    None => Some(self.simulate_node(me, nodes, key, width, height, time)?.0),
+                    None => Some(
+                        self.simulate_node(me, nodes, key, width, height, time, None)?
+                            .0,
+                    ),
                 }
             }
         } else {

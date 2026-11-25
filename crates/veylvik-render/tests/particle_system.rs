@@ -1793,3 +1793,38 @@ fn birds_born_on_one_point_push_one_another_apart() {
         .count();
     assert!(lit > 150, "the birds spread over {lit} pixels");
 }
+#[test]
+#[ignore = "requires Vulkan"]
+fn a_flock_is_born_on_its_emitters_shape_in_its_colour() {
+    // Birds of a flock with a red block as its emitter and no box: a moment after their
+    // birth every one is on the block, there are many, and they take its red.
+    let renderer = Renderer::new().unwrap();
+    let mut flock = particles();
+    flock.rate = 6000.0.into();
+    flock.duration = 0.25.into();
+    flock.life = 30.0.into();
+    flock.width = 0.0.into();
+    flock.height = 0.0.into();
+    flock.speed = 0.0.into();
+    flock.gravity = 0.0.into();
+    flock.variation = 0.0.into();
+    flock.fade = 0.0.into();
+    flock.size = 0.6.into();
+    flock.inherit = 1.0.into();
+    flock.flock_radius = 4.0.into();
+    let emitter = block(20..60, 30..90, [1.0, 0.0, 0.0, 1.0]);
+    let pixels = render_with(&renderer, flock, vec![("emitter", emitter)], (3, 10));
+    let mut lit = 0;
+    for (i, p) in pixels.iter().enumerate() {
+        if p[3] > 0.05 {
+            let (x, y) = (i as u32 % W, i as u32 / W);
+            assert!(
+                (18..62).contains(&x) && (28..92).contains(&y),
+                "a bird off the shape at {x},{y}"
+            );
+            assert!(p[0] > 4.0 * p[1].max(p[2]), "red like its emitter: {p:?}");
+            lit += 1;
+        }
+    }
+    assert!(lit > 400, "many birds on the shape: {lit}");
+}

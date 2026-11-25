@@ -107,6 +107,8 @@ impl Studio {
             particles: veylvik_render::flock_capacity(doc.width, doc.height),
         };
         let renderer = self.renderer.clone();
+        // A flock born on an emitter renders it once, as it is at the flock's start.
+        let inputs = self.project.inputs.clone();
         let progress = Arc::new(Progress::default());
         progress.total.store(doc.frame_count, Ordering::Relaxed);
         let worker = progress.clone();
@@ -119,7 +121,7 @@ impl Studio {
                 }
                 let time = Time::at_frame(i64::from(k), rate).map_err(|e| e.to_string())?;
                 let states = renderer
-                    .flock_states(&plan, node, time)
+                    .flock_states(&plan, node, time, &inputs)
                     .map_err(|e| e.to_string())?;
                 worker.completed.store(k + 1, Ordering::Relaxed);
                 ctx.request_repaint();

@@ -1959,7 +1959,13 @@ settles on the wrong kind of motion can still look sure. The
     their own numbers and counted for the rest), and goes no faster than
     **Top speed**; every push is summed in fixed point, so a frame is the same
     however it is reached; Pull, Vortex, turbulence
-    and Force nodes act on it too. A flock holds at most 65,536 birds. Born
+    and Force nodes act on it too. With an **Emitter** connected, the birds are
+    born on that picture as it is at the flock's **Start** (rendered once): each
+    at a place in the box (anywhere in the frame when the box is 0 x 0) where the
+    picture has alpha, the more often the more opaque, and with **Inherit** in
+    its colour there (kept with each bird; a bake keeps their places, not those
+    colours). So a shape (a person, a word, a logo) can break into a flock. A
+    flock holds at most 65,536 birds. Born
     endlessly it holds Rate times Life of them; born in a burst shorter than
     its life (Duration under Life) every bird of the burst is born inside the
     burst, so a one-second burst of 50,000 birds that live an hour is 50,000
