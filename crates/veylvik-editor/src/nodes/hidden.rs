@@ -74,6 +74,10 @@ fn particles(operation: &Operation, name: &str, wired: &dyn Fn(&str) -> bool) ->
             !wired("scene")
                 || matches!(*operation, Operation::Particles(ref n) if matches!(n.lit, veylvik_document::Scalar::Constant { value } if value <= 0.0))
         }
+        // The limit only bends added light.
+        "light_limit" => {
+            matches!(*operation, Operation::Particles(ref n) if matches!(n.glow, veylvik_document::Scalar::Constant { value } if value <= 0.0))
+        }
         "link_opacity" | "link_width" => {
             matches!(*operation, Operation::Particles(ref n) if matches!(n.link_distance, veylvik_document::Scalar::Constant { value } if value <= 0.0))
         }

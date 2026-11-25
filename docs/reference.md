@@ -1905,7 +1905,12 @@ settles on the wrong kind of motion can still look sure. The
     copies back along the path. **Colour variation** turns each particle's hue
     by its own random amount (1 is anywhere round the colour wheel).
     **Glow** 1 adds the particles' light (alpha clamped to 1); 0 lets them
-    cover one another (alpha 1 - exp(-sum)).
+    cover one another (alpha 1 - exp(-sum)). **Light limit** (with glow) is the
+    most light a pixel gathers: above half of it, the added light bends
+    smoothly towards the limit (slope 1 at the bend, the same factor for all
+    three channels, so the colour stays), so tens of thousands of overlapping
+    sparks or a dense assembled word stay their colour instead of adding up to
+    white; pixels under half the limit are untouched. 0 is no limit.
   - *Time.* Nothing is simulated from frame to frame: a particle is a function
     of its thread, its generation and the frame's time, so frames render in any
     order and repeat exactly. Motion is integrated in 32 fixed steps of the

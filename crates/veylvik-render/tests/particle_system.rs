@@ -1697,3 +1697,42 @@ fn a_sprite_sheet_gives_each_particle_a_cell() {
     let (red, green) = shot(&whole, (1, 2));
     assert!((red / green - 1.0).abs() < 0.2, "{red} {green}");
 }
+#[test]
+#[ignore = "requires Vulkan"]
+fn a_light_limit_rolls_dense_light_off_and_leaves_sparse_light_alone() {
+    // 400 glowing particles on one spot add up to far more light than white; with a limit
+    // of 2 the brightest pixel reaches no more than 2, in its own colour, and every pixel that
+    // gathered under half the limit is exactly as it was.
+    let renderer = Renderer::new().unwrap();
+    let mut dense = still();
+    dense.colour = [1.0, 0.5, 0.25, 1.0];
+    dense.end_colour = dense.colour;
+    let free = render(&renderer, dense.clone(), None, (1, 2));
+    dense.light_limit = 2.0.into();
+    let limited = render(&renderer, dense, None, (1, 2));
+    let peak = |p: &[f32; 4]| p[0].max(p[1]).max(p[2]);
+    let (brightest, _) = free
+        .iter()
+        .enumerate()
+        .max_by(|a, b| peak(a.1).total_cmp(&peak(b.1)))
+        .unwrap();
+    assert!(peak(&free[brightest]) > 20.0, "{:?}", free[brightest]);
+    let top = limited[brightest];
+    assert!(peak(&top) <= 2.0 && peak(&top) > 1.9, "{top:?}");
+    assert!(
+        (top[1] / top[0] - 0.5).abs() < 1e-3 && (top[2] / top[0] - 0.25).abs() < 1e-3,
+        "{top:?}"
+    );
+    let mut untouched = 0;
+    for (a, b) in free.iter().zip(&limited) {
+        assert!(peak(b) <= peak(a) + 1e-6 && peak(b) <= 2.0, "{a:?} {b:?}");
+        if peak(a) < 1.0 {
+            assert_eq!(a, b);
+            untouched += usize::from(peak(a) > 0.0);
+        }
+    }
+    assert!(
+        untouched > 0,
+        "the dot's soft rim should be under half the limit"
+    );
+}

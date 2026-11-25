@@ -50,7 +50,7 @@ const SPIN = 38u; const GROW = 39u; const HUES = 40u; const DEPTH = 41u;
 const BOX_Z = 42u; const REACH = 43u; const TOWARDS = 44u;
 const BURST = 45u; const BURST_SPEED = 46u; const BURST_SPREAD = 47u; const BURST_LIFE = 48u;
 const BURST_SIZE = 49u; const BURST_COLOUR = 50u; const BURST_A = 53u;
-const TRAIL = 54u; const TRAIL_WIDTH = 55u;
+const TRAIL = 54u; const TRAIL_WIDTH = 55u; const LIGHT_LIMIT = 56u;
 const LINK_DISTANCE = 57u; const LINK_OPACITY = 58u; const LINK_WIDTH = 59u;
 // Curves over the life: which are set (1 size, 2 opacity, 4 speed, 8 colour), then eight
 // values each, and eight RGBA colours.
@@ -1084,5 +1084,14 @@ fn particle_resolve(@builtin(global_invocation_id) gid: vec3<u32>) {
     let covered = 1.0 - exp(-sum.a);
     var plain = vec4<f32>(0.0);
     if sum.a > 0.0 { plain = vec4<f32>(sum.rgb / sum.a * covered, covered); }
-    store(i, mix(plain, vec4<f32>(sum.rgb, min(sum.a, 1.0)), glow));
+    // A light limit bends added light above half of it smoothly towards it (slope 1 at the
+    // bend, so nothing jumps), the same factor for every channel so the colour stays.
+    var light = sum.rgb;
+    let limit = second[tiles() + (ROWS - 1u) * COUNT + LIGHT_LIMIT].w;
+    let peak = max(light.r, max(light.g, light.b));
+    let bend = limit * 0.5;
+    if limit > 0.0 && peak > bend {
+        light *= (bend + bend * (1.0 - exp(-(peak - bend) / bend))) / peak;
+    }
+    store(i, mix(plain, vec4<f32>(light, min(sum.a, 1.0)), glow));
 }

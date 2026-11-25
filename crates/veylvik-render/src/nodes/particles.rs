@@ -77,7 +77,7 @@ fn settings(node: &Particles, time: Time) -> Result<[f32; COUNT]> {
         node.burst_colour[3],
         at(&node.trail)?,
         at(&node.trail_width)?,
-        0.0,
+        at(&node.light_limit)?,
         at(&node.link_distance)?,
         at(&node.link_opacity)?,
         at(&node.link_width)?,
@@ -114,7 +114,7 @@ fn settings(node: &Particles, time: Time) -> Result<[f32; COUNT]> {
     }
     Ok(row)
 }
-fn scalars(node: &Particles) -> [&Scalar; 58] {
+fn scalars(node: &Particles) -> [&Scalar; 59] {
     [
         &node.life,
         &node.speed,
@@ -126,6 +126,7 @@ fn scalars(node: &Particles) -> [&Scalar; 58] {
         &node.turbulence_scale,
         &node.size,
         &node.glow,
+        &node.light_limit,
         &node.variation,
         &node.fade,
         &node.start,
