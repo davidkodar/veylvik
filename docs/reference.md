@@ -1891,6 +1891,12 @@ settles on the wrong kind of motion can still look sure. The
     tiles of 16 pixels, 32 in frames above 2.5 megapixels, then a walk through
     the tile), so none goes without one however small the target. It is steered
     there over the last **Homing** share of its life, arriving as it dies.
+    To gather particles into 3D letters (dust that becomes a 3D title), give
+    them a target filmed like the letters: a **Merge scenes** of the scene's
+    camera and the 3D text alone, into its own **Render scene**, has alpha
+    exactly where the letters show, from the same view, so the particles land
+    on the real letters. The MCP `gold_title` tool returns the ids of its
+    letters and camera for this.
   - *Look.* **Size** is the dot's radius (a gaussian of half that as sigma) and
     **Grow** its size at the end of the life as a factor of that. **Colour**
     runs to **End colour** over the life (linear RGBA; values above 1 are HDR
@@ -2241,7 +2247,9 @@ and supplies input ports to the compiler. The tool list itself stays small (abou
 for each type's settings, and every operation is still validated in full when
 applied. `add_node` adds one node from a type's defaults with only the settings
 you name written over them, wires its inputs and returns its id; `gold_title`
-adds the Gold title scene and `particle_look` gives a Particles node one of the
+adds the Gold title scene (with `as_output` false it is only added, leaving the
+output and the display transform alone; it returns the ids of its 3D letters
+and camera too) and `particle_look` gives a Particles node one of the
 ready-made looks, exactly as Studio does. The commands also cover `markers`,
 `annotate` (a node's tag and note), `backdrops` and `connect`, which connects
 or disconnects one input of a node and leaves the rest of it alone.

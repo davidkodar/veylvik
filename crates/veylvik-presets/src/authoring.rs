@@ -31,7 +31,7 @@ pub fn tools() -> Vec<(&'static str, &'static str, Value, &'static [&'static str
         ),
         (
             "gold_title",
-            "Add the Gold title scene, sized to the composition: brushed gold 3D lettering under studio strip lights on a dark wall, as ordinary nodes. It becomes the output and the display transform becomes Filmic, unless as_output is false: then it is only added, for a larger composition to place it (its look is made for Filmic; the display command sets that). The letters cast a shadow on the wall unless shadow is false (afterwards: the node Shadow on the wall, its Shadow strength or In the scene). Returns the output node and the Title node whose content holds the words. One undo step.",
+            "Add the Gold title scene, sized to the composition: brushed gold 3D lettering under studio strip lights on a dark wall, as ordinary nodes. It becomes the output and the display transform becomes Filmic, unless as_output is false: then it is only added, for a larger composition to place it (its look is made for Filmic; the display command sets that). The letters cast a shadow on the wall unless shadow is false (afterwards: the node Shadow on the wall, its Shadow strength or In the scene). Returns the output node, the Title node whose content holds the words, and the ids of the 3D letters and the camera: a Merge scenes of those two into a Render scene has alpha exactly on the letters, so it can be a Particles target for dust that gathers into the title. One undo step.",
             json!({"text":{"type":"string","minLength":1,"maxLength":256},"subtitle":{"type":"string","maxLength":256},"shadow":{"type":"boolean","default":true},"as_output":{"type":"boolean","default":true}}),
             &["text"],
         ),
@@ -85,8 +85,18 @@ pub fn build(composition: &Composition, tool: &str, args: &Value) -> Result<Opti
                     .commands
                     .retain(|c| !matches!(c, Command::Output { .. } | Command::Display { .. }));
             }
+            // The 3D letters and the camera, so particles can be made to gather on the
+            // letters: a Render scene of those two alone has alpha exactly where they show.
+            let find = |kind: fn(&Operation) -> bool| {
+                built.commands.iter().find_map(|c| match c {
+                    Command::Put { node } if kind(&node.operation) => Some(node.id),
+                    _ => None,
+                })
+            };
+            let letters = find(|o| matches!(o, Operation::Text3d(_)));
+            let camera = find(|o| matches!(o, Operation::Camera3d(_)));
             Authored {
-                result: json!({"output":built.output,"title":built.edit,"added_nodes":built.commands.iter().filter(|c|matches!(c,Command::Put{..})).count()}),
+                result: json!({"output":built.output,"title":built.edit,"letters":letters,"camera":camera,"added_nodes":built.commands.iter().filter(|c|matches!(c,Command::Put{..})).count()}),
                 commands: built.commands,
             }
         }
@@ -318,6 +328,15 @@ mod tests {
         assert_eq!((after.output, after.display), (output, display));
         let added: NodeId = title["output"].as_str().unwrap().parse().unwrap();
         assert!(after.nodes.contains_key(&added) && after.nodes.len() > count);
+        let id = |key: &str| -> NodeId { title[key].as_str().unwrap().parse().unwrap() };
+        assert!(matches!(
+            after.nodes[&id("letters")].operation,
+            Operation::Text3d(_)
+        ));
+        assert!(matches!(
+            after.nodes[&id("camera")].operation,
+            Operation::Camera3d(_)
+        ));
     }
     fn names() -> Vec<&'static str> {
         tools().into_iter().map(|tool| tool.0).collect()
