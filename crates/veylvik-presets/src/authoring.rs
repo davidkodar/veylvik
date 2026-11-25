@@ -31,8 +31,8 @@ pub fn tools() -> Vec<(&'static str, &'static str, Value, &'static [&'static str
         ),
         (
             "gold_title",
-            "Add the Gold title scene, sized to the composition: brushed gold 3D lettering under studio strip lights on a dark wall, as ordinary nodes. It becomes the output and the display transform becomes Filmic. The letters cast a shadow on the wall unless shadow is false (afterwards: the node Shadow on the wall, its Shadow strength or In the scene). Returns the output node and the Title node whose content holds the words. One undo step.",
-            json!({"text":{"type":"string","minLength":1,"maxLength":256},"subtitle":{"type":"string","maxLength":256},"shadow":{"type":"boolean","default":true}}),
+            "Add the Gold title scene, sized to the composition: brushed gold 3D lettering under studio strip lights on a dark wall, as ordinary nodes. It becomes the output and the display transform becomes Filmic, unless as_output is false: then it is only added, for a larger composition to place it (its look is made for Filmic; the display command sets that). The letters cast a shadow on the wall unless shadow is false (afterwards: the node Shadow on the wall, its Shadow strength or In the scene). Returns the output node and the Title node whose content holds the words. One undo step.",
+            json!({"text":{"type":"string","minLength":1,"maxLength":256},"subtitle":{"type":"string","maxLength":256},"shadow":{"type":"boolean","default":true},"as_output":{"type":"boolean","default":true}}),
             &["text"],
         ),
         (
@@ -74,7 +74,17 @@ pub fn build(composition: &Composition, tool: &str, args: &Value) -> Result<Opti
         "gold_title" => {
             let subtitle = args.get("subtitle").and_then(Value::as_str).unwrap_or("");
             let shadow = args.get("shadow").and_then(Value::as_bool).unwrap_or(true);
-            let built = crate::gold_title_with(composition, text(args, "text")?, subtitle, shadow)?;
+            let as_output = args
+                .get("as_output")
+                .and_then(Value::as_bool)
+                .unwrap_or(true);
+            let mut built =
+                crate::gold_title_with(composition, text(args, "text")?, subtitle, shadow)?;
+            if !as_output {
+                built
+                    .commands
+                    .retain(|c| !matches!(c, Command::Output { .. } | Command::Display { .. }));
+            }
             Authored {
                 result: json!({"output":built.output,"title":built.edit,"added_nodes":built.commands.iter().filter(|c|matches!(c,Command::Put{..})).count()}),
                 commands: built.commands,
@@ -291,6 +301,23 @@ mod tests {
         let output: NodeId = title["output"].as_str().unwrap().parse().unwrap();
         assert_eq!(doc.snapshot().output, output);
         assert!(names().contains(&"gold_title"));
+    }
+    #[test]
+    fn a_gold_title_added_into_a_larger_film_leaves_its_output_and_display_alone() {
+        let mut doc = document();
+        let before = doc.snapshot();
+        let (output, display) = (before.output, before.display);
+        let count = before.nodes.len();
+        let title = run(
+            &mut doc,
+            "gold_title",
+            json!({"text":"VEYLVIK","as_output":false}),
+        )
+        .unwrap();
+        let after = doc.snapshot();
+        assert_eq!((after.output, after.display), (output, display));
+        let added: NodeId = title["output"].as_str().unwrap().parse().unwrap();
+        assert!(after.nodes.contains_key(&added) && after.nodes.len() > count);
     }
     fn names() -> Vec<&'static str> {
         tools().into_iter().map(|tool| tool.0).collect()
