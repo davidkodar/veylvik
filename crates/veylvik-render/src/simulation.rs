@@ -11,7 +11,9 @@ const KEPT: usize = 128;
 /// Flocks kept at once, the last used first.
 const RUNS: usize = 4;
 /// Cells of the neighbour grid, eight values each.
-const CELLS: u64 = 65_536;
+/// The grid buffer, in values: the cells (eight values each), then the fine grid
+/// (FINE_LIST in particle_flock.wgsl) and its lists, one value a particle.
+const GRID_VALUES: u64 = 983_040 + nodes::particles::FLOCK_MOST as u64;
 
 /// A flock baked to a file: where each particle was at each frame of the composition,
 /// read instead of simulated while the flock is as it was when baked (`key`).
@@ -279,7 +281,7 @@ impl Renderer {
         }
         let grid = self.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("flock grid"),
-            size: CELLS * 32,
+            size: GRID_VALUES * 4,
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -373,13 +375,19 @@ impl Renderer {
         encoder.clear_buffer(grid, 0, None);
         for (kernel, bind) in [
             (Kernel::ParticleFlockGrid, &gather),
+            (Kernel::ParticleFlockScan, &gather),
+            (Kernel::ParticleFlockList, &gather),
             (Kernel::ParticleStep, &step),
         ] {
             let pipeline = self.pipeline_for(kernel, nodes::particles::features_of(me))?;
             let mut pass = encoder.begin_compute_pass(&Default::default());
             pass.set_pipeline(&pipeline);
             pass.set_bind_group(0, bind, &[]);
-            pass.dispatch_workgroups(row.div_ceil(64), threads.div_ceil(row).max(1), 1);
+            if kernel == Kernel::ParticleFlockScan {
+                pass.dispatch_workgroups(1, 1, 1);
+            } else {
+                pass.dispatch_workgroups(row.div_ceil(64), threads.div_ceil(row).max(1), 1);
+            }
         }
         self.queue.submit([encoder.finish()]);
         Ok(())

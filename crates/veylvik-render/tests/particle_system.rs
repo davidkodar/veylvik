@@ -1766,3 +1766,30 @@ fn a_flock_born_in_a_short_burst_has_every_bird_of_the_burst() {
         "flock {flocked} of {free}"
     );
 }
+#[test]
+#[ignore = "requires Vulkan"]
+fn birds_born_on_one_point_push_one_another_apart() {
+    // Two thousand birds born on the very same point: each keeps clear of the birds
+    // themselves near it (not of the middle of their cell, which is where they all are),
+    // so they spread into a disc instead of staying one dot.
+    let renderer = Renderer::new().unwrap();
+    let mut flock = particles();
+    flock.x = 80.0.into();
+    flock.y = 60.0.into();
+    flock.rate = 4000.0.into();
+    flock.duration = 0.5.into();
+    flock.life = 30.0.into();
+    flock.speed = 0.0.into();
+    flock.gravity = 0.0.into();
+    flock.variation = 0.0.into();
+    flock.fade = 0.0.into();
+    flock.size = 0.6.into();
+    flock.flock_radius = 24.0.into();
+    flock.separation = 400.0.into();
+    flock.top_speed = 40.0.into();
+    let lit = render(&renderer, flock, None, (2, 1))
+        .iter()
+        .filter(|p| p[3] > 0.02)
+        .count();
+    assert!(lit > 150, "the birds spread over {lit} pixels");
+}

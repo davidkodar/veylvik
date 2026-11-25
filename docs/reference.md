@@ -1942,20 +1942,24 @@ settles on the wrong kind of motion can still look sure. The
     Assemble, Fireworks, Network, Murmuration),
     and the emitter box and the pull point are dragged in the viewer.
   - *Flocks.* **Flock radius** above 0 makes the particles a flock, simulated
-    rather than worked out from the time: each bird steers by the birds of the
-    grid cells round it (cells as wide as the radius): towards their middle
-    (**Cohesion**), clear of them (**Separation**) and into their heading
-    (**Alignment**), no faster than **Top speed**; Pull, Vortex, turbulence
+    rather than worked out from the time: each bird steers towards the middle
+    of the birds in the grid cells round it (cells as wide as the radius,
+    **Cohesion**) and into their heading (**Alignment**), keeps clear of the
+    birds themselves within a third of the radius (**Separation**, each pushing
+    the harder the nearer; in a crowded spot an even share of them, picked by
+    their own numbers and counted for the rest), and goes no faster than
+    **Top speed**; every push is summed in fixed point, so a frame is the same
+    however it is reached; Pull, Vortex, turbulence
     and Force nodes act on it too. A flock holds at most 65,536 birds. Born
     endlessly it holds Rate times Life of them; born in a burst shorter than
     its life (Duration under Life) every bird of the burst is born inside the
     burst, so a one-second burst of 50,000 birds that live an hour is 50,000
-    birds. Keep Separation small next to Cohesion: at 0 birds fall into one
-    line, much higher and they stand in an even grid; turbulence on the scale
-    of the radius breaks up the grid the cells would otherwise show. A flock
-    turns in a circle of about Top speed squared over Pull. The
+    birds. At Separation 0 birds fall into one line; much higher and the
+    flock thins to a haze. A flock turns in a circle of about Top speed squared over Pull. The
     **Murmuration** look is a tuned starting point: 50,000 dark birds chasing a
-    pull point keyed over a minute.
+    pull point keyed over a minute. A flock of 50,000 costs about 3.5 ms a
+    simulation step on an RTX 4080 (two steps a frame while playing; a jump
+    goes from the state kept each second before it).
 - **Shape warp** (`shape_warp`, input image): pulls the image so the start
   shape `from` lands on the end shape `to`. Both are closed paths in pixels
   (the Path mask's geometry format, keys allowed) with the same number of

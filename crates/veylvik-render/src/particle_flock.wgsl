@@ -1,11 +1,26 @@
 // A flock, simulated (see simulation.rs): the state is two values a thread, where it is
 // and its generation, then its velocity and whether it is alive. Each step first adds
 // every particle into a hashed grid of cells the neighbour radius wide (count, sum of
-// places and of velocities, in fixed point so the sums are the same in any order), then
-// moves each particle by its neighbours' cells and the forces.
+// places and of velocities, in fixed point so the sums are the same in any order), and
+// into a fine grid of cells a third as wide, which is then turned into a list of the
+// particles in each fine cell (counts, a running total for where each cell's list
+// starts, then the particles). Each particle then steers towards its neighbours' cells
+// and into their heading, keeps clear of the particles themselves near it (their
+// pushes summed in fixed point, so in any order the same), and is moved by the forces.
 const FLOCK_RADIUS = 120u; const COHESION = 121u; const SEPARATION = 122u; const ALIGNMENT = 123u;
 const TOP_SPEED = 124u;
 const CELLS = 65536u;
+// The fine grid, in the grid buffer after the cells (eight values each): counts, where
+// each list starts, how many are listed so far, sums of places (four values each), then
+// the lists. In a fine cell with more particles than are walked, an even share of them
+// is walked, picked by each one's own number (not by where it happens to be in the
+// list) and counted for the rest; one beyond LIST_MOST is kept clear of as a whole.
+const FINE = 65536u; const FINE_COUNT = 524288u; const FINE_START = 589824u;
+const FINE_CURSOR = 655360u; const FINE_SUM = 720896u; const FINE_LIST = 983040u;
+const FINE_MOST = 96u; const LIST_MOST = 1024u;
+// How near another particle must come before it is kept clear of.
+fn personal(r: f32) -> f32 { return max(r / 3.0, 1.0); }
+fn grid_u32(k: u32) -> u32 { let v = first[k / 4u]; return v[k % 4u]; }
 // Fixed point: places in a cell in 4096ths of its width, velocities in 16ths of a pixel
 // a second.
 const PLACE_UNITS = 4096.0; const SPEED_UNITS = 16.0;
@@ -43,12 +58,97 @@ fn particle_flock_grid(@builtin(global_invocation_id) gid: vec3<u32>) {
     atomicAdd(&result[k], 1u);
     add_signed(k + 1u, at.x); add_signed(k + 2u, at.y); add_signed(k + 3u, at.z);
     add_signed(k + 4u, v.x); add_signed(k + 5u, v.y); add_signed(k + 6u, v.z);
+    let near = personal(r); let fc = flock_cell(s0.xyz, near); let f = cell_slot(fc);
+    let fat = place_units(s0.xyz, fc, near);
+    atomicAdd(&result[FINE_COUNT + f], 1u);
+    add_signed(FINE_SUM + 4u * f, fat.x); add_signed(FINE_SUM + 4u * f + 1u, fat.y); add_signed(FINE_SUM + 4u * f + 2u, fat.z);
+}
+// ---- where each fine cell's list starts: one group, each of its threads totalling
+// a share of the cells, then a running total over the shares ----
+var<workgroup> shares: array<u32, 256>;
+@compute @workgroup_size(256)
+fn particle_flock_scan(@builtin(local_invocation_index) i: u32) {
+    let per = FINE / 256u; let base = i * per;
+    var sum = 0u;
+    for (var k = 0u; k < per; k++) { sum += atomicLoad(&result[FINE_COUNT + base + k]); }
+    shares[i] = sum;
+    workgroupBarrier();
+    if i == 0u {
+        var run = 0u;
+        for (var k = 0u; k < 256u; k++) { let share = shares[k]; shares[k] = run; run += share; }
+    }
+    workgroupBarrier();
+    var at = shares[i];
+    for (var k = 0u; k < per; k++) {
+        atomicStore(&result[FINE_START + base + k], at);
+        at += atomicLoad(&result[FINE_COUNT + base + k]);
+    }
+}
+// ---- each particle into its fine cell's list (in no particular order: whatever reads
+// a list adds in fixed point) ----
+@compute @workgroup_size(64)
+fn particle_flock_list(@builtin(global_invocation_id) gid: vec3<u32>) {
+    let thread = gid.y * u32(p.values.y) + gid.x;
+    if gid.x >= u32(p.values.y) || thread >= u32(p.values.x) { return; }
+    let s0 = second[2u * thread]; let s1 = second[2u * thread + 1u];
+    if s1.w < 0.5 { return; }
+    let r = max(setting(FLOCK_RADIUS, bitcast<f32>(p.size_op.z)), 1.0);
+    let f = cell_slot(flock_cell(s0.xyz, personal(r)));
+    let at = atomicLoad(&result[FINE_START + f]) + atomicAdd(&result[FINE_CURSOR + f], 1u);
+    atomicStore(&result[FINE_LIST + at], thread);
+}
+// How the particles near one at `at` (thread `me`) push it clear of them: each one
+// nearer than `personal` away pushes along the line between them, the harder the
+// nearer, summed in 256ths so the order of the list does not matter. Two in the very
+// same place part along a direction of their own pair, opposite for each.
+fn crowding(at: vec3<f32>, me: u32, now: f32, deep: bool) -> vec3<f32> {
+    let near = personal(max(setting(FLOCK_RADIUS, now), 1.0));
+    let own = flock_cell(at, near);
+    var push = vec3<i32>(0);
+    var reach = 1; if !deep { reach = 0; }
+    for (var dz = -reach; dz <= reach; dz++) {
+        for (var dy = -1; dy <= 1; dy++) {
+            for (var dx = -1; dx <= 1; dx++) {
+                let c = own + vec3<i32>(dx, dy, dz);
+                let f = cell_slot(c);
+                let n = grid_u32(FINE_COUNT + f);
+                if n == 0u { continue; }
+                if n > LIST_MOST {
+                    let sums = vec3<f32>(f32(bitcast<i32>(grid_u32(FINE_SUM + 4u * f))), f32(bitcast<i32>(grid_u32(FINE_SUM + 4u * f + 1u))), f32(bitcast<i32>(grid_u32(FINE_SUM + 4u * f + 2u))));
+                    let middle = vec3<f32>(c) * near + sums / f32(n) * (near / PLACE_UNITS) - grid_shift(near);
+                    var away = at - middle; if !deep { away.z = 0.0; }
+                    let d = length(away);
+                    if d < near && d > 0.001 { push += vec3<i32>(round(away / d * (1.0 - d / near) * f32(n) * 256.0)); }
+                    continue;
+                }
+                let start = grid_u32(FINE_START + f);
+                let every = (n + FINE_MOST - 1u) / FINE_MOST;
+                for (var m = 0u; m < LIST_MOST; m++) {
+                    if m >= n { break; }
+                    let other = grid_u32(FINE_LIST + start + m);
+                    if other == me || (every > 1u && hash(other ^ 0x68e31da4u) % every != 0u) { continue; }
+                    var away = at - second[2u * other].xyz; if !deep { away.z = 0.0; }
+                    let d = length(away);
+                    if d >= near { continue; }
+                    var along: vec3<f32>;
+                    if d > 0.0001 {
+                        along = away / d;
+                    } else {
+                        let a = f32(hash(min(me, other) * 2654435761u ^ max(me, other)) >> 8u) / 16777216.0 * 6.2831853;
+                        along = vec3<f32>(cos(a), sin(a), 0.0) * select(-1.0, 1.0, me < other);
+                    }
+                    push += vec3<i32>(round(along * (1.0 - d / near) * 256.0 * f32(every)));
+                }
+            }
+        }
+    }
+    return vec3<f32>(push) / 256.0;
 }
 // How the neighbours steer a particle at `at` going at `v` (it is in the grid itself).
-fn flocking(at: vec3<f32>, v: vec3<f32>, now: f32, deep: bool) -> vec3<f32> {
+fn flocking(at: vec3<f32>, v: vec3<f32>, now: f32, deep: bool, me: u32) -> vec3<f32> {
     let r = max(setting(FLOCK_RADIUS, now), 1.0);
     let own = flock_cell(at, r);
-    var count = 0.0; var middle = vec3<f32>(0.0); var heading = vec3<f32>(0.0); var apart = vec3<f32>(0.0);
+    var count = 0.0; var middle = vec3<f32>(0.0); var heading = vec3<f32>(0.0);
     var reach = 1; if !deep { reach = 0; }
     for (var dz = -reach; dz <= reach; dz++) {
         for (var dy = -1; dy <= 1; dy++) {
@@ -67,16 +167,13 @@ fn flocking(at: vec3<f32>, v: vec3<f32>, now: f32, deep: bool) -> vec3<f32> {
                 if n < 0.5 { continue; }
                 let centre = vec3<f32>(c) * r + places / n * (r / PLACE_UNITS) - grid_shift(r);
                 count += n; middle += centre * n; heading += speeds / SPEED_UNITS;
-                // Keep clear of the cell's crowd, the harder the nearer.
-                let away = at - centre; let far = length(away);
-                if far < r && far > 0.001 { apart += away / far * (1.0 - far / r) * n; }
             }
         }
     }
     if count < 0.5 { return vec3<f32>(0.0); }
     var steer = (middle / count - at) / r * setting(COHESION, now)
         + (heading / count - v) * setting(ALIGNMENT, now)
-        + apart * setting(SEPARATION, now);
+        + crowding(at, me, now, deep) * setting(SEPARATION, now);
     if !deep { steer.z = 0.0; }
     return steer;
 }
@@ -139,7 +236,7 @@ fn particle_step(@builtin(global_invocation_id) gid: vec3<u32>) {
         let s0 = second[2u * thread]; let s1 = second[2u * thread + 1u];
         var moved: Moved;
         if s1.w > 0.5 && s0.w == f32(b.generation) && now - b.birth >= span {
-            let steer = flocking(s0.xyz, s1.xyz, now - span, b.deep);
+            let steer = flocking(s0.xyz, s1.xyz, now - span, b.deep, thread);
             moved = advance(s0.xyz, s1.xyz, now - span, span, b.deep, steer);
         } else {
             // Born during this step: from its birth on, steered by no one yet.

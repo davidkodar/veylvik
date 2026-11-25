@@ -114,6 +114,8 @@ kernels! {
     ParticlePositions => "particle_positions", Linked, program;
     ParticleLinks => "particle_links", Linked, program;
     ParticleFlockGrid => "particle_flock_grid", Frame, program;
+    ParticleFlockScan => "particle_flock_scan", Frame, program;
+    ParticleFlockList => "particle_flock_list", Frame, program;
     ParticleStep => "particle_step", Frame, program;
     ParticleInstances => "particle_instances", Frame, program;
     LensPrefilterHorizontal => "lens_prefilter_horizontal", Area, program;
