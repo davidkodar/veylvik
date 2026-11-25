@@ -141,6 +141,16 @@ impl Inspect for Shape3d {
         face_row(ui, &mut self.aim_at, cx);
     }
 }
+impl Inspect for veylvik_document::nodes::Figure3d {
+    fn inspect(&mut self, ui: &mut egui::Ui, cx: &mut InspectCx<'_>) {
+        ui.weak("A walking person. Key Distance (pixels walked) to make it walk; a relaxed walk covers about 0.7 of its height a second. Turn it about Y with Placement to walk another way. Set a Particles node's Emit from to it for a body made of particles.");
+        cx.dirty |= look(ui, &mut self.look, cx);
+        if self.look.is_none() {
+            cx.dirty |= crate::animation::colour_track(ui, "Colour", &mut self.colour, cx.time);
+        }
+        cx.dirty |= placement(ui, &mut self.placement, cx);
+    }
+}
 impl Inspect for Text3d {
     fn inspect(&mut self, ui: &mut egui::Ui, cx: &mut InspectCx<'_>) {
         ui.weak("Extrudes the Text or Path on its Outline input; Depth sets how deep.");

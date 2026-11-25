@@ -399,6 +399,7 @@ impl crate::Operation {
                 | O::ImageCard(_)
                 | O::Transform3d(_)
                 | O::Camera3d(_)
+                | O::Figure3d(_)
         )
     }
     /// Placement and colour of 3D scene nodes.
@@ -411,6 +412,7 @@ impl crate::Operation {
             O::ImageCard(n) => (Some(&mut n.placement), Some(&mut n.colour)),
             O::Transform3d(n) => (Some(&mut n.placement), None),
             O::Camera3d(n) => (Some(&mut n.placement), None),
+            O::Figure3d(n) => (Some(&mut n.placement), Some(&mut n.colour)),
             _ => (None, None),
         }
     }

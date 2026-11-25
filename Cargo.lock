@@ -4304,6 +4304,13 @@ name = "veylvik-expr"
 version = "0.1.0"
 
 [[package]]
+name = "veylvik-figure"
+version = "0.1.0"
+dependencies = [
+ "veylvik-mesh",
+]
+
+[[package]]
 name = "veylvik-interop"
 version = "0.1.0"
 dependencies = [
@@ -4443,6 +4450,7 @@ dependencies = [
  "serde",
  "serde_json",
  "veylvik-document",
+ "veylvik-figure",
  "veylvik-mesh",
  "veylvik-text",
 ]

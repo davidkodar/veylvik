@@ -1,0 +1,11 @@
+[package]
+name = "veylvik-figure"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Human figures for Veylvik 3D scenes: a skeleton posed by a walk, and a smooth body mesh round it."
+[dependencies]
+veylvik-mesh.workspace = true
+[lints]
+workspace = true

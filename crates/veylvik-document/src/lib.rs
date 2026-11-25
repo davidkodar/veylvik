@@ -113,6 +113,7 @@ macro_rules! each_node {
             $crate::Operation::ParticleInstances($node) => $body,
             $crate::Operation::CameraProjection($node) => $body,
             $crate::Operation::GaussianSplats($node) => $body,
+            $crate::Operation::Figure3d($node) => $body,
             $crate::Operation::OfxEffect($node) => $body,
             $crate::Operation::Sound($node) => $body,
             $crate::Operation::Blur($node) => $body,
@@ -199,6 +200,8 @@ pub enum Operation {
     ParticleInstances(nodes::ParticleInstances),
     CameraProjection(nodes::CameraProjection),
     GaussianSplats(nodes::GaussianSplats),
+    #[serde(rename = "figure_3d")]
+    Figure3d(nodes::Figure3d),
     OfxEffect(nodes::OfxEffect),
     Sound(nodes::Sound),
     Blur(nodes::Blur),

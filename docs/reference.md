@@ -2118,6 +2118,33 @@ settles on the wrong kind of motion can still look sure. The
   project; Add > 3D > 3D model asks for the file, and **Choose model file…** in
   the inspector replaces it (one undo step). The CLI and MCP load a plan's
   models with its other inputs.
+- **Figure** (`figure_3d`): a walking person in the scene, from the
+  `veylvik-figure` crate. Movement: the legs follow the measured joint angles
+  of normal adult walking (hip, knee and ankle every 5% of the stride, the
+  thigh's angle taking off the pelvis's forward tilt), so the knee gives as the
+  weight lands, nearly straightens over the foot and bends about 60 degrees in
+  swing; while a foot carries weight its heel and then its ball stay where they
+  landed (foot locking: a horizontal correction and the knee solved again).
+  The body rides on its lowest foot point averaged over a little of the stride,
+  so it glides through the change of feet (about 2.5% of the height up and
+  down); the hips sag on the swinging side and turn a few degrees, the body
+  sways over the standing foot, the trunk leans forward a little, each heel
+  strike sends a small damped give up the chest and head, the arms swing as a
+  double pendulum (the forearm a beat behind the upper arm), the shoulders turn
+  against the pelvis and drop over the standing leg, and one arm swings a little
+  more than the other. **Distance** is how far it has walked along its own +x,
+  in pixels (key it; a stride is 0.79 of the height, a relaxed walk about 0.7 of
+  the height a second); **Pace** 1 walks and 0 eases to standing; Placement
+  moves it and turns it to walk any way. The body is a smooth blend of rounded
+  shapes (pelvis, buttocks, waist, ribcage, shoulders, neck, head with jaw and
+  nose, tapered limbs with thigh and calf muscle, feet with heel, instep and
+  toes) turned into a mesh by surface nets at **Detail** cells to the height
+  (110 by default: about 21,000 triangles in about 27 ms on a desktop processor,
+  shared across its cores). The object's place travels with the pelvis, so
+  Particles with **Emit from** set to it are born all over the moving body and
+  left behind as it walks on (a short Life keeps the body crisp). It is not a
+  solid for particles to bounce off. Running, turning along a path, hair and
+  clothes are to come.
 - **Render scene**: films a scene as an image with camera 1, 2, … in node order, or
   0 for the home view.
 

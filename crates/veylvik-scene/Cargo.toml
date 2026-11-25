@@ -9,6 +9,7 @@ description = "Evaluates Veylvik 3D scene graphs at a frame: objects, cameras, l
 veylvik-document.workspace = true
 veylvik-text.workspace = true
 veylvik-mesh.workspace = true
+veylvik-figure.workspace = true
 [dev-dependencies]
 serde_json.workspace = true
 serde.workspace = true

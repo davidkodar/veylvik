@@ -37,6 +37,16 @@ pub enum Geometry {
         bevel: f32,
         round: bool,
     },
+    /// A walking person `height` pixels tall, posed after walking `distance` heights at
+    /// `pace`; its body is centred on the pelvis along the walk (the object's place
+    /// carries it along), standing on y = height / 2 below its centre. `detail` is the
+    /// mesh's cells to the height.
+    Figure {
+        height: f32,
+        distance: f32,
+        pace: f32,
+        detail: u32,
+    },
     /// Gaussian splats from a file, its box's largest side `size` pixels, shown at
     /// `brightness` times their captured colours.
     Splats {
@@ -296,6 +306,11 @@ pub fn local_bounds(geometry: &Geometry) -> ([f32; 3], [f32; 3]) {
         ),
         // The box most of its splats lie in, at its size (its proportions are the file's).
         Geometry::Splats { size, .. } => ([-size * 0.5; 3], [size * 0.5; 3]),
+        // Round a person centred on the pelvis: a stride either way, head to foot.
+        Geometry::Figure { height, .. } => (
+            [-0.5 * height, -0.5 * height, -0.2 * height],
+            [0.5 * height, 0.5 * height, 0.2 * height],
+        ),
     }
 }
 impl Camera {
@@ -476,6 +491,7 @@ fn node(doc: &Graph<'_>, id: NodeId, time: Time, depth: usize) -> Result<Scene> 
         Operation::Text3d(t) => Some(&t.placement),
         Operation::ImageCard(c) => Some(&c.placement),
         Operation::Model3d(m) => Some(&m.placement),
+        Operation::Figure3d(f) => Some(&f.placement),
         Operation::Transform3d(t) => Some(&t.placement),
         Operation::Light3d(l) => Some(&l.placement),
         _ => None,
@@ -690,6 +706,42 @@ fn node(doc: &Graph<'_>, id: NodeId, time: Time, depth: usize) -> Result<Scene> 
             projection: None,
         }),
         Operation::GaussianSplats(_) => {}
+        Operation::Figure3d(f) => {
+            let height = f.height.at(time)?.max(1.0);
+            let distance = f.distance.at(time)? / height;
+            let pace = f.pace.at(time)?.clamp(0.0, 1.0);
+            // The walk carries the object along: its place is where the pelvis has got to,
+            // so particles born on it are left behind as it moves on.
+            let along = veylvik_figure::walk(distance, pace).pelvis[0] * height;
+            scene.objects.push(Object {
+                node: id,
+                texture: None,
+                geometry: Geometry::Figure {
+                    height,
+                    distance,
+                    pace,
+                    detail: f.detail.at(time)?.round().clamp(24.0, 400.0) as u32,
+                },
+                world: mul(
+                    &placed(&f.placement, time, centre)?,
+                    &translate([along, 0.0, 0.0]),
+                ),
+                surface: Surface {
+                    colour: f.colour.at(time)?,
+                    opacity: 1.0,
+                    roughness: f.roughness.at(time)?.clamp(0.0, 1.0),
+                    metallic: f.metallic.at(time)?.clamp(0.0, 1.0),
+                    finish: [0.0; 5],
+                    unlit: false,
+                    look: f.look.clone(),
+                    catcher: false,
+                    shadow: 1.0,
+                },
+                aim: None,
+                instanced: None,
+                projection: None,
+            });
+        }
         Operation::Transform3d(t) => {
             let child = input("scene").ok_or_else(|| Error("3D transform needs a scene".into()))?;
             let m = mul(
@@ -922,6 +974,22 @@ pub fn mesh(object: &Object) -> Result<Mesh> {
             *size,
             *segments,
         ),
+        Geometry::Figure {
+            height,
+            distance,
+            pace,
+            detail,
+        } => {
+            let pose = veylvik_figure::walk(*distance, *pace);
+            let mut mesh = veylvik_figure::mesh(&pose, *height, *detail);
+            // Centred on the pelvis along the walk, standing half its height below.
+            let along = pose.pelvis[0] * height;
+            for v in &mut mesh.vertices {
+                v.position[0] -= along;
+                v.position[1] += height * 0.5;
+            }
+            Ok(mesh)
+        }
         Geometry::Text {
             outline,
             depth,
