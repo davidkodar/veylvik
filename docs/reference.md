@@ -2018,7 +2018,9 @@ settles on the wrong kind of motion can still look sure. The
   rendered. `follow`, `followed` and `follow_seen` are therefore names a shader
   cannot use for its own variables. To be safe on every pixel, the text may not use
   attributes (`@…`), global variables, `while`, `loop` or `continuing`, must be
-  ASCII outside comments and at most 16000 characters, and may not redefine
+  ASCII outside comments, have at most 16000 characters of code (comments,
+  spaces and line breaks are not counted; the whole text is at most 64000
+  characters, so code can be well commented), and may not redefine
   `image`, `second` or `custom`; `for` loops, in `shade` or in your own helper
   functions, are written `for (var i = 0; i < 16; i++)` (or `<=`, `+= N`) with
   whole-number bounds and a counter that is only read in the body. A loop runs

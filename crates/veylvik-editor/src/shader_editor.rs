@@ -106,7 +106,7 @@ pub fn show(ui: &mut egui::Ui, node: veylvik_document::NodeId, shader: &mut Shad
                     .code_editor()
                     .desired_rows(12)
                     .desired_width(f32::INFINITY)
-                    .char_limit(veylvik_shader::MAX_SOURCE),
+                    .char_limit(veylvik_shader::MAX_TEXT),
             );
         });
     if buffer.checked != buffer.text {

@@ -1,8 +1,11 @@
 //! Custom shader nodes: the user writes one WGSL function, `shade`, and declares its controls in comments. This crate checks the text (bounded size, no bindings or entry points of its own, loops only of a fixed small length, also through helper functions) and builds the full compute program around it. No GPU here.
 use std::fmt::Write;
 
-/// Longest accepted source, in bytes.
+/// Most code in a shader: characters outside comments, not counting spaces and line
+/// breaks (comments and layout cost nothing to run).
 pub const MAX_SOURCE: usize = 16_000;
+/// Longest accepted text, comments and all.
+pub const MAX_TEXT: usize = 64_000;
 /// Control values a shader may use (a slider takes one, a colour three).
 pub const SLOTS: usize = 16;
 /// Most iterations of one loop, and of nested loops multiplied together.
@@ -304,14 +307,22 @@ fn parse_loop(text: &str, at: usize) -> Result<Loop, String> {
 /// at most MAX_LOOP iterations when nested, counting the loops round every call of the
 /// function they are in, and at most MAX_WORK iterations a pixel in all.
 pub fn check(code: &str) -> Result<Vec<Control>, String> {
-    if code.len() > MAX_SOURCE {
-        return fail(format!("a shader is at most {MAX_SOURCE} characters"));
+    if code.len() > MAX_TEXT {
+        return fail(format!(
+            "a shader's text is at most {MAX_TEXT} characters, comments and all"
+        ));
     }
     if code.contains('\0') {
         return fail("the shader contains a NUL character");
     }
     let declared = controls(code)?;
     let text = without_comments(code);
+    let size = text.bytes().filter(|b| !b.is_ascii_whitespace()).count();
+    if size > MAX_SOURCE {
+        return fail(format!(
+            "a shader has at most {MAX_SOURCE} characters of code (comments, spaces and line breaks not counted); this has {size}"
+        ));
+    }
     if let Some(i) = text.find('?').filter(|&i| !code.as_bytes()[i].is_ascii()) {
         return fail(format!(
             "line {}: only plain ASCII is allowed outside comments",
@@ -748,7 +759,8 @@ mod tests {
                 "taken by the node",
             ),
             (shade("let é = 1.0;"), "plain ASCII"),
-            ("x".repeat(MAX_SOURCE + 1), "at most"),
+            ("x".repeat(MAX_SOURCE + 1), "characters of code"),
+            ("/".repeat(MAX_TEXT + 1), "comments and all"),
         ] {
             let error = check(&bad).unwrap_err();
             assert!(error.contains(hint), "{error}\n{bad}");
