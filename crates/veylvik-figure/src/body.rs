@@ -137,13 +137,14 @@ impl Body {
                 k,
             })
         };
-        // Pelvis, buttocks behind the hip joints, waist, ribcage and shoulders.
+        // Pelvis, buttocks behind the hip joints, waist, ribcage and shoulders (widths as
+        // shares of the height: hips about 0.2, chest about 0.19 across).
         let mut trunk = vec![
             (
                 Shape::Ellipsoid(
                     addv(addv(hip, up, 0.035), fwd, -0.008),
                     frame,
-                    [0.075, 0.062, 0.115],
+                    [0.075, 0.062, 0.1],
                 ),
                 0.0,
             ),
@@ -151,7 +152,7 @@ impl Body {
                 Shape::Ellipsoid(
                     addv(addv(hip, fwd, -0.04), up, 0.005),
                     frame,
-                    [0.06, 0.05, 0.1],
+                    [0.06, 0.05, 0.09],
                 ),
                 0.02,
             ),
@@ -159,17 +160,17 @@ impl Body {
                 Shape::Ellipsoid(
                     addv(addv(hip, up, 0.13), fwd, 0.004),
                     frame,
-                    [0.085, 0.06, 0.1],
+                    [0.085, 0.06, 0.085],
                 ),
-                0.035,
+                0.06,
             ),
             (
                 Shape::Ellipsoid(
                     addv(addv(top, up, 0.215), fwd, 0.01),
                     frame,
-                    [0.085, 0.072, 0.125],
+                    [0.085, 0.072, 0.095],
                 ),
-                0.035,
+                0.07,
             ),
         ];
         for s in &pose.shoulder {
@@ -295,7 +296,8 @@ impl Body {
                 ],
             );
         }
-        // Arms and hands.
+        // Arms and hands (the shoulders sit just outside the ribcage, so an arm lies against
+        // the body rather than through it).
         for i in 0..2 {
             let (s, e, w, h) = (pose.shoulder[i], pose.elbow[i], pose.wrist[i], pose.hand[i]);
             let along = norm(sub(h, w));

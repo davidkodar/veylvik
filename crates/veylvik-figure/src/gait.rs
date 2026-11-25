@@ -12,7 +12,7 @@ const SHANK: f32 = 0.246;
 const HIP_HALF: f32 = 0.052;
 const FOOT_HALF: f32 = 0.045;
 /// Half the distance between the shoulder joints.
-const SHOULDER_HALF: f32 = 0.105;
+const SHOULDER_HALF: f32 = 0.118;
 
 /// Periodic Catmull-Rom through twenty samples, x in strides (any value).
 fn at20(v: &[f32; 20], x: f32) -> f32 {
@@ -271,10 +271,12 @@ pub fn walk(distance: f32, pace: f32) -> Pose {
         let elbow = add(s, dir(upper), 0.186);
         let wrist = add(elbow, dir(fore), 0.146);
         let hand = add(wrist, dir(fore + 10.0), 0.09);
+        // The arm hangs a little out from the body (the elbow and hand clear the hips).
+        let out = if side == 0 { 1.0 } else { -1.0 };
         pose.shoulder[side] = [s[0], s[1], z];
-        pose.elbow[side] = [elbow[0], elbow[1], z + 0.006];
-        pose.wrist[side] = [wrist[0], wrist[1], z + 0.012];
-        pose.hand[side] = [hand[0], hand[1], z + 0.014];
+        pose.elbow[side] = [elbow[0], elbow[1], z + out * 0.03];
+        pose.wrist[side] = [wrist[0], wrist[1], z + out * 0.05];
+        pose.hand[side] = [hand[0], hand[1], z + out * 0.056];
     }
     // The neck and head: nearly level, nodding a touch against the bob.
     let neck_base = add(add(top, up, 0.305), fwd, 0.006);
