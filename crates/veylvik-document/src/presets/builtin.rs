@@ -16,7 +16,17 @@ pub struct Builtin {
     pub label: &'static str,
     pub description: &'static str,
 }
-pub const ALL: [Builtin; 79] = [
+pub const ALL: [Builtin; 81] = [
+    Builtin {
+        id: "halation",
+        label: "Halation",
+        description: "Film's red halo round bright highlights: light that passed the film, bounced off its back and came back red. Strength, how bright a highlight must be, and how far the halo spreads; subtle is filmic.",
+    },
+    Builtin {
+        id: "chromatic_fringe",
+        label: "Chromatic Fringe",
+        description: "Red and blue drawn a little apart toward the frame's edges, as a real lens focuses them: bright edges near the corners gain a red fringe on one side and a blue one on the other, nothing in the middle. Amount is how far apart at the corners.",
+    },
     Builtin {
         id: "switch_off",
         label: "Television Switch-off",
@@ -854,6 +864,7 @@ pub fn category(id: &str) -> &'static str {
         id if is_recipe(id) => "Surface",
         "shutter_motion" | "smooth_slow_motion" => "Motion",
         "switch_off" => "Motion",
+        "halation" => "Light",
         id if sky::is(id) => "Light",
         id if appearance::material_kind(id).is_some() => "Materials",
         "sun_glints" | "metallic_shine" | "soft_bloom" | "anamorphic_streaks" | "dream_focus"

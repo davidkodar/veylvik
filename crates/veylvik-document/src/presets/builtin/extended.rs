@@ -187,6 +187,27 @@ impl Builder {
 }
 pub(super) fn build(id: &str, b: &mut Builder, source: NodeId) -> Result<NodeId> {
     let out = match id {
+        "halation" => {
+            // Film's red halo: light passing the emulsion, bouncing off the film's back
+            // and coming back red round bright highlights.
+            let halo = b.add(
+                "Red halo",
+                Operation::Bloom(crate::nodes::Bloom {
+                    threshold: 0.7.into(),
+                    knee: 0.5.into(),
+                    intensity: 0.45.into(),
+                    radius: 28.0.into(),
+                    streak: 0.0.into(),
+                    tint: [1.0, 0.3, 0.12, 1.0],
+                }),
+                &[("image", source)],
+            );
+            b.expose(halo, "threshold", "From brightness")?;
+            b.expose(halo, "intensity", "Strength")?;
+            b.expose(halo, "radius", "Spread")?;
+            // Bloom gives the picture with its halo: Mix fades between that and the picture.
+            b.blend(source, halo, BlendMode::Normal, 1.0.into())
+        }
         "soft_bloom" | "dream_focus" => {
             let soft = b.blur(source, if id == "soft_bloom" { 22.0 } else { 12.0 });
             b.expose(soft, "radius", "Softness")?;

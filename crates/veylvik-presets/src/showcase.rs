@@ -276,13 +276,18 @@ pub fn build(id: &str) -> Result<Scene> {
             } else {
                 cycle(9.0, -9.0)
             },
+            // A lens's fringe grows toward the corners: the title fills the frame to show it.
             scale_x: if id == "smooth_slow_motion" {
                 1.0.into()
+            } else if id == "chromatic_fringe" {
+                cycle(2.7, 2.9)
             } else {
                 cycle(0.94, 1.04)
             },
             scale_y: if id == "smooth_slow_motion" {
                 1.0.into()
+            } else if id == "chromatic_fringe" {
+                cycle(2.7, 2.9)
             } else {
                 cycle(0.94, 1.04)
             },

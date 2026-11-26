@@ -10,6 +10,7 @@ fn source(id: &str) -> Option<(&'static str, &'static str)> {
         "lens_flare" => ("Lens flare", include_str!("flare.wgsl")),
         "deep_sky" => ("Sky", include_str!("deep_sky.wgsl")),
         "switch_off" => ("Switch off", include_str!("switch_off.wgsl")),
+        "chromatic_fringe" => ("Fringe", include_str!("fringe.wgsl")),
         _ => return None,
     })
 }
@@ -24,11 +25,12 @@ pub(super) fn build(id: &str, b: &mut Builder, image: NodeId) -> Result<NodeId> 
     for (slot, default) in veylvik_shader::defaults(&controls).into_iter().enumerate() {
         value[format!("p{}", slot + 1)] = serde_json::json!({"kind": "constant", "value": default});
     }
-    // The switch-off works on the image itself. Here it is thrown, stays dark and
-    // comes back within four seconds, so the effect shows what it does as a loop; move
-    // the keys to where the picture should go off, and drop the last two to stay dark.
-    let alters = id == "switch_off";
-    if alters {
+    // The switch-off and the fringe work on the image itself (the others are laid over
+    // it). The switch-off is thrown, stays dark and comes back within four seconds, so
+    // the effect shows what it does as a loop; move the keys to where the picture should
+    // go off, and drop the last two to stay dark.
+    let alters = id == "switch_off" || id == "chromatic_fringe";
+    if id == "switch_off" {
         value["p1"] = serde_json::json!({"kind": "linear", "keys": [
             {"time": {"ticks": 7, "rate": 5}, "value": 0.0},
             {"time": {"ticks": 12, "rate": 5}, "value": 1.0},

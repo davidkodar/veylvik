@@ -495,6 +495,13 @@ The expanded set includes:
 
 - **Light:** Soft Bloom, Anamorphic Streaks, Dream Focus, Light Sweep, Soft Vignette,
   Spotlight and Metallic Shine (plus Prismatic Glow and Neon Outline).
+  **Halation** is film's red halo round bright highlights (a Bloom with a warm
+  tint, low threshold and wide spread: Strength, From brightness, Spread and
+  Mix). **Chromatic Fringe** draws red and blue a little apart toward the
+  frame's edges, as a real lens focuses them, so bright edges near the corners
+  gain a red fringe on one side and a blue one on the other and the middle is
+  untouched; Amount is how far apart at the corners (pixels at 1920 wide) and
+  Falloff how fast it grows from the middle.
   Lens Flare, Distant Galaxy, Distant Sun and Deep Sky (a whole sky of stars and
   gas, added to the image as light) are each one Custom shader node: their controls are the shader's own sliders, and the
   code can be opened and changed. To keep a shader of your own, group its node
