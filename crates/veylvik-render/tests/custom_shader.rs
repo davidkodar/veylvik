@@ -334,3 +334,65 @@ fn a_lens_flare_dims_where_its_second_picture_hides_the_light() {
         "a picture closed over the light puts it out: {hidden} against {free}"
     );
 }
+#[test]
+#[ignore = "requires Vulkan"]
+fn a_picture_made_apart_for_one_moment_is_not_kept_and_a_still_one_is() {
+    let renderer = Renderer::new().unwrap();
+    let mut doc = blank(64, 36, Time::new(24, 1).unwrap()).unwrap();
+    fn put(doc: &mut Composition, op: Operation, inputs: &[(&str, NodeId)]) -> NodeId {
+        let n = Node::new("n", op, inputs);
+        let id = n.id;
+        doc.nodes.insert(id, n);
+        id
+    }
+    fn own(doc: &mut Composition, of: NodeId) -> NodeId {
+        let Operation::OwnSize(mut o) =
+            serde_json::from_value(nodes::OWN_SIZE.default_operation()).unwrap()
+        else {
+            unreachable!()
+        };
+        o.width = 32;
+        o.height = 18;
+        put(doc, Operation::OwnSize(o), &[("image", of)])
+    }
+    // A picture that changes with every frame, and one that never changes, each made
+    // apart at its own size.
+    let moving = put(
+        &mut doc,
+        Operation::Shader(shader(
+            "fn shade(at: vec2<f32>) -> vec4<f32> { return vec4<f32>(fract(time), 0.0, 0.0, 1.0); }",
+            [0.0; 8],
+        )),
+        &[],
+    );
+    let still = put(
+        &mut doc,
+        Operation::Shader(shader(
+            "fn shade(at: vec2<f32>) -> vec4<f32> { return vec4<f32>(0.0, 0.5, 0.0, 0.5); }",
+            [0.0; 8],
+        )),
+        &[],
+    );
+    let moving = own(&mut doc, moving);
+    let still = own(&mut doc, still);
+    doc.output = put(
+        &mut doc,
+        serde_json::from_value(registry::MERGE.default_operation()).unwrap(),
+        &[("background", moving), ("foreground", still)],
+    );
+    let plan = Plan::compile(&doc).unwrap();
+    for frame in 0..12 {
+        renderer
+            .render_gpu_cached(
+                &plan,
+                RenderRequest::full(Time::at_frame(frame, doc.frame_rate).unwrap()),
+                &ImageInputs::default(),
+            )
+            .unwrap();
+    }
+    let stats = renderer.cache_stats().unwrap();
+    // The still picture is kept from its second frame on and found every frame after;
+    // none of the moving one's twelve pictures is kept.
+    assert_eq!(stats.entries, 1, "{stats:?}");
+    assert_eq!(stats.hits, 10, "{stats:?}");
+}

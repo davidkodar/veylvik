@@ -174,13 +174,39 @@ const ENTRIES: usize = 1024;
 pub(crate) struct FrameCache<K = Key> {
     entries: VecDeque<(K, Arc<GpuFrame>)>,
     stats: CacheStats,
+    /// Pictures asked for lately and not kept (digests of their keys): what may be kept
+    /// once asked for again.
+    asked: VecDeque<u64>,
 }
 impl<K> Default for FrameCache<K> {
     fn default() -> Self {
         Self {
             entries: VecDeque::new(),
             stats: CacheStats::default(),
+            asked: VecDeque::new(),
         }
+    }
+}
+/// How many unkept pictures the cache remembers having been asked for.
+const ASKED: usize = 256;
+impl FrameCache<Key> {
+    /// Whether the picture of `key` was asked for lately: a picture asked for once is
+    /// remembered, and true is said the second time. A picture made apart for one moment
+    /// (a sun's mask at this frame) is never asked for again, and keeping each one only
+    /// to push it out later left the device's allocator holding gigabytes more than was
+    /// in use during an export; one asked for again (a still sky) is kept from then on.
+    pub fn asked_again(&mut self, key: &Key) -> bool {
+        let words: Vec<u8> = key.0.iter().flat_map(|w| w.to_le_bytes()).collect();
+        let digest = crate::fnv(&words, u64::from(key.1));
+        if let Some(at) = self.asked.iter().position(|d| *d == digest) {
+            self.asked.remove(at);
+            return true;
+        }
+        if self.asked.len() >= ASKED {
+            self.asked.pop_front();
+        }
+        self.asked.push_back(digest);
+        false
     }
 }
 impl<K: PartialEq> FrameCache<K> {
@@ -233,5 +259,27 @@ impl<K: PartialEq> FrameCache<K> {
         self.stats.bytes += frame.byte_size();
         self.stats.entries += 1;
         self.entries.push_back((key, frame));
+    }
+}
+#[cfg(test)]
+mod asked_tests {
+    use super::*;
+    #[test]
+    fn a_picture_is_kept_only_when_it_is_asked_for_again() {
+        let mut cache = FrameCache::<Key>::default();
+        let key = |n: u32| Key(vec![1, 2, n], true);
+        // Asked once: not yet; asked again: yes, and then forgotten (it is kept now).
+        assert!(!cache.asked_again(&key(7)));
+        assert!(cache.asked_again(&key(7)));
+        assert!(!cache.asked_again(&key(7)));
+        // A picture of every frame, each asked for once, is never said to be asked again,
+        // and the memory of them stays bounded.
+        for n in 100..100 + 3 * ASKED as u32 {
+            assert!(!cache.asked_again(&key(n)));
+        }
+        assert_eq!(cache.asked.len(), ASKED);
+        // The same words in another session's sense are another picture.
+        assert!(!cache.asked_again(&Key(vec![1, 2, 9], false)));
+        assert!(!cache.asked_again(&Key(vec![1, 2, 9], true)));
     }
 }

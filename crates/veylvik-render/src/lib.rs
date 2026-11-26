@@ -1000,6 +1000,26 @@ impl Renderer {
         request: RenderRequest,
         inputs: &ImageInputs,
     ) -> Result<Arc<GpuFrame>> {
+        self.cached(plan, request, inputs, false)
+    }
+    /// As [`Renderer::render_gpu_cached`], but the picture is kept only once it has been
+    /// asked for a second time: for pictures a plan makes apart (Own size and the
+    /// like), which mostly change with every frame.
+    pub(crate) fn render_gpu_cached_when_asked_again(
+        &self,
+        plan: &Plan,
+        request: RenderRequest,
+        inputs: &ImageInputs,
+    ) -> Result<Arc<GpuFrame>> {
+        self.cached(plan, request, inputs, true)
+    }
+    fn cached(
+        &self,
+        plan: &Plan,
+        request: RenderRequest,
+        inputs: &ImageInputs,
+        when_asked_again: bool,
+    ) -> Result<Arc<GpuFrame>> {
         if !plan.temporal.is_empty() {
             return self.render_gpu(plan, request, inputs).map(Arc::new);
         }
@@ -1035,11 +1055,13 @@ impl Renderer {
         let needed = plan.gpu_working_bytes() + source_bytes;
         while self.resource_stats()?.held_bytes + needed > self.budget_bytes && cache.evict() {}
         let frame = Arc::new(self.render_gpu(plan, request, inputs)?);
-        cache.insert(
-            key,
-            frame.clone(),
-            self.cache_limit_bytes.min(self.budget_bytes),
-        );
+        if !when_asked_again || cache.asked_again(&key) {
+            cache.insert(
+                key,
+                frame.clone(),
+                self.cache_limit_bytes.min(self.budget_bytes),
+            );
+        }
         Ok(frame)
     }
     /// The identity of the picture `plan` gives for `request`: equal identities are the

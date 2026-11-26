@@ -5,6 +5,8 @@ struct Work<'a> {
     remaining: u32,
     preview: bool,
     cache_sources: bool,
+    /// Rendering an Own size picture: of its moment only, so kept only once asked again.
+    own_moment: bool,
     report: Option<crate::flow::FlowReport>,
     cancelled: &'a mut dyn FnMut() -> bool,
 }
@@ -80,6 +82,7 @@ impl Renderer {
             remaining: 256,
             preview,
             cache_sources: false,
+            own_moment: false,
             report: None,
             cancelled: &mut cancelled,
         };
@@ -105,8 +108,17 @@ impl Renderer {
             ));
         }
         work.remaining -= 1;
+        // Whether this picture is an Own size one; the branches inside it are not.
+        let own_moment = std::mem::take(&mut work.own_moment);
         if work.cache_sources && plan.temporal.is_empty() {
-            let frame = self.render_gpu_cached(plan, request, inputs)?;
+            // An Own size picture belongs to its frame's moment: one that changes is never
+            // asked for again, so it is kept only once it has been (a still one is). Other
+            // branches' pictures are used again by the next frames (flow, blur samples).
+            let frame = if own_moment {
+                self.render_gpu_cached_when_asked_again(plan, request, inputs)?
+            } else {
+                self.render_gpu_cached(plan, request, inputs)?
+            };
             return Ok((!(work.cancelled)()).then(|| frame.as_ref().clone()));
         }
         let mut resolved = inputs.clone();
@@ -187,6 +199,7 @@ impl Renderer {
                     // The branch at its own size, from the cache when nothing in it moved.
                     let previous = work.cache_sources;
                     work.cache_sources = true;
+                    work.own_moment = true;
                     let frame =
                         self.temporal_frame(&branch.plan, RenderRequest::full(time), inputs, work);
                     work.cache_sources = previous;
