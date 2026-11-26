@@ -2018,6 +2018,19 @@ settles on the wrong kind of motion can still look sure. The
     flashes move on as the grains, the lights or the camera move: glitter, sand
     in sunlight, metal dust. A back light behind the grains, near the line of
     view, makes the most of it.
+    **Glint white** (0 to 1) gives the flashes the light's colour instead of the
+    grain's: a metal flake's flash is nearly white even when the flake is
+    crimson. With it up, lower Sparkle, or the white flashes swamp the grains'
+    colour.
+    **Self shadow** makes lit particles shade one another: the light reaching
+    each grain is dimmed by the grains between it and the light, as though each
+    blocked its own size (1), or that many times as much. A dense body of grains
+    then has dark depths and lit edges instead of being evenly lit through. The
+    grains are counted in a grid over the camera's view (128 x 72 cells across,
+    96 in depth spaced evenly in the log of the distance; fewer in a small
+    frame), so grains outside the picture cast nothing, and the shade is about a
+    cell and a half coarse. It counts every grain of a clump. Light is darker
+    overall with it on: raise the lights to make up for it.
     **Shading** (0 to 1) lights particles born on a 3D object (Emit from) as the
     surface is lit while they are on it: bright where it faces a light, dark
     where it faces away, so a body of grains reads as a solid, lit form instead

@@ -115,6 +115,8 @@ fn settings(node: &Particles, time: Time) -> Result<[f32; COUNT]> {
     row[130] = at(&node.bokeh)?;
     row[131] = at(&node.clump)?;
     row[132] = at(&node.clump_radius)?;
+    row[133] = at(&node.self_shadow)?;
+    row[134] = at(&node.glint_white)?;
     if let Some(ramp) = node.colour_over_life {
         for (k, colour) in ramp.iter().enumerate() {
             row[85 + 4 * k..89 + 4 * k].copy_from_slice(colour);
@@ -122,9 +124,11 @@ fn settings(node: &Particles, time: Time) -> Result<[f32; COUNT]> {
     }
     Ok(row)
 }
-fn scalars(node: &Particles) -> [&Scalar; 66] {
+fn scalars(node: &Particles) -> [&Scalar; 68] {
     [
         &node.life,
+        &node.self_shadow,
+        &node.glint_white,
         &node.clump,
         &node.clump_radius,
         &node.bokeh,
@@ -292,6 +296,11 @@ pub(crate) fn shining(lights: &[veylvik_scene::Light]) -> Vec<usize> {
 fn shadowing(node: &Particles, wiring: &veylvik_document::Node) -> bool {
     wiring.inputs.contains_key("scene")
         && !matches!(node.lit, Scalar::Constant { value } if value <= 0.0)
+}
+/// Whether lit particles shade one another, and so are first counted into a grid.
+fn self_shadowing(node: &Particles, wiring: &veylvik_document::Node) -> bool {
+    shadowing(node, wiring)
+        && !matches!(node.self_shadow, Scalar::Constant { value } if value <= 0.0)
 }
 /// Texels of the prepare pass's copy of the sprite: MIP x MIP for each cell of its sheet.
 pub(crate) fn sheet(node: &Particles) -> u32 {
@@ -1007,7 +1016,8 @@ impl RenderNode for Particles {
                     | u8::from(sprite) << 2
                     | u8::from(wired("depth") && wired("target")) << 3
                     | u8::from(wired("depth") && !wired("target")) << 4
-                    | u8::from(shadowing(self, cx.node)) << 5,
+                    | u8::from(shadowing(self, cx.node)) << 5
+                    | u8::from(self_shadowing(self, cx.node)) << 6,
             ) + {
                 // The sprite sheet's cells across and down less one, and how cells play.
                 let play = veylvik_document::nodes::SpritePlay::ALL
@@ -1093,6 +1103,39 @@ fn plain_passes(this: &Particles, node: &veylvik_document::Node) -> Passes {
             kernel: Kernel::ParticleResolve,
             inputs: [From::Step(3), From::Step(2), From::None, From::None],
         });
+    }
+    if self_shadowing(this, node) {
+        // Shading one another: the grains are first counted into a grid (drawn as the
+        // splat draws them), which is carried into the prepare pass's buffer that the
+        // splat and the positions read in its place.
+        for step in steps.iter_mut().skip(3) {
+            let kernel = step.kernel;
+            step.inputs = step.inputs.map(|from| match from {
+                From::Step(1) if kernel != Kernel::ParticleResolve => From::Step(4),
+                From::Step(n) if n >= 3 => From::Step(n + 2),
+                other => other,
+            });
+        }
+        let counted = Step {
+            kernel: Kernel::ParticleOcclusion,
+            inputs: steps[3].inputs,
+        };
+        steps.splice(
+            3..3,
+            [
+                Step {
+                    kernel: counted.kernel,
+                    inputs: counted.inputs.map(|from| match from {
+                        From::Step(4) => From::Step(1),
+                        other => other,
+                    }),
+                },
+                Step {
+                    kernel: Kernel::ParticleCarry,
+                    inputs: [From::Step(1), From::Step(3), From::None, From::None],
+                },
+            ],
+        );
     }
     Passes::Chain(std::borrow::Cow::Owned(steps))
 }

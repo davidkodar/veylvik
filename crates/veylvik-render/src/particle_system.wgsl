@@ -20,6 +20,10 @@ struct Params { size_op: vec4<u32>, values: vec4<f32>, extra: vec4<f32> }
 @group(0) @binding(4) var<storage, read> third: array<vec4<f32>>;
 @group(0) @binding(8) var<storage, read> fourth: array<vec4<f32>>;
 const SCALE: f32 = 4096.0;
+// The glints in the light lighting() last gave (see lit_colour), and whether the grains
+// are being counted into the self-shadowing grid rather than drawn.
+var<private> glint: vec3<f32>;
+var<private> occluding: bool = false;
 // Features compiled in only for systems that use them (set when the program is made):
 // bouncing off a scene's solids, and Force nodes. Without one its code is left out.
 override SOLIDS: bool = true;
@@ -58,6 +62,7 @@ const CURVES = 60u; const SIZE_CURVE = 61u; const OPACITY_CURVE = 69u; const SPE
 const COLOUR_CURVE = 85u;
 const LIT = 117u; const AMBIENT = 118u; const SCATTER = 119u; const HOLD = 126u;
 const SPARKLE = 127u; const SPARKLE_TURN = 128u; const SHADING = 129u; const BOKEH = 130u; const CLUMP = 131u; const CLUMP_RADIUS = 132u;
+const SELF_SHADOW = 133u; const GLINT_WHITE = 134u;
 // The camera row's lights: how many at 36, then twelve values each from 40.
 const LIGHT_COUNT = 36u; const LIGHT_BASE = 40u;
 // Where the camera is in the scene: the world-to-camera rows' rotation turned back on
@@ -127,6 +132,7 @@ fn surface_light(surface: vec3<f32>, born_at: vec3<f32>, landing: vec3<f32>, goa
     return vec4<f32>(surface, near_birth);
 }
 fn lighting(at: vec3<f32>, seconds: f32, facet_now: vec3<f32>, surface: vec3<f32>, attach: f32) -> vec3<f32> {
+    glint = vec3<f32>(0.0);
     let lit = setting(LIT, seconds);
     if lit <= 0.0 { return vec3<f32>(1.0); }
     // On its surface a grain takes the light as the surface would: lit facing the light,
@@ -156,8 +162,11 @@ fn lighting(at: vec3<f32>, seconds: f32, facet_now: vec3<f32>, surface: vec3<f32
             // A panel lights only what is in front of it.
             if kind > 2.5 { radiance *= max(dot(travel, aim), 0.0); }
         }
-        // What the scene's solids keep of it.
+        // What the scene's solids keep of it, and the grains between it and the light.
         radiance *= shadow_seen(i, at);
+        var reach = 1.0e9;
+        if kind < 1.5 || kind > 2.5 { reach = length(source_at - at); }
+        radiance *= transmitted(at, -travel, reach, seconds);
         // Henyey-Greenstein scattering towards the camera, 1 for every direction at g 0.
         let c = dot(travel, towards_eye);
         let phase = (1.0 - g * g) / pow(max(1.0 + g * g - 2.0 * g * c, 1e-4), 1.5);
@@ -165,10 +174,85 @@ fn lighting(at: vec3<f32>, seconds: f32, facet_now: vec3<f32>, surface: vec3<f32
         // Glitter: the facet (either side) mirrors this light into the camera.
         if sparkle > 0.0 {
             let half_way = normalize(towards_eye - travel);
-            light += radiance * sparkle * pow(abs(dot(facet_now, half_way)), 800.0);
+            let flash = radiance * sparkle * pow(abs(dot(facet_now, half_way)), 800.0);
+            light += flash;
+            glint += flash * lit;
         }
     }
     return mix(vec3<f32>(1.0), light, lit);
+}
+// A grain's colour lit by `light` from lighting(): its glints take the light's colour
+// by Glint white, the rest the grain's own.
+fn lit_colour(base: vec3<f32>, light: vec3<f32>, seconds: f32) -> vec3<f32> {
+    let white = setting(GLINT_WHITE, seconds);
+    if white <= 0.0 { return base * light; }
+    return base * (light - glint) + glint * mix(base, vec3<f32>(1.0), white);
+}
+// ---- shading one another: how many grains are where, counted in a grid over the
+// camera's view (cells across and down the frame, and in depth spaced evenly in the log
+// of the distance from NEAR to FAR frame widths), in w of the prepare pass's buffer
+// after the sprite ----
+const GRID_NEAR: f32 = 0.05;
+const GRID_FAR: f32 = 60.0;
+fn self_shadowing() -> bool { return (u32(p.extra.z) & 64u) != 0u; }
+fn grid_origin() -> u32 { return tiles() + sheet_texels(); }
+// The grid's cells across, down and in depth: halved until it fits (none in a frame
+// too small for it).
+fn grid_dims() -> vec3<u32> {
+    let pixels = p.size_op.x * p.size_op.y;
+    let room = pixels - min(grid_origin(), pixels);
+    var d = vec3<u32>(128u, 72u, 96u);
+    for (var k = 0u; k < 5u; k++) {
+        if d.x * d.y * d.z <= room { return d; }
+        d = d / 2u;
+    }
+    return vec3<u32>(0u);
+}
+// The cell holding `at`, or -1 outside the grid.
+fn grid_cell(at: vec3<f32>, d: vec3<u32>) -> i32 {
+    let seen = filmed(at);
+    if seen.z <= 0.0 { return -1; }
+    let w = f32(p.size_op.x);
+    let x = i32(floor(seen.x / w * f32(d.x)));
+    let y = i32(floor(seen.y / f32(p.size_op.y) * f32(d.y)));
+    let z = i32(floor(log(distance_to(at) / (GRID_NEAR * w)) / log(GRID_FAR / GRID_NEAR) * f32(d.z)));
+    if x < 0 || y < 0 || z < 0 || x >= i32(d.x) || y >= i32(d.y) || z >= i32(d.z) { return -1; }
+    return (z * i32(d.y) + y) * i32(d.x) + x;
+}
+// Grains a cubic pixel at `at`: the count in its cell over the cell's size in the world.
+fn grains_at(at: vec3<f32>, d: vec3<u32>) -> f32 {
+    let cell = grid_cell(at, d);
+    if cell < 0 { return 0.0; }
+    let count = fourth[grid_origin() + u32(cell)].w;
+    if count <= 0.0 { return 0.0; }
+    let away = distance_to(at);
+    let focal = third[tiles() + ROWS * COUNT + 12u].w;
+    let across = f32(p.size_op.x) / f32(d.x) * away / focal;
+    let down = f32(p.size_op.y) / f32(d.y) * away / focal;
+    let deep = away * (pow(GRID_FAR / GRID_NEAR, 1.0 / f32(d.z)) - 1.0);
+    return count / max(across * down * deep, 1e-6);
+}
+// How much of a light reaches `at` from `toward` (at most `reach` away) past the grains
+// in between, each blocking its own size times Self shadow.
+fn transmitted(at: vec3<f32>, toward: vec3<f32>, reach: f32, seconds: f32) -> f32 {
+    let strength = setting(SELF_SHADOW, seconds);
+    if strength <= 0.0 || !self_shadowing() { return 1.0; }
+    let d = grid_dims();
+    if d.x == 0u { return 1.0; }
+    let away = distance_to(at);
+    let focal = third[tiles() + ROWS * COUNT + 12u].w;
+    if away <= 0.0 || focal <= 0.0 { return 1.0; }
+    // Steps of a cell and a half from the grain's own cell outwards, 24 of them.
+    let step = 1.5 * f32(p.size_op.x) / f32(d.x) * away / focal;
+    let size = setting(SIZE, seconds);
+    let blocking = 3.14159265 * size * size * strength;
+    var depth = 0.0;
+    for (var k = 1u; k <= 24u; k++) {
+        let s = f32(k) * step;
+        if s > reach { break; }
+        depth += grains_at(at + toward * s, d) * step;
+    }
+    return exp(-blocking * depth);
 }
 fn has_curve(bit: u32, seconds: f32) -> bool { return (u32(setting(CURVES, seconds)) & bit) != 0u; }
 // A curve's value at `share` of the life: its eight values joined by straight lines.
@@ -895,6 +979,16 @@ fn draw(origin: vec3<f32>, launch: vec3<f32>, birth: f32, age: f32, own_life: f3
     if look.ends && impact >= 0.0 { return; }
     let seen = filmed(where_now);
     if seen.z <= 0.0 { return; }
+    if occluding {
+        // Counted into the grid, with its clump's grains, instead of drawn.
+        let d = grid_dims();
+        if d.x == 0u { return; }
+        let cell = grid_cell(where_now, d);
+        if cell >= 0 {
+            atomicAdd(&result[(grid_origin() + u32(cell)) * 4u + 3u], u32(clamp(round(setting(CLUMP, birth)), 1.0, 16.0)));
+        }
+        return;
+    }
     let at = seen.xy;
     // A 3D object in front of the particle hides it.
     let away = distance_to(where_now);
@@ -916,7 +1010,7 @@ fn draw(origin: vec3<f32>, launch: vec3<f32>, birth: f32, age: f32, own_life: f3
     if look.ramp && has_curve(8u, birth) { colour = life_colour(birth, share); }
     let unlit = colour;
     let shaded = surface_light(look.surface, origin, look.landing, goal, where_now, birth);
-    colour = vec4<f32>(colour.rgb * lighting(where_now, birth, facet(look.thread, look.generation, age, birth), shaded.xyz, shaded.w), colour.a);
+    colour = vec4<f32>(lit_colour(colour.rgb, lighting(where_now, birth, facet(look.thread, look.generation, age, birth), shaded.xyz, shaded.w), birth), colour.a);
     colour = vec4<f32>(colour.rgb * look.tint, colour.a);
     let hues = setting(HUES, birth);
     if hues > 0.0 {
@@ -985,7 +1079,7 @@ fn draw(origin: vec3<f32>, launch: vec3<f32>, birth: f32, age: f32, own_life: f3
             if wall_k > 0.0 && away_k > wall_k * 1.002 + 1.0 { continue; }
             let shaded_k = surface_light(look.surface, origin, look.landing, goal, grain, birth);
             let lit_k = lighting(grain, birth, facet(thread + k * 0x01000193u, generation, age, birth), shaded_k.xyz, shaded_k.w);
-            var c = vec4<f32>(unlit.rgb * lit_k * look.tint, unlit.a);
+            var c = vec4<f32>(lit_colour(unlit.rgb, lit_k, birth) * look.tint, unlit.a);
             if hues > 0.0 { c = vec4<f32>(turned(c.rgb, (look.hue - 0.5) * 6.2831853 * hues), c.a); }
             let sharp_k = min(sharp * mix(1.0, seen_k.z, 1.0 - camera_row(31u)) / max(nearness, 1e-4), largest);
             let radius_k = min(sharp_k + lens_blur(away_k), largest);
@@ -1070,6 +1164,27 @@ struct Drawn {
 }
 @compute @workgroup_size(64)
 fn particle_splat(@builtin(global_invocation_id) gid: vec3<u32>) {
+    splat(gid);
+}
+// ---- occlusion: as splat, but each particle is counted into the self-shadowing grid ----
+@compute @workgroup_size(64)
+fn particle_occlusion(@builtin(global_invocation_id) gid: vec3<u32>) {
+    occluding = true;
+    splat(gid);
+}
+// ---- carry: first = prepare, second = occlusion; the prepare pass's buffer with the
+// grid's counts in w ----
+@compute @workgroup_size(8, 8)
+fn particle_carry(@builtin(global_invocation_id) gid: vec3<u32>) {
+    if gid.x >= p.size_op.x || gid.y >= p.size_op.y { return; }
+    let i = gid.y * p.size_op.x + gid.x;
+    var out = bitcast<vec4<f32>>(first[i]);
+    let d = grid_dims();
+    let o = grid_origin();
+    if i >= o && i < o + d.x * d.y * d.z { out.w = f32(bitcast<u32>(second[i].w)); }
+    store(i, out);
+}
+fn splat(gid: vec3<u32>) {
     let thread = gid.y * u32(p.values.y) + gid.x;
     if gid.x >= u32(p.values.y) || thread >= u32(p.values.x) { return; }
     let now = bitcast<f32>(p.size_op.z);
@@ -1203,7 +1318,7 @@ fn particle_positions(@builtin(global_invocation_id) gid: vec3<u32>) {
             colour = mix(first_colour, last_colour, share);
             if has_curve(8u, b.birth) { colour = life_colour(b.birth, share); }
             let shaded = surface_light(b.surface, b.origin, b.landing, b.goal, where_now, b.birth);
-            colour = vec4<f32>(colour.rgb * lighting(where_now, b.birth, facet(i, b.generation, age, b.birth), shaded.xyz, shaded.w), colour.a);
+            colour = vec4<f32>(lit_colour(colour.rgb, lighting(where_now, b.birth, facet(i, b.generation, age, b.birth), shaded.xyz, shaded.w), b.birth), colour.a);
             let hues = setting(HUES, b.birth);
             if hues > 0.0 { colour = vec4<f32>(turned(colour.rgb, (random(i, b.generation, 12u) - 0.5) * 6.2831853 * hues), colour.a); }
             spot = vec4<f32>(seen.xy, opacity * colour.a, setting(SIZE, b.birth));

@@ -2047,3 +2047,96 @@ fn a_clump_draws_more_grains_round_each_particle() {
         lit(&one)
     );
 }
+/// A dense cloud of grey grains lit by a point light to its left: the mean light of its
+/// left and right thirds.
+fn cloud_halves(renderer: &Renderer, self_shadow: f32) -> (f32, f32) {
+    let mut p = still();
+    p.width = 100.0.into();
+    p.height = 80.0.into();
+    p.depth = 100.0.into();
+    p.rate = 20000.0.into();
+    p.size = 0.6.into();
+    p.glow = 1.0.into();
+    p.lit = 1.0.into();
+    p.ambient = 0.0.into();
+    p.scatter = 0.0.into();
+    p.colour = [0.3, 0.3, 0.3, 1.0];
+    p.end_colour = [0.3, 0.3, 0.3, 1.0];
+    p.self_shadow = self_shadow.into();
+    let lamp = serde_json::json!({"kind": "point", "colour": [1.0, 1.0, 1.0], "intensity": {"kind": "constant", "value": 4.0},
+        "placement": {"position": [-170.0, 0.0, 0.0], "rotation": [0.0, 0.0, 0.0], "scale": [1.0, 1.0, 1.0]}});
+    let pixels = render_lit(renderer, p, lamp);
+    let third = |x0: u32, x1: u32| {
+        let mut sum = 0.0;
+        for y in 20..100 {
+            for x in x0..x1 {
+                sum += pixels[(y * W + x) as usize][0];
+            }
+        }
+        sum
+    };
+    (third(30, 63), third(97, 130))
+}
+#[test]
+#[ignore = "requires Vulkan"]
+fn grains_shade_one_another_so_a_cloud_is_dark_on_its_side_away_from_the_light() {
+    let renderer = Renderer::new().unwrap();
+    let (left, right) = cloud_halves(&renderer, 0.0);
+    let (shaded_left, shaded_right) = cloud_halves(&renderer, 1.0);
+    assert!(
+        left > 0.0 && right > 0.0,
+        "the cloud is lit: {left} {right}"
+    );
+    // The near side keeps most of its light; the far side, behind the rest of the
+    // cloud, loses much more of it.
+    let (near, far) = (shaded_left / left, shaded_right / right);
+    assert!(near > 0.3, "the side facing the light stays lit: {near}");
+    assert!(
+        far < 0.6 * near,
+        "the far side is in the cloud's shade: near {near}, far {far}"
+    );
+}
+#[test]
+#[ignore = "requires Vulkan"]
+fn glints_can_take_the_lights_colour_instead_of_the_grains() {
+    let renderer = Renderer::new().unwrap();
+    let grains = |white: f32| {
+        let mut p = still();
+        p.width = 150.0.into();
+        p.height = 110.0.into();
+        p.rate = 3000.0.into();
+        p.size = 0.8.into();
+        p.glow = 1.0.into();
+        p.lit = 1.0.into();
+        p.ambient = 0.2.into();
+        p.scatter = 0.0.into();
+        p.colour = [0.3, 0.02, 0.02, 1.0];
+        p.end_colour = [0.3, 0.02, 0.02, 1.0];
+        p.sparkle = 200.0.into();
+        p.glint_white = white.into();
+        p
+    };
+    let sun = serde_json::json!({"kind": "sun", "colour": [1.0, 1.0, 1.0], "intensity": {"kind": "constant", "value": 1.0},
+        "placement": {"position": [0.0, 0.0, 400.0], "rotation": [10.0, -15.0, 0.0], "scale": [1.0, 1.0, 1.0]}});
+    let red = render_lit(&renderer, grains(0.0), sun.clone());
+    let white = render_lit(&renderer, grains(1.0), sun);
+    // The flashing pixels: the brightest of the grains' own colour.
+    let peak = red.iter().map(|p| p[0]).fold(0.0f32, f32::max);
+    let flashes: Vec<usize> = (0..red.len()).filter(|&i| red[i][0] > 0.5 * peak).collect();
+    assert!(!flashes.is_empty());
+    let green = |px: &[[f32; 4]]| {
+        flashes
+            .iter()
+            .map(|&i| px[i][1] / px[i][0].max(1e-6))
+            .sum::<f32>()
+            / flashes.len() as f32
+    };
+    // In the grain's colour a flash is as red as the grain; in the light's, near white.
+    assert!(green(&red) < 0.15, "red glints: {}", green(&red));
+    assert!(green(&white) > 0.6, "white glints: {}", green(&white));
+    // The grains away from their flashes are the same either way.
+    let dim = (0..red.len())
+        .find(|&i| red[i][0] > 0.0 && red[i][0] < 0.02 * peak)
+        .unwrap();
+    assert!((red[dim][0] - white[dim][0]).abs() < 1e-3 * red[dim][0].max(1e-3));
+}

@@ -1478,7 +1478,7 @@ impl Renderer {
             // over its box only, since it is clear everywhere else.
             if matches!(
                 scheduled.kernel,
-                Kernel::ParticleSplat | Kernel::ParticleLinks
+                Kernel::ParticleSplat | Kernel::ParticleOcclusion | Kernel::ParticleLinks
             ) || areas[at_pass].is_some()
             {
                 encoder.clear_buffer(output, 0, None);

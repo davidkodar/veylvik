@@ -110,6 +110,8 @@ kernels! {
     ParticlePrepare => "particle_prepare", Frame, program;
     ParticleFields => "particle_fields", Frame, program;
     ParticleSplat => "particle_splat", Particles, program;
+    ParticleOcclusion => "particle_occlusion", Particles, program;
+    ParticleCarry => "particle_carry", Frame, program;
     ParticleResolve => "particle_resolve", Frame, program;
     ParticlePositions => "particle_positions", Linked, program;
     ParticleLinks => "particle_links", Linked, program;
