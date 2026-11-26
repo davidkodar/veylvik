@@ -162,6 +162,32 @@ impl Inspect for veylvik_document::nodes::Particles {
                     .response
                     .on_hover_text("Born on the surface of a 3D object of the scene, spread evenly over it and launched straight out of it; a moving object leaves its particles behind. An imported model emits from all its parts; a flock cannot be born on one");
             });
+            // Gathering onto a 3D object, as onto a target picture but in depth.
+            ui.horizontal(|ui| {
+                ui.label("Gather on");
+                let shown = match self.gather_on {
+                    None => "Nothing".to_string(),
+                    Some(id) => cx
+                        .objects
+                        .iter()
+                        .find(|(o, _)| *o == id)
+                        .map_or("Missing object".into(), |(_, label)| label.clone()),
+                };
+                egui::ComboBox::from_id_salt("particle-gather-on")
+                    .selected_text(shown)
+                    .show_ui(ui, |ui| {
+                        cx.dirty |= ui
+                            .selectable_value(&mut self.gather_on, None, "Nothing")
+                            .changed();
+                        for (id, label) in cx.objects.iter() {
+                            cx.dirty |= ui
+                                .selectable_value(&mut self.gather_on, Some(*id), label)
+                                .changed();
+                        }
+                    })
+                    .response
+                    .on_hover_text("Particles fly to places on the surface of this 3D object over the last Homing share of their lives and stay for Hold seconds, so they become the object in 3D and follow it as it moves. Not with a Target picture, nor for a flock");
+            });
         }
         // A sprite cut into a sheet of cells.
         let sprite: bool = cx.is_wired("sprite");

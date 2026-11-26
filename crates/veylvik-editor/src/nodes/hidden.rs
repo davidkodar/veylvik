@@ -49,7 +49,10 @@ fn particles(operation: &Operation, name: &str, wired: &dyn Fn(&str) -> bool) ->
     match name {
         "density" => !wired("emitter") || flock,
         "rate" | "x" | "y" | "width" | "height" => wired("emitter") && !flock,
-        "homing" | "hold" => !wired("target"),
+        "homing" | "hold" => {
+            !wired("target")
+                && !matches!(*operation, Operation::Particles(ref n) if n.gather_on.is_some())
+        }
         "inherit" => !wired("emitter") && !wired("target"),
         "field_push" | "field_flow" => !wired("field"),
         "bounce" => {
@@ -63,7 +66,7 @@ fn particles(operation: &Operation, name: &str, wired: &dyn Fn(&str) -> bool) ->
             !wired("sprite")
                 || !matches!(*operation, Operation::Particles(ref n) if n.sprite_play == veylvik_document::nodes::SpritePlay::AtRate)
         }
-        "camera" => !wired("scene"),
+        "camera" | "bokeh" => !wired("scene"),
         // A flock's own settings once it is one.
         "cohesion" | "separation" | "alignment" | "top_speed" => {
             matches!(*operation, Operation::Particles(ref n) if matches!(n.flock_radius, veylvik_document::Scalar::Constant { value } if value <= 0.0))
@@ -80,7 +83,7 @@ fn particles(operation: &Operation, name: &str, wired: &dyn Fn(&str) -> bool) ->
         }
         // Lighting comes from a scene; its details once particles are lit.
         "lit" => !wired("scene"),
-        "ambient" | "scatter" | "sparkle" | "sparkle_turn" => {
+        "ambient" | "scatter" | "sparkle" | "sparkle_turn" | "shading" => {
             !wired("scene")
                 || matches!(*operation, Operation::Particles(ref n) if matches!(n.lit, veylvik_document::Scalar::Constant { value } if value <= 0.0))
         }

@@ -1966,6 +1966,13 @@ settles on the wrong kind of motion can still look sure. The
     **Hold** keeps it there that many seconds after it arrives (its life is then
     Life plus Hold), so a word or a logo made of particles stands formed while new
     ones keep arriving; it goes on turning as it holds, so metal copies glint.
+    **Gather on** does the same onto a 3D object of the connected scene, in
+    depth: each particle is given a place on the object's surface (by area,
+    where the object is at the frame), flies there over its Homing share and
+    holds for Hold, so dust or glitter becomes the object and stays it as the
+    object moves or turns; with Shading, landed grains are lit as that surface.
+    Emit from one object and Gather on another, and one form dissolves into the
+    next. It is not used with a target picture, nor by a flock.
     To gather particles into 3D letters (dust that becomes a 3D title), give
     them a target filmed like the letters: a **Merge scenes** of the scene's
     camera and the 3D text alone, into its own **Render scene**, has alpha
@@ -2004,6 +2011,14 @@ settles on the wrong kind of motion can still look sure. The
     flashes move on as the grains, the lights or the camera move: glitter, sand
     in sunlight, metal dust. A back light behind the grains, near the line of
     view, makes the most of it.
+    **Shading** (0 to 1) lights particles born on a 3D object (Emit from) as the
+    surface is lit while they are on it: bright where it faces a light, dark
+    where it faces away, so a body of grains reads as a solid, lit form instead
+    of a flat glow; it fades as a grain drifts a few dozen pixels (at 1920 wide)
+    from where it was born, so loose grains are lit as before. **Bokeh** (0 to
+    1) draws grains the scene camera throws out of focus as a lens draws
+    out-of-focus lights: flat discs with crisp edges and a slightly brighter
+    rim, carrying the same light as the soft dot they replace.
   - *Time.* Nothing is simulated from frame to frame: a particle is a function
     of its thread, its generation and the frame's time, so frames render in any
     order and repeat exactly. Motion is integrated in 32 fixed steps of the

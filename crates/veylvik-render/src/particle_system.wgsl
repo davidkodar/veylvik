@@ -36,7 +36,7 @@ fn sheet_rows() -> u32 { return ((u32(p.extra.z) >> 12u) & 15u) + 1u; }
 fn sheet_width() -> u32 { return MIP * sheet_columns(); }
 fn sheet_texels() -> u32 { return MIP * MIP * sheet_columns() * sheet_rows(); }
 const SPRITE_RATE = 125u;
-const COUNT: u32 = 129u;
+const COUNT: u32 = 132u;
 const ROWS: u32 = 16u;
 // Setting numbers.
 const SPEED = 1u; const DIRECTION = 2u; const SPREAD = 3u; const GRAVITY = 4u; const WIND = 5u;
@@ -57,7 +57,7 @@ const LINK_DISTANCE = 57u; const LINK_OPACITY = 58u; const LINK_WIDTH = 59u;
 const CURVES = 60u; const SIZE_CURVE = 61u; const OPACITY_CURVE = 69u; const SPEED_CURVE = 77u;
 const COLOUR_CURVE = 85u;
 const LIT = 117u; const AMBIENT = 118u; const SCATTER = 119u; const HOLD = 126u;
-const SPARKLE = 127u; const SPARKLE_TURN = 128u;
+const SPARKLE = 127u; const SPARKLE_TURN = 128u; const SHADING = 129u; const BOKEH = 130u;
 // The camera row's lights: how many at 36, then twelve values each from 40.
 const LIGHT_COUNT = 36u; const LIGHT_BASE = 40u;
 // Where the camera is in the scene: the world-to-camera rows' rotation turned back on
@@ -111,10 +111,27 @@ fn facet(thread: u32, generation: u32, age: f32, seconds: f32) -> vec3<f32> {
     let c = cos(angle);
     return n * c + cross(k, n) * sin(angle) + k * dot(k, n) * (1.0 - c);
 }
-fn lighting(at: vec3<f32>, seconds: f32, facet_now: vec3<f32>) -> vec3<f32> {
+// How much a grain is lit as the surface it was born on: Shading while it is on it,
+// nothing once it has drifted a few dozen pixels (at 1920 wide) from where it was born.
+fn attached(surface: vec3<f32>, born_at: vec3<f32>, at: vec3<f32>, seconds: f32) -> f32 {
+    if dot(surface, surface) < 0.25 { return 0.0; }
+    let reach = 60.0 * f32(p.size_op.x) / 1920.0;
+    return setting(SHADING, seconds) * clamp(1.0 - length(at - born_at) / reach, 0.0, 1.0);
+}
+// The surface a grain is lit as, and how much: the one it was born on near its birth
+// place, the one it gathers onto near its place there.
+fn surface_light(surface: vec3<f32>, born_at: vec3<f32>, landing: vec3<f32>, goal: vec3<f32>, at: vec3<f32>, seconds: f32) -> vec4<f32> {
+    let near_birth = attached(surface, born_at, at, seconds);
+    let near_goal = attached(landing, goal, at, seconds);
+    if near_goal > near_birth { return vec4<f32>(landing, near_goal); }
+    return vec4<f32>(surface, near_birth);
+}
+fn lighting(at: vec3<f32>, seconds: f32, facet_now: vec3<f32>, surface: vec3<f32>, attach: f32) -> vec3<f32> {
     let lit = setting(LIT, seconds);
     if lit <= 0.0 { return vec3<f32>(1.0); }
-    var light = vec3<f32>(setting(AMBIENT, seconds));
+    // On its surface a grain takes the light as the surface would: lit facing the light,
+    // dark facing away, and the ambient light dimmer where the surface faces down.
+    var light = vec3<f32>(setting(AMBIENT, seconds)) * mix(1.0, 0.6 - 0.4 * surface.y, attach);
     let g = setting(SCATTER, seconds);
     let sparkle = setting(SPARKLE, seconds);
     let towards_eye = normalize(eye() - at);
@@ -144,7 +161,7 @@ fn lighting(at: vec3<f32>, seconds: f32, facet_now: vec3<f32>) -> vec3<f32> {
         // Henyey-Greenstein scattering towards the camera, 1 for every direction at g 0.
         let c = dot(travel, towards_eye);
         let phase = (1.0 - g * g) / pow(max(1.0 + g * g - 2.0 * g * c, 1e-4), 1.5);
-        light += radiance * phase;
+        light += radiance * mix(phase, 2.0 * max(dot(surface, -travel), 0.0), attach);
         // Glitter: the facet (either side) mirrors this light into the camera.
         if sparkle > 0.0 {
             let half_way = normalize(towards_eye - travel);
@@ -176,14 +193,23 @@ fn camera_row(k: u32) -> f32 { return third[tiles() + ROWS * COUNT + k].w; }
 // The surface particles are born on (see `surface` in nodes/particles.rs), after the
 // camera row.
 fn surface_at(k: u32) -> f32 { return third[tiles() + COUNT * (ROWS + 1u) + k].w; }
+// Whether particles gather onto a 3D object, and where its surface's table starts.
+fn gathering_3d() -> bool { return camera_row(121u) > 0.5; }
+// Whether particles are steered to a place: on a target picture or a 3D object.
+fn gathering() -> bool { return p.extra.y > 0.5 || gathering_3d(); }
 // A place on that surface, picked by area, and its outward direction, where the
 // surface was at `birth`: xyz and the direction in the second value.
 struct OnSurface { at: vec3<f32>, out: vec3<f32> }
 fn on_surface(thread: u32, generation: u32, birth: f32) -> OnSurface {
-    let triangles = u32(surface_at(0u)); let objects = u32(surface_at(1u));
-    let first = 2u + objects * ROWS * 12u;
+    return on_surface_in(0u, thread, generation, birth, vec3<u32>(2u, 3u, 18u));
+}
+// A place on the surface whose table starts at `base`, picked by area with the draws
+// `salts`, where the surface was at `birth`.
+fn on_surface_in(base: u32, thread: u32, generation: u32, birth: f32, salts: vec3<u32>) -> OnSurface {
+    let triangles = u32(surface_at(base)); let objects = u32(surface_at(base + 1u));
+    let first = base + 2u + objects * ROWS * 12u;
     let total = surface_at(first + (triangles - 1u) * 11u + 10u);
-    let wanted = random(thread, generation, 2u) * total;
+    let wanted = random(thread, generation, salts.x) * total;
     var low = 0u; var high = triangles - 1u;
     for (var k = 0u; k < 18u; k++) {
         if low >= high { break; }
@@ -195,7 +221,7 @@ fn on_surface(thread: u32, generation: u32, birth: f32) -> OnSurface {
     let corner = vec3<f32>(surface_at(t + 1u), surface_at(t + 2u), surface_at(t + 3u));
     let e1 = vec3<f32>(surface_at(t + 4u), surface_at(t + 5u), surface_at(t + 6u));
     let e2 = vec3<f32>(surface_at(t + 7u), surface_at(t + 8u), surface_at(t + 9u));
-    var r1 = random(thread, generation, 3u); var r2 = random(thread, generation, 18u);
+    var r1 = random(thread, generation, salts.y); var r2 = random(thread, generation, salts.z);
     if r1 + r2 > 1.0 { r1 = 1.0 - r1; r2 = 1.0 - r2; }
     let local = corner + e1 * r1 + e2 * r2;
     let normal = normalize(cross(e1, e2));
@@ -203,7 +229,7 @@ fn on_surface(thread: u32, generation: u32, birth: f32) -> OnSurface {
     let life = p.extra.w;
     let row = clamp((birth - (bitcast<f32>(p.size_op.z) - life)) / life, 0.0, 1.0) * f32(ROWS - 1u);
     let a = u32(floor(row)); let b = min(a + 1u, ROWS - 1u); let f = row - floor(row);
-    let ma = 2u + (object * ROWS + a) * 12u; let mb = 2u + (object * ROWS + b) * 12u;
+    let ma = base + 2u + (object * ROWS + a) * 12u; let mb = base + 2u + (object * ROWS + b) * 12u;
     var m: array<vec4<f32>, 3>;
     for (var r = 0u; r < 3u; r++) {
         m[r] = mix(vec4<f32>(surface_at(ma + 4u * r), surface_at(ma + 4u * r + 1u), surface_at(ma + 4u * r + 2u), surface_at(ma + 4u * r + 3u)),
@@ -513,7 +539,7 @@ fn place(origin: vec3<f32>, launch: vec3<f32>, birth: f32, age: f32, own_life: f
         done += dt;
         if recording && path_count < 100u { path[path_count] = vec4<f32>(at, done); path_count += 1u; }
     }
-    if p.extra.y > 0.5 && homing > 0.0 {
+    if gathering() && homing > 0.0 {
         at = mix(at, goal, smoothstep(1.0 - homing, 1.0, age / flight(own_life, birth)));
     }
     return at;
@@ -614,6 +640,26 @@ fn stamp(at: vec2<f32>, radius: f32, given: vec4<f32>) {
         }
     }
 }
+// A lens's image of an out-of-focus point: a flat disc of `radius` with a crisp edge and
+// a slightly brighter rim, carrying the same light as a dot of that radius.
+fn stamp_disc(at: vec2<f32>, radius: f32, light: vec4<f32>) {
+    let reach = i32(ceil(radius)) + 1;
+    let centre = vec2<i32>(floor(at));
+    // The light a dot of this radius carries, as a share of pi r^2: a half, falling to a
+    // third as the dot is made to reach zero at its rim (see stamp); the disc with its
+    // rim carries about 1.15 pi r^2.
+    let each = light * (mix(0.5, 0.343, smoothstep(2.0, 6.0, radius)) / 1.15);
+    for (var j = -reach; j <= reach; j++) {
+        for (var i = -reach; i <= reach; i++) {
+            let pixel = centre + vec2<i32>(i, j);
+            let d = length(vec2<f32>(pixel) + vec2<f32>(0.5) - at);
+            let inside = clamp(radius + 0.5 - d, 0.0, 1.0);
+            if inside <= 0.0 { continue; }
+            let rim = 1.0 + 0.45 * smoothstep(radius * 0.6, radius, d);
+            add_light(pixel, each * inside * rim);
+        }
+    }
+}
 // A texel of cell `cell` of the sprite sheet (clear beyond the cell).
 fn sprite_texel(cell: u32, x: i32, y: i32) -> vec4<f32> {
     if x < 0 || y < 0 || x >= i32(MIP) || y >= i32(MIP) { return vec4<f32>(0.0); }
@@ -657,6 +703,10 @@ fn stamp_sprite(at: vec2<f32>, radius: f32, angle: f32, tint: vec4<f32>, cell: u
 struct Born {
     ok: bool, generation: u32, birth: f32, own_life: f32, origin: vec3<f32>, launch: vec3<f32>,
     goal: vec3<f32>, homing: f32, deep: bool, born_on: vec3<f32>, lands_on: vec3<f32>,
+    // The outward direction of the surface it was born on (zero when not born on one).
+    surface: vec3<f32>,
+    // The outward direction of the 3D object's surface where it lands (zero when none).
+    landing: vec3<f32>,
 }
 // The share of the life a thread's birth may fall in: the burst's, for a flock born in
 // a burst shorter than its life (see `threads` in nodes/particles.rs), else all of it.
@@ -787,6 +837,13 @@ fn born(thread: u32, back: u32, now: f32) -> Born {
         if !found { return b; }
         if p.extra.x < 0.5 { born_on = lands_on; }
     }
+    if gathering_3d() {
+        // A place on the 3D object, where the object is now.
+        let place = on_surface_in(u32(camera_row(122u)), thread, generation, now, vec3<u32>(60u, 61u, 62u));
+        goal = place.at;
+        b.landing = place.out;
+        b.deep = true;
+    }
     let heading = radians(setting(DIRECTION, birth)) + (random(thread, generation, 5u) - 0.5) * radians(setting(SPREAD, birth));
     // In depth the spread is a cone: the launch also leans towards or away from the viewer.
     var lean = 0.0;
@@ -808,13 +865,14 @@ fn born(thread: u32, back: u32, now: f32) -> Born {
         b.launch = dir * setting(SPEED, birth) * (1.0 - 0.7 * variation * random(thread, generation, 6u));
     }
     b.origin = origin; b.goal = goal; b.born_on = born_on; b.lands_on = lands_on;
+    b.surface = surface_out;
     b.ok = true;
     return b;
 }
 // How one particle looks: its colours over its life (before the emitter's tint and the
 // hue turn), its size at birth, and the random draws its own.
 // `ends` says it is not drawn once it has touched the obstacle (it burst there).
-struct Look { first: vec4<f32>, last: vec4<f32>, tint: vec3<f32>, size: f32, thread: u32, generation: u32, hue: f32, ramp: bool, ends: bool }
+struct Look { first: vec4<f32>, last: vec4<f32>, tint: vec3<f32>, size: f32, thread: u32, generation: u32, hue: f32, ramp: bool, ends: bool, surface: vec3<f32>, landing: vec3<f32> }
 // Draw a particle `age` seconds into its life on its path, as a dot, a sprite or a streak.
 fn draw(origin: vec3<f32>, launch: vec3<f32>, birth: f32, age: f32, own_life: f32, goal: vec3<f32>, homing: f32, deep: bool, look: Look) {
     let thread = look.thread; let generation = look.generation;
@@ -846,7 +904,8 @@ fn draw(origin: vec3<f32>, launch: vec3<f32>, birth: f32, age: f32, own_life: f3
     } else if fade > 0.0 { opacity *= clamp((1.0 - share) / fade, 0.0, 1.0); }
     var colour = mix(look.first, look.last, share);
     if look.ramp && has_curve(8u, birth) { colour = life_colour(birth, share); }
-    colour = vec4<f32>(colour.rgb * lighting(where_now, birth, facet(look.thread, look.generation, age, birth)), colour.a);
+    let shaded = surface_light(look.surface, origin, look.landing, goal, where_now, birth);
+    colour = vec4<f32>(colour.rgb * lighting(where_now, birth, facet(look.thread, look.generation, age, birth), shaded.xyz, shaded.w), colour.a);
     colour = vec4<f32>(colour.rgb * look.tint, colour.a);
     let hues = setting(HUES, birth);
     if hues > 0.0 {
@@ -897,7 +956,17 @@ fn draw(origin: vec3<f32>, launch: vec3<f32>, birth: f32, age: f32, own_life: f3
     // An exposure: the scene camera's own move during it streaks the particle too.
     let exposure = min(camera_row(17u), age);
     trail = max(trail, exposure);
-    if trail <= 0.0 { stamp(at, radius, light); return; }
+    if trail <= 0.0 {
+        // Out of focus, with Bokeh, a lens's disc in place of the soft dot.
+        let disc = setting(BOKEH, birth) * smoothstep(1.3, 2.5, radius / max(sharp, 0.25));
+        if disc > 0.0 && radius > 1.5 {
+            stamp_disc(at, radius, light * disc);
+            if disc < 1.0 { stamp(at, radius, light * (1.0 - disc)); }
+        } else {
+            stamp(at, radius, light);
+        }
+        return;
+    }
     let earlier = place(origin, launch, birth, age - trail, own_life, goal, homing, deep);
     var tail = filmed(earlier);
     if exposure > 0.0 { tail = filmed_before(earlier); }
@@ -936,7 +1005,7 @@ fn trail_ribbon(at: vec2<f32>, width: f32, light: vec4<f32>, age: f32, trail: f3
         if point.w >= age { k -= 1; continue; }
         var tail_age = point.w;
         var where_then = point.xyz;
-        if p.extra.y > 0.5 && homing > 0.0 {
+        if gathering() && homing > 0.0 {
             where_then = mix(where_then, goal, smoothstep(1.0 - homing, 1.0, tail_age / flight(own_life, birth)));
         }
         // The trail ends part way along this step.
@@ -993,13 +1062,13 @@ fn particle_splat(@builtin(global_invocation_id) gid: vec3<u32>) {
         let first_colour = vec4<f32>(setting(COLOUR, b.birth), setting(COLOUR + 1u, b.birth), setting(COLOUR + 2u, b.birth), setting(COLOUR_A, b.birth));
         let last_colour = vec4<f32>(setting(END_COLOUR, b.birth), setting(END_COLOUR + 1u, b.birth), setting(END_COLOUR + 2u, b.birth), setting(END_A, b.birth));
         var landing = 0.0;
-        if p.extra.y > 0.5 && b.homing > 0.0 { landing = smoothstep(1.0 - b.homing, 1.0, age / flight(b.own_life, b.birth)); }
+        if gathering() && b.homing > 0.0 { landing = smoothstep(1.0 - b.homing, 1.0, age / flight(b.own_life, b.birth)); }
         // A bird of a flock born on its emitter keeps the colour it was born in.
         var born_on = b.born_on;
         if simulated() && held_tint.w > 0.5 { born_on = held_tint.rgb; }
         let tint = mix(vec3<f32>(1.0), mix(born_on, b.lands_on, landing), setting(INHERIT, b.birth));
         drawn[0] = Drawn(b.origin, b.launch, b.birth, age, b.own_life, b.goal, b.homing, b.deep,
-            Look(first_colour, last_colour, tint, setting(SIZE, b.birth), thread, b.generation, random(thread, b.generation, 12u), true, on_impact));
+            Look(first_colour, last_colour, tint, setting(SIZE, b.birth), thread, b.generation, random(thread, b.generation, 12u), true, on_impact, b.surface, b.landing));
         count = 1u;
     } else {
         // A burst particle: the parent's thread and which of its burst this is. It looks
@@ -1070,7 +1139,7 @@ fn particle_splat(@builtin(global_invocation_id) gid: vec3<u32>) {
             drawn[count] = Drawn(at, launch, death, age, child_life, at, 0.0, b.deep,
                 Look(burst_colour, burst_colour, tint, setting(SIZE, b.birth) * setting(BURST_SIZE, b.birth), thread, b.generation,
                     // A burst turns its hue with the particle it came from.
-                    random(parent, b.generation, 12u), false, false));
+                    random(parent, b.generation, 12u), false, false, vec3<f32>(0.0), vec3<f32>(0.0)));
             count += 1u;
         }
     }
@@ -1106,7 +1175,8 @@ fn particle_positions(@builtin(global_invocation_id) gid: vec3<u32>) {
             let last_colour = vec4<f32>(setting(END_COLOUR, b.birth), setting(END_COLOUR + 1u, b.birth), setting(END_COLOUR + 2u, b.birth), setting(END_A, b.birth));
             colour = mix(first_colour, last_colour, share);
             if has_curve(8u, b.birth) { colour = life_colour(b.birth, share); }
-            colour = vec4<f32>(colour.rgb * lighting(where_now, b.birth, facet(i, b.generation, age, b.birth)), colour.a);
+            let shaded = surface_light(b.surface, b.origin, b.landing, b.goal, where_now, b.birth);
+            colour = vec4<f32>(colour.rgb * lighting(where_now, b.birth, facet(i, b.generation, age, b.birth), shaded.xyz, shaded.w), colour.a);
             let hues = setting(HUES, b.birth);
             if hues > 0.0 { colour = vec4<f32>(turned(colour.rgb, (random(i, b.generation, 12u) - 0.5) * 6.2831853 * hues), colour.a); }
             spot = vec4<f32>(seen.xy, opacity * colour.a, setting(SIZE, b.birth));

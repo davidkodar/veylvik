@@ -2416,3 +2416,297 @@ fn particles_are_born_on_an_imported_models_surface() {
         );
     }
 }
+#[test]
+#[ignore = "requires Vulkan"]
+fn grains_on_a_surface_are_lit_as_the_surface_is() {
+    let renderer = renderer();
+    // Grains all over a sphere in the frame's middle, a sun from the left.
+    let shot = |shading: f32| {
+        let mut doc = blank(W, H, Time::new(24, 1).unwrap()).unwrap();
+        let mut ball = op(&SHAPE_3D);
+        if let Operation::Shape3d(s) = &mut ball {
+            s.kind = ShapeKind::Sphere;
+            s.size_x = 60.0.into();
+            s.size_y = 60.0.into();
+            s.size_z = 60.0.into();
+        }
+        let ball = add(&mut doc, ball, &[]);
+        let camera = add(&mut doc, op(&CAMERA_3D), &[]);
+        let mut sun = op(&LIGHT_3D);
+        if let Operation::Light3d(l) = &mut sun {
+            l.kind = LightKind::Sun;
+            l.shadows = false;
+            l.colour = [1.0; 3].into();
+            l.placement.rotation = [0.0, -90.0, 0.0].into();
+        }
+        let sun = add(&mut doc, sun, &[]);
+        let scene = add(
+            &mut doc,
+            op(&MERGE_SCENES),
+            &[("scene", camera), ("scene_2", ball), ("scene_3", sun)],
+        );
+        let mut grains = op(&PARTICLES);
+        if let Operation::Particles(p) = &mut grains {
+            p.emit_from = Some(ball);
+            p.rate = 20000.0.into();
+            p.life = 1.0.into();
+            p.start = (-1.0).into();
+            p.speed = 0.0.into();
+            p.gravity = 0.0.into();
+            p.turbulence = 0.0.into();
+            p.variation = 0.0.into();
+            p.size = 0.6.into();
+            p.lit = 1.0.into();
+            p.ambient = 0.05.into();
+            p.scatter = 0.0.into();
+            p.shading = shading.into();
+        }
+        doc.output = add(&mut doc, grains, &[("scene", scene)]);
+        let out = render(&renderer, &doc, &ImageInputs::default());
+        // Light on the left half of the ball and on the right half.
+        let half = |left: bool| {
+            (0..W * H)
+                .filter(|&i| {
+                    let x = (i % W) as i32 - W as i32 / 2;
+                    if left { x < -5 } else { x > 5 }
+                })
+                .map(|i| out[i as usize][0])
+                .sum::<f32>()
+        };
+        (half(true), half(false))
+    };
+    let (plain_left, plain_right) = shot(0.0);
+    let (left, right) = shot(1.0);
+    // Without shading a sun lights every grain alike, whichever way it faces.
+    assert!(
+        (plain_left / plain_right - 1.0).abs() < 0.25,
+        "{plain_left} / {plain_right}"
+    );
+    // With it the side facing the sun is lit and the other side is dark.
+    assert!(left > right * 4.0, "lit side {left}, dark side {right}");
+}
+#[test]
+#[ignore = "requires Vulkan"]
+fn out_of_focus_particles_can_be_drawn_as_a_lenss_discs() {
+    let renderer = renderer();
+    // One spot of particles far behind the frame, a fast lens focused on the frame.
+    let shot = |bokeh: f32| {
+        let mut doc = blank(W, H, Time::new(24, 1).unwrap()).unwrap();
+        let mut camera = op(&CAMERA_3D);
+        if let Operation::Camera3d(c) = &mut camera {
+            c.f_stop = 1.0.into();
+            c.focus_distance = 200.0.into();
+        }
+        let camera = add(&mut doc, camera, &[]);
+        let scene = add(&mut doc, op(&MERGE_SCENES), &[("scene", camera)]);
+        let mut spot = op(&PARTICLES);
+        if let Operation::Particles(p) = &mut spot {
+            p.x = (W as f32 / 2.0).into();
+            p.y = (H as f32 / 2.0).into();
+            p.width = 0.0.into();
+            p.height = 0.0.into();
+            p.z = 90.0.into();
+            p.rate = 4.0.into();
+            p.life = 1.0.into();
+            p.start = (-1.0).into();
+            p.speed = 0.0.into();
+            p.gravity = 0.0.into();
+            p.turbulence = 0.0.into();
+            p.variation = 0.0.into();
+            p.fade = 0.0.into();
+            p.glow = 1.0.into();
+            p.size = 1.0.into();
+            p.colour = [0.25; 4];
+            p.end_colour = [0.25; 4];
+            p.bokeh = bokeh.into();
+            p.camera = 1.0.into();
+        }
+        doc.output = add(&mut doc, spot, &[("scene", scene)]);
+        render(&renderer, &doc, &ImageInputs::default())
+    };
+    let (dot, disc) = (shot(0.0), shot(1.0));
+    let row = |px: &[[f32; 4]]| -> Vec<f32> {
+        (0..W).map(|x| px[((H / 2) * W + x) as usize][3]).collect()
+    };
+    let (dot_row, disc_row) = (row(&dot), row(&disc));
+    let middle = (W / 2) as usize;
+    // How far the disc reaches from the middle.
+    let reach = (0..middle)
+        .take_while(|&d| disc_row[middle + d] > disc_row[middle] * 0.05)
+        .count();
+    assert!(reach > 4, "out of focus it spreads: {reach} px");
+    let half = middle + reach / 2;
+    // A dot falls off from its middle; a disc is flat across (its rim a little brighter).
+    assert!(
+        dot_row[half] < dot_row[middle] * 0.8,
+        "dot: {} at half against {} in the middle",
+        dot_row[half],
+        dot_row[middle]
+    );
+    assert!(
+        disc_row[half] > disc_row[middle] * 0.9,
+        "disc: {} at half against {} in the middle",
+        disc_row[half],
+        disc_row[middle]
+    );
+    // Both carry about the same light.
+    let total = |px: &[[f32; 4]]| px.iter().map(|p| p[3]).sum::<f32>();
+    assert!(
+        (total(&disc) / total(&dot) - 1.0).abs() < 0.3,
+        "light {} against {}",
+        total(&disc),
+        total(&dot)
+    );
+}
+#[test]
+#[ignore = "requires Vulkan"]
+fn particles_gather_onto_a_3d_object_and_stay_on_it() {
+    let renderer = renderer();
+    let mut doc = blank(W, H, Time::new(24, 1).unwrap()).unwrap();
+    // A sphere 40 across, 40 to the right of the middle.
+    let mut ball = op(&SHAPE_3D);
+    if let Operation::Shape3d(s) = &mut ball {
+        s.kind = ShapeKind::Sphere;
+        s.size_x = 40.0.into();
+        s.size_y = 40.0.into();
+        s.size_z = 40.0.into();
+        s.placement.position = [40.0, 0.0, 0.0].into();
+    }
+    let ball = add(&mut doc, ball, &[]);
+    let camera = add(&mut doc, op(&CAMERA_3D), &[]);
+    let scene = add(
+        &mut doc,
+        op(&MERGE_SCENES),
+        &[("scene", camera), ("scene_2", ball)],
+    );
+    let mut dust = op(&PARTICLES);
+    if let Operation::Particles(p) = &mut dust {
+        // A burst in a box on the left, flying to the ball over its life and staying.
+        p.x = 20.0.into();
+        p.y = (H as f32 / 2.0).into();
+        p.width = 20.0.into();
+        p.height = 20.0.into();
+        p.rate = 6000.0.into();
+        p.start = 0.0.into();
+        p.duration = 0.1.into();
+        p.life = 1.0.into();
+        p.hold = 5.0.into();
+        p.homing = 1.0.into();
+        p.speed = 0.0.into();
+        p.gravity = 0.0.into();
+        p.turbulence = 0.0.into();
+        p.variation = 0.0.into();
+        p.size = 0.6.into();
+        p.camera = 1.0.into();
+        p.gather_on = Some(ball);
+    }
+    let dust = add(&mut doc, dust, &[("scene", scene)]);
+    doc.output = dust;
+    let plan = Plan::compile(&doc).unwrap();
+    let out = renderer
+        .render_frame(
+            &plan,
+            RenderRequest::full(Time::new(3, 1).unwrap()),
+            &ImageInputs::default(),
+        )
+        .unwrap()
+        .pixels;
+    let lit: Vec<(f32, f32)> = (0..W * H)
+        .filter(|&i| out[i as usize][3] > 0.05)
+        .map(|i| {
+            (
+                (i % W) as f32 + 0.5 - (W / 2 + 40) as f32,
+                (i / W) as f32 + 0.5 - (H / 2) as f32,
+            )
+        })
+        .collect();
+    assert!(lit.len() > 300, "on the ball: {} pixels", lit.len());
+    // The ball shows as a disc of radius 20 (a little more, as it is nearer than the frame).
+    let far = lit
+        .iter()
+        .map(|(x, y)| (x * x + y * y).sqrt())
+        .fold(0.0f32, f32::max);
+    assert!(far < 26.0, "a particle {far} px from the ball's middle");
+    // Not with a target picture as well.
+    let target = add(&mut doc, op(&SOLID), &[]);
+    doc.nodes
+        .get_mut(&dust)
+        .unwrap()
+        .inputs
+        .insert("target".into(), target);
+    let both = Plan::compile(&doc).map(|plan| {
+        renderer.render_frame(
+            &plan,
+            RenderRequest::full(Time::new(3, 1).unwrap()),
+            &ImageInputs::default(),
+        )
+    });
+    assert!(
+        matches!(both, Ok(Err(_)) | Err(_)),
+        "a target picture and Gather on together are refused"
+    );
+}
+#[test]
+#[ignore = "requires Vulkan"]
+fn a_fluttering_banner_catches_the_light_in_bands_along_its_folds() {
+    let renderer = renderer();
+    let shot = |waves: bool| {
+        let mut doc = blank(W, H, Time::new(24, 1).unwrap()).unwrap();
+        let mut banner = op(&SHAPE_3D);
+        if let Operation::Shape3d(s) = &mut banner {
+            s.kind = ShapeKind::Plane;
+            s.size_x = 120.0.into();
+            s.size_y = 60.0.into();
+            s.detail = 48.0.into();
+            s.colour = [0.8, 0.8, 0.8].into();
+            s.roughness = 0.8.into();
+        }
+        let mut banner = add(&mut doc, banner, &[]);
+        if waves {
+            let Operation::Flutter3d(mut f) =
+                serde_json::from_value(veylvik_document::nodes::FLUTTER_3D.default_operation())
+                    .unwrap()
+            else {
+                unreachable!()
+            };
+            f.amplitude = 10.0.into();
+            f.wavelength = 40.0.into();
+            banner = add(&mut doc, Operation::Flutter3d(f), &[("scene", banner)]);
+        }
+        let camera = add(&mut doc, op(&CAMERA_3D), &[]);
+        let mut sun = op(&LIGHT_3D);
+        if let Operation::Light3d(l) = &mut sun {
+            l.kind = LightKind::Sun;
+            l.shadows = false;
+            l.colour = [1.0; 3].into();
+            l.placement.rotation = [0.0, -50.0, 0.0].into();
+        }
+        let sun = add(&mut doc, sun, &[]);
+        let scene = add(
+            &mut doc,
+            op(&MERGE_SCENES),
+            &[("scene", camera), ("scene_2", banner), ("scene_3", sun)],
+        );
+        doc.output = add(&mut doc, op(&RENDER_SCENE), &[("scene", scene)]);
+        let out = render(&renderer, &doc, &ImageInputs::default());
+        // Brightness along the banner's middle row, over its right (free) half.
+        (W / 2 + 10..W / 2 + 55)
+            .map(|x| out[((H / 2) * W + x) as usize][0])
+            .collect::<Vec<f32>>()
+    };
+    let spread = |row: &[f32]| {
+        let mean = row.iter().sum::<f32>() / row.len() as f32;
+        (row.iter().map(|v| (v - mean).powi(2)).sum::<f32>() / row.len() as f32).sqrt()
+    };
+    let (flat, waving) = (shot(false), shot(true));
+    assert!(
+        spread(&flat) < 0.01,
+        "a flat banner is lit evenly: {}",
+        spread(&flat)
+    );
+    assert!(
+        spread(&waving) > 0.05,
+        "its folds catch the light in bands: {}",
+        spread(&waving)
+    );
+}

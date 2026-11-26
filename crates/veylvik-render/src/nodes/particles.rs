@@ -9,7 +9,7 @@ const SLOTS: f32 = 4.0;
 /// Threads in one dispatch row (1024 workgroups of 64).
 pub(crate) const ROW: u32 = 65536;
 /// Settings in a row, and rows through the last life (as in particle_system.wgsl).
-pub(crate) const COUNT: usize = 129;
+pub(crate) const COUNT: usize = 132;
 pub(crate) const ROWS: usize = 16;
 /// The target's tile size for a frame (as in particle_system.wgsl).
 fn tile(pixels: u64) -> u32 {
@@ -111,6 +111,8 @@ fn settings(node: &Particles, time: Time) -> Result<[f32; COUNT]> {
     row[126] = at(&node.hold)?;
     row[127] = at(&node.sparkle)?;
     row[128] = at(&node.sparkle_turn)?;
+    row[129] = at(&node.shading)?;
+    row[130] = at(&node.bokeh)?;
     if let Some(ramp) = node.colour_over_life {
         for (k, colour) in ramp.iter().enumerate() {
             row[85 + 4 * k..89 + 4 * k].copy_from_slice(colour);
@@ -118,9 +120,11 @@ fn settings(node: &Particles, time: Time) -> Result<[f32; COUNT]> {
     }
     Ok(row)
 }
-fn scalars(node: &Particles) -> [&Scalar; 62] {
+fn scalars(node: &Particles) -> [&Scalar; 64] {
     [
         &node.life,
+        &node.bokeh,
+        &node.shading,
         &node.hold,
         &node.sparkle,
         &node.sparkle_turn,
@@ -345,7 +349,16 @@ const SURFACE_MOST: usize = 100_000;
 // The moment `r` decides both when the scene is sampled and where its rows go.
 #[allow(clippy::needless_range_loop)]
 fn surface(node: &Particles, cx: &Cx<'_>, life: f32) -> Result<Vec<f32>> {
-    let (Some(object), Some(root)) = (node.emit_from, cx.node.inputs.get("scene")) else {
+    match node.emit_from {
+        Some(object) => surface_of(object, cx, life),
+        None => Ok(Vec::new()),
+    }
+}
+/// `object`'s surface, as `surface` packs it, for particles to be born on or gather onto.
+// The moment's number picks both the time it is sampled at and its slot.
+#[allow(clippy::needless_range_loop)]
+fn surface_of(object: veylvik_document::NodeId, cx: &Cx<'_>, life: f32) -> Result<Vec<f32>> {
+    let Some(root) = cx.node.inputs.get("scene") else {
         return Ok(Vec::new());
     };
     let by_id: std::collections::BTreeMap<_, _> = cx.nodes.iter().map(|n| (n.id, n)).collect();
@@ -864,6 +877,28 @@ impl RenderNode for Particles {
             FORCE_ROWS as f32
         };
         last[113] = f32::from(!surface.is_empty());
+        // The surface particles gather onto, after everything else.
+        let gather = match self.gather_on {
+            Some(object) => {
+                if cx.node.inputs.contains_key("target") {
+                    return Err(error(format!(
+                        "{}: particles gather onto a target picture or onto a 3D object (Gather on), not both",
+                        cx.node.label
+                    )));
+                }
+                if simulating(self) {
+                    return Err(error(format!(
+                        "{}: a flock cannot gather onto a 3D object; clear Gather on or set Flock radius to 0",
+                        cx.node.label
+                    )));
+                }
+                surface_of(object, cx, rows[ROWS - 1][0])?
+            }
+            None => Vec::new(),
+        };
+        last[121] = f32::from(!gather.is_empty());
+        last[122] = (surface.len() + solids.len() + forces.len() + table.len()) as f32;
+        last[112] += gather.len() as f32;
         last[114] = surface.len() as f32;
         last[115] = f32::from(!solids.is_empty());
         last[116] = (surface.len() + solids.len()) as f32;
@@ -891,6 +926,7 @@ impl RenderNode for Particles {
             .chain(solids)
             .chain(forces)
             .chain(table)
+            .chain(gather)
             .collect();
         for chunk in extra.chunks(COUNT) {
             let mut row = [0.0; COUNT];
