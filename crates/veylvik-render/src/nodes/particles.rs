@@ -9,7 +9,7 @@ const SLOTS: f32 = 4.0;
 /// Threads in one dispatch row (1024 workgroups of 64).
 pub(crate) const ROW: u32 = 65536;
 /// Settings in a row, and rows through the last life (as in particle_system.wgsl).
-pub(crate) const COUNT: usize = 126;
+pub(crate) const COUNT: usize = 129;
 pub(crate) const ROWS: usize = 16;
 /// The target's tile size for a frame (as in particle_system.wgsl).
 fn tile(pixels: u64) -> u32 {
@@ -21,7 +21,8 @@ fn settings(node: &Particles, time: Time) -> Result<[f32; COUNT]> {
     let at = |scalar: &Scalar| scalar.at(time).map_err(error);
     let mut row = [0.0; COUNT];
     let values = [
-        at(&node.life)?,
+        // The whole life: the flight and the hold after it (the hold is also at 126).
+        at(&node.life)? + at(&node.hold)?,
         at(&node.speed)?,
         at(&node.direction)?,
         at(&node.spread)?,
@@ -107,6 +108,7 @@ fn settings(node: &Particles, time: Time) -> Result<[f32; COUNT]> {
     row[123] = at(&node.alignment)?;
     row[124] = at(&node.top_speed)?;
     row[125] = at(&node.sprite_rate)?;
+    row[126] = at(&node.hold)?;
     if let Some(ramp) = node.colour_over_life {
         for (k, colour) in ramp.iter().enumerate() {
             row[85 + 4 * k..89 + 4 * k].copy_from_slice(colour);
@@ -114,9 +116,10 @@ fn settings(node: &Particles, time: Time) -> Result<[f32; COUNT]> {
     }
     Ok(row)
 }
-fn scalars(node: &Particles) -> [&Scalar; 59] {
+fn scalars(node: &Particles) -> [&Scalar; 60] {
     [
         &node.life,
+        &node.hold,
         &node.speed,
         &node.direction,
         &node.spread,
@@ -729,16 +732,21 @@ static DEPTH_LINK_STEPS: [Step; 6] = [
 ];
 impl RenderNode for Particles {
     /// No particle is alive: none is born before Start, and with a Duration the last
-    /// born is gone one Life after it ends, and its burst one Burst life after that.
+    /// born is gone one Life (and its Hold) after it ends, and its burst one Burst life after that.
     /// Only said when those are not keyed, since a particle lives by the settings of its
     /// own birth.
     fn empty(&self, _: &dyn Fn(&str) -> Result<f32>, time: veylvik_document::Time) -> Result<bool> {
         use veylvik_document::Scalar::Constant;
-        let (Constant { value: start }, Constant { value: duration }, Constant { value: life }) =
-            (&self.start, &self.duration, &self.life)
+        let (
+            Constant { value: start },
+            Constant { value: duration },
+            Constant { value: life },
+            Constant { value: hold },
+        ) = (&self.start, &self.duration, &self.life, &self.hold)
         else {
             return Ok(false);
         };
+        let life = life + hold;
         let after = match (&self.burst, &self.burst_life) {
             (Constant { value: burst }, _) if *burst < 0.5 => 0.0,
             (Constant { .. }, Constant { value: burst_life }) => f64::from(*burst_life),
@@ -747,7 +755,7 @@ impl RenderNode for Particles {
         let now = time.seconds()?;
         Ok(now < f64::from(*start)
             || (*duration > 0.0
-                && now >= f64::from(*start) + f64::from(*duration) + f64::from(*life) + after))
+                && now >= f64::from(*start) + f64::from(*duration) + f64::from(life) + after))
     }
     fn passes(&self) -> Passes {
         Passes::chain(&STEPS)

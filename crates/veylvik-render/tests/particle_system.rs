@@ -1899,3 +1899,49 @@ fn a_particle_carries_light_in_proportion_to_its_size_even_below_a_pixel() {
         );
     }
 }
+#[test]
+#[ignore = "requires Vulkan"]
+fn particles_hold_their_place_on_the_target_after_they_arrive() {
+    let renderer = Renderer::new().unwrap();
+    // A square on the right to gather into; a burst born on the left.
+    let target: Vec<[f32; 4]> = (0..W * H)
+        .map(|i| {
+            let (x, y) = (i % W, i / W);
+            if (100..140).contains(&x) && (40..80).contains(&y) {
+                [1.0; 4]
+            } else {
+                [0.0; 4]
+            }
+        })
+        .collect();
+    let burst = |hold: f32| {
+        let mut p = still();
+        p.x = 30.0.into();
+        p.width = 20.0.into();
+        p.height = 20.0.into();
+        p.rate = 4000.0.into();
+        p.start = 0.0.into();
+        p.duration = 0.1.into();
+        p.life = 1.0.into();
+        p.homing = 1.0.into();
+        p.hold = hold.into();
+        p.size = 1.0.into();
+        p
+    };
+    // Two seconds in, a second after the last of them arrived.
+    let held = render_to(&renderer, burst(3.0), None, Some(target.clone()), (2, 1));
+    let gone = render_to(&renderer, burst(0.0), None, Some(target), (2, 1));
+    let lit = |pixels: &[[f32; 4]]| pixels.iter().filter(|p| p[3] > 0.02).count();
+    assert_eq!(lit(&gone), 0, "without a hold they are gone as they arrive");
+    let (left, right, top, bottom) = span(&held);
+    assert!(
+        lit(&held) > 600,
+        "with a hold they stand on the target: {} pixels",
+        lit(&held)
+    );
+    assert!(
+        left >= 98 && right <= 141 && top >= 38 && bottom <= 81,
+        "all of them on the target: {:?}",
+        (left, right, top, bottom)
+    );
+}

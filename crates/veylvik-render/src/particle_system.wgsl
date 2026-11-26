@@ -36,7 +36,7 @@ fn sheet_rows() -> u32 { return ((u32(p.extra.z) >> 12u) & 15u) + 1u; }
 fn sheet_width() -> u32 { return MIP * sheet_columns(); }
 fn sheet_texels() -> u32 { return MIP * MIP * sheet_columns() * sheet_rows(); }
 const SPRITE_RATE = 125u;
-const COUNT: u32 = 126u;
+const COUNT: u32 = 129u;
 const ROWS: u32 = 16u;
 // Setting numbers.
 const SPEED = 1u; const DIRECTION = 2u; const SPREAD = 3u; const GRAVITY = 4u; const WIND = 5u;
@@ -56,7 +56,7 @@ const LINK_DISTANCE = 57u; const LINK_OPACITY = 58u; const LINK_WIDTH = 59u;
 // values each, and eight RGBA colours.
 const CURVES = 60u; const SIZE_CURVE = 61u; const OPACITY_CURVE = 69u; const SPEED_CURVE = 77u;
 const COLOUR_CURVE = 85u;
-const LIT = 117u; const AMBIENT = 118u; const SCATTER = 119u;
+const LIT = 117u; const AMBIENT = 118u; const SCATTER = 119u; const HOLD = 126u;
 // The camera row's lights: how many at 36, then twelve values each from 40.
 const LIGHT_COUNT = 36u; const LIGHT_BASE = 40u;
 // Where the camera is in the scene: the world-to-camera rows' rotation turned back on
@@ -394,6 +394,11 @@ var<private> path: array<vec4<f32>, 100>;
 var<private> path_count: u32;
 // A flock's simulated place at the frame (w 1), which place() gives in place of a path.
 var<private> held: vec4<f32>;
+// The part of a particle's life before it reaches its place on the target: its life
+// less the hold it then spends there.
+fn flight(own_life: f32, birth: f32) -> f32 {
+    return max(own_life - setting(HOLD, birth), own_life * 0.05);
+}
 fn place(origin: vec3<f32>, launch: vec3<f32>, birth: f32, age: f32, own_life: f32, goal: vec3<f32>, homing: f32, deep: bool) -> vec3<f32> {
     if held.w > 0.5 { impact = -1.0; path_count = 0u; return held.xyz; }
     var at = origin; var velocity = launch;
@@ -493,7 +498,7 @@ fn place(origin: vec3<f32>, launch: vec3<f32>, birth: f32, age: f32, own_life: f
         if recording && path_count < 100u { path[path_count] = vec4<f32>(at, done); path_count += 1u; }
     }
     if p.extra.y > 0.5 && homing > 0.0 {
-        at = mix(at, goal, smoothstep(1.0 - homing, 1.0, age / own_life));
+        at = mix(at, goal, smoothstep(1.0 - homing, 1.0, age / flight(own_life, birth)));
     }
     return at;
 }
@@ -868,7 +873,7 @@ fn draw(origin: vec3<f32>, launch: vec3<f32>, birth: f32, age: f32, own_life: f3
     }
     let light = vec4<f32>(colour.rgb * colour.a, colour.a) * opacity;
     if ribbon {
-        trail_ribbon(at, radius * setting(TRAIL_WIDTH, birth), light, age, min(setting(TRAIL, birth), age), own_life, goal, homing);
+        trail_ribbon(at, radius * setting(TRAIL_WIDTH, birth), light, age, min(setting(TRAIL, birth), age), own_life, goal, homing, birth);
         return;
     }
     // A streak is a row of dots back along the path, fading towards the tail.
@@ -897,7 +902,7 @@ fn draw(origin: vec3<f32>, launch: vec3<f32>, birth: f32, age: f32, own_life: f3
 }
 // A trail along the path the particle took (kept by place() as it walked), from its head
 // at `at` back `trail` seconds: unbroken, narrowing and fading towards the tail.
-fn trail_ribbon(at: vec2<f32>, width: f32, light: vec4<f32>, age: f32, trail: f32, own_life: f32, goal: vec3<f32>, homing: f32) {
+fn trail_ribbon(at: vec2<f32>, width: f32, light: vec4<f32>, age: f32, trail: f32, own_life: f32, goal: vec3<f32>, homing: f32, birth: f32) {
     if trail <= 0.0 || width <= 0.0 { stamp(at, width, light); return; }
     let spacing = max(width, 1.0) * 0.5;
     // Overlapping dots add up: share the light so the ribbon is as bright as the head.
@@ -916,7 +921,7 @@ fn trail_ribbon(at: vec2<f32>, width: f32, light: vec4<f32>, age: f32, trail: f3
         var tail_age = point.w;
         var where_then = point.xyz;
         if p.extra.y > 0.5 && homing > 0.0 {
-            where_then = mix(where_then, goal, smoothstep(1.0 - homing, 1.0, tail_age / own_life));
+            where_then = mix(where_then, goal, smoothstep(1.0 - homing, 1.0, tail_age / flight(own_life, birth)));
         }
         // The trail ends part way along this step.
         if age - tail_age > trail {
@@ -972,7 +977,7 @@ fn particle_splat(@builtin(global_invocation_id) gid: vec3<u32>) {
         let first_colour = vec4<f32>(setting(COLOUR, b.birth), setting(COLOUR + 1u, b.birth), setting(COLOUR + 2u, b.birth), setting(COLOUR_A, b.birth));
         let last_colour = vec4<f32>(setting(END_COLOUR, b.birth), setting(END_COLOUR + 1u, b.birth), setting(END_COLOUR + 2u, b.birth), setting(END_A, b.birth));
         var landing = 0.0;
-        if p.extra.y > 0.5 && b.homing > 0.0 { landing = smoothstep(1.0 - b.homing, 1.0, age / b.own_life); }
+        if p.extra.y > 0.5 && b.homing > 0.0 { landing = smoothstep(1.0 - b.homing, 1.0, age / flight(b.own_life, b.birth)); }
         // A bird of a flock born on its emitter keeps the colour it was born in.
         var born_on = b.born_on;
         if simulated() && held_tint.w > 0.5 { born_on = held_tint.rgb; }

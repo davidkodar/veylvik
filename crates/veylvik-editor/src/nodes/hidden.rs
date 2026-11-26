@@ -49,7 +49,7 @@ fn particles(operation: &Operation, name: &str, wired: &dyn Fn(&str) -> bool) ->
     match name {
         "density" => !wired("emitter") || flock,
         "rate" | "x" | "y" | "width" | "height" => wired("emitter") && !flock,
-        "homing" => !wired("target"),
+        "homing" | "hold" => !wired("target"),
         "inherit" => !wired("emitter") && !wired("target"),
         "field_push" | "field_flow" => !wired("field"),
         "bounce" => {

@@ -1935,6 +1935,9 @@ settles on the wrong kind of motion can still look sure. The
     tiles of 16 pixels, 32 in frames above 2.5 megapixels, then a walk through
     the tile), so none goes without one however small the target. It is steered
     there over the last **Homing** share of its life, arriving as it dies.
+    **Hold** keeps it there that many seconds after it arrives (its life is then
+    Life plus Hold), so a word or a logo made of particles stands formed while new
+    ones keep arriving; it goes on turning as it holds, so metal copies glint.
     To gather particles into 3D letters (dust that becomes a 3D title), give
     them a target filmed like the letters: a **Merge scenes** of the scene's
     camera and the 3D text alone, into its own **Render scene**, has alpha
