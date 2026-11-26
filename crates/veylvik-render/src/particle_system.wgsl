@@ -572,9 +572,12 @@ fn add_light(pixel: vec2<i32>, amount: vec4<f32>) {
     atomicAdd(&result[base], add.x); atomicAdd(&result[base + 1u], add.y);
     atomicAdd(&result[base + 2u], add.z); atomicAdd(&result[base + 3u], add.w);
 }
-// A soft dot of `light` at `at`, added into the output.
-fn stamp(at: vec2<f32>, radius: f32, light: vec4<f32>) {
+// A soft dot of `light` at `at`, added into the output. A dot smaller than a pixel is
+// drawn a pixel wide, with its light cut to its own size, so a crowd of tiny particles
+// is as bright in a small frame as it is in a large one.
+fn stamp(at: vec2<f32>, radius: f32, given: vec4<f32>) {
     let sigma = max(radius * 0.5, 0.45);
+    let light = given * min(radius * radius * 0.25 / (sigma * sigma), 1.0);
     let reach = i32(ceil(max(radius, 1.0)));
     let centre = vec2<i32>(floor(at));
     for (var j = -reach; j <= reach; j++) {

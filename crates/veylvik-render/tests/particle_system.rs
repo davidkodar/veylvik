@@ -1872,3 +1872,30 @@ fn a_force_keyed_during_a_long_life_acts_when_it_is_keyed() {
         "still before the wind: {before}"
     );
 }
+#[test]
+#[ignore = "requires Vulkan"]
+fn a_particle_carries_light_in_proportion_to_its_size_even_below_a_pixel() {
+    let renderer = Renderer::new().unwrap();
+    // Sparse, dim dots, so nothing overlaps into the clamp: the light in the frame is the
+    // sum of the dots' own light.
+    let light = |size: f32| {
+        let mut p = still();
+        p.size = size.into();
+        p.grow = 1.0.into();
+        p.width = 140.0.into();
+        p.height = 100.0.into();
+        p.rate = 60.0.into();
+        p.colour = [0.2, 0.2, 0.2, 0.2];
+        p.end_colour = [0.2, 0.2, 0.2, 0.2];
+        let pixels = render(&renderer, p, None, (1, 2));
+        pixels.iter().map(|p| p[3]).sum::<f32>() / (size * size)
+    };
+    let per_area: Vec<f32> = [0.25, 0.4, 0.6, 1.2, 1.8].map(light).to_vec();
+    let middle = per_area[3];
+    for (size, l) in [0.25, 0.4, 0.6, 1.2, 1.8].iter().zip(&per_area) {
+        assert!(
+            (l / middle - 1.0).abs() < 0.2,
+            "light for its area at size {size}: {l} against {middle} at 1.2 ({per_area:?})"
+        );
+    }
+}
