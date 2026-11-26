@@ -235,6 +235,7 @@ pub(crate) const ADD_MENU: [(&str, &[&registry::NodeType]); 10] = [
             &registry::GAUSSIAN_SPLATS,
             &registry::FIGURE_3D,
             &registry::MARKER_3D,
+            &veylvik_document::nodes::FLUTTER_3D,
             &registry::RENDER_SCENE,
         ],
     ),

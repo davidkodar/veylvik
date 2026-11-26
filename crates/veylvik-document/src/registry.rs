@@ -460,6 +460,7 @@ pub static TYPES: &[&NodeType] = &[
     &crate::nodes::GAUSSIAN_SPLATS,
     &crate::nodes::FIGURE_3D,
     &crate::nodes::MARKER_3D,
+    &crate::nodes::FLUTTER_3D,
     &crate::nodes::OFX_EFFECT,
     &SOUND,
     &crate::nodes::SHADOW,

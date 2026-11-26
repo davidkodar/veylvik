@@ -395,7 +395,9 @@ fn surface(node: &Particles, cx: &Cx<'_>, life: f32) -> Result<Vec<f32>> {
         // An imported model's parts as loaded, at the model's size (its file is in the
         // normalised box the 3D renderer scales by Size); anything else as the scene makes it.
         let meshes = match &piece.geometry {
-            veylvik_scene::Geometry::Model { path, size, .. } => cx
+            veylvik_scene::Geometry::Model {
+                path, size, extent, ..
+            } => cx
                 .models
                 .and_then(|m| m.get(path))
                 .map(|model| {
@@ -406,6 +408,11 @@ fn surface(node: &Particles, cx: &Cx<'_>, life: f32) -> Result<Vec<f32>> {
                             let mut mesh = part.mesh.clone();
                             for v in &mut mesh.vertices {
                                 v.position = v.position.map(|c| c * size);
+                            }
+                            // Waving as one, across the whole model.
+                            if let Some(waves) = &piece.flutter {
+                                let half = extent[0] * size * 0.5;
+                                veylvik_scene::flutter(&mut mesh, waves, Some([-half, half]));
                             }
                             mesh
                         })

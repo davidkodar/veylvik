@@ -363,6 +363,11 @@ impl Inspect for veylvik_document::nodes::Marker3d {
         cx.dirty |= placement(ui, &mut self.placement, cx);
     }
 }
+impl Inspect for veylvik_document::nodes::Flutter3d {
+    fn inspect(&mut self, ui: &mut egui::Ui, _cx: &mut InspectCx<'_>) {
+        ui.weak("Waves through everything on its Scene input, like a banner in wind. Give flat shapes enough Detail to bend smoothly; particles born on them ride the waves.");
+    }
+}
 impl Inspect for MergeScenes {
     fn inspect(&mut self, ui: &mut egui::Ui, _cx: &mut InspectCx<'_>) {
         ui.weak("Combines up to eight scenes; depth decides what is in front.");

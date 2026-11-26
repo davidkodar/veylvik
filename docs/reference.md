@@ -1639,6 +1639,18 @@ and `colour`.
   position to steer where a camera looks along a path; under a 3D transform it
   moves with what the transform moves. Studio shows it as a small cross in a
   circle (Guides > Points), which a click selects.
+- **Flutter**: waves through everything on its Scene input, as a banner or a
+  sheet of cloth moves in wind. Waves travel along each shape's own x, left to
+  right, swinging its surface out of its plane by **Amplitude** pixels, a crest
+  every **Wavelength** pixels, moving at **Speed** pixels a second, with a
+  smaller ripple crossing them. **Pinned** 1 holds the shape's left edge still
+  (a flag on its pole) and lets the swing grow to the free end; 0 moves it all
+  alike. Shapes are bent where they are built, so the render, shadows and
+  particles born on them (Emit from) or gathering onto them all follow the folds,
+  and normals are worked out from the bent surface, so the light runs along the
+  folds. A plane or image card that flutters is cut into a fine grid to bend
+  (a plane by its Detail, at least 24); other shapes bend at their own vertices.
+  A Flutter inside another keeps its own waves.
 - **Light**: point, spot (cone and softness), sun or **area**, pointing along −z
   before rotation (a sun is parallel light: where it stands changes nothing, only its
   rotation or its Aim at, so an unturned sun lights everything from the camera's side), or at its **Aim at** object, marker or 3D transform from wherever it is placed (a row

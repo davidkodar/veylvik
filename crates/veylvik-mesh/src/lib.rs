@@ -14,7 +14,7 @@ use veylvik_document::{
 mod model;
 mod primitives;
 pub use model::{MAX_PARTS, MAX_TEXTURE, MAX_VERTICES, Model, Part, Texture};
-pub use primitives::{Primitive, SEGMENTS, primitive};
+pub use primitives::{Primitive, SEGMENTS, bendable_plane, primitive};
 
 pub type Result<T> = std::result::Result<T, Error>;
 /// Bound on output size so a pathological outline cannot exhaust memory.

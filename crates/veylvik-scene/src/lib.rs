@@ -3,10 +3,12 @@
 //! The frame is the composition's: x right and y down in pixels, z towards the viewer.
 //! "Home" is the frame centre at depth 0; positions are offsets from where each node
 //! naturally sits. The home camera sees exactly the 2D frame at depth 0.
+mod flutter;
 pub mod math;
 pub mod pick;
 mod shot;
 mod view;
+pub use flutter::{Flutter, flutter};
 use math::{Mat4, mul, rotate, scale, translate};
 pub use shot::{ShotMatch, match_shot, shining, source_in_frame};
 use veylvik_document::{
@@ -103,6 +105,8 @@ pub struct Object {
     pub instanced: Option<NodeId>,
     /// Coloured by a picture as a camera saw it (a Camera projection node).
     pub projection: Option<Projection>,
+    /// Waves bent into its shape by a Flutter node above it.
+    pub flutter: Option<Flutter>,
 }
 /// A picture cast through a camera onto an object.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -300,7 +304,11 @@ impl Object {
         let centre = math::point(&self.world, [0, 1, 2].map(|k| (a[k] + b[k]) * 0.5));
         let corner = math::point(&self.world, b);
         let d = [0, 1, 2].map(|k| corner[k] - centre[k]);
-        (centre, (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt())
+        let swing = self.flutter.map_or(0.0, |f| f.amplitude * 1.3);
+        (
+            centre,
+            (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt() + swing,
+        )
     }
 }
 /// Local bounding box of an object's geometry.
@@ -548,6 +556,7 @@ fn node(doc: &Graph<'_>, id: NodeId, time: Time, depth: usize) -> Result<Scene> 
             aim: None,
             instanced: None,
             projection: None,
+            flutter: None,
         }),
         Operation::Text3d(t) => {
             let source =
@@ -639,6 +648,7 @@ fn node(doc: &Graph<'_>, id: NodeId, time: Time, depth: usize) -> Result<Scene> 
                     aim: t.aim_at.map(|target| (target, world)),
                     instanced: None,
                     projection: None,
+                    flutter: None,
                 });
             }
         }
@@ -673,6 +683,7 @@ fn node(doc: &Graph<'_>, id: NodeId, time: Time, depth: usize) -> Result<Scene> 
             aim: None,
             instanced: None,
             projection: None,
+            flutter: None,
         }),
         Operation::Model3d(m) if !m.model.is_empty() => scene.objects.push(Object {
             node: id,
@@ -699,6 +710,7 @@ fn node(doc: &Graph<'_>, id: NodeId, time: Time, depth: usize) -> Result<Scene> 
             aim: None,
             instanced: None,
             projection: None,
+            flutter: None,
         }),
         Operation::Model3d(_) => {}
         Operation::GaussianSplats(g) if !g.file.is_empty() => scene.objects.push(Object {
@@ -725,6 +737,7 @@ fn node(doc: &Graph<'_>, id: NodeId, time: Time, depth: usize) -> Result<Scene> 
             aim: None,
             instanced: None,
             projection: None,
+            flutter: None,
         }),
         Operation::GaussianSplats(_) => {}
         Operation::Figure3d(f) => {
@@ -762,7 +775,23 @@ fn node(doc: &Graph<'_>, id: NodeId, time: Time, depth: usize) -> Result<Scene> 
                 aim: None,
                 instanced: None,
                 projection: None,
+                flutter: None,
             });
+        }
+        Operation::Flutter3d(f) => {
+            let child = input("scene")
+                .ok_or_else(|| Error(format!("{}: Flutter needs a scene", n.label)))?;
+            scene = node(doc, child, time, depth + 1)?;
+            let waves = Flutter {
+                amplitude: f.amplitude.at(time)?.max(0.0),
+                wavelength: f.wavelength.at(time)?.max(1.0),
+                speed: f.speed.at(time)?,
+                pinned: f.pinned.at(time)?.clamp(0.0, 1.0),
+                time: time.seconds()? as f32,
+            };
+            for object in &mut scene.objects {
+                object.flutter.get_or_insert(waves);
+            }
         }
         Operation::Transform3d(t) => {
             let child = input("scene").ok_or_else(|| Error("3D transform needs a scene".into()))?;
@@ -999,7 +1028,31 @@ pub fn strips(light: &Light, count: usize, variation: f32, seed: u32) -> Vec<Lig
 }
 /// The object's mesh in its own frame (before `world`).
 pub fn mesh(object: &Object) -> Result<Mesh> {
+    let mut mesh = built(object)?;
+    if let Some(waves) = &object.flutter {
+        flutter(&mut mesh, waves, None);
+    }
+    Ok(mesh)
+}
+fn built(object: &Object) -> Result<Mesh> {
     use veylvik_mesh::Primitive as P;
+    // A flat plane or card that flutters is cut into a grid it can bend along.
+    if object.flutter.is_some() {
+        match &object.geometry {
+            Geometry::Shape {
+                kind: ShapeKind::Plane,
+                size,
+                segments,
+            } => {
+                return Ok(veylvik_mesh::bendable_plane(
+                    [size[0], size[1]],
+                    (*segments).max(24),
+                ));
+            }
+            Geometry::Card { size, .. } => return Ok(veylvik_mesh::bendable_plane(*size, 96)),
+            _ => {}
+        }
+    }
     match &object.geometry {
         Geometry::Shape {
             kind,

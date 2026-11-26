@@ -39,3 +39,4 @@ impl RenderNode for GaussianSplats {}
 /// Read by Render scene, which draws its body.
 impl RenderNode for Figure3d {}
 impl RenderNode for Marker3d {}
+impl RenderNode for veylvik_document::nodes::Flutter3d {}

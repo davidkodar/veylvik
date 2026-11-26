@@ -150,6 +150,32 @@ fn normalize(v: [f32; 3]) -> [f32; 3] {
     v.map(|x| x / l)
 }
 /// A quad (corners in order around `normal`), wound to face it.
+/// A flat plane of `size` (x by y) facing +z, cut into `segments` by `segments` squares,
+/// so it can be bent (the Plane primitive is one quad, which cannot).
+pub fn bendable_plane(size: [f32; 2], segments: u32) -> Mesh {
+    let n = segments.clamp(1, 512);
+    let mut mesh = Mesh::default();
+    for j in 0..=n {
+        for i in 0..=n {
+            let (u, v) = (i as f32 / n as f32, j as f32 / n as f32);
+            mesh.vertices.push(Vertex {
+                position: [(u - 0.5) * size[0], (v - 0.5) * size[1], 0.0],
+                normal: [0.0, 0.0, 1.0],
+                uv: [u, v],
+            });
+        }
+    }
+    let row = n + 1;
+    for j in 0..n {
+        for i in 0..n {
+            let a = j * row + i;
+            // As the Plane primitive winds its quad, facing +z.
+            mesh.indices
+                .extend([a, a + 1, a + row + 1, a, a + row + 1, a + row]);
+        }
+    }
+    mesh
+}
 fn quad(mesh: &mut Mesh, corners: [[f32; 3]; 4], normal: [f32; 3]) {
     let base = mesh.vertices.len() as u32;
     for (corner, uv) in corners.iter().zip([[0., 0.], [1., 0.], [1., 1.], [0., 1.]]) {

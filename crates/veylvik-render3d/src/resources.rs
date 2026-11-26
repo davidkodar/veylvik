@@ -97,7 +97,8 @@ impl Engine {
         device: &wgpu::Device,
         object: &veylvik_scene::Object,
     ) -> Result<(wgpu::Buffer, wgpu::Buffer, u32)> {
-        let key = format!("{:?}", object.geometry);
+        // A fluttering object's mesh changes with its waves and their moment.
+        let key = format!("{:?}{:?}", object.geometry, object.flutter);
         let mut guard = self
             .meshes
             .lock()
@@ -126,6 +127,13 @@ impl Engine {
                     .unwrap_or_default();
                 for v in &mut mesh.vertices {
                     v.position = v.position.map(|x| x * size);
+                }
+                // A model's parts wave as one: across the whole model's width.
+                if let (Some(waves), Geometry::Model { extent, .. }) =
+                    (&object.flutter, &object.geometry)
+                {
+                    let half = extent[0] * size * 0.5;
+                    veylvik_scene::flutter(&mut mesh, waves, Some([-half, half]));
                 }
                 mesh
             }
