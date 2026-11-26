@@ -337,8 +337,26 @@ fn setting(k: u32, seconds: f32) -> f32 {
     return mix(third[base + a * COUNT].w, third[base + b * COUNT].w, row - floor(row));
 }
 struct Forces { pull: vec2<f32>, turbulence: f32, scale: f32, push: f32, flow: f32, centre: vec2<f32>, attract: f32, vortex: f32, bounce: f32 }
+// Keyed forces sampled finely over the last life (see force_table in nodes/particles.rs):
+// where the table starts after the camera row (camera row 119) and its rows (120; 0 none).
+fn force_rows() -> u32 { return u32(camera_row(120u)); }
 fn forces_at(seconds: f32) -> Forces {
     var f: Forces;
+    let rows = force_rows();
+    if rows > 1u {
+        let life = p.extra.w;
+        let x = clamp((seconds - (bitcast<f32>(p.size_op.z) - life)) / life, 0.0, 1.0) * f32(rows - 1u);
+        let a = u32(floor(x)); let b = min(a + 1u, rows - 1u); let w = x - floor(x);
+        let base = tiles() + COUNT * (ROWS + 1u) + u32(camera_row(119u));
+        var v: array<f32, 11>;
+        for (var j = 0u; j < 11u; j++) {
+            v[j] = mix(third[base + a * 11u + j].w, third[base + b * 11u + j].w, w);
+        }
+        f.pull = vec2<f32>(v[1], v[0]);
+        f.turbulence = v[2]; f.scale = v[3]; f.push = v[4]; f.flow = v[5]; f.bounce = v[6];
+        f.centre = vec2<f32>(v[7], v[8]); f.attract = v[9]; f.vortex = v[10];
+        return f;
+    }
     f.pull = vec2<f32>(setting(WIND, seconds), setting(GRAVITY, seconds));
     f.turbulence = setting(TURBULENCE, seconds); f.scale = setting(TURBULENCE_SCALE, seconds);
     f.push = setting(PUSH, seconds); f.flow = setting(FLOW, seconds);
@@ -384,9 +402,12 @@ fn place(origin: vec3<f32>, launch: vec3<f32>, birth: f32, age: f32, own_life: f
     if recording { path[0] = vec4<f32>(origin, 0.0); path_count = 1u; }
     let flags = u32(p.extra.z);
     var steps = 32u;
+    // Keyed forces are followed closely: more steps, and the forces read at each.
+    let keyed_forces = force_rows() > 1u;
+    if keyed_forces { steps = 128u; }
     let solids = solid_count() > 0u;
     let forced = force_count() > 0u;
-    if (flags & 2u) != 0u || solids { steps = 96u; }
+    if (flags & 2u) != 0u || solids { steps = max(steps, 96u); }
     let step = p.extra.w / f32(steps);
     var done = 0.0;
     var f: Forces;
@@ -395,7 +416,7 @@ fn place(origin: vec3<f32>, launch: vec3<f32>, birth: f32, age: f32, own_life: f
         let dt = min(step, age - done);
         if dt <= 0.0 { break; }
         // Forces follow their keys, re-read a few times over the life.
-        if k % 8u == 0u {
+        if k % 8u == 0u || keyed_forces {
             f = forces_at(birth + done);
             if forced { forces_now(birth + done); }
         }

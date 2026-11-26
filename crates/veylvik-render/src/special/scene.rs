@@ -70,7 +70,17 @@ pub(super) fn run(cx: &mut super::PassCx<'_, '_>) -> Result<()> {
     for (k, at) in moments.into_iter().enumerate() {
         let (scene, camera, occlusion) = scene_hook::evaluate(plan, scheduled.node, at)?;
         let camera = scene_view.unwrap_or(camera);
-        let copies = this.instances_for(plan, &scene, at, Some(inputs))?;
+        // Copies at particles are worked out in a submission of their own, reading the
+        // pictures this frame's earlier passes draw (an emitter, a target): those passes
+        // are sent first, so the copies read this frame's pictures, not the last one's.
+        if scene.objects.iter().any(|o| o.instanced.is_some()) {
+            let done = std::mem::replace(
+                &mut *encoder,
+                this.device.create_command_encoder(&Default::default()),
+            );
+            this.queue.submit([done.finish()]);
+        }
+        let copies = this.instances_for(plan, &scene, at, Some(inputs), &images)?;
         renderer.render(SceneJob {
             device: &this.device,
             queue: &this.queue,

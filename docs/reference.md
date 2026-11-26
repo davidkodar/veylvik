@@ -1616,6 +1616,18 @@ and `colour`.
   looking at, upright, from wherever it is placed and as both move; the
   placement's rotation is then not used. A missing object hands the rotation
   back. Lights have the same setting.
+- **Particle instances**: a copy of the 3D objects on its scene input at every
+  particle of the Particles node on its particles input: real geometry, lit,
+  shadowed and reflecting like the scene's other solids (thin metal flakes make
+  glitter that flashes as it tumbles). Each copy is Scale times the object's size,
+  grows and tints with the particle's life, and with Tumble starts turned at random
+  and turns at the particle's Spin. The particles may be born on a 3D object (Emit
+  from: the object must be in the particles' own scene input, and shown), on an
+  emitter picture, fly to a target picture and be steered by a field or obstacle
+  picture, as for their own picture; those pictures are made for the scene render
+  at the frame's size, and copies are born on the emitter as it is at the frame.
+  At most 100,000 copies a node (on an emitter, its cells are made large enough
+  that the whole picture fits).
 - **Marker**: an empty point in the scene. It draws nothing and casts nothing;
   cameras and lights aim at it, a camera focuses on it and objects face it. Key its
   position to steer where a camera looks along a path; under a 3D transform it
@@ -1955,9 +1967,13 @@ settles on the wrong kind of motion can still look sure. The
   - *Time.* Nothing is simulated from frame to frame: a particle is a function
     of its thread, its generation and the frame's time, so frames render in any
     order and repeat exactly. Motion is integrated in 32 fixed steps of the
-    life (96 with an obstacle). Keyed settings are followed: the settings are
-    sampled 16 times across the last life, a particle is launched with those
-    in force at its birth, and forces act as keyed while it flies. Life itself
+    life (96 with an obstacle, 128 when a force is keyed). Keyed settings are
+    followed: the settings are sampled 16 times across the last life, a particle
+    is launched with those in force at its birth, and forces act as keyed while
+    it flies. Keyed forces (gravity, wind, turbulence and its scale, field push
+    and flow, bounce, pull and its point, vortex) are sampled 64 times across the
+    life and read at every step, so a force switched on in the middle of a long
+    life acts from its key, not up to a quarter of the life later. Life itself
     is read at the frame, and the target, field, obstacle and sprite images
     are read as they are at the frame. So is the emitter, unless `history`
     (**Follow a moving emitter** in Studio: Off, 4, 9 or 16 moments) is set:

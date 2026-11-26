@@ -86,7 +86,7 @@ impl Controls {
                                 && ui
                                     .add(
                                         egui::DragValue::new(&mut self.size)
-                                            .range(1.0..=1024.0)
+                                            .range(1.0..=4096.0)
                                             .suffix(" px"),
                                     )
                                     .changed()

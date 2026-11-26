@@ -105,14 +105,14 @@ impl Font {
             return Err(error("Tracking must be within -128..512 pixels"));
         }
         if !options.font_size.is_finite()
-            || !(1.0..=1024.0).contains(&options.font_size)
+            || !(1.0..=4096.0).contains(&options.font_size)
             || options
                 .origin
                 .iter()
                 .any(|v| !v.is_finite() || v.abs() > 32768.0)
         {
             return Err(error(
-                "text size must be 1..1024 and origin finite within ±32768",
+                "text size must be 1..4096 and origin finite within ±32768",
             ));
         }
         let face = ttf_parser::Face::parse(&self.bytes, self.index).map_err(error)?;

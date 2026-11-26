@@ -69,7 +69,7 @@ pub(crate) fn shape(
             options.origin[0] += advance;
             let selected = index.and_then(|i| fonts[i].as_ref()).unwrap_or(font);
             if let Some(i) = index {
-                options.font_size = (options.font_size * spans[i].scale).clamp(1.0, 1024.0);
+                options.font_size = (options.font_size * spans[i].scale).clamp(1.0, 4096.0);
             }
             let mut shaped = selected.shape_run(&line[start..end], &options)?;
             for glyph in &mut shaped.glyphs {

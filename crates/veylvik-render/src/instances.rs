@@ -12,6 +12,10 @@ pub struct Instances {
     pub buffer: wgpu::Buffer,
     pub count: u32,
 }
+/// Particles worked out from their birth alone (not a simulated flock).
+fn state_less(particles: &veylvik_document::nodes::Particles) -> bool {
+    !nodes::particles::simulating(particles)
+}
 impl Renderer {
     /// The copies for every Particle instances node `scene` draws, at `time`.
     pub(crate) fn instances_for(
@@ -20,6 +24,7 @@ impl Renderer {
         scene: &veylvik_scene::Scene,
         time: Time,
         inputs: Option<&crate::ImageInputs>,
+        pictures: &[crate::scene_hook::Picture<'_>],
     ) -> Result<Vec<Instances>> {
         let mut wanted: Vec<NodeId> = scene.objects.iter().filter_map(|o| o.instanced).collect();
         wanted.sort();
@@ -30,9 +35,10 @@ impl Renderer {
         let nodes: Vec<Node> = plan.nodes.iter().chain(&plan.light_data).cloned().collect();
         wanted
             .into_iter()
-            .map(|id| self.instances(&nodes, id, plan.width, plan.height, time, inputs))
+            .map(|id| self.instances(&nodes, id, plan.width, plan.height, time, inputs, pictures))
             .collect()
     }
+    #[allow(clippy::too_many_arguments)]
     fn instances(
         &self,
         nodes: &[Node],
@@ -41,6 +47,7 @@ impl Renderer {
         height: u32,
         time: Time,
         inputs: Option<&crate::ImageInputs>,
+        pictures: &[crate::scene_hook::Picture<'_>],
     ) -> Result<Instances> {
         let by_id = |id: NodeId| nodes.iter().find(|n| n.id == id);
         let copier = by_id(id).ok_or_else(|| error("a Particle instances node is missing"))?;
@@ -63,15 +70,30 @@ impl Renderer {
                 copier.label
             )));
         };
-        if let Some(port) = ["emitter", "target", "field", "obstacle"]
-            .into_iter()
-            .find(|port| me.inputs.contains_key(*port))
-        {
-            return Err(error(format!(
-                "{}: particles copied as 3D objects cannot use the {port} input yet",
-                copier.label
-            )));
-        }
+        // The pictures the particles read (made at the frame's size for the scene render;
+        // see crate::plan::INSTANCE_PICTURES), by port.
+        let picture = |port: &str| -> Result<Option<&wgpu::Buffer>> {
+            let Some(source) = me.inputs.get(port) else {
+                return Ok(None);
+            };
+            match pictures.iter().find(|p| p.0 == *source) {
+                Some(p) if p.2 == [width, height] => Ok(Some(p.1)),
+                Some(_) => Err(error(format!(
+                    "{}: the particles' {port} must be a picture of the frame's size (not an Own size picture) to be copied as 3D objects",
+                    copier.label
+                ))),
+                None => Err(error(format!(
+                    "{}: the particles' {port} picture was not made",
+                    copier.label
+                ))),
+            }
+        };
+        let (emitter, target, field, obstacle) = (
+            picture("emitter")?,
+            picture("target")?,
+            picture("field")?,
+            picture("obstacle")?,
+        );
         let cx = nodes::Cx {
             node: me,
             nodes,
@@ -89,9 +111,27 @@ impl Renderer {
         // Only the particles themselves are copied, not their bursts.
         let at = nodes::particles::ROWS * nodes::particles::COUNT + 32;
         let parents = data.pixels()[at / 3][at % 3];
-        let count = (parents.max(0.0) as u32)
+        let mut count = (parents.max(0.0) as u32)
             .min(INSTANCES_MOST)
             .min(p.values[0] as u32);
+        // Born on an emitter, threads go cell by cell over the picture: cells large enough
+        // that the whole picture fits in the copies there may be (the chance of a birth
+        // grows with the cell, so the density holds).
+        if p.extra[0] > 0.5 && state_less(particles) {
+            let slots = p.values[3].max(1.0);
+            let most = INSTANCES_MOST as f32;
+            let mut stride = p.values[2].max(1.0);
+            let threads = |stride: f32| {
+                (width as f32 / stride).ceil() * (height as f32 / stride).ceil() * slots
+            };
+            while threads(stride) > most {
+                stride += 1.0;
+            }
+            p.values[2] = stride;
+            p.values[0] = threads(stride);
+            p.values[1] = p.values[0].min(nodes::particles::ROW as f32);
+            count = p.values[0] as u32;
+        }
         p.values[0] = count as f32;
         p.values[2] = copies.scale.at(time).map_err(error)?;
         p.values[3] = f32::from(u8::from(copies.tumble));
@@ -104,7 +144,7 @@ impl Renderer {
                 match self.read_bake(bake, key, time, width, height)? {
                     Some((read, _)) => Some(read),
                     None => Some(
-                        self.simulate_node(me, nodes, key, width, height, time, None)?
+                        self.simulate_node(me, nodes, key, width, height, time, emitter)?
                             .0,
                     ),
                 }
@@ -119,18 +159,80 @@ impl Renderer {
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
             mapped_at_creation: false,
         });
-        let settings = self.settings_buffer(width, height, &data);
+        // Copies are born on the emitter as it is at the frame (a moving emitter's history is
+        // for the particles' own picture); a flock reads it in its simulation instead.
+        if p.extra[0] > 1.0 {
+            p.extra[0] = 1.0;
+        }
         let uniform = self.uniform_of(&p);
+        let mut encoder = self.device.create_command_encoder(&Default::default());
+        // With a target, a field or an obstacle the settings are read as the particles' own
+        // picture reads them: through the prepare (the target's tile sums) and fields (the
+        // running table, the field's slope, the obstacle) passes; else as they are.
+        let settings = if target.is_some() || field.is_some() || obstacle.is_some() {
+            use wgpu::util::DeviceExt;
+            let frame = u64::from(width) * u64::from(height) * 16;
+            let work = |label| {
+                self.device.create_buffer(&wgpu::BufferDescriptor {
+                    label: Some(label),
+                    size: frame,
+                    usage: wgpu::BufferUsages::STORAGE,
+                    mapped_at_creation: false,
+                })
+            };
+            let (prepared, fields) = (work("copies' target tiles"), work("copies' fields"));
+            let texels: Vec<[f32; 4]> = data.pixels().to_vec();
+            let data_buffer = self
+                .device
+                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("copies' settings"),
+                    contents: bytemuck::cast_slice(&texels),
+                    usage: wgpu::BufferUsages::STORAGE,
+                });
+            let features = nodes::particles::features_of(me);
+            for (kernel, inputs, out) in [
+                (
+                    Kernel::ParticlePrepare,
+                    [target.unwrap_or(&none), &none, &none, &none],
+                    &prepared,
+                ),
+                (
+                    Kernel::ParticleFields,
+                    [
+                        field.unwrap_or(&none),
+                        obstacle.unwrap_or(&none),
+                        &prepared,
+                        &data_buffer,
+                    ],
+                    &fields,
+                ),
+            ] {
+                let pipeline = self.pipeline_for(kernel, features)?;
+                let group =
+                    self.kernel_group(&uniform, inputs[0], inputs[1], out, inputs[2], inputs[3]);
+                let mut pass = encoder.begin_compute_pass(&Default::default());
+                pass.set_pipeline(&pipeline);
+                pass.set_bind_group(0, &group, &[]);
+                pass.dispatch_workgroups(width.div_ceil(8), height.div_ceil(8), 1);
+            }
+            fields
+        } else {
+            self.settings_buffer(width, height, &data)
+        };
+        let first = match (&state, emitter) {
+            (Some(state), _) => state,
+            (None, Some(emitter)) => emitter,
+            (None, None) => &none,
+        };
         let group = self.kernel_group(
             &uniform,
-            state.as_ref().unwrap_or(&none),
-            &none,
+            first,
+            target.unwrap_or(&none),
             &buffer,
             &settings,
             &none,
         );
         let row = (p.values[1] as u32).max(1);
-        let mut encoder = self.device.create_command_encoder(&Default::default());
         {
             let pipeline =
                 self.pipeline_for(Kernel::ParticleInstances, nodes::particles::features_of(me))?;

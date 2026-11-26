@@ -97,7 +97,7 @@ fn malformed_fonts_and_unbounded_runs_are_rejected() {
     ] {
         assert!(font.shape_run(&text, &RunOptions::default()).is_err());
     }
-    for size in [0.0, 1025.0, f32::NAN, f32::INFINITY] {
+    for size in [0.0, 4097.0, f32::NAN, f32::INFINITY] {
         assert!(
             font.shape_run(
                 "a",

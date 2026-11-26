@@ -554,11 +554,20 @@ impl Plan {
                         let n = &composition.nodes[&id];
                         light_data.push(n.clone());
                         match &n.operation {
-                            Operation::Particles(_) => more.extend(
-                                ["scene", "forces"]
-                                    .iter()
-                                    .filter_map(|port| n.inputs.get(*port).copied()),
-                            ),
+                            Operation::Particles(_) => {
+                                more.extend(
+                                    ["scene", "forces"]
+                                        .iter()
+                                        .filter_map(|port| n.inputs.get(*port).copied()),
+                                );
+                                // The pictures they read are made as pictures and handed
+                                // to the scene render (see INSTANCE_PICTURES).
+                                for port in INSTANCE_PICTURES {
+                                    if let Some(source) = n.inputs.get(port) {
+                                        todo.push((*source, false));
+                                    }
+                                }
+                            }
                             _ => more.extend(n.inputs.values().copied()),
                         }
                     }
@@ -862,6 +871,23 @@ impl Plan {
                                 Operation::CameraProjection(_) => n.inputs.get("image"),
                                 _ => None,
                             };
+                            // Copies at particles: the pictures their particles read, at
+                            // the frame's size, beside the cards.
+                            if let Operation::ParticleInstances(_) = &n.operation
+                                && let Some(particles) = n
+                                    .inputs
+                                    .get("particles")
+                                    .and_then(|id| composition.nodes.get(id))
+                            {
+                                for port in INSTANCE_PICTURES {
+                                    if let Some(&source) = particles.inputs.get(port)
+                                        && !cards.iter().any(|(s, _)| *s == source)
+                                        && let Some(&value) = outputs.get(&source)
+                                    {
+                                        cards.push((source, Input::Value(value)));
+                                    }
+                                }
+                            }
                             // A picture of its own size is read as it is.
                             if let Some(&source) = pictured
                                 && !cards.iter().any(|(s, _)| *s == source)
@@ -1035,11 +1061,22 @@ impl Plan {
             .enumerate()
             .map(|(i, n)| (n.id, i))
             .collect();
+        // Nodes read as data (particles that copies are placed at, a rig's sources) are
+        // not passes, but what they read may be: the walk goes through them.
+        let data: BTreeMap<NodeId, &veylvik_document::Node> =
+            self.light_data.iter().map(|n| (n.id, n)).collect();
         let mut visible = BTreeSet::new();
         let mut seen = BTreeSet::new();
         let mut pending = vec![self.root];
         while let Some(id) = pending.pop() {
-            let Some(&i) = index.get(&id) else { continue };
+            let Some(&i) = index.get(&id) else {
+                if let Some(node) = data.get(&id)
+                    && seen.insert(id)
+                {
+                    pending.extend(node.inputs.values().copied());
+                }
+                continue;
+            };
             if !seen.insert(id) {
                 continue;
             }
@@ -1291,6 +1328,11 @@ fn shareable(operation: &Operation) -> bool {
 
 /// The port a node may read through its recent past (see `crate::history`).
 pub(crate) const HISTORY_PORT: &str = "emitter";
+/// The pictures a Particles node reads that copies at its particles (Particle
+/// instances) use too: the emitter they are born on, the target they fly to, the field
+/// that steers them and the obstacle they bounce off. Planned as pictures and handed to
+/// the Render scene that films the copies.
+pub(crate) const INSTANCE_PICTURES: [&str; 4] = ["emitter", "target", "field", "obstacle"];
 /// The source of the input a node reads through its history, when it asks for one.
 pub(crate) fn history_source(node: &Node) -> Option<NodeId> {
     match &node.operation {

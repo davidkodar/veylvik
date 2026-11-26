@@ -182,7 +182,7 @@ pub fn operation(kind: &NodeType, width: u32, height: u32) -> Operation {
         Operation::Text(veylvik_document::nodes::Text { x, y, size, .. }) => {
             *x = (width as f32 * 0.5).into();
             *y = (height as f32 * 0.6).into();
-            *size = (height as f32 * 0.28).clamp(1.0, 1024.0).into();
+            *size = (height as f32 * 0.28).clamp(1.0, 4096.0).into();
         }
         Operation::MetallicShine(veylvik_document::nodes::MetallicShine {
             x, y, width: w, ..

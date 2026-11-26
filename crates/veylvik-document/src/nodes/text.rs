@@ -47,7 +47,7 @@ pub static TEXT: NodeType = NodeType {
         other("alignment", ParameterKind::TextAlignment, "alignment"),
         other("rtl", ParameterKind::Boolean, "direction"),
         other("language", ParameterKind::TextLanguage, "language"),
-        scalar("size", "pixels", 1.0, 1024.0, 160.0),
+        scalar("size", "pixels", 1.0, 4096.0, 160.0),
         scalar("x", "pixels", -32768.0, 32768.0, 480.0),
         scalar("y", "pixels", -32768.0, 32768.0, 320.0),
         scalar("tracking", "pixels", -128.0, 512.0, 0.0),

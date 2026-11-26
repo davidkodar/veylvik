@@ -1828,3 +1828,47 @@ fn a_flock_is_born_on_its_emitters_shape_in_its_colour() {
     }
     assert!(lit > 400, "many birds on the shape: {lit}");
 }
+#[test]
+#[ignore = "requires Vulkan"]
+fn a_force_keyed_during_a_long_life_acts_when_it_is_keyed() {
+    let renderer = Renderer::new().unwrap();
+    // Particles born still, together, at the left; they live 20 s. A wind switches on at
+    // 6.5 s, between the moments a force used to be read (every quarter of a life).
+    let mut p = still();
+    p.x = 40.0.into();
+    p.width = 6.0.into();
+    p.height = 6.0.into();
+    p.rate = 2000.0.into();
+    p.start = 0.0.into();
+    p.duration = 0.1.into();
+    p.life = 20.0.into();
+    let wind = 40.0f32;
+    p.wind = Scalar::Step {
+        keys: vec![
+            Key {
+                segment: None,
+                time: Time::new(0, 1).unwrap(),
+                value: 0.0,
+            },
+            Key {
+                segment: None,
+                time: Time::new(13, 2).unwrap(),
+                value: wind,
+            },
+        ],
+    };
+    let at = |seconds: (i64, u32)| mass(&render(&renderer, p.clone(), None, seconds)).1;
+    let before = at((32, 5)); // 6.4 s: not yet blown
+    let after = at((15, 2)); // 7.5 s: blown for a second
+    let moved = after - before;
+    // Half the wind times a second squared, give or take the integration steps.
+    assert!(
+        (moved - wind * 0.5).abs() < wind * 0.12,
+        "moved {moved}, expected about {}",
+        wind * 0.5
+    );
+    assert!(
+        (before - 40.0).abs() < 1.5,
+        "still before the wind: {before}"
+    );
+}

@@ -7,7 +7,7 @@ use veylvik_document::{Operation, Scalar, Time, nodes::Particles};
 const MAX_BOX: f32 = 2_000_000.0;
 const SLOTS: f32 = 4.0;
 /// Threads in one dispatch row (1024 workgroups of 64).
-const ROW: u32 = 65536;
+pub(crate) const ROW: u32 = 65536;
 /// Settings in a row, and rows through the last life (as in particle_system.wgsl).
 pub(crate) const COUNT: usize = 126;
 pub(crate) const ROWS: usize = 16;
@@ -207,6 +207,47 @@ fn rows(node: &Particles, time: Time) -> Result<Vec<[f32; COUNT]>> {
             )
         })
         .collect()
+}
+/// How many times the forces are sampled over the last life when any of them is keyed.
+pub(crate) const FORCE_ROWS: usize = 64;
+/// The settings that move particles, as the shader's `forces_at` reads them: gravity,
+/// wind, turbulence and its scale, field push and flow, bounce, pull x and y, pull and
+/// vortex (their indices in a settings row).
+const FORCE_SETTINGS: [usize; 11] = [4, 5, 6, 7, 31, 32, 33, 34, 35, 36, 37];
+/// The forces over the last life before `time`, finer than the settings rows: a force
+/// switched on, off or changed during a long life then takes effect when it is keyed,
+/// not up to a sixteenth of the life later. Empty when no force is keyed.
+fn force_table(node: &Particles, time: Time, life: f32) -> Result<Vec<f32>> {
+    let keyed = [
+        &node.gravity,
+        &node.wind,
+        &node.turbulence,
+        &node.turbulence_scale,
+        &node.field_push,
+        &node.field_flow,
+        &node.bounce,
+        &node.pull_x,
+        &node.pull_y,
+        &node.pull,
+        &node.vortex,
+    ]
+    .iter()
+    .any(|s| !matches!(s, Scalar::Constant { .. }));
+    if !keyed {
+        return Ok(Vec::new());
+    }
+    let seconds = time.seconds().map_err(error)?;
+    let life = f64::from(life);
+    let mut table = Vec::with_capacity(FORCE_ROWS * FORCE_SETTINGS.len());
+    for r in 0..FORCE_ROWS {
+        let at = seconds - life + life * r as f64 / (FORCE_ROWS - 1) as f64;
+        let row = settings(
+            node,
+            Time::new((at * 24000.0).round() as i64, 24000).map_err(error)?,
+        )?;
+        table.extend(FORCE_SETTINGS.iter().map(|&k| row[k]));
+    }
+    Ok(table)
 }
 /// Threads from a box, and the emitter cell's stride, for these rows.
 fn layout(rows: &[[f32; COUNT]]) -> (u32, u32) {
@@ -766,8 +807,16 @@ impl RenderNode for Particles {
             _ => Vec::new(),
         };
         let forces = super::particle_forces::forces(cx, rows[ROWS - 1][0])?;
-        // How much data follows the camera row: the surface, the solids, the forces.
-        last[112] = (surface.len() + solids.len() + forces.len()) as f32;
+        let table = force_table(self, time, rows[ROWS - 1][0])?;
+        // How much data follows the camera row: the surface, the solids, the force
+        // nodes and the keyed forces' table.
+        last[112] = (surface.len() + solids.len() + forces.len() + table.len()) as f32;
+        last[119] = (surface.len() + solids.len() + forces.len()) as f32;
+        last[120] = if table.is_empty() {
+            0.0
+        } else {
+            FORCE_ROWS as f32
+        };
         last[113] = f32::from(!surface.is_empty());
         last[114] = surface.len() as f32;
         last[115] = f32::from(!solids.is_empty());
@@ -791,7 +840,12 @@ impl RenderNode for Particles {
             0.0
         };
         rows.push(last);
-        let extra: Vec<f32> = surface.into_iter().chain(solids).chain(forces).collect();
+        let extra: Vec<f32> = surface
+            .into_iter()
+            .chain(solids)
+            .chain(forces)
+            .chain(table)
+            .collect();
         for chunk in extra.chunks(COUNT) {
             let mut row = [0.0; COUNT];
             row[..chunk.len()].copy_from_slice(chunk);

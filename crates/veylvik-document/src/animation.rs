@@ -47,11 +47,25 @@ impl Time {
         while b != 0 {
             (a, b) = (b, a % b);
         }
-        Self::new(
-            i64::try_from(numerator / a).map_err(|_| crate::Error("time overflow".into()))?,
-            u32::try_from(denominator / a)
-                .map_err(|_| crate::Error("time denominator overflow".into()))?,
-        )
+        let (numerator, denominator) = (numerator / a, denominator / a);
+        match u32::try_from(denominator) {
+            Ok(rate) => Self::new(
+                i64::try_from(numerator).map_err(|_| crate::Error("time overflow".into()))?,
+                rate,
+            ),
+            // The exact sum of two awkward times (a remapped time from a fraction of
+            // seconds, plus a motion blur sample's share of a frame) can need a larger
+            // denominator than a time holds: it is then the nearest nanosecond.
+            Err(_) => {
+                const NANOSECONDS: i128 = 1_000_000_000;
+                let scaled = numerator * NANOSECONDS;
+                let ticks = (scaled + scaled.signum() * denominator / 2) / denominator;
+                Self::new(
+                    i64::try_from(ticks).map_err(|_| crate::Error("time overflow".into()))?,
+                    NANOSECONDS as u32,
+                )
+            }
+        }
     }
 
     pub fn new(ticks: i64, rate: u32) -> Result<Self> {
@@ -820,5 +834,28 @@ mod even_tests {
         ] {
             assert!(serde_json::from_str::<Scalar>(bad).is_err(), "{bad}");
         }
+    }
+}
+#[cfg(test)]
+mod sum_tests {
+    use super::*;
+    #[test]
+    fn a_sum_too_fine_for_a_time_is_the_nearest_nanosecond() {
+        // 14.2 s as an f32 times a billion, plus a 1/7201 share of a frame: exact, the sum
+        // needs a denominator far past what a time holds.
+        let a = Time::new(14_199_999_809, 1_000_000_000).unwrap();
+        let b = Time::new(1, 7201 * 30).unwrap();
+        let sum = a.checked_add(b).unwrap();
+        let want = 14.199999809 + 1.0 / (7201.0 * 30.0);
+        assert!((sum.seconds().unwrap() - want).abs() < 1e-9, "{sum:?}");
+        assert_eq!(sum.rate, 1_000_000_000);
+        // Sums that fit stay exact.
+        let exact = Time::new(1, 3)
+            .unwrap()
+            .checked_add(Time::new(1, 6).unwrap())
+            .unwrap();
+        assert_eq!((exact.ticks, exact.rate), (1, 2));
+        let back = a.checked_sub(b).unwrap();
+        assert!((back.seconds().unwrap() - (14.199999809 - 1.0 / (7201.0 * 30.0))).abs() < 1e-9);
     }
 }
