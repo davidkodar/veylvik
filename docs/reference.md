@@ -1634,7 +1634,8 @@ and `colour`.
   moves with what the transform moves. Studio shows it as a small cross in a
   circle (Guides > Points), which a click selects.
 - **Light**: point, spot (cone and softness), sun or **area**, pointing along −z
-  before rotation, or at its **Aim at** object, marker or 3D transform from wherever it is placed (a row
+  before rotation (a sun is parallel light: where it stands changes nothing, only its
+  rotation or its Aim at, so an unturned sun lights everything from the camera's side), or at its **Aim at** object, marker or 3D transform from wherever it is placed (a row
   of strips turns as one, about the row's middle; aiming is worked out after the
   whole scene is put together, so it holds under 3D transforms). An area light is a glowing panel of Width by Height pixels
   (a soft box or strip light): near a surface it lights it unevenly, and glossy

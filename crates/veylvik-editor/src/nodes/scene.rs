@@ -508,6 +508,10 @@ impl Inspect for Light3d {
             .on_hover_text("Cast shadows from this light (up to four lights per scene); Softness blurs their edges")
             .changed();
         cx.dirty |= crate::animation::colour_track(ui, "Colour", &mut self.colour, cx.time);
+        if self.kind == Sun && self.aim_at.is_none() {
+            // A sun's light is parallel: where it stands changes nothing, only where it points.
+            ui.weak("A sun shines the same everywhere: only its Rotation counts, not its Position. It points along -z (from the camera into the scene) until it is turned, or set Aim at to have it shine from where it stands towards an object.");
+        }
         cx.dirty |= placement(ui, &mut self.placement, cx);
         aim_row(ui, &mut self.aim_at, cx, "light");
     }
