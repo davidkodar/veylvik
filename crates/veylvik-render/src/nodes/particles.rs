@@ -109,6 +109,8 @@ fn settings(node: &Particles, time: Time) -> Result<[f32; COUNT]> {
     row[124] = at(&node.top_speed)?;
     row[125] = at(&node.sprite_rate)?;
     row[126] = at(&node.hold)?;
+    row[127] = at(&node.sparkle)?;
+    row[128] = at(&node.sparkle_turn)?;
     if let Some(ramp) = node.colour_over_life {
         for (k, colour) in ramp.iter().enumerate() {
             row[85 + 4 * k..89 + 4 * k].copy_from_slice(colour);
@@ -116,10 +118,12 @@ fn settings(node: &Particles, time: Time) -> Result<[f32; COUNT]> {
     }
     Ok(row)
 }
-fn scalars(node: &Particles) -> [&Scalar; 60] {
+fn scalars(node: &Particles) -> [&Scalar; 62] {
     [
         &node.life,
         &node.hold,
+        &node.sparkle,
+        &node.sparkle_turn,
         &node.speed,
         &node.direction,
         &node.spread,
@@ -388,9 +392,36 @@ fn surface(node: &Particles, cx: &Cx<'_>, life: f32) -> Result<Vec<f32>> {
     let mut triangles: Vec<[f32; 11]> = Vec::new();
     let mut total = 0.0f32;
     for (k, piece) in pieces.iter().enumerate() {
-        let mesh = veylvik_scene::mesh(piece).map_err(error)?;
+        // An imported model's parts as loaded, at the model's size (its file is in the
+        // normalised box the 3D renderer scales by Size); anything else as the scene makes it.
+        let meshes = match &piece.geometry {
+            veylvik_scene::Geometry::Model { path, size, .. } => cx
+                .models
+                .and_then(|m| m.get(path))
+                .map(|model| {
+                    model
+                        .parts
+                        .iter()
+                        .map(|part| {
+                            let mut mesh = part.mesh.clone();
+                            for v in &mut mesh.vertices {
+                                v.position = v.position.map(|c| c * size);
+                            }
+                            mesh
+                        })
+                        .collect()
+                })
+                .unwrap_or_default(),
+            _ => vec![veylvik_scene::mesh(piece).map_err(error)?],
+        };
         let in_world = |p: [f32; 3]| veylvik_scene::math::point(&piece.world, p);
-        for corners in mesh.indices.as_chunks::<3>().0 {
+        for (mesh, corners) in meshes.iter().flat_map(|mesh| {
+            mesh.indices
+                .as_chunks::<3>()
+                .0
+                .iter()
+                .map(move |c| (mesh, c))
+        }) {
             let [a, b, c] = [0, 1, 2].map(|i| mesh.vertices[corners[i] as usize].position);
             let e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
             let e2 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];

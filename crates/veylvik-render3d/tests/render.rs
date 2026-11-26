@@ -2339,3 +2339,80 @@ fn what_the_engine_keeps_between_frames_is_counted_and_can_be_let_go() {
     // Made again when needed, the picture is the same.
     assert_eq!(render(&renderer, &doc, &ImageInputs::default()), first);
 }
+#[test]
+#[ignore = "requires Vulkan"]
+fn particles_are_born_on_an_imported_models_surface() {
+    use veylvik_scene::{Model, Part};
+    let renderer = renderer();
+    let mut doc = blank(W, H, Time::new(24, 1).unwrap()).unwrap();
+    // A model of one flat part on the right half of its box: at size 120 it covers
+    // x 0..60 and y -15..15 about the frame's middle.
+    let quad = veylvik_mesh::Mesh {
+        vertices: [
+            [0.0, -0.125, 0.0],
+            [0.5, -0.125, 0.0],
+            [0.5, 0.125, 0.0],
+            [0.0, 0.125, 0.0],
+        ]
+        .map(|position| veylvik_mesh::Vertex {
+            position,
+            normal: [0.0, 0.0, 1.0],
+            uv: [0.0, 0.0],
+        })
+        .to_vec(),
+        indices: vec![0, 2, 1, 0, 3, 2],
+        cap_indices: 0,
+    };
+    let model = Model {
+        parts: vec![Part {
+            mesh: quad,
+            colour: [1.0; 4],
+            metallic: 0.0,
+            roughness: 1.0,
+            texture: None,
+        }],
+        extent: [1.0, 0.5, 0.0],
+    };
+    let mut inputs = ImageInputs::default();
+    inputs.insert_model("/models/plate.glb", Arc::new(model));
+    let mut node = op(&MODEL_3D);
+    if let Operation::Model3d(m) = &mut node {
+        m.model = "/models/plate.glb".into();
+        m.size = 120.0.into();
+        m.extent = [1.0, 0.5, 0.0];
+    }
+    let model = add(&mut doc, node, &[]);
+    let camera = add(&mut doc, op(&CAMERA_3D), &[]);
+    let scene = add(
+        &mut doc,
+        op(&MERGE_SCENES),
+        &[("scene", camera), ("scene_2", model)],
+    );
+    let mut dust = op(&PARTICLES);
+    if let Operation::Particles(p) = &mut dust {
+        p.emit_from = Some(model);
+        p.rate = 4000.0.into();
+        p.life = 1.0.into();
+        p.start = (-1.0).into();
+        p.speed = 0.0.into();
+        p.gravity = 0.0.into();
+        p.turbulence = 0.0.into();
+        p.variation = 0.0.into();
+        p.size = 0.8.into();
+    }
+    doc.output = add(&mut doc, dust, &[("scene", scene)]);
+    let out = render(&renderer, &doc, &inputs);
+    let lit: Vec<(u32, u32)> = (0..W * H)
+        .filter(|&i| out[i as usize][3] > 0.05)
+        .map(|i| (i % W, i / W))
+        .collect();
+    assert!(lit.len() > 400, "particles on the model: {}", lit.len());
+    let (cx, cy) = (W as i32 / 2, H as i32 / 2);
+    for (x, y) in lit {
+        let (dx, dy) = (x as i32 - cx, y as i32 - cy);
+        assert!(
+            (-2..=62).contains(&dx) && (-17..=17).contains(&dy),
+            "a particle off the model at {dx}, {dy}"
+        );
+    }
+}

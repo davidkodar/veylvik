@@ -384,12 +384,14 @@ impl Renderer {
             return Err(error("only particles are simulated"));
         };
         let time = Time::new((seconds * 24000.0).round() as i64, 24000).map_err(error)?;
+        // A flock is not born on an imported model: its steps have no loaded files.
         let cx = nodes::Cx {
             node: me,
             nodes,
             width,
             height,
             time,
+            models: None,
         };
         let data = particles
             .data(&cx)?

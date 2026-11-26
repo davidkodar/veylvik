@@ -67,6 +67,7 @@ impl RenderNode for veylvik_document::nodes::Blend {
             width,
             height,
             time,
+            ..
         } = *cx;
         let veylvik_document::nodes::Blend { mode, .. } = self;
         {
@@ -134,6 +135,7 @@ impl RenderNode for veylvik_document::nodes::CombineMask {
             width,
             height,
             time,
+            ..
         } = *cx;
         let veylvik_document::nodes::CombineMask { mode } = self;
         {
@@ -166,6 +168,7 @@ impl RenderNode for veylvik_document::nodes::ChannelMask {
             width,
             height,
             time,
+            ..
         } = *cx;
         let veylvik_document::nodes::ChannelMask { channel } = self;
         {
@@ -206,6 +209,7 @@ impl RenderNode for veylvik_document::nodes::SurfaceBlend {
             width,
             height,
             time,
+            ..
         } = *cx;
         {
             p.values = [

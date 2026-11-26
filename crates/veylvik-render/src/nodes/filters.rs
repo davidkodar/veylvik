@@ -44,6 +44,7 @@ impl RenderNode for veylvik_document::nodes::Blur {
             width,
             height,
             time,
+            ..
         } = *cx;
         {
             p.values[0] = sample("radius")?;
@@ -136,6 +137,7 @@ impl RenderNode for veylvik_document::nodes::Morphology {
             width,
             height,
             time,
+            ..
         } = *cx;
         {
             p.values[0] = sample("radius")?.round();
@@ -163,6 +165,7 @@ impl RenderNode for veylvik_document::nodes::Displace {
             width,
             height,
             time,
+            ..
         } = *cx;
         {
             p.values[0] = sample("x")?;
@@ -219,6 +222,7 @@ impl RenderNode for veylvik_document::nodes::Transform {
             width,
             height,
             time,
+            ..
         } = *cx;
         {
             p.values[0] = sample("x")?;
@@ -247,6 +251,7 @@ impl RenderNode for veylvik_document::nodes::Affine {
             width,
             height,
             time,
+            ..
         } = *cx;
         {
             let (sx, sy) = (sample("scale_x")? as f64, sample("scale_y")? as f64);

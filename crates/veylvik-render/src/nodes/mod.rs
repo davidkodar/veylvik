@@ -44,6 +44,9 @@ pub(crate) struct Cx<'a> {
     pub width: u32,
     pub height: u32,
     pub time: Time,
+    /// Imported 3D models as loaded, by file path, when the caller has them.
+    pub models:
+        Option<&'a std::collections::BTreeMap<String, std::sync::Arc<veylvik_scene::Model>>>,
 }
 /// Where a picture can be other than clear: nowhere, within a rectangle of the frame
 /// (`[left, top, right, bottom]` in pixels, right and bottom not included), or anywhere.

@@ -20,6 +20,7 @@ impl RenderNode for veylvik_document::nodes::Text {
             width,
             height,
             time,
+            ..
         } = *cx;
         let veylvik_document::nodes::Text { color, .. } = self;
         {

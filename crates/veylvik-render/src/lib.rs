@@ -104,6 +104,7 @@ pub fn material_uniforms(
         width,
         height,
         time,
+        models: None,
     };
     nodes::RenderNode::params(material, &cx, &sample, &mut p)?;
     let colours = material
@@ -224,6 +225,7 @@ fn params(
         width,
         height,
         time,
+        models: None,
     };
     veylvik_document::each_node!(&node.operation, n => nodes::RenderNode::params(n, &cx, &sample, &mut p))?;
     Ok(p)

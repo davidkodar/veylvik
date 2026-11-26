@@ -1945,3 +1945,62 @@ fn particles_hold_their_place_on_the_target_after_they_arrive() {
         (left, right, top, bottom)
     );
 }
+#[test]
+#[ignore = "requires Vulkan"]
+fn lit_particles_glitter_a_few_at_a_time_where_their_facets_mirror_the_light() {
+    let renderer = Renderer::new().unwrap();
+    let grains = |sparkle: f32, turn: f32| {
+        let mut p = still();
+        p.width = 150.0.into();
+        p.height = 110.0.into();
+        p.rate = 3000.0.into();
+        p.size = 0.8.into();
+        p.glow = 1.0.into();
+        p.lit = 1.0.into();
+        p.ambient = 0.2.into();
+        p.scatter = 0.0.into();
+        p.colour = [0.3, 0.05, 0.04, 1.0];
+        p.end_colour = [0.3, 0.05, 0.04, 1.0];
+        p.sparkle = sparkle.into();
+        p.sparkle_turn = turn.into();
+        p
+    };
+    // A sun shining into the scene from the camera's side.
+    let sun = serde_json::json!({"kind": "sun", "colour": [1.0, 1.0, 1.0], "intensity": {"kind": "constant", "value": 1.0},
+        "placement": {"position": [0.0, 0.0, 400.0], "rotation": [10.0, -15.0, 0.0], "scale": [1.0, 1.0, 1.0]}});
+    let plain = render_lit(&renderer, grains(0.0, 90.0), sun.clone());
+    let glitter = render_lit(&renderer, grains(200.0, 90.0), sun.clone());
+    let turned = render_lit(&renderer, grains(200.0, 400.0), sun);
+    let peak = |px: &[[f32; 4]]| px.iter().map(|p| p[0]).fold(0.0f32, f32::max);
+    let bright = |px: &[[f32; 4]], over: f32| px.iter().filter(|p| p[0] > over).count();
+    let over = peak(&plain) * 4.0;
+    let flashing = bright(&glitter, over);
+    let lit = plain.iter().filter(|p| p[3] > 0.02).count();
+    // Some grains flash far brighter than any grain without sparkle...
+    assert!(
+        flashing > 5,
+        "flashes: {flashing} (plain peak {})",
+        peak(&plain)
+    );
+    // ...but only a few of them at once.
+    assert!(
+        flashing * 20 < lit,
+        "{flashing} flashing of {lit} lit pixels"
+    );
+    // Turning the facets faster moves the flashes to other grains.
+    let at = |px: &[[f32; 4]]| {
+        px.iter()
+            .enumerate()
+            .filter(|(_, p)| p[0] > over)
+            .map(|(i, _)| i)
+            .collect::<std::collections::BTreeSet<_>>()
+    };
+    let (a, b) = (at(&glitter), at(&turned));
+    assert!(
+        a.intersection(&b).count() * 2 < a.len().min(b.len()).max(1),
+        "the same grains flash: {} of {} / {}",
+        a.intersection(&b).count(),
+        a.len(),
+        b.len()
+    );
+}

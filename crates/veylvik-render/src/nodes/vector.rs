@@ -20,6 +20,7 @@ impl RenderNode for veylvik_document::nodes::Path {
             width,
             height,
             time,
+            ..
         } = *cx;
         {
             p.values = [width as f32, height as f32, 0.0, 0.0];

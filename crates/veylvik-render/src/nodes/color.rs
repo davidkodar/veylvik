@@ -42,6 +42,7 @@ impl RenderNode for veylvik_document::nodes::Exposure {
             width,
             height,
             time,
+            ..
         } = *cx;
         {
             let stops = sample("stops")?;
@@ -81,6 +82,7 @@ impl RenderNode for veylvik_document::nodes::Colorize {
             width,
             height,
             time,
+            ..
         } = *cx;
         let veylvik_document::nodes::Colorize { low, high } = self;
         {

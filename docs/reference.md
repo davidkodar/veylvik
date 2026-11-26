@@ -1984,6 +1984,14 @@ settles on the wrong kind of motion can still look sure. The
     variation) pile up, their light adds to white as light does, and the limit
     then holds that white. Keep such crowds sparser or darker, or let them
     cover one another (Glow 0), to keep the colours apart.
+    **Sparkle** (lit particles in a scene with lights) makes them glitter: each
+    has a tiny mirror facet of its own, facing its own way and turning at
+    **Sparkle turn** degrees a second, and flashes Sparkle times as bright, in
+    its own colour, while that facet mirrors a light into the camera. The flash
+    is narrow, so only a few grains of a crowd catch the light at once, and the
+    flashes move on as the grains, the lights or the camera move: glitter, sand
+    in sunlight, metal dust. A back light behind the grains, near the line of
+    view, makes the most of it.
   - *Time.* Nothing is simulated from frame to frame: a particle is a function
     of its thread, its generation and the frame's time, so frames render in any
     order and repeat exactly. Motion is integrated in 32 fixed steps of the

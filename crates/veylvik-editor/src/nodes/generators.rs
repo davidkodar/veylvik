@@ -160,7 +160,7 @@ impl Inspect for veylvik_document::nodes::Particles {
                         }
                     })
                     .response
-                    .on_hover_text("Born on the surface of a 3D object of the scene, spread evenly over it and launched straight out of it; a moving object leaves its particles behind. Imported models cannot emit yet");
+                    .on_hover_text("Born on the surface of a 3D object of the scene, spread evenly over it and launched straight out of it; a moving object leaves its particles behind. An imported model emits from all its parts; a flock cannot be born on one");
             });
         }
         // A sprite cut into a sheet of cells.

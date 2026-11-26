@@ -26,6 +26,7 @@ impl RenderNode for veylvik_document::nodes::Solid {
             width,
             height,
             time,
+            ..
         } = *cx;
         let veylvik_document::nodes::Solid { color } = self;
         {
@@ -54,6 +55,7 @@ impl RenderNode for veylvik_document::nodes::Gradient {
             width,
             height,
             time,
+            ..
         } = *cx;
         let veylvik_document::nodes::Gradient { mode, .. } = self;
         {
@@ -88,6 +90,7 @@ impl RenderNode for veylvik_document::nodes::Noise {
             width,
             height,
             time,
+            ..
         } = *cx;
         let veylvik_document::nodes::Noise { seed, .. } = self;
         {
@@ -117,6 +120,7 @@ impl RenderNode for veylvik_document::nodes::FractalNoise {
             width,
             height,
             time,
+            ..
         } = *cx;
         let veylvik_document::nodes::FractalNoise { seed, .. } = self;
         {
@@ -151,6 +155,7 @@ impl RenderNode for veylvik_document::nodes::Fire {
             width,
             height,
             time,
+            ..
         } = *cx;
         let veylvik_document::nodes::Fire { seed, .. } = self;
         {
@@ -191,6 +196,7 @@ impl RenderNode for veylvik_document::nodes::Atmosphere {
             width,
             height,
             time,
+            ..
         } = *cx;
         let veylvik_document::nodes::Atmosphere { kind, seed, .. } = self;
         {
@@ -258,6 +264,7 @@ impl RenderNode for veylvik_document::nodes::Ellipse {
             width,
             height,
             time,
+            ..
         } = *cx;
         {
             p.values = [

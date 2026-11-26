@@ -57,6 +57,7 @@ const LINK_DISTANCE = 57u; const LINK_OPACITY = 58u; const LINK_WIDTH = 59u;
 const CURVES = 60u; const SIZE_CURVE = 61u; const OPACITY_CURVE = 69u; const SPEED_CURVE = 77u;
 const COLOUR_CURVE = 85u;
 const LIT = 117u; const AMBIENT = 118u; const SCATTER = 119u; const HOLD = 126u;
+const SPARKLE = 127u; const SPARKLE_TURN = 128u;
 // The camera row's lights: how many at 36, then twelve values each from 40.
 const LIGHT_COUNT = 36u; const LIGHT_BASE = 40u;
 // Where the camera is in the scene: the world-to-camera rows' rotation turned back on
@@ -101,11 +102,21 @@ fn shadow_seen(k: u32, at: vec3<f32>) -> f32 {
 // What the scene's lights do to a particle's colour at `at`: 1 when it is not lit;
 // otherwise the light reaching it (as a lit 3D surface there would get it, scattered
 // towards the camera), mixed in by how lit it is.
-fn lighting(at: vec3<f32>, seconds: f32) -> vec3<f32> {
+// A particle's glitter facet `age` seconds into its life: a direction of its own,
+// turning about an axis of its own at the Sparkle turn rate.
+fn facet(thread: u32, generation: u32, age: f32, seconds: f32) -> vec3<f32> {
+    let n = normalize(vec3<f32>(random(thread, generation, 51u), random(thread, generation, 52u), random(thread, generation, 53u)) * 2.0 - 1.0 + vec3<f32>(1e-4));
+    let k = normalize(vec3<f32>(random(thread, generation, 54u), random(thread, generation, 55u), random(thread, generation, 56u)) * 2.0 - 1.0 + vec3<f32>(1e-4));
+    let angle = radians(setting(SPARKLE_TURN, seconds)) * age + random(thread, generation, 57u) * 6.2831853;
+    let c = cos(angle);
+    return n * c + cross(k, n) * sin(angle) + k * dot(k, n) * (1.0 - c);
+}
+fn lighting(at: vec3<f32>, seconds: f32, facet_now: vec3<f32>) -> vec3<f32> {
     let lit = setting(LIT, seconds);
     if lit <= 0.0 { return vec3<f32>(1.0); }
     var light = vec3<f32>(setting(AMBIENT, seconds));
     let g = setting(SCATTER, seconds);
+    let sparkle = setting(SPARKLE, seconds);
     let towards_eye = normalize(eye() - at);
     let count = min(u32(camera_row(LIGHT_COUNT)), 6u);
     for (var i = 0u; i < count; i++) {
@@ -134,6 +145,11 @@ fn lighting(at: vec3<f32>, seconds: f32) -> vec3<f32> {
         let c = dot(travel, towards_eye);
         let phase = (1.0 - g * g) / pow(max(1.0 + g * g - 2.0 * g * c, 1e-4), 1.5);
         light += radiance * phase;
+        // Glitter: the facet (either side) mirrors this light into the camera.
+        if sparkle > 0.0 {
+            let half_way = normalize(towards_eye - travel);
+            light += radiance * sparkle * pow(abs(dot(facet_now, half_way)), 800.0);
+        }
     }
     return mix(vec3<f32>(1.0), light, lit);
 }
@@ -830,7 +846,7 @@ fn draw(origin: vec3<f32>, launch: vec3<f32>, birth: f32, age: f32, own_life: f3
     } else if fade > 0.0 { opacity *= clamp((1.0 - share) / fade, 0.0, 1.0); }
     var colour = mix(look.first, look.last, share);
     if look.ramp && has_curve(8u, birth) { colour = life_colour(birth, share); }
-    colour = vec4<f32>(colour.rgb * lighting(where_now, birth), colour.a);
+    colour = vec4<f32>(colour.rgb * lighting(where_now, birth, facet(look.thread, look.generation, age, birth)), colour.a);
     colour = vec4<f32>(colour.rgb * look.tint, colour.a);
     let hues = setting(HUES, birth);
     if hues > 0.0 {
@@ -1090,7 +1106,7 @@ fn particle_positions(@builtin(global_invocation_id) gid: vec3<u32>) {
             let last_colour = vec4<f32>(setting(END_COLOUR, b.birth), setting(END_COLOUR + 1u, b.birth), setting(END_COLOUR + 2u, b.birth), setting(END_A, b.birth));
             colour = mix(first_colour, last_colour, share);
             if has_curve(8u, b.birth) { colour = life_colour(b.birth, share); }
-            colour = vec4<f32>(colour.rgb * lighting(where_now, b.birth), colour.a);
+            colour = vec4<f32>(colour.rgb * lighting(where_now, b.birth, facet(i, b.generation, age, b.birth)), colour.a);
             let hues = setting(HUES, b.birth);
             if hues > 0.0 { colour = vec4<f32>(turned(colour.rgb, (random(i, b.generation, 12u) - 0.5) * 6.2831853 * hues), colour.a); }
             spot = vec4<f32>(seen.xy, opacity * colour.a, setting(SIZE, b.birth));

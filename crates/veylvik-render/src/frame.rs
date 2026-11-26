@@ -397,7 +397,7 @@ impl ImageInputs {
         // Hidden branches (behind a fully transparent blend) get an empty stand-in, not a decode.
         let visible = plan.visible_at(time)?;
         for node in &plan.nodes {
-            if let Some(data) = veylvik_document::each_node!(&node.operation, n => crate::nodes::RenderNode::data(n, &crate::nodes::Cx { node, nodes: &plan.nodes, width: plan.width, height: plan.height, time }))?
+            if let Some(data) = veylvik_document::each_node!(&node.operation, n => crate::nodes::RenderNode::data(n, &crate::nodes::Cx { node, nodes: &plan.nodes, width: plan.width, height: plan.height, time, models: Some(self.models()) }))?
             {
                 result.insert(crate::plan::data_key(node.id), data);
                 continue;

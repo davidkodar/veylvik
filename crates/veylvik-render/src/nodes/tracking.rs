@@ -29,6 +29,7 @@ impl RenderNode for veylvik_document::nodes::PlanarWarp {
             width,
             height,
             time,
+            ..
         } = *cx;
         let veylvik_document::nodes::PlanarWarp { mode } = self;
         {

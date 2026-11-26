@@ -100,6 +100,7 @@ impl Renderer {
             width,
             height,
             time,
+            models: inputs.map(|i| i.models()),
         };
         let data = particles
             .data(&cx)?

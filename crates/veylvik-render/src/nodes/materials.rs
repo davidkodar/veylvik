@@ -124,6 +124,7 @@ impl RenderNode for veylvik_document::nodes::Material {
             width,
             height,
             time,
+            ..
         } = *cx;
         let veylvik_document::nodes::Material { kind, .. } = self;
         {
@@ -208,6 +209,7 @@ impl RenderNode for veylvik_document::nodes::Patina {
             width,
             height,
             time,
+            ..
         } = *cx;
         let veylvik_document::nodes::Patina { kind, seed, .. } = self;
         {
@@ -244,6 +246,7 @@ impl RenderNode for veylvik_document::nodes::MetallicShine {
             width,
             height,
             time,
+            ..
         } = *cx;
         {
             p.values = [
@@ -296,6 +299,7 @@ impl RenderNode for veylvik_document::nodes::SunGlints {
             width,
             height,
             time,
+            ..
         } = *cx;
         let veylvik_document::nodes::SunGlints { seed, .. } = self;
         {
@@ -360,6 +364,7 @@ impl RenderNode for veylvik_document::nodes::Glass {
             width,
             height,
             time,
+            ..
         } = *cx;
         {
             p.values = [
@@ -398,6 +403,7 @@ impl RenderNode for veylvik_document::nodes::SurfaceReflection {
             width,
             height,
             time,
+            ..
         } = *cx;
         let veylvik_document::nodes::SurfaceReflection { kind, .. } = self;
         {
