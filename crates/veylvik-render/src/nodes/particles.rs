@@ -328,6 +328,13 @@ fn light_values(light: &veylvik_scene::Light, width: u32) -> [f32; 12] {
         LightKind::Sun => 2.0,
         LightKind::Area => 3.0,
     };
+    // Particles take an area light as a point at its middle, falling off over pixels as a
+    // point light does (3D surfaces take it by how much of their view the panel fills,
+    // which no frame size changes), so it follows the frame as a point light does.
+    let strength = match light.kind {
+        LightKind::Area => light.strength(width) * (width as f32 / 1920.0).powi(2),
+        _ => light.strength(width),
+    };
     [
         p[0],
         p[1],
@@ -337,9 +344,9 @@ fn light_values(light: &veylvik_scene::Light, width: u32) -> [f32; 12] {
         d[1],
         d[2],
         outer.cos(),
-        light.colour[0] * light.strength(width),
-        light.colour[1] * light.strength(width),
-        light.colour[2] * light.strength(width),
+        light.colour[0] * strength,
+        light.colour[1] * strength,
+        light.colour[2] * strength,
         inner.cos().max(outer.cos() + 1e-4),
     ]
 }
