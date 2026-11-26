@@ -36,7 +36,7 @@ fn sheet_rows() -> u32 { return ((u32(p.extra.z) >> 12u) & 15u) + 1u; }
 fn sheet_width() -> u32 { return MIP * sheet_columns(); }
 fn sheet_texels() -> u32 { return MIP * MIP * sheet_columns() * sheet_rows(); }
 const SPRITE_RATE = 125u;
-const COUNT: u32 = 132u;
+const COUNT: u32 = 135u;
 const ROWS: u32 = 16u;
 // Setting numbers.
 const SPEED = 1u; const DIRECTION = 2u; const SPREAD = 3u; const GRAVITY = 4u; const WIND = 5u;
@@ -57,7 +57,7 @@ const LINK_DISTANCE = 57u; const LINK_OPACITY = 58u; const LINK_WIDTH = 59u;
 const CURVES = 60u; const SIZE_CURVE = 61u; const OPACITY_CURVE = 69u; const SPEED_CURVE = 77u;
 const COLOUR_CURVE = 85u;
 const LIT = 117u; const AMBIENT = 118u; const SCATTER = 119u; const HOLD = 126u;
-const SPARKLE = 127u; const SPARKLE_TURN = 128u; const SHADING = 129u; const BOKEH = 130u;
+const SPARKLE = 127u; const SPARKLE_TURN = 128u; const SHADING = 129u; const BOKEH = 130u; const CLUMP = 131u; const CLUMP_RADIUS = 132u;
 // The camera row's lights: how many at 36, then twelve values each from 40.
 const LIGHT_COUNT = 36u; const LIGHT_BASE = 40u;
 // Where the camera is in the scene: the world-to-camera rows' rotation turned back on
@@ -640,6 +640,16 @@ fn stamp(at: vec2<f32>, radius: f32, given: vec4<f32>) {
         }
     }
 }
+// A grain drawn as a soft dot, or out of focus with Bokeh as a lens's disc.
+fn draw_dot(at: vec2<f32>, radius: f32, sharp: f32, light: vec4<f32>, birth: f32) {
+    let disc = setting(BOKEH, birth) * smoothstep(1.3, 2.5, radius / max(sharp, 0.25));
+    if disc > 0.0 && radius > 1.5 {
+        stamp_disc(at, radius, light * disc);
+        if disc < 1.0 { stamp(at, radius, light * (1.0 - disc)); }
+    } else {
+        stamp(at, radius, light);
+    }
+}
 // A lens's image of an out-of-focus point: a flat disc of `radius` with a crisp edge and
 // a slightly brighter rim, carrying the same light as a dot of that radius.
 fn stamp_disc(at: vec2<f32>, radius: f32, light: vec4<f32>) {
@@ -904,6 +914,7 @@ fn draw(origin: vec3<f32>, launch: vec3<f32>, birth: f32, age: f32, own_life: f3
     } else if fade > 0.0 { opacity *= clamp((1.0 - share) / fade, 0.0, 1.0); }
     var colour = mix(look.first, look.last, share);
     if look.ramp && has_curve(8u, birth) { colour = life_colour(birth, share); }
+    let unlit = colour;
     let shaded = surface_light(look.surface, origin, look.landing, goal, where_now, birth);
     colour = vec4<f32>(colour.rgb * lighting(where_now, birth, facet(look.thread, look.generation, age, birth), shaded.xyz, shaded.w), colour.a);
     colour = vec4<f32>(colour.rgb * look.tint, colour.a);
@@ -957,13 +968,29 @@ fn draw(origin: vec3<f32>, launch: vec3<f32>, birth: f32, age: f32, own_life: f3
     let exposure = min(camera_row(17u), age);
     trail = max(trail, exposure);
     if trail <= 0.0 {
-        // Out of focus, with Bokeh, a lens's disc in place of the soft dot.
-        let disc = setting(BOKEH, birth) * smoothstep(1.3, 2.5, radius / max(sharp, 0.25));
-        if disc > 0.0 && radius > 1.5 {
-            stamp_disc(at, radius, light * disc);
-            if disc < 1.0 { stamp(at, radius, light * (1.0 - disc)); }
-        } else {
-            stamp(at, radius, light);
+        draw_dot(at, radius, sharp, light, birth);
+        // A clump: more grains round this one, each its own small way off (in depth too),
+        // filmed and lit for itself and glinting with a facet of its own, for the cost of
+        // drawing them only.
+        let clump = u32(clamp(round(setting(CLUMP, birth)), 1.0, 16.0));
+        let spread = setting(CLUMP_RADIUS, birth);
+        for (var k = 1u; k < 16u; k++) {
+            if k >= clump { break; }
+            let u = vec3<f32>(random(thread, generation, 70u + 3u * k), random(thread, generation, 71u + 3u * k), random(thread, generation, 72u + 3u * k)) * 2.0 - 1.0;
+            let grain = where_now + normalize(u + vec3<f32>(1e-4)) * spread * pow(random(thread, generation, 120u + k), 0.33);
+            let seen_k = filmed(grain);
+            if seen_k.z <= 0.0 { continue; }
+            let wall_k = occluder(seen_k.xy);
+            let away_k = distance_to(grain);
+            if wall_k > 0.0 && away_k > wall_k * 1.002 + 1.0 { continue; }
+            let shaded_k = surface_light(look.surface, origin, look.landing, goal, grain, birth);
+            let lit_k = lighting(grain, birth, facet(thread + k * 0x01000193u, generation, age, birth), shaded_k.xyz, shaded_k.w);
+            var c = vec4<f32>(unlit.rgb * lit_k * look.tint, unlit.a);
+            if hues > 0.0 { c = vec4<f32>(turned(c.rgb, (look.hue - 0.5) * 6.2831853 * hues), c.a); }
+            let sharp_k = min(sharp * mix(1.0, seen_k.z, 1.0 - camera_row(31u)) / max(nearness, 1e-4), largest);
+            let radius_k = min(sharp_k + lens_blur(away_k), largest);
+            c = vec4<f32>(c.rgb, c.a * sharp_k * sharp_k / max(radius_k * radius_k, 1e-6));
+            draw_dot(seen_k.xy, radius_k, sharp_k, vec4<f32>(c.rgb * c.a, c.a) * opacity, birth);
         }
         return;
     }

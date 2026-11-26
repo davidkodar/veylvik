@@ -87,6 +87,10 @@ fn particles(operation: &Operation, name: &str, wired: &dyn Fn(&str) -> bool) ->
             !wired("scene")
                 || matches!(*operation, Operation::Particles(ref n) if matches!(n.lit, veylvik_document::Scalar::Constant { value } if value <= 0.0))
         }
+        // The grains' spread once there is more than one.
+        "clump_radius" => {
+            matches!(*operation, Operation::Particles(ref n) if matches!(n.clump, veylvik_document::Scalar::Constant { value } if value < 1.5))
+        }
         // The limit only bends added light.
         "light_limit" => {
             matches!(*operation, Operation::Particles(ref n) if matches!(n.glow, veylvik_document::Scalar::Constant { value } if value <= 0.0))

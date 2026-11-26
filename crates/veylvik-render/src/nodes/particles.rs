@@ -9,7 +9,7 @@ const SLOTS: f32 = 4.0;
 /// Threads in one dispatch row (1024 workgroups of 64).
 pub(crate) const ROW: u32 = 65536;
 /// Settings in a row, and rows through the last life (as in particle_system.wgsl).
-pub(crate) const COUNT: usize = 132;
+pub(crate) const COUNT: usize = 135;
 pub(crate) const ROWS: usize = 16;
 /// The target's tile size for a frame (as in particle_system.wgsl).
 fn tile(pixels: u64) -> u32 {
@@ -113,6 +113,8 @@ fn settings(node: &Particles, time: Time) -> Result<[f32; COUNT]> {
     row[128] = at(&node.sparkle_turn)?;
     row[129] = at(&node.shading)?;
     row[130] = at(&node.bokeh)?;
+    row[131] = at(&node.clump)?;
+    row[132] = at(&node.clump_radius)?;
     if let Some(ramp) = node.colour_over_life {
         for (k, colour) in ramp.iter().enumerate() {
             row[85 + 4 * k..89 + 4 * k].copy_from_slice(colour);
@@ -120,9 +122,11 @@ fn settings(node: &Particles, time: Time) -> Result<[f32; COUNT]> {
     }
     Ok(row)
 }
-fn scalars(node: &Particles) -> [&Scalar; 64] {
+fn scalars(node: &Particles) -> [&Scalar; 66] {
     [
         &node.life,
+        &node.clump,
+        &node.clump_radius,
         &node.bokeh,
         &node.shading,
         &node.hold,

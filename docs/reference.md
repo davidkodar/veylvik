@@ -2019,6 +2019,12 @@ settles on the wrong kind of motion can still look sure. The
     1) draws grains the scene camera throws out of focus as a lens draws
     out-of-focus lights: flat discs with crisp edges and a slightly brighter
     rim, carrying the same light as the soft dot they replace.
+    **Clump** (1 to 16) draws that many grains for each particle: the others
+    lie round it within **Clump radius** pixels, in depth too, each filmed, lit
+    and glinting with a facet of its own and moving with its particle. A body
+    of ten or twenty million grains then costs the moving of a tenth as many;
+    lower the rate as you raise the clump to keep the same light. Clumps are
+    drawn for plain dots, not for sprites, trails or streaks.
   - *Time.* Nothing is simulated from frame to frame: a particle is a function
     of its thread, its generation and the frame's time, so frames render in any
     order and repeat exactly. Motion is integrated in 32 fixed steps of the

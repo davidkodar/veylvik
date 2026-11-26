@@ -2004,3 +2004,46 @@ fn lit_particles_glitter_a_few_at_a_time_where_their_facets_mirror_the_light() {
         b.len()
     );
 }
+#[test]
+#[ignore = "requires Vulkan"]
+fn a_clump_draws_more_grains_round_each_particle() {
+    let renderer = Renderer::new().unwrap();
+    let sparse = |clump: f32, spread: f32| {
+        let mut p = still();
+        p.width = 140.0.into();
+        p.height = 100.0.into();
+        p.rate = 120.0.into();
+        p.size = 0.8.into();
+        p.glow = 1.0.into();
+        p.colour = [0.2, 0.2, 0.2, 0.2];
+        p.end_colour = [0.2, 0.2, 0.2, 0.2];
+        p.clump = clump.into();
+        p.clump_radius = spread.into();
+        render(&renderer, p, None, (1, 2))
+    };
+    let light = |px: &[[f32; 4]]| px.iter().map(|p| p[3]).sum::<f32>();
+    let lit = |px: &[[f32; 4]]| px.iter().filter(|p| p[3] > 0.01).count();
+    let (one, eight) = (sparse(1.0, 6.0), sparse(8.0, 6.0));
+    // Eight grains where there was one, each as bright as the one.
+    assert!(
+        (light(&eight) / light(&one) - 8.0).abs() < 1.2,
+        "light {} against {}",
+        light(&eight),
+        light(&one)
+    );
+    // Spread round their particles: far more pixels lit...
+    assert!(
+        lit(&eight) > lit(&one) * 4,
+        "{} pixels against {}",
+        lit(&eight),
+        lit(&one)
+    );
+    // ...and with no radius all eight sit on their particle.
+    let stacked = sparse(8.0, 0.0);
+    assert!(
+        lit(&stacked) < lit(&one) * 2,
+        "{} pixels against {}",
+        lit(&stacked),
+        lit(&one)
+    );
+}

@@ -4,7 +4,7 @@ use veylvik_document::*;
 use veylvik_render::*;
 
 const W: u32 = 64;
-const H: u32 = 36;
+const H: u32 = 48;
 
 #[test]
 #[ignore = "requires Vulkan"]
