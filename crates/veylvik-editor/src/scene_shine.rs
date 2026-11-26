@@ -72,22 +72,12 @@ impl Studio {
     }
     fn shine_at(&mut self, scene: &Scene, eye: [f32; 3], hit: &pick::Hit) -> Result<(), String> {
         let time = self.project.time().map_err(|e| e.to_string())?;
-        // Where the light is now: a row of strips counts from its middle.
-        let row: Vec<[f32; 3]> = scene
-            .lights
-            .iter()
-            .filter(|l| l.node == self.draft.id)
-            .map(|l| l.position())
-            .collect();
-        if row.is_empty() {
-            return Err("This light is not in the scene being viewed".into());
-        }
-        let now = [0, 1, 2].map(|k| row.iter().map(|p| p[k]).sum::<f32>() / row.len() as f32);
-        let away = [0, 1, 2].map(|k| now[k] - hit.point[k]);
-        let distance = (away[0] * away[0] + away[1] * away[1] + away[2] * away[2])
-            .sqrt()
-            .clamp(50.0, 50_000.0);
-        let (place, travel) = pick::mirrored(eye, hit, distance);
+        let pick::Shine {
+            now,
+            place,
+            rotation,
+        } = pick::shine(scene, self.draft.id, eye, hit, None)
+            .ok_or("This light is not in the scene being viewed")?;
         let Operation::Light3d(light) = &mut self.draft.operation else {
             return Err("Select a light first".into());
         };
@@ -106,7 +96,7 @@ impl Studio {
         light
             .placement
             .rotation
-            .set_at(time, veylvik_scene::shining(travel))
+            .set_at(time, rotation)
             .map_err(|e| e.to_string())?;
         self.draft_dirty = true;
         self.apply_draft();

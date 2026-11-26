@@ -49,6 +49,12 @@ pub fn tools() -> Vec<(&'static str, &'static str, Value, &'static [&'static str
             json!({"render":id,"node":id,"x":{"type":"number","minimum":0,"maximum":1},"y":{"type":"number","minimum":0,"maximum":1},"frame":{"type":"integer","minimum":0},"height":{"type":"number","minimum":1,"maximum":100000}}),
             &["render", "node", "x", "y"],
         ),
+        (
+            "shine_here",
+            "Move a light so its reflection shows on the surface at a point in the picture, as Studio's Shine here does: the way to light glossy or metal surfaces (gold, chrome, car paint) where you want them to gleam. render is the Render scene node that films it (its scene and camera are used); light is the Light node to move (an area light gives a soft band, a point light a sharp highlight); x and y are the point in 0..1 of the frame (0, 0 is the top left) at frame (default 0). The ray through that point meets the nearest surface; the light moves to where that surface mirrors the camera's view, distance pixels from it (default: as far as the light is now), and turns to face the spot. An Aim at on the light is cleared, since it would turn it away again. The light must not sit inside a turned or scaled 3D transform. A keyed position or rotation gets a key at that frame. One undo step; returns the surface hit and the light's new position and rotation.",
+            json!({"render":id,"light":id,"x":{"type":"number","minimum":0,"maximum":1},"y":{"type":"number","minimum":0,"maximum":1},"frame":{"type":"integer","minimum":0},"distance":{"type":"number","minimum":50,"maximum":50000}}),
+            &["render", "light", "x", "y"],
+        ),
     ]
 }
 fn text<'a>(args: &'a Value, name: &str) -> Result<&'a str> {

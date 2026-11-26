@@ -569,6 +569,14 @@ impl veylvik_presets::tools::Host for Files {
         crate::assets::placing::stand(document, args)
             .map_err(|e| veylvik_document::Error(e.to_string()))
     }
+    fn shine(
+        &self,
+        document: &Composition,
+        args: &Value,
+    ) -> veylvik_document::Result<(Vec<Command>, Value)> {
+        crate::assets::placing::shine(document, args)
+            .map_err(|e| veylvik_document::Error(e.to_string()))
+    }
 }
 /// The open document as the shared tools' target.
 struct Opened<'a>(&'a mut Document);

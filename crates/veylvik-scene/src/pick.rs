@@ -187,6 +187,45 @@ pub fn mirrored(eye: [f32; 3], hit: &Hit, distance: f32) -> ([f32; 3], [f32; 3])
         away.map(|c| -c),
     )
 }
+/// Where a light must go to show its reflection at `hit`, seen from `eye`: the light
+/// `node`'s place now (a row of strips counts from its middle), the place it moves to,
+/// as far from the surface as it is now unless `distance` is given (50 to 50,000), and
+/// the turn that faces it back at the surface.
+pub fn shine(
+    scene: &Scene,
+    node: NodeId,
+    eye: [f32; 3],
+    hit: &Hit,
+    distance: Option<f32>,
+) -> Option<Shine> {
+    let row: Vec<[f32; 3]> = scene
+        .lights
+        .iter()
+        .filter(|l| l.node == node)
+        .map(|l| l.position())
+        .collect();
+    if row.is_empty() {
+        return None;
+    }
+    let now = [0, 1, 2].map(|k| row.iter().map(|p| p[k]).sum::<f32>() / row.len() as f32);
+    let away = sub(now, hit.point);
+    let distance = distance
+        .unwrap_or_else(|| dot(away, away).sqrt())
+        .clamp(50.0, 50_000.0);
+    let (place, travel) = mirrored(eye, hit, distance);
+    Some(Shine {
+        now,
+        place,
+        rotation: crate::shining(travel),
+    })
+}
+/// A light moved to shine at a spot: from `now` to `place`, turned to `rotation`.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Shine {
+    pub now: [f32; 3],
+    pub place: [f32; 3],
+    pub rotation: [f32; 3],
+}
 /// The ray from a camera through a frame pixel: its origin and unit direction.
 pub fn ray(
     camera: &crate::Camera,

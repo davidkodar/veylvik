@@ -444,6 +444,14 @@ impl veylvik_presets::tools::Host for Live<'_> {
         veylvik_io::placing::stand(document, args)
             .map_err(|e| veylvik_document::Error(e.to_string()))
     }
+    fn shine(
+        &self,
+        document: &veylvik_document::Composition,
+        args: &Value,
+    ) -> veylvik_document::Result<(Vec<Command>, Value)> {
+        veylvik_io::placing::shine(document, args)
+            .map_err(|e| veylvik_document::Error(e.to_string()))
+    }
     fn place_effect(
         &mut self,
         document: &veylvik_document::Composition,

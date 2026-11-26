@@ -166,6 +166,7 @@ fn protocol_enforces_lifecycle_and_transaction_revision() {
             "gold_title",
             "particle_look",
             "stand_on_ground",
+            "shine_here",
             "surround_lights"
         ]
         .into()

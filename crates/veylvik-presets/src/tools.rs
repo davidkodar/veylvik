@@ -342,6 +342,8 @@ pub trait Host {
     ) -> Result<Vec<Command>>;
     /// The commands and reply that stand a 3D object on the shot's ground.
     fn stand(&self, document: &Composition, args: &Value) -> Result<(Vec<Command>, Value)>;
+    /// The commands and reply that move a light so its reflection shows at a point.
+    fn shine(&self, document: &Composition, args: &Value) -> Result<(Vec<Command>, Value)>;
     /// Lays out a new effect in the server's graph (a headless server keeps the recipe's layout).
     fn place_effect(
         &mut self,
@@ -382,7 +384,7 @@ impl From<Authored> for Edit {
     }
 }
 /// Works out the editing tool `name`: `apply`, `insert_preset`, `apply_material`,
-/// `add_effect`, `duplicate_branch`, `stand_on_ground` and the authoring tools. None
+/// `add_effect`, `duplicate_branch`, `stand_on_ground`, `shine_here` and the authoring tools. None
 /// for any other tool.
 pub fn edit(
     document: &Composition,
@@ -471,6 +473,15 @@ pub fn edit(
                 candidate: false,
             }
         }
+        "shine_here" => {
+            let (commands, result) = host.shine(document, args)?;
+            Edit {
+                commands,
+                result,
+                focus: None,
+                candidate: false,
+            }
+        }
         _ => return Ok(None),
     }))
 }
@@ -513,6 +524,9 @@ mod tests {
         }
         fn stand(&self, _: &Composition, _: &Value) -> Result<(Vec<Command>, Value)> {
             Err(Error("no ground".into()))
+        }
+        fn shine(&self, _: &Composition, _: &Value) -> Result<(Vec<Command>, Value)> {
+            Err(Error("no scene".into()))
         }
     }
     struct Doc(veylvik_document::Document);
