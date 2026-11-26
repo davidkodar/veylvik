@@ -279,3 +279,58 @@ fn a_loop_in_a_helper_function_compiles_and_runs_as_its_unrolled_twin() {
         assert!((x[0] - y[0]).abs() < 1e-4 && x[1] == y[1], "{x:?} {y:?}");
     }
 }
+#[test]
+#[ignore = "requires Vulkan"]
+fn a_lens_flare_dims_where_its_second_picture_hides_the_light() {
+    const FW: u32 = 320;
+    const FH: u32 = 180;
+    let renderer = Renderer::new().unwrap();
+    let flare = include_str!("../../veylvik-document/src/presets/builtin/flare.wgsl");
+    // The light in the middle; bright, rays, streak, ring and ghosts all on.
+    let mut node = shader(flare, [0.5, 0.5, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]);
+    node.p9 = 0.93.into();
+    node.p10 = 0.82.into();
+    let light = |sees: Option<(f32, f32)>| {
+        let mut doc = blank(FW, FH, Time::new(24, 1).unwrap()).unwrap();
+        let mut wired = Vec::new();
+        if let Some((x, width)) = sees {
+            let Operation::Rectangle(mut r) =
+                serde_json::from_value(registry::RECTANGLE.default_operation()).unwrap()
+            else {
+                unreachable!()
+            };
+            r.x = x.into();
+            r.y = (FH as f32 / 2.0).into();
+            r.width = width.into();
+            r.height = (FH as f32).into();
+            r.color = [1.0; 4];
+            let open = Node::new("where the light shows", Operation::Rectangle(r), &[]);
+            wired.push(("second", open.id));
+            doc.nodes.insert(open.id, open);
+        }
+        let n = Node::new("Lens flare", Operation::Shader(node.clone()), &wired);
+        doc.output = n.id;
+        doc.nodes.insert(n.id, n);
+        let pixels = renderer
+            .render_frame(
+                &Plan::compile(&doc).unwrap(),
+                RenderRequest::full(Time::new(0, 1).unwrap()),
+                &ImageInputs::default(),
+            )
+            .unwrap()
+            .pixels;
+        pixels.iter().map(|p| p[0] + p[1] + p[2]).sum::<f32>()
+    };
+    let free = light(None);
+    let open = light(Some((FW as f32 / 2.0, FW as f32)));
+    let hidden = light(Some((20.0, 40.0)));
+    assert!(free > 100.0, "the flare shows: {free}");
+    assert!(
+        (open / free - 1.0).abs() < 1e-4,
+        "an open picture leaves it as it was: {open} against {free}"
+    );
+    assert!(
+        hidden < free * 1e-4,
+        "a picture closed over the light puts it out: {hidden} against {free}"
+    );
+}

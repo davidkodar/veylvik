@@ -20,6 +20,10 @@ fn band(r: f32, centre: f32, width: f32) -> f32 {
 // Key x and y to move the light, or connect a scene and set Follow to one of its
 // objects: the flare then sits on that object, fades as it nears the frame's edge or
 // slides behind another object, and goes out when it is behind the camera. Everything else moves with the light.
+// Connect a picture to Second to say where the light can be seen: the flare is as strong
+// as that picture's alpha round the light (a matte of the open sky, or the light's own
+// picture with dunes, clouds or dust taken away), so it dims and goes out as anything in
+// the picture passes in front of the light.
 fn shade(at: vec2<f32>) -> vec4<f32> {
     let p = (at - size * 0.5) / size.y;
     if followed < -0.5 {
@@ -31,6 +35,17 @@ fn shade(at: vec2<f32>) -> vec4<f32> {
         spot = follow / size;
         let inside = min(min(spot.x, 1.0 - spot.x), min(spot.y, 1.0 - spot.y));
         seen = smoothstep(-0.02, 0.06, inside) * follow_seen;
+    }
+    if has_second() {
+        // The share of the light's disc the Second picture lets through: its alpha at the
+        // middle and at eight places round it.
+        let reach = size.y * 0.012;
+        var open = second(spot * size).a;
+        for (var k = 0; k < 8; k++) {
+            let a = f32(k) * 0.7853982;
+            open += second(spot * size + vec2<f32>(cos(a), sin(a)) * reach).a;
+        }
+        seen *= clamp(open / 9.0, 0.0, 1.0);
     }
     let light = (spot - vec2<f32>(0.5)) * vec2<f32>(size.x / size.y, 1.0);
     let d = p - light;

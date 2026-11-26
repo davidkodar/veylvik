@@ -612,6 +612,8 @@ fn sample_of(which: u32, at: vec2<f32>) -> vec4<f32> {{
 }}
 fn image(at: vec2<f32>) -> vec4<f32> {{ return sample_of(1u, at); }}
 fn second(at: vec2<f32>) -> vec4<f32> {{ return sample_of(2u, at); }}
+fn has_image() -> bool {{ return (p.size_op.w & 1u) != 0u; }}
+fn has_second() -> bool {{ return (p.size_op.w & 2u) != 0u; }}
 "
     );
     let lines = prelude.matches('\n').count();

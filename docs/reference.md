@@ -504,6 +504,12 @@ The expanded set includes:
   slides behind another object, and goes out behind the camera. In the library
   effect, open the group and connect the scene to the shader inside: the effect
   gains a Scene input of its own.
+  A picture connected to the shader's Second input says where the light can be
+  seen: the flare is as strong as that picture's alpha round the light (a matte
+  of the open sky, or the light's own picture with hills, clouds or dust taken
+  away), so things that are not 3D objects (a painted hill, a shader's fog) dim
+  and hide it too. A custom shader tells whether its inputs are connected with
+  has_image() and has_second().
 
 A connection made to a node inside an effect group from outside it becomes one
 of the group's inputs at once, named after the port, and an input whose
