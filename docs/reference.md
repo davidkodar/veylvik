@@ -1749,6 +1749,16 @@ and `colour`.
   are hidden by it. It feeds the Depth input
   of **Particles** and the depth input of **Lens blur**. Use a second Render
   scene on the same scene and camera for it.
+  It also puts a custom shader's fog, dust or haze in front of 3D objects:
+  connect the depth to the shader's **Second** input and march the fog from the
+  camera only as far as `second(at).r` (where `second(at).a` is 0 nothing is
+  there: march to a far limit), returning the fog's light with alpha = 1 − the
+  light it lets through. Merge the 3D picture over the background, then that
+  fog over both: near objects are veiled a little, far ones are lost in it, and
+  billows drift in front of them. The fog's ray must match the 3D camera (at
+  its home place it is `normalize(vec3(at - size * 0.5, -size.x * focal / 36))`
+  for a focal length in millimetres), and its distances are the depth's scene
+  units.
 - **Camera solve** (`veylvik solve-camera`, MCP `solve_camera`): recovers the
   real camera of a filmed shot so 3D sits in it. Features are detected over the
   whole frame (a 16 × 16 grid, up to 220 alive at once, replenished as they
