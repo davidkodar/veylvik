@@ -51,15 +51,11 @@ impl Renderer {
         ten_bit: bool,
         look: impl Into<Look>,
     ) -> Result<Vec<u8>> {
-        self.prepare_video_planes(
-            frame,
-            width,
-            height,
-            ten_bit,
-            look.into(),
-            Destination::Host(None),
-        )
-        .map(|p| p.bytes)
+        let look = look.into();
+        self.retrying(|| {
+            self.prepare_video_planes(frame, width, height, ten_bit, look, Destination::Host(None))
+                .map(|p| p.bytes)
+        })
     }
     /// GPU-only handoff to a uniquely writable CUDA encoder frame.
     pub fn encode_video_cuda(
@@ -69,15 +65,18 @@ impl Renderer {
         destination: &mut veylvik_interop::CudaDestination<'_>,
     ) -> Result<()> {
         let [width, height] = destination.dimensions();
-        self.prepare_video_planes(
-            frame,
-            width,
-            height,
-            destination.sample_bytes() == 2,
-            look.into(),
-            Destination::Cuda(destination),
-        )
-        .map(|_| ())
+        let (look, ten_bit) = (look.into(), destination.sample_bytes() == 2);
+        self.retrying(|| {
+            self.prepare_video_planes(
+                frame,
+                width,
+                height,
+                ten_bit,
+                look,
+                Destination::Cuda(&mut *destination),
+            )
+            .map(|_| ())
+        })
     }
     /// Linear, padded NV12/P010 for explicit diagnostics; production DMA export
     /// does not read back these pixels.
@@ -108,14 +107,17 @@ impl Renderer {
         render_node: &std::path::Path,
     ) -> Result<std::sync::Arc<DmaFrame>> {
         let layout = DmaLayout::new(width, height, ten_bit).map_err(error)?;
-        self.prepare_video_planes(
-            frame,
-            width,
-            height,
-            ten_bit,
-            look.into(),
-            Destination::Dma(render_node, layout),
-        )?
+        let look = look.into();
+        self.retrying(|| {
+            self.prepare_video_planes(
+                frame,
+                width,
+                height,
+                ten_bit,
+                look,
+                Destination::Dma(render_node, layout),
+            )
+        })?
         .dma
         .map(std::sync::Arc::new)
         .ok_or_else(|| error("Missing DMA-BUF output"))
@@ -307,11 +309,10 @@ impl Renderer {
         if interop_failed {
             crate::gpu_session::unusable(&mut pool);
         }
-        if let Some(e) =
-            pollster::block_on(allocation.pop()).or(pollster::block_on(validation.pop()))
-        {
-            crate::gpu_session::unusable(&mut pool);
-            return Err(error(e));
+        let allocation_error = pollster::block_on(allocation.pop());
+        let validation_error = pollster::block_on(validation.pop());
+        if let Some(e) = crate::gpu_session::caught(&mut pool, allocation_error, validation_error) {
+            return Err(e);
         }
         result
     }

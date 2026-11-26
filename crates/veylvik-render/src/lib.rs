@@ -168,6 +168,15 @@ pub enum Error {
     Message(String),
     #[error(transparent)]
     Document(#[from] veylvik_document::Error),
+    /// The graphics card had no memory left for an allocation. The device is whole: the
+    /// renderer stays usable, and the work can be tried again once memory is freed.
+    #[error("the graphics card ran out of memory: {0}")]
+    OutOfMemory(String),
+}
+impl Error {
+    pub fn is_out_of_memory(&self) -> bool {
+        matches!(self, Error::OutOfMemory(_))
+    }
 }
 pub type Result<T> = std::result::Result<T, Error>;
 fn error(message: impl ToString) -> Error {
@@ -661,7 +670,19 @@ impl Renderer {
         }
         Ok(bytes)
     }
+    /// Renders, and when the card runs out of memory frees everything this renderer
+    /// keeps and tries once more: other programs come and go on the card, and a long
+    /// export should not end on a moment's shortage.
     fn execute(
+        &self,
+        plan: &Plan,
+        request: RenderRequest,
+        inputs: &ImageInputs,
+        download: bool,
+    ) -> Result<(Executed, Region)> {
+        self.retrying(|| self.execute_once(plan, request, inputs, download))
+    }
+    fn execute_once(
         &self,
         plan: &Plan,
         request: RenderRequest,

@@ -284,10 +284,10 @@ impl Renderer {
         if interop_failed {
             crate::gpu_session::unusable(&mut pool);
         }
-        let failure = pollster::block_on(allocation.pop()).or(pollster::block_on(validation.pop()));
-        if let Some(e) = failure {
-            crate::gpu_session::unusable(&mut pool);
-            return Err(error(e));
+        let allocation_error = pollster::block_on(allocation.pop());
+        let validation_error = pollster::block_on(validation.pop());
+        if let Some(e) = crate::gpu_session::caught(&mut pool, allocation_error, validation_error) {
+            return Err(e);
         }
         result
     }

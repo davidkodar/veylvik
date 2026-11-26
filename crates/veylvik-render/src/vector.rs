@@ -112,10 +112,9 @@ impl Renderer {
         let completed = self.wait(submission);
         let allocation_error = pollster::block_on(allocation.pop());
         let validation_error = pollster::block_on(validation.pop());
-        if let Some(e) = allocation_error.or(validation_error) {
+        if let Some(e) = crate::gpu_session::caught(&mut pool, allocation_error, validation_error) {
             *backend = None;
-            crate::gpu_session::unusable(&mut pool);
-            return Err(error(e));
+            return Err(e);
         }
         if let Err(e) = completed {
             *backend = None;
