@@ -3,6 +3,7 @@
 //! Paragraph bidi resolution, script itemization, font fallback and line wrapping
 //! belong to a higher layout layer. Font variation axes currently use defaults.
 mod editable;
+mod installed;
 mod layout;
 mod rich;
 pub use editable::{bounds, font_data, mapped_bounds, outline, outline_units};

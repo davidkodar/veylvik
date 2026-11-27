@@ -1469,7 +1469,11 @@ under `$XDG_DATA_HOME/veylvik/fonts` (normally `~/.local/share/veylvik/fonts`).
 It is available to all Veylvik projects, without changing system fonts. Added
 collections expose individual faces. **Use file once…** embeds a font only in the
 current project. Selecting a system or added font embeds its bytes (up to 8 MiB),
-so rendering does not depend on it staying installed. Font discovery and loading
+so rendering does not depend on it staying installed. A project (or a script, through
+MCP) may instead name an installed font, `{"source": "installed", "family": "Noto Sans",
+"style": "Light"}`: the project stays small, the font is found through fontconfig when the
+text is drawn and confirmed by its own family and style names (never a stand-in), and a
+render on a computer without it fails naming the font and the nearest one there is. Font discovery and loading
 run off the UI thread. Bitmap-only fonts are rejected on selection; named variable-font instances
 are excluded from the list. The bundled Liberation font license is in
 `crates/veylvik-text/assets/fonts/LICENSE`.

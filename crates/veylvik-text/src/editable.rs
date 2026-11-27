@@ -500,6 +500,7 @@ pub fn font_data(font: &TextFont) -> Result<(Arc<[u8]>, u32)> {
         TextFont::Embedded { index, .. } => {
             (Arc::from(font.bytes().map_err(error)?.unwrap()), *index)
         }
+        TextFont::Installed { family, style } => crate::installed::load(family, style)?,
     })
 }
 

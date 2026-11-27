@@ -18,6 +18,12 @@ pub enum TextFont {
         index: u32,
         data: String,
     },
+    /// A font installed on the computer, named by its family and style (as fontconfig
+    /// lists them): the project stays small, and renders only where that font is installed.
+    Installed {
+        family: String,
+        style: String,
+    },
 }
 impl TextFont {
     pub fn label(&self) -> &str {
@@ -28,6 +34,7 @@ impl TextFont {
             Self::Display => "Liberation Sans · Bold",
             Self::Mono {} => "Hack · Regular",
             Self::Embedded { name, .. } => name,
+            Self::Installed { family, .. } => family,
         }
     }
     pub fn embedded(name: String, index: u32, bytes: &[u8]) -> Result<Self> {
@@ -60,6 +67,20 @@ impl TextFont {
         }
     }
     pub fn validate(&self) -> Result<()> {
+        if let Self::Installed { family, style } = self {
+            for (what, text) in [("family", family), ("style", style)] {
+                if text.trim().is_empty()
+                    || text.len() > 200
+                    || text
+                        .chars()
+                        .any(|c| c.is_control() || matches!(c, ':' | '=' | '\\'))
+                {
+                    return fail(format!(
+                        "An installed font's {what} must be 1..200 bytes of plain text"
+                    ));
+                }
+            }
+        }
         if let Self::Embedded { name, index, .. } = self {
             if name.is_empty() || name.len() > 256 {
                 return fail("Font name must contain 1..256 bytes");
