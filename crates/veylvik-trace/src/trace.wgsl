@@ -23,6 +23,7 @@ struct Frame {
     // where in `data` the placings (7 a placing), surfaces (2 each), top tree nodes
     // (2 each), its order (4 to a vec4) and the lights (5 each) start
     offsets: vec4<u32>,
+    // where the lights start, environment sampling (1), spare, spare
     lights_at: vec4<u32>,
 }
 @group(0) @binding(0) var<uniform> frame: Frame;
@@ -33,6 +34,10 @@ struct Frame {
 @group(0) @binding(4) var<storage, read> data: array<vec4<f32>>;
 @group(0) @binding(5) var<storage, read> environment_map: array<vec4<f32>>;
 @group(0) @binding(6) var<storage, read_write> picture: array<vec4<f32>>;
+// The environment as a table to draw directions from (sky_table.wgsl).
+@group(0) @binding(7) var<storage, read> sky_table: array<f32>;
+const ACROSS: u32 = 256u;
+const DOWN: u32 = 128u;
 fn bits(v: vec4<f32>) -> vec4<u32> { return bitcast<vec4<u32>>(v); }
 fn instance_at(i: u32) -> Instance {
     let b = frame.offsets.x + 7u * i;
@@ -252,6 +257,52 @@ fn turned(d: vec3<f32>) -> vec3<f32> {
 fn sky(d: vec3<f32>) -> vec3<f32> {
     return environment_specular(turned(d), 0.0) * frame.look.y;
 }
+fn sampling_sky() -> bool {
+    return frame.lights_at.y == 1u && frame.look.y > 0.0;
+}
+// The first entry of `table[base .. base + n]` at or above `u` (a running share).
+fn find(base: u32, n: u32, u: f32) -> u32 {
+    var lo = 0u;
+    var hi = n - 1u;
+    while lo < hi {
+        let mid = (lo + hi) / 2u;
+        if sky_table[base + mid] < u { lo = mid + 1u; } else { hi = mid; }
+    }
+    return lo;
+}
+fn texel_share(x: u32, y: u32) -> f32 {
+    let row = ACROSS * DOWN;
+    let down = sky_table[row + y] - select(0.0, sky_table[row + y - 1u], y > 0u);
+    let across = sky_table[y * ACROSS + x] - select(0.0, sky_table[y * ACROSS + x - 1u], x > 0u);
+    return down * across;
+}
+// A direction drawn where the environment is bright, and its likelihood (per unit of
+// solid angle).
+fn sky_draw() -> vec4<f32> {
+    let y = find(ACROSS * DOWN, DOWN, random());
+    let x = find(y * ACROSS, ACROSS, random());
+    let u = (f32(x) + random()) / f32(ACROSS);
+    let v = (f32(y) + random()) / f32(DOWN);
+    let phi = (u - 0.5) * 2.0 * PI;
+    let theta = v * PI;
+    let s = max(sin(theta), 1e-6);
+    // The environment's own direction, then turned back to the world's.
+    let e = vec3<f32>(s * cos(phi), -cos(theta), s * sin(phi));
+    let c = cos(frame.look.z);
+    let n = sin(frame.look.z);
+    let d = vec3<f32>(c * e.x - n * e.z, e.y, n * e.x + c * e.z);
+    return vec4<f32>(d, texel_share(x, y) * f32(ACROSS * DOWN) / (2.0 * PI * PI * s));
+}
+// How likely `sky_draw` was to draw direction `d`.
+fn sky_pdf(d: vec3<f32>) -> f32 {
+    let e = turned(d);
+    let f = normalize(vec3<f32>(e.x, -e.y, e.z));
+    let u = atan2(f.z, f.x) / (2.0 * PI) + 0.5;
+    let theta = acos(clamp(f.y, -1.0, 1.0));
+    let x = min(u32(u * f32(ACROSS)), ACROSS - 1u);
+    let y = min(u32(theta / PI * f32(DOWN)), DOWN - 1u);
+    return texel_share(x, y) * f32(ACROSS * DOWN) / (2.0 * PI * PI * max(sin(theta), 1e-6));
+}
 fn power(a: f32, b: f32) -> f32 {
     return a * a / max(a * a + b * b, 1e-12);
 }
@@ -275,10 +326,22 @@ fn feathered(l: Light, x: f32, y: f32) -> f32 {
     if feather <= 0.0 { return 1.0; }
     return (1.0 - smoothstep(1.0 - feather, 1.0, abs(x))) * (1.0 - smoothstep(1.0 - feather, 1.0, abs(y)));
 }
-// The light every lamp sends straight to a point, each checked for what blocks it.
-fn direct(m: Shade, p: vec3<f32>, n: vec3<f32>, v: vec3<f32>) -> vec3<f32> {
+// The light every lamp, and the environment where it is bright, send straight to a point,
+// each checked for what blocks it. On the `last` surface of a path no reflected ray
+// follows, so what is drawn here counts in full.
+fn direct(m: Shade, p: vec3<f32>, n: vec3<f32>, v: vec3<f32>, last: bool) -> vec3<f32> {
     var sum = vec3<f32>(0.0);
     let lift = n * (1e-3 + 1e-5 * max(max(abs(p.x), abs(p.y)), abs(p.z)));
+    if sampling_sky() {
+        let s = sky_draw();
+        let l = s.xyz;
+        let nl = dot(n, l);
+        if nl > 0.0 && s.w > 0.0 && !blocked(p + lift, l, 1e30) {
+            var w = 1.0;
+            if !last { w = power(s.w, draw_pdf(m, n, v, l)); }
+            sum += brdf(m, n, v, l) * sky(l) * nl / s.w * w;
+        }
+    }
     for (var i = 0u; i < frame.counts.x; i++) {
         let light = light_at(i);
         let kind = light.position.w;
@@ -296,7 +359,8 @@ fn direct(m: Shade, p: vec3<f32>, n: vec3<f32>, v: vec3<f32>) -> vec3<f32> {
             let area = 4.0 * length(light.right.xyz) * length(light.up.xyz);
             let pdf = d2 / (area * cos_l);
             if blocked(p + lift, l, dist * 0.999) { continue; }
-            let w = power(pdf, draw_pdf(m, n, v, l));
+            var w = 1.0;
+            if !last { w = power(pdf, draw_pdf(m, n, v, l)); }
             sum += brdf(m, n, v, l) * light.colour.rgb * feathered(light, x, y) * dot(n, l) / pdf * w;
             continue;
         }
@@ -382,7 +446,10 @@ fn path(px: vec2<f32>) -> Seen {
             if bounce == 0u {
                 if frame.look.w > 0.5 { colour += sky(d); alpha = 1.0; }
             } else {
-                var add = through * sky(d);
+                // Weighed against having been drawn as the environment's light.
+                var w = 1.0;
+                if sampling_sky() { w = power(last_pdf, sky_pdf(d)); }
+                var add = through * sky(d) * w;
                 if limit > 0.0 { add = min(add, vec3<f32>(limit)); }
                 colour += add;
             }
@@ -417,7 +484,7 @@ fn path(px: vec2<f32>) -> Seen {
             break;
         }
         let m = shade_of(s);
-        var add = through * direct(m, p, n, v);
+        var add = through * direct(m, p, n, v, bounce == frame.counts.y);
         if s.emission > 0.0 { add += through * s.colour * s.emission; }
         if limit > 0.0 && bounce > 0u { add = min(add, vec3<f32>(limit)); }
         colour += add;

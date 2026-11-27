@@ -93,6 +93,7 @@ impl Engine {
                     samples: trace.samples,
                     bounces: trace.bounces,
                     clamp: CLAMP,
+                    sample_sky: true,
                     seed: trace.seed,
                 },
                 target,

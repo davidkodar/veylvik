@@ -10,7 +10,15 @@ use wgpu::util::DeviceExt;
 
 /// An even sky: the first texel of the environment, whatever the direction.
 const SKY: &str =
-    "fn environment_specular(d: vec3<f32>, r: f32) -> vec3<f32> { return environment_map[0].rgb; }";
+    "fn environment_layer(d: vec3<f32>, layer: u32) -> vec3<f32> { return environment_map[0].rgb; }
+fn environment_specular(d: vec3<f32>, r: f32) -> vec3<f32> { return environment_map[0].rgb; }";
+/// A dim sky with a small, very bright sun up and to the right (y is down).
+const SUN_SKY: &str = "fn sun_sky(d: vec3<f32>) -> vec3<f32> {
+    let sun = normalize(vec3<f32>(0.6, -0.6, 0.53));
+    return vec3<f32>(select(0.02, 60.0, dot(normalize(d), sun) > 0.995)) * environment_map[0].rgb;
+}
+fn environment_layer(d: vec3<f32>, layer: u32) -> vec3<f32> { return sun_sky(d); }
+fn environment_specular(d: vec3<f32>, r: f32) -> vec3<f32> { return sun_sky(d); }";
 const W: u32 = 256;
 const H: u32 = 256;
 type Mat4 = [[f32; 4]; 4];
@@ -32,6 +40,8 @@ struct Shot {
     lights: Vec<Light>,
     sky: f32,
     samples: u32,
+    sample_sky: bool,
+    seed: u32,
 }
 /// The picture the camera at (0, 0, 1000), looking down -z with a 500 px focal length, sees.
 fn render(
@@ -85,7 +95,8 @@ fn render(
                 samples: shot.samples,
                 bounces: 6,
                 clamp: 0.0,
-                seed: 7,
+                sample_sky: shot.sample_sky,
+                seed: shot.seed,
             },
             target: &target,
             blend: 1.0,
@@ -128,6 +139,8 @@ fn an_even_sky_lights_a_convex_shape_to_its_albedo() {
         lights: vec![],
         sky: 1.0,
         samples: 256,
+        sample_sky: true,
+        seed: 7,
     };
     let px = render(&device, &queue, &tracer, &shot);
     // Inside the sphere's disc, away from its rim.
@@ -164,6 +177,8 @@ fn a_sphere_covers_the_pixels_its_projection_says() {
         lights: vec![],
         sky: 1.0,
         samples: 16,
+        sample_sky: true,
+        seed: 7,
     };
     let px = render(&device, &queue, &tracer, &shot);
     // Its outline from 1000 away with a 500 px lens: 500 * r / sqrt(d^2 - r^2) px.
@@ -207,6 +222,8 @@ fn a_point_light_is_cut_off_behind_a_blocker() {
         lights: vec![light],
         sky: 0.0,
         samples: 16,
+        sample_sky: true,
+        seed: 7,
     };
     let px = render(&device, &queue, &tracer, &shot);
     // The floor's middle is behind the block from the light; a point 150 down it is not.
@@ -216,5 +233,64 @@ fn a_point_light_is_cut_off_behind_a_blocker() {
     assert!(
         shaded < 0.1 * open,
         "behind the block: {shaded} against {open}"
+    );
+}
+#[test]
+#[ignore = "requires Vulkan"]
+fn drawing_light_from_a_bright_sun_keeps_the_picture_and_cuts_the_noise() {
+    let (device, queue) = gpu();
+    let tracer = Tracer::new(&device, SUN_SKY);
+    let shot = |samples, sample_sky, seed| Shot {
+        placed: vec![Placed {
+            tree: sphere(200.0),
+            world: at([0.0; 3]),
+            surface: matte(0.6),
+        }],
+        lights: vec![],
+        sky: 1.0,
+        samples,
+        sample_sky,
+        seed,
+    };
+    // The sphere's sunlit side, away from the rim.
+    let lit: Vec<usize> = (0..W * H)
+        .filter(|&i| {
+            let (dx, dy) = ((i % W) as f32 + 0.5 - 128.0, (i / W) as f32 + 0.5 - 128.0);
+            dx * dx + dy * dy < 80.0 * 80.0 && dx > 10.0 && dy < -10.0
+        })
+        .map(|i| i as usize)
+        .collect();
+    let mean =
+        |p: &[[f32; 4]]| lit.iter().map(|&i| f64::from(p[i][1])).sum::<f64>() / lit.len() as f64;
+    let noise = |a: &[[f32; 4]], b: &[[f32; 4]]| {
+        (lit.iter()
+            .map(|&i| f64::from(a[i][1] - b[i][1]).powi(2))
+            .sum::<f64>()
+            / lit.len() as f64)
+            .sqrt()
+    };
+    let reference = mean(&render(&device, &queue, &tracer, &shot(2048, false, 1)));
+    let (a, b) = (
+        render(&device, &queue, &tracer, &shot(64, true, 2)),
+        render(&device, &queue, &tracer, &shot(64, true, 3)),
+    );
+    let (c, d) = (
+        render(&device, &queue, &tracer, &shot(64, false, 2)),
+        render(&device, &queue, &tracer, &shot(64, false, 3)),
+    );
+    let (drawn, bounced) = (noise(&a, &b), noise(&c, &d));
+    eprintln!(
+        "sun-lit side: reference {reference:.4}, drawn {:.4} (noise {drawn:.4}), bounced only noise {bounced:.4}",
+        mean(&a)
+    );
+    assert!(reference > 0.05, "the sun lights the sphere: {reference}");
+    assert!(
+        (mean(&a) / reference - 1.0).abs() < 0.03,
+        "the same picture on average: {} against {reference}",
+        mean(&a)
+    );
+    assert!(
+        drawn < 0.25 * bounced,
+        "far less noise: {drawn} against {bounced}"
     );
 }

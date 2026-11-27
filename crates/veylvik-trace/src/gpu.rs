@@ -37,6 +37,9 @@ pub struct Settings {
     /// The brightest a bounce may add to a pixel (0: no limit): keeps rare bright paths
     /// from showing as speckles.
     pub clamp: f32,
+    /// Also draw light from where the environment is bright, not only where reflected
+    /// rays happen to go (far less noise; the same picture on average).
+    pub sample_sky: bool,
     pub seed: u32,
 }
 pub struct Environment<'a> {
@@ -79,7 +82,14 @@ pub struct Tracer {
     pipeline: wgpu::ComputePipeline,
     layout: wgpu::BindGroupLayout,
     geometry: Mutex<Option<Geometry>>,
+    /// The environment made into a table to draw bright directions from, each frame.
+    sky_rows: wgpu::ComputePipeline,
+    sky_down: wgpu::ComputePipeline,
+    sky_layout: wgpu::BindGroupLayout,
+    sky_table: wgpu::Buffer,
 }
+/// The table: 256 x 128 running shares, 128 row shares and the sum (sky_table.wgsl).
+const SKY_TABLE: u64 = (256 * 128 + 128 + 1) * 4;
 fn storage(binding: u32, read_only: bool) -> wgpu::BindGroupLayoutEntry {
     wgpu::BindGroupLayoutEntry {
         binding,
@@ -175,6 +185,7 @@ impl Tracer {
         }];
         entries.extend((1..=5).map(|b| storage(b, true)));
         entries.push(storage(6, false));
+        entries.push(storage(7, true));
         let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("path tracer"),
             entries: &entries,
@@ -192,10 +203,44 @@ impl Tracer {
             compilation_options: Default::default(),
             cache: None,
         });
+        let sky_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("sky table"),
+            source: wgpu::ShaderSource::Wgsl(
+                format!("{}\n{}", include_str!("sky_table.wgsl"), environment_wgsl).into(),
+            ),
+        });
+        let sky_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("sky table"),
+            entries: &[storage(0, true), storage(1, false)],
+        });
+        let sky_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("sky table"),
+            bind_group_layouts: &[Some(&sky_layout)],
+            immediate_size: 0,
+        });
+        let sky = |entry: &str| {
+            device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                label: Some("sky table"),
+                layout: Some(&sky_pipeline_layout),
+                module: &sky_module,
+                entry_point: Some(entry),
+                compilation_options: Default::default(),
+                cache: None,
+            })
+        };
         Self {
             pipeline,
             layout,
             geometry: Mutex::new(None),
+            sky_rows: sky("sky_rows"),
+            sky_down: sky("sky_down"),
+            sky_layout,
+            sky_table: device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("sky table"),
+                size: SKY_TABLE,
+                usage: wgpu::BufferUsages::STORAGE,
+                mapped_at_creation: false,
+            }),
         }
     }
     /// GPU bytes kept between frames (the meshes' geometry).
@@ -290,7 +335,7 @@ impl Tracer {
                     blend,
                 ],
                 offsets,
-                lights_at: [lights_at, 0, 0, 0],
+                lights_at: [lights_at, u32::from(settings.sample_sky), 0, 0],
             };
             let at = (u64::from(p) * UNIFORM_STEP) as usize;
             uniforms[at..at + std::mem::size_of::<Frame>()]
@@ -341,8 +386,39 @@ impl Tracer {
                         size: wgpu::BufferSize::new(pixels * 16),
                     }),
                 },
+                wgpu::BindGroupEntry {
+                    binding: 7,
+                    resource: self.sky_table.as_entire_binding(),
+                },
             ],
         });
+        // The environment's table, made again each frame (a few hundred thousand texel
+        // reads): the environment may be another picture, or the same one changed.
+        if settings.sample_sky {
+            let sky = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("sky table"),
+                layout: &self.sky_layout,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: environment.map.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: self.sky_table.as_entire_binding(),
+                    },
+                ],
+            });
+            let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                label: Some("sky table"),
+                timestamp_writes: None,
+            });
+            pass.set_bind_group(0, &sky, &[]);
+            pass.set_pipeline(&self.sky_rows);
+            pass.dispatch_workgroups(2, 1, 1);
+            pass.set_pipeline(&self.sky_down);
+            pass.dispatch_workgroups(1, 1, 1);
+        }
         for p in 0..passes {
             let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
                 label: Some("path tracing"),
