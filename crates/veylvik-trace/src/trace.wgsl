@@ -6,7 +6,8 @@
 // shared WGSL and read `environment_map`.
 struct Node { min: vec3<f32>, first: u32, max: vec3<f32>, count: u32 }
 struct Instance { to_object: mat3x4<f32>, to_world: mat3x4<f32>, root: u32, triangle_base: u32, vertex_base: u32, surface: u32 }
-struct Surface { colour: vec3<f32>, roughness: f32, metallic: f32, emission: f32, opacity: f32, flags: u32 }
+// finish: brushing, the grain's direction (radians), imperfections, visible grain.
+struct Surface { colour: vec3<f32>, roughness: f32, metallic: f32, emission: f32, opacity: f32, flags: u32, texture: u32, shadow: f32, ridges: f32, finish: vec4<f32> }
 struct Light { position: vec4<f32>, direction: vec4<f32>, colour: vec4<f32>, right: vec4<f32>, up: vec4<f32> }
 struct Frame {
     // camera to world (rows), focal length in pixels, width, height
@@ -23,7 +24,8 @@ struct Frame {
     // where in `data` the placings (7 a placing), surfaces (2 each), top tree nodes
     // (2 each), its order (4 to a vec4) and the lights (5 each) start
     offsets: vec4<u32>,
-    // where the lights start, environment sampling (1), spare, spare
+    // where the lights start, environment sampling (1), where the textures' places
+    // start, spare
     lights_at: vec4<u32>,
 }
 @group(0) @binding(0) var<uniform> frame: Frame;
@@ -38,6 +40,13 @@ struct Frame {
 @group(0) @binding(7) var<storage, read> sky_table: array<f32>;
 const ACROSS: u32 = 256u;
 const DOWN: u32 = 128u;
+// Every picture surfaces read, one after another; their places are in `data`.
+@group(0) @binding(8) var<storage, read> pictures: array<vec4<f32>>;
+const UNLIT: u32 = 1u;
+const CATCHER: u32 = 2u;
+const CARD: u32 = 4u;
+const CUT: u32 = 8u;
+const STRAIGHT: u32 = 16u;
 fn bits(v: vec4<f32>) -> vec4<u32> { return bitcast<vec4<u32>>(v); }
 fn instance_at(i: u32) -> Instance {
     let b = frame.offsets.x + 7u * i;
@@ -45,10 +54,43 @@ fn instance_at(i: u32) -> Instance {
     return Instance(mat3x4<f32>(data[b], data[b + 1u], data[b + 2u]), mat3x4<f32>(data[b + 3u], data[b + 4u], data[b + 5u]), k.x, k.y, k.z, k.w);
 }
 fn surface_at(i: u32) -> Surface {
-    let b = frame.offsets.y + 2u * i;
+    let b = frame.offsets.y + 4u * i;
     let a = data[b];
     let c = data[b + 1u];
-    return Surface(a.xyz, a.w, c.x, c.y, c.z, bitcast<u32>(c.w));
+    let e = data[b + 2u];
+    return Surface(a.xyz, a.w, c.x, c.y, c.z, bitcast<u32>(c.w), bitcast<u32>(e.x), e.y, e.z, data[b + 3u]);
+}
+// A picture's texel, repeating round its edges or clear beyond them.
+fn picture_texel(place: vec4<u32>, x: i32, y: i32, repeat: bool) -> vec4<f32> {
+    let w = i32(place.y);
+    let h = i32(place.z);
+    if repeat {
+        return pictures[place.x + u32(((y % h + h) % h) * w + (x % w + w) % w)];
+    }
+    if x < 0 || y < 0 || x >= w || y >= h { return vec4<f32>(0.0); }
+    return pictures[place.x + u32(y * w + x)];
+}
+// Picture `t` at `uv` (0 to 1 across it), bilinear at its pixel centres, as the
+// interactive renderer reads it.
+fn sample_picture(t: u32, uv: vec2<f32>, repeat: bool) -> vec4<f32> {
+    let place = bits(data[frame.lights_at.z + t]);
+    if place.y == 0u || place.z == 0u { return vec4<f32>(1.0); }
+    var at = uv;
+    if repeat { at = fract(uv); }
+    let q = at * vec2<f32>(f32(place.y), f32(place.z)) - vec2<f32>(0.5);
+    let i = vec2<i32>(floor(q));
+    let f = fract(q);
+    return mix(mix(picture_texel(place, i.x, i.y, repeat), picture_texel(place, i.x + 1, i.y, repeat), f.x),
+        mix(picture_texel(place, i.x, i.y + 1, repeat), picture_texel(place, i.x + 1, i.y + 1, repeat), f.x), f.y);
+}
+// The texture coordinates where a ray met triangle `t` (in the packed array).
+fn uv_at(inst: Instance, t: u32, u: f32, v: f32) -> vec2<f32> {
+    let k = triangles[t];
+    let base = inst.vertex_base;
+    let a = vertices[2u * (base + k[0]) + 1u].zw;
+    let b = vertices[2u * (base + k[1]) + 1u].zw;
+    let c = vertices[2u * (base + k[2]) + 1u].zw;
+    return a * (1.0 - u - v) + b * u + c * v;
 }
 fn top_node(k: u32) -> Node {
     let b = frame.offsets.z + 2u * k;
@@ -111,6 +153,9 @@ fn corner(inst: Instance, t: u32, k: u32) -> vec3<f32> {
 // The nearest triangle of one placed mesh nearer than `far`, in its own space.
 fn mesh_hit(inst: Instance, o: vec3<f32>, d: vec3<f32>, far: f32, stop_at_first: bool) -> Hit {
     var best = Hit(far, 0u, 0xffffffffu, 0.0, 0.0);
+    // A shape whose picture cuts holes: rays pass where it is under half opaque.
+    let surface = surface_at(inst.surface);
+    let cut = (surface.flags & CUT) != 0u && surface.texture != 0xffffffffu;
     let inv = 1.0 / d;
     var stack: array<u32, STACK>;
     var size = 1u;
@@ -123,6 +168,7 @@ fn mesh_hit(inst: Instance, o: vec3<f32>, d: vec3<f32>, far: f32, stop_at_first:
             for (var k = n.first; k < n.first + n.count; k++) {
                 let h = triangle_hit(corner(inst, k, 0u), corner(inst, k, 1u), corner(inst, k, 2u), o, d);
                 if h.x > 0.0 && h.x < best.t {
+                    if cut && sample_picture(surface.texture, uv_at(inst, inst.triangle_base + k, h.y, h.z), true).a < 0.5 { continue; }
                     best = Hit(h.x, 0u, inst.triangle_base + k, h.y, h.z);
                     if stop_at_first { return best; }
                 }
@@ -158,7 +204,7 @@ fn scene_hit(o: vec3<f32>, d: vec3<f32>, far: f32, stop_at_first: bool) -> Hit {
             for (var k = n.first; k < n.first + n.count; k++) {
                 let i = top_index(k);
                 let inst = instance_at(i);
-                if stop_at_first && (surface_at(inst.surface).flags & 3u) != 0u { continue; }
+                if stop_at_first && (surface_at(inst.surface).flags & (UNLIT | CATCHER | CARD)) != 0u { continue; }
                 // The instance's own space; the direction is turned, not normalised, so
                 // distances along the ray stay in world lengths.
                 let oo = vec4<f32>(o, 1.0) * inst.to_object;
@@ -191,13 +237,113 @@ fn smith(nv: f32, nl: f32, a: f32) -> f32 {
     let k = a * 0.5;
     return (nv / (nv * (1.0 - k) + k)) * (nl / (nl * (1.0 - k) + k));
 }
-struct Shade { base: vec3<f32>, f0: vec3<f32>, diffuse: vec3<f32>, a: f32 }
+// How a point of a surface takes light: its colours, its roughness along (`ax`) and across
+// (`ay`) its grain (equal without brushing; reflections are drawn from the even lobe `a`
+// between them), the grain's directions, and how its finish brightens or dulls reflections.
+struct Shade { base: vec3<f32>, f0: vec3<f32>, diffuse: vec3<f32>, a: f32, ax: f32, ay: f32, along: vec3<f32>, across: vec3<f32>, gain: f32 }
 fn shade_of(s: Surface) -> Shade {
     let polish = clamp(s.roughness, 0.03, 1.0);
     let a = polish * polish;
     let metal = clamp(s.metallic, 0.0, 1.0);
-    return Shade(s.colour, mix(vec3<f32>(0.04), s.colour, metal), s.colour * (1.0 - metal), a);
+    return Shade(s.colour, mix(vec3<f32>(0.04), s.colour, metal), s.colour * (1.0 - metal), a, a, a, vec3<f32>(0.0), vec3<f32>(0.0), 1.0);
 }
+// ---- finishes, as the interactive renderer makes them ----
+fn finish_hash(q: vec2<f32>) -> f32 {
+    var h = vec3<f32>(q.xyx) * vec3<f32>(0.1031, 0.1030, 0.0973);
+    h = fract(h);
+    h += dot(h, h.yzx + 33.33);
+    return fract((h.x + h.y) * h.z);
+}
+fn finish_noise(q: vec2<f32>) -> f32 {
+    let i = floor(q);
+    let f = fract(q);
+    let t = f * f * (3.0 - 2.0 * f);
+    return mix(mix(finish_hash(i), finish_hash(i + vec2<f32>(1.0, 0.0)), t.x),
+               mix(finish_hash(i + vec2<f32>(0.0, 1.0)), finish_hash(i + vec2<f32>(1.0, 1.0)), t.x), t.y);
+}
+fn smudges(q: vec2<f32>) -> f32 {
+    return (finish_noise(q * 0.006 + vec2<f32>(3.0, 9.0)) - 0.5) * 1.0
+        + (finish_noise(q * 0.019 + vec2<f32>(11.0, 2.0)) - 0.5) * 0.6
+        + (finish_noise(q * 0.07 + vec2<f32>(7.0, 4.0)) - 0.5) * 0.3
+        + (finish_noise(q * 0.9 + vec2<f32>(1.0, 6.0)) - 0.5) * 0.1;
+}
+// A surface's light with its finish at a point: `local` and `facing` are the point and
+// its normal in the object's own space (so the finish stays on the surface as it moves),
+// `normals` turns directions from that space to the world's; `n_in` is the shading normal,
+// returned tilted by ridges and waves.
+struct Finished { shade: Shade, n: vec3<f32> }
+fn finished(s: Surface, local: vec3<f32>, facing: vec3<f32>, normals: mat3x3<f32>, n_in: vec3<f32>) -> Finished {
+    var m = shade_of(s);
+    let brushed = clamp(s.finish.x, 0.0, 1.0);
+    let worn = clamp(s.finish.z, 0.0, 1.0);
+    let grainy = clamp(s.finish.w, 0.0, 1.0);
+    let ridged = clamp(s.ridges, 0.0, 1.0);
+    var n = n_in;
+    if brushed <= 0.0 && worn <= 0.0 && grainy <= 0.0 && ridged <= 0.0 {
+        return Finished(m, n);
+    }
+    // The grain's frame on the surface, turned by the finish's direction.
+    let fm = normalize(facing);
+    var side = cross(fm, vec3<f32>(0.0, 1.0, 0.0));
+    if dot(side, side) < 1e-4 { side = vec3<f32>(1.0, 0.0, 0.0); }
+    side = normalize(side);
+    let up = cross(side, fm);
+    let c = cos(s.finish.y);
+    let sn = sin(s.finish.y);
+    let along_local = side * c + up * sn;
+    let across_local = up * c - side * sn;
+    // Patterns are sized for a 1920-wide frame and grow with the frame.
+    let q = vec2<f32>(dot(local, along_local), dot(local, across_local)) / max(frame.lens.y / 1920.0, 1e-3);
+    let blotch = smudges(q);
+    var across = normalize(normals * across_local);
+    across = normalize(across - n * dot(across, n));
+    var along = normalize(cross(across, n));
+    let ridge = (finish_noise(vec2<f32>(q.x * 0.0026, q.y * 0.0105)) - 0.5)
+        + 0.4 * (finish_noise(vec2<f32>(q.x * 0.006 + 13.0, q.y * 0.028 + 5.0)) - 0.5);
+    let wave = vec2<f32>(finish_noise(q * 0.012 + vec2<f32>(21.0, 5.0)) - 0.5,
+                         finish_noise(q * 0.012 + vec2<f32>(4.0, 31.0)) - 0.5);
+    let fine = finish_noise(vec2<f32>(q.x * 0.01, q.y * 1.9)) - 0.5;
+    n = normalize(n + across * ridge * 0.22 * ridged
+        + (along * wave.x + across * wave.y) * 0.025 * worn
+        + across * fine * 0.01 * grainy);
+    across = normalize(across - n * dot(across, n));
+    along = normalize(cross(across, n));
+    // Wear changes the polish from place to place; brushing scatters across the grain.
+    let polish = clamp(s.roughness * (1.0 + blotch * 1.1 * worn), 0.03, 1.0);
+    let a = polish * polish;
+    m.ax = a;
+    m.ay = clamp(a + brushed * 0.12, 0.0, 1.0);
+    m.a = sqrt(m.ax * m.ay);
+    m.along = along;
+    m.across = across;
+    var gain = 1.0;
+    if grainy > 0.0 {
+        let streaks = (finish_noise(vec2<f32>(q.x * 0.010, q.y * 2.6)) - 0.5) * 0.55
+            + (finish_noise(vec2<f32>(q.x * 0.016 + 9.0, q.y * 1.1)) - 0.5) * 0.7
+            + (finish_noise(vec2<f32>(q.x * 0.006 + 2.0, q.y * 0.4)) - 0.5) * 0.6
+            + (finish_noise(vec2<f32>(q.x * 0.003 + 31.0, q.y * 0.13)) - 0.5) * 0.5;
+        gain = max(1.0 + streaks * grainy, 0.0);
+    }
+    if worn > 0.0 {
+        var bright = 0.0;
+        var dull = 0.0;
+        for (var k = 0; k < 3; k++) {
+            let turn = (f32(k) - 1.0) * 0.22;
+            let cc = cos(turn);
+            let ss = sin(turn);
+            let r = vec2<f32>(q.x * cc - q.y * ss, q.x * ss + q.y * cc);
+            let o = f32(k) * 37.0;
+            bright += smoothstep(0.62, 0.95, finish_noise(vec2<f32>(r.x * 0.014 + o, r.y * 0.7 + o)))
+                * smoothstep(0.35, 0.6, finish_noise(r * 0.03 + vec2<f32>(o, 5.0)));
+            dull += smoothstep(0.62, 0.95, finish_noise(vec2<f32>(r.x * 0.012 + o + 50.0, r.y * 0.55 + o)))
+                * smoothstep(0.35, 0.6, finish_noise(r * 0.025 + vec2<f32>(9.0, o)));
+        }
+        gain *= max(1.0 + worn * (0.3 * bright - 0.16 * dull), 0.0);
+    }
+    m.gain = gain;
+    return Finished(m, n);
+}
+
 // What reaches the eye along `v` of light arriving along `l`, per unit of light and
 // cosine, as the rasteriser's lights are (their radiance taken with a factor of pi).
 fn brdf(m: Shade, n: vec3<f32>, v: vec3<f32>, l: vec3<f32>) -> vec3<f32> {
@@ -206,7 +352,16 @@ fn brdf(m: Shade, n: vec3<f32>, v: vec3<f32>, l: vec3<f32>) -> vec3<f32> {
     if nl <= 0.0 { return vec3<f32>(0.0); }
     let h = normalize(l + v);
     let f = m.f0 + (vec3<f32>(1.0) - m.f0) * pow(1.0 - max(dot(h, v), 0.0), 5.0);
-    let specular = ggx(max(dot(n, h), 0.0), m.a) * smith(nv, nl, m.a) * f / max(4.0 * nv * nl, 1e-4);
+    var lobe = ggx(max(dot(n, h), 0.0), m.a);
+    if m.ay > m.ax {
+        // Brushed: rougher across the grain than along it.
+        let x = dot(h, m.along) / m.ax;
+        let y = dot(h, m.across) / m.ay;
+        let z = dot(h, n);
+        let dd = x * x + y * y + z * z;
+        lobe = 1.0 / (PI * m.ax * m.ay * dd * dd);
+    }
+    let specular = lobe * smith(nv, nl, m.a) * f * m.gain / max(4.0 * nv * nl, 1e-4);
     return m.diffuse / PI * (vec3<f32>(1.0) - f) + specular;
 }
 fn specular_share(m: Shade, n: vec3<f32>, v: vec3<f32>) -> f32 {
@@ -252,7 +407,8 @@ fn draw(m: Shade, n: vec3<f32>, v: vec3<f32>) -> vec3<f32> {
 fn turned(d: vec3<f32>) -> vec3<f32> {
     let c = cos(frame.look.z);
     let s = sin(frame.look.z);
-    return vec3<f32>(c * d.x + s * d.z, d.y, -s * d.x + c * d.z);
+    // As the interactive renderer turns it.
+    return vec3<f32>(c * d.x - s * d.z, d.y, s * d.x + c * d.z);
 }
 fn sky(d: vec3<f32>) -> vec3<f32> {
     return environment_specular(turned(d), 0.0) * frame.look.y;
@@ -290,7 +446,7 @@ fn sky_draw() -> vec4<f32> {
     let e = vec3<f32>(s * cos(phi), -cos(theta), s * sin(phi));
     let c = cos(frame.look.z);
     let n = sin(frame.look.z);
-    let d = vec3<f32>(c * e.x - n * e.z, e.y, n * e.x + c * e.z);
+    let d = vec3<f32>(c * e.x + n * e.z, e.y, -n * e.x + c * e.z);
     return vec4<f32>(d, texel_share(x, y) * f32(ACROSS * DOWN) / (2.0 * PI * PI * s));
 }
 // How likely `sky_draw` was to draw direction `d`.
@@ -358,7 +514,7 @@ fn direct(m: Shade, p: vec3<f32>, n: vec3<f32>, v: vec3<f32>, last: bool) -> vec
             if cos_l <= 0.0 || dot(n, l) <= 0.0 { continue; }
             let area = 4.0 * length(light.right.xyz) * length(light.up.xyz);
             let pdf = d2 / (area * cos_l);
-            if blocked(p + lift, l, dist * 0.999) { continue; }
+            if light.up.w > 0.5 && blocked(p + lift, l, dist * 0.999) { continue; }
             var w = 1.0;
             if !last { w = power(pdf, draw_pdf(m, n, v, l)); }
             sum += brdf(m, n, v, l) * light.colour.rgb * feathered(light, x, y) * dot(n, l) / pdf * w;
@@ -379,7 +535,7 @@ fn direct(m: Shade, p: vec3<f32>, n: vec3<f32>, v: vec3<f32>, last: bool) -> vec
         }
         let nl = dot(n, l);
         if nl <= 0.0 || dot(radiance, radiance) <= 0.0 { continue; }
-        if blocked(p + lift, l, dist * 0.999) { continue; }
+        if light.up.w > 0.5 && blocked(p + lift, l, dist * 0.999) { continue; }
         sum += brdf(m, n, v, l) * radiance * nl * PI;
     }
     return sum;
@@ -411,6 +567,53 @@ fn panel_pdf(o: vec3<f32>, d: vec3<f32>, t: f32) -> f32 {
     return 0.0;
 }
 struct Seen { colour: vec3<f32>, alpha: f32 }
+// How much of the light reaching a shadow catcher at `p` is blocked, as the interactive
+// renderer weighs it: each light by its brightness there, and the environment's light
+// by one direction drawn as a matte surface takes it.
+fn catcher_shade(p: vec3<f32>, n: vec3<f32>) -> f32 {
+    let lift = n * (1e-3 + 1e-5 * max(max(abs(p.x), abs(p.y)), abs(p.z)));
+    let luma = vec3<f32>(0.2126, 0.7152, 0.0722);
+    var direct = 0.0;
+    var blocked_light = 0.0;
+    for (var i = 0u; i < frame.counts.x; i++) {
+        let light = light_at(i);
+        var l = -light.direction.xyz;
+        var radiance = light.colour.rgb;
+        var dist = 1e30;
+        if light.position.w > 2.5 {
+            let x = random() * 2.0 - 1.0;
+            let y = random() * 2.0 - 1.0;
+            let to = light.position.xyz + light.right.xyz * x + light.up.xyz * y - p;
+            let d2 = max(dot(to, to), 1.0);
+            dist = sqrt(d2);
+            l = to / dist;
+            let front = max(dot(-l, light.direction.xyz), 0.0);
+            radiance *= 4.0 * length(light.right.xyz) * length(light.up.xyz) * front / d2 / PI;
+        } else if light.position.w < 1.5 {
+            let to = light.position.xyz - p;
+            let d2 = max(dot(to, to), 1.0);
+            dist = sqrt(d2);
+            l = to / dist;
+            radiance *= 1.0e6 / d2;
+            if light.position.w > 0.5 {
+                radiance *= smoothstep(light.direction.w, light.colour.w, dot(-l, light.direction.xyz));
+            }
+        }
+        let nl = dot(n, l);
+        if nl <= 0.0 { continue; }
+        let amount = dot(radiance, luma) * nl;
+        direct += amount;
+        if light.up.w > 0.5 && blocked(p + lift, l, dist * 0.999) { blocked_light += amount; }
+    }
+    let ambient = dot(environment_layer(turned(n), 9u), luma) * frame.look.y;
+    let basis = frame_of(n);
+    let u1 = random();
+    let phi = 2.0 * PI * random();
+    let toward = basis * vec3<f32>(sqrt(u1) * cos(phi), sqrt(u1) * sin(phi), sqrt(max(1.0 - u1, 0.0)));
+    var enclosed = 0.0;
+    if blocked(p + lift, toward, 1e30) { enclosed = ambient; }
+    return clamp((blocked_light + enclosed) / max(direct + ambient, 1e-4), 0.0, 1.0);
+}
 // One path from the camera through pixel `px`.
 fn path(px: vec2<f32>) -> Seen {
     // The camera's ray, through a point of the lens when the lens has an aperture.
@@ -431,7 +634,12 @@ fn path(px: vec2<f32>) -> Seen {
     var alpha = 0.0;
     var last_pdf = 0.0;
     let limit = frame.more.z;
-    for (var bounce = 0u; bounce <= frame.counts.y; bounce++) {
+    var bounce = 0u;
+    // Rays passing through cards and catchers go on without using up a bounce, up to a limit.
+    var steps = 0u;
+    loop {
+        if bounce > frame.counts.y || steps >= 64u { break; }
+        steps += 1u;
         let h = scene_hit(o, d, 1e30, false);
         let lit = panels(o, d, h.t);
         if lit.w < h.t {
@@ -455,7 +663,6 @@ fn path(px: vec2<f32>) -> Seen {
             }
             break;
         }
-        if bounce == 0u { alpha = 1.0; }
         let inst = instance_at(h.instance);
         let s = surface_at(inst.surface);
         let k0 = triangles[h.triangle][0];
@@ -479,11 +686,48 @@ fn path(px: vec2<f32>) -> Seen {
         if dot(g, v) < 0.0 { g = -g; }
         if dot(n, g) < 0.0 { n = -n; }
         let p = o + d * h.t;
-        if (s.flags & 1u) != 0u {
-            colour += through * s.colour;
+        let uv = uv_at(inst, h.triangle, h.u, h.v);
+        let past = p + d * (1e-3 + 1e-5 * max(max(abs(p.x), abs(p.y)), abs(p.z)));
+        if (s.flags & CARD) != 0u {
+            // A card's picture, tinted, at its opacity: met in proportion to how opaque it
+            // is there, else the ray goes on through.
+            var c = sample_picture(s.texture, uv, false);
+            c = vec4<f32>(c.rgb * s.colour, c.a) * s.opacity;
+            if random() < c.a {
+                colour += through * c.rgb / max(c.a, 1e-6);
+                if bounce == 0u { alpha = 1.0; }
+                break;
+            }
+            o = past;
+            continue;
+        }
+        if (s.flags & CATCHER) != 0u {
+            // Seen directly, a catcher shows only its shadow; to other rays it is not there.
+            if bounce == 0u {
+                alpha = clamp(catcher_shade(p, n) * clamp(s.shadow, 0.0, 8.0), 0.0, 1.0);
+                break;
+            }
+            o = past;
+            continue;
+        }
+        if bounce == 0u { alpha = 1.0; }
+        var sc = s;
+        // The point and its normal in the object's own space, for the finish's patterns.
+        let local = a.xyz * w0 + b.xyz * h.u + c.xyz * h.v;
+        let facing = na * w0 + nb * h.u + nc * h.v;
+        if s.texture != 0xffffffffu && (s.flags & CUT) != 0u {
+            let t = sample_picture(s.texture, uv, true);
+            sc.colour *= t.rgb / max(t.a, 1e-4);
+        } else if s.texture != 0xffffffffu && (s.flags & STRAIGHT) != 0u {
+            sc.colour *= sample_picture(s.texture, uv, true).rgb;
+        }
+        if (s.flags & UNLIT) != 0u {
+            colour += through * sc.colour;
             break;
         }
-        let m = shade_of(s);
+        let fin = finished(sc, local, facing, to_world_normal, n);
+        let m = fin.shade;
+        n = fin.n;
         var add = through * direct(m, p, n, v, bounce == frame.counts.y);
         if s.emission > 0.0 { add += through * s.colour * s.emission; }
         if limit > 0.0 && bounce > 0u { add = min(add, vec3<f32>(limit)); }
@@ -505,6 +749,7 @@ fn path(px: vec2<f32>) -> Seen {
         }
         o = p + g * (1e-3 + 1e-5 * max(max(abs(p.x), abs(p.y)), abs(p.z)));
         d = l;
+        bounce += 1u;
     }
     return Seen(colour, alpha);
 }

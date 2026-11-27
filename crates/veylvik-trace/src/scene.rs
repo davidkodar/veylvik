@@ -54,9 +54,8 @@ impl MeshTree {
         self.triangles.is_empty()
     }
 }
-/// How a surface takes light, 32 bytes as the GPU reads it.
-#[repr(C)]
-#[derive(Clone, Copy, Debug, Default, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
+/// How a surface takes light.
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Surface {
     pub colour: [f32; 3],
     pub roughness: f32,
@@ -64,11 +63,42 @@ pub struct Surface {
     /// Its own light, the colour times this, added as it is.
     pub emission: f32,
     pub opacity: f32,
-    /// 1: unlit (shows its colour as it is); 2: a shadow catcher.
+    /// What kind of surface it is and how its texture is read: the constants below.
     pub flags: u32,
+    /// Its picture or texture (a number in the job's textures), if any.
+    pub texture: Option<u32>,
+    /// A shadow catcher's strength.
+    pub shadow: f32,
+    /// The finish, as the interactive renderer reads it: brushing, the grain's direction
+    /// (radians), imperfections, visible grain and ridges (all but the direction 0 to 1).
+    pub finish: [f32; 5],
 }
+impl Default for Surface {
+    fn default() -> Self {
+        Self {
+            colour: [0.8; 3],
+            roughness: 0.5,
+            metallic: 0.0,
+            emission: 0.0,
+            opacity: 1.0,
+            flags: 0,
+            texture: None,
+            shadow: 1.0,
+            finish: [0.0; 5],
+        }
+    }
+}
+/// Shows its colour as it is.
 pub const UNLIT: u32 = 1;
+/// Shows only the shadows falling on it, for 3D over footage; other rays pass through.
 pub const CATCHER: u32 = 2;
+/// An image card: its picture, premultiplied and unlit, edges clamped; partly transparent
+/// pixels let rays through in proportion.
+pub const CARD: u32 = 4;
+/// A shape's picture: premultiplied, repeating; under half opaque it is a hole.
+pub const CUT: u32 = 8;
+/// A model part's own texture: straight colour, repeating.
+pub const STRAIGHT: u32 = 16;
 /// A mesh placed in the world with a surface.
 #[derive(Clone)]
 pub struct Placed {

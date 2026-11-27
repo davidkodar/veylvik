@@ -2,7 +2,7 @@
 //! path tracing can show, such as one object seen in another's reflection.
 use std::sync::Arc;
 use veylvik_document::{nodes::*, *};
-use veylvik_render::{ImageInputs, Plan, RenderRequest, Renderer};
+use veylvik_render::{Image, ImageInputs, Plan, RenderRequest, Renderer};
 
 const W: u32 = 160;
 const H: u32 = 90;
@@ -117,5 +117,186 @@ fn a_chrome_sphere_shows_its_red_neighbour_only_when_path_traced() {
     assert!(
         preview < 1.5,
         "the preview reflects only the studio: red/green {preview}"
+    );
+}
+fn filmed(
+    doc: &mut Composition,
+    scene: NodeId,
+    quality: SceneQuality,
+    samples: u32,
+    inputs: &ImageInputs,
+) -> Vec<[f32; 4]> {
+    let renderer = renderer();
+    let mut render = op(&RENDER_SCENE);
+    if let Operation::RenderScene(r) = &mut render {
+        r.quality = quality;
+        r.samples = samples;
+    }
+    doc.output = add(doc, render, &[("scene", scene)]);
+    renderer
+        .render_frame(
+            &Plan::compile(doc).unwrap(),
+            RenderRequest::full(Time::new(0, 1).unwrap()),
+            inputs,
+        )
+        .unwrap()
+        .pixels
+}
+#[test]
+#[ignore = "requires Vulkan"]
+fn a_path_traced_card_shows_its_picture_and_its_transparency() {
+    let mut doc = blank(W, H, Time::new(24, 1).unwrap()).unwrap();
+    // A gradient, half transparent in its left 20 columns.
+    let pixels: Vec<[f32; 4]> = (0..W * H)
+        .map(|i| {
+            let (x, y) = ((i % W) as f32 / W as f32, (i / W) as f32 / H as f32);
+            let a = if (i % W) < 20 { 0.5 } else { 1.0 };
+            [x * a, y * a, 0.3 * a, a]
+        })
+        .collect();
+    let mut inputs = ImageInputs::default();
+    inputs.insert(
+        "picture",
+        Arc::new(Image::new(W, H, pixels.clone()).unwrap()),
+    );
+    let image = add(
+        &mut doc,
+        Operation::Image(nodes::Image {
+            asset: "picture".into(),
+        }),
+        &[],
+    );
+    let card = add(&mut doc, op(&IMAGE_CARD), &[("image", image)]);
+    let out = filmed(&mut doc, card, SceneQuality::PathTraced, 256, &inputs);
+    // Inside, every channel as the picture's: the path tracer spreads a pixel's samples
+    // over the pixel, so at the picture's edges (the frame's, and where it turns half
+    // transparent) it smooths over a pixel, as anti-aliasing does.
+    let mut worst = 0.0f32;
+    for y in 2..H - 2 {
+        for x in 23..W - 2 {
+            let i = (y * W + x) as usize;
+            worst = (0..4)
+                .map(|k| (out[i][k] - pixels[i][k]).abs())
+                .fold(worst, f32::max);
+        }
+    }
+    assert!(
+        worst < 0.02,
+        "an opaque card is its picture: off by {worst}"
+    );
+    // Half transparent: met by half the rays, so half covered on average.
+    let half: Vec<usize> = (0..(W * H) as usize)
+        .filter(|i| (2..17).contains(&(*i as u32 % W)) && (2..H - 2).contains(&(*i as u32 / W)))
+        .collect();
+    let alpha = half.iter().map(|&i| out[i][3]).sum::<f32>() / half.len() as f32;
+    assert!(
+        (alpha - 0.5).abs() < 0.03,
+        "half transparent where the picture is: {alpha}"
+    );
+}
+#[test]
+#[ignore = "requires Vulkan"]
+fn a_path_traced_shadow_catcher_shows_the_shadow_as_the_preview_does() {
+    let mut doc = blank(W, H, Time::new(24, 1).unwrap()).unwrap();
+    let ball = add(&mut doc, sphere(0.0, [0.8; 3], 0.0, 0.8, 0.0), &[]);
+    let mut wall = op(&SHAPE_3D);
+    if let Operation::Shape3d(s) = &mut wall {
+        s.kind = ShapeKind::Plane;
+        s.size_x = 600.0.into();
+        s.size_y = 600.0.into();
+        s.placement.position = [0.0, 0.0, -60.0].into();
+        s.shadow_catcher = true;
+        s.shadow_strength = 1.0.into();
+    }
+    let wall = add(&mut doc, wall, &[]);
+    let mut lamp = op(&LIGHT_3D);
+    if let Operation::Light3d(l) = &mut lamp {
+        l.kind = LightKind::Point;
+        l.placement.position = [150.0, 0.0, 200.0].into();
+        // Bright enough to outweigh the studio's light in this small frame.
+        l.intensity = 50.0.into();
+        l.shadows = true;
+    }
+    let lamp = add(&mut doc, lamp, &[]);
+    let scene = add(
+        &mut doc,
+        op(&MERGE_SCENES),
+        &[("scene", ball), ("scene_2", wall), ("scene_3", lamp)],
+    );
+    let out = filmed(
+        &mut doc.clone(),
+        scene,
+        SceneQuality::PathTraced,
+        64,
+        &ImageInputs::default(),
+    );
+    let preview = filmed(
+        &mut doc,
+        scene,
+        SceneQuality::Preview,
+        1,
+        &ImageInputs::default(),
+    );
+    // The lamp is to the right, so the ball's shadow falls on the wall to its left.
+    let alpha = |p: &[[f32; 4]], x0: u32, x1: u32| {
+        let (mut sum, mut n) = (0.0, 0);
+        for y in 40..50 {
+            for x in x0..x1 {
+                sum += p[(y * W + x) as usize][3];
+                n += 1;
+            }
+        }
+        sum / n as f32
+    };
+    let (shadow, open) = (alpha(&out, 35, 50), alpha(&out, 130, 150));
+    eprintln!(
+        "catcher: shadow {shadow}, open {open}, preview's shadow {}",
+        alpha(&preview, 35, 50)
+    );
+    assert!(shadow > 0.5, "the shadow shows on the catcher: {shadow}");
+    assert!(open < 0.1, "the lit catcher is clear: {open}");
+    let previewed = alpha(&preview, 35, 50);
+    assert!(
+        (shadow - previewed).abs() < 0.15,
+        "as dark as the preview's: {shadow} against {previewed}"
+    );
+}
+#[test]
+#[ignore = "requires Vulkan"]
+fn a_turned_environment_lights_the_same_side_in_both_qualities() {
+    // A matte sphere under the studio turned a quarter round: its brighter side must be
+    // the same side whether previewed or path traced.
+    let sides = |quality| {
+        let mut doc = blank(W, H, Time::new(24, 1).unwrap()).unwrap();
+        let ball = add(&mut doc, sphere(0.0, [0.8; 3], 0.0, 1.0, 0.0), &[]);
+        let mut env = op(&ENVIRONMENT_3D);
+        if let Operation::Environment3d(e) = &mut env {
+            e.rotation = 90.0.into();
+        }
+        let env = add(&mut doc, env, &[]);
+        let scene = add(
+            &mut doc,
+            op(&MERGE_SCENES),
+            &[("scene", ball), ("scene_2", env)],
+        );
+        let out = filmed(&mut doc, scene, quality, 256, &ImageInputs::default());
+        let side = |x0: u32, x1: u32| {
+            (35..55)
+                .flat_map(|y| (x0..x1).map(move |x| (y, x)))
+                .map(|(y, x)| out[(y * W + x) as usize][1])
+                .sum::<f32>()
+        };
+        (side(62, 75), side(85, 98))
+    };
+    let (pl, pr) = sides(SceneQuality::Preview);
+    let (tl, tr) = sides(SceneQuality::PathTraced);
+    eprintln!("left/right: preview {pl:.2}/{pr:.2}, path traced {tl:.2}/{tr:.2}");
+    assert!(
+        (pl - pr).abs() > 0.1 * (pl + pr),
+        "the turned studio lights one side more: {pl} {pr}"
+    );
+    assert!(
+        (pl > pr) == (tl > tr),
+        "the same side is brighter: preview {pl}/{pr}, path traced {tl}/{tr}"
     );
 }

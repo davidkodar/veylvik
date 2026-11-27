@@ -4,7 +4,8 @@ use std::sync::Arc;
 use veylvik_render::{Result, SceneJob, Trace};
 use veylvik_scene::Geometry;
 use veylvik_trace::{
-    CATCHER, Environment, Job, MeshTree, Placed, Settings, Surface, Tracer, UNLIT, View,
+    CARD, CATCHER, CUT, Environment, Job, MeshTree, Placed, STRAIGHT, Settings, Surface, Texture,
+    Tracer, UNLIT, View,
 };
 
 /// The brightest a bounce may add to a pixel: rare paths that find a small bright light
@@ -32,12 +33,47 @@ impl Engine {
         let scene = &expanded;
         let (panorama, strength, turn) = self.surroundings(device, encoder, scene, images)?;
         let mut placed = Vec::with_capacity(scene.objects.len());
+        // The pictures surfaces read, each once: (buffer, width, height).
+        let mut pictures: Vec<(wgpu::Buffer, u32, u32)> = Vec::new();
+        let mut number = |buffer: &wgpu::Buffer, w: u32, h: u32| -> u32 {
+            match pictures.iter().position(|(b, ..)| b == buffer) {
+                Some(i) => i as u32,
+                None => {
+                    pictures.push((buffer.clone(), w, h));
+                    (pictures.len() - 1) as u32
+                }
+            }
+        };
+        let picture_of = |source| images.iter().find(|(id, ..)| *id == source);
         for object in &scene.objects {
             // Copies at particles and splats are not path traced yet.
             if object.instanced.is_some() || matches!(object.geometry, Geometry::Splats { .. }) {
                 continue;
             }
             let s = &object.surface;
+            let mut flags = if s.unlit { UNLIT } else { 0 } | if s.catcher { CATCHER } else { 0 };
+            // What it shows, as the interactive renderer reads it: a card's picture, a
+            // model part's own texture, or a shape's Texture input.
+            let texture = match &object.geometry {
+                Geometry::Card { image, .. } => picture_of(*image).map(|(_, buffer, [w, h], _)| {
+                    flags |= CARD;
+                    number(buffer, *w, *h)
+                }),
+                _ if s.catcher => None,
+                _ => match self.part_texture(device, &object.geometry)? {
+                    Some((buffer, w, h)) => {
+                        flags |= STRAIGHT;
+                        Some(number(&buffer, w, h))
+                    }
+                    None => object
+                        .texture
+                        .and_then(picture_of)
+                        .map(|(_, buffer, [w, h], _)| {
+                            flags |= CUT;
+                            number(buffer, *w, *h)
+                        }),
+                },
+            };
             placed.push(Placed {
                 tree: self.tree(object)?,
                 world: object.world,
@@ -47,10 +83,27 @@ impl Engine {
                     metallic: s.metallic,
                     emission: s.emission,
                     opacity: s.opacity,
-                    flags: if s.unlit { UNLIT } else { 0 } | if s.catcher { CATCHER } else { 0 },
+                    flags,
+                    texture,
+                    shadow: s.shadow,
+                    finish: [
+                        s.finish[0],
+                        s.finish[1].to_radians(),
+                        s.finish[2],
+                        s.finish[3],
+                        s.finish[4],
+                    ],
                 },
             });
         }
+        let textures: Vec<Texture<'_>> = pictures
+            .iter()
+            .map(|(buffer, width, height)| Texture {
+                buffer,
+                width: *width,
+                height: *height,
+            })
+            .collect();
         let packed = veylvik_trace::pack(&placed);
         let lights: Vec<veylvik_trace::Light> =
             scene.lights.iter().map(|l| light(l, width)).collect();
@@ -70,6 +123,7 @@ impl Engine {
                 queue,
                 encoder,
                 scene: &packed,
+                textures: &textures,
                 lights: &lights,
                 view: View {
                     camera: camera.world,
@@ -79,7 +133,7 @@ impl Engine {
                         camera.sensor_width,
                     ),
                     lens_radius,
-                    focus: camera.focus(scene),
+                    focus: focus(&camera, scene, &packed),
                 },
                 environment: Environment {
                     map: panorama.as_ref().unwrap_or(environment),
@@ -184,6 +238,29 @@ fn light(light: &veylvik_scene::Light, width: u32) -> veylvik_trace::Light {
             inner.cos().max(outer.cos() + 1e-4),
         ],
         right: [panel[0][0], panel[0][1], panel[0][2], light.feather],
-        up: [panel[1][0], panel[1][1], panel[1][2], 0.0],
+        // Whether it casts shadows: a light with Shadows off lights through objects, as in the preview.
+        up: [
+            panel[1][0],
+            panel[1][1],
+            panel[1][2],
+            if light.shadows { 1.0 } else { 0.0 },
+        ],
     }
+}
+/// How far in front of the camera is sharp, as the interactive renderer takes it: an
+/// object it focuses on or its focus distance; with neither (0), whatever is at the frame's
+/// centre, or nowhere near (nothing there) so nothing blurs.
+fn focus(
+    camera: &veylvik_scene::Camera,
+    scene: &veylvik_scene::Scene,
+    packed: &veylvik_trace::Packed,
+) -> f32 {
+    if camera.focus_on.is_some() || camera.focus_distance > 0.0 {
+        return camera.focus(scene);
+    }
+    let eye = veylvik_scene::math::point(&camera.world, [0.0; 3]);
+    let ahead = veylvik_scene::math::direction(&camera.world, [0.0, 0.0, -1.0]);
+    packed
+        .hit(eye, ahead, f32::INFINITY)
+        .map_or(1.0e8, |h| h.t.min(1.0e8))
 }

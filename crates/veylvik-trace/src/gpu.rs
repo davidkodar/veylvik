@@ -6,7 +6,8 @@ use wgpu::util::DeviceExt;
 /// A light as the tracer reads it, 80 bytes: position and kind (0 point, 1 spot, 2 sun,
 /// 3 area); direction and the cosine of a spot's outer half-angle; colour times strength
 /// and the inner half-angle's cosine; an area light's half-width axis and feather, and its
-/// half-height axis. The same meanings as the 3D rasteriser's lights.
+/// half-height axis and 1 when it casts shadows (0: it lights through objects). The same
+/// meanings as the 3D rasteriser's lights.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Light {
@@ -42,6 +43,13 @@ pub struct Settings {
     pub sample_sky: bool,
     pub seed: u32,
 }
+/// A picture the scene's surfaces read: width x height RGBA f32 at the start of `buffer`.
+#[derive(Clone, Copy)]
+pub struct Texture<'a> {
+    pub buffer: &'a wgpu::Buffer,
+    pub width: u32,
+    pub height: u32,
+}
 pub struct Environment<'a> {
     /// The prefiltered environment the renderer's shared WGSL reads.
     pub map: &'a wgpu::Buffer,
@@ -56,6 +64,8 @@ pub struct Job<'a> {
     pub queue: &'a wgpu::Queue,
     pub encoder: &'a mut wgpu::CommandEncoder,
     pub scene: &'a Packed,
+    /// The pictures surfaces name by number.
+    pub textures: &'a [Texture<'a>],
     pub lights: &'a [Light],
     pub view: View,
     pub environment: Environment<'a>,
@@ -125,8 +135,13 @@ struct Frame {
     lights_at: [u32; 4],
 }
 /// The frame's small arrays in one list of vec4s, and where each starts: placings (7 a
-/// placing), surfaces (2), top tree nodes (2), its order (4 to a vec4), lights (5).
-fn frame_data(scene: &Packed, lights: &[Light]) -> (Vec<[f32; 4]>, [u32; 4], u32) {
+/// placing), surfaces (4), top tree nodes (2), its order (4 to a vec4), lights (5) and
+/// the textures' places in the shared texture buffer (1: first texel, width, height).
+fn frame_data(
+    scene: &Packed,
+    lights: &[Light],
+    places: &[[u32; 3]],
+) -> (Vec<[f32; 4]>, [u32; 4], [u32; 2]) {
     let f = f32::from_bits;
     let mut data: Vec<[f32; 4]> = Vec::new();
     let instances = data.len() as u32;
@@ -144,6 +159,8 @@ fn frame_data(scene: &Packed, lights: &[Light]) -> (Vec<[f32; 4]>, [u32; 4], u32
     for s in &scene.surfaces {
         data.push([s.colour[0], s.colour[1], s.colour[2], s.roughness]);
         data.push([s.metallic, s.emission, s.opacity, f(s.flags)]);
+        data.push([f(s.texture.unwrap_or(u32::MAX)), s.shadow, s.finish[4], 0.0]);
+        data.push([s.finish[0], s.finish[1], s.finish[2], s.finish[3]]);
     }
     let top = data.len() as u32;
     for n in &scene.top {
@@ -162,7 +179,15 @@ fn frame_data(scene: &Packed, lights: &[Light]) -> (Vec<[f32; 4]>, [u32; 4], u32
     for l in lights {
         data.extend([l.position, l.direction, l.colour, l.right, l.up]);
     }
-    (data, [instances, surfaces, top, order], lights_at)
+    let textures_at = data.len() as u32;
+    for p in places {
+        data.push([f(p[0]), f(p[1]), f(p[2]), 0.0]);
+    }
+    (
+        data,
+        [instances, surfaces, top, order],
+        [lights_at, textures_at],
+    )
 }
 impl Tracer {
     /// The tracer's program, with `environment_wgsl` (the renderer's shared environment
@@ -186,6 +211,7 @@ impl Tracer {
         entries.extend((1..=5).map(|b| storage(b, true)));
         entries.push(storage(6, false));
         entries.push(storage(7, true));
+        entries.push(storage(8, true));
         let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("path tracer"),
             entries: &entries,
@@ -260,6 +286,7 @@ impl Tracer {
             queue: _,
             encoder,
             scene,
+            textures,
             lights,
             view,
             environment,
@@ -295,7 +322,30 @@ impl Tracer {
             });
         }
         let g = geometry.as_ref().expect("geometry was just made");
-        let (data, offsets, lights_at) = frame_data(scene, lights);
+        // The pictures, one after another in one buffer (a stage may bind few buffers).
+        let mut places = Vec::with_capacity(textures.len());
+        let mut texels = 0u64;
+        for t in textures {
+            places.push([texels as u32, t.width, t.height]);
+            texels += u64::from(t.width) * u64::from(t.height);
+        }
+        if texels > u64::from(u32::MAX) {
+            return Err("the scene's pictures are too large to path trace together".into());
+        }
+        let pictures = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("path tracer pictures"),
+            size: (texels * 16).max(16),
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        for (t, place) in textures.iter().zip(&places) {
+            let bytes = u64::from(t.width) * u64::from(t.height) * 16;
+            if t.buffer.size() < bytes {
+                return Err("a picture is smaller than it says".into());
+            }
+            encoder.copy_buffer_to_buffer(t.buffer, 0, &pictures, u64::from(place[0]) * 16, bytes);
+        }
+        let (data, offsets, [lights_at, textures_at]) = frame_data(scene, lights, &places);
         let data = buffer(device, "path tracer frame", &data);
         // The passes: each takes a few samples for every pixel, as many as keep it short.
         let blend = blend.clamp(0.0, 1.0);
@@ -335,7 +385,7 @@ impl Tracer {
                     blend,
                 ],
                 offsets,
-                lights_at: [lights_at, u32::from(settings.sample_sky), 0, 0],
+                lights_at: [lights_at, u32::from(settings.sample_sky), textures_at, 0],
             };
             let at = (u64::from(p) * UNIFORM_STEP) as usize;
             uniforms[at..at + std::mem::size_of::<Frame>()]
@@ -389,6 +439,10 @@ impl Tracer {
                 wgpu::BindGroupEntry {
                     binding: 7,
                     resource: self.sky_table.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 8,
+                    resource: pictures.as_entire_binding(),
                 },
             ],
         });

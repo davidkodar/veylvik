@@ -76,6 +76,7 @@ fn render(
             queue,
             encoder: &mut encoder,
             scene: &scene,
+            textures: &[],
             lights: &shot.lights,
             view: View {
                 camera: at([0.0, 0.0, 1000.0]),
@@ -120,9 +121,7 @@ fn matte(grey: f32) -> Surface {
         colour: [grey; 3],
         roughness: 1.0,
         metallic: 0.0,
-        emission: 0.0,
-        opacity: 1.0,
-        flags: 0,
+        ..Default::default()
     }
 }
 #[test]
@@ -204,6 +203,8 @@ fn a_point_light_is_cut_off_behind_a_blocker() {
     let light = Light {
         position: [400.0, 0.0, 400.0, 0.0],
         colour: [0.1, 0.1, 0.1, 0.0],
+        // It casts shadows.
+        up: [0.0, 0.0, 0.0, 1.0],
         ..Default::default()
     };
     let shot = Shot {

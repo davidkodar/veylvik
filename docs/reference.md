@@ -2370,7 +2370,8 @@ Light from the environment is also drawn where the environment is bright (a
 sun in a panorama), weighed against reflected rays, so an environment-lit scene is
 clean at a fraction of the samples (about 4.5 times less noise at the same count).
 The noise of each frame is its own and repeatable. A bounce adds at most 16 to a
-pixel, so rare paths to a small bright light do not show as specks. A depth output
+pixel, so rare paths to a small bright light do not show as specks. A light with Shadows off lights through
+objects path traced too, as in the preview. A depth output
 is never path traced. Not path traced yet: textures and image cards' pictures,
 library looks and brushed finishes on 3D objects (they take their plain colour,
 roughness and metal), shadow catchers, copies at particles and Gaussian splats.
