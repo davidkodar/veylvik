@@ -166,6 +166,7 @@ mod kernel_table_tests {
     /// Every WGSL file a kernel program can come from.
     const SOURCES: &[&str] = &[
         include_str!("kernels.wgsl"),
+        include_str!("surface.wgsl"),
         include_str!("environment.wgsl"),
         include_str!("working_space.wgsl"),
         include_str!("matte.wgsl"),

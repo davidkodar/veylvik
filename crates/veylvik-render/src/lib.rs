@@ -56,12 +56,17 @@ pub fn flock_capacity(width: u32, height: u32) -> u32 {
 /// WGSL for the prefiltered studio environment (`environment_specular`), for
 /// renderers that light with the same studio as materials.
 pub const ENVIRONMENT_WGSL: &str = include_str!("environment.wgsl");
+/// What a library material's surface is at a point, free of bindings: it reads the
+/// material's `p` and `studio` blocks (from [`material_uniforms`]), which a program
+/// that includes it declares itself. `material_point` is its entry.
+pub const SURFACE_WGSL: &str = include_str!("surface.wgsl");
 /// The material kernels with their studio environment, for renderers that shade
 /// surfaces with `material_colour(uv, normal)` exactly as titles are shaded. Their
 /// bindings are group 0: 0 `p` (48-byte parameters), 1, 2, 4, 8 images, 3 the
 /// result, 5 the LTC table, 6 `studio` lighting, 7 the environment.
 pub const MATERIAL_WGSL: &str = concat!(
     include_str!("kernels.wgsl"),
+    include_str!("surface.wgsl"),
     include_str!("environment.wgsl")
 );
 /// Size of the `studio` lighting uniform in `MATERIAL_WGSL`.
@@ -388,6 +393,7 @@ impl Renderer {
             source: wgpu::ShaderSource::Wgsl(
                 origin::with_origin(concat!(
                     include_str!("kernels.wgsl"),
+                    include_str!("surface.wgsl"),
                     include_str!("environment.wgsl"),
                     include_str!("working_space.wgsl"),
                     include_str!("matte.wgsl"),

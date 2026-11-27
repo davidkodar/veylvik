@@ -262,6 +262,7 @@ impl Renderer {
                 source: wgpu::ShaderSource::Wgsl(
                     concat!(
                         include_str!("kernels.wgsl"),
+                        include_str!("surface.wgsl"),
                         include_str!("environment.wgsl")
                     )
                     .into(),
@@ -381,6 +382,7 @@ pub fn material_preview_revision() -> String {
         }
     };
     feed(include_bytes!("kernels.wgsl"));
+    feed(include_bytes!("surface.wgsl"));
     feed(include_bytes!("material_preview.rs"));
     feed(include_bytes!("studio_lighting.rs"));
     feed(include_bytes!("../assets/ltc/ggx.bin"));
