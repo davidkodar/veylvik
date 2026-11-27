@@ -1983,6 +1983,12 @@ settles on the wrong kind of motion can still look sure. The
     **Hold** keeps it there that many seconds after it arrives (its life is then
     Life plus Hold), so a word or a logo made of particles stands formed while new
     ones keep arriving; it goes on turning as it holds, so metal copies glint.
+    **Release at** (a moment in the composition, 0: none) holds every particle
+    that has arrived until that moment, however early it arrived (in place of
+    Hold), and then lets them all go together: each leaves its place and is
+    carried off by the wind, gravity and turbulence for **Release life** seconds,
+    fading out, so a word formed of particles blows away by itself. Particles
+    still on their way at the release fly off as they arrive.
     **Gather on** does the same onto a 3D object of the connected scene, in
     depth: each particle is given a place on the object's surface (by area,
     where the object is at the frame), flies there over its Homing share and

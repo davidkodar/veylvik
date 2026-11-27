@@ -2414,3 +2414,56 @@ fn a_dense_emitter_gives_more_than_one_particle_a_pixel() {
         "six times the density: {six} against {one}"
     );
 }
+#[test]
+#[ignore = "requires Vulkan"]
+fn gathered_particles_hold_until_the_release_and_then_blow_away() {
+    let renderer = Renderer::new().unwrap();
+    // A block on the left as the target; particles born everywhere gather onto it. A wind
+    // blows right, but gathered particles hold until the release at 3 s, then fly off.
+    let block: Vec<[f32; 4]> = (0..W * H)
+        .map(|i| {
+            let (x, y) = (i % W, i / W);
+            if (20..50).contains(&x) && (40..80).contains(&y) {
+                [1.0; 4]
+            } else {
+                [0.0; 4]
+            }
+        })
+        .collect();
+    let mut p = still();
+    p.width = 160.0.into();
+    p.height = 120.0.into();
+    p.rate = 3000.0.into();
+    p.life = 1.0.into();
+    p.start = 0.0.into();
+    p.duration = 1.0.into();
+    p.homing = 1.0.into();
+    p.glow = 1.0.into();
+    p.size = 0.8.into();
+    p.wind = 400.0.into();
+    p.release = 3.0.into();
+    p.release_life = 2.0.into();
+    let middle = |seconds: (i64, u32)| {
+        let px = render_to(&renderer, p.clone(), None, Some(block.clone()), seconds);
+        let (mut sum, mut weight) = (0.0f32, 0.0f32);
+        for (i, v) in px.iter().enumerate() {
+            sum += (i as u32 % W) as f32 * v[3];
+            weight += v[3];
+        }
+        (sum / weight.max(1e-6), weight)
+    };
+    let (held_early, early) = middle((2, 1));
+    let (held_late, _) = middle((29, 10));
+    let (gone, after) = middle((36, 10));
+    // Born in the first second and arrived by its end, they are still on the block at 2.9 s
+    // (their own life and any hold long over), and off to the right once released.
+    assert!(early > 0.0 && after > 0.0);
+    assert!(
+        (held_early - 35.0).abs() < 6.0 && (held_late - 35.0).abs() < 6.0,
+        "held on the block: {held_early} {held_late}"
+    );
+    assert!(
+        gone > held_late + 25.0,
+        "blown away after the release: {gone} against {held_late}"
+    );
+}

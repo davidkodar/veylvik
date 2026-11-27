@@ -49,7 +49,7 @@ fn particles(operation: &Operation, name: &str, wired: &dyn Fn(&str) -> bool) ->
     match name {
         "density" => !wired("emitter") || flock,
         "rate" | "x" | "y" | "width" | "height" => wired("emitter") && !flock,
-        "homing" | "hold" => {
+        "homing" | "hold" | "release" | "release_life" => {
             !wired("target")
                 && !matches!(*operation, Operation::Particles(ref n) if n.gather_on.is_some())
         }

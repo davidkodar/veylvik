@@ -9,7 +9,7 @@ const SLOTS: f32 = 4.0;
 /// Threads in one dispatch row (1024 workgroups of 64).
 pub(crate) const ROW: u32 = 65536;
 /// Settings in a row, and rows through the last life (as in particle_system.wgsl).
-pub(crate) const COUNT: usize = 138;
+pub(crate) const COUNT: usize = 141;
 pub(crate) const ROWS: usize = 16;
 /// The target's tile size for a frame (as in particle_system.wgsl).
 fn tile(pixels: u64) -> u32 {
@@ -17,12 +17,47 @@ fn tile(pixels: u64) -> u32 {
 }
 const MIP: u32 = 64;
 
+/// The timing of a particle born at `time`: the system's whole life (every particle's,
+/// as threads emit one a life apart), how long it holds its place, how long it flies away
+/// after, and its flight onto its place. Without Release: life plus hold, the hold, none,
+/// none (the flight is the rest). With it: the whole life reaches from Start through the
+/// release and the flight away; each particle flies for Life, holds until the release
+/// (however early it arrived) and flies away for Release life.
+struct Timing {
+    whole: f32,
+    hold: f32,
+    away: f32,
+    flight: f32,
+}
+fn timing(node: &Particles, time: Time) -> Result<Timing> {
+    let at = |s: &Scalar| s.at(time).map_err(error);
+    let (life, release) = (at(&node.life)?, at(&node.release)?);
+    if release <= 0.0 {
+        let hold = at(&node.hold)?;
+        return Ok(Timing {
+            whole: life + hold,
+            hold,
+            away: 0.0,
+            flight: 0.0,
+        });
+    }
+    let away = at(&node.release_life)?;
+    let born = time.seconds().map_err(error)? as f32;
+    Ok(Timing {
+        whole: life.max(release - at(&node.start)?) + away,
+        hold: (release - born - life).max(0.0),
+        away,
+        flight: life,
+    })
+}
 fn settings(node: &Particles, time: Time) -> Result<[f32; COUNT]> {
     let at = |scalar: &Scalar| scalar.at(time).map_err(error);
     let mut row = [0.0; COUNT];
     let values = [
-        // The whole life: the flight and the hold after it (the hold is also at 126).
-        at(&node.life)? + at(&node.hold)?,
+        // The whole life: the flight, the hold after it (also at 126) and, released, the
+        // flight away (also at 139). Released particles hold until the release, however
+        // early they were born: the hold is worked out for a birth at `time`.
+        timing(node, time)?.whole,
         at(&node.speed)?,
         at(&node.direction)?,
         at(&node.spread)?,
@@ -108,7 +143,10 @@ fn settings(node: &Particles, time: Time) -> Result<[f32; COUNT]> {
     row[123] = at(&node.alignment)?;
     row[124] = at(&node.top_speed)?;
     row[125] = at(&node.sprite_rate)?;
-    row[126] = at(&node.hold)?;
+    let timing = timing(node, time)?;
+    row[126] = timing.hold;
+    row[139] = timing.away;
+    row[140] = timing.flight;
     row[127] = at(&node.sparkle)?;
     row[128] = at(&node.sparkle_turn)?;
     row[129] = at(&node.shading)?;
@@ -126,9 +164,11 @@ fn settings(node: &Particles, time: Time) -> Result<[f32; COUNT]> {
     }
     Ok(row)
 }
-fn scalars(node: &Particles) -> [&Scalar; 70] {
+fn scalars(node: &Particles) -> [&Scalar; 72] {
     [
         &node.life,
+        &node.release,
+        &node.release_life,
         &node.ribbon_shading,
         &node.sparkle_spread,
         &node.self_shadow,
@@ -210,9 +250,12 @@ fn linking(node: &Particles) -> bool {
 /// settings give equal rows without sampling each.
 fn rows(node: &Particles, time: Time) -> Result<Vec<[f32; COUNT]>> {
     let now = settings(node, time)?;
-    if scalars(node)
-        .iter()
-        .all(|s| matches!(s, Scalar::Constant { .. }))
+    // A release makes each particle's hold depend on its birth, keyed or not.
+    let released = !matches!(node.release, Scalar::Constant { value } if value <= 0.0);
+    if !released
+        && scalars(node)
+            .iter()
+            .all(|s| matches!(s, Scalar::Constant { .. }))
     {
         return Ok(vec![now; ROWS]);
     }
@@ -296,7 +339,13 @@ fn force_table(node: &Particles, time: Time, life: f32) -> Result<Vec<f32>> {
 fn layout(rows: &[[f32; COUNT]], width: u32, height: u32) -> (u32, u32) {
     let life = rows[ROWS - 1][0];
     let most = |k: usize| rows.iter().map(|r| r[k]).fold(0.0f32, f32::max);
-    let threads = (most(14) * life).ceil().clamp(1.0, MAX_BOX);
+    // Released in a burst shorter than the (long) whole life: one birth a thread, inside
+    // the burst (see `burst_window` in the shader).
+    let duration = rows[ROWS - 1][13];
+    let burst = rows[ROWS - 1][139] > 0.0 && duration > 0.0 && duration < life;
+    let threads = (most(14) * if burst { duration } else { life })
+        .ceil()
+        .clamp(1.0, MAX_BOX);
     // A cell of stride x stride pixels holds SLOTS threads; make cells as large as the
     // density allows, so sparse systems cost little, and as small as one pixel where it
     // asks for more than one particle a pixel, while the frame's cells hold at most
@@ -840,6 +889,10 @@ impl RenderNode for Particles {
     /// own birth.
     fn empty(&self, _: &dyn Fn(&str) -> Result<f32>, time: veylvik_document::Time) -> Result<bool> {
         use veylvik_document::Scalar::Constant;
+        // Released particles live on past the release: never said to be gone.
+        if !matches!(self.release, Constant { value } if value <= 0.0) {
+            return Ok(false);
+        }
         let (
             Constant { value: start },
             Constant { value: duration },
@@ -957,6 +1010,7 @@ impl RenderNode for Particles {
         last[117] = f32::from(!forces.is_empty());
         // A flock is simulated; it is born in the box, on its emitter or on a 3D object.
         last[118] = f32::from(simulating(self));
+        last[123] = f32::from(!matches!(self.release, Scalar::Constant { value } if value <= 0.0));
         if simulating(self)
             && let Some(port) = ["target", "field", "obstacle"]
                 .into_iter()

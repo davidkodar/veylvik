@@ -40,7 +40,7 @@ fn sheet_rows() -> u32 { return ((u32(p.extra.z) >> 12u) & 15u) + 1u; }
 fn sheet_width() -> u32 { return MIP * sheet_columns(); }
 fn sheet_texels() -> u32 { return MIP * MIP * sheet_columns() * sheet_rows(); }
 const SPRITE_RATE = 125u;
-const COUNT: u32 = 138u;
+const COUNT: u32 = 141u;
 const ROWS: u32 = 16u;
 // Setting numbers.
 const SPEED = 1u; const DIRECTION = 2u; const SPREAD = 3u; const GRAVITY = 4u; const WIND = 5u;
@@ -62,7 +62,7 @@ const CURVES = 60u; const SIZE_CURVE = 61u; const OPACITY_CURVE = 69u; const SPE
 const COLOUR_CURVE = 85u;
 const LIT = 117u; const AMBIENT = 118u; const SCATTER = 119u; const HOLD = 126u;
 const SPARKLE = 127u; const SPARKLE_TURN = 128u; const SHADING = 129u; const BOKEH = 130u; const CLUMP = 131u; const CLUMP_RADIUS = 132u;
-const SELF_SHADOW = 133u; const GLINT_WHITE = 134u; const SPARKLE_SPREAD = 135u; const RIBBON_SHADING = 136u;
+const SELF_SHADOW = 133u; const GLINT_WHITE = 134u; const SPARKLE_SPREAD = 135u; const RIBBON_SHADING = 136u; const RELEASE_LIFE = 139u; const FLIGHT = 140u;
 // The camera row's lights: how many at 36, then twelve values each from 40.
 const LIGHT_COUNT = 36u; const LIGHT_BASE = 40u;
 // Where the camera is in the scene: the world-to-camera rows' rotation turned back on
@@ -571,8 +571,11 @@ var<private> held: vec4<f32>;
 // The part of a particle's life before it reaches its place on the target: its life
 // less the hold it then spends there.
 fn flight(own_life: f32, birth: f32) -> f32 {
+    // Released, each particle flies for Life and holds until the release.
+    if setting(RELEASE_LIFE, birth) > 0.0 { return setting(FLIGHT, birth); }
     return max(own_life - setting(HOLD, birth), own_life * 0.05);
 }
+fn released() -> bool { return camera_row(123u) > 0.5; }
 fn place(origin: vec3<f32>, launch: vec3<f32>, birth: f32, age: f32, own_life: f32, goal: vec3<f32>, homing: f32, deep: bool) -> vec3<f32> {
     if held.w > 0.5 { impact = -1.0; path_count = 0u; return held.xyz; }
     var at = origin; var velocity = launch;
@@ -673,6 +676,22 @@ fn place(origin: vec3<f32>, launch: vec3<f32>, birth: f32, age: f32, own_life: f
     }
     if gathering() && homing > 0.0 {
         at = mix(at, goal, smoothstep(1.0 - homing, 1.0, age / flight(own_life, birth)));
+        // Released: it leaves its place at the release, carried by the wind, gravity and
+        // swirl in force then, in a few steps from rest.
+        let away = setting(RELEASE_LIFE, birth);
+        let leave = flight(own_life, birth) + setting(HOLD, birth);
+        if away > 0.0 && age > leave {
+            let after = age - leave;
+            let fr = forces_at(birth + leave);
+            var moving = vec3<f32>(0.0);
+            let dt = after / 8.0;
+            for (var k = 0u; k < 8u; k++) {
+                moving += vec3<f32>(fr.pull, 0.0) * dt;
+                var drift = moving;
+                if fr.turbulence > 0.0 { drift += vec3<f32>(swirl(at.xy, birth + leave + dt * f32(k), fr), 0.0); }
+                at += drift * dt;
+            }
+        }
     }
     return at;
 }
@@ -853,7 +872,7 @@ struct Born {
 // The share of the life a thread's birth may fall in: the burst's, for a flock born in
 // a burst shorter than its life (see `threads` in nodes/particles.rs), else all of it.
 fn burst_window(life: f32, duration: f32) -> f32 {
-    if camera_row(118u) > 0.5 && duration > 0.0 && duration < life { return duration / life; }
+    if (camera_row(118u) > 0.5 || released()) && duration > 0.0 && duration < life { return duration / life; }
     return 1.0;
 }
 fn born(thread: u32, back: u32, now: f32) -> Born {
@@ -878,6 +897,8 @@ fn born(thread: u32, back: u32, now: f32) -> Born {
     if birth < start || (duration > 0.0 && birth >= start + duration) { return b; }
     let variation = setting(VARIATION, birth);
     b.own_life = life * (1.0 - 0.6 * variation * random(thread, generation, 1u));
+    // Released particles live until their flight away ends, whatever the variation.
+    if released() { b.own_life = life; }
     var origin: vec3<f32>;
     var born_on = vec3<f32>(1.0);
     var surface_out = vec3<f32>(0.0);
@@ -1080,6 +1101,14 @@ fn draw(origin: vec3<f32>, launch: vec3<f32>, birth: f32, age: f32, own_life: f3
         opacity = life_curve(OPACITY_CURVE, birth, share);
         if reach > 0.0 { opacity *= clamp((reach - away) / (0.25 * reach), 0.0, 1.0); }
     } else if fade > 0.0 { opacity *= clamp((1.0 - share) / fade, 0.0, 1.0); }
+    // Released: it fades in as it is born, holds, and fades out over its flight away, gone
+    // when that ends (the whole life it shares with the others can be longer).
+    let flown = setting(RELEASE_LIFE, birth);
+    if flown > 0.0 {
+        let leave = flight(own_life, birth) + setting(HOLD, birth);
+        if age > leave + flown { return; }
+        opacity = min(age / max(0.04 * flight(own_life, birth), 1e-3), 1.0) * clamp((leave + flown - age) / (0.6 * flown), 0.0, 1.0);
+    }
     var colour = mix(look.first, look.last, share);
     if look.ramp && has_curve(8u, birth) { colour = life_colour(birth, share); }
     let unlit = colour;
