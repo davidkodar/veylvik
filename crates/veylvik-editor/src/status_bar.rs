@@ -8,6 +8,19 @@ fn timing(ms: Option<f64>) -> String {
         None => "  --.-- ms".into(),
     }
 }
+/// The line while a preview render holds the viewer up: seconds so far, and the last
+/// render's time as the likely whole when it was long enough to be worth waiting on.
+fn rendering_message(seconds: f64, last_ms: Option<f64>) -> String {
+    match last_ms {
+        Some(ms) if ms >= 1000. => {
+            format!(
+                "Rendering preview… {seconds:.1} s of about {:.1} s",
+                ms / 1000.
+            )
+        }
+        _ => format!("Rendering preview… {seconds:.1} s"),
+    }
+}
 impl Studio {
     pub(super) fn status_bar(&mut self, ui: &mut egui::Ui) {
         let wide = ui.available_width() > 1100.;
@@ -40,7 +53,12 @@ impl Studio {
                 const SLOW:std::time::Duration=std::time::Duration::from_millis(250);
                 let slow=self.preview_pending&&self.preview_started.is_some_and(|t|t.elapsed()>=SLOW);
                 if self.preview_pending&&!slow {ui.ctx().request_repaint_after(SLOW);}
-                let message=if self.files.busy(){"File operation in progress…"}else if slow{"Rendering preview…"}else{&self.status};
+                let rendering=slow.then(||{
+                    // Long renders (a path traced scene) count up, against how long the last one took.
+                    ui.ctx().request_repaint_after(std::time::Duration::from_millis(100));
+                    rendering_message(self.preview_started.map_or(0.,|t|t.elapsed().as_secs_f64()),self.last_render_ms)
+                });
+                let message=if self.files.busy(){"File operation in progress…"}else if let Some(r)=&rendering{r}else{&self.status};
                 // The line shows the latest message; a click opens the ones before it.
                 let unseen = self.log.unseen;
                 let shown = if unseen > 0 && !self.error { format!("{message}  ·  {unseen} earlier error(s)") } else { message.to_owned() };
@@ -54,6 +72,21 @@ impl Studio {
 }
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_long_render_counts_up_against_the_last_ones_time() {
+        assert_eq!(
+            super::rendering_message(1.25, Some(3093.0)),
+            "Rendering preview… 1.2 s of about 3.1 s"
+        );
+        assert_eq!(
+            super::rendering_message(0.4, Some(40.0)),
+            "Rendering preview… 0.4 s"
+        );
+        assert_eq!(
+            super::rendering_message(0.4, None),
+            "Rendering preview… 0.4 s"
+        );
+    }
     #[test]
     fn render_time_keeps_precision_and_uses_seconds_for_long_renders() {
         assert_eq!(super::timing(Some(1.2)), "   1.20 ms");

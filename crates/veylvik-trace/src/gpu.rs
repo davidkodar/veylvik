@@ -1,4 +1,4 @@
-//! The tracer on the GPU: one compute program over the packed scene, run in passes of a few samples each so no single dispatch runs long, averaging into the picture as it goes, or, to be denoised, into a buffer of its own with each pixel's guides (denoise.rs). Mesh geometry stays on the GPU while the same meshes are in the scene; placings, surfaces, the top tree and lights are sent each frame.
+//! The tracer on the GPU: one compute program over the packed scene, run in passes of a few samples each, sent to the GPU one at a time so a long picture never holds the GPU in one piece, averaging into the picture as it goes, or, to be denoised, into a buffer of its own with each pixel's guides (denoise.rs). Mesh geometry stays on the GPU while the same meshes are in the scene; placings, surfaces, the top tree and lights are sent each frame.
 use crate::scene::{Mat4, Packed};
 use std::sync::Mutex;
 use wgpu::util::DeviceExt;
@@ -327,7 +327,7 @@ impl Tracer {
     pub fn render(&self, job: Job<'_>) -> Result<(), String> {
         let Job {
             device,
-            queue: _,
+            queue,
             encoder,
             scene,
             textures,
@@ -549,6 +549,24 @@ impl Tracer {
             pass.set_pipeline(&self.pipeline);
             pass.set_bind_group(0, &bind, &[(u64::from(p) * UNIFORM_STEP) as u32]);
             pass.dispatch_workgroups(width.div_ceil(8), height.div_ceil(8), 1);
+            drop(pass);
+            // Each pass goes to the GPU on its own and is finished before the next is
+            // sent, so a long picture does not hold the GPU in one piece: the screen (an
+            // editor drawing on the same device) is drawn between passes instead of
+            // waiting behind all of them.
+            if p + 1 < passes {
+                let done = std::mem::replace(
+                    &mut *encoder,
+                    device.create_command_encoder(&Default::default()),
+                );
+                let sent = queue.submit([done.finish()]);
+                device
+                    .poll(wgpu::PollType::Wait {
+                        submission_index: Some(sent),
+                        timeout: None,
+                    })
+                    .map_err(|e| format!("path tracing stopped: {e}"))?;
+            }
         }
         if let (Some(work), Some(g)) = (work, settings.denoise) {
             if g.last {

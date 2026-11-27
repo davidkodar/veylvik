@@ -673,4 +673,15 @@ mod bounds_tests {
             wrong.join("\n")
         );
     }
+    #[test]
+    fn a_new_render_scene_is_denoised_as_an_older_file_without_the_setting_is() {
+        let kind = TYPES.iter().find(|t| t.type_id == "render_scene").unwrap();
+        assert_eq!(kind.default_operation()["denoise"], json!(true));
+        let mut older = kind.default_operation();
+        older.as_object_mut().unwrap().remove("denoise");
+        let crate::Operation::RenderScene(read) = serde_json::from_value(older).unwrap() else {
+            panic!("not a Render scene");
+        };
+        assert!(read.denoise);
+    }
 }

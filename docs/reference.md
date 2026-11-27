@@ -2370,7 +2370,10 @@ final picture. Each mesh's tree (a bounding volume hierarchy built once, about
 0.4 s for half a million triangles) is kept between frames and shared by every
 copy; only a small top tree over the placed objects is built each frame. It runs
 in compute shaders on any Vulkan device, with no ray-tracing hardware needed, in
-short passes so the screen never stalls, and averages straight into the picture.
+short passes sent to the GPU one at a time, each finished before the next, so Studio
+keeps drawing while a long picture renders (the status line counts the seconds,
+against how long the last render took). In Studio, the Render scene inspector has
+Quality, and when path traced, Samples, Bounces and Denoise.
 Light from the environment is also drawn where the environment is bright (a
 sun in a panorama), weighed against reflected rays, so an environment-lit scene is
 clean at a fraction of the samples (about 4.5 times less noise at the same count).

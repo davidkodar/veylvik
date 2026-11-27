@@ -938,7 +938,10 @@ pub static RENDER_SCENE: NodeType = NodeType {
         ),
         integer("samples", "paths a pixel", 1, 16384, 64),
         integer("bounces", "bounces", 0, 16, 4),
-        other("denoise", ParameterKind::Boolean, "smooth the noise"),
+        crate::registry::Parameter {
+            default: 1.0,
+            ..other("denoise", ParameterKind::Boolean, "smooth the noise")
+        },
     ],
 };
 node!(

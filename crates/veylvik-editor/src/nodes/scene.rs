@@ -616,6 +616,45 @@ impl Inspect for RenderScene {
             }
         });
         ui.weak("Films the scene on its Scene input. Camera 1 is the first camera in the scene; 0 is the home view that matches 2D. Occlusion shades the environment light where surfaces meet, so objects sit on the floor (0 = off).");
+        cx.dirty |= ui
+            .checkbox(&mut self.depth, "Output depth")
+            .on_hover_text("Each pixel's distance from the camera instead of the picture, for the Depth input of Particles or a Lens blur")
+            .changed();
+        if self.depth {
+            return;
+        }
+        use veylvik_document::nodes::SceneQuality;
+        cx.dirty |= kind(
+            ui,
+            "Quality",
+            &mut self.quality,
+            &[
+                (SceneQuality::Preview, "Preview"),
+                (SceneQuality::PathTraced, "Path traced"),
+            ],
+        );
+        if self.quality != SceneQuality::PathTraced {
+            return;
+        }
+        ui.horizontal(|ui| {
+            ui.label("Samples");
+            cx.dirty |= ui
+                .add(egui::DragValue::new(&mut self.samples).range(1..=16384).speed(1.0))
+                .on_hover_text("Paths through each pixel: more is cleaner and slower. With Denoise, 16 to 64 is usually enough; motion blur shares them between its moments")
+                .changed();
+        });
+        ui.horizontal(|ui| {
+            ui.label("Bounces");
+            cx.dirty |= ui
+                .add(egui::DragValue::new(&mut self.bounces).range(0..=16).speed(0.05))
+                .on_hover_text("How many times light bounces after the first surface: more lights corners and lets reflections show reflections")
+                .changed();
+        });
+        cx.dirty |= ui
+            .checkbox(&mut self.denoise, "Denoise")
+            .on_hover_text("Smooth away the noise left after the paths, keeping edges, textures and shadows. Turn it off for close-ups of sparkling detail such as car paint flakes, and raise Samples")
+            .changed();
+        ui.weak("Path traced: surfaces reflect one another, area lights cast soft shadows and light bounces between surfaces. It takes longer than Preview; the Preview quality is the quick look at the same framing and light.");
     }
 }
 impl Inspect for veylvik_document::nodes::ParticleInstances {
