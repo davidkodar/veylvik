@@ -62,7 +62,7 @@ const CURVES = 60u; const SIZE_CURVE = 61u; const OPACITY_CURVE = 69u; const SPE
 const COLOUR_CURVE = 85u;
 const LIT = 117u; const AMBIENT = 118u; const SCATTER = 119u; const HOLD = 126u;
 const SPARKLE = 127u; const SPARKLE_TURN = 128u; const SHADING = 129u; const BOKEH = 130u; const CLUMP = 131u; const CLUMP_RADIUS = 132u;
-const SELF_SHADOW = 133u; const GLINT_WHITE = 134u; const SPARKLE_SPREAD = 135u;
+const SELF_SHADOW = 133u; const GLINT_WHITE = 134u; const SPARKLE_SPREAD = 135u; const RIBBON_SHADING = 136u;
 // The camera row's lights: how many at 36, then twelve values each from 40.
 const LIGHT_COUNT = 36u; const LIGHT_BASE = 40u;
 // Where the camera is in the scene: the world-to-camera rows' rotation turned back on
@@ -1005,6 +1005,32 @@ fn born(thread: u32, back: u32, now: f32) -> Born {
     b.ok = true;
     return b;
 }
+// The sheet a particle born in a box flows in, facing the camera, where it is now: the
+// surface the box's longest side sweeps as the flow carries it. Worked out from where a
+// particle born a little further along that side is now (across the sheet) and where this
+// one was a moment ago (along it). Zero when there is no sheet: a box with no extent, a
+// particle not yet moving, or a sheet seen exactly edge on.
+fn sheet_normal(origin: vec3<f32>, launch: vec3<f32>, birth: f32, age: f32, own_life: f32, goal: vec3<f32>, homing: f32, deep: bool, here: vec3<f32>) -> vec3<f32> {
+    let size = vec3<f32>(setting(BOX_W, birth), setting(BOX_H, birth), setting(DEPTH, birth));
+    let longest = max(size.x, max(size.y, size.z));
+    if longest < 1.0 { return vec3<f32>(0.0); }
+    var side = vec3<f32>(0.0, 0.0, 1.0);
+    if size.x >= longest { side = vec3<f32>(1.0, 0.0, 0.0); } else if size.y >= longest { side = vec3<f32>(0.0, 1.0, 0.0); }
+    // place() keeps what it last found (an impact, a trail's path): keep this particle's.
+    let kept_impact = impact; let kept_count = path_count;
+    let nudge = max(2.0, 0.01 * longest);
+    let beside = place(origin + side * nudge, launch, birth, age, own_life, goal, homing, deep);
+    let moment = min(age, 0.05);
+    var along = launch;
+    if moment > 1e-4 { along = here - place(origin, launch, birth, age - moment, own_life, goal, homing, deep); }
+    impact = kept_impact; path_count = kept_count;
+    let n = cross(along, beside - here);
+    let l = length(n);
+    if l < 1e-6 { return vec3<f32>(0.0); }
+    var facing = n / l;
+    if dot(facing, eye() - here) < 0.0 { facing = -facing; }
+    return facing;
+}
 // How one particle looks: its colours over its life (before the emitter's tint and the
 // hue turn), its size at birth, and the random draws its own.
 // `ends` says it is not drawn once it has touched the obstacle (it burst there).
@@ -1051,7 +1077,14 @@ fn draw(origin: vec3<f32>, launch: vec3<f32>, birth: f32, age: f32, own_life: f3
     var colour = mix(look.first, look.last, share);
     if look.ramp && has_curve(8u, birth) { colour = life_colour(birth, share); }
     let unlit = colour;
-    let shaded = surface_light(look.surface, origin, look.landing, goal, where_now, birth);
+    var shaded = surface_light(look.surface, origin, look.landing, goal, where_now, birth);
+    // Lit as the sheet it flows in, where that counts for more than a surface it is on.
+    let sheet = setting(RIBBON_SHADING, birth);
+    var sheet_light = vec4<f32>(0.0);
+    if sheet > shaded.w && !simulated() && dot(look.surface, look.surface) < 0.25 {
+        let facing = sheet_normal(origin, launch, birth, age, own_life, goal, homing, deep, where_now);
+        if dot(facing, facing) > 0.25 { sheet_light = vec4<f32>(facing, sheet); shaded = sheet_light; }
+    }
     colour = vec4<f32>(lit_colour(colour.rgb, lighting(where_now, birth, facet(look.thread, look.generation, age, birth), shaded.xyz, shaded.w), birth), colour.a);
     colour = vec4<f32>(colour.rgb * look.tint, colour.a);
     let hues = setting(HUES, birth);
@@ -1119,7 +1152,8 @@ fn draw(origin: vec3<f32>, launch: vec3<f32>, birth: f32, age: f32, own_life: f3
             let wall_k = occluder(seen_k.xy);
             let away_k = distance_to(grain);
             if wall_k > 0.0 && away_k > wall_k * 1.002 + 1.0 { continue; }
-            let shaded_k = surface_light(look.surface, origin, look.landing, goal, grain, birth);
+            var shaded_k = surface_light(look.surface, origin, look.landing, goal, grain, birth);
+            if sheet_light.w > shaded_k.w { shaded_k = sheet_light; }
             let lit_k = lighting(grain, birth, facet(thread + k * 0x01000193u, generation, age, birth), shaded_k.xyz, shaded_k.w);
             var c = vec4<f32>(lit_colour(unlit.rgb, lit_k, birth) * look.tint, unlit.a);
             if hues > 0.0 { c = vec4<f32>(turned(c.rgb, (look.hue - 0.5) * 6.2831853 * hues), c.a); }

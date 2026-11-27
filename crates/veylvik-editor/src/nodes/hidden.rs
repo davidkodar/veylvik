@@ -84,7 +84,7 @@ fn particles(operation: &Operation, name: &str, wired: &dyn Fn(&str) -> bool) ->
         // Lighting comes from a scene; its details once particles are lit.
         "lit" => !wired("scene"),
         "ambient" | "scatter" | "sparkle" | "sparkle_turn" | "shading" | "self_shadow"
-        | "glint_white" | "sparkle_spread" => {
+        | "glint_white" | "sparkle_spread" | "ribbon_shading" => {
             !wired("scene")
                 || matches!(*operation, Operation::Particles(ref n) if matches!(n.lit, veylvik_document::Scalar::Constant { value } if value <= 0.0))
         }

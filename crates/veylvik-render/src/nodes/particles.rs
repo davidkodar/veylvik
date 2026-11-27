@@ -118,6 +118,7 @@ fn settings(node: &Particles, time: Time) -> Result<[f32; COUNT]> {
     row[133] = at(&node.self_shadow)?;
     row[134] = at(&node.glint_white)?;
     row[135] = at(&node.sparkle_spread)?;
+    row[136] = at(&node.ribbon_shading)?;
     if let Some(ramp) = node.colour_over_life {
         for (k, colour) in ramp.iter().enumerate() {
             row[85 + 4 * k..89 + 4 * k].copy_from_slice(colour);
@@ -125,9 +126,10 @@ fn settings(node: &Particles, time: Time) -> Result<[f32; COUNT]> {
     }
     Ok(row)
 }
-fn scalars(node: &Particles) -> [&Scalar; 69] {
+fn scalars(node: &Particles) -> [&Scalar; 70] {
     [
         &node.life,
+        &node.ribbon_shading,
         &node.sparkle_spread,
         &node.self_shadow,
         &node.glint_white,

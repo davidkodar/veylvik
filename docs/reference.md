@@ -2024,6 +2024,16 @@ settles on the wrong kind of motion can still look sure. The
     grains' light overall stays about the same while many more of them shimmer
     at once, as glitter under large soft lights does; 6 to 15 degrees reads as
     dense, living glitter.
+    **Ribbon shading** (0 to 1) lights particles born in a box as the sheet
+    they flow in rather than as loose specks: the box's longest side, carried
+    along by the flow, sweeps a surface that twists and folds as the turbulence
+    bends it, and each grain is lit as that surface is where it is (facing the
+    camera): bright where it faces a light, dark where it turns away. A stream
+    born on a thin line then reads as a silk ribbon with a lit crest and a
+    shaded fold, and several such streams stack in depth. It works out each
+    particle's path twice more (beside it and a moment earlier), so it costs
+    about three times the movement. Particles born on a 3D object keep that
+    object's shading near it.
     **Glint white** (0 to 1) gives the flashes the light's colour instead of the
     grain's: a metal flake's flash is nearly white even when the flake is
     crimson. With it up, lower Sparkle, or the white flashes swamp the grains'

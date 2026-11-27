@@ -2261,3 +2261,55 @@ fn a_wider_sparkle_spread_lights_more_grains_with_the_same_light_overall() {
         "about the same light overall: {ratio}"
     );
 }
+/// A sheet of grains flowing right, its box's long side along y (facing the camera) or
+/// along z (seen edge on, its face up), lit by a sun from the camera's side: its light.
+fn sheet_light(renderer: &Renderer, facing_camera: bool, ribbon: f32) -> f32 {
+    let mut p = still();
+    p.speed = 40.0.into();
+    p.direction = 0.0.into();
+    p.spread = 0.0.into();
+    p.width = 0.0.into();
+    if facing_camera {
+        p.height = 60.0.into();
+    } else {
+        p.height = 0.0.into();
+        p.depth = 60.0.into();
+    }
+    p.rate = 6000.0.into();
+    p.size = 0.6.into();
+    p.glow = 1.0.into();
+    p.lit = 1.0.into();
+    p.ambient = 0.0.into();
+    p.scatter = 0.0.into();
+    p.colour = [0.3, 0.3, 0.3, 1.0];
+    p.end_colour = [0.3, 0.3, 0.3, 1.0];
+    p.ribbon_shading = ribbon.into();
+    let sun = serde_json::json!({"kind": "sun", "colour": [1.0, 1.0, 1.0], "intensity": {"kind": "constant", "value": 1.0},
+        "placement": {"position": [0.0, 0.0, 400.0], "rotation": [0.0, 0.0, 0.0], "scale": [1.0, 1.0, 1.0]}});
+    render_lit(renderer, p, sun).iter().map(|p| p[0]).sum()
+}
+#[test]
+#[ignore = "requires Vulkan"]
+fn a_ribbon_is_lit_on_the_face_turned_to_the_light_and_dark_edge_on() {
+    let renderer = Renderer::new().unwrap();
+    let (facing, edge) = (
+        sheet_light(&renderer, true, 0.0),
+        sheet_light(&renderer, false, 0.0),
+    );
+    let (facing_lit, edge_lit) = (
+        sheet_light(&renderer, true, 1.0),
+        sheet_light(&renderer, false, 1.0),
+    );
+    assert!(facing > 0.0 && edge > 0.0, "{facing} {edge}");
+    // As loose specks both are lit alike, by how much of each the camera sees.
+    // As sheets, the one facing the light keeps its light and the one edge on to it
+    // goes dark.
+    assert!(
+        facing_lit > 0.8 * facing,
+        "facing the light: {facing_lit} of {facing}"
+    );
+    assert!(
+        edge_lit < 0.15 * edge,
+        "edge on to the light: {edge_lit} of {edge}"
+    );
+}
