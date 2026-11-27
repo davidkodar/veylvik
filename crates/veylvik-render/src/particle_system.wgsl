@@ -497,11 +497,17 @@ fn particle_fields(@builtin(global_invocation_id) gid: vec3<u32>) {
 }
 // ---- splat: source = emitter, second = target, third = fields, fourth = prepare ----
 // Setting `k` as it was at time `seconds` (held at the ends of the window).
+// A setting as it was at `seconds` (a particle's birth): between the rows of the settings
+// grid, which is fixed in time, each row knowing its moment (ROW_TIME). Unkeyed rows are
+// all alike and carry no moment.
+const ROW_TIME = 137u;
 fn setting(k: u32, seconds: f32) -> f32 {
-    let life = p.extra.w;
-    let row = clamp((seconds - (bitcast<f32>(p.size_op.z) - life)) / life, 0.0, 1.0) * f32(ROWS - 1u);
-    let a = u32(floor(row)); let b = min(a + 1u, ROWS - 1u);
     let base = tiles() + k;
+    let first = third[tiles() + ROW_TIME].w;
+    let slice = third[tiles() + COUNT + ROW_TIME].w - first;
+    if slice <= 0.0 { return third[base + (ROWS - 1u) * COUNT].w; }
+    let row = clamp((seconds - first) / slice, 0.0, f32(ROWS - 1u));
+    let a = u32(floor(row)); let b = min(a + 1u, ROWS - 1u);
     return mix(third[base + a * COUNT].w, third[base + b * COUNT].w, row - floor(row));
 }
 struct Forces { pull: vec2<f32>, turbulence: f32, scale: f32, push: f32, flow: f32, centre: vec2<f32>, attract: f32, vortex: f32, bounce: f32 }

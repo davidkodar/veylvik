@@ -2067,8 +2067,12 @@ settles on the wrong kind of motion can still look sure. The
     of its thread, its generation and the frame's time, so frames render in any
     order and repeat exactly. Motion is integrated in 32 fixed steps of the
     life (96 with an obstacle, 128 when a force is keyed). Keyed settings are
-    followed: the settings are sampled 16 times across the last life, a particle
-    is launched with those in force at its birth, and forces act as keyed while
+    followed: the settings are read on a grid of 16 moments fixed in time, a
+    fourteenth of the life apart, each holding the settings averaged over its
+    slice, and a particle is launched with those in force at its birth, so it
+    reads the same settings on every frame; a keyed change shorter than a slice
+    (a burst of Rate) is spread over the slice, keeping its total. For a burst
+    at an exact moment use Start and Duration. Forces act as keyed while
     it flies. Keyed forces (gravity, wind, turbulence and its scale, field push
     and flow, bounce, pull and its point, vortex) are sampled 64 times across the
     life and read at every step, so a force switched on in the middle of a long

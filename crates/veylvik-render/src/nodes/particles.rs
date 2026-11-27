@@ -216,21 +216,41 @@ fn rows(node: &Particles, time: Time) -> Result<Vec<[f32; COUNT]>> {
     {
         return Ok(vec![now; ROWS]);
     }
-    let life = f64::from(now[0]);
+    // Keyed: the rows sit on a grid fixed in time (not sliding with the frame), so a
+    // particle reads the same settings for its birth on every frame, and each row holds its
+    // settings averaged over its slice of the grid, so a keyed change shorter than a slice
+    // (a burst of Rate) is spread over the slice, its total kept, never missed. The grid
+    // covers the last life: a slice is a fourteenth of it, the first row at or before the
+    // oldest living particle's birth and the last at or after the frame. Each row's time is
+    // in its value ROW_TIME, from which the shader finds the grid.
+    let life = f64::from(now[0]).max(1e-3);
     let seconds = time.seconds().map_err(error)?;
+    let slice = life / (ROWS - 2) as f64;
+    let first = ((seconds - life) / slice).floor() * slice;
+    const SAMPLES: usize = 8;
     (0..ROWS)
         .map(|r| {
-            if r == ROWS - 1 {
-                return Ok(now);
+            let middle = first + slice * r as f64;
+            let mut sum = [0.0f64; COUNT];
+            for k in 0..SAMPLES {
+                let at = middle + slice * ((k as f64 + 0.5) / SAMPLES as f64 - 0.5);
+                let row = settings(
+                    node,
+                    Time::new((at * 24000.0).round() as i64, 24000).map_err(error)?,
+                )?;
+                for (total, value) in sum.iter_mut().zip(row) {
+                    *total += f64::from(value);
+                }
             }
-            let earlier = seconds - life + life * r as f64 / (ROWS - 1) as f64;
-            settings(
-                node,
-                Time::new((earlier * 24000.0).round() as i64, 24000).map_err(error)?,
-            )
+            let mut row = sum.map(|v| (v / SAMPLES as f64) as f32);
+            row[ROW_TIME] = middle as f32;
+            Ok(row)
         })
         .collect()
 }
+/// Where a settings row keeps the moment it was sampled at (0 in unkeyed rows: they are
+/// all the same, so which one is read does not matter).
+const ROW_TIME: usize = 137;
 /// How many times the forces are sampled over the last life when any of them is keyed.
 pub(crate) const FORCE_ROWS: usize = 64;
 /// The settings that move particles, as the shader's `forces_at` reads them: gravity,

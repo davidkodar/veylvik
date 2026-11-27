@@ -2313,3 +2313,38 @@ fn a_ribbon_is_lit_on_the_face_turned_to_the_light_and_dark_edge_on() {
         "edge on to the light: {edge_lit} of {edge}"
     );
 }
+#[test]
+#[ignore = "requires Vulkan"]
+fn a_burst_keyed_shorter_than_the_settings_grid_shows_on_every_frame() {
+    let renderer = Renderer::new().unwrap();
+    // Rate keyed up for a tenth of a second, well under a fourteenth of the 3.5 s life the
+    // settings are read across: the particles it sets off live on, so every frame after it
+    // must show them. Sampled at moments that slid with the frame, some frames missed it.
+    let mut p = still();
+    p.life = 3.5.into();
+    p.width = 120.0.into();
+    p.height = 80.0.into();
+    p.glow = 1.0.into();
+    p.rate = serde_json::from_value(serde_json::json!({"kind": "linear", "keys": [
+        {"time": {"ticks": 30, "rate": 30}, "value": 0.0},
+        {"time": {"ticks": 31, "rate": 30}, "value": 40000.0},
+        {"time": {"ticks": 33, "rate": 30}, "value": 40000.0},
+        {"time": {"ticks": 34, "rate": 30}, "value": 0.0}]}))
+    .unwrap();
+    let light: Vec<f32> = (45..75)
+        .map(|frame| {
+            render(&renderer, p.clone(), None, (frame, 30))
+                .iter()
+                .map(|px| px[3])
+                .sum::<f32>()
+        })
+        .collect();
+    let (least, most) = light
+        .iter()
+        .fold((f32::MAX, 0.0f32), |(a, b), v| (a.min(*v), b.max(*v)));
+    assert!(most > 0.0, "the burst shows");
+    assert!(
+        least > 0.8 * most,
+        "every frame shows the burst: {least} against {most} ({light:?})"
+    );
+}
