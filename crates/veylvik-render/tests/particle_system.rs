@@ -2210,3 +2210,54 @@ fn grains_on_a_surface_facing_the_light_do_not_shade_themselves() {
     // Nothing stands between the card and the light: its grains keep their light.
     assert!(shaded > 0.85 * open, "{shaded} of {open}");
 }
+#[test]
+#[ignore = "requires Vulkan"]
+fn a_wider_sparkle_spread_lights_more_grains_with_the_same_light_overall() {
+    let renderer = Renderer::new().unwrap();
+    let grains = |sparkle: f32, spread: f32| {
+        let mut p = still();
+        p.width = 150.0.into();
+        p.height = 110.0.into();
+        p.rate = 3000.0.into();
+        p.size = 0.8.into();
+        p.glow = 1.0.into();
+        p.lit = 1.0.into();
+        p.ambient = 0.0.into();
+        p.scatter = 0.0.into();
+        p.colour = [0.3, 0.3, 0.3, 1.0];
+        p.end_colour = [0.3, 0.3, 0.3, 1.0];
+        p.sparkle = sparkle.into();
+        p.sparkle_spread = spread.into();
+        p
+    };
+    let sun = serde_json::json!({"kind": "sun", "colour": [1.0, 1.0, 1.0], "intensity": {"kind": "constant", "value": 1.0},
+        "placement": {"position": [0.0, 0.0, 400.0], "rotation": [10.0, -15.0, 0.0], "scale": [1.0, 1.0, 1.0]}});
+    let plain = render_lit(&renderer, grains(0.0, 0.0), sun.clone());
+    let narrow = render_lit(&renderer, grains(300.0, 0.0), sun.clone());
+    let wide = render_lit(&renderer, grains(300.0, 12.0), sun);
+    // The flashes alone: each picture less the grains without sparkle.
+    let flash = |px: &[[f32; 4]]| -> Vec<f32> {
+        px.iter()
+            .zip(&plain)
+            .map(|(a, b)| (a[0] - b[0]).max(0.0))
+            .collect()
+    };
+    let (narrow, wide) = (flash(&narrow), flash(&wide));
+    let total = |f: &[f32]| f.iter().sum::<f32>();
+    // Pixels a flash visibly lights: at least a quarter of the brightest grain's own light
+    // (wider flashes are dimmer each, by design).
+    let base = plain.iter().map(|p| p[0]).fold(0.0f32, f32::max);
+    let lit = |f: &[f32]| f.iter().filter(|&&v| v > 0.25 * base).count();
+    assert!(lit(&narrow) > 0, "the narrow flashes show");
+    assert!(
+        lit(&wide) > 3 * lit(&narrow),
+        "wider flashes catch many more grains: {} against {}",
+        lit(&wide),
+        lit(&narrow)
+    );
+    let ratio = total(&wide) / total(&narrow);
+    assert!(
+        (0.33..3.0).contains(&ratio),
+        "about the same light overall: {ratio}"
+    );
+}

@@ -40,7 +40,7 @@ fn sheet_rows() -> u32 { return ((u32(p.extra.z) >> 12u) & 15u) + 1u; }
 fn sheet_width() -> u32 { return MIP * sheet_columns(); }
 fn sheet_texels() -> u32 { return MIP * MIP * sheet_columns() * sheet_rows(); }
 const SPRITE_RATE = 125u;
-const COUNT: u32 = 135u;
+const COUNT: u32 = 138u;
 const ROWS: u32 = 16u;
 // Setting numbers.
 const SPEED = 1u; const DIRECTION = 2u; const SPREAD = 3u; const GRAVITY = 4u; const WIND = 5u;
@@ -62,7 +62,7 @@ const CURVES = 60u; const SIZE_CURVE = 61u; const OPACITY_CURVE = 69u; const SPE
 const COLOUR_CURVE = 85u;
 const LIT = 117u; const AMBIENT = 118u; const SCATTER = 119u; const HOLD = 126u;
 const SPARKLE = 127u; const SPARKLE_TURN = 128u; const SHADING = 129u; const BOKEH = 130u; const CLUMP = 131u; const CLUMP_RADIUS = 132u;
-const SELF_SHADOW = 133u; const GLINT_WHITE = 134u;
+const SELF_SHADOW = 133u; const GLINT_WHITE = 134u; const SPARKLE_SPREAD = 135u;
 // The camera row's lights: how many at 36, then twelve values each from 40.
 const LIGHT_COUNT = 36u; const LIGHT_BASE = 40u;
 // Where the camera is in the scene: the world-to-camera rows' rotation turned back on
@@ -140,6 +140,16 @@ fn lighting(at: vec3<f32>, seconds: f32, facet_now: vec3<f32>, surface: vec3<f32
     var light = vec3<f32>(setting(AMBIENT, seconds)) * mix(1.0, 0.6 - 0.4 * surface.y, attach);
     let g = setting(SCATTER, seconds);
     let sparkle = setting(SPARKLE, seconds);
+    // The flash's sharpness: a facet within `spread` degrees of mirroring a light gives at
+    // least half its flash. Wider flashes are dimmer by the normalised lobe's peak, so the
+    // grains' light overall stays about the same as more of them shimmer. 0: the narrowest.
+    let spread = setting(SPARKLE_SPREAD, seconds);
+    var shine = 800.0;
+    var flash_gain = 1.0;
+    if spread > 0.0 {
+        shine = log(0.5) / log(cos(radians(min(spread, 45.0))));
+        flash_gain = (shine + 2.0) / 802.0;
+    }
     let towards_eye = normalize(eye() - at);
     let count = min(u32(camera_row(LIGHT_COUNT)), 6u);
     for (var i = 0u; i < count; i++) {
@@ -174,7 +184,7 @@ fn lighting(at: vec3<f32>, seconds: f32, facet_now: vec3<f32>, surface: vec3<f32
         // Glitter: the facet (either side) mirrors this light into the camera.
         if sparkle > 0.0 {
             let half_way = normalize(towards_eye - travel);
-            let flash = radiance * sparkle * pow(abs(dot(facet_now, half_way)), 800.0);
+            let flash = radiance * sparkle * flash_gain * pow(abs(dot(facet_now, half_way)), shine);
             light += flash;
             glint += flash * lit;
         }

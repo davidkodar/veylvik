@@ -2018,6 +2018,12 @@ settles on the wrong kind of motion can still look sure. The
     flashes move on as the grains, the lights or the camera move: glitter, sand
     in sunlight, metal dust. A back light behind the grains, near the line of
     view, makes the most of it.
+    **Sparkle spread** widens each flash: the degrees from a perfect mirror
+    angle at which a facet still gives half its flash (0 is the narrowest, about
+    2.4 degrees, mirror-like). Wider flashes are dimmer in proportion, so the
+    grains' light overall stays about the same while many more of them shimmer
+    at once, as glitter under large soft lights does; 6 to 15 degrees reads as
+    dense, living glitter.
     **Glint white** (0 to 1) gives the flashes the light's colour instead of the
     grain's: a metal flake's flash is nearly white even when the flake is
     crimson. With it up, lower Sparkle, or the white flashes swamp the grains'
