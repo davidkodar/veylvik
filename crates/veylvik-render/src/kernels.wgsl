@@ -804,6 +804,9 @@ fn glass_surface(uv:vec2<f32>,n:vec3<f32>)->vec3<f32> {
     let scene=shot_environment(screen,reflect(vec3<f32>(0.0,0.0,-1.0),n),rough)*(studio.environment.z/0.65);
     return through*studio.palette[0].rgb*(1.0-fresnel)+reflections+scene*(fresnel+edge*0.35);
 }
+// A 3D renderer's neon core (0 to 1, where the tube faces the viewer); below 0 the
+// core follows the 2D bevel height.
+var<private> tube_core:f32=-1.0;
 fn material_colour(uv:vec2<f32>,n:vec3<f32>)->vec3<f32> {
     if p.size_op.w<=3u {return studio_surface(uv,n,vec3<f32>(0.0));}
     let rim=pow(max(dot(n,normalize(vec3<f32>(-0.6,-0.8,0.6))),0.0),8.0)*2.4;
@@ -813,7 +816,8 @@ fn material_colour(uv:vec2<f32>,n:vec3<f32>)->vec3<f32> {
         let pulse=0.92+0.08*cos(p.values.w*6.2831853);
         // A tube glows white-hot along its core and saturated towards its edges.
         let glow=studio.palette[0].rgb*1.9;
-        let core=smoothstep(0.55,1.0,second_bilinear(uv*p.values.x).a);
+        var core=smoothstep(0.55,1.0,second_bilinear(uv*p.values.x).a);
+        if tube_core>=0.0 {core=tube_core;}
         let hot=vec3<f32>(max(glow.r,max(glow.g,glow.b)));
         // Keep the tube saturated: the core only warms towards white, and the level
         // stays near display white so the colour survives; the bloom carries the glow.

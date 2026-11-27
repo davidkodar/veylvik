@@ -585,3 +585,46 @@ fn an_image_texture_look_shows_the_shapes_picture_in_both_qualities() {
         );
     }
 }
+#[test]
+#[ignore = "requires Vulkan"]
+fn a_neon_tube_is_white_hot_where_it_faces_the_viewer_in_both_qualities() {
+    let shot = |quality| {
+        let mut doc = blank(W, H, Time::new(24, 1).unwrap()).unwrap();
+        let ball = add(&mut doc, looked(0.0, "neon_blue"), &[]);
+        filmed(&mut doc, ball, quality, 64, &ImageInputs::default())
+    };
+    // How white a few pixels are: the weakest channel against the strongest.
+    let around = |p: &[[f32; 4]], x0: u32| {
+        let mut sum = [0.0f32; 3];
+        for y in H / 2 - 2..H / 2 + 2 {
+            for x in x0..x0 + 4 {
+                for (c, s) in sum.iter_mut().enumerate() {
+                    *s += p[(y * W + x) as usize][c];
+                }
+            }
+        }
+        sum
+    };
+    let whiteness = |c: [f32; 3]| {
+        c.iter().cloned().fold(f32::MAX, f32::min) / c.iter().cloned().fold(0.0, f32::max)
+    };
+    let mut middles = Vec::new();
+    for (quality, p) in [
+        ("preview", shot(SceneQuality::Preview)),
+        ("path traced", shot(SceneQuality::PathTraced)),
+    ] {
+        // The ball (radius 25 px) at its middle and near its left edge.
+        let (middle, edge) = (around(&p, W / 2 - 2), around(&p, W / 2 - 22));
+        eprintln!("{quality}: middle {middle:?}, edge {edge:?}");
+        assert!(
+            whiteness(middle) > whiteness(edge) + 0.05,
+            "{quality}: the core is whiter than the edge: {middle:?} {edge:?}"
+        );
+        middles.push(middle[2]);
+    }
+    let ratio = middles[1] / middles[0];
+    assert!(
+        (0.67..1.5).contains(&ratio),
+        "traced against preview at the core: {ratio}"
+    );
+}

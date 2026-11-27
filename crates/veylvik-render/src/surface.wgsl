@@ -233,8 +233,8 @@ fn bumped(uv:vec2<f32>, n:vec3<f32>, kind:u32)->Bumped {
 // A library material at a point as light meets it: what `material_colour` lights in
 // the 2D studio, for a renderer that lights it physically (the path tracer). `n` is
 // in the material's shading frame (+z towards the viewer). Glass is flagged for the
-// renderer to refract; neon glows by itself. Two looks keep only their base here:
-// an image texture (its picture is not at hand) and the tube's white-hot core.
+// renderer to refract; neon glows by itself. An image texture keeps only its base here
+// (its picture is not at hand): the renderer puts the picture's colour in palette[0].
 struct MaterialPoint { normal:vec3<f32>, rough:f32, albedo:vec3<f32>, metal:f32, f0:vec3<f32>, gain:f32, emission:vec3<f32>, glass:f32, across:vec3<f32>, brushed:f32 }
 fn material_point(uv:vec2<f32>, n:vec3<f32>)->MaterialPoint {
     let kind=p.size_op.w;
@@ -244,10 +244,19 @@ fn material_point(uv:vec2<f32>, n:vec3<f32>)->MaterialPoint {
     var f0=studio.optics.rgb;
     var glass=0.0;
     if kind==4u {
-        // Neon or phosphor: its own glow.
+        // Neon or phosphor: its own glow, as `material_colour` makes it. A recoloured tube
+        // is white-hot along its core, where it faces the viewer (`n` is in the
+        // camera's frame), and saturated towards its edges.
         let phosphor=0.8+p.extra.x*0.45*(fire_noise(vec3<f32>(uv*150.0,0.0),431u)-0.5);
         let pulse=0.92+0.08*cos(p.values.w*6.2831853);
-        emission=studio.palette[0].rgb*1.9*phosphor*p.extra.y*pulse;
+        let glow=studio.palette[0].rgb*1.9;
+        let rim=pow(max(dot(n,normalize(vec3<f32>(-0.6,-0.8,0.6))),0.0),8.0)*2.4;
+        emission=glow*phosphor*p.extra.y*pulse+vec3<f32>(rim*0.08);
+        if studio.palette[2].w>=0.5 {
+            let core=smoothstep(0.55,1.0,n.z);
+            let hot=vec3<f32>(max(glow.r,max(glow.g,glow.b)));
+            emission=mix(glow,hot,0.18*core)*phosphor*p.extra.y*pulse*(0.45+0.25*core)+vec3<f32>(rim*0.08);
+        }
     } else if kind==5u {
         albedo=wood_colour(uv);
     } else if kind==24u {

@@ -118,6 +118,8 @@ fn look_surface(in: LookVarying) -> @location(0) vec4<f32> {
     if dot(n, look_object.camera.xyz - in.world) < 0.0 { n = -n; }
     let facing = normalize((look_object.view * vec4<f32>(n, 0.0)).xyz);
     let uv = in.uv * look_object.uv_scale.xy / max(p.values.x, 1e-3);
+    // A neon tube is white-hot where it faces the viewer, as its 2D bevel's peak is.
+    tube_core = smoothstep(0.55, 1.0, facing.z);
     let surface = material_colour(uv, facing) * sky_visibility(in.world, n);
     // Scene lights add to the look's own studio. Metals reflect them in their
     // reflectance; other looks also scatter them with the colour the look shows.
