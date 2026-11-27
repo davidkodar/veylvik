@@ -349,3 +349,49 @@ impl Composition {
         .unwrap_or_else(|_| source.to_string())
     }
 }
+
+/// Rewrites the links in a copied node's expressions to the copies of the nodes they read,
+/// by `mapping` (old id to new id): a preset placed into a project, or nodes pasted, then
+/// read each other rather than the originals (or nothing). Links to nodes not copied stay.
+pub fn moved_links(
+    operation: &mut crate::Operation,
+    mapping: &std::collections::BTreeMap<NodeId, NodeId>,
+) -> Result<()> {
+    fn walk(
+        value: &mut serde_json::Value,
+        mapping: &std::collections::BTreeMap<NodeId, NodeId>,
+    ) -> Result<()> {
+        match value {
+            serde_json::Value::Object(fields) => {
+                if fields.get("kind").and_then(|k| k.as_str()) == Some("expression")
+                    && let Some(serde_json::Value::String(source)) = fields.get_mut("expression")
+                {
+                    *source = veylvik_expr::relink(source, |text| {
+                        text.parse::<NodeId>()
+                            .ok()
+                            .and_then(|id| mapping.get(&id))
+                            .map(|id| id.to_string())
+                    })
+                    .map_err(|e| crate::Error(e.to_string()))?;
+                }
+                for inner in fields.values_mut() {
+                    walk(inner, mapping)?;
+                }
+            }
+            serde_json::Value::Array(items) => {
+                for inner in items {
+                    walk(inner, mapping)?;
+                }
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+    let mut value = serde_json::to_value(&*operation).map_err(|e| crate::Error(e.to_string()))?;
+    if !value.to_string().contains("\"expression\"") {
+        return Ok(());
+    }
+    walk(&mut value, mapping)?;
+    *operation = serde_json::from_value(value).map_err(|e| crate::Error(e.to_string()))?;
+    Ok(())
+}

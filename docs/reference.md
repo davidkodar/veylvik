@@ -1261,7 +1261,9 @@ another node's animatable parameter at the same time, after its own keys or
 expression; it may name the node by a unique label, and is stored by node id, so
 renaming keeps it. Up to 16 links per expression and chains up to 16 deep;
 loops, unknown nodes or parameters, and removing a node an expression reads are
-refused with the reason. The result is kept within the parameter's range; a
+refused with the reason. Links follow the nodes they read when nodes are copied:
+a library effect placed in a project, or nodes pasted, read each other's copies.
+The result is kept within the parameter's range; a
 result that is not a number (such as `1/0`) is an error for that frame. An
 expression has no keys: setting a key is refused until it is removed. Render
 plans include the nodes that expressions read, so changing them re-renders, even

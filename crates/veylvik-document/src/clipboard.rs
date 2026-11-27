@@ -172,6 +172,9 @@ impl NodeClipboard {
                 (node.id, node)
             })
             .collect();
+        for node in nodes.values_mut() {
+            crate::expression::moved_links(&mut node.operation, &mapping)?;
+        }
         // Missing boundary sources sit just left of the copied selection.
         let left = self
             .selected

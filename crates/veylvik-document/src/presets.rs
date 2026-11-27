@@ -264,6 +264,7 @@ impl Preset {
         let mut commands = Vec::new();
         for (old, mut node) in nodes {
             node.id = mapping[&old];
+            crate::expression::moved_links(&mut node.operation, &mapping)?;
             // Only authored internal edges are remapped. A caller's source UUID
             // may happen to equal a preset-local ID in a different composition.
             for (port, source) in &mut node.inputs {
