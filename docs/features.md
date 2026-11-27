@@ -14,7 +14,7 @@ Everything Veylvik can do today, area by area. Veylvik is a native Rust node com
 - **Add node** button, **Add → Search nodes…** or **Tab**: searchable picker over all registered node types, recipes and text outlines (by name or description); Up/Down, Enter to add, Escape cancels.
 - New effects connect to the selected node; procedural nodes appear where the picker opened.
 - Gradient endpoints and shape defaults follow the composition size.
-- **Add** menu submenus: Generators (Solid, Noise, Fractal noise, Gradient, Procedural fire, Smoke, fog and clouds); Masks and shapes (Ellipse mask, Path mask, Channel mask, Grow/shrink mask, Combine masks); Transform and distort (Affine transform, Transform, Displace); Colour and filters (Exposure, Colour correct, Colorize, Blur, Lens blur); Compositing (Merge, Blend, Fade, Apply mask, Surface blend); Materials and light (Text surface, Tarnish and dirt, Glass surface, Surface reflection, Sun glints, Metallic shine); Keying (Chroma key, Luma key); Tracking (Planar track, Planar warp). Every node type is in exactly one submenu or has its own entry.
+- **Add** menu submenus: Generators (Solid, Noise, Fractal noise, Gradient, Procedural fire, Dust, Particles, Force, Drips, Smoke, fog and clouds); Masks and shapes (Ellipse, Rectangle, Path mask, Channel mask, Grow/shrink, Combine masks); Transform and distort (Affine transform, Transform, Repeat, Displace, Lens distortion, Grid warp, Shape warp); Colour and filters (Exposure, Colour correct, LUT, OCIO, Colorize, Blur, Bloom, Light wrap, Zoom blur, Custom shader, OpenFX effect, Match grain, Lens blur); Time and motion (Motion blur, Time remap, Optical flow, Sound); Compositing (Merge, Blend, Fade, Apply mask, Surface blend); 3D (shapes, 3D text, image cards, Own size, models, transforms, Merge scenes, cameras, lights, environments, point clouds, particle copies, camera projection, Gaussian splats, Figure, Marker, Flutter, Render scene); Materials and light; Keying; Tracking. Every node type is in exactly one submenu or has its own entry.
 - **Add → Image or footage…**, **Add → Text**, **Add → Text outlines…**, **Add → Effect library…**.
 - Editable recipes: **Glow effect**, **Outline effect**.
 - **Find** / **Ctrl+F**: locate a node by name, operation type or UUID (all words, case-insensitive), Enter selects and previews it.
@@ -38,12 +38,13 @@ Everything Veylvik can do today, area by area. Veylvik is a native Rust node com
 
 ## Preferences and appearance
 
-- **Edit → Preferences** (`Ctrl+,`): Playback, Appearance, Workspace, Performance and Recovery sections, with Apply, Cancel and per-section reset.
+- **Edit → Preferences** (`Ctrl+,`): Playback, Audio, Appearance, Workspace, Performance, Recovery, Editing, Viewer and timeline, Keyboard and layouts, New projects and System sections, with Apply, Cancel and per-section reset.
 - Restart from the playback range’s first frame on Play/Space, or resume from the paused frame. Loop toggle on the timeline; with looping off playback stops on the final frame.
 - Dark, Light, Midnight Blue and Evergreen palettes; **Follow system** reads the active Omarchy palette or the desktop portal light/dark preference and updates while running.
 - Immediate theme preview with Cancel restoring the saved theme; interface scale from 75% to 200% applies on Apply. Display themes never affect rendered pixels.
 - Defaults for automatic node arrangement, animated library hover previews and fast viewer filtering.
-- Renderer GPU buffer budget (restart required, environment override retained); recovery enable/disable and 10–300 second interval.
+- Renderer GPU buffer budget, automatic by default (half the graphics card's memory) or set by hand (restart required, environment override retained); playback store limits (memory, disk, memory left free for other programs); recovery enable/disable and 10–300 second interval.
+- **Show video as a player does** (Viewer and timeline): encode the viewer with the Rec.709 video curve instead of sRGB, so imported Rec.709 footage looks as it does in a video player; renders and exports are unchanged.
 - Settings persist per user in `$XDG_CONFIG_HOME/veylvik/preferences.json` (normally `~/.config/veylvik/preferences.json`), independently of projects and undo history.
 
 ## Viewer
@@ -61,7 +62,9 @@ Everything Veylvik can do today, area by area. Veylvik is a native Rust node com
 - **Alpha** / **Show alpha** view of coverage as greyscale; **Reset view** / **Reset display settings**.
 - Transparency over a checkerboard; bilinear filtering in linear premultiplied colour; SDR display transform.
 - Previous preview stays visible while rendering, marked when stale.
-- Playback skips ahead when rendering is slower than the frame rate; render errors stop playback.
+- Playback plays from pictures kept as the screen shows them: frames are prepared in the background while the editor is idle (shown as a green bar on the timeline), kept in memory and on disk, and found again after an edit that does not change them or in the next session. When a composition is too slow to play live, Play waits until the frames ahead are prepared, saying how long, with **Play now** to play live instead; render errors stop playback.
+- **Viewer full screen** (F11): the picture alone, edge to edge.
+- **Reflections view** in the 3D toolbar shows which light each part of a 3D surface reflects, in that light's colour.
 - On-canvas handles (hidden during playback/stale previews, never exported):
   - Ellipse: centre and X/Y radii.
   - Gradient: start/end handles, radius in radial mode.
@@ -136,7 +139,9 @@ Everything Veylvik can do today, area by area. Veylvik is a native Rust node com
 
 ## Text and titles
 
-- **Text** node: editable GPU vector text from bundled or embedded fonts; white alpha source for any material or colour.
+- **Text** node: editable GPU vector text from bundled, embedded or installed fonts; white alpha source for any material or colour.
+- A project can name an installed font by family and style instead of embedding it; it is found through Fontconfig by its own names and never stood in for.
+- Counting numbers: `{n}` in the text shows a keyable Number with a chosen count of decimals.
 - **Edit scene text…** finds titles even under material/effect groups.
 - Double-click a title or **Edit text** for an in-viewer editor with caret, selection, clipboard and typing undo.
 - Inspector tabs: **Text / Layout / Transform / Style / Animation**; sliders with numeric entry and per-control **Reset**; **Keys** opens animation controls.
@@ -170,7 +175,8 @@ Everything Veylvik can do today, area by area. Veylvik is a native Rust node com
 - **Fractal noise**: seed, scale, octaves 1–8, roughness, evolution (keyframe for animation).
 - **Gradient**: Linear or Radial; animated start/end coordinates.
 - **Ellipse mask**, **Path mask**, **Text** (see above).
-- **Procedural fire**, **Smoke, fog and clouds** (see Atmosphere).
+- **Procedural fire**, **Smoke, fog and clouds** (see Atmosphere); **Particles** and **Force** (see Particles).
+- **Rectangle**: a filled rectangle in any colour, with rounded corners (up to a pill or a circle) and a feathered edge.
 - **Image** and **Footage** sources (see Footage).
 
 ## Keying
@@ -182,6 +188,7 @@ Everything Veylvik can do today, area by area. Veylvik is a native Rust node com
 - Skin, greys and colours without the key's bias stay opaque; near-black pixels are kept.
 - **Despill**: limits the key colour in what remains to the average of the other channels, removing fringes and bounce light.
 - **Luma key**: **Low**/**High** luminance thresholds with a linear ramp; swap them to key out bright areas (white backdrops); HDR values allowed.
+- Chroma key matte controls: Darks, Clip black and Clip white, Shrink, Soften, a **Show** choice (the result or the matte as grey), and optional **Keep** and **Garbage** mask inputs. Without them the plain key is one pass.
 - Both keep input alpha and output premultiplied colour; inspect the matte with **Show alpha**; refine with Grow/shrink mask, Blur and Combine masks (garbage mattes).
 - **Refine matte**: cuts a subject out with a coarse matte (such as a Subject matte) and snaps the edge to the image: opacity re-estimated near the edge from local subject and background colours, recovering fine detail and correcting soft or misplaced edges; reliability checks keep patterned subjects and background grain clean; the confident interior stays opaque.
 - **Decontaminate** in Refine matte: blur-fusion foreground colour estimation removes the old background's colour from semi-transparent edges.
@@ -203,6 +210,9 @@ Everything Veylvik can do today, area by area. Veylvik is a native Rust node com
 - **Lens blur**: round out-of-focus bokeh up to 128 px with a highlight boost and threshold; single-pixel lights become solid discs; animate the radius for a rack focus. Connect a depth pass (such as Blender's Depth layer) and set Focus for real depth of field: the focus depth stays sharp, blur grows with distance from it, and sharp foreground does not smear into the blurred background.
 - **Multi-layer OpenEXR**: Footage reads any layer of Blender-style multi-layer EXR stills and sequences (Combined, Depth, Normal, light groups and other passes) from a Layer menu; ZIP, PIZ, DWAA and the other common compressions.
 - **Transform**: X/Y translation, bilinear.
+- **Repeat**: copies of the picture in a grid (up to 32 across and down), each a step from the last and optionally fainter; animate the steps to spread them out.
+- **Zoom blur**: streaks out from a centre, as a fast push in.
+- **Light wrap**: the background's light spills a little over the foreground's edges, so a layer sits in a plate.
 - **Affine transform**: X/Y translate, signed X/Y scale (flip), clockwise rotation, pivot.
 - **Displace**: map red/green displaces X/Y, animated strength up to ±8192 px, alpha-weighted.
 - **Grow/shrink mask**, **Channel mask** as filters on alpha.
@@ -210,7 +220,7 @@ Everything Veylvik can do today, area by area. Veylvik is a native Rust node com
 ## Compositing and blending
 
 - **Merge**: premultiplied foreground over background.
-- **Blend** modes: Normal, Add, Multiply, Screen, Darken, Lighten, Difference; keyframable opacity.
+- **Blend** modes: Normal, Add, Multiply, Screen, Overlay, Soft light, Darken, Lighten, Difference; keyframable opacity.
 - **Apply mask**.
 - **Fade**: **Start**, **End** or **Until the end**, **Fade in**, **Fade out** (linear ramps), keyframable **Opacity**; edited in frames, stored as exact rationals.
 - A layer faded fully out is neither rendered nor decoded.
@@ -222,16 +232,20 @@ Everything Veylvik can do today, area by area. Veylvik is a native Rust node com
 
 ## Materials and surfaces
 
-- **Text surface** (`material`) families: gold, silver, aluminium, bronze, phosphor, wood, light oak, dark oak, marble, light brick, red brick, concrete, paper, aged paper, red/brown/tan/dark/black leather, glossy plastic, car paint (metallic flakes under a clear coat), carbon fibre (twill weave) and holographic foil (23).
+- **Text surface** (`material`) families: gold, silver, aluminium, bronze, phosphor, wood, light oak, dark oak, marble, light brick, red brick, concrete, paper, aged paper, red/brown/tan/dark/black leather, glossy plastic, car paint (metallic flakes under a clear coat), carbon fibre (twill weave), holographic foil, glass, liquid metal, pearl, slate and fabric (28), plus an image texture.
 - **Image texture** surface: put any image, logo or footage on a material's optional Texture input to light, bevel and reflect it like a material (footage plays inside text).
 - **3D scenes**: 3D text (with bevels), shapes, image cards, glTF models (parts with their colour, texture, metallic and roughness), cameras, sun/spot/point lights with soft shadows, and an HDR or image Environment (lighting, reflections and backdrop), rendered on the GPU (Add > 3D), with any library material as an object's look. Contact occlusion grounds objects; depth of field uses real lens maths with Focus on an object (Focus in the 3D toolbar picks it with a click); motion blur renders several moments across the shutter. Orbit, pan, dolly and walk through a scene in the viewer with camera, light, frame and path guides; frame selection, keep aimed, smoothed walk recording and one-click camera moves (orbit, push in, pull out, crane, fly by); move, rotate and scale handles and aim handles for lights.
+- **More in 3D scenes**: ring and other primitive shapes; image cards with a tint and opacity; textures on any shape; **Aim at** turns an object, camera or light towards another thing; **Marker** nodes are empty points to aim and focus at; **Own size** renders a picture at its own size (a huge sky panorama, a small card) wherever an image goes; objects can come and go over time; **Camera orbit** circles a target with its own timing and easing; **Surround lights** add softboxes that light a whole orbit; **Flutter** sends waves through planes, cards and models like a banner in wind; a Render scene can output its depth, for lens blur, particles and fog shaders.
+- **Walking figure** (`figure_3d`): a human figure that walks with measured joint curves, planted feet and a natural sway of hips and shoulders, in any direction and at any pace, with a body of real proportions; particles can be born on it to make a body of light.
+- **Model animations**: an imported glTF model plays its file's own animations: choose a clip (listed on import with its length), its start, speed and whether it loops; parts move, turn and scale as the file keys their nodes, each with the nodes above it. Skinned characters and shape morphs are not played.
+- **Camera projection**: cast footage through a camera onto 3D objects, so a still shot can be moved through; one click from a camera solve.
+- **Gaussian splats**: show `.ply` and `.splat` splat captures in a 3D scene.
 - **Camera solve**: Layer tools > Solve camera… follows hundreds of features through footage on the GPU and solves the camera's path, rotation and lens, including its barrel or pincushion distortion (tripod pans included), then adds a keyed camera, the CG bent like the lens when it distorts, a levelled shadow-catching ground, the solved points, the footage's grain and the render over the footage, with a verdict (Excellent, Good, Usable, Rough). Also `veylvik solve-camera` and the MCP `solve_camera` tool.
 - **Metal that looks like metal by default**: a new Material, the four metal starters and the library's metal looks are lit by strip lights and given a brushed, lightly ridged and worn finish. **Ridges**, **Imperfections** and **Brush angle** are settings on every material, and apply to looks on 3D text and shapes too. Older projects are unchanged.
 - **Shine here**: with a light selected, click a surface in the 3D viewer and the light moves to where its reflection shows at that spot, so highlights are placed by pointing at them.
 - **Area-light shadows and guides**: area lights cast soft shadows, light surfaces that use a library look, and show their panels in the viewer.
 - **Working in a solved shot**: click a solved point to put a shape, 3D text, card or model there; Surface mode turns three or more points into the ground or another shadow catcher, or lays text flat on that floor, table or wall; Match the shot aims a sun from the footage (or Pick light on the light in the frame) and sets the environment's level.
 - **Grid warp**: a mesh of 2 to 17 points a side over the image (Add > Transform and distort > Grid warp); drag the points in the viewer and the image under them follows, smoothly in between. Amount keys the warp in and out; changing the number of points keeps the warp so far.
-- **Particles**: soft dots born over time and moved by launch speed, gravity, wind and swirling turbulence (Add > Generators > Particles). Connect Emitter to text, a shape or footage to have them born on it, with Inherit giving them its colours, so a picture breaks up into dust of itself; connect Target and they fly onto that image and assemble it; Streak draws them as sparks. Field is an image that pushes or streams particles round its shapes, a pull point draws them in or swings them round, Obstacle is a matte they bounce off, and Sprite draws any picture as each particle, spinning and growing. Keyed settings apply from each particle's birth, so a moving emitter box leaves a trail; **Follow a moving emitter** does the same for moving text or footage. Depth spreads particles towards and away from the viewer, and connecting a 3D scene films them with its camera, so they move with a solved camera and show parallax. Colour variation gives each its own hue. **Start from a look** in the inspector sets up Sparks, Embers, Snow, Rain, Confetti, Magic dust, Whirlpool, Disintegrate or Assemble for the frame. The emitter box and pull point are dragged in the viewer. Any frame renders on its own, identically.
 - **Shape warp**: draw a start shape round a feature and an end shape where it should go (Add > Transform and distort > Shape warp); the picture inside follows and the surroundings stretch within Reach. Key Amount from 0 to 1 for a morph.
 - **Custom shader**: a node that runs your own WGSL function on every pixel (Add > Colour and filters > Custom shader). Declare controls in comments (`// slider NAME MIN MAX DEFAULT`, `// colour NAME R G B`) and they appear as named, keyable sliders; read the inputs with `image(at)` and `second(at)`. The inspector's editor says whether the code compiles as you type, naming the line, and only runs code that does.
 - **Bloom**: bright light spreads as a warm glow with a hot core and a long falloff, with optional horizontal lens streaks; put it after the merge so titles light their background.
@@ -275,14 +289,25 @@ Everything Veylvik can do today, area by area. Veylvik is a native Rust node com
 
 - **Smoke, fog and clouds** styles: smoke, soot, fog, drifting fog, clouds; seed, position, size, evolution, density, detail, lighting.
 - **Procedural fire**: seed, position, width/height, evolution, intensity, turbulence; transparent background; repeats every four units.
-- Particle starters (Dust Motes, Fireflies, Embers, Snowfall, Starfield): 18 editable particles each from ellipse/animation/colour/blend nodes, staggered four-second lifetimes, seekable; controls for colour, glow, amount.
-- Deterministic approximations; no fluid or particle simulation, no general emitter yet.
+- Particle starters (Dust Motes, Fireflies, Embers, Snowfall, Starfield): 18 editable particles each from ellipse/animation/colour/blend nodes, staggered four-second lifetimes, seekable; controls for colour, glow, amount. For real particle systems, see Particles.
 
-## Starter effects library (59 effects)
+## Particles
+
+- **Particles** (Add > Generators): up to two million on the GPU, born in a box, from a point, on any text, shape or footage (Emitter, with Inherit giving them its colours), on the surface of a 3D object or imported model (**Emit from**), and moved by launch speed, gravity, wind and swirling turbulence. Every frame is worked out from its time alone, so scrubbing and out-of-order renders match.
+- **Targets**: connect Target and they fly onto that image and assemble it, or **Gather on** a 3D object's surface; **Hold** keeps them in place once they arrive, and **Release at** lets every one go together, carried off by the wind.
+- **Looks**: dots, streaks, trails along the path they took, lines between near neighbours, sprites or a sheet of sprite cells (random, in sequence or looping), and 3D objects copied onto each particle (Particle instances). Size, opacity, speed and colour can follow curves over each particle's life; colour variation gives each its own hue; **Clump** draws several grains round each particle for dense bodies of ten million or more; **Light limit** rolls dense glowing light off instead of adding up to white.
+- **Forces**: painted force fields, a pull point with vortex, an obstacle matte to bounce off, the solids of a 3D scene to collide with, and up to eight separate **Force** nodes (attract, vortex, wind, turbulence, drag) with their own places, reaches and keys.
+- **Bursts**: particles burst into more where they end or where they hit something, for fireworks and sparks.
+- **In 3D**: particles have depth, are filmed by the scene's camera (parallax with a solved camera), hidden behind 3D objects, blurred by the camera's lens (round **Bokeh** discs if you like), streaked by its shutter, and can stay points like stars or be **With the camera** like lens dust. **Lit** particles take light and shadow from the scene's lights and solids; **Sparkle** gives each grain a turning facet that flashes in the light (**Sparkle spread**, **Glint white**); **Shading** lights grains as the surface they were born on; **Ribbon shading** lights a stream as the sheet it flows in; **Self shadow** lets grains shade one another, and **Shaded by** lets another system's grains shade them too.
+- **Flocks** steer by their neighbours (cohesion, separation, alignment), are simulated and kept once a second, can be born on an image's shape, and can be baked to a file so an approved flock never changes.
+- **Start from a look**: Sparks, Embers, Snow, Rain, Confetti, Magic dust, Whirlpool, Disintegrate, Assemble, Fireworks, Network and Murmuration.
+
+## Starter effects library (82 effects)
 
 Opened with **Add → Effect library…**; searchable by name, description or category, with category counts. Cards play short examples; **Before / After**, pause and scrubbing; **Try example**; **Apply to my composition** with named input binding; **Connect into selected layer** option. Sizing: **Fit composition** (default), **Fill composition**, **Authored pixels**.
 
-### Light (10)
+### Light (16)
+- **Halation**, **Chromatic Fringe**, **Lens Flare** (can be hidden by a picture, or follow an object in a 3D scene), **Deep Sky**, **Distant Galaxy**, **Distant Sun**.
 - **Sun Glints**: tiny animated sun-mirror flashes on bright polished details.
 - **Metallic Shine**: crisp diagonal reflection sweep over isolated text or logos.
 - **Prismatic Glow**: cyan and rose light spill with a subtle chromatic offset.
@@ -294,7 +319,8 @@ Opened with **Add → Effect library…**; searchable by name, description or ca
 - **Soft Vignette**: feathered elliptical shading toward the centre.
 - **Spotlight**: soft pool of light travelling around the composition.
 
-### Surface (8)
+### Surface (18)
+- Recipes: **Weathered Bronze**, **Brushed Light Sweep**, **Sky-lit Gold** (see Curated material recipes) and the animated **Chrome Shine Sweep**, **Glint Reveal**, **Heat to Embers**, **Rust Spreading**, **Chipping Paint**, **Paper Burn** and **Wet to Dry**.
 - **Paint on Surface**: blend a layer into a real surface with lighting, texture, wear, distortion and grain.
 - **Edge Engrave**: directional luminance edges etched into a dark cyan drawing.
 - **Duotone Print**: luminance mapped to an ink-and-paper palette with adjustable mix.
@@ -311,7 +337,9 @@ Opened with **Add → Effect library…**; searchable by name, description or ca
 - **Underwater**: slow broad refraction and blue-green tint.
 - **Glitch Slices**: horizontal slices shifting sideways in a repeatable glitch.
 
-### Motion (5)
+### Motion (7)
+- **Dissolve to Dust**: the picture breaks into grains of its own colours that the wind carries off.
+- **Television Switch-off**: an old set switching off, with its sound.
 - **Shutter Motion Blur**: branch-local fractional-time exposure, separate preview/final quality.
 - **Smooth Slow Motion**: GPU optical-flow retiming with source cadence, confidence diagnostics and conservative fallback.
 - **Chromatic Echo**: opposing cyan and rose echoes drift around the source.
@@ -325,7 +353,8 @@ Opened with **Add → Effect library…**; searchable by name, description or ca
 - **Snowfall**: layered white flakes falling and drifting.
 - **Starfield**: twinkling points in a looping star flight.
 
-### Materials (23)
+### Materials (26)
+- **Condensation**, **Wet Ink Drips**, **Clear Water Drips**.
 - **Polished Gold**, **Polished Silver**, **Brushed Aluminium**, **Aged Bronze**, **Phosphor** (emissive, with bloom), **Carved Wood**.
 - **Light Oak**, **Dark Oak**, **White Marble**, **Light Brick**, **Red Brick**, **Rough Concrete**, **Clean Paper**, **Weathered Paper**.
 - **Red Leather**, **Brown Leather**, **Tan Leather**, **Dark Leather**, **Black Leather**.
@@ -358,7 +387,8 @@ Opened with **Add → Effect library…**; searchable by name, description or ca
 
 ## Footage and media
 
-- **File → Import media…**: MP4, MOV, M4V, MKV, WebM, AVI, MPEG video (FFmpeg required), PNG, OpenEXR; first video stream imported.
+- **File → Import media…**: MP4, MOV, M4V, MKV, WebM, AVI, MPEG video (FFmpeg required), PNG, JPEG, TIFF, WebP, OpenEXR; first video stream imported. An SVG drawing comes in as editable vector shapes (with its gradients and clips), ready to extrude as a 3D logo; an audio file as a **Sound** node.
+- **Sound** node: a sound file on the timeline with its own timing and gain, heard in playback and in exports; effects can bring their own sounds (up to eight).
 - **File → Import numbered sequence…**: pick the first PNG/EXR frame; consecutive frames discovered; `.veyseq` manifest written beside it.
 - Import also accepts `.veyseq` files and completed Veylvik `sequence.json` exports.
 - **File → New from media…**: composition matched to source size and (for video/sequences) frame rate and duration.
@@ -376,7 +406,7 @@ Opened with **Add → Effect library…**; searchable by name, description or ca
 - **Input colour** on Footage: **Auto (from file)** or an explicit curve (Rec.709, sRGB, linear, PQ, HLG, **Apple Log**, **Sony S-Log3**, **ARRI LogC3**, **ARRI LogC4**, **Panasonic V-Log**) and gamut (Rec.709, Rec.2020, P3-D65, S-Gamut3, S-Gamut3.Cine, ARRI Wide Gamut 3/4, V-Gamut); choosing a camera curve picks its usual gamut; 18% grey decodes to 0.18; below-black sensor noise maps to zero instead of tinting dark scenes.
 - Colour: explicit conversion to scene-linear Rec.709; SDR, PQ and HLG transfer (PQ at 100-nit reference, no tone mapping; HLG as scene light with reference white matched to PQ's at 2.03, so iPhone HDR imports directly); incomplete tags reported; documented defaults for untagged sources.
 - Variable frame rate and reordered frames handled via packet timestamps.
-- Rejected with explicit errors: alpha WebM, HLG, constant-luminance BT.2020, unsupported primaries, anamorphic, interlaced.
+- Rejected with explicit errors: alpha WebM, constant-luminance BT.2020, unsupported primaries, anamorphic, interlaced.
 - Decode at placed size (never larger than source), area-averaged in linear light; 256 MiB per-frame decode budget.
 - Footage outside its range, or behind a zero-opacity Blend/Surface blend or a fully faded Fade, is not decoded.
 - Sequences: lazy bounded loading, same-size frames, missing/changed frames reported as errors, endpoints held outside range; max 10,000 frames.
@@ -423,6 +453,7 @@ Opened with **Add → Effect library…**; searchable by name, description or ca
 
 Details: [Subject segmentation](subject-segmentation.md).
 
+- **Fine edges** (ViTMatte Fine, when installed): matting at full size in tiles for curls and single strands; **Steady** smooths mattes over time so edges do not flicker.
 - Three trackers: **EdgeTAM** (fastest, default), **SAM 2.1 Base+** and **SAM 2.1 Large** (more precise and consistent over time), chosen per selection in Studio or with `--model`.
 - **Select subject…** (Inspector or **Tools**): left-click the subject in the viewer, right-click or Alt-click to exclude; instant blue mask preview per click; **Undo point**, **Clear**.
 - **Track subject** with progress and **Stop** (keeps tracked frames); optional **Also track back to the start**; one undo step adds Subject matte and Subject cutout.
@@ -440,20 +471,37 @@ Details: [Subject segmentation](subject-segmentation.md).
 - Headless: CLI `segment` and MCP `segment_subject` with points, frame range, back_to, model, detail and matting.
 - Live: `segment_subject` drives the open Studio's Select subject window, reported by `inspect` (`job`).
 
+## OpenFX plugins
+
+- **OpenFX effect** node (Add > Colour and filters): runs an OpenFX image-effect plugin (`.ofx.bundle`) found in `OFX_PLUGIN_PATH`, `/usr/OFX/Plugins` or `/usr/local/OFX/Plugins`, chosen from a searchable list by group.
+- Its settings appear in the inspector with keys, curve settings drawn as editable curves, and its inputs named by the plugin's own clips.
+- Plugins that read other frames (frame holds, time offsets, retimes, time blur) are given those frames.
+- Plugins run in a separate helper process, with frames shared in memory: a crash or hang fails one render, not the editor.
+- Not yet: on-screen handles for plugins, and their keys on the timeline.
+
+## Nuke scripts
+
+- **File → Import Nuke script…** (or `veylvik import-nuke`): rebuilds a `.nk` script as a new composition: Read, Constant, Merge, Grade, ColorCorrect, Transform, Blur, Text, Write and Dot nodes, with their animation curves as keys, and a list of anything that did not come over (expressions keep their defaults with a note).
+
+## Matching a look
+
+- **Tools → Compare look…** (and MCP `compare_look`): measures the picture in the viewer against a reference picture or a moment of a video, region by region: distinct grains per area, how much they stand out, their size, fine detail, streaks (how much the detail runs one way, and which way), brightness, how much is lit, the background's level, and colour as shares of hue bands; with moving media also how it shimmers. Each region gets plain advice on what to change.
+- `measure` reads numbers back from a rendered frame (brightness percentiles, peak, coverage, where a picture lands), and `sample` reads a setting's values over a range of frames.
+
 ## Export
 
 - **Export current preview…** (Ctrl+E): PNG (SDR sRGB, straight alpha) or OpenEXR (32-bit float RGBA, linear Rec.709, premultiplied, ZIP16).
 - EXR keeps HDR, negatives and emission at zero alpha.
 - **Export image sequence…** (Ctrl+Shift+E): inclusive frame range, new folder, PNG or EXR, background progress, **Cancel export**.
 - Sequences: `frame-000000.png|exr`, `sequence.json` manifest with timing, region, format, colour space, alpha and status (`rendering`/`complete`/`cancelled`); 1–10,000 frames; negative frame indices allowed.
-- **Export video…**: MP4 with H.264 or HEVC 10-bit, SDR Rec.709, no alpha.
+- **Export video…**: MP4 with H.264 or HEVC 10-bit, SDR Rec.709; or ProRes 422 HQ, or ProRes 4444 with straight alpha, in a `.mov` for titles and overlays; a start timecode can be written into the file.
 - Size presets or even custom dimensions (2–8192), fitted and centred with a background colour; custom frame rate and range; up to 10,000 frames.
 - Quality: draft, high (default), master.
 - Encoders: NVIDIA NVENC first, then Intel/AMD VA-API; software only with **Allow software encoding if hardware is unavailable**.
 - NVIDIA direct Vulkan-to-CUDA-to-NVENC GPU path; RAM-staged fallback reported; experimental DMA-BUF path for AMD/Intel (unverified).
 - Audio: AAC 48 kHz stereo 192 kbit/s; sound of every Footage node feeding the output, at timeline position and trims.
 - **Include footage audio** toggle; **Music** file with level −60 to +12 dB.
-- Cancel discards the partial file; existing files are never replaced; published atomically.
+- Cancel discards the partial file; an existing file is replaced only when you confirm it in the save window; published atomically.
 - Crop (`--crop` / `region`) and preview-node (`--node`) rendering in CLI/MCP.
 
 ## Project safety
@@ -481,6 +529,7 @@ Details: [Subject segmentation](subject-segmentation.md).
 - **Layouts and a second viewer**: View > Layout switches between Standard, Wide viewer, Viewer only and Graph (Alt+1 to Alt+4) and saves your own arrangements by name; **Viewer in its own window** shows the picture in a second window for another screen; Ctrl+Plus and Ctrl+Minus scale the interface.
 - Dialogs open centred on the window and can be dragged.
 - **Pages** in the top bar arrange the window for one job: **Compose** (the full editor), **Animate** (timeline and curves with room, the library kept on the left), **3D** (the viewer large; the left panel switches between the scene's objects, cameras and lights, to select, and the library) and **Export** (the picture with the list of exports beside it, an Export button and This frame). Entering Export opens the export dialog: keep the default or pick a delivery, open **More settings** in the same dialog for size, frame rate, range and sound, press **Export**, choose where to save, and it renders. The page lists what is rendering, waiting and done. Saving a video over an existing file replaces it when you confirm in the save window. Ctrl+1 to Ctrl+4 switch; returning to Compose restores its editor. The File menu's export items and the Render button open the Export page.
+- **Projects from elsewhere**: a project opened the first time that reads files outside its own folder asks first (Allow, or open without them); OpenFX plugins load freely only from the standard plugin folders.
 - **File → Composition settings…**: canvas, frame count, frame rate as one undo step, optional control scaling; **Display** transform.
 - **OCIO colour management**: independent GPU preview/output transforms, explicit branch conversion node, built-in or local OCIO 2.5 configurations and resolved LUT dependencies. Preview never bakes into export; explicitly enabled output conversion also affects EXR. AgX requires a supplied configuration such as Blender’s.
 - **Working colour space**: linear Rec.709 or ACEScg for compositing/grading/spatial passes; material colour interpretation and public frames remain Rec.709 through explicit conversions.
@@ -490,33 +539,40 @@ Details: [Subject segmentation](subject-segmentation.md).
 
 ### CLI (`veylvik`)
 - `open [FILE] [--control-dir DIRECTORY | --no-control]`: start Studio.
-- `demo FILE [--motion|--procedural]`: write an example project.
+- `demo FILE [--motion|--procedural|--gold-title]`: write an example project.
 - `import IMAGE.png|IMAGE.exr FILE`: create a project from an image.
+- `import-nuke SCRIPT.nk NEW_FILE`: rebuild a Nuke script as a composition, listing what did not come over.
+- `ofx list|describe|render ...`: list, describe and try OpenFX plugins.
 - `outline-text FONT TEXT NEW_FILE [--size --origin --canvas --align --line-height --rtl --language --font-index]`.
 - `collect FILE NEW_DIRECTORY`; `verify-collection DIRECTORY`.
 - `nodes`: node catalogue as JSON.
 - `check FILE`: validate graph and assets, report working/source bytes.
 - `render FILE OUTPUT.png|.exr [TICKS RATE] [--node UUID] [--crop X Y W H]`.
 - `render-sequence FILE DIRECTORY START END [--format png|exr] [--node] [--crop]`.
-- `render-video FILE OUTPUT.mp4 [--codec h264|hevc10] [--quality] [--size W H] [--fps N D] [--range A B] [--allow-software] [--no-audio] [--audio FILE] [--audio-gain DB]`.
+- `solve-camera FILE NEW_FILE SOURCE_UUID [START END] [--focal MM] [--sensor MM]`: solve a shot's camera.
+- `render-video FILE OUTPUT.mp4 [--codec h264|hevc10|prores|prores4444] [--quality] [--size W H] [--fps N D] [--range A B] [--allow-software] [--no-audio] [--audio FILE] [--audio-gain DB]`.
 - `track FILE NEW_FILE SOURCE_UUID START END "corners" ["area"] [--screen-area] [--motion ...] [--no-refine] [--back-to FRAME]`.
 - `segment FILE NEW_FILE SOURCE_UUID FRAME END "x,y x,y,- ..." [--back-to FRAME] [--model ID] [--no-detail] [--matting|--no-matting]`: subject matte sequence and node.
 - `models [install|uninstall|enable|disable ID]`: AI model catalogue and installer.
-- `mcp FILE` (headless) and `mcp --studio [SOCKET|DIRECTORY]` (live relay).
+- `mcp [FILE]` (headless; with no file, start with `new_project` or `open_project`) and `mcp --studio [SOCKET|DIRECTORY]` (live relay).
 - JSON on stdout, JSON errors on stderr, non-zero exit on failure.
 
 ### Headless MCP tools
-- `inspect`, `graph`, `get_node`, `nodes`, `diagnostics`, `outline_text`, `get_preset`, `insert_preset`, `apply`, `add_effect`, `duplicate_branch`, `track_surface`, `segment_subject`, `undo`, `redo`, `save`, `render`, `render_sequence`, `render_video`, `preview_image`.
-- `apply` commands: `put`, `set_parameter`, `set_key`, `remove_key`, `remove`, `output`, `resize`, `frame_count`, `frame_rate`, `place`, `put_group`, `ungroup`, `set_control`, `connect_group`; atomic batches up to 4096, dry run, one undo step.
+- Reading: `inspect`, `graph`, `get_node`, `nodes`, `sample` (a setting's values over frames), `diagnostics`, `materials`, `get_preset`, `measure` (numbers from a rendered frame), `compare_look` (a frame's look against a reference, region by region, with advice).
+- Editing: `apply`, `add_node`, `add_effect`, `insert_preset`, `duplicate_branch`, `apply_material`, `gold_title`, `particle_look`, `surround_lights`, `stand_on_ground`, `shine_here`, `match_shot`, `outline_text`, `undo`, `redo`.
+- Projects and media: `new_project`, `open_project`, `new_from_media`, `import_media`, `save`, `replace_sound`.
+- Analysis: `track_surface`, `solve_camera`, `segment_subject` (with progress notes on long calls).
+- Rendering: `render`, `render_sequence`, `render_video`, `preview_image`.
+- `apply` commands: `put`, `set_parameter`, `set_key`, `remove_key`, `remove`, `connect`, `output`, `resize`, `frame_count`, `frame_rate`, `place`, `markers`, `annotate`, `backdrops`, `put_group`, `ungroup`, `set_control`, `connect_group`; atomic batches up to 4096, dry run, one undo step.
 - Every mutation, save or render requires the current revision.
 
 ### Live MCP tools (open Studio)
-- `inspect`, `graph`, `get_node`, `nodes`, `diagnostics`, `apply`, `duplicate_branch`, `add_effect`, `get_preset`, `insert_preset`, `undo`, `redo`, `preview`, `preview_image`, `new_project`, `open_project`, `new_from_media`, `import_media`.
+- The same 38 tools as the headless server, with `preview` (pause, seek and choose a node) in place of `replace_sound`; tools that read a picture (`preview_image`, `measure`, `compare_look`) work on Studio's completed preview.
 - Edits appear in the editor and share its undo history; session UUID plus revision guard every edit.
 - `new_project` (width, height, frame rate, frame count), `open_project`, `new_from_media` refuse unsaved changes unless `discard_changes`.
 - `import_media` (video, PNG, EXR, `sequence: true`, `match_composition`).
 - `preview` pauses and seeks; `preview_image` captures the completed frame as inline PNG.
-- Live tools do not save or export files.
+- Live `save`, `render`, `render_sequence` and `render_video` go through Studio's own save and render queue.
 
 ### Control socket
 - `$XDG_RUNTIME_DIR/veylvik/control.sock` by default (`VEYLVIK_CONTROL_SOCKET` overrides); directory 0700, socket 0600.
@@ -529,7 +585,10 @@ Details: [Subject segmentation](subject-segmentation.md).
 - GPU-only rendering on Vulkan; no CPU fallback.
 - Scene-linear Rec.709 premultiplied RGBA32F, HDR and negatives preserved.
 - Graph compiled into an immutable plan; unreachable nodes pruned; identity nodes aliased; identical operations shared.
-- Bounded memory: 2048 MiB default GPU budget (`VEYLVIK_GPU_BUDGET_MIB`, 64–16384), 128 MiB idle pool, 64 MiB / 16-frame output cache, 32 MiB vector cache.
+- Bounded memory: the GPU budget is half the graphics card's memory by default (256–8192 MiB; `VEYLVIK_GPU_BUDGET_MIB` or the preference overrides), with the frame, vector and node-result caches each a share of it; out of memory frees the caches and retries instead of failing the render.
+- Results are known by what they are made of: a node's picture is kept while its settings and inputs do not change, video frames are named without decoding, and played pictures can be kept between sessions.
+- Work is skipped where it shows nothing: hidden layers, empty particle systems, and layers clear outside a box are run over that box only.
+- Compiled GPU programs are kept between runs, so the first frame after a start does not wait for the driver.
 - Vector masks via Vello Hybrid geometry and Vulkan coverage.
 - Preview scheduler on a worker; no blocking IO on the UI thread.
 - **Render statistics** / MCP `diagnostics` report buffers, caches and reuse.
@@ -541,6 +600,7 @@ Details: [Subject segmentation](subject-segmentation.md).
 - Primary target x86_64 Arch/Omarchy; aarch64 supported by the package recipe.
 - `bin/package` builds an Arch package: `veylvik`, `veylvik-studio`, launcher entry, SVG icon, **Open with Veylvik** for `.veylvik`.
 - Desktop portal file dialogs; optional live system/Omarchy appearance.
+- The editor is a library another application can show in its own window, sharing its renderer, menus, undo, timeline place and settings with the host.
 - Rust 1.98.1 pinned; application/document/render code forbids `unsafe`; native media, interop and OCIO boundaries are isolated; GPL-3.0-only.
 
 ### Curated material recipes
