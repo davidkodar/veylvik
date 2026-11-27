@@ -1,0 +1,11 @@
+[package]
+name = "veylvik-look"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Measures a picture's look region by region (grains, contrast, brightness, colour, shimmer) and compares it with a reference, for Veylvik."
+[dependencies]
+serde.workspace = true
+[lints]
+workspace = true

@@ -4340,6 +4340,7 @@ dependencies = [
  "veylvik-color",
  "veylvik-decode",
  "veylvik-document",
+ "veylvik-look",
  "veylvik-mesh",
  "veylvik-ofx",
  "veylvik-presets",
@@ -4349,6 +4350,13 @@ dependencies = [
  "veylvik-splat",
  "veylvik-text",
  "zstd",
+]
+
+[[package]]
+name = "veylvik-look"
+version = "0.1.0"
+dependencies = [
+ "serde",
 ]
 
 [[package]]

@@ -2404,7 +2404,7 @@ The server uses newline-delimited JSON-RPC on stdio and MCP protocol version
 The tools are `inspect`, `graph`, `get_node`, `sample`, `nodes`, `diagnostics`, `outline_text`,
 `apply`, `add_node`, `gold_title`, `particle_look`, `duplicate_branch`, `add_effect`, `undo`,
 `redo`, `save`, `render`, `render_sequence`, `render_video`, `replace_sound`,
-`preview_image`, `measure`,
+`preview_image`, `measure`, `compare_look`,
 `new_project`, `open_project`, `new_from_media` and `import_media`.
 `new_project`, `open_project` and `new_from_media` replace the session's project
 (revision 0) and refuse to drop changes made since it was opened or saved unless
@@ -2413,6 +2413,40 @@ composition to the media. `measure` reads numbers back from a rendered frame:
 displayed brightness percentiles, the scene-linear mean and peak, the share of
 pixels above 1.0, the coverage and the box round everything that is not
 transparent, for the output, one node or a region.
+
+`compare_look` measures a rendered frame's look against a reference, to copy a
+style: the reference is a still or any media Veylvik imports (a video at
+`reference_seconds`, a sequence). Both are measured at one size (the narrower's
+width, at most 1920) and region by region: the whole picture and the cells of a
+`grid` x `grid` (3 by default), or `pairs` naming a region in each, as shares of
+the picture's width and height, when the two are composed differently (the
+reference's near layer where it is, ours where ours is). Each region reports:
+
+- distinct **grains** in each 100 x 100 pixels (points brighter than their
+  surroundings), how many times brighter than its surroundings a grain is
+  (**stand_out**) and how large it is across (**grain_size**: where its light is
+  at least half its peak); counts and sizes are as in a frame 1920 wide;
+- **fine_contrast**: how much the light varies from its surroundings' average,
+  high in crisp glitter, low in a soft mass;
+- **brightness** on the screen at the 10th, 50th, 90th and 99.5th percentiles,
+  the **coverage** (the share lit, brighter than a dark background) and the
+  **background**'s level;
+- **hues**: the lit pixels' shares of eight hue bands (red, orange, yellow,
+  green, teal, blue, violet, magenta) with each band's median saturation, and
+  the **grey** share. Shares by band are the reliable way to compare colour:
+  an average colour mixes the bands (crimson with some gold and teal averages to
+  an orange-red no grain has);
+- with moving media and a frame after ours, **shimmer**: the share bright on the
+  screen in either of two frames in a row, and how much of that is less than
+  half as bright in the other frame.
+
+Each region also gets **advice** in plain words: what to change (more or fewer
+grains, grain size, focus, sparkle, exposure, a band's share or saturation,
+haze), with the numbers behind it. A video reference is read as a player shows
+it (its code values on an sRGB-like curve), which is what a viewer of the
+reference sees; `reference_colour: "scene"` reads it as Veylvik composites it
+instead (decoded to scene light by its tags, where a Rec.709 video's mid-tones
+read lighter). The live server does not have `compare_look` yet.
 
 The live server (`mcp --studio`) has the same tools working on the open editor,
 plus `preview`. There `save`, `render`, `render_sequence`, `render_video`,

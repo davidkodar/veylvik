@@ -162,6 +162,7 @@ fn protocol_enforces_lifecycle_and_transaction_revision() {
             "import_media",
             "match_shot",
             "measure",
+            "compare_look",
             "add_node",
             "gold_title",
             "particle_look",

@@ -19,6 +19,7 @@ veylvik-ofx.workspace = true
 veylvik-mesh.workspace = true
 veylvik-scene.workspace = true
 veylvik-splat.workspace = true
+veylvik-look.workspace = true
 png = "0.18"
 pathdiff = "0.2"
 serde_json.workspace = true

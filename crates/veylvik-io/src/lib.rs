@@ -9,6 +9,7 @@ mod icc;
 pub mod import;
 pub mod inputs;
 pub mod link;
+pub mod look;
 pub mod lut;
 pub mod materials;
 pub mod measure;
