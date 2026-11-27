@@ -363,3 +363,100 @@ fn a_light_with_no_reflections_leaves_shiny_surfaces_and_still_lights_matte_ones
         );
     }
 }
+/// A shape with a look from the material library.
+fn looked(x: f32, id: &str) -> Operation {
+    let mut o = sphere(x, [0.8; 3], 0.0, 0.5, 0.0);
+    if let Operation::Shape3d(s) = &mut o {
+        s.look = Some(Box::new(presets::catalogue::get(id).unwrap().material()));
+    }
+    o
+}
+/// A wall far behind the scene, glowing red left of the middle and green right of it.
+fn red_and_green_wall(doc: &mut Composition) -> [NodeId; 2] {
+    [(-1000.0, [1.0, 0.0, 0.0]), (1000.0, [0.0, 1.0, 0.0])].map(|(x, colour)| {
+        let mut o = op(&SHAPE_3D);
+        if let Operation::Shape3d(s) = &mut o {
+            s.kind = ShapeKind::Plane;
+            s.size_x = 2000.0.into();
+            s.size_y = 2000.0.into();
+            s.colour = colour.into();
+            s.roughness = 1.0.into();
+            s.emission = 1.0.into();
+            s.placement.position = [x, 0.0, -300.0].into();
+        }
+        add(doc, o, &[])
+    })
+}
+#[test]
+#[ignore = "requires Vulkan"]
+fn a_glass_ball_shows_what_is_behind_it_turned_round() {
+    let mut doc = blank(W, H, Time::new(24, 1).unwrap()).unwrap();
+    let ball = add(&mut doc, looked(0.0, "glass_clear"), &[]);
+    let [red, green] = red_and_green_wall(&mut doc);
+    let scene = add(
+        &mut doc,
+        op(&MERGE_SCENES),
+        &[("scene", ball), ("scene_2", red), ("scene_3", green)],
+    );
+    let out = filmed(
+        &mut doc,
+        scene,
+        SceneQuality::PathTraced,
+        256,
+        &ImageInputs::default(),
+    );
+    let at = |x: u32, y: u32| out[(y * W + x) as usize];
+    let (inside, beside) = (at(W / 2 - 10, H / 2), at(W / 2 - 45, H / 2));
+    eprintln!("inside the ball's left {inside:?}, the wall beside it {beside:?}");
+    // The wall on the left is red where it is seen directly...
+    assert!(beside[0] > 0.5 && beside[1] < 0.1, "{beside:?}");
+    // ...and the ball, a lens, shows the right half's green on its left.
+    assert!(inside[1] > 2.0 * inside[0] && inside[1] > 0.2, "{inside:?}");
+}
+#[test]
+#[ignore = "requires Vulkan"]
+fn a_library_look_path_traces_with_its_pattern_and_its_glow() {
+    let shot = |quality| {
+        let mut doc = blank(W, H, Time::new(24, 1).unwrap()).unwrap();
+        let wood = add(&mut doc, looked(-35.0, "walnut"), &[]);
+        let neon = add(&mut doc, looked(35.0, "neon_blue"), &[]);
+        let scene = add(
+            &mut doc,
+            op(&MERGE_SCENES),
+            &[("scene", wood), ("scene_2", neon)],
+        );
+        filmed(&mut doc, scene, quality, 256, &ImageInputs::default())
+    };
+    let (traced, preview) = (shot(SceneQuality::PathTraced), shot(SceneQuality::Preview));
+    // The wood's middle: the same colour on average, and its grain still there.
+    let disc = |x0: u32, p: &[[f32; 4]]| -> Vec<[f32; 4]> {
+        (H / 2 - 10..H / 2 + 10)
+            .flat_map(|y| (x0 - 10..x0 + 10).map(move |x| (y * W + x) as usize))
+            .map(|i| p[i])
+            .collect()
+    };
+    let mean = |v: &[[f32; 4]], c: usize| v.iter().map(|p| p[c]).sum::<f32>() / v.len() as f32;
+    let spread = |v: &[[f32; 4]]| {
+        let m = mean(v, 1);
+        (v.iter().map(|p| (p[1] - m).powi(2)).sum::<f32>() / v.len() as f32).sqrt() / m
+    };
+    let (wood_traced, wood_preview) = (disc(W / 2 - 22, &traced), disc(W / 2 - 22, &preview));
+    eprintln!(
+        "wood traced {:.3} {:.3} {:.3} spread {:.3}; preview {:.3} {:.3} {:.3} spread {:.3}",
+        mean(&wood_traced, 0),
+        mean(&wood_traced, 1),
+        mean(&wood_traced, 2),
+        spread(&wood_traced),
+        mean(&wood_preview, 0),
+        mean(&wood_preview, 1),
+        mean(&wood_preview, 2),
+        spread(&wood_preview)
+    );
+    // Wood: warmer red than blue, near the preview's brightness, and not flat.
+    assert!(mean(&wood_traced, 0) > 1.3 * mean(&wood_traced, 2));
+    assert!((mean(&wood_traced, 1) / mean(&wood_preview, 1) - 1.0).abs() < 0.4);
+    assert!(spread(&wood_traced) > 0.05, "the grain shows");
+    // Neon glows blue by itself, as in the preview.
+    let neon = disc(W / 2 + 22, &traced);
+    assert!(mean(&neon, 2) > 0.3 && mean(&neon, 2) > 1.5 * mean(&neon, 0));
+}

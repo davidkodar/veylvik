@@ -72,6 +72,8 @@ pub struct Surface {
     /// The finish, as the interactive renderer reads it: brushing, the grain's direction
     /// (radians), imperfections, visible grain and ridges (all but the direction 0 to 1).
     pub finish: [f32; 5],
+    /// A library look (a number in the job's looks), lit in place of the plain colour.
+    pub look: Option<u32>,
 }
 impl Default for Surface {
     fn default() -> Self {
@@ -85,6 +87,7 @@ impl Default for Surface {
             texture: None,
             shadow: 1.0,
             finish: [0.0; 5],
+            look: None,
         }
     }
 }

@@ -1,11 +1,11 @@
 //! Path traced pictures (Render scene's Quality: path traced): the scene's meshes as trees kept between frames under the same keys as the drawn meshes, surfaces and lights handed to the tracer with the meanings the interactive renderer gives them, filmed through the same camera and lens.
-use crate::{Engine, TREE_CACHE, error};
+use crate::{Engine, TREE_CACHE, error, uv_scale};
 use std::sync::Arc;
 use veylvik_render::{Result, SceneJob, Trace};
 use veylvik_scene::Geometry;
 use veylvik_trace::{
-    CARD, CATCHER, CUT, Environment, Job, MeshTree, Placed, STRAIGHT, Settings, Surface, Texture,
-    Tracer, UNLIT, View,
+    CARD, CATCHER, CUT, Environment, Job, Look, MeshTree, Placed, STRAIGHT, Settings, Surface,
+    Texture, Tracer, UNLIT, View,
 };
 
 /// The brightest a bounce may add to a pixel: rare paths that find a small bright light
@@ -27,11 +27,21 @@ impl Engine {
             blend,
             target,
             models,
+            time,
             ..
         } = job;
         let expanded = self.expand(scene, models)?;
         let scene = &expanded;
         let (panorama, strength, turn) = self.surroundings(device, encoder, scene, images)?;
+        // Looks see the scene's environment as the interactive renderer's looks do.
+        let look_environment = scene
+            .environment
+            .map(|e| veylvik_render::EnvironmentOverride {
+                strength: e.intensity,
+                absolute: panorama.is_some(),
+                rotation: e.rotation.to_radians(),
+            });
+        let mut looks: Vec<Look> = Vec::new();
         let mut placed = Vec::with_capacity(scene.objects.len());
         // The pictures surfaces read, each once: (buffer, width, height).
         let mut pictures: Vec<(wgpu::Buffer, u32, u32)> = Vec::new();
@@ -74,6 +84,35 @@ impl Engine {
                         }),
                 },
             };
+            // A library look, as its material's own blocks for the shared surface code.
+            let look = match &s.look {
+                Some(material) if flags & (CARD | CATCHER) == 0 => {
+                    let (params, lighting) = veylvik_render::material_uniforms(
+                        material,
+                        width,
+                        height,
+                        time,
+                        look_environment,
+                    )?;
+                    let vec4s = |bytes: &[u8]| -> Vec<[f32; 4]> {
+                        bytes
+                            .as_chunks::<16>()
+                            .0
+                            .iter()
+                            .map(|c| bytemuck::pod_read_unaligned::<[f32; 4]>(c))
+                            .collect()
+                    };
+                    let params = vec4s(&params[..48]);
+                    let [x, y, ..] = uv_scale(&object.geometry);
+                    looks.push(Look {
+                        params: [params[0], params[1], params[2]],
+                        lighting: vec4s(&lighting),
+                        uv_scale: [x, y],
+                    });
+                    Some((looks.len() - 1) as u32)
+                }
+                _ => None,
+            };
             placed.push(Placed {
                 tree: self.tree(object)?,
                 world: object.world,
@@ -93,6 +132,7 @@ impl Engine {
                         s.finish[3],
                         s.finish[4],
                     ],
+                    look,
                 },
             });
         }
@@ -114,9 +154,13 @@ impl Engine {
         } else {
             0.0
         };
-        let tracer = self
-            .tracer
-            .get_or_init(|| Tracer::new(device, veylvik_render::ENVIRONMENT_WGSL));
+        let tracer = self.tracer.get_or_init(|| {
+            Tracer::new(
+                device,
+                veylvik_render::SURFACE_WGSL,
+                veylvik_render::ENVIRONMENT_WGSL,
+            )
+        });
         tracer
             .render(Job {
                 device,
@@ -124,6 +168,7 @@ impl Engine {
                 encoder,
                 scene: &packed,
                 textures: &textures,
+                looks: &looks,
                 lights: &lights,
                 view: View {
                     camera: camera.world,

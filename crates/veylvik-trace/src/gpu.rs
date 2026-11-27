@@ -60,6 +60,15 @@ pub struct Environment<'a> {
     /// Seen behind everything where nothing is met.
     pub backdrop: bool,
 }
+/// A library look: the material's two blocks as the 2D kernels read them (its first
+/// 48 bytes of parameters and its studio lighting), and pixels per mesh uv unit.
+pub struct Look {
+    pub params: [[f32; 4]; 3],
+    pub lighting: Vec<[f32; 4]>,
+    pub uv_scale: [f32; 2],
+}
+/// The studio lighting block's size in vec4s (`StudioLighting` in the surface code).
+pub const LOOK_LIGHTING: usize = 39;
 pub struct Job<'a> {
     pub device: &'a wgpu::Device,
     pub queue: &'a wgpu::Queue,
@@ -67,6 +76,8 @@ pub struct Job<'a> {
     pub scene: &'a Packed,
     /// The pictures surfaces name by number.
     pub textures: &'a [Texture<'a>],
+    /// The looks surfaces name.
+    pub looks: &'a [Look],
     pub lights: &'a [Light],
     pub view: View,
     pub environment: Environment<'a>,
@@ -142,7 +153,8 @@ fn frame_data(
     scene: &Packed,
     lights: &[Light],
     places: &[[u32; 3]],
-) -> (Vec<[f32; 4]>, [u32; 4], [u32; 2]) {
+    looks: &[Look],
+) -> (Vec<[f32; 4]>, [u32; 4], [u32; 3]) {
     let f = f32::from_bits;
     let mut data: Vec<[f32; 4]> = Vec::new();
     let instances = data.len() as u32;
@@ -160,7 +172,12 @@ fn frame_data(
     for s in &scene.surfaces {
         data.push([s.colour[0], s.colour[1], s.colour[2], s.roughness]);
         data.push([s.metallic, s.emission, s.opacity, f(s.flags)]);
-        data.push([f(s.texture.unwrap_or(u32::MAX)), s.shadow, s.finish[4], 0.0]);
+        data.push([
+            f(s.texture.unwrap_or(u32::MAX)),
+            s.shadow,
+            s.finish[4],
+            f(s.look.unwrap_or(u32::MAX)),
+        ]);
         data.push([s.finish[0], s.finish[1], s.finish[2], s.finish[3]]);
     }
     let top = data.len() as u32;
@@ -184,17 +201,29 @@ fn frame_data(
     for p in places {
         data.push([f(p[0]), f(p[1]), f(p[2]), 0.0]);
     }
+    // Each look: its uv scale, three parameter vec4s and the studio lighting.
+    let looks_at = data.len() as u32;
+    for l in looks {
+        data.push([l.uv_scale[0], l.uv_scale[1], 0.0, 0.0]);
+        data.extend(l.params);
+        data.extend(&l.lighting);
+    }
     (
         data,
         [instances, surfaces, top, order],
-        [lights_at, textures_at],
+        [lights_at, textures_at, looks_at],
     )
 }
 impl Tracer {
-    /// The tracer's program, with `environment_wgsl` (the renderer's shared environment
-    /// lookups) appended.
-    pub fn new(device: &wgpu::Device, environment_wgsl: &str) -> Self {
-        let source = format!("{}\n{}", include_str!("trace.wgsl"), environment_wgsl);
+    /// The tracer's program, with `surface_wgsl` (what a library material is at a point)
+    /// and `environment_wgsl` (the renderer's shared environment lookups) appended.
+    pub fn new(device: &wgpu::Device, surface_wgsl: &str, environment_wgsl: &str) -> Self {
+        let source = format!(
+            "{}\n{}\n{}",
+            include_str!("trace.wgsl"),
+            surface_wgsl,
+            environment_wgsl
+        );
         let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("path tracer"),
             source: wgpu::ShaderSource::Wgsl(source.into()),
@@ -288,6 +317,7 @@ impl Tracer {
             encoder,
             scene,
             textures,
+            looks,
             lights,
             view,
             environment,
@@ -297,6 +327,12 @@ impl Tracer {
             target,
             blend,
         } = job;
+        if let Some(look) = looks.iter().find(|l| l.lighting.len() != LOOK_LIGHTING) {
+            return Err(format!(
+                "a look's studio lighting is {} vec4s, not {LOOK_LIGHTING}",
+                look.lighting.len()
+            ));
+        }
         let pixels = u64::from(width) * u64::from(height);
         if pixels == 0 {
             return Ok(());
@@ -346,7 +382,8 @@ impl Tracer {
             }
             encoder.copy_buffer_to_buffer(t.buffer, 0, &pictures, u64::from(place[0]) * 16, bytes);
         }
-        let (data, offsets, [lights_at, textures_at]) = frame_data(scene, lights, &places);
+        let (data, offsets, [lights_at, textures_at, looks_at]) =
+            frame_data(scene, lights, &places, looks);
         let data = buffer(device, "path tracer frame", &data);
         // The passes: each takes a few samples for every pixel, as many as keep it short.
         let blend = blend.clamp(0.0, 1.0);
@@ -386,7 +423,12 @@ impl Tracer {
                     blend,
                 ],
                 offsets,
-                lights_at: [lights_at, u32::from(settings.sample_sky), textures_at, 0],
+                lights_at: [
+                    lights_at,
+                    u32::from(settings.sample_sky),
+                    textures_at,
+                    looks_at,
+                ],
             };
             let at = (u64::from(p) * UNIFORM_STEP) as usize;
             uniforms[at..at + std::mem::size_of::<Frame>()]

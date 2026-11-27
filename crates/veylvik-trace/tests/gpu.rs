@@ -77,6 +77,7 @@ fn render(
             encoder: &mut encoder,
             scene: &scene,
             textures: &[],
+            looks: &[],
             lights: &shot.lights,
             view: View {
                 camera: at([0.0, 0.0, 1000.0]),
@@ -128,7 +129,7 @@ fn matte(grey: f32) -> Surface {
 #[ignore = "requires Vulkan"]
 fn an_even_sky_lights_a_convex_shape_to_its_albedo() {
     let (device, queue) = gpu();
-    let tracer = Tracer::new(&device, SKY);
+    let tracer = Tracer::new(&device, veylvik_render::SURFACE_WGSL, SKY);
     let shot = Shot {
         placed: vec![Placed {
             tree: sphere(200.0),
@@ -166,7 +167,7 @@ fn an_even_sky_lights_a_convex_shape_to_its_albedo() {
 #[ignore = "requires Vulkan"]
 fn a_sphere_covers_the_pixels_its_projection_says() {
     let (device, queue) = gpu();
-    let tracer = Tracer::new(&device, SKY);
+    let tracer = Tracer::new(&device, veylvik_render::SURFACE_WGSL, SKY);
     let shot = Shot {
         placed: vec![Placed {
             tree: sphere(200.0),
@@ -193,7 +194,7 @@ fn a_sphere_covers_the_pixels_its_projection_says() {
 #[ignore = "requires Vulkan"]
 fn a_point_light_is_cut_off_behind_a_blocker() {
     let (device, queue) = gpu();
-    let tracer = Tracer::new(&device, SKY);
+    let tracer = Tracer::new(&device, veylvik_render::SURFACE_WGSL, SKY);
     let floor = Arc::new(MeshTree::new(
         &primitive(Primitive::Plane, [1000.0, 1000.0, 1.0], 1).unwrap(),
     ));
@@ -240,7 +241,7 @@ fn a_point_light_is_cut_off_behind_a_blocker() {
 #[ignore = "requires Vulkan"]
 fn drawing_light_from_a_bright_sun_keeps_the_picture_and_cuts_the_noise() {
     let (device, queue) = gpu();
-    let tracer = Tracer::new(&device, SUN_SKY);
+    let tracer = Tracer::new(&device, veylvik_render::SURFACE_WGSL, SUN_SKY);
     let shot = |samples, sample_sky, seed| Shot {
         placed: vec![Placed {
             tree: sphere(200.0),

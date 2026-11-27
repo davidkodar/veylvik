@@ -7,7 +7,7 @@
 struct Node { min: vec3<f32>, first: u32, max: vec3<f32>, count: u32 }
 struct Instance { to_object: mat3x4<f32>, to_world: mat3x4<f32>, root: u32, triangle_base: u32, vertex_base: u32, surface: u32 }
 // finish: brushing, the grain's direction (radians), imperfections, visible grain.
-struct Surface { colour: vec3<f32>, roughness: f32, metallic: f32, emission: f32, opacity: f32, flags: u32, texture: u32, shadow: f32, ridges: f32, finish: vec4<f32> }
+struct Surface { colour: vec3<f32>, roughness: f32, metallic: f32, emission: f32, opacity: f32, flags: u32, texture: u32, shadow: f32, ridges: f32, look: u32, finish: vec4<f32> }
 struct Light { position: vec4<f32>, direction: vec4<f32>, colour: vec4<f32>, right: vec4<f32>, up: vec4<f32> }
 struct Frame {
     // camera to world (rows), focal length in pixels, width, height
@@ -25,7 +25,7 @@ struct Frame {
     // (2 each), its order (4 to a vec4) and the lights (5 each) start
     offsets: vec4<u32>,
     // where the lights start, environment sampling (1), where the textures' places
-    // start, spare
+    // start, where the looks start (43 vec4s each: uv scale, parameters, studio)
     lights_at: vec4<u32>,
 }
 @group(0) @binding(0) var<uniform> frame: Frame;
@@ -58,7 +58,7 @@ fn surface_at(i: u32) -> Surface {
     let a = data[b];
     let c = data[b + 1u];
     let e = data[b + 2u];
-    return Surface(a.xyz, a.w, c.x, c.y, c.z, bitcast<u32>(c.w), bitcast<u32>(e.x), e.y, e.z, data[b + 3u]);
+    return Surface(a.xyz, a.w, c.x, c.y, c.z, bitcast<u32>(c.w), bitcast<u32>(e.x), e.y, e.z, bitcast<u32>(e.w), data[b + 3u]);
 }
 // A picture's texel, repeating round its edges or clear beyond them.
 fn picture_texel(place: vec4<u32>, x: i32, y: i32, repeat: bool) -> vec4<f32> {
@@ -342,6 +342,39 @@ fn finished(s: Surface, local: vec3<f32>, facing: vec3<f32>, normals: mat3x3<f32
     }
     m.gain = gain;
     return Finished(m, n);
+}
+
+// ---- library looks: the material's own blocks, read by the shared surface code ----
+var<private> p: Params;
+var<private> studio: StudioLighting;
+var<private> look_scale: vec2<f32>;
+fn load_look(k: u32) {
+    let b = frame.lights_at.w + 43u * k;
+    look_scale = data[b].xy;
+    p = Params(bits(data[b + 1u]), data[b + 2u], data[b + 3u]);
+    let q = b + 4u;
+    studio.optics = data[q];
+    studio.environment = data[q + 1u];
+    for (var i = 0u; i < 8u; i++) {
+        let c = q + 2u + 4u * i;
+        studio.lights[i] = StudioLight(data[c], data[c + 1u], data[c + 2u], data[c + 3u]);
+    }
+    for (var i = 0u; i < 3u; i++) { studio.palette[i] = data[q + 34u + i]; }
+    studio.maps = data[q + 37u];
+    studio.finish = data[q + 38u];
+    map_roughness = -1.0;
+}
+// The look's pattern coordinates from the mesh's uv, as the interactive renderer makes them.
+fn look_uv(uv: vec2<f32>) -> vec2<f32> { return uv * look_scale / max(p.values.x, 1e-3); }
+// A microfacet normal about `n` drawn by the GGX distribution of roughness `a`.
+fn facet(n: vec3<f32>, a: f32) -> vec3<f32> {
+    let u1 = random();
+    let u2 = random();
+    let a2 = a * a;
+    let cos_t = sqrt((1.0 - u1) / (1.0 + (a2 - 1.0) * u1));
+    let sin_t = sqrt(max(1.0 - cos_t * cos_t, 0.0));
+    let phi = 2.0 * PI * u2;
+    return frame_of(n) * vec3<f32>(sin_t * cos(phi), sin_t * sin(phi), cos_t);
 }
 
 // The specular part of the last `brdf`, for lights that show less in shiny surfaces.
@@ -696,6 +729,8 @@ fn path(px: vec2<f32>) -> Seen {
         var n = normalize(to_world_normal * (na * w0 + nb * h.u + nc * h.v));
         var g = normalize(to_world_normal * cross(b.xyz - a.xyz, c.xyz - a.xyz));
         let v = -d;
+        // Met from outside the object (its normals point outwards), for glass.
+        let outside = dot(n, v) > 0.0;
         // Two-sided: a face seen from behind shades as its other side.
         if dot(g, v) < 0.0 { g = -g; }
         if dot(n, g) < 0.0 { n = -n; }
@@ -739,11 +774,63 @@ fn path(px: vec2<f32>) -> Seen {
             colour += through * sc.colour;
             break;
         }
-        let fin = finished(sc, local, facing, to_world_normal, n);
-        let m = fin.shade;
-        n = fin.n;
+        var m: Shade;
+        var glow = vec3<f32>(0.0);
+        if s.look != 0xffffffffu {
+            // A library look: what the shared surface code says the surface is here, in
+            // the camera's frame (a face looking at the camera faces +z, as in the preview).
+            load_look(s.look);
+            let to_camera = mat3x3<f32>(frame.camera[0].xyz, frame.camera[1].xyz, frame.camera[2].xyz);
+            let mp = material_point(look_uv(uv), normalize(to_camera * n));
+            let bent = normalize(transpose(to_camera) * mp.normal);
+            if dot(bent, g) > 0.0 { n = bent; }
+            if mp.glass > 0.5 {
+                // Glass: reflected or refracted by Fresnel's share, about a facet drawn by
+                // its roughness (frosted glass), tinted as the light goes in.
+                let f0g = clamp(mp.f0.g, 0.0, 0.9);
+                let ior = (1.0 + sqrt(f0g)) / max(1.0 - sqrt(f0g), 1e-4);
+                var h = n;
+                if mp.rough > 0.03 { h = facet(n, mp.rough * mp.rough); }
+                if dot(h, v) <= 0.0 { h = n; }
+                let fr = f0g + (1.0 - f0g) * pow(1.0 - max(dot(v, h), 0.0), 5.0);
+                let bent_through = refract(-v, h, select(ior, 1.0 / ior, outside));
+                let lift = 1e-3 + 1e-5 * max(max(abs(p.x), abs(p.y)), abs(p.z));
+                if random() < fr || dot(bent_through, bent_through) < 1e-8 {
+                    d = reflect(-v, h);
+                    o = p + g * lift;
+                } else {
+                    d = bent_through;
+                    o = p - g * lift;
+                    if outside { through *= studio.palette[0].rgb; }
+                }
+                // A mirror-like turn: whatever light it meets next counts in full (a likelihood
+                // the power heuristic can still square).
+                last_pdf = 1e15;
+                last_reflection = true;
+                continue;
+            }
+            let a = max(mp.rough * mp.rough, 1e-4);
+            var ay = a;
+            var along = vec3<f32>(0.0);
+            var across = vec3<f32>(0.0);
+            if mp.brushed > 0.0 {
+                // Brushed: rougher across the grain than along it.
+                ay = clamp(a + mp.brushed * 0.12, 0.0, 1.0);
+                let grain = transpose(to_camera) * mp.across;
+                across = normalize(grain - n * dot(grain, n) + vec3<f32>(1e-5, 0.0, 0.0));
+                along = normalize(cross(across, n));
+            }
+            let metal = clamp(mp.metal, 0.0, 1.0);
+            m = Shade(mp.albedo, mp.f0, mp.albedo * (1.0 - metal), sqrt(a * ay), a, ay, along, across, mp.gain);
+            glow = mp.emission;
+        } else {
+            let fin = finished(sc, local, facing, to_world_normal, n);
+            m = fin.shade;
+            n = fin.n;
+        }
         var add = through * direct(m, p, n, v, bounce == frame.counts.y);
         if s.emission > 0.0 { add += through * s.colour * s.emission; }
+        add += through * glow;
         if limit > 0.0 && bounce > 0u { add = min(add, vec3<f32>(limit)); }
         colour += add;
         if bounce == frame.counts.y { break; }

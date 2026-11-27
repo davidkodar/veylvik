@@ -203,7 +203,7 @@ fn normal_matrix(m: &math::Mat4) -> math::Mat4 {
     out
 }
 /// Pixels per mesh uv unit: titles' uv is already in pixels; primitives wrap 0..1.
-fn uv_scale(geometry: &Geometry) -> [f32; 4] {
+pub(crate) fn uv_scale(geometry: &Geometry) -> [f32; 4] {
     use veylvik_document::nodes::ShapeKind;
     match geometry {
         Geometry::Shape { kind, size, .. } => {

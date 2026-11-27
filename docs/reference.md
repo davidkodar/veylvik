@@ -2377,9 +2377,16 @@ clean at a fraction of the samples (about 4.5 times less noise at the same count
 The noise of each frame is its own and repeatable. A bounce adds at most 16 to a
 pixel, so rare paths to a small bright light do not show as specks. A light with Shadows off lights through
 objects path traced too, as in the preview. A depth output
-is never path traced. Not path traced yet: textures and image cards' pictures,
-library looks and brushed finishes on 3D objects (they take their plain colour,
-roughness and metal), shadow catchers, copies at particles and Gaussian splats.
+is never path traced. Image cards show their picture with its transparency,
+shapes and model parts their textures, shadow catchers the share of light really
+blocked, and finishes (brushing, grain, ridges, wear) shape the reflections as in
+the preview. Library looks are read by the same surface code the 2D materials use
+(pattern, relief, roughness, colours), then lit physically: metals reflect the
+scene itself, glass refracts what is behind it (frosted glass by its roughness,
+tinted as light enters), and neon glows and lights what is near it. Shadows
+through glass are still solid, an image-texture look takes its base colour, and
+a neon tube has no white-hot core. Not path traced yet: copies at particles and
+Gaussian splats.
 
 `veylvik-mesh` builds the geometry (extruded outlines and primitives, watertight
 and bounded); `veylvik-scene` evaluates a scene graph at a frame into objects,
