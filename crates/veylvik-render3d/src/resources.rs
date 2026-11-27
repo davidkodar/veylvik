@@ -91,6 +91,44 @@ impl Engine {
         }
         Ok(target)
     }
+    /// `image` (`size`, premultiplied) as an Image texture look reads its texture: straight
+    /// colour stretched over a `frame`-sized buffer.
+    pub(crate) fn look_picture(
+        &self,
+        device: &wgpu::Device,
+        encoder: &mut wgpu::CommandEncoder,
+        image: &wgpu::Buffer,
+        size: [u32; 2],
+        frame: [u32; 2],
+    ) -> wgpu::Buffer {
+        let target = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("3D look picture"),
+            size: u64::from(frame[0]) * u64::from(frame[1]) * 16,
+            usage: wgpu::BufferUsages::STORAGE,
+            mapped_at_creation: false,
+        });
+        let params = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("3D look picture"),
+            contents: bytemuck::cast_slice(&[size[0], size[1], frame[0], frame[1]]),
+            usage: wgpu::BufferUsages::UNIFORM,
+        });
+        let bind = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("3D look picture"),
+            layout: &self.straight.get_bind_group_layout(0),
+            entries: &[(0, &params), (1, image), (2, &target)].map(|(binding, buffer)| {
+                wgpu::BindGroupEntry {
+                    binding,
+                    resource: buffer.as_entire_binding(),
+                }
+            }),
+        });
+        let mut pass = encoder.begin_compute_pass(&Default::default());
+        pass.set_pipeline(&self.straight);
+        pass.set_bind_group(0, &bind, &[]);
+        pass.dispatch_workgroups(frame[0].div_ceil(8), frame[1].div_ceil(8), 1);
+        drop(pass);
+        target
+    }
     /// An object's mesh in its own space, as drawn and path traced: a model part from the
     /// loaded model at the object's size (waved across the whole model when it flutters),
     /// anything else as the scene makes it.

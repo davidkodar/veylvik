@@ -125,6 +125,8 @@ pub struct Engine {
     resample: wgpu::ComputePipeline,
     reduce: wgpu::ComputePipeline,
     irradiance: wgpu::ComputePipeline,
+    /// A shape's picture as an Image texture look reads it (env.wgsl `straight`).
+    straight: wgpu::ComputePipeline,
     /// The converted panorama, reused between frames.
     panorama: Mutex<Option<wgpu::Buffer>>,
     /// What the panorama was converted from (identity, size, a frame of the shot or a
@@ -203,6 +205,19 @@ fn normal_matrix(m: &math::Mat4) -> math::Mat4 {
     out
 }
 /// Pixels per mesh uv unit: titles' uv is already in pixels; primitives wrap 0..1.
+/// A look's texture coordinates, in pixels across the mesh's uv: as `uv_scale`, or for an
+/// Image texture look showing a picture the frame's size, so the picture covers it once.
+pub(crate) fn look_scale(
+    geometry: &Geometry,
+    picture: bool,
+    [width, height]: [u32; 2],
+) -> [f32; 2] {
+    if picture {
+        return [width as f32, height as f32];
+    }
+    let [x, y, ..] = uv_scale(geometry);
+    [x, y]
+}
 pub(crate) fn uv_scale(geometry: &Geometry) -> [f32; 4] {
     use veylvik_document::nodes::ShapeKind;
     match geometry {
@@ -803,13 +818,21 @@ impl Engine {
                 let p = buffer("look parameters", &params, wgpu::BufferUsages::UNIFORM);
                 let studio = buffer("look lighting", &lighting, wgpu::BufferUsages::UNIFORM);
                 let scratch = buffer("look scratch", &[0; 16], wgpu::BufferUsages::STORAGE);
+                // An Image texture look shows the shape's Texture input, once across it.
+                let picture = object
+                    .texture
+                    .filter(|_| look.kind == veylvik_document::MaterialKind::Texture)
+                    .and_then(|source| images.iter().find(|(id, ..)| *id == source))
+                    .map(|(_, image, size, _)| {
+                        self.look_picture(device, encoder, image, *size, [width, height])
+                    });
                 let material = device.create_bind_group(&wgpu::BindGroupDescriptor {
                     label: Some("3D look material"),
                     layout: &self.material_layout,
                     entries: &[
                         (0, &p),
                         (1, &empty),
-                        (2, &empty),
+                        (2, picture.as_ref().unwrap_or(&empty)),
                         (3, &scratch),
                         (4, &empty),
                         (5, ltc),
@@ -829,7 +852,8 @@ impl Engine {
                     view: columns(&view),
                     camera: [eye[0], eye[1], eye[2], 1.0],
                     uv_scale: {
-                        let [x, y, ..] = uv_scale(&object.geometry);
+                        let [x, y] =
+                            look_scale(&object.geometry, picture.is_some(), [width, height]);
                         [x, y, lights.len() as f32, 0.0]
                     },
                 };

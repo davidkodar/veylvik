@@ -522,3 +522,66 @@ fn a_glass_ball_lets_light_through_to_its_shadow() {
     // Its faces reflect a little of it away.
     assert!(glass < open, "glass {glass}, open {open}");
 }
+#[test]
+#[ignore = "requires Vulkan"]
+fn an_image_texture_look_shows_the_shapes_picture_in_both_qualities() {
+    // Red on the left half, green on the right, on a plane with an Image texture look.
+    let pixels: Vec<[f32; 4]> = (0..W * H)
+        .map(|i| {
+            if i % W < W / 2 {
+                [0.6, 0.05, 0.05, 1.0]
+            } else {
+                [0.05, 0.6, 0.05, 1.0]
+            }
+        })
+        .collect();
+    let mut inputs = ImageInputs::default();
+    inputs.insert("picture", Arc::new(Image::new(W, H, pixels).unwrap()));
+    let shot = |quality| {
+        let mut doc = blank(W, H, Time::new(24, 1).unwrap()).unwrap();
+        let image = add(
+            &mut doc,
+            Operation::Image(nodes::Image {
+                asset: "picture".into(),
+            }),
+            &[],
+        );
+        let mut plane = op(&SHAPE_3D);
+        if let Operation::Shape3d(s) = &mut plane {
+            s.kind = ShapeKind::Plane;
+            s.size_x = 80.0.into();
+            s.size_y = 80.0.into();
+            let mut look = presets::catalogue::get("walnut").unwrap().material();
+            look.kind = MaterialKind::Texture;
+            s.look = Some(Box::new(look));
+        }
+        let plane = add(&mut doc, plane, &[("texture", image)]);
+        filmed(&mut doc, plane, quality, 64, &inputs)
+    };
+    let side = |p: &[[f32; 4]], x0: u32| {
+        let mut sum = [0.0f32; 3];
+        for y in 35..55 {
+            for x in x0..x0 + 20 {
+                for (c, s) in sum.iter_mut().enumerate() {
+                    *s += p[(y * W + x) as usize][c];
+                }
+            }
+        }
+        sum
+    };
+    for (quality, p) in [
+        ("preview", shot(SceneQuality::Preview)),
+        ("path traced", shot(SceneQuality::PathTraced)),
+    ] {
+        let (left, right) = (side(&p, 50), side(&p, 90));
+        eprintln!("{quality}: left {left:?}, right {right:?}");
+        assert!(
+            left[0] > 3.0 * left[1],
+            "{quality}: red on the left {left:?}"
+        );
+        assert!(
+            right[1] > 3.0 * right[0],
+            "{quality}: green on the right {right:?}"
+        );
+    }
+}

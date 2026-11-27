@@ -313,10 +313,11 @@ impl Engine {
                 cache,
             })
         };
-        let (resample, reduce, irradiance) = (
+        let (resample, reduce, irradiance, straight) = (
             compute("resample"),
             compute("reduce"),
             compute("irradiance"),
+            compute("straight"),
         );
         let sky_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("3D sky"),
@@ -367,6 +368,7 @@ impl Engine {
             resample,
             reduce,
             irradiance,
+            straight,
             panorama: Mutex::new(None),
             converted: Mutex::new(None),
             targets: Mutex::new(Vec::new()),

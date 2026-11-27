@@ -604,7 +604,9 @@ bevelled and reflective like any material; the texture's own detail tilts the
 normal a little, scaled by Grain, and Roughness sets its gloss. A pack pass stores the
 texture's straight colour beside the bevel height, so a textured material that also
 reflects the shot still reads three images. Without a texture the surface is
-black.
+black. As the look of a 3D shape, it shows the shape's own **Texture** input, once
+across the shape as a plain textured shape shows it (straight colour, no holes cut),
+in the preview and when path traced.
 
 Every material also takes optional **PBR maps**, placed like the texture (sampled
 where they lie in the frame) and usable with any family, for example a CC0 set from
@@ -2390,8 +2392,7 @@ tinted as light enters), and neon glows and lights what is near it. Glass lets
 light through to its shadow, tinted as it enters and dimmed by what its faces
 reflect, so clear glass casts a faint shadow and coloured glass a coloured one; the
 light goes straight on, without the bright spot a lens focuses (no caustics),
-shadow catchers included. An image-texture look takes its base colour, and
-a neon tube has no white-hot core. Not path traced yet: copies at particles and
+shadow catchers included. A neon tube has no white-hot core yet. Not path traced yet: copies at particles and
 Gaussian splats.
 
 **Denoise** (on by default) smooths away the noise left after the paths, so far

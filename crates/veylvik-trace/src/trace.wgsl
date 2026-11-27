@@ -418,6 +418,14 @@ fn load_look(k: u32) {
     studio.finish = data[q + 38u];
     map_roughness = -1.0;
 }
+// The loaded look's kind and its Grain (paths name their point `p`).
+fn look_kind() -> u32 { return p.size_op.w; }
+fn look_grain() -> f32 { return p.extra.x; }
+// A premultiplied picture's straight colour at `uv`, its edges held.
+fn straight_at(t: u32, uv: vec2<f32>) -> vec3<f32> {
+    let c = sample_picture(t, clamp(uv, vec2<f32>(0.0), vec2<f32>(1.0)), false);
+    return c.rgb / max(c.a, 1e-4) * step(1e-4, c.a);
+}
 // The look's pattern coordinates from the mesh's uv, as the interactive renderer makes them.
 fn look_uv(uv: vec2<f32>) -> vec2<f32> { return uv * look_scale / max(p.values.x, 1e-3); }
 // A microfacet normal about `n` drawn by the GGX distribution of roughness `a`.
@@ -870,7 +878,17 @@ fn path(px: vec2<f32>) -> Seen {
             // the camera's frame (a face looking at the camera faces +z, as in the preview).
             load_look(s.look);
             let to_camera = mat3x3<f32>(frame.camera[0].xyz, frame.camera[1].xyz, frame.camera[2].xyz);
-            let mp = material_point(look_uv(uv), normalize(to_camera * n));
+            var facing_camera = normalize(to_camera * n);
+            if look_kind() == 23u && s.texture != 0xffffffffu {
+                // Image texture: the shape's picture is the colour (straight, its edges
+                // held), and its own detail tilts the surface by Grain, as in the preview.
+                let texel = vec2<f32>(1.0 / frame.lens.y, 1.0 / frame.lens.z);
+                studio.palette[0] = vec4<f32>(straight_at(s.texture, uv), studio.palette[0].w);
+                let dx = dot(straight_at(s.texture, uv + vec2<f32>(texel.x, 0.0)) - straight_at(s.texture, uv - vec2<f32>(texel.x, 0.0)), LUMA);
+                let dy = dot(straight_at(s.texture, uv + vec2<f32>(0.0, texel.y)) - straight_at(s.texture, uv - vec2<f32>(0.0, texel.y)), LUMA);
+                facing_camera = normalize(facing_camera + vec3<f32>(-dx, -dy, 0.0) * look_grain() * 0.5);
+            }
+            let mp = material_point(look_uv(uv), facing_camera);
             let bent = normalize(transpose(to_camera) * mp.normal);
             if dot(bent, g) > 0.0 { n = bent; }
             if mp.glass > 0.5 {

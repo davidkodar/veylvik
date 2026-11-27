@@ -68,3 +68,23 @@ fn irradiance(@builtin(global_invocation_id) gid: vec3<u32>) {
     if gid.x >= 64u || gid.y >= 32u { return; }
     env_target[env_offset(9u) + gid.y * 64u + gid.x] = env_target[env_offset(4u) + gid.y * 64u + gid.x];
 }
+// A shape's picture made ready for an Image texture look, which reads the frame-sized
+// straight colour the 2D material reads: the picture (source.xy, premultiplied)
+// stretched over the frame (source.zw), so the look's texture coordinates cover it once.
+@compute @workgroup_size(8, 8)
+fn straight(@builtin(global_invocation_id) gid: vec3<u32>) {
+    let frame = env_params.source.zw;
+    if gid.x >= frame.x || gid.y >= frame.y { return; }
+    let size = vec2<i32>(env_params.source.xy);
+    let q = (vec2<f32>(gid.xy) + 0.5) / vec2<f32>(frame) * vec2<f32>(size) - 0.5;
+    let base = vec2<i32>(floor(q));
+    let f = fract(q);
+    var sum = vec4<f32>(0.0);
+    for (var k = 0; k < 4; k++) {
+        let o = vec2<i32>(k & 1, k >> 1u);
+        let at = clamp(base + o, vec2<i32>(0), size - 1);
+        let w = select(1.0 - f.x, f.x, o.x == 1) * select(1.0 - f.y, f.y, o.y == 1);
+        sum += env_source[u32(at.y * size.x + at.x)] * w;
+    }
+    env_target[gid.y * frame.x + gid.x] = vec4<f32>(sum.rgb / max(sum.a, 1e-4) * step(1e-4, sum.a), 1.0);
+}

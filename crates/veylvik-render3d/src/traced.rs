@@ -1,5 +1,5 @@
 //! Path traced pictures (Render scene's Quality: path traced): the scene's meshes as trees kept between frames under the same keys as the drawn meshes, surfaces and lights handed to the tracer with the meanings the interactive renderer gives them, filmed through the same camera and lens.
-use crate::{Engine, TREE_CACHE, error, uv_scale};
+use crate::{Engine, TREE_CACHE, error, look_scale};
 use std::sync::Arc;
 use veylvik_render::{Result, SceneJob, Trace};
 use veylvik_scene::Geometry;
@@ -64,7 +64,7 @@ impl Engine {
             let mut flags = if s.unlit { UNLIT } else { 0 } | if s.catcher { CATCHER } else { 0 };
             // What it shows, as the interactive renderer reads it: a card's picture, a
             // model part's own texture, or a shape's Texture input.
-            let texture = match &object.geometry {
+            let mut texture = match &object.geometry {
                 Geometry::Card { image, .. } => picture_of(*image).map(|(_, buffer, [w, h], _)| {
                     flags |= CARD;
                     number(buffer, *w, *h)
@@ -103,7 +103,16 @@ impl Engine {
                             .collect()
                     };
                     let params = vec4s(&params[..48]);
-                    let [x, y, ..] = uv_scale(&object.geometry);
+                    // A look draws its own surface, as in the preview: a texture neither
+                    // cuts nor tints it, but an Image texture look shows the shape's
+                    // Texture input, once across it.
+                    let pictured = material.kind == veylvik_document::MaterialKind::Texture
+                        && flags & CUT != 0;
+                    if !pictured {
+                        texture = None;
+                    }
+                    flags &= !(CUT | STRAIGHT);
+                    let [x, y] = look_scale(&object.geometry, pictured, [width, height]);
                     looks.push(Look {
                         params: [params[0], params[1], params[2]],
                         lighting: vec4s(&lighting),
