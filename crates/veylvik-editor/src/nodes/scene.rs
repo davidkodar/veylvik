@@ -550,6 +550,37 @@ impl Inspect for veylvik_document::nodes::Model3d {
                 cx.ask(super::Request::ChooseModel);
             }
         });
+        // The file's own animations, read on import.
+        if !self.clips.is_empty() {
+            ui.horizontal(|ui| {
+                ui.label("Animation");
+                let shown = match self.clip {
+                    0 => "None (at rest)".to_string(),
+                    n => self
+                        .clips
+                        .get(n as usize - 1)
+                        .map_or("Missing animation".into(), |c| format!("{} ({:.1} s)", c.name, c.seconds)),
+                };
+                egui::ComboBox::from_id_salt("model-clip")
+                    .selected_text(shown)
+                    .show_ui(ui, |ui| {
+                        cx.dirty |= ui.selectable_value(&mut self.clip, 0, "None (at rest)").changed();
+                        for (k, c) in self.clips.iter().enumerate() {
+                            cx.dirty |= ui
+                                .selectable_value(&mut self.clip, k as u32 + 1, format!("{} ({:.1} s)", c.name, c.seconds))
+                                .changed();
+                        }
+                    })
+                    .response
+                    .on_hover_text("Play one of the file's animations: its parts move, turn and scale as the file keys them (skinned characters and shape morphs are not played)");
+                if self.clip > 0 {
+                    cx.dirty |= ui
+                        .checkbox(&mut self.clip_loop, "Loop")
+                        .on_hover_text("Round and round; unticked, it holds its last pose once it ends")
+                        .changed();
+                }
+            });
+        }
         cx.dirty |= look(ui, &mut self.look, cx);
         cx.dirty |= placement(ui, &mut self.placement, cx);
         face_row(ui, &mut self.aim_at, cx);

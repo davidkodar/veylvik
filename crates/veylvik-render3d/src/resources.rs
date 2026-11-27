@@ -210,6 +210,7 @@ impl Engine {
                 size,
                 extent,
                 part: None,
+                play,
             } = &object.geometry
             else {
                 out.objects.push(object.clone());
@@ -218,6 +219,10 @@ impl Engine {
             let Some(model) = models.get(path) else {
                 continue;
             };
+            // Playing one of its animations: each part moved from its rest by it (in the
+            // normalised frame, so its move is scaled to the model's size here).
+            let poses =
+                play.and_then(|(clip, seconds, looping)| model.poses(clip, seconds, looping));
             for (i, part) in model.parts.iter().enumerate() {
                 let mut piece = object.clone();
                 piece.geometry = Geometry::Model {
@@ -225,7 +230,16 @@ impl Engine {
                     size: *size,
                     extent: *extent,
                     part: Some(i),
+                    // The part's mesh is the same at every moment: it is kept once.
+                    play: None,
                 };
+                if let Some(pose) = poses.as_ref().and_then(|p| p.get(i)) {
+                    let mut moved = *pose;
+                    for row in moved.iter_mut().take(3) {
+                        row[3] *= size;
+                    }
+                    piece.world = veylvik_scene::math::mul(&object.world, &moved);
+                }
                 if piece.surface.look.is_none() {
                     piece.surface.colour = [part.colour[0], part.colour[1], part.colour[2]];
                     piece.surface.metallic = part.metallic;

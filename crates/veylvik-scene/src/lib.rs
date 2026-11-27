@@ -66,6 +66,9 @@ pub enum Geometry {
         size: f32,
         extent: [f32; 3],
         part: Option<usize>,
+        /// The file's animation it plays (numbered from 0), how many seconds into it, and
+        /// whether it loops; the renderer moves each part by it.
+        play: Option<(usize, f32, bool)>,
     },
 }
 #[derive(Debug, Clone)]
@@ -693,6 +696,17 @@ fn node(doc: &Graph<'_>, id: NodeId, time: Time, depth: usize) -> Result<Scene> 
                 size: m.size.at(time)?.max(1.0),
                 extent: m.extent,
                 part: None,
+                play: if m.clip == 0 {
+                    None
+                } else {
+                    // Its first pose until it begins, then on at its speed.
+                    let since = time.seconds()? as f32 - m.clip_start.at(time)?;
+                    Some((
+                        m.clip as usize - 1,
+                        since.max(0.0) * m.clip_speed.at(time)?,
+                        m.clip_loop,
+                    ))
+                },
             },
             world: placed(&m.placement, time, centre)?,
             surface: Surface {

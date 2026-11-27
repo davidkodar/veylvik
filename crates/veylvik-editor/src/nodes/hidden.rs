@@ -20,6 +20,8 @@ pub(crate) fn hidden(operation: &Operation, name: &str, wired: &dyn Fn(&str) -> 
         Operation::Light3d(l) => {
             name == "feather" && l.kind != veylvik_document::nodes::LightKind::Area
         }
+        // A model's animation timing only while it plays one.
+        Operation::Model3d(m) => m.clip == 0 && matches!(name, "clip_start" | "clip_speed"),
         // A projection's hold time only with its camera held.
         Operation::CameraProjection(c) => name == "hold_time" && !c.hold,
         // A force shows the settings its kind uses.

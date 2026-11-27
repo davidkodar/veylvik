@@ -2,6 +2,7 @@
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
+use veylvik_mesh::animation::{self as anim, Between, Channel, Clip, Joint, Keyed};
 use veylvik_mesh::{MAX_PARTS, MAX_TEXTURE, MAX_VERTICES, Mesh, Model, Part, Texture, Vertex};
 
 type Result<T> = std::result::Result<T, String>;
@@ -209,6 +210,12 @@ pub fn load(path: &Path) -> Result<Model> {
                 metallic: pbr.metallic_factor().clamp(0.0, 1.0),
                 roughness: pbr.roughness_factor().clamp(0.0, 1.0),
                 texture,
+                joint: Some(node.index()),
+                // glTF's matrices are by column; ours by row.
+                rest_inverse: anim::affine_inverse(&std::array::from_fn(|r| {
+                    std::array::from_fn(|c| world[c][r])
+                }))
+                .unwrap_or(anim::IDENTITY),
             });
         }
     }
@@ -233,13 +240,204 @@ pub fn load(path: &Path) -> Result<Model> {
     for v in parts.iter_mut().flat_map(|p| &mut p.mesh.vertices) {
         v.position = [0, 1, 2].map(|k| (v.position[k] - centre[k]) / largest);
     }
+    let (joints, clips) = animation(&document, &buffers)?;
     Ok(Model {
         parts,
         extent: size.map(|s| s / largest),
+        joints,
+        clips,
+        centre,
+        largest,
     })
+}
+/// The file's node tree at rest and its animations (moves, turns and sizes of nodes;
+/// morph target weights are left out).
+fn animation(
+    document: &gltf::Document,
+    buffers: &[gltf::buffer::Data],
+) -> Result<(Vec<Joint>, Vec<Clip>)> {
+    let mut joints: Vec<Joint> = document
+        .nodes()
+        .map(|n| {
+            let (translation, rotation, scale) = n.transform().decomposed();
+            Joint {
+                parent: None,
+                translation,
+                rotation,
+                scale,
+            }
+        })
+        .collect();
+    for n in document.nodes() {
+        for child in n.children() {
+            if let Some(j) = joints.get_mut(child.index()) {
+                j.parent = Some(n.index());
+            }
+        }
+    }
+    let mut clips = Vec::new();
+    let mut keys = 0usize;
+    for (k, a) in document
+        .animations()
+        .enumerate()
+        .take(veylvik_document::nodes::MAX_MODEL_CLIPS)
+    {
+        let mut channels = Vec::new();
+        for channel in a.channels() {
+            let reader = channel.reader(|b| buffers.get(b.index()).map(|d| &d.0[..]));
+            let (Some(inputs), Some(outputs)) = (reader.read_inputs(), reader.read_outputs())
+            else {
+                continue;
+            };
+            use gltf::animation::util::ReadOutputs;
+            let (keyed, values): (Keyed, Vec<[f32; 4]>) = match outputs {
+                ReadOutputs::Translations(v) => (
+                    Keyed::Translation,
+                    v.map(|[x, y, z]| [x, y, z, 0.0]).collect(),
+                ),
+                ReadOutputs::Rotations(v) => (Keyed::Rotation, v.into_f32().collect()),
+                ReadOutputs::Scales(v) => {
+                    (Keyed::Scale, v.map(|[x, y, z]| [x, y, z, 0.0]).collect())
+                }
+                ReadOutputs::MorphTargetWeights(_) => continue,
+            };
+            let times: Vec<f32> = inputs.collect();
+            keys += times.len();
+            if keys > anim::MAX_KEYS {
+                return Err(format!(
+                    "the model's animations hold over {} keys",
+                    anim::MAX_KEYS
+                ));
+            }
+            let between = match channel.sampler().interpolation() {
+                gltf::animation::Interpolation::Step => Between::Step,
+                gltf::animation::Interpolation::Linear => Between::Linear,
+                gltf::animation::Interpolation::CubicSpline => Between::CubicSpline,
+            };
+            let wanted = if between == Between::CubicSpline {
+                3 * times.len()
+            } else {
+                times.len()
+            };
+            if values.len() < wanted
+                || times.iter().any(|t| !t.is_finite())
+                || times.windows(2).any(|w| w[1] < w[0])
+            {
+                return Err(format!(
+                    "animation {} has keys out of order or missing",
+                    k + 1
+                ));
+            }
+            channels.push(Channel {
+                node: channel.target().node().index(),
+                keyed,
+                between,
+                times,
+                values,
+            });
+        }
+        clips.push(Clip {
+            name: a
+                .name()
+                .map_or_else(|| format!("Animation {}", k + 1), str::to_owned),
+            channels,
+        });
+    }
+    Ok((joints, clips))
 }
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_models_own_animations_move_its_parts_as_the_file_keys_them() {
+        // A 1 x 1 quad at the origin (glTF, y up) with two clips on its node: Slide moves
+        // it 2 to the right over a second; Turn turns it a quarter about z.
+        let mut bin = Vec::new();
+        let mut put = |values: &[f32]| {
+            values
+                .iter()
+                .for_each(|v| bin.extend_from_slice(&v.to_le_bytes()))
+        };
+        put(&[0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 0.0]);
+        let h = std::f32::consts::FRAC_1_SQRT_2;
+        let mut tail = Vec::new();
+        for i in [0u16, 1, 2, 0, 2, 3] {
+            tail.extend_from_slice(&i.to_le_bytes());
+        }
+        bin.extend_from_slice(&tail);
+        let mut put = |values: &[f32]| {
+            values
+                .iter()
+                .for_each(|v| bin.extend_from_slice(&v.to_le_bytes()))
+        };
+        put(&[0.0, 1.0]);
+        put(&[0.0, 0.0, 0.0, 2.0, 0.0, 0.0]);
+        put(&[0.0, 0.0, 0.0, 1.0, 0.0, 0.0, h, h]);
+        let dir = std::env::temp_dir().join(format!("veylvik-moving-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("quad.bin"), &bin).unwrap();
+        let gltf = serde_json::json!({
+            "asset": {"version": "2.0"},
+            "scene": 0, "scenes": [{"nodes": [0]}], "nodes": [{"mesh": 0}],
+            "meshes": [{"primitives": [{"attributes": {"POSITION": 0}, "indices": 1}]}],
+            "buffers": [{"uri": "quad.bin", "byteLength": bin.len()}],
+            "bufferViews": [
+                {"buffer": 0, "byteOffset": 0, "byteLength": 48},
+                {"buffer": 0, "byteOffset": 48, "byteLength": 12},
+                {"buffer": 0, "byteOffset": 60, "byteLength": 8},
+                {"buffer": 0, "byteOffset": 68, "byteLength": 24},
+                {"buffer": 0, "byteOffset": 92, "byteLength": 32}
+            ],
+            "accessors": [
+                {"bufferView": 0, "componentType": 5126, "count": 4, "type": "VEC3", "min": [0, 0, 0], "max": [1, 1, 0]},
+                {"bufferView": 1, "componentType": 5123, "count": 6, "type": "SCALAR"},
+                {"bufferView": 2, "componentType": 5126, "count": 2, "type": "SCALAR", "min": [0], "max": [1]},
+                {"bufferView": 3, "componentType": 5126, "count": 2, "type": "VEC3"},
+                {"bufferView": 4, "componentType": 5126, "count": 2, "type": "VEC4"}
+            ],
+            "animations": [
+                {"name": "Slide", "samplers": [{"input": 2, "output": 3}], "channels": [{"sampler": 0, "target": {"node": 0, "path": "translation"}}]},
+                {"name": "Turn", "samplers": [{"input": 2, "output": 4}], "channels": [{"sampler": 0, "target": {"node": 0, "path": "rotation"}}]}
+            ]
+        });
+        std::fs::write(dir.join("quad.gltf"), gltf.to_string()).unwrap();
+        let model = super::load(&dir.join("quad.gltf")).unwrap();
+        std::fs::remove_dir_all(&dir).ok();
+        let names: Vec<_> = model
+            .clips
+            .iter()
+            .map(|c| (c.name.as_str(), c.seconds()))
+            .collect();
+        assert_eq!(names, [("Slide", 1.0), ("Turn", 1.0)]);
+        let moved = |clip, t, looping, p: [f32; 3]| {
+            let m = model.poses(clip, t, looping).unwrap()[0];
+            [0, 1, 2].map(|i| (0..3).map(|k| m[i][k] * p[k]).sum::<f32>() + m[i][3])
+        };
+        let near = |a: [f32; 3], b: [f32; 3]| a.iter().zip(b).all(|(x, y)| (x - y).abs() < 1e-5);
+        // The quad's corner glTF (1, 0) is (0.5, 0.5) in the normalised frame (y down).
+        let corner = [0.5, 0.5, 0.0];
+        assert!(near(moved(0, 0.0, true, corner), corner));
+        assert!(
+            near(moved(0, 0.5, true, corner), [1.5, 0.5, 0.0]),
+            "{:?}",
+            moved(0, 0.5, true, corner)
+        );
+        assert!(
+            near(moved(0, 1.5, true, corner), [1.5, 0.5, 0.0]),
+            "looped round"
+        );
+        assert!(
+            near(moved(0, 1.5, false, corner), [2.5, 0.5, 0.0]),
+            "held at its end"
+        );
+        // A quarter turn about z takes glTF (1, 0) to (0, 1): in the normalised frame, the
+        // top-left corner (-0.5, -0.5).
+        assert!(
+            near(moved(1, 1.0, false, corner), [-0.5, -0.5, 0.0]),
+            "{:?}",
+            moved(1, 1.0, false, corner)
+        );
+        assert!(model.poses(2, 0.0, true).is_none());
+    }
     #[test]
     fn loads_a_textured_part_upright_and_normalised() {
         // A 2 x 1 quad in the xy plane, 4 units up (glTF y is up), with a 2 x 1 texture.

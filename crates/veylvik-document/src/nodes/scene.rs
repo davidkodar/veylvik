@@ -4,7 +4,7 @@
 //! Positions are offsets from where an object naturally sits (the frame centre at
 //! depth 0, or a title's own place), so a fresh object lines up with the 2D layer.
 #[allow(unused_imports)]
-use crate::registry::{NodeType, Parameter, ParameterKind, PortKind, other, scalar};
+use crate::registry::{NodeType, Parameter, ParameterKind, PortKind, integer, other, scalar};
 #[allow(unused_imports)]
 use crate::*;
 use serde::{Deserialize, Serialize};
@@ -741,12 +741,37 @@ pub struct Model3d {
     /// while that thing is in the scene.
     #[serde(default)]
     pub aim_at: Option<NodeId>,
+    /// The file's animations (names and lengths), read on import, so the scene and the
+    /// inspector know them without reading the file.
+    #[serde(default)]
+    pub clips: Vec<ModelClip>,
+    /// The animation played: 0 none (the model as it rests), n the file's nth.
+    #[serde(default)]
+    pub clip: u32,
+    /// When it begins, in seconds of the composition (before then the model holds its
+    /// first pose).
+    #[serde(default = "zero")]
+    pub clip_start: Scalar,
+    /// How fast it plays (1 as made; negative plays backwards).
+    #[serde(default = "one")]
+    pub clip_speed: Scalar,
+    /// Round and round, or holding its last pose once it ends.
+    #[serde(default = "yes")]
+    pub clip_loop: bool,
 }
+/// One animation of a model file.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ModelClip {
+    pub name: String,
+    pub seconds: f32,
+}
+pub const MAX_MODEL_CLIPS: usize = 256;
 pub static MODEL_3D: NodeType = NodeType {
     type_id: "model_3d",
     version: 1,
     label: "3D model",
-    description: "An imported glTF 2.0 model (.glb or .gltf with its files): every part with its own base colour, texture, metallic and roughness, centred on its box and scaled so its largest side is Size pixels. Placement moves, turns and scales it about the frame centre; a library Look replaces its materials. Outputs a scene. Aim at (aim_at, a node id) keeps its front turned towards that camera, light or object wherever both move.",
+    description: "An imported glTF 2.0 model (.glb or .gltf with its files): every part with its own base colour, texture, metallic and roughness, centred on its box and scaled so its largest side is Size pixels. Placement moves, turns and scales it about the frame centre; a library Look replaces its materials. Outputs a scene. Aim at (aim_at, a node id) keeps its front turned towards that camera, light or object wherever both move. Clip plays one of the file's animations (clips lists them, read on import; 0 none, n the nth): its parts move, turn and scale as the file keys them (no skinning or shape morphs), starting at clip_start seconds of the composition, at clip_speed times, round and round with clip_loop or holding the last pose.",
     inputs: &[],
     optional: &[],
     output: PortKind::Scene,
@@ -757,9 +782,14 @@ pub static MODEL_3D: NodeType = NodeType {
         other("placement", ParameterKind::Placement, "transform"),
         other("look", ParameterKind::Look, "library material"),
         other("aim_at", ParameterKind::NodeRef, "thing faced"),
+        other("clips", ParameterKind::ModelClips, "the file's animations"),
+        integer("clip", "animation number", 0, MAX_MODEL_CLIPS as u32, 0),
+        scalar("clip_start", "seconds", -3600.0, 3600.0, 0.0),
+        scalar("clip_speed", "times", -16.0, 16.0, 1.0),
+        other("clip_loop", ParameterKind::Boolean, "loops"),
     ],
 };
-node!(Model3d, MODEL_3D, [size], {
+node!(Model3d, MODEL_3D, [size, clip_start, clip_speed], {
     fn validate(&self) -> Result<()> {
         if self.model.len() > 4096 || self.model.contains('\0') {
             return fail("The model path is too long or invalid");
@@ -772,6 +802,16 @@ node!(Model3d, MODEL_3D, [size], {
             return fail("Model proportions must be 0 to 1");
         }
         validate_look(&self.look)?;
+        if self.clips.len() > MAX_MODEL_CLIPS
+            || self
+                .clips
+                .iter()
+                .any(|c| c.name.len() > 256 || !c.seconds.is_finite() || c.seconds < 0.0)
+        {
+            return fail(
+                "A model has at most 256 animations, each named and of a length of 0 or more",
+            );
+        }
         self.placement.validate()
     }
 });

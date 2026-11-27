@@ -11,6 +11,7 @@ use veylvik_document::{
     vector::{FillRule, PathCommand},
 };
 
+pub mod animation;
 mod model;
 mod primitives;
 pub use model::{MAX_PARTS, MAX_TEXTURE, MAX_VERTICES, Model, Part, Texture};

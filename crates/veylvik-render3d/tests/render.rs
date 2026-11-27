@@ -707,6 +707,8 @@ fn a_model_renders_its_parts_with_their_textures_and_materials() {
         metallic: 0.0,
         roughness: 1.0,
         texture,
+        joint: None,
+        rest_inverse: veylvik_mesh::animation::IDENTITY,
     };
     let model = Model {
         parts: vec![
@@ -714,6 +716,7 @@ fn a_model_renders_its_parts_with_their_textures_and_materials() {
             part(quad(0.0, 0.5), [0.0, 1.0, 0.0, 1.0], None),
         ],
         extent: [1.0, 0.5, 0.0],
+        ..Default::default()
     };
     let mut inputs = ImageInputs::default();
     inputs.insert_model("/models/test.glb", Arc::new(model));
@@ -2370,8 +2373,11 @@ fn particles_are_born_on_an_imported_models_surface() {
             metallic: 0.0,
             roughness: 1.0,
             texture: None,
+            joint: None,
+            rest_inverse: veylvik_mesh::animation::IDENTITY,
         }],
         extent: [1.0, 0.5, 0.0],
+        ..Default::default()
     };
     let mut inputs = ImageInputs::default();
     inputs.insert_model("/models/plate.glb", Arc::new(model));
@@ -2708,5 +2714,94 @@ fn a_fluttering_banner_catches_the_light_in_bands_along_its_folds() {
         spread(&waving) > 0.05,
         "its folds catch the light in bands: {}",
         spread(&waving)
+    );
+}
+#[test]
+#[ignore = "requires Vulkan"]
+fn a_model_playing_its_animation_moves_its_parts_in_the_render() {
+    use veylvik_mesh::animation::{Between, Channel, Clip, Joint, Keyed};
+    use veylvik_scene::{Model, Part};
+    let renderer = renderer();
+    // A small square on the model's one node, which its clip moves right by half of
+    // the model's size over a second (glTF's frame: y up, here at the origin, size 1).
+    let quad = veylvik_mesh::Mesh {
+        vertices: [
+            [-0.1, -0.1, 0.0],
+            [0.1, -0.1, 0.0],
+            [0.1, 0.1, 0.0],
+            [-0.1, 0.1, 0.0],
+        ]
+        .map(|position| veylvik_mesh::Vertex {
+            position,
+            normal: [0.0, 0.0, 1.0],
+            uv: [0.0, 0.0],
+        })
+        .to_vec(),
+        indices: vec![0, 2, 1, 0, 3, 2],
+        cap_indices: 0,
+    };
+    let model = Model {
+        parts: vec![Part {
+            mesh: quad,
+            colour: [1.0; 4],
+            metallic: 0.0,
+            roughness: 1.0,
+            texture: None,
+            joint: Some(0),
+            rest_inverse: veylvik_mesh::animation::IDENTITY,
+        }],
+        extent: [1.0, 1.0, 0.0],
+        joints: vec![Joint {
+            parent: None,
+            translation: [0.0; 3],
+            rotation: [0.0, 0.0, 0.0, 1.0],
+            scale: [1.0; 3],
+        }],
+        clips: vec![Clip {
+            name: "Slide".into(),
+            channels: vec![Channel {
+                node: 0,
+                keyed: Keyed::Translation,
+                between: Between::Linear,
+                times: vec![0.0, 1.0],
+                values: vec![[0.0; 4], [0.5, 0.0, 0.0, 0.0]],
+            }],
+        }],
+        centre: [0.0; 3],
+        largest: 1.0,
+    };
+    let mut inputs = ImageInputs::default();
+    inputs.insert_model("/models/slide.glb", Arc::new(model));
+    let middle = |clip: u32| {
+        let mut doc = blank(W, H, Time::new(24, 1).unwrap()).unwrap();
+        let mut node = op(&MODEL_3D);
+        if let Operation::Model3d(m) = &mut node {
+            m.model = "/models/slide.glb".into();
+            m.size = 120.0.into();
+            m.extent = [1.0, 1.0, 0.0];
+            m.clip = clip;
+            // Half a second in at the first frame.
+            m.clip_start = (-0.5).into();
+        }
+        let model = add(&mut doc, node, &[]);
+        doc.output = add(&mut doc, op(&RENDER_SCENE), &[("scene", model)]);
+        let out = render(&renderer, &doc, &inputs);
+        let (mut sum, mut weight) = (0.0f32, 0.0f32);
+        for (i, p) in out.iter().enumerate() {
+            sum += (i as u32 % W) as f32 * p[3];
+            weight += p[3];
+        }
+        assert!(weight > 0.0, "the square shows");
+        sum / weight
+    };
+    let (rest, playing) = (middle(0), middle(1));
+    assert!(
+        (rest - W as f32 / 2.0).abs() < 2.0,
+        "at rest in the middle: {rest}"
+    );
+    // Half way through the clip: half its 0.5 move, a quarter of the model's 120 px.
+    assert!(
+        (playing - rest - 30.0).abs() < 2.0,
+        "moved by its clip: {rest} -> {playing}"
     );
 }

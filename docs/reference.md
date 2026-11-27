@@ -2302,7 +2302,7 @@ settles on the wrong kind of motion can still look sure. The
   metallic-roughness material: base colour factor and texture (8-bit images,
   decoded to linear and box-reduced to at most 1024 pixels a side), metallic and
   roughness factors. Normal, metallic-roughness, occlusion and emissive maps,
-  transparency, skins and animation are not read. glTF's y up becomes y down,
+  transparency, skins and morph targets are not read. glTF's y up becomes y down,
   and the model is centred on its box and scaled so its largest side is 1,
   then **Size** pixels; **Extent**, measured on import, gives the scene its box
   without reading the file. A library **Look** replaces every part's material.
@@ -2310,6 +2310,17 @@ settles on the wrong kind of motion can still look sure. The
   project; Add > 3D > 3D model asks for the file, and **Choose model file…** in
   the inspector replaces it (one undo step). The CLI and MCP load a plan's
   models with its other inputs.
+  A model plays its file's own **animations**: **Clip** chooses one (0 none, the
+  model as it rests; n the file's nth, listed with their lengths in **Clips**,
+  which import reads), and its parts move, turn and scale as the file keys their
+  nodes, each with the nodes above it (a wheel turning on a car that drives),
+  between keys as the file says (stepped, straight, or along its curves).
+  **Clip start** is when it begins, in seconds of the composition (before then
+  the model holds its first pose), **Clip speed** how fast it plays (negative
+  plays it backwards), and **Clip loop** plays it round and round or holds its
+  last pose once it ends. Skinned characters (bones bending one mesh) and shape
+  morphs are not played, and the scene's box for the model, particles born on it
+  and collisions with it use the model as it rests.
 - **Figure** (`figure_3d`): a walking person in the scene, from the
   `veylvik-figure` crate. Movement: the legs follow the measured joint angles
   of normal adult walking (hip, knee and ankle every 5% of the stride, the

@@ -74,6 +74,19 @@ impl Studio {
         };
         m.model = path.clone();
         m.extent = chosen.model.extent;
+        m.clips = chosen
+            .model
+            .clips
+            .iter()
+            .take(veylvik_document::nodes::MAX_MODEL_CLIPS)
+            .map(|c| veylvik_document::nodes::ModelClip {
+                name: c.name.chars().take(256).collect(),
+                seconds: c.seconds(),
+            })
+            .collect();
+        if m.clip as usize > m.clips.len() {
+            m.clip = 0;
+        }
         if node.label == veylvik_document::nodes::MODEL_3D.label
             && let Some(stem) = chosen.path.file_stem()
         {

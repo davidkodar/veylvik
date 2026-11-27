@@ -26,10 +26,21 @@ pub struct Part {
     pub metallic: f32,
     pub roughness: f32,
     pub texture: Option<Arc<Texture>>,
+    /// The node of the file's tree it hangs from, which its clips may move.
+    pub joint: Option<usize>,
+    /// The inverse of that node's place at rest (glTF's frame), so its motion is its
+    /// place now times this.
+    pub rest_inverse: crate::animation::Mat,
 }
 #[derive(Debug, Clone, Default)]
 pub struct Model {
     pub parts: Vec<Part>,
     /// The normalised box's size: its largest side is 1.
     pub extent: [f32; 3],
+    /// The file's node tree at rest, and the clips that key it.
+    pub joints: Vec<crate::animation::Joint>,
+    pub clips: Vec<crate::animation::Clip>,
+    /// The normalised frame: glTF positions (y flipped) less `centre`, over `largest`.
+    pub centre: [f32; 3],
+    pub largest: f32,
 }
