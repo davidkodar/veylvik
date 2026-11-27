@@ -11,6 +11,21 @@ struct Vertex { @builtin(position) position: vec4<f32>, @location(0) uv: vec2<f3
 fn srgb(v: vec3<f32>) -> vec3<f32> {
     return select(1.055 * pow(v, vec3<f32>(1.0 / 2.4)) - vec3<f32>(0.055), 12.92 * v, v <= vec3<f32>(0.0031308));
 }
+// Light to the screen: encoded as sRGB, or (flag 2048) as Rec.709 video is (its code values,
+// which a player sends to the screen as they are). An sRGB target encodes what it is given,
+// so there the video curve's code values are handed over sRGB-decoded.
+fn to_screen(v: vec3<f32>) -> vec3<f32> {
+    if (params.size.z & 2048u) != 0u {
+        let c = max(v, vec3<f32>(0.0));
+        let code = select(1.099 * pow(c, vec3<f32>(0.45)) - vec3<f32>(0.099), 4.5 * c, c < vec3<f32>(0.018));
+        if (params.size.z & 1u) != 0u {
+            return select(pow((code + vec3<f32>(0.055)) / 1.055, vec3<f32>(2.4)), code / 12.92, code <= vec3<f32>(0.04045));
+        }
+        return code;
+    }
+    if (params.size.z & 1u) == 0u { return srgb(v); }
+    return v;
+}
 // ACES 1.0 RRT + sRGB ODT, Stephen Hill's fit; mirrors veylvik_render::display::filmic.
 fn filmic(rgb: vec3<f32>) -> vec3<f32> {
     let input = mat3x3<f32>(vec3<f32>(0.59719, 0.07600, 0.02840), vec3<f32>(0.35458, 0.90834, 0.13383), vec3<f32>(0.04823, 0.01566, 0.83777));
@@ -83,8 +98,7 @@ fn sample_pixel(position: vec2<i32>) -> vec4<f32> {
     let backdrop = (params.size.z >> 7u) & 3u;
     if backdrop == 1u { checker = 0.0; } else if backdrop == 2u { checker = 0.18; } else if backdrop == 3u { checker = 1.0; }
     color += vec3<f32>(checker * (1.0 - alpha));
-    if (params.size.z & 1u) == 0u { color = srgb(color); }
-    return vec4<f32>(color, 1.0);
+    return vec4<f32>(to_screen(color), 1.0);
 }
 
 // What shows through where the picture is clear: the checkerboard or a plain backdrop.

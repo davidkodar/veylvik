@@ -162,6 +162,10 @@ pub struct Values {
     /// The preview quality a session starts with: 1 full, 2 half, 4 quarter.
     pub preview_quality: u32,
     pub backdrop: Backdrop,
+    /// Show the picture as a video player shows Rec.709 video (its code values on the
+    /// screen) rather than encoded as sRGB: imported Rec.709 footage then looks as it does
+    /// in a player. Only the viewer changes; rendering and export do not.
+    pub video_curve: bool,
     /// Action-safe and title-safe areas as percentages of the frame.
     pub safe_action: u32,
     pub safe_title: u32,
@@ -221,6 +225,7 @@ impl Default for Values {
             apply_delay_ms: 300,
             preview_quality: 1,
             backdrop: Backdrop::default(),
+            video_curve: false,
             safe_action: 90,
             safe_title: 80,
             projects_folder: String::new(),
@@ -477,6 +482,7 @@ impl Preferences {
                 self.draft.node_thumbnails = d.node_thumbnails;
                 self.draft.preview_quality = d.preview_quality;
                 self.draft.backdrop = d.backdrop;
+                self.draft.video_curve = d.video_curve;
                 self.draft.safe_action = d.safe_action;
                 self.draft.safe_title = d.safe_title;
                 self.draft.timecode_hour = d.timecode_hour;
@@ -883,6 +889,8 @@ impl Preferences {
                         ui.selectable_value(&mut self.draft.backdrop, value, label);
                     }
                 });
+                ui.checkbox(&mut self.draft.video_curve, "Show video as a player does")
+                    .on_hover_text("Encode the viewer with the Rec.709 video curve instead of sRGB, so imported Rec.709 footage looks as it does in a video player. Only the viewer changes; renders and exports do not.");
                 ui.horizontal(|ui| {
                     ui.label("Safe areas");
                     ui.add(

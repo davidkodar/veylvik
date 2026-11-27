@@ -1166,6 +1166,7 @@ impl Studio {
             filmic: self.project.document.snapshot().ocio.view.is_none()
                 && !self.project.document.snapshot().display.is_standard(),
             backdrop: self.preferences.values.backdrop as u8,
+            video_curve: self.preferences.values.video_curve,
             host: self
                 .host_display
                 .as_ref()

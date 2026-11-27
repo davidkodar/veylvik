@@ -43,6 +43,8 @@ pub struct ViewSettings {
     pub channel: Channel,
     /// Behind transparent areas: 0 checkerboard, 1 black, 2 grey, 3 white.
     pub backdrop: u8,
+    /// The Rec.709 video curve to the screen in place of sRGB, as a video player shows video.
+    pub video_curve: bool,
     /// The host's display ([`veylvik_preview::screen::HostEncode::identity`]) in place of
     /// the clip, filmic or OCIO view; 0 for Veylvik's own.
     pub host: u64,
@@ -211,6 +213,7 @@ impl Display {
                         | (u32::from(settings.fast_filter) << 3)
                         | ((settings.channel as u32) << 4)
                         | ((u32::from(settings.backdrop) & 3) << 7)
+                        | (u32::from(settings.video_curve) << 11)
                         | host_flags,
                     exposure.to_bits(),
                     frame.region().x,
@@ -425,6 +428,71 @@ mod tests {
     }
     #[test]
     #[ignore = "requires Vulkan"]
+    fn rec709_footage_shows_as_a_player_shows_it_with_the_video_curve() {
+        let renderer = Renderer::new().unwrap();
+        // Light from a Rec.709 code value of 0.5, decoded by the camera curve as footage is.
+        let light = ((0.5f32 + 0.099) / 1.099).powf(1.0 / 0.45);
+        let node = Node::new(
+            "Grey",
+            Operation::Solid(veylvik_document::nodes::Solid {
+                color: [light, light, light, 1.0],
+            }),
+            &[],
+        );
+        let doc = Composition {
+            published: Default::default(),
+            markers: Default::default(),
+            backdrops: Default::default(),
+            ocio: Default::default(),
+            working_space: Default::default(),
+            display: Default::default(),
+            groups: Default::default(),
+            schema: 1,
+            frame_count: 240,
+            width: 1,
+            height: 1,
+            frame_rate: Time::new(24, 1).unwrap(),
+            output: node.id,
+            nodes: [(node.id, node)].into(),
+        };
+        let frame = Arc::new(
+            renderer
+                .render_gpu(
+                    &Plan::compile(&doc).unwrap(),
+                    RenderRequest::full(Time::new(0, 1).unwrap()),
+                    &ImageInputs::default(),
+                )
+                .unwrap(),
+        );
+        for format in [
+            wgpu::TextureFormat::Rgba8Unorm,
+            wgpu::TextureFormat::Rgba8UnormSrgb,
+        ] {
+            let shown = |video_curve: bool| {
+                paint_with_settings(
+                    &renderer,
+                    frame.clone(),
+                    1,
+                    1,
+                    format,
+                    ViewSettings {
+                        video_curve,
+                        ..Default::default()
+                    },
+                )[0][0]
+            };
+            // As a player shows it: the code value 0.5 itself on the screen (128); as sRGB,
+            // lighter (about 139).
+            assert!(
+                shown(true).abs_diff(128) <= 1,
+                "{format:?} video curve: {}",
+                shown(true)
+            );
+            assert!(shown(false) >= 136, "{format:?} sRGB: {}", shown(false));
+        }
+    }
+    #[test]
+    #[ignore = "requires Vulkan"]
     fn viewer_exposure_and_alpha_inspection_leave_hdr_frame_unchanged() {
         let renderer = Renderer::new().unwrap();
         let node = Node::new(
@@ -477,6 +545,7 @@ mod tests {
                         filmic: false,
                         channel: Default::default(),
                         backdrop: 0,
+                        video_curve: false,
                         host: 0,
                     },
                 );
@@ -503,6 +572,7 @@ mod tests {
                         filmic: false,
                         channel: Default::default(),
                         backdrop: 0,
+                        video_curve: false,
                         host: 0,
                     },
                 );

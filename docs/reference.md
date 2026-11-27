@@ -2884,11 +2884,20 @@ at once, and whichever is reached first applies. Kept as `apply_after_pause`,
 **Viewer and timeline** also holds the **preview quality** a session and each
 new project starts with (Full, Half or Quarter; the transport's choice changes
 it for the session), what the viewer shows **behind transparent areas**
-(the checkerboard, black, mid grey or white; never part of a render), and the
+(the checkerboard, black, mid grey or white; never part of a render), whether
+to **show video as a player does**, and the
 **safe areas** as percentages of the frame (action 90 and title 80 by default,
 each 50 to 100), used by the viewer's Safe areas and by the text guides. Guide
 lines are drawn with a dark edge so they read on any picture. Kept as
-`preview_quality`, `backdrop`, `safe_action` and `safe_title`.
+`preview_quality`, `backdrop`, `video_curve`, `safe_action` and `safe_title`.
+
+Veylvik decodes Rec.709 video to scene light by its camera curve, as compositing
+needs, and the viewer encodes light for the screen as sRGB; the two curves differ,
+so footage's mid-tones look lighter in the viewer than in a video player (a code
+value of 0.5 shows at about 0.55). **Show video as a player does** encodes the viewer
+with the Rec.709 video curve instead, so imported Rec.709 footage shows its own code
+values, as a player shows it; pictures made in Veylvik then look a little darker in
+the mid-tones. Only the viewer changes: renders and exports are the same either way.
 
 **Editing** also sets the curve a setting's **first keyframe** makes: linear
 (the default) or smooth (`smooth_keys`). It applies to keys added with the
