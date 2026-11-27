@@ -2386,8 +2386,11 @@ blocked, and finishes (brushing, grain, ridges, wear) shape the reflections as i
 the preview. Library looks are read by the same surface code the 2D materials use
 (pattern, relief, roughness, colours), then lit physically: metals reflect the
 scene itself, glass refracts what is behind it (frosted glass by its roughness,
-tinted as light enters), and neon glows and lights what is near it. Shadows
-through glass are still solid, an image-texture look takes its base colour, and
+tinted as light enters), and neon glows and lights what is near it. Glass lets
+light through to its shadow, tinted as it enters and dimmed by what its faces
+reflect, so clear glass casts a faint shadow and coloured glass a coloured one; the
+light goes straight on, without the bright spot a lens focuses (no caustics),
+shadow catchers included. An image-texture look takes its base colour, and
 a neon tube has no white-hot core. Not path traced yet: copies at particles and
 Gaussian splats.
 

@@ -1,5 +1,5 @@
 //! The tracer on the GPU: one compute program over the packed scene, run in passes of a few samples each, sent to the GPU one at a time so a long picture never holds the GPU in one piece, averaging into the picture as it goes, or, to be denoised, into a buffer of its own with each pixel's guides (denoise.rs). Mesh geometry stays on the GPU while the same meshes are in the scene; placings, surfaces, the top tree and lights are sent each frame.
-use crate::scene::{Mat4, Packed};
+use crate::scene::{GLASS, Mat4, Packed};
 use std::sync::Mutex;
 use wgpu::util::DeviceExt;
 
@@ -407,6 +407,8 @@ impl Tracer {
         let (data, offsets, [lights_at, textures_at, looks_at]) =
             frame_data(scene, lights, &places, looks);
         let data = buffer(device, "path tracer frame", &data);
+        // Shadow rays look for glass to pass through only when there is some.
+        let has_glass = scene.surfaces.iter().any(|s| s.flags & GLASS != 0);
         // The passes: each takes a few samples for every pixel, as many as keep it short.
         let blend = blend.clamp(0.0, 1.0);
         let per_pass = if blend < 1.0 && work.is_none() {
@@ -447,7 +449,9 @@ impl Tracer {
                 offsets,
                 lights_at: [
                     lights_at,
-                    u32::from(settings.sample_sky) | if work.is_some() { 2 } else { 0 },
+                    u32::from(settings.sample_sky)
+                        | if work.is_some() { 2 } else { 0 }
+                        | if has_glass { 4 } else { 0 },
                     textures_at,
                     looks_at,
                 ],

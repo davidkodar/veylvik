@@ -460,3 +460,65 @@ fn a_library_look_path_traces_with_its_pattern_and_its_glow() {
     let neon = disc(W / 2 + 22, &traced);
     assert!(mean(&neon, 2) > 0.3 && mean(&neon, 2) > 1.5 * mean(&neon, 0));
 }
+#[test]
+#[ignore = "requires Vulkan"]
+fn a_glass_ball_lets_light_through_to_its_shadow() {
+    // A ball between a lamp on the right and a matte wall behind: the wall's light where the
+    // ball's shadow falls, for a matte ball, a glass one and none.
+    let shadow = |ball: Option<Operation>| {
+        let mut doc = blank(W, H, Time::new(24, 1).unwrap()).unwrap();
+        let mut wall = op(&SHAPE_3D);
+        if let Operation::Shape3d(s) = &mut wall {
+            s.kind = ShapeKind::Plane;
+            s.size_x = 600.0.into();
+            s.size_y = 600.0.into();
+            s.placement.position = [0.0, 0.0, -60.0].into();
+            s.colour = [0.8; 3].into();
+            s.roughness = 1.0.into();
+        }
+        let wall = add(&mut doc, wall, &[]);
+        let mut lamp = op(&LIGHT_3D);
+        if let Operation::Light3d(l) = &mut lamp {
+            l.kind = LightKind::Point;
+            l.placement.position = [150.0, 0.0, 200.0].into();
+            l.intensity = 50.0.into();
+            l.shadows = true;
+        }
+        let lamp = add(&mut doc, lamp, &[]);
+        let mut parts = vec![("scene", wall), ("scene_2", lamp)];
+        if let Some(ball) = ball {
+            parts.push(("scene_3", add(&mut doc, ball, &[])));
+        }
+        let scene = add(&mut doc, op(&MERGE_SCENES), &parts);
+        let out = filmed(
+            &mut doc,
+            scene,
+            SceneQuality::PathTraced,
+            128,
+            &ImageInputs::default(),
+        );
+        let (mut sum, mut n) = (0.0, 0);
+        for y in 40..50 {
+            for x in 35..50 {
+                sum += out[(y * W + x) as usize][1];
+                n += 1;
+            }
+        }
+        sum / n as f32
+    };
+    let matte = shadow(Some(sphere(0.0, [0.8; 3], 0.0, 0.8, 0.0)));
+    let glass = shadow(Some(looked(0.0, "glass_clear")));
+    let open = shadow(None);
+    eprintln!("wall in the shadow: matte ball {matte}, glass ball {glass}, no ball {open}");
+    assert!(
+        open > 2.0 * matte,
+        "the matte ball's shadow shows: {matte} of {open}"
+    );
+    // Clear glass lets most of the lamp's light through: a faint shadow, not a solid one.
+    assert!(
+        glass > matte + 0.6 * (open - matte),
+        "glass {glass}, matte {matte}, open {open}"
+    );
+    // Its faces reflect a little of it away.
+    assert!(glass < open, "glass {glass}, open {open}");
+}

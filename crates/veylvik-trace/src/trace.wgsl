@@ -47,6 +47,7 @@ const CATCHER: u32 = 2u;
 const CARD: u32 = 4u;
 const CUT: u32 = 8u;
 const STRAIGHT: u32 = 16u;
+const GLASS: u32 = 32u;
 fn bits(v: vec4<f32>) -> vec4<u32> { return bitcast<vec4<u32>>(v); }
 fn instance_at(i: u32) -> Instance {
     let b = frame.offsets.x + 7u * i;
@@ -187,9 +188,14 @@ fn mesh_hit(inst: Instance, o: vec3<f32>, d: vec3<f32>, far: f32, stop_at_first:
     }
     return best;
 }
-// The nearest surface along a world ray nearer than `far`; with `stop_at_first`, the first found
-// that blocks light (unlit cards and shadow catchers do not).
-fn scene_hit(o: vec3<f32>, d: vec3<f32>, far: f32, stop_at_first: bool) -> Hit {
+// What a walk of the scene looks for: the nearest surface, the first found that blocks light
+// (unlit surfaces, cards, shadow catchers and glass do not), or the nearest glass.
+const NEAREST: u32 = 0u;
+const BLOCKER: u32 = 1u;
+const NEAREST_GLASS: u32 = 2u;
+// What a walk finds along a world ray nearer than `far`.
+fn scene_hit(o: vec3<f32>, d: vec3<f32>, far: f32, mode: u32) -> Hit {
+    let stop_at_first = mode == BLOCKER;
     var best = Hit(far, 0u, 0xffffffffu, 0.0, 0.0);
     if u32(frame.more.y) == 0u { return best; }
     let inv = 1.0 / d;
@@ -204,7 +210,9 @@ fn scene_hit(o: vec3<f32>, d: vec3<f32>, far: f32, stop_at_first: bool) -> Hit {
             for (var k = n.first; k < n.first + n.count; k++) {
                 let i = top_index(k);
                 let inst = instance_at(i);
-                if stop_at_first && (surface_at(inst.surface).flags & (UNLIT | CATCHER | CARD)) != 0u { continue; }
+                let flags = surface_at(inst.surface).flags;
+                if mode == BLOCKER && (flags & (UNLIT | CATCHER | CARD | GLASS)) != 0u { continue; }
+                if mode == NEAREST_GLASS && (flags & GLASS) == 0u { continue; }
                 // The instance's own space; the direction is turned, not normalised, so
                 // distances along the ray stay in world lengths.
                 let oo = vec4<f32>(o, 1.0) * inst.to_object;
@@ -224,7 +232,53 @@ fn scene_hit(o: vec3<f32>, d: vec3<f32>, far: f32, stop_at_first: bool) -> Hit {
     return best;
 }
 fn blocked(o: vec3<f32>, d: vec3<f32>, far: f32) -> bool {
-    return scene_hit(o, d, far, true).triangle != 0xffffffffu;
+    return scene_hit(o, d, far, BLOCKER).triangle != 0xffffffffu;
+}
+fn has_glass() -> bool { return (frame.lights_at.y & 4u) != 0u; }
+// How much light gets along a ray before `far`: none past anything solid, and through glass
+// what each face lets through (Fresnel's share at that angle), tinted where it goes in, as
+// a path through the glass is. The light goes straight on (no focusing: no caustics). `w`
+// is 1 when it passed through glass, so a path that would have reached the light by
+// bending through that glass must not count it again.
+fn transmitted(o: vec3<f32>, d: vec3<f32>, far: f32) -> vec4<f32> {
+    if blocked(o, d, far) { return vec4<f32>(0.0); }
+    var light = vec4<f32>(1.0, 1.0, 1.0, 0.0);
+    if !has_glass() { return light; }
+    var at = o;
+    var left = far;
+    for (var k = 0u; k < 16u; k++) {
+        let h = scene_hit(at, d, left, NEAREST_GLASS);
+        if h.triangle == 0xffffffffu { break; }
+        let inst = instance_at(h.instance);
+        let s = surface_at(inst.surface);
+        let look = frame.lights_at.w + 43u * s.look + 4u;
+        let f0 = clamp(data[look].g, 0.0, 0.9);
+        let n = smooth_normal(inst, h);
+        let fr = f0 + (1.0 - f0) * pow(1.0 - abs(dot(n, d)), 5.0);
+        var share = vec3<f32>(1.0 - fr);
+        // Going in (its normals point outwards): tinted as a path through it is.
+        if dot(n, d) < 0.0 { share *= data[look + 34u].rgb; }
+        light = vec4<f32>(light.rgb * share, 1.0);
+        if max(max(light.r, light.g), light.b) < 1e-5 { return vec4<f32>(0.0, 0.0, 0.0, 1.0); }
+        let p = at + d * h.t;
+        let step = h.t + 1e-3 + 1e-5 * max(max(abs(p.x), abs(p.y)), abs(p.z));
+        at += d * step;
+        left -= step;
+        if left <= 0.0 { break; }
+    }
+    return light;
+}
+// A hit's interpolated normal in the world, as the mesh has it (not turned to face the ray).
+fn smooth_normal(inst: Instance, h: Hit) -> vec3<f32> {
+    let base = inst.vertex_base;
+    var n = vec3<f32>(0.0);
+    let w = vec3<f32>(1.0 - h.u - h.v, h.u, h.v);
+    for (var k = 0u; k < 3u; k++) {
+        let i = 2u * (base + triangles[h.triangle][k]);
+        n += vec3<f32>(vertices[i].w, vertices[i + 1u].xy) * w[k];
+    }
+    let to_world_normal = mat3x3<f32>(inst.to_object[0].xyz, inst.to_object[1].xyz, inst.to_object[2].xyz);
+    return normalize(to_world_normal * n);
 }
 
 // ---- surfaces ----
@@ -453,7 +507,7 @@ fn sky(d: vec3<f32>) -> vec3<f32> {
     return environment_specular(turned(d), 0.0) * frame.look.y;
 }
 fn sampling_sky() -> bool {
-    return frame.lights_at.y == 1u && frame.look.y > 0.0;
+    return (frame.lights_at.y & 1u) != 0u && frame.look.y > 0.0;
 }
 // The first entry of `table[base .. base + n]` at or above `u` (a running share).
 fn find(base: u32, n: u32, u: f32) -> u32 {
@@ -534,10 +588,11 @@ fn direct(m: Shade, p: vec3<f32>, n: vec3<f32>, v: vec3<f32>, last: bool) -> vec
         let s = sky_draw();
         let l = s.xyz;
         let nl = dot(n, l);
-        if nl > 0.0 && s.w > 0.0 && !blocked(p + lift, l, 1e30) {
+        if nl > 0.0 && s.w > 0.0 {
+            let t = transmitted(p + lift, l, 1e30);
             var w = 1.0;
-            if !last { w = power(s.w, draw_pdf(m, n, v, l)); }
-            sum += brdf(m, n, v, l) * sky(l) * nl / s.w * w;
+            if !last && t.w < 0.5 { w = power(s.w, draw_pdf(m, n, v, l)); }
+            sum += brdf(m, n, v, l) * sky(l) * t.rgb * nl / s.w * w;
         }
     }
     for (var i = 0u; i < frame.counts.x; i++) {
@@ -556,11 +611,13 @@ fn direct(m: Shade, p: vec3<f32>, n: vec3<f32>, v: vec3<f32>, last: bool) -> vec
             if cos_l <= 0.0 || dot(n, l) <= 0.0 { continue; }
             let area = 4.0 * length(light.right.xyz) * length(light.up.xyz);
             let pdf = d2 / (area * cos_l);
-            if casts(light) && blocked(p + lift, l, dist * 0.999) { continue; }
+            var t = vec4<f32>(1.0, 1.0, 1.0, 0.0);
+            if casts(light) { t = transmitted(p + lift, l, dist * 0.999); }
+            if max(max(t.r, t.g), t.b) <= 0.0 { continue; }
             var w = 1.0;
-            if !last { w = power(pdf, draw_pdf(m, n, v, l)); }
+            if !last && t.w < 0.5 { w = power(pdf, draw_pdf(m, n, v, l)); }
             let f = brdf(m, n, v, l) - shiny * (1.0 - reflects(light));
-            sum += f * light.colour.rgb * feathered(light, x, y) * dot(n, l) / pdf * w;
+            sum += f * light.colour.rgb * t.rgb * feathered(light, x, y) * dot(n, l) / pdf * w;
             continue;
         }
         var l = -light.direction.xyz;
@@ -578,7 +635,10 @@ fn direct(m: Shade, p: vec3<f32>, n: vec3<f32>, v: vec3<f32>, last: bool) -> vec
         }
         let nl = dot(n, l);
         if nl <= 0.0 || dot(radiance, radiance) <= 0.0 { continue; }
-        if casts(light) && blocked(p + lift, l, dist * 0.999) { continue; }
+        if casts(light) {
+            radiance *= transmitted(p + lift, l, dist * 0.999).rgb;
+            if max(max(radiance.r, radiance.g), radiance.b) <= 0.0 { continue; }
+        }
         let f = brdf(m, n, v, l) - shiny * (1.0 - reflects(light));
         sum += f * radiance * nl * PI;
     }
@@ -649,15 +709,15 @@ fn catcher_shade(p: vec3<f32>, n: vec3<f32>) -> f32 {
         if nl <= 0.0 { continue; }
         let amount = dot(radiance, luma) * nl;
         direct += amount;
-        if casts(light) && blocked(p + lift, l, dist * 0.999) { blocked_light += amount; }
+        if casts(light) { blocked_light += amount * (1.0 - dot(transmitted(p + lift, l, dist * 0.999).rgb, luma)); }
     }
     let ambient = dot(environment_layer(turned(n), 9u), luma) * frame.look.y;
     let basis = frame_of(n);
     let u1 = random();
     let phi = 2.0 * PI * random();
     let toward = basis * vec3<f32>(sqrt(u1) * cos(phi), sqrt(u1) * sin(phi), sqrt(max(1.0 - u1, 0.0)));
-    var enclosed = 0.0;
-    if blocked(p + lift, toward, 1e30) { enclosed = ambient; }
+    var enclosed: f32;
+    enclosed = ambient * (1.0 - dot(transmitted(p + lift, toward, 1e30).rgb, luma));
     return clamp((blocked_light + enclosed) / max(direct + ambient, 1e-4), 0.0, 1.0);
 }
 // One path from the camera through pixel `px`.
@@ -698,6 +758,10 @@ fn path(px: vec2<f32>) -> Seen {
     var alpha = 0.0;
     var last_pdf = 0.0;
     var last_reflection = false;
+    // Light reached by bending through glass after a lit surface: that surface's own light
+    // samples already passed straight through the glass for it (`transmitted`).
+    var shaded = false;
+    var through_glass = false;
     let limit = frame.more.z;
     var bounce = 0u;
     // Rays passing through cards and catchers go on without using up a bounce, up to a limit.
@@ -705,9 +769,10 @@ fn path(px: vec2<f32>) -> Seen {
     loop {
         if bounce > frame.counts.y || steps >= 64u { break; }
         steps += 1u;
-        let h = scene_hit(o, d, 1e30, false);
+        let h = scene_hit(o, d, 1e30, NEAREST);
         let lit = panels(o, d, h.t, bounce > 0u && last_reflection);
         if lit.w < h.t {
+            if through_glass { break; }
             guide(vec3<f32>(1.0), -d, travelled + lit.w);
             // A panel's glow, met directly or in a reflection.
             var w = 1.0;
@@ -721,6 +786,7 @@ fn path(px: vec2<f32>) -> Seen {
                 if frame.look.w > 0.5 { colour += sky(d); alpha = 1.0; }
             } else {
                 // Weighed against having been drawn as the environment's light.
+                if through_glass && sampling_sky() { break; }
                 var w = 1.0;
                 if sampling_sky() { w = power(last_pdf, sky_pdf(d)); }
                 var add = through * sky(d) * w;
@@ -833,6 +899,7 @@ fn path(px: vec2<f32>) -> Seen {
                 // the power heuristic can still square).
                 last_pdf = 1e15;
                 last_reflection = true;
+                if shaded { through_glass = true; }
                 continue;
             }
             let a = max(mp.rough * mp.rough, 1e-4);
@@ -855,6 +922,8 @@ fn path(px: vec2<f32>) -> Seen {
             n = fin.n;
         }
         guide(through * (m.diffuse + m.f0), n, travelled);
+        shaded = true;
+        through_glass = false;
         var add = through * direct(m, p, n, v, bounce == frame.counts.y);
         if s.emission > 0.0 { add += through * s.colour * s.emission; }
         add += through * glow;

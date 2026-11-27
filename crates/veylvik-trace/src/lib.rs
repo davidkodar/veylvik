@@ -6,5 +6,5 @@ pub mod scene;
 pub use bvh::{Bvh, Hit, Node};
 pub use gpu::{Environment, Gather, Job, Light, Look, Settings, Texture, Tracer, View};
 pub use scene::{
-    CARD, CATCHER, CUT, Instance, MeshTree, Packed, Placed, STRAIGHT, Surface, UNLIT, pack,
+    CARD, CATCHER, CUT, GLASS, Instance, MeshTree, Packed, Placed, STRAIGHT, Surface, UNLIT, pack,
 };

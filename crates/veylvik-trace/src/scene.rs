@@ -102,6 +102,9 @@ pub const CARD: u32 = 4;
 pub const CUT: u32 = 8;
 /// A model part's own texture: straight colour, repeating.
 pub const STRAIGHT: u32 = 16;
+/// A glass look: light passes through it to what lies behind, tinted by the glass, so its
+/// shadow is coloured and faint rather than solid.
+pub const GLASS: u32 = 32;
 /// A mesh placed in the world with a surface.
 #[derive(Clone)]
 pub struct Placed {

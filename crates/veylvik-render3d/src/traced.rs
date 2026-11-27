@@ -4,8 +4,8 @@ use std::sync::Arc;
 use veylvik_render::{Result, SceneJob, Trace};
 use veylvik_scene::Geometry;
 use veylvik_trace::{
-    CARD, CATCHER, CUT, Environment, Job, Look, MeshTree, Placed, STRAIGHT, Settings, Surface,
-    Texture, Tracer, UNLIT, View,
+    CARD, CATCHER, CUT, Environment, GLASS, Job, Look, MeshTree, Placed, STRAIGHT, Settings,
+    Surface, Texture, Tracer, UNLIT, View,
 };
 
 /// The brightest a bounce may add to a pixel: rare paths that find a small bright light
@@ -109,6 +109,9 @@ impl Engine {
                         lighting: vec4s(&lighting),
                         uv_scale: [x, y],
                     });
+                    if material.kind == veylvik_document::MaterialKind::Glass {
+                        flags |= GLASS;
+                    }
                     Some((looks.len() - 1) as u32)
                 }
                 _ => None,
