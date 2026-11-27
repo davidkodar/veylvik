@@ -190,10 +190,16 @@ fn lit_colour(base: vec3<f32>, light: vec3<f32>, seconds: f32) -> vec3<f32> {
 }
 // ---- shading one another: how many grains are where, counted in a grid over the
 // camera's view (cells across and down the frame, and in depth spaced evenly in the log
-// of the distance from NEAR to FAR frame widths), in w of the prepare pass's buffer
-// after the sprite ----
-const GRID_NEAR: f32 = 0.05;
-const GRID_FAR: f32 = 60.0;
+// of the distance, from a quarter to four times the distance the camera is focused at,
+// or of the frame when it has no focus, so a slice there is about as deep as a cell is
+// wide), in w of the prepare pass's buffer after the sprite ----
+const GRID_RANGE: f32 = 16.0;
+fn grid_near() -> f32 {
+    let base = tiles() + ROWS * COUNT;
+    var centre = third[base + 14u].w;
+    if centre <= 0.0 { centre = third[base + 12u].w; }
+    return max(centre, 1.0) / 4.0;
+}
 fn self_shadowing() -> bool { return (u32(p.extra.z) & 64u) != 0u; }
 fn grid_origin() -> u32 { return tiles() + sheet_texels(); }
 // The grid's cells across, down and in depth: halved until it fits (none in a frame
@@ -201,7 +207,7 @@ fn grid_origin() -> u32 { return tiles() + sheet_texels(); }
 fn grid_dims() -> vec3<u32> {
     let pixels = p.size_op.x * p.size_op.y;
     let room = pixels - min(grid_origin(), pixels);
-    var d = vec3<u32>(128u, 72u, 96u);
+    var d = vec3<u32>(96u, 54u, 192u);
     for (var k = 0u; k < 5u; k++) {
         if d.x * d.y * d.z <= room { return d; }
         d = d / 2u;
@@ -215,21 +221,42 @@ fn grid_cell(at: vec3<f32>, d: vec3<u32>) -> i32 {
     let w = f32(p.size_op.x);
     let x = i32(floor(seen.x / w * f32(d.x)));
     let y = i32(floor(seen.y / f32(p.size_op.y) * f32(d.y)));
-    let z = i32(floor(log(distance_to(at) / (GRID_NEAR * w)) / log(GRID_FAR / GRID_NEAR) * f32(d.z)));
+    let z = i32(floor(log(distance_to(at) / grid_near()) / log(GRID_RANGE) * f32(d.z)));
     if x < 0 || y < 0 || z < 0 || x >= i32(d.x) || y >= i32(d.y) || z >= i32(d.z) { return -1; }
     return (z * i32(d.y) + y) * i32(d.x) + x;
 }
-// Grains a cubic pixel at `at`: the count in its cell over the cell's size in the world.
+// Where `at` lies in the grid, in cells (a cell's middle at its index plus a half), or
+// a negative depth when the camera does not see it.
+fn grid_place(at: vec3<f32>, d: vec3<u32>) -> vec3<f32> {
+    let seen = filmed(at);
+    if seen.z <= 0.0 { return vec3<f32>(-1.0e6); }
+    return vec3<f32>(seen.x / f32(p.size_op.x) * f32(d.x), seen.y / f32(p.size_op.y) * f32(d.y),
+        log(distance_to(at) / grid_near()) / log(GRID_RANGE) * f32(d.z));
+}
+fn grid_count(x: i32, y: i32, z: i32, d: vec3<u32>) -> f32 {
+    if x < 0 || y < 0 || z < 0 || x >= i32(d.x) || y >= i32(d.y) || z >= i32(d.z) { return 0.0; }
+    return fourth[grid_origin() + u32((z * i32(d.y) + y) * i32(d.x) + x)].w;
+}
+// Grains a cubic pixel at `at`: the counts of the eight cells round it, blended by how
+// near it is to each, over a cell's size in the world there, so the shade changes
+// smoothly from cell to cell.
 fn grains_at(at: vec3<f32>, d: vec3<u32>) -> f32 {
-    let cell = grid_cell(at, d);
-    if cell < 0 { return 0.0; }
-    let count = fourth[grid_origin() + u32(cell)].w;
+    let g = grid_place(at, d) - vec3<f32>(0.5);
+    if g.z < -1.0 { return 0.0; }
+    let c0 = vec3<i32>(floor(g));
+    let f = g - floor(g);
+    var count = 0.0;
+    for (var k = 0u; k < 8u; k++) {
+        let o = vec3<i32>(i32(k & 1u), i32((k >> 1u) & 1u), i32((k >> 2u) & 1u));
+        let w = mix(1.0 - f, f, vec3<f32>(o));
+        count += w.x * w.y * w.z * grid_count(c0.x + o.x, c0.y + o.y, c0.z + o.z, d);
+    }
     if count <= 0.0 { return 0.0; }
     let away = distance_to(at);
     let focal = third[tiles() + ROWS * COUNT + 12u].w;
     let across = f32(p.size_op.x) / f32(d.x) * away / focal;
     let down = f32(p.size_op.y) / f32(d.y) * away / focal;
-    let deep = away * (pow(GRID_FAR / GRID_NEAR, 1.0 / f32(d.z)) - 1.0);
+    let deep = away * (pow(GRID_RANGE, 1.0 / f32(d.z)) - 1.0);
     return count / max(across * down * deep, 1e-6);
 }
 // How much of a light reaches `at` from `toward` (at most `reach` away) past the grains
@@ -242,13 +269,18 @@ fn transmitted(at: vec3<f32>, toward: vec3<f32>, reach: f32, seconds: f32) -> f3
     let away = distance_to(at);
     let focal = third[tiles() + ROWS * COUNT + 12u].w;
     if away <= 0.0 || focal <= 0.0 { return 1.0; }
-    // Steps of a cell and a half from the grain's own cell outwards, 24 of them.
+    // Steps of a cell and a half, 24 of them, from a step and a half out: the grain's own
+    // neighbourhood does not count, or a grain on a surface facing the light would be
+    // shaded by its neighbours on that surface.
     let step = 1.5 * f32(p.size_op.x) / f32(d.x) * away / focal;
     let size = setting(SIZE, seconds);
     let blocking = 3.14159265 * size * size * strength;
+    // Each grain starts its march at its own place within the first step, so the grid's
+    // cells show as fine noise among the grains rather than as bands.
+    let jitter = f32(hash(bitcast<u32>(at.x) ^ hash(bitcast<u32>(at.y) ^ hash(bitcast<u32>(at.z)))) >> 8u) / 16777216.0;
     var depth = 0.0;
     for (var k = 1u; k <= 24u; k++) {
-        let s = f32(k) * step;
+        let s = (f32(k) + 0.5 - jitter) * step;
         if s > reach { break; }
         depth += grains_at(at + toward * s, d) * step;
     }

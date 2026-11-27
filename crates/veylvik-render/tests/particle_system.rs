@@ -2140,3 +2140,73 @@ fn glints_can_take_the_lights_colour_instead_of_the_grains() {
         .unwrap();
     assert!((red[dim][0] - white[dim][0]).abs() < 1e-3 * red[dim][0].max(1e-3));
 }
+/// Grains born on a flat card facing the camera, lit by a point light in front of it:
+/// the card's mean light.
+fn lit_card(renderer: &Renderer, self_shadow: f32) -> f32 {
+    let mut card = registry::SHAPE_3D.default_operation();
+    card["kind"] = serde_json::json!("plane");
+    card["size_x"] = serde_json::json!({"kind": "constant", "value": 120.0});
+    card["size_y"] = serde_json::json!({"kind": "constant", "value": 80.0});
+    let card = Node::new("card", serde_json::from_value(card).unwrap(), &[]);
+    let camera = Node::new(
+        "camera",
+        serde_json::from_value(registry::CAMERA_3D.default_operation()).unwrap(),
+        &[],
+    );
+    let mut lamp = registry::LIGHT_3D.default_operation();
+    lamp["kind"] = serde_json::json!("point");
+    lamp["intensity"] = serde_json::json!({"kind": "constant", "value": 0.4});
+    lamp["placement"]["position"] = serde_json::json!([0.0, 0.0, 120.0]);
+    let lamp = Node::new("lamp", serde_json::from_value(lamp).unwrap(), &[]);
+    let merged = Node::new(
+        "scene",
+        serde_json::from_value(registry::MERGE_SCENES.default_operation()).unwrap(),
+        &[
+            ("scene", camera.id),
+            ("scene_2", lamp.id),
+            ("scene_3", card.id),
+        ],
+    );
+    let mut p = still();
+    p.emit_from = Some(card.id);
+    p.rate = 40000.0.into();
+    p.size = 0.6.into();
+    p.glow = 1.0.into();
+    p.lit = 1.0.into();
+    p.ambient = 0.0.into();
+    p.scatter = 0.0.into();
+    p.shading = 1.0.into();
+    p.self_shadow = self_shadow.into();
+    p.colour = [0.3, 0.3, 0.3, 1.0];
+    p.end_colour = [0.3, 0.3, 0.3, 1.0];
+    let node = Node::new(
+        "particles",
+        Operation::Particles(p),
+        &[("scene", merged.id)],
+    );
+    let mut doc = blank(W, H, Time::new(24, 1).unwrap()).unwrap();
+    doc.output = node.id;
+    for n in [card, camera, lamp, merged, node] {
+        doc.nodes.insert(n.id, n);
+    }
+    let plan = Plan::compile(&doc).unwrap();
+    let frame = renderer
+        .render_gpu_cached(
+            &plan,
+            RenderRequest::full(Time::new(2, 1).unwrap()),
+            &ImageInputs::default(),
+        )
+        .unwrap();
+    let pixels = renderer.read_frame(&frame).unwrap().pixels;
+    pixels.iter().map(|p| p[0]).sum::<f32>()
+}
+#[test]
+#[ignore = "requires Vulkan"]
+fn grains_on_a_surface_facing_the_light_do_not_shade_themselves() {
+    let renderer = Renderer::new().unwrap();
+    let open = lit_card(&renderer, 0.0);
+    let shaded = lit_card(&renderer, 3.0);
+    assert!(open > 0.0, "the card is lit");
+    // Nothing stands between the card and the light: its grains keep their light.
+    assert!(shaded > 0.85 * open, "{shaded} of {open}");
+}

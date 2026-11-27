@@ -2026,10 +2026,12 @@ settles on the wrong kind of motion can still look sure. The
     each grain is dimmed by the grains between it and the light, as though each
     blocked its own size (1), or that many times as much. A dense body of grains
     then has dark depths and lit edges instead of being evenly lit through. The
-    grains are counted in a grid over the camera's view (128 x 72 cells across,
-    96 in depth spaced evenly in the log of the distance; fewer in a small
-    frame), so grains outside the picture cast nothing, and the shade is about a
-    cell and a half coarse. It counts every grain of a clump. Light is darker
+    grains are counted in a grid over the camera's view (96 x 54 cells across,
+    192 in depth spaced evenly in the log of the distance from a quarter to four
+    times the distance the camera is focused at, or of the frame without a
+    focus; fewer cells in a small frame), so grains outside the picture or that
+    depth range cast nothing, and the shade is about a cell and a half coarse.
+    It counts every grain of a clump, and only the grains of its own system. Light is darker
     overall with it on: raise the lights to make up for it.
     **Shading** (0 to 1) lights particles born on a 3D object (Emit from) as the
     surface is lit while they are on it: bright where it faces a light, dark
