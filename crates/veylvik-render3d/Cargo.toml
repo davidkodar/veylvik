@@ -4,12 +4,13 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
-description = "Rasterises Veylvik 3D scenes on the GPU for Render scene nodes."
+description = "Renders Veylvik 3D scenes on the GPU for Render scene nodes: rasterised for preview, path traced for final pictures."
 [dependencies]
 veylvik-document.workspace = true
 veylvik-render.workspace = true
 veylvik-scene.workspace = true
 veylvik-splat.workspace = true
+veylvik-trace.workspace = true
 wgpu.workspace = true
 bytemuck.workspace = true
 [dev-dependencies]

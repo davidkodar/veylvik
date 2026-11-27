@@ -1,0 +1,16 @@
+[package]
+name = "veylvik-trace"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Path tracing for Veylvik's 3D scenes: bounding volume hierarchies built on the CPU and traced on the GPU."
+[dependencies]
+bytemuck.workspace = true
+wgpu.workspace = true
+veylvik-mesh.workspace = true
+[dev-dependencies]
+veylvik-render.workspace = true
+pollster.workspace = true
+[lints]
+workspace = true

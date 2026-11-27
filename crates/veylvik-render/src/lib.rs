@@ -133,7 +133,8 @@ pub fn material_uniforms(
     ))
 }
 pub use scene_hook::{
-    SHADOW_HEADER, SHADOW_LIGHTS, SHADOW_VALUES, SceneJob, SceneRenderer, ShadowJob,
+    Picture as ScenePicture, SHADOW_HEADER, SHADOW_LIGHTS, SHADOW_VALUES, SceneJob, SceneRenderer,
+    ShadowJob, Trace,
 };
 mod texture;
 mod vector;

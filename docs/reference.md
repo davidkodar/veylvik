@@ -2349,7 +2349,28 @@ settles on the wrong kind of motion can still look sure. The
   solid for particles to bounce off. Running, turning along a path, hair and
   clothes are to come.
 - **Render scene**: films a scene as an image with camera 1, 2, … in node order, or
-  0 for the home view.
+  0 for the home view. **Quality** is Preview (the interactive renderer, below) or
+  Path traced, for final pictures.
+
+**Path tracing.** With Quality path traced, `veylvik-trace` follows light along its
+paths instead: surfaces reflect one another (a chrome sphere shows the objects
+beside it, not only the environment), area lights cast soft shadows and are seen in
+reflections, light bounces between surfaces (up to **Bounces** after the first, 0
+to 16, 4 by default), and the lens's aperture and focus blur by depth. **Samples**
+(1 to 16384, 64 by default) is how many paths go through each pixel: more is
+cleaner and slower; motion blur shares them between its moments. Lights, surfaces,
+the camera and the environment mean the same as in the preview, so a scene keeps
+its framing and its balance of light, and the preview is the quick look at the
+final picture. Each mesh's tree (a bounding volume hierarchy built once, about
+0.4 s for half a million triangles) is kept between frames and shared by every
+copy; only a small top tree over the placed objects is built each frame. It runs
+in compute shaders on any Vulkan device, with no ray-tracing hardware needed, in
+short passes so the screen never stalls, and averages straight into the picture.
+The noise of each frame is its own and repeatable. A bounce adds at most 16 to a
+pixel, so rare paths to a small bright light do not show as specks. A depth output
+is never path traced. Not path traced yet: textures and image cards' pictures,
+library looks and brushed finishes on 3D objects (they take their plain colour,
+roughness and metal), shadow catchers, copies at particles and Gaussian splats.
 
 `veylvik-mesh` builds the geometry (extruded outlines and primitives, watertight
 and bounded); `veylvik-scene` evaluates a scene graph at a frame into objects,

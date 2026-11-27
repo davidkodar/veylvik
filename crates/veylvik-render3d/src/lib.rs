@@ -5,6 +5,7 @@
 mod resources;
 mod setup;
 mod shadow;
+mod traced;
 use std::collections::HashMap;
 use std::sync::Mutex;
 use veylvik_render::{Result, SceneJob, SceneRenderer};
@@ -18,6 +19,8 @@ const DEPTH: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 const NEAR: f32 = 1.0;
 /// Meshes kept on the GPU between frames.
 const MESH_CACHE: usize = 128;
+/// Mesh trees kept for path tracing, as many as drawn meshes are kept.
+const TREE_CACHE: usize = MESH_CACHE;
 /// Strength of the studio environment, as a material's default rig.
 const ENVIRONMENT: f32 = 0.65;
 
@@ -128,6 +131,14 @@ pub struct Engine {
     /// panorama): converted again only when that changes.
     converted: Mutex<Option<(u64, [u32; 2], bool)>>,
     sky: wgpu::RenderPipeline,
+    /// The path tracer (made on first use) and mesh trees kept for it under the drawn
+    /// meshes' keys, with the clock that ages them.
+    tracer: std::sync::OnceLock<veylvik_trace::Tracer>,
+    #[allow(clippy::type_complexity)]
+    trees: Mutex<(
+        HashMap<String, (std::sync::Arc<veylvik_trace::MeshTree>, u64)>,
+        u64,
+    )>,
     /// Render targets kept between frames, by size: a 4K frame's multisampled colour
     /// and depth are hundreds of MiB, made and let go again every frame before.
     targets: Mutex<Vec<Targets>>,
@@ -365,6 +376,7 @@ impl SceneRenderer for Engine {
             + maps(&self.sky_maps)
             + particles
             + splats
+            + self.traced_bytes()
     }
     fn release(&self) {
         if let Ok(mut kept) = self.targets.lock() {
@@ -394,8 +406,16 @@ impl SceneRenderer for Engine {
         if let Ok(mut sets) = self.splat_sets.lock() {
             sets.clear();
         }
+        self.release_traced();
     }
     fn render(&self, job: SceneJob<'_>) -> Result<()> {
+        // Path traced: the tracer makes the picture (depth and the reflections view never are).
+        if let Some(trace) = job
+            .trace
+            .filter(|_| !job.depth && !job.reflections && job.also.is_none())
+        {
+            return self.traced(job, trace);
+        }
         let (device, width, height) = (job.device, job.width, job.height);
         // This size's targets, kept from an earlier frame, or made now.
         let kept = self.targets.lock().ok().and_then(|mut kept| {
@@ -415,6 +435,41 @@ impl SceneRenderer for Engine {
     }
 }
 impl Engine {
+    /// The scene's environment: a panorama converted from its picture (None: the studio),
+    /// and the strength and turn surfaces and the backdrop take it at.
+    fn surroundings(
+        &self,
+        device: &wgpu::Device,
+        encoder: &mut wgpu::CommandEncoder,
+        scene: &veylvik_scene::Scene,
+        images: &[veylvik_render::ScenePicture<'_>],
+    ) -> Result<(Option<wgpu::Buffer>, f32, f32)> {
+        let surround = scene.environment;
+        let panorama = match surround.and_then(|e| e.image) {
+            Some(source) => match images.iter().find(|(id, ..)| *id == source) {
+                Some((_, image, [across, down], identity)) => Some(self.panorama(
+                    device,
+                    encoder,
+                    image,
+                    [*across, *down],
+                    surround.is_some_and(|e| e.frame),
+                    *identity,
+                )?),
+                None => None,
+            },
+            None => None,
+        };
+        let strength = match surround {
+            Some(e) if panorama.is_some() => e.intensity,
+            Some(e) => ENVIRONMENT * e.intensity,
+            None => ENVIRONMENT,
+        };
+        Ok((
+            panorama,
+            strength,
+            surround.map_or(0.0, |e| e.rotation.to_radians()),
+        ))
+    }
     fn targets(device: &wgpu::Device, width: u32, height: u32) -> Targets {
         let size = wgpu::Extent3d {
             width,
@@ -699,27 +754,8 @@ impl Engine {
             .and_then(|e| e.image)
             .and_then(|source| images.iter().find(|(id, ..)| *id == source))
             .map(|(_, image, size, _)| (*image, *size));
-        let panorama = match surround.and_then(|e| e.image) {
-            Some(source) => match images.iter().find(|(id, ..)| *id == source) {
-                Some((_, image, [across, down], identity)) => Some(self.panorama(
-                    device,
-                    encoder,
-                    image,
-                    [*across, *down],
-                    surround.is_some_and(|e| e.frame),
-                    *identity,
-                )?),
-                None => None,
-            },
-            None => None,
-        };
+        let (panorama, strength, turn) = self.surroundings(device, encoder, scene, images)?;
         let environment = panorama.as_ref().unwrap_or(environment);
-        let strength = match surround {
-            Some(e) if panorama.is_some() => e.intensity,
-            Some(e) => ENVIRONMENT * e.intensity,
-            None => ENVIRONMENT,
-        };
-        let turn = surround.map_or(0.0, |e| e.rotation.to_radians());
         let look_environment = surround.map(|e| veylvik_render::EnvironmentOverride {
             strength: e.intensity,
             absolute: panorama.is_some(),

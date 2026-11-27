@@ -1,0 +1,220 @@
+//! The path tracer on the GPU, checked against what the light must do: an even sky lights a
+//! convex shape to exactly its albedo, a sphere covers the pixels its projection says, and
+//! a point light is cut off behind a blocker.
+use std::sync::Arc;
+use veylvik_mesh::{Primitive, primitive};
+use veylvik_trace::{
+    Environment, Job, Light, MeshTree, Placed, Settings, Surface, Tracer, View, pack,
+};
+use wgpu::util::DeviceExt;
+
+/// An even sky: the first texel of the environment, whatever the direction.
+const SKY: &str =
+    "fn environment_specular(d: vec3<f32>, r: f32) -> vec3<f32> { return environment_map[0].rgb; }";
+const W: u32 = 256;
+const H: u32 = 256;
+type Mat4 = [[f32; 4]; 4];
+fn at(p: [f32; 3]) -> Mat4 {
+    [
+        [1.0, 0.0, 0.0, p[0]],
+        [0.0, 1.0, 0.0, p[1]],
+        [0.0, 0.0, 1.0, p[2]],
+        [0.0, 0.0, 0.0, 1.0],
+    ]
+}
+fn gpu() -> (wgpu::Device, wgpu::Queue) {
+    let (_, _, device, queue) =
+        pollster::block_on(veylvik_render::create_gpu()).expect("a Vulkan device");
+    (device, queue)
+}
+struct Shot {
+    placed: Vec<Placed>,
+    lights: Vec<Light>,
+    sky: f32,
+    samples: u32,
+}
+/// The picture the camera at (0, 0, 1000), looking down -z with a 500 px focal length, sees.
+fn render(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    tracer: &Tracer,
+    shot: &Shot,
+) -> Vec<[f32; 4]> {
+    let scene = pack(&shot.placed);
+    let map = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: None,
+        contents: bytemuck::cast_slice(&[[shot.sky, shot.sky, shot.sky, 1.0f32]]),
+        usage: wgpu::BufferUsages::STORAGE,
+    });
+    let size = u64::from(W * H) * 16;
+    let target = device.create_buffer(&wgpu::BufferDescriptor {
+        label: None,
+        size,
+        usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
+        mapped_at_creation: false,
+    });
+    let read = device.create_buffer(&wgpu::BufferDescriptor {
+        label: None,
+        size,
+        usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    });
+    let mut encoder = device.create_command_encoder(&Default::default());
+    tracer
+        .render(Job {
+            device,
+            queue,
+            encoder: &mut encoder,
+            scene: &scene,
+            lights: &shot.lights,
+            view: View {
+                camera: at([0.0, 0.0, 1000.0]),
+                focal: 500.0,
+                lens_radius: 0.0,
+                focus: 1000.0,
+            },
+            environment: Environment {
+                map: &map,
+                strength: 1.0,
+                turn: 0.0,
+                backdrop: false,
+            },
+            width: W,
+            height: H,
+            settings: Settings {
+                samples: shot.samples,
+                bounces: 6,
+                clamp: 0.0,
+                seed: 7,
+            },
+            target: &target,
+            blend: 1.0,
+        })
+        .unwrap();
+    encoder.copy_buffer_to_buffer(&target, 0, &read, 0, size);
+    queue.submit([encoder.finish()]);
+    read.slice(..)
+        .map_async(wgpu::MapMode::Read, |r| r.unwrap());
+    device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
+    let data = read.slice(..).get_mapped_range();
+    bytemuck::cast_slice::<u8, [f32; 4]>(&data).to_vec()
+}
+fn sphere(radius: f32) -> Arc<MeshTree> {
+    Arc::new(MeshTree::new(
+        &primitive(Primitive::Sphere, [2.0 * radius; 3], 64).unwrap(),
+    ))
+}
+fn matte(grey: f32) -> Surface {
+    Surface {
+        colour: [grey; 3],
+        roughness: 1.0,
+        metallic: 0.0,
+        emission: 0.0,
+        opacity: 1.0,
+        flags: 0,
+    }
+}
+#[test]
+#[ignore = "requires Vulkan"]
+fn an_even_sky_lights_a_convex_shape_to_its_albedo() {
+    let (device, queue) = gpu();
+    let tracer = Tracer::new(&device, SKY);
+    let shot = Shot {
+        placed: vec![Placed {
+            tree: sphere(200.0),
+            world: at([0.0; 3]),
+            surface: matte(0.5),
+        }],
+        lights: vec![],
+        sky: 1.0,
+        samples: 256,
+    };
+    let px = render(&device, &queue, &tracer, &shot);
+    // Inside the sphere's disc, away from its rim.
+    let (mut sum, mut n) = (0.0f64, 0);
+    for y in 0..H {
+        for x in 0..W {
+            let (dx, dy) = (x as f32 + 0.5 - 128.0, y as f32 + 0.5 - 128.0);
+            if dx * dx + dy * dy < 80.0 * 80.0 {
+                sum += f64::from(px[(y * W + x) as usize][1]);
+                n += 1;
+            }
+        }
+    }
+    let mean = sum / f64::from(n);
+    eprintln!("furnace: albedo 0.5 under a sky of 1 shows {mean:.4}");
+    // Half its light back, whatever way each point faces (a little more from the gloss
+    // of a rough dielectric).
+    assert!(
+        (0.47..0.56).contains(&mean),
+        "albedo 0.5 under a sky of 1 shows {mean}"
+    );
+}
+#[test]
+#[ignore = "requires Vulkan"]
+fn a_sphere_covers_the_pixels_its_projection_says() {
+    let (device, queue) = gpu();
+    let tracer = Tracer::new(&device, SKY);
+    let shot = Shot {
+        placed: vec![Placed {
+            tree: sphere(200.0),
+            world: at([0.0; 3]),
+            surface: matte(0.5),
+        }],
+        lights: vec![],
+        sky: 1.0,
+        samples: 16,
+    };
+    let px = render(&device, &queue, &tracer, &shot);
+    // Its outline from 1000 away with a 500 px lens: 500 * r / sqrt(d^2 - r^2) px.
+    let rim = 500.0 * 200.0 / (1000.0f32 * 1000.0 - 200.0 * 200.0).sqrt();
+    let alpha = |x: f32, y: f32| px[((128.0 + y) as u32 * W + (128.0 + x) as u32) as usize][3];
+    assert_eq!(alpha(0.0, 0.0), 1.0);
+    assert_eq!(alpha(rim - 3.0, 0.0), 1.0, "inside the rim at {rim}");
+    assert_eq!(alpha(rim + 3.0, 0.0), 0.0, "outside the rim");
+    assert_eq!(alpha(0.0, -(rim + 3.0)), 0.0);
+    assert_eq!(alpha(0.0, -(rim - 3.0)), 1.0);
+}
+#[test]
+#[ignore = "requires Vulkan"]
+fn a_point_light_is_cut_off_behind_a_blocker() {
+    let (device, queue) = gpu();
+    let tracer = Tracer::new(&device, SKY);
+    let floor = Arc::new(MeshTree::new(
+        &primitive(Primitive::Plane, [1000.0, 1000.0, 1.0], 1).unwrap(),
+    ));
+    let block = Arc::new(MeshTree::new(
+        &primitive(Primitive::Cube, [60.0; 3], 1).unwrap(),
+    ));
+    let light = Light {
+        position: [400.0, 0.0, 400.0, 0.0],
+        colour: [0.1, 0.1, 0.1, 0.0],
+        ..Default::default()
+    };
+    let shot = Shot {
+        placed: vec![
+            Placed {
+                tree: floor,
+                world: at([0.0; 3]),
+                surface: matte(0.5),
+            },
+            Placed {
+                tree: block,
+                world: at([200.0, 0.0, 200.0]),
+                surface: matte(0.5),
+            },
+        ],
+        lights: vec![light],
+        sky: 0.0,
+        samples: 16,
+    };
+    let px = render(&device, &queue, &tracer, &shot);
+    // The floor's middle is behind the block from the light; a point 150 down it is not.
+    let shaded = px[(128 * W + 128) as usize][1];
+    let open = px[((128 + 75) * W + 128) as usize][1];
+    assert!(open > 0.05, "the open floor is lit: {open}");
+    assert!(
+        shaded < 0.1 * open,
+        "behind the block: {shaded} against {open}"
+    );
+}

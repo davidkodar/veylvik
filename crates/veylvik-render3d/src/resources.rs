@@ -91,25 +91,11 @@ impl Engine {
         }
         Ok(target)
     }
-    /// Upload (or reuse) the mesh of an object; meshes are keyed by their geometry.
-    pub(crate) fn mesh(
-        &self,
-        device: &wgpu::Device,
-        object: &veylvik_scene::Object,
-    ) -> Result<(wgpu::Buffer, wgpu::Buffer, u32)> {
-        // A fluttering object's mesh changes with its waves and their moment.
-        let key = format!("{:?}{:?}", object.geometry, object.flutter);
-        let mut guard = self
-            .meshes
-            .lock()
-            .map_err(|_| error("mesh cache lock poisoned"))?;
-        let (meshes, clock) = &mut *guard;
-        *clock += 1;
-        if let Some(m) = meshes.get_mut(&key) {
-            m.used = *clock;
-            return Ok((m.vertices.clone(), m.indices.clone(), m.count));
-        }
-        let mesh = match &object.geometry {
+    /// An object's mesh in its own space, as drawn and path traced: a model part from the
+    /// loaded model at the object's size (waved across the whole model when it flutters),
+    /// anything else as the scene makes it.
+    pub(crate) fn cpu_mesh(&self, object: &veylvik_scene::Object) -> Result<veylvik_scene::Mesh> {
+        Ok(match &object.geometry {
             Geometry::Model {
                 path,
                 size,
@@ -138,7 +124,28 @@ impl Engine {
                 mesh
             }
             _ => veylvik_scene::mesh(object).map_err(error)?,
-        };
+        })
+    }
+    /// Upload (or reuse) the mesh of an object; meshes are keyed by their geometry.
+    pub(crate) fn mesh(
+        &self,
+        device: &wgpu::Device,
+        object: &veylvik_scene::Object,
+    ) -> Result<(wgpu::Buffer, wgpu::Buffer, u32)> {
+        // A fluttering object's mesh changes with its waves and their moment.
+        let key = format!("{:?}{:?}", object.geometry, object.flutter);
+        let mut guard = self
+            .meshes
+            .lock()
+            .map_err(|_| error("mesh cache lock poisoned"))?;
+        let (meshes, clock) = &mut *guard;
+        *clock += 1;
+        if let Some(m) = meshes.get_mut(&key) {
+            m.used = *clock;
+            return Ok((m.vertices.clone(), m.indices.clone(), m.count));
+        }
+        let mesh = self.cpu_mesh(object)?;
+
         let vertices: Vec<f32> = mesh
             .vertices
             .iter()

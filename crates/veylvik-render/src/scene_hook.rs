@@ -84,6 +84,43 @@ pub struct SceneJob<'a> {
     /// A second output of the same render: the other of picture and depth, when two
     /// Render scene nodes film the same scene the same way. The bool is its `depth`.
     pub also: Option<(&'a wgpu::Buffer, bool)>,
+    /// Path trace the picture instead of drawing it (never for depth or the reflections view).
+    pub trace: Option<Trace>,
+}
+/// A path traced render: paths through each pixel for this moment, bounces after the
+/// first surface, and a seed that makes the noise this moment's own and repeatable.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Trace {
+    pub samples: u32,
+    pub bounces: u32,
+    pub seed: u32,
+}
+/// The Render scene's path tracing for one of `moments` moments across its shutter at
+/// `at` (its samples shared between them), if it path traces.
+pub(crate) fn tracing(
+    plan: &crate::Plan,
+    node: usize,
+    at: veylvik_document::Time,
+    moment: usize,
+    moments: usize,
+) -> Option<Trace> {
+    let Operation::RenderScene(op) = &plan.nodes[node].operation else {
+        return None;
+    };
+    if op.depth || op.quality != veylvik_document::nodes::SceneQuality::PathTraced {
+        return None;
+    }
+    let seed = crate::fnv(
+        &[at.ticks as u64, at.rate as u64, moment as u64]
+            .map(|v| v.to_le_bytes())
+            .concat(),
+        0,
+    ) as u32;
+    Some(Trace {
+        samples: op.samples.clamp(1, 16384).div_ceil(moments.max(1) as u32),
+        bounces: op.bounces.min(16),
+        seed,
+    })
 }
 /// The scene and camera a Render scene node films at `time`, and its occlusion.
 pub(crate) fn evaluate(
@@ -190,6 +227,9 @@ pub(crate) fn twin(
         if second.kernel != crate::Kernel::RenderScene
             || !visible.contains(&plan.nodes[second.node].id)
             || shows_depth(plan, second.node) == shows_depth(plan, first.node)
+            // A path traced picture is made apart from its depth.
+            || tracing(plan, first.node, time, 0, 1).is_some()
+            || tracing(plan, second.node, time, 0, 1).is_some()
             || second.cards != first.cards
         {
             continue;
@@ -257,7 +297,12 @@ pub(crate) fn fingerprint(
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     for at in sample_times(plan, node, time)? {
         let (scene, camera, occlusion) = evaluate(plan, node, at)?;
-        format!("{scene:?}{camera:?}{occlusion}{}", shows_depth(plan, node)).hash(&mut hasher);
+        format!(
+            "{scene:?}{camera:?}{occlusion}{}{:?}",
+            shows_depth(plan, node),
+            tracing(plan, node, at, 0, 1)
+        )
+        .hash(&mut hasher);
         // Copies at particles are made of the particles' whole making.
         for id in scene.objects.iter().filter_map(|o| o.instanced) {
             if let Some(source) = plan

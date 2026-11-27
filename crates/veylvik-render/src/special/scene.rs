@@ -67,6 +67,7 @@ pub(super) fn run(cx: &mut super::PassCx<'_, '_>) -> Result<()> {
             .map(|buffer| (other, buffer)),
         None => None,
     };
+    let count = moments.len();
     for (k, at) in moments.into_iter().enumerate() {
         let (scene, camera, occlusion) = scene_hook::evaluate(plan, scheduled.node, at)?;
         let camera = scene_view.unwrap_or(camera);
@@ -107,6 +108,11 @@ pub(super) fn run(cx: &mut super::PassCx<'_, '_>) -> Result<()> {
                     scene_hook::shows_depth(plan, plan.passes[*other].node),
                 )
             }),
+            trace: if scene_reflections {
+                None
+            } else {
+                scene_hook::tracing(plan, scheduled.node, at, k, count)
+            },
         })?;
     }
     if let Some((other, buffer)) = spare {

@@ -387,6 +387,8 @@ impl Engine {
             card_solid,
             copy,
             meshes: Mutex::new((HashMap::new(), 0)),
+            tracer: std::sync::OnceLock::new(),
+            trees: Mutex::new((HashMap::new(), 0)),
         }
     }
 }

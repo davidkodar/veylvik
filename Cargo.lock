@@ -4449,6 +4449,7 @@ dependencies = [
  "veylvik-render",
  "veylvik-scene",
  "veylvik-splat",
+ "veylvik-trace",
  "wgpu",
 ]
 
@@ -4514,6 +4515,17 @@ dependencies = [
  "veylvik-document",
  "veylvik-presets",
  "veylvik-render",
+]
+
+[[package]]
+name = "veylvik-trace"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "pollster",
+ "veylvik-mesh",
+ "veylvik-render",
+ "wgpu",
 ]
 
 [[package]]

@@ -53,6 +53,8 @@ pub enum ParameterKind {
     Colour3,
     ShapeKind,
     Fit,
+    /// Preview or path traced (Render scene).
+    SceneQuality,
     LightKind,
     ForceKind,
     SpritePlay,
@@ -142,6 +144,7 @@ impl Parameter {
             ParameterKind::Colour3 => json!([0.6_f32, 0.6_f32, 0.6_f32]),
             ParameterKind::ShapeKind => json!(crate::nodes::ShapeKind::default()),
             ParameterKind::Fit => json!(crate::nodes::Fit::default()),
+            ParameterKind::SceneQuality => json!(crate::nodes::SceneQuality::default()),
             ParameterKind::LightKind => json!(crate::nodes::LightKind::default()),
             ParameterKind::ForceKind => json!(crate::nodes::ForceKind::default()),
             ParameterKind::SpritePlay => json!(crate::nodes::SpritePlay::default()),
@@ -186,6 +189,9 @@ impl Parameter {
                 json!({"type":"string","enum":crate::nodes::ShapeKind::ALL})
             }
             ParameterKind::Fit => json!({"type":"string","enum":crate::nodes::Fit::ALL}),
+            ParameterKind::SceneQuality => {
+                json!({"type":"string","enum":crate::nodes::SceneQuality::ALL})
+            }
             ParameterKind::LightKind => {
                 json!({"type":"string","enum":crate::nodes::LightKind::ALL})
             }
