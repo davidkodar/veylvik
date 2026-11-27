@@ -2380,7 +2380,9 @@ cameras and lights with world matrices, and projects points through cameras.
 depth-tested (reversed depth, infinite far plane) and two-sided, into a half-float
 target copied to the frame as premultiplied scene-linear Rec.709. Surfaces use a
 metallic-roughness model (GGX specular, Lambert diffuse): the same prefiltered
-studio environment that lights 2D materials, at the default rig's strength, plus
+studio environment that lights 2D materials, at the default rig's strength (matte
+surfaces take its diffuse layer, the light of everything above them weighed by
+angle, as 2D materials and the path tracer do), plus
 every point, spot and sun light in the scene (point and spot fall off with the
 inverse square, normalised to 1000 pixels of a 1920-wide frame, so a scene is as
 bright at 960 or 3840 wide as at 1920; lit particles use the same; spots blend from the inner to the outer

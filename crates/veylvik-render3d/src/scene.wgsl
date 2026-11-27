@@ -368,7 +368,9 @@ fn lit(in: Varying) -> @location(0) vec4<f32> {
         }
         mirrored *= max(1.0 + worn * (0.3 * bright - 0.16 * dull), 0.0);
     }
-    var colour = (environment_specular(turned(n), 1.0) * diffuse * strength
+    // A matte surface takes the light of everything above it, each direction by its angle
+    // (the environment's diffuse layer, as 2D materials and the path tracer take it).
+    var colour = (environment_layer(turned(n), 9u) * diffuse * strength
         + mirrored * fresnel * strength)
         * sky_visibility(in.world, n);
     // For the reflections view: what each light added, painted in its own colour.
@@ -553,7 +555,7 @@ fn catcher(in: Varying) -> @location(0) vec4<f32> {
         direct += amount;
         blocked += amount * (1.0 - shadow_of(in.world, n, light.shadow, light.shadow_info));
     }
-    let ambient_light = dot(environment_specular(turned(n), 1.0), vec3<f32>(0.2126, 0.7152, 0.0722)) * object.counts.y;
+    let ambient_light = dot(environment_layer(turned(n), 9u), vec3<f32>(0.2126, 0.7152, 0.0722)) * object.counts.y;
     let enclosed = ambient_light * (1.0 - sky_visibility(in.world, n));
     let shade = clamp((blocked + enclosed) / max(direct + ambient_light, 1e-4), 0.0, 1.0);
     // Strength above 1 deepens a shadow that the scene's other lights wash out.
