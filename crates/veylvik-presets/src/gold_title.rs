@@ -128,7 +128,9 @@ pub fn gold_title_with(
         )?);
     }
     // Two glancing key lights, from above and from the left: they catch the bevels
-    // facing them and leave the faces alone, which gives the letters depth.
+    // facing them and leave the faces alone, which gives the letters depth. In reflections
+    // they show at 0.3: a sun is a point of light, and at full strength its reflection runs
+    // along a round bevel as a bright line (path traced, the true reflection shows).
     for (label, rotation) in [
         ("Key from above", [65.0, 0.0, 0.0]),
         ("Key from the left", [0.0, -65.0, 0.0]),
@@ -139,6 +141,7 @@ pub fn gold_title_with(
             json!({
                 "kind": "sun", "shadows": false, "colour": [1.0, 0.93, 0.8],
                 "placement": light([0.0, 0.0, 1000.0], rotation), "intensity": c(1.7),
+                "reflections": c(0.3),
             }),
             &[],
         )?);
@@ -165,6 +168,7 @@ pub fn gold_title_with(
             json!({
                 "kind": "sun", "shadows": true, "colour": [1.0, 0.93, 0.8],
                 "placement": light([0.0, 0.0, 1000.0], [22.0, -24.0, 0.0]), "intensity": c(0.5),
+                "reflections": c(0.3),
             }),
             &[],
         )?);

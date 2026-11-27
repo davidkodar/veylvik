@@ -300,3 +300,66 @@ fn a_turned_environment_lights_the_same_side_in_both_qualities() {
         "the same side is brighter: preview {pl}/{pr}, path traced {tl}/{tr}"
     );
 }
+#[test]
+#[ignore = "requires Vulkan"]
+fn a_light_with_no_reflections_leaves_shiny_surfaces_and_still_lights_matte_ones() {
+    // A chrome sphere and a matte one under a softbox in front of them, the studio dimmed.
+    let shot = |quality, reflections: f32| {
+        let mut doc = blank(W, H, Time::new(24, 1).unwrap()).unwrap();
+        let chrome = add(&mut doc, sphere(-35.0, [1.0; 3], 1.0, 0.1, 0.0), &[]);
+        let matte = add(&mut doc, sphere(35.0, [0.8; 3], 0.0, 1.0, 0.0), &[]);
+        let mut lamp = op(&LIGHT_3D);
+        if let Operation::Light3d(l) = &mut lamp {
+            l.kind = LightKind::Area;
+            l.width = 120.0.into();
+            l.height = 60.0.into();
+            l.intensity = 3.0.into();
+            l.shadows = false;
+            l.placement.position = [0.0, -40.0, 160.0].into();
+            l.placement.rotation = [-15.0, 0.0, 0.0].into();
+            l.reflections = reflections.into();
+        }
+        let lamp = add(&mut doc, lamp, &[]);
+        let mut env = op(&ENVIRONMENT_3D);
+        if let Operation::Environment3d(e) = &mut env {
+            e.intensity = 0.05.into();
+        }
+        let env = add(&mut doc, env, &[]);
+        let scene = add(
+            &mut doc,
+            op(&MERGE_SCENES),
+            &[
+                ("scene", chrome),
+                ("scene_2", matte),
+                ("scene_3", lamp),
+                ("scene_4", env),
+            ],
+        );
+        let out = filmed(&mut doc, scene, quality, 128, &ImageInputs::default());
+        let region = |x0: u32, x1: u32| -> Vec<f32> {
+            (30..60)
+                .flat_map(|y| (x0..x1).map(move |x| (y, x)))
+                .map(|(y, x)| out[(y * W + x) as usize][1])
+                .collect()
+        };
+        let chrome_peak = region(25, 65).into_iter().fold(0.0f32, f32::max);
+        let m = region(100, 130);
+        let matte_mean = m.iter().sum::<f32>() / m.len() as f32;
+        (chrome_peak, matte_mean)
+    };
+    for quality in [SceneQuality::Preview, SceneQuality::PathTraced] {
+        let (shown, matte_shown) = shot(quality, 1.0);
+        let (hidden, matte_hidden) = shot(quality, 0.0);
+        eprintln!(
+            "{quality:?}: chrome peak {shown:.3} -> {hidden:.3}, matte {matte_shown:.4} -> {matte_hidden:.4}"
+        );
+        assert!(
+            hidden < 0.5 * shown,
+            "{quality:?}: the softbox leaves the chrome: {shown} -> {hidden}"
+        );
+        assert!(
+            (matte_hidden / matte_shown - 1.0).abs() < 0.05,
+            "{quality:?}: the matte sphere keeps its light: {matte_shown} -> {matte_hidden}"
+        );
+    }
+}

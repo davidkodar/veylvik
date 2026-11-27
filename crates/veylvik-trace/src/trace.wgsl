@@ -344,6 +344,10 @@ fn finished(s: Surface, local: vec3<f32>, facing: vec3<f32>, normals: mat3x3<f32
     return Finished(m, n);
 }
 
+// The specular part of the last `brdf`, for lights that show less in shiny surfaces.
+var<private> shiny: vec3<f32>;
+// Whether `draw` last drew a reflection (rather than a matte scatter).
+var<private> drew_reflection: bool;
 // What reaches the eye along `v` of light arriving along `l`, per unit of light and
 // cosine, as the rasteriser's lights are (their radiance taken with a factor of pi).
 fn brdf(m: Shade, n: vec3<f32>, v: vec3<f32>, l: vec3<f32>) -> vec3<f32> {
@@ -362,6 +366,7 @@ fn brdf(m: Shade, n: vec3<f32>, v: vec3<f32>, l: vec3<f32>) -> vec3<f32> {
         lobe = 1.0 / (PI * m.ax * m.ay * dd * dd);
     }
     let specular = lobe * smith(nv, nl, m.a) * f * m.gain / max(4.0 * nv * nl, 1e-4);
+    shiny = specular;
     return m.diffuse / PI * (vec3<f32>(1.0) - f) + specular;
 }
 fn specular_share(m: Shade, n: vec3<f32>, v: vec3<f32>) -> f32 {
@@ -391,7 +396,8 @@ fn draw(m: Shade, n: vec3<f32>, v: vec3<f32>) -> vec3<f32> {
     let basis = frame_of(n);
     let u1 = random();
     let u2 = random();
-    if random() < specular_share(m, n, v) {
+    drew_reflection = random() < specular_share(m, n, v);
+    if drew_reflection {
         // A microfacet normal drawn by the GGX distribution, and the mirror about it.
         let a2 = m.a * m.a;
         let cos_t = sqrt((1.0 - u1) / (1.0 + (a2 - 1.0) * u1));
@@ -459,6 +465,9 @@ fn sky_pdf(d: vec3<f32>) -> f32 {
     let y = min(u32(theta / PI * f32(DOWN)), DOWN - 1u);
     return texel_share(x, y) * f32(ACROSS * DOWN) / (2.0 * PI * PI * max(sin(theta), 1e-6));
 }
+// Whether a light casts shadows, and how strongly it shows in shiny surfaces.
+fn casts(l: Light) -> bool { return l.up.w >= 1.5; }
+fn reflects(l: Light) -> f32 { return l.up.w - select(0.0, 2.0, l.up.w >= 1.5); }
 fn power(a: f32, b: f32) -> f32 {
     return a * a / max(a * a + b * b, 1e-12);
 }
@@ -514,10 +523,11 @@ fn direct(m: Shade, p: vec3<f32>, n: vec3<f32>, v: vec3<f32>, last: bool) -> vec
             if cos_l <= 0.0 || dot(n, l) <= 0.0 { continue; }
             let area = 4.0 * length(light.right.xyz) * length(light.up.xyz);
             let pdf = d2 / (area * cos_l);
-            if light.up.w > 0.5 && blocked(p + lift, l, dist * 0.999) { continue; }
+            if casts(light) && blocked(p + lift, l, dist * 0.999) { continue; }
             var w = 1.0;
             if !last { w = power(pdf, draw_pdf(m, n, v, l)); }
-            sum += brdf(m, n, v, l) * light.colour.rgb * feathered(light, x, y) * dot(n, l) / pdf * w;
+            let f = brdf(m, n, v, l) - shiny * (1.0 - reflects(light));
+            sum += f * light.colour.rgb * feathered(light, x, y) * dot(n, l) / pdf * w;
             continue;
         }
         var l = -light.direction.xyz;
@@ -535,20 +545,23 @@ fn direct(m: Shade, p: vec3<f32>, n: vec3<f32>, v: vec3<f32>, last: bool) -> vec
         }
         let nl = dot(n, l);
         if nl <= 0.0 || dot(radiance, radiance) <= 0.0 { continue; }
-        if light.up.w > 0.5 && blocked(p + lift, l, dist * 0.999) { continue; }
-        sum += brdf(m, n, v, l) * radiance * nl * PI;
+        if casts(light) && blocked(p + lift, l, dist * 0.999) { continue; }
+        let f = brdf(m, n, v, l) - shiny * (1.0 - reflects(light));
+        sum += f * radiance * nl * PI;
     }
     return sum;
 }
 // The nearest area panel a ray meets before `far`: its glow and distance, and its likelihood
 // of having been drawn as a light sample from `p`.
-fn panels(o: vec3<f32>, d: vec3<f32>, far: f32) -> vec4<f32> {
+fn panels(o: vec3<f32>, d: vec3<f32>, far: f32, reflected: bool) -> vec4<f32> {
     var best = vec4<f32>(0.0, 0.0, 0.0, far);
     for (var i = 0u; i < frame.counts.x; i++) {
         let light = light_at(i);
         if light.position.w < 2.5 { continue; }
-        let h = panel_hit(light, o, d);
+        var h = panel_hit(light, o, d);
         if h.w > 0.0 && h.w < best.w {
+            // Met in a reflection, a panel shows as strongly as its light's Reflections.
+            if reflected { h = vec4<f32>(h.rgb * reflects(light), h.w); }
             best = h;
         }
     }
@@ -603,7 +616,7 @@ fn catcher_shade(p: vec3<f32>, n: vec3<f32>) -> f32 {
         if nl <= 0.0 { continue; }
         let amount = dot(radiance, luma) * nl;
         direct += amount;
-        if light.up.w > 0.5 && blocked(p + lift, l, dist * 0.999) { blocked_light += amount; }
+        if casts(light) && blocked(p + lift, l, dist * 0.999) { blocked_light += amount; }
     }
     let ambient = dot(environment_layer(turned(n), 9u), luma) * frame.look.y;
     let basis = frame_of(n);
@@ -633,6 +646,7 @@ fn path(px: vec2<f32>) -> Seen {
     var through = vec3<f32>(1.0);
     var alpha = 0.0;
     var last_pdf = 0.0;
+    var last_reflection = false;
     let limit = frame.more.z;
     var bounce = 0u;
     // Rays passing through cards and catchers go on without using up a bounce, up to a limit.
@@ -641,7 +655,7 @@ fn path(px: vec2<f32>) -> Seen {
         if bounce > frame.counts.y || steps >= 64u { break; }
         steps += 1u;
         let h = scene_hit(o, d, 1e30, false);
-        let lit = panels(o, d, h.t);
+        let lit = panels(o, d, h.t, bounce > 0u && last_reflection);
         if lit.w < h.t {
             // A panel's glow, met directly or in a reflection.
             var w = 1.0;
@@ -741,6 +755,7 @@ fn path(px: vec2<f32>) -> Seen {
         if pdf <= 1e-8 { break; }
         through *= brdf(m, n, v, l) * nl / pdf;
         last_pdf = pdf;
+        last_reflection = drew_reflection;
         // Russian roulette after the second bounce: a weak path ends, a kept one makes up for it.
         if bounce >= 2u {
             let keep = clamp(max(max(through.r, through.g), through.b), 0.05, 0.95);

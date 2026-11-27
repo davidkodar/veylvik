@@ -339,6 +339,7 @@ fn an_area_light_splits_into_a_repeatable_row_of_strips() {
         node: veylvik_document::NodeId::nil(),
         kind: LightKind::Area,
         shadows: false,
+        reflections: 1.0,
         world: math::translate([100.0, 50.0, 400.0]),
         colour: [1.0; 3],
         intensity: 2.0,

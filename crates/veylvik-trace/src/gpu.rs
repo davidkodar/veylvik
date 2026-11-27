@@ -6,8 +6,9 @@ use wgpu::util::DeviceExt;
 /// A light as the tracer reads it, 80 bytes: position and kind (0 point, 1 spot, 2 sun,
 /// 3 area); direction and the cosine of a spot's outer half-angle; colour times strength
 /// and the inner half-angle's cosine; an area light's half-width axis and feather, and its
-/// half-height axis and 1 when it casts shadows (0: it lights through objects). The same
-/// meanings as the 3D rasteriser's lights.
+/// half-height axis and how strongly it shows in shiny surfaces (0 to 1), plus 2 when it
+/// casts shadows (otherwise it lights through objects). The same meanings as the 3D
+/// rasteriser's lights.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Light {

@@ -238,12 +238,13 @@ fn light(light: &veylvik_scene::Light, width: u32) -> veylvik_trace::Light {
             inner.cos().max(outer.cos() + 1e-4),
         ],
         right: [panel[0][0], panel[0][1], panel[0][2], light.feather],
-        // Whether it casts shadows: a light with Shadows off lights through objects, as in the preview.
+        // How strongly it shows in shiny surfaces (0 to 1), plus 2 when it casts shadows (a
+        // light with Shadows off lights through objects, as in the preview).
         up: [
             panel[1][0],
             panel[1][1],
             panel[1][2],
-            if light.shadows { 1.0 } else { 0.0 },
+            light.reflections + if light.shadows { 2.0 } else { 0.0 },
         ],
     }
 }

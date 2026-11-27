@@ -165,7 +165,7 @@ fn look_surface(in: LookVarying) -> @location(0) vec4<f32> {
                 let seen = min(b * b / (3.14159265 * d * d) * 3.14159265 * b * b, 1.0);
                 let solid = 4.0 * hw * hh * front / max(dot(to, to), 1.0);
                 let fills = clamp(solid / (4.0 * 3.14159265 * b * b), 0.0, 1.0);
-                added += (light.colour.rgb * f * seen * fills * edge
+                added += (light.colour.rgb * f * seen * fills * edge * light.up.w
                     + albedo / 3.14159265 * light.colour.rgb * solid * max(dot(n, normalize(to)), 0.0))
                     * shadow_of(in.world, n, light.shadow, light.shadow_info);
             }
@@ -192,7 +192,7 @@ fn look_surface(in: LookVarying) -> @location(0) vec4<f32> {
         let ggx = a * a / (3.14159265 * d * d);
         let k = a * 0.5;
         let g = (nv / (nv * (1.0 - k) + k)) * (nl / (nl * (1.0 - k) + k));
-        let specular = ggx * g * f / max(4.0 * nv * nl, 1e-4);
+        let specular = ggx * g * f / max(4.0 * nv * nl, 1e-4) * light.up.w;
         added += (albedo / 3.14159265 * (vec3<f32>(1.0) - f) + specular) * radiance * nl * 3.14159265;
     }
     return vec4<f32>(surface + added, 1.0);

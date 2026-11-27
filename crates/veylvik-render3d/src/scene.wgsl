@@ -435,7 +435,7 @@ fn lit(in: Varying) -> @location(0) vec4<f32> {
                 // of the lobe it fills.
                 let fills = clamp(solid / (4.0 * 3.14159265 * bx * by), 0.0, 1.0);
                 let reaches = shadow_of(in.world, n, light.shadow, light.shadow_info);
-                colour += (light.colour.rgb * f * min(seen, 1.0) * fills * grain_gain * edge
+                colour += (light.colour.rgb * f * min(seen, 1.0) * fills * grain_gain * edge * light.up.w
                     + diffuse / 3.14159265 * light.colour.rgb * solid * max(dot(n, normalize(to)), 0.0)) * reaches;
             }
             continue;
@@ -461,7 +461,7 @@ fn lit(in: Varying) -> @location(0) vec4<f32> {
         let f = f0 + (vec3<f32>(1.0) - f0) * pow(1.0 - max(dot(h, v), 0.0), 5.0);
         var lobe = ggx(nh, a);
         if brushed > 0.0 { lobe = ggx_grain(h, n, g, max(ax, 0.002), max(ay, 0.002)); }
-        let specular = lobe * smith(nv, nl, sqrt(ax * ay)) * f / max(4.0 * nv * nl, 1e-4);
+        let specular = lobe * smith(nv, nl, sqrt(ax * ay)) * f / max(4.0 * nv * nl, 1e-4) * light.up.w;
         colour += (diffuse / 3.14159265 * (vec3<f32>(1.0) - f) + specular) * radiance * nl * 3.14159265;
     }
     // Its own light: the colour added as it is, whatever lights the scene.

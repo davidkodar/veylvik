@@ -637,6 +637,10 @@ pub struct Light3d {
     /// placement's rotation while the object is in the scene.
     #[serde(default)]
     pub aim_at: Option<NodeId>,
+    /// How strongly it shows in shiny surfaces (1: fully; 0: not at all), without changing
+    /// how it lights matte ones: a strip can light a face and only gleam faintly in an edge.
+    #[serde(default = "one")]
+    pub reflections: Scalar,
 }
 fn one_strip() -> Scalar {
     1.0.into()
@@ -673,13 +677,22 @@ pub static LIGHT_3D: NodeType = NodeType {
         scalar("feather", "factor", 0.0, 1.0, 0.0),
         other("seed", ParameterKind::Seed, "integer"),
         other("aim_at", ParameterKind::NodeRef, "object pointed at"),
+        scalar("reflections", "factor", 0.0, 1.0, 1.0),
     ],
 };
 node!(
     Light3d,
     LIGHT_3D,
     [
-        intensity, cone, softness, width, height, strips, variation, feather
+        intensity,
+        cone,
+        softness,
+        width,
+        height,
+        strips,
+        variation,
+        feather,
+        reflections
     ],
     {
         fn validate(&self) -> Result<()> {

@@ -266,7 +266,8 @@ fn light_uniform(
             None => [-1.0, 0.0, 0.0, 0.0],
         },
         right: [panel[0][0], panel[0][1], panel[0][2], light.feather],
-        up: [panel[1][0], panel[1][1], panel[1][2], 0.0],
+        // How strongly it shows in shiny surfaces.
+        up: [panel[1][0], panel[1][1], panel[1][2], light.reflections],
     }
 }
 /// Perspective with y down (the scene frame) into wgpu clip space, reversed depth

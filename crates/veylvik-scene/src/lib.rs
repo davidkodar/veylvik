@@ -156,6 +156,8 @@ pub struct Light {
     pub feather: f32,
     /// An area light's panel size.
     pub size: [f32; 2],
+    /// How strongly it shows in shiny surfaces (0 to 1), its light on matte ones unchanged.
+    pub reflections: f32,
     /// An object the light keeps pointing at, and the frame it turns about (its
     /// own, or the whole row's for a strip); applied once the whole scene is known.
     pub aim: Option<(NodeId, Mat4)>,
@@ -939,6 +941,7 @@ fn node(doc: &Graph<'_>, id: NodeId, time: Time, depth: usize) -> Result<Scene> 
                 softness: l.softness.at(time)?.clamp(0.0, 1.0),
                 feather: l.feather.at(time)?.clamp(0.0, 1.0),
                 size: [l.width.at(time)?.max(1.0), l.height.at(time)?.max(1.0)],
+                reflections: l.reflections.at(time)?.clamp(0.0, 1.0),
             };
             let count = l.strips.at(time)?.round().clamp(1.0, 32.0) as usize;
             if l.kind == veylvik_document::nodes::LightKind::Area && count > 1 {

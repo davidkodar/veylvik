@@ -203,8 +203,8 @@ fn a_point_light_is_cut_off_behind_a_blocker() {
     let light = Light {
         position: [400.0, 0.0, 400.0, 0.0],
         colour: [0.1, 0.1, 0.1, 0.0],
-        // It casts shadows.
-        up: [0.0, 0.0, 0.0, 1.0],
+        // It casts shadows (2) and shows fully in reflections (1).
+        up: [0.0, 0.0, 0.0, 3.0],
         ..Default::default()
     };
     let shot = Shot {

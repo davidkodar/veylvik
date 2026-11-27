@@ -1691,7 +1691,11 @@ and `colour`.
   reflections then have soft edges instead of the hard rectangle of a bare panel
   (at grazing angles a glossy floor keeps a reflection sharp from side to side, so
   an even panel shows there as a block). It changes the reflection, not the light
-  the panel spreads. An area light with Shadows on
+  the panel spreads. **Reflections** (0–1, 1 by default, any light) is how
+  strongly the light shows in shiny surfaces, without changing how it lights
+  matte ones: a sun lighting a scene can show only faintly as a line along a
+  round bevel, a strip can light a face and barely gleam in it. The preview and
+  the path tracer both honour it. An area light with Shadows on
   casts a soft shadow from the middle of its panel (a row of strips casts as
   one light, from the middle of the row), through a shadow map with a wide
   view; sun, spot and point lights take the four shadow maps first. Surfaces
