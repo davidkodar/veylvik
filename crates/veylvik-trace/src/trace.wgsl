@@ -661,6 +661,19 @@ fn catcher_shade(p: vec3<f32>, n: vec3<f32>) -> f32 {
     return clamp((blocked_light + enclosed) / max(direct + ambient, 1e-4), 0.0, 1.0);
 }
 // One path from the camera through pixel `px`.
+// What the denoiser is guided by, of the first surface a path meets that is not passed
+// through (glass): its colour, its facing and how far along the path it is.
+var<private> guide_albedo: vec3<f32>;
+var<private> guide_facing: vec3<f32>;
+var<private> guide_distance: f32;
+var<private> guided: bool;
+fn guide(albedo: vec3<f32>, facing: vec3<f32>, distance: f32) {
+    if guided { return; }
+    guided = true;
+    guide_albedo = clamp(albedo, vec3<f32>(0.0), vec3<f32>(1.0));
+    guide_facing = facing;
+    guide_distance = distance;
+}
 fn path(px: vec2<f32>) -> Seen {
     // The camera's ray, through a point of the lens when the lens has an aperture.
     let f = frame.lens.x;
@@ -675,6 +688,11 @@ fn path(px: vec2<f32>) -> Seen {
     }
     var o = vec4<f32>(start, 1.0) * frame.camera;
     var d = normalize(vec4<f32>(dir, 0.0) * frame.camera);
+    guided = false;
+    guide_albedo = vec3<f32>(1.0);
+    guide_facing = -d;
+    guide_distance = 1e6;
+    var travelled = 0.0;
     var colour = vec3<f32>(0.0);
     var through = vec3<f32>(1.0);
     var alpha = 0.0;
@@ -690,6 +708,7 @@ fn path(px: vec2<f32>) -> Seen {
         let h = scene_hit(o, d, 1e30, false);
         let lit = panels(o, d, h.t, bounce > 0u && last_reflection);
         if lit.w < h.t {
+            guide(vec3<f32>(1.0), -d, travelled + lit.w);
             // A panel's glow, met directly or in a reflection.
             var w = 1.0;
             if bounce > 0u { w = power(last_pdf, panel_pdf(o, d, lit.w)); }
@@ -710,6 +729,7 @@ fn path(px: vec2<f32>) -> Seen {
             }
             break;
         }
+        travelled += h.t;
         let inst = instance_at(h.instance);
         let s = surface_at(inst.surface);
         let k0 = triangles[h.triangle][0];
@@ -743,6 +763,7 @@ fn path(px: vec2<f32>) -> Seen {
             var c = sample_picture(s.texture, uv, false);
             c = vec4<f32>(c.rgb * s.colour, c.a) * s.opacity;
             if random() < c.a {
+                guide(vec3<f32>(1.0), n, travelled);
                 colour += through * c.rgb / max(c.a, 1e-6);
                 if bounce == 0u { alpha = 1.0; }
                 break;
@@ -753,6 +774,7 @@ fn path(px: vec2<f32>) -> Seen {
         if (s.flags & CATCHER) != 0u {
             // Seen directly, a catcher shows only its shadow; to other rays it is not there.
             if bounce == 0u {
+                guide(vec3<f32>(1.0), n, travelled);
                 alpha = clamp(catcher_shade(p, n) * clamp(s.shadow, 0.0, 8.0), 0.0, 1.0);
                 break;
             }
@@ -771,6 +793,7 @@ fn path(px: vec2<f32>) -> Seen {
             sc.colour *= sample_picture(s.texture, uv, true).rgb;
         }
         if (s.flags & UNLIT) != 0u {
+            guide(vec3<f32>(1.0), n, travelled);
             colour += through * sc.colour;
             break;
         }
@@ -785,6 +808,9 @@ fn path(px: vec2<f32>) -> Seen {
             let bent = normalize(transpose(to_camera) * mp.normal);
             if dot(bent, g) > 0.0 { n = bent; }
             if mp.glass > 0.5 {
+                // The denoiser follows the glass's own surface: what is seen in it changes
+                // from path to path (reflected or let through), its surface does not.
+                guide(vec3<f32>(1.0), n, travelled);
                 // Glass: reflected or refracted by Fresnel's share, about a facet drawn by
                 // its roughness (frosted glass), tinted as the light goes in.
                 let f0g = clamp(mp.f0.g, 0.0, 0.9);
@@ -828,6 +854,7 @@ fn path(px: vec2<f32>) -> Seen {
             m = fin.shade;
             n = fin.n;
         }
+        guide(through * (m.diffuse + m.f0), n, travelled);
         var add = through * direct(m, p, n, v, bounce == frame.counts.y);
         if s.emission > 0.0 { add += through * s.colour * s.emission; }
         add += through * glow;
@@ -855,6 +882,23 @@ fn path(px: vec2<f32>) -> Seen {
     }
     return Seen(colour, alpha);
 }
+// A surface colour in one word: the square root of each channel in 10 bits.
+fn pack_colour(c: vec3<f32>) -> u32 {
+    let q = vec3<u32>(round(sqrt(clamp(c, vec3<f32>(0.0), vec3<f32>(1.0))) * 1023.0));
+    return (q.r << 20u) | (q.g << 10u) | q.b;
+}
+fn unpack_colour(w: u32) -> vec3<f32> {
+    let e = vec3<f32>(vec3<u32>(w >> 20u, w >> 10u, w) & vec3<u32>(1023u)) / 1023.0;
+    return e * e;
+}
+// The facing as two numbers (octahedral), for packing.
+fn octahedral(n: vec3<f32>) -> vec2<f32> {
+    let p = n.xy / (abs(n.x) + abs(n.y) + abs(n.z) + 1e-12);
+    if n.z >= 0.0 { return p; }
+    let s = select(vec2<f32>(-1.0), vec2<f32>(1.0), p >= vec2<f32>(0.0));
+    return (1.0 - abs(p.yx)) * s;
+}
+const LUMA: vec3<f32> = vec3<f32>(0.2126, 0.7152, 0.0722);
 @compute @workgroup_size(8, 8)
 fn trace(@builtin(global_invocation_id) gid: vec3<u32>) {
     let w = u32(frame.lens.y);
@@ -862,16 +906,57 @@ fn trace(@builtin(global_invocation_id) gid: vec3<u32>) {
     if gid.x >= w || gid.y >= h { return; }
     let i = gid.y * w + gid.x;
     var sum = vec4<f32>(0.0);
+    var albedo = vec3<f32>(0.0);
+    var facing = vec3<f32>(0.0);
+    var distance = 0.0;
+    var squares = 0.0;
     let first = frame.counts.w;
     for (var k = 0u; k < frame.counts.z; k++) {
         rng = hash(i ^ hash((first + k) * 9781u + bitcast<u32>(frame.more.x)));
         let seen = path(vec2<f32>(f32(gid.x) + random(), f32(gid.y) + random()));
         // Premultiplied: what was met, over what was not.
         sum += vec4<f32>(seen.colour, seen.alpha);
+        albedo += guide_albedo;
+        facing += guide_facing;
+        distance += guide_distance;
+        let l = dot(seen.colour, LUMA);
+        squares += l * l;
     }
     // The running mean of every sample so far: this pass's samples join the earlier ones.
     let total = f32(first + frame.counts.z);
     let mine = sum / total;
+    if (frame.lights_at.y & 2u) != 0u {
+        // Gathered to be denoised: the mean colour, and the mean guides beside it.
+        var kept = vec4<f32>(0.0);
+        var old_albedo = vec3<f32>(0.0);
+        var old_facing = vec3<f32>(0.0);
+        var old = vec4<f32>(0.0);
+        let keep = f32(first) / total;
+        if first > 0u {
+            kept = picture[2u * i];
+            old = picture[2u * i + 1u];
+            let a = unpack_colour(bitcast<u32>(old.x));
+            old_albedo = a;
+            let e = unpack2x16snorm(bitcast<u32>(old.y));
+            var n = vec3<f32>(e, 1.0 - abs(e.x) - abs(e.y));
+            if n.z < 0.0 {
+                let s = select(vec2<f32>(-1.0), vec2<f32>(1.0), n.xy >= vec2<f32>(0.0));
+                n = vec3<f32>((1.0 - abs(n.yx)) * s, n.z);
+            }
+            old_facing = normalize(n);
+        }
+        let a = old_albedo * keep + albedo / total;
+        var n = old_facing * keep + facing / total;
+        if dot(n, n) < 1e-12 { n = vec3<f32>(0.0, 0.0, 1.0); }
+        picture[2u * i] = kept * keep + mine;
+        picture[2u * i + 1u] = vec4<f32>(
+            bitcast<f32>(pack_colour(a)),
+            bitcast<f32>(pack2x16snorm(octahedral(normalize(n)))),
+            old.z * keep + distance / total,
+            old.w * keep + squares / total,
+        );
+        return;
+    }
     let blend = frame.more.w;
     if blend < 1.0 {
         picture[i] = mix(picture[i], mine, blend);

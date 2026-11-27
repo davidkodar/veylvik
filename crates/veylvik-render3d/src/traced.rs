@@ -194,6 +194,10 @@ impl Engine {
                     clamp: CLAMP,
                     sample_sky: true,
                     seed: trace.seed,
+                    denoise: trace.denoise.map(|g| veylvik_trace::Gather {
+                        gathered: g.gathered,
+                        last: g.last,
+                    }),
                 },
                 target,
                 blend,

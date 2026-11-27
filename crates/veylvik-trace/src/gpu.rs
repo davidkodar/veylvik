@@ -1,4 +1,4 @@
-//! The tracer on the GPU: one compute program over the packed scene, run in passes of a few samples each so no single dispatch runs long, averaging into the picture as it goes (no extra full-frame buffer). Mesh geometry stays on the GPU while the same meshes are in the scene; placings, surfaces, the top tree and lights are sent each frame.
+//! The tracer on the GPU: one compute program over the packed scene, run in passes of a few samples each so no single dispatch runs long, averaging into the picture as it goes, or, to be denoised, into a buffer of its own with each pixel's guides (denoise.rs). Mesh geometry stays on the GPU while the same meshes are in the scene; placings, surfaces, the top tree and lights are sent each frame.
 use crate::scene::{Mat4, Packed};
 use std::sync::Mutex;
 use wgpu::util::DeviceExt;
@@ -43,6 +43,16 @@ pub struct Settings {
     /// rays happen to go (far less noise; the same picture on average).
     pub sample_sky: bool,
     pub seed: u32,
+    /// Gather the picture to be denoised: the paths so far (a shutter's earlier moments
+    /// go into the same picture) and whether these are the last.
+    pub denoise: Option<Gather>,
+}
+/// How far a denoised picture has got: paths a pixel gathered before this render, and
+/// whether this render's are the last (then it is smoothed into the target).
+#[derive(Clone, Copy, Debug)]
+pub struct Gather {
+    pub gathered: u32,
+    pub last: bool,
 }
 /// A picture the scene's surfaces read: width x height RGBA f32 at the start of `buffer`.
 #[derive(Clone, Copy)]
@@ -109,6 +119,7 @@ pub struct Tracer {
     sky_down: wgpu::ComputePipeline,
     sky_layout: wgpu::BindGroupLayout,
     sky_table: wgpu::Buffer,
+    denoiser: crate::denoise::Denoiser,
 }
 /// The table: 256 x 128 running shares, 128 row shares and the sum (sky_table.wgsl).
 const SKY_TABLE: u64 = (256 * 128 + 128 + 1) * 4;
@@ -297,18 +308,21 @@ impl Tracer {
                 usage: wgpu::BufferUsages::STORAGE,
                 mapped_at_creation: false,
             }),
+            denoiser: crate::denoise::Denoiser::new(device),
         }
     }
-    /// GPU bytes kept between frames (the meshes' geometry).
+    /// GPU bytes kept between frames (the meshes' geometry, the denoiser's buffers).
     pub fn held_bytes(&self) -> u64 {
         self.geometry
             .lock()
             .map_or(0, |g| g.as_ref().map_or(0, |g| g.bytes))
+            + self.denoiser.held_bytes()
     }
     pub fn release(&self) {
         if let Ok(mut g) = self.geometry.lock() {
             *g = None;
         }
+        self.denoiser.release();
     }
     pub fn render(&self, job: Job<'_>) -> Result<(), String> {
         let Job {
@@ -341,6 +355,14 @@ impl Tracer {
             return Err("the path tracer's picture is smaller than the frame".into());
         }
         let samples = settings.samples.clamp(1, 65_536);
+        let work = match settings.denoise {
+            Some(g) => Some(
+                self.denoiser
+                    .take(device, target, pixels, g.gathered == 0)?,
+            ),
+            None => None,
+        };
+        let gathered = settings.denoise.map_or(0, |g| g.gathered);
         let mut geometry = self
             .geometry
             .lock()
@@ -387,7 +409,7 @@ impl Tracer {
         let data = buffer(device, "path tracer frame", &data);
         // The passes: each takes a few samples for every pixel, as many as keep it short.
         let blend = blend.clamp(0.0, 1.0);
-        let per_pass = if blend < 1.0 {
+        let per_pass = if blend < 1.0 && work.is_none() {
             samples
         } else {
             (PASS_WORK / pixels).clamp(1, 64) as u32
@@ -414,7 +436,7 @@ impl Tracer {
                     lights.len() as u32,
                     settings.bounces.min(32),
                     per_pass.min(samples - first),
-                    first,
+                    gathered + first,
                 ],
                 more: [
                     f32::from_bits(settings.seed),
@@ -425,7 +447,7 @@ impl Tracer {
                 offsets,
                 lights_at: [
                     lights_at,
-                    u32::from(settings.sample_sky),
+                    u32::from(settings.sample_sky) | if work.is_some() { 2 } else { 0 },
                     textures_at,
                     looks_at,
                 ],
@@ -473,11 +495,14 @@ impl Tracer {
                 },
                 wgpu::BindGroupEntry {
                     binding: 6,
-                    resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
-                        buffer: target,
-                        offset: 0,
-                        size: wgpu::BufferSize::new(pixels * 16),
-                    }),
+                    resource: match &work {
+                        Some(w) => w.gathered.as_entire_binding(),
+                        None => wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                            buffer: target,
+                            offset: 0,
+                            size: wgpu::BufferSize::new(pixels * 16),
+                        }),
+                    },
                 },
                 wgpu::BindGroupEntry {
                     binding: 7,
@@ -524,6 +549,21 @@ impl Tracer {
             pass.set_pipeline(&self.pipeline);
             pass.set_bind_group(0, &bind, &[(u64::from(p) * UNIFORM_STEP) as u32]);
             pass.dispatch_workgroups(width.div_ceil(8), height.div_ceil(8), 1);
+        }
+        if let (Some(work), Some(g)) = (work, settings.denoise) {
+            if g.last {
+                self.denoiser.finish(
+                    device,
+                    encoder,
+                    work,
+                    target,
+                    width,
+                    height,
+                    gathered + samples,
+                );
+            } else {
+                self.denoiser.hold(target, work);
+            }
         }
         Ok(())
     }

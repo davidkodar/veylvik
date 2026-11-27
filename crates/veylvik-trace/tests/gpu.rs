@@ -4,7 +4,7 @@
 use std::sync::Arc;
 use veylvik_mesh::{Primitive, primitive};
 use veylvik_trace::{
-    Environment, Job, Light, MeshTree, Placed, Settings, Surface, Tracer, View, pack,
+    Environment, Gather, Job, Light, MeshTree, Placed, Settings, Surface, Tracer, View, pack,
 };
 use wgpu::util::DeviceExt;
 
@@ -42,6 +42,8 @@ struct Shot {
     samples: u32,
     sample_sky: bool,
     seed: u32,
+    /// Denoised, gathered with this many paths before this render's.
+    denoise: Option<Gather>,
 }
 /// The picture the camera at (0, 0, 1000), looking down -z with a 500 px focal length, sees.
 fn render(
@@ -50,12 +52,6 @@ fn render(
     tracer: &Tracer,
     shot: &Shot,
 ) -> Vec<[f32; 4]> {
-    let scene = pack(&shot.placed);
-    let map = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        label: None,
-        contents: bytemuck::cast_slice(&[[shot.sky, shot.sky, shot.sky, 1.0f32]]),
-        usage: wgpu::BufferUsages::STORAGE,
-    });
     let size = u64::from(W * H) * 16;
     let target = device.create_buffer(&wgpu::BufferDescriptor {
         label: None,
@@ -63,11 +59,22 @@ fn render(
         usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
         mapped_at_creation: false,
     });
-    let read = device.create_buffer(&wgpu::BufferDescriptor {
+    trace_into(device, queue, tracer, shot, &target);
+    read_back(device, queue, &target)
+}
+/// Traces `shot` into `target` (premultiplied RGBA f32, W x H).
+fn trace_into(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    tracer: &Tracer,
+    shot: &Shot,
+    target: &wgpu::Buffer,
+) {
+    let scene = pack(&shot.placed);
+    let map = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
         label: None,
-        size,
-        usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
-        mapped_at_creation: false,
+        contents: bytemuck::cast_slice(&[[shot.sky, shot.sky, shot.sky, 1.0f32]]),
+        usage: wgpu::BufferUsages::STORAGE,
     });
     let mut encoder = device.create_command_encoder(&Default::default());
     tracer
@@ -99,12 +106,24 @@ fn render(
                 clamp: 0.0,
                 sample_sky: shot.sample_sky,
                 seed: shot.seed,
+                denoise: shot.denoise,
             },
-            target: &target,
+            target,
             blend: 1.0,
         })
         .unwrap();
-    encoder.copy_buffer_to_buffer(&target, 0, &read, 0, size);
+    queue.submit([encoder.finish()]);
+}
+fn read_back(device: &wgpu::Device, queue: &wgpu::Queue, target: &wgpu::Buffer) -> Vec<[f32; 4]> {
+    let size = target.size();
+    let read = device.create_buffer(&wgpu::BufferDescriptor {
+        label: None,
+        size,
+        usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    });
+    let mut encoder = device.create_command_encoder(&Default::default());
+    encoder.copy_buffer_to_buffer(target, 0, &read, 0, size);
     queue.submit([encoder.finish()]);
     read.slice(..)
         .map_async(wgpu::MapMode::Read, |r| r.unwrap());
@@ -141,6 +160,7 @@ fn an_even_sky_lights_a_convex_shape_to_its_albedo() {
         samples: 256,
         sample_sky: true,
         seed: 7,
+        denoise: None,
     };
     let px = render(&device, &queue, &tracer, &shot);
     // Inside the sphere's disc, away from its rim.
@@ -179,6 +199,7 @@ fn a_sphere_covers_the_pixels_its_projection_says() {
         samples: 16,
         sample_sky: true,
         seed: 7,
+        denoise: None,
     };
     let px = render(&device, &queue, &tracer, &shot);
     // Its outline from 1000 away with a 500 px lens: 500 * r / sqrt(d^2 - r^2) px.
@@ -226,6 +247,7 @@ fn a_point_light_is_cut_off_behind_a_blocker() {
         samples: 16,
         sample_sky: true,
         seed: 7,
+        denoise: None,
     };
     let px = render(&device, &queue, &tracer, &shot);
     // The floor's middle is behind the block from the light; a point 150 down it is not.
@@ -253,6 +275,7 @@ fn drawing_light_from_a_bright_sun_keeps_the_picture_and_cuts_the_noise() {
         samples,
         sample_sky,
         seed,
+        denoise: None,
     };
     // The sphere's sunlit side, away from the rim.
     let lit: Vec<usize> = (0..W * H)
@@ -294,5 +317,112 @@ fn drawing_light_from_a_bright_sun_keeps_the_picture_and_cuts_the_noise() {
     assert!(
         drawn < 0.25 * bounced,
         "far less noise: {drawn} against {bounced}"
+    );
+}
+
+/// A lit floor with a block on it, under one point light: shadows, an edge and a rim.
+fn lit_block(samples: u32, seed: u32, denoise: Option<Gather>) -> Shot {
+    let floor = Arc::new(MeshTree::new(
+        &primitive(Primitive::Plane, [700.0, 700.0, 1.0], 1).unwrap(),
+    ));
+    let block = Arc::new(MeshTree::new(
+        &primitive(Primitive::Cube, [160.0; 3], 1).unwrap(),
+    ));
+    Shot {
+        placed: vec![
+            Placed {
+                tree: floor,
+                world: at([0.0; 3]),
+                surface: matte(0.5),
+            },
+            Placed {
+                tree: block,
+                world: at([60.0, 40.0, 80.0]),
+                surface: matte(0.8),
+            },
+        ],
+        lights: vec![Light {
+            position: [-300.0, -250.0, 500.0, 0.0],
+            colour: [0.6, 0.6, 0.6, 0.0],
+            up: [0.0, 0.0, 0.0, 3.0],
+            ..Default::default()
+        }],
+        sky: 0.3,
+        samples,
+        sample_sky: true,
+        seed,
+        denoise,
+    }
+}
+/// Root mean square difference of two pictures' green, over the pixels where `a` is opaque.
+fn error(a: &[[f32; 4]], b: &[[f32; 4]]) -> f64 {
+    let (mut sum, mut n) = (0.0f64, 0);
+    for (p, q) in a.iter().zip(b) {
+        if p[3] > 0.5 {
+            sum += f64::from(p[1] - q[1]).powi(2);
+            n += 1;
+        }
+    }
+    (sum / f64::from(n.max(1))).sqrt()
+}
+const ONCE: Option<Gather> = Some(Gather {
+    gathered: 0,
+    last: true,
+});
+#[test]
+#[ignore = "requires Vulkan"]
+fn denoising_brings_a_few_paths_close_to_many_and_keeps_edges_sharp() {
+    let (device, queue) = gpu();
+    let tracer = Tracer::new(&device, veylvik_render::SURFACE_WGSL, SKY);
+    let truth = render(&device, &queue, &tracer, &lit_block(4096, 3, None));
+    let noisy = render(&device, &queue, &tracer, &lit_block(8, 7, None));
+    let clean = render(&device, &queue, &tracer, &lit_block(8, 7, ONCE));
+    let (before, after) = (error(&noisy, &truth), error(&clean, &truth));
+    eprintln!("8 paths a pixel: {before:.4} from the truth raw, {after:.4} denoised");
+    assert!(
+        after < before * 0.4,
+        "denoised {after} against raw {before}"
+    );
+    // The picture stays where it was: coverage is the paths' own, and the block's outline
+    // does not smear onto the floor (along a row through the block's side).
+    for (p, q) in clean.iter().zip(&noisy) {
+        assert_eq!(p[3], q[3]);
+    }
+    let edge = |px: &[[f32; 4]]| -> f32 {
+        let row = 128 * W as usize;
+        (100..156)
+            .map(|x| (px[row + x + 1][1] - px[row + x][1]).abs())
+            .fold(0.0, f32::max)
+    };
+    let (sharp, kept) = (edge(&truth), edge(&clean));
+    eprintln!("steepest step along the row: {sharp:.4} in the truth, {kept:.4} denoised");
+    assert!(kept > 0.6 * sharp, "edge {kept} against {sharp}");
+}
+#[test]
+#[ignore = "requires Vulkan"]
+fn a_picture_gathered_over_moments_is_the_picture_gathered_at_once() {
+    let (device, queue) = gpu();
+    let tracer = Tracer::new(&device, veylvik_render::SURFACE_WGSL, SKY);
+    let whole = render(&device, &queue, &tracer, &lit_block(32, 5, ONCE));
+    let target = device.create_buffer(&wgpu::BufferDescriptor {
+        label: None,
+        size: u64::from(W * H) * 16,
+        usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
+        mapped_at_creation: false,
+    });
+    for (gathered, last) in [(0, false), (16, true)] {
+        let shot = lit_block(16, 5, Some(Gather { gathered, last }));
+        trace_into(&device, &queue, &tracer, &shot, &target);
+    }
+    let halves = read_back(&device, &queue, &target);
+    // The same paths, gathered in two: only the guides' rounding between moments differs.
+    let most = whole
+        .iter()
+        .zip(&halves)
+        .flat_map(|(p, q)| (0..4).map(move |c| (p[c] - q[c]).abs() / p[c].abs().max(0.05)))
+        .fold(0.0, f32::max);
+    assert!(
+        most < 5e-3,
+        "gathered in two differs by up to {most} of the value"
     );
 }

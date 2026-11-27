@@ -2388,6 +2388,23 @@ through glass are still solid, an image-texture look takes its base colour, and
 a neon tube has no white-hot core. Not path traced yet: copies at particles and
 Gaussian splats.
 
+**Denoise** (on by default) smooths away the noise left after the paths, so far
+fewer samples give a clean picture: on a row of library looks, 16 paths a pixel
+denoised come out about three times closer to a 1024-path picture than 16 raw, and
+64 denoised closer still, with a sixteenth of the paths. Each pixel's paths are
+gathered with what guides the smoothing: the colour, facing and distance of the
+first surface they meet (for glass, the glass's own surface). The light reaching
+each pixel, its colour over its surface colour so textures and patterns are kept, is
+smoothed in five passes of widening reach (an edge-avoiding à-trous filter), each
+neighbour counting only as far as it faces the same way, lies at the same distance
+and is as bright as the noise measured at the pixel allows; then it is multiplied
+by the surface colour again. Edges, shadows and textures stay sharp; coverage
+(transparency) is the paths' own. With motion blur the moments' paths are gathered
+into one picture and smoothed once. Detail that is only in the lighting, such as a
+car paint's sparkling flakes, is smoothed away with the noise: turn Denoise off and
+raise Samples for such close-ups. It keeps 64 bytes a pixel on the GPU between
+frames (about 530 MB at 4K).
+
 `veylvik-mesh` builds the geometry (extruded outlines and primitives, watertight
 and bounded); `veylvik-scene` evaluates a scene graph at a frame into objects,
 cameras and lights with world matrices, and projects points through cameras.

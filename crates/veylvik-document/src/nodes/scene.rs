@@ -892,6 +892,9 @@ pub struct RenderScene {
     /// Bounces of light after the first surface when path traced.
     #[serde(default = "four")]
     pub bounces: u32,
+    /// Smooth away the path tracer's noise, keeping edges, textures and shadows.
+    #[serde(default = "yes")]
+    pub denoise: bool,
 }
 fn sixty_four() -> u32 {
     64
@@ -918,7 +921,7 @@ pub static RENDER_SCENE: NodeType = NodeType {
     type_id: "render_scene",
     version: 1,
     label: "Render scene",
-    description: "Renders the scene on its Scene input as an image at the composition size, with transparent background. Camera picks which camera films it (1 = the first, in node order; 0 = the home view that matches 2D). Occlusion sets how much nearby surfaces shade the environment's light, so objects sit on the floor and gaps darken (0 = off). Motion blur is the shutter angle (180 = the film look): the scene is rendered at Blur samples moments across the shutter, centred on the frame, and averaged. With Depth on it outputs the scene's depth instead of its picture: every pixel's distance from the camera in scene units (red, green and blue alike), opaque where an object is and empty elsewhere, without lighting or lens blur. Connect that to the Depth input of Particles filmed by the same camera so objects hide the particles behind them, or to a Lens blur's depth input. Quality preview is the interactive renderer; path_traced follows light along its paths for the final picture: surfaces reflect one another, area lights cast soft shadows and light bounces between surfaces, with samples paths through each pixel (more is cleaner and slower) and up to bounces bounces after the first surface (a depth output is never path traced).",
+    description: "Renders the scene on its Scene input as an image at the composition size, with transparent background. Camera picks which camera films it (1 = the first, in node order; 0 = the home view that matches 2D). Occlusion sets how much nearby surfaces shade the environment's light, so objects sit on the floor and gaps darken (0 = off). Motion blur is the shutter angle (180 = the film look): the scene is rendered at Blur samples moments across the shutter, centred on the frame, and averaged. With Depth on it outputs the scene's depth instead of its picture: every pixel's distance from the camera in scene units (red, green and blue alike), opaque where an object is and empty elsewhere, without lighting or lens blur. Connect that to the Depth input of Particles filmed by the same camera so objects hide the particles behind them, or to a Lens blur's depth input. Quality preview is the interactive renderer; path_traced follows light along its paths for the final picture: surfaces reflect one another, area lights cast soft shadows and light bounces between surfaces, with samples paths through each pixel (more is cleaner and slower) and up to bounces bounces after the first surface (a depth output is never path traced). Denoise smooths away the noise left after those paths, guided by each pixel's surface colour, facing and distance so edges, textures and shadows stay sharp: far fewer samples give a clean picture.",
     inputs: &["scene"],
     optional: &[],
     output: PortKind::Image,
@@ -935,6 +938,7 @@ pub static RENDER_SCENE: NodeType = NodeType {
         ),
         integer("samples", "paths a pixel", 1, 16384, 64),
         integer("bounces", "bounces", 0, 16, 4),
+        other("denoise", ParameterKind::Boolean, "smooth the noise"),
     ],
 };
 node!(

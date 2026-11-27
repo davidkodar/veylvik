@@ -94,6 +94,15 @@ pub struct Trace {
     pub samples: u32,
     pub bounces: u32,
     pub seed: u32,
+    /// Denoised: the moments' paths are gathered into one picture, `gathered` of them
+    /// already, and smoothed once the `last` moment's are in.
+    pub denoise: Option<Gathered>,
+}
+/// How far a denoised path traced picture has got across its shutter's moments.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Gathered {
+    pub gathered: u32,
+    pub last: bool,
 }
 /// The Render scene's path tracing for one of `moments` moments across its shutter at
 /// `at` (its samples shared between them), if it path traces.
@@ -116,10 +125,15 @@ pub(crate) fn tracing(
             .concat(),
         0,
     ) as u32;
+    let samples = op.samples.clamp(1, 16384).div_ceil(moments.max(1) as u32);
     Some(Trace {
-        samples: op.samples.clamp(1, 16384).div_ceil(moments.max(1) as u32),
+        samples,
         bounces: op.bounces.min(16),
         seed,
+        denoise: op.denoise.then_some(Gathered {
+            gathered: samples * moment as u32,
+            last: moment + 1 >= moments,
+        }),
     })
 }
 /// The scene and camera a Render scene node films at `time`, and its occlusion.
