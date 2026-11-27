@@ -7,7 +7,8 @@
 struct Node { min: vec3<f32>, first: u32, max: vec3<f32>, count: u32 }
 struct Instance { to_object: mat3x4<f32>, to_world: mat3x4<f32>, root: u32, triangle_base: u32, vertex_base: u32, surface: u32 }
 // finish: brushing, the grain's direction (radians), imperfections, visible grain.
-struct Surface { colour: vec3<f32>, roughness: f32, metallic: f32, emission: f32, opacity: f32, flags: u32, texture: u32, shadow: f32, ridges: f32, look: u32, finish: vec4<f32> }
+// projected: where in `data` the picture cast onto it through a camera is (none: all bits set).
+struct Surface { colour: vec3<f32>, roughness: f32, metallic: f32, emission: f32, opacity: f32, flags: u32, texture: u32, shadow: f32, ridges: f32, look: u32, finish: vec4<f32>, projected: u32 }
 struct Light { position: vec4<f32>, direction: vec4<f32>, colour: vec4<f32>, right: vec4<f32>, up: vec4<f32> }
 struct Frame {
     // camera to world (rows), focal length in pixels, width, height
@@ -21,7 +22,7 @@ struct Frame {
     // seed, instances, the brightest a bounce may add (0: no limit), how much of the
     // picture this render is (below 1: mixed in, its samples in one pass)
     more: vec4<f32>,
-    // where in `data` the placings (7 a placing), surfaces (2 each), top tree nodes
+    // where in `data` the placings (7 a placing), surfaces (5 each), top tree nodes
     // (2 each), its order (4 to a vec4) and the lights (5 each) start
     offsets: vec4<u32>,
     // where the lights start, environment sampling (1), where the textures' places
@@ -55,11 +56,11 @@ fn instance_at(i: u32) -> Instance {
     return Instance(mat3x4<f32>(data[b], data[b + 1u], data[b + 2u]), mat3x4<f32>(data[b + 3u], data[b + 4u], data[b + 5u]), k.x, k.y, k.z, k.w);
 }
 fn surface_at(i: u32) -> Surface {
-    let b = frame.offsets.y + 4u * i;
+    let b = frame.offsets.y + 5u * i;
     let a = data[b];
     let c = data[b + 1u];
     let e = data[b + 2u];
-    return Surface(a.xyz, a.w, c.x, c.y, c.z, bitcast<u32>(c.w), bitcast<u32>(e.x), e.y, e.z, bitcast<u32>(e.w), data[b + 3u]);
+    return Surface(a.xyz, a.w, c.x, c.y, c.z, bitcast<u32>(c.w), bitcast<u32>(e.x), e.y, e.z, bitcast<u32>(e.w), data[b + 3u], bitcast<u32>(data[b + 4u].x));
 }
 // A picture's texel, repeating round its edges or clear beyond them.
 fn picture_texel(place: vec4<u32>, x: i32, y: i32, repeat: bool) -> vec4<f32> {
@@ -728,6 +729,28 @@ fn catcher_shade(p: vec3<f32>, n: vec3<f32>) -> f32 {
     enclosed = ambient * (1.0 - dot(transmitted(p + lift, toward, 1e30).rgb, luma));
     return clamp((blocked_light + enclosed) / max(direct + ambient, 1e-4), 0.0, 1.0);
 }
+// A picture cast through a camera (5 vec4s at `at` in `data`: world to camera rows, its
+// place and focal length in pixels, the picture and how it shows) onto the point `q`,
+// whose surface faces `normal`: the picture where the camera saw it, if it did (`seen`),
+// in view, faced and with nothing between them.
+struct Projected { picture: vec4<f32>, seen: bool, lit: bool, hide_unseen: bool }
+fn projected_at(at: u32, q: vec3<f32>, normal: vec3<f32>) -> Projected {
+    let how = bits(data[at + 4u]);
+    var seen = Projected(vec4<f32>(0.0), false, (how.y & 1u) != 0u, (how.y & 2u) != 0u);
+    let seen_from = vec4<f32>(q, 1.0) * mat3x4<f32>(data[at], data[at + 1u], data[at + 2u]);
+    let eye = data[at + 3u];
+    if seen_from.z >= 0.0 { return seen; }
+    let uv = vec2<f32>(0.5, 0.5) + eye.w * seen_from.xy / (-seen_from.z) / frame.lens.yz;
+    if any(uv < vec2<f32>(0.0)) || any(uv > vec2<f32>(1.0)) { return seen; }
+    let toward = eye.xyz - q;
+    if dot(normal, toward) <= 0.0 { return seen; }
+    let dist = length(toward);
+    let lift = 1e-3 + 1e-5 * max(max(abs(q.x), abs(q.y)), abs(q.z));
+    if blocked(q + normal * lift, toward / dist, dist * 0.999) { return seen; }
+    seen.picture = sample_picture(how.x, uv, false);
+    seen.seen = true;
+    return seen;
+}
 // One path from the camera through pixel `px`.
 // What the denoiser is guided by, of the first surface a path meets that is not passed
 // through (glass): its colour, its facing and how far along the path it is.
@@ -825,6 +848,7 @@ fn path(px: vec2<f32>) -> Seen {
         let v = -d;
         // Met from outside the object (its normals point outwards), for glass.
         let outside = dot(n, v) > 0.0;
+        let outward = n;
         // Two-sided: a face seen from behind shades as its other side.
         if dot(g, v) < 0.0 { g = -g; }
         if dot(n, g) < 0.0 { n = -n; }
@@ -855,8 +879,30 @@ fn path(px: vec2<f32>) -> Seen {
             o = past;
             continue;
         }
+        // A picture cast through a camera: shown as it is (met in proportion to its
+        // opacity, as a card), or the surface's colour; where the camera did not see,
+        // the surface's own colour or nothing.
+        var cast_colour = vec3<f32>(-1.0);
+        if s.projected != 0xffffffffu {
+            let projection = projected_at(s.projected, p, outward);
+            if !projection.seen {
+                if projection.hide_unseen { o = past; continue; }
+            } else if !projection.lit {
+                if random() < projection.picture.a {
+                    guide(vec3<f32>(1.0), n, travelled);
+                    colour += through * projection.picture.rgb / max(projection.picture.a, 1e-6);
+                    if bounce == 0u { alpha = 1.0; }
+                    break;
+                }
+                o = past;
+                continue;
+            } else {
+                cast_colour = projection.picture.rgb / max(projection.picture.a, 1e-4) * step(1e-4, projection.picture.a);
+            }
+        }
         if bounce == 0u { alpha = 1.0; }
         var sc = s;
+        if cast_colour.r >= 0.0 { sc.colour = cast_colour; }
         // The point and its normal in the object's own space, for the finish's patterns.
         let local = a.xyz * w0 + b.xyz * h.u + c.xyz * h.v;
         let facing = na * w0 + nb * h.u + nc * h.v;

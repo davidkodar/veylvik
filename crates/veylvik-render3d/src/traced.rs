@@ -4,8 +4,8 @@ use std::sync::Arc;
 use veylvik_render::{Result, SceneJob, Trace};
 use veylvik_scene::Geometry;
 use veylvik_trace::{
-    CARD, CATCHER, CUT, Environment, GLASS, Job, Look, MeshTree, Placed, STRAIGHT, Settings,
-    Surface, Texture, Tracer, UNLIT, View,
+    CARD, CATCHER, CUT, Environment, GLASS, Job, Look, MeshTree, Placed, Projection, STRAIGHT,
+    Settings, Surface, Texture, Tracer, UNLIT, View,
 };
 
 /// The brightest a bounce may add to a pixel: rare paths that find a small bright light
@@ -84,9 +84,35 @@ impl Engine {
                         }),
                 },
             };
+            // A picture cast through a camera: in place of a texture or a look, as in the
+            // preview.
+            let projection = object
+                .projection
+                .filter(|_| flags & (CARD | CATCHER) == 0)
+                .and_then(|cast| {
+                    let (_, buffer, [w, h], _) = picture_of(cast.image)?;
+                    let to_camera = veylvik_scene::math::rigid_inverse(&cast.camera.world);
+                    let eye = veylvik_scene::math::point(&cast.camera.world, [0.0; 3]);
+                    Some(Projection {
+                        to_camera: [to_camera[0], to_camera[1], to_camera[2]],
+                        eye,
+                        focal: veylvik_scene::home_distance(
+                            width,
+                            cast.camera.focal_length,
+                            cast.camera.sensor_width,
+                        ),
+                        picture: number(buffer, *w, *h),
+                        lit: cast.lit,
+                        hide_unseen: cast.hide_unseen,
+                    })
+                });
+            if projection.is_some() {
+                texture = None;
+                flags &= !(CUT | STRAIGHT);
+            }
             // A library look, as its material's own blocks for the shared surface code.
             let look = match &s.look {
-                Some(material) if flags & (CARD | CATCHER) == 0 => {
+                Some(material) if flags & (CARD | CATCHER) == 0 && projection.is_none() => {
                     let (params, lighting) = veylvik_render::material_uniforms(
                         material,
                         width,
@@ -145,6 +171,7 @@ impl Engine {
                         s.finish[4],
                     ],
                     look,
+                    projection,
                 },
             });
         }

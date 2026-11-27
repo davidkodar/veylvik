@@ -2393,8 +2393,12 @@ light through to its shadow, tinted as it enters and dimmed by what its faces
 reflect, so clear glass casts a faint shadow and coloured glass a coloured one; the
 light goes straight on, without the bright spot a lens focuses (no caustics),
 shadow catchers included. A recoloured neon tube is white-hot along its core,
-where it faces the viewer (the 3D preview draws it the same way). Not path traced yet: copies at particles and
-Gaussian splats.
+where it faces the viewer (the 3D preview draws it the same way). A Camera
+projection casts its picture as in the preview (as it is, or lit as the surface's
+colour), and what its camera did not see keeps its own surface or is left out;
+what hid a point from the camera is found by a ray to the camera, not a depth map,
+so any number of projecting cameras see past nothing. Not path traced yet: copies
+at particles and Gaussian splats.
 
 **Denoise** (on by default) smooths away the noise left after the paths, so far
 fewer samples give a clean picture: on a row of library looks, 16 paths a pixel

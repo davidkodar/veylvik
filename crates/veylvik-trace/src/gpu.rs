@@ -158,7 +158,7 @@ struct Frame {
     lights_at: [u32; 4],
 }
 /// The frame's small arrays in one list of vec4s, and where each starts: placings (7 a
-/// placing), surfaces (4), top tree nodes (2), its order (4 to a vec4), lights (5) and
+/// placing), surfaces (5) and the pictures cast onto them (5 each), top tree nodes (2), its order (4 to a vec4), lights (5) and
 /// the textures' places in the shared texture buffer (1: first texel, width, height).
 fn frame_data(
     scene: &Packed,
@@ -180,6 +180,8 @@ fn frame_data(
         ]);
     }
     let surfaces = data.len() as u32;
+    // The pictures cast onto surfaces follow the surfaces, in the order of their surfaces.
+    let mut cast_at = surfaces + 5 * scene.surfaces.len() as u32;
     for s in &scene.surfaces {
         data.push([s.colour[0], s.colour[1], s.colour[2], s.roughness]);
         data.push([s.metallic, s.emission, s.opacity, f(s.flags)]);
@@ -190,6 +192,21 @@ fn frame_data(
             f(s.look.unwrap_or(u32::MAX)),
         ]);
         data.push([s.finish[0], s.finish[1], s.finish[2], s.finish[3]]);
+        let cast = s.projection.map_or(u32::MAX, |_| {
+            cast_at += 5;
+            cast_at - 5
+        });
+        data.push([f(cast), 0.0, 0.0, 0.0]);
+    }
+    for c in scene.surfaces.iter().filter_map(|s| s.projection) {
+        data.extend(c.to_camera);
+        data.push([c.eye[0], c.eye[1], c.eye[2], c.focal]);
+        data.push([
+            f(c.picture),
+            f(u32::from(c.lit) | u32::from(c.hide_unseen) << 1),
+            0.0,
+            0.0,
+        ]);
     }
     let top = data.len() as u32;
     for n in &scene.top {

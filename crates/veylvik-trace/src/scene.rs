@@ -74,6 +74,24 @@ pub struct Surface {
     pub finish: [f32; 5],
     /// A library look (a number in the job's looks), lit in place of the plain colour.
     pub look: Option<u32>,
+    /// A picture cast onto it through a camera.
+    pub projection: Option<Projection>,
+}
+/// A picture cast through a camera: where the camera saw a point is the picture there.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Projection {
+    /// World to the camera's own space (rows); it looks along its -z with y down.
+    pub to_camera: [[f32; 4]; 3],
+    /// Where the camera is, in the world.
+    pub eye: [f32; 3],
+    /// Its focal length in pixels of the frame.
+    pub focal: f32,
+    /// The picture (a number in the job's textures), premultiplied.
+    pub picture: u32,
+    /// The picture becomes the surface's colour, lit (else it shows as it is).
+    pub lit: bool,
+    /// What the camera did not see is left out (else keeps the surface's own colour).
+    pub hide_unseen: bool,
 }
 impl Default for Surface {
     fn default() -> Self {
@@ -88,6 +106,7 @@ impl Default for Surface {
             shadow: 1.0,
             finish: [0.0; 5],
             look: None,
+            projection: None,
         }
     }
 }

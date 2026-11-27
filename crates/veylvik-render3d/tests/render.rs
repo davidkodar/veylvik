@@ -1986,6 +1986,29 @@ fn projected_with(
     blocker: Option<[f32; 3]>,
     seconds: (i64, u32),
 ) -> Vec<[f32; 4]> {
+    projected_as(
+        SceneQuality::Preview,
+        renderer,
+        projector,
+        filming,
+        cast,
+        plane,
+        blocker,
+        seconds,
+    )
+}
+/// As `projected_with`, rendered at `quality`.
+#[allow(clippy::too_many_arguments)]
+fn projected_as(
+    quality: SceneQuality,
+    renderer: &Renderer,
+    projector: Operation,
+    filming: Operation,
+    cast: CameraProjection,
+    plane: ([f32; 3], f32),
+    blocker: Option<[f32; 3]>,
+    seconds: (i64, u32),
+) -> Vec<[f32; 4]> {
     let (plane_at, plane_scale) = plane;
     let mut doc = blank(W, H, Time::new(24, 1).unwrap()).unwrap();
     let mut inputs = ImageInputs::default();
@@ -2025,7 +2048,12 @@ fn projected_with(
         parts.push(("scene_3", add(&mut doc, cube, &[])));
     }
     let scene = add(&mut doc, op(&MERGE_SCENES), &parts);
-    doc.output = add(&mut doc, op(&RENDER_SCENE), &[("scene", scene)]);
+    let mut render = op(&RENDER_SCENE);
+    if let Operation::RenderScene(r) = &mut render {
+        r.quality = quality;
+        r.samples = 32;
+    }
+    doc.output = add(&mut doc, render, &[("scene", scene)]);
     renderer
         .render_frame(
             &Plan::compile(&doc).unwrap(),
@@ -2803,5 +2831,81 @@ fn a_model_playing_its_animation_moves_its_parts_in_the_render() {
     assert!(
         (playing - rest - 30.0).abs() < 2.0,
         "moved by its clip: {rest} -> {playing}"
+    );
+}
+#[test]
+#[ignore = "requires Vulkan"]
+fn a_path_traced_projection_shows_what_the_camera_saw_and_only_that() {
+    let renderer = renderer();
+    let traced = |filming: Operation, cast: CameraProjection, scale: f32, blocker| {
+        projected_as(
+            SceneQuality::PathTraced,
+            &renderer,
+            op(&CAMERA_3D),
+            filming,
+            cast,
+            ([0.0; 3], scale),
+            blocker,
+            (0, 1),
+        )
+    };
+    // Cast and filmed by the same camera: the picture back, unlit, as it was.
+    let back = traced(op(&CAMERA_3D), plain_cast(), 1.0, None);
+    let picture = marked();
+    let mut error = 0.0f32;
+    for y in 2..H - 2 {
+        for x in 2..W - 2 {
+            let i = (y * W + x) as usize;
+            for c in 0..4 {
+                error += (back[i][c] - picture[i][c]).abs();
+            }
+        }
+    }
+    let error = error / ((W - 4) * (H - 4) * 4) as f32;
+    assert!(error < 0.01, "the picture comes back: mean error {error}");
+    // Filmed from further back, round what the camera saw: the plane's own blue, or
+    // nothing when unseen parts are left out.
+    let mut back_camera = op(&CAMERA_3D);
+    if let Operation::Camera3d(c) = &mut back_camera {
+        let distance = veylvik_scene::home_camera(W, H).world[2][3];
+        c.placement.position = [0.0, 0.0, distance].into();
+    }
+    let blue = |p: &[[f32; 4]]| {
+        p.iter()
+            .filter(|p| p[3] > 0.5 && p[2] > 0.02 && p[2] > 3.0 * p[0].max(p[1]))
+            .count()
+    };
+    let clear = |p: &[[f32; 4]]| p.iter().filter(|p| p[3] < 0.01).count();
+    let all = (W * H) as usize;
+    let kept = traced(back_camera.clone(), plain_cast(), 3.0, None);
+    let mut hide = plain_cast();
+    hide.hide_unseen = true;
+    let left = traced(back_camera, hide.clone(), 3.0, None);
+    assert!(
+        blue(&kept) > all / 2,
+        "its own colour round the picture: {}",
+        blue(&kept)
+    );
+    assert!(
+        clear(&left) > all / 2,
+        "left out round the picture: {}",
+        clear(&left)
+    );
+    assert!(clear(&left) < all * 7 / 8, "the middle is still cast");
+    // A cube in front of the wall hides part of it from the projecting camera.
+    let mut aside = op(&CAMERA_3D);
+    if let Operation::Camera3d(c) = &mut aside {
+        c.placement.position = [50.0, 0.0, 0.0].into();
+    }
+    let open = traced(aside.clone(), hide.clone(), 3.0, None);
+    let blocked = traced(aside, hide, 3.0, Some([0.0, 0.0, 120.0]));
+    let holes = open
+        .iter()
+        .zip(&blocked)
+        .filter(|(a, b)| a[3] > 0.5 && b[3] < 0.01)
+        .count();
+    assert!(
+        holes > 100,
+        "the wall hidden behind the cube is left out: {holes}"
     );
 }
