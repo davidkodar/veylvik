@@ -1029,6 +1029,10 @@ impl Engine {
                         binding: 8,
                         resource: copies.map_or(&empty, |c| &c.buffer).as_entire_binding(),
                     },
+                    wgpu::BindGroupEntry {
+                        binding: 9,
+                        resource: ltc.as_entire_binding(),
+                    },
                 ],
             });
             if both && matches!(object.geometry, Geometry::Card { .. }) {

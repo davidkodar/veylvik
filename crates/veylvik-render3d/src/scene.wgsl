@@ -49,6 +49,45 @@ struct Light {
 @group(0) @binding(7) var<uniform> ambient: Ambient;
 // Copies at particles, three values each: where and size, turn (a quaternion), tint.
 @group(0) @binding(8) var<storage, read> instances: array<vec4<f32>>;
+// Fitted GGX LTC tables (Heitz et al., SIGGRAPH 2016; render's assets/ltc/NOTICE): the
+// matrix, then the amplitudes, 64 x 64 each by roughness and view angle.
+@group(0) @binding(9) var<storage, read> ltc: array<vec4<f32>>;
+// The same lookup and polygon integral as the 2D materials' studio lights (kernels.wgsl).
+fn ltc_lookup(rough: f32, nv: f32, offset: u32) -> vec4<f32> {
+    let q = clamp(vec2<f32>(rough, sqrt(1.0 - clamp(nv, 0.0, 1.0))), vec2<f32>(0.0), vec2<f32>(1.0)) * 63.0;
+    let a = vec2<u32>(floor(q));
+    let b = min(a + vec2<u32>(1u), vec2<u32>(63u));
+    let f = fract(q);
+    return mix(mix(ltc[offset + a.y * 64u + a.x], ltc[offset + a.y * 64u + b.x], f.x),
+        mix(ltc[offset + b.y * 64u + a.x], ltc[offset + b.y * 64u + b.x], f.x), f.y);
+}
+// The share of a cosine lobe, in the frame `basis` turns the world into, that the
+// rectangle centre +- u +- v covers, whichever way round its corners run.
+fn ltc_rect(position: vec3<f32>, basis: mat3x3<f32>, center: vec3<f32>, u: vec3<f32>, v: vec3<f32>) -> f32 {
+    var vertices = array<vec3<f32>, 4>(center - u - v, center + u - v, center + u + v, center - u + v);
+    var polygon: array<vec3<f32>, 8>;
+    var count = 0u;
+    // Clip against the shading horizon before integrating the edges on the sphere.
+    for (var i = 0u; i < 4u; i++) {
+        let a = basis * (vertices[i] - position);
+        let b = basis * (vertices[(i + 1u) % 4u] - position);
+        if a.z > 0.0 { polygon[count] = a; count++; }
+        if (a.z > 0.0) != (b.z > 0.0) { polygon[count] = mix(a, b, a.z / (a.z - b.z)); count++; }
+    }
+    if count < 3u { return 0.0; }
+    var sum = 0.0;
+    for (var i = 0u; i < count; i++) {
+        let pa = polygon[i];
+        let pb = polygon[(i + 1u) % count];
+        if dot(pa, pa) < 1e-12 || dot(pb, pb) < 1e-12 { continue; }
+        let a = normalize(pa);
+        let b = normalize(pb);
+        let c = cross(a, b);
+        let len = length(c);
+        if len > 0.000001 { sum += c.z * atan2(len, clamp(dot(a, b), -1.0, 1.0)) / len; }
+    }
+    return abs(sum) / 6.2831853;
+}
 fn turned_by(q: vec4<f32>, v: vec3<f32>) -> vec3<f32> {
     return v + 2.0 * cross(q.xyz, cross(q.xyz, v) + q.w * v);
 }
@@ -384,60 +423,52 @@ fn lit(in: Varying) -> @location(0) vec4<f32> {
         mark = colour;
         let light = lights[i];
         if light.position.w > 2.5 {
-            // An area light: a glowing panel. Its mirror image shows in the surface,
-            // blurred by the surface's lobe; matte surfaces take light by how much of
-            // their view it fills.
+            // An area light: a glowing panel. Both its light on matte surfaces and its
+            // reflection are the panel's true share of the surface's lobe (linearly
+            // transformed cosines), so the preview agrees with the path tracer.
             let facing = light.direction.xyz;
-            let hw = length(light.right.xyz);
-            let hh = length(light.up.xyz);
-            let ax_r = light.right.xyz / hw;
-            let ax_u = light.up.xyz / hh;
             let to = light.position.xyz - in.world;
-            // Where the mirrored view ray meets the panel's plane, held to the panel.
-            let r = reflect(-v, n);
-            let closing = dot(r, facing);
-            var offset = vec3<f32>(0.0);
-            if closing < -1e-4 {
-                let t = dot(to, facing) / closing;
-                offset = r * t - to;
+            // Only the panel's front glows.
+            if dot(-to, facing) <= 0.0 { continue; }
+            let u = light.right.xyz;
+            let w = light.up.xyz;
+            var tangent = v - n * dot(n, v);
+            if dot(tangent, tangent) < 1e-6 { tangent = cross(n, vec3<f32>(0.0, 1.0, 0.0)); }
+            tangent = normalize(tangent);
+            let frame = transpose(mat3x3<f32>(tangent, cross(n, tangent), n));
+            let matte = ltc_rect(in.world, frame, light.position.xyz, u, w);
+            // Brushing bends the reflection across the grain (as the 2D materials do).
+            var sn = n;
+            let lobe_rough = rough;
+            if brushed > 0.0 {
+                let bent = normalize(cross(cross(g.along, v), g.along) + n * 1e-5);
+                sn = normalize(mix(n, bent, clamp(brushed * 0.6, 0.0, 0.85)));
             }
-            let on = light.position.xyz
-                + ax_r * clamp(dot(offset, ax_r), -hw, hw)
-                + ax_u * clamp(dot(offset, ax_u), -hh, hh);
-            // A feathered panel fades towards its edges, so its reflection does too.
-            var edge = 1.0;
-            let feather = light.right.w;
+            let snv = max(dot(sn, v), 1e-4);
+            var stangent = v - sn * dot(sn, v);
+            if dot(stangent, stangent) < 1e-6 { stangent = cross(sn, vec3<f32>(0.0, 1.0, 0.0)); }
+            stangent = normalize(stangent);
+            let sframe = transpose(mat3x3<f32>(stangent, cross(sn, stangent), sn));
+            let m = ltc_lookup(lobe_rough, snv, 0u);
+            let amplitude = ltc_lookup(lobe_rough, snv, 4096u);
+            let inverse = mat3x3<f32>(vec3<f32>(m.x, 0.0, m.y), vec3<f32>(0.0, 1.0, 0.0), vec3<f32>(m.z, 0.0, m.w));
+            let basis = inverse * sframe;
+            var shine = ltc_rect(in.world, basis, light.position.xyz, u, w);
+            // A feathered panel fades towards its edges: a fade from full at 1 - feather
+            // of its half size to nothing at its edge is the mean of the panels shrunk
+            // evenly across that range.
+            let feather = clamp(light.right.w, 0.0, 1.0);
             if feather > 0.0 {
-                let across = abs(dot(offset, ax_r)) / max(hw, 1e-3);
-                let down = abs(dot(offset, ax_u)) / max(hh, 1e-3);
-                edge = (1.0 - smoothstep(1.0 - feather, 1.0, across)) * (1.0 - smoothstep(1.0 - feather, 1.0, down));
-            }
-            let lp = on - in.world;
-            let d = max(length(lp), 1.0);
-            let l = lp / d;
-            let nl = dot(n, l);
-            // Only the panel's front glows, and only towards surfaces that face it.
-            let front = max(dot(-normalize(to), facing), 0.0);
-            if nl > 0.0 && front > 0.0 {
-                let h = normalize(l + v);
-                let f = f0 + (vec3<f32>(1.0) - f0) * pow(1.0 - max(dot(h, v), 0.0), 5.0);
-                var seen = 0.0;
-                let bx = max(ax, 0.004);
-                let by = max(ay, 0.004);
-                if brushed > 0.0 {
-                    seen = ggx_grain(h, n, g, bx, by) * 3.14159265 * bx * by;
-                } else {
-                    seen = ggx(max(dot(n, h), 0.0), bx) * 3.14159265 * bx * bx;
+                shine = 0.0;
+                for (var k = 0u; k < 4u; k++) {
+                    let s = 1.0 - feather * (f32(k) + 0.5) / 4.0;
+                    shine += 0.25 * ltc_rect(in.world, basis, light.position.xyz, u * s, w * s);
                 }
-                let solid = 4.0 * hw * hh * front / max(dot(to, to), 1.0);
-                // A lobe wider than the panel looks past it on every side: the panel's
-                // light is spread over the lobe, so its reflection dims by the share
-                // of the lobe it fills.
-                let fills = clamp(solid / (4.0 * 3.14159265 * bx * by), 0.0, 1.0);
-                let reaches = shadow_of(in.world, n, light.shadow, light.shadow_info);
-                colour += (light.colour.rgb * f * min(seen, 1.0) * fills * grain_gain * edge * light.up.w
-                    + diffuse / 3.14159265 * light.colour.rgb * solid * max(dot(n, normalize(to)), 0.0)) * reaches;
             }
+            let reflected = f0 * amplitude.x + (vec3<f32>(1.0) - f0) * amplitude.y;
+            let reaches = shadow_of(in.world, n, light.shadow, light.shadow_info);
+            colour += (light.colour.rgb * reflected * shine * grain_gain * light.up.w
+                + diffuse * light.colour.rgb * matte) * reaches;
             continue;
         }
         var l = -light.direction.xyz;

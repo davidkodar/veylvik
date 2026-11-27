@@ -1677,11 +1677,12 @@ and `colour`.
   whole scene is put together, so it holds under 3D transforms). An area light is a glowing panel of Width by Height pixels
   (a soft box or strip light): near a surface it lights it unevenly, and glossy
   surfaces show its reflection as a soft-edged shape. Its intensity is the
-  panel's brightness. The reflection is found where the mirrored view ray meets
-  the panel (held to its edges) and weighted by the surface's lobe, which is
-  stretched across the grain on a brushed surface, and by the share of that lobe
-  the panel fills, so a small panel on a rough or sharply curved surface is a
-  faint sheen. With **Strips** above 1 (up to 32) the panel is split along its
+  panel's brightness. Both its light on matte surfaces and its reflection are the
+  panel's true share of the surface's lobe, worked out exactly for a rectangle
+  (linearly transformed cosines, as the 2D materials light their studio strips),
+  so a small panel on a rough or sharply curved surface is a faint sheen and the
+  preview agrees with the path tracer. On a brushed surface the reflection is
+  bent across the grain. With **Strips** above 1 (up to 32) the panel is split along its
   width into that many strip lights, a row of studio strips from one node;
   **Variation** (0–1) makes them uneven (lengths 0.5–1.5 times the even share,
   gaps up to half a share, heights and brightness up to ±40%, tilt up to ±4

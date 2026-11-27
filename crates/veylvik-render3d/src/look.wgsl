@@ -132,41 +132,40 @@ fn look_surface(in: LookVarying) -> @location(0) vec4<f32> {
     for (var i = 0u; i < u32(look_object.uv_scale.z); i++) {
         let light = scene_lights[i];
         if light.position.w > 2.5 {
-            // An area light: its panel mirrored in the surface, blurred by the look's
-            // roughness, and scattered by how much of the surface's view it fills.
+            // An area light: its true share of the look's lobe and of a matte cosine
+            // (linearly transformed cosines, the 2D materials' own `ltc_rect`).
             let facing_light = light.direction.xyz;
-            let hw = length(light.right.xyz);
-            let hh = length(light.up.xyz);
-            let ax_r = light.right.xyz / hw;
-            let ax_u = light.up.xyz / hh;
             let to = light.position.xyz - in.world;
-            let r = reflect(-v, n);
-            let closing = dot(r, facing_light);
-            var offset = vec3<f32>(0.0);
-            if closing < -1e-4 { offset = r * (dot(to, facing_light) / closing) - to; }
-            let on = light.position.xyz
-                + ax_r * clamp(dot(offset, ax_r), -hw, hw)
-                + ax_u * clamp(dot(offset, ax_u), -hh, hh);
-            let l = normalize(on - in.world);
-            let front = max(dot(-normalize(to), facing_light), 0.0);
-            // A feathered panel fades towards its edges, so its reflection does too.
-            var edge = 1.0;
-            if light.right.w > 0.0 {
-                let across = abs(dot(offset, ax_r)) / max(hw, 1e-3);
-                let down = abs(dot(offset, ax_u)) / max(hh, 1e-3);
-                edge = (1.0 - smoothstep(1.0 - light.right.w, 1.0, across)) * (1.0 - smoothstep(1.0 - light.right.w, 1.0, down));
-            }
-            if dot(n, l) > 0.0 && front > 0.0 {
-                let h = normalize(l + v);
-                let f = f0 + (vec3<f32>(1.0) - f0) * pow(1.0 - max(dot(h, v), 0.0), 5.0);
-                let b = max(a, 0.004);
-                let nh = max(dot(n, h), 0.0);
-                let d = nh * nh * (b * b - 1.0) + 1.0;
-                let seen = min(b * b / (3.14159265 * d * d) * 3.14159265 * b * b, 1.0);
-                let solid = 4.0 * hw * hh * front / max(dot(to, to), 1.0);
-                let fills = clamp(solid / (4.0 * 3.14159265 * b * b), 0.0, 1.0);
-                added += (light.colour.rgb * f * seen * fills * edge * light.up.w
-                    + albedo / 3.14159265 * light.colour.rgb * solid * max(dot(n, normalize(to)), 0.0))
+            if dot(-to, facing_light) > 0.0 {
+                var u = light.right.xyz;
+                var w = light.up.xyz;
+                // `ltc_rect` lights only from the side u x w turns away from.
+                if dot(cross(u, w), facing_light) > 0.0 {
+                    u = light.up.xyz;
+                    w = light.right.xyz;
+                }
+                var tangent = v - n * dot(n, v);
+                if dot(tangent, tangent) < 1e-6 { tangent = cross(n, vec3<f32>(0.0, 1.0, 0.0)); }
+                tangent = normalize(tangent);
+                let frame = transpose(mat3x3<f32>(tangent, cross(n, tangent), n));
+                let rough = sqrt(max(a, 0.0));
+                let nv = max(dot(n, v), 1e-4);
+                let m = ltc_lookup(rough, nv, 0u);
+                let amplitude = ltc_lookup(rough, nv, 4096u);
+                let inverse = mat3x3<f32>(vec3<f32>(m.x, 0.0, m.y), vec3<f32>(0.0, 1.0, 0.0), vec3<f32>(m.z, 0.0, m.w));
+                var shine = ltc_rect(in.world, inverse * frame, light.position.xyz, u, w);
+                // A feathered panel: the mean of the panels shrunk evenly across its fade.
+                let feather = clamp(light.right.w, 0.0, 1.0);
+                if feather > 0.0 {
+                    shine = 0.0;
+                    for (var k = 0u; k < 4u; k++) {
+                        let s = 1.0 - feather * (f32(k) + 0.5) / 4.0;
+                        shine += 0.25 * ltc_rect(in.world, inverse * frame, light.position.xyz, u * s, w * s);
+                    }
+                }
+                let reflected = f0 * amplitude.x + (vec3<f32>(1.0) - f0) * amplitude.y;
+                added += (light.colour.rgb * reflected * shine * light.up.w
+                    + albedo * light.colour.rgb * ltc_rect(in.world, frame, light.position.xyz, u, w))
                     * shadow_of(in.world, n, light.shadow, light.shadow_info);
             }
             continue;

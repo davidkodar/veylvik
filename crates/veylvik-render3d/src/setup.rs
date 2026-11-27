@@ -86,6 +86,8 @@ impl Engine {
                     },
                     count: None,
                 },
+                // The fitted GGX tables that light area lights' reflections.
+                storage(9),
             ],
         });
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
