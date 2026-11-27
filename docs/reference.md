@@ -1934,8 +1934,11 @@ settles on the wrong kind of motion can still look sure. The
     alive) are born inside the box **Width** x **Height** centred on **X**,
     **Y** (0 x 0 is a point). With an emitter, they are born where that image
     has alpha, **Density** a second for every 100 x 100 pixels of it (the frame
-    is divided into cells of 2 to 16 pixels with four particle threads each, so
-    density saturates at about one a pixel; Density is at most 10000). Emission
+    is divided into cells of 1 to 16 pixels with four particle threads each, as
+    small as the density asks while the frame holds at most 8.4 million threads,
+    so density saturates at about four a pixel up to a 1080p frame and one a
+    pixel at 4K, where pixels are four times as dense; Density is at most
+    100000). Emission
     begins at **Start** and lasts **Duration** seconds (0 is endless; a short
     duration is a burst). Density is per area so the same setting looks the same
     on a small or a large shape; for about N particles from a shape over a burst,
@@ -1965,8 +1968,9 @@ settles on the wrong kind of motion can still look sure. The
     filmed by camera number **Camera** of the scene connected to the scene
     input, counted as a Render scene node counts them (0, or no scene, is the
     view that sees the frame exactly), so they follow a 3D or solved camera
-    with parallax. Near particles are drawn larger (radius at most 48 pixels at 1920
-    wide, in proportion in a larger frame: 96 at 3840);
+    with parallax. Near particles are drawn larger (growing to a radius of at most
+    48 pixels at 1920 wide, in proportion in a larger frame: 96 at 3840; a particle
+    whose own Size is larger, up to 1024 pixels, is always drawn at least that size);
     those behind the camera are not drawn. They are not hidden by the scene's
     objects.
   - *Target.* With a target connected each particle is given a place on it,

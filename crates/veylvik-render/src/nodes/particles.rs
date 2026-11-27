@@ -293,20 +293,28 @@ fn force_table(node: &Particles, time: Time, life: f32) -> Result<Vec<f32>> {
     Ok(table)
 }
 /// Threads from a box, and the emitter cell's stride, for these rows.
-fn layout(rows: &[[f32; COUNT]]) -> (u32, u32) {
+fn layout(rows: &[[f32; COUNT]], width: u32, height: u32) -> (u32, u32) {
     let life = rows[ROWS - 1][0];
     let most = |k: usize| rows.iter().map(|r| r[k]).fold(0.0f32, f32::max);
     let threads = (most(14) * life).ceil().clamp(1.0, MAX_BOX);
     // A cell of stride x stride pixels holds SLOTS threads; make cells as large as the
-    // density allows, so sparse systems cost little.
+    // density allows, so sparse systems cost little, and as small as one pixel where it
+    // asks for more than one particle a pixel, while the frame's cells hold at most
+    // EMITTER_THREADS threads (so a 4K frame keeps cells of two pixels).
     let per_pixel = most(15) * life / 10_000.0;
+    let smallest = ((f64::from(width) * f64::from(height) * f64::from(SLOTS) / EMITTER_THREADS)
+        .sqrt()
+        .ceil() as f32)
+        .clamp(1.0, 16.0);
     let stride = if per_pixel > 0.0 {
-        (SLOTS / per_pixel).sqrt().floor().clamp(2.0, 16.0)
+        (SLOTS / per_pixel).sqrt().floor().clamp(smallest, 16.0)
     } else {
         16.0
     };
     (threads as u32, stride as u32)
 }
+/// Most threads an emitter's cells may hold over the frame.
+const EMITTER_THREADS: f64 = 8_400_000.0;
 /// Most scene lights that light particles (each may have a shadow map).
 const LIGHTS: usize = crate::scene_hook::SHADOW_LIGHTS;
 /// The scene's lights that light particles, by index: those that shine, the first six.
@@ -578,7 +586,7 @@ pub(crate) fn simulating(node: &Particles) -> bool {
     !matches!(node.flock_radius, Scalar::Constant { value } if value <= 0.0)
 }
 fn threads(cx: &Cx<'_>, rows: &[[f32; COUNT]]) -> (u32, u32, u32) {
-    let (box_threads, stride) = layout(rows);
+    let (box_threads, stride) = layout(rows, cx.width, cx.height);
     if let Operation::Particles(node) = &cx.node.operation
         && simulating(node)
     {
@@ -1006,7 +1014,7 @@ impl RenderNode for Particles {
         p: &mut Params,
     ) -> Result<()> {
         let rows = rows(self, cx.time)?;
-        let (_, stride) = layout(&rows);
+        let (_, stride) = layout(&rows, cx.width, cx.height);
         let (_, _, threads) = threads(cx, &rows);
         let wired = |port: &str| cx.node.inputs.contains_key(port);
         let pixels = u64::from(cx.width) * u64::from(cx.height);

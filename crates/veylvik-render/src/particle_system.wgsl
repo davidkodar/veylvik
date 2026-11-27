@@ -1100,7 +1100,9 @@ fn draw(origin: vec3<f32>, launch: vec3<f32>, birth: f32, age: f32, own_life: f3
     // Near particles are drawn larger, up to a limit that keeps one particle affordable
     // (48 pixels at 1920 wide, more in a larger frame so a film looks the same at any
     // size); points (the camera row's 31st value) are the same size at any distance.
-    let largest = 48.0 * max(f32(p.size_op.x) / 1920.0, 1.0);
+    // A particle is never drawn smaller than its own Size, however large that is (a lens
+    // disc): only growing as it comes near is held to the limit.
+    let largest = max(48.0 * max(f32(p.size_op.x) / 1920.0, 1.0), look.size);
     let nearness = mix(seen.z, 1.0, camera_row(31u));
     var growth = mix(1.0, setting(GROW, birth), share);
     if has_curve(1u, birth) { growth = life_curve(SIZE_CURVE, birth, share); }

@@ -2348,3 +2348,69 @@ fn a_burst_keyed_shorter_than_the_settings_grid_shows_on_every_frame() {
         "every frame shows the burst: {least} against {most} ({light:?})"
     );
 }
+#[test]
+#[ignore = "requires Vulkan"]
+fn a_large_particle_is_drawn_at_its_own_size() {
+    let renderer = Renderer::new().unwrap();
+    // One spot of particles in the middle, at 20 and at 60 pixels (over the old 48-pixel
+    // limit): three times the size must cover about three times the width.
+    let across = |size: f32| {
+        let mut p = still();
+        p.width = 0.0.into();
+        p.height = 0.0.into();
+        p.rate = 4.0.into();
+        p.glow = 1.0.into();
+        p.size = size.into();
+        let pixels = render(&renderer, p, None, (1, 1));
+        let row = (H / 2) as usize;
+        let peak = (0..W as usize)
+            .map(|x| pixels[row * W as usize + x][3])
+            .fold(0.0f32, f32::max);
+        (0..W as usize)
+            .filter(|&x| pixels[row * W as usize + x][3] > 0.1 * peak)
+            .count() as f32
+    };
+    let (small, large) = (across(20.0), across(60.0));
+    assert!(small > 10.0, "the particle shows: {small}");
+    assert!(
+        (large / small - 3.0).abs() < 0.35,
+        "{small} px across at size 20, {large} at size 60"
+    );
+}
+#[test]
+#[ignore = "requires Vulkan"]
+fn a_dense_emitter_gives_more_than_one_particle_a_pixel() {
+    let renderer = Renderer::new().unwrap();
+    // A small opaque patch as the emitter; particles stay where they are born, faint, so
+    // their light counts them. Past one a pixel the old cells of two pixels held no more.
+    let patch: Vec<[f32; 4]> = (0..W * H)
+        .map(|i| {
+            let (x, y) = (i % W, i / W);
+            if (60..100).contains(&x) && (40..80).contains(&y) {
+                [1.0; 4]
+            } else {
+                [0.0; 4]
+            }
+        })
+        .collect();
+    let light = |density: f32| {
+        let mut p = still();
+        p.density = density.into();
+        p.life = 1.0.into();
+        p.start = (-1.0).into();
+        p.size = 0.5.into();
+        p.glow = 1.0.into();
+        p.colour = [0.002, 0.002, 0.002, 0.002];
+        p.end_colour = [0.002, 0.002, 0.002, 0.002];
+        render(&renderer, p, Some(patch.clone()), (1, 1))
+            .iter()
+            .map(|px| px[3])
+            .sum::<f32>()
+    };
+    let (one, six) = (light(10_000.0), light(60_000.0));
+    assert!(one > 0.0);
+    assert!(
+        six > 2.5 * one,
+        "six times the density: {six} against {one}"
+    );
+}
