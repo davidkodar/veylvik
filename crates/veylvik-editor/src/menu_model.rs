@@ -323,6 +323,7 @@ impl Studio {
 
         let mut tools = List::default();
         tools.item("tools.subject", "Select subject…", None, !self.files.busy());
+        tools.item("tools.compare_look", "Compare look…", None, true);
         tools.gap();
         tools.item("tools.models", "AI models…", None, true);
 
@@ -443,6 +444,7 @@ impl Studio {
             "tools.models" => {
                 self.models.show_window();
             }
+            "tools.compare_look" => self.look.open = true,
             _ => {
                 if let Some(type_id) = id.strip_prefix("add.node.") {
                     let Some(kind) = crate::menus::ADD_MENU

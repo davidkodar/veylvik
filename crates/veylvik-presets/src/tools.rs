@@ -122,6 +122,17 @@ fn specs(revision: &Value) -> Vec<Spec> {
     ]
 }
 /// A tool descriptor as MCP lists it.
+/// What compare_look does, said the same by both servers.
+pub const COMPARE_LOOK: &str = "Compare a rendered frame's look with a reference picture, region by region, to copy a style: distinct grains per area, how much grains stand out from their surroundings, grain size, fine contrast (crisp detail against a soft mass), streaks (how much the detail runs one way, as ribbons and trails do, and which way), brightness percentiles on the screen, how much is lit, the background's level, and colour as shares of hue bands with their saturation; with moving media also how the region shimmers between two frames in a row. Both are measured at one size (sizes as in a frame 1920 wide), and each region gets plain advice on what to change. reference is a still or any media Veylvik imports (a video, a sequence), read at reference_seconds. Regions are the whole picture and the cells of a grid x grid (3 by default), or pairs naming a region in each (as shares of the picture's width and height) when the two are composed differently.";
+/// compare_look's arguments about the reference and the regions, the same on both servers.
+pub fn compare_look_arguments() -> serde_json::Map<String, Value> {
+    let area = serde_json::json!({"type":"object","properties":{"x":{"type":"number","minimum":0,"maximum":1},"y":{"type":"number","minimum":0,"maximum":1},"width":{"type":"number","minimum":0,"maximum":1},"height":{"type":"number","minimum":0,"maximum":1}},"required":["x","y","width","height"],"additionalProperties":false});
+    let Value::Object(map) = serde_json::json!({"reference":{"type":"string","description":"absolute path of the reference picture or media"},"reference_seconds":{"type":"number","minimum":0},"reference_colour":{"enum":["as_shown","scene"],"description":"as_shown (default): a video read as a player shows it; scene: decoded to scene light by its tags, as Veylvik composites it"},"grid":{"type":"integer","minimum":1,"maximum":6},"pairs":{"type":"array","maxItems":32,"items":{"type":"object","properties":{"name":{"type":"string","maxLength":80},"reference":area,"ours":area},"required":["reference","ours"],"additionalProperties":false}}})
+    else {
+        unreachable!("an object")
+    };
+    map
+}
 pub fn descriptor(name: &str, description: &str, properties: Value, required: &[&str]) -> Value {
     json!({"name":name,"description":description,"inputSchema":{"type":"object","properties":properties,"required":required,"additionalProperties":false}})
 }

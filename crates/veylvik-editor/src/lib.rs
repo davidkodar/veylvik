@@ -48,6 +48,7 @@ mod layouts;
 mod light_guides;
 mod live_files;
 mod live_jobs;
+mod look_window;
 mod material_library;
 mod media_controls;
 mod media_import;
@@ -837,6 +838,7 @@ impl Studio {
             thumbnails: Default::default(),
             commands: Default::default(),
             log: Default::default(),
+            look: Default::default(),
             host_link: Default::default(),
             capabilities,
             guest: guest_look.map(|(look, made)| Guest {
@@ -1005,6 +1007,7 @@ struct Studio {
     thumbnails: node_thumbnails::Thumbnails,
     commands: command_ui::Commands,
     log: history_log::Log,
+    look: look_window::LookWindow,
     host_link: host_link::HostLink,
     /// What the host lets the editor do.
     capabilities: Capabilities,
@@ -3410,6 +3413,7 @@ impl Studio {
         self.about.show(ctx, &self.renderer);
         self.command_windows(ctx);
         self.log_windows(ctx);
+        self.look_window(ctx);
         self.layout_windows(ctx);
         self.published_window(ctx);
         self.second_viewer(ctx);

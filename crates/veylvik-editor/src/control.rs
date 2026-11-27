@@ -14,7 +14,11 @@ fn validate_arguments(name: &str, args: &Value) -> Result<()> {
     }
     // The headless server takes a time on these; here they show Studio's viewer.
     let hint = |key: &str| {
-        if matches!(key, "ticks" | "rate") && matches!(name, "preview_image" | "measure" | "render")
+        if matches!(key, "ticks" | "rate" | "frame")
+            && matches!(
+                name,
+                "preview_image" | "measure" | "compare_look" | "render"
+            )
         {
             ". The live server works on Studio's own viewer: call preview with frame (and node) first, then this tool without a time (render takes frame)".to_string()
         } else {
@@ -264,20 +268,23 @@ fn snapshot(studio: &Studio, name: &str, args: &Value) -> Result<crate::preview_
         frame: displayed.frame.clone(),
         metadata,
         max_edge: max_edge as u32,
-        measure: if name == "measure" {
+        task: {
             let doc = studio.project.document.snapshot();
-            Some((
-                if doc.ocio.view.is_some() {
-                    veylvik_document::media::DisplayTransform::Standard
-                } else {
-                    doc.display
-                },
-                args.get("region")
-                    .map(|region| serde_json::from_value(region.clone()))
-                    .transpose()?,
-            ))
-        } else {
-            None
+            let display = if doc.ocio.view.is_some() {
+                veylvik_document::media::DisplayTransform::Standard
+            } else {
+                doc.display
+            };
+            match name {
+                "measure" => crate::preview_images::Task::Measure(
+                    display,
+                    args.get("region")
+                        .map(|region| serde_json::from_value(region.clone()))
+                        .transpose()?,
+                ),
+                "compare_look" => crate::preview_images::Task::Look(display, args.clone()),
+                _ => crate::preview_images::Task::Picture,
+            }
         },
     })
 }
@@ -287,7 +294,10 @@ pub fn dispatch(
     request: veylvik_control::ipc::Request,
     ctx: &eframe::egui::Context,
 ) {
-    if !matches!(request.name.as_str(), "preview_image" | "measure") {
+    if !matches!(
+        request.name.as_str(),
+        "preview_image" | "measure" | "compare_look"
+    ) {
         let result =
             call(studio, &request.name, &request.arguments, ctx).map_err(|error| error.to_string());
         request.respond(result);

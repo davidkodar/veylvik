@@ -2490,6 +2490,12 @@ reference's near layer where it is, ours where ours is). Each region reports:
   at least half its peak); counts and sizes are as in a frame 1920 wide;
 - **fine_contrast**: how much the light varies from its surroundings' average,
   high in crisp glitter, low in a soft mass;
+- **streaks**: how much that detail runs one way rather than every way (0 for
+  loose specks or a haze, towards 1 for streaks, trails and ribbons; the
+  coherence of the light's gradients, weighted by their strength), and
+  **streak_angle**, the way most of them run in degrees on the screen (0 across,
+  90 up and down, 45 rising to the right), meaningful when streaks is well
+  above 0;
 - **brightness** on the screen at the 10th, 50th, 90th and 99.5th percentiles,
   the **coverage** (the share lit, brighter than a dark background) and the
   **background**'s level;
@@ -2508,7 +2514,11 @@ haze), with the numbers behind it. A video reference is read as a player shows
 it (its code values on an sRGB-like curve), which is what a viewer of the
 reference sees; `reference_colour: "scene"` reads it as Veylvik composites it
 instead (decoded to scene light by its tags, where a Rec.709 video's mid-tones
-read lighter). The live server does not have `compare_look` yet.
+read lighter). On the live server `compare_look` measures Studio's completed
+preview (pause, seek and choose the node with `preview` first); being one frame,
+it has no shimmer of ours. In Studio, **Tools > Compare look…** does the same for
+the picture in the viewer: choose the reference and the moment in it, and each
+region shows its main numbers beside the reference's, with the advice.
 
 The live server (`mcp --studio`) has the same tools working on the open editor,
 plus `preview`. There `save`, `render`, `render_sequence`, `render_video`,

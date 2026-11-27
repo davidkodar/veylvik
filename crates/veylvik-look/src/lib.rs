@@ -222,6 +222,13 @@ pub struct Look {
     pub hues: Vec<Hue>,
     /// Share of the lit pixels that are grey (in no hue).
     pub grey: f32,
+    /// How much the fine detail runs one way rather than every way: 0 for loose specks or
+    /// a haze, towards 1 for streaks, lines and ribbons (the coherence of the light's
+    /// gradients, weighted by how strong they are).
+    pub streaks: f32,
+    /// The way most of those streaks run, in degrees on the screen (0 across, 90 up and
+    /// down, 45 rising to the right); meaningful when `streaks` is well above 0.
+    pub streak_angle: f32,
 }
 fn median(values: &mut [f32]) -> f32 {
     if values.is_empty() {
@@ -264,11 +271,75 @@ fn box_mean(values: &[f32], w: usize, h: usize, r: usize) -> Vec<f32> {
     }
     out
 }
+/// How much the light's gradients in a region agree on a direction (structure tensor of
+/// Scharr gradients,
+/// smoothed over 7 x 7), weighted by their strength, and the direction the streaks run.
+fn streaks(lum: &[f32], w: usize, h: usize) -> (f32, f32) {
+    if w < 3 || h < 3 {
+        return (0.0, 0.0);
+    }
+    let (mut xx, mut yy, mut xy) = (
+        vec![0.0f32; w * h],
+        vec![0.0f32; w * h],
+        vec![0.0f32; w * h],
+    );
+    for y in 1..h - 1 {
+        for x in 1..w - 1 {
+            // Scharr's kernel: its gradients' directions are true at every angle.
+            let at = |dx: isize, dy: isize| {
+                lum[(y as isize + dy) as usize * w + (x as isize + dx) as usize]
+            };
+            let gx = (3.0 * (at(1, -1) - at(-1, -1))
+                + 10.0 * (at(1, 0) - at(-1, 0))
+                + 3.0 * (at(1, 1) - at(-1, 1)))
+                / 32.0;
+            let gy = (3.0 * (at(-1, 1) - at(-1, -1))
+                + 10.0 * (at(0, 1) - at(0, -1))
+                + 3.0 * (at(1, 1) - at(1, -1)))
+                / 32.0;
+            let i = y * w + x;
+            (xx[i], yy[i], xy[i]) = (gx * gx, gy * gy, gx * gy);
+        }
+    }
+    let (xx, yy, xy) = (
+        box_mean(&xx, w, h, 3),
+        box_mean(&yy, w, h, 3),
+        box_mean(&xy, w, h, 3),
+    );
+    let (mut weighted, mut energy) = (0.0f64, 0.0f64);
+    let (mut sxx, mut syy, mut sxy) = (0.0f64, 0.0f64, 0.0f64);
+    for i in 0..w * h {
+        let trace = xx[i] + yy[i];
+        if trace <= 1e-12 {
+            continue;
+        }
+        let coherence = ((xx[i] - yy[i]).powi(2) + 4.0 * xy[i] * xy[i]).sqrt() / trace;
+        weighted += f64::from(coherence * trace);
+        energy += f64::from(trace);
+        (sxx, syy, sxy) = (
+            sxx + f64::from(xx[i]),
+            syy + f64::from(yy[i]),
+            sxy + f64::from(xy[i]),
+        );
+    }
+    if energy <= 0.0 {
+        return (0.0, 0.0);
+    }
+    // The gradients' main direction; the streaks run across it. The picture's rows go
+    // down, the screen's angles up.
+    let across = 0.5 * (2.0 * sxy).atan2(sxx - syy);
+    let along = -(across + std::f64::consts::FRAC_PI_2);
+    (
+        (weighted / energy) as f32,
+        (along.to_degrees().rem_euclid(180.0)) as f32,
+    )
+}
 /// The look of `area` of a picture.
 pub fn look(picture: Picture<'_>, area: &Area) -> Look {
     let nominal = NOMINAL_WIDTH / picture.width as f32;
     let (lum, w, h) = region_luma(picture, area);
     let around = box_mean(&lum, w, h, 7);
+    let streaked = streaks(&lum, w, h);
     // Grains: brightest in their 3 x 3, clearly above their surroundings.
     let (mut ratios, mut sizes) = (Vec::new(), Vec::new());
     let mut count = 0usize;
@@ -359,6 +430,8 @@ pub fn look(picture: Picture<'_>, area: &Area) -> Look {
         },
         hues,
         grey: grey as f32 / lit.max(1) as f32,
+        streaks: streaked.0,
+        streak_angle: streaked.1,
     }
 }
 /// How a region glitters over time, from two frames in a row.

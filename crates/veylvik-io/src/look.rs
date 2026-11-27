@@ -125,6 +125,51 @@ pub fn grid_pairs(n: u32) -> Vec<Pair> {
     }
     pairs
 }
+/// The regions a tool call names: its `pairs`, or the whole and a `grid` (3 by default).
+pub fn pairs(args: &Value) -> Result<Vec<Pair>> {
+    let Some(list) = args.get("pairs") else {
+        let n = args.get("grid").and_then(Value::as_u64).unwrap_or(3);
+        if !(1..=6).contains(&n) {
+            return Err("grid must be 1 to 6".into());
+        }
+        return Ok(grid_pairs(n as u32));
+    };
+    list.as_array()
+        .ok_or("pairs must be a list")?
+        .iter()
+        .enumerate()
+        .map(|(k, p)| {
+            Ok(Pair {
+                name: p
+                    .get("name")
+                    .and_then(Value::as_str)
+                    .map_or_else(|| format!("pair {}", k + 1), str::to_owned),
+                reference: serde_json::from_value(p["reference"].clone())?,
+                ours: serde_json::from_value(p["ours"].clone())?,
+            })
+        })
+        .collect()
+}
+/// A compare_look call: the reference it names (an absolute path, at reference_seconds,
+/// as shown or as scene light) against `ours`, in the regions it names.
+pub fn against(renderer: &Renderer, args: &Value, ours: (&Seen, Option<&Seen>)) -> Result<Value> {
+    let path = Path::new(
+        args["reference"]
+            .as_str()
+            .ok_or("reference must be a path")?,
+    );
+    if !path.is_absolute() {
+        return Err("reference must be an absolute path".into());
+    }
+    let seconds = args
+        .get("reference_seconds")
+        .map_or(Some(0.0), Value::as_f64)
+        .ok_or("reference_seconds must be a number")?;
+    let pairs = pairs(args)?;
+    let as_shown = args.get("reference_colour").and_then(Value::as_str) != Some("scene");
+    let (reference, reference_next) = reference(renderer, path, seconds, as_shown)?;
+    compare((&reference, reference_next.as_ref()), ours, &pairs)
+}
 /// The render's look against the reference's in each pair of regions, with advice. The
 /// next frames, where both are given, add how each region shimmers.
 pub fn compare(

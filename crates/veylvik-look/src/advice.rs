@@ -58,6 +58,15 @@ pub fn advise(reference: &Look, ours: &Look) -> Vec<String> {
             ));
         }
     }
+    let (more, less) = (
+        reference.streaks - ours.streaks,
+        ours.streaks - reference.streaks,
+    );
+    if more > 0.15 {
+        out.push(format!("the reference's detail runs in streaks far more ({:.2} against {:.2}), mostly at {:.0} degrees: let the grains flow as ribbons (ribbon shading, trails, streak, a long thin box carried by the wind) rather than loose specks", reference.streaks, ours.streaks, reference.streak_angle));
+    } else if less > 0.15 {
+        out.push(format!("more streaked than the reference ({:.2} against {:.2}): looser grains (less streak or trail, more turbulence, a rounder box)", ours.streaks, reference.streaks));
+    }
     if (ours.coverage - reference.coverage).abs() > 0.1 {
         out.push(format!(
             "{:.0}% of this region is lit against the reference's {:.0}%: {}",

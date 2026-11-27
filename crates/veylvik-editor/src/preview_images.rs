@@ -7,12 +7,19 @@ pub struct Snapshot {
     pub frame: Arc<GpuFrame>,
     pub metadata: Value,
     pub max_edge: u32,
-    /// Measure the frame (as this display transform shows it, within this region)
-    /// instead of encoding a picture.
-    pub measure: Option<(
+    pub task: Task,
+}
+/// What is made of the frame.
+pub enum Task {
+    /// A picture of it.
+    Picture,
+    /// Its numbers, as this display transform shows it, within this region.
+    Measure(
         veylvik_document::media::DisplayTransform,
         Option<veylvik_render::Region>,
-    )>,
+    ),
+    /// Its look against the reference a compare_look call names, as this display shows it.
+    Look(veylvik_document::media::DisplayTransform, Value),
 }
 struct Job {
     request: Request,
@@ -69,7 +76,20 @@ fn encode(renderer: &Renderer, snapshot: Snapshot) -> Result<ToolOutput, String>
     let frame = renderer
         .read_frame(&snapshot.frame)
         .map_err(|error| error.to_string())?;
-    if let Some((display, region)) = snapshot.measure {
+    if let Task::Look(display, args) = &snapshot.task {
+        let ours = veylvik_io::look::Seen {
+            width: frame.region.width,
+            height: frame.region.height,
+            pixels: veylvik_render::display::apply(*display, &frame.pixels),
+        };
+        let mut result = veylvik_io::look::against(renderer, args, (&ours, None))
+            .map_err(|error| error.to_string())?;
+        for key in ["session", "revision", "node", "time", "frame"] {
+            result[key] = snapshot.metadata[key].clone();
+        }
+        return Ok(result.into());
+    }
+    if let Task::Measure(display, region) = snapshot.task {
         let whole = frame.region;
         let part = region.unwrap_or(whole);
         if part.x < whole.x

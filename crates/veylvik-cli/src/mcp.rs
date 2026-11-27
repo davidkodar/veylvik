@@ -58,11 +58,16 @@ fn build_tools() -> Value {
         json!({"revision":revision,"frame":{"type":"integer","minimum":0,"description":"a frame number at the composition's rate, instead of ticks and rate"},"ticks":{"type":"integer"},"rate":{"type":"integer","minimum":1,"maximum":u32::MAX},"node":{"type":"string","format":"uuid"},"region":{"type":"object","properties":{"x":{"type":"integer","minimum":0},"y":{"type":"integer","minimum":0},"width":{"type":"integer","minimum":1},"height":{"type":"integer","minimum":1}},"required":["x","y","width","height"],"additionalProperties":false}}),
         &["revision"],
     ));
-    let area = json!({"type":"object","properties":{"x":{"type":"number","minimum":0,"maximum":1},"y":{"type":"number","minimum":0,"maximum":1},"width":{"type":"number","minimum":0,"maximum":1},"height":{"type":"number","minimum":0,"maximum":1}},"required":["x","y","width","height"],"additionalProperties":false});
+    let mut look = veylvik_presets::tools::compare_look_arguments();
+    let Value::Object(own) = json!({"revision":revision,"frame":{"type":"integer","minimum":0,"description":"a frame number at the composition's rate, instead of ticks and rate"},"ticks":{"type":"integer"},"rate":{"type":"integer","minimum":1,"maximum":u32::MAX},"node":{"type":"string","format":"uuid"}})
+    else {
+        unreachable!("an object")
+    };
+    look.extend(own);
     list["tools"].as_array_mut().unwrap().push(tool(
         "compare_look",
-        "Compare a rendered frame's look with a reference picture, region by region, to copy a style: distinct grains per area, how much grains stand out from their surroundings, grain size, fine contrast (crisp detail against a soft mass), brightness percentiles on the screen, how much is lit, the background's level, and colour as shares of hue bands with their saturation; with moving media also how the region shimmers between two frames in a row. Both are measured at one size (sizes as in a frame 1920 wide), and each region gets plain advice on what to change. reference is a still or any media Veylvik imports (a video, a sequence), read at reference_seconds. Regions are the whole picture and the cells of a grid x grid (3 by default), or pairs naming a region in each (as shares of the picture's width and height) when the two are composed differently.",
-        json!({"revision":revision,"reference":{"type":"string","description":"absolute path of the reference picture or media"},"reference_seconds":{"type":"number","minimum":0},"reference_colour":{"enum":["as_shown","scene"],"description":"as_shown (default): a video read as a player shows it; scene: decoded to scene light by its tags, as Veylvik composites it"},"frame":{"type":"integer","minimum":0,"description":"a frame number at the composition's rate, instead of ticks and rate"},"ticks":{"type":"integer"},"rate":{"type":"integer","minimum":1,"maximum":u32::MAX},"node":{"type":"string","format":"uuid"},"grid":{"type":"integer","minimum":1,"maximum":6},"pairs":{"type":"array","maxItems":32,"items":{"type":"object","properties":{"name":{"type":"string","maxLength":80},"reference":area,"ours":area},"required":["reference","ours"],"additionalProperties":false}}}),
+        veylvik_presets::tools::COMPARE_LOOK,
+        Value::Object(look),
         &["revision", "reference"],
     ));
     list["tools"]
@@ -87,36 +92,6 @@ impl Session {
     /// The render's look against a reference's: this frame and the next one (for shimmer
     /// against moving media), as displayed.
     fn compare_look(&mut self, args: &Value) -> Result<Value> {
-        let reference_path = std::path::Path::new(
-            args["reference"]
-                .as_str()
-                .ok_or("reference must be a path")?,
-        );
-        let seconds = args
-            .get("reference_seconds")
-            .map_or(Some(0.0), Value::as_f64)
-            .ok_or("reference_seconds must be a number")?;
-        let pairs = match args.get("pairs") {
-            Some(list) => list
-                .as_array()
-                .ok_or("pairs must be a list")?
-                .iter()
-                .enumerate()
-                .map(|(k, p)| {
-                    Ok(crate::assets::look::Pair {
-                        name: p
-                            .get("name")
-                            .and_then(Value::as_str)
-                            .map_or_else(|| format!("pair {}", k + 1), str::to_owned),
-                        reference: serde_json::from_value(p["reference"].clone())?,
-                        ours: serde_json::from_value(p["ours"].clone())?,
-                    })
-                })
-                .collect::<Result<Vec<_>>>()?,
-            None => crate::assets::look::grid_pairs(
-                args.get("grid").and_then(Value::as_u64).unwrap_or(3) as u32,
-            ),
-        };
         let (node, time, frame) = self.frame(args, true)?;
         // The frame after, at the composition's rate.
         let doc = self.document.snapshot().clone();
@@ -141,16 +116,10 @@ impl Session {
             pixels: veylvik_render::display::apply(display, &f.pixels),
         };
         let (ours, ours_next) = (seen(&frame), next.as_ref().map(seen));
-        let (reference, reference_next) = crate::assets::look::reference(
+        let mut result = crate::assets::look::against(
             self.renderer.as_ref().unwrap(),
-            reference_path,
-            seconds,
-            args.get("reference_colour").and_then(Value::as_str) != Some("scene"),
-        )?;
-        let mut result = crate::assets::look::compare(
-            (&reference, reference_next.as_ref()),
+            args,
             (&ours, ours_next.as_ref()),
-            &pairs,
         )?;
         result["revision"] = json!(self.document.revision());
         result["node"] = json!(node);

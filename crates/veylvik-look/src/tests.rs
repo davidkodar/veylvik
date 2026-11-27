@@ -186,3 +186,41 @@ fn areas_outside_the_picture_are_refused() {
     );
     assert_eq!(Area::grid(3).len(), 9);
 }
+/// A dark picture crossed by thin bright lines rising at `angle` degrees, `spacing` apart.
+fn lines(angle: f32, spacing: f32) -> Vec<[f32; 4]> {
+    let (s, c) = angle.to_radians().sin_cos();
+    let mut px = vec![[0.002, 0.002, 0.002, 1.0]; (W * H) as usize];
+    for y in 0..H as usize {
+        for x in 0..W as usize {
+            // Distance across the lines (screen y up).
+            let across = -(x as f32) * s + (H as f32 - y as f32) * c;
+            let d = (across.rem_euclid(spacing) - spacing / 2.0).abs();
+            let v = 0.6 * (-d * d / 1.2).exp();
+            px[y * W as usize + x] = [v, v, v, 1.0];
+        }
+    }
+    px
+}
+#[test]
+fn streaks_are_told_from_loose_grains_and_their_direction_is_found() {
+    let dots = grains(9, 0.9, [1.0, 1.0, 1.0], 0.6);
+    let loose = look(pic(&dots), &Area::WHOLE);
+    for angle in [0.0f32, 30.0, 90.0, 135.0] {
+        let px = lines(angle, 9.0);
+        let streaked = look(pic(&px), &Area::WHOLE);
+        assert!(
+            streaked.streaks > 0.8,
+            "lines at {angle}: {}",
+            streaked.streaks
+        );
+        let off = (streaked.streak_angle - angle).rem_euclid(180.0);
+        assert!(
+            off.min(180.0 - off) < 3.0,
+            "lines at {angle} read as {}",
+            streaked.streak_angle
+        );
+    }
+    assert!(loose.streaks < 0.4, "loose grains: {}", loose.streaks);
+    let advice = crate::advise(&look(pic(&lines(30.0, 9.0)), &Area::WHOLE), &loose).join(" ");
+    assert!(advice.contains("streaks"), "{advice}");
+}
