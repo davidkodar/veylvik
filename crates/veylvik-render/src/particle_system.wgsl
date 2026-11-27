@@ -1037,19 +1037,29 @@ fn born(thread: u32, back: u32, now: f32) -> Born {
 // particle born a little further along that side is now (across the sheet) and where this
 // one was a moment ago (along it). Zero when there is no sheet: a box with no extent, a
 // particle not yet moving, or a sheet seen exactly edge on.
-fn sheet_normal(origin: vec3<f32>, launch: vec3<f32>, birth: f32, age: f32, own_life: f32, goal: vec3<f32>, homing: f32, deep: bool, here: vec3<f32>) -> vec3<f32> {
+fn sheet_normal(origin: vec3<f32>, launch: vec3<f32>, birth: f32, age: f32, own_life: f32, goal: vec3<f32>, homing: f32, deep: bool, here: vec3<f32>, surface: vec3<f32>) -> vec3<f32> {
     let size = vec3<f32>(setting(BOX_W, birth), setting(BOX_H, birth), setting(DEPTH, birth));
-    let longest = max(size.x, max(size.y, size.z));
-    if longest < 1.0 { return vec3<f32>(0.0); }
-    var side = vec3<f32>(0.0, 0.0, 1.0);
-    if size.x >= longest { side = vec3<f32>(1.0, 0.0, 0.0); } else if size.y >= longest { side = vec3<f32>(0.0, 1.0, 0.0); }
+    var longest = max(size.x, max(size.y, size.z));
     // place() keeps what it last found (an impact, a trail's path): keep this particle's.
     let kept_impact = impact; let kept_count = path_count;
-    let nudge = max(2.0, 0.01 * longest);
-    let beside = place(origin + side * nudge, launch, birth, age, own_life, goal, homing, deep);
     let moment = min(age, 0.05);
     var along = launch;
     if moment > 1e-4 { along = here - place(origin, launch, birth, age - moment, own_life, goal, homing, deep); }
+    var side = vec3<f32>(0.0, 0.0, 1.0);
+    if dot(surface, surface) > 0.25 {
+        // Born on a 3D object: the sheet peels off its surface, spanning the flow and the
+        // surface's direction across it (the vertical's, where the flow leaves straight out).
+        side = cross(surface, along);
+        if dot(side, side) < 1e-6 * max(dot(along, along), 1e-6) { side = cross(surface, vec3<f32>(0.0, 1.0, 0.0)); }
+        if dot(side, side) < 1e-8 { side = cross(surface, vec3<f32>(1.0, 0.0, 0.0)); }
+        side = normalize(side);
+        longest = 300.0 * f32(p.size_op.x) / 1920.0;
+    } else {
+        if longest < 1.0 { impact = kept_impact; path_count = kept_count; return vec3<f32>(0.0); }
+        if size.x >= longest { side = vec3<f32>(1.0, 0.0, 0.0); } else if size.y >= longest { side = vec3<f32>(0.0, 1.0, 0.0); }
+    }
+    let nudge = max(2.0, 0.01 * longest);
+    let beside = place(origin + side * nudge, launch, birth, age, own_life, goal, homing, deep);
     impact = kept_impact; path_count = kept_count;
     let n = cross(along, beside - here);
     let l = length(n);
@@ -1116,8 +1126,10 @@ fn draw(origin: vec3<f32>, launch: vec3<f32>, birth: f32, age: f32, own_life: f3
     // Lit as the sheet it flows in, where that counts for more than a surface it is on.
     let sheet = setting(RIBBON_SHADING, birth);
     var sheet_light = vec4<f32>(0.0);
-    if sheet > shaded.w && !simulated() && dot(look.surface, look.surface) < 0.25 {
-        let facing = sheet_normal(origin, launch, birth, age, own_life, goal, homing, deep, where_now);
+    // Near the object it was born on a grain is lit as that surface; once it has drifted
+    // off, as the sheet it flows in.
+    if sheet > shaded.w && !simulated() {
+        let facing = sheet_normal(origin, launch, birth, age, own_life, goal, homing, deep, where_now, look.surface);
         if dot(facing, facing) > 0.25 { sheet_light = vec4<f32>(facing, sheet); shaded = sheet_light; }
     }
     colour = vec4<f32>(lit_colour(colour.rgb, lighting(where_now, birth, facet(look.thread, look.generation, age, birth), shaded.xyz, shaded.w), birth), colour.a);
@@ -1294,7 +1306,32 @@ fn particle_carry(@builtin(global_invocation_id) gid: vec3<u32>) {
     var out = bitcast<vec4<f32>>(first[i]);
     let d = grid_dims();
     let o = grid_origin();
-    if i >= o && i < o + d.x * d.y * d.z { out.w = f32(bitcast<u32>(second[i].w)); }
+    if i >= o && i < o + d.x * d.y * d.z {
+        out.w = f32(bitcast<u32>(second[i].w));
+        // Another system's grains, counted apart over the same grid (fourth: theirs from
+        // the start, with the grid's cells in xyz and their area in w), in grains of
+        // this system's size.
+        if (u32(p.extra.z) & 128u) != 0u {
+            let theirs = fourth[i - o];
+            let size = max(setting(SIZE, bitcast<f32>(p.size_op.z)), 1e-3);
+            if all(vec3<u32>(theirs.xyz) == d) { out.w += theirs.w / (size * size); }
+        }
+    }
+    store(i, out);
+}
+// ---- grid out: first = occlusion; the counted grid from the start of the buffer, each
+// cell with the grid's cells across, down and deep and its grains' area (count x size
+// squared), so a system it shades can add it to its own ----
+@compute @workgroup_size(8, 8)
+fn particle_grid_out(@builtin(global_invocation_id) gid: vec3<u32>) {
+    if gid.x >= p.size_op.x || gid.y >= p.size_op.y { return; }
+    let i = gid.y * p.size_op.x + gid.x;
+    let d = grid_dims();
+    var out = vec4<f32>(0.0);
+    if i < d.x * d.y * d.z {
+        let size = setting(SIZE, bitcast<f32>(p.size_op.z));
+        out = vec4<f32>(vec3<f32>(d), f32(bitcast<u32>(first[grid_origin() + i].w)) * size * size);
+    }
     store(i, out);
 }
 fn splat(gid: vec3<u32>) {

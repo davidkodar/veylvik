@@ -379,10 +379,51 @@ fn shadowing(node: &Particles, wiring: &veylvik_document::Node) -> bool {
         && !matches!(node.lit, Scalar::Constant { value } if value <= 0.0)
 }
 /// Whether lit particles shade one another, and so are first counted into a grid.
-fn self_shadowing(node: &Particles, wiring: &veylvik_document::Node) -> bool {
+pub(crate) fn self_shadowing(node: &Particles, wiring: &veylvik_document::Node) -> bool {
     shadowing(node, wiring)
         && !matches!(node.self_shadow, Scalar::Constant { value } if value <= 0.0)
 }
+/// Whether another system's grains shade these too: counted apart into a grid of their
+/// own (see `plan`'s shade branch) and added to this system's own.
+pub(crate) fn shaded_by_another(node: &Particles, wiring: &veylvik_document::Node) -> bool {
+    node.shaded_by.is_some() && !node.counting && self_shadowing(node, wiring)
+}
+/// Made only to count its grains for a system it shades: prepared, counted into its grid
+/// as Self shadow counts them, and the grid laid out from the buffer's start with its
+/// cells' numbers and the grains' size.
+const COUNT_STEPS: [Step; 4] = [
+    Step {
+        kernel: Kernel::ParticlePrepare,
+        inputs: [
+            From::Port(TARGET),
+            From::Port(SPRITE),
+            From::Port(DEPTH),
+            From::None,
+        ],
+    },
+    Step {
+        kernel: Kernel::ParticleFields,
+        inputs: [
+            From::Port(FIELD),
+            From::Port(OBSTACLE),
+            From::Step(0),
+            From::Data,
+        ],
+    },
+    Step {
+        kernel: Kernel::ParticleOcclusion,
+        inputs: [
+            From::Port(EMITTER),
+            From::Port(TARGET),
+            From::Step(1),
+            From::Step(0),
+        ],
+    },
+    Step {
+        kernel: Kernel::ParticleGridOut,
+        inputs: [From::Step(2), From::None, From::Step(1), From::None],
+    },
+];
 /// Texels of the prepare pass's copy of the sprite: MIP x MIP for each cell of its sheet.
 pub(crate) fn sheet(node: &Particles) -> u32 {
     MIP * MIP * node.sprite_columns.clamp(1, 8) * node.sprite_rows.clamp(1, 8)
@@ -724,12 +765,21 @@ fn camera(node: &Particles, cx: &Cx<'_>) -> Result<[f32; COUNT]> {
         }
         None => home,
     };
-    let view = veylvik_scene::math::rigid_inverse(&camera.world);
+    // With the camera: filmed as from its home view wherever it is, so they stay in front
+    // of the lens; the scene camera's lens (below) still blurs them, and its move during the
+    // exposure does not streak them.
+    let framing = if node.with_camera {
+        earlier = None;
+        &home
+    } else {
+        &camera
+    };
+    let view = veylvik_scene::math::rigid_inverse(&framing.world);
     let mut row = [0.0; COUNT];
     for (i, line) in view.iter().take(3).enumerate() {
         row[i * 4..i * 4 + 4].copy_from_slice(line);
     }
-    row[12] = veylvik_scene::home_distance(cx.width, camera.focal_length, camera.sensor_width);
+    row[12] = veylvik_scene::home_distance(cx.width, framing.focal_length, framing.sensor_width);
     // As the 3D render's lens: one scene unit is a millimetre, and a point at
     // distance d blurs by f^2 / N / (s - f) * |1 - s / d| on the sensor.
     // In focus: the lens leaves these particles alone.
@@ -1102,8 +1152,10 @@ impl RenderNode for Particles {
                     | u8::from(sprite) << 2
                     | u8::from(wired("depth") && wired("target")) << 3
                     | u8::from(wired("depth") && !wired("target")) << 4
-                    | u8::from(shadowing(self, cx.node)) << 5
-                    | u8::from(self_shadowing(self, cx.node)) << 6,
+                    // Counting for another system, its own light and shadows do not count.
+                    | u8::from(shadowing(self, cx.node) && !self.counting) << 5
+                    | u8::from(self_shadowing(self, cx.node) && !self.counting) << 6
+                    | u8::from(shaded_by_another(self, cx.node)) << 7,
             ) + {
                 // The sprite sheet's cells across and down less one, and how cells play.
                 let play = veylvik_document::nodes::SpritePlay::ALL
@@ -1120,6 +1172,9 @@ impl RenderNode for Particles {
     }
 }
 fn plain_passes(this: &Particles, node: &veylvik_document::Node) -> Passes {
+    if this.counting {
+        return Passes::chain(&COUNT_STEPS);
+    }
     let direct_depth = node.inputs.contains_key("depth") && !node.inputs.contains_key("target");
     if !shadowing(this, node) {
         return match (direct_depth, linking(this)) {
@@ -1218,7 +1273,12 @@ fn plain_passes(this: &Particles, node: &veylvik_document::Node) -> Passes {
                 },
                 Step {
                     kernel: Kernel::ParticleCarry,
-                    inputs: [From::Step(1), From::Step(3), From::None, From::None],
+                    // With another system's grid (and the settings, for the grains' size).
+                    inputs: if shaded_by_another(this, node) {
+                        [From::Step(1), From::Step(3), From::Step(2), From::Shade]
+                    } else {
+                        [From::Step(1), From::Step(3), From::None, From::None]
+                    },
                 },
             ],
         );

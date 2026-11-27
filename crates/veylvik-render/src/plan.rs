@@ -112,6 +112,7 @@ kernels! {
     ParticleSplat => "particle_splat", Particles, program;
     ParticleOcclusion => "particle_occlusion", Particles, program;
     ParticleCarry => "particle_carry", Frame, program;
+    ParticleGridOut => "particle_grid_out", Frame, program;
     ParticleResolve => "particle_resolve", Frame, program;
     ParticlePositions => "particle_positions", Linked, program;
     ParticleLinks => "particle_links", Linked, program;
@@ -279,6 +280,8 @@ pub(crate) enum Kind {
     History(veylvik_document::nodes::Particles),
     /// A picture made at its own size.
     OwnSize,
+    /// Another particle system's grains counted into a grid, at the same moment.
+    Shade,
     /// One input of an OpenFX effect that reads other frames.
     Frames {
         node: NodeId,
@@ -521,6 +524,21 @@ impl Plan {
                                 remaining,
                             )?),
                             key: ofx_key(node.id, port),
+                        });
+                    }
+                    if let Operation::Particles(particles) = &node.operation
+                        && crate::nodes::particles::shaded_by_another(particles, node)
+                    {
+                        let other = particles.shaded_by.expect("shaded by another");
+                        temporal.push(TemporalBranch {
+                            kind: Kind::Shade,
+                            plan: Box::new(Self::compile_branch(
+                                &shading_copy(composition, node, particles, other)?,
+                                other,
+                                depth + 1,
+                                remaining,
+                            )?),
+                            key: shade_key(node.id),
                         });
                     }
                     if let Some(source) = history_source(node)
@@ -808,6 +826,7 @@ impl Plan {
                         crate::nodes::From::Step(j) => Input::Value(values[j]),
                         crate::nodes::From::None => Input::Empty,
                         crate::nodes::From::Data => Input::Asset(data_key(node.id)),
+                        crate::nodes::From::Shade => Input::Asset(shade_key(node.id)),
                     };
                     let (last, rest) = steps.split_last().expect("a chain has steps");
                     for step in rest {
@@ -1368,6 +1387,59 @@ pub(crate) fn ofx_key(id: NodeId, port: &str) -> String {
 /// The input key of that branch at another frame.
 pub(crate) fn ofx_frame_key(id: NodeId, port: &str, frame: f64) -> String {
     format!("\0temporal:{id}:{port}@{}", frame.to_bits())
+}
+pub(crate) fn shade_key(id: veylvik_document::NodeId) -> String {
+    format!("\0shade:{id}")
+}
+/// The composition with `other` made only to count its grains for `node`: it must be
+/// another particle system filmed as `node`'s are (the same scene and camera), or the
+/// two grids would not lie over each other.
+fn shading_copy(
+    composition: &Composition,
+    node: &Node,
+    particles: &veylvik_document::nodes::Particles,
+    other: NodeId,
+) -> Result<Composition> {
+    let refuse = |why: &str| Err(error(format!("{}: Shaded by {why}", node.label)));
+    let Some(found) = composition.nodes.get(&other) else {
+        return refuse("names a node that is not in the composition");
+    };
+    let Operation::Particles(theirs) = &found.operation else {
+        return refuse(&format!(
+            "names {}, which is not a particle system",
+            found.label
+        ));
+    };
+    if other == node.id {
+        return refuse("cannot name the system itself (Self shadow does that)");
+    }
+    if crate::nodes::particles::simulating(theirs) {
+        return refuse(&format!(
+            "names {}, a flock, which cannot shade another system",
+            found.label
+        ));
+    }
+    let filmed = |n: &Node, p: &veylvik_document::nodes::Particles| {
+        (
+            n.inputs.get("scene").copied(),
+            format!("{:?}", p.camera),
+            p.with_camera,
+        )
+    };
+    if filmed(found, theirs) != filmed(node, particles) {
+        return refuse(&format!(
+            "names {}, which is not filmed by the same scene and camera (connect the same scene to both, with the same Camera)",
+            found.label
+        ));
+    }
+    let mut copy = composition.clone();
+    if let Some(n) = copy.nodes.get_mut(&other)
+        && let Operation::Particles(theirs) = &mut n.operation
+    {
+        theirs.counting = true;
+        theirs.shaded_by = None;
+    }
+    Ok(copy)
 }
 pub(crate) fn history_key(id: veylvik_document::NodeId) -> String {
     format!("\0temporal:{id}")

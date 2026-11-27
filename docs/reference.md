@@ -1919,7 +1919,12 @@ settles on the wrong kind of motion can still look sure. The
     may be up to a million pixels wide, high and deep. **Points** keeps every
     particle the same size on screen at any distance, as a star is a point
     however near (otherwise particles grow as they come close), and **Always
-    in focus** keeps the camera's depth of field from blurring them. With Points
+    in focus** keeps the camera's depth of field from blurring them. **With the
+    camera** places them in front of the scene camera and keeps them there wherever
+    it moves or turns, as dust on the lens or grains drifting by it: X, Y and Z
+    are where the box sits in the camera's home view (Z towards the lens), its lens
+    still throws them out of focus, its move during an exposure does not streak
+    them, and scene lights reach them as if the camera were at home. With Points
     on, no particle shrinks away with distance, so every one inside Reach shows
     at full size: a field looks about ten times denser than the same settings
     without it, and rates should come down to match. **Life**
@@ -2054,8 +2059,10 @@ settles on the wrong kind of motion can still look sure. The
     born on a thin line then reads as a silk ribbon with a lit crest and a
     shaded fold, and several such streams stack in depth. It works out each
     particle's path twice more (beside it and a moment earlier), so it costs
-    about three times the movement. Particles born on a 3D object keep that
-    object's shading near it.
+    about three times the movement. Particles born on a 3D object (Emit from)
+    are lit as its surface near it and, once they have drifted off, as the sheet
+    they flow in, peeling off that surface: it spans their flow and the surface's
+    direction across it.
     **Glint white** (0 to 1) gives the flashes the light's colour instead of the
     grain's: a metal flake's flash is nearly white even when the flake is
     crimson. With it up, lower Sparkle, or the white flashes swamp the grains'
@@ -2069,8 +2076,16 @@ settles on the wrong kind of motion can still look sure. The
     times the distance the camera is focused at, or of the frame without a
     focus; fewer cells in a small frame), so grains outside the picture or that
     depth range cast nothing, and the shade is about a cell and a half coarse.
-    It counts every grain of a clump, and only the grains of its own system. Light is darker
-    overall with it on: raise the lights to make up for it.
+    It counts every grain of a clump. **Shaded by** names another particle
+    system whose grains shade these too, as their own do (smoke shading the
+    sparks inside it, a cloud of dust shading glitter behind it): the other
+    system is counted into the same grid apart, each of its grains blocking its
+    own size, at the cost of moving its particles once more each frame; it need
+    not be in the picture. Both must be filmed the same way (the same scene
+    connected, the same Camera, With the camera alike), or the grids would not
+    lie over each other and the plan is refused; a flock cannot shade another
+    system, and only one system can be named (its own Shaded by does not carry
+    on). Light is darker overall with it on: raise the lights to make up for it.
     **Shading** (0 to 1) lights particles born on a 3D object (Emit from) as the
     surface is lit while they are on it: bright where it faces a light, dark
     where it faces away, so a body of grains reads as a solid, lit form instead

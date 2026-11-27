@@ -39,6 +39,8 @@ pub(crate) struct InspectCx<'a> {
     pub picking: Option<&'static str>,
     /// The 3D objects in the composition, for a camera's Focus on.
     pub objects: &'a [(veylvik_document::NodeId, String)],
+    /// The particle systems in the composition, for another's Shaded by.
+    pub systems: &'a [(veylvik_document::NodeId, String)],
     /// Everything in the scene an object can face: objects, cameras and lights.
     pub things: &'a [(veylvik_document::NodeId, String)],
     /// What a camera can keep in focus: objects, markers and 3D transforms.

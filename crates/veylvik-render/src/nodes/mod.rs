@@ -28,6 +28,8 @@ pub(crate) enum From {
     Step(usize),
     /// The node's own data image (`RenderNode::data`).
     Data,
+    /// Another particle system's grains counted into a grid (`plan`'s shade branch).
+    Shade,
     None,
 }
 #[derive(Clone)]

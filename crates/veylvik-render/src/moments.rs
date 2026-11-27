@@ -176,6 +176,7 @@ impl Renderer {
                 }
             }
             Kind::OwnSize => Need::Resized(time),
+            Kind::Shade => Need::At(time),
             Kind::Frames { node, port, effect } => {
                 let others = self
                     .ofx_other_frames(plan, *node, port, effect, time, inputs)?

@@ -132,6 +132,10 @@ impl Inspect for veylvik_document::nodes::Particles {
                 .checkbox(&mut self.in_focus, "Always in focus")
                 .on_hover_text("In a 3D scene: the camera's depth of field does not blur these particles")
                 .changed();
+            cx.dirty |= ui
+                .checkbox(&mut self.with_camera, "With the camera")
+                .on_hover_text("In a 3D scene: placed in front of the camera and moving with it, as dust on the lens or grains near it. X, Y and Z are where the box sits in the camera's home view; the lens still blurs them")
+                .changed();
         });
         // Born on a 3D object of the connected scene, in place of the box.
         let scene: bool = cx.is_wired("scene");
@@ -162,6 +166,38 @@ impl Inspect for veylvik_document::nodes::Particles {
                     .response
                     .on_hover_text("Born on the surface of a 3D object of the scene, spread evenly over it and launched straight out of it; a moving object leaves its particles behind. An imported model emits from all its parts; a flock cannot be born on one");
             });
+            // Shaded by another system's grains as by its own (with Self shadow).
+            let others: Vec<_> = cx
+                .systems
+                .iter()
+                .filter(|(id, _)| *id != cx.node_id)
+                .collect();
+            if !others.is_empty() || self.shaded_by.is_some() {
+                ui.horizontal(|ui| {
+                    ui.label("Shaded by");
+                    let shown = match self.shaded_by {
+                        None => "Only its own grains".to_string(),
+                        Some(id) => others
+                            .iter()
+                            .find(|(o, _)| *o == id)
+                            .map_or("Missing system".into(), |(_, label)| label.clone()),
+                    };
+                    egui::ComboBox::from_id_salt("particle-shaded-by")
+                        .selected_text(shown)
+                        .show_ui(ui, |ui| {
+                            cx.dirty |= ui
+                                .selectable_value(&mut self.shaded_by, None, "Only its own grains")
+                                .changed();
+                            for (id, label) in &others {
+                                cx.dirty |= ui
+                                    .selectable_value(&mut self.shaded_by, Some(*id), label.as_str())
+                                    .changed();
+                            }
+                        })
+                        .response
+                        .on_hover_text("Another particle system, filmed by the same scene and camera, whose grains shade these as their own do with Self shadow (smoke shading the sparks in it). Needs Self shadow above 0");
+                });
+            }
             // Gathering onto a 3D object, as onto a target picture but in depth.
             ui.horizontal(|ui| {
                 ui.label("Gather on");

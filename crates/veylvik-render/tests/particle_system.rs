@@ -2467,3 +2467,255 @@ fn gathered_particles_hold_until_the_release_and_then_blow_away() {
         "blown away after the release: {gone} against {held_late}"
     );
 }
+#[test]
+#[ignore = "requires Vulkan"]
+fn particles_with_the_camera_stay_in_front_of_it_wherever_it_moves() {
+    let renderer = Renderer::new().unwrap();
+    // A small cloud in the middle of the home view, and a scene camera moved well to the side.
+    let middle_x = |with_camera: bool| {
+        let mut camera = registry::CAMERA_3D.default_operation();
+        camera["placement"]["position"] = serde_json::json!([60.0, 0.0, 0.0]);
+        let camera = Node::new("camera", serde_json::from_value(camera).unwrap(), &[]);
+        let scene = Node::new(
+            "scene",
+            serde_json::from_value(registry::MERGE_SCENES.default_operation()).unwrap(),
+            &[("scene", camera.id)],
+        );
+        let mut p = still();
+        p.width = 20.0.into();
+        p.height = 20.0.into();
+        p.glow = 1.0.into();
+        p.with_camera = with_camera;
+        let node = Node::new("particles", Operation::Particles(p), &[("scene", scene.id)]);
+        let mut doc = blank(W, H, Time::new(24, 1).unwrap()).unwrap();
+        doc.output = node.id;
+        for n in [camera, scene, node] {
+            doc.nodes.insert(n.id, n);
+        }
+        let plan = Plan::compile(&doc).unwrap();
+        let frame = renderer
+            .render_gpu_cached(
+                &plan,
+                RenderRequest::full(Time::new(1, 1).unwrap()),
+                &ImageInputs::default(),
+            )
+            .unwrap();
+        let px = renderer.read_frame(&frame).unwrap().pixels;
+        let (mut sum, mut weight) = (0.0f32, 0.0f32);
+        for (i, v) in px.iter().enumerate() {
+            sum += (i as u32 % W) as f32 * v[3];
+            weight += v[3];
+        }
+        assert!(
+            weight > 0.0,
+            "the cloud shows (with the camera: {with_camera})"
+        );
+        sum / weight
+    };
+    let (moved, held) = (middle_x(false), middle_x(true));
+    assert!(
+        (held - W as f32 / 2.0).abs() < 4.0,
+        "with the camera it stays in the middle: {held}"
+    );
+    assert!(
+        (moved - W as f32 / 2.0).abs() > 20.0,
+        "without, the camera's move shifts it: {moved}"
+    );
+}
+#[test]
+#[ignore = "requires Vulkan"]
+fn a_stream_born_on_a_3d_object_is_lit_as_its_ribbon_once_it_drifts_off() {
+    let renderer = Renderer::new().unwrap();
+    // Grains born on a card facing the camera, blown far off it to the side, lit by a sun
+    // from straight above: loose specks take it from any side; the ribbon they flow in
+    // (spanning the wind and the card's upright, so facing the camera) is edge on to it.
+    let light = |ribbon: f32| {
+        let mut card = registry::SHAPE_3D.default_operation();
+        card["kind"] = serde_json::json!("plane");
+        card["size_x"] = serde_json::json!({"kind": "constant", "value": 40.0});
+        card["size_y"] = serde_json::json!({"kind": "constant", "value": 40.0});
+        let card = Node::new("card", serde_json::from_value(card).unwrap(), &[]);
+        let camera = Node::new(
+            "camera",
+            serde_json::from_value(registry::CAMERA_3D.default_operation()).unwrap(),
+            &[],
+        );
+        let mut lamp = registry::LIGHT_3D.default_operation();
+        lamp["kind"] = serde_json::json!("sun");
+        lamp["placement"]["rotation"] = serde_json::json!([90.0, 0.0, 0.0]);
+        let lamp = Node::new("lamp", serde_json::from_value(lamp).unwrap(), &[]);
+        let merged = Node::new(
+            "scene",
+            serde_json::from_value(registry::MERGE_SCENES.default_operation()).unwrap(),
+            &[
+                ("scene", camera.id),
+                ("scene_2", lamp.id),
+                ("scene_3", card.id),
+            ],
+        );
+        let mut p = still();
+        p.emit_from = Some(card.id);
+        p.rate = 20000.0.into();
+        p.speed = 0.0.into();
+        p.wind = 300.0.into();
+        p.size = 0.6.into();
+        p.glow = 1.0.into();
+        p.lit = 1.0.into();
+        p.ambient = 0.0.into();
+        p.scatter = 0.0.into();
+        p.ribbon_shading = ribbon.into();
+        let node = Node::new(
+            "particles",
+            Operation::Particles(p),
+            &[("scene", merged.id)],
+        );
+        let mut doc = blank(W, H, Time::new(24, 1).unwrap()).unwrap();
+        doc.output = node.id;
+        for n in [card, camera, lamp, merged, node] {
+            doc.nodes.insert(n.id, n);
+        }
+        let plan = Plan::compile(&doc).unwrap();
+        let frame = renderer
+            .render_gpu_cached(
+                &plan,
+                RenderRequest::full(Time::new(2, 1).unwrap()),
+                &ImageInputs::default(),
+            )
+            .unwrap();
+        renderer
+            .read_frame(&frame)
+            .unwrap()
+            .pixels
+            .iter()
+            .map(|p| p[0])
+            .sum::<f32>()
+    };
+    let (specks, ribbon) = (light(0.0), light(1.0));
+    assert!(specks > 0.0);
+    assert!(
+        ribbon < 0.8 * specks,
+        "lit as their ribbon once off the card: {ribbon} against {specks}"
+    );
+}
+#[test]
+#[ignore = "requires Vulkan"]
+fn another_system_between_the_light_and_these_grains_shades_them() {
+    let renderer = Renderer::new().unwrap();
+    // A sparse cloud on the right, lit by a point light on the left; a dense cloud of
+    // another system between them. Only the sparse one is in the picture.
+    let light = |shaded: bool| {
+        let camera = Node::new(
+            "camera",
+            serde_json::from_value(registry::CAMERA_3D.default_operation()).unwrap(),
+            &[],
+        );
+        let mut lamp = registry::LIGHT_3D.default_operation();
+        lamp["kind"] = serde_json::json!("point");
+        lamp["intensity"] = serde_json::json!({"kind": "constant", "value": 4.0});
+        lamp["placement"]["position"] = serde_json::json!([-170.0, 0.0, 0.0]);
+        let lamp = Node::new("lamp", serde_json::from_value(lamp).unwrap(), &[]);
+        let merged = Node::new(
+            "scene",
+            serde_json::from_value(registry::MERGE_SCENES.default_operation()).unwrap(),
+            &[("scene", camera.id), ("scene_2", lamp.id)],
+        );
+        let cloud = |x: f32, width: f32, rate: f32| {
+            let mut p = still();
+            p.x = x.into();
+            p.width = width.into();
+            p.height = 80.0.into();
+            p.depth = 100.0.into();
+            p.rate = rate.into();
+            p.size = 0.6.into();
+            p.glow = 1.0.into();
+            p.lit = 1.0.into();
+            p.ambient = 0.0.into();
+            p.scatter = 0.0.into();
+            p.colour = [0.3, 0.3, 0.3, 1.0];
+            p.end_colour = [0.3, 0.3, 0.3, 1.0];
+            p.self_shadow = 1.0.into();
+            p
+        };
+        let wall = Node::new(
+            "wall",
+            Operation::Particles(cloud(40.0, 40.0, 40000.0)),
+            &[("scene", merged.id)],
+        );
+        let mut sparse = cloud(125.0, 30.0, 1500.0);
+        sparse.shaded_by = shaded.then_some(wall.id);
+        let node = Node::new(
+            "particles",
+            Operation::Particles(sparse),
+            &[("scene", merged.id)],
+        );
+        let mut doc = blank(W, H, Time::new(24, 1).unwrap()).unwrap();
+        doc.output = node.id;
+        for n in [camera, lamp, merged, wall, node] {
+            doc.nodes.insert(n.id, n);
+        }
+        let plan = Plan::compile(&doc).unwrap();
+        let frame = renderer
+            .render_gpu_cached(
+                &plan,
+                RenderRequest::full(Time::new(2, 1).unwrap()),
+                &ImageInputs::default(),
+            )
+            .unwrap();
+        renderer
+            .read_frame(&frame)
+            .unwrap()
+            .pixels
+            .iter()
+            .map(|p| p[0])
+            .sum::<f32>()
+    };
+    let (open, behind) = (light(false), light(true));
+    assert!(open > 0.0, "the sparse cloud is lit");
+    assert!(
+        behind < 0.6 * open,
+        "in the other system's shade: {behind} against {open}"
+    );
+}
+#[test]
+fn a_system_shaded_by_one_filmed_another_way_is_refused_by_name() {
+    let camera = Node::new(
+        "camera",
+        serde_json::from_value(registry::CAMERA_3D.default_operation()).unwrap(),
+        &[],
+    );
+    let lamp = Node::new(
+        "lamp",
+        serde_json::from_value(registry::LIGHT_3D.default_operation()).unwrap(),
+        &[],
+    );
+    let merged = Node::new(
+        "scene",
+        serde_json::from_value(registry::MERGE_SCENES.default_operation()).unwrap(),
+        &[("scene", camera.id), ("scene_2", lamp.id)],
+    );
+    let mut lit = still();
+    lit.lit = 1.0.into();
+    lit.self_shadow = 1.0.into();
+    // The smoke has no scene: filmed by the home view, not the scene camera.
+    let smoke = Node::new("Smoke", Operation::Particles(lit.clone()), &[]);
+    let mut sparks = lit;
+    sparks.shaded_by = Some(smoke.id);
+    let node = Node::new(
+        "Sparks",
+        Operation::Particles(sparks),
+        &[("scene", merged.id)],
+    );
+    let mut doc = blank(W, H, Time::new(24, 1).unwrap()).unwrap();
+    doc.output = node.id;
+    for n in [camera, lamp, merged, smoke, node] {
+        doc.nodes.insert(n.id, n);
+    }
+    let Err(e) = Plan::compile(&doc) else {
+        panic!("planned with grids that do not meet")
+    };
+    let words = e.to_string();
+    assert!(
+        words.contains("Sparks") && words.contains("Smoke") && words.contains("same scene"),
+        "{words}"
+    );
+}
