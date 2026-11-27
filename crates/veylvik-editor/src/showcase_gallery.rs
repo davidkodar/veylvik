@@ -218,6 +218,12 @@ fn bytes(id: &str, before: bool) -> &'static [u8] {
         ("distant_sun", true) => include_bytes!("../assets/showcase/distant_sun-before.png"),
         ("deep_sky", false) => include_bytes!("../assets/showcase/deep_sky-after.png"),
         ("deep_sky", true) => include_bytes!("../assets/showcase/deep_sky-before.png"),
+        ("dissolve_to_dust", false) => {
+            include_bytes!("../assets/showcase/dissolve_to_dust-after.png")
+        }
+        ("dissolve_to_dust", true) => {
+            include_bytes!("../assets/showcase/dissolve_to_dust-before.png")
+        }
         ("halation", false) => include_bytes!("../assets/showcase/halation-after.png"),
         ("halation", true) => include_bytes!("../assets/showcase/halation-before.png"),
         ("chromatic_fringe", false) => {

@@ -136,7 +136,7 @@ fn animation_keeps_exact_seconds_and_defaults_across_frame_rates() {
 #[test]
 fn expanded_catalog_has_unique_discoverable_ids_and_editable_controls() {
     let mut ids = std::collections::BTreeSet::new();
-    assert_eq!(builtin::ALL.len(), 81);
+    assert_eq!(builtin::ALL.len(), 82);
     for entry in builtin::ALL {
         assert!(ids.insert(entry.id));
         assert!(builtin::CATEGORIES.contains(&builtin::category(entry.id)));
@@ -195,7 +195,11 @@ fn presets_adapt_to_uhd_without_retiming_animation() {
         for (id, node) in &original.nodes {
             let mapped = &scaled.nodes[id].operation;
             for p in node.operation.descriptor().parameters {
-                if let Some(scalar) = node.operation.scalar(p.name) {
+                // An expression is read in its project (it may link to other nodes) and
+                // is not rescaled: only plain values and keys are compared here.
+                if let Some(scalar) = node.operation.scalar(p.name)
+                    && !matches!(scalar, veylvik_document::Scalar::Expression { .. })
+                {
                     let other = mapped.scalar(p.name).unwrap();
                     for tick in [0, 17, 48, 95, 96] {
                         let time = Time::new(tick, 24).unwrap();

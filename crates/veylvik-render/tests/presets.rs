@@ -91,10 +91,11 @@ fn starter_effects_render_identically_after_portable_round_trip_and_shimmer_anim
                 .unwrap();
             assert_eq!(a.pixels, renderer.read_frame(&b).unwrap().pixels);
             assert!(a.pixels.iter().flatten().all(|v| v.is_finite()));
-            // Paper Burn removes the burnt paper by design; every other starter
-            // must keep an opaque frame opaque.
+            // Paper Burn removes the burnt paper and Dissolve to Dust the picture, by
+            // design; every other starter must keep an opaque frame opaque.
             assert!(
-                starter.id == "paper_burn" || a.pixels.iter().all(|p| (p[3] - 1.0).abs() < 1e-6),
+                matches!(starter.id, "paper_burn" | "dissolve_to_dust")
+                    || a.pixels.iter().all(|p| (p[3] - 1.0).abs() < 1e-6),
                 "{} exposed frame edges",
                 starter.id
             );
@@ -125,7 +126,12 @@ fn showcase_scenes_have_visible_effects_motion_and_seamless_endpoints() {
         let middle = renderer.render(&after, sample).unwrap();
         let end = renderer.render(&after, Time::new(4, 1).unwrap()).unwrap();
         let untreated = renderer.render(&before, sample).unwrap();
-        assert!(start == end, "{} loop seam", entry.id);
+        // A dissolve ends with the picture gone: it cannot meet its first frame.
+        assert!(
+            start == end || entry.id == "dissolve_to_dust",
+            "{} loop seam",
+            entry.id
+        );
         assert_ne!(start, middle, "{} has no motion", entry.id);
         let changed = middle
             .iter()

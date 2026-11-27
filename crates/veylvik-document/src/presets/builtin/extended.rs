@@ -187,6 +187,59 @@ impl Builder {
 }
 pub(super) fn build(id: &str, b: &mut Builder, source: NodeId) -> Result<NodeId> {
     let out = match id {
+        "dissolve_to_dust" => {
+            // Grains born where the picture is, in its colours, carried off by the wind...
+            let mut dust = crate::nodes::PARTICLES.default_operation();
+            let c = |v: f64| serde_json::json!({"kind": "constant", "value": v});
+            for (name, value) in [
+                ("density", 40_000.0),
+                ("start", 1.5),
+                ("duration", 0.6),
+                ("life", 2.4),
+                ("speed", 70.0),
+                ("direction", 90.0),
+                ("spread", 180.0),
+                ("wind", -260.0),
+                ("gravity", -40.0),
+                ("turbulence", 150.0),
+                ("turbulence_scale", 50.0),
+                ("size", 1.0),
+                ("variation", 0.9),
+                ("fade", 0.7),
+                ("glow", 1.0),
+                ("clump", 2.0),
+                ("clump_radius", 4.0),
+                ("inherit", 1.0),
+            ] {
+                dust[name] = c(value);
+            }
+            dust["colour"] = serde_json::json!([0.9, 0.88, 0.85, 1.0]);
+            dust["end_colour"] = serde_json::json!([0.9, 0.88, 0.85, 1.0]);
+            let dust = b.add(
+                "Dust",
+                serde_json::from_value(dust).map_err(|e| crate::Error(e.to_string()))?,
+                &[("emitter", source)],
+            );
+            b.expose(dust, "start", "When")?;
+            b.expose(dust, "density", "Grains")?;
+            b.expose(dust, "wind", "Wind")?;
+            b.expose(dust, "gravity", "Gravity")?;
+            b.expose(dust, "turbulence", "Swirl")?;
+            // ...while the picture fades as they leave: over the dust, its opacity following
+            // the dust's start, so moving When moves both.
+            let fading: crate::Scalar = serde_json::from_value(serde_json::json!({"kind": "expression",
+                "expression": format!("1 - smoothstep([{dust}].start + 0.1, [{dust}].start + 0.45, time)")}))
+            .map_err(|e| crate::Error(e.to_string()))?;
+            let nothing = b.add(
+                "Nothing",
+                Operation::Solid(crate::nodes::Solid { color: [0.0; 4] }),
+                &[],
+            );
+            let fading_picture = b.blend(nothing, source, BlendMode::Normal, fading);
+            // Over the dust only, never over the picture as it was: once it has gone, it is
+            // gone. Its opacity is the effect's Amount.
+            b.blend(dust, fading_picture, BlendMode::Normal, 1.0.into())
+        }
         "halation" => {
             // Film's red halo: light passing the emulsion, bouncing off the film's back
             // and coming back red round bright highlights.

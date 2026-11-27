@@ -16,11 +16,16 @@ pub struct Builtin {
     pub label: &'static str,
     pub description: &'static str,
 }
-pub const ALL: [Builtin; 81] = [
+pub const ALL: [Builtin; 82] = [
     Builtin {
         id: "halation",
         label: "Halation",
         description: "Film's red halo round bright highlights: light that passed the film, bounced off its back and came back red. Strength, how bright a highlight must be, and how far the halo spreads; subtle is filmic.",
+    },
+    Builtin {
+        id: "dissolve_to_dust",
+        label: "Dissolve to Dust",
+        description: "The picture breaks into grains of its own colours at When, and the wind carries them off, rising and swirling, as the picture itself fades: for titles, credits and logos that blow away. Grains is how densely they are born, Wind and Gravity how they drift (negative gravity rises), Swirl how much they tumble.",
     },
     Builtin {
         id: "chromatic_fringe",
@@ -865,6 +870,7 @@ pub fn category(id: &str) -> &'static str {
         "shutter_motion" | "smooth_slow_motion" => "Motion",
         "switch_off" => "Motion",
         "halation" => "Light",
+        "dissolve_to_dust" => "Motion",
         id if sky::is(id) => "Light",
         id if appearance::material_kind(id).is_some() => "Materials",
         "sun_glints" | "metallic_shine" | "soft_bloom" | "anamorphic_streaks" | "dream_focus"

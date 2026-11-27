@@ -527,6 +527,12 @@ connections are all removed is dropped; no second step is needed.
 - **Motion:** Chromatic Echo, Radial Echo and Orbit Echo, and Television
   Switch-off (a Custom shader: key its Off control from 0 to 1 where the picture
   should collapse to a line, then a point, then dark). It brings its own sound.
+  **Dissolve to Dust** breaks the picture into grains of its own colours at
+  **When** and lets the wind carry them off, rising and swirling (**Grains**,
+  **Wind**, **Gravity**, **Swirl**), while the picture fades out as they leave:
+  for titles, credits and logos that blow away. It is a Particles node with the
+  picture as its emitter, and the picture's fade follows the dust's start by an
+  expression, so moving When moves both.
 
 An effect may bring sounds with it (`sounds` in the preset: a label, a file, a
 start time and a level). Inserting the effect adds each as a **Sound** node on

@@ -118,6 +118,11 @@ fn title_text(word: &str) -> Operation {
     operation
 }
 
+/// Effects shown on the artwork alone and then laid over the background: material recipes,
+/// and effects that need the artwork's own shape (a dissolve breaks only the lettering up).
+fn on_art(id: &str) -> bool {
+    veylvik_document::presets::builtin::is_recipe(id) || id == "dissolve_to_dust"
+}
 pub fn build(id: &str) -> Result<Scene> {
     if id == "surface_paint" {
         return surface_paint::build();
@@ -341,20 +346,12 @@ pub fn build(id: &str) -> Result<Scene> {
     doc.output = before;
     let instance = preset.instantiate(
         &doc,
-        &[(
-            "input_1".into(),
-            if veylvik_document::presets::builtin::is_recipe(id) {
-                art
-            } else {
-                before
-            },
-        )]
-        .into(),
+        &[("input_1".into(), if on_art(id) { art } else { before })].into(),
         Some(NodePosition { x: 0.0, y: 500.0 }),
     )?;
     let document = Document::new(doc)?;
     let mut composition = document.prepare(0, &instance.commands)?;
-    composition.output = if veylvik_document::presets::builtin::is_recipe(id) {
+    composition.output = if on_art(id) {
         add(
             &mut composition,
             "Material title over neutral background",
@@ -448,7 +445,7 @@ mod tests {
             ) || entry.id == "metallic_shine"
                 || entry.id == "sun_glints"
                 || veylvik_document::presets::builtin::category(entry.id) == "Materials"
-                || veylvik_document::presets::builtin::is_recipe(entry.id)
+                || super::on_art(entry.id)
             {
                 assert_eq!(doc.nodes[&doc.output].inputs["foreground"], group.output);
             } else {
@@ -498,7 +495,7 @@ mod tests {
                     ) || entry.id == "metallic_shine"
                         || entry.id == "sun_glints"
                         || veylvik_document::presets::builtin::category(entry.id) == "Materials"
-                        || veylvik_document::presets::builtin::is_recipe(entry.id)
+                        || super::on_art(entry.id)
                     {
                         doc.nodes[&scene.before].inputs["foreground"]
                     } else if entry.id == "smooth_slow_motion" {
