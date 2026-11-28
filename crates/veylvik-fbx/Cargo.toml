@@ -1,0 +1,13 @@
+[package]
+name = "veylvik-fbx"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "FBX scenes read into Veylvik models (meshes, materials, animation baked over time, cameras) with ufbx, in a helper process so a damaged file cannot take the editor down."
+[dependencies]
+veylvik-mesh.workspace = true
+veylvik-document.workspace = true
+ufbx = { version = "=0.11.5", default-features = false }
+[lints]
+workspace = true

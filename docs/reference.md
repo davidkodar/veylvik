@@ -2400,8 +2400,25 @@ settles on the wrong kind of motion can still look sure. The
   moment any transform above it is, straight between. Keyed points become a point
   cache that bends the part, straight between its frames, with smooth normals made
   for each moment (as caches of simulations and deformed characters arrive; at most
-  64 million values in all). Not read yet: textures, lights, cameras and UsdSkel
-  skeletons. Limits as for glTF.
+  64 million values in all). USD cameras come with the model (below). Not read yet:
+  textures, lights and UsdSkel skeletons. Limits as for glTF.
+  **FBX files** (`.fbx`) load the same way, read by ufbx (a C library, MIT or
+  Unlicense) in a helper process (`veylvik fbx-read FILE`, which answers with the
+  model in a compact binary form), so a damaged or hostile file costs the helper,
+  never Studio or the CLI; Veylvik's own crates stay free of unsafe code. The scene is
+  turned right-handed y up; each mesh is split by material into parts (base colour,
+  metallic and roughness; textures not read yet), polygons into triangles. The
+  file's first take is sampled at its frame rate: meshes that move as one are keyed
+  as they move, meshes with skins, blend shapes or caches have their bent points baked
+  as a point cache (a skinned FBX character plays), and cameras are keyed with their
+  focal length and film width. At most 20,000 frames.
+  **Model cameras**: a USD or FBX file's cameras (up to 16, 200,000 keys in all) are
+  read on import and kept on the 3D model node (`cameras`, in the model's normalised
+  frame: position, turn as a quaternion, focal length and sensor width at seconds
+  into its clip). The model brings them into the scene: Render scene films through
+  them by number, counting cameras in node order, as the file framed it; they move
+  with the node's placement and size, and play with its animation (the first key
+  while no animation plays). The inspector lists them and can leave them out.
 - **Figure** (`figure_3d`): a walking person in the scene, from the
   `veylvik-figure` crate. Movement: the legs follow the measured joint angles
   of normal adult walking (hip, knee and ankle every 5% of the stride, the

@@ -104,6 +104,29 @@ def Xform "Parent"
     }
 }
 #[test]
+fn a_mesh_moved_by_its_own_transform_moves_once() {
+    let file = write(
+        "own",
+        r#"#usda 1.0
+def Mesh "Card"
+{
+    int[] faceVertexCounts = [4]
+    int[] faceVertexIndices = [0, 1, 2, 3]
+    point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+    double3 xformOp:translate = (5, 0, 0)
+    uniform token[] xformOpOrder = ["xformOp:translate"]
+}
+"#,
+    );
+    let model = veylvik_usd::load(&file.0).unwrap();
+    // Its box runs from x 5 to 6: its middle at 5.5 (y down: -0.5).
+    assert!(
+        close(model.centre, [5.5, -0.5, 0.0], 1e-5),
+        "{:?}",
+        model.centre
+    );
+}
+#[test]
 fn keyed_transforms_become_the_models_clip() {
     let file = write(
         "keys",

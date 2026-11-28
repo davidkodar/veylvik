@@ -18,6 +18,7 @@ veylvik-render3d.workspace = true
 veylvik-ofx.workspace = true
 veylvik-mesh.workspace = true
 veylvik-usd.workspace = true
+veylvik-fbx.workspace = true
 veylvik-scene.workspace = true
 veylvik-splat.workspace = true
 veylvik-look.workspace = true

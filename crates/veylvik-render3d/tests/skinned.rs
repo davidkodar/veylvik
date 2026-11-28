@@ -103,6 +103,7 @@ fn strip() -> Model {
         }],
         centre: [1.0, 0.0, 0.0],
         largest: 2.0,
+        cameras: Vec::new(),
     }
 }
 /// Its coverage (alpha) at `seconds`, played or resting, in `quality`.

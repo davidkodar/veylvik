@@ -87,19 +87,27 @@ impl Studio {
         if m.clip as usize > m.clips.len() {
             m.clip = 0;
         }
+        m.cameras = chosen.model.cameras.clone();
         if node.label == veylvik_document::nodes::MODEL_3D.label
             && let Some(stem) = chosen.path.file_stem()
         {
             node.label = stem.to_string_lossy().into_owned();
         }
         let parts = chosen.model.parts.len();
+        let cameras = chosen.model.cameras.len();
         self.project.allow_added(std::path::Path::new(&path));
         self.project.inputs.insert_model(path, chosen.model);
         match self.project.apply(&[Command::Put {
             node: Box::new(node),
         }]) {
             Ok(()) => {
-                self.tell(format!("Model loaded: {parts} parts"));
+                self.tell(match cameras {
+                    0 => format!("Model loaded: {parts} parts"),
+                    n => format!(
+                        "Model loaded: {parts} parts and {n} camera{}",
+                        if n == 1 { "" } else { "s" }
+                    ),
+                });
                 self.refresh_draft();
                 self.request_preview();
             }

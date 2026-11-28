@@ -344,7 +344,7 @@ pub fn select(choice: Choice, folder: &Path, name: &str) -> Result<Option<PathBu
         Choice::Save => ("Save composition", "Veylvik composition", "*.veylvik"),
         Choice::Font => ("Choose font", "Font", "*.ttf"),
         Choice::Lut => ("Choose a 3D LUT", "Cube LUT", "*.cube"),
-        Choice::Model => ("Choose a 3D model", "glTF or USD model", "*.glb"),
+        Choice::Model => ("Choose a 3D model", "glTF, USD or FBX model", "*.glb"),
         Choice::Nuke => ("Import a Nuke script", "Nuke script", "*.nk"),
         Choice::Splats => (
             "Choose Gaussian splats",
@@ -412,6 +412,7 @@ pub fn select(choice: Choice, folder: &Path, name: &str) -> Result<Option<PathBu
             .glob("*.usda")
             .glob("*.usdc")
             .glob("*.usdz")
+            .glob("*.fbx")
     } else if matches!(choice, Choice::Splats) {
         FileFilter::new(label).glob("*.ply").glob("*.splat")
     } else if matches!(choice, Choice::Video) {

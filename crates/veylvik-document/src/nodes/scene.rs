@@ -771,6 +771,9 @@ pub struct Model3d {
     /// Round and round, or holding its last pose once it ends.
     #[serde(default = "yes")]
     pub clip_loop: bool,
+    /// The file's cameras, read on import, which the model brings into the scene.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub cameras: Vec<crate::nodes::ModelCamera>,
 }
 /// One animation of a model file.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -815,6 +818,7 @@ node!(Model3d, MODEL_3D, [size, clip_start, clip_speed], {
             return fail("Model proportions must be 0 to 1");
         }
         validate_look(&self.look)?;
+        crate::nodes::validate_cameras(&self.cameras)?;
         if self.clips.len() > MAX_MODEL_CLIPS
             || self
                 .clips

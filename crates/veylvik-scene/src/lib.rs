@@ -274,6 +274,69 @@ fn placed(p: &Placement, time: Time, origin: [f32; 3]) -> Result<Mat4> {
         &mul(&rotate(p.rotation.at(time)?), &scale(p.scale.at(time)?)),
     ))
 }
+/// A model file's camera at a key, placed with the model: `world` is the model's place,
+/// `size` its largest side. The camera stays rigid whatever the model's scale.
+fn model_camera(
+    node: NodeId,
+    world: &Mat4,
+    size: f32,
+    key: &veylvik_document::nodes::CameraKey,
+) -> Camera {
+    let position = math::point(world, key.position.map(|v| v * size));
+    // The model's turn alone (its columns made unit length), then the camera's own.
+    let mut turn = *world;
+    for c in 0..3 {
+        let l = (0..3)
+            .map(|r| turn[r][c] * turn[r][c])
+            .sum::<f32>()
+            .sqrt()
+            .max(1e-12);
+        for row in turn.iter_mut().take(3) {
+            row[c] /= l;
+        }
+    }
+    for row in turn.iter_mut().take(3) {
+        row[3] = 0.0;
+    }
+    let [x, y, z, w] = key.rotation;
+    let own = [
+        [
+            1.0 - 2.0 * (y * y + z * z),
+            2.0 * (x * y - z * w),
+            2.0 * (x * z + y * w),
+            0.0,
+        ],
+        [
+            2.0 * (x * y + z * w),
+            1.0 - 2.0 * (x * x + z * z),
+            2.0 * (y * z - x * w),
+            0.0,
+        ],
+        [
+            2.0 * (x * z - y * w),
+            2.0 * (y * z + x * w),
+            1.0 - 2.0 * (x * x + y * y),
+            0.0,
+        ],
+        [0.0, 0.0, 0.0, 1.0],
+    ];
+    let mut camera = mul(&turn, &own);
+    for (r, v) in position.iter().enumerate() {
+        camera[r][3] = *v;
+    }
+    Camera {
+        // It belongs to the model's node.
+        node: Some(node),
+        world: camera,
+        focal_length: key.focal_length,
+        sensor_width: key.sensor_width,
+        f_stop: 0.0,
+        focus_distance: 0.0,
+        focus_on: None,
+        aim_at: None,
+        orbit: None,
+    }
+}
 /// Pixels from the home camera to the frame at depth 0 (its focal length in pixels).
 pub fn home_distance(width: u32, focal_length: f32, sensor_width: f32) -> f32 {
     width as f32 * focal_length / sensor_width.max(1e-6)
@@ -717,44 +780,65 @@ fn node(doc: &Graph<'_>, id: NodeId, time: Time, depth: usize) -> Result<Scene> 
             projection: None,
             flutter: None,
         }),
-        Operation::Model3d(m) if !m.model.is_empty() => scene.objects.push(Object {
-            node: id,
-            texture: None,
-            geometry: Geometry::Model {
-                path: m.model.clone(),
-                size: m.size.at(time)?.max(1.0),
-                extent: m.extent,
-                part: None,
-                play: if m.clip == 0 {
-                    None
+        Operation::Model3d(m) if !m.model.is_empty() => {
+            let play = if m.clip == 0 {
+                None
+            } else {
+                // Its first pose until it begins, then on at its speed.
+                let since = time.seconds()? as f32 - m.clip_start.at(time)?;
+                Some((
+                    m.clip as usize - 1,
+                    since.max(0.0) * m.clip_speed.at(time)?,
+                    m.clip_loop,
+                ))
+            };
+            let size = m.size.at(time)?.max(1.0);
+            let world = placed(&m.placement, time, centre)?;
+            // The file's cameras, carried by the model's place and size, at the moment of
+            // its clip (the first key while none plays).
+            let clip_time = play.map_or(f32::NEG_INFINITY, |(clip, seconds, looping)| {
+                let length = m.clips.get(clip).map_or(0.0, |c| c.seconds);
+                if looping && length > 0.0 {
+                    seconds.rem_euclid(length)
                 } else {
-                    // Its first pose until it begins, then on at its speed.
-                    let since = time.seconds()? as f32 - m.clip_start.at(time)?;
-                    Some((
-                        m.clip as usize - 1,
-                        since.max(0.0) * m.clip_speed.at(time)?,
-                        m.clip_loop,
-                    ))
+                    seconds.clamp(0.0, length.max(0.0))
+                }
+            });
+            for camera in &m.cameras {
+                let Some(key) = camera.at(clip_time) else {
+                    continue;
+                };
+                scene.cameras.push(model_camera(id, &world, size, &key));
+            }
+            scene.objects.push(Object {
+                node: id,
+                texture: None,
+                geometry: Geometry::Model {
+                    path: m.model.clone(),
+                    size,
+                    extent: m.extent,
+                    part: None,
+                    play,
                 },
-            },
-            world: placed(&m.placement, time, centre)?,
-            surface: Surface {
-                colour: [0.8; 3],
-                opacity: 1.0,
-                roughness: 0.5,
-                metallic: 0.0,
-                finish: [0.0; 5],
-                unlit: false,
-                look: m.look.clone(),
-                catcher: false,
-                emission: 0.0,
-                shadow: 1.0,
-            },
-            aim: None,
-            instanced: None,
-            projection: None,
-            flutter: None,
-        }),
+                world,
+                surface: Surface {
+                    colour: [0.8; 3],
+                    opacity: 1.0,
+                    roughness: 0.5,
+                    metallic: 0.0,
+                    finish: [0.0; 5],
+                    unlit: false,
+                    look: m.look.clone(),
+                    catcher: false,
+                    emission: 0.0,
+                    shadow: 1.0,
+                },
+                aim: None,
+                instanced: None,
+                projection: None,
+                flutter: None,
+            });
+        }
         Operation::Model3d(_) => {}
         Operation::GaussianSplats(g) if !g.file.is_empty() => scene.objects.push(Object {
             node: id,

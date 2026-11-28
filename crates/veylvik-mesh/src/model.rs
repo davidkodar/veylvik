@@ -79,4 +79,6 @@ pub struct Model {
     /// The normalised frame: glTF positions (y flipped) less `centre`, over `largest`.
     pub centre: [f32; 3],
     pub largest: f32,
+    /// The file's cameras, keyed over its clip in the normalised frame.
+    pub cameras: Vec<veylvik_document::nodes::ModelCamera>,
 }

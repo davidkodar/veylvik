@@ -7,6 +7,7 @@ rust-version = "1.96"
 description = "Universal Scene Description (USD) scenes read into Veylvik models: meshes, materials, animated transforms and point caches."
 [dependencies]
 veylvik-mesh.workspace = true
+veylvik-document.workspace = true
 openusd = { version = "=0.9.0", default-features = false }
 [lints]
 workspace = true

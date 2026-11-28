@@ -2834,6 +2834,7 @@ fn a_model_playing_its_animation_moves_its_parts_in_the_render() {
         }],
         centre: [0.0; 3],
         largest: 1.0,
+        cameras: Vec::new(),
     };
     let mut inputs = ImageInputs::default();
     inputs.insert_model("/models/slide.glb", Arc::new(model));

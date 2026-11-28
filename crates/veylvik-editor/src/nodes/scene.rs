@@ -576,6 +576,24 @@ impl Inspect for veylvik_document::nodes::Model3d {
                 cx.ask(super::Request::ChooseModel);
             }
         });
+        // The file's cameras, read on import.
+        if !self.cameras.is_empty() {
+            let names: Vec<&str> = self.cameras.iter().map(|c| c.name.as_str()).collect();
+            ui.weak(format!(
+                "Brings {} camera{} from the file ({}): Render scene films through them by number, counting cameras in the scene's node order; they move with this model and play with its animation.",
+                names.len(),
+                if names.len() == 1 { "" } else { "s" },
+                names.join(", ")
+            ));
+            if ui
+                .small_button("Leave the file's cameras out")
+                .on_hover_text("Forget the cameras read from the file; choosing the model file again reads them again")
+                .clicked()
+            {
+                self.cameras.clear();
+                cx.dirty = true;
+            }
+        }
         // The file's own animations, read on import.
         if !self.clips.is_empty() {
             ui.horizontal(|ui| {

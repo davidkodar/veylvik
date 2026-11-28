@@ -194,6 +194,14 @@ fn run() -> Result<()> {
             veylvik_ofx::serve(Some(Path::new(&args[3])))?
         }
         Some("ofx") => ofx::command(&args[2..])?,
+        // The FBX reader's helper: the model on stdout in its binary form.
+        Some(veylvik_fbx::SUBCOMMAND) if args.len() == 3 => {
+            use std::io::Write;
+            let model = veylvik_fbx::read(Path::new(&args[2]))?;
+            let mut out = std::io::stdout().lock();
+            out.write_all(&veylvik_fbx::encode(&model))?;
+            out.flush()?;
+        }
         Some(veylvik_segment::worker::SUBCOMMAND) if args.len() == 2 => {
             veylvik_segment::worker::serve(std::io::stdin().lock(), std::io::stdout().lock())?
         }

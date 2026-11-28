@@ -4122,6 +4122,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "ufbx"
+version = "0.11.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "260522f1eb74139f0e78b29dd82a58e5437d728c5498024a39e5af7282694240"
+dependencies = [
+ "cc",
+]
+
+[[package]]
 name = "unicode-ident"
 version = "1.0.27"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4310,6 +4319,7 @@ dependencies = [
  "serde_json",
  "veylvik-control",
  "veylvik-document",
+ "veylvik-fbx",
  "veylvik-io",
  "veylvik-nuke",
  "veylvik-ofx",
@@ -4404,6 +4414,15 @@ name = "veylvik-expr"
 version = "0.1.0"
 
 [[package]]
+name = "veylvik-fbx"
+version = "0.1.0"
+dependencies = [
+ "ufbx",
+ "veylvik-document",
+ "veylvik-mesh",
+]
+
+[[package]]
 name = "veylvik-figure"
 version = "0.1.0"
 dependencies = [
@@ -4440,6 +4459,7 @@ dependencies = [
  "veylvik-color",
  "veylvik-decode",
  "veylvik-document",
+ "veylvik-fbx",
  "veylvik-look",
  "veylvik-mesh",
  "veylvik-ofx",
@@ -4650,6 +4670,7 @@ name = "veylvik-usd"
 version = "0.1.0"
 dependencies = [
  "openusd",
+ "veylvik-document",
  "veylvik-mesh",
 ]
 

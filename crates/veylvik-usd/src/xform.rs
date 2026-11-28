@@ -15,30 +15,12 @@ pub(crate) fn mul(a: &Mat, b: &Mat) -> Mat {
 pub(crate) fn point(m: &Mat, p: [f32; 3]) -> [f32; 3] {
     [0, 1, 2].map(|r| m[r][0] * p[0] + m[r][1] * p[1] + m[r][2] * p[2] + m[r][3])
 }
-pub(crate) fn direction(m: &Mat, d: [f32; 3]) -> [f32; 3] {
-    [0, 1, 2].map(|r| m[r][0] * d[0] + m[r][1] * d[1] + m[r][2] * d[2])
-}
 pub(crate) fn unit(v: [f32; 3]) -> [f32; 3] {
     let l = (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt();
     if l > 0.0 {
         v.map(|x| x / l)
     } else {
         [0.0, 1.0, 0.0]
-    }
-}
-/// The inverse transpose, which carries normals.
-pub(crate) fn normal_matrix(m: &Mat) -> Mat {
-    match affine_inverse(m) {
-        Some(inv) => {
-            let mut t = IDENTITY;
-            for (i, row) in t.iter_mut().take(3).enumerate() {
-                for (j, v) in row.iter_mut().take(3).enumerate() {
-                    *v = inv[j][i];
-                }
-            }
-            t
-        }
-        None => IDENTITY,
     }
 }
 fn axis(k: usize, degrees: f64) -> Mat {
@@ -181,8 +163,8 @@ fn local_at(prim: &usd::Prim, at: Option<f64>) -> Result<(Mat, bool)> {
 }
 /// A prim's place in the scene at time code `at` (its default with None).
 pub(crate) fn world_at(prim: &usd::Prim, at: Option<f64>) -> Result<Mat> {
-    let mut chain = vec![prim.clone()];
-    chain.extend(prim.ancestors());
+    // The prim itself, then the prims above it.
+    let chain = prim.ancestors();
     let mut m = IDENTITY;
     for p in chain {
         let (local, reset) = local_at(&p, at)?;
@@ -195,8 +177,8 @@ pub(crate) fn world_at(prim: &usd::Prim, at: Option<f64>) -> Result<Mat> {
 }
 /// The moments any transform placing `prim` (its own or its ancestors') is keyed at.
 pub(crate) fn sample_times(prim: &usd::Prim) -> Result<Vec<f64>> {
-    let mut chain = vec![prim.clone()];
-    chain.extend(prim.ancestors());
+    // The prim itself, then the prims above it.
+    let chain = prim.ancestors();
     let mut times = Vec::new();
     for p in chain {
         let (list, reset) = ops(&p)?;
@@ -214,77 +196,4 @@ pub(crate) fn sample_times(prim: &usd::Prim) -> Result<Vec<f64>> {
     times.sort_by(f64::total_cmp);
     times.dedup();
     Ok(times)
-}
-/// A matrix as a move, a turn (unit quaternion x y z w) and sizes; a mirror is put
-/// into the x size.
-pub(crate) fn decompose(m: &Mat) -> ([f32; 3], [f32; 4], [f32; 3]) {
-    let t = [m[0][3], m[1][3], m[2][3]];
-    let column = |c: usize| [m[0][c], m[1][c], m[2][c]];
-    let length = |v: [f32; 3]| (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt();
-    let mut s = [length(column(0)), length(column(1)), length(column(2))];
-    let det = m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1])
-        - m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0])
-        + m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0]);
-    if det < 0.0 {
-        s[0] = -s[0];
-    }
-    let r = |i: usize, j: usize| {
-        if s[j].abs() > 1e-12 {
-            m[i][j] / s[j]
-        } else {
-            0.0
-        }
-    };
-    // A rotation matrix to a quaternion (Shepperd's method).
-    let trace = r(0, 0) + r(1, 1) + r(2, 2);
-    let q = if trace > 0.0 {
-        let w = (1.0 + trace).sqrt() * 2.0;
-        [
-            (r(2, 1) - r(1, 2)) / w,
-            (r(0, 2) - r(2, 0)) / w,
-            (r(1, 0) - r(0, 1)) / w,
-            0.25 * w,
-        ]
-    } else if r(0, 0) > r(1, 1) && r(0, 0) > r(2, 2) {
-        let w = (1.0 + r(0, 0) - r(1, 1) - r(2, 2)).sqrt() * 2.0;
-        [
-            0.25 * w,
-            (r(0, 1) + r(1, 0)) / w,
-            (r(0, 2) + r(2, 0)) / w,
-            (r(2, 1) - r(1, 2)) / w,
-        ]
-    } else if r(1, 1) > r(2, 2) {
-        let w = (1.0 + r(1, 1) - r(0, 0) - r(2, 2)).sqrt() * 2.0;
-        [
-            (r(0, 1) + r(1, 0)) / w,
-            0.25 * w,
-            (r(1, 2) + r(2, 1)) / w,
-            (r(0, 2) - r(2, 0)) / w,
-        ]
-    } else {
-        let w = (1.0 + r(2, 2) - r(0, 0) - r(1, 1)).sqrt() * 2.0;
-        [
-            (r(0, 2) + r(2, 0)) / w,
-            (r(1, 2) + r(2, 1)) / w,
-            0.25 * w,
-            (r(1, 0) - r(0, 1)) / w,
-        ]
-    };
-    let l = q.iter().map(|v| v * v).sum::<f32>().sqrt().max(1e-12);
-    (t, q.map(|v| v / l), s)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn a_turned_moved_sized_matrix_comes_apart_and_back_together() {
-        let (s, c) = (0.3f32.sin(), 0.3f32.cos());
-        let m = compose([1.0, -2.0, 3.0], [0.0, s, 0.0, c], [2.0, 0.5, 1.5]);
-        let (t, q, sz) = decompose(&m);
-        let back = compose(t, q, sz);
-        for (a, b) in m.iter().flatten().zip(back.iter().flatten()) {
-            assert!((a - b).abs() < 1e-5, "{m:?} {back:?}");
-        }
-    }
 }

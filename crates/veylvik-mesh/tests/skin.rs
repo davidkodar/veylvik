@@ -81,6 +81,7 @@ fn bar(turn: f32) -> Model {
         }],
         centre: [0.0; 3],
         largest: 1.0,
+        cameras: Vec::new(),
     }
 }
 fn close(a: [f32; 3], b: [f32; 3]) -> bool {

@@ -90,8 +90,8 @@ fn texture(data: &gltf::image::Data) -> Option<Texture> {
         pixels,
     })
 }
-/// Load a 3D model normalised to a unit box (largest side 1, centred): a glTF file, or a
-/// USD scene (`.usd`, `.usda`, `.usdc`, `.usdz`).
+/// Load a 3D model normalised to a unit box (largest side 1, centred): a glTF file, a USD
+/// scene (`.usd`, `.usda`, `.usdc`, `.usdz`) or an FBX file (read in a helper process).
 pub fn load(path: &Path) -> Result<Model> {
     let usd = path
         .extension()
@@ -99,6 +99,16 @@ pub fn load(path: &Path) -> Result<Model> {
         .is_some_and(|e| veylvik_usd::EXTENSIONS.contains(&e.to_ascii_lowercase().as_str()));
     if usd {
         return veylvik_usd::load(path);
+    }
+    let fbx = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| veylvik_fbx::EXTENSIONS.contains(&e.to_ascii_lowercase().as_str()));
+    if fbx {
+        // Read by the veylvik program in a process of its own: the FBX reader is C.
+        let program = crate::ofx::program()
+            .ok_or("reading FBX files needs the veylvik program beside this one")?;
+        return veylvik_fbx::load(&program, path);
     }
     load_gltf(path)
 }
@@ -338,6 +348,7 @@ fn load_gltf(path: &Path) -> Result<Model> {
         clips,
         centre,
         largest,
+        cameras: Vec::new(),
     })
 }
 /// The file's node tree at rest and its animations (moves, turns and sizes of nodes;

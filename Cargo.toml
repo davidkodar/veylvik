@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/veylvik-color", "crates/veylvik-document", "crates/veylvik-render", "crates/veylvik-cli", "crates/veylvik-io", "crates/veylvik-studio", "crates/veylvik-editor", "crates/veylvik-control", "crates/veylvik-text", "crates/veylvik-decode", "crates/veylvik-interop", "crates/veylvik-track", "crates/veylvik-segment", "crates/veylvik-audio", "crates/veylvik-mesh", "crates/veylvik-scene", "crates/veylvik-render3d", "crates/veylvik-solve", "crates/veylvik-expr", "crates/veylvik-preview", "crates/veylvik-presets", "crates/veylvik-shader", "crates/veylvik-warp", "crates/veylvik-splat", "crates/veylvik-nuke", "crates/veylvik-ofx", "crates/veylvik-figure", "crates/veylvik-look", "crates/veylvik-trace", "crates/veylvik-usd"]
+members = ["crates/veylvik-color", "crates/veylvik-document", "crates/veylvik-render", "crates/veylvik-cli", "crates/veylvik-io", "crates/veylvik-studio", "crates/veylvik-editor", "crates/veylvik-control", "crates/veylvik-text", "crates/veylvik-decode", "crates/veylvik-interop", "crates/veylvik-track", "crates/veylvik-segment", "crates/veylvik-audio", "crates/veylvik-mesh", "crates/veylvik-scene", "crates/veylvik-render3d", "crates/veylvik-solve", "crates/veylvik-expr", "crates/veylvik-preview", "crates/veylvik-presets", "crates/veylvik-shader", "crates/veylvik-warp", "crates/veylvik-splat", "crates/veylvik-nuke", "crates/veylvik-ofx", "crates/veylvik-figure", "crates/veylvik-look", "crates/veylvik-trace", "crates/veylvik-usd", "crates/veylvik-fbx"]
 resolver = "3"
 
 [workspace.package]
@@ -42,6 +42,7 @@ veylvik-splat = { path = "crates/veylvik-splat" }
 veylvik-nuke = { path = "crates/veylvik-nuke" }
 veylvik-ofx = { path = "crates/veylvik-ofx" }
 veylvik-usd = { path = "crates/veylvik-usd" }
+veylvik-fbx = { path = "crates/veylvik-fbx" }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

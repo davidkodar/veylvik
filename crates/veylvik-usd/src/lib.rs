@@ -1,17 +1,15 @@
 //! USD scenes (`.usd`, `.usda`, `.usdc`, `.usdz`) read into a Veylvik `Model`, the same as an imported glTF: every active mesh of the composed stage with its transforms, normals, uvs and base material, turned y up and normalised; transforms keyed over time become the model's clip, and points keyed over time become a point cache that bends the part. Read through the pure-Rust `openusd` crate; nothing else in Veylvik sees its types.
 use openusd::{sdf, usd, vt};
 use std::path::Path;
-use std::sync::Arc;
-use veylvik_mesh::animation::{self as anim, Between, Channel, Clip, Joint, Keyed, Mat};
-use veylvik_mesh::{MAX_PARTS, MAX_VERTICES, Mesh, Model, Part, PointCache, Vertex};
+use veylvik_mesh::animation as anim;
+use veylvik_mesh::baked::{BakedCache, BakedCamera, BakedPart, bake};
+use veylvik_mesh::{Mesh, Model, Vertex};
 
 mod xform;
-use xform::{decompose, mul, world_at};
+use xform::{mul, world_at};
 
 /// The file extensions read as USD.
 pub const EXTENSIONS: [&str; 4] = ["usd", "usda", "usdc", "usdz"];
-/// The most values (three a point) all point caches of a file may hold together.
-pub const MAX_CACHE_VALUES: usize = 64 * 1024 * 1024;
 /// The most moments a file's transforms are keyed at.
 pub const MAX_SAMPLES: usize = 100_000;
 
@@ -48,6 +46,7 @@ pub fn load(path: &Path) -> Result<Model> {
     let start = if start.is_finite() { start } else { 0.0 };
     let seconds = |t: f64| ((t - start) / per_second) as f32;
     let mut meshes = Vec::new();
+    let mut camera_prims = Vec::new();
     let root = stage.prim(sdf::Path::abs_root()).map_err(error)?;
     let mut stack = root.children().map_err(error)?;
     while let Some(prim) = stack.pop() {
@@ -61,15 +60,20 @@ pub fn load(path: &Path) -> Result<Model> {
         {
             meshes.push(prim.clone());
         }
+        if prim
+            .type_name()
+            .map_err(error)?
+            .is_some_and(|t| t.as_str() == "Camera")
+        {
+            camera_prims.push(prim.clone());
+        }
         stack.extend(prim.children().map_err(error)?);
     }
     meshes.sort_by(|a, b| a.path().as_str().cmp(b.path().as_str()));
+    camera_prims.sort_by(|a, b| a.path().as_str().cmp(b.path().as_str()));
     let mut parts = Vec::new();
-    let mut joints = Vec::new();
-    let mut channels = Vec::new();
-    let mut vertices_total = 0usize;
-    let mut cache_values = 0usize;
     let mut last = 0.0f64;
+    let at = |t: Option<f64>| t.map(usd::TimeCode::new);
     for prim in &meshes {
         // The moments the mesh's place or points are keyed at.
         let moves = xform::sample_times(prim)?;
@@ -82,143 +86,120 @@ pub fn load(path: &Path) -> Result<Model> {
             ));
         }
         let rest = moves.first().or(point_times.first()).copied();
-        let at = |t: Option<f64>| t.map(usd::TimeCode::new);
         let Some(geometry) = geometry(prim, at(rest))? else {
             continue;
         };
-        vertices_total += geometry.vertices.len();
-        if vertices_total > MAX_VERTICES || parts.len() >= MAX_PARTS {
-            return Err(format!(
-                "the scene is too large (at most {MAX_VERTICES} vertices in {MAX_PARTS} parts)"
-            ));
-        }
-        let world_rest = mul(&up, &world_at(prim, rest)?);
         let (colour, metallic, roughness) = material(prim, at(rest))?;
-        let mut mesh = geometry.mesh(&world_rest);
-        let mut part = Part {
-            mesh: Mesh::default(),
-            colour,
-            metallic,
-            roughness,
-            texture: None,
-            joint: None,
-            rest_inverse: anim::IDENTITY,
-            skin: None,
-            cache: None,
-        };
-        if point_times.len() > 1 {
-            // A point cache: every frame's points where its place puts them then.
+        let mut places = vec![(rest.map_or(0.0, seconds), mul(&up, &world_at(prim, rest)?))];
+        if moves.len() > 1 {
+            places.clear();
+            for &t in &moves {
+                places.push((seconds(t), mul(&up, &world_at(prim, Some(t))?)));
+                last = last.max(t);
+            }
+        }
+        let cache = if point_times.len() > 1 {
+            // Every frame's points where its place puts them then.
             let mut frames = Vec::with_capacity(point_times.len());
             for &t in &point_times {
                 let points = read_points(&points_attr, Some(usd::TimeCode::new(t)))?;
                 if points.len() != geometry.points {
                     return Err(format!("{} changes its point count over time", prim.path()));
                 }
-                cache_values += points.len() * 3;
-                if cache_values > MAX_CACHE_VALUES {
-                    return Err("the scene's point caches are too large".into());
-                }
                 let world = mul(&up, &world_at(prim, Some(t))?);
                 frames.push(points.iter().map(|p| xform::point(&world, *p)).collect());
                 last = last.max(t);
             }
-            part.cache = Some(Arc::new(PointCache {
+            Some(BakedCache {
                 seconds: point_times.iter().map(|&t| seconds(t)).collect(),
                 frames,
                 point_of: geometry.point_of.clone(),
-            }));
-        } else if moves.len() > 1 {
-            // Moved as one piece: a joint of its own keyed at every moment.
-            let joint = joints.len();
-            let rest_place = decompose(&world_rest);
-            joints.push(Joint {
-                parent: None,
-                translation: rest_place.0,
-                rotation: rest_place.1,
-                scale: rest_place.2,
-            });
-            let mut keys: [Vec<[f32; 4]>; 3] = Default::default();
-            for &t in &moves {
-                let (tr, q, s) = decompose(&mul(&up, &world_at(prim, Some(t))?));
-                keys[0].push([tr[0], tr[1], tr[2], 0.0]);
-                keys[1].push(q);
-                keys[2].push([s[0], s[1], s[2], 0.0]);
+            })
+        } else {
+            None
+        };
+        parts.push(BakedPart {
+            mesh: Mesh {
+                vertices: geometry.vertices,
+                indices: geometry.indices,
+                cap_indices: 0,
+            },
+            colour,
+            metallic,
+            roughness,
+            places,
+            cache,
+        });
+    }
+    // Each camera's keys: seconds, camera to world (y up), lens.
+    let mut cameras = Vec::new();
+    for prim in camera_prims
+        .iter()
+        .take(veylvik_document::nodes::MAX_MODEL_CAMERAS)
+    {
+        let lens = |name: &str| prim.attribute(name);
+        let mut times = xform::sample_times(prim)?;
+        for name in ["focalLength", "horizontalAperture"] {
+            times.extend(lens(name).time_sample_times().map_err(error)?);
+        }
+        times.sort_by(f64::total_cmp);
+        times.dedup();
+        if times.len() > MAX_SAMPLES {
+            return Err(format!(
+                "{} is keyed at more than {MAX_SAMPLES} moments",
+                prim.path()
+            ));
+        }
+        let moments: Vec<Option<f64>> = if times.is_empty() {
+            vec![None]
+        } else {
+            times.iter().map(|&t| Some(t)).collect()
+        };
+        let mut keys = Vec::with_capacity(moments.len());
+        for when in moments {
+            let code = at(when);
+            // USD's own fallbacks, 50 and 20.955, in the same units: only their ratio
+            // (the field of view) matters.
+            let focal = number_of(
+                lens("focalLength")
+                    .get_at::<vt::Value>(code)
+                    .map_err(error)?,
+            )
+            .unwrap_or(50.0);
+            let aperture = number_of(
+                lens("horizontalAperture")
+                    .get_at::<vt::Value>(code)
+                    .map_err(error)?,
+            )
+            .unwrap_or(20.955);
+            if !(focal > 0.0 && aperture > 0.0) {
+                continue;
+            }
+            keys.push((
+                when.map_or(0.0, seconds),
+                mul(&up, &world_at(prim, when)?),
+                focal,
+                aperture,
+            ));
+            if let Some(t) = when {
                 last = last.max(t);
             }
-            let times: Vec<f32> = moves.iter().map(|&t| seconds(t)).collect();
-            for (keyed, values) in [Keyed::Translation, Keyed::Rotation, Keyed::Scale]
-                .into_iter()
-                .zip(keys)
-            {
-                channels.push(Channel {
-                    node: joint,
-                    keyed,
-                    between: Between::Linear,
-                    times: times.clone(),
-                    values,
-                });
-            }
-            part.joint = Some(joint);
-            part.rest_inverse = anim::affine_inverse(&world_rest).unwrap_or(anim::IDENTITY);
         }
-        // Veylvik's frame: y down (which mirrors, so triangles turn round).
-        for v in &mut mesh.vertices {
-            v.position[1] = -v.position[1];
-            v.normal[1] = -v.normal[1];
-        }
-        for t in mesh.indices.as_chunks_mut::<3>().0 {
-            t.swap(1, 2);
-        }
-        part.mesh = mesh;
-        parts.push(part);
+        cameras.push(BakedCamera {
+            name: prim.path().name().unwrap_or("Camera").to_owned(),
+            keys,
+        });
     }
     if parts.is_empty() {
         return Err("the USD file has no meshes".into());
     }
-    // Normalise: centre the box on the origin and make its largest side 1.
-    let mut lo = [f32::MAX; 3];
-    let mut hi = [f32::MIN; 3];
-    for v in parts.iter().flat_map(|p| &p.mesh.vertices) {
-        for k in 0..3 {
-            lo[k] = lo[k].min(v.position[k]);
-            hi[k] = hi[k].max(v.position[k]);
-        }
-    }
-    let size = [0, 1, 2].map(|k| hi[k] - lo[k]);
-    let largest = size.iter().copied().fold(0.0f32, f32::max);
-    if !largest.is_finite() || largest <= 0.0 {
-        return Err("the scene has no size".into());
-    }
-    let centre = [0, 1, 2].map(|k| (lo[k] + hi[k]) * 0.5);
-    for v in parts.iter_mut().flat_map(|p| &mut p.mesh.vertices) {
-        v.position = [0, 1, 2].map(|k| (v.position[k] - centre[k]) / largest);
-    }
-
-    let animated = !channels.is_empty() || parts.iter().any(|p| p.cache.is_some());
     let end = stage.end_time_code();
     let length = seconds(if end.is_finite() && end > last {
         end
     } else {
         last
     });
-    Ok(Model {
-        parts,
-        extent: size.map(|s| s / largest),
-        joints,
-        clips: if animated {
-            vec![Clip {
-                name: "Animation".into(),
-                channels,
-                length: length.max(0.0),
-            }]
-        } else {
-            Vec::new()
-        },
-        // As glTF's: the box centre in Veylvik's frame (y down), which the normalised
-        // frame is measured from.
-        centre,
-        largest,
-    })
+    bake(parts, cameras, length)
 }
 /// Whether the prim is made invisible (statically), or is only a guide.
 fn hidden(prim: &usd::Prim) -> Result<bool> {
@@ -240,25 +221,6 @@ struct Geometry {
     /// The point each vertex stands on, and how many points there are.
     point_of: Vec<u32>,
     points: usize,
-}
-impl Geometry {
-    /// The mesh placed by `world` (into the file's y-up frame).
-    fn mesh(&self, world: &Mat) -> Mesh {
-        let normals = xform::normal_matrix(world);
-        Mesh {
-            vertices: self
-                .vertices
-                .iter()
-                .map(|v| Vertex {
-                    position: xform::point(world, v.position),
-                    normal: xform::unit(xform::direction(&normals, v.normal)),
-                    uv: v.uv,
-                })
-                .collect(),
-            indices: self.indices.clone(),
-            cap_indices: 0,
-        }
-    }
 }
 fn read_points(attr: &usd::Attribute, at: Option<usd::TimeCode>) -> Result<Vec<[f32; 3]>> {
     Ok(attr
