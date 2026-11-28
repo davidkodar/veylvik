@@ -710,6 +710,7 @@ fn a_model_renders_its_parts_with_their_textures_and_materials() {
         joint: None,
         rest_inverse: veylvik_mesh::animation::IDENTITY,
         skin: None,
+        cache: None,
     };
     let model = Model {
         parts: vec![
@@ -2435,6 +2436,7 @@ fn particles_are_born_on_an_imported_models_surface() {
             joint: None,
             rest_inverse: veylvik_mesh::animation::IDENTITY,
             skin: None,
+            cache: None,
         }],
         extent: [1.0, 0.5, 0.0],
         ..Default::default()
@@ -2810,6 +2812,7 @@ fn a_model_playing_its_animation_moves_its_parts_in_the_render() {
             joint: Some(0),
             rest_inverse: veylvik_mesh::animation::IDENTITY,
             skin: None,
+            cache: None,
         }],
         extent: [1.0, 1.0, 0.0],
         joints: vec![Joint {
@@ -2819,6 +2822,7 @@ fn a_model_playing_its_animation_moves_its_parts_in_the_render() {
             scale: [1.0; 3],
         }],
         clips: vec![Clip {
+            length: 0.0,
             name: "Slide".into(),
             channels: vec![Channel {
                 node: 0,

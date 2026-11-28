@@ -145,11 +145,11 @@ impl Engine {
                     .models
                     .lock()
                     .map_err(|_| error("model lock poisoned"))?;
-                // A skinned part bent by its joints at this moment of its clip.
+                // A skinned or cached part as it is at this moment of its clip.
                 let mut mesh = models
                     .get(path)
                     .and_then(|m| {
-                        m.skinned(*part, *play)
+                        m.deformed(*part, *play)
                             .or_else(|| m.parts.get(*part).map(|p| p.mesh.clone()))
                     })
                     .unwrap_or_default();
@@ -281,7 +281,7 @@ impl Engine {
                     part: Some(i),
                     // A rigid part's mesh is the same at every moment and is kept once;
                     // a skinned part's bends with the clip, so its moment is part of it.
-                    play: if part.skin.is_some() { *play } else { None },
+                    play: if part.deforms() { *play } else { None },
                 };
                 if let Some(pose) = poses.as_ref().and_then(|p| p.get(i)) {
                     let mut moved = *pose;

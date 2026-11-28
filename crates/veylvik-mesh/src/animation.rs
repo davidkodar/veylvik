@@ -48,14 +48,16 @@ pub struct Channel {
 pub struct Clip {
     pub name: String,
     pub channels: Vec<Channel>,
+    /// How long it lasts when its keys alone do not say (a point cache's last frame).
+    pub length: f32,
 }
 impl Clip {
-    /// Its length: the last key of any channel.
+    /// Its length: the last key of any channel, or `length` if longer.
     pub fn seconds(&self) -> f32 {
         self.channels
             .iter()
             .filter_map(|c| c.times.last().copied())
-            .fold(0.0, f32::max)
+            .fold(self.length.max(0.0), f32::max)
     }
 }
 fn mul(a: &Mat, b: &Mat) -> Mat {
@@ -269,7 +271,7 @@ impl Model {
     /// where it rests, in the model's normalised frame (x right, y down, z towards the
     /// viewer, largest side 1): wrapped round the clip's length when `looping`, else held
     /// at its ends. None when there is no such clip. A skinned part does not move as one
-    /// piece (its mesh bends instead: `skinned`).
+    /// piece (its mesh bends instead: `deformed`).
     pub fn poses(&self, clip: usize, seconds: f32, looping: bool) -> Option<Vec<Mat>> {
         let clip = self.clips.get(clip)?;
         let worlds = self.node_worlds(Some(clip), Self::clip_time(clip, seconds, looping));
@@ -287,21 +289,100 @@ impl Model {
                 .collect(),
         )
     }
-    /// A skinned part's mesh in the normalised frame with its joints where `play` (clip,
-    /// seconds, looping) has them, or at rest: each vertex moved by its joints' motions
-    /// blended by its weights. None for a part without a skin.
-    pub fn skinned(&self, part: usize, play: Option<(usize, f32, bool)>) -> Option<crate::Mesh> {
+    /// A deforming part's mesh in the normalised frame where `play` (clip, seconds,
+    /// looping) has it, or at rest: a skinned part with each vertex moved by its joints'
+    /// motions blended by its weights, a cached part with its points from the frames
+    /// either side (straight between them). None for a part that does not deform.
+    pub fn deformed(&self, part: usize, play: Option<(usize, f32, bool)>) -> Option<crate::Mesh> {
         let p = self.parts.get(part)?;
-        let skin = p.skin.as_ref()?;
         let clip = play.and_then(|(c, ..)| self.clips.get(c));
         let t = match (clip, play) {
             (Some(clip), Some((_, seconds, looping))) => Self::clip_time(clip, seconds, looping),
             _ => 0.0,
         };
-        let worlds = self.node_worlds(clip, t);
         let into = self.to_normalised();
-        Some(skin_mesh(&p.mesh, skin, &worlds, &into))
+        if let Some(skin) = &p.skin {
+            let worlds = self.node_worlds(clip, t);
+            return Some(skin_mesh(&p.mesh, skin, &worlds, &into));
+        }
+        let cache = p.cache.as_ref()?;
+        // At rest (no clip playing) a cache shows its first frame.
+        let t = if clip.is_some() {
+            t
+        } else {
+            cache.seconds.first().copied().unwrap_or(0.0)
+        };
+        Some(cached_mesh(&p.mesh, cache, t, &into))
     }
+}
+/// `mesh` (for its triangles and uvs) with its points taken from `cache` at `t` seconds
+/// (straight between the frames either side, held past the ends), into the normalised
+/// frame by `into`, with smooth normals made again from the moved faces.
+pub fn cached_mesh(
+    mesh: &crate::Mesh,
+    cache: &crate::PointCache,
+    t: f32,
+    into: &Mat,
+) -> crate::Mesh {
+    let n = cache.frames.len().min(cache.seconds.len());
+    let mut out = mesh.clone();
+    if n == 0 {
+        return out;
+    }
+    let k = cache.seconds[..n]
+        .partition_point(|&s| s <= t)
+        .saturating_sub(1)
+        .min(n - 1);
+    let (a, b, s) = if k + 1 < n && t > cache.seconds[k] {
+        let span = (cache.seconds[k + 1] - cache.seconds[k]).max(1e-9);
+        (k, k + 1, ((t - cache.seconds[k]) / span).clamp(0.0, 1.0))
+    } else {
+        (k, k, 0.0)
+    };
+    let (fa, fb) = (&cache.frames[a], &cache.frames[b]);
+    let points: Vec<[f32; 3]> = (0..fa.len().min(fb.len()))
+        .map(|i| {
+            let q = [0, 1, 2].map(|c| fa[i][c] + (fb[i][c] - fa[i][c]) * s);
+            [0, 1, 2]
+                .map(|r| into[r][0] * q[0] + into[r][1] * q[1] + into[r][2] * q[2] + into[r][3])
+        })
+        .collect();
+    // Smooth normals: each point's faces summed (by area), shared by its vertices.
+    let mut sums = vec![[0.0f32; 3]; points.len()];
+    let point_at = |v: u32| cache.point_of.get(v as usize).map(|p| *p as usize);
+    for t in out.indices.as_chunks::<3>().0 {
+        let ps: Option<Vec<usize>> = t.iter().map(|&v| point_at(v)).collect();
+        let Some(ps) = ps.filter(|ps| ps.iter().all(|&p| p < points.len())) else {
+            continue;
+        };
+        let [a, b, c] = [points[ps[0]], points[ps[1]], points[ps[2]]];
+        let (u, v) = (
+            [0, 1, 2].map(|k| b[k] - a[k]),
+            [0, 1, 2].map(|k| c[k] - a[k]),
+        );
+        let face = [
+            u[1] * v[2] - u[2] * v[1],
+            u[2] * v[0] - u[0] * v[2],
+            u[0] * v[1] - u[1] * v[0],
+        ];
+        for p in ps {
+            for k in 0..3 {
+                sums[p][k] += face[k];
+            }
+        }
+    }
+    for (i, v) in out.vertices.iter_mut().enumerate() {
+        let Some(p) = point_at(i as u32).filter(|&p| p < points.len()) else {
+            continue;
+        };
+        v.position = points[p];
+        let l =
+            (sums[p][0] * sums[p][0] + sums[p][1] * sums[p][1] + sums[p][2] * sums[p][2]).sqrt();
+        if l > 0.0 {
+            v.normal = sums[p].map(|x| x / l);
+        }
+    }
+    out
 }
 /// `mesh` (for its triangles and uvs) with every vertex bent by `skin`'s joints placed at
 /// `worlds`, then taken into the normalised frame by `into`.

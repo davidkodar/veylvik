@@ -90,8 +90,20 @@ fn texture(data: &gltf::image::Data) -> Option<Texture> {
         pixels,
     })
 }
-/// Load a glTF model normalised to a unit box (largest side 1, centred).
+/// Load a 3D model normalised to a unit box (largest side 1, centred): a glTF file, or a
+/// USD scene (`.usd`, `.usda`, `.usdc`, `.usdz`).
 pub fn load(path: &Path) -> Result<Model> {
+    let usd = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| veylvik_usd::EXTENSIONS.contains(&e.to_ascii_lowercase().as_str()));
+    if usd {
+        return veylvik_usd::load(path);
+    }
+    load_gltf(path)
+}
+/// Load a glTF model normalised to a unit box (largest side 1, centred).
+fn load_gltf(path: &Path) -> Result<Model> {
     let (document, buffers, images) =
         gltf::import(path).map_err(|e| format!("{}: {e}", path.display()))?;
     let scene = document
@@ -278,6 +290,7 @@ pub fn load(path: &Path) -> Result<Model> {
                 }))
                 .unwrap_or(anim::IDENTITY),
                 skin,
+                cache: None,
             });
         }
     }
@@ -414,6 +427,7 @@ fn animation(
             });
         }
         clips.push(Clip {
+            length: 0.0,
             name: a
                 .name()
                 .map_or_else(|| format!("Animation {}", k + 1), str::to_owned),

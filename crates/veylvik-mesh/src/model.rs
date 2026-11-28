@@ -33,6 +33,26 @@ pub struct Part {
     pub rest_inverse: crate::animation::Mat,
     /// A skinned part bends with the joints of its skin instead of moving as one piece.
     pub skin: Option<Arc<Skin>>,
+    /// A cached part takes its points from keyed frames (a USD point cache).
+    pub cache: Option<Arc<PointCache>>,
+}
+impl Part {
+    /// Whether its mesh changes as a clip plays (a skin or a point cache), so it is made
+    /// again for each moment rather than kept once.
+    pub fn deforms(&self) -> bool {
+        self.skin.is_some() || self.cache.is_some()
+    }
+}
+/// A part's points keyed over time, as caches of simulations and deformed characters
+/// arrive: each frame holds every point (in the file's frame, y up); vertices name the
+/// point they stand on, so a frame moves them and their normals are made again.
+#[derive(Debug, Clone, Default)]
+pub struct PointCache {
+    /// Seconds into the clip of each frame, rising.
+    pub seconds: Vec<f32>,
+    pub frames: Vec<Vec<[f32; 3]>>,
+    /// The point each of the part's vertices stands on.
+    pub point_of: Vec<u32>,
 }
 /// How a skinned part's vertices follow its joints (glTF skins: linear blend skinning).
 #[derive(Debug, Clone, Default)]

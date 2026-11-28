@@ -2384,6 +2384,24 @@ settles on the wrong kind of motion can still look sure. The
   bent on the CPU for each moment it is shown. Shape morphs are not played, and
   the scene's box for the model, particles born on it and collisions with it use
   the model as it rests.
+  **USD scenes** (`.usd`, `.usda`, `.usdc`, `.usdz`) load the same way, read by the
+  `veylvik-usd` crate on the pure-Rust `openusd` library (MIT; its generated core
+  schemas carry Pixar's Tomorrow Open Source Technology License): every active,
+  visible mesh of the composed stage (references, payloads and variants resolved;
+  guide and proxy meshes left out), placed by its transform ops in the order
+  `xformOpOrder` lists them (translate, scale, rotateX/Y/Z and the six rotate
+  orders, orient, transform; `!invert!` and `!resetXformStack!` honoured) under its
+  parents, polygons fanned into triangles (left-handed meshes turned round), its
+  normals and `st` coordinates as the file interpolates them (smooth normals made
+  where it has none), and the base colour, metallic and roughness of its bound
+  UsdPreviewSurface (else its display colour). A Z-up stage is turned y up. Keyed
+  transforms become the model's one clip (**Animation**, in the stage's time codes
+  per second, starting at its start time code): each moving mesh is keyed at every
+  moment any transform above it is, straight between. Keyed points become a point
+  cache that bends the part, straight between its frames, with smooth normals made
+  for each moment (as caches of simulations and deformed characters arrive; at most
+  64 million values in all). Not read yet: textures, lights, cameras and UsdSkel
+  skeletons. Limits as for glTF.
 - **Figure** (`figure_3d`): a walking person in the scene, from the
   `veylvik-figure` crate. Movement: the legs follow the measured joint angles
   of normal adult walking (hip, knee and ankle every 5% of the stride, the

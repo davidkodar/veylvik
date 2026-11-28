@@ -86,10 +86,12 @@ fn strip() -> Model {
                 influences,
                 weights,
             })),
+            cache: None,
         }],
         extent: [1.0, 0.1, 0.0],
         joints: vec![rest([0.0; 3], None), rest([1.0, 0.0, 0.0], Some(0))],
         clips: vec![Clip {
+            length: 0.0,
             name: "lift".into(),
             channels: vec![Channel {
                 node: 1,

@@ -44,6 +44,7 @@ fn bar(turn: f32) -> Model {
             joint: Some(2),
             rest_inverse: IDENTITY,
             skin: Some(Arc::new(skin)),
+            cache: None,
         }],
         extent: [1.0; 3],
         joints: vec![
@@ -68,6 +69,7 @@ fn bar(turn: f32) -> Model {
         ],
         // The child joint turns about z by `turn` over a second.
         clips: vec![Clip {
+            length: 0.0,
             name: "bend".into(),
             channels: vec![Channel {
                 node: 1,
@@ -88,11 +90,11 @@ fn close(a: [f32; 3], b: [f32; 3]) -> bool {
 fn a_skinned_bar_bends_at_its_joint_and_its_weighted_middle_goes_halfway() {
     let model = bar(std::f32::consts::FRAC_PI_2);
     // At rest: where the file put it (y flipped into the normalised frame).
-    let rest = model.skinned(0, None).unwrap();
+    let rest = model.deformed(0, None).unwrap();
     assert!(close(rest.vertices[2].position, [2.0, 0.0, 0.0]));
     // At the end of the clip the child joint has turned a right angle about z: the far
     // end (on the child) is at (1, 1) in glTF's frame, (1, -1) once y points down.
-    let bent = model.skinned(0, Some((0, 1.0, false))).unwrap();
+    let bent = model.deformed(0, Some((0, 1.0, false))).unwrap();
     assert!(close(bent.vertices[0].position, [0.0, 0.0, 0.0]));
     assert!(
         close(bent.vertices[2].position, [1.0, -1.0, 0.0]),
@@ -108,7 +110,7 @@ fn a_skinned_bar_bends_at_its_joint_and_its_weighted_middle_goes_halfway() {
         bent.vertices[2].normal
     );
     // Halfway through the clip the far end is a quarter turn's half along.
-    let half = model.skinned(0, Some((0, 0.5, false))).unwrap();
+    let half = model.deformed(0, Some((0, 0.5, false))).unwrap();
     let r = std::f32::consts::FRAC_PI_4;
     assert!(close(
         half.vertices[2].position,
@@ -119,5 +121,5 @@ fn a_skinned_bar_bends_at_its_joint_and_its_weighted_middle_goes_halfway() {
     // A part without a skin has no skinned mesh.
     let mut rigid = model.clone();
     rigid.parts[0].skin = None;
-    assert!(rigid.skinned(0, None).is_none());
+    assert!(rigid.deformed(0, None).is_none());
 }

@@ -570,7 +570,7 @@ impl Inspect for veylvik_document::nodes::Model3d {
             ui.label(name).on_hover_text(&self.model);
             if ui
                 .button("Choose model file…")
-                .on_hover_text("A glTF 2.0 model: .glb, or .gltf with its files")
+                .on_hover_text("A glTF 2.0 model (.glb, or .gltf with its files) or a USD scene (.usd, .usda, .usdc, .usdz)")
                 .clicked()
             {
                 cx.ask(super::Request::ChooseModel);
