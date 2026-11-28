@@ -17,9 +17,10 @@ pub struct Baked {
     file: std::path::PathBuf,
     frames: u32,
 }
+/// Simulated particles, which can be baked: a flock, or grains.
 fn is_flock(operation: &Operation) -> bool {
     matches!(operation, Operation::Particles(p)
-        if !matches!(p.flock_radius, veylvik_document::Scalar::Constant { value } if value <= 0.0))
+        if p.grains || !matches!(p.flock_radius, veylvik_document::Scalar::Constant { value } if value <= 0.0))
 }
 impl Studio {
     /// What the selected flock's bake is, in a line (None: not a flock).

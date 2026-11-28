@@ -121,6 +121,7 @@ kernels! {
     ParticleFlockScan => "particle_flock_scan", Frame, program;
     ParticleFlockList => "particle_flock_list", Frame, program;
     ParticleStep => "particle_step", Frame, program;
+    ParticleRelax => "particle_relax", Frame, program;
     ParticleInstances => "particle_instances", Frame, program;
     LensPrefilterHorizontal => "lens_prefilter_horizontal", Area, program;
     LensPrefilterVertical => "lens_prefilter_vertical", Area, program;

@@ -47,7 +47,8 @@ pub(crate) fn hidden(operation: &Operation, name: &str, wired: &dyn Fn(&str) -> 
 }
 fn particles(operation: &Operation, name: &str, wired: &dyn Fn(&str) -> bool) -> bool {
     // A flock born on its emitter counts its birds by rate and keeps them to the box.
-    let flock = matches!(*operation, Operation::Particles(ref n) if !matches!(n.flock_radius, veylvik_document::Scalar::Constant { value } if value <= 0.0));
+    let flock = matches!(*operation, Operation::Particles(ref n) if n.grains || !matches!(n.flock_radius, veylvik_document::Scalar::Constant { value } if value <= 0.0));
+    let grains = matches!(*operation, Operation::Particles(ref n) if n.grains);
     match name {
         "density" => !wired("emitter") || flock,
         "rate" | "x" | "y" | "width" | "height" => wired("emitter") && !flock,
@@ -69,6 +70,9 @@ fn particles(operation: &Operation, name: &str, wired: &dyn Fn(&str) -> bool) ->
                 || !matches!(*operation, Operation::Particles(ref n) if n.sprite_play == veylvik_document::nodes::SpritePlay::AtRate)
         }
         "camera" | "bokeh" => !wired("scene"),
+        // Grains' own settings once they are grains; they do not flock.
+        "friction" | "floor" => !grains,
+        "flock_radius" => grains,
         // A flock's own settings once it is one.
         "cohesion" | "separation" | "alignment" | "top_speed" => {
             matches!(*operation, Operation::Particles(ref n) if matches!(n.flock_radius, veylvik_document::Scalar::Constant { value } if value <= 0.0))
@@ -127,6 +131,14 @@ mod tests {
         }
         assert!(!hidden(&flock, "rate", &emitter) && !hidden(&flock, "width", &emitter));
         assert!(hidden(&flock, "density", &emitter));
+        // Grains show their friction and floor, and no flocking.
+        assert!(hidden(&particles, "friction", &emitter) && hidden(&particles, "floor", &emitter));
+        let mut grains = particles.clone();
+        if let Operation::Particles(p) = &mut grains {
+            p.grains = true;
+        }
+        assert!(!hidden(&grains, "friction", &emitter) && !hidden(&grains, "floor", &emitter));
+        assert!(hidden(&grains, "flock_radius", &emitter));
         let force = op(&veylvik_document::registry::FORCE);
         assert!(!hidden(&force, "strength", &none));
     }

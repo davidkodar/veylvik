@@ -8,7 +8,17 @@
 // and into their heading, keeps clear of the particles themselves near it (their
 // pushes summed in fixed point, so in any order the same), and is moved by the forces.
 const FLOCK_RADIUS = 120u; const COHESION = 121u; const SEPARATION = 122u; const ALIGNMENT = 123u;
-const TOP_SPEED = 124u;
+const TOP_SPEED = 124u; const FRICTION = 138u; const FLOOR = 141u;
+// Grains (camera row 124): simulated as a flock is, but touching one another instead of
+// steering by one another.
+fn grains() -> bool { return camera_row(124u) > 0.5; }
+// The neighbour grid's radius: the flock radius, or for grains three grain widths, so
+// the fine cells (a third of it) are one grain wide and a grain's touching neighbours
+// are all in the cells round its own.
+fn grid_radius(now: f32) -> f32 {
+    if grains() { return max(setting(SIZE, now), 0.5) * 6.0; }
+    return max(setting(FLOCK_RADIUS, now), 1.0);
+}
 const CELLS = 65536u;
 // The fine grid, in the grid buffer after the cells (eight values each): counts, where
 // each list starts, how many are listed so far, sums of places (four values each), then
@@ -52,7 +62,7 @@ fn particle_flock_grid(@builtin(global_invocation_id) gid: vec3<u32>) {
     if gid.x >= u32(p.values.y) || thread >= u32(p.values.x) { return; }
     let s0 = second[2u * thread]; let s1 = second[2u * thread + 1u];
     if s1.w < 0.5 { return; }
-    let r = max(setting(FLOCK_RADIUS, bitcast<f32>(p.size_op.z)), 1.0);
+    let r = grid_radius(bitcast<f32>(p.size_op.z));
     let c = flock_cell(s0.xyz, r); let k = cell_slot(c) * 8u;
     let at = place_units(s0.xyz, c, r); let v = speed_units(s1.xyz);
     atomicAdd(&result[k], 1u);
@@ -92,7 +102,7 @@ fn particle_flock_list(@builtin(global_invocation_id) gid: vec3<u32>) {
     if gid.x >= u32(p.values.y) || thread >= u32(p.values.x) { return; }
     let s0 = second[2u * thread]; let s1 = second[2u * thread + 1u];
     if s1.w < 0.5 { return; }
-    let r = max(setting(FLOCK_RADIUS, bitcast<f32>(p.size_op.z)), 1.0);
+    let r = grid_radius(bitcast<f32>(p.size_op.z));
     let f = cell_slot(flock_cell(s0.xyz, personal(r)));
     let at = atomicLoad(&result[FINE_START + f]) + atomicAdd(&result[FINE_CURSOR + f], 1u);
     atomicStore(&result[FINE_LIST + at], thread);
@@ -102,7 +112,7 @@ fn particle_flock_list(@builtin(global_invocation_id) gid: vec3<u32>) {
 // nearer, summed in 256ths so the order of the list does not matter. Two in the very
 // same place part along a direction of their own pair, opposite for each.
 fn crowding(at: vec3<f32>, me: u32, now: f32, deep: bool) -> vec3<f32> {
-    let near = personal(max(setting(FLOCK_RADIUS, now), 1.0));
+    let near = personal(grid_radius(now));
     let own = flock_cell(at, near);
     var push = vec3<i32>(0);
     var reach = 1; if !deep { reach = 0; }
@@ -146,7 +156,7 @@ fn crowding(at: vec3<f32>, me: u32, now: f32, deep: bool) -> vec3<f32> {
 }
 // How the neighbours steer a particle at `at` going at `v` (it is in the grid itself).
 fn flocking(at: vec3<f32>, v: vec3<f32>, now: f32, deep: bool, me: u32) -> vec3<f32> {
-    let r = max(setting(FLOCK_RADIUS, now), 1.0);
+    let r = grid_radius(now);
     let own = flock_cell(at, r);
     var count = 0.0; var middle = vec3<f32>(0.0); var heading = vec3<f32>(0.0);
     var reach = 1; if !deep { reach = 0; }
@@ -176,6 +186,116 @@ fn flocking(at: vec3<f32>, v: vec3<f32>, now: f32, deep: bool, me: u32) -> vec3<
         + crowding(at, me, now, deep) * setting(SEPARATION, now);
     if !deep { steer.z = 0.0; }
     return steer;
+}
+// Grains are solved by their places (position-based dynamics): a step first moves each
+// grain under the forces as if alone, keeping where it set out from in its state in
+// place of its velocity (`particle_step`); a few relax passes then push grains out of
+// one another, and friction undoes the sliding between grains that touch; the last pass
+// gives each grain the velocity of how far it really went (`particle_relax`).
+//
+// How the grains touching a grain at `at` (thread `me`, set out from `origin`) move it:
+// each one nearer than a grain's width pushes it out of their overlap, the grain above
+// taking the push (all of it when it lies straight on the other, half when they are side
+// by side, so a pile stands on what is under it: "shock propagation"); and the sliding
+// between them in this step is undone, all of it while it is small next to how far they
+// press into each other (static friction), less once it is larger (sliding friction).
+// Summed in fixed point so the order of the lists does not matter, and averaged over the
+// grains it touches.
+fn contacts(at: vec3<f32>, origin: vec3<f32>, me: u32, now: f32, deep: bool, sliding_held: bool) -> vec3<f32> {
+    let width = personal(grid_radius(now));
+    let friction = clamp(setting(FRICTION, now), 0.0, 1.0);
+    // Up, against gravity (none: every pair shares evenly).
+    let up = vec3<f32>(0.0, -sign(setting(GRAVITY, now)), 0.0);
+    let own = flock_cell(at, width);
+    var shift = vec3<i32>(0); var touching = 0u;
+    var reach = 1; if !deep { reach = 0; }
+    for (var dz = -reach; dz <= reach; dz++) {
+        for (var dy = -1; dy <= 1; dy++) {
+            for (var dx = -1; dx <= 1; dx++) {
+                let f = cell_slot(own + vec3<i32>(dx, dy, dz));
+                let n = min(grid_u32(FINE_COUNT + f), LIST_MOST);
+                if n == 0u { continue; }
+                let start = grid_u32(FINE_START + f);
+                for (var m = 0u; m < LIST_MOST; m++) {
+                    if m >= n { break; }
+                    let other = grid_u32(FINE_LIST + start + m);
+                    if other == me { continue; }
+                    let there = second[2u * other].xyz;
+                    var away = at - there; if !deep { away.z = 0.0; }
+                    let d = length(away);
+                    if d >= width { continue; }
+                    var along: vec3<f32>;
+                    if d > 0.0001 {
+                        along = away / d;
+                    } else {
+                        let a = f32(hash(min(me, other) * 2654435761u ^ max(me, other)) >> 8u) / 16777216.0 * 6.2831853;
+                        along = vec3<f32>(cos(a), sin(a), 0.0) * select(-1.0, 1.0, me < other);
+                    }
+                    // This grain's share: all of it straight above the other, none below.
+                    let mine = 0.5 * (1.0 + dot(along, up));
+                    var press = width - d;
+                    var hold = vec3<f32>(0.0);
+                    if sliding_held {
+                        var slid = (at - origin) - (there - second[2u * other + 1u].xyz);
+                        if !deep { slid.z = 0.0; }
+                        // Within a step, only the overlap they closed in it is pushed out:
+                        // older overlap, or a grain born into others, is parted before the
+                        // next step by places alone, so it is never thrown.
+                        press = min(press, max(-dot(slid, along), 0.0));
+                        slid -= along * dot(slid, along);
+                        let sliding = length(slid);
+                        hold = slid;
+                        if sliding > friction * press { hold *= friction * press / sliding; }
+                    }
+                    shift += vec3<i32>(round((along * press - hold) * mine * 256.0));
+                    touching += 1u;
+                }
+            }
+        }
+    }
+    return vec3<f32>(shift) / 256.0 / f32(max(touching, 1u));
+}
+// A grain on the floor (`floor` pixels above the frame's bottom edge), set out origin
+// `origin`: kept on it, and its sliding along it in this step undone as between grains.
+fn on_floor(at: vec3<f32>, origin: vec3<f32>, now: f32) -> vec3<f32> {
+    let radius = max(setting(SIZE, now), 0.5);
+    let level = f32(p.size_op.y) - setting(FLOOR, now) - radius;
+    if at.y < level { return at; }
+    let press = at.y - level;
+    let friction = clamp(setting(FRICTION, now), 0.0, 1.0);
+    var slid = at - origin; slid.y = 0.0;
+    let sliding = length(slid);
+    var hold = slid;
+    if sliding > friction * press { hold *= friction * press / sliding; }
+    return vec3<f32>(at.x, level, at.z) - hold;
+}
+// ---- relax: first = the grid, second = the grains (where they are, where they set
+// out from); result = the grains pushed out of one another. The last (values.w 1) turns
+// where they set out from back into their velocity over the step (values.z seconds).
+// Before a step (values.w 2), grains still holding their velocity are pushed out of the
+// overlap they already have by their places alone, adding no speed ("pre-stabilisation":
+// grains born into a crowd part gently instead of flying apart). ----
+@compute @workgroup_size(64)
+fn particle_relax(@builtin(global_invocation_id) gid: vec3<u32>) {
+    let thread = gid.y * u32(p.values.y) + gid.x;
+    if gid.x >= u32(p.values.y) || thread >= u32(p.values.x) { return; }
+    let s0 = second[2u * thread]; let s1 = second[2u * thread + 1u];
+    var out0 = s0; var out1 = s1;
+    if s1.w > 0.5 {
+        let now = bitcast<f32>(p.size_op.z);
+        let deep = setting(DEPTH, now) > 0.0 || s0.z != 0.0 || s1.z != 0.0;
+        let before = p.values.w > 1.5;
+        if before {
+            let at = s0.xyz + contacts(s0.xyz, s0.xyz, thread, now, deep, false);
+            let radius = max(setting(SIZE, now), 0.5);
+            out0 = vec4<f32>(at.x, min(at.y, f32(p.size_op.y) - setting(FLOOR, now) - radius), at.z, s0.w);
+        } else {
+            let at = on_floor(s0.xyz + contacts(s0.xyz, s1.xyz, thread, now, deep, true), s1.xyz, now);
+            out0 = vec4<f32>(at, s0.w);
+            if p.values.w > 0.5 { out1 = vec4<f32>((at - s1.xyz) / max(p.values.z, 1e-6), s1.w); }
+        }
+    }
+    store(2u * thread, out0); store(2u * thread + 1u, out1);
 }
 // One particle moved on by `span` seconds from `since` at the place and speed given.
 struct Moved { at: vec3<f32>, velocity: vec3<f32> }
@@ -245,9 +365,18 @@ fn particle_step(@builtin(global_invocation_id) gid: vec3<u32>) {
     if b.ok && now - b.birth < b.own_life {
         let s0 = second[2u * thread]; let s1 = second[2u * thread + 1u];
         var moved: Moved;
-        if s1.w > 0.5 && s0.w == f32(b.generation) && now - b.birth >= span {
+        if s1.w > 0.5 && s0.w == f32(b.generation) && now - b.birth >= span && grains() {
+            // Moved as if alone; where it set out from is kept for the relax passes.
+            moved = advance(s0.xyz, s1.xyz, now - span, span, b.deep, vec3<f32>(0.0));
+            moved.velocity = s0.xyz;
+        } else if s1.w > 0.5 && s0.w == f32(b.generation) && now - b.birth >= span {
             let steer = flocking(s0.xyz, s1.xyz, now - span, b.deep, thread);
             moved = advance(s0.xyz, s1.xyz, now - span, span, b.deep, steer);
+        } else if grains() {
+            // Born during this step: setting out from a step's flight before where it is,
+            // so the relax passes give it its launch speed.
+            moved = advance(b.origin, b.launch, b.birth, now - b.birth, b.deep, vec3<f32>(0.0));
+            moved.velocity = moved.at - b.launch * span;
         } else {
             // Born during this step: from its birth on, steered by no one yet.
             moved = advance(b.origin, b.launch, b.birth, now - b.birth, b.deep, vec3<f32>(0.0));

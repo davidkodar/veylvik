@@ -2217,6 +2217,27 @@ settles on the wrong kind of motion can still look sure. The
     picture. A flock of 50,000 costs about 3.5 ms a
     simulation step on an RTX 4080 (two steps a frame while playing; a jump
     goes from the state kept each second before it).
+  - *Grains.* **Grains** makes each particle a grain **Size** wide that lands
+    on the others, the floor and the scene's solids (with **Collide**), slides
+    off and piles up, like sand, salt or gravel. Grains are simulated as a flock
+    is (same 65,536 limit, kept states, bake, and a frame the same however it is
+    reached), at 240 steps a second so a falling grain meets the pile instead of
+    passing into it. They are solved by their places (position-based dynamics):
+    each step moves every grain under the forces as if alone, four passes then
+    push touching grains out of one another and undo their sliding by
+    **Friction** (all of it while it is small next to how hard they press, as
+    static friction does; less beyond that, as sliding friction does), and each
+    grain's speed is what it really moved. Of each touching pair the grain above
+    takes the push (all of it straight above, half side by side), so a pile
+    stands on what is under it. Overlap a grain already has (one born into
+    others) is parted by four passes before the step by places alone, so it is
+    never thrown. **Friction** (0–1, keyable) sets how steep they pile: about
+    0.2 for dry sand's low cone, 0.5 steeper, near 1 they stack like wet sand.
+    **Floor** is where they rest: pixels above the frame's bottom edge (negative
+    below it). A spout pouring more grains than fit side by side in it fans them
+    out: pour them slowly enough, or with some speed, to fall apart. The
+    **Pouring sand** look is a starting point. Not yet: grains of different
+    sizes in one system, grains pressing on 3D objects, and grains in a flock.
 - **Shape warp** (`shape_warp`, input image): pulls the image so the start
   shape `from` lands on the end shape `to`. Both are closed paths in pixels
   (the Path mask's geometry format, keys allowed) with the same number of

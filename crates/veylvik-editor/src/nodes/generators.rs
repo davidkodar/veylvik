@@ -136,7 +136,14 @@ impl Inspect for veylvik_document::nodes::Particles {
                 .checkbox(&mut self.with_camera, "With the camera")
                 .on_hover_text("In a 3D scene: placed in front of the camera and moving with it, as dust on the lens or grains near it. X, Y and Z are where the box sits in the camera's home view; the lens still blurs them")
                 .changed();
+            cx.dirty |= ui
+                .checkbox(&mut self.grains, "Grains")
+                .on_hover_text("Sand, salt, gravel: each particle is a grain Size wide that lands on the others and the floor, slides off and piles up. Simulated (as a flock is) and can be baked")
+                .changed();
         });
+        if self.grains {
+            ui.weak("Grains: Friction sets how steep they pile (0.2 dry sand runs into a low cone, 0.5 a steeper one, near 1 sticks like wet sand); Floor is where they come to rest, pixels above the frame's bottom edge. They also land on the scene's solids with Collide. Pour them slowly enough to fall apart: a spout with more grains than fit in it fans them out.");
+        }
         // Born on a 3D object of the connected scene, in place of the box.
         let scene: bool = cx.is_wired("scene");
         if scene {

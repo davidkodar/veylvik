@@ -4,8 +4,16 @@ use crate::plan::Plan;
 use crate::{Kernel, Params, Renderer, Result, error};
 use veylvik_document::{Node, NodeId, Operation, Time};
 
-/// Seconds a step.
-const STEP: f64 = 1.0 / 60.0;
+/// Steps a second: a flock's, and grains' (finer, so a falling grain moves less than its
+/// width in a step and meets the pile instead of passing into it).
+const STEPS: u64 = 60;
+const GRAIN_STEPS: u64 = 240;
+/// Passes that push grains out of their overlaps after each step, the last also giving
+/// them their velocity (an even number: they go back and forth between the two states).
+const RELAX: usize = 4;
+/// Passes that part grains from the overlap they already have, by their places alone,
+/// before each step (even, as `RELAX`).
+const PARTING: usize = 4;
 /// Most copies kept of one flock; past it, every other one is let go.
 const KEPT: usize = 128;
 /// Flocks kept at once, the last used first.
@@ -265,8 +273,10 @@ impl Renderer {
         if now <= begins {
             return Ok((out, bytes));
         }
-        let wanted = ((now - begins) / STEP).floor() as u64;
-        let left = now - begins - wanted as f64 * STEP;
+        let per_second = if particles.grains { GRAIN_STEPS } else { STEPS };
+        let step = 1.0 / per_second as f64;
+        let wanted = ((now - begins) / step).floor() as u64;
+        let left = now - begins - wanted as f64 * step;
         let mut store = self
             .simulations
             .lock()
@@ -281,7 +291,7 @@ impl Renderer {
                     0,
                     Run {
                         key,
-                        every: 60,
+                        every: per_second,
                         kept: Vec::new(),
                         last: None,
                     },
@@ -316,7 +326,7 @@ impl Renderer {
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
-        let at_step = |k: u64| begins + k as f64 * STEP;
+        let at_step = |k: u64| begins + k as f64 * step;
         for k in first..wanted {
             self.flock_step(
                 me,
@@ -324,7 +334,7 @@ impl Renderer {
                 width,
                 height,
                 at_step(k + 1),
-                STEP,
+                step,
                 &before,
                 &after,
                 &grid,
@@ -419,19 +429,74 @@ impl Renderer {
             emitter.unwrap_or(&none),
         );
         let (threads, row) = (p.values[0] as u32, (p.values[1] as u32).max(1));
+        let mut passes = Vec::new();
+        // Grains are first parted from the overlap they already have, by their places
+        // alone, a few times: from `before` into `after` and back.
+        if particles.grains {
+            let mut parting = p;
+            parting.values[3] = 2.0;
+            let parting = self.uniform_of(&parting);
+            for (from, to) in [(before, after), (after, before)].repeat(PARTING / 2) {
+                let gather = self.kernel_group(&parting, &none, from, grid, &settings, &none);
+                passes.extend([
+                    (Kernel::ParticleFlockGrid, gather.clone()),
+                    (Kernel::ParticleFlockScan, gather.clone()),
+                    (Kernel::ParticleFlockList, gather),
+                    (
+                        Kernel::ParticleRelax,
+                        self.kernel_group(&parting, grid, from, to, &settings, &none),
+                    ),
+                ]);
+            }
+        }
+        passes.extend([
+            (Kernel::ParticleFlockGrid, gather.clone()),
+            (Kernel::ParticleFlockScan, gather.clone()),
+            (Kernel::ParticleFlockList, gather),
+            (Kernel::ParticleStep, step),
+        ]);
+        // Grains are then pushed out of the overlap a step leaves, a few times over, the
+        // grid made again from where they are each time; back and forth between the two
+        // states, so they end in `after`.
+        if particles.grains {
+            // The last pass turns where each grain set out from back into its velocity
+            // (values.w, which the step reads as the emitter's slots).
+            let mut relaxing = p;
+            relaxing.values[3] = 0.0;
+            let mut last = p;
+            last.values[3] = 1.0;
+            let (relaxing, last) = (self.uniform_of(&relaxing), self.uniform_of(&last));
+            let into = |from: &wgpu::Buffer, to: &wgpu::Buffer, uniform: &wgpu::Buffer| {
+                (
+                    self.kernel_group(uniform, &none, from, grid, &settings, &none),
+                    self.kernel_group(uniform, grid, from, to, &settings, &none),
+                )
+            };
+            for k in 0..RELAX {
+                let uniform = if k + 1 == RELAX { &last } else { &relaxing };
+                let (gather, relax) = if k % 2 == 0 {
+                    into(after, before, uniform)
+                } else {
+                    into(before, after, uniform)
+                };
+                passes.extend([
+                    (Kernel::ParticleFlockGrid, gather.clone()),
+                    (Kernel::ParticleFlockScan, gather.clone()),
+                    (Kernel::ParticleFlockList, gather),
+                    (Kernel::ParticleRelax, relax),
+                ]);
+            }
+        }
         let mut encoder = self.device.create_command_encoder(&Default::default());
-        encoder.clear_buffer(grid, 0, None);
-        for (kernel, bind) in [
-            (Kernel::ParticleFlockGrid, &gather),
-            (Kernel::ParticleFlockScan, &gather),
-            (Kernel::ParticleFlockList, &gather),
-            (Kernel::ParticleStep, &step),
-        ] {
-            let pipeline = self.pipeline_for(kernel, nodes::particles::features_of(me))?;
+        for (kernel, bind) in &passes {
+            if *kernel == Kernel::ParticleFlockGrid {
+                encoder.clear_buffer(grid, 0, None);
+            }
+            let pipeline = self.pipeline_for(*kernel, nodes::particles::features_of(me))?;
             let mut pass = encoder.begin_compute_pass(&Default::default());
             pass.set_pipeline(&pipeline);
             pass.set_bind_group(0, bind, &[]);
-            if kernel == Kernel::ParticleFlockScan {
+            if *kernel == Kernel::ParticleFlockScan {
                 pass.dispatch_workgroups(1, 1, 1);
             } else {
                 pass.dispatch_workgroups(row.div_ceil(64), threads.div_ceil(row).max(1), 1);

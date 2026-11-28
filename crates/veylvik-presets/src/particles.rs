@@ -55,7 +55,7 @@ fn set(node: &mut Particles, values: &[(&str, f32)]) {
         }
     }
 }
-pub static LOOKS: [Look; 12] = [
+pub static LOOKS: [Look; 13] = [
     Look {
         name: "Sparks",
         hint: "A shower of hot streaks thrown up from the emitter and falling back",
@@ -447,6 +447,42 @@ pub static LOOKS: [Look; 12] = [
             n.pull_y = path(|p| p.1);
             n.colour = [0.02, 0.02, 0.025, 1.0];
             n.end_colour = [0.02, 0.02, 0.025, 1.0];
+        },
+    },
+    Look {
+        name: "Pouring sand",
+        hint: "Sand poured from a spout at the top for twenty seconds, landing on the frame's bottom edge and building a cone that grows as it pours, then rests. Friction sets how steep it piles (lower runs flatter); Floor raises where it lands; Collide with a scene lets it pile on 3D objects. Grains are simulated: bake them to keep a take exactly",
+        needs: Needs::Nothing,
+        apply: |n, w, h| {
+            let s = w / 1920.0;
+            set(
+                n,
+                &[
+                    ("rate", 1500.0),
+                    ("duration", 20.0),
+                    ("life", 3600.0),
+                    ("start", 0.0),
+                    ("x", w * 0.5),
+                    ("y", h * 0.08),
+                    ("width", 14.0 * s),
+                    ("height", 6.0 * s),
+                    ("speed", 200.0 * s),
+                    ("direction", -90.0),
+                    ("spread", 0.0),
+                    ("gravity", 900.0 * s),
+                    ("wind", 0.0),
+                    ("turbulence", 0.0),
+                    ("fade", 0.0),
+                    ("variation", 0.0),
+                    ("size", 2.2 * s),
+                    ("glow", 0.0),
+                    ("friction", 0.4),
+                    ("floor", 0.0),
+                ],
+            );
+            n.grains = true;
+            n.colour = [0.82, 0.62, 0.36, 1.0];
+            n.end_colour = [0.82, 0.62, 0.36, 1.0];
         },
     },
 ];

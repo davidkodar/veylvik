@@ -40,7 +40,7 @@ fn sheet_rows() -> u32 { return ((u32(p.extra.z) >> 12u) & 15u) + 1u; }
 fn sheet_width() -> u32 { return MIP * sheet_columns(); }
 fn sheet_texels() -> u32 { return MIP * MIP * sheet_columns() * sheet_rows(); }
 const SPRITE_RATE = 125u;
-const COUNT: u32 = 141u;
+const COUNT: u32 = 144u;
 const ROWS: u32 = 16u;
 // Setting numbers.
 const SPEED = 1u; const DIRECTION = 2u; const SPREAD = 3u; const GRAVITY = 4u; const WIND = 5u;

@@ -9,7 +9,7 @@ const SLOTS: f32 = 4.0;
 /// Threads in one dispatch row (1024 workgroups of 64).
 pub(crate) const ROW: u32 = 65536;
 /// Settings in a row, and rows through the last life (as in particle_system.wgsl).
-pub(crate) const COUNT: usize = 141;
+pub(crate) const COUNT: usize = 144;
 pub(crate) const ROWS: usize = 16;
 /// The target's tile size for a frame (as in particle_system.wgsl).
 fn tile(pixels: u64) -> u32 {
@@ -142,6 +142,8 @@ fn settings(node: &Particles, time: Time) -> Result<[f32; COUNT]> {
     row[122] = at(&node.separation)?;
     row[123] = at(&node.alignment)?;
     row[124] = at(&node.top_speed)?;
+    row[138] = at(&node.friction)?;
+    row[141] = at(&node.floor)?;
     row[125] = at(&node.sprite_rate)?;
     let timing = timing(node, time)?;
     row[126] = timing.hold;
@@ -671,9 +673,9 @@ pub(crate) fn features_of(node: &veylvik_document::Node) -> u32 {
 }
 /// Most particles in a flock (two values each of the frame's buffer hold its state).
 pub(crate) const FLOCK_MOST: u32 = 65_536;
-/// Whether particles steer by one another, and so are simulated.
+/// Whether particles steer by one another or pile up as grains, and so are simulated.
 pub(crate) fn simulating(node: &Particles) -> bool {
-    !matches!(node.flock_radius, Scalar::Constant { value } if value <= 0.0)
+    node.grains || !matches!(node.flock_radius, Scalar::Constant { value } if value <= 0.0)
 }
 fn threads(cx: &Cx<'_>, rows: &[[f32; COUNT]]) -> (u32, u32, u32) {
     let (box_threads, stride) = layout(rows, cx.width, cx.height);
@@ -1060,6 +1062,7 @@ impl RenderNode for Particles {
         last[117] = f32::from(!forces.is_empty());
         // A flock is simulated; it is born in the box, on its emitter or on a 3D object.
         last[118] = f32::from(simulating(self));
+        last[124] = f32::from(self.grains);
         last[123] = f32::from(!matches!(self.release, Scalar::Constant { value } if value <= 0.0));
         if simulating(self)
             && let Some(port) = ["target", "field", "obstacle"]
