@@ -111,6 +111,7 @@ fn trace_into(
             target,
             blend: 1.0,
             splats: None,
+            media: &[],
         })
         .unwrap();
     queue.submit([encoder.finish()]);

@@ -30,6 +30,8 @@ struct Frame {
     // where the lights start, environment sampling (1), where the textures' places
     // start, where the looks start (43 vec4s each: uv scale, parameters, studio)
     lights_at: vec4<u32>,
+    // where the volumes start (MEDIUM_VEC4S each, volume.wgsl), how many
+    volumes: vec4<u32>,
 }
 @group(0) @binding(0) var<uniform> frame: Frame;
 // Gaussian splats, four vec4s each: place and opacity, size, turn (x y z w), colour.
@@ -427,7 +429,8 @@ fn has_glass() -> bool { return (frame.lights_at.y & 4u) != 0u; }
 // bending through that glass must not count it again.
 fn transmitted(o: vec3<f32>, d: vec3<f32>, far: f32) -> vec4<f32> {
     if blocked(o, d, far) { return vec4<f32>(0.0); }
-    var light = vec4<f32>(1.0, 1.0, 1.0, 0.0);
+    let media = media_through(o, d, far);
+    var light = vec4<f32>(media, media, media, 0.0);
     if !has_glass() { return light; }
     var at = o;
     var left = far;
@@ -774,6 +777,138 @@ fn feathered(l: Light, x: f32, y: f32) -> f32 {
 // The light every lamp, and the environment where it is bright, send straight to a point,
 // each checked for what blocks it. On the `last` surface of a path no reflected ray
 // follows, so what is drawn here counts in full.
+// ---- volumes (volume.wgsl says what a medium is at a point) ----
+fn medium_k(k: u32) -> Medium {
+    let b = frame.volumes.x + MEDIUM_VEC4S * k;
+    return medium_of(data[b], data[b + 1u], data[b + 2u], data[b + 3u], data[b + 4u], data[b + 5u], data[b + 6u], data[b + 7u]);
+}
+// Where along a ray before `far` the media lie, and the most extinction anywhere there.
+struct Reach { start: f32, end: f32, most: f32 }
+fn media_reach(o: vec3<f32>, d: vec3<f32>, far: f32) -> Reach {
+    var r = Reach(far, 0.0, 0.0);
+    for (var k = 0u; k < frame.volumes.y; k++) {
+        let m = medium_k(k);
+        let span = medium_span(m, o, d);
+        if span.y > span.x && span.x < far {
+            r.start = min(r.start, span.x);
+            r.end = max(r.end, min(span.y, far));
+            r.most += medium_most(m);
+        }
+    }
+    return r;
+}
+fn media_density(p: vec3<f32>) -> f32 {
+    var sum = 0.0;
+    for (var k = 0u; k < frame.volumes.y; k++) { sum += medium_density(medium_k(k), p); }
+    return sum;
+}
+// How much light gets along a ray through the media before `far` (ratio tracking: an
+// unbiased estimate, each tentative step dimming by the share of the most it may be).
+fn media_through(o: vec3<f32>, d: vec3<f32>, far: f32) -> f32 {
+    if frame.volumes.y == 0u { return 1.0; }
+    let r = media_reach(o, d, far);
+    if r.end <= r.start || r.most <= 0.0 { return 1.0; }
+    var light = 1.0;
+    var t = r.start;
+    for (var i = 0u; i < 512u; i++) {
+        t -= log(1.0 - random()) / r.most;
+        if t >= r.end { break; }
+        light *= 1.0 - min(media_density(o + d * t) / r.most, 1.0);
+        if light < 1e-4 { return 0.0; }
+    }
+    return light;
+}
+// Where a ray is first scattered or absorbed by the media before `far` (delta tracking),
+// and by which medium; `found` false when it gets through.
+struct Event { t: f32, medium: u32, found: bool }
+fn media_event(o: vec3<f32>, d: vec3<f32>, far: f32) -> Event {
+    var e = Event(far, 0u, false);
+    if frame.volumes.y == 0u { return e; }
+    let r = media_reach(o, d, far);
+    if r.end <= r.start || r.most <= 0.0 { return e; }
+    var t = r.start;
+    for (var i = 0u; i < 512u; i++) {
+        t -= log(1.0 - random()) / r.most;
+        if t >= r.end { return e; }
+        let p = o + d * t;
+        let total = media_density(p);
+        if random() * r.most < total {
+            // Which medium: in proportion to its share of the extinction here.
+            var pick = random() * total;
+            for (var k = 0u; k < frame.volumes.y; k++) {
+                pick -= medium_density(medium_k(k), p);
+                if pick <= 0.0 || k + 1u == frame.volumes.y {
+                    return Event(t, k, true);
+                }
+            }
+        }
+    }
+    return e;
+}
+// The light every lamp and the environment send to a point in a medium that scatters
+// with lean `g`, towards `towards` (the way back along the ray), each dimmed by what
+// lies between; on the path's `last` point no scattered ray follows.
+fn medium_direct(p: vec3<f32>, travelling: vec3<f32>, g: f32, last: bool) -> vec3<f32> {
+    var sum = vec3<f32>(0.0);
+    if sampling_sky() {
+        let s = sky_draw();
+        let l = s.xyz;
+        if s.w > 0.0 {
+            let t = transmitted(p, l, 1e30);
+            let f = medium_phase(g, travelling, l);
+            var w = 1.0;
+            if !last && t.w < 0.5 { w = power(s.w, f); }
+            sum += f * sky(l) * t.rgb / s.w * w;
+        }
+    }
+    for (var i = 0u; i < frame.counts.x; i++) {
+        let light = light_at(i);
+        let kind = light.position.w;
+        if kind > 2.5 {
+            let x = random() * 2.0 - 1.0;
+            let y = random() * 2.0 - 1.0;
+            let q = light.position.xyz + light.right.xyz * x + light.up.xyz * y;
+            let to = q - p;
+            let d2 = max(dot(to, to), 1e-6);
+            let dist = sqrt(d2);
+            let l = to / dist;
+            let cos_l = dot(-l, light.direction.xyz);
+            if cos_l <= 0.0 { continue; }
+            let area = 4.0 * length(light.right.xyz) * length(light.up.xyz);
+            let pdf = d2 / (area * cos_l);
+            var t = vec4<f32>(vec3<f32>(media_through(p, l, dist * 0.999)), 0.0);
+            if casts(light) { t = transmitted(p, l, dist * 0.999); }
+            if max(max(t.r, t.g), t.b) <= 0.0 { continue; }
+            let f = medium_phase(g, travelling, l);
+            var w = 1.0;
+            if !last && t.w < 0.5 { w = power(pdf, f); }
+            sum += f * light.colour.rgb * t.rgb * feathered(light, x, y) / pdf * w;
+            continue;
+        }
+        var l = -light.direction.xyz;
+        var radiance = light.colour.rgb;
+        var dist = 1e30;
+        if kind < 1.5 {
+            let to = light.position.xyz - p;
+            let d2 = max(dot(to, to), 1.0);
+            dist = sqrt(d2);
+            l = to / dist;
+            radiance *= 1.0e6 / d2;
+            if kind > 0.5 {
+                radiance *= smoothstep(light.direction.w, light.colour.w, dot(-l, light.direction.xyz));
+            }
+        }
+        if dot(radiance, radiance) <= 0.0 { continue; }
+        if casts(light) {
+            radiance *= transmitted(p, l, dist * 0.999).rgb;
+        } else {
+            radiance *= media_through(p, l, dist * 0.999);
+        }
+        if max(max(radiance.r, radiance.g), radiance.b) <= 0.0 { continue; }
+        sum += medium_phase(g, travelling, l) * radiance * PI;
+    }
+    return sum;
+}
 fn direct(m: Shade, p: vec3<f32>, n: vec3<f32>, v: vec3<f32>, last: bool) -> vec3<f32> {
     var sum = vec3<f32>(0.0);
     let lift = n * (1e-3 + 1e-5 * max(max(abs(p.x), abs(p.y)), abs(p.z)));
@@ -986,17 +1121,45 @@ fn path(px: vec2<f32>) -> Seen {
         steps += 1u;
         let h = scene_hit(o, d, 1e30, NEAREST);
         let lit = panels(o, d, h.t, bounce > 0u && last_reflection);
-        if has_splats() {
-            // Splats before what the ray meets: one may stop it, showing its own colour.
-            let stop = through_splats(o, d, min(h.t, lit.w));
-            if stop.stopped {
-                guide(vec3<f32>(1.0), -d, travelled + stop.t);
-                var add = through * stop.colour;
-                if limit > 0.0 && bounce > 0u { add = min(add, vec3<f32>(limit)); }
-                colour += add;
-                if bounce == 0u { alpha = 1.0; }
-                break;
+        // Splats before what the ray meets may stop it, showing their own colour; a medium
+        // may scatter or absorb it before either.
+        var stop = Stopped(vec3<f32>(0.0), min(h.t, lit.w), false);
+        if has_splats() { stop = through_splats(o, d, min(h.t, lit.w)); }
+        let event = media_event(o, d, stop.t);
+        if event.found {
+            let m = medium_k(event.medium);
+            let p = o + d * event.t;
+            travelled += event.t;
+            let albedo = medium_albedo(m);
+            guide(albedo, -d, travelled);
+            if bounce == 0u { alpha = 1.0; }
+            through *= albedo;
+            var add = through * medium_direct(p, d, m.forward, bounce == frame.counts.y);
+            if limit > 0.0 && bounce > 0u { add = min(add, vec3<f32>(limit)); }
+            colour += add;
+            if bounce == frame.counts.y { break; }
+            let onward = medium_draw(m.forward, d, random(), random());
+            last_pdf = medium_phase(m.forward, d, onward);
+            last_reflection = false;
+            shaded = true;
+            through_glass = false;
+            if bounce >= 2u {
+                let keep = clamp(max(max(through.r, through.g), through.b), 0.05, 0.95);
+                if random() > keep { break; }
+                through /= keep;
             }
+            o = p;
+            d = onward;
+            bounce += 1u;
+            continue;
+        }
+        if stop.stopped {
+            guide(vec3<f32>(1.0), -d, travelled + stop.t);
+            var add = through * stop.colour;
+            if limit > 0.0 && bounce > 0u { add = min(add, vec3<f32>(limit)); }
+            colour += add;
+            if bounce == 0u { alpha = 1.0; }
+            break;
         }
         if lit.w < h.t {
             if through_glass { break; }

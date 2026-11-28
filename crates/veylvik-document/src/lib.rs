@@ -115,6 +115,7 @@ macro_rules! each_node {
             $crate::Operation::GaussianSplats($node) => $body,
             $crate::Operation::Figure3d($node) => $body,
             $crate::Operation::Marker3d($node) => $body,
+            $crate::Operation::Volume3d($node) => $body,
             $crate::Operation::Flutter3d($node) => $body,
             $crate::Operation::OfxEffect($node) => $body,
             $crate::Operation::Sound($node) => $body,
@@ -206,6 +207,8 @@ pub enum Operation {
     Figure3d(nodes::Figure3d),
     #[serde(rename = "marker_3d")]
     Marker3d(nodes::Marker3d),
+    #[serde(rename = "volume_3d")]
+    Volume3d(nodes::Volume3d),
     #[serde(rename = "flutter_3d")]
     Flutter3d(nodes::Flutter3d),
     OfxEffect(nodes::OfxEffect),

@@ -3,6 +3,7 @@ pub mod bvh;
 mod denoise;
 pub mod gpu;
 pub mod scene;
+pub mod volume;
 pub use bvh::{Bvh, Hit, Node};
 pub use gpu::{
     Environment, Gather, Job, Light, Look, Settings, SplatBuffers, Texture, Tracer, View,
@@ -11,3 +12,4 @@ pub use scene::{
     CARD, CATCHER, CUT, GLASS, Instance, MeshTree, Packed, Placed, Projection, SPLATS, STRAIGHT,
     SplatColour, Surface, UNLIT, pack,
 };
+pub use volume::{Medium, Shape as VolumeShape, VOLUME_WGSL};

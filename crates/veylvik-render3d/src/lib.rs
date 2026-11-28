@@ -6,6 +6,7 @@ mod resources;
 mod setup;
 mod shadow;
 mod traced;
+mod volumes;
 use std::collections::HashMap;
 use std::sync::Mutex;
 use veylvik_render::{Result, SceneJob, SceneRenderer};
@@ -147,6 +148,8 @@ pub struct Engine {
     /// Gaussian splats: their programs (made on first use) and the sets on the GPU, by
     /// the loaded splats they hold (kept alive with them).
     splat_programs: std::sync::OnceLock<veylvik_splat::Renderer>,
+    /// The volume pass (volumes.rs), made on first use.
+    volume_pass: std::sync::OnceLock<wgpu::ComputePipeline>,
     #[allow(clippy::type_complexity)]
     splat_sets: Mutex<
         Vec<(
@@ -1236,6 +1239,29 @@ impl Engine {
                 }
             }
         }
+        // The scene's volumes over the solids (not in a depth picture or the reflections view).
+        let fogged = if (show_depth && !both) || job.reflections {
+            None
+        } else {
+            self.through_volumes(
+                device,
+                encoder,
+                scene,
+                &camera,
+                [width, height],
+                volumes::Behind {
+                    resolved,
+                    depth,
+                    lights: &light_buffer,
+                    light_count: lights.len(),
+                    environment,
+                    shadow_maps: &maps.array,
+                    shadow_sampler: &maps.sampler,
+                    strength,
+                },
+            )?
+        };
+        let shown = fogged.as_ref().unwrap_or(resolved);
         // Read the render out into a frame: the picture, or each pixel's distance.
         let read_out = |encoder: &mut wgpu::CommandEncoder, into: &wgpu::Buffer, as_depth: bool| {
             let lens = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -1249,7 +1275,7 @@ impl Engine {
                 entries: &[
                     wgpu::BindGroupEntry {
                         binding: 0,
-                        resource: wgpu::BindingResource::TextureView(resolved),
+                        resource: wgpu::BindingResource::TextureView(shown),
                     },
                     wgpu::BindGroupEntry {
                         binding: 1,

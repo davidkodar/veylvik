@@ -101,6 +101,8 @@ pub struct Job<'a> {
     pub blend: f32,
     /// The Gaussian splats SPLATS surfaces show, if any.
     pub splats: Option<SplatBuffers<'a>>,
+    /// The scene's volumes, each `crate::Medium::packed`.
+    pub media: &'a [[[f32; 4]; 8]],
 }
 /// Gaussian splats on the GPU: 16 floats each (place and opacity, size, turn, colour), and
 /// their spherical harmonics past the first, as surfaces' `SplatColour` places them.
@@ -167,6 +169,7 @@ struct Frame {
     more: [f32; 4],
     offsets: [u32; 4],
     lights_at: [u32; 4],
+    volumes: [u32; 4],
 }
 /// The frame's small arrays in one list of vec4s, and where each starts: placings (8 a
 /// placing), surfaces (5) and the pictures cast onto them (5 each), top tree nodes (2), its order (4 to a vec4), lights (5) and
@@ -273,8 +276,9 @@ impl Tracer {
     /// and `environment_wgsl` (the renderer's shared environment lookups) appended.
     pub fn new(device: &wgpu::Device, surface_wgsl: &str, environment_wgsl: &str) -> Self {
         let source = format!(
-            "{}\n{}\n{}",
+            "{}\n{}\n{}\n{}",
             include_str!("trace.wgsl"),
+            crate::VOLUME_WGSL,
             surface_wgsl,
             environment_wgsl
         );
@@ -378,6 +382,7 @@ impl Tracer {
             target,
             blend,
             splats,
+            media,
         } = job;
         if let Some(look) = looks.iter().find(|l| l.lighting.len() != LOOK_LIGHTING) {
             return Err(format!(
@@ -443,8 +448,10 @@ impl Tracer {
             }
             encoder.copy_buffer_to_buffer(t.buffer, 0, &pictures, u64::from(place[0]) * 16, bytes);
         }
-        let (data, offsets, [lights_at, textures_at, looks_at]) =
+        let (mut data, offsets, [lights_at, textures_at, looks_at]) =
             frame_data(scene, lights, &places, looks);
+        let media_at = data.len() as u32;
+        data.extend(media.iter().flatten());
         let none = splats
             .is_none()
             .then(|| buffer(device, "no splats", &[0.0f32; 4]));
@@ -505,6 +512,7 @@ impl Tracer {
                     textures_at,
                     looks_at,
                 ],
+                volumes: [media_at, media.len() as u32, 0, 0],
             };
             let at = (u64::from(p) * UNIFORM_STEP) as usize;
             uniforms[at..at + std::mem::size_of::<Frame>()]

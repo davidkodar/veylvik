@@ -204,9 +204,32 @@ pub struct Environment {
     /// The image is a frame of the shot, not a panorama.
     pub frame: bool,
 }
+/// A medium filling a shape (a Volume node), as the renderers read it.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Volume {
+    pub node: NodeId,
+    /// Its box's frame: the box spans minus to plus half of `size` in it.
+    pub world: Mat4,
+    pub shape: veylvik_document::nodes::VolumeShape,
+    pub size: [f32; 3],
+    /// Light going 100 pixels through it is dimmed to e^-density.
+    pub density: f32,
+    pub colour: [f32; 3],
+    pub absorption: f32,
+    pub forward: f32,
+    pub noise: f32,
+    pub noise_size: f32,
+    pub detail: f32,
+    /// How far its noise has drifted by now, in pixels along its own axes.
+    pub drift: [f32; 3],
+    pub softness: f32,
+    pub seed: u32,
+}
 #[derive(Debug, Clone, Default)]
 pub struct Scene {
     pub objects: Vec<Object>,
+    /// Smoke, mist and haze.
+    pub volumes: Vec<Volume>,
     pub cameras: Vec<Camera>,
     pub lights: Vec<Light>,
     /// The first Environment in the scene.
@@ -451,6 +474,9 @@ impl Scene {
         for c in &mut self.cameras {
             c.world = mul(m, &c.world);
         }
+        for v in &mut self.volumes {
+            v.world = mul(m, &v.world);
+        }
         for l in &mut self.lights {
             l.world = mul(m, &l.world);
             if let Some((_, pivot)) = &mut l.aim {
@@ -523,6 +549,7 @@ fn node(doc: &Graph<'_>, id: NodeId, time: Time, depth: usize) -> Result<Scene> 
         Operation::Transform3d(t) => Some(&t.placement),
         Operation::Light3d(l) => Some(&l.placement),
         Operation::Marker3d(m) => Some(&m.placement),
+        Operation::Volume3d(v) => Some(&v.placement),
         _ => None,
     };
     if let Some(placement) = placement
@@ -888,6 +915,7 @@ fn node(doc: &Graph<'_>, id: NodeId, time: Time, depth: usize) -> Result<Scene> 
                 if let Some(child) = input(port) {
                     let part = node(doc, child, time, depth + 1)?;
                     scene.objects.extend(part.objects);
+                    scene.volumes.extend(part.volumes);
                     scene.cameras.extend(part.cameras);
                     scene.lights.extend(part.lights);
                     scene.environment = scene.environment.or(part.environment);
@@ -965,6 +993,30 @@ fn node(doc: &Graph<'_>, id: NodeId, time: Time, depth: usize) -> Result<Scene> 
                 blur: e.blur.at(time)?.clamp(0.0, 1.0),
                 frame: e.frame,
             })
+        }
+        Operation::Volume3d(v) => {
+            let seconds = time.seconds()? as f32;
+            scene.volumes.push(Volume {
+                node: id,
+                world: placed(&v.placement, time, centre)?,
+                shape: v.shape,
+                size: [v.size_x.at(time)?, v.size_y.at(time)?, v.size_z.at(time)?]
+                    .map(|s| s.max(1.0)),
+                density: v.density.at(time)?.max(0.0),
+                colour: v.colour.at(time)?.map(|c| c.max(0.0)),
+                absorption: v.absorption.at(time)?.clamp(0.0, 1.0),
+                forward: v.forward.at(time)?.clamp(-0.95, 0.95),
+                noise: v.noise.at(time)?.clamp(0.0, 1.0),
+                noise_size: v.noise_size.at(time)?.max(1.0),
+                detail: v.detail.at(time)?.clamp(1.0, 6.0),
+                drift: [
+                    v.drift_x.at(time)? * seconds,
+                    v.drift_y.at(time)? * seconds,
+                    v.drift_z.at(time)? * seconds,
+                ],
+                softness: v.softness.at(time)?.clamp(0.0, 1.0),
+                seed: v.seed,
+            });
         }
         // Nothing to draw: only a place to aim, focus and face at.
         Operation::Marker3d(m) => scene.anchors.push((

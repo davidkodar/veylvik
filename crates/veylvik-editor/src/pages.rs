@@ -154,7 +154,9 @@ impl Studio {
                     | Operation::PointCloud(_)
                     | Operation::Marker3d(_) => Some(0),
                     Operation::Camera3d(_) => Some(1),
-                    Operation::Light3d(_) | Operation::Environment3d(_) => Some(2),
+                    Operation::Light3d(_)
+                    | Operation::Environment3d(_)
+                    | Operation::Volume3d(_) => Some(2),
                     Operation::Transform3d(_) | Operation::MergeScenes(_) | Operation::RenderScene(_) => Some(3),
                     _ => None,
                 };

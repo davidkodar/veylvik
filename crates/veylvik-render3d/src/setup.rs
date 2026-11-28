@@ -373,6 +373,7 @@ impl Engine {
             converted: Mutex::new(None),
             targets: Mutex::new(Vec::new()),
             splat_programs: std::sync::OnceLock::new(),
+            volume_pass: std::sync::OnceLock::new(),
             splat_sets: Mutex::new(Vec::new()),
             sky,
             catcher,

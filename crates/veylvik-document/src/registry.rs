@@ -56,6 +56,8 @@ pub enum ParameterKind {
     /// Preview or path traced (Render scene).
     SceneQuality,
     LightKind,
+    /// What a Volume fills: box, sphere or ground mist.
+    VolumeShape,
     ForceKind,
     SpritePlay,
     Look,
@@ -146,6 +148,7 @@ impl Parameter {
             ParameterKind::Fit => json!(crate::nodes::Fit::default()),
             ParameterKind::SceneQuality => json!(crate::nodes::SceneQuality::default()),
             ParameterKind::LightKind => json!(crate::nodes::LightKind::default()),
+            ParameterKind::VolumeShape => json!(crate::nodes::VolumeShape::default()),
             ParameterKind::ForceKind => json!(crate::nodes::ForceKind::default()),
             ParameterKind::SpritePlay => json!(crate::nodes::SpritePlay::default()),
             ParameterKind::Look | ParameterKind::NodeRef => json!(null),
@@ -194,6 +197,9 @@ impl Parameter {
             }
             ParameterKind::LightKind => {
                 json!({"type":"string","enum":crate::nodes::LightKind::ALL})
+            }
+            ParameterKind::VolumeShape => {
+                json!({"type":"string","enum":crate::nodes::VolumeShape::ALL})
             }
             ParameterKind::ForceKind => {
                 json!({"type":"string","enum":crate::nodes::ForceKind::ALL})
@@ -413,8 +419,8 @@ impl NodeType {
         if self.type_id == "rectangle" {
             value["color"] = json!([1.0_f32, 1.0_f32, 1.0_f32, 1.0_f32]);
         }
-        // A card's tint starts white: the picture as it is.
-        if self.type_id == "image_card" {
+        // A card's tint starts white: the picture as it is; a volume scatters white light.
+        if self.type_id == "image_card" || self.type_id == "volume_3d" {
             value["colour"] = json!([1.0_f32, 1.0_f32, 1.0_f32]);
         }
         // A new Material is gold, lit and finished to look like it.
@@ -471,6 +477,7 @@ pub static TYPES: &[&NodeType] = &[
     &crate::nodes::GAUSSIAN_SPLATS,
     &crate::nodes::FIGURE_3D,
     &crate::nodes::MARKER_3D,
+    &crate::nodes::VOLUME_3D,
     &crate::nodes::FLUTTER_3D,
     &crate::nodes::OFX_EFFECT,
     &SOUND,

@@ -312,6 +312,12 @@ impl Engine {
             }
             (None, None) => None,
         };
+        // The scene's volumes, as the preview reads them.
+        let media: Vec<[[f32; 4]; 8]> = scene
+            .volumes
+            .iter()
+            .filter_map(|v| crate::volumes::medium(v).packed())
+            .collect();
         let textures: Vec<Texture<'_>> = pictures
             .iter()
             .map(|(buffer, width, height)| Texture {
@@ -378,6 +384,7 @@ impl Engine {
                 target,
                 blend,
                 splats: splat_buffers,
+                media: &media,
             })
             .map_err(error)
     }

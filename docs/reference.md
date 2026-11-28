@@ -1660,6 +1660,27 @@ and `colour`.
   position to steer where a camera looks along a path; under a 3D transform it
   moves with what the transform moves. Studio shows it as a small cross in a
   circle (Guides > Points), which a click selects.
+- **Volume**: smoke, mist, haze or dust filling a shape: a see-through medium the
+  scene's lights shine into and through. **Shape** box fills a box **size_x** by
+  **size_y** by **size_z** pixels, sphere the ellipsoid within it, ground mist lies
+  on the box's bottom and thins upwards over its height. **Density** is how thick it
+  is (light going 100 pixels through it is dimmed to e^-density); **Colour** is the
+  colour of the light it scatters and **Absorption** the share it swallows instead
+  (0 white smoke, 1 black soot); **Forward** leans its scattering the way light was
+  going (up to 0.95: it glows looking towards a light, as haze in a sunbeam), 0
+  evenly, below 0 back. **Noise** breaks it into wisps and clumps, **Noise size**
+  pixels across at the largest, with **Detail** layers of finer noise drifting at
+  **drift_x/y/z** pixels a second; **Softness** fades it in from its edges; **Seed**
+  picks the noise. Lights shine through it and objects shade it, so light shafts
+  show through haze. In the preview each pixel's ray steps through the volumes up to
+  the nearest solid (64 steps), lit by every light through its shadow map and dimmed
+  on the way to it, with light scattered many times approximated (as real-time
+  cloud renderers do) so its brightness agrees with the path tracer's; there the
+  volume does not shade solid objects or show in reflections. Path traced it is
+  exact: rays are scattered and absorbed where the medium is (delta tracking), light
+  scatters many times, and the volume shades objects behind it from the lights and
+  is seen in reflections and through glass. At most 64 volumes a scene; a keyed
+  drift speed applies to the whole time so far, not from the key on.
 - **Flutter**: waves through everything on its Scene input, as a banner or a
   sheet of cloth moves in wind. Waves travel along each shape's own x, left to
   right, swinging its surface out of its plane by **Amplitude** pixels, a crest

@@ -363,6 +363,20 @@ impl Inspect for veylvik_document::nodes::Marker3d {
         cx.dirty |= placement(ui, &mut self.placement, cx);
     }
 }
+impl Inspect for veylvik_document::nodes::Volume3d {
+    fn inspect(&mut self, ui: &mut egui::Ui, cx: &mut InspectCx<'_>) {
+        use veylvik_document::nodes::VolumeShape::*;
+        ui.weak("Smoke, mist or haze: lit by the scene's lights and shaded where objects block them, so light shafts show through it. Higher Forward makes it glow looking towards a light.");
+        cx.dirty |= kind(
+            ui,
+            "Shape",
+            &mut self.shape,
+            &[(Box, "Box"), (Sphere, "Sphere"), (Ground, "Ground mist")],
+        );
+        cx.dirty |= crate::animation::colour_track(ui, "Colour", &mut self.colour, cx.time);
+        cx.dirty |= placement(ui, &mut self.placement, cx);
+    }
+}
 impl Inspect for veylvik_document::nodes::Flutter3d {
     fn inspect(&mut self, ui: &mut egui::Ui, _cx: &mut InspectCx<'_>) {
         ui.weak("Waves through everything on its Scene input, like a banner in wind. Give flat shapes enough Detail to bend smoothly; particles born on them ride the waves.");
