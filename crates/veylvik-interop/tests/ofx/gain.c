@@ -1,6 +1,7 @@
 /* A test OpenFX filter written from the standard's text, with its own declarations:
    output = source * gain, plus `lift` times (row / height) so a flipped picture shows,
    or with mode 1 a flat colour. Built by the host's tests with the system C compiler. */
+#include <sys/prctl.h>
 #include <stddef.h>
 #include <string.h>
 typedef int OfxStatus;
@@ -121,7 +122,12 @@ static OfxStatus mainEntry(const char *action, const void *handle, H in, H out) 
     params->paramGetHandle(ps, "colour", &param, 0); params->paramGetValue(param, &c[0], &c[1], &c[2], &c[3]);
     params->paramGetHandle(ps, "note", &param, 0); params->paramGetValue(param, &note);
     if (!note || strcmp(note, "hello")) messages->message(effect, "OfxMessageError", 0, "note was not hello");
-    if (mode == 2) { volatile int *nowhere = 0; *nowhere = 1; } /* a plugin that crashes */
+    if (mode == 2) {
+      /* A plugin that crashes: a real SIGSEGV, but the helper is made undumpable first so
+         the system keeps no core of it and shows no crash notice for a test that wants it. */
+      prctl(PR_SET_DUMPABLE, 0, 0, 0, 0);
+      volatile int *nowhere = 0; *nowhere = 1;
+    }
     effects->clipGetHandle(effect, "Output", &dst, 0);
     double now = 0;
     props->getDouble(in, "OfxPropTime", 0, &now);
