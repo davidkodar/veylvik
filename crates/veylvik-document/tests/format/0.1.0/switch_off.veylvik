@@ -1,0 +1,518 @@
+{
+  "frame_count": 96,
+  "frame_rate": {
+    "rate": 1,
+    "ticks": 24
+  },
+  "groups": {
+    "785bcbbf-d592-44fa-a627-235cde43a501": {
+      "controls": {
+        "off": {
+          "default": {
+            "keys": [
+              {
+                "time": {
+                  "rate": 5,
+                  "ticks": 7
+                },
+                "value": 0.0
+              },
+              {
+                "time": {
+                  "rate": 5,
+                  "ticks": 12
+                },
+                "value": 1.0
+              },
+              {
+                "time": {
+                  "rate": 5,
+                  "ticks": 17
+                },
+                "value": 1.0
+              },
+              {
+                "time": {
+                  "rate": 5,
+                  "ticks": 19
+                },
+                "value": 0.0
+              }
+            ],
+            "kind": "linear"
+          },
+          "label": "Off",
+          "node": "3925ae11-d561-43cc-b808-d98ef02fad1b",
+          "parameter": "p1"
+        }
+      },
+      "id": "785bcbbf-d592-44fa-a627-235cde43a501",
+      "inputs": {
+        "input_1": {
+          "label": "Image",
+          "targets": [
+            {
+              "node": "3925ae11-d561-43cc-b808-d98ef02fad1b",
+              "port": "image"
+            }
+          ]
+        }
+      },
+      "label": "Television Switch-off",
+      "members": [
+        "3925ae11-d561-43cc-b808-d98ef02fad1b"
+      ],
+      "output": "3925ae11-d561-43cc-b808-d98ef02fad1b"
+    }
+  },
+  "height": 1080,
+  "nodes": {
+    "0d191730-22b1-4801-9793-79460c8aa6a4": {
+      "id": "0d191730-22b1-4801-9793-79460c8aa6a4",
+      "inputs": {
+        "background": "1ab2dab4-06e6-4581-b5b8-1f8c81fd1c22",
+        "foreground": "697c5c1e-1f78-44c4-8fa2-4435104bb19b"
+      },
+      "label": "Before · artwork on midnight",
+      "operation": {
+        "type": "merge"
+      },
+      "position": {
+        "x": 230.0,
+        "y": 145.0
+      },
+      "version": 1
+    },
+    "1ab2dab4-06e6-4581-b5b8-1f8c81fd1c22": {
+      "id": "1ab2dab4-06e6-4581-b5b8-1f8c81fd1c22",
+      "inputs": {},
+      "label": "Midnight background",
+      "operation": {
+        "color": [
+          0.0020000000949949026,
+          0.004000000189989805,
+          0.012000000104308128,
+          1.0
+        ],
+        "type": "solid"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "scene_background": true,
+      "version": 1
+    },
+    "3925ae11-d561-43cc-b808-d98ef02fad1b": {
+      "id": "3925ae11-d561-43cc-b808-d98ef02fad1b",
+      "inputs": {
+        "image": "0d191730-22b1-4801-9793-79460c8aa6a4"
+      },
+      "label": "Switch off",
+      "operation": {
+        "code": "// slider off 0 1 0\n\n// An old television switched off: the picture collapses to a bright line across the\n// screen, the line draws in to a point, and the point glows a moment and dies.\nfn shade(at: vec2<f32>) -> vec4<f32> {\n    if u.off <= 0.0 {\n        return image(at);\n    }\n    let centre = size * 0.5;\n    let fall = clamp(u.off / 0.36, 0.0, 1.0);\n    let draw = clamp((u.off - 0.36) / 0.26, 0.0, 1.0);\n    let die = clamp((u.off - 0.62) / 0.38, 0.0, 1.0);\n    let tall = mix(1.0, 0.0035, 1.0 - pow(1.0 - fall, 3.0));\n    let wide = mix(1.0, 0.004, draw * draw);\n    let from_centre = at - centre;\n    var light = vec3<f32>(0.0);\n    if abs(from_centre.y) <= centre.y * tall && abs(from_centre.x) <= centre.x * wide {\n        let seen = image(centre + from_centre / vec2<f32>(wide, tall));\n        // The same light in less room: brighter, and whiter as it piles up.\n        let most = max(seen.r, max(seen.g, seen.b));\n        light = seen.rgb * (1.0 + 5.0 * fall) + vec3<f32>(most) * fall * 2.0;\n    }\n    let reach = centre.x * wide + 3.0;\n    let across = smoothstep(reach, reach * 0.6, abs(from_centre.x));\n    let glow = exp(-pow(from_centre.y / (1.5 + size.y * 0.0022), 2.0)) * across * fall * (1.0 - die);\n    let halo = exp(-pow(from_centre.y / (size.y * 0.02), 2.0)) * across * fall * (1.0 - draw) * 0.12;\n    let spot = exp(-dot(from_centre, from_centre) / pow(size.y * 0.011 * (1.0 - 0.6 * die), 2.0)) * draw * pow(1.0 - die, 2.0) * 5.0;\n    light += vec3<f32>(0.82, 0.93, 1.0) * (glow * 2.2 + halo + spot);\n    return vec4<f32>(light, 1.0);\n}\n",
+        "follow": null,
+        "p1": {
+          "keys": [
+            {
+              "time": {
+                "rate": 5,
+                "ticks": 7
+              },
+              "value": 0.0
+            },
+            {
+              "time": {
+                "rate": 5,
+                "ticks": 12
+              },
+              "value": 1.0
+            },
+            {
+              "time": {
+                "rate": 5,
+                "ticks": 17
+              },
+              "value": 1.0
+            },
+            {
+              "time": {
+                "rate": 5,
+                "ticks": 19
+              },
+              "value": 0.0
+            }
+          ],
+          "kind": "linear"
+        },
+        "p10": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "p11": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "p12": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "p13": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "p14": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "p15": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "p16": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "p2": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "p3": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "p4": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "p5": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "p6": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "p7": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "p8": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "p9": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "type": "shader"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 500.0
+      },
+      "version": 1
+    },
+    "3f5e431d-1e68-419e-a06a-6838f1207e67": {
+      "id": "3f5e431d-1e68-419e-a06a-6838f1207e67",
+      "inputs": {},
+      "label": "Editable vector artwork",
+      "operation": {
+        "alignment": "center",
+        "box_height": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "content": "FLOW",
+        "features": "",
+        "font": {
+          "source": "display"
+        },
+        "language": "",
+        "line_height": {
+          "kind": "constant",
+          "value": 1.25
+        },
+        "padding": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "rotation": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "rtl": false,
+        "scale_x": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "scale_y": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "size": {
+          "kind": "constant",
+          "value": 400.0
+        },
+        "tracking": {
+          "kind": "constant",
+          "value": 24.0
+        },
+        "type": "text",
+        "typography": {
+          "anchor": null,
+          "auto_fit": false,
+          "duration": 0.5,
+          "ease": true,
+          "exit": null,
+          "linked_scale": false,
+          "motion": "none",
+          "spans": [],
+          "stagger": 0.03999999910593033,
+          "start": 0.0,
+          "unit": "character",
+          "vertical": "top"
+        },
+        "underline": false,
+        "wrap_width": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "x": {
+          "kind": "constant",
+          "value": 960.0
+        },
+        "y": {
+          "kind": "constant",
+          "value": 680.0
+        }
+      },
+      "position": {
+        "x": 230.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "4f72cbbd-9805-4cbc-8437-d03cdef84316": {
+      "id": "4f72cbbd-9805-4cbc-8437-d03cdef84316",
+      "inputs": {},
+      "label": "Vertical palette ramp",
+      "operation": {
+        "end_x": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "end_y": {
+          "kind": "constant",
+          "value": 720.0
+        },
+        "mode": "linear",
+        "start_x": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "start_y": {
+          "kind": "constant",
+          "value": 360.0
+        },
+        "type": "gradient"
+      },
+      "position": {
+        "x": 460.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "697c5c1e-1f78-44c4-8fa2-4435104bb19b": {
+      "id": "697c5c1e-1f78-44c4-8fa2-4435104bb19b",
+      "inputs": {
+        "image": "9277cb41-82fe-47bc-8bd4-418a5967a39d"
+      },
+      "label": "Artwork motion",
+      "operation": {
+        "pivot_x": {
+          "kind": "constant",
+          "value": 960.0
+        },
+        "pivot_y": {
+          "kind": "constant",
+          "value": 540.0
+        },
+        "rotation": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "scale_x": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": 0.9399999976158142
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 2
+              },
+              "value": 1.0399999618530273
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": 0.9399999976158142
+            }
+          ],
+          "kind": "smooth"
+        },
+        "scale_y": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": 0.9399999976158142
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 2
+              },
+              "value": 1.0399999618530273
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": 0.9399999976158142
+            }
+          ],
+          "kind": "smooth"
+        },
+        "type": "affine",
+        "x": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "y": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": 18.0
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 2
+              },
+              "value": -18.0
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": 18.0
+            }
+          ],
+          "kind": "smooth"
+        }
+      },
+      "position": {
+        "x": 0.0,
+        "y": 145.0
+      },
+      "version": 1
+    },
+    "9277cb41-82fe-47bc-8bd4-418a5967a39d": {
+      "id": "9277cb41-82fe-47bc-8bd4-418a5967a39d",
+      "inputs": {
+        "image": "ba85d8d2-5a43-435d-bf65-0ea2e55e8f75",
+        "mask": "3f5e431d-1e68-419e-a06a-6838f1207e67"
+      },
+      "label": "Color inside artwork",
+      "operation": {
+        "type": "mask"
+      },
+      "position": {
+        "x": 920.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "ba85d8d2-5a43-435d-bf65-0ea2e55e8f75": {
+      "id": "ba85d8d2-5a43-435d-bf65-0ea2e55e8f75",
+      "inputs": {
+        "image": "4f72cbbd-9805-4cbc-8437-d03cdef84316"
+      },
+      "label": "Artwork palette",
+      "operation": {
+        "high": [
+          1.600000023841858,
+          1.7999999523162842,
+          2.0,
+          1.0
+        ],
+        "low": [
+          0.30000001192092896,
+          0.44999998807907104,
+          0.800000011920929,
+          1.0
+        ],
+        "type": "colorize"
+      },
+      "position": {
+        "x": 690.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "bb32a5eb-cb13-47b6-acb5-7ad93d7ef1a1": {
+      "id": "bb32a5eb-cb13-47b6-acb5-7ad93d7ef1a1",
+      "inputs": {},
+      "label": "Switch-off sound",
+      "operation": {
+        "file": "builtin:switch_off",
+        "gain": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "timing": {
+          "source_in": {
+            "rate": 1,
+            "ticks": 0
+          },
+          "source_out": null,
+          "start": {
+            "rate": 20,
+            "ticks": 19
+          }
+        },
+        "type": "sound"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 650.0
+      },
+      "version": 1
+    }
+  },
+  "output": "3925ae11-d561-43cc-b808-d98ef02fad1b",
+  "saved_by": "0.1.0",
+  "schema": 1,
+  "width": 1920
+}

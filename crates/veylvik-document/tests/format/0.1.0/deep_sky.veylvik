@@ -1,0 +1,474 @@
+{
+  "frame_count": 96,
+  "frame_rate": {
+    "rate": 1,
+    "ticks": 24
+  },
+  "groups": {
+    "da812f77-b6a0-4db9-bdca-f0869b39e7cc": {
+      "controls": {
+        "band": {
+          "default": {
+            "kind": "constant",
+            "value": 1.0
+          },
+          "label": "Band",
+          "node": "08ef8829-48a6-49da-8cd6-a506796f9a05",
+          "parameter": "p3"
+        },
+        "clouds": {
+          "default": {
+            "kind": "constant",
+            "value": 1.0
+          },
+          "label": "Clouds",
+          "node": "08ef8829-48a6-49da-8cd6-a506796f9a05",
+          "parameter": "p2"
+        },
+        "seed": {
+          "default": {
+            "kind": "constant",
+            "value": 4.0
+          },
+          "label": "Seed",
+          "node": "08ef8829-48a6-49da-8cd6-a506796f9a05",
+          "parameter": "p4"
+        },
+        "stars": {
+          "default": {
+            "kind": "constant",
+            "value": 1.0
+          },
+          "label": "Stars",
+          "node": "08ef8829-48a6-49da-8cd6-a506796f9a05",
+          "parameter": "p1"
+        }
+      },
+      "id": "da812f77-b6a0-4db9-bdca-f0869b39e7cc",
+      "inputs": {
+        "input_1": {
+          "label": "Image",
+          "targets": [
+            {
+              "node": "bef3080f-7143-4708-a676-d76c433eaa4f",
+              "port": "background"
+            }
+          ]
+        }
+      },
+      "label": "Deep Sky",
+      "members": [
+        "08ef8829-48a6-49da-8cd6-a506796f9a05",
+        "bef3080f-7143-4708-a676-d76c433eaa4f"
+      ],
+      "output": "bef3080f-7143-4708-a676-d76c433eaa4f"
+    }
+  },
+  "height": 1080,
+  "nodes": {
+    "08ef8829-48a6-49da-8cd6-a506796f9a05": {
+      "id": "08ef8829-48a6-49da-8cd6-a506796f9a05",
+      "inputs": {},
+      "label": "Sky",
+      "operation": {
+        "code": "// slider stars 0 3 1\n// slider clouds 0 3 1\n// slider band 0 3 1\n// slider seed 0 50 4\n\nfn hash3(p: vec3<f32>) -> f32 {\n    return fract(sin(dot(p, vec3<f32>(127.1, 311.7, 74.7))) * 43758.5453);\n}\nfn noise3(p: vec3<f32>) -> f32 {\n    let i = floor(p);\n    let f = fract(p);\n    let w = f * f * f * (f * (f * 6.0 - 15.0) + 10.0);\n    let a = mix(mix(hash3(i), hash3(i + vec3<f32>(1.0, 0.0, 0.0)), w.x),\n                mix(hash3(i + vec3<f32>(0.0, 1.0, 0.0)), hash3(i + vec3<f32>(1.0, 1.0, 0.0)), w.x), w.y);\n    let b = mix(mix(hash3(i + vec3<f32>(0.0, 0.0, 1.0)), hash3(i + vec3<f32>(1.0, 0.0, 1.0)), w.x),\n                mix(hash3(i + vec3<f32>(0.0, 1.0, 1.0)), hash3(i + vec3<f32>(1.0, 1.0, 1.0)), w.x), w.y);\n    return mix(a, b, w.z);\n}\n// The whole sky as a panorama (left to right all the way round, top to bottom from\n// pole to pole): faint clouds of gas, a brighter band of unresolved stars across it,\n// and the far stars themselves, coloured by how hot each is. Made on the sphere, so\n// it has no seam.\nfn shade(at: vec2<f32>) -> vec4<f32> {\n    let lon = (at.x / size.x) * 6.2831853;\n    let lat = (0.5 - at.y / size.y) * 3.1415927;\n    let dir = vec3<f32>(cos(lat) * cos(lon), sin(lat), cos(lat) * sin(lon));\n    var gas = 0.0;\n    var fine = 0.0;\n    var scale = 1.0;\n    // Each finer layer is turned against the one before, so no grid shows.\n    var turned = dir;\n    for (var k = 0; k < 6; k++) {\n        gas += noise3(turned * 2.2 * scale + vec3<f32>(u.seed)) / scale;\n        fine += noise3(turned * 9.0 * scale + vec3<f32>(u.seed * 2.0)) / scale;\n        scale *= 2.0;\n        turned = vec3<f32>(0.80 * turned.x - 0.60 * turned.y, 0.48 * turned.x + 0.64 * turned.y - 0.60 * turned.z,\n                           0.36 * turned.x + 0.48 * turned.y + 0.80 * turned.z);\n    }\n    gas = gas / 1.97;\n    fine = fine / 1.97;\n    // A tilted great circle: the plane of the galaxy we are in.\n    let across = dot(dir, normalize(vec3<f32>(0.25, 0.9, 0.36)));\n    let lane = exp(-across * across / 0.035);\n    let dusty = smoothstep(0.35, 0.7, fine);\n    let cloud = pow(smoothstep(0.38, 0.85, gas), 2.0);\n    var colour = vec3<f32>(0.035, 0.022, 0.075) * cloud * u.clouds\n        + vec3<f32>(0.012, 0.02, 0.05) * pow(smoothstep(0.3, 0.9, 1.0 - gas), 2.0) * u.clouds\n        + vec3<f32>(0.060, 0.052, 0.058) * lane * (0.35 + 0.65 * dusty) * u.band;\n    // Stars, scattered freely: each cell of a coarse grid may hold one anywhere inside\n    // it, so a pixel asks its own cell and the eight round it. Many faint and small, few\n    // bright and larger; coloured by how hot each is. A second, finer grid holds the\n    // multitude too faint to tell apart.\n    for (var layer = 0; layer < 2; layer++) {\n        let pitch = 11.0 - 6.0 * f32(layer);\n        let home = floor(at / pitch);\n        for (var j = -1; j <= 1; j++) {\n            for (var i = -1; i <= 1; i++) {\n                let cell = home + vec2<f32>(f32(i), f32(j));\n                let key = vec3<f32>(cell, u.seed + 50.0 * f32(layer));\n                if hash3(key) < 0.26 + 0.34 * lane {\n                    let spot = (cell + vec2<f32>(hash3(key + vec3<f32>(0.0, 0.0, 7.0)), hash3(key + vec3<f32>(0.0, 0.0, 13.0)))) * pitch;\n                    let d = length(at - spot);\n                    let rank = hash3(key + vec3<f32>(0.0, 0.0, 21.0));\n                    var power = 0.03 + 0.30 * pow(rank, 3.0) + 4.5 * pow(rank, 18.0);\n                    var radius = 0.55 + 1.5 * pow(rank, 12.0);\n                    if layer == 1 {\n                        power = 0.015 + 0.07 * rank;\n                        radius = 0.5;\n                    }\n                    let heat = hash3(key + vec3<f32>(0.0, 0.0, 34.0));\n                    let tone = mix(mix(vec3<f32>(1.0, 0.60, 0.36), vec3<f32>(1.0, 0.95, 0.86), smoothstep(0.0, 0.45, heat)),\n                                   vec3<f32>(0.64, 0.77, 1.0), smoothstep(0.55, 1.0, heat));\n                    colour += tone * power * exp(-d * d / (radius * radius)) * u.stars;\n                }\n            }\n        }\n    }\n    return vec4<f32>(colour, 1.0);\n}\n",
+        "follow": null,
+        "p1": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "p10": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "p11": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "p12": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "p13": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "p14": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "p15": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "p16": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "p2": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "p3": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "p4": {
+          "kind": "constant",
+          "value": 4.0
+        },
+        "p5": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "p6": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "p7": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "p8": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "p9": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "type": "shader"
+      },
+      "version": 1
+    },
+    "4096bb23-4889-47cf-b58c-fcb33ba3c74e": {
+      "id": "4096bb23-4889-47cf-b58c-fcb33ba3c74e",
+      "inputs": {},
+      "label": "Editable vector artwork",
+      "operation": {
+        "alignment": "center",
+        "box_height": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "content": "FLOW",
+        "features": "",
+        "font": {
+          "source": "display"
+        },
+        "language": "",
+        "line_height": {
+          "kind": "constant",
+          "value": 1.25
+        },
+        "padding": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "rotation": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "rtl": false,
+        "scale_x": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "scale_y": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "size": {
+          "kind": "constant",
+          "value": 400.0
+        },
+        "tracking": {
+          "kind": "constant",
+          "value": 24.0
+        },
+        "type": "text",
+        "typography": {
+          "anchor": null,
+          "auto_fit": false,
+          "duration": 0.5,
+          "ease": true,
+          "exit": null,
+          "linked_scale": false,
+          "motion": "none",
+          "spans": [],
+          "stagger": 0.03999999910593033,
+          "start": 0.0,
+          "unit": "character",
+          "vertical": "top"
+        },
+        "underline": false,
+        "wrap_width": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "x": {
+          "kind": "constant",
+          "value": 960.0
+        },
+        "y": {
+          "kind": "constant",
+          "value": 680.0
+        }
+      },
+      "position": {
+        "x": 230.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "52a11dec-1055-428c-a172-243d604dfdd3": {
+      "id": "52a11dec-1055-428c-a172-243d604dfdd3",
+      "inputs": {
+        "image": "ab93402d-e532-489a-a86f-2df57b809af4",
+        "mask": "4096bb23-4889-47cf-b58c-fcb33ba3c74e"
+      },
+      "label": "Color inside artwork",
+      "operation": {
+        "type": "mask"
+      },
+      "position": {
+        "x": 920.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "a03f6cd7-0bcf-42fa-9ed7-674e3806fa6f": {
+      "id": "a03f6cd7-0bcf-42fa-9ed7-674e3806fa6f",
+      "inputs": {},
+      "label": "Midnight background",
+      "operation": {
+        "color": [
+          0.0020000000949949026,
+          0.004000000189989805,
+          0.012000000104308128,
+          1.0
+        ],
+        "type": "solid"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "scene_background": true,
+      "version": 1
+    },
+    "ab93402d-e532-489a-a86f-2df57b809af4": {
+      "id": "ab93402d-e532-489a-a86f-2df57b809af4",
+      "inputs": {
+        "image": "cdb7e14c-a946-4bb7-9175-374dd331b617"
+      },
+      "label": "Artwork palette",
+      "operation": {
+        "high": [
+          1.600000023841858,
+          1.7999999523162842,
+          2.0,
+          1.0
+        ],
+        "low": [
+          0.30000001192092896,
+          0.44999998807907104,
+          0.800000011920929,
+          1.0
+        ],
+        "type": "colorize"
+      },
+      "position": {
+        "x": 690.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "bef3080f-7143-4708-a676-d76c433eaa4f": {
+      "id": "bef3080f-7143-4708-a676-d76c433eaa4f",
+      "inputs": {
+        "background": "ecbf004c-8216-4d2a-af79-55240f477b29",
+        "foreground": "08ef8829-48a6-49da-8cd6-a506796f9a05"
+      },
+      "label": "Sky over image",
+      "operation": {
+        "mode": "add",
+        "opacity": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "type": "blend"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 500.0
+      },
+      "version": 1
+    },
+    "cdb7e14c-a946-4bb7-9175-374dd331b617": {
+      "id": "cdb7e14c-a946-4bb7-9175-374dd331b617",
+      "inputs": {},
+      "label": "Vertical palette ramp",
+      "operation": {
+        "end_x": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "end_y": {
+          "kind": "constant",
+          "value": 720.0
+        },
+        "mode": "linear",
+        "start_x": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "start_y": {
+          "kind": "constant",
+          "value": 360.0
+        },
+        "type": "gradient"
+      },
+      "position": {
+        "x": 460.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "cf576bd7-ee50-41b1-8167-7b1bce0b03bd": {
+      "id": "cf576bd7-ee50-41b1-8167-7b1bce0b03bd",
+      "inputs": {
+        "image": "52a11dec-1055-428c-a172-243d604dfdd3"
+      },
+      "label": "Artwork motion",
+      "operation": {
+        "pivot_x": {
+          "kind": "constant",
+          "value": 960.0
+        },
+        "pivot_y": {
+          "kind": "constant",
+          "value": 540.0
+        },
+        "rotation": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "scale_x": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": 0.9399999976158142
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 2
+              },
+              "value": 1.0399999618530273
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": 0.9399999976158142
+            }
+          ],
+          "kind": "smooth"
+        },
+        "scale_y": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": 0.9399999976158142
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 2
+              },
+              "value": 1.0399999618530273
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": 0.9399999976158142
+            }
+          ],
+          "kind": "smooth"
+        },
+        "type": "affine",
+        "x": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "y": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": 18.0
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 2
+              },
+              "value": -18.0
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": 18.0
+            }
+          ],
+          "kind": "smooth"
+        }
+      },
+      "position": {
+        "x": 0.0,
+        "y": 145.0
+      },
+      "version": 1
+    },
+    "ecbf004c-8216-4d2a-af79-55240f477b29": {
+      "id": "ecbf004c-8216-4d2a-af79-55240f477b29",
+      "inputs": {
+        "background": "a03f6cd7-0bcf-42fa-9ed7-674e3806fa6f",
+        "foreground": "cf576bd7-ee50-41b1-8167-7b1bce0b03bd"
+      },
+      "label": "Before · artwork on midnight",
+      "operation": {
+        "type": "merge"
+      },
+      "position": {
+        "x": 230.0,
+        "y": 145.0
+      },
+      "version": 1
+    }
+  },
+  "output": "bef3080f-7143-4708-a676-d76c433eaa4f",
+  "saved_by": "0.1.0",
+  "schema": 1,
+  "width": 1920
+}

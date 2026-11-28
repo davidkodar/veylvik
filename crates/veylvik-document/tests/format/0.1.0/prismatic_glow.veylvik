@@ -1,0 +1,528 @@
+{
+  "frame_count": 96,
+  "frame_rate": {
+    "rate": 1,
+    "ticks": 24
+  },
+  "groups": {
+    "84bc9b03-ad11-4dae-8242-b1deb3489cce": {
+      "controls": {
+        "cyan_intensity": {
+          "default": {
+            "kind": "constant",
+            "value": 0.5
+          },
+          "label": "Cyan intensity",
+          "node": "29142a4b-5e4c-455b-922a-efaaed69e22b",
+          "parameter": "opacity"
+        },
+        "rose_intensity": {
+          "default": {
+            "kind": "constant",
+            "value": 0.5
+          },
+          "label": "Rose intensity",
+          "node": "5dfc77d3-795f-436c-928e-8c8b5768e490",
+          "parameter": "opacity"
+        },
+        "separation": {
+          "default": {
+            "kind": "constant",
+            "value": 20.0
+          },
+          "label": "Separation",
+          "node": "513df0d8-f813-4fa1-bef8-484a50a352b6",
+          "parameter": "x"
+        },
+        "spread": {
+          "default": {
+            "kind": "constant",
+            "value": 24.0
+          },
+          "label": "Spread",
+          "node": "4e0f9d76-af23-4265-94cd-a4899e238337",
+          "parameter": "radius"
+        }
+      },
+      "id": "84bc9b03-ad11-4dae-8242-b1deb3489cce",
+      "inputs": {
+        "input_1": {
+          "label": "Image",
+          "targets": [
+            {
+              "node": "4e0f9d76-af23-4265-94cd-a4899e238337",
+              "port": "image"
+            },
+            {
+              "node": "29142a4b-5e4c-455b-922a-efaaed69e22b",
+              "port": "background"
+            }
+          ]
+        }
+      },
+      "label": "Prismatic Glow",
+      "members": [
+        "29142a4b-5e4c-455b-922a-efaaed69e22b",
+        "4e0f9d76-af23-4265-94cd-a4899e238337",
+        "513df0d8-f813-4fa1-bef8-484a50a352b6",
+        "5dfc77d3-795f-436c-928e-8c8b5768e490",
+        "801083e2-e0fd-4161-bbc2-695650477a53",
+        "f873f752-e125-454d-8b3f-eba619f423f3"
+      ],
+      "output": "5dfc77d3-795f-436c-928e-8c8b5768e490"
+    }
+  },
+  "height": 1080,
+  "nodes": {
+    "049b9074-c1f0-413f-b978-f336cb15fc7f": {
+      "id": "049b9074-c1f0-413f-b978-f336cb15fc7f",
+      "inputs": {
+        "image": "c91dc66f-2b03-45d5-9a4c-87142c2b4783",
+        "mask": "f4eebba8-f7de-4d69-a115-447ed925b2bd"
+      },
+      "label": "Color inside artwork",
+      "operation": {
+        "type": "mask"
+      },
+      "position": {
+        "x": 920.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "24faee77-8a7e-418b-baea-765109fcece2": {
+      "id": "24faee77-8a7e-418b-baea-765109fcece2",
+      "inputs": {
+        "image": "049b9074-c1f0-413f-b978-f336cb15fc7f"
+      },
+      "label": "Artwork motion",
+      "operation": {
+        "pivot_x": {
+          "kind": "constant",
+          "value": 960.0
+        },
+        "pivot_y": {
+          "kind": "constant",
+          "value": 540.0
+        },
+        "rotation": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": -6.0
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 2
+              },
+              "value": 6.0
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": -6.0
+            }
+          ],
+          "kind": "smooth"
+        },
+        "scale_x": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": 0.9399999976158142
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 2
+              },
+              "value": 1.0399999618530273
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": 0.9399999976158142
+            }
+          ],
+          "kind": "smooth"
+        },
+        "scale_y": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": 0.9399999976158142
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 2
+              },
+              "value": 1.0399999618530273
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": 0.9399999976158142
+            }
+          ],
+          "kind": "smooth"
+        },
+        "type": "affine",
+        "x": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "y": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": 18.0
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 2
+              },
+              "value": -18.0
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": 18.0
+            }
+          ],
+          "kind": "smooth"
+        }
+      },
+      "position": {
+        "x": 0.0,
+        "y": 145.0
+      },
+      "version": 1
+    },
+    "29142a4b-5e4c-455b-922a-efaaed69e22b": {
+      "id": "29142a4b-5e4c-455b-922a-efaaed69e22b",
+      "inputs": {
+        "background": "8b53bc87-5504-4106-a1f7-2804e988fbb4",
+        "foreground": "f873f752-e125-454d-8b3f-eba619f423f3"
+      },
+      "label": "Cyan spill",
+      "operation": {
+        "mode": "add",
+        "opacity": {
+          "kind": "constant",
+          "value": 0.5
+        },
+        "type": "blend"
+      },
+      "version": 1
+    },
+    "4e0f9d76-af23-4265-94cd-a4899e238337": {
+      "id": "4e0f9d76-af23-4265-94cd-a4899e238337",
+      "inputs": {
+        "image": "8b53bc87-5504-4106-a1f7-2804e988fbb4"
+      },
+      "label": "Light spread",
+      "operation": {
+        "filter": "box",
+        "radius": {
+          "kind": "constant",
+          "value": 24.0
+        },
+        "type": "blur"
+      },
+      "version": 1
+    },
+    "513df0d8-f813-4fa1-bef8-484a50a352b6": {
+      "id": "513df0d8-f813-4fa1-bef8-484a50a352b6",
+      "inputs": {
+        "image": "801083e2-e0fd-4161-bbc2-695650477a53"
+      },
+      "label": "Color separation",
+      "operation": {
+        "type": "transform",
+        "x": {
+          "kind": "constant",
+          "value": 20.0
+        },
+        "y": {
+          "kind": "constant",
+          "value": -6.0
+        }
+      },
+      "version": 1
+    },
+    "5dfc77d3-795f-436c-928e-8c8b5768e490": {
+      "id": "5dfc77d3-795f-436c-928e-8c8b5768e490",
+      "inputs": {
+        "background": "29142a4b-5e4c-455b-922a-efaaed69e22b",
+        "foreground": "513df0d8-f813-4fa1-bef8-484a50a352b6"
+      },
+      "label": "Prismatic light",
+      "operation": {
+        "mode": "add",
+        "opacity": {
+          "kind": "constant",
+          "value": 0.5
+        },
+        "type": "blend"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 500.0
+      },
+      "version": 1
+    },
+    "801083e2-e0fd-4161-bbc2-695650477a53": {
+      "id": "801083e2-e0fd-4161-bbc2-695650477a53",
+      "inputs": {
+        "image": "4e0f9d76-af23-4265-94cd-a4899e238337"
+      },
+      "label": "Rose light",
+      "operation": {
+        "high": [
+          1.5,
+          0.15000000596046448,
+          0.550000011920929,
+          0.550000011920929
+        ],
+        "low": [
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "type": "colorize"
+      },
+      "version": 1
+    },
+    "8b53bc87-5504-4106-a1f7-2804e988fbb4": {
+      "id": "8b53bc87-5504-4106-a1f7-2804e988fbb4",
+      "inputs": {
+        "background": "dc7ad2f0-f45c-447e-8a55-7e0f4ae65921",
+        "foreground": "24faee77-8a7e-418b-baea-765109fcece2"
+      },
+      "label": "Before · artwork on midnight",
+      "operation": {
+        "type": "merge"
+      },
+      "position": {
+        "x": 230.0,
+        "y": 145.0
+      },
+      "version": 1
+    },
+    "c63080ae-bc3f-4c11-b782-3c2a71e67a7c": {
+      "id": "c63080ae-bc3f-4c11-b782-3c2a71e67a7c",
+      "inputs": {},
+      "label": "Vertical palette ramp",
+      "operation": {
+        "end_x": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "end_y": {
+          "kind": "constant",
+          "value": 720.0
+        },
+        "mode": "linear",
+        "start_x": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "start_y": {
+          "kind": "constant",
+          "value": 360.0
+        },
+        "type": "gradient"
+      },
+      "position": {
+        "x": 460.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "c91dc66f-2b03-45d5-9a4c-87142c2b4783": {
+      "id": "c91dc66f-2b03-45d5-9a4c-87142c2b4783",
+      "inputs": {
+        "image": "c63080ae-bc3f-4c11-b782-3c2a71e67a7c"
+      },
+      "label": "Artwork palette",
+      "operation": {
+        "high": [
+          1.600000023841858,
+          1.7999999523162842,
+          2.0,
+          1.0
+        ],
+        "low": [
+          0.30000001192092896,
+          0.44999998807907104,
+          0.800000011920929,
+          1.0
+        ],
+        "type": "colorize"
+      },
+      "position": {
+        "x": 690.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "dc7ad2f0-f45c-447e-8a55-7e0f4ae65921": {
+      "id": "dc7ad2f0-f45c-447e-8a55-7e0f4ae65921",
+      "inputs": {},
+      "label": "Midnight background",
+      "operation": {
+        "color": [
+          0.0020000000949949026,
+          0.004000000189989805,
+          0.012000000104308128,
+          1.0
+        ],
+        "type": "solid"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "scene_background": true,
+      "version": 1
+    },
+    "f4eebba8-f7de-4d69-a115-447ed925b2bd": {
+      "id": "f4eebba8-f7de-4d69-a115-447ed925b2bd",
+      "inputs": {},
+      "label": "Editable vector artwork",
+      "operation": {
+        "geometry": {
+          "commands": [
+            {
+              "command": "move",
+              "to": [
+                960.0,
+                250.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                1300.0,
+                730.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                1200.0,
+                730.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                960.0,
+                390.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                720.0,
+                730.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                620.0,
+                730.0
+              ]
+            },
+            {
+              "command": "close"
+            },
+            {
+              "command": "move",
+              "to": [
+                960.0,
+                470.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                1130.0,
+                730.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                790.0,
+                730.0
+              ]
+            },
+            {
+              "command": "close"
+            }
+          ],
+          "fill_rule": "non_zero"
+        },
+        "type": "path"
+      },
+      "position": {
+        "x": 230.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "f873f752-e125-454d-8b3f-eba619f423f3": {
+      "id": "f873f752-e125-454d-8b3f-eba619f423f3",
+      "inputs": {
+        "image": "4e0f9d76-af23-4265-94cd-a4899e238337"
+      },
+      "label": "Cyan light",
+      "operation": {
+        "high": [
+          0.25,
+          0.8999999761581421,
+          1.7999999523162842,
+          0.699999988079071
+        ],
+        "low": [
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "type": "colorize"
+      },
+      "version": 1
+    }
+  },
+  "output": "5dfc77d3-795f-436c-928e-8c8b5768e490",
+  "saved_by": "0.1.0",
+  "schema": 1,
+  "width": 1920
+}

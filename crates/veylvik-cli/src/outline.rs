@@ -86,7 +86,10 @@ pub fn run(args: &[String]) -> Result<()> {
     document.validate()?;
     // A conversion always creates a new file: never replace the font or an
     // existing composition, including symlinks and concurrent creations.
-    veylvik_document::atomic_create(Path::new(&args[2]), &serde_json::to_vec_pretty(&document)?)?;
+    veylvik_document::atomic_create(
+        Path::new(&args[2]),
+        &veylvik_document::format::write(&document)?,
+    )?;
     println!(
         "{}",
         serde_json::json!({"saved":args[2],"glyph_count":outlined.glyph_count,"advance":outlined.advance,"line_count":outlined.line_count,"width":width,"height":height})

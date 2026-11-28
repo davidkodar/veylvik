@@ -1,0 +1,486 @@
+{
+  "frame_count": 96,
+  "frame_rate": {
+    "rate": 1,
+    "ticks": 24
+  },
+  "groups": {
+    "050abdd6-2f6b-42e7-96ef-bb78f2e52335": {
+      "controls": {
+        "amount": {
+          "default": {
+            "kind": "constant",
+            "value": 0.8999999761581421
+          },
+          "label": "Amount",
+          "node": "d721fd8a-8332-427f-9ecd-bbf3675e143c",
+          "parameter": "opacity"
+        },
+        "feather": {
+          "default": {
+            "kind": "constant",
+            "value": 320.0
+          },
+          "label": "Feather",
+          "node": "4388736c-0ab8-4dce-8523-2a6e625bad59",
+          "parameter": "feather"
+        },
+        "light_center_x": {
+          "default": {
+            "kind": "constant",
+            "value": 960.0
+          },
+          "label": "Light center X",
+          "node": "4388736c-0ab8-4dce-8523-2a6e625bad59",
+          "parameter": "x"
+        },
+        "light_center_y": {
+          "default": {
+            "kind": "constant",
+            "value": 540.0
+          },
+          "label": "Light center Y",
+          "node": "4388736c-0ab8-4dce-8523-2a6e625bad59",
+          "parameter": "y"
+        }
+      },
+      "id": "050abdd6-2f6b-42e7-96ef-bb78f2e52335",
+      "inputs": {
+        "input_1": {
+          "label": "Image",
+          "targets": [
+            {
+              "node": "d721fd8a-8332-427f-9ecd-bbf3675e143c",
+              "port": "background"
+            }
+          ]
+        }
+      },
+      "label": "Soft Vignette",
+      "members": [
+        "2d28f58c-7806-4b94-ac31-f8538fe65539",
+        "4388736c-0ab8-4dce-8523-2a6e625bad59",
+        "670674d5-e6ef-498a-b201-0dcda6943045",
+        "715dae18-1573-44fa-93bb-99cbcdffdcfa",
+        "d721fd8a-8332-427f-9ecd-bbf3675e143c"
+      ],
+      "output": "d721fd8a-8332-427f-9ecd-bbf3675e143c"
+    }
+  },
+  "height": 1080,
+  "nodes": {
+    "2d28f58c-7806-4b94-ac31-f8538fe65539": {
+      "id": "2d28f58c-7806-4b94-ac31-f8538fe65539",
+      "inputs": {},
+      "label": "Opaque field background",
+      "operation": {
+        "color": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "type": "solid"
+      },
+      "version": 1
+    },
+    "4388736c-0ab8-4dce-8523-2a6e625bad59": {
+      "id": "4388736c-0ab8-4dce-8523-2a6e625bad59",
+      "inputs": {},
+      "label": "Light shape",
+      "operation": {
+        "feather": {
+          "kind": "constant",
+          "value": 320.0
+        },
+        "radius_x": {
+          "kind": "constant",
+          "value": 640.0
+        },
+        "radius_y": {
+          "kind": "constant",
+          "value": 400.0
+        },
+        "type": "ellipse",
+        "x": {
+          "kind": "constant",
+          "value": 960.0
+        },
+        "y": {
+          "kind": "constant",
+          "value": 540.0
+        }
+      },
+      "version": 1
+    },
+    "4c8eae68-4dff-47c5-9ca3-644c17ac4039": {
+      "id": "4c8eae68-4dff-47c5-9ca3-644c17ac4039",
+      "inputs": {},
+      "label": "Midnight background",
+      "operation": {
+        "color": [
+          0.0020000000949949026,
+          0.004000000189989805,
+          0.012000000104308128,
+          1.0
+        ],
+        "type": "solid"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "scene_background": true,
+      "version": 1
+    },
+    "6259a459-f5ef-4e6a-9838-570bb83931b3": {
+      "id": "6259a459-f5ef-4e6a-9838-570bb83931b3",
+      "inputs": {
+        "image": "d9668c87-61de-4d12-9ad5-4ed2becc3da0",
+        "mask": "820f821a-f431-4829-97fa-2383eae2a7f4"
+      },
+      "label": "Color inside artwork",
+      "operation": {
+        "type": "mask"
+      },
+      "position": {
+        "x": 920.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "670674d5-e6ef-498a-b201-0dcda6943045": {
+      "id": "670674d5-e6ef-498a-b201-0dcda6943045",
+      "inputs": {
+        "background": "2d28f58c-7806-4b94-ac31-f8538fe65539",
+        "foreground": "4388736c-0ab8-4dce-8523-2a6e625bad59"
+      },
+      "label": "Layer mix",
+      "operation": {
+        "mode": "normal",
+        "opacity": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "type": "blend"
+      },
+      "version": 1
+    },
+    "715dae18-1573-44fa-93bb-99cbcdffdcfa": {
+      "id": "715dae18-1573-44fa-93bb-99cbcdffdcfa",
+      "inputs": {
+        "image": "670674d5-e6ef-498a-b201-0dcda6943045"
+      },
+      "label": "Palette",
+      "operation": {
+        "high": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "low": [
+          0.03999999910593033,
+          0.03999999910593033,
+          0.03999999910593033,
+          1.0
+        ],
+        "type": "colorize"
+      },
+      "version": 1
+    },
+    "820f821a-f431-4829-97fa-2383eae2a7f4": {
+      "id": "820f821a-f431-4829-97fa-2383eae2a7f4",
+      "inputs": {},
+      "label": "Editable vector artwork",
+      "operation": {
+        "alignment": "center",
+        "box_height": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "content": "FLOW",
+        "features": "",
+        "font": {
+          "source": "display"
+        },
+        "language": "",
+        "line_height": {
+          "kind": "constant",
+          "value": 1.25
+        },
+        "padding": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "rotation": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "rtl": false,
+        "scale_x": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "scale_y": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "size": {
+          "kind": "constant",
+          "value": 400.0
+        },
+        "tracking": {
+          "kind": "constant",
+          "value": 24.0
+        },
+        "type": "text",
+        "typography": {
+          "anchor": null,
+          "auto_fit": false,
+          "duration": 0.5,
+          "ease": true,
+          "exit": null,
+          "linked_scale": false,
+          "motion": "none",
+          "spans": [],
+          "stagger": 0.03999999910593033,
+          "start": 0.0,
+          "unit": "character",
+          "vertical": "top"
+        },
+        "underline": false,
+        "wrap_width": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "x": {
+          "kind": "constant",
+          "value": 960.0
+        },
+        "y": {
+          "kind": "constant",
+          "value": 680.0
+        }
+      },
+      "position": {
+        "x": 230.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "b0cf0a8d-124d-4418-846b-ff916d360b32": {
+      "id": "b0cf0a8d-124d-4418-846b-ff916d360b32",
+      "inputs": {
+        "background": "4c8eae68-4dff-47c5-9ca3-644c17ac4039",
+        "foreground": "db909a47-c2ed-4b22-a317-79339374d2b1"
+      },
+      "label": "Before · artwork on midnight",
+      "operation": {
+        "type": "merge"
+      },
+      "position": {
+        "x": 230.0,
+        "y": 145.0
+      },
+      "version": 1
+    },
+    "d721fd8a-8332-427f-9ecd-bbf3675e143c": {
+      "id": "d721fd8a-8332-427f-9ecd-bbf3675e143c",
+      "inputs": {
+        "background": "b0cf0a8d-124d-4418-846b-ff916d360b32",
+        "foreground": "715dae18-1573-44fa-93bb-99cbcdffdcfa"
+      },
+      "label": "Layer mix",
+      "operation": {
+        "mode": "multiply",
+        "opacity": {
+          "kind": "constant",
+          "value": 0.8999999761581421
+        },
+        "type": "blend"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 500.0
+      },
+      "version": 1
+    },
+    "d9668c87-61de-4d12-9ad5-4ed2becc3da0": {
+      "id": "d9668c87-61de-4d12-9ad5-4ed2becc3da0",
+      "inputs": {
+        "image": "e37060c7-8f5e-4a8d-8f6c-63bcdc32596e"
+      },
+      "label": "Artwork palette",
+      "operation": {
+        "high": [
+          1.600000023841858,
+          1.7999999523162842,
+          2.0,
+          1.0
+        ],
+        "low": [
+          0.30000001192092896,
+          0.44999998807907104,
+          0.800000011920929,
+          1.0
+        ],
+        "type": "colorize"
+      },
+      "position": {
+        "x": 690.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "db909a47-c2ed-4b22-a317-79339374d2b1": {
+      "id": "db909a47-c2ed-4b22-a317-79339374d2b1",
+      "inputs": {
+        "image": "6259a459-f5ef-4e6a-9838-570bb83931b3"
+      },
+      "label": "Artwork motion",
+      "operation": {
+        "pivot_x": {
+          "kind": "constant",
+          "value": 960.0
+        },
+        "pivot_y": {
+          "kind": "constant",
+          "value": 540.0
+        },
+        "rotation": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "scale_x": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": 0.9399999976158142
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 2
+              },
+              "value": 1.0399999618530273
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": 0.9399999976158142
+            }
+          ],
+          "kind": "smooth"
+        },
+        "scale_y": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": 0.9399999976158142
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 2
+              },
+              "value": 1.0399999618530273
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": 0.9399999976158142
+            }
+          ],
+          "kind": "smooth"
+        },
+        "type": "affine",
+        "x": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "y": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": 18.0
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 2
+              },
+              "value": -18.0
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": 18.0
+            }
+          ],
+          "kind": "smooth"
+        }
+      },
+      "position": {
+        "x": 0.0,
+        "y": 145.0
+      },
+      "version": 1
+    },
+    "e37060c7-8f5e-4a8d-8f6c-63bcdc32596e": {
+      "id": "e37060c7-8f5e-4a8d-8f6c-63bcdc32596e",
+      "inputs": {},
+      "label": "Vertical palette ramp",
+      "operation": {
+        "end_x": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "end_y": {
+          "kind": "constant",
+          "value": 720.0
+        },
+        "mode": "linear",
+        "start_x": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "start_y": {
+          "kind": "constant",
+          "value": 360.0
+        },
+        "type": "gradient"
+      },
+      "position": {
+        "x": 460.0,
+        "y": 0.0
+      },
+      "version": 1
+    }
+  },
+  "output": "d721fd8a-8332-427f-9ecd-bbf3675e143c",
+  "saved_by": "0.1.0",
+  "schema": 1,
+  "width": 1920
+}

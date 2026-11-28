@@ -1,0 +1,448 @@
+{
+  "frame_count": 96,
+  "frame_rate": {
+    "rate": 1,
+    "ticks": 24
+  },
+  "groups": {
+    "ee7c5e01-c5c6-46dc-b4f6-e2c98faf6139": {
+      "controls": {
+        "bevel_width": {
+          "default": {
+            "kind": "constant",
+            "value": 10.0
+          },
+          "label": "Bevel width",
+          "node": "8d82b0fe-ec79-4021-a0f6-ca32fa4fb7e8",
+          "parameter": "bevel"
+        },
+        "grain_strength": {
+          "default": {
+            "kind": "constant",
+            "value": 0.6499999761581421
+          },
+          "label": "Grain strength",
+          "node": "8d82b0fe-ec79-4021-a0f6-ca32fa4fb7e8",
+          "parameter": "grain"
+        },
+        "reflection_motion": {
+          "default": {
+            "keys": [
+              {
+                "time": {
+                  "rate": 1,
+                  "ticks": 0
+                },
+                "value": 0.0
+              },
+              {
+                "time": {
+                  "rate": 1,
+                  "ticks": 2
+                },
+                "value": 0.11999999731779099
+              },
+              {
+                "time": {
+                  "rate": 1,
+                  "ticks": 4
+                },
+                "value": 0.0
+              }
+            ],
+            "kind": "smooth"
+          },
+          "label": "Reflection motion",
+          "node": "8d82b0fe-ec79-4021-a0f6-ca32fa4fb7e8",
+          "parameter": "lighting"
+        },
+        "roughness": {
+          "default": {
+            "kind": "constant",
+            "value": 0.699999988079071
+          },
+          "label": "Roughness",
+          "node": "8d82b0fe-ec79-4021-a0f6-ca32fa4fb7e8",
+          "parameter": "roughness"
+        },
+        "texture_scale": {
+          "default": {
+            "kind": "constant",
+            "value": 360.0
+          },
+          "label": "Texture scale",
+          "node": "8d82b0fe-ec79-4021-a0f6-ca32fa4fb7e8",
+          "parameter": "scale"
+        }
+      },
+      "id": "ee7c5e01-c5c6-46dc-b4f6-e2c98faf6139",
+      "inputs": {
+        "input_1": {
+          "label": "Image",
+          "targets": [
+            {
+              "node": "8d82b0fe-ec79-4021-a0f6-ca32fa4fb7e8",
+              "port": "image"
+            }
+          ]
+        }
+      },
+      "label": "Light Brick",
+      "members": [
+        "8d82b0fe-ec79-4021-a0f6-ca32fa4fb7e8"
+      ],
+      "output": "8d82b0fe-ec79-4021-a0f6-ca32fa4fb7e8"
+    }
+  },
+  "height": 1080,
+  "nodes": {
+    "298df5ac-08bf-4f76-a976-657f2b8849c3": {
+      "id": "298df5ac-08bf-4f76-a976-657f2b8849c3",
+      "inputs": {
+        "background": "49089378-7c8b-40cb-af91-761bd658ad4d",
+        "foreground": "8d82b0fe-ec79-4021-a0f6-ca32fa4fb7e8"
+      },
+      "label": "Finished lettering over background",
+      "operation": {
+        "type": "merge"
+      },
+      "position": {
+        "x": 920.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "49089378-7c8b-40cb-af91-761bd658ad4d": {
+      "id": "49089378-7c8b-40cb-af91-761bd658ad4d",
+      "inputs": {},
+      "label": "Deep cinematic background",
+      "operation": {
+        "color": [
+          0.0010000000474974513,
+          0.0020000000949949026,
+          0.006000000052154064,
+          1.0
+        ],
+        "type": "solid"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "scene_background": true,
+      "version": 1
+    },
+    "54472d21-fdd3-4894-b7eb-1e6417e21116": {
+      "id": "54472d21-fdd3-4894-b7eb-1e6417e21116",
+      "inputs": {},
+      "label": "NOVA · editable lettering",
+      "operation": {
+        "alignment": "center",
+        "box_height": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "content": "NOVA",
+        "features": "",
+        "font": {
+          "source": "display"
+        },
+        "language": "",
+        "line_height": {
+          "kind": "constant",
+          "value": 1.25
+        },
+        "padding": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "rotation": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "rtl": false,
+        "scale_x": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "scale_y": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "size": {
+          "kind": "constant",
+          "value": 400.0
+        },
+        "tracking": {
+          "kind": "constant",
+          "value": 24.0
+        },
+        "type": "text",
+        "typography": {
+          "anchor": null,
+          "auto_fit": false,
+          "duration": 0.5,
+          "ease": true,
+          "exit": null,
+          "linked_scale": false,
+          "motion": "none",
+          "spans": [],
+          "stagger": 0.03999999910593033,
+          "start": 0.0,
+          "unit": "character",
+          "vertical": "top"
+        },
+        "underline": false,
+        "wrap_width": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "x": {
+          "kind": "constant",
+          "value": 960.0
+        },
+        "y": {
+          "kind": "constant",
+          "value": 680.0
+        }
+      },
+      "position": {
+        "x": 230.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "8d82b0fe-ec79-4021-a0f6-ca32fa4fb7e8": {
+      "id": "8d82b0fe-ec79-4021-a0f6-ca32fa4fb7e8",
+      "inputs": {
+        "image": "54472d21-fdd3-4894-b7eb-1e6417e21116"
+      },
+      "label": "Surface grain, bevel and reflection",
+      "operation": {
+        "bevel": {
+          "kind": "constant",
+          "value": 10.0
+        },
+        "brush_angle": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "brushing": "auto",
+        "colours": null,
+        "emission": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "grain": {
+          "kind": "constant",
+          "value": 0.6499999761581421
+        },
+        "height_depth": {
+          "kind": "constant",
+          "value": 8.0
+        },
+        "imperfections": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "kind": "brick_light",
+        "lighting": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": 0.0
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 2
+              },
+              "value": 0.11999999731779099
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": 0.0
+            }
+          ],
+          "kind": "smooth"
+        },
+        "normal_directx": false,
+        "normal_strength": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "optics": null,
+        "ridges": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "roughness": {
+          "kind": "constant",
+          "value": 0.699999988079071
+        },
+        "scale": {
+          "kind": "constant",
+          "value": 360.0
+        },
+        "shot": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "smooth_edges": true,
+        "studio": {
+          "ambient": 0.0,
+          "environment": 0.6499999761581421,
+          "environment_rotation": -45.0,
+          "lights": [
+            {
+              "colour": [
+                1.0,
+                0.9599999785423279,
+                0.8899999856948853
+              ],
+              "enabled": false,
+              "follow": false,
+              "intensity": {
+                "kind": "constant",
+                "value": 1.2000000476837158
+              },
+              "position": [
+                -3.0,
+                -0.699999988079071,
+                -1.0
+              ],
+              "rotation": [
+                0.0,
+                -105.0,
+                0.0
+              ],
+              "size": [
+                1.5,
+                4.0
+              ]
+            },
+            {
+              "colour": [
+                0.9599999785423279,
+                0.9800000190734863,
+                1.0
+              ],
+              "enabled": false,
+              "follow": false,
+              "intensity": {
+                "kind": "constant",
+                "value": 1.2000000476837158
+              },
+              "position": [
+                3.0,
+                -0.30000001192092896,
+                1.5
+              ],
+              "rotation": [
+                0.0,
+                50.0,
+                0.0
+              ],
+              "size": [
+                2.299999952316284,
+                3.200000047683716
+              ]
+            },
+            {
+              "colour": [
+                1.0,
+                0.9300000071525574,
+                0.800000011920929
+              ],
+              "enabled": false,
+              "follow": false,
+              "intensity": {
+                "kind": "constant",
+                "value": 3.200000047683716
+              },
+              "position": [
+                -2.799999952316284,
+                2.5999999046325684,
+                1.5
+              ],
+              "rotation": [
+                -30.0,
+                -45.0,
+                0.0
+              ],
+              "size": [
+                1.7999999523162842,
+                2.0
+              ]
+            },
+            {
+              "colour": [
+                1.0,
+                1.0,
+                1.0
+              ],
+              "enabled": false,
+              "follow": false,
+              "intensity": {
+                "kind": "constant",
+                "value": 0.44999998807907104
+              },
+              "position": [
+                0.0,
+                -4.0,
+                2.0
+              ],
+              "rotation": [
+                60.0,
+                0.0,
+                0.0
+              ],
+              "size": [
+                7.0,
+                4.0
+              ]
+            }
+          ]
+        },
+        "type": "material"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 1500.0
+      },
+      "version": 1
+    },
+    "d1ddf8fd-d3d6-4105-beaf-6115b003589c": {
+      "id": "d1ddf8fd-d3d6-4105-beaf-6115b003589c",
+      "inputs": {
+        "background": "49089378-7c8b-40cb-af91-761bd658ad4d",
+        "foreground": "54472d21-fdd3-4894-b7eb-1e6417e21116"
+      },
+      "label": "Original lettering over background",
+      "operation": {
+        "type": "merge"
+      },
+      "position": {
+        "x": 690.0,
+        "y": 0.0
+      },
+      "version": 1
+    }
+  },
+  "output": "298df5ac-08bf-4f76-a976-657f2b8849c3",
+  "saved_by": "0.1.0",
+  "schema": 1,
+  "width": 1920
+}

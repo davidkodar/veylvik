@@ -1,0 +1,556 @@
+{
+  "frame_count": 96,
+  "frame_rate": {
+    "rate": 1,
+    "ticks": 24
+  },
+  "groups": {
+    "270f61a8-318c-440b-9f12-7552fab8665d": {
+      "controls": {
+        "bevel_width": {
+          "default": {
+            "kind": "constant",
+            "value": 10.0
+          },
+          "label": "Bevel width",
+          "node": "ef4e17f0-f111-430d-ae10-058d26b85966",
+          "parameter": "bevel"
+        },
+        "grain_strength": {
+          "default": {
+            "kind": "constant",
+            "value": 0.25
+          },
+          "label": "Grain strength",
+          "node": "ef4e17f0-f111-430d-ae10-058d26b85966",
+          "parameter": "grain"
+        },
+        "reflection_motion": {
+          "default": {
+            "keys": [
+              {
+                "time": {
+                  "rate": 1,
+                  "ticks": 0
+                },
+                "value": 0.0
+              },
+              {
+                "time": {
+                  "rate": 1,
+                  "ticks": 2
+                },
+                "value": 0.11999999731779099
+              },
+              {
+                "time": {
+                  "rate": 1,
+                  "ticks": 4
+                },
+                "value": 0.0
+              }
+            ],
+            "kind": "smooth"
+          },
+          "label": "Reflection motion",
+          "node": "ef4e17f0-f111-430d-ae10-058d26b85966",
+          "parameter": "lighting"
+        },
+        "roughness": {
+          "default": {
+            "kind": "constant",
+            "value": 0.18000000715255737
+          },
+          "label": "Roughness",
+          "node": "ef4e17f0-f111-430d-ae10-058d26b85966",
+          "parameter": "roughness"
+        },
+        "texture_scale": {
+          "default": {
+            "kind": "constant",
+            "value": 360.0
+          },
+          "label": "Texture scale",
+          "node": "ef4e17f0-f111-430d-ae10-058d26b85966",
+          "parameter": "scale"
+        }
+      },
+      "id": "270f61a8-318c-440b-9f12-7552fab8665d",
+      "inputs": {
+        "input_1": {
+          "label": "Image",
+          "targets": [
+            {
+              "node": "ef4e17f0-f111-430d-ae10-058d26b85966",
+              "port": "image"
+            }
+          ]
+        }
+      },
+      "label": "Silver",
+      "members": [
+        "ef4e17f0-f111-430d-ae10-058d26b85966"
+      ],
+      "output": "ef4e17f0-f111-430d-ae10-058d26b85966"
+    }
+  },
+  "height": 1080,
+  "nodes": {
+    "781e336b-c9e2-44f9-b942-55a18f65cfc8": {
+      "id": "781e336b-c9e2-44f9-b942-55a18f65cfc8",
+      "inputs": {
+        "background": "d9beb9c2-39b5-4578-846a-003369b93c00",
+        "foreground": "ef4e17f0-f111-430d-ae10-058d26b85966"
+      },
+      "label": "Finished lettering over background",
+      "operation": {
+        "type": "merge"
+      },
+      "position": {
+        "x": 920.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "d9beb9c2-39b5-4578-846a-003369b93c00": {
+      "id": "d9beb9c2-39b5-4578-846a-003369b93c00",
+      "inputs": {},
+      "label": "Deep cinematic background",
+      "operation": {
+        "color": [
+          0.0010000000474974513,
+          0.0020000000949949026,
+          0.006000000052154064,
+          1.0
+        ],
+        "type": "solid"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "scene_background": true,
+      "version": 1
+    },
+    "ef4e17f0-f111-430d-ae10-058d26b85966": {
+      "id": "ef4e17f0-f111-430d-ae10-058d26b85966",
+      "inputs": {
+        "image": "f1e0e6c9-8b37-425e-9bb4-44aa761d024b"
+      },
+      "label": "Surface grain, bevel and reflection",
+      "operation": {
+        "bevel": {
+          "kind": "constant",
+          "value": 10.0
+        },
+        "brush_angle": {
+          "kind": "constant",
+          "value": 65.0
+        },
+        "brushing": "auto",
+        "colours": null,
+        "emission": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "grain": {
+          "kind": "constant",
+          "value": 0.25
+        },
+        "height_depth": {
+          "kind": "constant",
+          "value": 8.0
+        },
+        "imperfections": {
+          "kind": "constant",
+          "value": 0.30000001192092896
+        },
+        "kind": "silver",
+        "lighting": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": 0.0
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 2
+              },
+              "value": 0.11999999731779099
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": 0.0
+            }
+          ],
+          "kind": "smooth"
+        },
+        "normal_directx": false,
+        "normal_strength": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "optics": null,
+        "ridges": {
+          "kind": "constant",
+          "value": 0.6000000238418579
+        },
+        "roughness": {
+          "kind": "constant",
+          "value": 0.18000000715255737
+        },
+        "scale": {
+          "kind": "constant",
+          "value": 360.0
+        },
+        "shot": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "smooth_edges": true,
+        "studio": {
+          "ambient": 0.0,
+          "environment": 0.3499999940395355,
+          "environment_rotation": -45.0,
+          "lights": [
+            {
+              "colour": [
+                1.0,
+                0.8999999761581421,
+                0.7200000286102295
+              ],
+              "enabled": true,
+              "follow": false,
+              "intensity": {
+                "kind": "constant",
+                "value": 2.4000000953674316
+              },
+              "position": [
+                -2.5,
+                -0.800000011920929,
+                3.0
+              ],
+              "rotation": [
+                0.0,
+                0.0,
+                -14.0
+              ],
+              "size": [
+                7.0,
+                0.07000000029802322
+              ]
+            },
+            {
+              "colour": [
+                1.0,
+                0.8999999761581421,
+                0.7200000286102295
+              ],
+              "enabled": true,
+              "follow": false,
+              "intensity": {
+                "kind": "constant",
+                "value": 2.4000000953674316
+              },
+              "position": [
+                -2.5,
+                -0.4000000059604645,
+                3.0
+              ],
+              "rotation": [
+                0.0,
+                0.0,
+                -14.0
+              ],
+              "size": [
+                7.0,
+                0.07000000029802322
+              ]
+            },
+            {
+              "colour": [
+                1.0,
+                0.8999999761581421,
+                0.7200000286102295
+              ],
+              "enabled": true,
+              "follow": false,
+              "intensity": {
+                "kind": "constant",
+                "value": 2.4000000953674316
+              },
+              "position": [
+                -2.5,
+                0.0,
+                3.0
+              ],
+              "rotation": [
+                0.0,
+                0.0,
+                -14.0
+              ],
+              "size": [
+                7.0,
+                0.07000000029802322
+              ]
+            },
+            {
+              "colour": [
+                1.0,
+                0.8999999761581421,
+                0.7200000286102295
+              ],
+              "enabled": true,
+              "follow": false,
+              "intensity": {
+                "kind": "constant",
+                "value": 2.4000000953674316
+              },
+              "position": [
+                -2.5,
+                0.4000000059604645,
+                3.0
+              ],
+              "rotation": [
+                0.0,
+                0.0,
+                -14.0
+              ],
+              "size": [
+                7.0,
+                0.07000000029802322
+              ]
+            },
+            {
+              "colour": [
+                1.0,
+                0.8999999761581421,
+                0.7200000286102295
+              ],
+              "enabled": true,
+              "follow": false,
+              "intensity": {
+                "kind": "constant",
+                "value": 2.4000000953674316
+              },
+              "position": [
+                -2.5,
+                0.800000011920929,
+                3.0
+              ],
+              "rotation": [
+                0.0,
+                0.0,
+                -14.0
+              ],
+              "size": [
+                7.0,
+                0.07000000029802322
+              ]
+            },
+            {
+              "colour": [
+                1.0,
+                0.8999999761581421,
+                0.7200000286102295
+              ],
+              "enabled": true,
+              "follow": false,
+              "intensity": {
+                "kind": "constant",
+                "value": 2.4000000953674316
+              },
+              "position": [
+                -0.30000001192092896,
+                -0.20000000298023224,
+                3.0
+              ],
+              "rotation": [
+                0.0,
+                0.0,
+                -14.0
+              ],
+              "size": [
+                7.0,
+                0.07000000029802322
+              ]
+            },
+            {
+              "colour": [
+                1.0,
+                0.8999999761581421,
+                0.7200000286102295
+              ],
+              "enabled": true,
+              "follow": false,
+              "intensity": {
+                "kind": "constant",
+                "value": 2.4000000953674316
+              },
+              "position": [
+                -0.30000001192092896,
+                0.20000000298023224,
+                3.0
+              ],
+              "rotation": [
+                0.0,
+                0.0,
+                -14.0
+              ],
+              "size": [
+                7.0,
+                0.07000000029802322
+              ]
+            },
+            {
+              "colour": [
+                1.0,
+                0.8999999761581421,
+                0.7200000286102295
+              ],
+              "enabled": true,
+              "follow": false,
+              "intensity": {
+                "kind": "constant",
+                "value": 2.4000000953674316
+              },
+              "position": [
+                -0.30000001192092896,
+                0.6000000238418579,
+                3.0
+              ],
+              "rotation": [
+                0.0,
+                0.0,
+                -14.0
+              ],
+              "size": [
+                7.0,
+                0.07000000029802322
+              ]
+            }
+          ]
+        },
+        "type": "material"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 1500.0
+      },
+      "version": 1
+    },
+    "f1e0e6c9-8b37-425e-9bb4-44aa761d024b": {
+      "id": "f1e0e6c9-8b37-425e-9bb4-44aa761d024b",
+      "inputs": {},
+      "label": "NOVA · editable lettering",
+      "operation": {
+        "alignment": "center",
+        "box_height": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "content": "NOVA",
+        "features": "",
+        "font": {
+          "source": "display"
+        },
+        "language": "",
+        "line_height": {
+          "kind": "constant",
+          "value": 1.25
+        },
+        "padding": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "rotation": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "rtl": false,
+        "scale_x": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "scale_y": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "size": {
+          "kind": "constant",
+          "value": 400.0
+        },
+        "tracking": {
+          "kind": "constant",
+          "value": 24.0
+        },
+        "type": "text",
+        "typography": {
+          "anchor": null,
+          "auto_fit": false,
+          "duration": 0.5,
+          "ease": true,
+          "exit": null,
+          "linked_scale": false,
+          "motion": "none",
+          "spans": [],
+          "stagger": 0.03999999910593033,
+          "start": 0.0,
+          "unit": "character",
+          "vertical": "top"
+        },
+        "underline": false,
+        "wrap_width": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "x": {
+          "kind": "constant",
+          "value": 960.0
+        },
+        "y": {
+          "kind": "constant",
+          "value": 680.0
+        }
+      },
+      "position": {
+        "x": 230.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "f56a7cc2-6e4c-48f4-a678-1454c1d51f23": {
+      "id": "f56a7cc2-6e4c-48f4-a678-1454c1d51f23",
+      "inputs": {
+        "background": "d9beb9c2-39b5-4578-846a-003369b93c00",
+        "foreground": "f1e0e6c9-8b37-425e-9bb4-44aa761d024b"
+      },
+      "label": "Original lettering over background",
+      "operation": {
+        "type": "merge"
+      },
+      "position": {
+        "x": 690.0,
+        "y": 0.0
+      },
+      "version": 1
+    }
+  },
+  "output": "781e336b-c9e2-44f9-b942-55a18f65cfc8",
+  "saved_by": "0.1.0",
+  "schema": 1,
+  "width": 1920
+}

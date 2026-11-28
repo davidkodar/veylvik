@@ -1,0 +1,512 @@
+{
+  "frame_count": 96,
+  "frame_rate": {
+    "rate": 1,
+    "ticks": 24
+  },
+  "groups": {
+    "4b5ed716-a3fa-4f65-a1be-8589b3661d14": {
+      "controls": {
+        "amount": {
+          "default": {
+            "kind": "constant",
+            "value": 1.0
+          },
+          "label": "Amount",
+          "node": "7ea042e7-9aa1-4fb5-b689-92192554b2cd",
+          "parameter": "opacity"
+        },
+        "edge_color": {
+          "default": [
+            0.25,
+            1.2000000476837158,
+            1.5,
+            1.0
+          ],
+          "label": "Edge color",
+          "node": "0ab0cd16-c1b6-49d3-98e5-a99c09b195e2",
+          "parameter": "high"
+        }
+      },
+      "id": "4b5ed716-a3fa-4f65-a1be-8589b3661d14",
+      "inputs": {
+        "input_1": {
+          "label": "Image",
+          "targets": [
+            {
+              "node": "fbb2da49-f055-4c2b-9efa-3f4d948d20a5",
+              "port": "image"
+            },
+            {
+              "node": "7ea042e7-9aa1-4fb5-b689-92192554b2cd",
+              "port": "background"
+            },
+            {
+              "node": "ba9dc61a-a296-4b59-be9c-483b325e792b",
+              "port": "background"
+            }
+          ]
+        }
+      },
+      "label": "Edge Engrave",
+      "members": [
+        "0ab0cd16-c1b6-49d3-98e5-a99c09b195e2",
+        "2db21c2e-f738-4b1b-8c8f-f133b953b5df",
+        "4f55fa7a-cc05-4939-9b66-bad978a0323a",
+        "7ea042e7-9aa1-4fb5-b689-92192554b2cd",
+        "b7aba0f2-a7ee-4411-899e-0b71e4e16771",
+        "ba9dc61a-a296-4b59-be9c-483b325e792b",
+        "d25a8764-d8a3-4c89-a176-d3271296d17b",
+        "fbb2da49-f055-4c2b-9efa-3f4d948d20a5"
+      ],
+      "output": "7ea042e7-9aa1-4fb5-b689-92192554b2cd"
+    }
+  },
+  "height": 1080,
+  "nodes": {
+    "0ab0cd16-c1b6-49d3-98e5-a99c09b195e2": {
+      "id": "0ab0cd16-c1b6-49d3-98e5-a99c09b195e2",
+      "inputs": {
+        "image": "2db21c2e-f738-4b1b-8c8f-f133b953b5df"
+      },
+      "label": "Palette",
+      "operation": {
+        "high": [
+          0.25,
+          1.2000000476837158,
+          1.5,
+          1.0
+        ],
+        "low": [
+          0.0020000000949949026,
+          0.00800000037997961,
+          0.017999999225139618,
+          1.0
+        ],
+        "type": "colorize"
+      },
+      "version": 1
+    },
+    "17943bfe-44ce-4ae5-b9e7-5ba3281d31a7": {
+      "id": "17943bfe-44ce-4ae5-b9e7-5ba3281d31a7",
+      "inputs": {
+        "image": "8b7dedf8-375c-48b6-ad9e-0449e1b67dff",
+        "mask": "c47ee13c-35a3-4d4e-a0ac-a13fed26f16a"
+      },
+      "label": "Color inside artwork",
+      "operation": {
+        "type": "mask"
+      },
+      "position": {
+        "x": 920.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "2db21c2e-f738-4b1b-8c8f-f133b953b5df": {
+      "id": "2db21c2e-f738-4b1b-8c8f-f133b953b5df",
+      "inputs": {
+        "background": "d25a8764-d8a3-4c89-a176-d3271296d17b",
+        "foreground": "b7aba0f2-a7ee-4411-899e-0b71e4e16771"
+      },
+      "label": "Layer mix",
+      "operation": {
+        "mode": "normal",
+        "opacity": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "type": "blend"
+      },
+      "version": 1
+    },
+    "35dab010-0510-415f-a898-6a23009fc347": {
+      "id": "35dab010-0510-415f-a898-6a23009fc347",
+      "inputs": {
+        "image": "17943bfe-44ce-4ae5-b9e7-5ba3281d31a7"
+      },
+      "label": "Artwork motion",
+      "operation": {
+        "pivot_x": {
+          "kind": "constant",
+          "value": 960.0
+        },
+        "pivot_y": {
+          "kind": "constant",
+          "value": 540.0
+        },
+        "rotation": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "scale_x": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": 0.9399999976158142
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 2
+              },
+              "value": 1.0399999618530273
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": 0.9399999976158142
+            }
+          ],
+          "kind": "smooth"
+        },
+        "scale_y": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": 0.9399999976158142
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 2
+              },
+              "value": 1.0399999618530273
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": 0.9399999976158142
+            }
+          ],
+          "kind": "smooth"
+        },
+        "type": "affine",
+        "x": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "y": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": 18.0
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 2
+              },
+              "value": -18.0
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": 18.0
+            }
+          ],
+          "kind": "smooth"
+        }
+      },
+      "position": {
+        "x": 0.0,
+        "y": 145.0
+      },
+      "version": 1
+    },
+    "4f55fa7a-cc05-4939-9b66-bad978a0323a": {
+      "id": "4f55fa7a-cc05-4939-9b66-bad978a0323a",
+      "inputs": {
+        "image": "ba9dc61a-a296-4b59-be9c-483b325e792b",
+        "mask": "fbb2da49-f055-4c2b-9efa-3f4d948d20a5"
+      },
+      "label": "Masked detail",
+      "operation": {
+        "type": "mask"
+      },
+      "version": 1
+    },
+    "7ea042e7-9aa1-4fb5-b689-92192554b2cd": {
+      "id": "7ea042e7-9aa1-4fb5-b689-92192554b2cd",
+      "inputs": {
+        "background": "8adb0ec3-bb55-47cb-b20b-dc5abb5fe696",
+        "foreground": "0ab0cd16-c1b6-49d3-98e5-a99c09b195e2"
+      },
+      "label": "Layer mix",
+      "operation": {
+        "mode": "normal",
+        "opacity": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "type": "blend"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 500.0
+      },
+      "version": 1
+    },
+    "8adb0ec3-bb55-47cb-b20b-dc5abb5fe696": {
+      "id": "8adb0ec3-bb55-47cb-b20b-dc5abb5fe696",
+      "inputs": {
+        "background": "f73cf541-68ee-4f61-8285-b523c17c52f7",
+        "foreground": "35dab010-0510-415f-a898-6a23009fc347"
+      },
+      "label": "Before · artwork on midnight",
+      "operation": {
+        "type": "merge"
+      },
+      "position": {
+        "x": 230.0,
+        "y": 145.0
+      },
+      "version": 1
+    },
+    "8b7dedf8-375c-48b6-ad9e-0449e1b67dff": {
+      "id": "8b7dedf8-375c-48b6-ad9e-0449e1b67dff",
+      "inputs": {
+        "image": "9021a8d8-4589-4c62-88fe-369451023f8c"
+      },
+      "label": "Artwork palette",
+      "operation": {
+        "high": [
+          1.600000023841858,
+          1.7999999523162842,
+          2.0,
+          1.0
+        ],
+        "low": [
+          0.30000001192092896,
+          0.44999998807907104,
+          0.800000011920929,
+          1.0
+        ],
+        "type": "colorize"
+      },
+      "position": {
+        "x": 690.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "9021a8d8-4589-4c62-88fe-369451023f8c": {
+      "id": "9021a8d8-4589-4c62-88fe-369451023f8c",
+      "inputs": {},
+      "label": "Vertical palette ramp",
+      "operation": {
+        "end_x": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "end_y": {
+          "kind": "constant",
+          "value": 720.0
+        },
+        "mode": "linear",
+        "start_x": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "start_y": {
+          "kind": "constant",
+          "value": 360.0
+        },
+        "type": "gradient"
+      },
+      "position": {
+        "x": 460.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "b7aba0f2-a7ee-4411-899e-0b71e4e16771": {
+      "id": "b7aba0f2-a7ee-4411-899e-0b71e4e16771",
+      "inputs": {
+        "image": "4f55fa7a-cc05-4939-9b66-bad978a0323a"
+      },
+      "label": "Edge luminance",
+      "operation": {
+        "channel": "luminance",
+        "type": "channel_mask"
+      },
+      "version": 1
+    },
+    "ba9dc61a-a296-4b59-be9c-483b325e792b": {
+      "id": "ba9dc61a-a296-4b59-be9c-483b325e792b",
+      "inputs": {
+        "background": "8adb0ec3-bb55-47cb-b20b-dc5abb5fe696",
+        "foreground": "fbb2da49-f055-4c2b-9efa-3f4d948d20a5"
+      },
+      "label": "Layer mix",
+      "operation": {
+        "mode": "difference",
+        "opacity": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "type": "blend"
+      },
+      "version": 1
+    },
+    "c47ee13c-35a3-4d4e-a0ac-a13fed26f16a": {
+      "id": "c47ee13c-35a3-4d4e-a0ac-a13fed26f16a",
+      "inputs": {},
+      "label": "Editable vector artwork",
+      "operation": {
+        "alignment": "center",
+        "box_height": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "content": "FLOW",
+        "features": "",
+        "font": {
+          "source": "display"
+        },
+        "language": "",
+        "line_height": {
+          "kind": "constant",
+          "value": 1.25
+        },
+        "padding": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "rotation": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "rtl": false,
+        "scale_x": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "scale_y": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "size": {
+          "kind": "constant",
+          "value": 400.0
+        },
+        "tracking": {
+          "kind": "constant",
+          "value": 24.0
+        },
+        "type": "text",
+        "typography": {
+          "anchor": null,
+          "auto_fit": false,
+          "duration": 0.5,
+          "ease": true,
+          "exit": null,
+          "linked_scale": false,
+          "motion": "none",
+          "spans": [],
+          "stagger": 0.03999999910593033,
+          "start": 0.0,
+          "unit": "character",
+          "vertical": "top"
+        },
+        "underline": false,
+        "wrap_width": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "x": {
+          "kind": "constant",
+          "value": 960.0
+        },
+        "y": {
+          "kind": "constant",
+          "value": 680.0
+        }
+      },
+      "position": {
+        "x": 230.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "d25a8764-d8a3-4c89-a176-d3271296d17b": {
+      "id": "d25a8764-d8a3-4c89-a176-d3271296d17b",
+      "inputs": {},
+      "label": "Opaque field background",
+      "operation": {
+        "color": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "type": "solid"
+      },
+      "version": 1
+    },
+    "f73cf541-68ee-4f61-8285-b523c17c52f7": {
+      "id": "f73cf541-68ee-4f61-8285-b523c17c52f7",
+      "inputs": {},
+      "label": "Midnight background",
+      "operation": {
+        "color": [
+          0.0020000000949949026,
+          0.004000000189989805,
+          0.012000000104308128,
+          1.0
+        ],
+        "type": "solid"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "scene_background": true,
+      "version": 1
+    },
+    "fbb2da49-f055-4c2b-9efa-3f4d948d20a5": {
+      "id": "fbb2da49-f055-4c2b-9efa-3f4d948d20a5",
+      "inputs": {
+        "image": "8adb0ec3-bb55-47cb-b20b-dc5abb5fe696"
+      },
+      "label": "Offset",
+      "operation": {
+        "type": "transform",
+        "x": {
+          "kind": "constant",
+          "value": 6.0
+        },
+        "y": {
+          "kind": "constant",
+          "value": 6.0
+        }
+      },
+      "version": 1
+    }
+  },
+  "output": "7ea042e7-9aa1-4fb5-b689-92192554b2cd",
+  "saved_by": "0.1.0",
+  "schema": 1,
+  "width": 1920
+}

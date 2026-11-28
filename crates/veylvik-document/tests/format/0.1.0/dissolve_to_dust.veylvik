@@ -1,0 +1,814 @@
+{
+  "frame_count": 96,
+  "frame_rate": {
+    "rate": 1,
+    "ticks": 24
+  },
+  "groups": {
+    "cc7ecf0d-79d2-48e9-997f-f6ad01866d9f": {
+      "controls": {
+        "amount": {
+          "default": {
+            "kind": "constant",
+            "value": 1.0
+          },
+          "label": "Amount",
+          "node": "d06fd888-ada2-469e-b130-1af835f954c3",
+          "parameter": "opacity"
+        },
+        "grains": {
+          "default": {
+            "kind": "constant",
+            "value": 40000.0
+          },
+          "label": "Grains",
+          "node": "72a2805b-5c0b-462a-8024-9ccc81d3c83c",
+          "parameter": "density"
+        },
+        "gravity": {
+          "default": {
+            "kind": "constant",
+            "value": -40.0
+          },
+          "label": "Gravity",
+          "node": "72a2805b-5c0b-462a-8024-9ccc81d3c83c",
+          "parameter": "gravity"
+        },
+        "swirl": {
+          "default": {
+            "kind": "constant",
+            "value": 150.0
+          },
+          "label": "Swirl",
+          "node": "72a2805b-5c0b-462a-8024-9ccc81d3c83c",
+          "parameter": "turbulence"
+        },
+        "when": {
+          "default": {
+            "kind": "constant",
+            "value": 1.5
+          },
+          "label": "When",
+          "node": "72a2805b-5c0b-462a-8024-9ccc81d3c83c",
+          "parameter": "start"
+        },
+        "wind": {
+          "default": {
+            "kind": "constant",
+            "value": -260.0
+          },
+          "label": "Wind",
+          "node": "72a2805b-5c0b-462a-8024-9ccc81d3c83c",
+          "parameter": "wind"
+        }
+      },
+      "id": "cc7ecf0d-79d2-48e9-997f-f6ad01866d9f",
+      "inputs": {
+        "input_1": {
+          "label": "Image",
+          "targets": [
+            {
+              "node": "72a2805b-5c0b-462a-8024-9ccc81d3c83c",
+              "port": "emitter"
+            },
+            {
+              "node": "58151910-abca-409b-98dd-360e99061608",
+              "port": "foreground"
+            }
+          ]
+        }
+      },
+      "label": "Dissolve to Dust",
+      "members": [
+        "17d801d0-8c25-45a4-aa47-bb52e1c1e72f",
+        "58151910-abca-409b-98dd-360e99061608",
+        "72a2805b-5c0b-462a-8024-9ccc81d3c83c",
+        "d06fd888-ada2-469e-b130-1af835f954c3"
+      ],
+      "output": "d06fd888-ada2-469e-b130-1af835f954c3"
+    }
+  },
+  "height": 1080,
+  "nodes": {
+    "01eb480f-2ef1-4d50-b60d-396e367a3aca": {
+      "id": "01eb480f-2ef1-4d50-b60d-396e367a3aca",
+      "inputs": {
+        "image": "b8b37736-8fb6-4042-ad34-a108cd4e8572"
+      },
+      "label": "Artwork motion",
+      "operation": {
+        "pivot_x": {
+          "kind": "constant",
+          "value": 960.0
+        },
+        "pivot_y": {
+          "kind": "constant",
+          "value": 540.0
+        },
+        "rotation": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "scale_x": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": 0.9399999976158142
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 2
+              },
+              "value": 1.0399999618530273
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": 0.9399999976158142
+            }
+          ],
+          "kind": "smooth"
+        },
+        "scale_y": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": 0.9399999976158142
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 2
+              },
+              "value": 1.0399999618530273
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": 0.9399999976158142
+            }
+          ],
+          "kind": "smooth"
+        },
+        "type": "affine",
+        "x": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "y": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": 18.0
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 2
+              },
+              "value": -18.0
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": 18.0
+            }
+          ],
+          "kind": "smooth"
+        }
+      },
+      "position": {
+        "x": 0.0,
+        "y": 145.0
+      },
+      "version": 1
+    },
+    "05c93741-13b4-4727-b0a9-c45f03caeffd": {
+      "id": "05c93741-13b4-4727-b0a9-c45f03caeffd",
+      "inputs": {},
+      "label": "Editable vector artwork",
+      "operation": {
+        "alignment": "center",
+        "box_height": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "content": "FLOW",
+        "features": "",
+        "font": {
+          "source": "display"
+        },
+        "language": "",
+        "line_height": {
+          "kind": "constant",
+          "value": 1.25
+        },
+        "padding": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "rotation": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "rtl": false,
+        "scale_x": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "scale_y": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "size": {
+          "kind": "constant",
+          "value": 400.0
+        },
+        "tracking": {
+          "kind": "constant",
+          "value": 24.0
+        },
+        "type": "text",
+        "typography": {
+          "anchor": null,
+          "auto_fit": false,
+          "duration": 0.5,
+          "ease": true,
+          "exit": null,
+          "linked_scale": false,
+          "motion": "none",
+          "spans": [],
+          "stagger": 0.03999999910593033,
+          "start": 0.0,
+          "unit": "character",
+          "vertical": "top"
+        },
+        "underline": false,
+        "wrap_width": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "x": {
+          "kind": "constant",
+          "value": 960.0
+        },
+        "y": {
+          "kind": "constant",
+          "value": 680.0
+        }
+      },
+      "position": {
+        "x": 230.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "17d801d0-8c25-45a4-aa47-bb52e1c1e72f": {
+      "id": "17d801d0-8c25-45a4-aa47-bb52e1c1e72f",
+      "inputs": {},
+      "label": "Nothing",
+      "operation": {
+        "color": [
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "type": "solid"
+      },
+      "version": 1
+    },
+    "58151910-abca-409b-98dd-360e99061608": {
+      "id": "58151910-abca-409b-98dd-360e99061608",
+      "inputs": {
+        "background": "17d801d0-8c25-45a4-aa47-bb52e1c1e72f",
+        "foreground": "01eb480f-2ef1-4d50-b60d-396e367a3aca"
+      },
+      "label": "Layer mix",
+      "operation": {
+        "mode": "normal",
+        "opacity": {
+          "expression": "1 - smoothstep([72a2805b-5c0b-462a-8024-9ccc81d3c83c].start + 0.1, [72a2805b-5c0b-462a-8024-9ccc81d3c83c].start + 0.45, time)",
+          "kind": "expression"
+        },
+        "type": "blend"
+      },
+      "version": 1
+    },
+    "600b0f25-bf4b-4ca7-b621-062dec85a2fb": {
+      "id": "600b0f25-bf4b-4ca7-b621-062dec85a2fb",
+      "inputs": {
+        "background": "d82bee1b-dc9d-4f79-93ca-9b0156f4869b",
+        "foreground": "01eb480f-2ef1-4d50-b60d-396e367a3aca"
+      },
+      "label": "Before · artwork on midnight",
+      "operation": {
+        "type": "merge"
+      },
+      "position": {
+        "x": 230.0,
+        "y": 145.0
+      },
+      "version": 1
+    },
+    "72a2805b-5c0b-462a-8024-9ccc81d3c83c": {
+      "id": "72a2805b-5c0b-462a-8024-9ccc81d3c83c",
+      "inputs": {
+        "emitter": "01eb480f-2ef1-4d50-b60d-396e367a3aca"
+      },
+      "label": "Dust",
+      "operation": {
+        "alignment": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "ambient": {
+          "kind": "constant",
+          "value": 0.20000000298023224
+        },
+        "bokeh": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "bounce": {
+          "kind": "constant",
+          "value": 0.6000000238418579
+        },
+        "burst": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "burst_colour": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "burst_life": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "burst_on_impact": false,
+        "burst_size": {
+          "kind": "constant",
+          "value": 0.6000000238418579
+        },
+        "burst_speed": {
+          "kind": "constant",
+          "value": 200.0
+        },
+        "burst_spread": {
+          "kind": "constant",
+          "value": 360.0
+        },
+        "camera": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "clump": {
+          "kind": "constant",
+          "value": 2.0
+        },
+        "clump_radius": {
+          "kind": "constant",
+          "value": 8.0
+        },
+        "cohesion": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "collide": false,
+        "colour": [
+          0.8999999761581421,
+          0.8799999952316284,
+          0.8500000238418579,
+          1.0
+        ],
+        "colour_over_life": null,
+        "colour_variation": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "density": {
+          "kind": "constant",
+          "value": 40000.0
+        },
+        "depth": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "direction": {
+          "kind": "constant",
+          "value": 90.0
+        },
+        "duration": {
+          "kind": "constant",
+          "value": 0.6000000238418579
+        },
+        "emit_from": null,
+        "end_colour": [
+          0.8999999761581421,
+          0.8799999952316284,
+          0.8500000238418579,
+          1.0
+        ],
+        "fade": {
+          "kind": "constant",
+          "value": 0.699999988079071
+        },
+        "field_flow": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "field_push": {
+          "kind": "constant",
+          "value": 400.0
+        },
+        "flock_radius": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "floor": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "friction": {
+          "kind": "constant",
+          "value": 0.5
+        },
+        "gather_on": null,
+        "glint_white": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "glow": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "grains": false,
+        "gravity": {
+          "kind": "constant",
+          "value": -40.0
+        },
+        "grow": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "height": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "history": 0,
+        "hold": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "homing": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "in_focus": false,
+        "inherit": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "life": {
+          "kind": "constant",
+          "value": 2.4000000953674316
+        },
+        "light_limit": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "link_distance": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "link_opacity": {
+          "kind": "constant",
+          "value": 0.6000000238418579
+        },
+        "link_width": {
+          "kind": "constant",
+          "value": 2.0
+        },
+        "lit": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "opacity_over_life": null,
+        "points": false,
+        "pull": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "pull_x": {
+          "kind": "constant",
+          "value": 1920.0
+        },
+        "pull_y": {
+          "kind": "constant",
+          "value": 1080.0
+        },
+        "rate": {
+          "kind": "constant",
+          "value": 300.0
+        },
+        "reach": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "release": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "release_life": {
+          "kind": "constant",
+          "value": 2.0
+        },
+        "ribbon_shading": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "scatter": {
+          "kind": "constant",
+          "value": 0.4000000059604645
+        },
+        "seed": 0,
+        "self_shadow": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "separation": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "shaded_by": null,
+        "shading": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "shutter": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "size": {
+          "kind": "constant",
+          "value": 2.0
+        },
+        "size_over_life": null,
+        "sparkle": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "sparkle_spread": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "sparkle_turn": {
+          "kind": "constant",
+          "value": 90.0
+        },
+        "speed": {
+          "kind": "constant",
+          "value": 70.0
+        },
+        "speed_over_life": null,
+        "spin": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "spread": {
+          "kind": "constant",
+          "value": 180.0
+        },
+        "sprite_columns": 1,
+        "sprite_play": "random",
+        "sprite_rate": {
+          "kind": "constant",
+          "value": 12.0
+        },
+        "sprite_rows": 1,
+        "start": {
+          "kind": "constant",
+          "value": 1.5
+        },
+        "streak": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "top_speed": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "towards": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "trail": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "trail_width": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "turbulence": {
+          "kind": "constant",
+          "value": 150.0
+        },
+        "turbulence_scale": {
+          "kind": "constant",
+          "value": 100.0
+        },
+        "type": "particles",
+        "variation": {
+          "kind": "constant",
+          "value": 0.8999999761581421
+        },
+        "vortex": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "width": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "wind": {
+          "kind": "constant",
+          "value": -260.0
+        },
+        "with_camera": false,
+        "x": {
+          "kind": "constant",
+          "value": 1920.0
+        },
+        "y": {
+          "kind": "constant",
+          "value": 1080.0
+        },
+        "z": {
+          "kind": "constant",
+          "value": 0.0
+        }
+      },
+      "version": 1
+    },
+    "8796ff11-ce19-4c97-a393-2fa84d5bd538": {
+      "id": "8796ff11-ce19-4c97-a393-2fa84d5bd538",
+      "inputs": {
+        "image": "b6757e89-b011-4034-9728-5a276e6306c3"
+      },
+      "label": "Artwork palette",
+      "operation": {
+        "high": [
+          1.600000023841858,
+          1.7999999523162842,
+          2.0,
+          1.0
+        ],
+        "low": [
+          0.30000001192092896,
+          0.44999998807907104,
+          0.800000011920929,
+          1.0
+        ],
+        "type": "colorize"
+      },
+      "position": {
+        "x": 690.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "b6757e89-b011-4034-9728-5a276e6306c3": {
+      "id": "b6757e89-b011-4034-9728-5a276e6306c3",
+      "inputs": {},
+      "label": "Vertical palette ramp",
+      "operation": {
+        "end_x": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "end_y": {
+          "kind": "constant",
+          "value": 720.0
+        },
+        "mode": "linear",
+        "start_x": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "start_y": {
+          "kind": "constant",
+          "value": 360.0
+        },
+        "type": "gradient"
+      },
+      "position": {
+        "x": 460.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "b8b37736-8fb6-4042-ad34-a108cd4e8572": {
+      "id": "b8b37736-8fb6-4042-ad34-a108cd4e8572",
+      "inputs": {
+        "image": "8796ff11-ce19-4c97-a393-2fa84d5bd538",
+        "mask": "05c93741-13b4-4727-b0a9-c45f03caeffd"
+      },
+      "label": "Color inside artwork",
+      "operation": {
+        "type": "mask"
+      },
+      "position": {
+        "x": 920.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "b9791993-d061-4882-abcb-644a4bc02aa3": {
+      "id": "b9791993-d061-4882-abcb-644a4bc02aa3",
+      "inputs": {
+        "background": "d82bee1b-dc9d-4f79-93ca-9b0156f4869b",
+        "foreground": "d06fd888-ada2-469e-b130-1af835f954c3"
+      },
+      "label": "Material title over neutral background",
+      "operation": {
+        "type": "merge"
+      },
+      "position": {
+        "x": 230.0,
+        "y": 290.0
+      },
+      "version": 1
+    },
+    "d06fd888-ada2-469e-b130-1af835f954c3": {
+      "id": "d06fd888-ada2-469e-b130-1af835f954c3",
+      "inputs": {
+        "background": "72a2805b-5c0b-462a-8024-9ccc81d3c83c",
+        "foreground": "58151910-abca-409b-98dd-360e99061608"
+      },
+      "label": "Layer mix",
+      "operation": {
+        "mode": "normal",
+        "opacity": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "type": "blend"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 500.0
+      },
+      "version": 1
+    },
+    "d82bee1b-dc9d-4f79-93ca-9b0156f4869b": {
+      "id": "d82bee1b-dc9d-4f79-93ca-9b0156f4869b",
+      "inputs": {},
+      "label": "Midnight background",
+      "operation": {
+        "color": [
+          0.0020000000949949026,
+          0.004000000189989805,
+          0.012000000104308128,
+          1.0
+        ],
+        "type": "solid"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "scene_background": true,
+      "version": 1
+    }
+  },
+  "output": "b9791993-d061-4882-abcb-644a4bc02aa3",
+  "saved_by": "0.1.0",
+  "schema": 1,
+  "width": 1920
+}

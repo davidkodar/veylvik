@@ -1,0 +1,768 @@
+{
+  "frame_count": 96,
+  "frame_rate": {
+    "rate": 1,
+    "ticks": 24
+  },
+  "groups": {
+    "ca7612fe-3174-4276-a18f-bab7c71f1602": {
+      "controls": {
+        "base_y": {
+          "default": {
+            "kind": "constant",
+            "value": 1080.0
+          },
+          "label": "Base Y",
+          "node": "65666ef4-04ee-4fa7-b899-679b09ba6522",
+          "parameter": "y"
+        },
+        "center_x": {
+          "default": {
+            "kind": "constant",
+            "value": 960.0
+          },
+          "label": "Center X",
+          "node": "65666ef4-04ee-4fa7-b899-679b09ba6522",
+          "parameter": "x"
+        },
+        "density": {
+          "default": {
+            "kind": "constant",
+            "value": 1.5
+          },
+          "label": "Density",
+          "node": "65666ef4-04ee-4fa7-b899-679b09ba6522",
+          "parameter": "density"
+        },
+        "flow_motion": {
+          "default": {
+            "keys": [
+              {
+                "time": {
+                  "rate": 1,
+                  "ticks": 0
+                },
+                "value": 0.0
+              },
+              {
+                "time": {
+                  "rate": 1,
+                  "ticks": 4
+                },
+                "value": 4.0
+              }
+            ],
+            "kind": "linear"
+          },
+          "label": "Flow motion",
+          "node": "65666ef4-04ee-4fa7-b899-679b09ba6522",
+          "parameter": "evolution"
+        },
+        "illumination": {
+          "default": {
+            "kind": "constant",
+            "value": 1.0
+          },
+          "label": "Illumination",
+          "node": "65666ef4-04ee-4fa7-b899-679b09ba6522",
+          "parameter": "lighting"
+        },
+        "turbulence_detail": {
+          "default": {
+            "kind": "constant",
+            "value": 1.0
+          },
+          "label": "Turbulence detail",
+          "node": "65666ef4-04ee-4fa7-b899-679b09ba6522",
+          "parameter": "detail"
+        },
+        "volume_height": {
+          "default": {
+            "kind": "constant",
+            "value": 720.0
+          },
+          "label": "Volume height",
+          "node": "65666ef4-04ee-4fa7-b899-679b09ba6522",
+          "parameter": "height"
+        },
+        "volume_width": {
+          "default": {
+            "kind": "constant",
+            "value": 2000.0
+          },
+          "label": "Volume width",
+          "node": "65666ef4-04ee-4fa7-b899-679b09ba6522",
+          "parameter": "width"
+        }
+      },
+      "id": "ca7612fe-3174-4276-a18f-bab7c71f1602",
+      "inputs": {
+        "input_1": {
+          "label": "Image",
+          "targets": [
+            {
+              "node": "d91c3688-49ee-4d78-8498-73fc16e8ef44",
+              "port": "background"
+            }
+          ]
+        }
+      },
+      "label": "Drifting Fog",
+      "members": [
+        "65666ef4-04ee-4fa7-b899-679b09ba6522",
+        "d91c3688-49ee-4d78-8498-73fc16e8ef44"
+      ],
+      "output": "d91c3688-49ee-4d78-8498-73fc16e8ef44"
+    }
+  },
+  "height": 1080,
+  "nodes": {
+    "0c384156-6688-40f6-ac59-c222b04ed0d8": {
+      "id": "0c384156-6688-40f6-ac59-c222b04ed0d8",
+      "inputs": {},
+      "label": "Sky gradient",
+      "operation": {
+        "end_x": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "end_y": {
+          "kind": "constant",
+          "value": 1080.0
+        },
+        "mode": "linear",
+        "start_x": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "start_y": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "type": "gradient"
+      },
+      "position": {
+        "x": 230.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "4c3ed1ca-22d5-4cf9-aed2-b9683c473dc7": {
+      "id": "4c3ed1ca-22d5-4cf9-aed2-b9683c473dc7",
+      "inputs": {
+        "background": "6a110f3b-0fdc-45f4-bdd4-683fe8949393",
+        "foreground": "cf0d08da-ebb4-4ea4-aa04-3fed7e35e82d"
+      },
+      "label": "Forest before atmosphere",
+      "operation": {
+        "type": "merge"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 290.0
+      },
+      "scene_background": true,
+      "version": 1
+    },
+    "63f4cf9b-2c38-4872-903f-9b6e0d32b180": {
+      "id": "63f4cf9b-2c38-4872-903f-9b6e0d32b180",
+      "inputs": {},
+      "label": "Deep cinematic background",
+      "operation": {
+        "color": [
+          0.0010000000474974513,
+          0.0020000000949949026,
+          0.006000000052154064,
+          1.0
+        ],
+        "type": "solid"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "65666ef4-04ee-4fa7-b899-679b09ba6522": {
+      "id": "65666ef4-04ee-4fa7-b899-679b09ba6522",
+      "inputs": {},
+      "label": "Turbulent atmospheric volume",
+      "operation": {
+        "density": {
+          "kind": "constant",
+          "value": 1.5
+        },
+        "detail": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "evolution": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": 0.0
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": 4.0
+            }
+          ],
+          "kind": "linear"
+        },
+        "height": {
+          "kind": "constant",
+          "value": 720.0
+        },
+        "kind": "drifting_fog",
+        "lighting": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "seed": 397,
+        "type": "atmosphere",
+        "width": {
+          "kind": "constant",
+          "value": 2000.0
+        },
+        "x": {
+          "kind": "constant",
+          "value": 960.0
+        },
+        "y": {
+          "kind": "constant",
+          "value": 1080.0
+        }
+      },
+      "version": 1
+    },
+    "6a110f3b-0fdc-45f4-bdd4-683fe8949393": {
+      "id": "6a110f3b-0fdc-45f4-bdd4-683fe8949393",
+      "inputs": {
+        "background": "893fc643-0e32-4a03-b352-8db0ec1c1b7e",
+        "foreground": "d9370f4d-574e-4cdb-b0dc-4ea84c3ae3d9"
+      },
+      "label": "Sky and horizon",
+      "operation": {
+        "type": "merge"
+      },
+      "position": {
+        "x": 230.0,
+        "y": 145.0
+      },
+      "version": 1
+    },
+    "893fc643-0e32-4a03-b352-8db0ec1c1b7e": {
+      "id": "893fc643-0e32-4a03-b352-8db0ec1c1b7e",
+      "inputs": {
+        "image": "0c384156-6688-40f6-ac59-c222b04ed0d8"
+      },
+      "label": "Sky gradient",
+      "operation": {
+        "high": [
+          0.5,
+          0.5799999833106995,
+          0.6299999952316284,
+          1.0
+        ],
+        "low": [
+          0.07999999821186066,
+          0.18000000715255737,
+          0.3199999928474426,
+          1.0
+        ],
+        "type": "colorize"
+      },
+      "position": {
+        "x": 460.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "9d04d0bb-812a-4259-bba0-c36b256b937f": {
+      "id": "9d04d0bb-812a-4259-bba0-c36b256b937f",
+      "inputs": {},
+      "label": "Trees behind fog",
+      "operation": {
+        "geometry": {
+          "commands": [
+            {
+              "command": "move",
+              "to": [
+                0.0,
+                820.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                -48.0,
+                970.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                48.0,
+                970.0
+              ]
+            },
+            {
+              "command": "close"
+            },
+            {
+              "command": "move",
+              "to": [
+                172.0,
+                776.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                124.0,
+                970.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                220.0,
+                970.0
+              ]
+            },
+            {
+              "command": "close"
+            },
+            {
+              "command": "move",
+              "to": [
+                344.0,
+                732.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                296.0,
+                970.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                392.0,
+                970.0
+              ]
+            },
+            {
+              "command": "close"
+            },
+            {
+              "command": "move",
+              "to": [
+                516.0,
+                820.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                468.0,
+                970.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                564.0,
+                970.0
+              ]
+            },
+            {
+              "command": "close"
+            },
+            {
+              "command": "move",
+              "to": [
+                688.0,
+                776.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                640.0,
+                970.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                736.0,
+                970.0
+              ]
+            },
+            {
+              "command": "close"
+            },
+            {
+              "command": "move",
+              "to": [
+                860.0,
+                732.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                812.0,
+                970.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                908.0,
+                970.0
+              ]
+            },
+            {
+              "command": "close"
+            },
+            {
+              "command": "move",
+              "to": [
+                1032.0,
+                820.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                984.0,
+                970.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                1080.0,
+                970.0
+              ]
+            },
+            {
+              "command": "close"
+            },
+            {
+              "command": "move",
+              "to": [
+                1204.0,
+                776.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                1156.0,
+                970.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                1252.0,
+                970.0
+              ]
+            },
+            {
+              "command": "close"
+            },
+            {
+              "command": "move",
+              "to": [
+                1376.0,
+                732.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                1328.0,
+                970.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                1424.0,
+                970.0
+              ]
+            },
+            {
+              "command": "close"
+            },
+            {
+              "command": "move",
+              "to": [
+                1548.0,
+                820.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                1500.0,
+                970.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                1596.0,
+                970.0
+              ]
+            },
+            {
+              "command": "close"
+            },
+            {
+              "command": "move",
+              "to": [
+                1720.0,
+                776.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                1672.0,
+                970.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                1768.0,
+                970.0
+              ]
+            },
+            {
+              "command": "close"
+            },
+            {
+              "command": "move",
+              "to": [
+                1892.0,
+                732.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                1844.0,
+                970.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                1940.0,
+                970.0
+              ]
+            },
+            {
+              "command": "close"
+            }
+          ],
+          "fill_rule": "non_zero"
+        },
+        "type": "path"
+      },
+      "position": {
+        "x": 460.0,
+        "y": 145.0
+      },
+      "version": 1
+    },
+    "aa78b6e7-33dc-48da-be90-b6b6f2d78d5d": {
+      "id": "aa78b6e7-33dc-48da-be90-b6b6f2d78d5d",
+      "inputs": {},
+      "label": "Distant terrain",
+      "operation": {
+        "geometry": {
+          "commands": [
+            {
+              "command": "move",
+              "to": [
+                0.0,
+                940.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                260.0,
+                840.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                520.0,
+                910.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                900.0,
+                780.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                1300.0,
+                900.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                1600.0,
+                800.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                1920.0,
+                900.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                1920.0,
+                1080.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                0.0,
+                1080.0
+              ]
+            },
+            {
+              "command": "close"
+            }
+          ],
+          "fill_rule": "non_zero"
+        },
+        "type": "path"
+      },
+      "position": {
+        "x": 690.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "cdd87da8-83be-4b7f-ad14-b78d58104c0c": {
+      "id": "cdd87da8-83be-4b7f-ad14-b78d58104c0c",
+      "inputs": {},
+      "label": "Tree silhouettes",
+      "operation": {
+        "color": [
+          0.00800000037997961,
+          0.02500000037252903,
+          0.027000000700354576,
+          1.0
+        ],
+        "type": "solid"
+      },
+      "position": {
+        "x": 690.0,
+        "y": 145.0
+      },
+      "version": 1
+    },
+    "cf0d08da-ebb4-4ea4-aa04-3fed7e35e82d": {
+      "id": "cf0d08da-ebb4-4ea4-aa04-3fed7e35e82d",
+      "inputs": {
+        "image": "cdd87da8-83be-4b7f-ad14-b78d58104c0c",
+        "mask": "9d04d0bb-812a-4259-bba0-c36b256b937f"
+      },
+      "label": "Forest depth",
+      "operation": {
+        "type": "mask"
+      },
+      "position": {
+        "x": 920.0,
+        "y": 145.0
+      },
+      "version": 1
+    },
+    "d91c3688-49ee-4d78-8498-73fc16e8ef44": {
+      "id": "d91c3688-49ee-4d78-8498-73fc16e8ef44",
+      "inputs": {
+        "background": "4c3ed1ca-22d5-4cf9-aed2-b9683c473dc7",
+        "foreground": "65666ef4-04ee-4fa7-b899-679b09ba6522"
+      },
+      "label": "Atmosphere over image",
+      "operation": {
+        "type": "merge"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 1500.0
+      },
+      "version": 1
+    },
+    "d9370f4d-574e-4cdb-b0dc-4ea84c3ae3d9": {
+      "id": "d9370f4d-574e-4cdb-b0dc-4ea84c3ae3d9",
+      "inputs": {
+        "image": "e3b3fd7f-e630-48ea-b6b5-0db6b0a6cf08",
+        "mask": "aa78b6e7-33dc-48da-be90-b6b6f2d78d5d"
+      },
+      "label": "Distant landscape",
+      "operation": {
+        "type": "mask"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 145.0
+      },
+      "version": 1
+    },
+    "e3b3fd7f-e630-48ea-b6b5-0db6b0a6cf08": {
+      "id": "e3b3fd7f-e630-48ea-b6b5-0db6b0a6cf08",
+      "inputs": {},
+      "label": "Terrain silhouette",
+      "operation": {
+        "color": [
+          0.02500000037252903,
+          0.04500000178813934,
+          0.052000001072883606,
+          1.0
+        ],
+        "type": "solid"
+      },
+      "position": {
+        "x": 920.0,
+        "y": 0.0
+      },
+      "version": 1
+    }
+  },
+  "output": "d91c3688-49ee-4d78-8498-73fc16e8ef44",
+  "saved_by": "0.1.0",
+  "schema": 1,
+  "width": 1920
+}

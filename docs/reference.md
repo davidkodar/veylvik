@@ -108,6 +108,11 @@ and frames are written one at a time. The manifest records format, color space a
 sequences use the same respective color and alpha rules as single-frame export;
 no video encoding or audio is included.
 
+**Project files** are JSON with a format number and the Veylvik that saved them; every
+project saved from Veylvik 0.1.0 on opens in every later Veylvik (older formats and
+older node versions are brought up to date as they are read; a file from a newer
+Veylvik is refused with a message that says so). See [format.md](format.md).
+
 MCP `render_sequence` takes `revision`, `path`, `start`, `end`, and optional `node`
 and `region`, plus `format` (`png` or `exr`) and `layers`. It runs synchronously and returns the sequence manifest.
 

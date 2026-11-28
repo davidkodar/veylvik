@@ -1,0 +1,941 @@
+{
+  "frame_count": 96,
+  "frame_rate": {
+    "rate": 1,
+    "ticks": 24
+  },
+  "groups": {
+    "e61ff47d-4d10-40c4-b64f-5dcbf9b022e3": {
+      "controls": {
+        "brightness": {
+          "default": {
+            "kind": "constant",
+            "value": 1.7999999523162842
+          },
+          "label": "Brightness",
+          "node": "702f0b88-8637-47aa-9fa5-d75411d1e8dd",
+          "parameter": "intensity"
+        },
+        "shine_angle": {
+          "default": {
+            "kind": "constant",
+            "value": 20.0
+          },
+          "label": "Shine angle",
+          "node": "702f0b88-8637-47aa-9fa5-d75411d1e8dd",
+          "parameter": "angle"
+        },
+        "shine_width": {
+          "default": {
+            "kind": "constant",
+            "value": 180.0
+          },
+          "label": "Shine width",
+          "node": "702f0b88-8637-47aa-9fa5-d75411d1e8dd",
+          "parameter": "width"
+        },
+        "sweep_position": {
+          "default": {
+            "keys": [
+              {
+                "time": {
+                  "rate": 1,
+                  "ticks": 0
+                },
+                "value": -960.0
+              },
+              {
+                "time": {
+                  "rate": 1,
+                  "ticks": 4
+                },
+                "value": 2880.0
+              }
+            ],
+            "kind": "linear"
+          },
+          "label": "Sweep position",
+          "node": "702f0b88-8637-47aa-9fa5-d75411d1e8dd",
+          "parameter": "x"
+        },
+        "vertical_center": {
+          "default": {
+            "kind": "constant",
+            "value": 540.0
+          },
+          "label": "Vertical center",
+          "node": "702f0b88-8637-47aa-9fa5-d75411d1e8dd",
+          "parameter": "y"
+        }
+      },
+      "id": "e61ff47d-4d10-40c4-b64f-5dcbf9b022e3",
+      "inputs": {
+        "input_1": {
+          "label": "Image",
+          "targets": [
+            {
+              "node": "702f0b88-8637-47aa-9fa5-d75411d1e8dd",
+              "port": "image"
+            }
+          ]
+        }
+      },
+      "label": "Metallic Shine",
+      "members": [
+        "702f0b88-8637-47aa-9fa5-d75411d1e8dd"
+      ],
+      "output": "702f0b88-8637-47aa-9fa5-d75411d1e8dd"
+    }
+  },
+  "height": 1080,
+  "nodes": {
+    "01e8279f-59fb-4fb3-af78-8a04def1b334": {
+      "id": "01e8279f-59fb-4fb3-af78-8a04def1b334",
+      "inputs": {},
+      "label": "GOLD · editable lettering",
+      "operation": {
+        "alignment": "center",
+        "box_height": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "content": "GOLD",
+        "features": "",
+        "font": {
+          "source": "display"
+        },
+        "language": "",
+        "line_height": {
+          "kind": "constant",
+          "value": 1.25
+        },
+        "padding": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "rotation": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "rtl": false,
+        "scale_x": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "scale_y": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "size": {
+          "kind": "constant",
+          "value": 400.0
+        },
+        "tracking": {
+          "kind": "constant",
+          "value": 24.0
+        },
+        "type": "text",
+        "typography": {
+          "anchor": null,
+          "auto_fit": false,
+          "duration": 0.5,
+          "ease": true,
+          "exit": null,
+          "linked_scale": false,
+          "motion": "none",
+          "spans": [],
+          "stagger": 0.03999999910593033,
+          "start": 0.0,
+          "unit": "character",
+          "vertical": "top"
+        },
+        "underline": false,
+        "wrap_width": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "x": {
+          "kind": "constant",
+          "value": 960.0
+        },
+        "y": {
+          "kind": "constant",
+          "value": 680.0
+        }
+      },
+      "position": {
+        "x": 230.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "09cc9907-cfb4-4556-a3eb-3d0cb785ae1f": {
+      "id": "09cc9907-cfb4-4556-a3eb-3d0cb785ae1f",
+      "inputs": {
+        "image": "662a6674-ebbf-4633-9f30-07a87714e3da",
+        "mask": "64856d55-b441-4262-8b4d-300a474e7446"
+      },
+      "label": "Atmosphere",
+      "operation": {
+        "type": "mask"
+      },
+      "position": {
+        "x": 920.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "10ba7251-5f70-498c-a341-af8367e5ce9a": {
+      "id": "10ba7251-5f70-498c-a341-af8367e5ce9a",
+      "inputs": {
+        "image": "21b249f3-232f-4e01-9af8-9936cafde1be",
+        "mask": "625437a5-b8a0-4696-bb60-cd6e36c5cc07"
+      },
+      "label": "Polished edge",
+      "operation": {
+        "type": "mask"
+      },
+      "position": {
+        "x": 690.0,
+        "y": 580.0
+      },
+      "version": 1
+    },
+    "17309daf-3b38-4d07-8877-85c5de7c95c9": {
+      "id": "17309daf-3b38-4d07-8877-85c5de7c95c9",
+      "inputs": {
+        "background": "25d08249-2828-4f3b-b730-be77753bf110",
+        "foreground": "2bcd1180-d8ab-4c7f-8f27-69dff3ae4703"
+      },
+      "label": "Original lettering over background",
+      "operation": {
+        "type": "merge"
+      },
+      "position": {
+        "x": 460.0,
+        "y": 725.0
+      },
+      "version": 1
+    },
+    "1ff7e72d-eed7-493d-9bed-701e161dba2a": {
+      "id": "1ff7e72d-eed7-493d-9bed-701e161dba2a",
+      "inputs": {},
+      "label": "Transparent depth",
+      "operation": {
+        "color": [
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "type": "solid"
+      },
+      "position": {
+        "x": 460.0,
+        "y": 145.0
+      },
+      "version": 1
+    },
+    "20dff122-2dad-4f1a-a8f1-57bba62d2114": {
+      "id": "20dff122-2dad-4f1a-a8f1-57bba62d2114",
+      "inputs": {
+        "image": "9f8ec9ca-24ff-4787-bd8b-79765d462405"
+      },
+      "label": "Extruded gold depth",
+      "operation": {
+        "type": "transform",
+        "x": {
+          "kind": "constant",
+          "value": 12.0
+        },
+        "y": {
+          "kind": "constant",
+          "value": 16.0
+        }
+      },
+      "position": {
+        "x": 460.0,
+        "y": 290.0
+      },
+      "version": 1
+    },
+    "21b249f3-232f-4e01-9af8-9936cafde1be": {
+      "id": "21b249f3-232f-4e01-9af8-9936cafde1be",
+      "inputs": {},
+      "label": "Bevel light",
+      "operation": {
+        "color": [
+          3.0,
+          1.899999976158142,
+          0.550000011920929,
+          1.0
+        ],
+        "type": "solid"
+      },
+      "position": {
+        "x": 460.0,
+        "y": 580.0
+      },
+      "version": 1
+    },
+    "25d08249-2828-4f3b-b730-be77753bf110": {
+      "id": "25d08249-2828-4f3b-b730-be77753bf110",
+      "inputs": {},
+      "label": "Deep cinematic background",
+      "operation": {
+        "color": [
+          0.0010000000474974513,
+          0.0020000000949949026,
+          0.006000000052154064,
+          1.0
+        ],
+        "type": "solid"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "scene_background": true,
+      "version": 1
+    },
+    "2bcd1180-d8ab-4c7f-8f27-69dff3ae4703": {
+      "id": "2bcd1180-d8ab-4c7f-8f27-69dff3ae4703",
+      "inputs": {
+        "background": "8280419f-7717-43b5-9bef-c314a32f9520",
+        "foreground": "99963b93-3490-446c-b7b9-8e0ba62481e3"
+      },
+      "label": "Isolated metallic lettering",
+      "operation": {
+        "type": "merge"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 725.0
+      },
+      "version": 1
+    },
+    "4ab2d17f-3c23-486b-8e27-be7959effd9b": {
+      "id": "4ab2d17f-3c23-486b-8e27-be7959effd9b",
+      "inputs": {
+        "background": "79533dfb-b883-4f36-825b-6eeb026301f2",
+        "foreground": "69f3108d-b9fa-45e0-b199-34300bdbe88f"
+      },
+      "label": "Layered depth",
+      "operation": {
+        "type": "merge"
+      },
+      "position": {
+        "x": 460.0,
+        "y": 435.0
+      },
+      "version": 1
+    },
+    "5c026334-560e-415d-b33a-6a72f301c24f": {
+      "id": "5c026334-560e-415d-b33a-6a72f301c24f",
+      "inputs": {
+        "background": "b6943f1d-3fcb-48d4-9657-630ffcd81b2f",
+        "foreground": "20dff122-2dad-4f1a-a8f1-57bba62d2114"
+      },
+      "label": "Layered depth",
+      "operation": {
+        "type": "merge"
+      },
+      "position": {
+        "x": 690.0,
+        "y": 290.0
+      },
+      "version": 1
+    },
+    "625437a5-b8a0-4696-bb60-cd6e36c5cc07": {
+      "id": "625437a5-b8a0-4696-bb60-cd6e36c5cc07",
+      "inputs": {
+        "mask": "01e8279f-59fb-4fb3-af78-8a04def1b334",
+        "other": "792ace17-2bb0-4faf-8471-1aa121a5bbe4"
+      },
+      "label": "Bevel edge",
+      "operation": {
+        "mode": "subtract",
+        "type": "combine_mask"
+      },
+      "position": {
+        "x": 230.0,
+        "y": 580.0
+      },
+      "version": 1
+    },
+    "64856d55-b441-4262-8b4d-300a474e7446": {
+      "id": "64856d55-b441-4262-8b4d-300a474e7446",
+      "inputs": {},
+      "label": "Atmosphere falloff",
+      "operation": {
+        "feather": {
+          "kind": "constant",
+          "value": 448.0
+        },
+        "radius_x": {
+          "kind": "constant",
+          "value": 640.0
+        },
+        "radius_y": {
+          "kind": "constant",
+          "value": 260.0
+        },
+        "type": "ellipse",
+        "x": {
+          "kind": "constant",
+          "value": 960.0
+        },
+        "y": {
+          "kind": "constant",
+          "value": 600.0
+        }
+      },
+      "position": {
+        "x": 690.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "662a6674-ebbf-4633-9f30-07a87714e3da": {
+      "id": "662a6674-ebbf-4633-9f30-07a87714e3da",
+      "inputs": {},
+      "label": "Atmosphere color",
+      "operation": {
+        "color": [
+          0.11999999731779099,
+          0.012000000104308128,
+          0.0010000000474974513,
+          1.0
+        ],
+        "type": "solid"
+      },
+      "position": {
+        "x": 460.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "69f3108d-b9fa-45e0-b199-34300bdbe88f": {
+      "id": "69f3108d-b9fa-45e0-b199-34300bdbe88f",
+      "inputs": {
+        "image": "9f8ec9ca-24ff-4787-bd8b-79765d462405"
+      },
+      "label": "Extruded gold depth",
+      "operation": {
+        "type": "transform",
+        "x": {
+          "kind": "constant",
+          "value": 6.0
+        },
+        "y": {
+          "kind": "constant",
+          "value": 8.0
+        }
+      },
+      "position": {
+        "x": 230.0,
+        "y": 435.0
+      },
+      "version": 1
+    },
+    "702f0b88-8637-47aa-9fa5-d75411d1e8dd": {
+      "id": "702f0b88-8637-47aa-9fa5-d75411d1e8dd",
+      "inputs": {
+        "image": "2bcd1180-d8ab-4c7f-8f27-69dff3ae4703"
+      },
+      "label": "Travelling specular reflection",
+      "operation": {
+        "angle": {
+          "kind": "constant",
+          "value": 20.0
+        },
+        "intensity": {
+          "kind": "constant",
+          "value": 1.7999999523162842
+        },
+        "type": "metallic_shine",
+        "width": {
+          "kind": "constant",
+          "value": 180.0
+        },
+        "x": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": -960.0
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": 2880.0
+            }
+          ],
+          "kind": "linear"
+        },
+        "y": {
+          "kind": "constant",
+          "value": 540.0
+        }
+      },
+      "position": {
+        "x": 0.0,
+        "y": 1500.0
+      },
+      "version": 1
+    },
+    "792ace17-2bb0-4faf-8471-1aa121a5bbe4": {
+      "id": "792ace17-2bb0-4faf-8471-1aa121a5bbe4",
+      "inputs": {
+        "image": "01e8279f-59fb-4fb3-af78-8a04def1b334"
+      },
+      "label": "Bevel offset",
+      "operation": {
+        "type": "transform",
+        "x": {
+          "kind": "constant",
+          "value": 4.0
+        },
+        "y": {
+          "kind": "constant",
+          "value": 6.0
+        }
+      },
+      "position": {
+        "x": 0.0,
+        "y": 580.0
+      },
+      "version": 1
+    },
+    "79533dfb-b883-4f36-825b-6eeb026301f2": {
+      "id": "79533dfb-b883-4f36-825b-6eeb026301f2",
+      "inputs": {
+        "background": "5c026334-560e-415d-b33a-6a72f301c24f",
+        "foreground": "c3fda935-4ef7-425a-acaf-b9994ca82162"
+      },
+      "label": "Layered depth",
+      "operation": {
+        "type": "merge"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 435.0
+      },
+      "version": 1
+    },
+    "7b832139-a213-487c-a3cb-f729788a6d2b": {
+      "id": "7b832139-a213-487c-a3cb-f729788a6d2b",
+      "inputs": {},
+      "label": "Bronze sides",
+      "operation": {
+        "color": [
+          0.1599999964237213,
+          0.04500000178813934,
+          0.003000000026077032,
+          1.0
+        ],
+        "type": "solid"
+      },
+      "position": {
+        "x": 690.0,
+        "y": 145.0
+      },
+      "version": 1
+    },
+    "8280419f-7717-43b5-9bef-c314a32f9520": {
+      "id": "8280419f-7717-43b5-9bef-c314a32f9520",
+      "inputs": {
+        "background": "4ab2d17f-3c23-486b-8e27-be7959effd9b",
+        "foreground": "99496063-7997-4073-ae7d-e224b8388166"
+      },
+      "label": "Layered depth",
+      "operation": {
+        "type": "merge"
+      },
+      "position": {
+        "x": 920.0,
+        "y": 435.0
+      },
+      "version": 1
+    },
+    "863019d6-f83a-4f41-9990-7d0bebb67318": {
+      "id": "863019d6-f83a-4f41-9990-7d0bebb67318",
+      "inputs": {
+        "background": "25d08249-2828-4f3b-b730-be77753bf110",
+        "foreground": "702f0b88-8637-47aa-9fa5-d75411d1e8dd"
+      },
+      "label": "Finished lettering over background",
+      "operation": {
+        "type": "merge"
+      },
+      "position": {
+        "x": 690.0,
+        "y": 725.0
+      },
+      "version": 1
+    },
+    "99496063-7997-4073-ae7d-e224b8388166": {
+      "id": "99496063-7997-4073-ae7d-e224b8388166",
+      "inputs": {
+        "image": "9f8ec9ca-24ff-4787-bd8b-79765d462405"
+      },
+      "label": "Extruded gold depth",
+      "operation": {
+        "type": "transform",
+        "x": {
+          "kind": "constant",
+          "value": 3.0
+        },
+        "y": {
+          "kind": "constant",
+          "value": 4.0
+        }
+      },
+      "position": {
+        "x": 690.0,
+        "y": 435.0
+      },
+      "version": 1
+    },
+    "99963b93-3490-446c-b7b9-8e0ba62481e3": {
+      "id": "99963b93-3490-446c-b7b9-8e0ba62481e3",
+      "inputs": {
+        "background": "b24c6c56-a55b-4c08-9f43-3cdc75b7ac9d",
+        "foreground": "10ba7251-5f70-498c-a341-af8367e5ce9a"
+      },
+      "label": "Gold bevel highlights",
+      "operation": {
+        "mode": "add",
+        "opacity": {
+          "kind": "constant",
+          "value": 0.800000011920929
+        },
+        "type": "blend"
+      },
+      "position": {
+        "x": 920.0,
+        "y": 580.0
+      },
+      "version": 1
+    },
+    "9f8ec9ca-24ff-4787-bd8b-79765d462405": {
+      "id": "9f8ec9ca-24ff-4787-bd8b-79765d462405",
+      "inputs": {
+        "image": "7b832139-a213-487c-a3cb-f729788a6d2b",
+        "mask": "01e8279f-59fb-4fb3-af78-8a04def1b334"
+      },
+      "label": "Metal side face",
+      "operation": {
+        "type": "mask"
+      },
+      "position": {
+        "x": 920.0,
+        "y": 145.0
+      },
+      "version": 1
+    },
+    "b24c6c56-a55b-4c08-9f43-3cdc75b7ac9d": {
+      "id": "b24c6c56-a55b-4c08-9f43-3cdc75b7ac9d",
+      "inputs": {
+        "image": "01e8279f-59fb-4fb3-af78-8a04def1b334"
+      },
+      "label": "Polished gold studio reflections",
+      "operation": {
+        "bevel": {
+          "kind": "constant",
+          "value": 10.0
+        },
+        "brush_angle": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "brushing": "auto",
+        "colours": null,
+        "emission": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "grain": {
+          "kind": "constant",
+          "value": 0.6499999761581421
+        },
+        "height_depth": {
+          "kind": "constant",
+          "value": 8.0
+        },
+        "imperfections": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "kind": "gold",
+        "lighting": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": 0.0
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 2
+              },
+              "value": 0.11999999731779099
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": 0.0
+            }
+          ],
+          "kind": "smooth"
+        },
+        "normal_directx": false,
+        "normal_strength": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "optics": null,
+        "ridges": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "roughness": {
+          "kind": "constant",
+          "value": 0.15000000596046448
+        },
+        "scale": {
+          "kind": "constant",
+          "value": 360.0
+        },
+        "shot": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "smooth_edges": true,
+        "studio": {
+          "ambient": 0.0,
+          "environment": 0.6499999761581421,
+          "environment_rotation": -45.0,
+          "lights": [
+            {
+              "colour": [
+                1.0,
+                0.9599999785423279,
+                0.8899999856948853
+              ],
+              "enabled": false,
+              "follow": false,
+              "intensity": {
+                "kind": "constant",
+                "value": 1.2000000476837158
+              },
+              "position": [
+                -3.0,
+                -0.699999988079071,
+                -1.0
+              ],
+              "rotation": [
+                0.0,
+                -105.0,
+                0.0
+              ],
+              "size": [
+                1.5,
+                4.0
+              ]
+            },
+            {
+              "colour": [
+                0.9599999785423279,
+                0.9800000190734863,
+                1.0
+              ],
+              "enabled": false,
+              "follow": false,
+              "intensity": {
+                "kind": "constant",
+                "value": 1.2000000476837158
+              },
+              "position": [
+                3.0,
+                -0.30000001192092896,
+                1.5
+              ],
+              "rotation": [
+                0.0,
+                50.0,
+                0.0
+              ],
+              "size": [
+                2.299999952316284,
+                3.200000047683716
+              ]
+            },
+            {
+              "colour": [
+                1.0,
+                0.9300000071525574,
+                0.800000011920929
+              ],
+              "enabled": false,
+              "follow": false,
+              "intensity": {
+                "kind": "constant",
+                "value": 3.200000047683716
+              },
+              "position": [
+                -2.799999952316284,
+                2.5999999046325684,
+                1.5
+              ],
+              "rotation": [
+                -30.0,
+                -45.0,
+                0.0
+              ],
+              "size": [
+                1.7999999523162842,
+                2.0
+              ]
+            },
+            {
+              "colour": [
+                1.0,
+                1.0,
+                1.0
+              ],
+              "enabled": false,
+              "follow": false,
+              "intensity": {
+                "kind": "constant",
+                "value": 0.44999998807907104
+              },
+              "position": [
+                0.0,
+                -4.0,
+                2.0
+              ],
+              "rotation": [
+                60.0,
+                0.0,
+                0.0
+              ],
+              "size": [
+                7.0,
+                4.0
+              ]
+            }
+          ]
+        },
+        "type": "material"
+      },
+      "position": {
+        "x": 230.0,
+        "y": 145.0
+      },
+      "version": 1
+    },
+    "b6943f1d-3fcb-48d4-9657-630ffcd81b2f": {
+      "id": "b6943f1d-3fcb-48d4-9657-630ffcd81b2f",
+      "inputs": {
+        "background": "1ff7e72d-eed7-493d-9bed-701e161dba2a",
+        "foreground": "ef3be2e3-b2ef-4e78-bcde-b7fc53ac9706"
+      },
+      "label": "Layered depth",
+      "operation": {
+        "type": "merge"
+      },
+      "position": {
+        "x": 230.0,
+        "y": 290.0
+      },
+      "version": 1
+    },
+    "c3fda935-4ef7-425a-acaf-b9994ca82162": {
+      "id": "c3fda935-4ef7-425a-acaf-b9994ca82162",
+      "inputs": {
+        "image": "9f8ec9ca-24ff-4787-bd8b-79765d462405"
+      },
+      "label": "Extruded gold depth",
+      "operation": {
+        "type": "transform",
+        "x": {
+          "kind": "constant",
+          "value": 9.0
+        },
+        "y": {
+          "kind": "constant",
+          "value": 12.0
+        }
+      },
+      "position": {
+        "x": 920.0,
+        "y": 290.0
+      },
+      "version": 1
+    },
+    "d37c1316-42bc-416a-ac52-ecf978990395": {
+      "id": "d37c1316-42bc-416a-ac52-ecf978990395",
+      "inputs": {
+        "background": "25d08249-2828-4f3b-b730-be77753bf110",
+        "foreground": "09cc9907-cfb4-4556-a3eb-3d0cb785ae1f"
+      },
+      "label": "Atmospheric light",
+      "operation": {
+        "mode": "add",
+        "opacity": {
+          "kind": "constant",
+          "value": 0.6000000238418579
+        },
+        "type": "blend"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 145.0
+      },
+      "version": 1
+    },
+    "ef3be2e3-b2ef-4e78-bcde-b7fc53ac9706": {
+      "id": "ef3be2e3-b2ef-4e78-bcde-b7fc53ac9706",
+      "inputs": {
+        "image": "9f8ec9ca-24ff-4787-bd8b-79765d462405"
+      },
+      "label": "Extruded gold depth",
+      "operation": {
+        "type": "transform",
+        "x": {
+          "kind": "constant",
+          "value": 15.0
+        },
+        "y": {
+          "kind": "constant",
+          "value": 20.0
+        }
+      },
+      "position": {
+        "x": 0.0,
+        "y": 290.0
+      },
+      "version": 1
+    }
+  },
+  "output": "863019d6-f83a-4f41-9990-7d0bebb67318",
+  "saved_by": "0.1.0",
+  "schema": 1,
+  "width": 1920
+}

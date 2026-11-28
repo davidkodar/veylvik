@@ -271,7 +271,7 @@ pub fn save_tracked(
         }
     }
     saved.validate()?;
-    let bytes = serde_json::to_vec_pretty(&saved)?;
+    let bytes = veylvik_document::format::write(&saved)?;
     if bytes.len() > veylvik_document::limits::MAX_DOCUMENT_BYTES {
         return Err("composition exceeds 16 MiB".into());
     }
@@ -658,9 +658,7 @@ impl FileStamp {
     pub fn load(path: &Path) -> Result<(Composition, Self)> {
         let path = path.canonicalize()?;
         let bytes = Self::read(&path)?;
-        let composition: Composition =
-            serde_json::from_slice(&bytes).map_err(|e| veylvik_document::explain_parse(&e))?;
-        composition.validate()?;
+        let composition = veylvik_document::format::read(&bytes)?;
         Ok((
             composition,
             Self {

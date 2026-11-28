@@ -1,0 +1,532 @@
+{
+  "frame_count": 96,
+  "frame_rate": {
+    "rate": 1,
+    "ticks": 24
+  },
+  "groups": {
+    "c106b517-48b0-47c5-ad6f-e8a9203be573": {
+      "controls": {
+        "angle": {
+          "default": {
+            "kind": "constant",
+            "value": 20.0
+          },
+          "label": "Angle",
+          "node": "c9aca20e-43ff-49b7-9433-3f9a62092c00",
+          "parameter": "p4"
+        },
+        "arms": {
+          "default": {
+            "kind": "constant",
+            "value": 1.0
+          },
+          "label": "Arms",
+          "node": "c9aca20e-43ff-49b7-9433-3f9a62092c00",
+          "parameter": "p7"
+        },
+        "blue": {
+          "default": {
+            "kind": "constant",
+            "value": 0.75
+          },
+          "label": "Blue",
+          "node": "c9aca20e-43ff-49b7-9433-3f9a62092c00",
+          "parameter": "p9"
+        },
+        "bright": {
+          "default": {
+            "kind": "constant",
+            "value": 1.0
+          },
+          "label": "Bright",
+          "node": "c9aca20e-43ff-49b7-9433-3f9a62092c00",
+          "parameter": "p10"
+        },
+        "bulge": {
+          "default": {
+            "kind": "constant",
+            "value": 1.0
+          },
+          "label": "Bulge",
+          "node": "c9aca20e-43ff-49b7-9433-3f9a62092c00",
+          "parameter": "p8"
+        },
+        "seed": {
+          "default": {
+            "kind": "constant",
+            "value": 3.0
+          },
+          "label": "Seed",
+          "node": "c9aca20e-43ff-49b7-9433-3f9a62092c00",
+          "parameter": "p11"
+        },
+        "size": {
+          "default": {
+            "kind": "constant",
+            "value": 0.44999998807907104
+          },
+          "label": "Size",
+          "node": "c9aca20e-43ff-49b7-9433-3f9a62092c00",
+          "parameter": "p3"
+        },
+        "tilt": {
+          "default": {
+            "kind": "constant",
+            "value": 55.0
+          },
+          "label": "Tilt",
+          "node": "c9aca20e-43ff-49b7-9433-3f9a62092c00",
+          "parameter": "p5"
+        },
+        "wind": {
+          "default": {
+            "kind": "constant",
+            "value": 2.5999999046325684
+          },
+          "label": "Wind",
+          "node": "c9aca20e-43ff-49b7-9433-3f9a62092c00",
+          "parameter": "p6"
+        },
+        "x": {
+          "default": {
+            "kind": "constant",
+            "value": 0.7200000286102295
+          },
+          "label": "X",
+          "node": "c9aca20e-43ff-49b7-9433-3f9a62092c00",
+          "parameter": "p1"
+        },
+        "y": {
+          "default": {
+            "kind": "constant",
+            "value": 0.30000001192092896
+          },
+          "label": "Y",
+          "node": "c9aca20e-43ff-49b7-9433-3f9a62092c00",
+          "parameter": "p2"
+        }
+      },
+      "id": "c106b517-48b0-47c5-ad6f-e8a9203be573",
+      "inputs": {
+        "input_1": {
+          "label": "Image",
+          "targets": [
+            {
+              "node": "58af2bf6-3a8c-4af2-889d-bc9572629c04",
+              "port": "background"
+            }
+          ]
+        }
+      },
+      "label": "Distant Galaxy",
+      "members": [
+        "58af2bf6-3a8c-4af2-889d-bc9572629c04",
+        "c9aca20e-43ff-49b7-9433-3f9a62092c00"
+      ],
+      "output": "58af2bf6-3a8c-4af2-889d-bc9572629c04"
+    }
+  },
+  "height": 1080,
+  "nodes": {
+    "0dba0eab-bcb2-4af6-a46b-7c9640f08bcd": {
+      "id": "0dba0eab-bcb2-4af6-a46b-7c9640f08bcd",
+      "inputs": {},
+      "label": "Vertical palette ramp",
+      "operation": {
+        "end_x": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "end_y": {
+          "kind": "constant",
+          "value": 720.0
+        },
+        "mode": "linear",
+        "start_x": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "start_y": {
+          "kind": "constant",
+          "value": 360.0
+        },
+        "type": "gradient"
+      },
+      "position": {
+        "x": 460.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "2b32e125-577e-47a4-8c5b-d97ddb25db77": {
+      "id": "2b32e125-577e-47a4-8c5b-d97ddb25db77",
+      "inputs": {},
+      "label": "Midnight background",
+      "operation": {
+        "color": [
+          0.0020000000949949026,
+          0.004000000189989805,
+          0.012000000104308128,
+          1.0
+        ],
+        "type": "solid"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "scene_background": true,
+      "version": 1
+    },
+    "3c2b27b6-3d7e-4f46-bc2c-482ed9ea2ba6": {
+      "id": "3c2b27b6-3d7e-4f46-bc2c-482ed9ea2ba6",
+      "inputs": {},
+      "label": "Editable vector artwork",
+      "operation": {
+        "alignment": "center",
+        "box_height": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "content": "FLOW",
+        "features": "",
+        "font": {
+          "source": "display"
+        },
+        "language": "",
+        "line_height": {
+          "kind": "constant",
+          "value": 1.25
+        },
+        "padding": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "rotation": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "rtl": false,
+        "scale_x": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "scale_y": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "size": {
+          "kind": "constant",
+          "value": 400.0
+        },
+        "tracking": {
+          "kind": "constant",
+          "value": 24.0
+        },
+        "type": "text",
+        "typography": {
+          "anchor": null,
+          "auto_fit": false,
+          "duration": 0.5,
+          "ease": true,
+          "exit": null,
+          "linked_scale": false,
+          "motion": "none",
+          "spans": [],
+          "stagger": 0.03999999910593033,
+          "start": 0.0,
+          "unit": "character",
+          "vertical": "top"
+        },
+        "underline": false,
+        "wrap_width": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "x": {
+          "kind": "constant",
+          "value": 960.0
+        },
+        "y": {
+          "kind": "constant",
+          "value": 680.0
+        }
+      },
+      "position": {
+        "x": 230.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "58af2bf6-3a8c-4af2-889d-bc9572629c04": {
+      "id": "58af2bf6-3a8c-4af2-889d-bc9572629c04",
+      "inputs": {
+        "background": "daea58e9-966b-4a87-8364-010328242101",
+        "foreground": "c9aca20e-43ff-49b7-9433-3f9a62092c00"
+      },
+      "label": "Galaxy over image",
+      "operation": {
+        "type": "merge"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 500.0
+      },
+      "version": 1
+    },
+    "a011ae42-9464-467d-a361-2b84f2a6d855": {
+      "id": "a011ae42-9464-467d-a361-2b84f2a6d855",
+      "inputs": {
+        "image": "a2f0c3b5-28a4-440d-aaf2-e9efaea8967f"
+      },
+      "label": "Artwork motion",
+      "operation": {
+        "pivot_x": {
+          "kind": "constant",
+          "value": 960.0
+        },
+        "pivot_y": {
+          "kind": "constant",
+          "value": 540.0
+        },
+        "rotation": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "scale_x": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": 0.9399999976158142
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 2
+              },
+              "value": 1.0399999618530273
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": 0.9399999976158142
+            }
+          ],
+          "kind": "smooth"
+        },
+        "scale_y": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": 0.9399999976158142
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 2
+              },
+              "value": 1.0399999618530273
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": 0.9399999976158142
+            }
+          ],
+          "kind": "smooth"
+        },
+        "type": "affine",
+        "x": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "y": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": 18.0
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 2
+              },
+              "value": -18.0
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": 18.0
+            }
+          ],
+          "kind": "smooth"
+        }
+      },
+      "position": {
+        "x": 0.0,
+        "y": 145.0
+      },
+      "version": 1
+    },
+    "a2f0c3b5-28a4-440d-aaf2-e9efaea8967f": {
+      "id": "a2f0c3b5-28a4-440d-aaf2-e9efaea8967f",
+      "inputs": {
+        "image": "def62b75-f444-46dd-abd7-587212c76ed7",
+        "mask": "3c2b27b6-3d7e-4f46-bc2c-482ed9ea2ba6"
+      },
+      "label": "Color inside artwork",
+      "operation": {
+        "type": "mask"
+      },
+      "position": {
+        "x": 920.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "c9aca20e-43ff-49b7-9433-3f9a62092c00": {
+      "id": "c9aca20e-43ff-49b7-9433-3f9a62092c00",
+      "inputs": {},
+      "label": "Galaxy",
+      "operation": {
+        "code": "// slider x 0 1 0.72\n// slider y 0 1 0.3\n// slider size 0.05 2 0.45\n// slider angle -180 180 20\n// slider tilt 0 88 55\n// slider wind 1 6 2.6\n// slider arms 0 1 1\n// slider bulge 0.2 3 1\n// slider blue 0 1 0.75\n// slider bright 0 4 1\n// slider seed 0 50 3\n\nfn hash(p: vec2<f32>) -> f32 {\n    // Steady at any size of p (a sine of a large number is not).\n    var q = fract(vec3<f32>(p.x, p.y, p.x) * 0.1031);\n    q += dot(q, q.yzx + vec3<f32>(33.33));\n    return fract((q.x + q.y) * q.z);\n}\nfn slope(i: vec2<f32>) -> vec2<f32> {\n    let turn = hash(i) * 6.2831853;\n    return vec2<f32>(cos(turn), sin(turn));\n}\n// Smooth noise about 0.5, from slopes at the grid's corners, so it has no facets.\nfn noise(p: vec2<f32>) -> f32 {\n    let i = floor(p);\n    let f = fract(p);\n    let w = f * f * f * (f * (f * 6.0 - 15.0) + 10.0);\n    let a = dot(slope(i), f);\n    let b = dot(slope(i + vec2<f32>(1.0, 0.0)), f - vec2<f32>(1.0, 0.0));\n    let c = dot(slope(i + vec2<f32>(0.0, 1.0)), f - vec2<f32>(0.0, 1.0));\n    let d = dot(slope(i + vec2<f32>(1.0, 1.0)), f - vec2<f32>(1.0, 1.0));\n    return clamp(0.5 + 0.75 * mix(mix(a, b, w.x), mix(c, d, w.x), w.y), 0.0, 1.0);\n}\n// A far galaxy as a telescope shows it: faint, soft and without an edge. Open ragged\n// arms (arms 0 gives an elliptical), dust on the arms' inner sides, a small warm bulge,\n// and for a galaxy seen edge on a dark lane across it. x and y place its middle as\n// fractions of the frame; size is its radius as a fraction of the frame's height.\nfn shade(at: vec2<f32>) -> vec4<f32> {\n    let away = (at - size * vec2<f32>(u.x, u.y)) / (size.y * u.size);\n    let turn = radians(u.angle);\n    let flat = vec2<f32>(away.x * cos(turn) + away.y * sin(turn), away.y * cos(turn) - away.x * sin(turn));\n    let p = vec2<f32>(flat.x, flat.y / cos(radians(u.tilt)));\n    let r = length(p);\n    if r > 1.0 {\n        return vec4<f32>(0.0);\n    }\n    let around = atan2(p.y, p.x);\n    var cloud = 0.0;\n    var clumps = 0.0;\n    var scale = 1.0;\n    // Each finer layer of noise is turned against the one before, so no grid shows.\n    var q = p;\n    for (var k = 0; k < 5; k++) {\n        cloud += noise(q * 3.0 * scale + vec2<f32>(u.seed * 7.0)) / scale;\n        clumps += noise(q * 14.0 * scale + vec2<f32>(u.seed * 3.0)) / scale;\n        scale *= 2.0;\n        q = vec2<f32>(q.x * 0.7986 - q.y * 0.6018, q.x * 0.6018 + q.y * 0.7986);\n    }\n    cloud = cloud / 1.94;\n    clumps = clumps / 1.94;\n    let phase = 2.0 * (around - u.wind * log(r + 0.03)) + (cloud - 0.5) * 5.0;\n    let ridge = 0.5 + 0.5 * cos(phase);\n    let reach = smoothstep(0.03, 0.14, r) * smoothstep(0.85, 0.3, r);\n    let arm = ridge * ridge * reach * u.arms;\n    let lane = pow(0.5 + 0.5 * cos(phase + 1.0), 4.0) * reach * u.arms;\n    let disc = exp(-r * 4.6);\n    let old = disc * mix(1.0, 0.3, u.arms) + exp(-r * 1.9) * 0.035;\n    let young = disc * arm * (0.25 + 1.5 * clumps * clumps) * 2.6;\n    let dust = 1.0 - 0.7 * lane * (0.4 + 0.6 * clumps);\n    let middle = length(flat * vec2<f32>(1.0, 1.5)) / u.bulge;\n    let bulge = exp(-middle * 22.0) * 1.6 + exp(-middle * middle * 500.0) * 1.4;\n    let edge_on = smoothstep(68.0, 84.0, u.tilt);\n    let band = 1.0 - 0.85 * edge_on * exp(-pow(flat.y / 0.012, 2.0)) * smoothstep(0.7, 0.1, abs(flat.x))\n        * (0.6 + 0.4 * noise(vec2<f32>(flat.x * 40.0, u.seed)));\n    let warm = vec3<f32>(1.0, 0.80, 0.58);\n    let cool = mix(vec3<f32>(0.95, 0.88, 0.80), vec3<f32>(0.55, 0.70, 1.0), u.blue);\n    let knots = pow(clumps, 7.0) * arm * disc * 14.0;\n    let light = (warm * (old * 0.55 + bulge) + cool * young + vec3<f32>(1.0, 0.45, 0.6) * knots * 0.3)\n        * dust * band * u.bright * smoothstep(0.95, 0.25, r);\n    let alpha = clamp(max(light.r, max(light.g, light.b)), 0.0, 1.0);\n    return vec4<f32>(light, alpha);\n}\n",
+        "follow": null,
+        "p1": {
+          "kind": "constant",
+          "value": 0.7200000286102295
+        },
+        "p10": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "p11": {
+          "kind": "constant",
+          "value": 3.0
+        },
+        "p12": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "p13": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "p14": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "p15": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "p16": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "p2": {
+          "kind": "constant",
+          "value": 0.30000001192092896
+        },
+        "p3": {
+          "kind": "constant",
+          "value": 0.44999998807907104
+        },
+        "p4": {
+          "kind": "constant",
+          "value": 20.0
+        },
+        "p5": {
+          "kind": "constant",
+          "value": 55.0
+        },
+        "p6": {
+          "kind": "constant",
+          "value": 2.5999999046325684
+        },
+        "p7": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "p8": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "p9": {
+          "kind": "constant",
+          "value": 0.75
+        },
+        "type": "shader"
+      },
+      "version": 1
+    },
+    "daea58e9-966b-4a87-8364-010328242101": {
+      "id": "daea58e9-966b-4a87-8364-010328242101",
+      "inputs": {
+        "background": "2b32e125-577e-47a4-8c5b-d97ddb25db77",
+        "foreground": "a011ae42-9464-467d-a361-2b84f2a6d855"
+      },
+      "label": "Before · artwork on midnight",
+      "operation": {
+        "type": "merge"
+      },
+      "position": {
+        "x": 230.0,
+        "y": 145.0
+      },
+      "version": 1
+    },
+    "def62b75-f444-46dd-abd7-587212c76ed7": {
+      "id": "def62b75-f444-46dd-abd7-587212c76ed7",
+      "inputs": {
+        "image": "0dba0eab-bcb2-4af6-a46b-7c9640f08bcd"
+      },
+      "label": "Artwork palette",
+      "operation": {
+        "high": [
+          1.600000023841858,
+          1.7999999523162842,
+          2.0,
+          1.0
+        ],
+        "low": [
+          0.30000001192092896,
+          0.44999998807907104,
+          0.800000011920929,
+          1.0
+        ],
+        "type": "colorize"
+      },
+      "position": {
+        "x": 690.0,
+        "y": 0.0
+      },
+      "version": 1
+    }
+  },
+  "output": "58af2bf6-3a8c-4af2-889d-bc9572629c04",
+  "saved_by": "0.1.0",
+  "schema": 1,
+  "width": 1920
+}

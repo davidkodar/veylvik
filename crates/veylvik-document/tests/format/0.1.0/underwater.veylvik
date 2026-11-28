@@ -1,0 +1,589 @@
+{
+  "frame_count": 96,
+  "frame_rate": {
+    "rate": 1,
+    "ticks": 24
+  },
+  "groups": {
+    "2fa98ebe-07b3-43b3-959c-236befa84647": {
+      "controls": {
+        "amount": {
+          "default": {
+            "kind": "constant",
+            "value": 1.0
+          },
+          "label": "Amount",
+          "node": "02657b7f-28e3-485e-9bb3-f626d0694622",
+          "parameter": "opacity"
+        },
+        "flow_animation": {
+          "default": {
+            "keys": [
+              {
+                "time": {
+                  "rate": 1,
+                  "ticks": 0
+                },
+                "value": 0.0
+              },
+              {
+                "time": {
+                  "rate": 1,
+                  "ticks": 2
+                },
+                "value": 0.800000011920929
+              },
+              {
+                "time": {
+                  "rate": 1,
+                  "ticks": 4
+                },
+                "value": 0.0
+              }
+            ],
+            "kind": "smooth"
+          },
+          "label": "Flow animation",
+          "node": "b56de1e4-4492-49b7-9c50-cf748fbc8a1b",
+          "parameter": "evolution"
+        },
+        "horizontal_refraction": {
+          "default": {
+            "kind": "constant",
+            "value": 48.0
+          },
+          "label": "Horizontal refraction",
+          "node": "28358ab5-b7ba-4dd6-b1bf-555ca217aa86",
+          "parameter": "x"
+        },
+        "texture_size": {
+          "default": {
+            "kind": "constant",
+            "value": 260.0
+          },
+          "label": "Texture size",
+          "node": "b56de1e4-4492-49b7-9c50-cf748fbc8a1b",
+          "parameter": "scale"
+        },
+        "vertical_refraction": {
+          "default": {
+            "kind": "constant",
+            "value": 28.0
+          },
+          "label": "Vertical refraction",
+          "node": "28358ab5-b7ba-4dd6-b1bf-555ca217aa86",
+          "parameter": "y"
+        }
+      },
+      "id": "2fa98ebe-07b3-43b3-959c-236befa84647",
+      "inputs": {
+        "input_1": {
+          "label": "Image",
+          "targets": [
+            {
+              "node": "02657b7f-28e3-485e-9bb3-f626d0694622",
+              "port": "background"
+            },
+            {
+              "node": "28358ab5-b7ba-4dd6-b1bf-555ca217aa86",
+              "port": "image"
+            }
+          ]
+        }
+      },
+      "label": "Underwater",
+      "members": [
+        "02657b7f-28e3-485e-9bb3-f626d0694622",
+        "28358ab5-b7ba-4dd6-b1bf-555ca217aa86",
+        "34a32223-4c16-456c-bd2f-c7fe528b75e2",
+        "4ef755a5-c199-4a55-b6a4-729289b7d8cb",
+        "a48929ce-a476-487c-b45f-dd421a800f1e",
+        "b56de1e4-4492-49b7-9c50-cf748fbc8a1b",
+        "f15f085f-67ed-4199-9302-99a7ba068ed4",
+        "fad3169a-5dd2-463e-aa9d-673ef829752f"
+      ],
+      "output": "02657b7f-28e3-485e-9bb3-f626d0694622"
+    }
+  },
+  "height": 1080,
+  "nodes": {
+    "02657b7f-28e3-485e-9bb3-f626d0694622": {
+      "id": "02657b7f-28e3-485e-9bb3-f626d0694622",
+      "inputs": {
+        "background": "b69f044b-b56c-4281-88e8-be86e5b1ff29",
+        "foreground": "fad3169a-5dd2-463e-aa9d-673ef829752f"
+      },
+      "label": "Layer mix",
+      "operation": {
+        "mode": "normal",
+        "opacity": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "type": "blend"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 500.0
+      },
+      "version": 1
+    },
+    "0aa240c5-4176-4f38-a05e-574e0ed4cb41": {
+      "id": "0aa240c5-4176-4f38-a05e-574e0ed4cb41",
+      "inputs": {
+        "image": "4bb8608f-a11a-4ab8-bf72-c91ed6cca1f7"
+      },
+      "label": "Artwork palette",
+      "operation": {
+        "high": [
+          1.600000023841858,
+          1.7999999523162842,
+          2.0,
+          1.0
+        ],
+        "low": [
+          0.30000001192092896,
+          0.44999998807907104,
+          0.800000011920929,
+          1.0
+        ],
+        "type": "colorize"
+      },
+      "position": {
+        "x": 690.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "28358ab5-b7ba-4dd6-b1bf-555ca217aa86": {
+      "id": "28358ab5-b7ba-4dd6-b1bf-555ca217aa86",
+      "inputs": {
+        "image": "b69f044b-b56c-4281-88e8-be86e5b1ff29",
+        "map": "f15f085f-67ed-4199-9302-99a7ba068ed4"
+      },
+      "label": "Refraction",
+      "operation": {
+        "type": "displace",
+        "x": {
+          "kind": "constant",
+          "value": 48.0
+        },
+        "y": {
+          "kind": "constant",
+          "value": 28.0
+        }
+      },
+      "version": 1
+    },
+    "34a32223-4c16-456c-bd2f-c7fe528b75e2": {
+      "id": "34a32223-4c16-456c-bd2f-c7fe528b75e2",
+      "inputs": {
+        "image": "a48929ce-a476-487c-b45f-dd421a800f1e"
+      },
+      "label": "Diffusion",
+      "operation": {
+        "filter": "box",
+        "radius": {
+          "kind": "constant",
+          "value": 12.0
+        },
+        "type": "blur"
+      },
+      "version": 1
+    },
+    "4bb8608f-a11a-4ab8-bf72-c91ed6cca1f7": {
+      "id": "4bb8608f-a11a-4ab8-bf72-c91ed6cca1f7",
+      "inputs": {},
+      "label": "Vertical palette ramp",
+      "operation": {
+        "end_x": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "end_y": {
+          "kind": "constant",
+          "value": 720.0
+        },
+        "mode": "linear",
+        "start_x": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "start_y": {
+          "kind": "constant",
+          "value": 360.0
+        },
+        "type": "gradient"
+      },
+      "position": {
+        "x": 460.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "4ef755a5-c199-4a55-b6a4-729289b7d8cb": {
+      "id": "4ef755a5-c199-4a55-b6a4-729289b7d8cb",
+      "inputs": {},
+      "label": "Frame coverage",
+      "operation": {
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "type": "solid"
+      },
+      "version": 1
+    },
+    "90b9a65b-8538-4491-a314-7c4b4e5f25e4": {
+      "id": "90b9a65b-8538-4491-a314-7c4b4e5f25e4",
+      "inputs": {},
+      "label": "Editable vector artwork",
+      "operation": {
+        "alignment": "center",
+        "box_height": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "content": "FLOW",
+        "features": "",
+        "font": {
+          "source": "display"
+        },
+        "language": "",
+        "line_height": {
+          "kind": "constant",
+          "value": 1.25
+        },
+        "padding": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "rotation": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "rtl": false,
+        "scale_x": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "scale_y": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "size": {
+          "kind": "constant",
+          "value": 400.0
+        },
+        "tracking": {
+          "kind": "constant",
+          "value": 24.0
+        },
+        "type": "text",
+        "typography": {
+          "anchor": null,
+          "auto_fit": false,
+          "duration": 0.5,
+          "ease": true,
+          "exit": null,
+          "linked_scale": false,
+          "motion": "none",
+          "spans": [],
+          "stagger": 0.03999999910593033,
+          "start": 0.0,
+          "unit": "character",
+          "vertical": "top"
+        },
+        "underline": false,
+        "wrap_width": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "x": {
+          "kind": "constant",
+          "value": 960.0
+        },
+        "y": {
+          "kind": "constant",
+          "value": 680.0
+        }
+      },
+      "position": {
+        "x": 230.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "99500cba-a44f-49a4-a5f0-f1c946b0ce34": {
+      "id": "99500cba-a44f-49a4-a5f0-f1c946b0ce34",
+      "inputs": {
+        "image": "cce17e76-730e-41ab-8098-1e8e28a03a3e"
+      },
+      "label": "Artwork motion",
+      "operation": {
+        "pivot_x": {
+          "kind": "constant",
+          "value": 960.0
+        },
+        "pivot_y": {
+          "kind": "constant",
+          "value": 540.0
+        },
+        "rotation": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "scale_x": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": 0.9399999976158142
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 2
+              },
+              "value": 1.0399999618530273
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": 0.9399999976158142
+            }
+          ],
+          "kind": "smooth"
+        },
+        "scale_y": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": 0.9399999976158142
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 2
+              },
+              "value": 1.0399999618530273
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": 0.9399999976158142
+            }
+          ],
+          "kind": "smooth"
+        },
+        "type": "affine",
+        "x": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "y": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": 18.0
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 2
+              },
+              "value": -18.0
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": 18.0
+            }
+          ],
+          "kind": "smooth"
+        }
+      },
+      "position": {
+        "x": 0.0,
+        "y": 145.0
+      },
+      "version": 1
+    },
+    "a48929ce-a476-487c-b45f-dd421a800f1e": {
+      "id": "a48929ce-a476-487c-b45f-dd421a800f1e",
+      "inputs": {
+        "image": "4ef755a5-c199-4a55-b6a4-729289b7d8cb"
+      },
+      "label": "Protected boundary",
+      "operation": {
+        "radius": {
+          "kind": "constant",
+          "value": -64.0
+        },
+        "type": "morphology"
+      },
+      "version": 1
+    },
+    "b56de1e4-4492-49b7-9c50-cf748fbc8a1b": {
+      "id": "b56de1e4-4492-49b7-9c50-cf748fbc8a1b",
+      "inputs": {},
+      "label": "Flow field",
+      "operation": {
+        "evolution": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": 0.0
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 2
+              },
+              "value": 0.800000011920929
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": 0.0
+            }
+          ],
+          "kind": "smooth"
+        },
+        "octaves": {
+          "kind": "constant",
+          "value": 3.0
+        },
+        "roughness": {
+          "kind": "constant",
+          "value": 0.5
+        },
+        "scale": {
+          "kind": "constant",
+          "value": 260.0
+        },
+        "seed": 83,
+        "type": "fractal_noise"
+      },
+      "version": 1
+    },
+    "b69f044b-b56c-4281-88e8-be86e5b1ff29": {
+      "id": "b69f044b-b56c-4281-88e8-be86e5b1ff29",
+      "inputs": {
+        "background": "bd565341-b2ad-4ac6-9902-de876c7deac9",
+        "foreground": "99500cba-a44f-49a4-a5f0-f1c946b0ce34"
+      },
+      "label": "Before · artwork on midnight",
+      "operation": {
+        "type": "merge"
+      },
+      "position": {
+        "x": 230.0,
+        "y": 145.0
+      },
+      "version": 1
+    },
+    "bd565341-b2ad-4ac6-9902-de876c7deac9": {
+      "id": "bd565341-b2ad-4ac6-9902-de876c7deac9",
+      "inputs": {},
+      "label": "Midnight background",
+      "operation": {
+        "color": [
+          0.0020000000949949026,
+          0.004000000189989805,
+          0.012000000104308128,
+          1.0
+        ],
+        "type": "solid"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "scene_background": true,
+      "version": 1
+    },
+    "cce17e76-730e-41ab-8098-1e8e28a03a3e": {
+      "id": "cce17e76-730e-41ab-8098-1e8e28a03a3e",
+      "inputs": {
+        "image": "0aa240c5-4176-4f38-a05e-574e0ed4cb41",
+        "mask": "90b9a65b-8538-4491-a314-7c4b4e5f25e4"
+      },
+      "label": "Color inside artwork",
+      "operation": {
+        "type": "mask"
+      },
+      "position": {
+        "x": 920.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "f15f085f-67ed-4199-9302-99a7ba068ed4": {
+      "id": "f15f085f-67ed-4199-9302-99a7ba068ed4",
+      "inputs": {
+        "image": "b56de1e4-4492-49b7-9c50-cf748fbc8a1b",
+        "mask": "34a32223-4c16-456c-bd2f-c7fe528b75e2"
+      },
+      "label": "Masked detail",
+      "operation": {
+        "type": "mask"
+      },
+      "version": 1
+    },
+    "fad3169a-5dd2-463e-aa9d-673ef829752f": {
+      "id": "fad3169a-5dd2-463e-aa9d-673ef829752f",
+      "inputs": {
+        "image": "28358ab5-b7ba-4dd6-b1bf-555ca217aa86"
+      },
+      "label": "Palette",
+      "operation": {
+        "high": [
+          0.15000000596046448,
+          0.8500000238418579,
+          1.2999999523162842,
+          1.0
+        ],
+        "low": [
+          0.0,
+          0.00800000037997961,
+          0.017999999225139618,
+          1.0
+        ],
+        "type": "colorize"
+      },
+      "version": 1
+    }
+  },
+  "output": "02657b7f-28e3-485e-9bb3-f626d0694622",
+  "saved_by": "0.1.0",
+  "schema": 1,
+  "width": 1920
+}

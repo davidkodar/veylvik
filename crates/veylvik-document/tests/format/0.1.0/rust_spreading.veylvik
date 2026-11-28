@@ -1,0 +1,851 @@
+{
+  "frame_count": 96,
+  "frame_rate": {
+    "rate": 1,
+    "ticks": 24
+  },
+  "groups": {
+    "48dba830-c922-42df-afd8-9f137002bdcc": {
+      "controls": {
+        "bevel_width": {
+          "default": {
+            "kind": "constant",
+            "value": 10.0
+          },
+          "label": "Bevel width",
+          "node": "040bf771-1567-4e1e-b723-71d9c4ba4418",
+          "parameter": "bevel"
+        },
+        "dirt": {
+          "default": {
+            "kind": "constant",
+            "value": 0.25
+          },
+          "label": "Dirt",
+          "node": "53ca5b76-fd89-4b04-a690-3bfa50eeaba3",
+          "parameter": "dirt"
+        },
+        "grain_strength": {
+          "default": {
+            "kind": "constant",
+            "value": 0.6499999761581421
+          },
+          "label": "Grain strength",
+          "node": "040bf771-1567-4e1e-b723-71d9c4ba4418",
+          "parameter": "grain"
+        },
+        "patch_size": {
+          "default": {
+            "kind": "constant",
+            "value": 220.0
+          },
+          "label": "Patch size",
+          "node": "53ca5b76-fd89-4b04-a690-3bfa50eeaba3",
+          "parameter": "scale"
+        },
+        "reflection_motion": {
+          "default": {
+            "keys": [
+              {
+                "time": {
+                  "rate": 1,
+                  "ticks": 0
+                },
+                "value": 0.0
+              },
+              {
+                "time": {
+                  "rate": 1,
+                  "ticks": 2
+                },
+                "value": 0.11999999731779099
+              },
+              {
+                "time": {
+                  "rate": 1,
+                  "ticks": 4
+                },
+                "value": 0.0
+              }
+            ],
+            "kind": "smooth"
+          },
+          "label": "Reflection motion",
+          "node": "040bf771-1567-4e1e-b723-71d9c4ba4418",
+          "parameter": "lighting"
+        },
+        "roughness": {
+          "default": {
+            "kind": "constant",
+            "value": 0.30000001192092896
+          },
+          "label": "Roughness",
+          "node": "040bf771-1567-4e1e-b723-71d9c4ba4418",
+          "parameter": "roughness"
+        },
+        "rust": {
+          "default": {
+            "keys": [
+              {
+                "time": {
+                  "rate": 1,
+                  "ticks": 0
+                },
+                "value": 0.0
+              },
+              {
+                "time": {
+                  "rate": 1,
+                  "ticks": 2
+                },
+                "value": 0.8999999761581421
+              },
+              {
+                "time": {
+                  "rate": 1,
+                  "ticks": 4
+                },
+                "value": 0.0
+              }
+            ],
+            "kind": "smooth"
+          },
+          "label": "Rust",
+          "node": "53ca5b76-fd89-4b04-a690-3bfa50eeaba3",
+          "parameter": "amount"
+        },
+        "texture_scale": {
+          "default": {
+            "kind": "constant",
+            "value": 360.0
+          },
+          "label": "Texture scale",
+          "node": "040bf771-1567-4e1e-b723-71d9c4ba4418",
+          "parameter": "scale"
+        }
+      },
+      "id": "48dba830-c922-42df-afd8-9f137002bdcc",
+      "inputs": {
+        "input_1": {
+          "label": "Image",
+          "targets": [
+            {
+              "node": "040bf771-1567-4e1e-b723-71d9c4ba4418",
+              "port": "image"
+            }
+          ]
+        }
+      },
+      "label": "Rust Spreading",
+      "members": [
+        "040bf771-1567-4e1e-b723-71d9c4ba4418",
+        "53ca5b76-fd89-4b04-a690-3bfa50eeaba3"
+      ],
+      "output": "53ca5b76-fd89-4b04-a690-3bfa50eeaba3"
+    }
+  },
+  "height": 1080,
+  "nodes": {
+    "040bf771-1567-4e1e-b723-71d9c4ba4418": {
+      "id": "040bf771-1567-4e1e-b723-71d9c4ba4418",
+      "inputs": {
+        "image": "f0646bd8-52d1-40ea-958a-2c5e51ba20b2"
+      },
+      "label": "Surface grain, bevel and reflection",
+      "operation": {
+        "bevel": {
+          "kind": "constant",
+          "value": 10.0
+        },
+        "brush_angle": {
+          "kind": "constant",
+          "value": 65.0
+        },
+        "brushing": "directional",
+        "colours": null,
+        "emission": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "grain": {
+          "kind": "constant",
+          "value": 0.6499999761581421
+        },
+        "height_depth": {
+          "kind": "constant",
+          "value": 8.0
+        },
+        "imperfections": {
+          "kind": "constant",
+          "value": 0.30000001192092896
+        },
+        "kind": "aluminium",
+        "lighting": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": 0.0
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 2
+              },
+              "value": 0.11999999731779099
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": 0.0
+            }
+          ],
+          "kind": "smooth"
+        },
+        "normal_directx": false,
+        "normal_strength": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "optics": {
+          "ior": 1.5,
+          "metallic": true,
+          "reflectance": [
+            0.5600000023841858,
+            0.5699999928474426,
+            0.5799999833106995
+          ]
+        },
+        "ridges": {
+          "kind": "constant",
+          "value": 0.6000000238418579
+        },
+        "roughness": {
+          "kind": "constant",
+          "value": 0.30000001192092896
+        },
+        "scale": {
+          "kind": "constant",
+          "value": 360.0
+        },
+        "shot": {
+          "kind": "constant",
+          "value": 0.6000000238418579
+        },
+        "smooth_edges": true,
+        "studio": {
+          "ambient": 0.0,
+          "environment": 0.3499999940395355,
+          "environment_rotation": -45.0,
+          "lights": [
+            {
+              "colour": [
+                1.0,
+                0.8999999761581421,
+                0.7200000286102295
+              ],
+              "enabled": true,
+              "follow": false,
+              "intensity": {
+                "kind": "constant",
+                "value": 2.4000000953674316
+              },
+              "position": [
+                -2.5,
+                -0.800000011920929,
+                3.0
+              ],
+              "rotation": [
+                0.0,
+                0.0,
+                -14.0
+              ],
+              "size": [
+                7.0,
+                0.07000000029802322
+              ]
+            },
+            {
+              "colour": [
+                1.0,
+                0.8999999761581421,
+                0.7200000286102295
+              ],
+              "enabled": true,
+              "follow": false,
+              "intensity": {
+                "kind": "constant",
+                "value": 2.4000000953674316
+              },
+              "position": [
+                -2.5,
+                -0.4000000059604645,
+                3.0
+              ],
+              "rotation": [
+                0.0,
+                0.0,
+                -14.0
+              ],
+              "size": [
+                7.0,
+                0.07000000029802322
+              ]
+            },
+            {
+              "colour": [
+                1.0,
+                0.8999999761581421,
+                0.7200000286102295
+              ],
+              "enabled": true,
+              "follow": false,
+              "intensity": {
+                "kind": "constant",
+                "value": 2.4000000953674316
+              },
+              "position": [
+                -2.5,
+                0.0,
+                3.0
+              ],
+              "rotation": [
+                0.0,
+                0.0,
+                -14.0
+              ],
+              "size": [
+                7.0,
+                0.07000000029802322
+              ]
+            },
+            {
+              "colour": [
+                1.0,
+                0.8999999761581421,
+                0.7200000286102295
+              ],
+              "enabled": true,
+              "follow": false,
+              "intensity": {
+                "kind": "constant",
+                "value": 2.4000000953674316
+              },
+              "position": [
+                -2.5,
+                0.4000000059604645,
+                3.0
+              ],
+              "rotation": [
+                0.0,
+                0.0,
+                -14.0
+              ],
+              "size": [
+                7.0,
+                0.07000000029802322
+              ]
+            },
+            {
+              "colour": [
+                1.0,
+                0.8999999761581421,
+                0.7200000286102295
+              ],
+              "enabled": true,
+              "follow": false,
+              "intensity": {
+                "kind": "constant",
+                "value": 2.4000000953674316
+              },
+              "position": [
+                -2.5,
+                0.800000011920929,
+                3.0
+              ],
+              "rotation": [
+                0.0,
+                0.0,
+                -14.0
+              ],
+              "size": [
+                7.0,
+                0.07000000029802322
+              ]
+            },
+            {
+              "colour": [
+                1.0,
+                0.8999999761581421,
+                0.7200000286102295
+              ],
+              "enabled": true,
+              "follow": false,
+              "intensity": {
+                "kind": "constant",
+                "value": 2.4000000953674316
+              },
+              "position": [
+                -0.30000001192092896,
+                -0.20000000298023224,
+                3.0
+              ],
+              "rotation": [
+                0.0,
+                0.0,
+                -14.0
+              ],
+              "size": [
+                7.0,
+                0.07000000029802322
+              ]
+            },
+            {
+              "colour": [
+                1.0,
+                0.8999999761581421,
+                0.7200000286102295
+              ],
+              "enabled": true,
+              "follow": false,
+              "intensity": {
+                "kind": "constant",
+                "value": 2.4000000953674316
+              },
+              "position": [
+                -0.30000001192092896,
+                0.20000000298023224,
+                3.0
+              ],
+              "rotation": [
+                0.0,
+                0.0,
+                -14.0
+              ],
+              "size": [
+                7.0,
+                0.07000000029802322
+              ]
+            },
+            {
+              "colour": [
+                1.0,
+                0.8999999761581421,
+                0.7200000286102295
+              ],
+              "enabled": true,
+              "follow": false,
+              "intensity": {
+                "kind": "constant",
+                "value": 2.4000000953674316
+              },
+              "position": [
+                -0.30000001192092896,
+                0.6000000238418579,
+                3.0
+              ],
+              "rotation": [
+                0.0,
+                0.0,
+                -14.0
+              ],
+              "size": [
+                7.0,
+                0.07000000029802322
+              ]
+            }
+          ]
+        },
+        "type": "material"
+      },
+      "version": 1
+    },
+    "080ba50d-2e88-4c49-b3e4-4cd089a7b461": {
+      "id": "080ba50d-2e88-4c49-b3e4-4cd089a7b461",
+      "inputs": {},
+      "label": "Midnight background",
+      "operation": {
+        "color": [
+          0.00800000037997961,
+          0.00800000037997961,
+          0.00800000037997961,
+          1.0
+        ],
+        "type": "solid"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "scene_background": true,
+      "version": 1
+    },
+    "53ca5b76-fd89-4b04-a690-3bfa50eeaba3": {
+      "id": "53ca5b76-fd89-4b04-a690-3bfa50eeaba3",
+      "inputs": {
+        "image": "040bf771-1567-4e1e-b723-71d9c4ba4418"
+      },
+      "label": "Rust spreading over steel",
+      "operation": {
+        "amount": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": 0.0
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 2
+              },
+              "value": 0.8999999761581421
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": 0.0
+            }
+          ],
+          "kind": "smooth"
+        },
+        "dirt": {
+          "kind": "constant",
+          "value": 0.25
+        },
+        "kind": "rust",
+        "scale": {
+          "kind": "constant",
+          "value": 220.0
+        },
+        "scratches": {
+          "kind": "constant",
+          "value": 0.10000000149011612
+        },
+        "seed": 71,
+        "type": "patina",
+        "wear": {
+          "kind": "constant",
+          "value": 0.20000000298023224
+        }
+      },
+      "position": {
+        "x": 0.0,
+        "y": 500.0
+      },
+      "version": 1
+    },
+    "5d0d3a1a-e6fb-4933-bcb7-add62b042a00": {
+      "id": "5d0d3a1a-e6fb-4933-bcb7-add62b042a00",
+      "inputs": {
+        "image": "982c70ed-8cef-428d-b2f7-bef05e249ccf",
+        "mask": "6a8329a0-d66c-4b8e-9306-883c0a5ebeae"
+      },
+      "label": "Color inside artwork",
+      "operation": {
+        "type": "mask"
+      },
+      "position": {
+        "x": 920.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "6a8329a0-d66c-4b8e-9306-883c0a5ebeae": {
+      "id": "6a8329a0-d66c-4b8e-9306-883c0a5ebeae",
+      "inputs": {},
+      "label": "Editable vector artwork",
+      "operation": {
+        "alignment": "center",
+        "box_height": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "content": "FLOW",
+        "features": "",
+        "font": {
+          "source": "display"
+        },
+        "language": "",
+        "line_height": {
+          "kind": "constant",
+          "value": 1.25
+        },
+        "padding": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "rotation": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "rtl": false,
+        "scale_x": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "scale_y": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "size": {
+          "kind": "constant",
+          "value": 400.0
+        },
+        "tracking": {
+          "kind": "constant",
+          "value": 24.0
+        },
+        "type": "text",
+        "typography": {
+          "anchor": null,
+          "auto_fit": false,
+          "duration": 0.5,
+          "ease": true,
+          "exit": null,
+          "linked_scale": false,
+          "motion": "none",
+          "spans": [],
+          "stagger": 0.03999999910593033,
+          "start": 0.0,
+          "unit": "character",
+          "vertical": "top"
+        },
+        "underline": false,
+        "wrap_width": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "x": {
+          "kind": "constant",
+          "value": 960.0
+        },
+        "y": {
+          "kind": "constant",
+          "value": 680.0
+        }
+      },
+      "position": {
+        "x": 230.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "73a72db8-9add-468a-b482-4816e941a904": {
+      "id": "73a72db8-9add-468a-b482-4816e941a904",
+      "inputs": {},
+      "label": "Vertical palette ramp",
+      "operation": {
+        "end_x": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "end_y": {
+          "kind": "constant",
+          "value": 720.0
+        },
+        "mode": "linear",
+        "start_x": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "start_y": {
+          "kind": "constant",
+          "value": 360.0
+        },
+        "type": "gradient"
+      },
+      "position": {
+        "x": 460.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "914d7af7-0c50-48a6-983a-e994365d91ca": {
+      "id": "914d7af7-0c50-48a6-983a-e994365d91ca",
+      "inputs": {
+        "background": "080ba50d-2e88-4c49-b3e4-4cd089a7b461",
+        "foreground": "53ca5b76-fd89-4b04-a690-3bfa50eeaba3"
+      },
+      "label": "Material title over neutral background",
+      "operation": {
+        "type": "merge"
+      },
+      "position": {
+        "x": 920.0,
+        "y": 145.0
+      },
+      "version": 1
+    },
+    "95dc7b9e-05a1-4b25-ba82-40b15e858871": {
+      "id": "95dc7b9e-05a1-4b25-ba82-40b15e858871",
+      "inputs": {
+        "background": "080ba50d-2e88-4c49-b3e4-4cd089a7b461",
+        "foreground": "f0646bd8-52d1-40ea-958a-2c5e51ba20b2"
+      },
+      "label": "Before · artwork on midnight",
+      "operation": {
+        "type": "merge"
+      },
+      "position": {
+        "x": 230.0,
+        "y": 145.0
+      },
+      "version": 1
+    },
+    "982c70ed-8cef-428d-b2f7-bef05e249ccf": {
+      "id": "982c70ed-8cef-428d-b2f7-bef05e249ccf",
+      "inputs": {
+        "image": "73a72db8-9add-468a-b482-4816e941a904"
+      },
+      "label": "Artwork palette",
+      "operation": {
+        "high": [
+          1.600000023841858,
+          1.7999999523162842,
+          2.0,
+          1.0
+        ],
+        "low": [
+          0.30000001192092896,
+          0.44999998807907104,
+          0.800000011920929,
+          1.0
+        ],
+        "type": "colorize"
+      },
+      "position": {
+        "x": 690.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "f0646bd8-52d1-40ea-958a-2c5e51ba20b2": {
+      "id": "f0646bd8-52d1-40ea-958a-2c5e51ba20b2",
+      "inputs": {
+        "image": "5d0d3a1a-e6fb-4933-bcb7-add62b042a00"
+      },
+      "label": "Artwork motion",
+      "operation": {
+        "pivot_x": {
+          "kind": "constant",
+          "value": 960.0
+        },
+        "pivot_y": {
+          "kind": "constant",
+          "value": 540.0
+        },
+        "rotation": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "scale_x": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": 0.9399999976158142
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 2
+              },
+              "value": 1.0399999618530273
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": 0.9399999976158142
+            }
+          ],
+          "kind": "smooth"
+        },
+        "scale_y": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": 0.9399999976158142
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 2
+              },
+              "value": 1.0399999618530273
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": 0.9399999976158142
+            }
+          ],
+          "kind": "smooth"
+        },
+        "type": "affine",
+        "x": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "y": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": 18.0
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 2
+              },
+              "value": -18.0
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": 18.0
+            }
+          ],
+          "kind": "smooth"
+        }
+      },
+      "position": {
+        "x": 0.0,
+        "y": 145.0
+      },
+      "version": 1
+    }
+  },
+  "output": "914d7af7-0c50-48a6-983a-e994365d91ca",
+  "saved_by": "0.1.0",
+  "schema": 1,
+  "width": 1920
+}

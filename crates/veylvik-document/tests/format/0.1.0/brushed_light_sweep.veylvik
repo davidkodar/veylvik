@@ -1,0 +1,827 @@
+{
+  "frame_count": 96,
+  "frame_rate": {
+    "rate": 1,
+    "ticks": 24
+  },
+  "groups": {
+    "4519bf0e-2299-4a60-92db-54c9534980c1": {
+      "controls": {
+        "bevel_width": {
+          "default": {
+            "kind": "constant",
+            "value": 10.0
+          },
+          "label": "Bevel width",
+          "node": "5dc8cad7-442d-418a-a79c-4a3c428e5e58",
+          "parameter": "bevel"
+        },
+        "grain_strength": {
+          "default": {
+            "kind": "constant",
+            "value": 0.6499999761581421
+          },
+          "label": "Grain strength",
+          "node": "5dc8cad7-442d-418a-a79c-4a3c428e5e58",
+          "parameter": "grain"
+        },
+        "reflection_motion": {
+          "default": {
+            "keys": [
+              {
+                "time": {
+                  "rate": 1,
+                  "ticks": 0
+                },
+                "value": 0.0
+              },
+              {
+                "time": {
+                  "rate": 1,
+                  "ticks": 2
+                },
+                "value": 0.11999999731779099
+              },
+              {
+                "time": {
+                  "rate": 1,
+                  "ticks": 4
+                },
+                "value": 0.0
+              }
+            ],
+            "kind": "smooth"
+          },
+          "label": "Reflection motion",
+          "node": "5dc8cad7-442d-418a-a79c-4a3c428e5e58",
+          "parameter": "lighting"
+        },
+        "roughness": {
+          "default": {
+            "kind": "constant",
+            "value": 0.2800000011920929
+          },
+          "label": "Roughness",
+          "node": "5dc8cad7-442d-418a-a79c-4a3c428e5e58",
+          "parameter": "roughness"
+        },
+        "shine_strength": {
+          "default": {
+            "kind": "constant",
+            "value": 1.7999999523162842
+          },
+          "label": "Shine strength",
+          "node": "34d6e84c-2893-4f1b-93cf-0bf6dcaa29a4",
+          "parameter": "intensity"
+        },
+        "shine_width": {
+          "default": {
+            "kind": "constant",
+            "value": 180.0
+          },
+          "label": "Shine width",
+          "node": "34d6e84c-2893-4f1b-93cf-0bf6dcaa29a4",
+          "parameter": "width"
+        },
+        "sweep_position": {
+          "default": {
+            "keys": [
+              {
+                "time": {
+                  "rate": 1,
+                  "ticks": 0
+                },
+                "value": -960.0
+              },
+              {
+                "time": {
+                  "rate": 1,
+                  "ticks": 4
+                },
+                "value": 2880.0
+              }
+            ],
+            "kind": "linear"
+          },
+          "label": "Sweep position",
+          "node": "34d6e84c-2893-4f1b-93cf-0bf6dcaa29a4",
+          "parameter": "x"
+        },
+        "texture_scale": {
+          "default": {
+            "kind": "constant",
+            "value": 360.0
+          },
+          "label": "Texture scale",
+          "node": "5dc8cad7-442d-418a-a79c-4a3c428e5e58",
+          "parameter": "scale"
+        }
+      },
+      "id": "4519bf0e-2299-4a60-92db-54c9534980c1",
+      "inputs": {
+        "input_1": {
+          "label": "Image",
+          "targets": [
+            {
+              "node": "5dc8cad7-442d-418a-a79c-4a3c428e5e58",
+              "port": "image"
+            }
+          ]
+        }
+      },
+      "label": "Brushed Light Sweep",
+      "members": [
+        "34d6e84c-2893-4f1b-93cf-0bf6dcaa29a4",
+        "5dc8cad7-442d-418a-a79c-4a3c428e5e58"
+      ],
+      "output": "34d6e84c-2893-4f1b-93cf-0bf6dcaa29a4"
+    }
+  },
+  "height": 1080,
+  "nodes": {
+    "2fcbf6c8-3f99-4ac8-b87b-55aa9ff06f91": {
+      "id": "2fcbf6c8-3f99-4ac8-b87b-55aa9ff06f91",
+      "inputs": {
+        "background": "83eb38ba-c5b4-4daf-8317-6df689054924",
+        "foreground": "36bf68fa-c210-44dd-b78f-88270b8edfc1"
+      },
+      "label": "Before · artwork on midnight",
+      "operation": {
+        "type": "merge"
+      },
+      "position": {
+        "x": 230.0,
+        "y": 145.0
+      },
+      "version": 1
+    },
+    "34d6e84c-2893-4f1b-93cf-0bf6dcaa29a4": {
+      "id": "34d6e84c-2893-4f1b-93cf-0bf6dcaa29a4",
+      "inputs": {
+        "image": "5dc8cad7-442d-418a-a79c-4a3c428e5e58"
+      },
+      "label": "Travelling reflection over brushed aluminium",
+      "operation": {
+        "angle": {
+          "kind": "constant",
+          "value": 20.0
+        },
+        "intensity": {
+          "kind": "constant",
+          "value": 1.7999999523162842
+        },
+        "type": "metallic_shine",
+        "width": {
+          "kind": "constant",
+          "value": 180.0
+        },
+        "x": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": -960.0
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": 2880.0
+            }
+          ],
+          "kind": "linear"
+        },
+        "y": {
+          "kind": "constant",
+          "value": 540.0
+        }
+      },
+      "position": {
+        "x": 0.0,
+        "y": 500.0
+      },
+      "version": 1
+    },
+    "36bf68fa-c210-44dd-b78f-88270b8edfc1": {
+      "id": "36bf68fa-c210-44dd-b78f-88270b8edfc1",
+      "inputs": {
+        "image": "9f264919-d089-4132-8c53-1ff6823b3e5c"
+      },
+      "label": "Artwork motion",
+      "operation": {
+        "pivot_x": {
+          "kind": "constant",
+          "value": 960.0
+        },
+        "pivot_y": {
+          "kind": "constant",
+          "value": 540.0
+        },
+        "rotation": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "scale_x": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": 0.9399999976158142
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 2
+              },
+              "value": 1.0399999618530273
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": 0.9399999976158142
+            }
+          ],
+          "kind": "smooth"
+        },
+        "scale_y": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": 0.9399999976158142
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 2
+              },
+              "value": 1.0399999618530273
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": 0.9399999976158142
+            }
+          ],
+          "kind": "smooth"
+        },
+        "type": "affine",
+        "x": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "y": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": 18.0
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 2
+              },
+              "value": -18.0
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": 18.0
+            }
+          ],
+          "kind": "smooth"
+        }
+      },
+      "position": {
+        "x": 0.0,
+        "y": 145.0
+      },
+      "version": 1
+    },
+    "5dc8cad7-442d-418a-a79c-4a3c428e5e58": {
+      "id": "5dc8cad7-442d-418a-a79c-4a3c428e5e58",
+      "inputs": {
+        "image": "36bf68fa-c210-44dd-b78f-88270b8edfc1"
+      },
+      "label": "Surface grain, bevel and reflection",
+      "operation": {
+        "bevel": {
+          "kind": "constant",
+          "value": 10.0
+        },
+        "brush_angle": {
+          "kind": "constant",
+          "value": 65.0
+        },
+        "brushing": "directional",
+        "colours": null,
+        "emission": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "grain": {
+          "kind": "constant",
+          "value": 0.6499999761581421
+        },
+        "height_depth": {
+          "kind": "constant",
+          "value": 8.0
+        },
+        "imperfections": {
+          "kind": "constant",
+          "value": 0.30000001192092896
+        },
+        "kind": "aluminium",
+        "lighting": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": 0.0
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 2
+              },
+              "value": 0.11999999731779099
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": 0.0
+            }
+          ],
+          "kind": "smooth"
+        },
+        "normal_directx": false,
+        "normal_strength": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "optics": null,
+        "ridges": {
+          "kind": "constant",
+          "value": 0.6000000238418579
+        },
+        "roughness": {
+          "kind": "constant",
+          "value": 0.2800000011920929
+        },
+        "scale": {
+          "kind": "constant",
+          "value": 360.0
+        },
+        "shot": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "smooth_edges": true,
+        "studio": {
+          "ambient": 0.0,
+          "environment": 0.3499999940395355,
+          "environment_rotation": -45.0,
+          "lights": [
+            {
+              "colour": [
+                1.0,
+                0.8999999761581421,
+                0.7200000286102295
+              ],
+              "enabled": true,
+              "follow": false,
+              "intensity": {
+                "kind": "constant",
+                "value": 2.4000000953674316
+              },
+              "position": [
+                -2.5,
+                -0.800000011920929,
+                3.0
+              ],
+              "rotation": [
+                0.0,
+                0.0,
+                -14.0
+              ],
+              "size": [
+                7.0,
+                0.07000000029802322
+              ]
+            },
+            {
+              "colour": [
+                1.0,
+                0.8999999761581421,
+                0.7200000286102295
+              ],
+              "enabled": true,
+              "follow": false,
+              "intensity": {
+                "kind": "constant",
+                "value": 2.4000000953674316
+              },
+              "position": [
+                -2.5,
+                -0.4000000059604645,
+                3.0
+              ],
+              "rotation": [
+                0.0,
+                0.0,
+                -14.0
+              ],
+              "size": [
+                7.0,
+                0.07000000029802322
+              ]
+            },
+            {
+              "colour": [
+                1.0,
+                0.8999999761581421,
+                0.7200000286102295
+              ],
+              "enabled": true,
+              "follow": false,
+              "intensity": {
+                "kind": "constant",
+                "value": 2.4000000953674316
+              },
+              "position": [
+                -2.5,
+                0.0,
+                3.0
+              ],
+              "rotation": [
+                0.0,
+                0.0,
+                -14.0
+              ],
+              "size": [
+                7.0,
+                0.07000000029802322
+              ]
+            },
+            {
+              "colour": [
+                1.0,
+                0.8999999761581421,
+                0.7200000286102295
+              ],
+              "enabled": true,
+              "follow": false,
+              "intensity": {
+                "kind": "constant",
+                "value": 2.4000000953674316
+              },
+              "position": [
+                -2.5,
+                0.4000000059604645,
+                3.0
+              ],
+              "rotation": [
+                0.0,
+                0.0,
+                -14.0
+              ],
+              "size": [
+                7.0,
+                0.07000000029802322
+              ]
+            },
+            {
+              "colour": [
+                1.0,
+                0.8999999761581421,
+                0.7200000286102295
+              ],
+              "enabled": true,
+              "follow": false,
+              "intensity": {
+                "kind": "constant",
+                "value": 2.4000000953674316
+              },
+              "position": [
+                -2.5,
+                0.800000011920929,
+                3.0
+              ],
+              "rotation": [
+                0.0,
+                0.0,
+                -14.0
+              ],
+              "size": [
+                7.0,
+                0.07000000029802322
+              ]
+            },
+            {
+              "colour": [
+                1.0,
+                0.8999999761581421,
+                0.7200000286102295
+              ],
+              "enabled": true,
+              "follow": false,
+              "intensity": {
+                "kind": "constant",
+                "value": 2.4000000953674316
+              },
+              "position": [
+                -0.30000001192092896,
+                -0.20000000298023224,
+                3.0
+              ],
+              "rotation": [
+                0.0,
+                0.0,
+                -14.0
+              ],
+              "size": [
+                7.0,
+                0.07000000029802322
+              ]
+            },
+            {
+              "colour": [
+                1.0,
+                0.8999999761581421,
+                0.7200000286102295
+              ],
+              "enabled": true,
+              "follow": false,
+              "intensity": {
+                "kind": "constant",
+                "value": 2.4000000953674316
+              },
+              "position": [
+                -0.30000001192092896,
+                0.20000000298023224,
+                3.0
+              ],
+              "rotation": [
+                0.0,
+                0.0,
+                -14.0
+              ],
+              "size": [
+                7.0,
+                0.07000000029802322
+              ]
+            },
+            {
+              "colour": [
+                1.0,
+                0.8999999761581421,
+                0.7200000286102295
+              ],
+              "enabled": true,
+              "follow": false,
+              "intensity": {
+                "kind": "constant",
+                "value": 2.4000000953674316
+              },
+              "position": [
+                -0.30000001192092896,
+                0.6000000238418579,
+                3.0
+              ],
+              "rotation": [
+                0.0,
+                0.0,
+                -14.0
+              ],
+              "size": [
+                7.0,
+                0.07000000029802322
+              ]
+            }
+          ]
+        },
+        "type": "material"
+      },
+      "version": 1
+    },
+    "83eb38ba-c5b4-4daf-8317-6df689054924": {
+      "id": "83eb38ba-c5b4-4daf-8317-6df689054924",
+      "inputs": {},
+      "label": "Midnight background",
+      "operation": {
+        "color": [
+          0.00800000037997961,
+          0.00800000037997961,
+          0.00800000037997961,
+          1.0
+        ],
+        "type": "solid"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "scene_background": true,
+      "version": 1
+    },
+    "8b6b7109-a8f2-432c-88d0-55dd2bc13fe6": {
+      "id": "8b6b7109-a8f2-432c-88d0-55dd2bc13fe6",
+      "inputs": {},
+      "label": "Editable vector artwork",
+      "operation": {
+        "alignment": "center",
+        "box_height": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "content": "FLOW",
+        "features": "",
+        "font": {
+          "source": "display"
+        },
+        "language": "",
+        "line_height": {
+          "kind": "constant",
+          "value": 1.25
+        },
+        "padding": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "rotation": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "rtl": false,
+        "scale_x": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "scale_y": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "size": {
+          "kind": "constant",
+          "value": 400.0
+        },
+        "tracking": {
+          "kind": "constant",
+          "value": 24.0
+        },
+        "type": "text",
+        "typography": {
+          "anchor": null,
+          "auto_fit": false,
+          "duration": 0.5,
+          "ease": true,
+          "exit": null,
+          "linked_scale": false,
+          "motion": "none",
+          "spans": [],
+          "stagger": 0.03999999910593033,
+          "start": 0.0,
+          "unit": "character",
+          "vertical": "top"
+        },
+        "underline": false,
+        "wrap_width": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "x": {
+          "kind": "constant",
+          "value": 960.0
+        },
+        "y": {
+          "kind": "constant",
+          "value": 680.0
+        }
+      },
+      "position": {
+        "x": 230.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "9f264919-d089-4132-8c53-1ff6823b3e5c": {
+      "id": "9f264919-d089-4132-8c53-1ff6823b3e5c",
+      "inputs": {
+        "image": "ebfd2a4b-a4b6-4b08-b9b8-de56143b16b0",
+        "mask": "8b6b7109-a8f2-432c-88d0-55dd2bc13fe6"
+      },
+      "label": "Color inside artwork",
+      "operation": {
+        "type": "mask"
+      },
+      "position": {
+        "x": 920.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "ebfd2a4b-a4b6-4b08-b9b8-de56143b16b0": {
+      "id": "ebfd2a4b-a4b6-4b08-b9b8-de56143b16b0",
+      "inputs": {
+        "image": "fa24009f-faa3-47d8-830f-256d9af08829"
+      },
+      "label": "Artwork palette",
+      "operation": {
+        "high": [
+          1.600000023841858,
+          1.7999999523162842,
+          2.0,
+          1.0
+        ],
+        "low": [
+          0.30000001192092896,
+          0.44999998807907104,
+          0.800000011920929,
+          1.0
+        ],
+        "type": "colorize"
+      },
+      "position": {
+        "x": 690.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "f65fac9f-71cf-429b-a7a6-ffcbce5693ef": {
+      "id": "f65fac9f-71cf-429b-a7a6-ffcbce5693ef",
+      "inputs": {
+        "background": "83eb38ba-c5b4-4daf-8317-6df689054924",
+        "foreground": "34d6e84c-2893-4f1b-93cf-0bf6dcaa29a4"
+      },
+      "label": "Material title over neutral background",
+      "operation": {
+        "type": "merge"
+      },
+      "position": {
+        "x": 920.0,
+        "y": 145.0
+      },
+      "version": 1
+    },
+    "fa24009f-faa3-47d8-830f-256d9af08829": {
+      "id": "fa24009f-faa3-47d8-830f-256d9af08829",
+      "inputs": {},
+      "label": "Vertical palette ramp",
+      "operation": {
+        "end_x": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "end_y": {
+          "kind": "constant",
+          "value": 720.0
+        },
+        "mode": "linear",
+        "start_x": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "start_y": {
+          "kind": "constant",
+          "value": 360.0
+        },
+        "type": "gradient"
+      },
+      "position": {
+        "x": 460.0,
+        "y": 0.0
+      },
+      "version": 1
+    }
+  },
+  "output": "f65fac9f-71cf-429b-a7a6-ffcbce5693ef",
+  "saved_by": "0.1.0",
+  "schema": 1,
+  "width": 1920
+}

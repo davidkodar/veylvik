@@ -13,7 +13,7 @@ Build shots from nodes, animate parameters with keyframes and curves, mask and g
 
 **Early development · Vulkan GPU required · Arch package or source · GPL-3.0-only**
 
-Veylvik is young, but it already works end to end: compose a graph, animate it, preview it live on the GPU, and export HDR frames and sequences. Keep copies of work you care about, because the project format can still change. Build it from source or as a local Arch package.
+Veylvik is young, but it already works end to end: compose a graph, animate it, preview it live on the GPU, and export HDR frames and sequences. From 0.1.0 on, every project you save opens in every later Veylvik ([how that is kept](docs/format.md)). Build it from source or as a local Arch package.
 
 [![Veylvik Studio with a 4K title shot open: chrome 3D letters spelling VEYLVIK in a starfield with galaxies, the timeline with its named markers and keys below, and the inspector showing the lettering's depth, bevel and brushed-metal finish.](assets/readme/studio.webp)](assets/readme/studio.webp)
 

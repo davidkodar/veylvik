@@ -1,0 +1,617 @@
+{
+  "frame_count": 96,
+  "frame_rate": {
+    "rate": 1,
+    "ticks": 24
+  },
+  "groups": {
+    "d50bb47b-8f75-4dac-baf1-e36149edf2df": {
+      "controls": {
+        "dark-recess_threshold": {
+          "default": {
+            "kind": "constant",
+            "value": 0.25
+          },
+          "label": "Dark-recess threshold",
+          "node": "28a2514d-1605-4117-89bf-a02a5b669375",
+          "parameter": "threshold"
+        },
+        "match_grain": {
+          "default": {
+            "kind": "constant",
+            "value": 0.0
+          },
+          "label": "Match grain",
+          "node": "28a2514d-1605-4117-89bf-a02a5b669375",
+          "parameter": "grain"
+        },
+        "match_softness": {
+          "default": {
+            "kind": "constant",
+            "value": 0.6000000238418579
+          },
+          "label": "Match softness",
+          "node": "28a2514d-1605-4117-89bf-a02a5b669375",
+          "parameter": "softness"
+        },
+        "opacity": {
+          "default": {
+            "kind": "constant",
+            "value": 1.0
+          },
+          "label": "Opacity",
+          "node": "28a2514d-1605-4117-89bf-a02a5b669375",
+          "parameter": "opacity"
+        },
+        "surface_distortion": {
+          "default": {
+            "kind": "constant",
+            "value": 0.0
+          },
+          "label": "Surface distortion",
+          "node": "28a2514d-1605-4117-89bf-a02a5b669375",
+          "parameter": "distortion"
+        },
+        "surface_lighting": {
+          "default": {
+            "kind": "constant",
+            "value": 0.44999998807907104
+          },
+          "label": "Surface lighting",
+          "node": "28a2514d-1605-4117-89bf-a02a5b669375",
+          "parameter": "lighting"
+        },
+        "surface_texture": {
+          "default": {
+            "kind": "constant",
+            "value": 0.6499999761581421
+          },
+          "label": "Surface texture",
+          "node": "28a2514d-1605-4117-89bf-a02a5b669375",
+          "parameter": "detail"
+        },
+        "wear_/_cracks": {
+          "default": {
+            "kind": "constant",
+            "value": 0.800000011920929
+          },
+          "label": "Wear / cracks",
+          "node": "28a2514d-1605-4117-89bf-a02a5b669375",
+          "parameter": "wear"
+        }
+      },
+      "id": "d50bb47b-8f75-4dac-baf1-e36149edf2df",
+      "inputs": {
+        "layer": {
+          "label": "Text / image / effect",
+          "targets": [
+            {
+              "node": "28a2514d-1605-4117-89bf-a02a5b669375",
+              "port": "foreground"
+            }
+          ]
+        },
+        "surface": {
+          "label": "Clean surface",
+          "targets": [
+            {
+              "node": "28a2514d-1605-4117-89bf-a02a5b669375",
+              "port": "background"
+            }
+          ]
+        }
+      },
+      "label": "Paint on Surface",
+      "members": [
+        "28a2514d-1605-4117-89bf-a02a5b669375"
+      ],
+      "output": "28a2514d-1605-4117-89bf-a02a5b669375"
+    }
+  },
+  "height": 1080,
+  "nodes": {
+    "00c7333a-50d9-4f39-b2d8-ecfb3bf77257": {
+      "id": "00c7333a-50d9-4f39-b2d8-ecfb3bf77257",
+      "inputs": {},
+      "label": "Editable mural lettering",
+      "operation": {
+        "alignment": "center",
+        "box_height": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "color": [
+          0.949999988079071,
+          0.800000011920929,
+          0.44999998807907104,
+          1.0
+        ],
+        "content": "STAY\nCURIOUS",
+        "features": "",
+        "font": {
+          "source": "display"
+        },
+        "language": "",
+        "line_height": {
+          "kind": "constant",
+          "value": 1.25
+        },
+        "padding": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "rotation": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "rtl": false,
+        "scale_x": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "scale_y": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "size": {
+          "kind": "constant",
+          "value": 210.0
+        },
+        "tracking": {
+          "kind": "constant",
+          "value": 10.0
+        },
+        "type": "text",
+        "typography": {
+          "anchor": null,
+          "auto_fit": false,
+          "duration": 0.5,
+          "ease": true,
+          "exit": null,
+          "linked_scale": false,
+          "motion": "none",
+          "spans": [],
+          "stagger": 0.03999999910593033,
+          "start": 0.0,
+          "unit": "character",
+          "vertical": "top"
+        },
+        "underline": false,
+        "wrap_width": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "x": {
+          "kind": "constant",
+          "value": 960.0
+        },
+        "y": {
+          "kind": "constant",
+          "value": 470.0
+        }
+      },
+      "position": {
+        "x": 920.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "25d2389a-68a8-40ce-92b6-2e295df130e4": {
+      "id": "25d2389a-68a8-40ce-92b6-2e295df130e4",
+      "inputs": {
+        "image": "00c7333a-50d9-4f39-b2d8-ecfb3bf77257",
+        "track": "d352eb4b-00ec-4aae-b45d-21fc3cba85e9"
+      },
+      "label": "Lettering follows same camera",
+      "operation": {
+        "mode": "follow",
+        "type": "planar_warp"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 145.0
+      },
+      "version": 1
+    },
+    "28a2514d-1605-4117-89bf-a02a5b669375": {
+      "id": "28a2514d-1605-4117-89bf-a02a5b669375",
+      "inputs": {
+        "background": "c32f3d82-12a1-47b3-9474-9d0b00816d07",
+        "foreground": "25d2389a-68a8-40ce-92b6-2e295df130e4"
+      },
+      "label": "Paint integrated with surface",
+      "operation": {
+        "detail": {
+          "kind": "constant",
+          "value": 0.6499999761581421
+        },
+        "distortion": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "grain": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "lighting": {
+          "kind": "constant",
+          "value": 0.44999998807907104
+        },
+        "opacity": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "softness": {
+          "kind": "constant",
+          "value": 0.6000000238418579
+        },
+        "threshold": {
+          "kind": "constant",
+          "value": 0.25
+        },
+        "type": "surface_blend",
+        "wear": {
+          "kind": "constant",
+          "value": 0.800000011920929
+        }
+      },
+      "version": 1
+    },
+    "b8faefdb-bc41-4dc6-b0ab-42021aab71b9": {
+      "id": "b8faefdb-bc41-4dc6-b0ab-42021aab71b9",
+      "inputs": {},
+      "label": "Background",
+      "operation": {
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "type": "solid"
+      },
+      "version": 1
+    },
+    "c182f8eb-f000-482f-a4bd-555ae7c5913c": {
+      "id": "c182f8eb-f000-482f-a4bd-555ae7c5913c",
+      "inputs": {
+        "background": "c32f3d82-12a1-47b3-9474-9d0b00816d07",
+        "foreground": "25d2389a-68a8-40ce-92b6-2e295df130e4"
+      },
+      "label": "Before: clean lettering on wall",
+      "operation": {
+        "type": "merge"
+      },
+      "position": {
+        "x": 230.0,
+        "y": 145.0
+      },
+      "version": 1
+    },
+    "c32f3d82-12a1-47b3-9474-9d0b00816d07": {
+      "id": "c32f3d82-12a1-47b3-9474-9d0b00816d07",
+      "inputs": {
+        "image": "ed8fc338-8c9c-40f8-aae4-e7da7c50f655",
+        "track": "d352eb4b-00ec-4aae-b45d-21fc3cba85e9"
+      },
+      "label": "Wall follows camera",
+      "operation": {
+        "mode": "follow",
+        "type": "planar_warp"
+      },
+      "position": {
+        "x": 690.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "d352eb4b-00ec-4aae-b45d-21fc3cba85e9": {
+      "id": "d352eb4b-00ec-4aae-b45d-21fc3cba85e9",
+      "inputs": {
+        "image": "ed8fc338-8c9c-40f8-aae4-e7da7c50f655"
+      },
+      "label": "Authored camera motion (example)",
+      "operation": {
+        "data": {
+          "reference": [
+            [
+              0.0,
+              0.0
+            ],
+            [
+              1.0,
+              0.0
+            ],
+            [
+              1.0,
+              1.0
+            ],
+            [
+              0.0,
+              1.0
+            ]
+          ],
+          "reference_time": {
+            "rate": 1,
+            "ticks": 0
+          },
+          "samples": [
+            {
+              "corners": [
+                [
+                  0.0,
+                  0.0
+                ],
+                [
+                  1.0,
+                  0.0
+                ],
+                [
+                  1.0,
+                  1.0
+                ],
+                [
+                  0.0,
+                  1.0
+                ]
+              ],
+              "features": [],
+              "rms_pixels": 0.0,
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              }
+            },
+            {
+              "corners": [
+                [
+                  -0.06,
+                  -0.05
+                ],
+                [
+                  1.08,
+                  -0.01
+                ],
+                [
+                  1.03,
+                  1.08
+                ],
+                [
+                  -0.04,
+                  1.03
+                ]
+              ],
+              "features": [],
+              "rms_pixels": 0.0,
+              "time": {
+                "rate": 1,
+                "ticks": 2
+              }
+            },
+            {
+              "corners": [
+                [
+                  0.0,
+                  0.0
+                ],
+                [
+                  1.0,
+                  0.0
+                ],
+                [
+                  1.0,
+                  1.0
+                ],
+                [
+                  0.0,
+                  1.0
+                ]
+              ],
+              "features": [],
+              "rms_pixels": 0.0,
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              }
+            }
+          ]
+        },
+        "type": "planar_track"
+      },
+      "position": {
+        "x": 460.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "ed8fc338-8c9c-40f8-aae4-e7da7c50f655": {
+      "id": "ed8fc338-8c9c-40f8-aae4-e7da7c50f655",
+      "inputs": {
+        "image": "b8faefdb-bc41-4dc6-b0ab-42021aab71b9"
+      },
+      "label": "Brick wall",
+      "operation": {
+        "bevel": {
+          "kind": "constant",
+          "value": 6.0
+        },
+        "brush_angle": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "brushing": "auto",
+        "colours": null,
+        "emission": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "grain": {
+          "kind": "constant",
+          "value": 0.800000011920929
+        },
+        "height_depth": {
+          "kind": "constant",
+          "value": 8.0
+        },
+        "imperfections": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "kind": "brick_red",
+        "lighting": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "normal_directx": false,
+        "normal_strength": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "optics": null,
+        "ridges": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "roughness": {
+          "kind": "constant",
+          "value": 0.800000011920929
+        },
+        "scale": {
+          "kind": "constant",
+          "value": 300.0
+        },
+        "shot": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "smooth_edges": true,
+        "studio": {
+          "ambient": 0.0,
+          "environment": 0.6499999761581421,
+          "environment_rotation": -45.0,
+          "lights": [
+            {
+              "colour": [
+                1.0,
+                0.9599999785423279,
+                0.8899999856948853
+              ],
+              "enabled": false,
+              "follow": false,
+              "intensity": {
+                "kind": "constant",
+                "value": 1.2000000476837158
+              },
+              "position": [
+                -3.0,
+                -0.699999988079071,
+                -1.0
+              ],
+              "rotation": [
+                0.0,
+                -105.0,
+                0.0
+              ],
+              "size": [
+                1.5,
+                4.0
+              ]
+            },
+            {
+              "colour": [
+                0.9599999785423279,
+                0.9800000190734863,
+                1.0
+              ],
+              "enabled": false,
+              "follow": false,
+              "intensity": {
+                "kind": "constant",
+                "value": 1.2000000476837158
+              },
+              "position": [
+                3.0,
+                -0.30000001192092896,
+                1.5
+              ],
+              "rotation": [
+                0.0,
+                50.0,
+                0.0
+              ],
+              "size": [
+                2.299999952316284,
+                3.200000047683716
+              ]
+            },
+            {
+              "colour": [
+                1.0,
+                0.9300000071525574,
+                0.800000011920929
+              ],
+              "enabled": false,
+              "follow": false,
+              "intensity": {
+                "kind": "constant",
+                "value": 3.200000047683716
+              },
+              "position": [
+                -2.799999952316284,
+                2.5999999046325684,
+                1.5
+              ],
+              "rotation": [
+                -30.0,
+                -45.0,
+                0.0
+              ],
+              "size": [
+                1.7999999523162842,
+                2.0
+              ]
+            },
+            {
+              "colour": [
+                1.0,
+                1.0,
+                1.0
+              ],
+              "enabled": false,
+              "follow": false,
+              "intensity": {
+                "kind": "constant",
+                "value": 0.44999998807907104
+              },
+              "position": [
+                0.0,
+                -4.0,
+                2.0
+              ],
+              "rotation": [
+                60.0,
+                0.0,
+                0.0
+              ],
+              "size": [
+                7.0,
+                4.0
+              ]
+            }
+          ]
+        },
+        "type": "material"
+      },
+      "position": {
+        "x": 230.0,
+        "y": 0.0
+      },
+      "scene_background": true,
+      "version": 1
+    }
+  },
+  "output": "28a2514d-1605-4117-89bf-a02a5b669375",
+  "saved_by": "0.1.0",
+  "schema": 1,
+  "width": 1920
+}

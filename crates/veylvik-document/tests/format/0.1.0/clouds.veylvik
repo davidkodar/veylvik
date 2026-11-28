@@ -1,0 +1,411 @@
+{
+  "frame_count": 96,
+  "frame_rate": {
+    "rate": 1,
+    "ticks": 24
+  },
+  "groups": {
+    "9af284ae-0331-46c6-b01c-62ee9f6fa803": {
+      "controls": {
+        "base_y": {
+          "default": {
+            "kind": "constant",
+            "value": 800.0
+          },
+          "label": "Base Y",
+          "node": "2b17e883-521d-41aa-af17-fea947e7c673",
+          "parameter": "y"
+        },
+        "center_x": {
+          "default": {
+            "kind": "constant",
+            "value": 960.0
+          },
+          "label": "Center X",
+          "node": "2b17e883-521d-41aa-af17-fea947e7c673",
+          "parameter": "x"
+        },
+        "density": {
+          "default": {
+            "kind": "constant",
+            "value": 4.0
+          },
+          "label": "Density",
+          "node": "2b17e883-521d-41aa-af17-fea947e7c673",
+          "parameter": "density"
+        },
+        "flow_motion": {
+          "default": {
+            "keys": [
+              {
+                "time": {
+                  "rate": 1,
+                  "ticks": 0
+                },
+                "value": 0.0
+              },
+              {
+                "time": {
+                  "rate": 1,
+                  "ticks": 4
+                },
+                "value": 4.0
+              }
+            ],
+            "kind": "linear"
+          },
+          "label": "Flow motion",
+          "node": "2b17e883-521d-41aa-af17-fea947e7c673",
+          "parameter": "evolution"
+        },
+        "illumination": {
+          "default": {
+            "kind": "constant",
+            "value": 1.0
+          },
+          "label": "Illumination",
+          "node": "2b17e883-521d-41aa-af17-fea947e7c673",
+          "parameter": "lighting"
+        },
+        "turbulence_detail": {
+          "default": {
+            "kind": "constant",
+            "value": 1.0
+          },
+          "label": "Turbulence detail",
+          "node": "2b17e883-521d-41aa-af17-fea947e7c673",
+          "parameter": "detail"
+        },
+        "volume_height": {
+          "default": {
+            "kind": "constant",
+            "value": 660.0
+          },
+          "label": "Volume height",
+          "node": "2b17e883-521d-41aa-af17-fea947e7c673",
+          "parameter": "height"
+        },
+        "volume_width": {
+          "default": {
+            "kind": "constant",
+            "value": 1520.0
+          },
+          "label": "Volume width",
+          "node": "2b17e883-521d-41aa-af17-fea947e7c673",
+          "parameter": "width"
+        }
+      },
+      "id": "9af284ae-0331-46c6-b01c-62ee9f6fa803",
+      "inputs": {
+        "input_1": {
+          "label": "Image",
+          "targets": [
+            {
+              "node": "ae53831a-2dff-4fb6-a51f-78bef0b1c0c2",
+              "port": "background"
+            }
+          ]
+        }
+      },
+      "label": "Clouds",
+      "members": [
+        "2b17e883-521d-41aa-af17-fea947e7c673",
+        "ae53831a-2dff-4fb6-a51f-78bef0b1c0c2"
+      ],
+      "output": "ae53831a-2dff-4fb6-a51f-78bef0b1c0c2"
+    }
+  },
+  "height": 1080,
+  "nodes": {
+    "1b4ca600-0523-4ead-be9d-9a1b0b547299": {
+      "id": "1b4ca600-0523-4ead-be9d-9a1b0b547299",
+      "inputs": {
+        "background": "3dbaeda3-f3cb-4bf0-84ed-294084e83c42",
+        "foreground": "ed17c463-4968-4e17-8651-49e8be083dfc"
+      },
+      "label": "Sky and horizon",
+      "operation": {
+        "type": "merge"
+      },
+      "position": {
+        "x": 230.0,
+        "y": 145.0
+      },
+      "scene_background": true,
+      "version": 1
+    },
+    "2b17e883-521d-41aa-af17-fea947e7c673": {
+      "id": "2b17e883-521d-41aa-af17-fea947e7c673",
+      "inputs": {},
+      "label": "Turbulent atmospheric volume",
+      "operation": {
+        "density": {
+          "kind": "constant",
+          "value": 4.0
+        },
+        "detail": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "evolution": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": 0.0
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": 4.0
+            }
+          ],
+          "kind": "linear"
+        },
+        "height": {
+          "kind": "constant",
+          "value": 660.0
+        },
+        "kind": "clouds",
+        "lighting": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "seed": 397,
+        "type": "atmosphere",
+        "width": {
+          "kind": "constant",
+          "value": 1520.0
+        },
+        "x": {
+          "kind": "constant",
+          "value": 960.0
+        },
+        "y": {
+          "kind": "constant",
+          "value": 800.0
+        }
+      },
+      "version": 1
+    },
+    "3dbaeda3-f3cb-4bf0-84ed-294084e83c42": {
+      "id": "3dbaeda3-f3cb-4bf0-84ed-294084e83c42",
+      "inputs": {
+        "image": "3eb0b211-2adb-466e-a4b1-8707f47f3b48"
+      },
+      "label": "Sky gradient",
+      "operation": {
+        "high": [
+          0.5,
+          0.5799999833106995,
+          0.6299999952316284,
+          1.0
+        ],
+        "low": [
+          0.07999999821186066,
+          0.18000000715255737,
+          0.3199999928474426,
+          1.0
+        ],
+        "type": "colorize"
+      },
+      "position": {
+        "x": 460.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "3eb0b211-2adb-466e-a4b1-8707f47f3b48": {
+      "id": "3eb0b211-2adb-466e-a4b1-8707f47f3b48",
+      "inputs": {},
+      "label": "Sky gradient",
+      "operation": {
+        "end_x": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "end_y": {
+          "kind": "constant",
+          "value": 1080.0
+        },
+        "mode": "linear",
+        "start_x": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "start_y": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "type": "gradient"
+      },
+      "position": {
+        "x": 230.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "85d01616-b1b9-438b-b956-294149922fd4": {
+      "id": "85d01616-b1b9-438b-b956-294149922fd4",
+      "inputs": {},
+      "label": "Terrain silhouette",
+      "operation": {
+        "color": [
+          0.02500000037252903,
+          0.04500000178813934,
+          0.052000001072883606,
+          1.0
+        ],
+        "type": "solid"
+      },
+      "position": {
+        "x": 920.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "a3f3f219-0ab2-49bc-b011-ef3e3bf6d5f3": {
+      "id": "a3f3f219-0ab2-49bc-b011-ef3e3bf6d5f3",
+      "inputs": {},
+      "label": "Distant terrain",
+      "operation": {
+        "geometry": {
+          "commands": [
+            {
+              "command": "move",
+              "to": [
+                0.0,
+                940.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                260.0,
+                840.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                520.0,
+                910.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                900.0,
+                780.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                1300.0,
+                900.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                1600.0,
+                800.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                1920.0,
+                900.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                1920.0,
+                1080.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                0.0,
+                1080.0
+              ]
+            },
+            {
+              "command": "close"
+            }
+          ],
+          "fill_rule": "non_zero"
+        },
+        "type": "path"
+      },
+      "position": {
+        "x": 690.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "ae53831a-2dff-4fb6-a51f-78bef0b1c0c2": {
+      "id": "ae53831a-2dff-4fb6-a51f-78bef0b1c0c2",
+      "inputs": {
+        "background": "1b4ca600-0523-4ead-be9d-9a1b0b547299",
+        "foreground": "2b17e883-521d-41aa-af17-fea947e7c673"
+      },
+      "label": "Atmosphere over image",
+      "operation": {
+        "type": "merge"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 1500.0
+      },
+      "version": 1
+    },
+    "cee6924e-e47e-44ab-8ce5-9f00df0b3c25": {
+      "id": "cee6924e-e47e-44ab-8ce5-9f00df0b3c25",
+      "inputs": {},
+      "label": "Deep cinematic background",
+      "operation": {
+        "color": [
+          0.0010000000474974513,
+          0.0020000000949949026,
+          0.006000000052154064,
+          1.0
+        ],
+        "type": "solid"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "ed17c463-4968-4e17-8651-49e8be083dfc": {
+      "id": "ed17c463-4968-4e17-8651-49e8be083dfc",
+      "inputs": {
+        "image": "85d01616-b1b9-438b-b956-294149922fd4",
+        "mask": "a3f3f219-0ab2-49bc-b011-ef3e3bf6d5f3"
+      },
+      "label": "Distant landscape",
+      "operation": {
+        "type": "mask"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 145.0
+      },
+      "version": 1
+    }
+  },
+  "output": "ae53831a-2dff-4fb6-a51f-78bef0b1c0c2",
+  "saved_by": "0.1.0",
+  "schema": 1,
+  "width": 1920
+}

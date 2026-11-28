@@ -1,0 +1,2398 @@
+{
+  "display": "filmic",
+  "frame_count": 240,
+  "frame_rate": {
+    "rate": 1,
+    "ticks": 24
+  },
+  "height": 1080,
+  "nodes": {
+    "000d8f83-fa2e-4fc1-b15b-b513dadb92db": {
+      "id": "000d8f83-fa2e-4fc1-b15b-b513dadb92db",
+      "inputs": {},
+      "label": "Black",
+      "operation": {
+        "color": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "type": "solid"
+      },
+      "position": {
+        "x": 920.0,
+        "y": 800.0
+      },
+      "version": 1
+    },
+    "07ce2961-7a9c-4197-ae56-05d499c08209": {
+      "id": "07ce2961-7a9c-4197-ae56-05d499c08209",
+      "inputs": {
+        "background": "000d8f83-fa2e-4fc1-b15b-b513dadb92db",
+        "foreground": "7df059f1-e86e-4d5c-94b8-fabe59231368"
+      },
+      "label": "Beam on black",
+      "operation": {
+        "type": "merge"
+      },
+      "position": {
+        "x": 1150.0,
+        "y": 800.0
+      },
+      "version": 1
+    },
+    "108e1bcb-971c-4d23-8c1a-e86ca958442c": {
+      "id": "108e1bcb-971c-4d23-8c1a-e86ca958442c",
+      "inputs": {
+        "image": "54111c58-9063-46b6-9631-f388051c0082"
+      },
+      "label": "Haze streaks",
+      "operation": {
+        "pivot_x": {
+          "kind": "constant",
+          "value": 960.0
+        },
+        "pivot_y": {
+          "kind": "constant",
+          "value": 540.0
+        },
+        "rotation": {
+          "kind": "constant",
+          "value": 62.0
+        },
+        "scale_x": {
+          "kind": "constant",
+          "value": 5.0
+        },
+        "scale_y": {
+          "kind": "constant",
+          "value": 22.0
+        },
+        "type": "affine",
+        "x": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "y": {
+          "kind": "constant",
+          "value": 0.0
+        }
+      },
+      "position": {
+        "x": 1610.0,
+        "y": 655.0
+      },
+      "version": 1
+    },
+    "11c9ab0e-302a-470c-9b27-4c35c259e8e9": {
+      "id": "11c9ab0e-302a-470c-9b27-4c35c259e8e9",
+      "inputs": {
+        "scene": "18eacc6c-7a17-41ba-902a-a54daa04aa1b",
+        "scene_2": "eb0b1155-355e-4257-b8a1-b36236f80eaa",
+        "scene_3": "9734d1ec-bc4e-43a8-9e37-872d2e76a456",
+        "scene_4": "993b8c6e-35d0-4b99-9583-6198411c1a02",
+        "scene_5": "1dba70ab-a0e9-4f5d-a988-bc59e74fa127",
+        "scene_6": "6915d61f-7758-464c-af40-6a05b8380c8a"
+      },
+      "label": "Gold title scene part 1.3",
+      "operation": {
+        "type": "merge_scenes"
+      },
+      "position": {
+        "x": 460.0,
+        "y": 655.0
+      },
+      "version": 1
+    },
+    "16c447a3-5511-4617-af14-3e776d2d60b0": {
+      "id": "16c447a3-5511-4617-af14-3e776d2d60b0",
+      "inputs": {},
+      "label": "Hot spot 2",
+      "operation": {
+        "aim_at": null,
+        "colour": [
+          1.0,
+          0.8799999952316284,
+          0.6600000262260437
+        ],
+        "cone": {
+          "kind": "constant",
+          "value": 40.0
+        },
+        "feather": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "height": {
+          "kind": "constant",
+          "value": 13.0
+        },
+        "intensity": {
+          "kind": "constant",
+          "value": 7.800000190734863
+        },
+        "kind": "area",
+        "placement": {
+          "position": [
+            -300.0,
+            5.0,
+            400.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            -14.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        "reflections": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "seed": 0,
+        "shadows": false,
+        "softness": {
+          "kind": "constant",
+          "value": 0.20000000298023224
+        },
+        "strips": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "type": "light_3d",
+        "variation": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "width": {
+          "kind": "constant",
+          "value": 90.0
+        }
+      },
+      "position": {
+        "x": 230.0,
+        "y": 365.0
+      },
+      "version": 1
+    },
+    "18eacc6c-7a17-41ba-902a-a54daa04aa1b": {
+      "id": "18eacc6c-7a17-41ba-902a-a54daa04aa1b",
+      "inputs": {},
+      "label": "Star 4",
+      "operation": {
+        "aim_at": null,
+        "colour": [
+          1.0,
+          0.8999999761581421,
+          0.7200000286102295
+        ],
+        "cone": {
+          "kind": "constant",
+          "value": 40.0
+        },
+        "feather": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "height": {
+          "kind": "constant",
+          "value": 150.0
+        },
+        "intensity": {
+          "kind": "constant",
+          "value": 0.003000000026077032
+        },
+        "kind": "point",
+        "placement": {
+          "position": [
+            375.0,
+            -100.0,
+            50.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        "reflections": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "seed": 0,
+        "shadows": false,
+        "softness": {
+          "kind": "constant",
+          "value": 0.20000000298023224
+        },
+        "strips": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "type": "light_3d",
+        "variation": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "width": {
+          "kind": "constant",
+          "value": 600.0
+        }
+      },
+      "position": {
+        "x": 460.0,
+        "y": 510.0
+      },
+      "version": 1
+    },
+    "1dba70ab-a0e9-4f5d-a988-bc59e74fa127": {
+      "id": "1dba70ab-a0e9-4f5d-a988-bc59e74fa127",
+      "inputs": {},
+      "label": "Shadow on the wall",
+      "operation": {
+        "aim_at": null,
+        "brush_angle": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "brushed": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "colour": [
+          0.6000000238418579,
+          0.6000000238418579,
+          0.6000000238418579
+        ],
+        "detail": {
+          "kind": "constant",
+          "value": 48.0
+        },
+        "emission": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "grain": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "imperfections": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "kind": "plane",
+        "look": null,
+        "metallic": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "placement": {
+          "position": [
+            0.0,
+            0.0,
+            -50.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        "ridges": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "roughness": {
+          "kind": "constant",
+          "value": 0.4000000059604645
+        },
+        "shadow_catcher": true,
+        "shadow_strength": {
+          "kind": "constant",
+          "value": 8.0
+        },
+        "size_x": {
+          "kind": "constant",
+          "value": 4608.0
+        },
+        "size_y": {
+          "kind": "constant",
+          "value": 2592.0
+        },
+        "size_z": {
+          "kind": "constant",
+          "value": 300.0
+        },
+        "type": "shape_3d"
+      },
+      "position": {
+        "x": 1380.0,
+        "y": 510.0
+      },
+      "version": 1
+    },
+    "1f95036c-88ec-4e72-8f20-45565921d506": {
+      "id": "1f95036c-88ec-4e72-8f20-45565921d506",
+      "inputs": {},
+      "label": "Strip lights 2",
+      "operation": {
+        "aim_at": null,
+        "colour": [
+          1.0,
+          0.8399999737739563,
+          0.5799999833106995
+        ],
+        "cone": {
+          "kind": "constant",
+          "value": 40.0
+        },
+        "feather": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "height": {
+          "kind": "constant",
+          "value": 13.899999618530273
+        },
+        "intensity": {
+          "kind": "constant",
+          "value": 1.2400000095367432
+        },
+        "kind": "area",
+        "placement": {
+          "position": [
+            0.0,
+            -62.0,
+            400.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            -14.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        "reflections": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "seed": 4,
+        "shadows": false,
+        "softness": {
+          "kind": "constant",
+          "value": 0.20000000298023224
+        },
+        "strips": {
+          "kind": "constant",
+          "value": 4.0
+        },
+        "type": "light_3d",
+        "variation": {
+          "kind": "constant",
+          "value": 0.800000011920929
+        },
+        "width": {
+          "kind": "constant",
+          "value": 1700.0
+        }
+      },
+      "position": {
+        "x": 1380.0,
+        "y": 220.0
+      },
+      "version": 1
+    },
+    "1fd55f23-8ed7-4e1f-83bb-52e779fce18d": {
+      "id": "1fd55f23-8ed7-4e1f-83bb-52e779fce18d",
+      "inputs": {},
+      "label": "Hot spot 6",
+      "operation": {
+        "aim_at": null,
+        "colour": [
+          1.0,
+          0.8799999952316284,
+          0.6600000262260437
+        ],
+        "cone": {
+          "kind": "constant",
+          "value": 40.0
+        },
+        "feather": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "height": {
+          "kind": "constant",
+          "value": 13.0
+        },
+        "intensity": {
+          "kind": "constant",
+          "value": 7.800000190734863
+        },
+        "kind": "area",
+        "placement": {
+          "position": [
+            330.0,
+            -85.0,
+            400.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            -14.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        "reflections": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "seed": 0,
+        "shadows": false,
+        "softness": {
+          "kind": "constant",
+          "value": 0.20000000298023224
+        },
+        "strips": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "type": "light_3d",
+        "variation": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "width": {
+          "kind": "constant",
+          "value": 90.0
+        }
+      },
+      "position": {
+        "x": 1150.0,
+        "y": 365.0
+      },
+      "version": 1
+    },
+    "2101166b-0c09-40f4-8ae8-a58dbbe77d1b": {
+      "id": "2101166b-0c09-40f4-8ae8-a58dbbe77d1b",
+      "inputs": {
+        "background": "57d82bea-6e81-45b9-855a-7372df75f522",
+        "foreground": "3b72ec0d-97c7-44e8-ab69-2ac00fa3de0b"
+      },
+      "label": "Subtitle on the title",
+      "operation": {
+        "type": "merge"
+      },
+      "position": {
+        "x": 1150.0,
+        "y": 945.0
+      },
+      "version": 1
+    },
+    "2af55c95-2133-4e8b-bb1c-43e2fcecb7c1": {
+      "id": "2af55c95-2133-4e8b-bb1c-43e2fcecb7c1",
+      "inputs": {
+        "image": "45dad2c4-d4df-4428-8443-372f61b3ad24"
+      },
+      "label": "Room",
+      "operation": {
+        "background": false,
+        "blur": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "frame": false,
+        "intensity": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "rotation": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "type": "environment_3d"
+      },
+      "position": {
+        "x": 920.0,
+        "y": 220.0
+      },
+      "version": 1
+    },
+    "3b72ec0d-97c7-44e8-ab69-2ac00fa3de0b": {
+      "id": "3b72ec0d-97c7-44e8-ab69-2ac00fa3de0b",
+      "inputs": {},
+      "label": "Subtitle",
+      "operation": {
+        "alignment": "center",
+        "box_height": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "color": [
+          0.6200000047683716,
+          0.6000000238418579,
+          0.5600000023841858,
+          1.0
+        ],
+        "content": "THE NODE COMPOSITOR",
+        "features": "",
+        "font": {
+          "source": "sans"
+        },
+        "language": "",
+        "line_height": {
+          "kind": "constant",
+          "value": 1.25
+        },
+        "padding": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "rotation": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "rtl": false,
+        "scale_x": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "scale_y": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "size": {
+          "kind": "constant",
+          "value": 36.0
+        },
+        "tracking": {
+          "kind": "constant",
+          "value": 14.0
+        },
+        "type": "text",
+        "typography": {
+          "anchor": null,
+          "auto_fit": false,
+          "duration": 0.5,
+          "ease": true,
+          "exit": null,
+          "linked_scale": false,
+          "motion": "none",
+          "spans": [],
+          "stagger": 0.03999999910593033,
+          "start": 0.0,
+          "unit": "character",
+          "vertical": "top"
+        },
+        "underline": false,
+        "wrap_width": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "x": {
+          "kind": "constant",
+          "value": 960.0
+        },
+        "y": {
+          "kind": "constant",
+          "value": 850.0
+        }
+      },
+      "position": {
+        "x": 920.0,
+        "y": 945.0
+      },
+      "version": 1
+    },
+    "3ca0be18-6142-4d1b-b310-4309648529d3": {
+      "id": "3ca0be18-6142-4d1b-b310-4309648529d3",
+      "inputs": {},
+      "label": "Hot spot 7",
+      "operation": {
+        "aim_at": null,
+        "colour": [
+          1.0,
+          0.8799999952316284,
+          0.6600000262260437
+        ],
+        "cone": {
+          "kind": "constant",
+          "value": 40.0
+        },
+        "feather": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "height": {
+          "kind": "constant",
+          "value": 13.0
+        },
+        "intensity": {
+          "kind": "constant",
+          "value": 7.800000190734863
+        },
+        "kind": "area",
+        "placement": {
+          "position": [
+            520.0,
+            -30.0,
+            400.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            -14.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        "reflections": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "seed": 0,
+        "shadows": false,
+        "softness": {
+          "kind": "constant",
+          "value": 0.20000000298023224
+        },
+        "strips": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "type": "light_3d",
+        "variation": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "width": {
+          "kind": "constant",
+          "value": 90.0
+        }
+      },
+      "position": {
+        "x": 1380.0,
+        "y": 365.0
+      },
+      "version": 1
+    },
+    "3eee612e-7ea9-4910-8644-46ab64cb52d4": {
+      "id": "3eee612e-7ea9-4910-8644-46ab64cb52d4",
+      "inputs": {},
+      "label": "Background",
+      "operation": {
+        "color": [
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "type": "solid"
+      },
+      "version": 1
+    },
+    "45dad2c4-d4df-4428-8443-372f61b3ad24": {
+      "id": "45dad2c4-d4df-4428-8443-372f61b3ad24",
+      "inputs": {},
+      "label": "Room tone",
+      "operation": {
+        "color": [
+          0.10000000149011612,
+          0.07199999690055847,
+          0.04600000008940697,
+          1.0
+        ],
+        "type": "solid"
+      },
+      "position": {
+        "x": 690.0,
+        "y": 220.0
+      },
+      "version": 1
+    },
+    "4cc1dce3-6f85-4a7a-8293-b44c3a909eba": {
+      "id": "4cc1dce3-6f85-4a7a-8293-b44c3a909eba",
+      "inputs": {
+        "scene": "5f9e4d2a-dc79-4653-b90d-d6eb5bb5aa44",
+        "scene_2": "5de1b5a1-e395-434b-ac64-77f2d504b81a",
+        "scene_3": "11c9ab0e-302a-470c-9b27-4c35c259e8e9"
+      },
+      "label": "Gold title scene",
+      "operation": {
+        "type": "merge_scenes"
+      },
+      "position": {
+        "x": 690.0,
+        "y": 655.0
+      },
+      "version": 1
+    },
+    "540d2b44-2801-48c8-95ab-052d1c19b25f": {
+      "id": "540d2b44-2801-48c8-95ab-052d1c19b25f",
+      "inputs": {},
+      "label": "Star 2",
+      "operation": {
+        "aim_at": null,
+        "colour": [
+          1.0,
+          0.8999999761581421,
+          0.7200000286102295
+        ],
+        "cone": {
+          "kind": "constant",
+          "value": 40.0
+        },
+        "feather": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "height": {
+          "kind": "constant",
+          "value": 150.0
+        },
+        "intensity": {
+          "kind": "constant",
+          "value": 0.003000000026077032
+        },
+        "kind": "point",
+        "placement": {
+          "position": [
+            -184.0,
+            -95.0,
+            50.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        "reflections": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "seed": 0,
+        "shadows": false,
+        "softness": {
+          "kind": "constant",
+          "value": 0.20000000298023224
+        },
+        "strips": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "type": "light_3d",
+        "variation": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "width": {
+          "kind": "constant",
+          "value": 600.0
+        }
+      },
+      "position": {
+        "x": 0.0,
+        "y": 510.0
+      },
+      "version": 1
+    },
+    "54111c58-9063-46b6-9631-f388051c0082": {
+      "id": "54111c58-9063-46b6-9631-f388051c0082",
+      "inputs": {},
+      "label": "Haze noise",
+      "operation": {
+        "evolution": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "octaves": {
+          "kind": "constant",
+          "value": 3.0
+        },
+        "roughness": {
+          "kind": "constant",
+          "value": 0.5
+        },
+        "scale": {
+          "kind": "constant",
+          "value": 120.0
+        },
+        "seed": 5,
+        "type": "fractal_noise"
+      },
+      "position": {
+        "x": 1380.0,
+        "y": 655.0
+      },
+      "version": 1
+    },
+    "5506c52f-4b68-4962-b2d6-d8f466bf417f": {
+      "id": "5506c52f-4b68-4962-b2d6-d8f466bf417f",
+      "inputs": {},
+      "label": "Hot spot 3",
+      "operation": {
+        "aim_at": null,
+        "colour": [
+          1.0,
+          0.8799999952316284,
+          0.6600000262260437
+        ],
+        "cone": {
+          "kind": "constant",
+          "value": 40.0
+        },
+        "feather": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "height": {
+          "kind": "constant",
+          "value": 13.0
+        },
+        "intensity": {
+          "kind": "constant",
+          "value": 7.800000190734863
+        },
+        "kind": "area",
+        "placement": {
+          "position": [
+            -130.0,
+            -80.0,
+            400.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            -14.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        "reflections": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "seed": 0,
+        "shadows": false,
+        "softness": {
+          "kind": "constant",
+          "value": 0.20000000298023224
+        },
+        "strips": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "type": "light_3d",
+        "variation": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "width": {
+          "kind": "constant",
+          "value": 90.0
+        }
+      },
+      "position": {
+        "x": 460.0,
+        "y": 365.0
+      },
+      "version": 1
+    },
+    "57d82bea-6e81-45b9-855a-7372df75f522": {
+      "id": "57d82bea-6e81-45b9-855a-7372df75f522",
+      "inputs": {
+        "background": "96325f47-b997-442d-adfc-12aa3476c14f",
+        "foreground": "ef90b9d9-d684-4d59-baee-5823eb04221c"
+      },
+      "label": "Title on the wall",
+      "operation": {
+        "type": "merge"
+      },
+      "position": {
+        "x": 690.0,
+        "y": 945.0
+      },
+      "version": 1
+    },
+    "5d884a70-a4b4-43ea-b746-2138c6c170f0": {
+      "id": "5d884a70-a4b4-43ea-b746-2138c6c170f0",
+      "inputs": {},
+      "label": "Star 1",
+      "operation": {
+        "aim_at": null,
+        "colour": [
+          1.0,
+          0.8999999761581421,
+          0.7200000286102295
+        ],
+        "cone": {
+          "kind": "constant",
+          "value": 40.0
+        },
+        "feather": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "height": {
+          "kind": "constant",
+          "value": 150.0
+        },
+        "intensity": {
+          "kind": "constant",
+          "value": 0.0044999998062849045
+        },
+        "kind": "point",
+        "placement": {
+          "position": [
+            -527.0,
+            -45.0,
+            50.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        "reflections": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "seed": 0,
+        "shadows": false,
+        "softness": {
+          "kind": "constant",
+          "value": 0.20000000298023224
+        },
+        "strips": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "type": "light_3d",
+        "variation": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "width": {
+          "kind": "constant",
+          "value": 600.0
+        }
+      },
+      "position": {
+        "x": 1610.0,
+        "y": 365.0
+      },
+      "version": 1
+    },
+    "5de1b5a1-e395-434b-ac64-77f2d504b81a": {
+      "id": "5de1b5a1-e395-434b-ac64-77f2d504b81a",
+      "inputs": {
+        "scene": "5506c52f-4b68-4962-b2d6-d8f466bf417f",
+        "scene_2": "ac9e8294-7af8-41ae-90e3-a22fc444ae3d",
+        "scene_3": "b5c0d456-f2fd-405f-a884-ed7d27375015",
+        "scene_4": "1fd55f23-8ed7-4e1f-83bb-52e779fce18d",
+        "scene_5": "3ca0be18-6142-4d1b-b310-4309648529d3",
+        "scene_6": "5d884a70-a4b4-43ea-b746-2138c6c170f0",
+        "scene_7": "540d2b44-2801-48c8-95ab-052d1c19b25f",
+        "scene_8": "e3616536-07df-47f7-967e-306dd2eafec3"
+      },
+      "label": "Gold title scene part 1.2",
+      "operation": {
+        "type": "merge_scenes"
+      },
+      "position": {
+        "x": 230.0,
+        "y": 655.0
+      },
+      "version": 1
+    },
+    "5f9e4d2a-dc79-4653-b90d-d6eb5bb5aa44": {
+      "id": "5f9e4d2a-dc79-4653-b90d-d6eb5bb5aa44",
+      "inputs": {
+        "scene": "7183f450-5dd8-4af4-bc1a-56d98aa03285",
+        "scene_2": "5fd8e710-d221-480e-8a47-799d3743dffb",
+        "scene_3": "2af55c95-2133-4e8b-bb1c-43e2fcecb7c1",
+        "scene_4": "e434a99a-f7fa-4191-ba7a-02f0048813ab",
+        "scene_5": "1f95036c-88ec-4e72-8f20-45565921d506",
+        "scene_6": "aa84d6cf-5d81-49b8-916c-8691f5f58841",
+        "scene_7": "df29f641-8ee3-40e8-8875-d4fd4bab4df7",
+        "scene_8": "16c447a3-5511-4617-af14-3e776d2d60b0"
+      },
+      "label": "Gold title scene part 1.1",
+      "operation": {
+        "type": "merge_scenes"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 655.0
+      },
+      "version": 1
+    },
+    "5fd8e710-d221-480e-8a47-799d3743dffb": {
+      "id": "5fd8e710-d221-480e-8a47-799d3743dffb",
+      "inputs": {},
+      "label": "Camera",
+      "operation": {
+        "aim_at": null,
+        "f_stop": {
+          "kind": "constant",
+          "value": 22.0
+        },
+        "focal_length": {
+          "kind": "constant",
+          "value": 50.0
+        },
+        "focus_distance": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "focus_on": null,
+        "orbit": null,
+        "placement": {
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        "sensor_width": {
+          "kind": "constant",
+          "value": 36.0
+        },
+        "type": "camera_3d"
+      },
+      "position": {
+        "x": 460.0,
+        "y": 220.0
+      },
+      "version": 1
+    },
+    "607775ec-6574-41ae-bc23-ad342ae04c56": {
+      "id": "607775ec-6574-41ae-bc23-ad342ae04c56",
+      "inputs": {
+        "background": "9a4b97c5-3e28-4d9d-ad56-cefc79610181",
+        "foreground": "b1f2578c-ca09-4ddd-b27b-0405aee6b3da"
+      },
+      "label": "Haze on the wall",
+      "operation": {
+        "mode": "add",
+        "opacity": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "type": "blend"
+      },
+      "position": {
+        "x": 230.0,
+        "y": 800.0
+      },
+      "version": 1
+    },
+    "6915d61f-7758-464c-af40-6a05b8380c8a": {
+      "id": "6915d61f-7758-464c-af40-6a05b8380c8a",
+      "inputs": {},
+      "label": "Shadow light",
+      "operation": {
+        "aim_at": null,
+        "colour": [
+          1.0,
+          0.9300000071525574,
+          0.800000011920929
+        ],
+        "cone": {
+          "kind": "constant",
+          "value": 40.0
+        },
+        "feather": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "height": {
+          "kind": "constant",
+          "value": 150.0
+        },
+        "intensity": {
+          "kind": "constant",
+          "value": 0.5
+        },
+        "kind": "sun",
+        "placement": {
+          "position": [
+            0.0,
+            0.0,
+            1000.0
+          ],
+          "rotation": [
+            22.0,
+            -24.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        "reflections": {
+          "kind": "constant",
+          "value": 0.30000001192092896
+        },
+        "seed": 0,
+        "shadows": true,
+        "softness": {
+          "kind": "constant",
+          "value": 0.20000000298023224
+        },
+        "strips": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "type": "light_3d",
+        "variation": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "width": {
+          "kind": "constant",
+          "value": 600.0
+        }
+      },
+      "position": {
+        "x": 1610.0,
+        "y": 510.0
+      },
+      "version": 1
+    },
+    "7183f450-5dd8-4af4-bc1a-56d98aa03285": {
+      "id": "7183f450-5dd8-4af4-bc1a-56d98aa03285",
+      "inputs": {
+        "outline": "9624f1a5-9bc5-4c5a-822b-17dd12b064a5"
+      },
+      "label": "Gold lettering",
+      "operation": {
+        "aim_at": null,
+        "bevel": {
+          "kind": "constant",
+          "value": 6.0
+        },
+        "brush_angle": {
+          "kind": "constant",
+          "value": 65.0
+        },
+        "brushed": {
+          "kind": "constant",
+          "value": 0.6000000238418579
+        },
+        "colour": [
+          1.0,
+          0.5699999928474426,
+          0.14000000059604645
+        ],
+        "depth": {
+          "kind": "constant",
+          "value": 40.0
+        },
+        "emission": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "grain": {
+          "kind": "constant",
+          "value": 0.3700000047683716
+        },
+        "imperfections": {
+          "kind": "constant",
+          "value": 0.11999999731779099
+        },
+        "letters": {
+          "distance": 600.0,
+          "duration": 0.6000000238418579,
+          "ease": true,
+          "exit": null,
+          "motion": "none",
+          "stagger": 0.05999999865889549,
+          "start": 0.0,
+          "unit": "character"
+        },
+        "look": null,
+        "metallic": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "placement": {
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        "ridges": {
+          "kind": "constant",
+          "value": 0.11999999731779099
+        },
+        "roughness": {
+          "kind": "constant",
+          "value": 0.15000000596046448
+        },
+        "round_bevel": true,
+        "type": "text_3d"
+      },
+      "position": {
+        "x": 230.0,
+        "y": 220.0
+      },
+      "version": 1
+    },
+    "7df059f1-e86e-4d5c-94b8-fabe59231368": {
+      "id": "7df059f1-e86e-4d5c-94b8-fabe59231368",
+      "inputs": {
+        "image": "c4363514-337b-40cb-9017-915a83ecd114"
+      },
+      "label": "Beam angle",
+      "operation": {
+        "pivot_x": {
+          "kind": "constant",
+          "value": 960.0
+        },
+        "pivot_y": {
+          "kind": "constant",
+          "value": 540.0
+        },
+        "rotation": {
+          "kind": "constant",
+          "value": -28.0
+        },
+        "scale_x": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "scale_y": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "type": "affine",
+        "x": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "y": {
+          "kind": "constant",
+          "value": 0.0
+        }
+      },
+      "position": {
+        "x": 690.0,
+        "y": 800.0
+      },
+      "version": 1
+    },
+    "80d6262c-675f-49cb-b3f6-9eedb43dd00d": {
+      "id": "80d6262c-675f-49cb-b3f6-9eedb43dd00d",
+      "inputs": {},
+      "label": "Vignette ramp",
+      "operation": {
+        "end_x": {
+          "kind": "constant",
+          "value": 2310.0
+        },
+        "end_y": {
+          "kind": "constant",
+          "value": 520.0
+        },
+        "mode": "radial",
+        "start_x": {
+          "kind": "constant",
+          "value": 960.0
+        },
+        "start_y": {
+          "kind": "constant",
+          "value": 520.0
+        },
+        "type": "gradient"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 945.0
+      },
+      "version": 1
+    },
+    "86161185-2158-41eb-b38b-bc10a69b0c48": {
+      "id": "86161185-2158-41eb-b38b-bc10a69b0c48",
+      "inputs": {
+        "background": "607775ec-6574-41ae-bc23-ad342ae04c56",
+        "foreground": "d976a106-3b35-4456-aad9-333f552a916c"
+      },
+      "label": "Beam on the wall",
+      "operation": {
+        "mode": "add",
+        "opacity": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "type": "blend"
+      },
+      "position": {
+        "x": 1610.0,
+        "y": 800.0
+      },
+      "version": 1
+    },
+    "9624f1a5-9bc5-4c5a-822b-17dd12b064a5": {
+      "id": "9624f1a5-9bc5-4c5a-822b-17dd12b064a5",
+      "inputs": {},
+      "label": "Title",
+      "operation": {
+        "alignment": "center",
+        "box_height": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "content": "VEYLVIK",
+        "features": "",
+        "font": {
+          "source": "display"
+        },
+        "language": "",
+        "line_height": {
+          "kind": "constant",
+          "value": 1.25
+        },
+        "padding": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "rotation": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "rtl": false,
+        "scale_x": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "scale_y": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "size": {
+          "kind": "constant",
+          "value": 340.0
+        },
+        "tracking": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "type": "text",
+        "typography": {
+          "anchor": null,
+          "auto_fit": false,
+          "duration": 0.5,
+          "ease": true,
+          "exit": null,
+          "linked_scale": false,
+          "motion": "none",
+          "spans": [],
+          "stagger": 0.03999999910593033,
+          "start": 0.0,
+          "unit": "character",
+          "vertical": "top"
+        },
+        "underline": false,
+        "wrap_width": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "x": {
+          "kind": "constant",
+          "value": 960.0
+        },
+        "y": {
+          "kind": "constant",
+          "value": 610.0
+        }
+      },
+      "position": {
+        "x": 0.0,
+        "y": 220.0
+      },
+      "version": 1
+    },
+    "96325f47-b997-442d-adfc-12aa3476c14f": {
+      "id": "96325f47-b997-442d-adfc-12aa3476c14f",
+      "inputs": {
+        "background": "86161185-2158-41eb-b38b-bc10a69b0c48",
+        "foreground": "c18ddc4a-4541-4186-8a55-2274d03df3eb"
+      },
+      "label": "Backdrop",
+      "operation": {
+        "mode": "multiply",
+        "opacity": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "type": "blend"
+      },
+      "position": {
+        "x": 460.0,
+        "y": 945.0
+      },
+      "version": 1
+    },
+    "9734d1ec-bc4e-43a8-9e37-872d2e76a456": {
+      "id": "9734d1ec-bc4e-43a8-9e37-872d2e76a456",
+      "inputs": {},
+      "label": "Key from above",
+      "operation": {
+        "aim_at": null,
+        "colour": [
+          1.0,
+          0.9300000071525574,
+          0.800000011920929
+        ],
+        "cone": {
+          "kind": "constant",
+          "value": 40.0
+        },
+        "feather": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "height": {
+          "kind": "constant",
+          "value": 150.0
+        },
+        "intensity": {
+          "kind": "constant",
+          "value": 1.7000000476837158
+        },
+        "kind": "sun",
+        "placement": {
+          "position": [
+            0.0,
+            0.0,
+            1000.0
+          ],
+          "rotation": [
+            65.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        "reflections": {
+          "kind": "constant",
+          "value": 0.30000001192092896
+        },
+        "seed": 0,
+        "shadows": false,
+        "softness": {
+          "kind": "constant",
+          "value": 0.20000000298023224
+        },
+        "strips": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "type": "light_3d",
+        "variation": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "width": {
+          "kind": "constant",
+          "value": 600.0
+        }
+      },
+      "position": {
+        "x": 920.0,
+        "y": 510.0
+      },
+      "version": 1
+    },
+    "993b8c6e-35d0-4b99-9583-6198411c1a02": {
+      "id": "993b8c6e-35d0-4b99-9583-6198411c1a02",
+      "inputs": {},
+      "label": "Key from the left",
+      "operation": {
+        "aim_at": null,
+        "colour": [
+          1.0,
+          0.9300000071525574,
+          0.800000011920929
+        ],
+        "cone": {
+          "kind": "constant",
+          "value": 40.0
+        },
+        "feather": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "height": {
+          "kind": "constant",
+          "value": 150.0
+        },
+        "intensity": {
+          "kind": "constant",
+          "value": 1.7000000476837158
+        },
+        "kind": "sun",
+        "placement": {
+          "position": [
+            0.0,
+            0.0,
+            1000.0
+          ],
+          "rotation": [
+            0.0,
+            -65.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        "reflections": {
+          "kind": "constant",
+          "value": 0.30000001192092896
+        },
+        "seed": 0,
+        "shadows": false,
+        "softness": {
+          "kind": "constant",
+          "value": 0.20000000298023224
+        },
+        "strips": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "type": "light_3d",
+        "variation": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "width": {
+          "kind": "constant",
+          "value": 600.0
+        }
+      },
+      "position": {
+        "x": 1150.0,
+        "y": 510.0
+      },
+      "version": 1
+    },
+    "9a4b97c5-3e28-4d9d-ad56-cefc79610181": {
+      "id": "9a4b97c5-3e28-4d9d-ad56-cefc79610181",
+      "inputs": {},
+      "label": "Wall",
+      "operation": {
+        "color": [
+          0.024000000208616257,
+          0.023000000044703484,
+          0.02500000037252903,
+          1.0
+        ],
+        "type": "solid"
+      },
+      "position": {
+        "x": 1150.0,
+        "y": 655.0
+      },
+      "version": 1
+    },
+    "9c4538a9-f053-4013-803b-97d2d577b733": {
+      "id": "9c4538a9-f053-4013-803b-97d2d577b733",
+      "inputs": {
+        "image": "2101166b-0c09-40f4-8ae8-a58dbbe77d1b"
+      },
+      "label": "Bloom",
+      "operation": {
+        "intensity": {
+          "kind": "constant",
+          "value": 0.4000000059604645
+        },
+        "knee": {
+          "kind": "constant",
+          "value": 0.5
+        },
+        "radius": {
+          "kind": "constant",
+          "value": 70.0
+        },
+        "streak": {
+          "kind": "constant",
+          "value": 0.3499999940395355
+        },
+        "threshold": {
+          "kind": "constant",
+          "value": 1.600000023841858
+        },
+        "tint": [
+          1.0,
+          0.8600000143051147,
+          0.6600000262260437,
+          1.0
+        ],
+        "type": "bloom"
+      },
+      "position": {
+        "x": 1380.0,
+        "y": 945.0
+      },
+      "version": 1
+    },
+    "aa84d6cf-5d81-49b8-916c-8691f5f58841": {
+      "id": "aa84d6cf-5d81-49b8-916c-8691f5f58841",
+      "inputs": {},
+      "label": "Strip lights 3",
+      "operation": {
+        "aim_at": null,
+        "colour": [
+          1.0,
+          0.8399999737739563,
+          0.5799999833106995
+        ],
+        "cone": {
+          "kind": "constant",
+          "value": 40.0
+        },
+        "feather": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "height": {
+          "kind": "constant",
+          "value": 13.399999618530273
+        },
+        "intensity": {
+          "kind": "constant",
+          "value": 1.3200000524520874
+        },
+        "kind": "area",
+        "placement": {
+          "position": [
+            0.0,
+            188.0,
+            400.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            -14.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        "reflections": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "seed": 5,
+        "shadows": false,
+        "softness": {
+          "kind": "constant",
+          "value": 0.20000000298023224
+        },
+        "strips": {
+          "kind": "constant",
+          "value": 4.0
+        },
+        "type": "light_3d",
+        "variation": {
+          "kind": "constant",
+          "value": 0.800000011920929
+        },
+        "width": {
+          "kind": "constant",
+          "value": 1700.0
+        }
+      },
+      "position": {
+        "x": 1610.0,
+        "y": 220.0
+      },
+      "version": 1
+    },
+    "ac9e8294-7af8-41ae-90e3-a22fc444ae3d": {
+      "id": "ac9e8294-7af8-41ae-90e3-a22fc444ae3d",
+      "inputs": {},
+      "label": "Hot spot 4",
+      "operation": {
+        "aim_at": null,
+        "colour": [
+          1.0,
+          0.8799999952316284,
+          0.6600000262260437
+        ],
+        "cone": {
+          "kind": "constant",
+          "value": 40.0
+        },
+        "feather": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "height": {
+          "kind": "constant",
+          "value": 13.0
+        },
+        "intensity": {
+          "kind": "constant",
+          "value": 7.800000190734863
+        },
+        "kind": "area",
+        "placement": {
+          "position": [
+            60.0,
+            10.0,
+            400.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            -14.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        "reflections": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "seed": 0,
+        "shadows": false,
+        "softness": {
+          "kind": "constant",
+          "value": 0.20000000298023224
+        },
+        "strips": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "type": "light_3d",
+        "variation": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "width": {
+          "kind": "constant",
+          "value": 90.0
+        }
+      },
+      "position": {
+        "x": 690.0,
+        "y": 365.0
+      },
+      "version": 1
+    },
+    "b1f2578c-ca09-4ddd-b27b-0405aee6b3da": {
+      "id": "b1f2578c-ca09-4ddd-b27b-0405aee6b3da",
+      "inputs": {
+        "image": "108e1bcb-971c-4d23-8c1a-e86ca958442c"
+      },
+      "label": "Warm haze",
+      "operation": {
+        "high": [
+          0.20000000298023224,
+          0.125,
+          0.06599999964237213,
+          1.0
+        ],
+        "low": [
+          -0.12999999523162842,
+          -0.0820000022649765,
+          -0.0430000014603138,
+          1.0
+        ],
+        "type": "colorize"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 800.0
+      },
+      "version": 1
+    },
+    "b5c0d456-f2fd-405f-a884-ed7d27375015": {
+      "id": "b5c0d456-f2fd-405f-a884-ed7d27375015",
+      "inputs": {},
+      "label": "Hot spot 5",
+      "operation": {
+        "aim_at": null,
+        "colour": [
+          1.0,
+          0.8799999952316284,
+          0.6600000262260437
+        ],
+        "cone": {
+          "kind": "constant",
+          "value": 40.0
+        },
+        "feather": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "height": {
+          "kind": "constant",
+          "value": 13.0
+        },
+        "intensity": {
+          "kind": "constant",
+          "value": 7.800000190734863
+        },
+        "kind": "area",
+        "placement": {
+          "position": [
+            215.0,
+            60.0,
+            400.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            -14.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        "reflections": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "seed": 0,
+        "shadows": false,
+        "softness": {
+          "kind": "constant",
+          "value": 0.20000000298023224
+        },
+        "strips": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "type": "light_3d",
+        "variation": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "width": {
+          "kind": "constant",
+          "value": 90.0
+        }
+      },
+      "position": {
+        "x": 920.0,
+        "y": 365.0
+      },
+      "version": 1
+    },
+    "c18ddc4a-4541-4186-8a55-2274d03df3eb": {
+      "id": "c18ddc4a-4541-4186-8a55-2274d03df3eb",
+      "inputs": {
+        "image": "80d6262c-675f-49cb-b3f6-9eedb43dd00d"
+      },
+      "label": "Vignette",
+      "operation": {
+        "high": [
+          0.5,
+          0.5,
+          0.5199999809265137,
+          1.0
+        ],
+        "low": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "type": "colorize"
+      },
+      "position": {
+        "x": 230.0,
+        "y": 945.0
+      },
+      "version": 1
+    },
+    "c4363514-337b-40cb-9017-915a83ecd114": {
+      "id": "c4363514-337b-40cb-9017-915a83ecd114",
+      "inputs": {},
+      "label": "Beam shape",
+      "operation": {
+        "feather": {
+          "kind": "constant",
+          "value": 300.0
+        },
+        "radius_x": {
+          "kind": "constant",
+          "value": 600.0
+        },
+        "radius_y": {
+          "kind": "constant",
+          "value": 45.0
+        },
+        "type": "ellipse",
+        "x": {
+          "kind": "constant",
+          "value": 960.0
+        },
+        "y": {
+          "kind": "constant",
+          "value": 540.0
+        }
+      },
+      "position": {
+        "x": 460.0,
+        "y": 800.0
+      },
+      "version": 1
+    },
+    "d976a106-3b35-4456-aad9-333f552a916c": {
+      "id": "d976a106-3b35-4456-aad9-333f552a916c",
+      "inputs": {
+        "image": "07ce2961-7a9c-4197-ae56-05d499c08209"
+      },
+      "label": "Warm beam",
+      "operation": {
+        "high": [
+          0.10999999940395355,
+          0.07000000029802322,
+          0.03700000047683716,
+          1.0
+        ],
+        "low": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "type": "colorize"
+      },
+      "position": {
+        "x": 1380.0,
+        "y": 800.0
+      },
+      "version": 1
+    },
+    "df29f641-8ee3-40e8-8875-d4fd4bab4df7": {
+      "id": "df29f641-8ee3-40e8-8875-d4fd4bab4df7",
+      "inputs": {},
+      "label": "Hot spot 1",
+      "operation": {
+        "aim_at": null,
+        "colour": [
+          1.0,
+          0.8799999952316284,
+          0.6600000262260437
+        ],
+        "cone": {
+          "kind": "constant",
+          "value": 40.0
+        },
+        "feather": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "height": {
+          "kind": "constant",
+          "value": 13.0
+        },
+        "intensity": {
+          "kind": "constant",
+          "value": 7.800000190734863
+        },
+        "kind": "area",
+        "placement": {
+          "position": [
+            -470.0,
+            -45.0,
+            400.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            -14.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        "reflections": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "seed": 0,
+        "shadows": false,
+        "softness": {
+          "kind": "constant",
+          "value": 0.20000000298023224
+        },
+        "strips": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "type": "light_3d",
+        "variation": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "width": {
+          "kind": "constant",
+          "value": 90.0
+        }
+      },
+      "position": {
+        "x": 0.0,
+        "y": 365.0
+      },
+      "version": 1
+    },
+    "e3616536-07df-47f7-967e-306dd2eafec3": {
+      "id": "e3616536-07df-47f7-967e-306dd2eafec3",
+      "inputs": {},
+      "label": "Star 3",
+      "operation": {
+        "aim_at": null,
+        "colour": [
+          1.0,
+          0.8999999761581421,
+          0.7200000286102295
+        ],
+        "cone": {
+          "kind": "constant",
+          "value": 40.0
+        },
+        "feather": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "height": {
+          "kind": "constant",
+          "value": 150.0
+        },
+        "intensity": {
+          "kind": "constant",
+          "value": 0.005499999970197678
+        },
+        "kind": "point",
+        "placement": {
+          "position": [
+            180.0,
+            15.0,
+            50.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        "reflections": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "seed": 0,
+        "shadows": false,
+        "softness": {
+          "kind": "constant",
+          "value": 0.20000000298023224
+        },
+        "strips": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "type": "light_3d",
+        "variation": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "width": {
+          "kind": "constant",
+          "value": 600.0
+        }
+      },
+      "position": {
+        "x": 230.0,
+        "y": 510.0
+      },
+      "version": 1
+    },
+    "e434a99a-f7fa-4191-ba7a-02f0048813ab": {
+      "id": "e434a99a-f7fa-4191-ba7a-02f0048813ab",
+      "inputs": {},
+      "label": "Strip lights 1",
+      "operation": {
+        "aim_at": null,
+        "colour": [
+          1.0,
+          0.8399999737739563,
+          0.5799999833106995
+        ],
+        "cone": {
+          "kind": "constant",
+          "value": 40.0
+        },
+        "feather": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "height": {
+          "kind": "constant",
+          "value": 15.600000381469727
+        },
+        "intensity": {
+          "kind": "constant",
+          "value": 0.8700000047683716
+        },
+        "kind": "area",
+        "placement": {
+          "position": [
+            0.0,
+            -185.0,
+            400.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            -14.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        "reflections": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "seed": 3,
+        "shadows": false,
+        "softness": {
+          "kind": "constant",
+          "value": 0.20000000298023224
+        },
+        "strips": {
+          "kind": "constant",
+          "value": 4.0
+        },
+        "type": "light_3d",
+        "variation": {
+          "kind": "constant",
+          "value": 0.800000011920929
+        },
+        "width": {
+          "kind": "constant",
+          "value": 1700.0
+        }
+      },
+      "position": {
+        "x": 1150.0,
+        "y": 220.0
+      },
+      "version": 1
+    },
+    "eb0b1155-355e-4257-b8a1-b36236f80eaa": {
+      "id": "eb0b1155-355e-4257-b8a1-b36236f80eaa",
+      "inputs": {},
+      "label": "Star 5",
+      "operation": {
+        "aim_at": null,
+        "colour": [
+          1.0,
+          0.8999999761581421,
+          0.7200000286102295
+        ],
+        "cone": {
+          "kind": "constant",
+          "value": 40.0
+        },
+        "feather": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "height": {
+          "kind": "constant",
+          "value": 150.0
+        },
+        "intensity": {
+          "kind": "constant",
+          "value": 0.004000000189989805
+        },
+        "kind": "point",
+        "placement": {
+          "position": [
+            644.0,
+            105.0,
+            50.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        "reflections": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "seed": 0,
+        "shadows": false,
+        "softness": {
+          "kind": "constant",
+          "value": 0.20000000298023224
+        },
+        "strips": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "type": "light_3d",
+        "variation": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "width": {
+          "kind": "constant",
+          "value": 600.0
+        }
+      },
+      "position": {
+        "x": 690.0,
+        "y": 510.0
+      },
+      "version": 1
+    },
+    "ef90b9d9-d684-4d59-baee-5823eb04221c": {
+      "id": "ef90b9d9-d684-4d59-baee-5823eb04221c",
+      "inputs": {
+        "scene": "4cc1dce3-6f85-4a7a-8293-b44c3a909eba"
+      },
+      "label": "Render gold title",
+      "operation": {
+        "blur_samples": {
+          "kind": "constant",
+          "value": 10.0
+        },
+        "bounces": 4,
+        "camera": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "denoise": true,
+        "depth": false,
+        "motion_blur": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "occlusion": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "pass": "picture",
+        "quality": "preview",
+        "samples": 64,
+        "type": "render_scene"
+      },
+      "position": {
+        "x": 920.0,
+        "y": 655.0
+      },
+      "version": 1
+    }
+  },
+  "output": "9c4538a9-f053-4013-803b-97d2d577b733",
+  "saved_by": "0.1.0",
+  "schema": 1,
+  "width": 1920
+}

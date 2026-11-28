@@ -1,0 +1,775 @@
+{
+  "frame_count": 96,
+  "frame_rate": {
+    "rate": 1,
+    "ticks": 24
+  },
+  "groups": {
+    "003a2e0c-8975-4f64-885e-8140aa283ea9": {
+      "controls": {
+        "glint_animation": {
+          "default": {
+            "keys": [
+              {
+                "time": {
+                  "rate": 1,
+                  "ticks": 0
+                },
+                "value": 0.0
+              },
+              {
+                "time": {
+                  "rate": 1,
+                  "ticks": 4
+                },
+                "value": 4.0
+              }
+            ],
+            "kind": "linear"
+          },
+          "label": "Glint animation",
+          "node": "37052b1f-dfdb-403d-bbdc-042b18891e3d",
+          "parameter": "evolution"
+        },
+        "glint_brightness": {
+          "default": {
+            "kind": "constant",
+            "value": 3.0
+          },
+          "label": "Glint brightness",
+          "node": "37052b1f-dfdb-403d-bbdc-042b18891e3d",
+          "parameter": "intensity"
+        },
+        "glint_density": {
+          "default": {
+            "kind": "constant",
+            "value": 0.75
+          },
+          "label": "Glint density",
+          "node": "37052b1f-dfdb-403d-bbdc-042b18891e3d",
+          "parameter": "density"
+        },
+        "glint_size": {
+          "default": {
+            "kind": "constant",
+            "value": 36.0
+          },
+          "label": "Glint size",
+          "node": "37052b1f-dfdb-403d-bbdc-042b18891e3d",
+          "parameter": "size"
+        },
+        "highlight_threshold": {
+          "default": {
+            "kind": "constant",
+            "value": 0.550000011920929
+          },
+          "label": "Highlight threshold",
+          "node": "37052b1f-dfdb-403d-bbdc-042b18891e3d",
+          "parameter": "threshold"
+        },
+        "ray_angle": {
+          "default": {
+            "kind": "constant",
+            "value": 15.0
+          },
+          "label": "Ray angle",
+          "node": "37052b1f-dfdb-403d-bbdc-042b18891e3d",
+          "parameter": "angle"
+        }
+      },
+      "id": "003a2e0c-8975-4f64-885e-8140aa283ea9",
+      "inputs": {
+        "input_1": {
+          "label": "Image",
+          "targets": [
+            {
+              "node": "37052b1f-dfdb-403d-bbdc-042b18891e3d",
+              "port": "image"
+            }
+          ]
+        }
+      },
+      "label": "Sun Glints",
+      "members": [
+        "37052b1f-dfdb-403d-bbdc-042b18891e3d"
+      ],
+      "output": "37052b1f-dfdb-403d-bbdc-042b18891e3d"
+    }
+  },
+  "height": 1080,
+  "nodes": {
+    "28e10d9e-e062-435f-9818-0b283322d3ee": {
+      "id": "28e10d9e-e062-435f-9818-0b283322d3ee",
+      "inputs": {},
+      "label": "GOLD · editable lettering",
+      "operation": {
+        "alignment": "center",
+        "box_height": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "content": "GOLD",
+        "features": "",
+        "font": {
+          "source": "display"
+        },
+        "language": "",
+        "line_height": {
+          "kind": "constant",
+          "value": 1.25
+        },
+        "padding": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "rotation": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "rtl": false,
+        "scale_x": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "scale_y": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "size": {
+          "kind": "constant",
+          "value": 400.0
+        },
+        "tracking": {
+          "kind": "constant",
+          "value": 24.0
+        },
+        "type": "text",
+        "typography": {
+          "anchor": null,
+          "auto_fit": false,
+          "duration": 0.5,
+          "ease": true,
+          "exit": null,
+          "linked_scale": false,
+          "motion": "none",
+          "spans": [],
+          "stagger": 0.03999999910593033,
+          "start": 0.0,
+          "unit": "character",
+          "vertical": "top"
+        },
+        "underline": false,
+        "wrap_width": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "x": {
+          "kind": "constant",
+          "value": 960.0
+        },
+        "y": {
+          "kind": "constant",
+          "value": 680.0
+        }
+      },
+      "position": {
+        "x": 920.0,
+        "y": 145.0
+      },
+      "version": 1
+    },
+    "3549aa1b-1b54-4dd3-9787-be1b3ff4a570": {
+      "id": "3549aa1b-1b54-4dd3-9787-be1b3ff4a570",
+      "inputs": {},
+      "label": "Distant terrain",
+      "operation": {
+        "geometry": {
+          "commands": [
+            {
+              "command": "move",
+              "to": [
+                0.0,
+                940.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                260.0,
+                840.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                520.0,
+                910.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                900.0,
+                780.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                1300.0,
+                900.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                1600.0,
+                800.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                1920.0,
+                900.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                1920.0,
+                1080.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                0.0,
+                1080.0
+              ]
+            },
+            {
+              "command": "close"
+            }
+          ],
+          "fill_rule": "non_zero"
+        },
+        "type": "path"
+      },
+      "position": {
+        "x": 690.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "37052b1f-dfdb-403d-bbdc-042b18891e3d": {
+      "id": "37052b1f-dfdb-403d-bbdc-042b18891e3d",
+      "inputs": {
+        "image": "7e188c2f-8a37-493e-a0e8-d726b09d8908"
+      },
+      "label": "Sunlight catching polished details",
+      "operation": {
+        "angle": {
+          "kind": "constant",
+          "value": 15.0
+        },
+        "density": {
+          "kind": "constant",
+          "value": 0.75
+        },
+        "evolution": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": 0.0
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": 4.0
+            }
+          ],
+          "kind": "linear"
+        },
+        "intensity": {
+          "kind": "constant",
+          "value": 3.0
+        },
+        "seed": 193,
+        "size": {
+          "kind": "constant",
+          "value": 36.0
+        },
+        "threshold": {
+          "kind": "constant",
+          "value": 0.550000011920929
+        },
+        "type": "sun_glints"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 1500.0
+      },
+      "version": 1
+    },
+    "4ac96596-b9ac-400f-ba04-7c64c1be35fc": {
+      "id": "4ac96596-b9ac-400f-ba04-7c64c1be35fc",
+      "inputs": {},
+      "label": "Sky gradient",
+      "operation": {
+        "end_x": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "end_y": {
+          "kind": "constant",
+          "value": 1080.0
+        },
+        "mode": "linear",
+        "start_x": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "start_y": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "type": "gradient"
+      },
+      "position": {
+        "x": 230.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "73fe5859-a105-4ae7-96ad-1702d8c3a672": {
+      "id": "73fe5859-a105-4ae7-96ad-1702d8c3a672",
+      "inputs": {
+        "image": "4ac96596-b9ac-400f-ba04-7c64c1be35fc"
+      },
+      "label": "Sky gradient",
+      "operation": {
+        "high": [
+          0.5,
+          0.5799999833106995,
+          0.6299999952316284,
+          1.0
+        ],
+        "low": [
+          0.07999999821186066,
+          0.18000000715255737,
+          0.3199999928474426,
+          1.0
+        ],
+        "type": "colorize"
+      },
+      "position": {
+        "x": 460.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "7d5e68c8-36d5-4dc8-b150-89e74df58cb0": {
+      "id": "7d5e68c8-36d5-4dc8-b150-89e74df58cb0",
+      "inputs": {
+        "background": "ad5074ff-0343-41e0-b721-3913cb99ea34",
+        "foreground": "950dc8d3-25e3-4da6-9a54-cfdc05b92646"
+      },
+      "label": "Cloud reflection environment",
+      "operation": {
+        "type": "merge"
+      },
+      "position": {
+        "x": 690.0,
+        "y": 145.0
+      },
+      "version": 1
+    },
+    "7e188c2f-8a37-493e-a0e8-d726b09d8908": {
+      "id": "7e188c2f-8a37-493e-a0e8-d726b09d8908",
+      "inputs": {
+        "image": "28e10d9e-e062-435f-9818-0b283322d3ee"
+      },
+      "label": "Polished base material",
+      "operation": {
+        "bevel": {
+          "kind": "constant",
+          "value": 10.0
+        },
+        "brush_angle": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "brushing": "auto",
+        "colours": null,
+        "emission": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "grain": {
+          "kind": "constant",
+          "value": 0.3499999940395355
+        },
+        "height_depth": {
+          "kind": "constant",
+          "value": 8.0
+        },
+        "imperfections": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "kind": "gold",
+        "lighting": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": 0.0
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 2
+              },
+              "value": 0.11999999731779099
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": 0.0
+            }
+          ],
+          "kind": "smooth"
+        },
+        "normal_directx": false,
+        "normal_strength": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "optics": null,
+        "ridges": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "roughness": {
+          "kind": "constant",
+          "value": 0.15000000596046448
+        },
+        "scale": {
+          "kind": "constant",
+          "value": 360.0
+        },
+        "shot": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "smooth_edges": true,
+        "studio": {
+          "ambient": 0.0,
+          "environment": 0.6499999761581421,
+          "environment_rotation": -45.0,
+          "lights": [
+            {
+              "colour": [
+                1.0,
+                0.9599999785423279,
+                0.8899999856948853
+              ],
+              "enabled": false,
+              "follow": false,
+              "intensity": {
+                "kind": "constant",
+                "value": 1.2000000476837158
+              },
+              "position": [
+                -3.0,
+                -0.699999988079071,
+                -1.0
+              ],
+              "rotation": [
+                0.0,
+                -105.0,
+                0.0
+              ],
+              "size": [
+                1.5,
+                4.0
+              ]
+            },
+            {
+              "colour": [
+                0.9599999785423279,
+                0.9800000190734863,
+                1.0
+              ],
+              "enabled": false,
+              "follow": false,
+              "intensity": {
+                "kind": "constant",
+                "value": 1.2000000476837158
+              },
+              "position": [
+                3.0,
+                -0.30000001192092896,
+                1.5
+              ],
+              "rotation": [
+                0.0,
+                50.0,
+                0.0
+              ],
+              "size": [
+                2.299999952316284,
+                3.200000047683716
+              ]
+            },
+            {
+              "colour": [
+                1.0,
+                0.9300000071525574,
+                0.800000011920929
+              ],
+              "enabled": false,
+              "follow": false,
+              "intensity": {
+                "kind": "constant",
+                "value": 3.200000047683716
+              },
+              "position": [
+                -2.799999952316284,
+                2.5999999046325684,
+                1.5
+              ],
+              "rotation": [
+                -30.0,
+                -45.0,
+                0.0
+              ],
+              "size": [
+                1.7999999523162842,
+                2.0
+              ]
+            },
+            {
+              "colour": [
+                1.0,
+                1.0,
+                1.0
+              ],
+              "enabled": false,
+              "follow": false,
+              "intensity": {
+                "kind": "constant",
+                "value": 0.44999998807907104
+              },
+              "position": [
+                0.0,
+                -4.0,
+                2.0
+              ],
+              "rotation": [
+                60.0,
+                0.0,
+                0.0
+              ],
+              "size": [
+                7.0,
+                4.0
+              ]
+            }
+          ]
+        },
+        "type": "material"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 290.0
+      },
+      "version": 1
+    },
+    "8358a726-57dd-4ae4-b747-dd47a2fed9d3": {
+      "id": "8358a726-57dd-4ae4-b747-dd47a2fed9d3",
+      "inputs": {
+        "image": "ffc8a778-a158-4e8c-b667-e2e3b4f915c9",
+        "mask": "3549aa1b-1b54-4dd3-9787-be1b3ff4a570"
+      },
+      "label": "Distant landscape",
+      "operation": {
+        "type": "mask"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 145.0
+      },
+      "version": 1
+    },
+    "950dc8d3-25e3-4da6-9a54-cfdc05b92646": {
+      "id": "950dc8d3-25e3-4da6-9a54-cfdc05b92646",
+      "inputs": {},
+      "label": "Animated reflection clouds",
+      "operation": {
+        "density": {
+          "kind": "constant",
+          "value": 4.0
+        },
+        "detail": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "evolution": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": 0.0
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": 4.0
+            }
+          ],
+          "kind": "linear"
+        },
+        "height": {
+          "kind": "constant",
+          "value": 900.0
+        },
+        "kind": "clouds",
+        "lighting": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "seed": 397,
+        "type": "atmosphere",
+        "width": {
+          "kind": "constant",
+          "value": 2000.0
+        },
+        "x": {
+          "kind": "constant",
+          "value": 960.0
+        },
+        "y": {
+          "kind": "constant",
+          "value": 840.0
+        }
+      },
+      "position": {
+        "x": 460.0,
+        "y": 145.0
+      },
+      "version": 1
+    },
+    "a3c45ab4-47b9-4e91-a688-4a488a0a9207": {
+      "id": "a3c45ab4-47b9-4e91-a688-4a488a0a9207",
+      "inputs": {
+        "background": "a867af04-f915-4371-8b05-fe49a137df1b",
+        "foreground": "7e188c2f-8a37-493e-a0e8-d726b09d8908"
+      },
+      "label": "Original lettering over background",
+      "operation": {
+        "type": "merge"
+      },
+      "position": {
+        "x": 460.0,
+        "y": 290.0
+      },
+      "version": 1
+    },
+    "a867af04-f915-4371-8b05-fe49a137df1b": {
+      "id": "a867af04-f915-4371-8b05-fe49a137df1b",
+      "inputs": {},
+      "label": "Deep cinematic background",
+      "operation": {
+        "color": [
+          0.0010000000474974513,
+          0.0020000000949949026,
+          0.006000000052154064,
+          1.0
+        ],
+        "type": "solid"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "scene_background": true,
+      "version": 1
+    },
+    "ad5074ff-0343-41e0-b721-3913cb99ea34": {
+      "id": "ad5074ff-0343-41e0-b721-3913cb99ea34",
+      "inputs": {
+        "background": "73fe5859-a105-4ae7-96ad-1702d8c3a672",
+        "foreground": "8358a726-57dd-4ae4-b747-dd47a2fed9d3"
+      },
+      "label": "Sky and horizon",
+      "operation": {
+        "type": "merge"
+      },
+      "position": {
+        "x": 230.0,
+        "y": 145.0
+      },
+      "version": 1
+    },
+    "b787c700-16f8-4a2e-aed7-b8d05ae98b07": {
+      "id": "b787c700-16f8-4a2e-aed7-b8d05ae98b07",
+      "inputs": {
+        "background": "a867af04-f915-4371-8b05-fe49a137df1b",
+        "foreground": "37052b1f-dfdb-403d-bbdc-042b18891e3d"
+      },
+      "label": "Finished lettering over background",
+      "operation": {
+        "type": "merge"
+      },
+      "position": {
+        "x": 690.0,
+        "y": 290.0
+      },
+      "version": 1
+    },
+    "ffc8a778-a158-4e8c-b667-e2e3b4f915c9": {
+      "id": "ffc8a778-a158-4e8c-b667-e2e3b4f915c9",
+      "inputs": {},
+      "label": "Terrain silhouette",
+      "operation": {
+        "color": [
+          0.02500000037252903,
+          0.04500000178813934,
+          0.052000001072883606,
+          1.0
+        ],
+        "type": "solid"
+      },
+      "position": {
+        "x": 920.0,
+        "y": 0.0
+      },
+      "version": 1
+    }
+  },
+  "output": "b787c700-16f8-4a2e-aed7-b8d05ae98b07",
+  "saved_by": "0.1.0",
+  "schema": 1,
+  "width": 1920
+}

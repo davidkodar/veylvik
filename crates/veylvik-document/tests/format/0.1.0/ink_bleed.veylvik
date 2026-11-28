@@ -1,0 +1,497 @@
+{
+  "frame_count": 96,
+  "frame_rate": {
+    "rate": 1,
+    "ticks": 24
+  },
+  "groups": {
+    "e3e64cef-7fa6-40f5-b26d-31824b50c756": {
+      "controls": {
+        "amount": {
+          "default": {
+            "kind": "constant",
+            "value": 1.0
+          },
+          "label": "Amount",
+          "node": "73915c8b-4eba-4e30-ab04-8bc7672552a7",
+          "parameter": "opacity"
+        },
+        "ink_spread": {
+          "default": {
+            "kind": "constant",
+            "value": 14.0
+          },
+          "label": "Ink spread",
+          "node": "035de274-141e-475e-a318-a7b70eb4e9ef",
+          "parameter": "radius"
+        },
+        "paper_softness": {
+          "default": {
+            "kind": "constant",
+            "value": 6.0
+          },
+          "label": "Paper softness",
+          "node": "1fe02960-4ce4-44c0-84bf-a32a7555f115",
+          "parameter": "radius"
+        }
+      },
+      "id": "e3e64cef-7fa6-40f5-b26d-31824b50c756",
+      "inputs": {
+        "input_1": {
+          "label": "Image",
+          "targets": [
+            {
+              "node": "80e6049e-64bb-4cd7-8d97-dde180c279ca",
+              "port": "image"
+            },
+            {
+              "node": "73915c8b-4eba-4e30-ab04-8bc7672552a7",
+              "port": "background"
+            }
+          ]
+        }
+      },
+      "label": "Ink Bleed",
+      "members": [
+        "035de274-141e-475e-a318-a7b70eb4e9ef",
+        "1fe02960-4ce4-44c0-84bf-a32a7555f115",
+        "500ee3a7-9148-42cb-8a94-7dc19d9a2793",
+        "73915c8b-4eba-4e30-ab04-8bc7672552a7",
+        "80e6049e-64bb-4cd7-8d97-dde180c279ca",
+        "c2aecd8d-693e-435e-9be5-7e9f1ac4a11b",
+        "c8226f9a-c0ad-4e69-8683-96e22ba7737e"
+      ],
+      "output": "73915c8b-4eba-4e30-ab04-8bc7672552a7"
+    }
+  },
+  "height": 1080,
+  "nodes": {
+    "035de274-141e-475e-a318-a7b70eb4e9ef": {
+      "id": "035de274-141e-475e-a318-a7b70eb4e9ef",
+      "inputs": {
+        "image": "80e6049e-64bb-4cd7-8d97-dde180c279ca"
+      },
+      "label": "Spread ink",
+      "operation": {
+        "radius": {
+          "kind": "constant",
+          "value": 14.0
+        },
+        "type": "morphology"
+      },
+      "version": 1
+    },
+    "1df1b5c3-1eab-4cbf-bcad-20a51c67fc9b": {
+      "id": "1df1b5c3-1eab-4cbf-bcad-20a51c67fc9b",
+      "inputs": {
+        "image": "b7e88a4e-805e-4abd-b3ac-70996d1ebcb7",
+        "mask": "2c82c81a-29a7-47af-8eee-a46c170e6460"
+      },
+      "label": "Color inside artwork",
+      "operation": {
+        "type": "mask"
+      },
+      "position": {
+        "x": 920.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "1fe02960-4ce4-44c0-84bf-a32a7555f115": {
+      "id": "1fe02960-4ce4-44c0-84bf-a32a7555f115",
+      "inputs": {
+        "image": "035de274-141e-475e-a318-a7b70eb4e9ef"
+      },
+      "label": "Diffusion",
+      "operation": {
+        "filter": "box",
+        "radius": {
+          "kind": "constant",
+          "value": 6.0
+        },
+        "type": "blur"
+      },
+      "version": 1
+    },
+    "2c82c81a-29a7-47af-8eee-a46c170e6460": {
+      "id": "2c82c81a-29a7-47af-8eee-a46c170e6460",
+      "inputs": {},
+      "label": "Editable vector artwork",
+      "operation": {
+        "alignment": "center",
+        "box_height": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "content": "FLOW",
+        "features": "",
+        "font": {
+          "source": "display"
+        },
+        "language": "",
+        "line_height": {
+          "kind": "constant",
+          "value": 1.25
+        },
+        "padding": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "rotation": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "rtl": false,
+        "scale_x": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "scale_y": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "size": {
+          "kind": "constant",
+          "value": 400.0
+        },
+        "tracking": {
+          "kind": "constant",
+          "value": 24.0
+        },
+        "type": "text",
+        "typography": {
+          "anchor": null,
+          "auto_fit": false,
+          "duration": 0.5,
+          "ease": true,
+          "exit": null,
+          "linked_scale": false,
+          "motion": "none",
+          "spans": [],
+          "stagger": 0.03999999910593033,
+          "start": 0.0,
+          "unit": "character",
+          "vertical": "top"
+        },
+        "underline": false,
+        "wrap_width": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "x": {
+          "kind": "constant",
+          "value": 960.0
+        },
+        "y": {
+          "kind": "constant",
+          "value": 680.0
+        }
+      },
+      "position": {
+        "x": 230.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "500ee3a7-9148-42cb-8a94-7dc19d9a2793": {
+      "id": "500ee3a7-9148-42cb-8a94-7dc19d9a2793",
+      "inputs": {},
+      "label": "Opaque field background",
+      "operation": {
+        "color": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "type": "solid"
+      },
+      "version": 1
+    },
+    "54d3784f-5355-4331-a810-ec86a5030dcd": {
+      "id": "54d3784f-5355-4331-a810-ec86a5030dcd",
+      "inputs": {
+        "image": "1df1b5c3-1eab-4cbf-bcad-20a51c67fc9b"
+      },
+      "label": "Artwork motion",
+      "operation": {
+        "pivot_x": {
+          "kind": "constant",
+          "value": 960.0
+        },
+        "pivot_y": {
+          "kind": "constant",
+          "value": 540.0
+        },
+        "rotation": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "scale_x": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": 0.9399999976158142
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 2
+              },
+              "value": 1.0399999618530273
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": 0.9399999976158142
+            }
+          ],
+          "kind": "smooth"
+        },
+        "scale_y": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": 0.9399999976158142
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 2
+              },
+              "value": 1.0399999618530273
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": 0.9399999976158142
+            }
+          ],
+          "kind": "smooth"
+        },
+        "type": "affine",
+        "x": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "y": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": 18.0
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 2
+              },
+              "value": -18.0
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": 18.0
+            }
+          ],
+          "kind": "smooth"
+        }
+      },
+      "position": {
+        "x": 0.0,
+        "y": 145.0
+      },
+      "version": 1
+    },
+    "73915c8b-4eba-4e30-ab04-8bc7672552a7": {
+      "id": "73915c8b-4eba-4e30-ab04-8bc7672552a7",
+      "inputs": {
+        "background": "968f34d0-21b5-4ef8-9b88-f97f5fdfc69f",
+        "foreground": "c2aecd8d-693e-435e-9be5-7e9f1ac4a11b"
+      },
+      "label": "Layer mix",
+      "operation": {
+        "mode": "normal",
+        "opacity": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "type": "blend"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 500.0
+      },
+      "version": 1
+    },
+    "80e6049e-64bb-4cd7-8d97-dde180c279ca": {
+      "id": "80e6049e-64bb-4cd7-8d97-dde180c279ca",
+      "inputs": {
+        "image": "968f34d0-21b5-4ef8-9b88-f97f5fdfc69f"
+      },
+      "label": "Ink coverage",
+      "operation": {
+        "channel": "luminance",
+        "type": "channel_mask"
+      },
+      "version": 1
+    },
+    "968f34d0-21b5-4ef8-9b88-f97f5fdfc69f": {
+      "id": "968f34d0-21b5-4ef8-9b88-f97f5fdfc69f",
+      "inputs": {
+        "background": "be6c60f1-7dc3-41be-9d6e-9ea665069c11",
+        "foreground": "54d3784f-5355-4331-a810-ec86a5030dcd"
+      },
+      "label": "Before · artwork on midnight",
+      "operation": {
+        "type": "merge"
+      },
+      "position": {
+        "x": 230.0,
+        "y": 145.0
+      },
+      "version": 1
+    },
+    "b7e88a4e-805e-4abd-b3ac-70996d1ebcb7": {
+      "id": "b7e88a4e-805e-4abd-b3ac-70996d1ebcb7",
+      "inputs": {
+        "image": "d145c3ce-fee5-4920-bb6c-ee10d1407185"
+      },
+      "label": "Artwork palette",
+      "operation": {
+        "high": [
+          1.600000023841858,
+          1.7999999523162842,
+          2.0,
+          1.0
+        ],
+        "low": [
+          0.30000001192092896,
+          0.44999998807907104,
+          0.800000011920929,
+          1.0
+        ],
+        "type": "colorize"
+      },
+      "position": {
+        "x": 690.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "be6c60f1-7dc3-41be-9d6e-9ea665069c11": {
+      "id": "be6c60f1-7dc3-41be-9d6e-9ea665069c11",
+      "inputs": {},
+      "label": "Midnight background",
+      "operation": {
+        "color": [
+          0.0020000000949949026,
+          0.004000000189989805,
+          0.012000000104308128,
+          1.0
+        ],
+        "type": "solid"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "scene_background": true,
+      "version": 1
+    },
+    "c2aecd8d-693e-435e-9be5-7e9f1ac4a11b": {
+      "id": "c2aecd8d-693e-435e-9be5-7e9f1ac4a11b",
+      "inputs": {
+        "image": "c8226f9a-c0ad-4e69-8683-96e22ba7737e"
+      },
+      "label": "Palette",
+      "operation": {
+        "high": [
+          0.006000000052154064,
+          0.014999999664723873,
+          0.02500000037252903,
+          1.0
+        ],
+        "low": [
+          0.800000011920929,
+          0.7200000286102295,
+          0.5,
+          1.0
+        ],
+        "type": "colorize"
+      },
+      "version": 1
+    },
+    "c8226f9a-c0ad-4e69-8683-96e22ba7737e": {
+      "id": "c8226f9a-c0ad-4e69-8683-96e22ba7737e",
+      "inputs": {
+        "background": "500ee3a7-9148-42cb-8a94-7dc19d9a2793",
+        "foreground": "1fe02960-4ce4-44c0-84bf-a32a7555f115"
+      },
+      "label": "Layer mix",
+      "operation": {
+        "mode": "normal",
+        "opacity": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "type": "blend"
+      },
+      "version": 1
+    },
+    "d145c3ce-fee5-4920-bb6c-ee10d1407185": {
+      "id": "d145c3ce-fee5-4920-bb6c-ee10d1407185",
+      "inputs": {},
+      "label": "Vertical palette ramp",
+      "operation": {
+        "end_x": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "end_y": {
+          "kind": "constant",
+          "value": 720.0
+        },
+        "mode": "linear",
+        "start_x": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "start_y": {
+          "kind": "constant",
+          "value": 360.0
+        },
+        "type": "gradient"
+      },
+      "position": {
+        "x": 460.0,
+        "y": 0.0
+      },
+      "version": 1
+    }
+  },
+  "output": "73915c8b-4eba-4e30-ab04-8bc7672552a7",
+  "saved_by": "0.1.0",
+  "schema": 1,
+  "width": 1920
+}

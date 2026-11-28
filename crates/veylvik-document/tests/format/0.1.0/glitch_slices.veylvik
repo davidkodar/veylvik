@@ -1,0 +1,724 @@
+{
+  "frame_count": 96,
+  "frame_rate": {
+    "rate": 1,
+    "ticks": 24
+  },
+  "groups": {
+    "83378e91-ce3e-43c4-8e72-c0b7f3ce59b2": {
+      "controls": {
+        "amount": {
+          "default": {
+            "kind": "constant",
+            "value": 1.0
+          },
+          "label": "Amount",
+          "node": "6760571b-2952-4a43-8939-69eb24d130fe",
+          "parameter": "opacity"
+        },
+        "slice_motion": {
+          "default": {
+            "keys": [
+              {
+                "time": {
+                  "rate": 1,
+                  "ticks": 0
+                },
+                "value": -56.0
+              },
+              {
+                "time": {
+                  "rate": 1,
+                  "ticks": 2
+                },
+                "value": 70.0
+              },
+              {
+                "time": {
+                  "rate": 1,
+                  "ticks": 4
+                },
+                "value": -56.0
+              }
+            ],
+            "kind": "smooth"
+          },
+          "label": "Slice motion",
+          "node": "3d933fae-18be-4ca0-9980-d8eb34ccd167",
+          "parameter": "x"
+        }
+      },
+      "id": "83378e91-ce3e-43c4-8e72-c0b7f3ce59b2",
+      "inputs": {
+        "input_1": {
+          "label": "Image",
+          "targets": [
+            {
+              "node": "fbe909ac-4438-4c51-8666-41fdc4408ed9",
+              "port": "image"
+            },
+            {
+              "node": "6760571b-2952-4a43-8939-69eb24d130fe",
+              "port": "background"
+            }
+          ]
+        }
+      },
+      "label": "Glitch Slices",
+      "members": [
+        "3d933fae-18be-4ca0-9980-d8eb34ccd167",
+        "6760571b-2952-4a43-8939-69eb24d130fe",
+        "d9538d12-dc8c-417f-927a-278081f78040",
+        "fbe909ac-4438-4c51-8666-41fdc4408ed9"
+      ],
+      "output": "6760571b-2952-4a43-8939-69eb24d130fe"
+    }
+  },
+  "height": 1080,
+  "nodes": {
+    "33021d70-8754-4b09-ad9d-8cf830c608ba": {
+      "id": "33021d70-8754-4b09-ad9d-8cf830c608ba",
+      "inputs": {
+        "image": "beae45e9-eab3-4a70-9a7b-dcd8b6e3767c"
+      },
+      "label": "Artwork motion",
+      "operation": {
+        "pivot_x": {
+          "kind": "constant",
+          "value": 960.0
+        },
+        "pivot_y": {
+          "kind": "constant",
+          "value": 540.0
+        },
+        "rotation": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "scale_x": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": 0.9399999976158142
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 2
+              },
+              "value": 1.0399999618530273
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": 0.9399999976158142
+            }
+          ],
+          "kind": "smooth"
+        },
+        "scale_y": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": 0.9399999976158142
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 2
+              },
+              "value": 1.0399999618530273
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": 0.9399999976158142
+            }
+          ],
+          "kind": "smooth"
+        },
+        "type": "affine",
+        "x": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "y": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": 18.0
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 2
+              },
+              "value": -18.0
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": 18.0
+            }
+          ],
+          "kind": "smooth"
+        }
+      },
+      "position": {
+        "x": 0.0,
+        "y": 145.0
+      },
+      "version": 1
+    },
+    "3d933fae-18be-4ca0-9980-d8eb34ccd167": {
+      "id": "3d933fae-18be-4ca0-9980-d8eb34ccd167",
+      "inputs": {
+        "image": "fbe909ac-4438-4c51-8666-41fdc4408ed9"
+      },
+      "label": "Offset",
+      "operation": {
+        "type": "transform",
+        "x": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": -56.0
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 2
+              },
+              "value": 70.0
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": -56.0
+            }
+          ],
+          "kind": "smooth"
+        },
+        "y": {
+          "kind": "constant",
+          "value": 0.0
+        }
+      },
+      "version": 1
+    },
+    "6760571b-2952-4a43-8939-69eb24d130fe": {
+      "id": "6760571b-2952-4a43-8939-69eb24d130fe",
+      "inputs": {
+        "background": "ba1a30a7-1637-4174-86b7-b19f32f30fe6",
+        "foreground": "3d933fae-18be-4ca0-9980-d8eb34ccd167"
+      },
+      "label": "Layer mix",
+      "operation": {
+        "mode": "normal",
+        "opacity": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "type": "blend"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 500.0
+      },
+      "version": 1
+    },
+    "70d6eb8b-34ad-4898-901f-25ae26e00e3f": {
+      "id": "70d6eb8b-34ad-4898-901f-25ae26e00e3f",
+      "inputs": {
+        "image": "a6338725-6de7-4983-b489-a360dcca4221"
+      },
+      "label": "Artwork palette",
+      "operation": {
+        "high": [
+          1.600000023841858,
+          1.7999999523162842,
+          2.0,
+          1.0
+        ],
+        "low": [
+          0.30000001192092896,
+          0.44999998807907104,
+          0.800000011920929,
+          1.0
+        ],
+        "type": "colorize"
+      },
+      "position": {
+        "x": 690.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "8c1b59f4-7bf6-4348-9766-6b6c5a86c402": {
+      "id": "8c1b59f4-7bf6-4348-9766-6b6c5a86c402",
+      "inputs": {},
+      "label": "Editable vector artwork",
+      "operation": {
+        "alignment": "center",
+        "box_height": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "content": "FLOW",
+        "features": "",
+        "font": {
+          "source": "display"
+        },
+        "language": "",
+        "line_height": {
+          "kind": "constant",
+          "value": 1.25
+        },
+        "padding": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "rotation": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "rtl": false,
+        "scale_x": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "scale_y": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "size": {
+          "kind": "constant",
+          "value": 400.0
+        },
+        "tracking": {
+          "kind": "constant",
+          "value": 24.0
+        },
+        "type": "text",
+        "typography": {
+          "anchor": null,
+          "auto_fit": false,
+          "duration": 0.5,
+          "ease": true,
+          "exit": null,
+          "linked_scale": false,
+          "motion": "none",
+          "spans": [],
+          "stagger": 0.03999999910593033,
+          "start": 0.0,
+          "unit": "character",
+          "vertical": "top"
+        },
+        "underline": false,
+        "wrap_width": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "x": {
+          "kind": "constant",
+          "value": 960.0
+        },
+        "y": {
+          "kind": "constant",
+          "value": 680.0
+        }
+      },
+      "position": {
+        "x": 230.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "a6338725-6de7-4983-b489-a360dcca4221": {
+      "id": "a6338725-6de7-4983-b489-a360dcca4221",
+      "inputs": {},
+      "label": "Vertical palette ramp",
+      "operation": {
+        "end_x": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "end_y": {
+          "kind": "constant",
+          "value": 720.0
+        },
+        "mode": "linear",
+        "start_x": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "start_y": {
+          "kind": "constant",
+          "value": 360.0
+        },
+        "type": "gradient"
+      },
+      "position": {
+        "x": 460.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "ba1a30a7-1637-4174-86b7-b19f32f30fe6": {
+      "id": "ba1a30a7-1637-4174-86b7-b19f32f30fe6",
+      "inputs": {
+        "background": "d6ecb226-1b73-47a1-84a9-e86c0b2d1245",
+        "foreground": "33021d70-8754-4b09-ad9d-8cf830c608ba"
+      },
+      "label": "Before · artwork on midnight",
+      "operation": {
+        "type": "merge"
+      },
+      "position": {
+        "x": 230.0,
+        "y": 145.0
+      },
+      "version": 1
+    },
+    "beae45e9-eab3-4a70-9a7b-dcd8b6e3767c": {
+      "id": "beae45e9-eab3-4a70-9a7b-dcd8b6e3767c",
+      "inputs": {
+        "image": "70d6eb8b-34ad-4898-901f-25ae26e00e3f",
+        "mask": "8c1b59f4-7bf6-4348-9766-6b6c5a86c402"
+      },
+      "label": "Color inside artwork",
+      "operation": {
+        "type": "mask"
+      },
+      "position": {
+        "x": 920.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "d6ecb226-1b73-47a1-84a9-e86c0b2d1245": {
+      "id": "d6ecb226-1b73-47a1-84a9-e86c0b2d1245",
+      "inputs": {},
+      "label": "Midnight background",
+      "operation": {
+        "color": [
+          0.0020000000949949026,
+          0.004000000189989805,
+          0.012000000104308128,
+          1.0
+        ],
+        "type": "solid"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "scene_background": true,
+      "version": 1
+    },
+    "d9538d12-dc8c-417f-927a-278081f78040": {
+      "id": "d9538d12-dc8c-417f-927a-278081f78040",
+      "inputs": {},
+      "label": "Horizontal bands",
+      "operation": {
+        "geometry": {
+          "commands": [
+            {
+              "command": "move",
+              "to": [
+                0.0,
+                0.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                1920.0,
+                0.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                1920.0,
+                44.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                0.0,
+                44.0
+              ]
+            },
+            {
+              "command": "close"
+            },
+            {
+              "command": "move",
+              "to": [
+                0.0,
+                144.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                1920.0,
+                144.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                1920.0,
+                188.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                0.0,
+                188.0
+              ]
+            },
+            {
+              "command": "close"
+            },
+            {
+              "command": "move",
+              "to": [
+                0.0,
+                288.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                1920.0,
+                288.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                1920.0,
+                332.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                0.0,
+                332.0
+              ]
+            },
+            {
+              "command": "close"
+            },
+            {
+              "command": "move",
+              "to": [
+                0.0,
+                432.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                1920.0,
+                432.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                1920.0,
+                476.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                0.0,
+                476.0
+              ]
+            },
+            {
+              "command": "close"
+            },
+            {
+              "command": "move",
+              "to": [
+                0.0,
+                576.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                1920.0,
+                576.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                1920.0,
+                620.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                0.0,
+                620.0
+              ]
+            },
+            {
+              "command": "close"
+            },
+            {
+              "command": "move",
+              "to": [
+                0.0,
+                720.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                1920.0,
+                720.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                1920.0,
+                764.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                0.0,
+                764.0
+              ]
+            },
+            {
+              "command": "close"
+            },
+            {
+              "command": "move",
+              "to": [
+                0.0,
+                864.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                1920.0,
+                864.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                1920.0,
+                908.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                0.0,
+                908.0
+              ]
+            },
+            {
+              "command": "close"
+            },
+            {
+              "command": "move",
+              "to": [
+                0.0,
+                1008.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                1920.0,
+                1008.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                1920.0,
+                1052.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                0.0,
+                1052.0
+              ]
+            },
+            {
+              "command": "close"
+            }
+          ],
+          "fill_rule": "non_zero"
+        },
+        "type": "path"
+      },
+      "version": 1
+    },
+    "fbe909ac-4438-4c51-8666-41fdc4408ed9": {
+      "id": "fbe909ac-4438-4c51-8666-41fdc4408ed9",
+      "inputs": {
+        "image": "ba1a30a7-1637-4174-86b7-b19f32f30fe6",
+        "mask": "d9538d12-dc8c-417f-927a-278081f78040"
+      },
+      "label": "Masked detail",
+      "operation": {
+        "type": "mask"
+      },
+      "version": 1
+    }
+  },
+  "output": "6760571b-2952-4a43-8939-69eb24d130fe",
+  "saved_by": "0.1.0",
+  "schema": 1,
+  "width": 1920
+}

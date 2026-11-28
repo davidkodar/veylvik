@@ -1,0 +1,440 @@
+{
+  "frame_count": 96,
+  "frame_rate": {
+    "rate": 1,
+    "ticks": 24
+  },
+  "groups": {
+    "2cb7032d-efc0-4671-8f66-832e17c8edd6": {
+      "controls": {
+        "amount": {
+          "default": {
+            "kind": "constant",
+            "value": 8.0
+          },
+          "label": "Amount",
+          "node": "be212ad7-a943-4976-b1e1-9f52fd2229e2",
+          "parameter": "p1"
+        },
+        "falloff": {
+          "default": {
+            "kind": "constant",
+            "value": 2.0
+          },
+          "label": "Falloff",
+          "node": "be212ad7-a943-4976-b1e1-9f52fd2229e2",
+          "parameter": "p2"
+        }
+      },
+      "id": "2cb7032d-efc0-4671-8f66-832e17c8edd6",
+      "inputs": {
+        "input_1": {
+          "label": "Image",
+          "targets": [
+            {
+              "node": "be212ad7-a943-4976-b1e1-9f52fd2229e2",
+              "port": "image"
+            }
+          ]
+        }
+      },
+      "label": "Chromatic Fringe",
+      "members": [
+        "be212ad7-a943-4976-b1e1-9f52fd2229e2"
+      ],
+      "output": "be212ad7-a943-4976-b1e1-9f52fd2229e2"
+    }
+  },
+  "height": 1080,
+  "nodes": {
+    "0fde78a2-4653-48bd-8db3-312223f9258b": {
+      "id": "0fde78a2-4653-48bd-8db3-312223f9258b",
+      "inputs": {},
+      "label": "Midnight background",
+      "operation": {
+        "color": [
+          0.0020000000949949026,
+          0.004000000189989805,
+          0.012000000104308128,
+          1.0
+        ],
+        "type": "solid"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "scene_background": true,
+      "version": 1
+    },
+    "2b3d4ddd-5aa1-4e4b-9e95-9f4df88dbde4": {
+      "id": "2b3d4ddd-5aa1-4e4b-9e95-9f4df88dbde4",
+      "inputs": {
+        "image": "6a2c6dbf-214f-4620-ac04-9de306feeab5"
+      },
+      "label": "Artwork motion",
+      "operation": {
+        "pivot_x": {
+          "kind": "constant",
+          "value": 960.0
+        },
+        "pivot_y": {
+          "kind": "constant",
+          "value": 540.0
+        },
+        "rotation": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "scale_x": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": 2.700000047683716
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 2
+              },
+              "value": 2.9000000953674316
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": 2.700000047683716
+            }
+          ],
+          "kind": "smooth"
+        },
+        "scale_y": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": 2.700000047683716
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 2
+              },
+              "value": 2.9000000953674316
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": 2.700000047683716
+            }
+          ],
+          "kind": "smooth"
+        },
+        "type": "affine",
+        "x": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "y": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": 18.0
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 2
+              },
+              "value": -18.0
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": 18.0
+            }
+          ],
+          "kind": "smooth"
+        }
+      },
+      "position": {
+        "x": 0.0,
+        "y": 145.0
+      },
+      "version": 1
+    },
+    "2f5be4e8-e05d-4322-b8bf-4814ea5e589c": {
+      "id": "2f5be4e8-e05d-4322-b8bf-4814ea5e589c",
+      "inputs": {
+        "image": "b2723357-e854-494f-bd06-4b46574f1a9a"
+      },
+      "label": "Artwork palette",
+      "operation": {
+        "high": [
+          1.600000023841858,
+          1.7999999523162842,
+          2.0,
+          1.0
+        ],
+        "low": [
+          0.30000001192092896,
+          0.44999998807907104,
+          0.800000011920929,
+          1.0
+        ],
+        "type": "colorize"
+      },
+      "position": {
+        "x": 690.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "65a60b3f-e085-4cb3-a0e4-bc2bf8f2c7ea": {
+      "id": "65a60b3f-e085-4cb3-a0e4-bc2bf8f2c7ea",
+      "inputs": {},
+      "label": "Editable vector artwork",
+      "operation": {
+        "alignment": "center",
+        "box_height": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "content": "FLOW",
+        "features": "",
+        "font": {
+          "source": "display"
+        },
+        "language": "",
+        "line_height": {
+          "kind": "constant",
+          "value": 1.25
+        },
+        "padding": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "rotation": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "rtl": false,
+        "scale_x": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "scale_y": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "size": {
+          "kind": "constant",
+          "value": 400.0
+        },
+        "tracking": {
+          "kind": "constant",
+          "value": 24.0
+        },
+        "type": "text",
+        "typography": {
+          "anchor": null,
+          "auto_fit": false,
+          "duration": 0.5,
+          "ease": true,
+          "exit": null,
+          "linked_scale": false,
+          "motion": "none",
+          "spans": [],
+          "stagger": 0.03999999910593033,
+          "start": 0.0,
+          "unit": "character",
+          "vertical": "top"
+        },
+        "underline": false,
+        "wrap_width": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "x": {
+          "kind": "constant",
+          "value": 960.0
+        },
+        "y": {
+          "kind": "constant",
+          "value": 680.0
+        }
+      },
+      "position": {
+        "x": 230.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "6a2c6dbf-214f-4620-ac04-9de306feeab5": {
+      "id": "6a2c6dbf-214f-4620-ac04-9de306feeab5",
+      "inputs": {
+        "image": "2f5be4e8-e05d-4322-b8bf-4814ea5e589c",
+        "mask": "65a60b3f-e085-4cb3-a0e4-bc2bf8f2c7ea"
+      },
+      "label": "Color inside artwork",
+      "operation": {
+        "type": "mask"
+      },
+      "position": {
+        "x": 920.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "b2723357-e854-494f-bd06-4b46574f1a9a": {
+      "id": "b2723357-e854-494f-bd06-4b46574f1a9a",
+      "inputs": {},
+      "label": "Vertical palette ramp",
+      "operation": {
+        "end_x": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "end_y": {
+          "kind": "constant",
+          "value": 720.0
+        },
+        "mode": "linear",
+        "start_x": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "start_y": {
+          "kind": "constant",
+          "value": 360.0
+        },
+        "type": "gradient"
+      },
+      "position": {
+        "x": 460.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "be212ad7-a943-4976-b1e1-9f52fd2229e2": {
+      "id": "be212ad7-a943-4976-b1e1-9f52fd2229e2",
+      "inputs": {
+        "image": "cd716e3d-c8f4-4d8e-8ffd-353c392c4398"
+      },
+      "label": "Fringe",
+      "operation": {
+        "code": "// slider amount 0 20 8\n// slider falloff 0.5 4 2\n\n// What a real lens does to colour away from the middle of the frame: red and blue\n// focused a little apart, so bright edges toward the corners show a red fringe on one\n// side and a blue one on the other. Amount is how many pixels apart they are at the\n// frame's corner (in a 1920-wide frame; in proportion in others); falloff is how fast\n// it grows from nothing in the middle (2: with the square of the distance).\nfn shade(at: vec2<f32>) -> vec4<f32> {\n    let middle = size * 0.5;\n    let from_middle = (at - middle) / length(middle);\n    let shift = from_middle * pow(length(from_middle), u.falloff - 1.0) * u.amount * size.x / 1920.0;\n    let red = image(at + shift);\n    let green = image(at);\n    let blue = image(at - shift);\n    return vec4<f32>(red.r, green.g, blue.b, max(green.a, max(red.a, blue.a)));\n}\n",
+        "follow": null,
+        "p1": {
+          "kind": "constant",
+          "value": 8.0
+        },
+        "p10": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "p11": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "p12": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "p13": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "p14": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "p15": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "p16": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "p2": {
+          "kind": "constant",
+          "value": 2.0
+        },
+        "p3": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "p4": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "p5": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "p6": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "p7": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "p8": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "p9": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "type": "shader"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 500.0
+      },
+      "version": 1
+    },
+    "cd716e3d-c8f4-4d8e-8ffd-353c392c4398": {
+      "id": "cd716e3d-c8f4-4d8e-8ffd-353c392c4398",
+      "inputs": {
+        "background": "0fde78a2-4653-48bd-8db3-312223f9258b",
+        "foreground": "2b3d4ddd-5aa1-4e4b-9e95-9f4df88dbde4"
+      },
+      "label": "Before · artwork on midnight",
+      "operation": {
+        "type": "merge"
+      },
+      "position": {
+        "x": 230.0,
+        "y": 145.0
+      },
+      "version": 1
+    }
+  },
+  "output": "be212ad7-a943-4976-b1e1-9f52fd2229e2",
+  "saved_by": "0.1.0",
+  "schema": 1,
+  "width": 1920
+}

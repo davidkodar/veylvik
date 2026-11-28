@@ -1,0 +1,489 @@
+{
+  "frame_count": 96,
+  "frame_rate": {
+    "rate": 1,
+    "ticks": 24
+  },
+  "groups": {
+    "60c40476-54ca-42da-9264-427aae3aa9cb": {
+      "controls": {
+        "amount": {
+          "default": {
+            "kind": "constant",
+            "value": 1.0
+          },
+          "label": "Amount",
+          "node": "50e7e4ac-dc90-498a-bf02-5efc70e26043",
+          "parameter": "opacity"
+        },
+        "feather": {
+          "default": {
+            "kind": "constant",
+            "value": 120.0
+          },
+          "label": "Feather",
+          "node": "e48983b7-5b5d-49d8-9141-2b3b2db128a7",
+          "parameter": "feather"
+        },
+        "light_center_x": {
+          "default": {
+            "keys": [
+              {
+                "time": {
+                  "rate": 1,
+                  "ticks": 0
+                },
+                "value": 160.0
+              },
+              {
+                "time": {
+                  "rate": 1,
+                  "ticks": 2
+                },
+                "value": 1760.0
+              },
+              {
+                "time": {
+                  "rate": 1,
+                  "ticks": 4
+                },
+                "value": 160.0
+              }
+            ],
+            "kind": "smooth"
+          },
+          "label": "Light center X",
+          "node": "e48983b7-5b5d-49d8-9141-2b3b2db128a7",
+          "parameter": "x"
+        },
+        "light_center_y": {
+          "default": {
+            "kind": "constant",
+            "value": 540.0
+          },
+          "label": "Light center Y",
+          "node": "e48983b7-5b5d-49d8-9141-2b3b2db128a7",
+          "parameter": "y"
+        }
+      },
+      "id": "60c40476-54ca-42da-9264-427aae3aa9cb",
+      "inputs": {
+        "input_1": {
+          "label": "Image",
+          "targets": [
+            {
+              "node": "a895c024-9a9d-493c-981a-ad6ffdf49237",
+              "port": "image"
+            },
+            {
+              "node": "50e7e4ac-dc90-498a-bf02-5efc70e26043",
+              "port": "background"
+            }
+          ]
+        }
+      },
+      "label": "Light Sweep",
+      "members": [
+        "50e7e4ac-dc90-498a-bf02-5efc70e26043",
+        "a895c024-9a9d-493c-981a-ad6ffdf49237",
+        "e48983b7-5b5d-49d8-9141-2b3b2db128a7"
+      ],
+      "output": "50e7e4ac-dc90-498a-bf02-5efc70e26043"
+    }
+  },
+  "height": 1080,
+  "nodes": {
+    "015f2929-8a06-4de1-a7fd-8796996fa01d": {
+      "id": "015f2929-8a06-4de1-a7fd-8796996fa01d",
+      "inputs": {},
+      "label": "Editable vector artwork",
+      "operation": {
+        "alignment": "center",
+        "box_height": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "content": "FLOW",
+        "features": "",
+        "font": {
+          "source": "display"
+        },
+        "language": "",
+        "line_height": {
+          "kind": "constant",
+          "value": 1.25
+        },
+        "padding": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "rotation": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "rtl": false,
+        "scale_x": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "scale_y": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "size": {
+          "kind": "constant",
+          "value": 400.0
+        },
+        "tracking": {
+          "kind": "constant",
+          "value": 24.0
+        },
+        "type": "text",
+        "typography": {
+          "anchor": null,
+          "auto_fit": false,
+          "duration": 0.5,
+          "ease": true,
+          "exit": null,
+          "linked_scale": false,
+          "motion": "none",
+          "spans": [],
+          "stagger": 0.03999999910593033,
+          "start": 0.0,
+          "unit": "character",
+          "vertical": "top"
+        },
+        "underline": false,
+        "wrap_width": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "x": {
+          "kind": "constant",
+          "value": 960.0
+        },
+        "y": {
+          "kind": "constant",
+          "value": 680.0
+        }
+      },
+      "position": {
+        "x": 230.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "12b2bc32-4438-4771-9a51-46cf2ac9dd1c": {
+      "id": "12b2bc32-4438-4771-9a51-46cf2ac9dd1c",
+      "inputs": {
+        "image": "c080d2bf-3edd-4b7a-a5d7-b6a066bb935e"
+      },
+      "label": "Artwork motion",
+      "operation": {
+        "pivot_x": {
+          "kind": "constant",
+          "value": 960.0
+        },
+        "pivot_y": {
+          "kind": "constant",
+          "value": 540.0
+        },
+        "rotation": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "scale_x": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": 0.9399999976158142
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 2
+              },
+              "value": 1.0399999618530273
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": 0.9399999976158142
+            }
+          ],
+          "kind": "smooth"
+        },
+        "scale_y": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": 0.9399999976158142
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 2
+              },
+              "value": 1.0399999618530273
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": 0.9399999976158142
+            }
+          ],
+          "kind": "smooth"
+        },
+        "type": "affine",
+        "x": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "y": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": 18.0
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 2
+              },
+              "value": -18.0
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": 18.0
+            }
+          ],
+          "kind": "smooth"
+        }
+      },
+      "position": {
+        "x": 0.0,
+        "y": 145.0
+      },
+      "version": 1
+    },
+    "2e777046-ae84-40ad-832f-e1d39b9f4453": {
+      "id": "2e777046-ae84-40ad-832f-e1d39b9f4453",
+      "inputs": {},
+      "label": "Midnight background",
+      "operation": {
+        "color": [
+          0.0020000000949949026,
+          0.004000000189989805,
+          0.012000000104308128,
+          1.0
+        ],
+        "type": "solid"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "scene_background": true,
+      "version": 1
+    },
+    "50e7e4ac-dc90-498a-bf02-5efc70e26043": {
+      "id": "50e7e4ac-dc90-498a-bf02-5efc70e26043",
+      "inputs": {
+        "background": "b7d033ae-89c3-4f02-82e7-1509170f9996",
+        "foreground": "a895c024-9a9d-493c-981a-ad6ffdf49237"
+      },
+      "label": "Layer mix",
+      "operation": {
+        "mode": "add",
+        "opacity": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "type": "blend"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 500.0
+      },
+      "version": 1
+    },
+    "a895c024-9a9d-493c-981a-ad6ffdf49237": {
+      "id": "a895c024-9a9d-493c-981a-ad6ffdf49237",
+      "inputs": {
+        "image": "b7d033ae-89c3-4f02-82e7-1509170f9996",
+        "mask": "e48983b7-5b5d-49d8-9141-2b3b2db128a7"
+      },
+      "label": "Masked detail",
+      "operation": {
+        "type": "mask"
+      },
+      "version": 1
+    },
+    "b7d033ae-89c3-4f02-82e7-1509170f9996": {
+      "id": "b7d033ae-89c3-4f02-82e7-1509170f9996",
+      "inputs": {
+        "background": "2e777046-ae84-40ad-832f-e1d39b9f4453",
+        "foreground": "12b2bc32-4438-4771-9a51-46cf2ac9dd1c"
+      },
+      "label": "Before · artwork on midnight",
+      "operation": {
+        "type": "merge"
+      },
+      "position": {
+        "x": 230.0,
+        "y": 145.0
+      },
+      "version": 1
+    },
+    "c080d2bf-3edd-4b7a-a5d7-b6a066bb935e": {
+      "id": "c080d2bf-3edd-4b7a-a5d7-b6a066bb935e",
+      "inputs": {
+        "image": "ecf00064-2e0e-4ef3-be8c-3a24f8c2d91f",
+        "mask": "015f2929-8a06-4de1-a7fd-8796996fa01d"
+      },
+      "label": "Color inside artwork",
+      "operation": {
+        "type": "mask"
+      },
+      "position": {
+        "x": 920.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "e48983b7-5b5d-49d8-9141-2b3b2db128a7": {
+      "id": "e48983b7-5b5d-49d8-9141-2b3b2db128a7",
+      "inputs": {},
+      "label": "Light shape",
+      "operation": {
+        "feather": {
+          "kind": "constant",
+          "value": 120.0
+        },
+        "radius_x": {
+          "kind": "constant",
+          "value": 160.0
+        },
+        "radius_y": {
+          "kind": "constant",
+          "value": 1000.0
+        },
+        "type": "ellipse",
+        "x": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": 160.0
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 2
+              },
+              "value": 1760.0
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": 160.0
+            }
+          ],
+          "kind": "smooth"
+        },
+        "y": {
+          "kind": "constant",
+          "value": 540.0
+        }
+      },
+      "version": 1
+    },
+    "ecf00064-2e0e-4ef3-be8c-3a24f8c2d91f": {
+      "id": "ecf00064-2e0e-4ef3-be8c-3a24f8c2d91f",
+      "inputs": {
+        "image": "f48c44db-21c1-410c-8ad6-c61ba1732bb4"
+      },
+      "label": "Artwork palette",
+      "operation": {
+        "high": [
+          1.600000023841858,
+          1.7999999523162842,
+          2.0,
+          1.0
+        ],
+        "low": [
+          0.30000001192092896,
+          0.44999998807907104,
+          0.800000011920929,
+          1.0
+        ],
+        "type": "colorize"
+      },
+      "position": {
+        "x": 690.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "f48c44db-21c1-410c-8ad6-c61ba1732bb4": {
+      "id": "f48c44db-21c1-410c-8ad6-c61ba1732bb4",
+      "inputs": {},
+      "label": "Vertical palette ramp",
+      "operation": {
+        "end_x": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "end_y": {
+          "kind": "constant",
+          "value": 720.0
+        },
+        "mode": "linear",
+        "start_x": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "start_y": {
+          "kind": "constant",
+          "value": 360.0
+        },
+        "type": "gradient"
+      },
+      "position": {
+        "x": 460.0,
+        "y": 0.0
+      },
+      "version": 1
+    }
+  },
+  "output": "50e7e4ac-dc90-498a-bf02-5efc70e26043",
+  "saved_by": "0.1.0",
+  "schema": 1,
+  "width": 1920
+}

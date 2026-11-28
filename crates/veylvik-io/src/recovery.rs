@@ -85,7 +85,7 @@ impl Store {
             }
         }
         copy.validate()?;
-        let bytes = serde_json::to_vec_pretty(&copy)?;
+        let bytes = veylvik_document::format::write(&copy)?;
         if bytes.len() > veylvik_document::limits::MAX_DOCUMENT_BYTES {
             return Err("recovery composition exceeds 16 MiB".into());
         }

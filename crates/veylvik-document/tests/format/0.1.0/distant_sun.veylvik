@@ -1,0 +1,514 @@
+{
+  "frame_count": 96,
+  "frame_rate": {
+    "rate": 1,
+    "ticks": 24
+  },
+  "groups": {
+    "efc7ab2e-09b2-4fab-88ad-8a923a77d6a0": {
+      "controls": {
+        "glow": {
+          "default": {
+            "kind": "constant",
+            "value": 1.0
+          },
+          "label": "Glow",
+          "node": "99655241-b4ef-454e-b025-75aebd47cc71",
+          "parameter": "p4"
+        },
+        "reach": {
+          "default": {
+            "kind": "constant",
+            "value": 0.8999999761581421
+          },
+          "label": "Reach",
+          "node": "99655241-b4ef-454e-b025-75aebd47cc71",
+          "parameter": "p6"
+        },
+        "size": {
+          "default": {
+            "kind": "constant",
+            "value": 0.012000000104308128
+          },
+          "label": "Size",
+          "node": "99655241-b4ef-454e-b025-75aebd47cc71",
+          "parameter": "p3"
+        },
+        "spikes": {
+          "default": {
+            "kind": "constant",
+            "value": 0.5
+          },
+          "label": "Spikes",
+          "node": "99655241-b4ef-454e-b025-75aebd47cc71",
+          "parameter": "p5"
+        },
+        "tint_blue": {
+          "default": {
+            "kind": "constant",
+            "value": 0.5
+          },
+          "label": "Tint blue",
+          "node": "99655241-b4ef-454e-b025-75aebd47cc71",
+          "parameter": "p9"
+        },
+        "tint_green": {
+          "default": {
+            "kind": "constant",
+            "value": 0.7799999713897705
+          },
+          "label": "Tint green",
+          "node": "99655241-b4ef-454e-b025-75aebd47cc71",
+          "parameter": "p8"
+        },
+        "tint_red": {
+          "default": {
+            "kind": "constant",
+            "value": 1.0
+          },
+          "label": "Tint red",
+          "node": "99655241-b4ef-454e-b025-75aebd47cc71",
+          "parameter": "p7"
+        },
+        "x": {
+          "default": {
+            "kind": "constant",
+            "value": 0.699999988079071
+          },
+          "label": "X",
+          "node": "99655241-b4ef-454e-b025-75aebd47cc71",
+          "parameter": "p1"
+        },
+        "y": {
+          "default": {
+            "kind": "constant",
+            "value": 0.30000001192092896
+          },
+          "label": "Y",
+          "node": "99655241-b4ef-454e-b025-75aebd47cc71",
+          "parameter": "p2"
+        }
+      },
+      "id": "efc7ab2e-09b2-4fab-88ad-8a923a77d6a0",
+      "inputs": {
+        "input_1": {
+          "label": "Image",
+          "targets": [
+            {
+              "node": "c2a5d806-0af9-4350-85d2-cd23bcf31327",
+              "port": "background"
+            }
+          ]
+        }
+      },
+      "label": "Distant Sun",
+      "members": [
+        "99655241-b4ef-454e-b025-75aebd47cc71",
+        "c2a5d806-0af9-4350-85d2-cd23bcf31327"
+      ],
+      "output": "c2a5d806-0af9-4350-85d2-cd23bcf31327"
+    }
+  },
+  "height": 1080,
+  "nodes": {
+    "1ce30113-68f8-4670-b1c9-c95b14b71100": {
+      "id": "1ce30113-68f8-4670-b1c9-c95b14b71100",
+      "inputs": {},
+      "label": "Midnight background",
+      "operation": {
+        "color": [
+          0.0020000000949949026,
+          0.004000000189989805,
+          0.012000000104308128,
+          1.0
+        ],
+        "type": "solid"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "scene_background": true,
+      "version": 1
+    },
+    "477bfed8-29f5-4d4e-b7d8-7cc024d4c5b5": {
+      "id": "477bfed8-29f5-4d4e-b7d8-7cc024d4c5b5",
+      "inputs": {
+        "background": "1ce30113-68f8-4670-b1c9-c95b14b71100",
+        "foreground": "f6329b94-a50b-4b86-88b5-3e8a1f9a8beb"
+      },
+      "label": "Before · artwork on midnight",
+      "operation": {
+        "type": "merge"
+      },
+      "position": {
+        "x": 230.0,
+        "y": 145.0
+      },
+      "version": 1
+    },
+    "719598c8-bacd-48ec-b639-ead27a68735a": {
+      "id": "719598c8-bacd-48ec-b639-ead27a68735a",
+      "inputs": {
+        "image": "74c0425c-570e-4eb6-b7d9-1a60f792e4ae",
+        "mask": "c703e674-eae0-49bd-aaec-67cd27432496"
+      },
+      "label": "Color inside artwork",
+      "operation": {
+        "type": "mask"
+      },
+      "position": {
+        "x": 920.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "74c0425c-570e-4eb6-b7d9-1a60f792e4ae": {
+      "id": "74c0425c-570e-4eb6-b7d9-1a60f792e4ae",
+      "inputs": {
+        "image": "c8ce0ef6-b59b-4fa3-99a2-ada10a7e587b"
+      },
+      "label": "Artwork palette",
+      "operation": {
+        "high": [
+          1.600000023841858,
+          1.7999999523162842,
+          2.0,
+          1.0
+        ],
+        "low": [
+          0.30000001192092896,
+          0.44999998807907104,
+          0.800000011920929,
+          1.0
+        ],
+        "type": "colorize"
+      },
+      "position": {
+        "x": 690.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "99655241-b4ef-454e-b025-75aebd47cc71": {
+      "id": "99655241-b4ef-454e-b025-75aebd47cc71",
+      "inputs": {},
+      "label": "Sun",
+      "operation": {
+        "code": "// slider x 0 1 0.7\n// slider y 0 1 0.3\n// slider size 0.002 0.2 0.012\n// slider glow 0 4 1\n// slider spikes 0 2 0.5\n// slider reach 0.05 2 0.9\n// colour tint 1 0.78 0.5\n\n// A far sun: a small white-hot point, the glow a lens gives it, and faint spikes. x and\n// y place it as fractions of the frame; size is its radius as a fraction of the height,\n// and reach is how far its light goes before it has faded to nothing (so a small picture\n// of it shows no edge).\nfn shade(at: vec2<f32>) -> vec4<f32> {\n    let p = (at - size * vec2<f32>(u.x, u.y)) / size.y;\n    let r = length(p);\n    let near = r / u.size;\n    let point = exp(-near * near) * 30.0;\n    let halo = (1.0 / (1.0 + near * near * 0.6) * 1.2 + 0.05 / (0.02 + r * 6.0)) * u.glow;\n    let rays = (exp(-abs(p.y) * 220.0) + exp(-abs(p.x) * 220.0)) * exp(-r * 9.0) * u.spikes;\n    let fade = smoothstep(u.reach, u.reach * 0.1, r);\n    let light = (vec3<f32>(1.0) * point + mix(u.tint, vec3<f32>(1.0), 0.25) * (halo + rays)) * fade * fade;\n    let alpha = clamp(max(light.r, max(light.g, light.b)), 0.0, 1.0);\n    return vec4<f32>(light, alpha);\n}\n",
+        "follow": null,
+        "p1": {
+          "kind": "constant",
+          "value": 0.699999988079071
+        },
+        "p10": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "p11": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "p12": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "p13": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "p14": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "p15": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "p16": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "p2": {
+          "kind": "constant",
+          "value": 0.30000001192092896
+        },
+        "p3": {
+          "kind": "constant",
+          "value": 0.012000000104308128
+        },
+        "p4": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "p5": {
+          "kind": "constant",
+          "value": 0.5
+        },
+        "p6": {
+          "kind": "constant",
+          "value": 0.8999999761581421
+        },
+        "p7": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "p8": {
+          "kind": "constant",
+          "value": 0.7799999713897705
+        },
+        "p9": {
+          "kind": "constant",
+          "value": 0.5
+        },
+        "type": "shader"
+      },
+      "version": 1
+    },
+    "c2a5d806-0af9-4350-85d2-cd23bcf31327": {
+      "id": "c2a5d806-0af9-4350-85d2-cd23bcf31327",
+      "inputs": {
+        "background": "477bfed8-29f5-4d4e-b7d8-7cc024d4c5b5",
+        "foreground": "99655241-b4ef-454e-b025-75aebd47cc71"
+      },
+      "label": "Sun over image",
+      "operation": {
+        "type": "merge"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 500.0
+      },
+      "version": 1
+    },
+    "c703e674-eae0-49bd-aaec-67cd27432496": {
+      "id": "c703e674-eae0-49bd-aaec-67cd27432496",
+      "inputs": {},
+      "label": "Editable vector artwork",
+      "operation": {
+        "alignment": "center",
+        "box_height": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "content": "FLOW",
+        "features": "",
+        "font": {
+          "source": "display"
+        },
+        "language": "",
+        "line_height": {
+          "kind": "constant",
+          "value": 1.25
+        },
+        "padding": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "rotation": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "rtl": false,
+        "scale_x": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "scale_y": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "size": {
+          "kind": "constant",
+          "value": 400.0
+        },
+        "tracking": {
+          "kind": "constant",
+          "value": 24.0
+        },
+        "type": "text",
+        "typography": {
+          "anchor": null,
+          "auto_fit": false,
+          "duration": 0.5,
+          "ease": true,
+          "exit": null,
+          "linked_scale": false,
+          "motion": "none",
+          "spans": [],
+          "stagger": 0.03999999910593033,
+          "start": 0.0,
+          "unit": "character",
+          "vertical": "top"
+        },
+        "underline": false,
+        "wrap_width": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "x": {
+          "kind": "constant",
+          "value": 960.0
+        },
+        "y": {
+          "kind": "constant",
+          "value": 680.0
+        }
+      },
+      "position": {
+        "x": 230.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "c8ce0ef6-b59b-4fa3-99a2-ada10a7e587b": {
+      "id": "c8ce0ef6-b59b-4fa3-99a2-ada10a7e587b",
+      "inputs": {},
+      "label": "Vertical palette ramp",
+      "operation": {
+        "end_x": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "end_y": {
+          "kind": "constant",
+          "value": 720.0
+        },
+        "mode": "linear",
+        "start_x": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "start_y": {
+          "kind": "constant",
+          "value": 360.0
+        },
+        "type": "gradient"
+      },
+      "position": {
+        "x": 460.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "f6329b94-a50b-4b86-88b5-3e8a1f9a8beb": {
+      "id": "f6329b94-a50b-4b86-88b5-3e8a1f9a8beb",
+      "inputs": {
+        "image": "719598c8-bacd-48ec-b639-ead27a68735a"
+      },
+      "label": "Artwork motion",
+      "operation": {
+        "pivot_x": {
+          "kind": "constant",
+          "value": 960.0
+        },
+        "pivot_y": {
+          "kind": "constant",
+          "value": 540.0
+        },
+        "rotation": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "scale_x": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": 0.9399999976158142
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 2
+              },
+              "value": 1.0399999618530273
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": 0.9399999976158142
+            }
+          ],
+          "kind": "smooth"
+        },
+        "scale_y": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": 0.9399999976158142
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 2
+              },
+              "value": 1.0399999618530273
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": 0.9399999976158142
+            }
+          ],
+          "kind": "smooth"
+        },
+        "type": "affine",
+        "x": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "y": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": 18.0
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 2
+              },
+              "value": -18.0
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": 18.0
+            }
+          ],
+          "kind": "smooth"
+        }
+      },
+      "position": {
+        "x": 0.0,
+        "y": 145.0
+      },
+      "version": 1
+    }
+  },
+  "output": "c2a5d806-0af9-4350-85d2-cd23bcf31327",
+  "saved_by": "0.1.0",
+  "schema": 1,
+  "width": 1920
+}

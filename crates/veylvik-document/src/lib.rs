@@ -43,6 +43,7 @@ pub mod optical;
 pub use appearance::{AtmosphereKind, MaterialKind, PatinaKind, ReflectionKind};
 mod gradient;
 pub use gradient::GradientMode;
+pub mod format;
 pub mod schema;
 pub mod text;
 pub use text::{TextAlignment, TextFont};
@@ -663,8 +664,7 @@ impl Composition {
     }
     pub fn save(&self, path: &Path) -> Result<()> {
         self.validate()?;
-        let data = serde_json::to_vec_pretty(self).map_err(|e| Error(e.to_string()))?;
-        atomic_write(path, &data)
+        atomic_write(path, &format::write(self)?)
     }
     pub fn load(path: &Path) -> Result<Self> {
         use std::io::Read;
@@ -676,9 +676,7 @@ impl Composition {
         if bytes.len() > limits::MAX_DOCUMENT_BYTES {
             return fail("document exceeds 16 MiB");
         }
-        let doc: Self = serde_json::from_slice(&bytes).map_err(|e| Error(explain_parse(&e)))?;
-        doc.validate()?;
-        Ok(doc)
+        format::read(&bytes)
     }
 }
 /// Why a project file could not be read, in words a person can act on, with the

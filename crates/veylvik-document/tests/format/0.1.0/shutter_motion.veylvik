@@ -1,0 +1,626 @@
+{
+  "frame_count": 96,
+  "frame_rate": {
+    "rate": 1,
+    "ticks": 24
+  },
+  "groups": {
+    "c7b9544e-46c8-4767-a319-332a03684530": {
+      "controls": {
+        "final_samples": {
+          "default": {
+            "kind": "constant",
+            "value": 16.0
+          },
+          "label": "Final samples",
+          "node": "5dc1bc51-ef60-42f8-a031-6cb84f3e1da1",
+          "parameter": "final_samples"
+        },
+        "preview_samples": {
+          "default": {
+            "kind": "constant",
+            "value": 4.0
+          },
+          "label": "Preview samples",
+          "node": "5dc1bc51-ef60-42f8-a031-6cb84f3e1da1",
+          "parameter": "preview_samples"
+        },
+        "shutter_angle": {
+          "default": {
+            "kind": "constant",
+            "value": 180.0
+          },
+          "label": "Shutter angle",
+          "node": "5dc1bc51-ef60-42f8-a031-6cb84f3e1da1",
+          "parameter": "angle"
+        },
+        "shutter_phase": {
+          "default": {
+            "kind": "constant",
+            "value": 0.0
+          },
+          "label": "Shutter phase",
+          "node": "5dc1bc51-ef60-42f8-a031-6cb84f3e1da1",
+          "parameter": "phase"
+        }
+      },
+      "id": "c7b9544e-46c8-4767-a319-332a03684530",
+      "inputs": {
+        "input_1": {
+          "label": "Image",
+          "targets": [
+            {
+              "node": "5dc1bc51-ef60-42f8-a031-6cb84f3e1da1",
+              "port": "image"
+            }
+          ]
+        }
+      },
+      "label": "Shutter Motion Blur",
+      "members": [
+        "5dc1bc51-ef60-42f8-a031-6cb84f3e1da1"
+      ],
+      "output": "5dc1bc51-ef60-42f8-a031-6cb84f3e1da1"
+    }
+  },
+  "height": 1080,
+  "nodes": {
+    "4120b4b8-af34-4280-8ef7-c91bdd6e84e1": {
+      "id": "4120b4b8-af34-4280-8ef7-c91bdd6e84e1",
+      "inputs": {},
+      "label": "Vertical palette ramp",
+      "operation": {
+        "end_x": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "end_y": {
+          "kind": "constant",
+          "value": 720.0
+        },
+        "mode": "linear",
+        "start_x": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "start_y": {
+          "kind": "constant",
+          "value": 360.0
+        },
+        "type": "gradient"
+      },
+      "position": {
+        "x": 460.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "420eb619-8d25-4e94-a629-855ef982ff40": {
+      "id": "420eb619-8d25-4e94-a629-855ef982ff40",
+      "inputs": {
+        "image": "c695d349-2b57-4fc6-a680-ba91f54f7341"
+      },
+      "label": "Artwork motion",
+      "operation": {
+        "pivot_x": {
+          "kind": "constant",
+          "value": 960.0
+        },
+        "pivot_y": {
+          "kind": "constant",
+          "value": 540.0
+        },
+        "rotation": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "scale_x": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": -4
+              },
+              "value": 0.9399999976158142
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": -2
+              },
+              "value": 1.0399999618530273
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": 0.9399999976158142
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 2
+              },
+              "value": 1.0399999618530273
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": 0.9399999976158142
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 6
+              },
+              "value": 1.0399999618530273
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 8
+              },
+              "value": 0.9399999976158142
+            }
+          ],
+          "kind": "smooth"
+        },
+        "scale_y": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": -4
+              },
+              "value": 0.9399999976158142
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": -2
+              },
+              "value": 1.0399999618530273
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": 0.9399999976158142
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 2
+              },
+              "value": 1.0399999618530273
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": 0.9399999976158142
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 6
+              },
+              "value": 1.0399999618530273
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 8
+              },
+              "value": 0.9399999976158142
+            }
+          ],
+          "kind": "smooth"
+        },
+        "type": "affine",
+        "x": {
+          "keys": [
+            {
+              "time": {
+                "rate": 24,
+                "ticks": -96
+              },
+              "value": 0.0
+            },
+            {
+              "time": {
+                "rate": 24,
+                "ticks": -78
+              },
+              "value": -360.0
+            },
+            {
+              "time": {
+                "rate": 24,
+                "ticks": -66
+              },
+              "value": 360.0
+            },
+            {
+              "time": {
+                "rate": 24,
+                "ticks": -48
+              },
+              "value": 0.0
+            },
+            {
+              "time": {
+                "rate": 24,
+                "ticks": -30
+              },
+              "value": -360.0
+            },
+            {
+              "time": {
+                "rate": 24,
+                "ticks": -18
+              },
+              "value": 360.0
+            },
+            {
+              "time": {
+                "rate": 24,
+                "ticks": 0
+              },
+              "value": 0.0
+            },
+            {
+              "time": {
+                "rate": 24,
+                "ticks": 18
+              },
+              "value": -360.0
+            },
+            {
+              "time": {
+                "rate": 24,
+                "ticks": 30
+              },
+              "value": 360.0
+            },
+            {
+              "time": {
+                "rate": 24,
+                "ticks": 48
+              },
+              "value": 0.0
+            },
+            {
+              "time": {
+                "rate": 24,
+                "ticks": 66
+              },
+              "value": -360.0
+            },
+            {
+              "time": {
+                "rate": 24,
+                "ticks": 78
+              },
+              "value": 360.0
+            },
+            {
+              "time": {
+                "rate": 24,
+                "ticks": 96
+              },
+              "value": 0.0
+            },
+            {
+              "time": {
+                "rate": 24,
+                "ticks": 114
+              },
+              "value": -360.0
+            },
+            {
+              "time": {
+                "rate": 24,
+                "ticks": 126
+              },
+              "value": 360.0
+            },
+            {
+              "time": {
+                "rate": 24,
+                "ticks": 144
+              },
+              "value": 0.0
+            },
+            {
+              "time": {
+                "rate": 24,
+                "ticks": 162
+              },
+              "value": -360.0
+            },
+            {
+              "time": {
+                "rate": 24,
+                "ticks": 174
+              },
+              "value": 360.0
+            },
+            {
+              "time": {
+                "rate": 24,
+                "ticks": 192
+              },
+              "value": 0.0
+            }
+          ],
+          "kind": "linear"
+        },
+        "y": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": -4
+              },
+              "value": 18.0
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": -2
+              },
+              "value": -18.0
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": 18.0
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 2
+              },
+              "value": -18.0
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": 18.0
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 6
+              },
+              "value": -18.0
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 8
+              },
+              "value": 18.0
+            }
+          ],
+          "kind": "smooth"
+        }
+      },
+      "position": {
+        "x": 0.0,
+        "y": 145.0
+      },
+      "version": 1
+    },
+    "5dc1bc51-ef60-42f8-a031-6cb84f3e1da1": {
+      "id": "5dc1bc51-ef60-42f8-a031-6cb84f3e1da1",
+      "inputs": {
+        "image": "ed45af5c-237f-4bbe-bf91-490d02485fc6"
+      },
+      "label": "Shutter motion blur",
+      "operation": {
+        "angle": {
+          "kind": "constant",
+          "value": 180.0
+        },
+        "final_samples": {
+          "kind": "constant",
+          "value": 16.0
+        },
+        "phase": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "preview_samples": {
+          "kind": "constant",
+          "value": 4.0
+        },
+        "type": "motion_blur"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 500.0
+      },
+      "version": 1
+    },
+    "623c17bf-e3d3-4027-ab5c-c657842e4c1e": {
+      "id": "623c17bf-e3d3-4027-ab5c-c657842e4c1e",
+      "inputs": {
+        "image": "4120b4b8-af34-4280-8ef7-c91bdd6e84e1"
+      },
+      "label": "Artwork palette",
+      "operation": {
+        "high": [
+          1.600000023841858,
+          1.7999999523162842,
+          2.0,
+          1.0
+        ],
+        "low": [
+          0.30000001192092896,
+          0.44999998807907104,
+          0.800000011920929,
+          1.0
+        ],
+        "type": "colorize"
+      },
+      "position": {
+        "x": 690.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "63366f72-ff25-493f-998f-638c8a33e696": {
+      "id": "63366f72-ff25-493f-998f-638c8a33e696",
+      "inputs": {},
+      "label": "Editable vector artwork",
+      "operation": {
+        "alignment": "center",
+        "box_height": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "content": "FLOW",
+        "features": "",
+        "font": {
+          "source": "display"
+        },
+        "language": "",
+        "line_height": {
+          "kind": "constant",
+          "value": 1.25
+        },
+        "padding": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "rotation": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "rtl": false,
+        "scale_x": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "scale_y": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "size": {
+          "kind": "constant",
+          "value": 400.0
+        },
+        "tracking": {
+          "kind": "constant",
+          "value": 24.0
+        },
+        "type": "text",
+        "typography": {
+          "anchor": null,
+          "auto_fit": false,
+          "duration": 0.5,
+          "ease": true,
+          "exit": null,
+          "linked_scale": false,
+          "motion": "none",
+          "spans": [],
+          "stagger": 0.03999999910593033,
+          "start": 0.0,
+          "unit": "character",
+          "vertical": "top"
+        },
+        "underline": false,
+        "wrap_width": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "x": {
+          "kind": "constant",
+          "value": 960.0
+        },
+        "y": {
+          "kind": "constant",
+          "value": 680.0
+        }
+      },
+      "position": {
+        "x": 230.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "72370ff4-66d6-4e79-a1c2-09b6a9d14aeb": {
+      "id": "72370ff4-66d6-4e79-a1c2-09b6a9d14aeb",
+      "inputs": {},
+      "label": "Midnight background",
+      "operation": {
+        "color": [
+          0.0020000000949949026,
+          0.004000000189989805,
+          0.012000000104308128,
+          1.0
+        ],
+        "type": "solid"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "scene_background": true,
+      "version": 1
+    },
+    "c695d349-2b57-4fc6-a680-ba91f54f7341": {
+      "id": "c695d349-2b57-4fc6-a680-ba91f54f7341",
+      "inputs": {
+        "image": "623c17bf-e3d3-4027-ab5c-c657842e4c1e",
+        "mask": "63366f72-ff25-493f-998f-638c8a33e696"
+      },
+      "label": "Color inside artwork",
+      "operation": {
+        "type": "mask"
+      },
+      "position": {
+        "x": 920.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "ed45af5c-237f-4bbe-bf91-490d02485fc6": {
+      "id": "ed45af5c-237f-4bbe-bf91-490d02485fc6",
+      "inputs": {
+        "background": "72370ff4-66d6-4e79-a1c2-09b6a9d14aeb",
+        "foreground": "420eb619-8d25-4e94-a629-855ef982ff40"
+      },
+      "label": "Before · artwork on midnight",
+      "operation": {
+        "type": "merge"
+      },
+      "position": {
+        "x": 230.0,
+        "y": 145.0
+      },
+      "version": 1
+    }
+  },
+  "output": "5dc1bc51-ef60-42f8-a031-6cb84f3e1da1",
+  "saved_by": "0.1.0",
+  "schema": 1,
+  "width": 1920
+}

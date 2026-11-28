@@ -1,0 +1,523 @@
+{
+  "frame_count": 96,
+  "frame_rate": {
+    "rate": 1,
+    "ticks": 24
+  },
+  "groups": {
+    "98df2505-4742-46f1-ab9c-6da9a380ef45": {
+      "controls": {
+        "bright": {
+          "default": {
+            "kind": "constant",
+            "value": 1.0
+          },
+          "label": "Bright",
+          "node": "4bd7b4da-e575-47bd-935a-0eef1b60cfd3",
+          "parameter": "p3"
+        },
+        "ghosts": {
+          "default": {
+            "kind": "constant",
+            "value": 1.0
+          },
+          "label": "Ghosts",
+          "node": "4bd7b4da-e575-47bd-935a-0eef1b60cfd3",
+          "parameter": "p7"
+        },
+        "rays": {
+          "default": {
+            "kind": "constant",
+            "value": 1.0
+          },
+          "label": "Rays",
+          "node": "4bd7b4da-e575-47bd-935a-0eef1b60cfd3",
+          "parameter": "p4"
+        },
+        "ring": {
+          "default": {
+            "kind": "constant",
+            "value": 1.0
+          },
+          "label": "Ring",
+          "node": "4bd7b4da-e575-47bd-935a-0eef1b60cfd3",
+          "parameter": "p6"
+        },
+        "streak": {
+          "default": {
+            "kind": "constant",
+            "value": 1.0
+          },
+          "label": "Streak",
+          "node": "4bd7b4da-e575-47bd-935a-0eef1b60cfd3",
+          "parameter": "p5"
+        },
+        "tint_blue": {
+          "default": {
+            "kind": "constant",
+            "value": 0.8199999928474426
+          },
+          "label": "Tint blue",
+          "node": "4bd7b4da-e575-47bd-935a-0eef1b60cfd3",
+          "parameter": "p10"
+        },
+        "tint_green": {
+          "default": {
+            "kind": "constant",
+            "value": 0.9300000071525574
+          },
+          "label": "Tint green",
+          "node": "4bd7b4da-e575-47bd-935a-0eef1b60cfd3",
+          "parameter": "p9"
+        },
+        "tint_red": {
+          "default": {
+            "kind": "constant",
+            "value": 1.0
+          },
+          "label": "Tint red",
+          "node": "4bd7b4da-e575-47bd-935a-0eef1b60cfd3",
+          "parameter": "p8"
+        },
+        "x": {
+          "default": {
+            "kind": "constant",
+            "value": 0.30000001192092896
+          },
+          "label": "X",
+          "node": "4bd7b4da-e575-47bd-935a-0eef1b60cfd3",
+          "parameter": "p1"
+        },
+        "y": {
+          "default": {
+            "kind": "constant",
+            "value": 0.3199999928474426
+          },
+          "label": "Y",
+          "node": "4bd7b4da-e575-47bd-935a-0eef1b60cfd3",
+          "parameter": "p2"
+        }
+      },
+      "id": "98df2505-4742-46f1-ab9c-6da9a380ef45",
+      "inputs": {
+        "input_1": {
+          "label": "Image",
+          "targets": [
+            {
+              "node": "7735c835-1e42-49f0-9a83-8689add93caa",
+              "port": "background"
+            }
+          ]
+        }
+      },
+      "label": "Lens Flare",
+      "members": [
+        "4bd7b4da-e575-47bd-935a-0eef1b60cfd3",
+        "7735c835-1e42-49f0-9a83-8689add93caa"
+      ],
+      "output": "7735c835-1e42-49f0-9a83-8689add93caa"
+    }
+  },
+  "height": 1080,
+  "nodes": {
+    "1a454970-1849-4419-9e3e-d134ed2512a6": {
+      "id": "1a454970-1849-4419-9e3e-d134ed2512a6",
+      "inputs": {
+        "image": "f2712c68-bb25-430a-ae82-b7aed2985090"
+      },
+      "label": "Artwork motion",
+      "operation": {
+        "pivot_x": {
+          "kind": "constant",
+          "value": 960.0
+        },
+        "pivot_y": {
+          "kind": "constant",
+          "value": 540.0
+        },
+        "rotation": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "scale_x": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": 0.9399999976158142
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 2
+              },
+              "value": 1.0399999618530273
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": 0.9399999976158142
+            }
+          ],
+          "kind": "smooth"
+        },
+        "scale_y": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": 0.9399999976158142
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 2
+              },
+              "value": 1.0399999618530273
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": 0.9399999976158142
+            }
+          ],
+          "kind": "smooth"
+        },
+        "type": "affine",
+        "x": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "y": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": 18.0
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 2
+              },
+              "value": -18.0
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": 18.0
+            }
+          ],
+          "kind": "smooth"
+        }
+      },
+      "position": {
+        "x": 0.0,
+        "y": 145.0
+      },
+      "version": 1
+    },
+    "3fe0b060-f2ef-402d-9248-485542393944": {
+      "id": "3fe0b060-f2ef-402d-9248-485542393944",
+      "inputs": {
+        "image": "f1c70bc8-d088-4aed-95d0-7243f776f54a"
+      },
+      "label": "Artwork palette",
+      "operation": {
+        "high": [
+          1.600000023841858,
+          1.7999999523162842,
+          2.0,
+          1.0
+        ],
+        "low": [
+          0.30000001192092896,
+          0.44999998807907104,
+          0.800000011920929,
+          1.0
+        ],
+        "type": "colorize"
+      },
+      "position": {
+        "x": 690.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "4bd7b4da-e575-47bd-935a-0eef1b60cfd3": {
+      "id": "4bd7b4da-e575-47bd-935a-0eef1b60cfd3",
+      "inputs": {},
+      "label": "Lens flare",
+      "operation": {
+        "code": "// slider x 0 1 0.3\n// slider y 0 1 0.32\n// slider bright 0 4 1\n// slider rays 0 2 1\n// slider streak 0 2 1\n// slider ring 0 2 1\n// slider ghosts 0 2 1\n// colour tint 1 0.93 0.82\n\nfn chance(n: f32) -> f32 {\n    return fract(sin(n * 12.9898 + 4.1) * 43758.5453);\n}\nfn band(r: f32, centre: f32, width: f32) -> f32 {\n    return exp(-pow((r - centre) / width, 2.0));\n}\n// What a lens makes of a bright light at x, y (fractions of the frame): its glow, a\n// burst of thin rays of uneven length, a long streak across it, a wide faint coloured\n// ring round it (warm on the inside, teal on the outside, strongest to the sides),\n// and soft coloured ghosts on the line from the light through the frame's middle.\n// Key x and y to move the light, or connect a scene and set Follow to one of its\n// objects: the flare then sits on that object, fades as it nears the frame's edge or\n// slides behind another object, and goes out when it is behind the camera. Everything else moves with the light.\n// Connect a picture to Second to say where the light can be seen: the flare is as strong\n// as that picture's alpha round the light (a matte of the open sky, or the light's own\n// picture with dunes, clouds or dust taken away), so it dims and goes out as anything in\n// the picture passes in front of the light.\nfn shade(at: vec2<f32>) -> vec4<f32> {\n    let p = (at - size * 0.5) / size.y;\n    if followed < -0.5 {\n        return vec4<f32>(0.0);\n    }\n    var spot = vec2<f32>(u.x, u.y);\n    var seen = 1.0;\n    if followed > 0.5 {\n        spot = follow / size;\n        let inside = min(min(spot.x, 1.0 - spot.x), min(spot.y, 1.0 - spot.y));\n        seen = smoothstep(-0.02, 0.06, inside) * follow_seen;\n    }\n    if has_second() {\n        // The share of the light's disc the Second picture lets through: its alpha at the\n        // middle and at eight places round it.\n        let reach = size.y * 0.012;\n        var open = second(spot * size).a;\n        for (var k = 0; k < 8; k++) {\n            let a = f32(k) * 0.7853982;\n            open += second(spot * size + vec2<f32>(cos(a), sin(a)) * reach).a;\n        }\n        seen *= clamp(open / 9.0, 0.0, 1.0);\n    }\n    let light = (spot - vec2<f32>(0.5)) * vec2<f32>(size.x / size.y, 1.0);\n    let d = p - light;\n    let r = length(d);\n    let turn = atan2(d.y, d.x) / 6.2831853 + 0.5;\n    var sum = u.tint * (exp(-r * r / 0.00012) * 5.0 + 0.00022 / (r * r + 0.0005) + exp(-r * 11.0) * 0.16);\n    // Rays: three sets of thin spikes, each spike its own length, width and strength.\n    var burst = 0.0;\n    for (var k = 0; k < 3; k++) {\n        let count = 13.0 + 11.0 * f32(k);\n        let along = turn * count + 0.37 * f32(k);\n        let spike = floor(along) - count * floor(floor(along) / count);\n        let across = fract(along) - 0.5;\n        let lot = chance(spike + 31.0 * f32(k));\n        let reach = 0.016 + 0.11 * lot * lot * lot;\n        let width = 0.035 + 0.07 * chance(spike * 1.7 + 5.0 + f32(k));\n        burst += exp(-across * across / (width * width)) * exp(-r / reach) * (0.35 + 0.65 * lot);\n    }\n    sum += mix(u.tint, vec3<f32>(0.80, 0.88, 1.0), 0.55) * burst * 0.42 * u.rays;\n    // The streak: a thin bright line and a wider faint one.\n    let cold = vec3<f32>(0.74, 0.82, 1.0);\n    sum += cold * (exp(-abs(d.y) * 420.0) * exp(-abs(d.x) * 3.2) * 0.55 + exp(-abs(d.y) * 70.0) * exp(-abs(d.x) * 6.0) * 0.04) * u.streak;\n    // The ring round the light.\n    let sides = 0.22 + 0.78 * pow(abs(cos(turn * 6.2831853)), 3.0);\n    sum += (vec3<f32>(1.0, 0.40, 0.10) * band(r, 0.60, 0.07) * 0.030\n        + vec3<f32>(0.90, 0.62, 0.20) * band(r, 0.665, 0.04) * 0.010\n        + vec3<f32>(0.04, 0.52, 0.72) * band(r, 0.735, 0.075) * 0.040) * sides * u.ring;\n    // Ghosts: before the middle, at it and past it.\n    for (var k = 0; k < 6; k++) {\n        let t = f32(k);\n        let place = light * (0.58 - t * 0.37);\n        let radius = 0.022 + 0.045 * chance(t + 2.0) + 0.012 * t;\n        let away = length(p - place) / radius;\n        let disc = smoothstep(1.0, 0.55, away) * (0.30 + 0.70 * smoothstep(0.0, 1.0, away));\n        let hue = vec3<f32>(0.5 + 0.5 * cos(t * 1.9 + 2.0), 0.5 + 0.5 * cos(t * 1.9 + 0.2), 0.5 + 0.5 * cos(t * 1.9 + 4.4));\n        sum += mix(u.tint, hue, 0.7) * disc * 0.020 * u.ghosts;\n    }\n    let light_out = sum * u.bright * seen;\n    // Mostly added to what is behind: only the hot middle covers it.\n    let alpha = clamp(max(light_out.r, max(light_out.g, light_out.b)) - 0.6, 0.0, 1.0);\n    return vec4<f32>(light_out, alpha);\n}\n",
+        "follow": null,
+        "p1": {
+          "kind": "constant",
+          "value": 0.30000001192092896
+        },
+        "p10": {
+          "kind": "constant",
+          "value": 0.8199999928474426
+        },
+        "p11": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "p12": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "p13": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "p14": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "p15": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "p16": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "p2": {
+          "kind": "constant",
+          "value": 0.3199999928474426
+        },
+        "p3": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "p4": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "p5": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "p6": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "p7": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "p8": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "p9": {
+          "kind": "constant",
+          "value": 0.9300000071525574
+        },
+        "type": "shader"
+      },
+      "version": 1
+    },
+    "6dd764cd-2a10-4711-90ff-6f8d6fcae932": {
+      "id": "6dd764cd-2a10-4711-90ff-6f8d6fcae932",
+      "inputs": {},
+      "label": "Editable vector artwork",
+      "operation": {
+        "alignment": "center",
+        "box_height": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "content": "FLOW",
+        "features": "",
+        "font": {
+          "source": "display"
+        },
+        "language": "",
+        "line_height": {
+          "kind": "constant",
+          "value": 1.25
+        },
+        "padding": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "rotation": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "rtl": false,
+        "scale_x": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "scale_y": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "size": {
+          "kind": "constant",
+          "value": 400.0
+        },
+        "tracking": {
+          "kind": "constant",
+          "value": 24.0
+        },
+        "type": "text",
+        "typography": {
+          "anchor": null,
+          "auto_fit": false,
+          "duration": 0.5,
+          "ease": true,
+          "exit": null,
+          "linked_scale": false,
+          "motion": "none",
+          "spans": [],
+          "stagger": 0.03999999910593033,
+          "start": 0.0,
+          "unit": "character",
+          "vertical": "top"
+        },
+        "underline": false,
+        "wrap_width": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "x": {
+          "kind": "constant",
+          "value": 960.0
+        },
+        "y": {
+          "kind": "constant",
+          "value": 680.0
+        }
+      },
+      "position": {
+        "x": 230.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "74d6c24f-e070-4bfd-b6b8-f2c2b5b4280d": {
+      "id": "74d6c24f-e070-4bfd-b6b8-f2c2b5b4280d",
+      "inputs": {},
+      "label": "Midnight background",
+      "operation": {
+        "color": [
+          0.0020000000949949026,
+          0.004000000189989805,
+          0.012000000104308128,
+          1.0
+        ],
+        "type": "solid"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "scene_background": true,
+      "version": 1
+    },
+    "7735c835-1e42-49f0-9a83-8689add93caa": {
+      "id": "7735c835-1e42-49f0-9a83-8689add93caa",
+      "inputs": {
+        "background": "a2bfb3c6-7dbd-49c9-8ce1-d180834c37e6",
+        "foreground": "4bd7b4da-e575-47bd-935a-0eef1b60cfd3"
+      },
+      "label": "Lens flare over image",
+      "operation": {
+        "type": "merge"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 500.0
+      },
+      "version": 1
+    },
+    "a2bfb3c6-7dbd-49c9-8ce1-d180834c37e6": {
+      "id": "a2bfb3c6-7dbd-49c9-8ce1-d180834c37e6",
+      "inputs": {
+        "background": "74d6c24f-e070-4bfd-b6b8-f2c2b5b4280d",
+        "foreground": "1a454970-1849-4419-9e3e-d134ed2512a6"
+      },
+      "label": "Before · artwork on midnight",
+      "operation": {
+        "type": "merge"
+      },
+      "position": {
+        "x": 230.0,
+        "y": 145.0
+      },
+      "version": 1
+    },
+    "f1c70bc8-d088-4aed-95d0-7243f776f54a": {
+      "id": "f1c70bc8-d088-4aed-95d0-7243f776f54a",
+      "inputs": {},
+      "label": "Vertical palette ramp",
+      "operation": {
+        "end_x": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "end_y": {
+          "kind": "constant",
+          "value": 720.0
+        },
+        "mode": "linear",
+        "start_x": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "start_y": {
+          "kind": "constant",
+          "value": 360.0
+        },
+        "type": "gradient"
+      },
+      "position": {
+        "x": 460.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "f2712c68-bb25-430a-ae82-b7aed2985090": {
+      "id": "f2712c68-bb25-430a-ae82-b7aed2985090",
+      "inputs": {
+        "image": "3fe0b060-f2ef-402d-9248-485542393944",
+        "mask": "6dd764cd-2a10-4711-90ff-6f8d6fcae932"
+      },
+      "label": "Color inside artwork",
+      "operation": {
+        "type": "mask"
+      },
+      "position": {
+        "x": 920.0,
+        "y": 0.0
+      },
+      "version": 1
+    }
+  },
+  "output": "7735c835-1e42-49f0-9a83-8689add93caa",
+  "saved_by": "0.1.0",
+  "schema": 1,
+  "width": 1920
+}

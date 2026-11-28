@@ -1,0 +1,618 @@
+{
+  "frame_count": 96,
+  "frame_rate": {
+    "rate": 1,
+    "ticks": 24
+  },
+  "groups": {
+    "746f94e5-c0ab-496a-acf3-a5acfbf877d3": {
+      "controls": {
+        "color": {
+          "default": [
+            0.10000000149011612,
+            1.2000000476837158,
+            2.0,
+            1.0
+          ],
+          "label": "Color",
+          "node": "4bcb7854-e5dc-4d1c-823a-c13c30fb09f9",
+          "parameter": "color"
+        },
+        "edge_intensity": {
+          "default": {
+            "kind": "constant",
+            "value": 0.800000011920929
+          },
+          "label": "Edge intensity",
+          "node": "619c0b2b-902f-4579-bc32-4bbdee57e398",
+          "parameter": "opacity"
+        },
+        "halo_energy": {
+          "default": {
+            "kind": "constant",
+            "value": 2.0
+          },
+          "label": "Halo energy",
+          "node": "71d56684-8647-406c-b6cd-a8dff42dd6df",
+          "parameter": "stops"
+        },
+        "halo_spread": {
+          "default": {
+            "kind": "constant",
+            "value": 16.0
+          },
+          "label": "Halo spread",
+          "node": "956d2d53-93d6-4408-857d-af23a343295a",
+          "parameter": "radius"
+        },
+        "width": {
+          "default": {
+            "kind": "constant",
+            "value": 2.0
+          },
+          "label": "Width",
+          "node": "b80896e3-9e7f-4429-9717-7a439b3171a4",
+          "parameter": "radius"
+        }
+      },
+      "id": "746f94e5-c0ab-496a-acf3-a5acfbf877d3",
+      "inputs": {
+        "input_1": {
+          "label": "Image",
+          "targets": [
+            {
+              "node": "dd2058b2-d72b-4d0d-9ed9-8d64047b14ab",
+              "port": "background"
+            },
+            {
+              "node": "94a2fc9d-d079-40af-a050-44ec44944f75",
+              "port": "image"
+            },
+            {
+              "node": "06cb26e1-3537-4f16-af7b-625d458fdb1f",
+              "port": "background"
+            }
+          ]
+        }
+      },
+      "label": "Neon Outline",
+      "members": [
+        "06cb26e1-3537-4f16-af7b-625d458fdb1f",
+        "3ae679c0-7b00-46a9-8d56-961158e0b814",
+        "4bcb7854-e5dc-4d1c-823a-c13c30fb09f9",
+        "619c0b2b-902f-4579-bc32-4bbdee57e398",
+        "69863030-4c3f-43ca-96c0-6e94f645923f",
+        "71d56684-8647-406c-b6cd-a8dff42dd6df",
+        "94a2fc9d-d079-40af-a050-44ec44944f75",
+        "956d2d53-93d6-4408-857d-af23a343295a",
+        "b80896e3-9e7f-4429-9717-7a439b3171a4",
+        "ce3d65fe-9a16-4615-bcd2-bde15628134d",
+        "dd2058b2-d72b-4d0d-9ed9-8d64047b14ab"
+      ],
+      "output": "619c0b2b-902f-4579-bc32-4bbdee57e398"
+    }
+  },
+  "height": 1080,
+  "nodes": {
+    "06cb26e1-3537-4f16-af7b-625d458fdb1f": {
+      "id": "06cb26e1-3537-4f16-af7b-625d458fdb1f",
+      "inputs": {
+        "background": "ce3af133-6e03-4cda-b510-de9ee815b4fc",
+        "foreground": "94a2fc9d-d079-40af-a050-44ec44944f75"
+      },
+      "label": "Edge contrast",
+      "operation": {
+        "mode": "difference",
+        "opacity": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "type": "blend"
+      },
+      "version": 1
+    },
+    "07449bbf-716b-4ffc-abfe-4876eedbde4c": {
+      "id": "07449bbf-716b-4ffc-abfe-4876eedbde4c",
+      "inputs": {
+        "image": "d037eb0e-727e-4309-b90f-5e00105e4b5a"
+      },
+      "label": "Artwork motion",
+      "operation": {
+        "pivot_x": {
+          "kind": "constant",
+          "value": 960.0
+        },
+        "pivot_y": {
+          "kind": "constant",
+          "value": 540.0
+        },
+        "rotation": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "scale_x": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": 0.9399999976158142
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 2
+              },
+              "value": 1.0399999618530273
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": 0.9399999976158142
+            }
+          ],
+          "kind": "smooth"
+        },
+        "scale_y": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": 0.9399999976158142
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 2
+              },
+              "value": 1.0399999618530273
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": 0.9399999976158142
+            }
+          ],
+          "kind": "smooth"
+        },
+        "type": "affine",
+        "x": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "y": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": 18.0
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 2
+              },
+              "value": -18.0
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": 18.0
+            }
+          ],
+          "kind": "smooth"
+        }
+      },
+      "position": {
+        "x": 0.0,
+        "y": 145.0
+      },
+      "version": 1
+    },
+    "0bf3e564-d87f-47ad-9bfd-724d6977f91b": {
+      "id": "0bf3e564-d87f-47ad-9bfd-724d6977f91b",
+      "inputs": {},
+      "label": "Midnight background",
+      "operation": {
+        "color": [
+          0.0020000000949949026,
+          0.004000000189989805,
+          0.012000000104308128,
+          1.0
+        ],
+        "type": "solid"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "scene_background": true,
+      "version": 1
+    },
+    "162efafb-e1ec-441b-ac99-20af138aef0a": {
+      "id": "162efafb-e1ec-441b-ac99-20af138aef0a",
+      "inputs": {
+        "image": "26a1b8a2-a756-4238-83b6-68c28669acc4"
+      },
+      "label": "Artwork palette",
+      "operation": {
+        "high": [
+          0.05999999865889549,
+          0.14000000059604645,
+          0.2199999988079071,
+          1.0
+        ],
+        "low": [
+          0.014999999664723873,
+          0.03500000014901161,
+          0.07000000029802322,
+          1.0
+        ],
+        "type": "colorize"
+      },
+      "position": {
+        "x": 690.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "26a1b8a2-a756-4238-83b6-68c28669acc4": {
+      "id": "26a1b8a2-a756-4238-83b6-68c28669acc4",
+      "inputs": {},
+      "label": "Vertical palette ramp",
+      "operation": {
+        "end_x": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "end_y": {
+          "kind": "constant",
+          "value": 720.0
+        },
+        "mode": "linear",
+        "start_x": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "start_y": {
+          "kind": "constant",
+          "value": 360.0
+        },
+        "type": "gradient"
+      },
+      "position": {
+        "x": 460.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "3ae679c0-7b00-46a9-8d56-961158e0b814": {
+      "id": "3ae679c0-7b00-46a9-8d56-961158e0b814",
+      "inputs": {
+        "image": "06cb26e1-3537-4f16-af7b-625d458fdb1f",
+        "mask": "94a2fc9d-d079-40af-a050-44ec44944f75"
+      },
+      "label": "Valid edge samples",
+      "operation": {
+        "type": "mask"
+      },
+      "version": 1
+    },
+    "4bcb7854-e5dc-4d1c-823a-c13c30fb09f9": {
+      "id": "4bcb7854-e5dc-4d1c-823a-c13c30fb09f9",
+      "inputs": {},
+      "label": "Neon color",
+      "operation": {
+        "color": [
+          0.10000000149011612,
+          1.2000000476837158,
+          2.0,
+          1.0
+        ],
+        "type": "solid"
+      },
+      "version": 1
+    },
+    "619c0b2b-902f-4579-bc32-4bbdee57e398": {
+      "id": "619c0b2b-902f-4579-bc32-4bbdee57e398",
+      "inputs": {
+        "background": "dd2058b2-d72b-4d0d-9ed9-8d64047b14ab",
+        "foreground": "ce3d65fe-9a16-4615-bcd2-bde15628134d"
+      },
+      "label": "Neon contours",
+      "operation": {
+        "mode": "add",
+        "opacity": {
+          "kind": "constant",
+          "value": 0.800000011920929
+        },
+        "type": "blend"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 500.0
+      },
+      "version": 1
+    },
+    "69863030-4c3f-43ca-96c0-6e94f645923f": {
+      "id": "69863030-4c3f-43ca-96c0-6e94f645923f",
+      "inputs": {
+        "image": "3ae679c0-7b00-46a9-8d56-961158e0b814"
+      },
+      "label": "Luminance edges",
+      "operation": {
+        "channel": "luminance",
+        "type": "channel_mask"
+      },
+      "version": 1
+    },
+    "71d56684-8647-406c-b6cd-a8dff42dd6df": {
+      "id": "71d56684-8647-406c-b6cd-a8dff42dd6df",
+      "inputs": {
+        "image": "956d2d53-93d6-4408-857d-af23a343295a"
+      },
+      "label": "Halo energy",
+      "operation": {
+        "stops": {
+          "kind": "constant",
+          "value": 2.0
+        },
+        "type": "exposure"
+      },
+      "version": 1
+    },
+    "94a2fc9d-d079-40af-a050-44ec44944f75": {
+      "id": "94a2fc9d-d079-40af-a050-44ec44944f75",
+      "inputs": {
+        "image": "ce3af133-6e03-4cda-b510-de9ee815b4fc"
+      },
+      "label": "Edge sampling",
+      "operation": {
+        "type": "transform",
+        "x": {
+          "kind": "constant",
+          "value": 6.0
+        },
+        "y": {
+          "kind": "constant",
+          "value": 6.0
+        }
+      },
+      "version": 1
+    },
+    "956d2d53-93d6-4408-857d-af23a343295a": {
+      "id": "956d2d53-93d6-4408-857d-af23a343295a",
+      "inputs": {
+        "image": "ce3d65fe-9a16-4615-bcd2-bde15628134d"
+      },
+      "label": "Halo spread",
+      "operation": {
+        "filter": "box",
+        "radius": {
+          "kind": "constant",
+          "value": 16.0
+        },
+        "type": "blur"
+      },
+      "version": 1
+    },
+    "b80896e3-9e7f-4429-9717-7a439b3171a4": {
+      "id": "b80896e3-9e7f-4429-9717-7a439b3171a4",
+      "inputs": {
+        "image": "69863030-4c3f-43ca-96c0-6e94f645923f"
+      },
+      "label": "Edge width",
+      "operation": {
+        "radius": {
+          "kind": "constant",
+          "value": 2.0
+        },
+        "type": "morphology"
+      },
+      "version": 1
+    },
+    "c45c79dd-6c2e-4ea7-8b5f-18b114514937": {
+      "id": "c45c79dd-6c2e-4ea7-8b5f-18b114514937",
+      "inputs": {
+        "image": "07449bbf-716b-4ffc-abfe-4876eedbde4c"
+      },
+      "label": "Title reveal",
+      "operation": {
+        "stops": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": -3.0
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 2
+              },
+              "value": 1.0
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": -3.0
+            }
+          ],
+          "kind": "smooth"
+        },
+        "type": "exposure"
+      },
+      "position": {
+        "x": 230.0,
+        "y": 145.0
+      },
+      "version": 1
+    },
+    "ce3af133-6e03-4cda-b510-de9ee815b4fc": {
+      "id": "ce3af133-6e03-4cda-b510-de9ee815b4fc",
+      "inputs": {
+        "background": "0bf3e564-d87f-47ad-9bfd-724d6977f91b",
+        "foreground": "c45c79dd-6c2e-4ea7-8b5f-18b114514937"
+      },
+      "label": "Before · artwork on midnight",
+      "operation": {
+        "type": "merge"
+      },
+      "position": {
+        "x": 460.0,
+        "y": 145.0
+      },
+      "version": 1
+    },
+    "ce3d65fe-9a16-4615-bcd2-bde15628134d": {
+      "id": "ce3d65fe-9a16-4615-bcd2-bde15628134d",
+      "inputs": {
+        "image": "4bcb7854-e5dc-4d1c-823a-c13c30fb09f9",
+        "mask": "b80896e3-9e7f-4429-9717-7a439b3171a4"
+      },
+      "label": "Neon core",
+      "operation": {
+        "type": "mask"
+      },
+      "version": 1
+    },
+    "d037eb0e-727e-4309-b90f-5e00105e4b5a": {
+      "id": "d037eb0e-727e-4309-b90f-5e00105e4b5a",
+      "inputs": {
+        "image": "162efafb-e1ec-441b-ac99-20af138aef0a",
+        "mask": "d6ee9c2b-f1f8-4295-91e1-6a2cd24356a0"
+      },
+      "label": "Color inside artwork",
+      "operation": {
+        "type": "mask"
+      },
+      "position": {
+        "x": 920.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "d6ee9c2b-f1f8-4295-91e1-6a2cd24356a0": {
+      "id": "d6ee9c2b-f1f8-4295-91e1-6a2cd24356a0",
+      "inputs": {},
+      "label": "Editable vector artwork",
+      "operation": {
+        "alignment": "center",
+        "box_height": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "content": "NEON",
+        "features": "",
+        "font": {
+          "source": "display"
+        },
+        "language": "",
+        "line_height": {
+          "kind": "constant",
+          "value": 1.25
+        },
+        "padding": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "rotation": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "rtl": false,
+        "scale_x": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "scale_y": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "size": {
+          "kind": "constant",
+          "value": 400.0
+        },
+        "tracking": {
+          "kind": "constant",
+          "value": 24.0
+        },
+        "type": "text",
+        "typography": {
+          "anchor": null,
+          "auto_fit": false,
+          "duration": 0.5,
+          "ease": true,
+          "exit": null,
+          "linked_scale": false,
+          "motion": "none",
+          "spans": [],
+          "stagger": 0.03999999910593033,
+          "start": 0.0,
+          "unit": "character",
+          "vertical": "top"
+        },
+        "underline": false,
+        "wrap_width": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "x": {
+          "kind": "constant",
+          "value": 960.0
+        },
+        "y": {
+          "kind": "constant",
+          "value": 680.0
+        }
+      },
+      "position": {
+        "x": 230.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "dd2058b2-d72b-4d0d-9ed9-8d64047b14ab": {
+      "id": "dd2058b2-d72b-4d0d-9ed9-8d64047b14ab",
+      "inputs": {
+        "background": "ce3af133-6e03-4cda-b510-de9ee815b4fc",
+        "foreground": "71d56684-8647-406c-b6cd-a8dff42dd6df"
+      },
+      "label": "Neon halo",
+      "operation": {
+        "mode": "add",
+        "opacity": {
+          "kind": "constant",
+          "value": 0.75
+        },
+        "type": "blend"
+      },
+      "version": 1
+    }
+  },
+  "output": "619c0b2b-902f-4579-bc32-4bbdee57e398",
+  "saved_by": "0.1.0",
+  "schema": 1,
+  "width": 1920
+}

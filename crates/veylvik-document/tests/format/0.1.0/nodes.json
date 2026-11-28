@@ -1,0 +1,3070 @@
+{
+  "affine": {
+    "operation": {
+      "pivot_x": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "pivot_y": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "rotation": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "scale_x": {
+        "kind": "constant",
+        "value": 1.0
+      },
+      "scale_y": {
+        "kind": "constant",
+        "value": 1.0
+      },
+      "type": "affine",
+      "x": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "y": {
+        "kind": "constant",
+        "value": 0.0
+      }
+    },
+    "version": 1
+  },
+  "atmosphere": {
+    "operation": {
+      "density": {
+        "kind": "constant",
+        "value": 1.0
+      },
+      "detail": {
+        "kind": "constant",
+        "value": 1.0
+      },
+      "evolution": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "height": {
+        "kind": "constant",
+        "value": 450.0
+      },
+      "kind": "smoke",
+      "lighting": {
+        "kind": "constant",
+        "value": 1.0
+      },
+      "seed": 0,
+      "type": "atmosphere",
+      "width": {
+        "kind": "constant",
+        "value": 700.0
+      },
+      "x": {
+        "kind": "constant",
+        "value": 480.0
+      },
+      "y": {
+        "kind": "constant",
+        "value": 500.0
+      }
+    },
+    "version": 1
+  },
+  "blend": {
+    "operation": {
+      "mode": "normal",
+      "opacity": {
+        "kind": "constant",
+        "value": 1.0
+      },
+      "type": "blend"
+    },
+    "version": 1
+  },
+  "bloom": {
+    "operation": {
+      "intensity": {
+        "kind": "constant",
+        "value": 0.800000011920929
+      },
+      "knee": {
+        "kind": "constant",
+        "value": 0.5
+      },
+      "radius": {
+        "kind": "constant",
+        "value": 80.0
+      },
+      "streak": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "threshold": {
+        "kind": "constant",
+        "value": 1.0
+      },
+      "tint": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "type": "bloom"
+    },
+    "version": 1
+  },
+  "blur": {
+    "operation": {
+      "filter": "box",
+      "radius": {
+        "kind": "constant",
+        "value": 4.0
+      },
+      "type": "blur"
+    },
+    "version": 1
+  },
+  "camera_3d": {
+    "operation": {
+      "aim_at": null,
+      "f_stop": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "focal_length": {
+        "kind": "constant",
+        "value": 50.0
+      },
+      "focus_distance": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "focus_on": null,
+      "orbit": null,
+      "placement": {
+        "position": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      "sensor_width": {
+        "kind": "constant",
+        "value": 36.0
+      },
+      "type": "camera_3d"
+    },
+    "version": 1
+  },
+  "camera_projection": {
+    "operation": {
+      "hide_unseen": false,
+      "hold": false,
+      "hold_time": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "lit": false,
+      "type": "camera_projection"
+    },
+    "version": 1
+  },
+  "channel_mask": {
+    "operation": {
+      "channel": "luminance",
+      "type": "channel_mask"
+    },
+    "version": 1
+  },
+  "chroma_key": {
+    "operation": {
+      "clip_black": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "clip_white": {
+        "kind": "constant",
+        "value": 1.0
+      },
+      "darks": {
+        "kind": "constant",
+        "value": 0.05000000074505806
+      },
+      "despill": {
+        "kind": "constant",
+        "value": 1.0
+      },
+      "key_color": [
+        0.0,
+        1.0,
+        0.0,
+        1.0
+      ],
+      "show": "result",
+      "shrink": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "soften": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "softness": {
+        "kind": "constant",
+        "value": 0.25
+      },
+      "tolerance": {
+        "kind": "constant",
+        "value": 0.5
+      },
+      "type": "chroma_key"
+    },
+    "version": 1
+  },
+  "color_correct": {
+    "operation": {
+      "contrast": {
+        "kind": "constant",
+        "value": 1.0
+      },
+      "gain": {
+        "kind": "constant",
+        "value": 1.0
+      },
+      "gamma": {
+        "kind": "constant",
+        "value": 1.0
+      },
+      "lift": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "saturation": {
+        "kind": "constant",
+        "value": 1.0
+      },
+      "temperature": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "tint": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "type": "color_correct"
+    },
+    "version": 1
+  },
+  "colorize": {
+    "operation": {
+      "high": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "low": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "type": "colorize"
+    },
+    "version": 1
+  },
+  "combine_mask": {
+    "operation": {
+      "mode": "union",
+      "type": "combine_mask"
+    },
+    "version": 1
+  },
+  "condensation": {
+    "operation": {
+      "amount": {
+        "kind": "constant",
+        "value": 0.699999988079071
+      },
+      "density": {
+        "kind": "constant",
+        "value": 0.550000011920929
+      },
+      "dispersion": {
+        "kind": "constant",
+        "value": 0.012000000104308128
+      },
+      "evolution": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "haze": {
+        "kind": "constant",
+        "value": 0.18000000715255737
+      },
+      "seed": 0,
+      "size": {
+        "kind": "constant",
+        "value": 4.0
+      },
+      "trails": {
+        "kind": "constant",
+        "value": 0.20000000298023224
+      },
+      "type": "condensation"
+    },
+    "version": 1
+  },
+  "contact_shadow": {
+    "operation": {
+      "angle": {
+        "kind": "constant",
+        "value": 90.0
+      },
+      "lean": {
+        "kind": "constant",
+        "value": 3.0
+      },
+      "reach": {
+        "kind": "constant",
+        "value": 16.0
+      },
+      "strength": {
+        "kind": "constant",
+        "value": 0.699999988079071
+      },
+      "type": "contact_shadow"
+    },
+    "version": 1
+  },
+  "cryptomatte": {
+    "operation": {
+      "objects": [],
+      "type": "cryptomatte"
+    },
+    "version": 1
+  },
+  "displace": {
+    "operation": {
+      "type": "displace",
+      "x": {
+        "kind": "constant",
+        "value": 20.0
+      },
+      "y": {
+        "kind": "constant",
+        "value": 20.0
+      }
+    },
+    "version": 1
+  },
+  "drip": {
+    "operation": {
+      "evolution": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "length": {
+        "kind": "constant",
+        "value": 140.0
+      },
+      "radius": {
+        "kind": "constant",
+        "value": 5.0
+      },
+      "seed": 0,
+      "spacing": {
+        "kind": "constant",
+        "value": 48.0
+      },
+      "type": "drip"
+    },
+    "version": 1
+  },
+  "dust": {
+    "operation": {
+      "density": {
+        "kind": "constant",
+        "value": 0.6499999761581421
+      },
+      "drift": {
+        "kind": "constant",
+        "value": 1.0
+      },
+      "evolution": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "seed": 0,
+      "size": {
+        "kind": "constant",
+        "value": 1.2000000476837158
+      },
+      "type": "dust"
+    },
+    "version": 1
+  },
+  "ellipse": {
+    "operation": {
+      "feather": {
+        "kind": "constant",
+        "value": 1.0
+      },
+      "radius_x": {
+        "kind": "constant",
+        "value": 100.0
+      },
+      "radius_y": {
+        "kind": "constant",
+        "value": 100.0
+      },
+      "type": "ellipse",
+      "x": {
+        "kind": "constant",
+        "value": 320.0
+      },
+      "y": {
+        "kind": "constant",
+        "value": 180.0
+      }
+    },
+    "version": 1
+  },
+  "environment_3d": {
+    "operation": {
+      "background": false,
+      "blur": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "frame": false,
+      "intensity": {
+        "kind": "constant",
+        "value": 1.0
+      },
+      "rotation": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "type": "environment_3d"
+    },
+    "version": 1
+  },
+  "exposure": {
+    "operation": {
+      "stops": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "type": "exposure"
+    },
+    "version": 1
+  },
+  "fade": {
+    "operation": {
+      "opacity": {
+        "kind": "constant",
+        "value": 1.0
+      },
+      "timing": {
+        "end": null,
+        "fade_in": {
+          "rate": 1,
+          "ticks": 0
+        },
+        "fade_out": {
+          "rate": 1,
+          "ticks": 0
+        },
+        "start": {
+          "rate": 1,
+          "ticks": 0
+        }
+      },
+      "type": "fade"
+    },
+    "version": 1
+  },
+  "figure_3d": {
+    "operation": {
+      "colour": [
+        0.6000000238418579,
+        0.6000000238418579,
+        0.6000000238418579
+      ],
+      "detail": {
+        "kind": "constant",
+        "value": 110.0
+      },
+      "distance": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "height": {
+        "kind": "constant",
+        "value": 600.0
+      },
+      "look": null,
+      "metallic": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "pace": {
+        "kind": "constant",
+        "value": 1.0
+      },
+      "placement": {
+        "position": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      "roughness": {
+        "kind": "constant",
+        "value": 0.550000011920929
+      },
+      "type": "figure_3d"
+    },
+    "version": 1
+  },
+  "fire": {
+    "operation": {
+      "evolution": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "height": {
+        "kind": "constant",
+        "value": 240.0
+      },
+      "intensity": {
+        "kind": "constant",
+        "value": 1.0
+      },
+      "seed": 0,
+      "turbulence": {
+        "kind": "constant",
+        "value": 1.0
+      },
+      "type": "fire",
+      "width": {
+        "kind": "constant",
+        "value": 600.0
+      },
+      "x": {
+        "kind": "constant",
+        "value": 480.0
+      },
+      "y": {
+        "kind": "constant",
+        "value": 350.0
+      }
+    },
+    "version": 1
+  },
+  "flutter_3d": {
+    "operation": {
+      "amplitude": {
+        "kind": "constant",
+        "value": 40.0
+      },
+      "pinned": {
+        "kind": "constant",
+        "value": 1.0
+      },
+      "speed": {
+        "kind": "constant",
+        "value": 300.0
+      },
+      "type": "flutter_3d",
+      "wavelength": {
+        "kind": "constant",
+        "value": 400.0
+      }
+    },
+    "version": 1
+  },
+  "footage": {
+    "operation": {
+      "asset": "image.png",
+      "colour": {
+        "curve": "auto",
+        "gamut": "auto"
+      },
+      "layer": null,
+      "placement": "legacy",
+      "timing": {
+        "source_in": {
+          "rate": 1,
+          "ticks": 0
+        },
+        "source_out": null,
+        "start": {
+          "rate": 1,
+          "ticks": 0
+        }
+      },
+      "type": "footage"
+    },
+    "version": 1
+  },
+  "force": {
+    "operation": {
+      "direction": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "kind": "attract",
+      "lean": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "radius": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "scale": {
+        "kind": "constant",
+        "value": 120.0
+      },
+      "softness": {
+        "kind": "constant",
+        "value": 0.5
+      },
+      "strength": {
+        "kind": "constant",
+        "value": 200.0
+      },
+      "type": "force",
+      "x": {
+        "kind": "constant",
+        "value": 960.0
+      },
+      "y": {
+        "kind": "constant",
+        "value": 540.0
+      },
+      "z": {
+        "kind": "constant",
+        "value": 0.0
+      }
+    },
+    "version": 1
+  },
+  "fractal_noise": {
+    "operation": {
+      "evolution": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "octaves": {
+        "kind": "constant",
+        "value": 4.0
+      },
+      "roughness": {
+        "kind": "constant",
+        "value": 0.5
+      },
+      "scale": {
+        "kind": "constant",
+        "value": 128.0
+      },
+      "seed": 0,
+      "type": "fractal_noise"
+    },
+    "version": 1
+  },
+  "gaussian_splats": {
+    "operation": {
+      "brightness": {
+        "kind": "constant",
+        "value": 1.0
+      },
+      "file": "",
+      "placement": {
+        "position": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      "size": {
+        "kind": "constant",
+        "value": 600.0
+      },
+      "type": "gaussian_splats"
+    },
+    "version": 1
+  },
+  "glass": {
+    "operation": {
+      "bevel": {
+        "kind": "constant",
+        "value": 6.0
+      },
+      "dispersion": {
+        "kind": "constant",
+        "value": 0.05999999865889549
+      },
+      "ior": {
+        "kind": "constant",
+        "value": 1.5
+      },
+      "refraction": {
+        "kind": "constant",
+        "value": 18.0
+      },
+      "roughness": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "tint": {
+        "kind": "constant",
+        "value": 0.11999999731779099
+      },
+      "transmission": {
+        "kind": "constant",
+        "value": 0.9599999785423279
+      },
+      "type": "glass"
+    },
+    "version": 1
+  },
+  "gradient": {
+    "operation": {
+      "end_x": {
+        "kind": "constant",
+        "value": 640.0
+      },
+      "end_y": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "mode": "linear",
+      "start_x": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "start_y": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "type": "gradient"
+    },
+    "version": 1
+  },
+  "grid_warp": {
+    "operation": {
+      "amount": {
+        "kind": "constant",
+        "value": 1.0
+      },
+      "columns": 4,
+      "points": [
+        [
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0
+        ]
+      ],
+      "rows": 4,
+      "type": "grid_warp"
+    },
+    "version": 1
+  },
+  "image": {
+    "operation": {
+      "asset": "image.png",
+      "type": "image"
+    },
+    "version": 1
+  },
+  "image_card": {
+    "operation": {
+      "aim_at": null,
+      "colour": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "opacity": {
+        "kind": "constant",
+        "value": 1.0
+      },
+      "placement": {
+        "position": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      "type": "image_card"
+    },
+    "version": 1
+  },
+  "lens_blur": {
+    "operation": {
+      "focus": {
+        "kind": "constant",
+        "value": 10.0
+      },
+      "highlights": {
+        "kind": "constant",
+        "value": 2.0
+      },
+      "radius": {
+        "kind": "constant",
+        "value": 12.0
+      },
+      "threshold": {
+        "kind": "constant",
+        "value": 0.800000011920929
+      },
+      "type": "lens_blur"
+    },
+    "version": 1
+  },
+  "lens_distortion": {
+    "operation": {
+      "fill": false,
+      "k1": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "k2": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "redistort": false,
+      "type": "lens_distortion"
+    },
+    "version": 1
+  },
+  "light_3d": {
+    "operation": {
+      "aim_at": null,
+      "colour": [
+        0.6000000238418579,
+        0.6000000238418579,
+        0.6000000238418579
+      ],
+      "cone": {
+        "kind": "constant",
+        "value": 40.0
+      },
+      "feather": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "height": {
+        "kind": "constant",
+        "value": 150.0
+      },
+      "intensity": {
+        "kind": "constant",
+        "value": 1.0
+      },
+      "kind": "point",
+      "placement": {
+        "position": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      "reflections": {
+        "kind": "constant",
+        "value": 1.0
+      },
+      "seed": 0,
+      "shadows": true,
+      "softness": {
+        "kind": "constant",
+        "value": 0.20000000298023224
+      },
+      "strips": {
+        "kind": "constant",
+        "value": 1.0
+      },
+      "type": "light_3d",
+      "variation": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "width": {
+        "kind": "constant",
+        "value": 600.0
+      }
+    },
+    "version": 1
+  },
+  "light_rig": {
+    "operation": {
+      "studio": {
+        "ambient": 0.0,
+        "environment": 0.6499999761581421,
+        "environment_rotation": -45.0,
+        "lights": [
+          {
+            "colour": [
+              1.0,
+              0.9599999785423279,
+              0.8899999856948853
+            ],
+            "enabled": false,
+            "follow": false,
+            "intensity": {
+              "kind": "constant",
+              "value": 1.2000000476837158
+            },
+            "position": [
+              -3.0,
+              -0.699999988079071,
+              -1.0
+            ],
+            "rotation": [
+              0.0,
+              -105.0,
+              0.0
+            ],
+            "size": [
+              1.5,
+              4.0
+            ]
+          },
+          {
+            "colour": [
+              0.9599999785423279,
+              0.9800000190734863,
+              1.0
+            ],
+            "enabled": false,
+            "follow": false,
+            "intensity": {
+              "kind": "constant",
+              "value": 1.2000000476837158
+            },
+            "position": [
+              3.0,
+              -0.30000001192092896,
+              1.5
+            ],
+            "rotation": [
+              0.0,
+              50.0,
+              0.0
+            ],
+            "size": [
+              2.299999952316284,
+              3.200000047683716
+            ]
+          },
+          {
+            "colour": [
+              1.0,
+              0.9300000071525574,
+              0.800000011920929
+            ],
+            "enabled": false,
+            "follow": false,
+            "intensity": {
+              "kind": "constant",
+              "value": 3.200000047683716
+            },
+            "position": [
+              -2.799999952316284,
+              2.5999999046325684,
+              1.5
+            ],
+            "rotation": [
+              -30.0,
+              -45.0,
+              0.0
+            ],
+            "size": [
+              1.7999999523162842,
+              2.0
+            ]
+          },
+          {
+            "colour": [
+              1.0,
+              1.0,
+              1.0
+            ],
+            "enabled": false,
+            "follow": false,
+            "intensity": {
+              "kind": "constant",
+              "value": 0.44999998807907104
+            },
+            "position": [
+              0.0,
+              -4.0,
+              2.0
+            ],
+            "rotation": [
+              60.0,
+              0.0,
+              0.0
+            ],
+            "size": [
+              7.0,
+              4.0
+            ]
+          }
+        ]
+      },
+      "type": "light_rig"
+    },
+    "version": 1
+  },
+  "light_wrap": {
+    "operation": {
+      "amount": {
+        "kind": "constant",
+        "value": 0.6000000238418579
+      },
+      "radius": {
+        "kind": "constant",
+        "value": 24.0
+      },
+      "type": "light_wrap"
+    },
+    "version": 1
+  },
+  "luma_key": {
+    "operation": {
+      "high": {
+        "kind": "constant",
+        "value": 0.10000000149011612
+      },
+      "low": {
+        "kind": "constant",
+        "value": 0.019999999552965164
+      },
+      "type": "luma_key"
+    },
+    "version": 1
+  },
+  "lut": {
+    "operation": {
+      "asset": "image.png",
+      "input": {
+        "curve": "auto",
+        "gamut": "auto"
+      },
+      "mix": {
+        "kind": "constant",
+        "value": 1.0
+      },
+      "output": {
+        "curve": "auto",
+        "gamut": "auto"
+      },
+      "type": "lut"
+    },
+    "version": 1
+  },
+  "marker_3d": {
+    "operation": {
+      "placement": {
+        "position": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      "type": "marker_3d"
+    },
+    "version": 1
+  },
+  "mask": {
+    "operation": {
+      "type": "mask"
+    },
+    "version": 1
+  },
+  "match_grain": {
+    "operation": {
+      "amount": {
+        "kind": "constant",
+        "value": 1.0
+      },
+      "blue": {
+        "kind": "constant",
+        "value": 1.2000000476837158
+      },
+      "colour": {
+        "kind": "constant",
+        "value": 0.3499999940395355
+      },
+      "highlights": {
+        "kind": "constant",
+        "value": 0.006000000052154064
+      },
+      "midtones": {
+        "kind": "constant",
+        "value": 0.00800000037997961
+      },
+      "red": {
+        "kind": "constant",
+        "value": 1.0
+      },
+      "shadows": {
+        "kind": "constant",
+        "value": 0.012000000104308128
+      },
+      "size": {
+        "kind": "constant",
+        "value": 2.0
+      },
+      "type": "match_grain"
+    },
+    "version": 1
+  },
+  "material": {
+    "operation": {
+      "bevel": {
+        "kind": "constant",
+        "value": 4.0
+      },
+      "brush_angle": {
+        "kind": "constant",
+        "value": 65.0
+      },
+      "brushing": "directional",
+      "colours": null,
+      "emission": {
+        "kind": "constant",
+        "value": 1.0
+      },
+      "grain": {
+        "kind": "constant",
+        "value": 0.4000000059604645
+      },
+      "height_depth": {
+        "kind": "constant",
+        "value": 4.0
+      },
+      "imperfections": {
+        "kind": "constant",
+        "value": 0.30000001192092896
+      },
+      "kind": "gold",
+      "lighting": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "normal_directx": false,
+      "normal_strength": {
+        "kind": "constant",
+        "value": 1.0
+      },
+      "optics": null,
+      "ridges": {
+        "kind": "constant",
+        "value": 0.699999988079071
+      },
+      "roughness": {
+        "kind": "constant",
+        "value": 0.15000000596046448
+      },
+      "scale": {
+        "kind": "constant",
+        "value": 180.0
+      },
+      "shot": {
+        "kind": "constant",
+        "value": 0.6000000238418579
+      },
+      "smooth_edges": true,
+      "studio": {
+        "ambient": 0.0,
+        "environment": 0.3499999940395355,
+        "environment_rotation": -45.0,
+        "lights": [
+          {
+            "colour": [
+              1.0,
+              0.8999999761581421,
+              0.7200000286102295
+            ],
+            "enabled": true,
+            "follow": false,
+            "intensity": {
+              "kind": "constant",
+              "value": 2.4000000953674316
+            },
+            "position": [
+              -2.5,
+              -0.800000011920929,
+              3.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              -14.0
+            ],
+            "size": [
+              7.0,
+              0.07000000029802322
+            ]
+          },
+          {
+            "colour": [
+              1.0,
+              0.8999999761581421,
+              0.7200000286102295
+            ],
+            "enabled": true,
+            "follow": false,
+            "intensity": {
+              "kind": "constant",
+              "value": 2.4000000953674316
+            },
+            "position": [
+              -2.5,
+              -0.4000000059604645,
+              3.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              -14.0
+            ],
+            "size": [
+              7.0,
+              0.07000000029802322
+            ]
+          },
+          {
+            "colour": [
+              1.0,
+              0.8999999761581421,
+              0.7200000286102295
+            ],
+            "enabled": true,
+            "follow": false,
+            "intensity": {
+              "kind": "constant",
+              "value": 2.4000000953674316
+            },
+            "position": [
+              -2.5,
+              0.0,
+              3.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              -14.0
+            ],
+            "size": [
+              7.0,
+              0.07000000029802322
+            ]
+          },
+          {
+            "colour": [
+              1.0,
+              0.8999999761581421,
+              0.7200000286102295
+            ],
+            "enabled": true,
+            "follow": false,
+            "intensity": {
+              "kind": "constant",
+              "value": 2.4000000953674316
+            },
+            "position": [
+              -2.5,
+              0.4000000059604645,
+              3.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              -14.0
+            ],
+            "size": [
+              7.0,
+              0.07000000029802322
+            ]
+          },
+          {
+            "colour": [
+              1.0,
+              0.8999999761581421,
+              0.7200000286102295
+            ],
+            "enabled": true,
+            "follow": false,
+            "intensity": {
+              "kind": "constant",
+              "value": 2.4000000953674316
+            },
+            "position": [
+              -2.5,
+              0.800000011920929,
+              3.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              -14.0
+            ],
+            "size": [
+              7.0,
+              0.07000000029802322
+            ]
+          },
+          {
+            "colour": [
+              1.0,
+              0.8999999761581421,
+              0.7200000286102295
+            ],
+            "enabled": true,
+            "follow": false,
+            "intensity": {
+              "kind": "constant",
+              "value": 2.4000000953674316
+            },
+            "position": [
+              -0.30000001192092896,
+              -0.20000000298023224,
+              3.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              -14.0
+            ],
+            "size": [
+              7.0,
+              0.07000000029802322
+            ]
+          },
+          {
+            "colour": [
+              1.0,
+              0.8999999761581421,
+              0.7200000286102295
+            ],
+            "enabled": true,
+            "follow": false,
+            "intensity": {
+              "kind": "constant",
+              "value": 2.4000000953674316
+            },
+            "position": [
+              -0.30000001192092896,
+              0.20000000298023224,
+              3.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              -14.0
+            ],
+            "size": [
+              7.0,
+              0.07000000029802322
+            ]
+          },
+          {
+            "colour": [
+              1.0,
+              0.8999999761581421,
+              0.7200000286102295
+            ],
+            "enabled": true,
+            "follow": false,
+            "intensity": {
+              "kind": "constant",
+              "value": 2.4000000953674316
+            },
+            "position": [
+              -0.30000001192092896,
+              0.6000000238418579,
+              3.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              -14.0
+            ],
+            "size": [
+              7.0,
+              0.07000000029802322
+            ]
+          }
+        ]
+      },
+      "type": "material"
+    },
+    "version": 1
+  },
+  "material_layers": {
+    "operation": {
+      "breakup": {
+        "kind": "constant",
+        "value": 0.6000000238418579
+      },
+      "edge_wear": {
+        "kind": "constant",
+        "value": 0.5
+      },
+      "mix": {
+        "kind": "constant",
+        "value": 1.0
+      },
+      "noise_size": {
+        "kind": "constant",
+        "value": 40.0
+      },
+      "seed": 0,
+      "type": "material_layers",
+      "wear_width": {
+        "kind": "constant",
+        "value": 8.0
+      }
+    },
+    "version": 1
+  },
+  "merge": {
+    "operation": {
+      "type": "merge"
+    },
+    "version": 1
+  },
+  "merge_scenes": {
+    "operation": {
+      "type": "merge_scenes"
+    },
+    "version": 1
+  },
+  "metallic_shine": {
+    "operation": {
+      "angle": {
+        "kind": "constant",
+        "value": 20.0
+      },
+      "intensity": {
+        "kind": "constant",
+        "value": 1.5
+      },
+      "type": "metallic_shine",
+      "width": {
+        "kind": "constant",
+        "value": 90.0
+      },
+      "x": {
+        "kind": "constant",
+        "value": 480.0
+      },
+      "y": {
+        "kind": "constant",
+        "value": 270.0
+      }
+    },
+    "version": 1
+  },
+  "model_3d": {
+    "operation": {
+      "aim_at": null,
+      "clip": 0,
+      "clip_loop": false,
+      "clip_speed": {
+        "kind": "constant",
+        "value": 1.0
+      },
+      "clip_start": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "clips": [],
+      "extent": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "look": null,
+      "model": "",
+      "placement": {
+        "position": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      "size": {
+        "kind": "constant",
+        "value": 400.0
+      },
+      "type": "model_3d"
+    },
+    "version": 1
+  },
+  "morphology": {
+    "operation": {
+      "radius": {
+        "kind": "constant",
+        "value": 2.0
+      },
+      "type": "morphology"
+    },
+    "version": 1
+  },
+  "motion_blur": {
+    "operation": {
+      "angle": {
+        "kind": "constant",
+        "value": 180.0
+      },
+      "final_samples": {
+        "kind": "constant",
+        "value": 16.0
+      },
+      "phase": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "preview_samples": {
+        "kind": "constant",
+        "value": 4.0
+      },
+      "type": "motion_blur"
+    },
+    "version": 1
+  },
+  "noise": {
+    "operation": {
+      "scale": {
+        "kind": "constant",
+        "value": 18.0
+      },
+      "seed": 0,
+      "type": "noise"
+    },
+    "version": 1
+  },
+  "ocio": {
+    "operation": {
+      "transform": {
+        "config": "ocio://studio-config-v4.0.0_aces-v2.0_ocio-v2.5",
+        "destination": "Linear Rec.709 (sRGB)",
+        "display": "",
+        "source": "Linear Rec.709 (sRGB)",
+        "view": ""
+      },
+      "type": "ocio"
+    },
+    "version": 1
+  },
+  "ofx_effect": {
+    "operation": {
+      "bundle": "",
+      "clips": [
+        "Source"
+      ],
+      "context": "filter",
+      "plugin": "",
+      "settings": {},
+      "type": "ofx_effect"
+    },
+    "version": 1
+  },
+  "optical_flow": {
+    "operation": {
+      "confidence": {
+        "kind": "constant",
+        "value": 0.15000000596046448
+      },
+      "diagnostic": false,
+      "quality": "balanced",
+      "rate": {
+        "kind": "constant",
+        "value": 0.5
+      },
+      "source_rate": {
+        "rate": 1,
+        "ticks": 24
+      },
+      "source_time": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "type": "optical_flow"
+    },
+    "version": 1
+  },
+  "own_size": {
+    "operation": {
+      "fit": "fit",
+      "height": 1024,
+      "type": "own_size",
+      "width": 1024
+    },
+    "version": 1
+  },
+  "particle_instances": {
+    "operation": {
+      "scale": {
+        "kind": "constant",
+        "value": 1.0
+      },
+      "tumble": true,
+      "type": "particle_instances"
+    },
+    "version": 1
+  },
+  "particles": {
+    "operation": {
+      "alignment": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "ambient": {
+        "kind": "constant",
+        "value": 0.20000000298023224
+      },
+      "bokeh": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "bounce": {
+        "kind": "constant",
+        "value": 0.6000000238418579
+      },
+      "burst": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "burst_colour": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "burst_life": {
+        "kind": "constant",
+        "value": 1.0
+      },
+      "burst_on_impact": false,
+      "burst_size": {
+        "kind": "constant",
+        "value": 0.6000000238418579
+      },
+      "burst_speed": {
+        "kind": "constant",
+        "value": 200.0
+      },
+      "burst_spread": {
+        "kind": "constant",
+        "value": 360.0
+      },
+      "camera": {
+        "kind": "constant",
+        "value": 1.0
+      },
+      "clump": {
+        "kind": "constant",
+        "value": 1.0
+      },
+      "clump_radius": {
+        "kind": "constant",
+        "value": 6.0
+      },
+      "cohesion": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "collide": false,
+      "colour": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "colour_over_life": null,
+      "colour_variation": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "density": {
+        "kind": "constant",
+        "value": 60.0
+      },
+      "depth": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "direction": {
+        "kind": "constant",
+        "value": 90.0
+      },
+      "duration": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "emit_from": null,
+      "end_colour": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "fade": {
+        "kind": "constant",
+        "value": 0.5
+      },
+      "field_flow": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "field_push": {
+        "kind": "constant",
+        "value": 400.0
+      },
+      "flock_radius": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "floor": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "friction": {
+        "kind": "constant",
+        "value": 0.5
+      },
+      "gather_on": null,
+      "glint_white": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "glow": {
+        "kind": "constant",
+        "value": 1.0
+      },
+      "grains": false,
+      "gravity": {
+        "kind": "constant",
+        "value": 300.0
+      },
+      "grow": {
+        "kind": "constant",
+        "value": 1.0
+      },
+      "height": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "history": 0,
+      "hold": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "homing": {
+        "kind": "constant",
+        "value": 1.0
+      },
+      "in_focus": false,
+      "inherit": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "life": {
+        "kind": "constant",
+        "value": 2.0
+      },
+      "light_limit": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "link_distance": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "link_opacity": {
+        "kind": "constant",
+        "value": 0.6000000238418579
+      },
+      "link_width": {
+        "kind": "constant",
+        "value": 1.0
+      },
+      "lit": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "opacity_over_life": null,
+      "points": false,
+      "pull": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "pull_x": {
+        "kind": "constant",
+        "value": 960.0
+      },
+      "pull_y": {
+        "kind": "constant",
+        "value": 540.0
+      },
+      "rate": {
+        "kind": "constant",
+        "value": 300.0
+      },
+      "reach": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "release": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "release_life": {
+        "kind": "constant",
+        "value": 2.0
+      },
+      "ribbon_shading": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "scatter": {
+        "kind": "constant",
+        "value": 0.4000000059604645
+      },
+      "seed": 0,
+      "self_shadow": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "separation": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "shaded_by": null,
+      "shading": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "shutter": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "size": {
+        "kind": "constant",
+        "value": 3.0
+      },
+      "size_over_life": null,
+      "sparkle": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "sparkle_spread": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "sparkle_turn": {
+        "kind": "constant",
+        "value": 90.0
+      },
+      "speed": {
+        "kind": "constant",
+        "value": 300.0
+      },
+      "speed_over_life": null,
+      "spin": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "spread": {
+        "kind": "constant",
+        "value": 60.0
+      },
+      "sprite_columns": 1,
+      "sprite_play": "random",
+      "sprite_rate": {
+        "kind": "constant",
+        "value": 12.0
+      },
+      "sprite_rows": 1,
+      "start": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "streak": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "top_speed": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "towards": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "trail": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "trail_width": {
+        "kind": "constant",
+        "value": 1.0
+      },
+      "turbulence": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "turbulence_scale": {
+        "kind": "constant",
+        "value": 240.0
+      },
+      "type": "particles",
+      "variation": {
+        "kind": "constant",
+        "value": 0.5
+      },
+      "vortex": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "width": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "wind": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "with_camera": false,
+      "x": {
+        "kind": "constant",
+        "value": 960.0
+      },
+      "y": {
+        "kind": "constant",
+        "value": 540.0
+      },
+      "z": {
+        "kind": "constant",
+        "value": 0.0
+      }
+    },
+    "version": 1
+  },
+  "path": {
+    "operation": {
+      "geometry": {
+        "commands": [
+          {
+            "command": "move",
+            "to": [
+              100.0,
+              100.0
+            ]
+          },
+          {
+            "command": "line",
+            "to": [
+              400.0,
+              100.0
+            ]
+          },
+          {
+            "command": "line",
+            "to": [
+              400.0,
+              300.0
+            ]
+          },
+          {
+            "command": "line",
+            "to": [
+              100.0,
+              300.0
+            ]
+          },
+          {
+            "command": "close"
+          }
+        ],
+        "fill_rule": "non_zero"
+      },
+      "type": "path"
+    },
+    "version": 1
+  },
+  "patina": {
+    "operation": {
+      "amount": {
+        "kind": "constant",
+        "value": 0.4000000059604645
+      },
+      "dirt": {
+        "kind": "constant",
+        "value": 0.20000000298023224
+      },
+      "kind": "tarnish",
+      "scale": {
+        "kind": "constant",
+        "value": 110.0
+      },
+      "scratches": {
+        "kind": "constant",
+        "value": 0.15000000596046448
+      },
+      "seed": 0,
+      "type": "patina",
+      "wear": {
+        "kind": "constant",
+        "value": 0.30000001192092896
+      }
+    },
+    "version": 1
+  },
+  "planar_track": {
+    "operation": {
+      "data": {
+        "reference": [
+          [
+            0.0,
+            0.0
+          ],
+          [
+            1.0,
+            0.0
+          ],
+          [
+            1.0,
+            1.0
+          ],
+          [
+            0.0,
+            1.0
+          ]
+        ],
+        "reference_time": {
+          "rate": 1,
+          "ticks": 0
+        },
+        "samples": [
+          {
+            "corners": [
+              [
+                0.0,
+                0.0
+              ],
+              [
+                1.0,
+                0.0
+              ],
+              [
+                1.0,
+                1.0
+              ],
+              [
+                0.0,
+                1.0
+              ]
+            ],
+            "features": [],
+            "rms_pixels": 0.0,
+            "time": {
+              "rate": 1,
+              "ticks": 0
+            }
+          }
+        ]
+      },
+      "type": "planar_track"
+    },
+    "version": 1
+  },
+  "planar_warp": {
+    "operation": {
+      "mode": "follow",
+      "type": "planar_warp"
+    },
+    "version": 1
+  },
+  "point_cloud": {
+    "operation": {
+      "points": [],
+      "type": "point_cloud"
+    },
+    "version": 1
+  },
+  "rectangle": {
+    "operation": {
+      "color": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "corner": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "feather": {
+        "kind": "constant",
+        "value": 1.0
+      },
+      "height": {
+        "kind": "constant",
+        "value": 200.0
+      },
+      "type": "rectangle",
+      "width": {
+        "kind": "constant",
+        "value": 300.0
+      },
+      "x": {
+        "kind": "constant",
+        "value": 320.0
+      },
+      "y": {
+        "kind": "constant",
+        "value": 180.0
+      }
+    },
+    "version": 1
+  },
+  "refine_matte": {
+    "operation": {
+      "decontaminate": {
+        "kind": "constant",
+        "value": 1.0
+      },
+      "detail": {
+        "kind": "constant",
+        "value": 0.699999988079071
+      },
+      "radius": {
+        "kind": "constant",
+        "value": 6.0
+      },
+      "type": "refine_matte"
+    },
+    "version": 1
+  },
+  "render_scene": {
+    "operation": {
+      "blur_samples": {
+        "kind": "constant",
+        "value": 10.0
+      },
+      "bounces": 4,
+      "camera": {
+        "kind": "constant",
+        "value": 1.0
+      },
+      "denoise": true,
+      "depth": false,
+      "motion_blur": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "occlusion": {
+        "kind": "constant",
+        "value": 1.0
+      },
+      "pass": "picture",
+      "quality": "preview",
+      "samples": 64,
+      "type": "render_scene"
+    },
+    "version": 1
+  },
+  "repeat": {
+    "operation": {
+      "columns": {
+        "kind": "constant",
+        "value": 4.0
+      },
+      "fade": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "rows": {
+        "kind": "constant",
+        "value": 1.0
+      },
+      "step_x": {
+        "kind": "constant",
+        "value": 200.0
+      },
+      "step_y": {
+        "kind": "constant",
+        "value": 200.0
+      },
+      "type": "repeat"
+    },
+    "version": 1
+  },
+  "shader": {
+    "operation": {
+      "code": "// slider amount 0 1 0.5\n// colour tint 1 0.8 0.6\n\n// `at` is the pixel's centre. image(at) reads the input there.\nfn shade(at: vec2<f32>) -> vec4<f32> {\n    let c = image(at);\n    return vec4<f32>(mix(c.rgb, c.rgb * u.tint, u.amount), c.a);\n}\n",
+      "follow": null,
+      "p1": {
+        "kind": "constant",
+        "value": 0.5
+      },
+      "p10": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "p11": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "p12": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "p13": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "p14": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "p15": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "p16": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "p2": {
+        "kind": "constant",
+        "value": 1.0
+      },
+      "p3": {
+        "kind": "constant",
+        "value": 0.800000011920929
+      },
+      "p4": {
+        "kind": "constant",
+        "value": 0.6000000238418579
+      },
+      "p5": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "p6": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "p7": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "p8": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "p9": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "type": "shader"
+    },
+    "version": 1
+  },
+  "shadow": {
+    "operation": {
+      "distance": {
+        "kind": "constant",
+        "value": 20.0
+      },
+      "follow_lighting": false,
+      "light": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "softness": {
+        "kind": "constant",
+        "value": 8.0
+      },
+      "strength": {
+        "kind": "constant",
+        "value": 0.6499999761581421
+      },
+      "type": "shadow",
+      "x": {
+        "kind": "constant",
+        "value": 8.0
+      },
+      "y": {
+        "kind": "constant",
+        "value": 12.0
+      }
+    },
+    "version": 1
+  },
+  "shape_3d": {
+    "operation": {
+      "aim_at": null,
+      "brush_angle": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "brushed": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "colour": [
+        0.6000000238418579,
+        0.6000000238418579,
+        0.6000000238418579
+      ],
+      "detail": {
+        "kind": "constant",
+        "value": 48.0
+      },
+      "emission": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "grain": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "imperfections": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "kind": "cube",
+      "look": null,
+      "metallic": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "placement": {
+        "position": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      "ridges": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "roughness": {
+        "kind": "constant",
+        "value": 0.4000000059604645
+      },
+      "shadow_catcher": false,
+      "shadow_strength": {
+        "kind": "constant",
+        "value": 1.0
+      },
+      "size_x": {
+        "kind": "constant",
+        "value": 300.0
+      },
+      "size_y": {
+        "kind": "constant",
+        "value": 300.0
+      },
+      "size_z": {
+        "kind": "constant",
+        "value": 300.0
+      },
+      "type": "shape_3d"
+    },
+    "version": 1
+  },
+  "shape_warp": {
+    "operation": {
+      "amount": {
+        "kind": "constant",
+        "value": 1.0
+      },
+      "from": {
+        "commands": [
+          {
+            "command": "move",
+            "to": [
+              100.0,
+              100.0
+            ]
+          },
+          {
+            "command": "line",
+            "to": [
+              400.0,
+              100.0
+            ]
+          },
+          {
+            "command": "line",
+            "to": [
+              400.0,
+              300.0
+            ]
+          },
+          {
+            "command": "line",
+            "to": [
+              100.0,
+              300.0
+            ]
+          },
+          {
+            "command": "close"
+          }
+        ],
+        "fill_rule": "non_zero"
+      },
+      "reach": {
+        "kind": "constant",
+        "value": 200.0
+      },
+      "to": {
+        "commands": [
+          {
+            "command": "move",
+            "to": [
+              100.0,
+              100.0
+            ]
+          },
+          {
+            "command": "line",
+            "to": [
+              400.0,
+              100.0
+            ]
+          },
+          {
+            "command": "line",
+            "to": [
+              400.0,
+              300.0
+            ]
+          },
+          {
+            "command": "line",
+            "to": [
+              100.0,
+              300.0
+            ]
+          },
+          {
+            "command": "close"
+          }
+        ],
+        "fill_rule": "non_zero"
+      },
+      "type": "shape_warp"
+    },
+    "version": 1
+  },
+  "solid": {
+    "operation": {
+      "color": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "type": "solid"
+    },
+    "version": 1
+  },
+  "sound": {
+    "operation": {
+      "file": "",
+      "gain": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "timing": {
+        "source_in": {
+          "rate": 1,
+          "ticks": 0
+        },
+        "source_out": null,
+        "start": {
+          "rate": 1,
+          "ticks": 0
+        }
+      },
+      "type": "sound"
+    },
+    "version": 1
+  },
+  "sun_glints": {
+    "operation": {
+      "angle": {
+        "kind": "constant",
+        "value": 15.0
+      },
+      "density": {
+        "kind": "constant",
+        "value": 0.550000011920929
+      },
+      "evolution": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "intensity": {
+        "kind": "constant",
+        "value": 3.0
+      },
+      "seed": 0,
+      "size": {
+        "kind": "constant",
+        "value": 18.0
+      },
+      "threshold": {
+        "kind": "constant",
+        "value": 0.6499999761581421
+      },
+      "type": "sun_glints"
+    },
+    "version": 1
+  },
+  "surface_blend": {
+    "operation": {
+      "detail": {
+        "kind": "constant",
+        "value": 0.5
+      },
+      "distortion": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "grain": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "lighting": {
+        "kind": "constant",
+        "value": 0.3499999940395355
+      },
+      "opacity": {
+        "kind": "constant",
+        "value": 1.0
+      },
+      "softness": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "threshold": {
+        "kind": "constant",
+        "value": 0.30000001192092896
+      },
+      "type": "surface_blend",
+      "wear": {
+        "kind": "constant",
+        "value": 0.0
+      }
+    },
+    "version": 1
+  },
+  "surface_reflection": {
+    "operation": {
+      "bevel": {
+        "kind": "constant",
+        "value": 5.0
+      },
+      "curvature": {
+        "kind": "constant",
+        "value": 0.3499999940395355
+      },
+      "kind": "metal",
+      "offset_x": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "offset_y": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "rotation": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "roughness": {
+        "kind": "constant",
+        "value": 1.0
+      },
+      "scale": {
+        "kind": "constant",
+        "value": 1.0
+      },
+      "strength": {
+        "kind": "constant",
+        "value": 0.699999988079071
+      },
+      "type": "surface_reflection"
+    },
+    "version": 1
+  },
+  "text": {
+    "operation": {
+      "alignment": "center",
+      "box_height": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "color": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "content": "Your text",
+      "features": "",
+      "font": {
+        "source": "display"
+      },
+      "language": "",
+      "line_height": {
+        "kind": "constant",
+        "value": 1.25
+      },
+      "padding": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "rotation": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "rtl": false,
+      "scale_x": {
+        "kind": "constant",
+        "value": 1.0
+      },
+      "scale_y": {
+        "kind": "constant",
+        "value": 1.0
+      },
+      "size": {
+        "kind": "constant",
+        "value": 160.0
+      },
+      "tracking": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "type": "text",
+      "typography": {
+        "anchor": null,
+        "auto_fit": false,
+        "duration": 0.5,
+        "ease": true,
+        "exit": null,
+        "linked_scale": false,
+        "motion": "none",
+        "spans": [],
+        "stagger": 0.03999999910593033,
+        "start": 0.0,
+        "unit": "character",
+        "vertical": "top"
+      },
+      "underline": false,
+      "wrap_width": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "x": {
+        "kind": "constant",
+        "value": 480.0
+      },
+      "y": {
+        "kind": "constant",
+        "value": 320.0
+      }
+    },
+    "version": 1
+  },
+  "text_3d": {
+    "operation": {
+      "aim_at": null,
+      "bevel": {
+        "kind": "constant",
+        "value": 6.0
+      },
+      "brush_angle": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "brushed": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "colour": [
+        0.6000000238418579,
+        0.6000000238418579,
+        0.6000000238418579
+      ],
+      "depth": {
+        "kind": "constant",
+        "value": 40.0
+      },
+      "emission": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "grain": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "imperfections": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "letters": {
+        "distance": 600.0,
+        "duration": 0.6000000238418579,
+        "ease": true,
+        "exit": null,
+        "motion": "none",
+        "stagger": 0.05999999865889549,
+        "start": 0.0,
+        "unit": "character"
+      },
+      "look": null,
+      "metallic": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "placement": {
+        "position": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      "ridges": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "roughness": {
+        "kind": "constant",
+        "value": 0.3499999940395355
+      },
+      "round_bevel": true,
+      "type": "text_3d"
+    },
+    "version": 1
+  },
+  "time_remap": {
+    "operation": {
+      "rate": {
+        "kind": "constant",
+        "value": 1.0
+      },
+      "source_time": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "type": "time_remap"
+    },
+    "version": 1
+  },
+  "transform": {
+    "operation": {
+      "type": "transform",
+      "x": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "y": {
+        "kind": "constant",
+        "value": 0.0
+      }
+    },
+    "version": 1
+  },
+  "transform_3d": {
+    "operation": {
+      "placement": {
+        "position": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      "type": "transform_3d"
+    },
+    "version": 1
+  },
+  "volume_3d": {
+    "operation": {
+      "absorption": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "colour": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "density": {
+        "kind": "constant",
+        "value": 0.5
+      },
+      "detail": {
+        "kind": "constant",
+        "value": 4.0
+      },
+      "drift_x": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "drift_y": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "drift_z": {
+        "kind": "constant",
+        "value": 0.0
+      },
+      "forward": {
+        "kind": "constant",
+        "value": 0.30000001192092896
+      },
+      "noise": {
+        "kind": "constant",
+        "value": 0.6000000238418579
+      },
+      "noise_size": {
+        "kind": "constant",
+        "value": 150.0
+      },
+      "placement": {
+        "position": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      "seed": 0,
+      "shape": "box",
+      "size_x": {
+        "kind": "constant",
+        "value": 600.0
+      },
+      "size_y": {
+        "kind": "constant",
+        "value": 400.0
+      },
+      "size_z": {
+        "kind": "constant",
+        "value": 600.0
+      },
+      "softness": {
+        "kind": "constant",
+        "value": 0.30000001192092896
+      },
+      "type": "volume_3d"
+    },
+    "version": 1
+  },
+  "zoom_blur": {
+    "operation": {
+      "amount": {
+        "kind": "constant",
+        "value": 0.15000000596046448
+      },
+      "type": "zoom_blur",
+      "x": {
+        "kind": "constant",
+        "value": 960.0
+      },
+      "y": {
+        "kind": "constant",
+        "value": 540.0
+      }
+    },
+    "version": 1
+  }
+}

@@ -1,0 +1,591 @@
+{
+  "frame_count": 96,
+  "frame_rate": {
+    "rate": 1,
+    "ticks": 24
+  },
+  "groups": {
+    "819e5c70-788c-4688-af88-7cdd49f857cf": {
+      "controls": {
+        "amount": {
+          "default": {
+            "kind": "constant",
+            "value": 1.0
+          },
+          "label": "Amount",
+          "node": "4240e657-aa1e-4522-8452-5c0e7f1e5492",
+          "parameter": "opacity"
+        },
+        "flow_animation": {
+          "default": {
+            "keys": [
+              {
+                "time": {
+                  "rate": 1,
+                  "ticks": 0
+                },
+                "value": 0.0
+              },
+              {
+                "time": {
+                  "rate": 1,
+                  "ticks": 2
+                },
+                "value": 0.800000011920929
+              },
+              {
+                "time": {
+                  "rate": 1,
+                  "ticks": 4
+                },
+                "value": 0.0
+              }
+            ],
+            "kind": "smooth"
+          },
+          "label": "Flow animation",
+          "node": "f60f71fd-e8c8-485f-83e0-f045dff118ee",
+          "parameter": "evolution"
+        },
+        "glass_diffusion": {
+          "default": {
+            "kind": "constant",
+            "value": 4.0
+          },
+          "label": "Glass diffusion",
+          "node": "dc6f885d-af04-4a2b-b7f8-798625d74147",
+          "parameter": "radius"
+        },
+        "horizontal_refraction": {
+          "default": {
+            "kind": "constant",
+            "value": 12.0
+          },
+          "label": "Horizontal refraction",
+          "node": "c9efd28b-b867-4a65-95b4-2fee66c3e886",
+          "parameter": "x"
+        },
+        "texture_size": {
+          "default": {
+            "kind": "constant",
+            "value": 16.0
+          },
+          "label": "Texture size",
+          "node": "f60f71fd-e8c8-485f-83e0-f045dff118ee",
+          "parameter": "scale"
+        },
+        "vertical_refraction": {
+          "default": {
+            "kind": "constant",
+            "value": 12.0
+          },
+          "label": "Vertical refraction",
+          "node": "c9efd28b-b867-4a65-95b4-2fee66c3e886",
+          "parameter": "y"
+        }
+      },
+      "id": "819e5c70-788c-4688-af88-7cdd49f857cf",
+      "inputs": {
+        "input_1": {
+          "label": "Image",
+          "targets": [
+            {
+              "node": "c9efd28b-b867-4a65-95b4-2fee66c3e886",
+              "port": "image"
+            },
+            {
+              "node": "4240e657-aa1e-4522-8452-5c0e7f1e5492",
+              "port": "background"
+            }
+          ]
+        }
+      },
+      "label": "Frosted Glass",
+      "members": [
+        "16c3366d-e873-4cca-8f49-285bf349c0bf",
+        "4240e657-aa1e-4522-8452-5c0e7f1e5492",
+        "42a337b9-bf08-4a28-9f11-e199ccec256e",
+        "8f43ba2a-2e13-4e37-8863-b12b76785735",
+        "9634715c-94d9-4fb5-a94d-a1732ef26ba4",
+        "c9efd28b-b867-4a65-95b4-2fee66c3e886",
+        "dc6f885d-af04-4a2b-b7f8-798625d74147",
+        "f60f71fd-e8c8-485f-83e0-f045dff118ee"
+      ],
+      "output": "4240e657-aa1e-4522-8452-5c0e7f1e5492"
+    }
+  },
+  "height": 1080,
+  "nodes": {
+    "0dc3eaff-ec39-4f22-be98-bdf5efd4f0fb": {
+      "id": "0dc3eaff-ec39-4f22-be98-bdf5efd4f0fb",
+      "inputs": {
+        "background": "1e71c5b6-3f5f-48ce-a9cf-921374778e42",
+        "foreground": "652c2ef0-a007-44dc-b0d7-802ddd7c6703"
+      },
+      "label": "Before · artwork on midnight",
+      "operation": {
+        "type": "merge"
+      },
+      "position": {
+        "x": 230.0,
+        "y": 145.0
+      },
+      "version": 1
+    },
+    "16c3366d-e873-4cca-8f49-285bf349c0bf": {
+      "id": "16c3366d-e873-4cca-8f49-285bf349c0bf",
+      "inputs": {
+        "image": "9634715c-94d9-4fb5-a94d-a1732ef26ba4"
+      },
+      "label": "Protected boundary",
+      "operation": {
+        "radius": {
+          "kind": "constant",
+          "value": -64.0
+        },
+        "type": "morphology"
+      },
+      "version": 1
+    },
+    "1752eb8a-4421-4ad7-bf3e-d62b811b280e": {
+      "id": "1752eb8a-4421-4ad7-bf3e-d62b811b280e",
+      "inputs": {
+        "image": "2799dc80-443c-429e-870a-59186390bc90"
+      },
+      "label": "Artwork palette",
+      "operation": {
+        "high": [
+          1.600000023841858,
+          1.7999999523162842,
+          2.0,
+          1.0
+        ],
+        "low": [
+          0.30000001192092896,
+          0.44999998807907104,
+          0.800000011920929,
+          1.0
+        ],
+        "type": "colorize"
+      },
+      "position": {
+        "x": 690.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "1e71c5b6-3f5f-48ce-a9cf-921374778e42": {
+      "id": "1e71c5b6-3f5f-48ce-a9cf-921374778e42",
+      "inputs": {},
+      "label": "Midnight background",
+      "operation": {
+        "color": [
+          0.0020000000949949026,
+          0.004000000189989805,
+          0.012000000104308128,
+          1.0
+        ],
+        "type": "solid"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "scene_background": true,
+      "version": 1
+    },
+    "2799dc80-443c-429e-870a-59186390bc90": {
+      "id": "2799dc80-443c-429e-870a-59186390bc90",
+      "inputs": {},
+      "label": "Vertical palette ramp",
+      "operation": {
+        "end_x": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "end_y": {
+          "kind": "constant",
+          "value": 720.0
+        },
+        "mode": "linear",
+        "start_x": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "start_y": {
+          "kind": "constant",
+          "value": 360.0
+        },
+        "type": "gradient"
+      },
+      "position": {
+        "x": 460.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "4240e657-aa1e-4522-8452-5c0e7f1e5492": {
+      "id": "4240e657-aa1e-4522-8452-5c0e7f1e5492",
+      "inputs": {
+        "background": "0dc3eaff-ec39-4f22-be98-bdf5efd4f0fb",
+        "foreground": "dc6f885d-af04-4a2b-b7f8-798625d74147"
+      },
+      "label": "Layer mix",
+      "operation": {
+        "mode": "normal",
+        "opacity": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "type": "blend"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 500.0
+      },
+      "version": 1
+    },
+    "42a337b9-bf08-4a28-9f11-e199ccec256e": {
+      "id": "42a337b9-bf08-4a28-9f11-e199ccec256e",
+      "inputs": {
+        "image": "f60f71fd-e8c8-485f-83e0-f045dff118ee",
+        "mask": "8f43ba2a-2e13-4e37-8863-b12b76785735"
+      },
+      "label": "Masked detail",
+      "operation": {
+        "type": "mask"
+      },
+      "version": 1
+    },
+    "54c7bad9-0b2a-4923-9dff-67e63c6dfe21": {
+      "id": "54c7bad9-0b2a-4923-9dff-67e63c6dfe21",
+      "inputs": {
+        "image": "1752eb8a-4421-4ad7-bf3e-d62b811b280e",
+        "mask": "7a3bf5fe-bbb2-4da8-a631-ce2405af934d"
+      },
+      "label": "Color inside artwork",
+      "operation": {
+        "type": "mask"
+      },
+      "position": {
+        "x": 920.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "652c2ef0-a007-44dc-b0d7-802ddd7c6703": {
+      "id": "652c2ef0-a007-44dc-b0d7-802ddd7c6703",
+      "inputs": {
+        "image": "54c7bad9-0b2a-4923-9dff-67e63c6dfe21"
+      },
+      "label": "Artwork motion",
+      "operation": {
+        "pivot_x": {
+          "kind": "constant",
+          "value": 960.0
+        },
+        "pivot_y": {
+          "kind": "constant",
+          "value": 540.0
+        },
+        "rotation": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "scale_x": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": 0.9399999976158142
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 2
+              },
+              "value": 1.0399999618530273
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": 0.9399999976158142
+            }
+          ],
+          "kind": "smooth"
+        },
+        "scale_y": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": 0.9399999976158142
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 2
+              },
+              "value": 1.0399999618530273
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": 0.9399999976158142
+            }
+          ],
+          "kind": "smooth"
+        },
+        "type": "affine",
+        "x": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "y": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": 18.0
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 2
+              },
+              "value": -18.0
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": 18.0
+            }
+          ],
+          "kind": "smooth"
+        }
+      },
+      "position": {
+        "x": 0.0,
+        "y": 145.0
+      },
+      "version": 1
+    },
+    "7a3bf5fe-bbb2-4da8-a631-ce2405af934d": {
+      "id": "7a3bf5fe-bbb2-4da8-a631-ce2405af934d",
+      "inputs": {},
+      "label": "Editable vector artwork",
+      "operation": {
+        "alignment": "center",
+        "box_height": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "content": "FLOW",
+        "features": "",
+        "font": {
+          "source": "display"
+        },
+        "language": "",
+        "line_height": {
+          "kind": "constant",
+          "value": 1.25
+        },
+        "padding": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "rotation": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "rtl": false,
+        "scale_x": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "scale_y": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "size": {
+          "kind": "constant",
+          "value": 400.0
+        },
+        "tracking": {
+          "kind": "constant",
+          "value": 24.0
+        },
+        "type": "text",
+        "typography": {
+          "anchor": null,
+          "auto_fit": false,
+          "duration": 0.5,
+          "ease": true,
+          "exit": null,
+          "linked_scale": false,
+          "motion": "none",
+          "spans": [],
+          "stagger": 0.03999999910593033,
+          "start": 0.0,
+          "unit": "character",
+          "vertical": "top"
+        },
+        "underline": false,
+        "wrap_width": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "x": {
+          "kind": "constant",
+          "value": 960.0
+        },
+        "y": {
+          "kind": "constant",
+          "value": 680.0
+        }
+      },
+      "position": {
+        "x": 230.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "8f43ba2a-2e13-4e37-8863-b12b76785735": {
+      "id": "8f43ba2a-2e13-4e37-8863-b12b76785735",
+      "inputs": {
+        "image": "16c3366d-e873-4cca-8f49-285bf349c0bf"
+      },
+      "label": "Diffusion",
+      "operation": {
+        "filter": "box",
+        "radius": {
+          "kind": "constant",
+          "value": 12.0
+        },
+        "type": "blur"
+      },
+      "version": 1
+    },
+    "9634715c-94d9-4fb5-a94d-a1732ef26ba4": {
+      "id": "9634715c-94d9-4fb5-a94d-a1732ef26ba4",
+      "inputs": {},
+      "label": "Frame coverage",
+      "operation": {
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "type": "solid"
+      },
+      "version": 1
+    },
+    "c9efd28b-b867-4a65-95b4-2fee66c3e886": {
+      "id": "c9efd28b-b867-4a65-95b4-2fee66c3e886",
+      "inputs": {
+        "image": "0dc3eaff-ec39-4f22-be98-bdf5efd4f0fb",
+        "map": "42a337b9-bf08-4a28-9f11-e199ccec256e"
+      },
+      "label": "Refraction",
+      "operation": {
+        "type": "displace",
+        "x": {
+          "kind": "constant",
+          "value": 12.0
+        },
+        "y": {
+          "kind": "constant",
+          "value": 12.0
+        }
+      },
+      "version": 1
+    },
+    "dc6f885d-af04-4a2b-b7f8-798625d74147": {
+      "id": "dc6f885d-af04-4a2b-b7f8-798625d74147",
+      "inputs": {
+        "image": "c9efd28b-b867-4a65-95b4-2fee66c3e886"
+      },
+      "label": "Diffusion",
+      "operation": {
+        "filter": "box",
+        "radius": {
+          "kind": "constant",
+          "value": 4.0
+        },
+        "type": "blur"
+      },
+      "version": 1
+    },
+    "f60f71fd-e8c8-485f-83e0-f045dff118ee": {
+      "id": "f60f71fd-e8c8-485f-83e0-f045dff118ee",
+      "inputs": {},
+      "label": "Flow field",
+      "operation": {
+        "evolution": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": 0.0
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 2
+              },
+              "value": 0.800000011920929
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": 0.0
+            }
+          ],
+          "kind": "smooth"
+        },
+        "octaves": {
+          "kind": "constant",
+          "value": 3.0
+        },
+        "roughness": {
+          "kind": "constant",
+          "value": 0.5
+        },
+        "scale": {
+          "kind": "constant",
+          "value": 16.0
+        },
+        "seed": 83,
+        "type": "fractal_noise"
+      },
+      "version": 1
+    }
+  },
+  "output": "4240e657-aa1e-4522-8452-5c0e7f1e5492",
+  "saved_by": "0.1.0",
+  "schema": 1,
+  "width": 1920
+}

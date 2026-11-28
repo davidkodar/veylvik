@@ -1,0 +1,120 @@
+{
+  "frame_count": 240,
+  "frame_rate": {
+    "rate": 1,
+    "ticks": 24
+  },
+  "height": 360,
+  "nodes": {
+    "14230833-d6d5-4b80-bfbf-ab013fb91592": {
+      "id": "14230833-d6d5-4b80-bfbf-ab013fb91592",
+      "inputs": {
+        "background": "f751c13e-112c-4a78-aa7a-f9afcb182982",
+        "foreground": "374c557e-e004-49e8-90f0-697fa52369c3"
+      },
+      "label": "Composite",
+      "operation": {
+        "type": "merge"
+      },
+      "version": 1
+    },
+    "374c557e-e004-49e8-90f0-697fa52369c3": {
+      "id": "374c557e-e004-49e8-90f0-697fa52369c3",
+      "inputs": {
+        "image": "c30299c6-529e-4ae9-b28f-1bb88725822a"
+      },
+      "label": "Offset",
+      "operation": {
+        "type": "transform",
+        "x": {
+          "kind": "constant",
+          "value": 80.0
+        },
+        "y": {
+          "kind": "constant",
+          "value": 40.0
+        }
+      },
+      "version": 1
+    },
+    "9c503119-d727-45fb-86d5-f48357c11a8a": {
+      "id": "9c503119-d727-45fb-86d5-f48357c11a8a",
+      "inputs": {
+        "image": "ad7fb7fa-c926-46cf-ae20-b72088293d87"
+      },
+      "label": "Animated exposure",
+      "operation": {
+        "stops": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": -2.0
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 2
+              },
+              "value": 2.0
+            }
+          ],
+          "kind": "linear"
+        },
+        "type": "exposure"
+      },
+      "version": 1
+    },
+    "ad7fb7fa-c926-46cf-ae20-b72088293d87": {
+      "id": "ad7fb7fa-c926-46cf-ae20-b72088293d87",
+      "inputs": {},
+      "label": "Noise",
+      "operation": {
+        "scale": {
+          "kind": "constant",
+          "value": 18.0
+        },
+        "seed": 42,
+        "type": "noise"
+      },
+      "version": 1
+    },
+    "c30299c6-529e-4ae9-b28f-1bb88725822a": {
+      "id": "c30299c6-529e-4ae9-b28f-1bb88725822a",
+      "inputs": {
+        "image": "9c503119-d727-45fb-86d5-f48357c11a8a"
+      },
+      "label": "Soft glow",
+      "operation": {
+        "filter": "box",
+        "radius": {
+          "kind": "constant",
+          "value": 4.0
+        },
+        "type": "blur"
+      },
+      "version": 1
+    },
+    "f751c13e-112c-4a78-aa7a-f9afcb182982": {
+      "id": "f751c13e-112c-4a78-aa7a-f9afcb182982",
+      "inputs": {},
+      "label": "Background",
+      "operation": {
+        "color": [
+          0.014999999664723873,
+          0.02500000037252903,
+          0.05999999865889549,
+          1.0
+        ],
+        "type": "solid"
+      },
+      "version": 1
+    }
+  },
+  "output": "14230833-d6d5-4b80-bfbf-ab013fb91592",
+  "saved_by": "0.1.0",
+  "schema": 1,
+  "width": 640
+}

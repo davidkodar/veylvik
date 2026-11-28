@@ -1,0 +1,696 @@
+{
+  "frame_count": 96,
+  "frame_rate": {
+    "rate": 1,
+    "ticks": 24
+  },
+  "groups": {
+    "6cf99365-a33d-4606-812a-34b99ba8923e": {
+      "controls": {
+        "bead_density": {
+          "default": {
+            "kind": "constant",
+            "value": 0.550000011920929
+          },
+          "label": "Bead density",
+          "node": "90099c42-6640-4a64-a1c4-63a6f39aacfa",
+          "parameter": "density"
+        },
+        "bead_dispersion": {
+          "default": {
+            "kind": "constant",
+            "value": 0.012000000104308128
+          },
+          "label": "Bead dispersion",
+          "node": "90099c42-6640-4a64-a1c4-63a6f39aacfa",
+          "parameter": "dispersion"
+        },
+        "bead_size": {
+          "default": {
+            "kind": "constant",
+            "value": 6.400000095367432
+          },
+          "label": "Bead size",
+          "node": "90099c42-6640-4a64-a1c4-63a6f39aacfa",
+          "parameter": "size"
+        },
+        "drip_spacing": {
+          "default": {
+            "kind": "constant",
+            "value": 86.0
+          },
+          "label": "Drip spacing",
+          "node": "edebe888-ae73-4186-b7f0-ac7c6fd123e6",
+          "parameter": "spacing"
+        },
+        "drop_size": {
+          "default": {
+            "kind": "constant",
+            "value": 11.0
+          },
+          "label": "Drop size",
+          "node": "edebe888-ae73-4186-b7f0-ac7c6fd123e6",
+          "parameter": "radius"
+        },
+        "fall_distance": {
+          "default": {
+            "kind": "constant",
+            "value": 280.0
+          },
+          "label": "Fall distance",
+          "node": "edebe888-ae73-4186-b7f0-ac7c6fd123e6",
+          "parameter": "length"
+        },
+        "fine_moisture": {
+          "default": {
+            "kind": "constant",
+            "value": 0.14000000059604645
+          },
+          "label": "Fine moisture",
+          "node": "90099c42-6640-4a64-a1c4-63a6f39aacfa",
+          "parameter": "haze"
+        },
+        "liquid_colour": {
+          "default": [
+            0.025,
+            0.12,
+            0.006,
+            1.0
+          ],
+          "label": "Liquid colour",
+          "node": "e103df79-e40a-42cd-b670-908e0108bbeb",
+          "parameter": "high"
+        },
+        "liquid_evolution": {
+          "default": {
+            "keys": [
+              {
+                "time": {
+                  "rate": 1,
+                  "ticks": 0
+                },
+                "value": 0.0
+              },
+              {
+                "time": {
+                  "rate": 1,
+                  "ticks": 4
+                },
+                "value": 4.0
+              }
+            ],
+            "kind": "linear"
+          },
+          "label": "Liquid evolution",
+          "node": "edebe888-ae73-4186-b7f0-ac7c6fd123e6",
+          "parameter": "evolution"
+        },
+        "reflection_rotation": {
+          "default": {
+            "kind": "constant",
+            "value": 0.0
+          },
+          "label": "Reflection rotation",
+          "node": "01645b45-b876-4b40-aa35-06e46998b096",
+          "parameter": "lighting"
+        },
+        "sliding_trails": {
+          "default": {
+            "kind": "constant",
+            "value": 0.3499999940395355
+          },
+          "label": "Sliding trails",
+          "node": "90099c42-6640-4a64-a1c4-63a6f39aacfa",
+          "parameter": "trails"
+        },
+        "surface_movement": {
+          "default": {
+            "keys": [
+              {
+                "time": {
+                  "rate": 1,
+                  "ticks": 0
+                },
+                "value": 0.0
+              },
+              {
+                "time": {
+                  "rate": 1,
+                  "ticks": 4
+                },
+                "value": 4.0
+              }
+            ],
+            "kind": "linear"
+          },
+          "label": "Surface movement",
+          "node": "90099c42-6640-4a64-a1c4-63a6f39aacfa",
+          "parameter": "evolution"
+        },
+        "surface_roughness": {
+          "default": {
+            "kind": "constant",
+            "value": 0.11999999731779099
+          },
+          "label": "Surface roughness",
+          "node": "01645b45-b876-4b40-aa35-06e46998b096",
+          "parameter": "roughness"
+        },
+        "surface_rounding": {
+          "default": {
+            "kind": "constant",
+            "value": 10.0
+          },
+          "label": "Surface rounding",
+          "node": "01645b45-b876-4b40-aa35-06e46998b096",
+          "parameter": "bevel"
+        },
+        "surface_wetness": {
+          "default": {
+            "kind": "constant",
+            "value": 0.6499999761581421
+          },
+          "label": "Surface wetness",
+          "node": "90099c42-6640-4a64-a1c4-63a6f39aacfa",
+          "parameter": "amount"
+        }
+      },
+      "id": "6cf99365-a33d-4606-812a-34b99ba8923e",
+      "inputs": {
+        "input_1": {
+          "label": "Image",
+          "targets": [
+            {
+              "node": "edebe888-ae73-4186-b7f0-ac7c6fd123e6",
+              "port": "image"
+            }
+          ]
+        }
+      },
+      "label": "Wet Ink Drips",
+      "members": [
+        "01645b45-b876-4b40-aa35-06e46998b096",
+        "05821254-180b-439d-ae6a-03121e8080e6",
+        "90099c42-6640-4a64-a1c4-63a6f39aacfa",
+        "e103df79-e40a-42cd-b670-908e0108bbeb",
+        "edebe888-ae73-4186-b7f0-ac7c6fd123e6"
+      ],
+      "output": "90099c42-6640-4a64-a1c4-63a6f39aacfa"
+    }
+  },
+  "height": 1080,
+  "nodes": {
+    "01645b45-b876-4b40-aa35-06e46998b096": {
+      "id": "01645b45-b876-4b40-aa35-06e46998b096",
+      "inputs": {
+        "image": "edebe888-ae73-4186-b7f0-ac7c6fd123e6"
+      },
+      "label": "Wet surface reflections",
+      "operation": {
+        "bevel": {
+          "kind": "constant",
+          "value": 10.0
+        },
+        "brush_angle": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "brushing": "auto",
+        "colours": null,
+        "emission": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "grain": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "height_depth": {
+          "kind": "constant",
+          "value": 8.0
+        },
+        "imperfections": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "kind": "silver",
+        "lighting": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "normal_directx": false,
+        "normal_strength": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "optics": {
+          "ior": 1.4600000381469727,
+          "metallic": false,
+          "reflectance": [
+            0.03999999910593033,
+            0.03999999910593033,
+            0.03999999910593033
+          ]
+        },
+        "ridges": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "roughness": {
+          "kind": "constant",
+          "value": 0.11999999731779099
+        },
+        "scale": {
+          "kind": "constant",
+          "value": 360.0
+        },
+        "shot": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "smooth_edges": true,
+        "studio": {
+          "ambient": 0.0,
+          "environment": 0.6499999761581421,
+          "environment_rotation": -45.0,
+          "lights": [
+            {
+              "colour": [
+                1.0,
+                0.9599999785423279,
+                0.8899999856948853
+              ],
+              "enabled": false,
+              "follow": false,
+              "intensity": {
+                "kind": "constant",
+                "value": 1.2000000476837158
+              },
+              "position": [
+                -3.0,
+                -0.699999988079071,
+                -1.0
+              ],
+              "rotation": [
+                0.0,
+                -105.0,
+                0.0
+              ],
+              "size": [
+                1.5,
+                4.0
+              ]
+            },
+            {
+              "colour": [
+                0.9599999785423279,
+                0.9800000190734863,
+                1.0
+              ],
+              "enabled": false,
+              "follow": false,
+              "intensity": {
+                "kind": "constant",
+                "value": 1.2000000476837158
+              },
+              "position": [
+                3.0,
+                -0.30000001192092896,
+                1.5
+              ],
+              "rotation": [
+                0.0,
+                50.0,
+                0.0
+              ],
+              "size": [
+                2.299999952316284,
+                3.200000047683716
+              ]
+            },
+            {
+              "colour": [
+                1.0,
+                0.9300000071525574,
+                0.800000011920929
+              ],
+              "enabled": false,
+              "follow": false,
+              "intensity": {
+                "kind": "constant",
+                "value": 3.200000047683716
+              },
+              "position": [
+                -2.799999952316284,
+                2.5999999046325684,
+                1.5
+              ],
+              "rotation": [
+                -30.0,
+                -45.0,
+                0.0
+              ],
+              "size": [
+                1.7999999523162842,
+                2.0
+              ]
+            },
+            {
+              "colour": [
+                1.0,
+                1.0,
+                1.0
+              ],
+              "enabled": false,
+              "follow": false,
+              "intensity": {
+                "kind": "constant",
+                "value": 0.44999998807907104
+              },
+              "position": [
+                0.0,
+                -4.0,
+                2.0
+              ],
+              "rotation": [
+                60.0,
+                0.0,
+                0.0
+              ],
+              "size": [
+                7.0,
+                4.0
+              ]
+            }
+          ]
+        },
+        "type": "material"
+      },
+      "version": 1
+    },
+    "05821254-180b-439d-ae6a-03121e8080e6": {
+      "id": "05821254-180b-439d-ae6a-03121e8080e6",
+      "inputs": {
+        "background": "e103df79-e40a-42cd-b670-908e0108bbeb",
+        "foreground": "01645b45-b876-4b40-aa35-06e46998b096"
+      },
+      "label": "Layer mix",
+      "operation": {
+        "mode": "add",
+        "opacity": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "type": "blend"
+      },
+      "version": 1
+    },
+    "25b00651-1b00-4f5e-bda5-90904f51c97d": {
+      "id": "25b00651-1b00-4f5e-bda5-90904f51c97d",
+      "inputs": {},
+      "label": "Neutral preview background",
+      "operation": {
+        "color": [
+          0.02500000037252903,
+          0.02500000037252903,
+          0.02500000037252903,
+          1.0
+        ],
+        "type": "solid"
+      },
+      "position": {
+        "x": 460.0,
+        "y": 0.0
+      },
+      "scene_background": true,
+      "version": 1
+    },
+    "3923fa9c-ea1d-408e-a2aa-a5497a6808f4": {
+      "id": "3923fa9c-ea1d-408e-a2aa-a5497a6808f4",
+      "inputs": {},
+      "label": "Deep cinematic background",
+      "operation": {
+        "color": [
+          0.0010000000474974513,
+          0.0020000000949949026,
+          0.006000000052154064,
+          1.0
+        ],
+        "type": "solid"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "scene_background": true,
+      "version": 1
+    },
+    "699c0904-ea9c-4caf-8052-54dfe2082677": {
+      "id": "699c0904-ea9c-4caf-8052-54dfe2082677",
+      "inputs": {},
+      "label": "DRIP · editable lettering",
+      "operation": {
+        "alignment": "center",
+        "box_height": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "content": "DRIP",
+        "features": "",
+        "font": {
+          "source": "display"
+        },
+        "language": "",
+        "line_height": {
+          "kind": "constant",
+          "value": 1.25
+        },
+        "padding": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "rotation": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "rtl": false,
+        "scale_x": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "scale_y": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "size": {
+          "kind": "constant",
+          "value": 400.0
+        },
+        "tracking": {
+          "kind": "constant",
+          "value": 24.0
+        },
+        "type": "text",
+        "typography": {
+          "anchor": null,
+          "auto_fit": false,
+          "duration": 0.5,
+          "ease": true,
+          "exit": null,
+          "linked_scale": false,
+          "motion": "none",
+          "spans": [],
+          "stagger": 0.03999999910593033,
+          "start": 0.0,
+          "unit": "character",
+          "vertical": "top"
+        },
+        "underline": false,
+        "wrap_width": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "x": {
+          "kind": "constant",
+          "value": 960.0
+        },
+        "y": {
+          "kind": "constant",
+          "value": 680.0
+        }
+      },
+      "position": {
+        "x": 230.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "90099c42-6640-4a64-a1c4-63a6f39aacfa": {
+      "id": "90099c42-6640-4a64-a1c4-63a6f39aacfa",
+      "inputs": {
+        "image": "05821254-180b-439d-ae6a-03121e8080e6"
+      },
+      "label": "Water beads and sliding trails",
+      "operation": {
+        "amount": {
+          "kind": "constant",
+          "value": 0.6499999761581421
+        },
+        "density": {
+          "kind": "constant",
+          "value": 0.550000011920929
+        },
+        "dispersion": {
+          "kind": "constant",
+          "value": 0.012000000104308128
+        },
+        "evolution": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": 0.0
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": 4.0
+            }
+          ],
+          "kind": "linear"
+        },
+        "haze": {
+          "kind": "constant",
+          "value": 0.14000000059604645
+        },
+        "seed": 731,
+        "size": {
+          "kind": "constant",
+          "value": 6.400000095367432
+        },
+        "trails": {
+          "kind": "constant",
+          "value": 0.3499999940395355
+        },
+        "type": "condensation"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 1500.0
+      },
+      "version": 1
+    },
+    "d1619412-c426-47a4-8867-57a7d7a0df86": {
+      "id": "d1619412-c426-47a4-8867-57a7d7a0df86",
+      "inputs": {
+        "background": "25b00651-1b00-4f5e-bda5-90904f51c97d",
+        "foreground": "90099c42-6640-4a64-a1c4-63a6f39aacfa"
+      },
+      "label": "Finished lettering over background",
+      "operation": {
+        "type": "merge"
+      },
+      "position": {
+        "x": 920.0,
+        "y": 145.0
+      },
+      "version": 1
+    },
+    "e103df79-e40a-42cd-b670-908e0108bbeb": {
+      "id": "e103df79-e40a-42cd-b670-908e0108bbeb",
+      "inputs": {
+        "image": "edebe888-ae73-4186-b7f0-ac7c6fd123e6"
+      },
+      "label": "Palette",
+      "operation": {
+        "high": [
+          0.02500000037252903,
+          0.11999999731779099,
+          0.006000000052154064,
+          1.0
+        ],
+        "low": [
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "type": "colorize"
+      },
+      "version": 1
+    },
+    "edebe888-ae73-4186-b7f0-ac7c6fd123e6": {
+      "id": "edebe888-ae73-4186-b7f0-ac7c6fd123e6",
+      "inputs": {
+        "image": "699c0904-ea9c-4caf-8052-54dfe2082677"
+      },
+      "label": "Liquid attached to input silhouette",
+      "operation": {
+        "evolution": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": 0.0
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": 4.0
+            }
+          ],
+          "kind": "linear"
+        },
+        "length": {
+          "kind": "constant",
+          "value": 280.0
+        },
+        "radius": {
+          "kind": "constant",
+          "value": 11.0
+        },
+        "seed": 821,
+        "spacing": {
+          "kind": "constant",
+          "value": 86.0
+        },
+        "type": "drip"
+      },
+      "version": 1
+    },
+    "ffd53904-66d9-4af3-9a81-4dc4abec21f9": {
+      "id": "ffd53904-66d9-4af3-9a81-4dc4abec21f9",
+      "inputs": {
+        "background": "25b00651-1b00-4f5e-bda5-90904f51c97d",
+        "foreground": "699c0904-ea9c-4caf-8052-54dfe2082677"
+      },
+      "label": "Original lettering over background",
+      "operation": {
+        "type": "merge"
+      },
+      "position": {
+        "x": 690.0,
+        "y": 145.0
+      },
+      "version": 1
+    }
+  },
+  "output": "d1619412-c426-47a4-8867-57a7d7a0df86",
+  "saved_by": "0.1.0",
+  "schema": 1,
+  "width": 1920
+}

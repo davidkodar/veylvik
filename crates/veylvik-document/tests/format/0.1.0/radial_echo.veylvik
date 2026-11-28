@@ -1,0 +1,756 @@
+{
+  "frame_count": 96,
+  "frame_rate": {
+    "rate": 1,
+    "ticks": 24
+  },
+  "groups": {
+    "41aea1dd-4f7c-4d5e-8398-6b2152a49f44": {
+      "controls": {
+        "amount": {
+          "default": {
+            "kind": "constant",
+            "value": 0.07999999821186066
+          },
+          "label": "Amount",
+          "node": "0902ddee-d366-4e8d-bd2e-09e2e4080e8c",
+          "parameter": "opacity"
+        },
+        "echo_height": {
+          "default": {
+            "keys": [
+              {
+                "time": {
+                  "rate": 1,
+                  "ticks": 0
+                },
+                "value": 1.0800000429153442
+              },
+              {
+                "time": {
+                  "rate": 1,
+                  "ticks": 2
+                },
+                "value": 1.2400000095367432
+              },
+              {
+                "time": {
+                  "rate": 1,
+                  "ticks": 4
+                },
+                "value": 1.0800000429153442
+              }
+            ],
+            "kind": "smooth"
+          },
+          "label": "Echo height",
+          "node": "826113ae-7a8f-44cf-9b82-e12db460b9eb",
+          "parameter": "scale_y"
+        },
+        "echo_width": {
+          "default": {
+            "keys": [
+              {
+                "time": {
+                  "rate": 1,
+                  "ticks": 0
+                },
+                "value": 1.0800000429153442
+              },
+              {
+                "time": {
+                  "rate": 1,
+                  "ticks": 2
+                },
+                "value": 1.2400000095367432
+              },
+              {
+                "time": {
+                  "rate": 1,
+                  "ticks": 4
+                },
+                "value": 1.0800000429153442
+              }
+            ],
+            "kind": "smooth"
+          },
+          "label": "Echo width",
+          "node": "826113ae-7a8f-44cf-9b82-e12db460b9eb",
+          "parameter": "scale_x"
+        }
+      },
+      "id": "41aea1dd-4f7c-4d5e-8398-6b2152a49f44",
+      "inputs": {
+        "input_1": {
+          "label": "Image",
+          "targets": [
+            {
+              "node": "54c864b1-6bfe-4a84-8543-478a23068775",
+              "port": "image"
+            },
+            {
+              "node": "826113ae-7a8f-44cf-9b82-e12db460b9eb",
+              "port": "image"
+            },
+            {
+              "node": "2897a061-682c-4aa3-a1ac-d100c47ea819",
+              "port": "image"
+            },
+            {
+              "node": "b131f474-81e3-45cd-8edb-ff3f31a2a8d5",
+              "port": "background"
+            }
+          ]
+        }
+      },
+      "label": "Radial Echo",
+      "members": [
+        "0902ddee-d366-4e8d-bd2e-09e2e4080e8c",
+        "2897a061-682c-4aa3-a1ac-d100c47ea819",
+        "46ca5402-f56d-42a5-8a54-a749c4ebc416",
+        "54c864b1-6bfe-4a84-8543-478a23068775",
+        "826113ae-7a8f-44cf-9b82-e12db460b9eb",
+        "b131f474-81e3-45cd-8edb-ff3f31a2a8d5"
+      ],
+      "output": "0902ddee-d366-4e8d-bd2e-09e2e4080e8c"
+    }
+  },
+  "height": 1080,
+  "nodes": {
+    "0902ddee-d366-4e8d-bd2e-09e2e4080e8c": {
+      "id": "0902ddee-d366-4e8d-bd2e-09e2e4080e8c",
+      "inputs": {
+        "background": "46ca5402-f56d-42a5-8a54-a749c4ebc416",
+        "foreground": "54c864b1-6bfe-4a84-8543-478a23068775"
+      },
+      "label": "Layer mix",
+      "operation": {
+        "mode": "add",
+        "opacity": {
+          "kind": "constant",
+          "value": 0.07999999821186066
+        },
+        "type": "blend"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 500.0
+      },
+      "version": 1
+    },
+    "2897a061-682c-4aa3-a1ac-d100c47ea819": {
+      "id": "2897a061-682c-4aa3-a1ac-d100c47ea819",
+      "inputs": {
+        "image": "35ec6903-8cf1-458f-b60e-079a9b1ed589"
+      },
+      "label": "Echo transform",
+      "operation": {
+        "pivot_x": {
+          "kind": "constant",
+          "value": 960.0
+        },
+        "pivot_y": {
+          "kind": "constant",
+          "value": 540.0
+        },
+        "rotation": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "scale_x": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": 1.159999966621399
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 2
+              },
+              "value": 1.4800000190734863
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": 1.159999966621399
+            }
+          ],
+          "kind": "smooth"
+        },
+        "scale_y": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": 1.159999966621399
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 2
+              },
+              "value": 1.4800000190734863
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": 1.159999966621399
+            }
+          ],
+          "kind": "smooth"
+        },
+        "type": "affine",
+        "x": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "y": {
+          "kind": "constant",
+          "value": 0.0
+        }
+      },
+      "version": 1
+    },
+    "2b54c107-a9dc-42a4-8e77-3a7e63ec9df1": {
+      "id": "2b54c107-a9dc-42a4-8e77-3a7e63ec9df1",
+      "inputs": {
+        "image": "aa9c03d3-20a3-4dcd-9b91-2d291b3fcd9e",
+        "mask": "f25a77ef-fab1-48ec-b7d4-6c078309b532"
+      },
+      "label": "Color inside artwork",
+      "operation": {
+        "type": "mask"
+      },
+      "position": {
+        "x": 920.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "35ec6903-8cf1-458f-b60e-079a9b1ed589": {
+      "id": "35ec6903-8cf1-458f-b60e-079a9b1ed589",
+      "inputs": {
+        "background": "f33996bc-1b18-4c96-a76f-7a5bc2b99783",
+        "foreground": "6c8c5ca6-0518-4662-946b-8813d8d94edc"
+      },
+      "label": "Before · artwork on midnight",
+      "operation": {
+        "type": "merge"
+      },
+      "position": {
+        "x": 230.0,
+        "y": 145.0
+      },
+      "version": 1
+    },
+    "46ca5402-f56d-42a5-8a54-a749c4ebc416": {
+      "id": "46ca5402-f56d-42a5-8a54-a749c4ebc416",
+      "inputs": {
+        "background": "b131f474-81e3-45cd-8edb-ff3f31a2a8d5",
+        "foreground": "2897a061-682c-4aa3-a1ac-d100c47ea819"
+      },
+      "label": "Layer mix",
+      "operation": {
+        "mode": "add",
+        "opacity": {
+          "kind": "constant",
+          "value": 0.11999999731779099
+        },
+        "type": "blend"
+      },
+      "version": 1
+    },
+    "48c5e900-fa4b-420f-9072-58ba4624e457": {
+      "id": "48c5e900-fa4b-420f-9072-58ba4624e457",
+      "inputs": {},
+      "label": "Vertical palette ramp",
+      "operation": {
+        "end_x": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "end_y": {
+          "kind": "constant",
+          "value": 720.0
+        },
+        "mode": "linear",
+        "start_x": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "start_y": {
+          "kind": "constant",
+          "value": 360.0
+        },
+        "type": "gradient"
+      },
+      "position": {
+        "x": 460.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "54c864b1-6bfe-4a84-8543-478a23068775": {
+      "id": "54c864b1-6bfe-4a84-8543-478a23068775",
+      "inputs": {
+        "image": "35ec6903-8cf1-458f-b60e-079a9b1ed589"
+      },
+      "label": "Echo transform",
+      "operation": {
+        "pivot_x": {
+          "kind": "constant",
+          "value": 960.0
+        },
+        "pivot_y": {
+          "kind": "constant",
+          "value": 540.0
+        },
+        "rotation": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "scale_x": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": 1.2400000095367432
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 2
+              },
+              "value": 1.7200000286102295
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": 1.2400000095367432
+            }
+          ],
+          "kind": "smooth"
+        },
+        "scale_y": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": 1.2400000095367432
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 2
+              },
+              "value": 1.7200000286102295
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": 1.2400000095367432
+            }
+          ],
+          "kind": "smooth"
+        },
+        "type": "affine",
+        "x": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "y": {
+          "kind": "constant",
+          "value": 0.0
+        }
+      },
+      "version": 1
+    },
+    "6c8c5ca6-0518-4662-946b-8813d8d94edc": {
+      "id": "6c8c5ca6-0518-4662-946b-8813d8d94edc",
+      "inputs": {
+        "image": "2b54c107-a9dc-42a4-8e77-3a7e63ec9df1"
+      },
+      "label": "Artwork motion",
+      "operation": {
+        "pivot_x": {
+          "kind": "constant",
+          "value": 960.0
+        },
+        "pivot_y": {
+          "kind": "constant",
+          "value": 540.0
+        },
+        "rotation": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": -6.0
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 2
+              },
+              "value": 6.0
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": -6.0
+            }
+          ],
+          "kind": "smooth"
+        },
+        "scale_x": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": 0.9399999976158142
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 2
+              },
+              "value": 1.0399999618530273
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": 0.9399999976158142
+            }
+          ],
+          "kind": "smooth"
+        },
+        "scale_y": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": 0.9399999976158142
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 2
+              },
+              "value": 1.0399999618530273
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": 0.9399999976158142
+            }
+          ],
+          "kind": "smooth"
+        },
+        "type": "affine",
+        "x": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "y": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": 18.0
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 2
+              },
+              "value": -18.0
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": 18.0
+            }
+          ],
+          "kind": "smooth"
+        }
+      },
+      "position": {
+        "x": 0.0,
+        "y": 145.0
+      },
+      "version": 1
+    },
+    "826113ae-7a8f-44cf-9b82-e12db460b9eb": {
+      "id": "826113ae-7a8f-44cf-9b82-e12db460b9eb",
+      "inputs": {
+        "image": "35ec6903-8cf1-458f-b60e-079a9b1ed589"
+      },
+      "label": "Echo transform",
+      "operation": {
+        "pivot_x": {
+          "kind": "constant",
+          "value": 960.0
+        },
+        "pivot_y": {
+          "kind": "constant",
+          "value": 540.0
+        },
+        "rotation": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "scale_x": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": 1.0800000429153442
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 2
+              },
+              "value": 1.2400000095367432
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": 1.0800000429153442
+            }
+          ],
+          "kind": "smooth"
+        },
+        "scale_y": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": 1.0800000429153442
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 2
+              },
+              "value": 1.2400000095367432
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": 1.0800000429153442
+            }
+          ],
+          "kind": "smooth"
+        },
+        "type": "affine",
+        "x": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "y": {
+          "kind": "constant",
+          "value": 0.0
+        }
+      },
+      "version": 1
+    },
+    "aa9c03d3-20a3-4dcd-9b91-2d291b3fcd9e": {
+      "id": "aa9c03d3-20a3-4dcd-9b91-2d291b3fcd9e",
+      "inputs": {
+        "image": "48c5e900-fa4b-420f-9072-58ba4624e457"
+      },
+      "label": "Artwork palette",
+      "operation": {
+        "high": [
+          1.600000023841858,
+          1.7999999523162842,
+          2.0,
+          1.0
+        ],
+        "low": [
+          0.30000001192092896,
+          0.44999998807907104,
+          0.800000011920929,
+          1.0
+        ],
+        "type": "colorize"
+      },
+      "position": {
+        "x": 690.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "b131f474-81e3-45cd-8edb-ff3f31a2a8d5": {
+      "id": "b131f474-81e3-45cd-8edb-ff3f31a2a8d5",
+      "inputs": {
+        "background": "35ec6903-8cf1-458f-b60e-079a9b1ed589",
+        "foreground": "826113ae-7a8f-44cf-9b82-e12db460b9eb"
+      },
+      "label": "Layer mix",
+      "operation": {
+        "mode": "add",
+        "opacity": {
+          "kind": "constant",
+          "value": 0.23999999463558197
+        },
+        "type": "blend"
+      },
+      "version": 1
+    },
+    "f25a77ef-fab1-48ec-b7d4-6c078309b532": {
+      "id": "f25a77ef-fab1-48ec-b7d4-6c078309b532",
+      "inputs": {},
+      "label": "Editable vector artwork",
+      "operation": {
+        "geometry": {
+          "commands": [
+            {
+              "command": "move",
+              "to": [
+                960.0,
+                250.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                1300.0,
+                730.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                1200.0,
+                730.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                960.0,
+                390.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                720.0,
+                730.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                620.0,
+                730.0
+              ]
+            },
+            {
+              "command": "close"
+            },
+            {
+              "command": "move",
+              "to": [
+                960.0,
+                470.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                1130.0,
+                730.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                790.0,
+                730.0
+              ]
+            },
+            {
+              "command": "close"
+            }
+          ],
+          "fill_rule": "non_zero"
+        },
+        "type": "path"
+      },
+      "position": {
+        "x": 230.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "f33996bc-1b18-4c96-a76f-7a5bc2b99783": {
+      "id": "f33996bc-1b18-4c96-a76f-7a5bc2b99783",
+      "inputs": {},
+      "label": "Midnight background",
+      "operation": {
+        "color": [
+          0.0020000000949949026,
+          0.004000000189989805,
+          0.012000000104308128,
+          1.0
+        ],
+        "type": "solid"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "scene_background": true,
+      "version": 1
+    }
+  },
+  "output": "0902ddee-d366-4e8d-bd2e-09e2e4080e8c",
+  "saved_by": "0.1.0",
+  "schema": 1,
+  "width": 1920
+}

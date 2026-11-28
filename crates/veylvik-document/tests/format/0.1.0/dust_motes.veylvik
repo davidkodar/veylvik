@@ -1,0 +1,684 @@
+{
+  "frame_count": 96,
+  "frame_rate": {
+    "rate": 1,
+    "ticks": 24
+  },
+  "groups": {
+    "74549959-a633-4040-b914-c09b6b54b3b4": {
+      "controls": {
+        "air_movement": {
+          "default": {
+            "kind": "constant",
+            "value": 1.0
+          },
+          "label": "Air movement",
+          "node": "95ba39f5-feb7-4447-a9fa-6f244a6ce863",
+          "parameter": "drift"
+        },
+        "amount": {
+          "default": {
+            "kind": "constant",
+            "value": 1.0
+          },
+          "label": "Amount",
+          "node": "f474f507-9730-4aff-94f7-7e6a52f6d76b",
+          "parameter": "opacity"
+        },
+        "dust_density": {
+          "default": {
+            "kind": "constant",
+            "value": 0.7200000286102295
+          },
+          "label": "Dust density",
+          "node": "95ba39f5-feb7-4447-a9fa-6f244a6ce863",
+          "parameter": "density"
+        },
+        "evolution": {
+          "default": {
+            "keys": [
+              {
+                "time": {
+                  "rate": 1,
+                  "ticks": 0
+                },
+                "value": 0.0
+              },
+              {
+                "time": {
+                  "rate": 1,
+                  "ticks": 4
+                },
+                "value": 4.0
+              }
+            ],
+            "kind": "linear"
+          },
+          "label": "Evolution",
+          "node": "95ba39f5-feb7-4447-a9fa-6f244a6ce863",
+          "parameter": "evolution"
+        },
+        "particle_size": {
+          "default": {
+            "kind": "constant",
+            "value": 2.5
+          },
+          "label": "Particle size",
+          "node": "95ba39f5-feb7-4447-a9fa-6f244a6ce863",
+          "parameter": "size"
+        }
+      },
+      "id": "74549959-a633-4040-b914-c09b6b54b3b4",
+      "inputs": {
+        "input_1": {
+          "label": "Image",
+          "targets": [
+            {
+              "node": "f474f507-9730-4aff-94f7-7e6a52f6d76b",
+              "port": "background"
+            }
+          ]
+        }
+      },
+      "label": "Dust Motes",
+      "members": [
+        "95ba39f5-feb7-4447-a9fa-6f244a6ce863",
+        "f474f507-9730-4aff-94f7-7e6a52f6d76b"
+      ],
+      "output": "f474f507-9730-4aff-94f7-7e6a52f6d76b"
+    }
+  },
+  "height": 1080,
+  "nodes": {
+    "05b80b8f-95f7-4b95-a20a-21cf7ada059b": {
+      "id": "05b80b8f-95f7-4b95-a20a-21cf7ada059b",
+      "inputs": {
+        "background": "d7d86607-1cb7-4bc6-89d2-918b668d66f1",
+        "foreground": "88d09eec-ab9b-4f06-abc8-5ef699e61718"
+      },
+      "label": "Atmospheric light",
+      "operation": {
+        "mode": "add",
+        "opacity": {
+          "kind": "constant",
+          "value": 0.6000000238418579
+        },
+        "type": "blend"
+      },
+      "position": {
+        "x": 690.0,
+        "y": 290.0
+      },
+      "version": 1
+    },
+    "2578b06a-fae9-4b56-8b89-632a2fddfa16": {
+      "id": "2578b06a-fae9-4b56-8b89-632a2fddfa16",
+      "inputs": {},
+      "label": "DUST · editable lettering",
+      "operation": {
+        "alignment": "center",
+        "box_height": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "content": "DUST",
+        "features": "",
+        "font": {
+          "source": "display"
+        },
+        "language": "",
+        "line_height": {
+          "kind": "constant",
+          "value": 1.25
+        },
+        "padding": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "rotation": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "rtl": false,
+        "scale_x": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "scale_y": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "size": {
+          "kind": "constant",
+          "value": 400.0
+        },
+        "tracking": {
+          "kind": "constant",
+          "value": 24.0
+        },
+        "type": "text",
+        "typography": {
+          "anchor": null,
+          "auto_fit": false,
+          "duration": 0.5,
+          "ease": true,
+          "exit": null,
+          "linked_scale": false,
+          "motion": "none",
+          "spans": [],
+          "stagger": 0.03999999910593033,
+          "start": 0.0,
+          "unit": "character",
+          "vertical": "top"
+        },
+        "underline": false,
+        "wrap_width": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "x": {
+          "kind": "constant",
+          "value": 960.0
+        },
+        "y": {
+          "kind": "constant",
+          "value": 680.0
+        }
+      },
+      "position": {
+        "x": 230.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "379bfb7b-e561-4145-9ef4-bb8d23037564": {
+      "id": "379bfb7b-e561-4145-9ef4-bb8d23037564",
+      "inputs": {
+        "mask": "2578b06a-fae9-4b56-8b89-632a2fddfa16",
+        "other": "d8be8ea6-1a4f-4138-822c-00e8b8ee52ff"
+      },
+      "label": "Bevel edge",
+      "operation": {
+        "mode": "subtract",
+        "type": "combine_mask"
+      },
+      "position": {
+        "x": 230.0,
+        "y": 145.0
+      },
+      "version": 1
+    },
+    "42217d84-a285-449f-869f-d9922bb24cdf": {
+      "id": "42217d84-a285-449f-869f-d9922bb24cdf",
+      "inputs": {},
+      "label": "Bevel light",
+      "operation": {
+        "color": [
+          1.7999999523162842,
+          0.949999988079071,
+          0.30000001192092896,
+          1.0
+        ],
+        "type": "solid"
+      },
+      "position": {
+        "x": 460.0,
+        "y": 145.0
+      },
+      "version": 1
+    },
+    "4aa6591a-9587-4095-91a1-695530bbb4b8": {
+      "id": "4aa6591a-9587-4095-91a1-695530bbb4b8",
+      "inputs": {
+        "image": "42217d84-a285-449f-869f-d9922bb24cdf",
+        "mask": "379bfb7b-e561-4145-9ef4-bb8d23037564"
+      },
+      "label": "Polished edge",
+      "operation": {
+        "type": "mask"
+      },
+      "position": {
+        "x": 690.0,
+        "y": 145.0
+      },
+      "version": 1
+    },
+    "4d0600fc-8707-4e7b-b228-aa4afe7abe0e": {
+      "id": "4d0600fc-8707-4e7b-b228-aa4afe7abe0e",
+      "inputs": {
+        "image": "accf3264-d854-4afd-86a2-86c01e82160d",
+        "mask": "6a70c2ee-e750-499b-be3d-04a3f0d5df4d"
+      },
+      "label": "Sand dune",
+      "operation": {
+        "type": "mask"
+      },
+      "position": {
+        "x": 690.0,
+        "y": 435.0
+      },
+      "version": 1
+    },
+    "6a70c2ee-e750-499b-be3d-04a3f0d5df4d": {
+      "id": "6a70c2ee-e750-499b-be3d-04a3f0d5df4d",
+      "inputs": {},
+      "label": "Wind carved dune",
+      "operation": {
+        "feather": {
+          "kind": "constant",
+          "value": 50.0
+        },
+        "radius_x": {
+          "kind": "constant",
+          "value": 1040.0
+        },
+        "radius_y": {
+          "kind": "constant",
+          "value": 180.0
+        },
+        "type": "ellipse",
+        "x": {
+          "kind": "constant",
+          "value": 980.0
+        },
+        "y": {
+          "kind": "constant",
+          "value": 980.0
+        }
+      },
+      "position": {
+        "x": 0.0,
+        "y": 435.0
+      },
+      "version": 1
+    },
+    "6cf0fe1c-27fb-4d3e-9a18-6cb5f2d24e51": {
+      "id": "6cf0fe1c-27fb-4d3e-9a18-6cb5f2d24e51",
+      "inputs": {
+        "image": "81e796f1-0f85-48ff-8302-3a662540d8b5"
+      },
+      "label": "Sand grain color",
+      "operation": {
+        "high": [
+          1.2999999523162842,
+          0.6499999761581421,
+          0.18000000715255737,
+          1.0
+        ],
+        "low": [
+          0.07000000029802322,
+          0.02500000037252903,
+          0.006000000052154064,
+          1.0
+        ],
+        "type": "colorize"
+      },
+      "position": {
+        "x": 690.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "6f1071cd-c8fd-40d2-a9f4-068e79bde4e4": {
+      "id": "6f1071cd-c8fd-40d2-a9f4-068e79bde4e4",
+      "inputs": {
+        "background": "bd6b0bb5-e9ea-4742-b6f4-c206cbce1970",
+        "foreground": "4aa6591a-9587-4095-91a1-695530bbb4b8"
+      },
+      "label": "Sandstone relief",
+      "operation": {
+        "mode": "add",
+        "opacity": {
+          "kind": "constant",
+          "value": 0.6000000238418579
+        },
+        "type": "blend"
+      },
+      "position": {
+        "x": 920.0,
+        "y": 145.0
+      },
+      "version": 1
+    },
+    "7413d7d0-7bef-49cc-8537-dbd7f118b6ec": {
+      "id": "7413d7d0-7bef-49cc-8537-dbd7f118b6ec",
+      "inputs": {},
+      "label": "Atmosphere color",
+      "operation": {
+        "color": [
+          0.12999999523162842,
+          0.03999999910593033,
+          0.007000000216066837,
+          1.0
+        ],
+        "type": "solid"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 290.0
+      },
+      "version": 1
+    },
+    "77c28f22-24d1-49d9-86e6-3ae6cefb033c": {
+      "id": "77c28f22-24d1-49d9-86e6-3ae6cefb033c",
+      "inputs": {
+        "background": "bc3fced4-bc3e-442d-9583-bce96cb3d127",
+        "foreground": "4d0600fc-8707-4e7b-b228-aa4afe7abe0e"
+      },
+      "label": "Dune foreground",
+      "operation": {
+        "type": "merge"
+      },
+      "position": {
+        "x": 920.0,
+        "y": 435.0
+      },
+      "version": 1
+    },
+    "7a2dd14c-92e7-42d2-8447-d1d0d70807a1": {
+      "id": "7a2dd14c-92e7-42d2-8447-d1d0d70807a1",
+      "inputs": {},
+      "label": "Atmosphere falloff",
+      "operation": {
+        "feather": {
+          "kind": "constant",
+          "value": 490.0
+        },
+        "radius_x": {
+          "kind": "constant",
+          "value": 700.0
+        },
+        "radius_y": {
+          "kind": "constant",
+          "value": 320.0
+        },
+        "type": "ellipse",
+        "x": {
+          "kind": "constant",
+          "value": 960.0
+        },
+        "y": {
+          "kind": "constant",
+          "value": 680.0
+        }
+      },
+      "position": {
+        "x": 230.0,
+        "y": 290.0
+      },
+      "version": 1
+    },
+    "81e796f1-0f85-48ff-8302-3a662540d8b5": {
+      "id": "81e796f1-0f85-48ff-8302-3a662540d8b5",
+      "inputs": {},
+      "label": "Animated material turbulence",
+      "operation": {
+        "evolution": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": 0.0
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 2
+              },
+              "value": 1.7999999523162842
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": 0.0
+            }
+          ],
+          "kind": "smooth"
+        },
+        "octaves": {
+          "kind": "constant",
+          "value": 4.0
+        },
+        "roughness": {
+          "kind": "constant",
+          "value": 0.5799999833106995
+        },
+        "scale": {
+          "kind": "constant",
+          "value": 7.0
+        },
+        "seed": 47,
+        "type": "fractal_noise"
+      },
+      "position": {
+        "x": 460.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "88d09eec-ab9b-4f06-abc8-5ef699e61718": {
+      "id": "88d09eec-ab9b-4f06-abc8-5ef699e61718",
+      "inputs": {
+        "image": "7413d7d0-7bef-49cc-8537-dbd7f118b6ec",
+        "mask": "7a2dd14c-92e7-42d2-8447-d1d0d70807a1"
+      },
+      "label": "Atmosphere",
+      "operation": {
+        "type": "mask"
+      },
+      "position": {
+        "x": 460.0,
+        "y": 290.0
+      },
+      "version": 1
+    },
+    "95ba39f5-feb7-4447-a9fa-6f244a6ce863": {
+      "id": "95ba39f5-feb7-4447-a9fa-6f244a6ce863",
+      "inputs": {},
+      "label": "Depth-layered airborne dust",
+      "operation": {
+        "density": {
+          "kind": "constant",
+          "value": 0.7200000286102295
+        },
+        "drift": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "evolution": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": 0.0
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": 4.0
+            }
+          ],
+          "kind": "linear"
+        },
+        "seed": 47,
+        "size": {
+          "kind": "constant",
+          "value": 2.5
+        },
+        "type": "dust"
+      },
+      "version": 1
+    },
+    "a07198a6-0156-44c6-bcdb-908bec34bd43": {
+      "id": "a07198a6-0156-44c6-bcdb-908bec34bd43",
+      "inputs": {},
+      "label": "Dune material",
+      "operation": {
+        "end_x": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "end_y": {
+          "kind": "constant",
+          "value": 1080.0
+        },
+        "mode": "linear",
+        "start_x": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "start_y": {
+          "kind": "constant",
+          "value": 800.0
+        },
+        "type": "gradient"
+      },
+      "position": {
+        "x": 230.0,
+        "y": 435.0
+      },
+      "version": 1
+    },
+    "accf3264-d854-4afd-86a2-86c01e82160d": {
+      "id": "accf3264-d854-4afd-86a2-86c01e82160d",
+      "inputs": {
+        "image": "a07198a6-0156-44c6-bcdb-908bec34bd43"
+      },
+      "label": "Dune material",
+      "operation": {
+        "high": [
+          0.012000000104308128,
+          0.004000000189989805,
+          0.0010000000474974513,
+          1.0
+        ],
+        "low": [
+          0.15000000596046448,
+          0.05999999865889549,
+          0.014999999664723873,
+          1.0
+        ],
+        "type": "colorize"
+      },
+      "position": {
+        "x": 460.0,
+        "y": 435.0
+      },
+      "version": 1
+    },
+    "bc3fced4-bc3e-442d-9583-bce96cb3d127": {
+      "id": "bc3fced4-bc3e-442d-9583-bce96cb3d127",
+      "inputs": {
+        "background": "05b80b8f-95f7-4b95-a20a-21cf7ada059b",
+        "foreground": "6f1071cd-c8fd-40d2-a9f4-068e79bde4e4"
+      },
+      "label": "Carved sand title",
+      "operation": {
+        "type": "merge"
+      },
+      "position": {
+        "x": 920.0,
+        "y": 290.0
+      },
+      "version": 1
+    },
+    "bd6b0bb5-e9ea-4742-b6f4-c206cbce1970": {
+      "id": "bd6b0bb5-e9ea-4742-b6f4-c206cbce1970",
+      "inputs": {
+        "image": "6cf0fe1c-27fb-4d3e-9a18-6cb5f2d24e51",
+        "mask": "2578b06a-fae9-4b56-8b89-632a2fddfa16"
+      },
+      "label": "Material inside lettering",
+      "operation": {
+        "type": "mask"
+      },
+      "position": {
+        "x": 920.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "d7d86607-1cb7-4bc6-89d2-918b668d66f1": {
+      "id": "d7d86607-1cb7-4bc6-89d2-918b668d66f1",
+      "inputs": {},
+      "label": "Deep cinematic background",
+      "operation": {
+        "color": [
+          0.0010000000474974513,
+          0.0020000000949949026,
+          0.006000000052154064,
+          1.0
+        ],
+        "type": "solid"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "scene_background": true,
+      "version": 1
+    },
+    "d8be8ea6-1a4f-4138-822c-00e8b8ee52ff": {
+      "id": "d8be8ea6-1a4f-4138-822c-00e8b8ee52ff",
+      "inputs": {
+        "image": "2578b06a-fae9-4b56-8b89-632a2fddfa16"
+      },
+      "label": "Bevel offset",
+      "operation": {
+        "type": "transform",
+        "x": {
+          "kind": "constant",
+          "value": 4.0
+        },
+        "y": {
+          "kind": "constant",
+          "value": 6.0
+        }
+      },
+      "position": {
+        "x": 0.0,
+        "y": 145.0
+      },
+      "version": 1
+    },
+    "f474f507-9730-4aff-94f7-7e6a52f6d76b": {
+      "id": "f474f507-9730-4aff-94f7-7e6a52f6d76b",
+      "inputs": {
+        "background": "77c28f22-24d1-49d9-86e6-3ae6cefb033c",
+        "foreground": "95ba39f5-feb7-4447-a9fa-6f244a6ce863"
+      },
+      "label": "Layer mix",
+      "operation": {
+        "mode": "normal",
+        "opacity": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "type": "blend"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 1500.0
+      },
+      "version": 1
+    }
+  },
+  "output": "f474f507-9730-4aff-94f7-7e6a52f6d76b",
+  "saved_by": "0.1.0",
+  "schema": 1,
+  "width": 1920
+}

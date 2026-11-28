@@ -1,0 +1,411 @@
+{
+  "frame_count": 96,
+  "frame_rate": {
+    "rate": 1,
+    "ticks": 24
+  },
+  "groups": {
+    "39a4fedf-8c3c-4937-938c-341ef28bc86c": {
+      "controls": {
+        "base_y": {
+          "default": {
+            "kind": "constant",
+            "value": 1020.0
+          },
+          "label": "Base Y",
+          "node": "a09c5f0c-5581-4d00-ba58-fa21b395ce39",
+          "parameter": "y"
+        },
+        "center_x": {
+          "default": {
+            "kind": "constant",
+            "value": 960.0
+          },
+          "label": "Center X",
+          "node": "a09c5f0c-5581-4d00-ba58-fa21b395ce39",
+          "parameter": "x"
+        },
+        "density": {
+          "default": {
+            "kind": "constant",
+            "value": 7.0
+          },
+          "label": "Density",
+          "node": "a09c5f0c-5581-4d00-ba58-fa21b395ce39",
+          "parameter": "density"
+        },
+        "flow_motion": {
+          "default": {
+            "keys": [
+              {
+                "time": {
+                  "rate": 1,
+                  "ticks": 0
+                },
+                "value": 0.0
+              },
+              {
+                "time": {
+                  "rate": 1,
+                  "ticks": 4
+                },
+                "value": 4.0
+              }
+            ],
+            "kind": "linear"
+          },
+          "label": "Flow motion",
+          "node": "a09c5f0c-5581-4d00-ba58-fa21b395ce39",
+          "parameter": "evolution"
+        },
+        "illumination": {
+          "default": {
+            "kind": "constant",
+            "value": 1.0
+          },
+          "label": "Illumination",
+          "node": "a09c5f0c-5581-4d00-ba58-fa21b395ce39",
+          "parameter": "lighting"
+        },
+        "turbulence_detail": {
+          "default": {
+            "kind": "constant",
+            "value": 1.0
+          },
+          "label": "Turbulence detail",
+          "node": "a09c5f0c-5581-4d00-ba58-fa21b395ce39",
+          "parameter": "detail"
+        },
+        "volume_height": {
+          "default": {
+            "kind": "constant",
+            "value": 940.0
+          },
+          "label": "Volume height",
+          "node": "a09c5f0c-5581-4d00-ba58-fa21b395ce39",
+          "parameter": "height"
+        },
+        "volume_width": {
+          "default": {
+            "kind": "constant",
+            "value": 1400.0
+          },
+          "label": "Volume width",
+          "node": "a09c5f0c-5581-4d00-ba58-fa21b395ce39",
+          "parameter": "width"
+        }
+      },
+      "id": "39a4fedf-8c3c-4937-938c-341ef28bc86c",
+      "inputs": {
+        "input_1": {
+          "label": "Image",
+          "targets": [
+            {
+              "node": "b085563f-5895-4e7a-bef7-c4e2182600a3",
+              "port": "background"
+            }
+          ]
+        }
+      },
+      "label": "Dense Dark Smoke",
+      "members": [
+        "a09c5f0c-5581-4d00-ba58-fa21b395ce39",
+        "b085563f-5895-4e7a-bef7-c4e2182600a3"
+      ],
+      "output": "b085563f-5895-4e7a-bef7-c4e2182600a3"
+    }
+  },
+  "height": 1080,
+  "nodes": {
+    "5ce7c8b9-67f3-4dd3-9bd0-25f15b47f036": {
+      "id": "5ce7c8b9-67f3-4dd3-9bd0-25f15b47f036",
+      "inputs": {},
+      "label": "Distant terrain",
+      "operation": {
+        "geometry": {
+          "commands": [
+            {
+              "command": "move",
+              "to": [
+                0.0,
+                940.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                260.0,
+                840.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                520.0,
+                910.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                900.0,
+                780.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                1300.0,
+                900.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                1600.0,
+                800.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                1920.0,
+                900.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                1920.0,
+                1080.0
+              ]
+            },
+            {
+              "command": "line",
+              "to": [
+                0.0,
+                1080.0
+              ]
+            },
+            {
+              "command": "close"
+            }
+          ],
+          "fill_rule": "non_zero"
+        },
+        "type": "path"
+      },
+      "position": {
+        "x": 690.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "6d5b9197-dab3-4dc5-ba3d-e7c539651851": {
+      "id": "6d5b9197-dab3-4dc5-ba3d-e7c539651851",
+      "inputs": {},
+      "label": "Deep cinematic background",
+      "operation": {
+        "color": [
+          0.0010000000474974513,
+          0.0020000000949949026,
+          0.006000000052154064,
+          1.0
+        ],
+        "type": "solid"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "72898533-fd5a-447f-8f0c-1ddc90023283": {
+      "id": "72898533-fd5a-447f-8f0c-1ddc90023283",
+      "inputs": {},
+      "label": "Sky gradient",
+      "operation": {
+        "end_x": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "end_y": {
+          "kind": "constant",
+          "value": 1080.0
+        },
+        "mode": "linear",
+        "start_x": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "start_y": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "type": "gradient"
+      },
+      "position": {
+        "x": 230.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "7b77aa9c-e58c-4643-a097-74884b973aaa": {
+      "id": "7b77aa9c-e58c-4643-a097-74884b973aaa",
+      "inputs": {
+        "background": "9fdf268f-8bd0-4db8-a229-a37b9068b9d2",
+        "foreground": "ad436ffa-5473-4ab1-9708-d3f3d0129e93"
+      },
+      "label": "Sky and horizon",
+      "operation": {
+        "type": "merge"
+      },
+      "position": {
+        "x": 230.0,
+        "y": 145.0
+      },
+      "scene_background": true,
+      "version": 1
+    },
+    "9fdf268f-8bd0-4db8-a229-a37b9068b9d2": {
+      "id": "9fdf268f-8bd0-4db8-a229-a37b9068b9d2",
+      "inputs": {
+        "image": "72898533-fd5a-447f-8f0c-1ddc90023283"
+      },
+      "label": "Sky gradient",
+      "operation": {
+        "high": [
+          0.5,
+          0.5799999833106995,
+          0.6299999952316284,
+          1.0
+        ],
+        "low": [
+          0.07999999821186066,
+          0.18000000715255737,
+          0.3199999928474426,
+          1.0
+        ],
+        "type": "colorize"
+      },
+      "position": {
+        "x": 460.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "a09c5f0c-5581-4d00-ba58-fa21b395ce39": {
+      "id": "a09c5f0c-5581-4d00-ba58-fa21b395ce39",
+      "inputs": {},
+      "label": "Turbulent atmospheric volume",
+      "operation": {
+        "density": {
+          "kind": "constant",
+          "value": 7.0
+        },
+        "detail": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "evolution": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": 0.0
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": 4.0
+            }
+          ],
+          "kind": "linear"
+        },
+        "height": {
+          "kind": "constant",
+          "value": 940.0
+        },
+        "kind": "soot",
+        "lighting": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "seed": 397,
+        "type": "atmosphere",
+        "width": {
+          "kind": "constant",
+          "value": 1400.0
+        },
+        "x": {
+          "kind": "constant",
+          "value": 960.0
+        },
+        "y": {
+          "kind": "constant",
+          "value": 1020.0
+        }
+      },
+      "version": 1
+    },
+    "ad436ffa-5473-4ab1-9708-d3f3d0129e93": {
+      "id": "ad436ffa-5473-4ab1-9708-d3f3d0129e93",
+      "inputs": {
+        "image": "d5dd39e3-eac1-4c11-9428-239e90ce61e4",
+        "mask": "5ce7c8b9-67f3-4dd3-9bd0-25f15b47f036"
+      },
+      "label": "Distant landscape",
+      "operation": {
+        "type": "mask"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 145.0
+      },
+      "version": 1
+    },
+    "b085563f-5895-4e7a-bef7-c4e2182600a3": {
+      "id": "b085563f-5895-4e7a-bef7-c4e2182600a3",
+      "inputs": {
+        "background": "7b77aa9c-e58c-4643-a097-74884b973aaa",
+        "foreground": "a09c5f0c-5581-4d00-ba58-fa21b395ce39"
+      },
+      "label": "Atmosphere over image",
+      "operation": {
+        "type": "merge"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 1500.0
+      },
+      "version": 1
+    },
+    "d5dd39e3-eac1-4c11-9428-239e90ce61e4": {
+      "id": "d5dd39e3-eac1-4c11-9428-239e90ce61e4",
+      "inputs": {},
+      "label": "Terrain silhouette",
+      "operation": {
+        "color": [
+          0.02500000037252903,
+          0.04500000178813934,
+          0.052000001072883606,
+          1.0
+        ],
+        "type": "solid"
+      },
+      "position": {
+        "x": 920.0,
+        "y": 0.0
+      },
+      "version": 1
+    }
+  },
+  "output": "b085563f-5895-4e7a-bef7-c4e2182600a3",
+  "saved_by": "0.1.0",
+  "schema": 1,
+  "width": 1920
+}

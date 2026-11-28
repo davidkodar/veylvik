@@ -1,0 +1,727 @@
+{
+  "frame_count": 96,
+  "frame_rate": {
+    "rate": 1,
+    "ticks": 24
+  },
+  "groups": {
+    "ada66aac-53d8-4821-9b6e-f29790df3b48": {
+      "controls": {
+        "absorption": {
+          "default": {
+            "kind": "constant",
+            "value": 0.0
+          },
+          "label": "Absorption",
+          "node": "972df556-e912-44b1-aa76-d52f8f8c3ff6",
+          "parameter": "tint"
+        },
+        "bead_density": {
+          "default": {
+            "kind": "constant",
+            "value": 0.550000011920929
+          },
+          "label": "Bead density",
+          "node": "e2f774fb-aa6b-4726-b287-c42c0d4895b6",
+          "parameter": "density"
+        },
+        "bead_dispersion": {
+          "default": {
+            "kind": "constant",
+            "value": 0.012000000104308128
+          },
+          "label": "Bead dispersion",
+          "node": "e2f774fb-aa6b-4726-b287-c42c0d4895b6",
+          "parameter": "dispersion"
+        },
+        "bead_size": {
+          "default": {
+            "kind": "constant",
+            "value": 6.400000095367432
+          },
+          "label": "Bead size",
+          "node": "e2f774fb-aa6b-4726-b287-c42c0d4895b6",
+          "parameter": "size"
+        },
+        "dispersion": {
+          "default": {
+            "kind": "constant",
+            "value": 0.012000000104308128
+          },
+          "label": "Dispersion",
+          "node": "972df556-e912-44b1-aa76-d52f8f8c3ff6",
+          "parameter": "dispersion"
+        },
+        "drip_spacing": {
+          "default": {
+            "kind": "constant",
+            "value": 86.0
+          },
+          "label": "Drip spacing",
+          "node": "24b742d7-5566-4ca5-99d6-0cc744dad3b7",
+          "parameter": "spacing"
+        },
+        "drop_size": {
+          "default": {
+            "kind": "constant",
+            "value": 11.0
+          },
+          "label": "Drop size",
+          "node": "24b742d7-5566-4ca5-99d6-0cc744dad3b7",
+          "parameter": "radius"
+        },
+        "fall_distance": {
+          "default": {
+            "kind": "constant",
+            "value": 280.0
+          },
+          "label": "Fall distance",
+          "node": "24b742d7-5566-4ca5-99d6-0cc744dad3b7",
+          "parameter": "length"
+        },
+        "fine_moisture": {
+          "default": {
+            "kind": "constant",
+            "value": 0.14000000059604645
+          },
+          "label": "Fine moisture",
+          "node": "e2f774fb-aa6b-4726-b287-c42c0d4895b6",
+          "parameter": "haze"
+        },
+        "liquid_evolution": {
+          "default": {
+            "keys": [
+              {
+                "time": {
+                  "rate": 1,
+                  "ticks": 0
+                },
+                "value": 0.0
+              },
+              {
+                "time": {
+                  "rate": 1,
+                  "ticks": 4
+                },
+                "value": 4.0
+              }
+            ],
+            "kind": "linear"
+          },
+          "label": "Liquid evolution",
+          "node": "24b742d7-5566-4ca5-99d6-0cc744dad3b7",
+          "parameter": "evolution"
+        },
+        "liquid_ior": {
+          "default": {
+            "kind": "constant",
+            "value": 1.3329999446868896
+          },
+          "label": "Liquid IOR",
+          "node": "972df556-e912-44b1-aa76-d52f8f8c3ff6",
+          "parameter": "ior"
+        },
+        "reflection_rotation": {
+          "default": {
+            "kind": "constant",
+            "value": 0.0
+          },
+          "label": "Reflection rotation",
+          "node": "4d654c1f-4304-4a1e-84b5-300747c012a6",
+          "parameter": "lighting"
+        },
+        "refraction": {
+          "default": {
+            "kind": "constant",
+            "value": 60.0
+          },
+          "label": "Refraction",
+          "node": "972df556-e912-44b1-aa76-d52f8f8c3ff6",
+          "parameter": "refraction"
+        },
+        "sliding_trails": {
+          "default": {
+            "kind": "constant",
+            "value": 0.3499999940395355
+          },
+          "label": "Sliding trails",
+          "node": "e2f774fb-aa6b-4726-b287-c42c0d4895b6",
+          "parameter": "trails"
+        },
+        "surface_movement": {
+          "default": {
+            "keys": [
+              {
+                "time": {
+                  "rate": 1,
+                  "ticks": 0
+                },
+                "value": 0.0
+              },
+              {
+                "time": {
+                  "rate": 1,
+                  "ticks": 4
+                },
+                "value": 4.0
+              }
+            ],
+            "kind": "linear"
+          },
+          "label": "Surface movement",
+          "node": "e2f774fb-aa6b-4726-b287-c42c0d4895b6",
+          "parameter": "evolution"
+        },
+        "surface_roughness": {
+          "default": {
+            "kind": "constant",
+            "value": 0.11999999731779099
+          },
+          "label": "Surface roughness",
+          "node": "4d654c1f-4304-4a1e-84b5-300747c012a6",
+          "parameter": "roughness"
+        },
+        "surface_rounding": {
+          "default": {
+            "kind": "constant",
+            "value": 24.0
+          },
+          "label": "Surface rounding",
+          "node": "4d654c1f-4304-4a1e-84b5-300747c012a6",
+          "parameter": "bevel"
+        },
+        "surface_wetness": {
+          "default": {
+            "kind": "constant",
+            "value": 0.6499999761581421
+          },
+          "label": "Surface wetness",
+          "node": "e2f774fb-aa6b-4726-b287-c42c0d4895b6",
+          "parameter": "amount"
+        }
+      },
+      "id": "ada66aac-53d8-4821-9b6e-f29790df3b48",
+      "inputs": {
+        "background": {
+          "label": "Background to refract",
+          "targets": [
+            {
+              "node": "972df556-e912-44b1-aa76-d52f8f8c3ff6",
+              "port": "background"
+            }
+          ]
+        },
+        "shape": {
+          "label": "Shape / text",
+          "targets": [
+            {
+              "node": "24b742d7-5566-4ca5-99d6-0cc744dad3b7",
+              "port": "image"
+            }
+          ]
+        }
+      },
+      "label": "Clear Water Drips",
+      "members": [
+        "24b742d7-5566-4ca5-99d6-0cc744dad3b7",
+        "436b66af-80a3-4aad-a1b7-d69563b77761",
+        "4d654c1f-4304-4a1e-84b5-300747c012a6",
+        "972df556-e912-44b1-aa76-d52f8f8c3ff6",
+        "e2f774fb-aa6b-4726-b287-c42c0d4895b6"
+      ],
+      "output": "e2f774fb-aa6b-4726-b287-c42c0d4895b6"
+    }
+  },
+  "height": 1080,
+  "nodes": {
+    "24b742d7-5566-4ca5-99d6-0cc744dad3b7": {
+      "id": "24b742d7-5566-4ca5-99d6-0cc744dad3b7",
+      "inputs": {
+        "image": "3fc73424-7e04-4e50-90f9-1a414bc618d1"
+      },
+      "label": "Liquid attached to input silhouette",
+      "operation": {
+        "evolution": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": 0.0
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": 4.0
+            }
+          ],
+          "kind": "linear"
+        },
+        "length": {
+          "kind": "constant",
+          "value": 280.0
+        },
+        "radius": {
+          "kind": "constant",
+          "value": 11.0
+        },
+        "seed": 821,
+        "spacing": {
+          "kind": "constant",
+          "value": 86.0
+        },
+        "type": "drip"
+      },
+      "version": 1
+    },
+    "29ae4b43-d654-45cc-b9b8-a3e0b3c103ac": {
+      "id": "29ae4b43-d654-45cc-b9b8-a3e0b3c103ac",
+      "inputs": {
+        "background": "d4485f3c-632e-4291-9057-9e09fa6d951e",
+        "foreground": "e2f774fb-aa6b-4726-b287-c42c0d4895b6"
+      },
+      "label": "Finished lettering over background",
+      "operation": {
+        "type": "merge"
+      },
+      "position": {
+        "x": 690.0,
+        "y": 145.0
+      },
+      "version": 1
+    },
+    "3fc73424-7e04-4e50-90f9-1a414bc618d1": {
+      "id": "3fc73424-7e04-4e50-90f9-1a414bc618d1",
+      "inputs": {},
+      "label": "NOVA · editable lettering",
+      "operation": {
+        "alignment": "center",
+        "box_height": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "content": "NOVA",
+        "features": "",
+        "font": {
+          "source": "display"
+        },
+        "language": "",
+        "line_height": {
+          "kind": "constant",
+          "value": 1.25
+        },
+        "padding": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "rotation": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "rtl": false,
+        "scale_x": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "scale_y": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "size": {
+          "kind": "constant",
+          "value": 400.0
+        },
+        "tracking": {
+          "kind": "constant",
+          "value": 24.0
+        },
+        "type": "text",
+        "typography": {
+          "anchor": null,
+          "auto_fit": false,
+          "duration": 0.5,
+          "ease": true,
+          "exit": null,
+          "linked_scale": false,
+          "motion": "none",
+          "spans": [],
+          "stagger": 0.03999999910593033,
+          "start": 0.0,
+          "unit": "character",
+          "vertical": "top"
+        },
+        "underline": false,
+        "wrap_width": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "x": {
+          "kind": "constant",
+          "value": 960.0
+        },
+        "y": {
+          "kind": "constant",
+          "value": 680.0
+        }
+      },
+      "position": {
+        "x": 230.0,
+        "y": 0.0
+      },
+      "version": 1
+    },
+    "436b66af-80a3-4aad-a1b7-d69563b77761": {
+      "id": "436b66af-80a3-4aad-a1b7-d69563b77761",
+      "inputs": {
+        "background": "972df556-e912-44b1-aa76-d52f8f8c3ff6",
+        "foreground": "4d654c1f-4304-4a1e-84b5-300747c012a6"
+      },
+      "label": "Layer mix",
+      "operation": {
+        "mode": "add",
+        "opacity": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "type": "blend"
+      },
+      "version": 1
+    },
+    "4d654c1f-4304-4a1e-84b5-300747c012a6": {
+      "id": "4d654c1f-4304-4a1e-84b5-300747c012a6",
+      "inputs": {
+        "image": "24b742d7-5566-4ca5-99d6-0cc744dad3b7"
+      },
+      "label": "Wet surface reflections",
+      "operation": {
+        "bevel": {
+          "kind": "constant",
+          "value": 24.0
+        },
+        "brush_angle": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "brushing": "auto",
+        "colours": null,
+        "emission": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "grain": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "height_depth": {
+          "kind": "constant",
+          "value": 8.0
+        },
+        "imperfections": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "kind": "silver",
+        "lighting": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "normal_directx": false,
+        "normal_strength": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "optics": {
+          "ior": 1.3329999446868896,
+          "metallic": false,
+          "reflectance": [
+            0.03999999910593033,
+            0.03999999910593033,
+            0.03999999910593033
+          ]
+        },
+        "ridges": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "roughness": {
+          "kind": "constant",
+          "value": 0.11999999731779099
+        },
+        "scale": {
+          "kind": "constant",
+          "value": 360.0
+        },
+        "shot": {
+          "kind": "constant",
+          "value": 1.0
+        },
+        "smooth_edges": true,
+        "studio": {
+          "ambient": 0.0,
+          "environment": 0.6499999761581421,
+          "environment_rotation": -45.0,
+          "lights": [
+            {
+              "colour": [
+                1.0,
+                0.9599999785423279,
+                0.8899999856948853
+              ],
+              "enabled": false,
+              "follow": false,
+              "intensity": {
+                "kind": "constant",
+                "value": 1.2000000476837158
+              },
+              "position": [
+                -3.0,
+                -0.699999988079071,
+                -1.0
+              ],
+              "rotation": [
+                0.0,
+                -105.0,
+                0.0
+              ],
+              "size": [
+                1.5,
+                4.0
+              ]
+            },
+            {
+              "colour": [
+                0.9599999785423279,
+                0.9800000190734863,
+                1.0
+              ],
+              "enabled": false,
+              "follow": false,
+              "intensity": {
+                "kind": "constant",
+                "value": 1.2000000476837158
+              },
+              "position": [
+                3.0,
+                -0.30000001192092896,
+                1.5
+              ],
+              "rotation": [
+                0.0,
+                50.0,
+                0.0
+              ],
+              "size": [
+                2.299999952316284,
+                3.200000047683716
+              ]
+            },
+            {
+              "colour": [
+                1.0,
+                0.9300000071525574,
+                0.800000011920929
+              ],
+              "enabled": false,
+              "follow": false,
+              "intensity": {
+                "kind": "constant",
+                "value": 3.200000047683716
+              },
+              "position": [
+                -2.799999952316284,
+                2.5999999046325684,
+                1.5
+              ],
+              "rotation": [
+                -30.0,
+                -45.0,
+                0.0
+              ],
+              "size": [
+                1.7999999523162842,
+                2.0
+              ]
+            },
+            {
+              "colour": [
+                1.0,
+                1.0,
+                1.0
+              ],
+              "enabled": false,
+              "follow": false,
+              "intensity": {
+                "kind": "constant",
+                "value": 0.44999998807907104
+              },
+              "position": [
+                0.0,
+                -4.0,
+                2.0
+              ],
+              "rotation": [
+                60.0,
+                0.0,
+                0.0
+              ],
+              "size": [
+                7.0,
+                4.0
+              ]
+            }
+          ]
+        },
+        "type": "material"
+      },
+      "version": 1
+    },
+    "7c72e80b-c61a-427a-accc-87aab92222ca": {
+      "id": "7c72e80b-c61a-427a-accc-87aab92222ca",
+      "inputs": {
+        "background": "d4485f3c-632e-4291-9057-9e09fa6d951e",
+        "foreground": "3fc73424-7e04-4e50-90f9-1a414bc618d1"
+      },
+      "label": "Original lettering over background",
+      "operation": {
+        "type": "merge"
+      },
+      "position": {
+        "x": 460.0,
+        "y": 145.0
+      },
+      "version": 1
+    },
+    "972df556-e912-44b1-aa76-d52f8f8c3ff6": {
+      "id": "972df556-e912-44b1-aa76-d52f8f8c3ff6",
+      "inputs": {
+        "background": "d4485f3c-632e-4291-9057-9e09fa6d951e",
+        "image": "24b742d7-5566-4ca5-99d6-0cc744dad3b7"
+      },
+      "label": "Water refraction",
+      "operation": {
+        "bevel": {
+          "kind": "constant",
+          "value": 24.0
+        },
+        "dispersion": {
+          "kind": "constant",
+          "value": 0.012000000104308128
+        },
+        "ior": {
+          "kind": "constant",
+          "value": 1.3329999446868896
+        },
+        "refraction": {
+          "kind": "constant",
+          "value": 60.0
+        },
+        "roughness": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "tint": {
+          "kind": "constant",
+          "value": 0.0
+        },
+        "transmission": {
+          "kind": "constant",
+          "value": 0.9900000095367432
+        },
+        "type": "glass"
+      },
+      "version": 1
+    },
+    "d4485f3c-632e-4291-9057-9e09fa6d951e": {
+      "id": "d4485f3c-632e-4291-9057-9e09fa6d951e",
+      "inputs": {},
+      "label": "Deep cinematic background",
+      "operation": {
+        "color": [
+          0.0010000000474974513,
+          0.0020000000949949026,
+          0.006000000052154064,
+          1.0
+        ],
+        "type": "solid"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "scene_background": true,
+      "version": 1
+    },
+    "e2f774fb-aa6b-4726-b287-c42c0d4895b6": {
+      "id": "e2f774fb-aa6b-4726-b287-c42c0d4895b6",
+      "inputs": {
+        "image": "436b66af-80a3-4aad-a1b7-d69563b77761"
+      },
+      "label": "Water beads and sliding trails",
+      "operation": {
+        "amount": {
+          "kind": "constant",
+          "value": 0.6499999761581421
+        },
+        "density": {
+          "kind": "constant",
+          "value": 0.550000011920929
+        },
+        "dispersion": {
+          "kind": "constant",
+          "value": 0.012000000104308128
+        },
+        "evolution": {
+          "keys": [
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 0
+              },
+              "value": 0.0
+            },
+            {
+              "time": {
+                "rate": 1,
+                "ticks": 4
+              },
+              "value": 4.0
+            }
+          ],
+          "kind": "linear"
+        },
+        "haze": {
+          "kind": "constant",
+          "value": 0.14000000059604645
+        },
+        "seed": 731,
+        "size": {
+          "kind": "constant",
+          "value": 6.400000095367432
+        },
+        "trails": {
+          "kind": "constant",
+          "value": 0.3499999940395355
+        },
+        "type": "condensation"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 1500.0
+      },
+      "version": 1
+    }
+  },
+  "output": "29ae4b43-d654-45cc-b9b8-a3e0b3c103ac",
+  "saved_by": "0.1.0",
+  "schema": 1,
+  "width": 1920
+}
