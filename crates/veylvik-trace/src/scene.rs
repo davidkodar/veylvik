@@ -124,15 +124,18 @@ pub const STRAIGHT: u32 = 16;
 /// A glass look: light passes through it to what lies behind, tinted by the glass, so its
 /// shadow is coloured and faint rather than solid.
 pub const GLASS: u32 = 32;
-/// A mesh placed in the world with a surface.
+/// A mesh placed in the world with a surface, its colour tinted (a copy at a particle
+/// takes the particle's colour; white otherwise).
 #[derive(Clone)]
 pub struct Placed {
     pub tree: Arc<MeshTree>,
     pub world: Mat4,
     pub surface: Surface,
+    pub tint: [f32; 3],
 }
-/// One placed mesh as the GPU reads it (112 bytes): the world-to-object and
-/// object-to-world rows, and where its tree and geometry start in the packed arrays.
+/// One placed mesh as the GPU reads it (128 bytes): the world-to-object and
+/// object-to-world rows, where its tree and geometry start in the packed arrays, and the
+/// tint on its surface's colour.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Instance {
@@ -142,6 +145,7 @@ pub struct Instance {
     pub triangle_base: u32,
     pub vertex_base: u32,
     pub surface: u32,
+    pub tint: [f32; 4],
 }
 /// A frame's scene in flat arrays.
 #[derive(Debug, Default)]
@@ -236,6 +240,7 @@ pub fn pack(placed: &[Placed]) -> Packed {
             triangle_base: bases.1,
             vertex_base: bases.2,
             surface,
+            tint: [p.tint[0], p.tint[1], p.tint[2], 1.0],
         });
         // The world box round the mesh's box's eight corners.
         let (mut lo, mut hi) = ([f32::INFINITY; 3], [f32::NEG_INFINITY; 3]);

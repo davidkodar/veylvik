@@ -157,7 +157,7 @@ struct Frame {
     offsets: [u32; 4],
     lights_at: [u32; 4],
 }
-/// The frame's small arrays in one list of vec4s, and where each starts: placings (7 a
+/// The frame's small arrays in one list of vec4s, and where each starts: placings (8 a
 /// placing), surfaces (5) and the pictures cast onto them (5 each), top tree nodes (2), its order (4 to a vec4), lights (5) and
 /// the textures' places in the shared texture buffer (1: first texel, width, height).
 fn frame_data(
@@ -178,6 +178,7 @@ fn frame_data(
             f(i.vertex_base),
             f(i.surface),
         ]);
+        data.push(i.tint);
     }
     let surfaces = data.len() as u32;
     // The pictures cast onto surfaces follow the surfaces, in the order of their surfaces.

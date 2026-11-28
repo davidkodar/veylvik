@@ -1852,6 +1852,15 @@ fn particles_bounce_off_the_letters_of_a_3d_text() {
 /// Copies of a small cube (placed at the frame's middle) at particles born in a box on
 /// the left, filmed by a Render scene at `seconds`.
 fn copies_at(renderer: &Renderer, speed: f32, seconds: (i64, u32)) -> Vec<[f32; 4]> {
+    copies_as(SceneQuality::Preview, renderer, speed, seconds)
+}
+/// As `copies_at`, rendered at `quality`.
+fn copies_as(
+    quality: SceneQuality,
+    renderer: &Renderer,
+    speed: f32,
+    seconds: (i64, u32),
+) -> Vec<[f32; 4]> {
     let mut doc = blank(W, H, Time::new(24, 1).unwrap()).unwrap();
     let camera = add(&mut doc, op(&CAMERA_3D), &[]);
     let mut cube = op(&SHAPE_3D);
@@ -1894,7 +1903,12 @@ fn copies_at(renderer: &Renderer, speed: f32, seconds: (i64, u32)) -> Vec<[f32; 
         op(&MERGE_SCENES),
         &[("scene", camera), ("scene_2", copies)],
     );
-    doc.output = add(&mut doc, op(&RENDER_SCENE), &[("scene", scene)]);
+    let mut render = op(&RENDER_SCENE);
+    if let Operation::RenderScene(r) = &mut render {
+        r.quality = quality;
+        r.samples = 32;
+    }
+    doc.output = add(&mut doc, render, &[("scene", scene)]);
     renderer
         .render_frame(
             &Plan::compile(&doc).unwrap(),
@@ -2908,4 +2922,33 @@ fn a_path_traced_projection_shows_what_the_camera_saw_and_only_that() {
         holes > 100,
         "the wall hidden behind the cube is left out: {holes}"
     );
+}
+#[test]
+#[ignore = "requires Vulkan"]
+fn copies_at_particles_are_path_traced_where_the_preview_draws_them() {
+    let renderer = renderer();
+    let solid = |p: &[f32; 4]| p[3] > 0.5;
+    for speed in [0.0, 40.0] {
+        let preview = copies_as(SceneQuality::Preview, &renderer, speed, (0, 1));
+        let traced = copies_as(SceneQuality::PathTraced, &renderer, speed, (0, 1));
+        let covered = preview.iter().filter(|p| solid(p)).count();
+        let differ = preview
+            .iter()
+            .zip(&traced)
+            .filter(|(a, b)| solid(a) != solid(b))
+            .count();
+        eprintln!("speed {speed}: {covered} pixels covered, {differ} differ");
+        assert!(covered > 600, "copies show: {covered}");
+        // Only pixels on the copies' outlines may fall either way.
+        assert!(
+            differ * 4 < covered,
+            "{differ} of {covered} framed differently"
+        );
+        // The particles' red tints them when traced too.
+        let (r, g) = traced
+            .iter()
+            .filter(|p| solid(p))
+            .fold((0.0, 0.0), |(r, g), p| (r + p[0], g + p[1]));
+        assert!(r > 4.0 * g, "tinted red: {r} {g}");
+    }
 }

@@ -2397,8 +2397,12 @@ where it faces the viewer (the 3D preview draws it the same way). A Camera
 projection casts its picture as in the preview (as it is, or lit as the surface's
 colour), and what its camera did not see keeps its own surface or is left out;
 what hid a point from the camera is found by a ray to the camera, not a depth map,
-so any number of projecting cameras see past nothing. Not path traced yet: copies
-at particles and Gaussian splats.
+so any number of projecting cameras see past nothing. Copies at particles are placed
+once for each living particle, turned, sized and tinted as the preview draws them,
+in their plain surface (a copy takes no look or projection there either); the mesh is
+stored once however many copies there are, and up to the 100,000 copies a Particle
+instances node makes are read back from the card each frame. Not path traced yet:
+Gaussian splats.
 
 **Denoise** (on by default) smooths away the noise left after the paths, so far
 fewer samples give a clean picture: on a row of library looks, 16 paths a pixel

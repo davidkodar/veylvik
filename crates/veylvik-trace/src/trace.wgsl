@@ -5,7 +5,7 @@
 // The environment lookups (`environment_specular`) are appended from the renderer's
 // shared WGSL and read `environment_map`.
 struct Node { min: vec3<f32>, first: u32, max: vec3<f32>, count: u32 }
-struct Instance { to_object: mat3x4<f32>, to_world: mat3x4<f32>, root: u32, triangle_base: u32, vertex_base: u32, surface: u32 }
+struct Instance { to_object: mat3x4<f32>, to_world: mat3x4<f32>, root: u32, triangle_base: u32, vertex_base: u32, surface: u32, tint: vec4<f32> }
 // finish: brushing, the grain's direction (radians), imperfections, visible grain.
 // projected: where in `data` the picture cast onto it through a camera is (none: all bits set).
 struct Surface { colour: vec3<f32>, roughness: f32, metallic: f32, emission: f32, opacity: f32, flags: u32, texture: u32, shadow: f32, ridges: f32, look: u32, finish: vec4<f32>, projected: u32 }
@@ -22,7 +22,7 @@ struct Frame {
     // seed, instances, the brightest a bounce may add (0: no limit), how much of the
     // picture this render is (below 1: mixed in, its samples in one pass)
     more: vec4<f32>,
-    // where in `data` the placings (7 a placing), surfaces (5 each), top tree nodes
+    // where in `data` the placings (8 a placing), surfaces (5 each), top tree nodes
     // (2 each), its order (4 to a vec4) and the lights (5 each) start
     offsets: vec4<u32>,
     // where the lights start, environment sampling (1), where the textures' places
@@ -51,9 +51,9 @@ const STRAIGHT: u32 = 16u;
 const GLASS: u32 = 32u;
 fn bits(v: vec4<f32>) -> vec4<u32> { return bitcast<vec4<u32>>(v); }
 fn instance_at(i: u32) -> Instance {
-    let b = frame.offsets.x + 7u * i;
+    let b = frame.offsets.x + 8u * i;
     let k = bits(data[b + 6u]);
-    return Instance(mat3x4<f32>(data[b], data[b + 1u], data[b + 2u]), mat3x4<f32>(data[b + 3u], data[b + 4u], data[b + 5u]), k.x, k.y, k.z, k.w);
+    return Instance(mat3x4<f32>(data[b], data[b + 1u], data[b + 2u]), mat3x4<f32>(data[b + 3u], data[b + 4u], data[b + 5u]), k.x, k.y, k.z, k.w, data[b + 7u]);
 }
 fn surface_at(i: u32) -> Surface {
     let b = frame.offsets.y + 5u * i;
@@ -903,6 +903,8 @@ fn path(px: vec2<f32>) -> Seen {
         if bounce == 0u { alpha = 1.0; }
         var sc = s;
         if cast_colour.r >= 0.0 { sc.colour = cast_colour; }
+        // A copy at a particle takes the particle's colour.
+        sc.colour *= inst.tint.rgb;
         // The point and its normal in the object's own space, for the finish's patterns.
         let local = a.xyz * w0 + b.xyz * h.u + c.xyz * h.v;
         let facing = na * w0 + nb * h.u + nc * h.v;
@@ -989,7 +991,7 @@ fn path(px: vec2<f32>) -> Seen {
         shaded = true;
         through_glass = false;
         var add = through * direct(m, p, n, v, bounce == frame.counts.y);
-        if s.emission > 0.0 { add += through * s.colour * s.emission; }
+        if s.emission > 0.0 { add += through * s.colour * inst.tint.rgb * s.emission; }
         add += through * glow;
         if limit > 0.0 && bounce > 0u { add = min(add, vec3<f32>(limit)); }
         colour += add;

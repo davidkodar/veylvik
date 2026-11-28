@@ -38,31 +38,37 @@ fn the_packed_scene_is_hit_where_testing_every_placed_triangle_says() {
             tree: ball.clone(),
             world: rotated(0.0, 1.0, [0.0, 0.0, 0.0]),
             surface: s,
+            tint: [1.0; 3],
         },
         Placed {
             tree: ball.clone(),
             world: rotated(30.0, 1.5, [120.0, -20.0, -50.0]),
             surface: s,
+            tint: [1.0; 3],
         },
         Placed {
             tree: ball.clone(),
             world: rotated(-70.0, 0.5, [-90.0, 40.0, 30.0]),
             surface: s,
+            tint: [1.0; 3],
         },
         Placed {
             tree: block.clone(),
             world: rotated(45.0, 1.0, [0.0, 90.0, 0.0]),
             surface: s,
+            tint: [1.0; 3],
         },
         Placed {
             tree: block.clone(),
             world: rotated(10.0, 2.0, [-60.0, -80.0, -100.0]),
             surface: s,
+            tint: [1.0; 3],
         },
         Placed {
             tree: block.clone(),
             world: rotated(0.0, 0.0, [0.0; 3]),
             surface: s,
+            tint: [1.0; 3],
         },
     ];
     let packed = pack(&placed);

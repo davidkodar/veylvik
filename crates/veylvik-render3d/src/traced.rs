@@ -28,6 +28,7 @@ impl Engine {
             target,
             models,
             time,
+            instances,
             ..
         } = job;
         let expanded = self.expand(scene, models)?;
@@ -55,11 +56,34 @@ impl Engine {
             }
         };
         let picture_of = |source| images.iter().find(|(id, ..)| *id == source);
+        // Each particle node's copies, read once: (node, where and size, turn, tint).
+        let mut read: Vec<(veylvik_document::NodeId, Vec<[[f32; 4]; 3]>)> = Vec::new();
         for object in &scene.objects {
-            // Copies at particles and splats are not path traced yet.
-            if object.instanced.is_some() || matches!(object.geometry, Geometry::Splats { .. }) {
+            // Splats are not path traced yet.
+            if matches!(object.geometry, Geometry::Splats { .. }) {
                 continue;
             }
+            // An object copied at particles is placed once for each living particle (and not
+            // where it is), as the preview draws it.
+            let copies = match object.instanced {
+                Some(id) => {
+                    if !read.iter().any(|(node, _)| *node == id) {
+                        let copies = match instances.iter().find(|i| i.node == id) {
+                            Some(found) => read_copies(device, queue, found)?,
+                            None => Vec::new(),
+                        };
+                        read.push((id, copies));
+                    }
+                    let Some((_, copies)) = read.iter().find(|(node, _)| *node == id) else {
+                        continue;
+                    };
+                    if copies.is_empty() {
+                        continue;
+                    }
+                    Some(copies)
+                }
+                None => None,
+            };
             let s = &object.surface;
             let mut flags = if s.unlit { UNLIT } else { 0 } | if s.catcher { CATCHER } else { 0 };
             // What it shows, as the interactive renderer reads it: a card's picture, a
@@ -88,7 +112,7 @@ impl Engine {
             // preview.
             let projection = object
                 .projection
-                .filter(|_| flags & (CARD | CATCHER) == 0)
+                .filter(|_| flags & (CARD | CATCHER) == 0 && copies.is_none())
                 .and_then(|cast| {
                     let (_, buffer, [w, h], _) = picture_of(cast.image)?;
                     let to_camera = veylvik_scene::math::rigid_inverse(&cast.camera.world);
@@ -112,7 +136,11 @@ impl Engine {
             }
             // A library look, as its material's own blocks for the shared surface code.
             let look = match &s.look {
-                Some(material) if flags & (CARD | CATCHER) == 0 && projection.is_none() => {
+                Some(material)
+                    if flags & (CARD | CATCHER) == 0
+                        && projection.is_none()
+                        && copies.is_none() =>
+                {
                     let (params, lighting) = veylvik_render::material_uniforms(
                         material,
                         width,
@@ -151,29 +179,44 @@ impl Engine {
                 }
                 _ => None,
             };
-            placed.push(Placed {
-                tree: self.tree(object)?,
-                world: object.world,
-                surface: Surface {
-                    colour: s.colour,
-                    roughness: s.roughness,
-                    metallic: s.metallic,
-                    emission: s.emission,
-                    opacity: s.opacity,
-                    flags,
-                    texture,
-                    shadow: s.shadow,
-                    finish: [
-                        s.finish[0],
-                        s.finish[1].to_radians(),
-                        s.finish[2],
-                        s.finish[3],
-                        s.finish[4],
-                    ],
-                    look,
-                    projection,
-                },
-            });
+            let surface = Surface {
+                colour: s.colour,
+                roughness: s.roughness,
+                metallic: s.metallic,
+                emission: s.emission,
+                opacity: s.opacity,
+                flags,
+                texture,
+                shadow: s.shadow,
+                finish: [
+                    s.finish[0],
+                    s.finish[1].to_radians(),
+                    s.finish[2],
+                    s.finish[3],
+                    s.finish[4],
+                ],
+                look,
+                projection,
+            };
+            let tree = self.tree(object)?;
+            match copies {
+                None => placed.push(Placed {
+                    tree,
+                    world: object.world,
+                    surface,
+                    tint: [1.0; 3],
+                }),
+                Some(copies) => {
+                    for [at, turn, tint] in copies.iter().filter(|c| c[0][3] > 0.0) {
+                        placed.push(Placed {
+                            tree: tree.clone(),
+                            world: copied(&object.world, *at, *turn),
+                            surface,
+                            tint: [tint[0], tint[1], tint[2]],
+                        });
+                    }
+                }
+            }
         }
         let textures: Vec<Texture<'_>> = pictures
             .iter()
@@ -352,4 +395,74 @@ fn focus(
     packed
         .hit(eye, ahead, f32::INFINITY)
         .map_or(1.0e8, |h| h.t.min(1.0e8))
+}
+
+/// A particle node's copies read back from the GPU: three values each, where and size,
+/// turn (a quaternion) and tint.
+fn read_copies(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    copies: &veylvik_render::Instances,
+) -> Result<Vec<[[f32; 4]; 3]>> {
+    if copies.count == 0 {
+        return Ok(Vec::new());
+    }
+    let size = u64::from(copies.count) * 48;
+    let staging = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("particle copies read back"),
+        size,
+        usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    });
+    let mut encoder = device.create_command_encoder(&Default::default());
+    encoder.copy_buffer_to_buffer(&copies.buffer, 0, &staging, 0, size);
+    let sent = queue.submit([encoder.finish()]);
+    let slice = staging.slice(..);
+    let (tell, told) = std::sync::mpsc::channel();
+    slice.map_async(wgpu::MapMode::Read, move |result| {
+        let _ = tell.send(result);
+    });
+    device
+        .poll(wgpu::PollType::Wait {
+            submission_index: Some(sent),
+            timeout: None,
+        })
+        .map_err(|e| error(format!("reading particle copies: {e}")))?;
+    told.recv()
+        .map_err(|_| error("reading particle copies: no answer"))?
+        .map_err(|e| error(format!("reading particle copies: {e}")))?;
+    let copies = bytemuck::cast_slice::<u8, [[f32; 4]; 3]>(&slice.get_mapped_range()).to_vec();
+    staging.unmap();
+    Ok(copies)
+}
+/// An object's world placing copied at a particle: centred on itself as it is, turned by
+/// `turn` and sized by `at.w`, at `at`, as the preview's vertex shader places a copy.
+fn copied(world: &[[f32; 4]; 4], at: [f32; 4], turn: [f32; 4]) -> [[f32; 4]; 4] {
+    let [x, y, z, w] = turn;
+    let r = [
+        [
+            1.0 - 2.0 * (y * y + z * z),
+            2.0 * (x * y - w * z),
+            2.0 * (x * z + w * y),
+        ],
+        [
+            2.0 * (x * y + w * z),
+            1.0 - 2.0 * (x * x + z * z),
+            2.0 * (y * z - w * x),
+        ],
+        [
+            2.0 * (x * z - w * y),
+            2.0 * (y * z + w * x),
+            1.0 - 2.0 * (x * x + y * y),
+        ],
+    ];
+    let mut out = [[0.0; 4]; 4];
+    for i in 0..3 {
+        for j in 0..4 {
+            out[i][j] = at[3] * (0..3).map(|k| r[i][k] * world[k][j]).sum::<f32>();
+        }
+        out[i][3] += at[i];
+    }
+    out[3] = [0.0, 0.0, 0.0, 1.0];
+    out
 }
