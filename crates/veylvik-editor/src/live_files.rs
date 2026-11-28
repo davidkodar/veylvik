@@ -120,6 +120,23 @@ impl Studio {
                         Some(_) => return Err("format must be png or exr".into()),
                     },
                     output: self.live_render_node(args)?,
+                    layers: match args.get("layers") {
+                        None => Vec::new(),
+                        Some(layers) => {
+                            let layers: Vec<veylvik_io::sequence::ExportLayer> =
+                                serde_json::from_value(layers.clone())?;
+                            if let Some(missing) =
+                                layers.iter().find(|l| !doc.nodes.contains_key(&l.node))
+                            {
+                                return Err(format!(
+                                    "the {} layer's node does not exist",
+                                    missing.name
+                                )
+                                .into());
+                            }
+                            layers
+                        }
+                    },
                 }
             }
             _ => {

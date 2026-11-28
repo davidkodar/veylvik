@@ -68,9 +68,28 @@ pub(super) fn run(cx: &mut super::PassCx<'_, '_>) -> Result<()> {
         None => None,
     };
     let count = moments.len();
+    let pass = scene_hook::pass_of(plan, scheduled.node);
     for (k, at) in moments.into_iter().enumerate() {
         let (scene, camera, occlusion) = scene_hook::evaluate(plan, scheduled.node, at)?;
         let camera = scene_view.unwrap_or(camera);
+        let ids = if pass == veylvik_document::nodes::ScenePass::Picture {
+            Default::default()
+        } else {
+            scene_hook::object_ids(plan, &scene)
+        };
+        // Seen through the editor's own view, the motion pass moves with the scene
+        // only, not with a camera of the scene's.
+        let moved = match pass {
+            veylvik_document::nodes::ScenePass::Motion => {
+                let mut moved = scene_hook::moved(plan, scheduled.node, at)?;
+                if let Some(view) = scene_view {
+                    moved.before.1 = view;
+                    moved.after.1 = view;
+                }
+                Some(moved)
+            }
+            _ => None,
+        };
         // Copies at particles are worked out in a submission of their own, reading the
         // pictures this frame's earlier passes draw (an emitter, a target): those passes
         // are sent first, so the copies read this frame's pictures, not the last one's.
@@ -113,6 +132,9 @@ pub(super) fn run(cx: &mut super::PassCx<'_, '_>) -> Result<()> {
             } else {
                 scene_hook::tracing(plan, scheduled.node, at, k, count)
             },
+            pass,
+            ids: &ids,
+            moved: moved.as_ref(),
         })?;
     }
     if let Some((other, buffer)) = spare {

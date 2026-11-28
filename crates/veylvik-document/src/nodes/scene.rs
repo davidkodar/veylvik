@@ -895,7 +895,46 @@ pub struct RenderScene {
     /// Smooth away the path tracer's noise, keeping edges, textures and shadows.
     #[serde(default = "yes")]
     pub denoise: bool,
+    /// What it outputs besides the picture: a render pass of the scene for compositing
+    /// (the depth is `depth`).
+    #[serde(default)]
+    pub pass: ScenePass,
 }
+impl RenderScene {
+    /// Whether it outputs the lit picture (not its depth or another render pass).
+    pub fn shows_picture(&self) -> bool {
+        !self.depth && self.pass == ScenePass::Picture
+    }
+}
+/// A render pass a Render scene can output instead of its picture, for compositing.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ScenePass {
+    /// The lit picture.
+    #[default]
+    Picture,
+    /// Which way each surface faces, in the scene's frame (x right, y down, z towards
+    /// the viewer), as red, green and blue from -1 to 1.
+    Normals,
+    /// Where each surface is in the scene, in scene units.
+    Position,
+    /// How far each surface moves on screen to the next frame (red, green) and from
+    /// the last one (blue, alpha), in pixels, x right and y up.
+    Motion,
+    /// Which object covers how much of each pixel, as Cryptomatte keeps it: the two
+    /// objects covering most, each an id (red, blue) and its share (green, alpha).
+    Objects,
+    /// The third and fourth objects covering most of each pixel.
+    ObjectsMore,
+}
+choices!(ScenePass {
+    Picture,
+    Normals,
+    Position,
+    Motion,
+    Objects,
+    ObjectsMore
+});
 fn sixty_four() -> u32 {
     64
 }
@@ -921,7 +960,7 @@ pub static RENDER_SCENE: NodeType = NodeType {
     type_id: "render_scene",
     version: 1,
     label: "Render scene",
-    description: "Renders the scene on its Scene input as an image at the composition size, with transparent background. Camera picks which camera films it (1 = the first, in node order; 0 = the home view that matches 2D). Occlusion sets how much nearby surfaces shade the environment's light, so objects sit on the floor and gaps darken (0 = off). Motion blur is the shutter angle (180 = the film look): the scene is rendered at Blur samples moments across the shutter, centred on the frame, and averaged. With Depth on it outputs the scene's depth instead of its picture: every pixel's distance from the camera in scene units (red, green and blue alike), opaque where an object is and empty elsewhere, without lighting or lens blur. Connect that to the Depth input of Particles filmed by the same camera so objects hide the particles behind them, or to a Lens blur's depth input. Quality preview is the interactive renderer; path_traced follows light along its paths for the final picture: surfaces reflect one another, area lights cast soft shadows and light bounces between surfaces, with samples paths through each pixel (more is cleaner and slower) and up to bounces bounces after the first surface (a depth output is never path traced). Denoise smooths away the noise left after those paths, guided by each pixel's surface colour, facing and distance so edges, textures and shadows stay sharp: far fewer samples give a clean picture.",
+    description: "Renders the scene on its Scene input as an image at the composition size, with transparent background. Camera picks which camera films it (1 = the first, in node order; 0 = the home view that matches 2D). Occlusion sets how much nearby surfaces shade the environment's light, so objects sit on the floor and gaps darken (0 = off). Motion blur is the shutter angle (180 = the film look): the scene is rendered at Blur samples moments across the shutter, centred on the frame, and averaged. With Depth on it outputs the scene's depth instead of its picture: every pixel's distance from the camera in scene units (red, green and blue alike), opaque where an object is and empty elsewhere, without lighting or lens blur. Connect that to the Depth input of Particles filmed by the same camera so objects hide the particles behind them, or to a Lens blur's depth input. Quality preview is the interactive renderer; path_traced follows light along its paths for the final picture: surfaces reflect one another, area lights cast soft shadows and light bounces between surfaces, with samples paths through each pixel (more is cleaner and slower) and up to bounces bounces after the first surface (a depth output is never path traced). Denoise smooths away the noise left after those paths, guided by each pixel's surface colour, facing and distance so edges, textures and shadows stay sharp: far fewer samples give a clean picture. Pass outputs a render pass for compositing instead of the picture (with Depth off): normals (which way each surface faces, in the scene's frame, -1 to 1), position (where each surface is, in scene units), motion (how far each surface moves on screen to the next frame in red and green and from the last in blue and alpha, pixels, x right and y up, as Nuke's motion layer), objects (Cryptomatte: each pixel's two most covering objects as an id and its share, named by their node labels) or objects_more (the third and fourth). Passes are made from 16 rays through each pixel, without lighting, lens blur or motion blur.",
     inputs: &["scene"],
     optional: &[],
     output: PortKind::Image,
@@ -942,10 +981,21 @@ pub static RENDER_SCENE: NodeType = NodeType {
             default: 1.0,
             ..other("denoise", ParameterKind::Boolean, "smooth the noise")
         },
+        other("pass", ParameterKind::ScenePass, "what it outputs"),
     ],
 };
 node!(
     RenderScene,
     RENDER_SCENE,
-    [camera, occlusion, motion_blur, blur_samples]
+    [camera, occlusion, motion_blur, blur_samples],
+    {
+        fn validate(&self) -> Result<()> {
+            if self.depth && self.pass != ScenePass::Picture {
+                return fail(
+                    "Render scene outputs either its depth or another pass: turn Depth off or set Pass to picture",
+                );
+            }
+            Ok(())
+        }
+    }
 );

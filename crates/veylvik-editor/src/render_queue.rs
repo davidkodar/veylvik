@@ -26,6 +26,9 @@ pub enum Output {
         frames: FrameRange,
         format: veylvik_io::FrameFormat,
         output: NodeId,
+        /// More layers beside the picture in each EXR.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        layers: Vec<veylvik_io::sequence::ExportLayer>,
     },
     Video(Box<veylvik_io::video_export::Settings>),
 }
@@ -680,6 +683,7 @@ fn render(
             frames,
             format,
             output,
+            layers,
         } => {
             let value = veylvik_io::sequence::render_sequence_with_inputs(
                 renderer,
@@ -691,6 +695,7 @@ fn render(
                     format: *format,
                     output: *output,
                     region: None,
+                    layers,
                 },
                 |done, total| update(done, total, "Rendering sequence".into()),
             )
@@ -917,6 +922,7 @@ mod tests {
             frames: FrameRange::new(0, 2, job.document.frame_rate).unwrap(),
             format: veylvik_io::FrameFormat::Png,
             output: job.document.output,
+            layers: Vec::new(),
         };
         let progress = Mutex::new(Progress::default());
         assert!(render(&job, &renderer, &AtomicBool::new(false), &progress).unwrap());
@@ -933,6 +939,7 @@ mod tests {
             frames: FrameRange::new(0, 9999, job.document.frame_rate).unwrap(),
             format: veylvik_io::FrameFormat::Png,
             output: job.document.output,
+            layers: Vec::new(),
         };
         queue.add(job).unwrap();
         queue.add(fixture(&dir, "waiting")).unwrap();

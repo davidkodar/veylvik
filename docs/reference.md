@@ -109,7 +109,21 @@ sequences use the same respective color and alpha rules as single-frame export;
 no video encoding or audio is included.
 
 MCP `render_sequence` takes `revision`, `path`, `start`, `end`, and optional `node`
-and `region`, plus `format` (`png` or `exr`). It runs synchronously and returns the sequence manifest. The stdio
+and `region`, plus `format` (`png` or `exr`) and `layers`. It runs synchronously and returns the sequence manifest.
+
+**Layered EXR.** An EXR sequence can carry more layers beside the picture (at most 16):
+each is another node's picture under a name, rendered at the same frame (`layers:
+[{"name", "node"}]` on MCP, `--layer NAME=UUID` on the CLI, or the Layers list of the
+export dialog, which offers every Render scene and ticks its depth and render passes).
+They are named as compositing programs read them: a Render scene's depth as
+`NAME.Z`; normals and position as `NAME.X`, `.Y`, `.Z`; motion as Nuke's
+`forward.u`, `forward.v`, `backward.u`, `backward.v`; objects as Cryptomatte's
+`NAME00.R` to `.A` and objects_more as `NAME01` (give both the same name), with the
+`cryptomatte/<key>/` name, hash (`MurmurHash3_32`), conversion (`uint32_to_float32`)
+and manifest (each object's node label and its id) in the header, so a Cryptomatte
+reader picks objects by name; any other node as `NAME.R`, `.G`, `.B`, `.A`. The
+picture itself stays `R`, `G`, `B`, `A`. Layer values are written as they are, in
+32-bit float with lossless ZIP compression. The stdio
 adapter does not yet expose mid-request cancellation or progress notifications.
 
 ## Blend controls
@@ -2381,7 +2395,23 @@ settles on the wrong kind of motion can still look sure. The
   clothes are to come.
 - **Render scene**: films a scene as an image with camera 1, 2, … in node order, or
   0 for the home view. **Quality** is Preview (the interactive renderer, below) or
-  Path traced, for final pictures.
+  Path traced, for final pictures. **Output** is the picture, its depth, or a render
+  pass for compositing (`pass`): **normals** (which way each surface faces in the
+  scene's frame, -1 to 1), **position** (where each surface is, in scene units; the
+  frame's top left is the origin at depth 0), **motion** (how far each surface moves
+  on screen to the next frame in red and green and from the last in blue and alpha,
+  in pixels, x right and y up, as Nuke reads motion vectors), **objects** and
+  **objects_more** (Cryptomatte: each pixel's two, or third and fourth, most covering
+  objects, as an id in red and blue with its share of the pixel in green and alpha;
+  an object is named by its node's label, so renaming the node renames it). A pass is
+  cast by the path tracer whatever the quality: 16 rays through each pixel on a 4 x 4
+  grid meet the nearest solid surface (a card where its picture is at least half
+  opaque; splats and volumes not), with no lighting, lens blur or motion blur, so
+  shares come in sixteenths. Normals are the mean of the rays that met something;
+  position and motion are those of the ray nearest the pixel's middle; motion follows
+  each object's placing a frame before and after (copies at particles and shapes that
+  bend count as still) and the camera's move. Write them beside the picture in a
+  layered EXR (see **Layered EXR**).
 
 **Path tracing.** With Quality path traced, `veylvik-trace` follows light along its
 paths instead: surfaces reflect one another (a chrome sphere shows the objects

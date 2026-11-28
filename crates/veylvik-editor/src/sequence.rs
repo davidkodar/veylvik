@@ -13,6 +13,8 @@ pub struct Settings {
     pub frames: FrameRange,
     pub format: veylvik_io::FrameFormat,
     pub name: String,
+    /// More layers beside the picture (EXR only).
+    pub layers: Vec<veylvik_io::sequence::ExportLayer>,
 }
 pub struct Controls {
     pub open: bool,
@@ -23,6 +25,9 @@ pub struct Controls {
     name: String,
     /// Showing the frame range fields.
     part: bool,
+    /// The composition's Render scene nodes offered as layers of an EXR: node, written
+    /// or not, the layer's name.
+    layers: Vec<(veylvik_document::NodeId, bool, String)>,
 }
 impl Default for Controls {
     fn default() -> Self {
@@ -34,6 +39,7 @@ impl Default for Controls {
             end: 95,
             name: "frames".into(),
             part: false,
+            layers: Vec::new(),
         }
     }
 }
@@ -43,17 +49,16 @@ impl Controls {
     pub fn panel(
         &mut self,
         ui: &mut egui::Ui,
-        rate: Time,
-        frame_count: u32,
+        doc: &veylvik_document::Composition,
         enabled: bool,
     ) -> Option<Settings> {
+        let (rate, frame_count) = (doc.frame_rate, doc.frame_count);
         if !self.initialized {
             self.end = i64::from(frame_count) - 1;
             self.initialized = true;
         }
         let mut settings = None;
         let last = i64::from(frame_count) - 1;
-        let part = &mut self.part;
         use crate::design::{chip, heading, option_card};
         ui.set_width(622.0_f32.min(ui.ctx().content_rect().width() - 40.0));
         ui.spacing_mut().item_spacing = egui::vec2(8.0, 8.0);
@@ -74,14 +79,14 @@ impl Controls {
             });
             heading(ui, "RANGE");
             let whole = self.start == 0 && self.end == last;
-            let custom = *part || !whole;
+            let custom = self.part || !whole;
             ui.horizontal_wrapped(|ui| {
                 if chip(ui, "Whole composition", !custom).clicked() {
                     (self.start, self.end) = (0, last);
-                    *part = false;
+                    self.part = false;
                 }
                 if chip(ui, "Part of it", custom).clicked() {
-                    *part = true;
+                    self.part = true;
                 }
                 if custom {
                     ui.label("Frames");
@@ -96,6 +101,7 @@ impl Controls {
                 ui.add(egui::TextEdit::singleline(&mut self.name).desired_width(260.0))
                     .on_hover_text("A new folder with this name is made inside the folder you choose next; it must not exist yet");
             });
+            self.layer_choices(ui, doc);
             ui.add_space(6.0);
             ui.separator();
             let result = validate(self.start, self.end, rate, &self.name);
@@ -126,6 +132,7 @@ impl Controls {
                             format: self.format,
                             frames: result.clone().unwrap(),
                             name: self.name.clone(),
+                            layers: self.chosen_layers(),
                         });
                     }
                 });
@@ -156,7 +163,8 @@ impl Controls {
         });
     }
     /// The range and folder name (More settings in the export dialog).
-    pub fn details(&mut self, ui: &mut egui::Ui, frame_count: u32) {
+    pub fn details(&mut self, ui: &mut egui::Ui, doc: &veylvik_document::Composition) {
+        let frame_count = doc.frame_count;
         use crate::design::{chip, heading};
         if !self.initialized {
             self.end = i64::from(frame_count) - 1;
@@ -187,6 +195,77 @@ impl Controls {
             ui.add(egui::TextEdit::singleline(&mut self.name).desired_width(260.0))
                 .on_hover_text("A new folder with this name is made inside the folder you choose next; it must not exist yet");
         });
+        self.layer_choices(ui, doc);
+    }
+    /// The layers chosen, when the files are EXR.
+    fn chosen_layers(&self) -> Vec<veylvik_io::sequence::ExportLayer> {
+        if self.format != veylvik_io::FrameFormat::Exr {
+            return Vec::new();
+        }
+        self.layers
+            .iter()
+            .filter(|(_, on, _)| *on)
+            .map(|(node, _, name)| veylvik_io::sequence::ExportLayer {
+                name: name.trim().to_owned(),
+                node: *node,
+            })
+            .collect()
+    }
+    /// The Render scene nodes to write as layers beside the picture (EXR only): render
+    /// passes and depths are chosen at first, named as compositing programs expect.
+    fn layer_choices(&mut self, ui: &mut egui::Ui, doc: &veylvik_document::Composition) {
+        use veylvik_document::{Operation, nodes::ScenePass};
+        let scenes: Vec<(veylvik_document::NodeId, String, &'static str, &'static str)> = doc
+            .nodes
+            .values()
+            .filter_map(|n| match &n.operation {
+                Operation::RenderScene(r) => {
+                    let (what, name) = match (r.depth, r.pass) {
+                        (true, _) => ("depth", "depth"),
+                        (_, ScenePass::Picture) => ("picture", ""),
+                        (_, ScenePass::Normals) => ("normals", "N"),
+                        (_, ScenePass::Position) => ("position", "P"),
+                        (_, ScenePass::Motion) => ("motion", "motion"),
+                        (_, ScenePass::Objects) => ("objects", "CryptoObject"),
+                        (_, ScenePass::ObjectsMore) => {
+                            ("objects, third and fourth", "CryptoObject")
+                        }
+                    };
+                    Some((n.id, n.label.clone(), what, name))
+                }
+                _ => None,
+            })
+            .collect();
+        self.layers
+            .retain(|(id, ..)| scenes.iter().any(|s| s.0 == *id));
+        for (id, label, what, name) in &scenes {
+            if !self.layers.iter().any(|l| l.0 == *id) {
+                let name = if name.is_empty() {
+                    label
+                        .chars()
+                        .filter(|c| c.is_alphanumeric() || *c == '_')
+                        .collect()
+                } else {
+                    (*name).to_owned()
+                };
+                self.layers.push((*id, *what != "picture", name));
+            }
+        }
+        if self.format != veylvik_io::FrameFormat::Exr || scenes.is_empty() {
+            return;
+        }
+        crate::design::heading(ui, "LAYERS");
+        ui.weak("Written beside the picture in each EXR: a Render scene's depth, render passes or another picture.");
+        for (id, on, name) in &mut self.layers {
+            let Some((_, label, what, _)) = scenes.iter().find(|s| s.0 == *id) else {
+                continue;
+            };
+            ui.horizontal(|ui| {
+                ui.checkbox(on, format!("{label} ({what})"));
+                ui.add_enabled(*on, egui::TextEdit::singleline(name).desired_width(140.0))
+                    .on_hover_text("The layer's name in the file. Objects keep Cryptomatte's numbering: NAME00 for the first two objects, NAME01 for the third and fourth");
+            });
+        }
     }
     /// What the current settings will make, or why they cannot be exported.
     pub fn summary(&mut self, rate: Time, frame_count: u32) -> Result<String, String> {
@@ -213,13 +292,13 @@ impl Controls {
                 format: self.format,
                 frames,
                 name: self.name.clone(),
+                layers: self.chosen_layers(),
             })
     }
     pub fn show(
         &mut self,
         ctx: &egui::Context,
-        rate: Time,
-        frame_count: u32,
+        doc: &veylvik_document::Composition,
         enabled: bool,
     ) -> Option<Settings> {
         let mut settings = None;
@@ -232,7 +311,7 @@ impl Controls {
                 .pivot(egui::Align2::CENTER_CENTER)
                 .default_pos(ctx.content_rect().center())
                 .show(ctx, |ui| {
-                    settings = self.panel(ui, rate, frame_count, enabled);
+                    settings = self.panel(ui, doc, enabled);
                 });
         }
         self.open = open && settings.is_none();

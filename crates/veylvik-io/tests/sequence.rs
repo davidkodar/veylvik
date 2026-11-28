@@ -35,6 +35,7 @@ fn check_sequence(format: veylvik_io::FrameFormat) {
         frames: FrameRange::new(-1, 1, Time::new(30000, 1001).unwrap()).unwrap(),
         output: doc.output,
         region: None,
+        layers: &[],
     };
     let directory = root.join("cancelled");
     let result = render_sequence(&renderer, &doc, &root, &directory, request, |done, _| {
@@ -111,6 +112,7 @@ fn check_sequence(format: veylvik_io::FrameFormat) {
         frames: FrameRange::new(0, 0, doc.frame_rate).unwrap(),
         output: doc.output,
         region: None,
+        layers: &[],
     };
     let mut inputs = veylvik_render::ImageInputs::default();
     let missing = root.join("missing");

@@ -267,9 +267,7 @@ impl Studio {
                         .max_height((ctx.content_rect().height() - 520.0).max(160.0))
                         .show(ui, |ui| match self.pages.export {
                             ExportKind::Video => self.video_export.details(ui, doc),
-                            ExportKind::Sequence => {
-                                self.export_controls.details(ui, doc.frame_count)
-                            }
+                            ExportKind::Sequence => self.export_controls.details(ui, doc),
                         });
                 }
                 let summary = match self.pages.export {

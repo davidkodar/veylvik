@@ -1,5 +1,6 @@
 //! Whole-frame GPU execution. No window, document mutation, or timeline dependency.
 mod cache;
+pub mod cryptomatte;
 pub mod depends;
 mod diagnostics;
 mod environment_bake;
@@ -138,8 +139,8 @@ pub fn material_uniforms(
     ))
 }
 pub use scene_hook::{
-    Gathered, Picture as ScenePicture, SHADOW_HEADER, SHADOW_LIGHTS, SHADOW_VALUES, SceneJob,
-    SceneRenderer, ShadowJob, Trace,
+    Gathered, Moved, Picture as ScenePicture, SHADOW_HEADER, SHADOW_LIGHTS, SHADOW_VALUES,
+    SceneJob, ScenePass, SceneRenderer, ShadowJob, Trace, filmed_objects, object_name, output_pass,
 };
 mod texture;
 mod vector;

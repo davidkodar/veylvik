@@ -2,12 +2,14 @@
 pub mod bvh;
 mod denoise;
 pub mod gpu;
+pub mod passes;
 pub mod scene;
 pub mod volume;
 pub use bvh::{Bvh, Hit, Node};
 pub use gpu::{
     Environment, Gather, Job, Light, Look, Settings, SplatBuffers, Texture, Tracer, View,
 };
+pub use passes::{Moved, Pass, PassJob};
 pub use scene::{
     CARD, CATCHER, CUT, GLASS, Instance, MeshTree, Packed, Placed, Projection, SPLATS, STRAIGHT,
     SplatColour, Surface, UNLIT, pack,

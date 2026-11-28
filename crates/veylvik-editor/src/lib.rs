@@ -2013,6 +2013,7 @@ impl Studio {
                     .project
                     .preview
                     .unwrap_or(self.project.document.snapshot().output),
+                layers: settings.layers,
             },
             settings.name,
         );
@@ -4336,12 +4337,10 @@ impl Studio {
             self.export_video(settings, &ctx);
         }
 
-        if let Some(settings) = self.export_controls.show(
-            &ctx,
-            self.project.document.snapshot().frame_rate,
-            self.project.document.snapshot().frame_count,
-            self.settled(),
-        ) {
+        if let Some(settings) =
+            self.export_controls
+                .show(&ctx, self.project.document.snapshot(), self.settled())
+        {
             self.export_sequence(settings, &ctx);
         }
     }

@@ -116,7 +116,7 @@ const PASS_WORK: u64 = 8_294_400;
 const UNIFORM_STEP: u64 = 256;
 /// The meshes on the GPU: their trees' nodes (two vec4s each) followed by their vertices
 /// in one buffer (a stage may bind few buffers), and their triangles.
-struct Geometry {
+pub(crate) struct Geometry {
     meshes: Vec<usize>,
     vertices: wgpu::Buffer,
     triangles: wgpu::Buffer,
@@ -125,6 +125,10 @@ struct Geometry {
 pub struct Tracer {
     pipeline: wgpu::ComputePipeline,
     layout: wgpu::BindGroupLayout,
+    /// The program and its layout, for the render passes' entry made on first use.
+    module: wgpu::ShaderModule,
+    pipeline_layout: wgpu::PipelineLayout,
+    pub(crate) pass_pipeline: std::sync::OnceLock<wgpu::ComputePipeline>,
     geometry: Mutex<Option<Geometry>>,
     /// The environment made into a table to draw bright directions from, each frame.
     sky_rows: wgpu::ComputePipeline,
@@ -161,20 +165,21 @@ fn buffer<T: bytemuck::Pod>(device: &wgpu::Device, label: &str, data: &[T]) -> w
 }
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
-struct Frame {
-    camera: [[f32; 4]; 3],
-    lens: [f32; 4],
-    look: [f32; 4],
-    counts: [u32; 4],
-    more: [f32; 4],
-    offsets: [u32; 4],
-    lights_at: [u32; 4],
-    volumes: [u32; 4],
+pub(crate) struct Frame {
+    pub(crate) camera: [[f32; 4]; 3],
+    pub(crate) lens: [f32; 4],
+    pub(crate) look: [f32; 4],
+    pub(crate) counts: [u32; 4],
+    pub(crate) more: [f32; 4],
+    pub(crate) offsets: [u32; 4],
+    pub(crate) lights_at: [u32; 4],
+    pub(crate) volumes: [u32; 4],
+    pub(crate) pass_info: [u32; 4],
 }
 /// The frame's small arrays in one list of vec4s, and where each starts: placings (8 a
 /// placing), surfaces (5) and the pictures cast onto them (5 each), top tree nodes (2), its order (4 to a vec4), lights (5) and
 /// the textures' places in the shared texture buffer (1: first texel, width, height).
-fn frame_data(
+pub(crate) fn frame_data(
     scene: &Packed,
     lights: &[Light],
     places: &[[u32; 3]],
@@ -276,8 +281,9 @@ impl Tracer {
     /// and `environment_wgsl` (the renderer's shared environment lookups) appended.
     pub fn new(device: &wgpu::Device, surface_wgsl: &str, environment_wgsl: &str) -> Self {
         let source = format!(
-            "{}\n{}\n{}\n{}",
+            "{}\n{}\n{}\n{}\n{}",
             include_str!("trace.wgsl"),
+            include_str!("passes.wgsl"),
             crate::VOLUME_WGSL,
             surface_wgsl,
             environment_wgsl
@@ -345,6 +351,9 @@ impl Tracer {
         Self {
             pipeline,
             layout,
+            module,
+            pipeline_layout,
+            pass_pipeline: std::sync::OnceLock::new(),
             geometry: Mutex::new(None),
             sky_rows: sky("sky_rows"),
             sky_down: sky("sky_down"),
@@ -406,48 +415,9 @@ impl Tracer {
             None => None,
         };
         let gathered = settings.denoise.map_or(0, |g| g.gathered);
-        let mut geometry = self
-            .geometry
-            .lock()
-            .map_err(|_| "path tracer lock poisoned")?;
-        if geometry.as_ref().is_none_or(|g| g.meshes != scene.meshes) {
-            let mut both: Vec<[f32; 4]> = bytemuck::cast_slice(&scene.nodes).to_vec();
-            both.extend_from_slice(&scene.vertices);
-            let vertices = buffer(device, "path tracer geometry", &both);
-            let triangles = buffer(device, "path tracer triangles", &scene.triangles);
-            let bytes = vertices.size() + triangles.size();
-            *geometry = Some(Geometry {
-                meshes: scene.meshes.clone(),
-                vertices,
-                triangles,
-                bytes,
-            });
-        }
+        let geometry = self.geometry_for(device, scene)?;
         let g = geometry.as_ref().expect("geometry was just made");
-        // The environment's table, then the pictures, one after another in one buffer (a
-        // stage may bind few buffers).
-        let mut places = Vec::with_capacity(textures.len());
-        let mut texels = SKY_VEC4S;
-        for t in textures {
-            places.push([texels as u32, t.width, t.height]);
-            texels += u64::from(t.width) * u64::from(t.height);
-        }
-        if texels > u64::from(u32::MAX) {
-            return Err("the scene's pictures are too large to path trace together".into());
-        }
-        let pictures = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("path tracer pictures"),
-            size: texels * 16,
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-        for (t, place) in textures.iter().zip(&places) {
-            let bytes = u64::from(t.width) * u64::from(t.height) * 16;
-            if t.buffer.size() < bytes {
-                return Err("a picture is smaller than it says".into());
-            }
-            encoder.copy_buffer_to_buffer(t.buffer, 0, &pictures, u64::from(place[0]) * 16, bytes);
-        }
+        let (pictures, places) = pictures(device, encoder, textures)?;
         let (mut data, offsets, [lights_at, textures_at, looks_at]) =
             frame_data(scene, lights, &places, looks);
         let media_at = data.len() as u32;
@@ -513,6 +483,7 @@ impl Tracer {
                     looks_at,
                 ],
                 volumes: [media_at, media.len() as u32, 0, 0],
+                pass_info: [0; 4],
             };
             let at = (u64::from(p) * UNIFORM_STEP) as usize;
             uniforms[at..at + std::mem::size_of::<Frame>()]
@@ -523,59 +494,23 @@ impl Tracer {
             contents: &uniforms,
             usage: wgpu::BufferUsages::UNIFORM,
         });
-        let bind = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("path tracer"),
-            layout: &self.layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
-                        buffer: &uniform,
-                        offset: 0,
-                        size: wgpu::BufferSize::new(std::mem::size_of::<Frame>() as u64),
-                    }),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: splat_data.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: g.vertices.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 3,
-                    resource: g.triangles.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 4,
-                    resource: data.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 5,
-                    resource: environment.map.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 6,
-                    resource: match &work {
-                        Some(w) => w.gathered.as_entire_binding(),
-                        None => wgpu::BindingResource::Buffer(wgpu::BufferBinding {
-                            buffer: target,
-                            offset: 0,
-                            size: wgpu::BufferSize::new(pixels * 16),
-                        }),
-                    },
-                },
-                wgpu::BindGroupEntry {
-                    binding: 7,
-                    resource: splat_rest.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 8,
-                    resource: pictures.as_entire_binding(),
-                },
-            ],
-        });
+        let bind = self.bind(
+            device,
+            &uniform,
+            [splat_data, splat_rest],
+            g,
+            &data,
+            environment.map,
+            match &work {
+                Some(w) => w.gathered.as_entire_binding(),
+                None => wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                    buffer: target,
+                    offset: 0,
+                    size: wgpu::BufferSize::new(pixels * 16),
+                }),
+            },
+            &pictures,
+        );
         // The environment's table, made again each frame (a few hundred thousand texel
         // reads): the environment may be another picture, or the same one changed.
         if settings.sample_sky {
@@ -651,4 +586,134 @@ impl Tracer {
         }
         Ok(())
     }
+    /// The meshes' geometry on the GPU, uploaded again only when the meshes change.
+    pub(crate) fn geometry_for(
+        &self,
+        device: &wgpu::Device,
+        scene: &Packed,
+    ) -> Result<std::sync::MutexGuard<'_, Option<Geometry>>, String> {
+        let mut geometry = self
+            .geometry
+            .lock()
+            .map_err(|_| "path tracer lock poisoned")?;
+        if geometry.as_ref().is_none_or(|g| g.meshes != scene.meshes) {
+            let mut both: Vec<[f32; 4]> = bytemuck::cast_slice(&scene.nodes).to_vec();
+            both.extend_from_slice(&scene.vertices);
+            let vertices = buffer(device, "path tracer geometry", &both);
+            let triangles = buffer(device, "path tracer triangles", &scene.triangles);
+            let bytes = vertices.size() + triangles.size();
+            *geometry = Some(Geometry {
+                meshes: scene.meshes.clone(),
+                vertices,
+                triangles,
+                bytes,
+            });
+        }
+        Ok(geometry)
+    }
+    /// The program's bindings: the frame's uniform, splats, geometry, the frame's data,
+    /// the environment, the picture written and the pictures read.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn bind(
+        &self,
+        device: &wgpu::Device,
+        uniform: &wgpu::Buffer,
+        [splat_data, splat_rest]: [&wgpu::Buffer; 2],
+        g: &Geometry,
+        data: &wgpu::Buffer,
+        environment: &wgpu::Buffer,
+        out: wgpu::BindingResource<'_>,
+        pictures: &wgpu::Buffer,
+    ) -> wgpu::BindGroup {
+        device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("path tracer"),
+            layout: &self.layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                        buffer: uniform,
+                        offset: 0,
+                        size: wgpu::BufferSize::new(std::mem::size_of::<Frame>() as u64),
+                    }),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: splat_data.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: g.vertices.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: g.triangles.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 4,
+                    resource: data.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 5,
+                    resource: environment.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 6,
+                    resource: out,
+                },
+                wgpu::BindGroupEntry {
+                    binding: 7,
+                    resource: splat_rest.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 8,
+                    resource: pictures.as_entire_binding(),
+                },
+            ],
+        })
+    }
+    /// The render passes' entry of the program, made the first time it is used.
+    pub(crate) fn pass_pipeline(&self, device: &wgpu::Device) -> &wgpu::ComputePipeline {
+        self.pass_pipeline.get_or_init(|| {
+            device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                label: Some("render passes"),
+                layout: Some(&self.pipeline_layout),
+                module: &self.module,
+                entry_point: Some("passes"),
+                compilation_options: Default::default(),
+                cache: None,
+            })
+        })
+    }
+}
+/// The environment's table, then the pictures, one after another in one buffer (a stage
+/// may bind few buffers), and where each picture starts: (first texel, width, height).
+pub(crate) fn pictures(
+    device: &wgpu::Device,
+    encoder: &mut wgpu::CommandEncoder,
+    textures: &[Texture<'_>],
+) -> Result<(wgpu::Buffer, Vec<[u32; 3]>), String> {
+    let mut places = Vec::with_capacity(textures.len());
+    let mut texels = SKY_VEC4S;
+    for t in textures {
+        places.push([texels as u32, t.width, t.height]);
+        texels += u64::from(t.width) * u64::from(t.height);
+    }
+    if texels > u64::from(u32::MAX) {
+        return Err("the scene's pictures are too large to path trace together".into());
+    }
+    let pictures = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("path tracer pictures"),
+        size: texels * 16,
+        usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    });
+    for (t, place) in textures.iter().zip(&places) {
+        let bytes = u64::from(t.width) * u64::from(t.height) * 16;
+        if t.buffer.size() < bytes {
+            return Err("a picture is smaller than it says".into());
+        }
+        encoder.copy_buffer_to_buffer(t.buffer, 0, &pictures, u64::from(place[0]) * 16, bytes);
+    }
+    Ok((pictures, places))
 }

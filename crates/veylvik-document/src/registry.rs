@@ -55,6 +55,8 @@ pub enum ParameterKind {
     Fit,
     /// Preview or path traced (Render scene).
     SceneQuality,
+    /// The picture or a render pass (Render scene).
+    ScenePass,
     LightKind,
     /// What a Volume fills: box, sphere or ground mist.
     VolumeShape,
@@ -147,6 +149,7 @@ impl Parameter {
             ParameterKind::ShapeKind => json!(crate::nodes::ShapeKind::default()),
             ParameterKind::Fit => json!(crate::nodes::Fit::default()),
             ParameterKind::SceneQuality => json!(crate::nodes::SceneQuality::default()),
+            ParameterKind::ScenePass => json!(crate::nodes::ScenePass::default()),
             ParameterKind::LightKind => json!(crate::nodes::LightKind::default()),
             ParameterKind::VolumeShape => json!(crate::nodes::VolumeShape::default()),
             ParameterKind::ForceKind => json!(crate::nodes::ForceKind::default()),
@@ -194,6 +197,9 @@ impl Parameter {
             ParameterKind::Fit => json!({"type":"string","enum":crate::nodes::Fit::ALL}),
             ParameterKind::SceneQuality => {
                 json!({"type":"string","enum":crate::nodes::SceneQuality::ALL})
+            }
+            ParameterKind::ScenePass => {
+                json!({"type":"string","enum":crate::nodes::ScenePass::ALL})
             }
             ParameterKind::LightKind => {
                 json!({"type":"string","enum":crate::nodes::LightKind::ALL})

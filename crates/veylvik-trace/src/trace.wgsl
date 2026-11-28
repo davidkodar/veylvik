@@ -32,6 +32,10 @@ struct Frame {
     lights_at: vec4<u32>,
     // where the volumes start (MEDIUM_VEC4S each, volume.wgsl), how many
     volumes: vec4<u32>,
+    // A render pass (passes.wgsl): which (1 normals, 2 position, 3 motion, 4 objects,
+    // 5 objects more), where the placings' ids start (4 a vec4), where their places a
+    // frame before and after start (6 vec4s each), where the three cameras start
+    pass_info: vec4<u32>,
 }
 @group(0) @binding(0) var<uniform> frame: Frame;
 // Gaussian splats, four vec4s each: place and opacity, size, turn (x y z w), colour.

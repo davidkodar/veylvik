@@ -2,6 +2,7 @@
 //!
 //! Registered with `Renderer::set_scene_renderer`; the render crate plans the pass
 //! and hands over the scene, camera, card images and target buffer.
+mod passes;
 mod resources;
 mod setup;
 mod shadow;
@@ -457,6 +458,10 @@ impl SceneRenderer for Engine {
         self.release_traced();
     }
     fn render(&self, job: SceneJob<'_>) -> Result<()> {
+        // A render pass is cast by the tracer, whichever the quality.
+        if job.pass != veylvik_document::nodes::ScenePass::Picture && !job.depth {
+            return self.render_pass(job);
+        }
         // Path traced: the tracer makes the picture (depth and the reflections view never are).
         if let Some(trace) = job
             .trace

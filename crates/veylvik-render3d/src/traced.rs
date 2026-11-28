@@ -389,7 +389,7 @@ impl Engine {
             .map_err(error)
     }
     /// An object's mesh as a tree, kept between frames under its mesh's key.
-    fn tree(&self, object: &veylvik_scene::Object) -> Result<Arc<MeshTree>> {
+    pub(crate) fn tree(&self, object: &veylvik_scene::Object) -> Result<Arc<MeshTree>> {
         let key = format!("{:?}{:?}", object.geometry, object.flutter);
         self.cached_tree(key, || Ok(MeshTree::new(&self.cpu_mesh(object)?)))
     }
@@ -515,7 +515,7 @@ fn focus(
 
 /// A particle node's copies read back from the GPU: three values each, where and size,
 /// turn (a quaternion) and tint.
-fn read_copies(
+pub(crate) fn read_copies(
     device: &wgpu::Device,
     queue: &wgpu::Queue,
     copies: &veylvik_render::Instances,
@@ -553,7 +553,7 @@ fn read_copies(
 }
 /// An object's world placing copied at a particle: centred on itself as it is, turned by
 /// `turn` and sized by `at.w`, at `at`, as the preview's vertex shader places a copy.
-fn copied(world: &[[f32; 4]; 4], at: [f32; 4], turn: [f32; 4]) -> [[f32; 4]; 4] {
+pub(crate) fn copied(world: &[[f32; 4]; 4], at: [f32; 4], turn: [f32; 4]) -> [[f32; 4]; 4] {
     let [x, y, z, w] = turn;
     let r = [
         [

@@ -86,6 +86,113 @@ pub struct SceneJob<'a> {
     pub also: Option<(&'a wgpu::Buffer, bool)>,
     /// Path trace the picture instead of drawing it (never for depth or the reflections view).
     pub trace: Option<Trace>,
+    /// What it outputs besides the picture (a render pass; the depth is `depth`).
+    pub pass: veylvik_document::nodes::ScenePass,
+    /// Each scene object's Cryptomatte id, by its node (for the objects passes).
+    pub ids: &'a std::collections::BTreeMap<NodeId, u32>,
+    /// The scene and camera a frame before and a frame after (for the motion pass).
+    pub moved: Option<&'a Moved>,
+}
+/// The scene and its camera a frame before and a frame after the one rendered.
+#[derive(Debug, Clone)]
+pub struct Moved {
+    pub before: (veylvik_scene::Scene, veylvik_scene::Camera),
+    pub after: (veylvik_scene::Scene, veylvik_scene::Camera),
+}
+/// The render pass a Render scene outputs (picture when it outputs its depth).
+pub(crate) fn pass_of(plan: &crate::Plan, node: usize) -> veylvik_document::nodes::ScenePass {
+    match &plan.nodes[node].operation {
+        Operation::RenderScene(op) if !op.depth => op.pass,
+        _ => veylvik_document::nodes::ScenePass::Picture,
+    }
+}
+/// Whether the Render scene outputs a render pass other than its picture and depth.
+pub(crate) fn shows_pass(plan: &crate::Plan, node: usize) -> bool {
+    pass_of(plan, node) != veylvik_document::nodes::ScenePass::Picture
+}
+/// The Cryptomatte id of each object in `scene`, named by its node's label.
+pub(crate) fn object_ids(
+    plan: &crate::Plan,
+    scene: &veylvik_scene::Scene,
+) -> std::collections::BTreeMap<NodeId, u32> {
+    let mut ids = std::collections::BTreeMap::new();
+    for object in &scene.objects {
+        ids.entry(object.node)
+            .or_insert_with(|| crate::cryptomatte::id(&object_name(plan, object.node)));
+    }
+    ids
+}
+/// What a plan's output gives when it is a Render scene: its picture or render pass.
+pub fn output_pass(plan: &crate::Plan) -> Option<ScenePass> {
+    let node = plan.nodes.iter().position(|n| n.id == plan.output_node())?;
+    match &plan.nodes[node].operation {
+        Operation::RenderScene(op) if op.depth => Some(ScenePass::Depth),
+        Operation::RenderScene(op) => Some(match op.pass {
+            veylvik_document::nodes::ScenePass::Picture => ScenePass::Picture,
+            veylvik_document::nodes::ScenePass::Normals => ScenePass::Normals,
+            veylvik_document::nodes::ScenePass::Position => ScenePass::Position,
+            veylvik_document::nodes::ScenePass::Motion => ScenePass::Motion,
+            veylvik_document::nodes::ScenePass::Objects => ScenePass::Objects,
+            veylvik_document::nodes::ScenePass::ObjectsMore => ScenePass::ObjectsMore,
+        }),
+        _ => None,
+    }
+}
+/// What a Render scene outputs, the depth among the rest.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ScenePass {
+    Picture,
+    Depth,
+    Normals,
+    Position,
+    Motion,
+    Objects,
+    ObjectsMore,
+}
+/// The names of the objects a plan's output Render scene films at `time` (its objects
+/// passes' manifest), each once.
+pub fn filmed_objects(plan: &crate::Plan, time: veylvik_document::Time) -> Result<Vec<String>> {
+    let Some(node) = plan.nodes.iter().position(|n| n.id == plan.output_node()) else {
+        return Ok(Vec::new());
+    };
+    let (scene, ..) = evaluate(plan, node, time)?;
+    let mut names: Vec<String> = Vec::new();
+    for object in &scene.objects {
+        let name = object_name(plan, object.node);
+        if !names.contains(&name) {
+            names.push(name);
+        }
+    }
+    Ok(names)
+}
+/// The name an object goes by in the objects passes: its node's label.
+pub fn object_name(plan: &crate::Plan, node: NodeId) -> String {
+    plan.nodes
+        .iter()
+        .chain(&plan.light_data)
+        .find(|n| n.id == node)
+        .map_or_else(|| format!("node {node}"), |n| n.label.clone())
+}
+/// The scene a frame before and after `time`, for the motion pass.
+pub(crate) fn moved(
+    plan: &crate::Plan,
+    node: usize,
+    time: veylvik_document::Time,
+) -> Result<Moved> {
+    let rate = plan.frame_rate;
+    let frame = veylvik_document::Time::new(
+        i64::from(rate.rate),
+        u32::try_from(rate.ticks.max(1)).map_err(|_| error("frame rate out of range"))?,
+    )
+    .map_err(error)?;
+    let at = |t: veylvik_document::Time| -> Result<(veylvik_scene::Scene, veylvik_scene::Camera)> {
+        let (scene, camera, _) = evaluate(plan, node, t)?;
+        Ok((scene, camera))
+    };
+    Ok(Moved {
+        before: at(time.checked_sub(frame).map_err(error)?)?,
+        after: at(time.checked_add(frame).map_err(error)?)?,
+    })
 }
 /// A path traced render: paths through each pixel for this moment, bounces after the
 /// first surface, and a seed that makes the noise this moment's own and repeatable.
@@ -116,7 +223,7 @@ pub(crate) fn tracing(
     let Operation::RenderScene(op) = &plan.nodes[node].operation else {
         return None;
     };
-    if op.depth || op.quality != veylvik_document::nodes::SceneQuality::PathTraced {
+    if !op.shows_picture() || op.quality != veylvik_document::nodes::SceneQuality::PathTraced {
         return None;
     }
     let seed = crate::fnv(
@@ -241,6 +348,9 @@ pub(crate) fn twin(
         if second.kernel != crate::Kernel::RenderScene
             || !visible.contains(&plan.nodes[second.node].id)
             || shows_depth(plan, second.node) == shows_depth(plan, first.node)
+            // A render pass is made apart from the picture and the depth.
+            || shows_pass(plan, first.node)
+            || shows_pass(plan, second.node)
             // A path traced picture is made apart from its depth.
             || tracing(plan, first.node, time, 0, 1).is_some()
             || tracing(plan, second.node, time, 0, 1).is_some()
@@ -277,7 +387,8 @@ pub(crate) fn sample_times(
         .clamp(0.0, 360.0)
         .round() as i64;
     let rate = plan.frame_rate;
-    if angle == 0 || rate.ticks <= 0 {
+    // A render pass is of the frame itself, never blurred.
+    if angle == 0 || rate.ticks <= 0 || shows_pass(plan, node) {
         return Ok(vec![time]);
     }
     let n = op
@@ -317,6 +428,15 @@ pub(crate) fn fingerprint(
             tracing(plan, node, at, 0, 1)
         )
         .hash(&mut hasher);
+        // A render pass shows the objects' names (as their ids) and, for motion, where
+        // things are a frame before and after.
+        let pass = pass_of(plan, node);
+        if pass != veylvik_document::nodes::ScenePass::Picture {
+            format!("{pass:?}{:?}", object_ids(plan, &scene)).hash(&mut hasher);
+        }
+        if pass == veylvik_document::nodes::ScenePass::Motion {
+            format!("{:?}", moved(plan, node, at)?).hash(&mut hasher);
+        }
         // Copies at particles are made of the particles' whole making.
         for id in scene.objects.iter().filter_map(|o| o.instanced) {
             if let Some(source) = plan

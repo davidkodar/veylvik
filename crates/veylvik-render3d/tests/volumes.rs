@@ -71,8 +71,8 @@ fn hazy(renderer: &Renderer, quality: SceneQuality, cube: bool) -> Vec<[f32; 4]>
     if let Ok(dir) = std::env::var("VOLUME_SHOTS") {
         let mut ppm = format!("P6 {W} {H} 255\n").into_bytes();
         for p in &pixels {
-            for c in 0..3 {
-                ppm.push(((p[c] * 0.5).clamp(0.0, 1.0).powf(1.0 / 2.2) * 255.0) as u8);
+            for c in &p[..3] {
+                ppm.push(((c * 0.5).clamp(0.0, 1.0).powf(1.0 / 2.2) * 255.0) as u8);
             }
         }
         std::fs::write(format!("{dir}/{quality:?}-{cube}.ppm"), ppm).unwrap();

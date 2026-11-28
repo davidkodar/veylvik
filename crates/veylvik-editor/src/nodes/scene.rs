@@ -642,11 +642,69 @@ impl Inspect for RenderScene {
             }
         });
         ui.weak("Films the scene on its Scene input. Camera 1 is the first camera in the scene; 0 is the home view that matches 2D. Occlusion shades the environment light where surfaces meet, so objects sit on the floor (0 = off).");
-        cx.dirty |= ui
-            .checkbox(&mut self.depth, "Output depth")
-            .on_hover_text("Each pixel's distance from the camera instead of the picture, for the Depth input of Particles or a Lens blur")
-            .changed();
-        if self.depth {
+        use veylvik_document::nodes::ScenePass;
+        // One choice of what it outputs: the picture, its depth, or another render pass.
+        let outputs: [(Option<ScenePass>, &str, &str); 7] = [
+            (Some(ScenePass::Picture), "Picture", "The lit picture"),
+            (
+                None,
+                "Depth",
+                "Each pixel's distance from the camera, for the Depth input of Particles or a Lens blur",
+            ),
+            (
+                Some(ScenePass::Normals),
+                "Normals",
+                "Which way each surface faces, in the scene's frame (x right, y down, z towards the viewer), -1 to 1: for relighting",
+            ),
+            (
+                Some(ScenePass::Position),
+                "Position",
+                "Where each surface is in the scene, in scene units: for placing things and masks in 3D",
+            ),
+            (
+                Some(ScenePass::Motion),
+                "Motion",
+                "How far each surface moves on screen to the next frame (red, green) and from the last (blue, alpha), in pixels, x right and y up: for motion blur in compositing",
+            ),
+            (
+                Some(ScenePass::Objects),
+                "Objects",
+                "Cryptomatte: each pixel's two most covering objects and their shares, named by the nodes' labels: pick objects into mattes",
+            ),
+            (
+                Some(ScenePass::ObjectsMore),
+                "Objects, third and fourth",
+                "Cryptomatte: each pixel's third and fourth most covering objects",
+            ),
+        ];
+        let current = if self.depth { None } else { Some(self.pass) };
+        let shown = outputs
+            .iter()
+            .find(|o| o.0 == current)
+            .map_or("Picture", |o| o.1);
+        ui.horizontal(|ui| {
+            ui.label("Output");
+            egui::ComboBox::from_id_salt("render-scene-output")
+                .selected_text(shown)
+                .show_ui(ui, |ui| {
+                    for (output, label, hint) in outputs {
+                        if ui
+                            .selectable_label(current == output, label)
+                            .on_hover_text(hint)
+                            .clicked()
+                            && current != output
+                        {
+                            self.depth = output.is_none();
+                            self.pass = output.unwrap_or(ScenePass::Picture);
+                            cx.dirty = true;
+                        }
+                    }
+                });
+        });
+        if !self.shows_picture() {
+            if !self.depth {
+                ui.weak("Made from 16 rays through each pixel, without lighting, lens blur or motion blur. Export it in a layered EXR, or use it in the graph.");
+            }
             return;
         }
         use veylvik_document::nodes::SceneQuality;

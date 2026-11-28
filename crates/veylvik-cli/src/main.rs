@@ -11,7 +11,7 @@ use std::path::Path;
 use veylvik_document::{Composition, Node, Operation, Time};
 use veylvik_render::{Plan, Region, RenderRequest};
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
-const USAGE: &str = "usage: veylvik open [FILE] [--control-dir DIRECTORY | --no-control] | demo FILE [--motion|--procedural|--gold-title] | import IMAGE.png|IMAGE.exr FILE | import-nuke SCRIPT.nk NEW_FILE | ofx list|describe|render ... | outline-text FONT TEXT NEW_FILE [OPTIONS] | collect FILE NEW_DIRECTORY | verify-collection DIRECTORY | nodes | check FILE | render FILE OUTPUT.png|OUTPUT.exr [TICKS RATE] [--node UUID] [--crop X Y WIDTH HEIGHT] | render-video FILE OUTPUT.mp4 [OPTIONS] | render-sequence FILE DIRECTORY START END [--format png|exr] [--node UUID] [--crop X Y WIDTH HEIGHT] | track FILE NEW_FILE SOURCE_UUID START END \"X,Y X,Y X,Y X,Y\" [\"AREA X,Y X,Y X,Y X,Y\"] [--screen-area] [--motion auto|perspective|affine|similarity|translation] [--no-refine] [--back-to FRAME] | solve-camera FILE NEW_FILE SOURCE_UUID [START END] [--focal MM] [--sensor MM] | segment FILE NEW_FILE SOURCE_UUID FRAME END \"X,Y X,Y,- ...\" [--back-to FRAME] [--model ID] [--no-detail] [--matting|--no-matting] | models [install|uninstall|enable|disable ID] | mcp [FILE] | mcp --studio [SOCKET|DIRECTORY]";
+const USAGE: &str = "usage: veylvik open [FILE] [--control-dir DIRECTORY | --no-control] | demo FILE [--motion|--procedural|--gold-title] | import IMAGE.png|IMAGE.exr FILE | import-nuke SCRIPT.nk NEW_FILE | ofx list|describe|render ... | outline-text FONT TEXT NEW_FILE [OPTIONS] | collect FILE NEW_DIRECTORY | verify-collection DIRECTORY | nodes | check FILE | render FILE OUTPUT.png|OUTPUT.exr [TICKS RATE] [--node UUID] [--crop X Y WIDTH HEIGHT] | render-video FILE OUTPUT.mp4 [OPTIONS] | render-sequence FILE DIRECTORY START END [--format png|exr] [--node UUID] [--crop X Y WIDTH HEIGHT] [--layer NAME=UUID]... | track FILE NEW_FILE SOURCE_UUID START END \"X,Y X,Y X,Y X,Y\" [\"AREA X,Y X,Y X,Y X,Y\"] [--screen-area] [--motion auto|perspective|affine|similarity|translation] [--no-refine] [--back-to FRAME] | solve-camera FILE NEW_FILE SOURCE_UUID [START END] [--focal MM] [--sensor MM] | segment FILE NEW_FILE SOURCE_UUID FRAME END \"X,Y X,Y,- ...\" [--back-to FRAME] [--model ID] [--no-detail] [--matting|--no-matting] | models [install|uninstall|enable|disable ID] | mcp [FILE] | mcp --studio [SOCKET|DIRECTORY]";
 fn run() -> Result<()> {
     let args: Vec<String> = std::env::args().collect();
     match args.get(1).map(String::as_str) {
@@ -394,9 +394,21 @@ fn run() -> Result<()> {
             }
             let mut options = Vec::new();
             let mut format = None;
+            let mut layers = Vec::new();
             let mut index = 6;
             while index < args.len() {
-                if args[index] == "--format" {
+                if args[index] == "--layer" {
+                    // NAME=NODE: another node's picture beside the picture in each EXR.
+                    let (name, node) = args
+                        .get(index + 1)
+                        .and_then(|v| v.split_once('='))
+                        .ok_or("--layer needs NAME=NODE (a node id)")?;
+                    layers.push(assets::sequence::ExportLayer {
+                        name: name.to_owned(),
+                        node: node.parse()?,
+                    });
+                    index += 2;
+                } else if args[index] == "--format" {
                     if format.is_some() || index + 1 >= args.len() {
                         return Err(
                             "--format needs one png or exr value and cannot be repeated".into()
@@ -412,7 +424,7 @@ fn run() -> Result<()> {
                 }
             }
             if options.first().is_some_and(|arg| !arg.starts_with("--")) {
-                return Err("sequence options must be --node, --crop or --format".into());
+                return Err("sequence options must be --node, --crop, --format or --layer".into());
             }
             let (output, request) = render_options(&doc, &options)?;
             let renderer = assets::runtime::renderer()?;
@@ -426,6 +438,7 @@ fn run() -> Result<()> {
                     frames,
                     output,
                     region: request.region,
+                    layers: &layers,
                 },
                 |completed, total| {
                     eprintln!(
