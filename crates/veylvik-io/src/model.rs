@@ -3,7 +3,9 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
 use veylvik_mesh::animation::{self as anim, Between, Channel, Clip, Joint, Keyed};
-use veylvik_mesh::{MAX_PARTS, MAX_TEXTURE, MAX_VERTICES, Mesh, Model, Part, Texture, Vertex};
+use veylvik_mesh::{
+    MAX_PARTS, MAX_TEXTURE, MAX_VERTICES, Mesh, Model, Part, Skin, Texture, Vertex,
+};
 
 type Result<T> = std::result::Result<T, String>;
 type Mat = [[f32; 4]; 4];
@@ -110,6 +112,9 @@ pub fn load(path: &Path) -> Result<Model> {
         let world = mul(&parent, &node.transform().matrix());
         pending.extend(node.children().map(|c| (c, world)));
         let Some(mesh) = node.mesh() else { continue };
+        // A skinned mesh is placed by its joints, not by its node (glTF's rule).
+        let skin = node.skin();
+        let world = if skin.is_some() { identity } else { world };
         // A mirroring transform turns faces inside out; flip them back.
         let m3 = |c: usize, r: usize| world[c][r];
         let det = m3(0, 0) * (m3(1, 1) * m3(2, 2) - m3(2, 1) * m3(1, 2))
@@ -139,8 +144,20 @@ pub fn load(path: &Path) -> Result<Model> {
                 return Err("a part indexes past its vertices".into());
             }
             let normals: Option<Vec<[f32; 3]>> = reader.read_normals().map(|n| n.collect());
+            let normals_raw = normals.clone();
             let uvs: Option<Vec<[f32; 2]>> =
                 reader.read_tex_coords(0).map(|t| t.into_f32().collect());
+            let skinned = skin.as_ref().map(|skin| {
+                (
+                    skin,
+                    reader
+                        .read_joints(0)
+                        .map(|j| j.into_u16().collect::<Vec<_>>()),
+                    reader
+                        .read_weights(0)
+                        .map(|w| w.into_f32().collect::<Vec<_>>()),
+                )
+            });
             // Into Veylvik's frame: world transform, then y flipped (glTF is y up), which
             // mirrors, so triangle order flips too (twice for a mirroring transform).
             let flip = |v: [f32; 3]| [v[0], -v[1], v[2]];
@@ -200,6 +217,50 @@ pub fn load(path: &Path) -> Result<Model> {
                     .or_insert_with(|| images.get(index).and_then(texture).map(Arc::new))
                     .clone()
             });
+            let skin = match skinned {
+                Some((skin, Some(influences), Some(weights)))
+                    if influences.len() == positions.len() && weights.len() == positions.len() =>
+                {
+                    let joints: Vec<usize> = skin.joints().map(|j| j.index()).collect();
+                    let binds: Vec<Mat> = skin
+                        .reader(|b| buffers.get(b.index()).map(|d| &d.0[..]))
+                        .read_inverse_bind_matrices()
+                        .map(|m| m.collect())
+                        .unwrap_or_else(|| vec![identity; joints.len()]);
+                    if binds.len() != joints.len()
+                        || influences
+                            .iter()
+                            .flatten()
+                            .any(|&j| usize::from(j) >= joints.len())
+                    {
+                        return Err("a skin names joints it does not have".into());
+                    }
+                    let weights = weights
+                        .into_iter()
+                        .map(|w| {
+                            let sum: f32 = w.iter().sum();
+                            if sum > 1e-6 {
+                                w.map(|v| v / sum)
+                            } else {
+                                [1.0, 0.0, 0.0, 0.0]
+                            }
+                        })
+                        .collect();
+                    Some(Arc::new(Skin {
+                        joints,
+                        // glTF's matrices are by column; ours by row.
+                        inverse_bind: binds
+                            .iter()
+                            .map(|b| std::array::from_fn(|r| std::array::from_fn(|c| b[c][r])))
+                            .collect(),
+                        positions: positions.clone(),
+                        normals: vertices_normals_in_mesh(&normals_raw, &positions, &indices),
+                        influences,
+                        weights,
+                    }))
+                }
+                _ => None,
+            };
             parts.push(Part {
                 mesh: Mesh {
                     vertices,
@@ -216,11 +277,28 @@ pub fn load(path: &Path) -> Result<Model> {
                     std::array::from_fn(|c| world[c][r])
                 }))
                 .unwrap_or(anim::IDENTITY),
+                skin,
             });
         }
     }
     if parts.is_empty() {
         return Err("the model has no triangle meshes".into());
+    }
+    let (joints, clips) = animation(&document, &buffers)?;
+    // Skinned parts at rest, as their joints place them (still unnormalised, y down).
+    if parts.iter().any(|p| p.skin.is_some()) {
+        let rested = Model {
+            joints: joints.clone(),
+            ..Model::default()
+        };
+        let worlds = rested.rest_worlds();
+        let mut flip = anim::IDENTITY;
+        flip[1][1] = -1.0;
+        for part in &mut parts {
+            if let Some(skin) = part.skin.clone() {
+                part.mesh = anim::skin_mesh(&part.mesh, &skin, &worlds, &flip);
+            }
+        }
     }
     // Normalise: centre the box on the origin and make its largest side 1.
     let mut lo = [f32::MAX; 3];
@@ -240,7 +318,6 @@ pub fn load(path: &Path) -> Result<Model> {
     for v in parts.iter_mut().flat_map(|p| &mut p.mesh.vertices) {
         v.position = [0, 1, 2].map(|k| (v.position[k] - centre[k]) / largest);
     }
-    let (joints, clips) = animation(&document, &buffers)?;
     Ok(Model {
         parts,
         extent: size.map(|s| s / largest),
@@ -344,6 +421,35 @@ fn animation(
         });
     }
     Ok((joints, clips))
+}
+/// A part's normals in its mesh's own space: the file's, or smooth ones from its faces.
+fn vertices_normals_in_mesh(
+    given: &Option<Vec<[f32; 3]>>,
+    positions: &[[f32; 3]],
+    indices: &[u32],
+) -> Vec<[f32; 3]> {
+    if let Some(n) = given.as_ref().filter(|n| n.len() == positions.len()) {
+        return n.iter().map(|v| normalize(*v)).collect();
+    }
+    let mut sum = vec![[0.0f32; 3]; positions.len()];
+    for t in indices.as_chunks::<3>().0 {
+        let [a, b, c] = [0, 1, 2].map(|k| positions[t[k] as usize]);
+        let (u, v) = (
+            [0, 1, 2].map(|k| b[k] - a[k]),
+            [0, 1, 2].map(|k| c[k] - a[k]),
+        );
+        let n = [
+            u[1] * v[2] - u[2] * v[1],
+            u[2] * v[0] - u[0] * v[2],
+            u[0] * v[1] - u[1] * v[0],
+        ];
+        for &i in t {
+            for k in 0..3 {
+                sum[i as usize][k] += n[k];
+            }
+        }
+    }
+    sum.into_iter().map(normalize).collect()
 }
 #[cfg(test)]
 mod tests {

@@ -1,4 +1,4 @@
-//! A model's own animation as plain data: its node tree at rest and the clips that key the nodes' moves, turns and sizes (glTF, rigid: no skins or morph targets), and each part's motion at a moment of a clip, in the model's normalised frame.
+//! A model's own animation as plain data: its node tree at rest and the clips that key the nodes' moves, turns and sizes (glTF; no morph targets), each rigid part's motion at a moment of a clip, and each skinned part's mesh bent by its joints then, in the model's normalised frame.
 use crate::Model;
 
 /// Row-major 4x4 matrices acting on column vectors, as the scene's.
@@ -193,27 +193,28 @@ impl Channel {
     }
 }
 impl Model {
-    /// How each part has moved at `seconds` into the clip numbered `clip` (from 0) from
-    /// where it rests, in the model's normalised frame (x right, y down, z towards the
-    /// viewer, largest side 1): wrapped round the clip's length when `looping`, else held
-    /// at its ends. None when there is no such clip.
-    pub fn poses(&self, clip: usize, seconds: f32, looping: bool) -> Option<Vec<Mat>> {
-        let clip = self.clips.get(clip)?;
+    /// The time `seconds` into `clip` as it is played: wrapped round its length when
+    /// `looping`, else held at its ends.
+    fn clip_time(clip: &Clip, seconds: f32, looping: bool) -> f32 {
         let length = clip.seconds();
-        let t = if !seconds.is_finite() {
+        if !seconds.is_finite() {
             0.0
         } else if looping && length > 0.0 {
             seconds.rem_euclid(length)
         } else {
             seconds.clamp(0.0, length)
-        };
+        }
+    }
+    /// Every node's place in the file's frame (glTF, y up) at `t` seconds into `clip`, or
+    /// at rest with no clip.
+    fn node_worlds(&self, clip: Option<&Clip>, t: f32) -> Vec<Mat> {
         // Each node's place now: its rest, with what the clip keys put in its stead.
         let mut local: Vec<([f32; 3], [f32; 4], [f32; 3])> = self
             .joints
             .iter()
             .map(|j| (j.translation, j.rotation, j.scale))
             .collect();
-        for channel in &clip.channels {
+        for channel in clip.map_or(&[][..], |c| &c.channels[..]) {
             let (Some(slot), Some(v)) = (local.get_mut(channel.node), channel.at(t)) else {
                 continue;
             };
@@ -244,7 +245,16 @@ impl Model {
             world[k] = Some(m);
             m
         }
-        // From glTF's frame (y up) to the normalised one: flip y, centre, shrink.
+        (0..self.joints.len())
+            .map(|k| place(k, &self.joints, &local, &mut world, 0))
+            .collect()
+    }
+    /// Every node's place in the file's frame at rest.
+    pub fn rest_worlds(&self) -> Vec<Mat> {
+        self.node_worlds(None, 0.0)
+    }
+    /// From glTF's frame (y up) to the normalised one: flip y, centre, shrink.
+    fn to_normalised(&self) -> Mat {
         let (c, l) = (self.centre, self.largest.max(1e-12));
         let mut into = IDENTITY;
         into[0][0] = 1.0 / l;
@@ -253,18 +263,93 @@ impl Model {
         into[0][3] = -c[0] / l;
         into[1][3] = -c[1] / l;
         into[2][3] = -c[2] / l;
+        into
+    }
+    /// How each part has moved at `seconds` into the clip numbered `clip` (from 0) from
+    /// where it rests, in the model's normalised frame (x right, y down, z towards the
+    /// viewer, largest side 1): wrapped round the clip's length when `looping`, else held
+    /// at its ends. None when there is no such clip. A skinned part does not move as one
+    /// piece (its mesh bends instead: `skinned`).
+    pub fn poses(&self, clip: usize, seconds: f32, looping: bool) -> Option<Vec<Mat>> {
+        let clip = self.clips.get(clip)?;
+        let worlds = self.node_worlds(Some(clip), Self::clip_time(clip, seconds, looping));
+        let into = self.to_normalised();
         let back = affine_inverse(&into)?;
         Some(
             self.parts
                 .iter()
                 .map(|part| match part.joint {
-                    Some(k) if k < self.joints.len() => {
-                        let now = place(k, &self.joints, &local, &mut world, 0);
-                        mul(&into, &mul(&mul(&now, &part.rest_inverse), &back))
+                    Some(k) if k < self.joints.len() && part.skin.is_none() => {
+                        mul(&into, &mul(&mul(&worlds[k], &part.rest_inverse), &back))
                     }
                     _ => IDENTITY,
                 })
                 .collect(),
         )
     }
+    /// A skinned part's mesh in the normalised frame with its joints where `play` (clip,
+    /// seconds, looping) has them, or at rest: each vertex moved by its joints' motions
+    /// blended by its weights. None for a part without a skin.
+    pub fn skinned(&self, part: usize, play: Option<(usize, f32, bool)>) -> Option<crate::Mesh> {
+        let p = self.parts.get(part)?;
+        let skin = p.skin.as_ref()?;
+        let clip = play.and_then(|(c, ..)| self.clips.get(c));
+        let t = match (clip, play) {
+            (Some(clip), Some((_, seconds, looping))) => Self::clip_time(clip, seconds, looping),
+            _ => 0.0,
+        };
+        let worlds = self.node_worlds(clip, t);
+        let into = self.to_normalised();
+        Some(skin_mesh(&p.mesh, skin, &worlds, &into))
+    }
+}
+/// `mesh` (for its triangles and uvs) with every vertex bent by `skin`'s joints placed at
+/// `worlds`, then taken into the normalised frame by `into`.
+pub fn skin_mesh(
+    mesh: &crate::Mesh,
+    skin: &crate::Skin,
+    worlds: &[Mat],
+    into: &Mat,
+) -> crate::Mesh {
+    let joints: Vec<Mat> = skin
+        .joints
+        .iter()
+        .zip(&skin.inverse_bind)
+        .map(|(&node, bind)| worlds.get(node).map_or(IDENTITY, |w| mul(w, bind)))
+        .collect();
+    let mut out = mesh.clone();
+    for (i, v) in out.vertices.iter_mut().enumerate() {
+        let (Some(at), Some(normal), Some(which), Some(weights)) = (
+            skin.positions.get(i),
+            skin.normals.get(i),
+            skin.influences.get(i),
+            skin.weights.get(i),
+        ) else {
+            continue;
+        };
+        let mut m = [[0.0f32; 4]; 4];
+        for (j, w) in which.iter().zip(weights) {
+            if *w == 0.0 {
+                continue;
+            }
+            let joint = joints.get(*j as usize).unwrap_or(&IDENTITY);
+            for (row, from) in m.iter_mut().zip(joint) {
+                for (a, b) in row.iter_mut().zip(from) {
+                    *a += b * w;
+                }
+            }
+        }
+        let m = mul(into, &m);
+        v.position =
+            [0, 1, 2].map(|r| m[r][0] * at[0] + m[r][1] * at[1] + m[r][2] * at[2] + m[r][3]);
+        // Normals by the inverse transpose of the blended joint's turn and sizes.
+        let n = match affine_inverse(&m) {
+            Some(inv) => [0, 1, 2]
+                .map(|c| inv[0][c] * normal[0] + inv[1][c] * normal[1] + inv[2][c] * normal[2]),
+            None => *normal,
+        };
+        let l = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
+        v.normal = if l > 0.0 { n.map(|x| x / l) } else { v.normal };
+    }
+    out
 }

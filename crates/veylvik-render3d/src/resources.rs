@@ -138,16 +138,20 @@ impl Engine {
                 path,
                 size,
                 part: Some(part),
+                play,
                 ..
             } => {
                 let models = self
                     .models
                     .lock()
                     .map_err(|_| error("model lock poisoned"))?;
+                // A skinned part bent by its joints at this moment of its clip.
                 let mut mesh = models
                     .get(path)
-                    .and_then(|m| m.parts.get(*part))
-                    .map(|p| p.mesh.clone())
+                    .and_then(|m| {
+                        m.skinned(*part, *play)
+                            .or_else(|| m.parts.get(*part).map(|p| p.mesh.clone()))
+                    })
                     .unwrap_or_default();
                 for v in &mut mesh.vertices {
                     v.position = v.position.map(|x| x * size);
@@ -275,8 +279,9 @@ impl Engine {
                     size: *size,
                     extent: *extent,
                     part: Some(i),
-                    // The part's mesh is the same at every moment: it is kept once.
-                    play: None,
+                    // A rigid part's mesh is the same at every moment and is kept once;
+                    // a skinned part's bends with the clip, so its moment is part of it.
+                    play: if part.skin.is_some() { *play } else { None },
                 };
                 if let Some(pose) = poses.as_ref().and_then(|p| p.get(i)) {
                     let mut moved = *pose;
@@ -338,7 +343,8 @@ impl Engine {
         let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("3D model texture"),
             contents: bytemuck::cast_slice(&texture.pixels),
-            usage: wgpu::BufferUsages::STORAGE,
+            // The path tracer copies it in with the scene's other pictures.
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
         });
         cache.insert(key, (buffer.clone(), texture.clone()));
         Ok(Some((buffer, texture.width, texture.height)))

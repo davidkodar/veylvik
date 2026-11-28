@@ -2360,7 +2360,7 @@ settles on the wrong kind of motion can still look sure. The
   metallic-roughness material: base colour factor and texture (8-bit images,
   decoded to linear and box-reduced to at most 1024 pixels a side), metallic and
   roughness factors. Normal, metallic-roughness, occlusion and emissive maps,
-  transparency, skins and morph targets are not read. glTF's y up becomes y down,
+  transparency and morph targets are not read; skins are (below). glTF's y up becomes y down,
   and the model is centred on its box and scaled so its largest side is 1,
   then **Size** pixels; **Extent**, measured on import, gives the scene its box
   without reading the file. A library **Look** replaces every part's material.
@@ -2376,9 +2376,14 @@ settles on the wrong kind of motion can still look sure. The
   **Clip start** is when it begins, in seconds of the composition (before then
   the model holds its first pose), **Clip speed** how fast it plays (negative
   plays it backwards), and **Clip loop** plays it round and round or holds its
-  last pose once it ends. Skinned characters (bones bending one mesh) and shape
-  morphs are not played, and the scene's box for the model, particles born on it
-  and collisions with it use the model as it rests.
+  last pose once it ends. **Skinned characters** play too: a part with a skin
+  bends with its joints, each vertex moved by up to four joints blended by its
+  weights (linear blend skinning, as glTF defines it), its normals with it, in
+  the preview and when path traced; at rest, and with no clip, it stands as its
+  joints place it (glTF ignores a skinned mesh's own node transform). The mesh is
+  bent on the CPU for each moment it is shown. Shape morphs are not played, and
+  the scene's box for the model, particles born on it and collisions with it use
+  the model as it rests.
 - **Figure** (`figure_3d`): a walking person in the scene, from the
   `veylvik-figure` crate. Movement: the legs follow the measured joint angles
   of normal adult walking (hip, knee and ankle every 5% of the stride, the

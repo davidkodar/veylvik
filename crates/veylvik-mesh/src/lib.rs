@@ -14,7 +14,7 @@ use veylvik_document::{
 pub mod animation;
 mod model;
 mod primitives;
-pub use model::{MAX_PARTS, MAX_TEXTURE, MAX_VERTICES, Model, Part, Texture};
+pub use model::{MAX_PARTS, MAX_TEXTURE, MAX_VERTICES, Model, Part, Skin, Texture};
 pub use primitives::{Primitive, SEGMENTS, bendable_plane, primitive};
 
 pub type Result<T> = std::result::Result<T, Error>;

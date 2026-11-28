@@ -31,6 +31,22 @@ pub struct Part {
     /// The inverse of that node's place at rest (glTF's frame), so its motion is its
     /// place now times this.
     pub rest_inverse: crate::animation::Mat,
+    /// A skinned part bends with the joints of its skin instead of moving as one piece.
+    pub skin: Option<Arc<Skin>>,
+}
+/// How a skinned part's vertices follow its joints (glTF skins: linear blend skinning).
+#[derive(Debug, Clone, Default)]
+pub struct Skin {
+    /// The file's nodes that are its joints.
+    pub joints: Vec<usize>,
+    /// Each joint's inverse bind matrix (row-major, glTF's frame).
+    pub inverse_bind: Vec<crate::animation::Mat>,
+    /// Each vertex in the mesh's own space (glTF's frame, y up), and its normal.
+    pub positions: Vec<[f32; 3]>,
+    pub normals: Vec<[f32; 3]>,
+    /// Each vertex's four joints (into `joints`) and their weights (summing to 1).
+    pub influences: Vec<[u16; 4]>,
+    pub weights: Vec<[f32; 4]>,
 }
 #[derive(Debug, Clone, Default)]
 pub struct Model {
