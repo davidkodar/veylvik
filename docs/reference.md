@@ -1670,8 +1670,11 @@ and `colour`.
   going (up to 0.95: it glows looking towards a light, as haze in a sunbeam), 0
   evenly, below 0 back. **Noise** breaks it into wisps and clumps, **Noise size**
   pixels across at the largest, with **Detail** layers of finer noise drifting at
-  **drift_x/y/z** pixels a second; **Softness** fades it in from its edges; **Seed**
-  picks the noise. Lights shine through it and objects shade it, so light shafts
+  **drift_x/y/z** pixels a second; **Softness** fades it in from its edges, where the
+  noise eats into it (wisps at the edges, clumps inside, as clouds are shaped); **Seed**
+  picks the noise. The inspector's **Start from a look** sets every setting for
+  Ground mist, Sun-shaft haze, a Smoke puff or Dust, scaled to the frame and keeping
+  where the volume is. Lights shine through it and objects shade it, so light shafts
   show through haze. In the preview each pixel's ray steps through the volumes up to
   the nearest solid (64 steps), lit by every light through its shadow map and dimmed
   on the way to it, with light scattered many times approximated (as real-time

@@ -100,12 +100,15 @@ fn medium_density(m: Medium, p: vec3<f32>) -> f32 {
     if edge <= 0.0 { return 0.0; }
     var fade = 1.0;
     if m.softness > 0.0 { fade = smoothstep(0.0, m.softness, edge); }
-    var clumps = 1.0;
+    var shaped = fade;
     if m.noise > 0.0 {
-        let n = medium_fbm((q + m.drift) / m.noise_size, m.detail, m.seed);
-        clumps = mix(1.0, 2.0 * clamp((n - 0.5) * 3.0 + 0.5, 0.0, 1.0), m.noise);
+        // The noise, with more contrast, eats into the medium where it fades towards its
+        // edges (as cloud renderers shape clouds): wisps at the edges, clumps inside.
+        let n = clamp((medium_fbm((q + m.drift) / m.noise_size, m.detail, m.seed) - 0.5) * 2.5 + 0.5, 0.0, 1.0);
+        let eroded = clamp((n - (1.0 - fade)) / max(fade, 1e-3), 0.0, 1.0);
+        shaped = mix(fade, 2.0 * eroded, m.noise);
     }
-    return m.sigma * falloff * fade * clumps;
+    return m.sigma * falloff * shaped;
 }
 // The most extinction anywhere in the volume (for drawing free paths through it).
 fn medium_most(m: Medium) -> f32 {

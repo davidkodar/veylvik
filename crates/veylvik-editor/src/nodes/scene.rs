@@ -367,6 +367,18 @@ impl Inspect for veylvik_document::nodes::Volume3d {
     fn inspect(&mut self, ui: &mut egui::Ui, cx: &mut InspectCx<'_>) {
         use veylvik_document::nodes::VolumeShape::*;
         ui.weak("Smoke, mist or haze: lit by the scene's lights and shaded where objects block them, so light shafts show through it. Higher Forward makes it glow looking towards a light.");
+        let width = cx.frame[0];
+        ui.menu_button("Start from a look", |ui| {
+            for look in &veylvik_presets::volumes::LOOKS {
+                if ui.button(look.name).on_hover_text(look.hint).clicked() {
+                    look.apply(self, width);
+                    cx.dirty = true;
+                    ui.close();
+                }
+            }
+        })
+        .response
+        .on_hover_text("Set every setting for ready-made haze or smoke, scaled to this frame, keeping where it is; then adjust");
         cx.dirty |= kind(
             ui,
             "Shape",
