@@ -186,6 +186,19 @@ transparent at or below **Low**, opaque at or above **High**, with a linear ramp
 set Low above High to key out bright areas such as a white backdrop. Both keep input
 alpha, output premultiplied colour, work on HDR values and can be keyframed.
 
+**Cryptomatte** makes a matte of objects picked out of a 3D render: connect a Render
+scene with Output objects (`pass: objects`) to **Objects**, and one with objects, third and
+fourth (`objects_more`) to **Objects more** for pixels shared by more than two objects. The
+matte is white with alpha equal to the picked objects' share of each pixel, exactly as
+rendered, so its edges are as soft as the objects'. **Objects** lists them by name (the 3D
+object's node label; renaming the node changes its id) or as `#` and its Cryptomatte id in
+eight hex digits, at most 256. In Studio, **Pick** and click in the viewer: the object
+covering most of that pixel goes in, or out if it is in already; **Add object** lists the
+composition's 3D objects. Connect the matte to a Mask's mask to cut those objects out or
+keep the rest. It reads Veylvik's own objects passes; Cryptomatte layers in another
+program's EXR cannot be read yet (a footage picture follows Veylvik's alpha rules and is
+colour-converted and placed, which would change the ids).
+
 **Refine matte** cuts a subject out of **Image** with a coarse matte on **Matte** (its
 alpha), such as the Subject matte from segmentation, and gives the matte the image's own
 edges. Near the matte's edge it averages the colours of pixels the matte is sure are

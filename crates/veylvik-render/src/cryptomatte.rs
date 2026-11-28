@@ -30,15 +30,10 @@ pub fn murmur3(bytes: &[u8]) -> u32 {
     h = h.wrapping_mul(0xc2b2_ae35);
     h ^ (h >> 16)
 }
-/// The Cryptomatte id of a name, as the bits of the float stored in the picture.
+/// The Cryptomatte id of a name, as the bits of the float stored in the picture (the
+/// document's, which mattes name their objects by).
 pub fn id(name: &str) -> u32 {
-    let h = murmur3(name.as_bytes());
-    let exponent = (h >> 23) & 0xff;
-    if exponent == 0 || exponent == 0xff {
-        h ^ (1 << 23)
-    } else {
-        h
-    }
+    veylvik_document::nodes::cryptomatte_id(name)
 }
 /// The manifest Cryptomatte readers name objects by: `{"name":"hex id",...}`.
 pub fn manifest<'a>(names: impl IntoIterator<Item = &'a str>) -> String {
@@ -66,6 +61,18 @@ mod tests {
             murmur3(b"The quick brown fox jumps over the lazy dog"),
             0x2e4f_f723
         );
+    }
+    #[test]
+    fn the_documents_ids_are_murmur3_with_the_float_fixed() {
+        for name in ["hello", "Red ball", "CryptoObject", "a"] {
+            let h = murmur3(name.as_bytes());
+            let fixed = if matches!((h >> 23) & 0xff, 0 | 0xff) {
+                h ^ (1 << 23)
+            } else {
+                h
+            };
+            assert_eq!(id(name), fixed);
+        }
     }
     #[test]
     fn an_id_is_always_an_ordinary_float() {

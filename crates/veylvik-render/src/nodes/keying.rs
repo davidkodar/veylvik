@@ -186,3 +186,56 @@ impl RenderNode for veylvik_document::nodes::RefineMatte {
         Ok(())
     }
 }
+
+/// The objects' ids, one a texel in red (at least one texel), for the matte to look up.
+fn crypto_ids(ids: &[u32]) -> Option<std::sync::Arc<crate::Image>> {
+    type Kept = Vec<(Vec<u32>, std::sync::Arc<crate::Image>)>;
+    static KEPT: std::sync::Mutex<Kept> = std::sync::Mutex::new(Vec::new());
+    let mut kept = KEPT.lock().ok()?;
+    if let Some((_, image)) = kept.iter().find(|(k, _)| k == ids) {
+        return Some(image.clone());
+    }
+    let mut texels: Vec<[f32; 4]> = ids
+        .iter()
+        .map(|id| [f32::from_bits(*id), 0.0, 0.0, 1.0])
+        .collect();
+    if texels.is_empty() {
+        texels.push([0.0, 0.0, 0.0, 1.0]);
+    }
+    let image = std::sync::Arc::new(crate::Image::data(texels.len() as u32, 1, texels).ok()?);
+    if kept.len() >= 64 {
+        kept.remove(0);
+    }
+    kept.push((ids.to_vec(), image.clone()));
+    Some(image)
+}
+impl RenderNode for veylvik_document::nodes::Cryptomatte {
+    fn passes(&self) -> Passes {
+        Passes::One(Kernel::Cryptomatte)
+    }
+    fn shareable(&self) -> bool {
+        true
+    }
+    fn has_data(&self) -> bool {
+        true
+    }
+    fn data(&self, _cx: &Cx<'_>) -> Result<Option<std::sync::Arc<crate::Image>>> {
+        Ok(crypto_ids(&self.ids()))
+    }
+    fn params(
+        &self,
+        cx: &Cx<'_>,
+        _sample: &dyn Fn(&str) -> Result<f32>,
+        p: &mut Params,
+    ) -> Result<()> {
+        // How many ids, and whether the third and fourth objects come in too (then the
+        // ids are on the next input along).
+        p.values = [
+            self.ids().len() as f32,
+            f32::from(u8::from(cx.node.inputs.contains_key("objects_more"))),
+            0.0,
+            0.0,
+        ];
+        Ok(())
+    }
+}

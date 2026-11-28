@@ -51,3 +51,57 @@ impl Inspect for veylvik_document::nodes::RefineMatte {
         ui.weak("Connect the footage to Image and a coarse subject mask to Matte. Raise Radius when the matte misses hair or edges by more than a few pixels; raise Detail to follow finer features. Decontaminate removes the old background's colour from the edges. Check the result with Show alpha in the View menu.");
     }
 }
+impl Inspect for veylvik_document::nodes::Cryptomatte {
+    fn inspect(&mut self, ui: &mut egui::Ui, cx: &mut InspectCx<'_>) {
+        ui.weak("Connect a Render scene with Pass objects to Objects (and one with objects_more to Objects more, for pixels shared by more than two objects). The matte is white where the picked objects are, as much as they cover each pixel.");
+        ui.horizontal(|ui| {
+            let active = cx.picking == Some("objects");
+            if ui
+                .selectable_label(active, "Pick")
+                .on_hover_text("Click an object in the viewer to add it to the matte, or click one already in it to take it out. Esc stops")
+                .clicked()
+            {
+                cx.ask(super::Request::Pick("objects"));
+            }
+            ui.menu_button("Add object", |ui| {
+                if cx.objects.is_empty() {
+                    ui.weak("No 3D objects in this composition");
+                }
+                for (_, label) in cx.objects {
+                    let picked = self.objects.contains(label);
+                    if ui.selectable_label(picked, label).clicked() {
+                        if picked {
+                            self.objects.retain(|o| o != label);
+                        } else {
+                            self.objects.push(label.clone());
+                        }
+                        cx.dirty = true;
+                    }
+                }
+            });
+        });
+        if self.objects.is_empty() {
+            ui.weak("No objects picked yet: the matte is empty.");
+        }
+        let mut gone = None;
+        for (k, name) in self.objects.iter().enumerate() {
+            ui.horizontal(|ui| {
+                if ui
+                    .small_button("Remove")
+                    .on_hover_text("Take this object out of the matte")
+                    .clicked()
+                {
+                    gone = Some(k);
+                }
+                ui.label(name);
+                if !name.starts_with('#') && !cx.objects.iter().any(|(_, l)| l == name) {
+                    ui.weak("(no object of this name here)");
+                }
+            });
+        }
+        if let Some(k) = gone {
+            self.objects.remove(k);
+            cx.dirty = true;
+        }
+    }
+}

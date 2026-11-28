@@ -83,10 +83,14 @@ impl Studio {
                     .as_ref()
                     .is_some_and(|p| p.node == self.draft.id && p.field == field);
                 self.picking = (!active).then(|| eyedropper::Picking::new(self.draft.id, field));
-                self.tell(if active {
-                    "Eyedropper cancelled"
-                } else {
-                    "Eyedropper: click or drag in the viewer to sample a colour · Esc cancels"
+                self.tell(match (active, field) {
+                    (true, _) => "Picking cancelled",
+                    (false, "objects") => {
+                        "Click an object in the viewer to put it in the matte or take it out · Esc cancels"
+                    }
+                    (false, _) => {
+                        "Eyedropper: click or drag in the viewer to sample a colour · Esc cancels"
+                    }
                 });
             }
         }

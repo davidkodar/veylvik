@@ -32,6 +32,83 @@ fn sphere(position: Track3) -> Operation {
     }
     o
 }
+/// The balls' composition with a Render scene for each of `passes`, the scene node and
+/// the passes' nodes.
+fn balls_doc(passes: &[ScenePass]) -> (Composition, Vec<NodeId>) {
+    let mut doc = blank(W, H, Time::new(24, 1).unwrap()).unwrap();
+    let left = add(&mut doc, "Left ball", sphere([-40.0, 0.0, 0.0].into()), &[]);
+    let right = add(&mut doc, "Right ball", sphere([40.0, 0.0, 0.0].into()), &[]);
+    let scene = add(
+        &mut doc,
+        "Scene",
+        op(&MERGE_SCENES),
+        &[("scene", left), ("scene_2", right)],
+    );
+    let renders = passes
+        .iter()
+        .map(|pass| {
+            let mut render = op(&RENDER_SCENE);
+            if let Operation::RenderScene(r) = &mut render {
+                r.camera = 0.0.into();
+                r.pass = *pass;
+            }
+            add(&mut doc, "Render", render, &[("scene", scene)])
+        })
+        .collect();
+    (doc, renders)
+}
+#[test]
+#[ignore = "requires Vulkan"]
+fn a_cryptomatte_is_the_picked_objects_share_of_each_pixel() {
+    let renderer = renderer();
+    let (mut doc, renders) = balls_doc(&[ScenePass::Objects, ScenePass::ObjectsMore]);
+    let objects = renders[0];
+    let pixels = |doc: &Composition, output: NodeId| {
+        renderer
+            .render_frame(
+                &Plan::compile_output(doc, output).unwrap(),
+                RenderRequest::full(Time::new(0, 1).unwrap()),
+                &ImageInputs::default(),
+            )
+            .unwrap()
+            .pixels
+    };
+    let pass = pixels(&doc, objects);
+    let left = cryptomatte::id("Left ball");
+    for (more, entries) in [
+        (false, vec!["Left ball".to_owned()]),
+        (true, vec![format!("#{left:08x}")]),
+    ] {
+        let mut inputs = vec![("objects", objects)];
+        if more {
+            inputs.push(("objects_more", renders[1]));
+        }
+        let matte = add(
+            &mut doc,
+            "Matte",
+            Operation::Cryptomatte(Cryptomatte { objects: entries }),
+            &inputs,
+        );
+        let out = pixels(&doc, matte);
+        assert_eq!(at(&out, 40, 45), [1.0; 4], "the left ball's middle");
+        assert_eq!(at(&out, 120, 45), [0.0; 4], "the right ball is not picked");
+        // Everywhere the matte is the left ball's share of the pixel.
+        for (m, p) in out.iter().zip(&pass) {
+            let share = if p[0].to_bits() == left { p[1] } else { 0.0 }
+                + if p[2].to_bits() == left { p[3] } else { 0.0 };
+            assert_eq!(m[3], share.min(1.0), "{p:?}");
+        }
+        assert!(out.iter().any(|m| m[3] > 0.0 && m[3] < 1.0), "soft rims");
+    }
+    // Nothing picked: an empty matte.
+    let none = add(
+        &mut doc,
+        "Matte",
+        Operation::Cryptomatte(Cryptomatte { objects: vec![] }),
+        &[("objects", objects)],
+    );
+    assert!(pixels(&doc, none).iter().all(|p| *p == [0.0; 4]));
+}
 /// A ball on the left gliding 80 units to the right over the second, a still ball on the
 /// right, filmed from the home view: the pass asked for, at frame 12.
 fn balls(pass: ScenePass) -> Vec<[f32; 4]> {

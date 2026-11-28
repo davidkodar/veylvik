@@ -69,6 +69,8 @@ pub enum ParameterKind {
     Points3,
     /// A model's animations as read from its file: names and lengths.
     ModelClips,
+    /// The objects a Cryptomatte matte picks: names or # and a hex id.
+    CryptoObjects,
     /// Eight values over a particle's life (birth to end, evenly), or none.
     LifeCurve,
     /// Eight linear RGBA colours over a particle's life, or none.
@@ -155,7 +157,9 @@ impl Parameter {
             ParameterKind::ForceKind => json!(crate::nodes::ForceKind::default()),
             ParameterKind::SpritePlay => json!(crate::nodes::SpritePlay::default()),
             ParameterKind::Look | ParameterKind::NodeRef => json!(null),
-            ParameterKind::Points3 | ParameterKind::ModelClips => json!([]),
+            ParameterKind::Points3 | ParameterKind::ModelClips | ParameterKind::CryptoObjects => {
+                json!([])
+            }
             ParameterKind::LifeCurve | ParameterKind::LifeColours => json!(null),
             ParameterKind::FilePath => json!(""),
             ParameterKind::OfxPlugin => json!(""),
@@ -241,6 +245,9 @@ impl Parameter {
             }
             ParameterKind::LifeColours => {
                 json!({"anyOf":[{"type":"null"},{"type":"array","minItems":8,"maxItems":8,"items":{"type":"array","minItems":4,"maxItems":4,"items":{"type":"number","minimum":0,"maximum":64}}}]})
+            }
+            ParameterKind::CryptoObjects => {
+                json!({"type":"array","maxItems":crate::nodes::MAX_CRYPTO_OBJECTS,"items":{"type":"string","minLength":1,"maxLength":256}})
             }
             ParameterKind::ModelClips => {
                 json!({"type":"array","maxItems":crate::nodes::MAX_MODEL_CLIPS,"items":{"type":"object","properties":{"name":{"type":"string","maxLength":256},"seconds":{"type":"number","minimum":0}},"required":["name","seconds"],"additionalProperties":false}})
@@ -483,6 +490,7 @@ pub static TYPES: &[&NodeType] = &[
     &crate::nodes::GAUSSIAN_SPLATS,
     &crate::nodes::FIGURE_3D,
     &crate::nodes::MARKER_3D,
+    &crate::nodes::CRYPTOMATTE,
     &crate::nodes::VOLUME_3D,
     &crate::nodes::FLUTTER_3D,
     &crate::nodes::OFX_EFFECT,

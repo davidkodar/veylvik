@@ -103,6 +103,7 @@ kernels! {
     KeySoftenHorizontal => "key_soften_horizontal", Area, program;
     KeySoftenVertical => "key_soften_vertical", Area, program;
     ChromaApply => "chroma_apply", Area, program;
+    Cryptomatte => "cryptomatte", Area, program;
     ZoomBlur => "zoom_blur", Area, program;
     OwnSizeFit => "own_size_fit", Area, program;
     OwnSizeStretch => "own_size_stretch", Area, program;

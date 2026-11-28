@@ -12,6 +12,7 @@ mod comparison;
 mod composition;
 mod control;
 pub mod controls;
+mod crypto_pick;
 mod curve_preview;
 mod design;
 mod diagnostics;
@@ -1664,6 +1665,21 @@ impl Studio {
                 return;
             }
         };
+        // A Cryptomatte picks the object there instead of a colour.
+        if picking.field == "objects"
+            && matches!(
+                self.project
+                    .document
+                    .snapshot()
+                    .nodes
+                    .get(&picking.node)
+                    .map(|n| &n.operation),
+                Some(Operation::Cryptomatte(_))
+            )
+        {
+            self.pick_object(picking.node, region, time);
+            return;
+        }
         let document = self.project.document.snapshot().clone();
         let source = document
             .nodes

@@ -262,6 +262,7 @@ pub(crate) const ADD_MENU: [(&str, &[&registry::NodeType]); 10] = [
             &registry::CHROMA_KEY,
             &registry::LUMA_KEY,
             &registry::REFINE_MATTE,
+            &veylvik_document::nodes::CRYPTOMATTE,
         ],
     ),
     (

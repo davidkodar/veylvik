@@ -92,3 +92,36 @@ fn chroma_apply(@builtin(global_invocation_id) gid:vec3<u32>) {
     }
     result[i]=vec4<f32>(rgb*a,a);
 }
+
+// Cryptomatte: the matte of the picked objects. `source` is an objects pass (an id and
+// its share of the pixel in red and green, another in blue and alpha); with values.y
+// `second` is the objects_more pass and the ids are in `third`, else in `second`, one a
+// texel in red, values.x of them. Ids are compared bit for bit.
+fn crypto_id(k: u32) -> u32 {
+    if p.values.y > 0.5 { return bitcast<u32>(third[k].x); }
+    return bitcast<u32>(second[k].x);
+}
+fn crypto_share(ranks: vec4<f32>, id: u32) -> f32 {
+    var share = 0.0;
+    if bitcast<u32>(ranks.x) == id { share += ranks.y; }
+    if bitcast<u32>(ranks.z) == id { share += ranks.w; }
+    return share;
+}
+@compute @workgroup_size(8,8)
+fn cryptomatte(@builtin(global_invocation_id) gid: vec3<u32>) {
+    if !inside(gid) { return; }
+    let i = index(gid);
+    let count = u32(p.values.x);
+    let more = p.values.y > 0.5;
+    let first = source[i];
+    var after = vec4<f32>(0.0);
+    if more { after = second[i]; }
+    var matte = 0.0;
+    for (var k = 0u; k < count; k++) {
+        let id = crypto_id(k);
+        matte += crypto_share(first, id);
+        if more { matte += crypto_share(after, id); }
+    }
+    let m = clamp(matte, 0.0, 1.0);
+    result[i] = vec4<f32>(m, m, m, m);
+}
