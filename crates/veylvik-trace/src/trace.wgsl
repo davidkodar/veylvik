@@ -8,7 +8,9 @@ struct Node { min: vec3<f32>, first: u32, max: vec3<f32>, count: u32 }
 struct Instance { to_object: mat3x4<f32>, to_world: mat3x4<f32>, root: u32, triangle_base: u32, vertex_base: u32, surface: u32, tint: vec4<f32> }
 // finish: brushing, the grain's direction (radians), imperfections, visible grain.
 // projected: where in `data` the picture cast onto it through a camera is (none: all bits set).
-struct Surface { colour: vec3<f32>, roughness: f32, metallic: f32, emission: f32, opacity: f32, flags: u32, texture: u32, shadow: f32, ridges: f32, look: u32, finish: vec4<f32>, projected: u32 }
+// splat: splats' degree and coefficients a colour (bits 8 on), where their coefficients
+// start, where they start among the splats.
+struct Surface { colour: vec3<f32>, roughness: f32, metallic: f32, emission: f32, opacity: f32, flags: u32, texture: u32, shadow: f32, ridges: f32, look: u32, finish: vec4<f32>, projected: u32, splat: vec3<u32> }
 struct Light { position: vec4<f32>, direction: vec4<f32>, colour: vec4<f32>, right: vec4<f32>, up: vec4<f32> }
 struct Frame {
     // camera to world (rows), focal length in pixels, width, height
@@ -30,18 +32,21 @@ struct Frame {
     lights_at: vec4<u32>,
 }
 @group(0) @binding(0) var<uniform> frame: Frame;
-@group(0) @binding(1) var<storage, read> nodes: array<Node>;
+// Gaussian splats, four vec4s each: place and opacity, size, turn (x y z w), colour.
+@group(0) @binding(1) var<storage, read> splats: array<vec4<f32>>;
+// The meshes' tree nodes (two vec4s each), then their vertices (two vec4s each).
 @group(0) @binding(2) var<storage, read> vertices: array<vec4<f32>>;
 @group(0) @binding(3) var<storage, read> triangles: array<vec4<u32>>;
 // The frame's small arrays in one buffer (devices allow few storage buffers a stage).
 @group(0) @binding(4) var<storage, read> data: array<vec4<f32>>;
 @group(0) @binding(5) var<storage, read> environment_map: array<vec4<f32>>;
 @group(0) @binding(6) var<storage, read_write> picture: array<vec4<f32>>;
-// The environment as a table to draw directions from (sky_table.wgsl).
-@group(0) @binding(7) var<storage, read> sky_table: array<f32>;
+// The splats' spherical harmonics past the first, three colours of `coefficients` each.
+@group(0) @binding(7) var<storage, read> splat_rest: array<f32>;
 const ACROSS: u32 = 256u;
 const DOWN: u32 = 128u;
-// Every picture surfaces read, one after another; their places are in `data`.
+// The environment as a table to draw directions from (sky_table.wgsl), then every
+// picture surfaces read, one after another; their places are in `data`.
 @group(0) @binding(8) var<storage, read> pictures: array<vec4<f32>>;
 const UNLIT: u32 = 1u;
 const CATCHER: u32 = 2u;
@@ -49,7 +54,14 @@ const CARD: u32 = 4u;
 const CUT: u32 = 8u;
 const STRAIGHT: u32 = 16u;
 const GLASS: u32 = 32u;
+const SPLATS: u32 = 64u;
 fn bits(v: vec4<f32>) -> vec4<u32> { return bitcast<vec4<u32>>(v); }
+fn node_at(i: u32) -> Node {
+    let a = vertices[2u * i];
+    let b = vertices[2u * i + 1u];
+    return Node(a.xyz, bitcast<u32>(a.w), b.xyz, bitcast<u32>(b.w));
+}
+fn sky_table(i: u32) -> f32 { return pictures[i >> 2u][i & 3u]; }
 fn instance_at(i: u32) -> Instance {
     let b = frame.offsets.x + 8u * i;
     let k = bits(data[b + 6u]);
@@ -60,7 +72,7 @@ fn surface_at(i: u32) -> Surface {
     let a = data[b];
     let c = data[b + 1u];
     let e = data[b + 2u];
-    return Surface(a.xyz, a.w, c.x, c.y, c.z, bitcast<u32>(c.w), bitcast<u32>(e.x), e.y, e.z, bitcast<u32>(e.w), data[b + 3u], bitcast<u32>(data[b + 4u].x));
+    return Surface(a.xyz, a.w, c.x, c.y, c.z, bitcast<u32>(c.w), bitcast<u32>(e.x), e.y, e.z, bitcast<u32>(e.w), data[b + 3u], bitcast<u32>(data[b + 4u].x), bits(data[b + 4u]).yzw);
 }
 // A picture's texel, repeating round its edges or clear beyond them.
 fn picture_texel(place: vec4<u32>, x: i32, y: i32, repeat: bool) -> vec4<f32> {
@@ -164,7 +176,7 @@ fn mesh_hit(inst: Instance, o: vec3<f32>, d: vec3<f32>, far: f32, stop_at_first:
     stack[0] = inst.root;
     while size > 0u {
         size -= 1u;
-        let n = nodes[stack[size]];
+        let n = node_at(stack[size]);
         if box_near(n, o, inv, best.t) < 0.0 { continue; }
         if n.count > 0u {
             for (var k = n.first; k < n.first + n.count; k++) {
@@ -177,8 +189,8 @@ fn mesh_hit(inst: Instance, o: vec3<f32>, d: vec3<f32>, far: f32, stop_at_first:
             }
         } else if n.first > 0u && size + 2u <= STACK {
             let a = inst.root + n.first;
-            let da = box_near(nodes[a], o, inv, best.t);
-            let db = box_near(nodes[a + 1u], o, inv, best.t);
+            let da = box_near(node_at(a), o, inv, best.t);
+            let db = box_near(node_at(a + 1u), o, inv, best.t);
             // The nearer child last, so it is walked first.
             if da >= 0.0 && db >= 0.0 {
                 if da <= db { stack[size] = a + 1u; stack[size + 1u] = a; } else { stack[size] = a; stack[size + 1u] = a + 1u; }
@@ -188,6 +200,177 @@ fn mesh_hit(inst: Instance, o: vec3<f32>, d: vec3<f32>, far: f32, stop_at_first:
         }
     }
     return best;
+}
+// ---- Gaussian splats ----
+// A splat's turn as a matrix (columns), from its quaternion x y z w.
+fn splat_turn(q: vec4<f32>) -> mat3x3<f32> {
+    let x = q.x; let y = q.y; let z = q.z; let w = q.w;
+    return mat3x3<f32>(
+        vec3<f32>(1.0 - 2.0 * (y * y + z * z), 2.0 * (x * y + w * z), 2.0 * (x * z - w * y)),
+        vec3<f32>(2.0 * (x * y - w * z), 1.0 - 2.0 * (x * x + z * z), 2.0 * (y * z + w * x)),
+        vec3<f32>(2.0 * (x * z + w * y), 2.0 * (y * z - w * x), 1.0 - 2.0 * (x * x + y * y)));
+}
+// The next splats along a ray, nearest first: up to BATCH of them at a time, so a ray
+// passing through many soft splats walks the trees once for every BATCH it passes.
+const BATCH: u32 = 16u;
+struct Batch { t: array<f32, 16>, alpha: array<f32, 16>, local: array<u32, 16>, instance: array<u32, 16>, count: u32 }
+// Keeps a splat met at `t` if it is among the nearest BATCH so far.
+fn keep(b: ptr<function, Batch>, t: f32, alpha: f32, local: u32, instance: u32) {
+    var at = (*b).count;
+    if at == BATCH {
+        if t >= (*b).t[BATCH - 1u] { return; }
+        at = BATCH - 1u;
+    } else {
+        (*b).count += 1u;
+    }
+    while at > 0u && (*b).t[at - 1u] > t {
+        (*b).t[at] = (*b).t[at - 1u];
+        (*b).alpha[at] = (*b).alpha[at - 1u];
+        (*b).local[at] = (*b).local[at - 1u];
+        (*b).instance[at] = (*b).instance[at - 1u];
+        at -= 1u;
+    }
+    (*b).t[at] = t;
+    (*b).alpha[at] = alpha;
+    (*b).local[at] = local;
+    (*b).instance[at] = instance;
+}
+// The farthest a splat may be met at and still be kept.
+fn batch_far(b: ptr<function, Batch>, far: f32) -> f32 {
+    if (*b).count == BATCH { return min(far, (*b).t[BATCH - 1u]); }
+    return far;
+}
+// The splats of placing `which` a ray meets (in the splats' own space; `d` is not
+// normalised, so distances stay in world lengths): where along it each is densest, after
+// `after` and before `far`, within three of its standard deviations and not too faint to
+// show, with its opacity there.
+fn splats_of(which: u32, o: vec3<f32>, d: vec3<f32>, after: f32, far: f32, b: ptr<function, Batch>) {
+    let inst = instance_at(which);
+    let first = surface_at(inst.surface).splat.z;
+    let inv = 1.0 / d;
+    var stack: array<u32, STACK>;
+    var size = 1u;
+    stack[0] = inst.root;
+    while size > 0u {
+        size -= 1u;
+        let n = node_at(stack[size]);
+        if box_near(n, o, inv, batch_far(b, far)) < 0.0 { continue; }
+        if n.count > 0u {
+            for (var k = n.first; k < n.first + n.count; k++) {
+                let local = triangles[inst.triangle_base + k / 4u][k % 4u];
+                let i = first + local;
+                let a = splats[4u * i];
+                let sigma = splats[4u * i + 1u].xyz;
+                let back = transpose(splat_turn(splats[4u * i + 2u]));
+                // In the splat's own space it is a unit Gaussian at the origin.
+                let oo = back * (o - a.xyz) / sigma;
+                let dd = back * d / sigma;
+                let along = dot(dd, dd);
+                if along <= 0.0 { continue; }
+                let t = -dot(oo, dd) / along;
+                if t <= after || t >= batch_far(b, far) { continue; }
+                let c = oo + dd * t;
+                let d2 = dot(c, c);
+                if d2 > 9.0 { continue; }
+                let alpha = min(0.99, a.w * exp(-0.5 * d2));
+                if alpha < 1.0 / 255.0 { continue; }
+                keep(b, t, alpha, local, which);
+            }
+        } else if n.first > 0u && size + 2u <= STACK {
+            let a = inst.root + n.first;
+            let da = box_near(node_at(a), o, inv, batch_far(b, far));
+            let db = box_near(node_at(a + 1u), o, inv, batch_far(b, far));
+            if da >= 0.0 && db >= 0.0 {
+                if da <= db { stack[size] = a + 1u; stack[size + 1u] = a; } else { stack[size] = a; stack[size + 1u] = a + 1u; }
+                size += 2u;
+            } else if da >= 0.0 { stack[size] = a; size += 1u; }
+            else if db >= 0.0 { stack[size] = a + 1u; size += 1u; }
+        }
+    }
+}
+// The next BATCH splats of every placing along a world ray, after `after`, before `far`.
+fn next_splats(o: vec3<f32>, d: vec3<f32>, after: f32, far: f32) -> Batch {
+    var b: Batch;
+    b.count = 0u;
+    let inv = 1.0 / d;
+    var stack: array<u32, STACK>;
+    var size = 1u;
+    stack[0] = 0u;
+    while size > 0u {
+        size -= 1u;
+        let n = top_node(stack[size]);
+        if box_near(n, o, inv, batch_far(&b, far)) < 0.0 { continue; }
+        if n.count > 0u {
+            for (var k = n.first; k < n.first + n.count; k++) {
+                let i = top_index(k);
+                let inst = instance_at(i);
+                if (surface_at(inst.surface).flags & SPLATS) == 0u { continue; }
+                let oo = vec4<f32>(o, 1.0) * inst.to_object;
+                let od = vec4<f32>(d, 0.0) * inst.to_object;
+                splats_of(i, oo, od, after, far, &b);
+            }
+        } else if n.first > 0u && size + 2u <= STACK {
+            stack[size] = n.first + 1u;
+            stack[size + 1u] = n.first;
+            size += 2u;
+        }
+    }
+    return b;
+}
+fn has_splats() -> bool { return (frame.lights_at.y & 8u) != 0u; }
+// Whether a ray is stopped by a splat before `far`: each it passes stops it as often as
+// the splat is opaque where the ray passes densest, nearest first, which is the splats laid
+// over one another front to back, as the preview does. What stopped it and where.
+struct Stopped { colour: vec3<f32>, t: f32, stopped: bool }
+fn through_splats(o: vec3<f32>, d: vec3<f32>, far: f32) -> Stopped {
+    var after = 0.0;
+    for (var round = 0u; round < 64u; round++) {
+        let b = next_splats(o, d, after, far);
+        for (var k = 0u; k < b.count; k++) {
+            if random() < b.alpha[k] {
+                let inst = instance_at(b.instance[k]);
+                let look = normalize((inst.to_world * d).xyz);
+                return Stopped(splat_colour(surface_at(inst.surface), b.local[k], look), b.t[k], true);
+            }
+        }
+        if b.count < BATCH { break; }
+        after = b.t[BATCH - 1u];
+    }
+    return Stopped(vec3<f32>(0.0), far, false);
+}
+// Splat `local` of surface `s` seen along `look` (in the splats' own space): its base colour
+// and the view-dependent bands it has, as a photograph shows it, made linear and times the
+// surface's brightness, as the interactive renderer shows splats.
+fn splat_colour(s: Surface, local: u32, look: vec3<f32>) -> vec3<f32> {
+    let i = s.splat.z + local;
+    var c = splats[4u * i + 3u].rgb;
+    let degree = s.splat.x & 255u;
+    let k = s.splat.x >> 8u;
+    if degree > 0u {
+        let at = s.splat.y + local * k * 3u;
+        let x = look.x; let y = look.y; let z = look.z;
+        var basis: array<f32, 15>;
+        basis[0] = -0.4886025 * y; basis[1] = 0.4886025 * z; basis[2] = -0.4886025 * x;
+        if degree >= 2u {
+            let xx = x * x; let yy = y * y; let zz = z * z;
+            basis[3] = 1.0925484 * x * y; basis[4] = -1.0925484 * y * z;
+            basis[5] = 0.3153916 * (2.0 * zz - xx - yy); basis[6] = -1.0925484 * x * z;
+            basis[7] = 0.5462742 * (xx - yy);
+            if degree >= 3u {
+                basis[8] = -0.5900436 * y * (3.0 * xx - yy); basis[9] = 2.8906114 * x * y * z;
+                basis[10] = -0.4570458 * y * (4.0 * zz - xx - yy);
+                basis[11] = 0.3731763 * z * (2.0 * zz - 3.0 * xx - 3.0 * yy);
+                basis[12] = -0.4570458 * x * (4.0 * zz - xx - yy);
+                basis[13] = 1.4453057 * z * (xx - yy); basis[14] = -0.5900436 * x * (xx - 3.0 * yy);
+            }
+        }
+        for (var b = 0u; b < min(k, 15u); b++) {
+            c += basis[b] * vec3<f32>(splat_rest[at + b], splat_rest[at + k + b], splat_rest[at + 2u * k + b]);
+        }
+    }
+    let shown = max(c, vec3<f32>(0.0));
+    let linear_light = select(pow((shown + 0.055) / 1.055, vec3<f32>(2.4)), shown / 12.92, shown <= vec3<f32>(0.04045));
+    return linear_light * s.colour.r;
 }
 // What a walk of the scene looks for: the nearest surface, the first found that blocks light
 // (unlit surfaces, cards, shadow catchers and glass do not), or the nearest glass.
@@ -212,12 +395,13 @@ fn scene_hit(o: vec3<f32>, d: vec3<f32>, far: f32, mode: u32) -> Hit {
                 let i = top_index(k);
                 let inst = instance_at(i);
                 let flags = surface_at(inst.surface).flags;
-                if mode == BLOCKER && (flags & (UNLIT | CATCHER | CARD | GLASS)) != 0u { continue; }
+                if mode == BLOCKER && (flags & (UNLIT | CATCHER | CARD | GLASS | SPLATS)) != 0u { continue; }
                 if mode == NEAREST_GLASS && (flags & GLASS) == 0u { continue; }
                 // The instance's own space; the direction is turned, not normalised, so
                 // distances along the ray stay in world lengths.
                 let oo = vec4<f32>(o, 1.0) * inst.to_object;
                 let od = vec4<f32>(d, 0.0) * inst.to_object;
+                if (flags & SPLATS) != 0u { continue; }
                 let h = mesh_hit(inst, oo, od, best.t, stop_at_first);
                 if h.triangle != 0xffffffffu {
                     best = Hit(h.t, i, h.triangle, h.u, h.v);
@@ -524,14 +708,14 @@ fn find(base: u32, n: u32, u: f32) -> u32 {
     var hi = n - 1u;
     while lo < hi {
         let mid = (lo + hi) / 2u;
-        if sky_table[base + mid] < u { lo = mid + 1u; } else { hi = mid; }
+        if sky_table(base + mid) < u { lo = mid + 1u; } else { hi = mid; }
     }
     return lo;
 }
 fn texel_share(x: u32, y: u32) -> f32 {
     let row = ACROSS * DOWN;
-    let down = sky_table[row + y] - select(0.0, sky_table[row + y - 1u], y > 0u);
-    let across = sky_table[y * ACROSS + x] - select(0.0, sky_table[y * ACROSS + x - 1u], x > 0u);
+    let down = sky_table(row + y) - select(0.0, sky_table(row + y - 1u), y > 0u);
+    let across = sky_table(y * ACROSS + x) - select(0.0, sky_table(y * ACROSS + x - 1u), x > 0u);
     return down * across;
 }
 // A direction drawn where the environment is bright, and its likelihood (per unit of
@@ -802,6 +986,18 @@ fn path(px: vec2<f32>) -> Seen {
         steps += 1u;
         let h = scene_hit(o, d, 1e30, NEAREST);
         let lit = panels(o, d, h.t, bounce > 0u && last_reflection);
+        if has_splats() {
+            // Splats before what the ray meets: one may stop it, showing its own colour.
+            let stop = through_splats(o, d, min(h.t, lit.w));
+            if stop.stopped {
+                guide(vec3<f32>(1.0), -d, travelled + stop.t);
+                var add = through * stop.colour;
+                if limit > 0.0 && bounce > 0u { add = min(add, vec3<f32>(limit)); }
+                colour += add;
+                if bounce == 0u { alpha = 1.0; }
+                break;
+            }
+        }
         if lit.w < h.t {
             if through_glass { break; }
             guide(vec3<f32>(1.0), -d, travelled + lit.w);

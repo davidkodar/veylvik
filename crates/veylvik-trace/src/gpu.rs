@@ -1,5 +1,5 @@
 //! The tracer on the GPU: one compute program over the packed scene, run in passes of a few samples each, sent to the GPU one at a time so a long picture never holds the GPU in one piece, averaging into the picture as it goes, or, to be denoised, into a buffer of its own with each pixel's guides (denoise.rs). Mesh geometry stays on the GPU while the same meshes are in the scene; placings, surfaces, the top tree and lights are sent each frame.
-use crate::scene::{GLASS, Mat4, Packed};
+use crate::scene::{GLASS, Mat4, Packed, SPLATS};
 use std::sync::Mutex;
 use wgpu::util::DeviceExt;
 
@@ -99,13 +99,23 @@ pub struct Job<'a> {
     /// How much of the picture this render is: 1 replaces it; less mixes this render in
     /// (motion blur's moments), and then a moment's samples are one pass.
     pub blend: f32,
+    /// The Gaussian splats SPLATS surfaces show, if any.
+    pub splats: Option<SplatBuffers<'a>>,
+}
+/// Gaussian splats on the GPU: 16 floats each (place and opacity, size, turn, colour), and
+/// their spherical harmonics past the first, as surfaces' `SplatColour` places them.
+#[derive(Clone, Copy)]
+pub struct SplatBuffers<'a> {
+    pub data: &'a wgpu::Buffer,
+    pub rest: &'a wgpu::Buffer,
 }
 /// Samples one pass may take for every pixel together, so a pass stays short.
 const PASS_WORK: u64 = 8_294_400;
 const UNIFORM_STEP: u64 = 256;
+/// The meshes on the GPU: their trees' nodes (two vec4s each) followed by their vertices
+/// in one buffer (a stage may bind few buffers), and their triangles.
 struct Geometry {
     meshes: Vec<usize>,
-    nodes: wgpu::Buffer,
     vertices: wgpu::Buffer,
     triangles: wgpu::Buffer,
     bytes: u64,
@@ -118,11 +128,12 @@ pub struct Tracer {
     sky_rows: wgpu::ComputePipeline,
     sky_down: wgpu::ComputePipeline,
     sky_layout: wgpu::BindGroupLayout,
-    sky_table: wgpu::Buffer,
     denoiser: crate::denoise::Denoiser,
 }
-/// The table: 256 x 128 running shares, 128 row shares and the sum (sky_table.wgsl).
+/// The table: 256 x 128 running shares, 128 row shares and the sum (sky_table.wgsl). It
+/// heads the pictures' buffer, padded to whole vec4s.
 const SKY_TABLE: u64 = (256 * 128 + 128 + 1) * 4;
+const SKY_VEC4S: u64 = SKY_TABLE.div_ceil(16);
 fn storage(binding: u32, read_only: bool) -> wgpu::BindGroupLayoutEntry {
     wgpu::BindGroupLayoutEntry {
         binding,
@@ -169,13 +180,16 @@ fn frame_data(
     let f = f32::from_bits;
     let mut data: Vec<[f32; 4]> = Vec::new();
     let instances = data.len() as u32;
+    // Vertices follow the meshes' nodes in the geometry buffer (two vec4s each, as a
+    // vertex), so a mesh's vertices start that many places on.
+    let nodes = scene.nodes.len() as u32;
     for i in &scene.instances {
         data.extend(i.to_object);
         data.extend(i.to_world);
         data.push([
             f(i.root),
             f(i.triangle_base),
-            f(i.vertex_base),
+            f(i.vertex_base + nodes),
             f(i.surface),
         ]);
         data.push(i.tint);
@@ -197,7 +211,18 @@ fn frame_data(
             cast_at += 5;
             cast_at - 5
         });
-        data.push([f(cast), 0.0, 0.0, 0.0]);
+        let splat = s.splats.unwrap_or(crate::scene::SplatColour {
+            first: 0,
+            degree: 0,
+            coefficients: 0,
+            rest: 0,
+        });
+        data.push([
+            f(cast),
+            f(splat.degree | splat.coefficients << 8),
+            f(splat.rest),
+            f(splat.first),
+        ]);
     }
     for c in scene.surfaces.iter().filter_map(|s| s.projection) {
         data.extend(c.to_camera);
@@ -320,12 +345,6 @@ impl Tracer {
             sky_rows: sky("sky_rows"),
             sky_down: sky("sky_down"),
             sky_layout,
-            sky_table: device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("sky table"),
-                size: SKY_TABLE,
-                usage: wgpu::BufferUsages::STORAGE,
-                mapped_at_creation: false,
-            }),
             denoiser: crate::denoise::Denoiser::new(device),
         }
     }
@@ -358,6 +377,7 @@ impl Tracer {
             settings,
             target,
             blend,
+            splats,
         } = job;
         if let Some(look) = looks.iter().find(|l| l.lighting.len() != LOOK_LIGHTING) {
             return Err(format!(
@@ -386,22 +406,23 @@ impl Tracer {
             .lock()
             .map_err(|_| "path tracer lock poisoned")?;
         if geometry.as_ref().is_none_or(|g| g.meshes != scene.meshes) {
-            let nodes = buffer(device, "path tracer nodes", &scene.nodes);
-            let vertices = buffer(device, "path tracer vertices", &scene.vertices);
+            let mut both: Vec<[f32; 4]> = bytemuck::cast_slice(&scene.nodes).to_vec();
+            both.extend_from_slice(&scene.vertices);
+            let vertices = buffer(device, "path tracer geometry", &both);
             let triangles = buffer(device, "path tracer triangles", &scene.triangles);
-            let bytes = nodes.size() + vertices.size() + triangles.size();
+            let bytes = vertices.size() + triangles.size();
             *geometry = Some(Geometry {
                 meshes: scene.meshes.clone(),
-                nodes,
                 vertices,
                 triangles,
                 bytes,
             });
         }
         let g = geometry.as_ref().expect("geometry was just made");
-        // The pictures, one after another in one buffer (a stage may bind few buffers).
+        // The environment's table, then the pictures, one after another in one buffer (a
+        // stage may bind few buffers).
         let mut places = Vec::with_capacity(textures.len());
-        let mut texels = 0u64;
+        let mut texels = SKY_VEC4S;
         for t in textures {
             places.push([texels as u32, t.width, t.height]);
             texels += u64::from(t.width) * u64::from(t.height);
@@ -411,7 +432,7 @@ impl Tracer {
         }
         let pictures = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("path tracer pictures"),
-            size: (texels * 16).max(16),
+            size: texels * 16,
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -424,9 +445,19 @@ impl Tracer {
         }
         let (data, offsets, [lights_at, textures_at, looks_at]) =
             frame_data(scene, lights, &places, looks);
+        let none = splats
+            .is_none()
+            .then(|| buffer(device, "no splats", &[0.0f32; 4]));
+        let (splat_data, splat_rest) = match (&splats, &none) {
+            (Some(s), _) => (s.data, s.rest),
+            (None, Some(none)) => (none, none),
+            (None, None) => unreachable!("one or the other"),
+        };
         let data = buffer(device, "path tracer frame", &data);
         // Shadow rays look for glass to pass through only when there is some.
         let has_glass = scene.surfaces.iter().any(|s| s.flags & GLASS != 0);
+        // Rays look for splats only when there are some.
+        let has_splats = scene.surfaces.iter().any(|s| s.flags & SPLATS != 0);
         // The passes: each takes a few samples for every pixel, as many as keep it short.
         let blend = blend.clamp(0.0, 1.0);
         let per_pass = if blend < 1.0 && work.is_none() {
@@ -469,7 +500,8 @@ impl Tracer {
                     lights_at,
                     u32::from(settings.sample_sky)
                         | if work.is_some() { 2 } else { 0 }
-                        | if has_glass { 4 } else { 0 },
+                        | if has_glass { 4 } else { 0 }
+                        | if has_splats { 8 } else { 0 },
                     textures_at,
                     looks_at,
                 ],
@@ -497,7 +529,7 @@ impl Tracer {
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
-                    resource: g.nodes.as_entire_binding(),
+                    resource: splat_data.as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
                     binding: 2,
@@ -528,7 +560,7 @@ impl Tracer {
                 },
                 wgpu::BindGroupEntry {
                     binding: 7,
-                    resource: self.sky_table.as_entire_binding(),
+                    resource: splat_rest.as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
                     binding: 8,
@@ -549,7 +581,11 @@ impl Tracer {
                     },
                     wgpu::BindGroupEntry {
                         binding: 1,
-                        resource: self.sky_table.as_entire_binding(),
+                        resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                            buffer: &pictures,
+                            offset: 0,
+                            size: wgpu::BufferSize::new(SKY_TABLE),
+                        }),
                     },
                 ],
             });

@@ -2275,6 +2275,16 @@ fn splatted(
     size: f32,
     cube: Option<[f32; 3]>,
 ) -> Vec<[f32; 4]> {
+    splatted_as(SceneQuality::Preview, renderer, splats, size, cube)
+}
+/// As `splatted`, rendered at `quality`.
+fn splatted_as(
+    quality: SceneQuality,
+    renderer: &Renderer,
+    splats: &[veylvik_splat::Described],
+    size: f32,
+    cube: Option<[f32; 3]>,
+) -> Vec<[f32; 4]> {
     let mut doc = blank(W, H, Time::new(24, 1).unwrap()).unwrap();
     let mut inputs = ImageInputs::default();
     let parsed = veylvik_splat::parse(&veylvik_splat::write_ply(splats)).unwrap();
@@ -2299,7 +2309,13 @@ fn splatted(
         parts.push(("scene_3", add(&mut doc, c, &[])));
     }
     let scene = add(&mut doc, op(&MERGE_SCENES), &parts);
-    doc.output = add(&mut doc, op(&RENDER_SCENE), &[("scene", scene)]);
+    let mut render_scene = op(&RENDER_SCENE);
+    if let Operation::RenderScene(r) = &mut render_scene {
+        r.quality = quality;
+        r.samples = 256;
+        r.denoise = false;
+    }
+    doc.output = add(&mut doc, render_scene, &[("scene", scene)]);
     render(renderer, &doc, &inputs)
 }
 const STILL: [f32; 4] = [0.0, 0.0, 0.0, 1.0];
@@ -2951,4 +2967,113 @@ fn copies_at_particles_are_path_traced_where_the_preview_draws_them() {
             .fold((0.0, 0.0), |(r, g), p| (r + p[0], g + p[1]));
         assert!(r > 4.0 * g, "tinted red: {r} {g}");
     }
+}
+#[test]
+#[ignore = "requires Vulkan"]
+fn splats_path_trace_as_the_preview_draws_them() {
+    let renderer = renderer();
+    let middle = |p: &[[f32; 4]]| p[((H / 2) * W + W / 2) as usize];
+    // One red splat: solid at its middle, softer away from it, nothing far off, as drawn.
+    let one = [([0.0; 3], [1.0, 0.0, 0.0], 0.9, [1.0; 3], STILL)];
+    let traced = splatted_as(SceneQuality::PathTraced, &renderer, &one, 40.0, None);
+    let drawn = splatted(&renderer, &one, 40.0, None);
+    let at = |p: &[[f32; 4]], x: u32| p[((H / 2) * W + x) as usize];
+    eprintln!(
+        "one splat: middle {:?} / {:?}, edge {:?} / {:?}",
+        middle(&traced),
+        middle(&drawn),
+        at(&traced, W / 2 + 12),
+        at(&drawn, W / 2 + 12)
+    );
+    assert!((middle(&traced)[3] - middle(&drawn)[3]).abs() < 0.05);
+    assert!((middle(&traced)[0] - middle(&drawn)[0]).abs() < 0.08);
+    let (edge, drawn_edge) = (at(&traced, W / 2 + 12)[3], at(&drawn, W / 2 + 12)[3]);
+    assert!(
+        edge > 0.0 && edge < middle(&traced)[3],
+        "softer away from it: {edge}"
+    );
+    assert!(
+        (edge - drawn_edge).abs() < 0.1,
+        "as soft as drawn: {edge} {drawn_edge}"
+    );
+    assert!(
+        traced[(5 * W + 5) as usize][3] < 0.001,
+        "nothing far from it"
+    );
+    // A field of overlapping splats of many colours, sizes and opacities: the same
+    // picture on average, pixel for pixel.
+    let mut field = Vec::new();
+    let mut seed = 7u32;
+    let mut next = || {
+        seed = seed.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+        (seed >> 8) as f32 / (1u32 << 24) as f32
+    };
+    for _ in 0..80 {
+        let place = [next() * 8.0 - 4.0, next() * 4.0 - 2.0, next() * 4.0 - 2.0];
+        let colour = [next(), next(), next()];
+        let size = 0.2 + next() * 0.6;
+        field.push((
+            place,
+            colour,
+            0.3 + 0.65 * next(),
+            [size, size * (0.5 + next()), size],
+            STILL,
+        ));
+    }
+    let traced = splatted_as(SceneQuality::PathTraced, &renderer, &field, 120.0, None);
+    let drawn = splatted(&renderer, &field, 120.0, None);
+    let n = (W * H) as f32;
+    let mut error = [0.0f32; 4];
+    let mut covered = 0.0f32;
+    for (a, b) in traced.iter().zip(&drawn) {
+        for c in 0..4 {
+            error[c] += (a[c] - b[c]).abs() / n;
+        }
+        covered += b[3] / n;
+    }
+    eprintln!("field: mean error {error:?}, drawn coverage {covered}");
+    assert!(covered > 0.2, "the field covers the frame: {covered}");
+    assert!(
+        error.iter().all(|e| *e < 0.03),
+        "the same picture: {error:?}"
+    );
+    // Front to back: the front splat covers the back one, whatever the file's order, and
+    // a cube in front hides both.
+    let pair = [
+        ([0.0, 0.0, -1.0], [0.0, 0.0, 1.0], 0.95, [1.0; 3], STILL),
+        ([0.0, 0.0, 1.0], [1.0, 0.0, 0.0], 0.95, [1.0; 3], STILL),
+    ];
+    let front = middle(&splatted_as(
+        SceneQuality::PathTraced,
+        &renderer,
+        &pair,
+        40.0,
+        None,
+    ));
+    assert!(
+        front[0] > 4.0 * front[2],
+        "the front splat covers the back one: {front:?}"
+    );
+    let swapped = middle(&splatted_as(
+        SceneQuality::PathTraced,
+        &renderer,
+        &[pair[1], pair[0]],
+        40.0,
+        None,
+    ));
+    assert!(
+        (swapped[0] - front[0]).abs() < 0.05,
+        "the file's order does not matter"
+    );
+    let hidden = middle(&splatted_as(
+        SceneQuality::PathTraced,
+        &renderer,
+        &pair,
+        40.0,
+        Some([0.0, 0.0, 60.0]),
+    ));
+    assert!(
+        hidden[1] > 4.0 * hidden[0],
+        "the cube in front hides the splats: {hidden:?}"
+    );
 }

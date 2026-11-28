@@ -110,6 +110,7 @@ fn trace_into(
             },
             target,
             blend: 1.0,
+            splats: None,
         })
         .unwrap();
     queue.submit([encoder.finish()]);

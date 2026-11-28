@@ -2401,8 +2401,16 @@ so any number of projecting cameras see past nothing. Copies at particles are pl
 once for each living particle, turned, sized and tinted as the preview draws them,
 in their plain surface (a copy takes no look or projection there either); the mesh is
 stored once however many copies there are, and up to the 100,000 copies a Particle
-instances node makes are read back from the card each frame. Not path traced yet:
-Gaussian splats.
+instances node makes are read back from the card each frame. Gaussian splats are
+traced as the soft ellipsoids they are: a ray meets them in the order of where along it
+each is densest, and each stops it as often as it is opaque there, which lays them over
+one another front to back as the preview does (a field of overlapping splats renders
+within about 1% of the preview on average), with the same colours, view-dependent
+bands and Brightness, hidden by solids in front. They show in reflections and through
+glass, cast no shadows and light nothing, as in the preview. Each file gets a tree over
+its splats, built once (a few seconds for millions) and kept; a ray walks it for the next
+16 splats at a time. Splats are far slower to trace than to draw: a million at
+960 × 540 with 32 paths a pixel takes about 2.6 seconds a frame on an RTX 4080.
 
 **Denoise** (on by default) smooths away the noise left after the paths, so far
 fewer samples give a clean picture: on a row of library looks, 16 paths a pixel

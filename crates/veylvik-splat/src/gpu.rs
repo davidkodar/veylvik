@@ -24,6 +24,12 @@ pub struct Uploaded {
     passes: Vec<(u32, u32)>,
 }
 impl Uploaded {
+    /// The splats (STRIDE floats each) and their spherical harmonics past the first, as
+    /// uploaded, for another renderer to read (the path tracer); the rest buffer holds at
+    /// least one value.
+    pub fn buffers(&self) -> (&wgpu::Buffer, &wgpu::Buffer) {
+        (&self.splats, &self.rest)
+    }
     /// Bytes it holds on the GPU.
     pub fn bytes(&self) -> u64 {
         [
@@ -144,11 +150,12 @@ impl Renderer {
     pub fn upload(&self, device: &wgpu::Device, splats: &Splats) -> Uploaded {
         let count = splats.count.max(1) as u32;
         let padded = count.next_power_of_two().max(2);
+        // Readable by other renderers too: the path tracer copies sets together.
         let storage = |label, bytes: &[u8]| {
             device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some(label),
                 contents: bytes,
-                usage: wgpu::BufferUsages::STORAGE,
+                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
             })
         };
         let mut data = splats.data.clone();

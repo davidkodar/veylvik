@@ -4,8 +4,8 @@ use std::sync::Arc;
 use veylvik_render::{Result, SceneJob, Trace};
 use veylvik_scene::Geometry;
 use veylvik_trace::{
-    CARD, CATCHER, CUT, Environment, GLASS, Job, Look, MeshTree, Placed, Projection, STRAIGHT,
-    Settings, Surface, Texture, Tracer, UNLIT, View,
+    CARD, CATCHER, CUT, Environment, GLASS, Job, Look, MeshTree, Placed, Projection, SPLATS,
+    STRAIGHT, Settings, SplatBuffers, SplatColour, Surface, Texture, Tracer, UNLIT, View,
 };
 
 /// The brightest a bounce may add to a pixel: rare paths that find a small bright light
@@ -29,6 +29,7 @@ impl Engine {
             models,
             time,
             instances,
+            splats,
             ..
         } = job;
         let expanded = self.expand(scene, models)?;
@@ -58,9 +59,42 @@ impl Engine {
         let picture_of = |source| images.iter().find(|(id, ..)| *id == source);
         // Each particle node's copies, read once: (node, where and size, turn, tint).
         let mut read: Vec<(veylvik_document::NodeId, Vec<[[f32; 4]; 3]>)> = Vec::new();
+        // The splat sets shown (each on the GPU once, as the preview has it) and the
+        // objects showing them: (set, its tree, placing, brightness).
+        let mut sets: Vec<(Arc<veylvik_splat::Uploaded>, Arc<veylvik_splat::Splats>)> = Vec::new();
+        let mut splatted: Vec<(usize, Arc<MeshTree>, veylvik_scene::math::Mat4, f32)> = Vec::new();
         for object in &scene.objects {
-            // Splats are not path traced yet.
-            if matches!(object.geometry, Geometry::Splats { .. }) {
+            if let Geometry::Splats {
+                path,
+                size,
+                brightness,
+            } = &object.geometry
+            {
+                let Some(data) = splats.get(path).filter(|d| d.count > 0) else {
+                    continue;
+                };
+                if object.instanced.is_some() {
+                    continue;
+                }
+                let set = self.splat_set(device, data)?;
+                let at = match sets.iter().position(|(s, _)| Arc::ptr_eq(s, &set)) {
+                    Some(at) => at,
+                    None => {
+                        sets.push((set, data.clone()));
+                        sets.len() - 1
+                    }
+                };
+                // Centred on the box most of its splats lie in, its largest side `size`, as
+                // the preview places it.
+                let (middle, side) = data.extent();
+                let model = veylvik_scene::math::mul(
+                    &object.world,
+                    &veylvik_scene::math::mul(
+                        &veylvik_scene::math::scale([size / side; 3]),
+                        &veylvik_scene::math::translate(middle.map(|v| -v)),
+                    ),
+                );
+                splatted.push((at, self.splat_tree(path, data)?, model, *brightness));
                 continue;
             }
             // An object copied at particles is placed once for each living particle (and not
@@ -197,6 +231,7 @@ impl Engine {
                 ],
                 look,
                 projection,
+                splats: None,
             };
             let tree = self.tree(object)?;
             match copies {
@@ -218,6 +253,65 @@ impl Engine {
                 }
             }
         }
+        // Every set the scene shows, one after another: one is read where it is; several
+        // are copied into buffers of their own for this frame.
+        let mut firsts = Vec::with_capacity(sets.len());
+        let (mut splat_count, mut rest_count) = (0u64, 0u64);
+        for (set, _) in &sets {
+            let (data, rest) = set.buffers();
+            firsts.push((splat_count as u32, rest_count as u32));
+            splat_count += data.size() / 64;
+            rest_count += rest.size() / 4;
+        }
+        if splat_count > u64::from(u32::MAX / 4) || rest_count > u64::from(u32::MAX) {
+            return Err(error("too many splats to path trace together"));
+        }
+        for (at, tree, model, brightness) in splatted {
+            let (set, data) = &sets[at];
+            let _ = set;
+            placed.push(Placed {
+                tree,
+                world: model,
+                surface: Surface {
+                    colour: [brightness; 3],
+                    flags: SPLATS,
+                    splats: Some(SplatColour {
+                        first: firsts[at].0,
+                        degree: data.degree,
+                        coefficients: data.coefficients() as u32,
+                        rest: firsts[at].1,
+                    }),
+                    ..Surface::default()
+                },
+                tint: [1.0; 3],
+            });
+        }
+        let joined = (sets.len() > 1).then(|| {
+            let make = |label, size| {
+                device.create_buffer(&wgpu::BufferDescriptor {
+                    label: Some(label),
+                    size,
+                    usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+                    mapped_at_creation: false,
+                })
+            };
+            let data = make("path traced splats", splat_count * 64);
+            let rest = make("path traced splat colours", rest_count * 4);
+            for ((set, _), (first, rest_first)) in sets.iter().zip(&firsts) {
+                let (d, r) = set.buffers();
+                encoder.copy_buffer_to_buffer(d, 0, &data, u64::from(*first) * 64, d.size());
+                encoder.copy_buffer_to_buffer(r, 0, &rest, u64::from(*rest_first) * 4, r.size());
+            }
+            (data, rest)
+        });
+        let splat_buffers = match (&joined, sets.first()) {
+            (Some((data, rest)), _) => Some(SplatBuffers { data, rest }),
+            (None, Some((set, _))) => {
+                let (data, rest) = set.buffers();
+                Some(SplatBuffers { data, rest })
+            }
+            (None, None) => None,
+        };
         let textures: Vec<Texture<'_>> = pictures
             .iter()
             .map(|(buffer, width, height)| Texture {
@@ -283,12 +377,27 @@ impl Engine {
                 },
                 target,
                 blend,
+                splats: splat_buffers,
             })
             .map_err(error)
     }
     /// An object's mesh as a tree, kept between frames under its mesh's key.
     fn tree(&self, object: &veylvik_scene::Object) -> Result<Arc<MeshTree>> {
         let key = format!("{:?}{:?}", object.geometry, object.flutter);
+        self.cached_tree(key, || Ok(MeshTree::new(&self.cpu_mesh(object)?)))
+    }
+    /// The tree over a splat file's splats, in the file's own space (kept like meshes').
+    fn splat_tree(&self, path: &str, data: &Arc<veylvik_splat::Splats>) -> Result<Arc<MeshTree>> {
+        let key = format!("splats {path} {:p}", Arc::as_ptr(data));
+        self.cached_tree(key, || {
+            Ok(MeshTree::splats(&data.data, veylvik_splat::STRIDE))
+        })
+    }
+    fn cached_tree(
+        &self,
+        key: String,
+        build: impl FnOnce() -> Result<MeshTree>,
+    ) -> Result<Arc<MeshTree>> {
         {
             let mut guard = self
                 .trees
@@ -303,7 +412,7 @@ impl Engine {
             }
         }
         // Built outside the lock: a large mesh takes a moment.
-        let tree = Arc::new(MeshTree::new(&self.cpu_mesh(object)?));
+        let tree = Arc::new(build()?);
         let mut guard = self
             .trees
             .lock()

@@ -285,6 +285,35 @@ fn light_uniform(
         up: [panel[1][0], panel[1][1], panel[1][2], light.reflections],
     }
 }
+impl Engine {
+    fn splat_programs(&self, device: &wgpu::Device) -> &veylvik_splat::Renderer {
+        self.splat_programs
+            .get_or_init(|| veylvik_splat::Renderer::new(device, COLOUR, DEPTH, SAMPLES))
+    }
+    /// `data` on the GPU: kept between frames (the most recently used few), shared by the
+    /// preview and the path tracer.
+    pub(crate) fn splat_set(
+        &self,
+        device: &wgpu::Device,
+        data: &std::sync::Arc<veylvik_splat::Splats>,
+    ) -> Result<std::sync::Arc<veylvik_splat::Uploaded>> {
+        let programs = self.splat_programs(device);
+        let mut sets = self
+            .splat_sets
+            .lock()
+            .map_err(|_| error("splat lock poisoned"))?;
+        let found = sets
+            .iter()
+            .position(|(s, _)| std::sync::Arc::ptr_eq(s, data));
+        let set = match found {
+            Some(at) => sets.remove(at).1,
+            None => std::sync::Arc::new(programs.upload(device, data)),
+        };
+        sets.insert(0, (data.clone(), set.clone()));
+        sets.truncate(KEPT_SPLATS);
+        Ok(set)
+    }
+}
 /// Perspective with y down (the scene frame) into wgpu clip space, reversed depth
 /// with an infinite far plane.
 fn projection(camera: &veylvik_scene::Camera, width: u32, height: u32) -> math::Mat4 {
@@ -1081,25 +1110,8 @@ impl Engine {
                 let Some(data) = splats.get(path) else {
                     continue;
                 };
-                let programs = self
-                    .splat_programs
-                    .get_or_init(|| veylvik_splat::Renderer::new(device, COLOUR, DEPTH, SAMPLES));
-                let set = {
-                    let mut sets = self
-                        .splat_sets
-                        .lock()
-                        .map_err(|_| error("splat lock poisoned"))?;
-                    let found = sets
-                        .iter()
-                        .position(|(s, _)| std::sync::Arc::ptr_eq(s, data));
-                    let set = match found {
-                        Some(at) => sets.remove(at).1,
-                        None => std::sync::Arc::new(programs.upload(device, data)),
-                    };
-                    sets.insert(0, (data.clone(), set.clone()));
-                    sets.truncate(KEPT_SPLATS);
-                    set
-                };
+                let programs = self.splat_programs(device);
+                let set = self.splat_set(device, data)?;
                 // Centred on the box most of its splats lie in, its largest side `size`.
                 let (middle, side) = data.extent();
                 let model = math::mul(

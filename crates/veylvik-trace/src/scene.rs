@@ -50,6 +50,71 @@ impl MeshTree {
             max: root.max,
         }
     }
+    /// A tree over Gaussian splats (`stride` floats each in `data`: place and opacity, size
+    /// along its own axes, turn as a quaternion x y z w, colour), each boxed out to three
+    /// standard deviations; `triangles` holds the splats' numbers in leaf order, four to an
+    /// entry, and there are no vertices. Splats too faint to show are left out.
+    pub fn splats(data: &[f32], stride: usize) -> Self {
+        let count = data.len() / stride.max(1);
+        let mut kept = Vec::new();
+        let mut boxes = Vec::new();
+        for i in 0..count {
+            let d = &data[i * stride..];
+            let shows = d[3] >= 1.0 / 255.0 && [d[4], d[5], d[6]].iter().all(|v| *v > 0.0);
+            if !shows {
+                continue;
+            }
+            let [x, y, z, w] = [d[8], d[9], d[10], d[11]];
+            let r = [
+                [
+                    1.0 - 2.0 * (y * y + z * z),
+                    2.0 * (x * y - w * z),
+                    2.0 * (x * z + w * y),
+                ],
+                [
+                    2.0 * (x * y + w * z),
+                    1.0 - 2.0 * (x * x + z * z),
+                    2.0 * (y * z - w * x),
+                ],
+                [
+                    2.0 * (x * z - w * y),
+                    2.0 * (y * z + w * x),
+                    1.0 - 2.0 * (x * x + y * y),
+                ],
+            ];
+            let half = [0, 1, 2].map(|k| {
+                3.0 * (0..3)
+                    .map(|j| (r[k][j] * d[4 + j]).powi(2))
+                    .sum::<f32>()
+                    .sqrt()
+            });
+            kept.push(i as u32);
+            boxes.push((
+                [0, 1, 2].map(|k| d[k] - half[k]),
+                [0, 1, 2].map(|k| d[k] + half[k]),
+            ));
+        }
+        let bvh = Bvh::over_boxes(&boxes);
+        let triangles = bvh
+            .order
+            .chunks(4)
+            .map(|c| {
+                let mut entry = [0u32; 4];
+                for (slot, &k) in entry.iter_mut().zip(c) {
+                    *slot = kept[k as usize];
+                }
+                entry
+            })
+            .collect();
+        let root = bvh.nodes[0];
+        Self {
+            nodes: bvh.nodes,
+            vertices: Vec::new(),
+            triangles,
+            min: root.min,
+            max: root.max,
+        }
+    }
     pub fn is_empty(&self) -> bool {
         self.triangles.is_empty()
     }
@@ -76,6 +141,19 @@ pub struct Surface {
     pub look: Option<u32>,
     /// A picture cast onto it through a camera.
     pub projection: Option<Projection>,
+    /// Gaussian splats' colours (with the SPLATS flag).
+    pub splats: Option<SplatColour>,
+}
+/// Where a surface's splats are in the job's splats (from `first`; the tree names them
+/// from 0) and how their colours are read: spherical harmonics past the first (`degree`
+/// 0 to 3, `coefficients` per colour, starting at `rest` in the job's coefficients), as
+/// photographs show them (made linear) times the surface's colour (its brightness).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SplatColour {
+    pub first: u32,
+    pub degree: u32,
+    pub coefficients: u32,
+    pub rest: u32,
 }
 /// A picture cast through a camera: where the camera saw a point is the picture there.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -107,6 +185,7 @@ impl Default for Surface {
             finish: [0.0; 5],
             look: None,
             projection: None,
+            splats: None,
         }
     }
 }
@@ -121,6 +200,9 @@ pub const CARD: u32 = 4;
 pub const CUT: u32 = 8;
 /// A model part's own texture: straight colour, repeating.
 pub const STRAIGHT: u32 = 16;
+/// Gaussian splats (`MeshTree::splats`): soft see-through ellipsoids showing their own
+/// colour, met in the order of where along a ray each is densest; they cast no shadows.
+pub const SPLATS: u32 = 64;
 /// A glass look: light passes through it to what lies behind, tinted by the glass, so its
 /// shadow is coloured and faint rather than solid.
 pub const GLASS: u32 = 32;
@@ -294,6 +376,10 @@ impl Packed {
             if n.count > 0 {
                 for &i in &self.top_order[n.first as usize..(n.first + n.count) as usize] {
                     let inst = self.instances[i as usize];
+                    // Splats are no solids: a ray walked here (autofocus) passes them.
+                    if self.surfaces[inst.surface as usize].flags & SPLATS != 0 {
+                        continue;
+                    }
                     let m: Mat4 = [
                         inst.to_object[0],
                         inst.to_object[1],
